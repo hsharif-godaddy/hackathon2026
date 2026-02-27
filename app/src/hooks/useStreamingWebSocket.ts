@@ -263,8 +263,24 @@ export function useStreamingWebSocket() {
     [setIsLoading]
   )
 
+  /**
+   * Load more history messages (pagination)
+   * Returns true if the request was sent, false if not connected
+   */
+  const loadMoreHistory = useCallback(
+    (params: { cursor: string; limit?: number }): boolean => {
+      const controller = controllerRef.current
+      if (!controller) {
+        return false
+      }
+      return controller.loadMoreHistory(params)
+    },
+    []
+  )
+
   return {
     sendMessage,
+    loadMoreHistory,
     webSocketState,
     isConnected: webSocketState.connected,
     isStreaming: webSocketState.status === 'streaming'

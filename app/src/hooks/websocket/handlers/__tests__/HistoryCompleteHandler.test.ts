@@ -37,11 +37,15 @@ describe('HistoryCompleteHandler', () => {
 
   it('completes history loading without activeStream', async () => {
     const setHistoryLoadingComplete = vi.fn()
+    const setHistoryPagination = vi.fn()
+    const setHistoryLoadingMore = vi.fn()
     const context = createMockMessageContext()
 
     mockStore.getState.mockReturnValue({
       activeStream: null,
       setHistoryLoadingComplete,
+      setHistoryPagination,
+      setHistoryLoadingMore,
     })
 
     const data: WebSocketMessage = {
@@ -49,17 +53,26 @@ describe('HistoryCompleteHandler', () => {
       content: '',
       data: {
         messageCount: 5,
+        hasMore: true,
+        nextCursor: 'cursor-abc',
       },
     }
 
     await handler.handle(data, context)
 
+    expect(setHistoryPagination).toHaveBeenCalledWith({
+      hasMore: true,
+      nextCursor: 'cursor-abc',
+    })
     expect(setHistoryLoadingComplete).toHaveBeenCalledWith(true)
+    expect(setHistoryLoadingMore).toHaveBeenCalledWith(false)
     expect(context.machine.send).not.toHaveBeenCalled()
   })
 
   it('sends STREAM_COMPLETE for completed streams (no buffered events)', async () => {
     const setHistoryLoadingComplete = vi.fn()
+    const setHistoryPagination = vi.fn()
+    const setHistoryLoadingMore = vi.fn()
     const context = createMockMessageContext({
       refs: {
         ...createMockMessageContext().refs,
@@ -97,6 +110,8 @@ describe('HistoryCompleteHandler', () => {
         isComplete: false,
       },
       setHistoryLoadingComplete,
+      setHistoryPagination,
+      setHistoryLoadingMore,
     })
 
     const data: WebSocketMessage = {
@@ -104,11 +119,17 @@ describe('HistoryCompleteHandler', () => {
       content: '',
       data: {
         messageCount: 3,
+        hasMore: false,
+        nextCursor: null,
       },
     }
 
     await handler.handle(data, context)
 
+    expect(setHistoryPagination).toHaveBeenCalledWith({
+      hasMore: false,
+      nextCursor: null,
+    })
     expect(setHistoryLoadingComplete).toHaveBeenCalledWith(true)
     // Should finalize the stream first (moves to messages, persists)
     expect(context.actions.finalizeStream).toHaveBeenCalledWith({})
@@ -118,6 +139,8 @@ describe('HistoryCompleteHandler', () => {
 
   it('does not send STREAM_COMPLETE for active streams (has buffered events)', async () => {
     const setHistoryLoadingComplete = vi.fn()
+    const setHistoryPagination = vi.fn()
+    const setHistoryLoadingMore = vi.fn()
     const context = createMockMessageContext({
       refs: {
         ...createMockMessageContext().refs,
@@ -143,6 +166,8 @@ describe('HistoryCompleteHandler', () => {
         isComplete: false,
       },
       setHistoryLoadingComplete,
+      setHistoryPagination,
+      setHistoryLoadingMore,
     })
 
     const data: WebSocketMessage = {
@@ -155,6 +180,10 @@ describe('HistoryCompleteHandler', () => {
 
     await handler.handle(data, context)
 
+    expect(setHistoryPagination).toHaveBeenCalledWith({
+      hasMore: false,
+      nextCursor: null,
+    })
     expect(setHistoryLoadingComplete).toHaveBeenCalledWith(true)
     // Should NOT send any machine event - stream is still active and will receive more events
     // STREAM_STARTED was already sent by HistoryMessageHandler
@@ -163,6 +192,8 @@ describe('HistoryCompleteHandler', () => {
 
   it('does not send events when recovery context is missing', async () => {
     const setHistoryLoadingComplete = vi.fn()
+    const setHistoryPagination = vi.fn()
+    const setHistoryLoadingMore = vi.fn()
     const context = createMockMessageContext({
       refs: {
         ...createMockMessageContext().refs,
@@ -181,6 +212,8 @@ describe('HistoryCompleteHandler', () => {
         isComplete: false,
       },
       setHistoryLoadingComplete,
+      setHistoryPagination,
+      setHistoryLoadingMore,
     })
 
     const data: WebSocketMessage = {
@@ -193,6 +226,10 @@ describe('HistoryCompleteHandler', () => {
 
     await handler.handle(data, context)
 
+    expect(setHistoryPagination).toHaveBeenCalledWith({
+      hasMore: false,
+      nextCursor: null,
+    })
     expect(setHistoryLoadingComplete).toHaveBeenCalledWith(true)
     // Should not send any machine events without recovery context
     expect(context.machine.send).not.toHaveBeenCalled()
@@ -200,6 +237,8 @@ describe('HistoryCompleteHandler', () => {
 
   it('clears batch refs after handling', async () => {
     const setHistoryLoadingComplete = vi.fn()
+    const setHistoryPagination = vi.fn()
+    const setHistoryLoadingMore = vi.fn()
     const historyBatchRef = { current: { messages: [] } }
     const historyBatchTimerRef = { current: setTimeout(() => {}, 100) }
 
@@ -215,6 +254,8 @@ describe('HistoryCompleteHandler', () => {
     mockStore.getState.mockReturnValue({
       activeStream: null,
       setHistoryLoadingComplete,
+      setHistoryPagination,
+      setHistoryLoadingMore,
     })
 
     const data: WebSocketMessage = {
@@ -229,5 +270,41 @@ describe('HistoryCompleteHandler', () => {
 
     expect(historyBatchRef.current).toBeNull()
     expect(historyBatchTimerRef.current).toBeNull()
+  })
+
+  it('handles load-more response correctly', async () => {
+    const setHistoryLoadingComplete = vi.fn()
+    const setHistoryPagination = vi.fn()
+    const setHistoryLoadingMore = vi.fn()
+    const context = createMockMessageContext()
+
+    mockStore.getState.mockReturnValue({
+      activeStream: null,
+      setHistoryLoadingComplete,
+      setHistoryPagination,
+      setHistoryLoadingMore,
+    })
+
+    const data: WebSocketMessage = {
+      type: 'history_complete',
+      content: '',
+      data: {
+        messageCount: 10,
+        hasMore: true,
+        nextCursor: 'cursor-xyz',
+        isLoadMore: true,
+      },
+    }
+
+    await handler.handle(data, context)
+
+    expect(setHistoryPagination).toHaveBeenCalledWith({
+      hasMore: true,
+      nextCursor: 'cursor-xyz',
+    })
+    // Should clear loadingMore state
+    expect(setHistoryLoadingMore).toHaveBeenCalledWith(false)
+    // Should NOT call setHistoryLoadingComplete for load-more
+    expect(setHistoryLoadingComplete).not.toHaveBeenCalled()
   })
 })

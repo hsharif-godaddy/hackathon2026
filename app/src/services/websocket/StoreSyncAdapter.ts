@@ -96,8 +96,10 @@ const TRANSPORT_STATE_MAP: Record<string, Partial<WebSocketState>> = {
  */
 const TRANSPORT_STATE_RESETS: Record<string, () => void> = {
   'transport.disconnected': () => {
-    // Reset server capabilities on disconnect to force re-detection on reconnect
-    useStreamingConversationStore.setState({ serverCapabilities: null })
+    useStreamingConversationStore.setState({
+      serverCapabilities: null,
+      historyLoadingMore: false
+    })
   }
 }
 

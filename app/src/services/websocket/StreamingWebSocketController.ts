@@ -513,4 +513,39 @@ export class StreamingWebSocketController extends EventEmitter {
       }
     }
   }
+
+  /**
+   * Load more history messages (pagination)
+   * Emits load_more_history WebSocket event to fetch older messages
+   * Returns true if sent successfully, false if not connected
+   */
+  loadMoreHistory(params: { cursor: string; limit?: number }): boolean {
+    const socket = this.supervisor.getSocket()
+    if (!socket?.connected || !this.currentAppId) {
+      return false
+    }
+
+    const conversationId = getConversationIdFromCookie(this.currentAppId)
+    if (!conversationId) {
+      logger.warn('websocket.load_more_history.no_conversation', {
+        appId: this.currentAppId
+      })
+      return false
+    }
+
+    logger.debug('websocket.load_more_history.emit', {
+      appId: this.currentAppId,
+      conversationId,
+      cursor: params.cursor,
+      limit: params.limit ?? 20
+    })
+
+    socket.emit('load_more_history', {
+      conversationId,
+      cursor: params.cursor,
+      limit: params.limit ?? 20
+    })
+
+    return true
+  }
 }

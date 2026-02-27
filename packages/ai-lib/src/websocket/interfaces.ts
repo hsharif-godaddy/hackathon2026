@@ -65,6 +65,26 @@ export interface PersistedMessage {
 }
 
 /**
+ * Pagination options for loading history
+ */
+export interface HistoryPaginationOptions {
+  /** Message ID cursor - fetch messages older than this */
+  before?: string
+  /** Max messages to return (default 20, max 100) */
+  limit?: number
+}
+
+/**
+ * Paginated history result
+ */
+export interface PaginatedHistoryResult {
+  messages: PersistedMessage[]
+  hasMore: boolean
+  nextCursor: string | null
+  total?: number
+}
+
+/**
  * Provider for loading raw conversation history for UI display
  * Separate from MessageProvider which returns summarized LLM context
  */
@@ -74,9 +94,14 @@ export interface HistoryProvider {
    * Returns complete database rows without summarization or truncation
    * @param conversationId - The conversation ID
    * @param appId - The app ID (required for repository lookup)
-   * @returns Array of persisted messages in chronological order
+   * @param options - Pagination options (optional for backwards compatibility)
+   * @returns Paginated result with messages and cursor, or legacy array
    */
-  loadHistory(conversationId: string, appId: string): Promise<PersistedMessage[]>
+  loadHistory(
+    conversationId: string,
+    appId: string,
+    options?: HistoryPaginationOptions
+  ): Promise<PaginatedHistoryResult | PersistedMessage[]>
 }
 
 /**

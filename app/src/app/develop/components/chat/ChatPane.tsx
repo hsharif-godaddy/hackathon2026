@@ -158,9 +158,12 @@ export default function ChatPane({
     };
   }, [])
 
-  // Combine messages and activeStream with useMemo to prevent infinite loops
+  // Combine messages and activeStream, guarding against duplicate IDs
+  // (can happen when persistHistory and set({ activeStream }) are separate store updates)
   const allMessages = useMemo(() => {
-    return activeStream ? [...messages, activeStream] : messages
+    if (!activeStream) return messages
+    if (messages.some((m) => m.id === activeStream.id)) return messages
+    return [...messages, activeStream]
   }, [messages, activeStream])
 
   // Only show messages and state if they belong to the current app context

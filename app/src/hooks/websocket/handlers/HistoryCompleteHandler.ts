@@ -19,14 +19,33 @@ export class HistoryCompleteHandler implements MessageHandler {
     const historyHandler = new HistoryMessageHandler()
     historyHandler.flushBatch(context)
 
+    const isLoadMore = data.data?.isLoadMore === true
+
     logger.info('websocket.history.complete', {
-      totalMessageCount: data.data?.messageCount
+      totalMessageCount: data.data?.messageCount,
+      hasMore: data.data?.hasMore,
+      nextCursor: data.data?.nextCursor,
+      isLoadMore
     })
 
-    // Signal that history loading is complete
-    // This allows initialization to proceed without HTTP calls
     const store = useStreamingConversationStore.getState()
-    store.setHistoryLoadingComplete(true)
+
+    // Update pagination state
+    const hasMore = typeof data.data?.hasMore === 'boolean' ? data.data.hasMore : false
+    const nextCursor = data.data?.nextCursor !== undefined ? data.data.nextCursor as string | null : null
+    store.setHistoryPagination({
+      hasMore,
+      nextCursor
+    })
+
+    // Always clear pagination loading state — covers error cases where the server
+    // may omit isLoadMore, preventing the UI from getting stuck
+    store.setHistoryLoadingMore(false)
+
+    // Signal that history loading is complete (only for initial load)
+    if (!isLoadMore) {
+      store.setHistoryLoadingComplete(true)
+    }
 
     // Check if stream should be completed
     // HistoryMessageHandler already sent STREAM_STARTED if in-progress message detected

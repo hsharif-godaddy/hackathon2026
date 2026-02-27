@@ -251,7 +251,7 @@ describe('ConversationRepository - Single Conversation Per App', () => {
     })
   })
 
-  describe('getMessagesAfterMessageId', () => {
+describe('getMessagesAfterMessageId', () => {
     it('should return empty array when reference message not found', async () => {
       createApp('app-123')
       const conv = await repo.create('app-123', 'initial', 'Test Conv')
@@ -520,6 +520,89 @@ describe('ConversationRepository - Single Conversation Per App', () => {
 
       // App 2 should have more estimated tokens due to longer messages
       expect(tokensApp2).toBeGreaterThan(tokensApp1)
+    })
+  })
+
+  describe('getMessagesPaginated', () => {
+    it('should return most recent messages when no cursor provided', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'develop', 'Test')
+
+      for (let i = 1; i <= 30; i++) {
+        await repo.addMessage(conv.id, 'user', `Message ${i}`)
+      }
+
+      const result = await repo.getMessagesPaginated(conv.id, 'app-123', { limit: 20 })
+
+      expect(result.messages).toHaveLength(20)
+      expect(result.messages[0].content).toBe('Message 11')
+      expect(result.messages[19].content).toBe('Message 30')
+      expect(result.hasMore).toBe(true)
+      expect(result.nextCursor).toBeTruthy()
+      expect(result.total).toBe(30)
+    })
+
+    it('should return messages before cursor when cursor provided', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'develop', 'Test')
+
+      for (let i = 1; i <= 30; i++) {
+        await repo.addMessage(conv.id, 'user', `Message ${i}`)
+      }
+
+      const firstPage = await repo.getMessagesPaginated(conv.id, 'app-123', { limit: 20 })
+
+      const secondPage = await repo.getMessagesPaginated(conv.id, 'app-123', {
+        limit: 20,
+        before: firstPage.nextCursor!
+      })
+
+      expect(secondPage.messages).toHaveLength(10)
+      expect(secondPage.messages[0].content).toBe('Message 1')
+      expect(secondPage.messages[9].content).toBe('Message 10')
+      expect(secondPage.hasMore).toBe(false)
+      expect(secondPage.nextCursor).toBeNull()
+    })
+
+    it('should return empty array for conversation with no messages', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'develop', 'Test')
+
+      const result = await repo.getMessagesPaginated(conv.id, 'app-123', { limit: 50 })
+
+      expect(result.messages).toHaveLength(0)
+      expect(result.hasMore).toBe(false)
+      expect(result.nextCursor).toBeNull()
+      expect(result.total).toBe(0)
+    })
+
+    it('should enforce max limit of 100', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'develop', 'Test')
+
+      for (let i = 1; i <= 150; i++) {
+        await repo.addMessage(conv.id, 'user', `Message ${i}`)
+      }
+
+      const result = await repo.getMessagesPaginated(conv.id, 'app-123', { limit: 200 })
+
+      expect(result.messages).toHaveLength(100)
+    })
+
+    it('should return empty result for wrong appId', async () => {
+      createApp('app-123')
+      createApp('app-other')
+      const conv = await repo.create('app-123', 'develop', 'Test')
+
+      for (let i = 1; i <= 5; i++) {
+        await repo.addMessage(conv.id, 'user', `Message ${i}`)
+      }
+
+      const result = await repo.getMessagesPaginated(conv.id, 'app-other')
+
+      expect(result.messages).toHaveLength(0)
+      expect(result.hasMore).toBe(false)
+      expect(result.total).toBe(0)
     })
   })
 })

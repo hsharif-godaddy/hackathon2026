@@ -449,6 +449,127 @@ export class WebSocketServer {
         this.sendAvailableAgents(socket)
       })
 
+      // Handle load more history request (pagination)
+      // Registered early so it's available after recovery paths that return early
+      socket.on('load_more_history', async (data: {
+        cursor: string
+        limit?: number
+        conversationId: string
+      }) => {
+        this.logger.debug('load_more_history requested', {
+          socketId,
+          conversationId: data.conversationId,
+          cursor: data.cursor,
+          limit: data.limit
+        })
+
+        if (!this.config.historyProvider) {
+          this.logger.warn('load_more_history failed: no historyProvider configured', { socketId })
+          socket.emit('message', {
+            type: 'history_complete',
+            content: '',
+            data: {
+              messageCount: 0,
+              hasMore: false,
+              nextCursor: null,
+              error: 'History provider not configured',
+              isLoadMore: true
+            }
+          })
+          return
+        }
+
+        // Get appId from state manager first, fall back to socket auth
+        const stateData = this.stateManager.getStateData(socketId)
+        let appId = stateData?.context?.appId
+        if (!appId) {
+          const authRecord = socket.handshake.auth as Record<string, unknown>
+          appId = authRecord?.appId as string
+            ?? (authRecord?.agentContext as Record<string, unknown>)?.appId as string
+            ?? (authRecord?.decoded as Record<string, unknown>)?.appId as string
+        }
+
+        if (!appId) {
+          this.logger.warn('load_more_history failed: no appId', { socketId })
+          socket.emit('message', {
+            type: 'history_complete',
+            content: '',
+            data: {
+              messageCount: 0,
+              hasMore: false,
+              nextCursor: null,
+              error: 'App context not found',
+              isLoadMore: true
+            }
+          })
+          return
+        }
+
+        try {
+          const historyResult = await this.config.historyProvider.loadHistory(
+            data.conversationId,
+            appId,
+            { before: data.cursor, limit: data.limit ?? 20 }
+          )
+
+          const messages = Array.isArray(historyResult)
+            ? historyResult
+            : historyResult.messages
+          const paginationInfo = Array.isArray(historyResult)
+            ? { hasMore: false, nextCursor: null }
+            : { hasMore: historyResult.hasMore, nextCursor: historyResult.nextCursor }
+
+          let historySequence = -2000
+          for (const msg of messages) {
+            socket.emit('message', {
+              type: 'history_message',
+              content: '',
+              data: {
+                ...msg,
+                sequence: historySequence--,
+                isLoadMore: true
+              }
+            })
+          }
+
+          socket.emit('message', {
+            type: 'history_complete',
+            content: '',
+            data: {
+              messageCount: messages.length,
+              hasMore: paginationInfo.hasMore,
+              nextCursor: paginationInfo.nextCursor,
+              isLoadMore: true
+            }
+          })
+
+          this.logger.debug('load_more_history completed', {
+            socketId,
+            conversationId: data.conversationId,
+            messageCount: messages.length,
+            hasMore: paginationInfo.hasMore
+          })
+        } catch (error) {
+          this.logger.error('load_more_history failed', {
+            socketId,
+            conversationId: data.conversationId,
+            error: error instanceof Error ? error.message : String(error)
+          })
+
+          socket.emit('message', {
+            type: 'history_complete',
+            content: '',
+            data: {
+              messageCount: 0,
+              hasMore: false,
+              nextCursor: null,
+              error: error instanceof Error ? error.message : 'Failed to load history',
+              isLoadMore: true
+            }
+          })
+        }
+      })
+
       socket.on('disconnect', async (reason) => {
         if (reason === 'ping timeout') {
           this.logger.warn('websocket.quality.ping_timeout_disconnect', {
@@ -798,6 +919,9 @@ export class WebSocketServer {
           })
         }
       })
+
+      // load_more_history handler is registered at the top of setupEventHandlers()
+      // to ensure it's available after recovery paths that return early
     })
   }
 

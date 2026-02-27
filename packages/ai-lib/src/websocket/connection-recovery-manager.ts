@@ -525,17 +525,30 @@ export class ConnectionRecoveryManager {
   ): Promise<void> {
     let fullHistory: PersistedMessage[] = []
     let historyStreaming = false
+    let paginationInfo = { hasMore: false, nextCursor: null as string | null, total: 0 }
 
     if (conversationId && appId && this.historyProvider) {
       try {
         // Load raw database messages (not summarized LLM context)
-        fullHistory = await this.historyProvider.loadHistory(conversationId, appId)
+        // Initial load: most recent 5 messages
+        const historyResult = await this.historyProvider.loadHistory(
+          conversationId,
+          appId,
+          { limit: 20 }
+        )
+        // Handle both paginated and legacy array responses
+        fullHistory = Array.isArray(historyResult) ? historyResult : historyResult.messages
+        paginationInfo = Array.isArray(historyResult)
+          ? { hasMore: false, nextCursor: null, total: fullHistory.length }
+          : { hasMore: historyResult.hasMore, nextCursor: historyResult.nextCursor, total: historyResult.total ?? fullHistory.length }
         historyStreaming = fullHistory.length > 0
 
         this.logger.debug('recovery.history_fetched_completed', {
           conversationId,
           appId,
-          messageCount: fullHistory.length
+          messageCount: fullHistory.length,
+          hasMore: paginationInfo.hasMore,
+          total: paginationInfo.total
         })
       } catch (error) {
         this.logger.warn('recovery.history_fetch_failed_completed', {
@@ -581,7 +594,10 @@ export class ConnectionRecoveryManager {
       type: 'history_complete',
       content: '',
       data: {
-        messageCount: fullHistory.length
+        messageCount: fullHistory.length,
+        hasMore: paginationInfo.hasMore,
+        nextCursor: paginationInfo.nextCursor,
+        total: paginationInfo.total
       }
     } as WebSocketMessage)
   }
@@ -613,6 +629,7 @@ export class ConnectionRecoveryManager {
     // NEW: Fetch full conversation history via historyProvider
     let fullHistory: PersistedMessage[] = []
     let historyIncluded = false
+    let paginationInfo = { hasMore: false, nextCursor: null as string | null, total: 0 }
 
     // Extract appId from stateData context
     const appId = stateData?.context?.appId
@@ -620,10 +637,17 @@ export class ConnectionRecoveryManager {
     if (this.historyProvider && appId) {
       try {
         // Load raw messages from database (not summarized LLM context)
-        const rawMessages = await this.historyProvider.loadHistory(
+        // Initial load: most recent 5 messages
+        const historyResult = await this.historyProvider.loadHistory(
           context.conversationId,
-          appId
+          appId,
+          { limit: 20 }
         )
+        // Handle both paginated and legacy array responses
+        const rawMessages = Array.isArray(historyResult) ? historyResult : historyResult.messages
+        paginationInfo = Array.isArray(historyResult)
+          ? { hasMore: false, nextCursor: null, total: rawMessages.length }
+          : { hasMore: historyResult.hasMore, nextCursor: historyResult.nextCursor, total: historyResult.total ?? rawMessages.length }
 
         // Use messages directly - they're already in the correct format.
         // IMPORTANT: Derive in-progress message IDs from event metadata so we only
@@ -662,7 +686,9 @@ export class ConnectionRecoveryManager {
           messageCount: fullHistory.length,
           willReplayEvents: events.length > 0,
           strippedMessageCount: inProgressMessageIds.size,
-          pendingMetadataCount: pendingMessageIdsFromMetadata.length
+          pendingMetadataCount: pendingMessageIdsFromMetadata.length,
+          hasMore: paginationInfo.hasMore,
+          total: paginationInfo.total
         })
       } catch (error) {
         this.logger.warn('recovery.history_fetch_failed', {
@@ -742,7 +768,10 @@ export class ConnectionRecoveryManager {
       type: 'history_complete',
       content: '',
       data: {
-        messageCount: fullHistory.length
+        messageCount: fullHistory.length,
+        hasMore: paginationInfo.hasMore,
+        nextCursor: paginationInfo.nextCursor,
+        total: paginationInfo.total
       }
     } as WebSocketMessage)
 

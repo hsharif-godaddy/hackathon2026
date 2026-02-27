@@ -2,10 +2,14 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Box from '@ux/box'
+import Button from '@ux/button'
+import ChevronDownIcon from '@ux/icon/chevron-down'
 import Skeleton from '@ux/skeleton'
+import Spinner from '@ux/spinner'
 
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useSound } from '@/hooks/useSound'
+import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { useTranslations } from '@/hooks/useTranslations'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -16,6 +20,7 @@ import {
   useHistoryLoadingComplete,
   useIsActivelyStreaming,
   useIsLoading,
+  useStreamingConversationStore,
 } from '@/stores/useStreamingConversationStore'
 import StreamingMessage from './StreamingMessage'
 import ThinkingIndicator from './ThinkingIndicator'
@@ -34,8 +39,12 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   const prevAppIdRef = useRef<string | null>(null)
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [userHasScrolledUp, setUserHasScrolledUp] = useState(false)
+  const userHasScrolledUpRef = useRef(false)
   const scrollThrottleRef = useRef<NodeJS.Timeout | null>(null)
   const activeStreamSignatureRef = useRef<string | null>(null)
+  const isNearBottomRef = useRef(true)
+  const [showNewMessageIndicator, setShowNewMessageIndicator] = useState(false)
+  const showNewMessageIndicatorRef = useRef(false)
   const hasLoggedFirstResponseRef = useRef(false)
   const prevIsStreamingRef = useRef(false)
   const hasUserInteractedRef = useRef(false)
@@ -49,6 +58,23 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   const historyLoadingComplete = useHistoryLoadingComplete()
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
 
+  // Pagination state from store
+  const historyHasMore = useStreamingConversationStore((s) => s.historyHasMore)
+  const historyNextCursor = useStreamingConversationStore((s) => s.historyNextCursor)
+  const historyLoadingMore = useStreamingConversationStore((s) => s.historyLoadingMore)
+  const setHistoryLoadingMore = useStreamingConversationStore((s) => s.setHistoryLoadingMore)
+
+  // WebSocket hook for loading more history
+  const { loadMoreHistory, isConnected } = useStreamingWebSocket()
+
+  // Keep refs in sync so handleScroll reads latest values without dependency churn
+  userHasScrolledUpRef.current = userHasScrolledUp
+  showNewMessageIndicatorRef.current = showNewMessageIndicator
+
+  // Scroll anchor for pagination: tracks scroll height + message count at request time
+  // so restoration only fires when prepended messages actually land
+  const paginationAnchorRef = useRef<{ scrollHeight: number; messageCount: number } | null>(null)
+
   // Sound hook
   const [playBeep] = useSound('/notification-beep.wav', { volume: 0.5 })
 
@@ -58,6 +84,8 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
       // App has changed, reset all scroll tracking
       setIsInitialLoad(true)
       setUserHasScrolledUp(false)
+      setShowNewMessageIndicator(false)
+      isNearBottomRef.current = true
       prevMessagesLength.current = 0
       prevLastMessageId.current = null
       prevAppIdRef.current = currentAppId
@@ -128,38 +156,53 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
     return null
   }, [allMessages])
 
-  // Check if user is near bottom of scroll
-  const checkIfNearBottom = useCallback(() => {
-    if (!containerRef.current) return true
-
-    const container = containerRef.current
-    const threshold = 150 // pixels from bottom
-    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
-
-    return distanceFromBottom < threshold
-  }, [])
-
   // Handle scroll events to detect user scroll (throttled for performance)
-  const handleScroll = useCallback(() => {
-    // Throttle to max once per 100ms
+  // Reads from refs and store.getState() to avoid dependency churn on every state change
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     if (scrollThrottleRef.current) return
+
+    // Capture DOM element before setTimeout — React nullifies synthetic event properties after handler returns
+    const container = e.currentTarget
 
     scrollThrottleRef.current = setTimeout(() => {
       scrollThrottleRef.current = null
 
-      const isNearBottom = checkIfNearBottom()
+      if (!container) return
+      const { scrollTop, scrollHeight, clientHeight } = container
+      const nearBottom = scrollHeight - scrollTop - clientHeight < 150
+      isNearBottomRef.current = nearBottom
 
-      // If user scrolled up (away from bottom), pause auto-scroll
-      if (!isNearBottom && !userHasScrolledUp) {
-        setUserHasScrolledUp(true)
+      if (nearBottom && showNewMessageIndicatorRef.current) {
+        setShowNewMessageIndicator(false)
       }
-      // If user scrolled back to bottom, resume auto-scroll
-      else if (isNearBottom && userHasScrolledUp) {
+
+      if (!nearBottom && !userHasScrolledUpRef.current) {
+        setUserHasScrolledUp(true)
+
+        // Show indicator if user scrolls up during an active stream
+        const { activeStream } = useStreamingConversationStore.getState()
+        if (activeStream && !activeStream.isComplete) {
+          setShowNewMessageIndicator(true)
+        }
+      } else if (nearBottom && userHasScrolledUpRef.current) {
         setUserHasScrolledUp(false)
       }
-    }, 100)
-  }, [checkIfNearBottom, userHasScrolledUp])
 
+      // Load more history when user scrolls near the top
+      const { historyHasMore, historyLoadingMore, historyNextCursor, setHistoryLoadingMore } =
+        useStreamingConversationStore.getState()
+
+      if (scrollTop < 100 && historyHasMore && !historyLoadingMore && historyNextCursor) {
+        setHistoryLoadingMore(true)
+        paginationAnchorRef.current = { scrollHeight, messageCount: allMessages.length }
+
+        if (!loadMoreHistory({ cursor: historyNextCursor, limit: 20 })) {
+          setHistoryLoadingMore(false)
+          paginationAnchorRef.current = null
+        }
+      }
+    }, 100)
+  }, [loadMoreHistory, allMessages.length])
 
   // Reliable scroll to bottom function
   const scrollToBottom = useCallback((smooth = true, immediate = false) => {
@@ -196,6 +239,24 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
       requestAnimationFrame(performScroll)
     }
   }, [isStreaming])
+
+  // Scroll to bottom and hide new message indicator (for button click)
+  const scrollToBottomAndHideIndicator = useCallback(() => {
+    const container = containerRef.current
+    if (container) {
+      container.scrollTop = container.scrollHeight
+      setShowNewMessageIndicator(false)
+      isNearBottomRef.current = true
+      setUserHasScrolledUp(false)
+    }
+  }, [])
+
+  // Show "new messages" indicator when new stream starts while user is scrolled up
+  useEffect(() => {
+    if (!isNearBottomRef.current && activeStream && !activeStream.isComplete) {
+      setShowNewMessageIndicator(true)
+    }
+  }, [activeStream?.id]) // Only trigger when a new stream starts
 
   // Initial scroll - use useLayoutEffect to prevent flicker
   // Wait for historyLoadingComplete so all messages render at once with no visible scroll
@@ -314,6 +375,53 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
     }
     prevIsStreamingRef.current = isStreaming
   }, [isStreaming, playBeep])
+
+  // Restore scroll position after prepending older messages (pagination)
+  // Only fires when loading finishes AND the message count grew beyond the anchor
+  // (ignores new live messages appended at the end)
+  useEffect(() => {
+    const anchor = paginationAnchorRef.current
+    if (!anchor || historyLoadingMore) return
+
+    if (allMessages.length > anchor.messageCount) {
+      const container = containerRef.current
+      const delta = container ? container.scrollHeight - anchor.scrollHeight : 0
+      if (container && delta > 0) {
+        container.scrollTop += delta
+      }
+    }
+    paginationAnchorRef.current = null
+  }, [historyLoadingMore, allMessages.length])
+
+  // Safety timeout: reset historyLoadingMore if response never arrives
+  // (WebSocket drop mid-flight, server error without isLoadMore flag, or network timeout)
+  useEffect(() => {
+    if (!historyLoadingMore) return
+
+    const timeout = setTimeout(() => {
+      setHistoryLoadingMore(false)
+    }, 10_000)
+
+    return () => clearTimeout(timeout)
+  }, [historyLoadingMore, setHistoryLoadingMore])
+
+  // Auto-load more history when content doesn't fill the container (no scrollbar = no scroll events)
+  useEffect(() => {
+    if (!historyHasMore || historyLoadingMore || !historyNextCursor || !isConnected) return
+
+    const container = containerRef.current
+    if (!container) return
+
+    if (container.scrollHeight <= container.clientHeight) {
+      setHistoryLoadingMore(true)
+      paginationAnchorRef.current = { scrollHeight: container.scrollHeight, messageCount: allMessages.length }
+
+      if (!loadMoreHistory({ cursor: historyNextCursor, limit: 20 })) {
+        setHistoryLoadingMore(false)
+        paginationAnchorRef.current = null
+      }
+    }
+  }, [historyHasMore, historyLoadingMore, historyNextCursor, isConnected, allMessages.length, loadMoreHistory, setHistoryLoadingMore])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -446,6 +554,14 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
 
   return (
     <div ref={containerRef} data-testid="chat-transcript" className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden px-3 md:px-1 pt-1.5 md:pt-0 gap-1" onScroll={handleScroll}>
+      {/* Loading indicator for pagination */}
+      {historyLoadingMore && (
+        <div className="flex justify-center items-center py-3 gap-2">
+          <Spinner size="sm" />
+          <span className="text-sm opacity-60">{t('builder_messages_loading_older', undefined, 'Loading older messages...')}</span>
+        </div>
+      )}
+
       {allMessages.map((message, index) => {
         let startTime: Date | undefined
 
@@ -485,6 +601,20 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
       })}
 
       {shouldShowGlobalThinking && <ThinkingIndicator active={true} />}
+
+      {/* New messages indicator - shows when user is scrolled up and new messages arrive */}
+      {showNewMessageIndicator && (
+        <div className="sticky bottom-2 flex justify-center z-10">
+          <Button
+            design="primary"
+            size="sm"
+            icon={<ChevronDownIcon />}
+            onClick={scrollToBottomAndHideIndicator}
+            text={t('builder_messages_new_messages', undefined, 'New messages')}
+            aria-label={t('builder_messages_new_messages', undefined, 'New messages')}
+          />
+        </div>
+      )}
 
       <div ref={messagesEndRef} />
     </div>

@@ -66,12 +66,22 @@ export class HistoryMessageHandler implements MessageHandler {
 
     const store = useStreamingConversationStore.getState()
 
-    // CRITICAL: Check if this is the first batch of THIS recovery session
-    // Use explicit flag instead of messages.length, because the store may be
-    // pre-populated by initialization or previous app visits
-    const historyReceivedRef = context.refs.historyReceivedForRecovery
-    const isFirstBatch = historyReceivedRef ? !historyReceivedRef.current : store.messages.length === 0
-    const mode = isFirstBatch ? 'replace' : 'append'
+    // Detect if this is a load-more batch (check first message for isLoadMore flag)
+    const isLoadMore = batch[0]?.isLoadMore === true
+
+    // Determine mode based on whether this is load-more or initial/recovery
+    let mode: 'replace' | 'append' | 'prepend'
+    if (isLoadMore) {
+      mode = 'prepend' // Load more: prepend older messages
+    } else {
+      // Initial load or recovery - use existing logic
+      // CRITICAL: Check if this is the first batch of THIS recovery session
+      // Use explicit flag instead of messages.length, because the store may be
+      // pre-populated by initialization or previous app visits
+      const historyReceivedRef = context.refs.historyReceivedForRecovery
+      const isFirstBatch = historyReceivedRef ? !historyReceivedRef.current : store.messages.length === 0
+      mode = isFirstBatch ? 'replace' : 'append'
+    }
 
     // Use unified history persistence action
     // This handles normalization, in-progress detection, activeStream rehydration, and appChatHistory persistence
@@ -82,37 +92,43 @@ export class HistoryMessageHandler implements MessageHandler {
         appId: store.currentAppId,
         rawMessages: batch,
         mode,
-        detectInProgress: true
+        detectInProgress: !isLoadMore // Only detect in-progress for initial load
       })
 
-      logger.debug(`websocket.history.batch_flushed_${mode}`, {
+      logger.debug('websocket.history.batch_flushed', {
         batchSize: batch.length,
-        totalMessages: store.messages.length
+        totalMessages: store.messages.length,
+        mode,
+        isLoadMore
       })
 
       // Check if an in-progress message was detected and activeStream was set
       // Send STREAM_STARTED to transition machine to streaming state (Tier 1 lifecycle)
-      const currentStore = useStreamingConversationStore.getState()
-      if (!prevActiveStream && currentStore.activeStream) {
-        const conversationId = context.refs.pendingRecoveryAck?.current?.conversationId
+      // Only for non-loadMore batches (in-progress detection is disabled for load-more)
+      if (!isLoadMore) {
+        const currentStore = useStreamingConversationStore.getState()
+        if (!prevActiveStream && currentStore.activeStream) {
+          const conversationId = context.refs.pendingRecoveryAck?.current?.conversationId
 
-        if (conversationId) {
-          logger.debug('websocket.history.in_progress_detected', {
-            messageId: currentStore.activeStream.id,
-            conversationId
-          })
+          if (conversationId) {
+            logger.debug('websocket.history.in_progress_detected', {
+              messageId: currentStore.activeStream.id,
+              conversationId
+            })
 
-          context.machine.send({
-            type: 'STREAM_STARTED',
-            conversationId,
-            messageId: currentStore.activeStream.id,
-          })
+            context.machine.send({
+              type: 'STREAM_STARTED',
+              conversationId,
+              messageId: currentStore.activeStream.id,
+            })
+          }
         }
-      }
 
-      // Mark that we've received history for this recovery session
-      if (historyReceivedRef && isFirstBatch) {
-        historyReceivedRef.current = true
+        // Mark that we've received history for this recovery session
+        const historyReceivedRef = context.refs.historyReceivedForRecovery
+        if (historyReceivedRef && mode === 'replace') {
+          historyReceivedRef.current = true
+        }
       }
     }
 

@@ -6,6 +6,16 @@ import type { DatabaseMessage } from '../../types/conversation-messages.js';
 import { logger } from '../../logging/index.js';
 
 /**
+ * Pagination result type for getMessagesPaginated
+ */
+export interface PaginatedMessagesResult {
+  messages: ConversationMessage[];
+  hasMore: boolean;
+  nextCursor: string | null;
+  total: number;
+}
+
+/**
  * Callback type for message addition hooks
  */
 export type MessageAddedHook = (message: ConversationMessage, conversationId: string) => void | Promise<void>;
@@ -510,6 +520,106 @@ export class ConversationRepository {
         createdAt: new Date(row.created_at)
       };
     });
+  }
+
+  /**
+   * Get messages for a conversation with cursor-based pagination
+   * Returns messages in chronological order (oldest first within the page)
+   *
+   * Uses compound ordering (created_at, rowid) to ensure deterministic pagination
+   * even when messages have identical timestamps. SQLite's implicit rowid is used
+   * as the tie-breaker because it guarantees insertion order.
+   *
+   * @param conversationId - The conversation ID
+   * @param appId - The app ID (ownership validated via JOIN — returns empty if mismatch)
+   * @param options.limit - Max messages to return (default 20, max 100)
+   * @param options.before - Cursor (message ID) to fetch messages before
+   * @returns Paginated messages with cursor for next page
+   */
+  async getMessagesPaginated(
+    conversationId: string,
+    appId: string,
+    options: { limit?: number; before?: string } = {}
+  ): Promise<PaginatedMessagesResult> {
+    const limit = Math.min(options.limit ?? 20, 100); // Enforce max 100
+
+    // Count only messages whose conversation belongs to this app (ownership check via JOIN)
+    const countStmt = this.db.prepare(`
+      SELECT COUNT(*) as count FROM conversation_messages cm
+      JOIN conversations c ON cm.conversation_id = c.id
+      WHERE cm.conversation_id = ? AND c.app_id = ?
+    `);
+    const countRow = countStmt.get(conversationId, appId) as { count: number };
+    const total = countRow.count;
+
+    if (total === 0) {
+      return { messages: [], hasMore: false, nextCursor: null, total: 0 };
+    }
+
+    let rows: any[];
+
+    if (options.before) {
+      const cursorStmt = this.db.prepare(`
+        SELECT cm.rowid FROM conversation_messages cm
+        JOIN conversations c ON cm.conversation_id = c.id
+        WHERE cm.id = ? AND c.app_id = ?
+      `);
+      const cursorRow = cursorStmt.get(options.before, appId) as { rowid: number } | undefined;
+
+      if (!cursorRow) {
+        return { messages: [], hasMore: false, nextCursor: null, total };
+      }
+
+      const stmt = this.db.prepare(`
+        SELECT cm.*, cm.rowid FROM conversation_messages cm
+        JOIN conversations c ON cm.conversation_id = c.id
+        WHERE cm.conversation_id = ? AND c.app_id = ?
+          AND cm.rowid < ?
+        ORDER BY cm.rowid DESC
+        LIMIT ?
+      `);
+      rows = stmt.all(conversationId, appId, cursorRow.rowid, limit + 1) as any[];
+    } else {
+      const stmt = this.db.prepare(`
+        SELECT cm.*, cm.rowid FROM conversation_messages cm
+        JOIN conversations c ON cm.conversation_id = c.id
+        WHERE cm.conversation_id = ? AND c.app_id = ?
+        ORDER BY cm.rowid DESC
+        LIMIT ?
+      `);
+      rows = stmt.all(conversationId, appId, limit + 1) as any[];
+    }
+
+    // Check if there are more messages
+    const hasMore = rows.length > limit;
+    if (hasMore) {
+      rows = rows.slice(0, limit); // Remove the extra row
+    }
+
+    // Reverse to get chronological order (oldest first)
+    rows = rows.reverse();
+
+    // Get cursor for next page (oldest message in current result)
+    const nextCursor = hasMore && rows.length > 0 ? rows[0].id : null;
+
+    // Map to ConversationMessage format
+    const messages = rows.map(row => {
+      const segments = row.segments ? this.normalizeSegments(JSON.parse(row.segments)) : [];
+      return {
+        id: row.id,
+        conversationId: row.conversation_id,
+        sender: row.sender,
+        content: row.content,
+        messageType: row.message_type,
+        toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
+        segments,
+        metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+        contextAttachments: row.context_attachments ? JSON.parse(row.context_attachments) : undefined,
+        createdAt: new Date(row.created_at)
+      };
+    });
+
+    return { messages, hasMore, nextCursor, total };
   }
 
   /**

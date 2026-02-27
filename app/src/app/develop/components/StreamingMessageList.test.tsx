@@ -17,6 +17,29 @@ vi.mock('./StreamingMessage', () => ({
   ),
 }));
 
+vi.mock('./ThinkingIndicator', () => ({
+  default: () => <div data-testid="thinking-indicator" />,
+}));
+
+vi.mock('@/hooks/useStreamingWebSocket', () => ({
+  useStreamingWebSocket: () => ({
+    loadMoreHistory: vi.fn(() => false),
+    isConnected: true,
+  }),
+}));
+
+vi.mock('@/hooks/useSound', () => ({
+  useSound: () => [vi.fn()],
+}));
+
+vi.mock('@/hooks/useTranslations', () => ({
+  useTranslations: () => (key: string) => key,
+}));
+
+vi.mock('@/lib/logging', () => ({
+  shipAnalyticsLog: vi.fn(),
+}));
+
 const mockStreamingStore = {
   isActivelyStreaming: false,
   pagination: {
@@ -29,6 +52,11 @@ const mockStreamingStore = {
   isLoading: false,
   historyLoadingComplete: true,
   loadMoreConversations: vi.fn(),
+  historyHasMore: false,
+  historyNextCursor: null as string | null,
+  historyLoadingMore: false,
+  setHistoryLoadingMore: vi.fn(),
+  activeStream: null,
 };
 
 const mockDevelopPageStore = {
@@ -42,14 +70,19 @@ vi.mock('./utils', () => ({
   useAppIdFromParams: () => mockAppIdFromParams,
 }));
 
-vi.mock('@/stores/useStreamingConversationStore', () => ({
-  useIsActivelyStreaming: () => mockStreamingStore.isActivelyStreaming,
-  useConversationPagination: () => mockStreamingStore.pagination,
-  useCurrentAppId: () => mockStreamingStore.currentAppId,
-  useHistoryLoadingComplete: () => mockStreamingStore.historyLoadingComplete,
-  useIsLoading: () => mockStreamingStore.isLoading,
-  useLoadMoreConversations: () => mockStreamingStore.loadMoreConversations,
-}));
+vi.mock('@/stores/useStreamingConversationStore', () => {
+  const store = (selector: any) => selector(mockStreamingStore);
+  store.getState = () => mockStreamingStore;
+  return {
+    useStreamingConversationStore: store,
+    useIsActivelyStreaming: () => mockStreamingStore.isActivelyStreaming,
+    useConversationPagination: () => mockStreamingStore.pagination,
+    useCurrentAppId: () => mockStreamingStore.currentAppId,
+    useHistoryLoadingComplete: () => mockStreamingStore.historyLoadingComplete,
+    useIsLoading: () => mockStreamingStore.isLoading,
+    useLoadMoreConversations: () => mockStreamingStore.loadMoreConversations,
+  };
+});
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: any) => {

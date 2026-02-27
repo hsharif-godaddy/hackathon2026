@@ -199,6 +199,11 @@ export interface StreamingConversationState {
   // History loading state (for WebSocket history streaming)
   historyLoadingComplete: boolean
 
+  // History pagination state
+  historyHasMore: boolean
+  historyNextCursor: string | null
+  historyLoadingMore: boolean
+
   // Server capabilities (for backwards compatibility)
   serverCapabilities: ServerCapabilities | null
 
@@ -247,6 +252,11 @@ export interface StreamingConversationState {
 
   // History loading actions
   setHistoryLoadingComplete: (complete: boolean) => void
+
+  // History pagination actions
+  setHistoryPagination: (pagination: { hasMore: boolean; nextCursor: string | null }) => void
+  setHistoryLoadingMore: (loading: boolean) => void
+  resetHistoryPagination: () => void
 
   // === CONNECTION RETRY ACTIONS ===
 
@@ -416,6 +426,9 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   },
   lastError: null,
   historyLoadingComplete: false,
+  historyHasMore: true, // Assume there might be more until we know
+  historyNextCursor: null,
+  historyLoadingMore: false,
   serverCapabilities: null,
 
   // === CORE STREAMING ACTIONS ===
@@ -869,7 +882,9 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     }
 
     set((state) => ({
-      messages: [...state.messages, completedMessage],
+      messages: state.messages.some((m) => m.id === completedMessage.id)
+        ? state.messages
+        : [...state.messages, completedMessage],
       activeStream: null,
       streamingState: 'idle',
       isLoading: false
@@ -933,6 +948,10 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
           escalationTimeoutId: null
         },
         historyLoadingComplete: false,
+        // Reset pagination when switching apps
+        historyHasMore: true,
+        historyNextCursor: null,
+        historyLoadingMore: false,
         serverCapabilities: null // Reset capabilities when switching apps
       };
     });
@@ -977,6 +996,26 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   // History loading actions
   setHistoryLoadingComplete: (complete) => set({ historyLoadingComplete: complete }),
+
+  // History pagination actions
+  setHistoryPagination: (pagination) => {
+    set({
+      historyHasMore: pagination.hasMore,
+      historyNextCursor: pagination.nextCursor
+    })
+  },
+
+  setHistoryLoadingMore: (loading) => {
+    set({ historyLoadingMore: loading })
+  },
+
+  resetHistoryPagination: () => {
+    set({
+      historyHasMore: true,
+      historyNextCursor: null,
+      historyLoadingMore: false
+    })
+  },
 
   // === CONNECTION RETRY ACTIONS ===
 
@@ -1140,15 +1179,21 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         case 'replace':
           updatedMessages = messages
           break
-        case 'append':
-          updatedMessages = [...state.messages, ...messages]
+        case 'append': {
+          const existingIds = new Set(state.messages.map((m) => m.id))
+          updatedMessages = [...state.messages, ...messages.filter((m) => !existingIds.has(m.id))]
           break
-        case 'prepend':
-          // Prepend and sort by timestamp (for loading older messages)
-          updatedMessages = [...messages, ...state.messages].sort(
+        }
+        case 'prepend': {
+          // Deduplicate by ID before sorting — state may already contain some of these
+          // messages if appChatHistory was restored or a recovery overlapped with pagination
+          const existingIds = new Set(state.messages.map((m) => m.id))
+          const newMessages = messages.filter((m) => !existingIds.has(m.id))
+          updatedMessages = [...newMessages, ...state.messages].sort(
             (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
           )
           break
+        }
       }
 
       return {

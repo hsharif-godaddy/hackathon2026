@@ -820,24 +820,33 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
     // Create history provider for UI display (raw database rows)
     const historyProvider: HistoryProvider = {
-      async loadHistory(conversationId: string, appId: string): Promise<PersistedMessage[]> {
+      async loadHistory(
+        conversationId: string,
+        appId: string,
+        options?: { before?: string; limit?: number }
+      ): Promise<{
+        messages: PersistedMessage[]
+        hasMore: boolean
+        nextCursor: string | null
+        total?: number
+      }> {
         const conversationRepo = new ConversationRepository()
 
         try {
-          const messages = await conversationRepo.getMessages(conversationId)
+          const result = await conversationRepo.getMessagesPaginated(conversationId, appId, {
+            limit: options?.limit ?? 20,
+            before: options?.before
+          })
 
           // Convert database format to PersistedMessage format
           // IMPORTANT: Database uses 'agent' but client expects 'assistant' - normalize here
-          return messages.map(msg => {
-            // Validate and normalize sender field
-            // Database schema uses 'agent', normalize to 'assistant' for client
+          const messages = result.messages.map(msg => {
             let normalizedSender: 'user' | 'assistant'
             if (msg.sender === 'agent') {
               normalizedSender = 'assistant'
             } else if (msg.sender === 'user') {
               normalizedSender = 'user'
             } else {
-              // Handle unexpected sender values explicitly (defensive programming)
               logger.warn('websocket.history.provider.unexpected_sender', {
                 message: 'Unexpected sender value in conversation history, defaulting to assistant',
                 conversationId: msg.conversationId,
@@ -855,7 +864,6 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               createdAt: msg.createdAt.toISOString()
             }
 
-            // Only include optional properties if they're not null/undefined
             if (msg.messageType != null) {
               persistedMsg.messageType = msg.messageType
             }
@@ -874,6 +882,13 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
             return persistedMsg
           })
+
+          return {
+            messages,
+            hasMore: result.hasMore,
+            nextCursor: result.nextCursor,
+            total: result.total
+          }
         } catch (error) {
           logger.error('websocket.history.provider.failure', {
             message: 'Error in HistoryProvider',
@@ -881,7 +896,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             appId,
             error: error instanceof Error ? error.message : String(error)
           })
-          return []
+          return { messages: [], hasMore: false, nextCursor: null, total: 0 }
         }
       }
     }
