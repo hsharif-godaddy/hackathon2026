@@ -79,11 +79,11 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ] && [ ! -f "$CUSTOMER_APP_DIR/package.j
     log_step "package.json synced"
 
     # Restore dependencies
-    log_step "Installing dependencies with npm ci (this may take a few minutes)..."
-    CI=true npm ci --registry=https://registry.npmjs.org/ --no-fund --no-audit
+    log_step "Installing dependencies with npm install (this may take a few minutes)..."
+    CI=true npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit
     log_step "Dependencies installed successfully"
 
-    # Commit synced package.json and package-lock.json
+    # Commit synced package.json and package-lock.json (npm install updates the lockfile)
     log_step "Committing package.json changes..."
     git add package.json package-lock.json && git commit -m "Sync upstream package.json $(date +%s)" || true
     log_step "Package.json changes committed"
