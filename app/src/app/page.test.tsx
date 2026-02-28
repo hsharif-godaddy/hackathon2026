@@ -31,6 +31,7 @@ vi.mock('@/lib/features', () => ({
     developmentMode: vi.fn().mockReturnValue(false),
     galleryPage: vi.fn().mockReturnValue(false),
     devSupervisorTcp: vi.fn().mockReturnValue(false),
+    pricingSection: vi.fn().mockReturnValue(true),
   },
   MAX_PROMPT_LENGTH: 40000,
   auth: { enabled: false },
@@ -172,11 +173,25 @@ describe('Home Page', () => {
   });
 
   describe('public sections rendering', () => {
-    it('should always render Pricing section', async () => {
+    it('should render Pricing section when feature flag is enabled', async () => {
+      const { isFeatureEnabled } = await import('@/lib/features');
+      vi.mocked(isFeatureEnabled.pricingSection).mockReturnValue(true);
+
       renderWithProviders(<Home />);
 
       await waitFor(() => {
         expect(screen.getByTestId('pricing-section')).toBeInTheDocument();
+      });
+    });
+
+    it('should not render Pricing section when feature flag is disabled', async () => {
+      const { isFeatureEnabled } = await import('@/lib/features');
+      vi.mocked(isFeatureEnabled.pricingSection).mockReturnValue(false);
+
+      renderWithProviders(<Home />);
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('pricing-section')).not.toBeInTheDocument();
       });
     });
 
@@ -188,14 +203,13 @@ describe('Home Page', () => {
       });
     });
 
-    it('should render Pricing and FAQ sections for unauthenticated users', async () => {
+    it('should render FAQ section for unauthenticated users', async () => {
       const mockUnauthContext = vi.fn(() => mockAuthContext({ isAuthenticated: false, isAuthDisabled: false }));
       vi.mocked(await import('@/components/providers/AuthProvider')).useAuthContext = mockUnauthContext as any;
 
       renderWithProviders(<Home />);
 
       await waitFor(() => {
-        expect(screen.getByTestId('pricing-section')).toBeInTheDocument();
         expect(screen.getByTestId('faq-section')).toBeInTheDocument();
       });
     });

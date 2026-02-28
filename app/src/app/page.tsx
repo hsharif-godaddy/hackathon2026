@@ -357,7 +357,7 @@ function HomeContent() {
             ]}
           />
 
-          <PricingSection />
+          {isFeatureEnabled.pricingSection() && <PricingSection />}
 
           <FAQSection />
 
