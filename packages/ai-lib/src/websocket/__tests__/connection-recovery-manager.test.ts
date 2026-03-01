@@ -22,6 +22,7 @@ const createMockSocket = (overrides: Partial<{
     recovered: overrides.recovered ?? false,
     handshake: overrides.handshake ?? { auth: {} },
     emit: vi.fn(),
+    volatile: { emit: vi.fn() },
     on: vi.fn((event, handler) => {
       handlers[event] = handlers[event] || []
       handlers[event]!.push(handler)
@@ -229,7 +230,7 @@ describe('ConnectionRecoveryManager', () => {
       }))
     })
 
-    it('replays buffered events', async () => {
+    it('replays buffered events via volatile.emit (not regular emit)', async () => {
       const events: StreamingEvent[] = [
         {
           id: 'evt-1',
@@ -246,11 +247,18 @@ describe('ConnectionRecoveryManager', () => {
 
       await manager.handleAutomaticRecovery(socket, callbacks)
 
-      expect(socket.emit).toHaveBeenCalledWith('message', {
+      // Must use volatile.emit to prevent Socket.IO adapter from storing
+      // replay packets (which would cause duplicates on future reconnections)
+      expect(socket.volatile.emit).toHaveBeenCalledWith('message', {
         type: 'chunk',
         content: 'hello',
-        data: { key: 'value' }
+        data: { key: 'value', sequence: 6 }
       })
+      // Must NOT use regular emit for chunk events (only for control messages)
+      const regularChunkEmit = (socket.emit as any).mock.calls.find(
+        (call: any[]) => call[1]?.type === 'chunk'
+      )
+      expect(regularChunkEmit).toBeUndefined()
     })
 
     it('sends replay_complete after events', async () => {
@@ -327,6 +335,327 @@ describe('ConnectionRecoveryManager', () => {
         'recovery.ack_mismatch',
         expect.any(Object)
       )
+    })
+  })
+
+  describe('duplication prevention (Fix: text stuttering bug)', () => {
+    let socket: ReturnType<typeof createMockSocket>
+    let callbacks: any
+
+    beforeEach(() => {
+      socket = createMockSocket({
+        id: 'socket-1',
+        recovered: true
+      })
+      callbacks = {
+        onRecoveryComplete: vi.fn(),
+        onRecoveryFailed: vi.fn(),
+        createWebSocketSubscriber: vi.fn().mockReturnValue({ id: 'websocket-socket-1' })
+      }
+      createDisconnectedConnection('socket-1', 'conv-1', 5)
+    })
+
+    describe('persisted event filtering', () => {
+      it('filters out persisted events when history is included, preventing content overlap', async () => {
+        const persistedEvent: StreamingEvent = {
+          id: 'evt-persisted',
+          conversationId: 'conv-1',
+          sequence: 6,
+          type: 'chunk',
+          content: 'already in history',
+          data: {},
+          timestamp: new Date(),
+          agentName: 'test-agent',
+          persisted: true
+        }
+        const unpersisted: StreamingEvent = {
+          id: 'evt-live',
+          conversationId: 'conv-1',
+          sequence: 7,
+          type: 'chunk',
+          content: 'not yet in history',
+          data: {},
+          timestamp: new Date(),
+          agentName: 'test-agent',
+          persisted: false
+        }
+
+        const managerWithHistory = new ConnectionRecoveryManager(
+          {
+            stateManager,
+            eventChannel: eventChannel as unknown as ConversationEventChannel,
+            logger: mockLogger,
+            historyProvider: {
+              loadHistory: vi.fn().mockResolvedValue({ messages: [{ id: 'msg-1', content: 'hi', sender: 'assistant' }], hasMore: false, nextCursor: null, total: 1 })
+            } as any
+          },
+          config
+        )
+
+        eventChannel.getEventsSince.mockReturnValue([persistedEvent, unpersisted])
+
+        await managerWithHistory.handleAutomaticRecovery(socket, callbacks)
+
+        // Persisted event must NOT be replayed (its content is already in history)
+        const allVolatileEmits = (socket.volatile.emit as any).mock.calls
+        const replayedContents = allVolatileEmits
+          .filter((call: any[]) => call[0] === 'message' && call[1]?.type === 'chunk')
+          .map((call: any[]) => call[1].content)
+
+        expect(replayedContents).not.toContain('already in history')
+        expect(replayedContents).toContain('not yet in history')
+      })
+
+      it('reports correct bufferedEventCount in recovery_status after filtering persisted events', async () => {
+        const persistedEvent: StreamingEvent = {
+          id: 'evt-p1',
+          conversationId: 'conv-1',
+          sequence: 6,
+          type: 'chunk',
+          content: 'persisted chunk',
+          data: {},
+          timestamp: new Date(),
+          agentName: 'test-agent',
+          persisted: true
+        }
+        const liveEvent: StreamingEvent = {
+          id: 'evt-l1',
+          conversationId: 'conv-1',
+          sequence: 7,
+          type: 'chunk',
+          content: 'live chunk',
+          data: {},
+          timestamp: new Date(),
+          agentName: 'test-agent',
+          persisted: false
+        }
+
+        const managerWithHistory = new ConnectionRecoveryManager(
+          {
+            stateManager,
+            eventChannel: eventChannel as unknown as ConversationEventChannel,
+            logger: mockLogger,
+            historyProvider: {
+              loadHistory: vi.fn().mockResolvedValue({ messages: [], hasMore: false, nextCursor: null, total: 0 })
+            } as any
+          },
+          config
+        )
+
+        eventChannel.getEventsSince.mockReturnValue([persistedEvent, liveEvent])
+
+        await managerWithHistory.handleAutomaticRecovery(socket, callbacks)
+
+        // recovery_status should report only the 1 un-persisted event
+        const recoveryStatusCall = (socket.emit as any).mock.calls.find(
+          (call: any[]) => call[1]?.type === 'recovery_status' && call[1]?.data?.isRecovering === true
+        )
+        expect(recoveryStatusCall).toBeDefined()
+        expect(recoveryStatusCall[1].data.bufferedEventCount).toBe(1)
+        expect(recoveryStatusCall[1].data.hasBufferedEvents).toBe(true)
+      })
+
+      it('reports eventsReplayed in replay_complete matching filtered count', async () => {
+        const events: StreamingEvent[] = [
+          {
+            id: 'evt-p',
+            conversationId: 'conv-1',
+            sequence: 6,
+            type: 'chunk',
+            content: 'persisted',
+            data: {},
+            timestamp: new Date(),
+            agentName: 'test-agent',
+            persisted: true
+          },
+          {
+            id: 'evt-l',
+            conversationId: 'conv-1',
+            sequence: 7,
+            type: 'chunk',
+            content: 'live',
+            data: {},
+            timestamp: new Date(),
+            agentName: 'test-agent',
+            persisted: false
+          }
+        ]
+
+        const managerWithHistory = new ConnectionRecoveryManager(
+          {
+            stateManager,
+            eventChannel: eventChannel as unknown as ConversationEventChannel,
+            logger: mockLogger,
+            historyProvider: {
+              loadHistory: vi.fn().mockResolvedValue({ messages: [], hasMore: false, nextCursor: null, total: 0 })
+            } as any
+          },
+          config
+        )
+
+        eventChannel.getEventsSince.mockReturnValue(events)
+
+        await managerWithHistory.handleAutomaticRecovery(socket, callbacks)
+
+        const replayCompleteCall = (socket.emit as any).mock.calls.find(
+          (call: any[]) => call[1]?.type === 'replay_complete'
+        )
+        expect(replayCompleteCall).toBeDefined()
+        // Only 1 un-persisted event was replayed, not both
+        expect(replayCompleteCall[1].data.eventsReplayed).toBe(1)
+      })
+
+      it('replays all events when no history provider is configured', async () => {
+        const events: StreamingEvent[] = [
+          {
+            id: 'evt-p',
+            conversationId: 'conv-1',
+            sequence: 6,
+            type: 'chunk',
+            content: 'persisted chunk',
+            data: {},
+            timestamp: new Date(),
+            agentName: 'test-agent',
+            persisted: true
+          },
+          {
+            id: 'evt-l',
+            conversationId: 'conv-1',
+            sequence: 7,
+            type: 'chunk',
+            content: 'live chunk',
+            data: {},
+            timestamp: new Date(),
+            agentName: 'test-agent',
+            persisted: false
+          }
+        ]
+        eventChannel.getEventsSince.mockReturnValue(events)
+
+        // manager from beforeEach has no historyProvider
+        await manager.handleAutomaticRecovery(socket, callbacks)
+
+        const replayedContents = (socket.volatile.emit as any).mock.calls
+          .filter((call: any[]) => call[0] === 'message' && call[1]?.type === 'chunk')
+          .map((call: any[]) => call[1].content)
+
+        // Both events replayed because no history was loaded
+        expect(replayedContents).toContain('persisted chunk')
+        expect(replayedContents).toContain('live chunk')
+      })
+    })
+
+    describe('volatile.emit for replay (prevents Socket.IO adapter duplication)', () => {
+      it('uses volatile.emit for recovery replay events', async () => {
+        eventChannel.getEventsSince.mockReturnValue([
+          {
+            id: 'evt-1',
+            conversationId: 'conv-1',
+            sequence: 6,
+            type: 'chunk',
+            content: 'hello',
+            data: {},
+            timestamp: new Date(),
+            agentName: 'test-agent'
+          }
+        ])
+
+        await manager.handleAutomaticRecovery(socket, callbacks)
+
+        expect(socket.volatile.emit).toHaveBeenCalled()
+        // Regular emit must not carry chunk-type messages
+        const regularChunkEmits = (socket.emit as any).mock.calls.filter(
+          (call: any[]) => call[1]?.type === 'chunk'
+        )
+        expect(regularChunkEmits).toHaveLength(0)
+      })
+
+      it('uses regular emit for control messages (recovery_status, replay_complete)', async () => {
+        eventChannel.getEventsSince.mockReturnValue([])
+
+        await manager.handleAutomaticRecovery(socket, callbacks)
+
+        const controlMessages = (socket.emit as any).mock.calls
+          .filter((call: any[]) => call[0] === 'message')
+          .map((call: any[]) => call[1]?.type)
+
+        expect(controlMessages).toContain('recovery_status')
+        expect(controlMessages).toContain('replay_complete')
+      })
+    })
+
+    describe('sequence number in replayed event data', () => {
+      it('injects sequence from event into data for client-side deduplication', async () => {
+        eventChannel.getEventsSince.mockReturnValue([
+          {
+            id: 'evt-1',
+            conversationId: 'conv-1',
+            sequence: 42,
+            type: 'chunk',
+            content: 'test chunk',
+            data: { step: 1 },
+            timestamp: new Date(),
+            agentName: 'test-agent'
+          }
+        ])
+
+        await manager.handleAutomaticRecovery(socket, callbacks)
+
+        expect(socket.volatile.emit).toHaveBeenCalledWith('message', {
+          type: 'chunk',
+          content: 'test chunk',
+          data: { step: 1, sequence: 42 }
+        })
+      })
+
+      it('does not mutate original event data when injecting sequence', async () => {
+        const originalData = { step: 1 }
+        const event: StreamingEvent = {
+          id: 'evt-1',
+          conversationId: 'conv-1',
+          sequence: 10,
+          type: 'chunk',
+          content: 'test',
+          data: originalData,
+          timestamp: new Date(),
+          agentName: 'test-agent'
+        }
+        eventChannel.getEventsSince.mockReturnValue([event])
+
+        await manager.handleAutomaticRecovery(socket, callbacks)
+
+        // Original event data must not be mutated
+        expect(originalData).toEqual({ step: 1 })
+        expect((originalData as any).sequence).toBeUndefined()
+      })
+
+      it('injects sequence for catch-up events too', () => {
+        const catchUpSocket = createMockSocket({ id: 'socket-cu' })
+
+        manager.beginCatchUpHandshake(catchUpSocket, {
+          conversationId: 'conv-1',
+          events: [
+            {
+              id: 'cu-1',
+              conversationId: 'conv-1',
+              sequence: 99,
+              type: 'tool_result',
+              content: 'tool done',
+              data: { tool: 'bash' },
+              timestamp: new Date(),
+              agentName: 'test-agent'
+            }
+          ],
+          onComplete: vi.fn(),
+          onTimeout: vi.fn()
+        })
+
+        expect(catchUpSocket.volatile.emit).toHaveBeenCalledWith('message', {
+          type: 'tool_result',
+          content: 'tool done',
+          data: { tool: 'bash', sequence: 99 }
+        })
+      })
     })
   })
 
@@ -499,7 +828,7 @@ describe('ConnectionRecoveryManager', () => {
       }))
     })
 
-    it('replays catch-up events', () => {
+    it('replays catch-up events via volatile.emit (not regular emit)', () => {
       const events: StreamingEvent[] = [
         {
           id: 'evt-1',
@@ -520,11 +849,18 @@ describe('ConnectionRecoveryManager', () => {
         onTimeout: vi.fn()
       })
 
-      expect(socket.emit).toHaveBeenCalledWith('message', {
+      // Must use volatile.emit to prevent Socket.IO adapter from storing
+      // replay packets (which would cause duplicates on future reconnections)
+      expect(socket.volatile.emit).toHaveBeenCalledWith('message', {
         type: 'chunk',
         content: 'catch-up content',
-        data: { delta: 'test' }
+        data: { delta: 'test', sequence: 20 }
       })
+      // Must NOT use regular emit for chunk events
+      const regularChunkEmit = (socket.emit as any).mock.calls.find(
+        (call: any[]) => call[1]?.type === 'chunk'
+      )
+      expect(regularChunkEmit).toBeUndefined()
     })
 
     it('sends catchup_complete after events', () => {
@@ -705,7 +1041,10 @@ describe('ConnectionRecoveryManager', () => {
         type: 'history_complete',
         content: '',
         data: {
-          messageCount: 0
+          messageCount: 0,
+          hasMore: false,
+          nextCursor: null,
+          total: 0
         }
       })
     })

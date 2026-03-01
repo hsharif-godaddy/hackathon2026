@@ -726,14 +726,22 @@ export class ConnectionRecoveryManager {
       ? events[events.length - 1]!.sequence
       : preReplaySequence
 
+    // Filter out events already persisted to DB when history was included,
+    // since those events' content is already in the history messages.
+    // Without this, the client would append replay chunks to content
+    // that's already populated from history, causing text duplication/stuttering.
+    const eventsToReplay = historyIncluded
+      ? events.filter(e => !e.persisted)
+      : events
+
     // Send recovery status - history will be streamed separately
     socket.emit('message', {
       type: 'recovery_status',
       content: 'Recovering connection...',
       data: {
         isRecovering: true,
-        hasBufferedEvents: events.length > 0,
-        bufferedEventCount: events.length,
+        hasBufferedEvents: eventsToReplay.length > 0,
+        bufferedEventCount: eventsToReplay.length,
         conversationId: context.conversationId,
         agentName: stateData?.agentName ?? context.agentName,
         recoveryMode: context.mode,
@@ -741,7 +749,6 @@ export class ConnectionRecoveryManager {
         lastSequence: replayLastSequence,
         lossDetected,
         lostEventCount,
-        // NEW: Indicate history will be streamed
         historyStreaming: historyIncluded && fullHistory.length > 0,
         historyMessageCount: fullHistory.length
       }
@@ -775,12 +782,14 @@ export class ConnectionRecoveryManager {
       }
     } as WebSocketMessage)
 
-    // Replay buffered events
-    for (const event of events) {
-      socket.emit('message', {
+    // Replay buffered events using volatile.emit to prevent Socket.IO's
+    // adapter from storing replay packets in its recovery buffer,
+    // which would cause duplicates on subsequent reconnections
+    for (const event of eventsToReplay) {
+      socket.volatile.emit('message', {
         type: event.type,
         content: event.content,
-        data: event.data
+        data: { ...event.data, sequence: event.sequence }
       } as WebSocketMessage)
     }
 
@@ -791,7 +800,7 @@ export class ConnectionRecoveryManager {
       data: {
         lastSequence: replayLastSequence,
         conversationId: context.conversationId,
-        eventsReplayed: events.length
+        eventsReplayed: eventsToReplay.length
       }
     } as WebSocketMessage)
 
@@ -800,7 +809,7 @@ export class ConnectionRecoveryManager {
       socket,
       context,
       preReplaySequence,
-      events,
+      eventsToReplay,
       callbacks
     )
   }
@@ -967,12 +976,13 @@ export class ConnectionRecoveryManager {
       }
     } as WebSocketMessage)
 
-    // Replay catch-up events
+    // Replay catch-up events using volatile.emit to prevent
+    // Socket.IO adapter from storing packets for future replays
     for (const event of events) {
-      socket.emit('message', {
+      socket.volatile.emit('message', {
         type: event.type,
         content: event.content,
-        data: event.data
+        data: { ...event.data, sequence: event.sequence }
       } as WebSocketMessage)
     }
 

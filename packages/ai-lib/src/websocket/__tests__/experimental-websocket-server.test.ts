@@ -298,7 +298,7 @@ describe('WebSocketServer - Error Handling', () => {
           })
         }
 
-        const catchUpEmits = mockSocketAuto.emit.mock.calls.filter(call =>
+        const catchUpEmits = mockSocketAuto.volatile.emit.mock.calls.filter(call =>
           call[0] === 'message' && call[1].type === 'chunk' && call[1].content === 'Catch-up chunk'
         )
         expect(catchUpEmits.length).toBe(1)
@@ -1168,9 +1168,9 @@ describe('WebSocketServer - Error Handling', () => {
         expect(replayCompleteCall).toBeDefined()
         expect(replayCompleteCall?.[1].data.eventsReplayed).toBe(3)
 
-        // Verify missed events were replayed via direct emits
-        const emittedMessages = newMockSocket.emit.mock.calls
-        const chunkCalls = emittedMessages.filter(call =>
+        // Verify missed events were replayed via volatile.emit
+        const volatileEmits = newMockSocket.volatile.emit.mock.calls
+        const chunkCalls = volatileEmits.filter(call =>
           call[0] === 'message' &&
           (call[1].type === 'chunk' || call[1].type === 'tool_result') &&
           ['Missed 1', 'Missed 2', 'Tool done'].includes(call[1].content)
