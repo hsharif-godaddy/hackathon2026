@@ -78,11 +78,11 @@
     "setup": "echo 'Copy env.example to .env and fill in your API keys, then run npm run example:basic-openai or npm run example:basic-bedrock'"
   },
   "dependencies": {
-    "@ai-sdk/amazon-bedrock": "^4.0.12",
-    "@ai-sdk/google": "^3.0.7",
-    "@ai-sdk/openai": "^3.0.7",
-    "@ai-sdk/openai-compatible": "^2.0.9",
-    "@ai-sdk/provider": "^3.0.2",
+    "@ai-sdk/amazon-bedrock": "^4.0.69",
+    "@ai-sdk/google": "^3.0.34",
+    "@ai-sdk/openai": "^3.0.37",
+    "@ai-sdk/openai-compatible": "^2.0.31",
+    "@ai-sdk/provider": "^3.0.8",
     "@aws-sdk/client-bedrock-runtime": "^3.890.0",
     "@aws-sdk/client-sts": "3.679.0",
     "@aws-sdk/credential-providers": "^3.888.0",
@@ -92,7 +92,7 @@
     "@opentelemetry/api": "^1.9.0",
     "@signals/otel-sdk": "^0.1.1",
     "@types/ws": "^8.18.1",
-    "ai": "^6.0.23",
+    "ai": "^6.0.105",
     "ai-tokenizer": "^1.0.6",
     "dotenv": "^16.4.7",
     "gd-auth-client": "^2.1.1",
@@ -102,7 +102,7 @@
     "zod": "^3.25.76"
   },
   "peerDependencies": {
-    "@ai-sdk/anthropic": "^3.0.9"
+    "@ai-sdk/anthropic": "^3.0.50"
   },
   "peerDependenciesMeta": {
     "@ai-sdk/anthropic": {
