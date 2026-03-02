@@ -127,7 +127,7 @@ go test -v -tags=docker_integration   # Run Docker integration tests
 
 ```bash
 make build-all                   # linux/darwin/windows amd64/arm64
-GOOS=linux GOARCH=amd64 go build -o dev-supervisor-linux .
+GOOS=linux GOARCH=amd64 go build -o dev-supervisor-linux ./cmd/dev-supervisor
 ```
 
 ## Code Quality Standards
@@ -352,6 +352,7 @@ GetEnvDurationWithDefault(key string, defaultValue time.Duration) time.Duration
 **TLS reverse proxy with multiple modes:**
 
 1. **Proxy mode** (`internal/proxy/http/`):
+
    - TLS termination with configurable cert/key
    - Reverse proxy to backend (typically localhost:port)
    - WebSocket support with automatic upgrade detection
@@ -362,6 +363,7 @@ GetEnvDurationWithDefault(key string, defaultValue time.Duration) time.Duration
    - Key files: `server.go`, `router.go`, `autostart.go`, `static.go`, `activity.go`, `logging.go`, `reverse_proxy.go`, `transport.go`, `config.go`, `validation.go`, `health.go`, `tls.go`
 
 2. **JWT authentication** (`internal/auth/`):
+
    - JWKS-based public key validation (RFC 7517)
    - Site-scoped token validation (siteId claim)
    - Hybrid auth failure handling (browser redirect vs API 401)
@@ -874,11 +876,11 @@ When acting as PID 1 in containers:
 # Stage 1: Build
 FROM golang:1.25-alpine AS builder
 COPY . /build
-RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static" -w -s' -o dev-supervisor .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static" -w -s' -o /usr/local/bin/dev-supervisor ./cmd/dev-supervisor
 
 # Stage 2: Runtime
 FROM alpine:3.22
-COPY --from=builder /build/dev-supervisor /usr/local/bin/
+COPY --from=builder /usr/local/bin/dev-supervisor /usr/local/bin/
 ENTRYPOINT ["/usr/local/bin/dev-supervisor"]
 ```
 

@@ -18,17 +18,17 @@ export GOTOOLCHAIN := go1.25.7
 build:
 	@echo "Building ${BINARY_NAME}..."
 	@mkdir -p ${BUILD_DIR}
-	CGO_ENABLED=0 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME} .
+	CGO_ENABLED=0 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME} ./cmd/dev-supervisor
 
 ## Build for multiple platforms
 build-all:
 	@echo "Building for multiple platforms..."
 	@mkdir -p ${BUILD_DIR}
-	GOOS=linux GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-linux-amd64 .
-	GOOS=linux GOARCH=arm64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-linux-arm64 .
-	GOOS=darwin GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-darwin-amd64 .
-	GOOS=darwin GOARCH=arm64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-darwin-arm64 .
-	GOOS=windows GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-windows-amd64.exe .
+	GOOS=linux GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-linux-amd64 ./cmd/dev-supervisor
+	GOOS=linux GOARCH=arm64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-linux-arm64 ./cmd/dev-supervisor
+	GOOS=darwin GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-darwin-amd64 ./cmd/dev-supervisor
+	GOOS=darwin GOARCH=arm64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-darwin-arm64 ./cmd/dev-supervisor
+	GOOS=windows GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-windows-amd64.exe ./cmd/dev-supervisor
 
 ## Clean build artifacts
 clean:
@@ -44,7 +44,7 @@ test:
 ## Run integration tests
 test-integration:
 	@echo "Running integration tests..."
-	go test -v -timeout 60s
+	go test -v -timeout 60s ./cmd/dev-supervisor
 
 ## Run tests with coverage report
 test-coverage: test
@@ -65,7 +65,7 @@ test-docker:
 ## Run Docker tests via Go test wrapper
 test-docker-go:
 	@echo "Running Docker integration tests via Go..."
-	@go test -v -tags=docker_integration -run TestDockerIntegration
+	@go test -v -tags=docker_integration -run TestDockerIntegration ./cmd/dev-supervisor
 
 ## Run linter
 lint:
@@ -119,7 +119,7 @@ vet:
 ## Run the application
 run:
 	@echo "Running ${BINARY_NAME}..."
-	go run . 
+	go run ./cmd/dev-supervisor
 
 ## Install dependencies
 deps:

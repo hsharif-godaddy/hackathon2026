@@ -220,7 +220,7 @@ make test-docker
 make build
 
 # 5. Cross-compile for Linux production
-GOOS=linux GOARCH=amd64 go build -o dev-supervisor .
+GOOS=linux GOARCH=amd64 go build -o dev-supervisor ./cmd/dev-supervisor
 ```
 
 **On Linux:**

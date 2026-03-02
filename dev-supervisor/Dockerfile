@@ -16,7 +16,7 @@ RUN go mod download
 COPY . .
 
 # Build binary with static linking for Alpine
-RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static" -w -s' -o dev-supervisor .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static" -w -s' -o /usr/local/bin/dev-supervisor ./cmd/dev-supervisor
 
 # Final stage - minimal Alpine image suitable for copying binary from
 FROM alpine:3.22
@@ -28,8 +28,7 @@ RUN apk add --no-cache ca-certificates tzdata
 RUN mkdir -p /tmp/supervisor && chmod 755 /tmp/supervisor
 
 # Copy binary from builder stage
-COPY --from=builder /build/dev-supervisor /usr/local/bin/dev-supervisor
-RUN chmod +x /usr/local/bin/dev-supervisor
+COPY --from=builder /usr/local/bin/dev-supervisor /usr/local/bin/dev-supervisor
 
 # Set default socket paths for when used standalone
 ENV AIRO_SUPERVISOR_PREVIEW_SOCKET_PATH=/tmp/supervisor/dev-supervisor-preview.sock

@@ -137,7 +137,7 @@ jobs:
           if [ "$GOOS" = "windows" ]; then
             BINARY_NAME="${BINARY_NAME}.exe"
           fi
-          go build -ldflags="-w -s" -o "dist/${BINARY_NAME}-${GOOS}-${GOARCH}" .
+          go build -ldflags="-w -s" -o "dist/${BINARY_NAME}-${GOOS}-${GOARCH}" ./cmd/dev-supervisor
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6

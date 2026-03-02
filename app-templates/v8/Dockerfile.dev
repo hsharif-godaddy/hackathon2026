@@ -18,7 +18,7 @@ RUN go mod download
 COPY --from=dev-supervisor . .
 
 # Build binary with static linking for Alpine
-RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static" -w -s' -o dev-supervisor .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static" -w -s' -o /usr/local/bin/dev-supervisor ./cmd/dev-supervisor
 
 # =================================================================
 # Stage 0.5: Prepare gitleaks binary (CACHED - rarely changes)
@@ -133,7 +133,7 @@ WORKDIR /app
 COPY --chown=agent:agent --from=gitleaks-preparer /usr/local/bin/gitleaks /usr/local/bin/gitleaks
 
 # Copy dev-supervisor binary from build stage (not pre-built image)
-COPY --chown=agent:agent --from=dev-supervisor-builder /build/dev-supervisor /usr/local/bin/dev-supervisor
+COPY --chown=agent:agent --from=dev-supervisor-builder /usr/local/bin/dev-supervisor /usr/local/bin/dev-supervisor
 
 # Copy node_modules from deps stage to /node_modules (not /app/node_modules)
 # This allows the /app bind mount to overlay the image without requiring a 549MB volume copy

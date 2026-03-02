@@ -23,7 +23,7 @@ RUN go mod download
 COPY --from=dev-supervisor . .
 
 # Build binary with static linking for Alpine
-RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static" -w -s' -o dev-supervisor .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static" -w -s' -o /usr/local/bin/dev-supervisor ./cmd/dev-supervisor
 
 # =================================================================
 # Build publish app stage
@@ -67,7 +67,7 @@ RUN CONTAINER_UID=${HOST_UID}; \
     adduser -D -G agent -u $CONTAINER_UID agent
 
 # Copy dev-supervisor binary from builder stage
-COPY --chown=agent:agent --from=dev-supervisor-builder /build/dev-supervisor /usr/local/bin/dev-supervisor
+COPY --chown=agent:agent --from=dev-supervisor-builder /usr/local/bin/dev-supervisor /usr/local/bin/dev-supervisor
 
 # Copy publish scripts from container-scripts build context (already executable)
 COPY --from=container-scripts --chown=agent:agent publish/run-app.sh /publish/run-app.sh
@@ -75,7 +75,7 @@ COPY --from=container-scripts --chown=agent:agent publish/coming-soon.js /publis
 
 # Enable corepack (for pnpm), create directories, and set permissions
 # Pin versions to match project (pnpm@10.17.0) and Node 22 (corepack@0.34.0) for reproducible builds
-RUN chmod +x /usr/local/bin/dev-supervisor && \
+RUN \
     npm install --yes --global corepack@0.34.0 && \
     corepack enable && \
     corepack install --global pnpm@10.17.0 && \
