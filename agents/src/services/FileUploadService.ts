@@ -3,11 +3,13 @@ import { mkdir, writeFile, readFile, unlink, rm } from 'fs/promises'
 import { extname } from 'path'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
+
 import { logger } from '../logging/index.js'
+import { fileUploadEvents } from '../logging/events/index.js'
+import { FileValidationError, SVGSanitizationError } from './errors/file-upload-errors.js'
+import { getAgentConfig } from './features.js'
 import { createSafePathBuilder } from '../utils/safe-path.js'
 import { sanitizeSVG, isSVGFile } from '../utils/svg-sanitizer.js'
-import { getAgentConfig } from './features.js'
-import { fileUploadEvents } from '../logging/events/index.js'
 
 export interface UploadedFile {
   id: string
@@ -180,24 +182,21 @@ export class FileUploadService {
   }
 
   validateFile(file: Express.Multer.File): void {
-    // Check file extension
     const ext = extname(file.originalname).toLowerCase()
     if (BLOCKED_EXTENSIONS.has(ext)) {
-      throw new Error(
+      throw new FileValidationError(
         `File type '${ext}' is not allowed for security reasons. Please upload a different file type.`
       )
     }
 
-    // Check MIME type
     if (BLOCKED_MIME_TYPES.has(file.mimetype)) {
-      throw new Error(
+      throw new FileValidationError(
         `File type '${file.mimetype}' is not allowed for security reasons. Please upload a different file type.`
       )
     }
 
-    // Check file size
     if (file.size > MAX_FILE_SIZE) {
-      throw new Error(
+      throw new FileValidationError(
         `File size ${file.size} bytes exceeds maximum allowed size of ${MAX_FILE_SIZE} bytes`
       )
     }
@@ -205,15 +204,66 @@ export class FileUploadService {
 
   validateUpload(files: Express.Multer.File[]): void {
     if (files.length === 0) {
-      throw new Error('No files provided')
+      throw new FileValidationError('No files provided')
     }
 
     if (files.length > MAX_FILES_PER_UPLOAD) {
-      throw new Error(`Too many files. Maximum ${MAX_FILES_PER_UPLOAD} files allowed per upload`)
+      throw new FileValidationError(`Too many files. Maximum ${MAX_FILES_PER_UPLOAD} files allowed per upload`)
     }
 
     for (const file of files) {
       this.validateFile(file)
+    }
+  }
+
+  /**
+   * Sanitize an SVG file and return the cleaned buffer.
+   * Throws SVGSanitizationError on failure so the caller can skip the file
+   * in a batch without aborting the entire upload.
+   */
+  private sanitizeAndBufferSvg(
+    file: Express.Multer.File,
+    appId: string,
+    uploadId: string
+  ): { buffer: Buffer; size: number } {
+    try {
+      const result = sanitizeSVG(file.buffer.toString('utf-8'))
+
+      if (result.hadDangerousContent) {
+        logger.warn('file-upload.svg.sanitized', {
+          appId,
+          uploadId,
+          originalName: file.originalname,
+          detectedThreats: result.detectedThreats,
+          message: `SVG contained dangerous content that was removed: ${result.detectedThreats.join(', ')}`
+        }, { tags: ['security', 'svg-sanitization', 'xss-prevention'] })
+      }
+
+      if (!result.sanitized || !/<svg[\s>]/i.test(result.sanitized)) {
+        throw new Error('File does not contain valid SVG content')
+      }
+
+      const buffer = Buffer.from(result.sanitized, 'utf-8')
+
+      logger.info('file-upload.svg.processed', {
+        appId,
+        uploadId,
+        originalName: file.originalname,
+        originalSize: file.size,
+        sanitizedSize: buffer.length,
+        hadThreats: result.hadDangerousContent,
+        threats: result.detectedThreats
+      })
+
+      return { buffer, size: buffer.length }
+    } catch (error) {
+      logger.error('file-upload.svg.sanitization-failed', {
+        appId,
+        uploadId,
+        originalName: file.originalname,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      throw new SVGSanitizationError(file.originalname, error instanceof Error ? error.message : undefined)
     }
   }
 
@@ -232,6 +282,7 @@ export class FileUploadService {
     const expiresAt = new Date(Date.now() + UPLOAD_EXPIRY_HOURS * 60 * 60 * 1000).toISOString()
 
     const failedFiles: Array<{ originalName: string; error: string }> = []
+    let hasServerError = false
 
     for (const file of files) {
       try {
@@ -244,46 +295,9 @@ export class FileUploadService {
         let actualSize = file.size
 
         if (isSVGFile(file.originalname, file.mimetype)) {
-          try {
-            const svgContent = file.buffer.toString('utf-8')
-            const result = sanitizeSVG(svgContent)
-
-            if (result.hadDangerousContent) {
-              logger.warn('file-upload.svg.sanitized', {
-                appId,
-                uploadId,
-                originalName: file.originalname,
-                detectedThreats: result.detectedThreats,
-                message: `SVG contained dangerous content that was removed: ${result.detectedThreats.join(', ')}`
-              }, { tags: ['security', 'svg-sanitization', 'xss-prevention'] })
-            }
-
-            if (!result.sanitized || !/<svg[\s>]/i.test(result.sanitized)) {
-              throw new Error('File does not contain valid SVG content')
-            }
-
-            fileBuffer = Buffer.from(result.sanitized, 'utf-8')
-            actualSize = fileBuffer.length
-
-            logger.info('file-upload.svg.processed', {
-              appId,
-              uploadId,
-              originalName: file.originalname,
-              originalSize: file.size,
-              sanitizedSize: actualSize,
-              hadThreats: result.hadDangerousContent,
-              threats: result.detectedThreats
-            })
-          } catch (error) {
-            logger.error('file-upload.svg.sanitization-failed', {
-              appId,
-              uploadId,
-              originalName: file.originalname,
-              error: error instanceof Error ? error.message : String(error)
-            })
-            failedFiles.push({ originalName: file.originalname, error: `Failed to sanitize SVG file: ${file.originalname}` })
-            continue
-          }
+          const sanitized = this.sanitizeAndBufferSvg(file, appId, uploadId)
+          fileBuffer = sanitized.buffer
+          actualSize = sanitized.size
         }
 
         await writeFile(filepath, fileBuffer)
@@ -307,6 +321,11 @@ export class FileUploadService {
           totalSize: actualSize
         })
       } catch (fileError) {
+        if (fileError instanceof SVGSanitizationError) {
+          failedFiles.push({ originalName: file.originalname, error: fileError.message })
+          continue
+        }
+        hasServerError = true
         logger.error('file-upload.file-processing-failed', {
           appId,
           uploadId,
@@ -318,8 +337,12 @@ export class FileUploadService {
     }
 
     if (uploadedFiles.length === 0) {
-      const errorDetails = failedFiles.map(f => f.error).join('; ')
-      throw new Error(`All files failed to upload: ${errorDetails}`)
+      if (hasServerError) {
+        throw new Error('All files failed to upload')
+      }
+      throw new FileValidationError(
+        `All files failed to upload: ${failedFiles.map(f => f.error).join('; ')}`
+      )
     }
 
     const metadata = {

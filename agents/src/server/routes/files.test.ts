@@ -417,9 +417,10 @@ describe('Files Router - Path Traversal Security', () => {
     });
 
     it('should return 400 with descriptive error for sanitization failures', async () => {
+      const { SVGSanitizationError } = await import('../../services/errors/file-upload-errors.js');
       const { fileUploadService } = await import('../../services/FileUploadService.js');
       vi.mocked(fileUploadService.processUpload).mockRejectedValue(
-        new Error('Failed to sanitize SVG file: icon.svg')
+        new SVGSanitizationError('icon.svg')
       );
 
       const response = await request(app)

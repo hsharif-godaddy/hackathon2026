@@ -8,7 +8,7 @@ import { useTranslations } from '@/hooks/useTranslations';
 import { getFileUploadAgent } from '@/lib/file-agent';
 import { logger } from '@/lib/request-context';
 import { ACCEPTED_UPLOAD_FILE_TYPES } from '@/utils/file-types';
-import { UPLOAD_TIMEOUT_MS, validate } from '@/utils/file-upload-validation';
+import { UPLOAD_TIMEOUT_MS, UPLOAD_TIMEOUT_SECONDS, validate } from '@/utils/file-upload-validation';
 
 export interface UploadedFile {
   id: string;
@@ -117,7 +117,7 @@ export default function FileUploadButton({
       }
     } catch (error) {
       const message = error instanceof DOMException && error.name === 'AbortError'
-        ? t('builder_chatfiles_error_timeout')
+        ? t('builder_chatfiles_error_timeout_duration', { seconds: UPLOAD_TIMEOUT_SECONDS })
         : error instanceof Error ? error.message : t('builder_chatfiles_error_upload_failed');
 
       logger.error('file-upload.chat.failed', {

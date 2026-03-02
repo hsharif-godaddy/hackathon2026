@@ -1,8 +1,10 @@
 import { Router, Request, Response, NextFunction, IRouter } from 'express'
 import rateLimit from 'express-rate-limit'
 import multer from 'multer'
-import { fileUploadService } from '../../services/FileUploadService.js'
+
 import { logger, log } from '../../logging/index.js'
+import { isClientError } from '../../services/errors/file-upload-errors.js'
+import { fileUploadService } from '../../services/FileUploadService.js'
 import { validateAppOwnershipFromBody } from '../middleware/app-ownership.js'
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js'
 import { signFileUrl, verifyFileSignature } from '../../utils/file-url-signer.js'
@@ -187,7 +189,7 @@ router.post('/upload', uploadRateLimiter,
       stack: error instanceof Error ? error.stack : undefined
     })
 
-    if (errorMessage.includes('Invalid') || errorMessage.includes('Unsupported') || errorMessage.includes('Too many') || errorMessage.includes('exceeds maximum') || errorMessage.includes('not allowed') || errorMessage.includes('Failed to sanitize')) {
+    if (isClientError(error)) {
       return res.status(400).json({
         error: errorMessage
       })

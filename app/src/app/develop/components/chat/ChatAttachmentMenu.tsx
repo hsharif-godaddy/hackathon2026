@@ -14,7 +14,7 @@ import { getFileUploadAgent } from '@/lib/file-agent';
 import { logger } from '@/lib/request-context';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { ACCEPTED_UPLOAD_FILE_TYPES } from '@/utils/file-types';
-import { UPLOAD_TIMEOUT_MS, validate } from '@/utils/file-upload-validation';
+import { UPLOAD_TIMEOUT_MS, UPLOAD_TIMEOUT_SECONDS, validate } from '@/utils/file-upload-validation';
 import { generateClickEID } from '@/utils/instrumentation';
 
 export type { UploadedFile } from '@/app/develop/components/chat/FileUploadButton';
@@ -141,7 +141,7 @@ export default function ChatAttachmentMenu({
       }
     } catch (error) {
       const message = error instanceof DOMException && error.name === 'AbortError'
-        ? t('builder_chatfiles_error_timeout')
+        ? t('builder_chatfiles_error_timeout_duration', { seconds: UPLOAD_TIMEOUT_SECONDS })
         : error instanceof Error ? error.message : t('builder_chatfiles_error_upload_failed');
 
       logger.error('file-upload.chat.failed', {
