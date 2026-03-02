@@ -68,31 +68,26 @@ export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
       prompt: t('builder_homepage_examples_onlinestore_prompt'),
       slug: "online_store"
     },
-    // Game and interactive experiences
+    // E-commerce and services
     {
-      title: t('builder_homepage_examples_idleclicker_title'),
-      prompt: t('builder_homepage_examples_idleclicker_prompt'),
-      slug: "idle_game"
+      title: t('builder_homepage_examples_boutique_title'),
+      prompt: t('builder_homepage_examples_boutique_prompt'),
+      slug: "boutique_store"
     },
     {
-      title: t('builder_homepage_examples_memorygame_title'),
-      prompt: t('builder_homepage_examples_memorygame_prompt'),
-      slug: "memory_game"
+      title: t('builder_homepage_examples_pressurewashing_title'),
+      prompt: t('builder_homepage_examples_pressurewashing_prompt'),
+      slug: "pressure_washing"
     },
     {
-      title: t('builder_homepage_examples_triviaquiz_title'),
-      prompt: t('builder_homepage_examples_triviaquiz_prompt'),
-      slug: "trivia_quiz"
+      title: t('builder_homepage_examples_clientdashboard_title'),
+      prompt: t('builder_homepage_examples_clientdashboard_prompt'),
+      slug: "client_dashboard"
     },
     {
-      title: t('builder_homepage_examples_drawingapp_title'),
-      prompt: t('builder_homepage_examples_drawingapp_prompt'),
-      slug: "drawing_app"
-    },
-    {
-      title: t('builder_homepage_examples_wordpuzzle_title'),
-      prompt: t('builder_homepage_examples_wordpuzzle_prompt'),
-      slug: "word_puzzle"
+      title: t('builder_homepage_examples_restaurant_title'),
+      prompt: t('builder_homepage_examples_restaurant_prompt'),
+      slug: "restaurant"
     },
     // Web presentations and other formats
     {
