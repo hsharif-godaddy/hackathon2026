@@ -469,21 +469,29 @@ dev-supervisor includes JWT authentication for securing preview apps. It validat
 
 ### Configuration
 
-JWT authentication is configured via environment variables:
+JWT authentication is configured via environment variables and `/alloc/config.json`:
 
-| Variable                              | Required | Description                                                                                 |
-| ------------------------------------- | -------- | ------------------------------------------------------------------------------------------- |
-| `DEV_SUPERVISOR_ENABLE_JWT_AUTH`      | No       | Enable JWT authentication (default: `false`)                                                |
-| `DEV_SUPERVISOR_JWKS_URL`             | Yes\*    | JWKS endpoint URL (e.g., `https://local.gasket.dev-godaddy.com:8443/.well-known/jwks.json`) |
-| `DEV_SUPERVISOR_JWT_ISSUER`           | Yes\*    | Expected issuer claim (e.g., `airo-app`)                                                    |
-| `DEV_SUPERVISOR_JWT_AUDIENCE`         | Yes\*    | Expected audience claim (e.g., `agents-service`)                                            |
-| `DEV_SUPERVISOR_JWT_REDIRECT_URL`     | Yes\*    | SSO login redirect URL with `{url}` placeholder                                             |
-| `DEV_SUPERVISOR_JWT_BUILDER_BASE_URL` | Yes\*    | Builder base URL for smart redirects                                                        |
-| `DEV_SUPERVISOR_JWT_EXCLUDED_PATHS`   | No       | Comma-separated paths to exclude from auth (default: `/airo/health`)                        |
-| `SITE_ID`                             | Yes\*    | Site/app ID for siteId claim validation                                                     |
-| `ALLOWED_ORIGINS`                     | No       | Comma-separated CORS allowed origins                                                        |
+**Environment variables:**
+
+| Variable                            | Required | Description                                                                                 |
+| ----------------------------------- | -------- | ------------------------------------------------------------------------------------------- |
+| `DEV_SUPERVISOR_ENABLE_JWT_AUTH`    | No       | Enable JWT authentication (default: `false`)                                                |
+| `DEV_SUPERVISOR_JWKS_URL`           | Yes\*    | JWKS endpoint URL (e.g., `https://local.gasket.dev-godaddy.com:8443/.well-known/jwks.json`) |
+| `DEV_SUPERVISOR_JWT_ISSUER`         | Yes\*    | Expected issuer claim (e.g., `airo-app`)                                                    |
+| `DEV_SUPERVISOR_JWT_AUDIENCE`       | Yes\*    | Expected audience claim (e.g., `agents-service`)                                            |
+| `DEV_SUPERVISOR_JWT_EXCLUDED_PATHS` | No       | Comma-separated paths to exclude from auth (default: `/airo/health`)                        |
+| `SITE_ID`                           | Yes\*    | Site/app ID for siteId claim validation                                                     |
+| `ALLOWED_ORIGINS`                   | No       | Comma-separated CORS allowed origins                                                        |
 
 \*Required when JWT auth is enabled
+
+**Values from `/alloc/config.json`:**
+
+The alloc config path defaults to `/alloc/config.json` but respects `NOMAD_ALLOC_DIR` (e.g., `$NOMAD_ALLOC_DIR/config.json` in production).
+
+| Key                | Description                                                                   |
+| ------------------ | ----------------------------------------------------------------------------- |
+| `JWT_REDIRECT_URL` | Redirect URL for unauthenticated browser requests (smart redirect to builder) |
 
 ### Features
 
@@ -537,10 +545,6 @@ DEV_SUPERVISOR_JWKS_URL=https://local.gasket.dev-godaddy.com:8443/.well-known/jw
 DEV_SUPERVISOR_JWT_ISSUER=airo-app
 DEV_SUPERVISOR_JWT_AUDIENCE=agents-service
 
-# Redirect configuration
-DEV_SUPERVISOR_JWT_REDIRECT_URL=https://sso.dev-godaddy.com/login?app=airo-builder&redirect={url}
-DEV_SUPERVISOR_JWT_BUILDER_BASE_URL=https://local.gasket.dev-godaddy.com:8443
-
 # Excluded paths (no auth required)
 DEV_SUPERVISOR_JWT_EXCLUDED_PATHS=/airo/health
 
@@ -549,6 +553,17 @@ SITE_ID=fc10ea7a-24ce-491e-9134-0604d423e8bc
 
 # CORS allowed origins
 ALLOWED_ORIGINS=https://local.gasket.dev-godaddy.com:8443,https://airo-builder.test-godaddy.com
+```
+
+And in `/alloc/config.json` (written by the builder's `config-json.ts` locally, `GenerateSystemSecretsTask` in production):
+
+```json
+{
+  "JWT_REDIRECT_URL": {
+    "SYSTEM_MANAGED": true,
+    "VALUE": "https://local.gasket.dev-godaddy.com:8443/develop/fc10ea7a-24ce-491e-9134-0604d423e8bc?siteId=fc10ea7a-24ce-491e-9134-0604d423e8bc"
+  }
+}
 ```
 
 ### Security

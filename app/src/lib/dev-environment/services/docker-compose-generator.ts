@@ -146,14 +146,6 @@ export class DockerComposeGenerator {
 			env.DEV_SUPERVISOR_JWT_ISSUER = 'airo-app';        // Must match builder's issuer
 			env.DEV_SUPERVISOR_JWT_AUDIENCE = 'agents-service'; // Must match builder's audience
 
-			// Smart redirect configuration:
-			// When users access preview apps directly (not via builder iframe), redirect them
-			// to the builder develop page with the specific app open.
-			// Works for both:
-			// - localhost:5001 (local: UUID format like 3d3bdcfd-a490-4475-a1a8-11c1a84e16d1)
-			// - 41gb5nrnyl.c4.test-airoapp.ai (production: short format like 41gb5nrnyl)
-			// Redirects to: https://airo-builder.{env}-godaddy.com/develop/{siteId}?siteId={siteId}
-			env.DEV_SUPERVISOR_JWT_BUILDER_BASE_URL = appUrl; // Builder base URL for redirects
 			env.DEV_SUPERVISOR_JWT_EXCLUDED_PATHS = "/airo/health";
 
 			// Auth failure handling uses hybrid mode (hardcoded in dev-supervisor):

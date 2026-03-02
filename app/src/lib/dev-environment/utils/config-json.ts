@@ -66,6 +66,9 @@ export interface AppSecretsConfig {
 	/** Customer/Shopper identifiers */
 	CUSTOMER_ID?: Secret<string>;
 	SHOPPER_ID?: Secret<string>;
+
+	/** JWT redirect URL for dev-supervisor auth failure redirects */
+	JWT_REDIRECT_URL?: Secret<string>;
 }
 
 /**
@@ -87,7 +90,8 @@ export class ConfigJsonManager {
 		oauthConfig?: {
 			clientId: string;
 			clientSecret: string;
-		}
+		},
+		jwtRedirectUrl?: string
 	): void {
 		logger.info('config.write.begin', {
 			configPath,
@@ -96,7 +100,7 @@ export class ConfigJsonManager {
 		});
 
 		try {
-			const config = this.fromDatabaseConfig(dbConfig, oauthConfig);
+			const config = this.fromDatabaseConfig(dbConfig, oauthConfig, jwtRedirectUrl);
 			const jsonContent = JSON.stringify(config, null, 2);
 
 			writeFileSync(configPath, jsonContent, {
@@ -174,7 +178,8 @@ export class ConfigJsonManager {
 		oauthConfig?: {
 			clientId: string;
 			clientSecret: string;
-		}
+		},
+		jwtRedirectUrl?: string
 	): AppSecretsConfig {
 		const config: AppSecretsConfig = {
 			DATABASE: {
@@ -204,6 +209,13 @@ export class ConfigJsonManager {
 			config.GODADDY_OAUTH_CLIENT_SECRET = {
 				SYSTEM_MANAGED: true,
 				VALUE: oauthConfig.clientSecret,
+			};
+		}
+
+		if (jwtRedirectUrl) {
+			config.JWT_REDIRECT_URL = {
+				SYSTEM_MANAGED: true,
+				VALUE: jwtRedirectUrl,
 			};
 		}
 

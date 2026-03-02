@@ -267,9 +267,6 @@ if (config.enableJwtAuth) {
   env.DEV_SUPERVISOR_JWT_ISSUER = "airo-app";
   env.DEV_SUPERVISOR_JWT_AUDIENCE = "agents-service";
 
-  // Smart redirect configuration
-  env.DEV_SUPERVISOR_JWT_REDIRECT_URL = `${ssoLoginUrl}?app=airo-builder&redirect={url}`;
-  env.DEV_SUPERVISOR_JWT_BUILDER_BASE_URL = appUrl;
   env.DEV_SUPERVISOR_JWT_EXCLUDED_PATHS = "/airo/health";
 
   // SITE_ID is required for authorization check
@@ -320,23 +317,23 @@ When users access preview apps directly (not through the builder iframe), they n
 
 **Configuration:**
 
-```typescript
-// docker-compose-generator.ts
-env.DEV_SUPERVISOR_JWT_REDIRECT_URL = `${ssoLoginUrl}?app=airo-builder&redirect={url}`;
-env.DEV_SUPERVISOR_JWT_BUILDER_BASE_URL = appUrl; // Builder base URL
-env.DEV_SUPERVISOR_APP_ID = config.appId; // App ID for all environments
+Smart redirect URLs are configured via `JWT_REDIRECT_URL` in `/alloc/config.json` (written by `config-json.ts` locally, by `GenerateSystemSecretsTask` in production):
+
+```json
+{
+  "JWT_REDIRECT_URL": {
+    "SYSTEM_MANAGED": true,
+    "VALUE": "https://airo-builder.test-godaddy.com/develop/{appId}?siteId={appId}"
+  }
+}
 ```
 
 **Middleware Logic:**
 
 ```go
-// jwt_middleware.go:buildSmartRedirectURL()
-// Simple approach: Use AppID from environment (set for all preview apps)
-if m.config.AppID == "" {
-    return "" // Use default redirect
-}
-return fmt.Sprintf("%s/develop/%s?siteId=%s",
-    builderBaseURL, m.config.AppID, m.config.AppID)
+// jwt_middleware.go:buildRedirectURL()
+// Reads JWT_REDIRECT_URL from /alloc/config.json (cached with 5s TTL)
+redirectURL := config.GetJWTRedirectURL()
 ```
 
 ## Flow Diagrams

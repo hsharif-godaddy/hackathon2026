@@ -41,10 +41,21 @@ func TestDefault(t *testing.T) {
 }
 
 func TestNewLoader(t *testing.T) {
-	t.Run("default path when empty", func(t *testing.T) {
+	t.Run("default path when empty and NOMAD_ALLOC_DIR unset", func(t *testing.T) {
+		t.Setenv("NOMAD_ALLOC_DIR", "")
 		loader := NewLoader("")
-		if loader.path != DefaultAllocConfigPath {
-			t.Errorf("got path %q, want %q", loader.path, DefaultAllocConfigPath)
+		want := "/alloc/config.json"
+		if loader.path != want {
+			t.Errorf("got path %q, want %q", loader.path, want)
+		}
+	})
+
+	t.Run("uses NOMAD_ALLOC_DIR when set", func(t *testing.T) {
+		t.Setenv("NOMAD_ALLOC_DIR", "/nomad/alloc/abc123")
+		loader := NewLoader("")
+		want := "/nomad/alloc/abc123/config.json"
+		if loader.path != want {
+			t.Errorf("got path %q, want %q", loader.path, want)
 		}
 	})
 
@@ -53,6 +64,26 @@ func TestNewLoader(t *testing.T) {
 		loader := NewLoader(customPath)
 		if loader.path != customPath {
 			t.Errorf("got path %q, want %q", loader.path, customPath)
+		}
+	})
+}
+
+func TestDefaultAllocConfigPath(t *testing.T) {
+	t.Run("returns /alloc/config.json when NOMAD_ALLOC_DIR unset", func(t *testing.T) {
+		t.Setenv("NOMAD_ALLOC_DIR", "")
+		got := defaultAllocConfigPath()
+		want := "/alloc/config.json"
+		if got != want {
+			t.Errorf("defaultAllocConfigPath() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("uses NOMAD_ALLOC_DIR when set", func(t *testing.T) {
+		t.Setenv("NOMAD_ALLOC_DIR", "/nomad/alloc/abc123")
+		got := defaultAllocConfigPath()
+		want := "/nomad/alloc/abc123/config.json"
+		if got != want {
+			t.Errorf("defaultAllocConfigPath() = %q, want %q", got, want)
 		}
 	})
 }

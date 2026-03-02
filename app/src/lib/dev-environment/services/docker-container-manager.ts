@@ -484,10 +484,18 @@ export class DockerContainerManager {
 				  }
 				: undefined;
 
-			// Write config.json with database and OAuth credentials to alloc directory
+			// Compute JWT redirect URL for dev-supervisor auth failure redirects
+			// Format matches production's GenerateSystemSecretsTask
+			let jwtRedirectUrl: string | undefined;
+			if (shouldEnableJwtAuth()) {
+				const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://local.gasket.dev-godaddy.com:8443';
+				jwtRedirectUrl = `${appUrl}/develop/${appId}?siteId=${appId}`;
+			}
+
+			// Write config.json with database, OAuth, and JWT redirect URL to alloc directory
 			const allocPath = getAllocPath(appId);
 			const configPath = path.join(allocPath, 'config.json');
-			ConfigJsonManager.writeConfigFile(configPath, dbConfig, oauthConfig);
+			ConfigJsonManager.writeConfigFile(configPath, dbConfig, oauthConfig, jwtRedirectUrl);
 
 			logger.info('database.provision.success', {
 				appId

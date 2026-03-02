@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -11,15 +12,23 @@ import (
 )
 
 const (
-	// DefaultAllocConfigPath is the standard location for allocation configuration
-	DefaultAllocConfigPath = "/alloc/config.json"
-
 	// DefaultCacheTTL is the default cache duration for config values
 	// Short duration (5s) balances:
 	// - Freshness: Config changes picked up quickly (within 5 seconds)
 	// - DoS resistance: Limits file I/O during authentication floods
 	DefaultCacheTTL = 5 * time.Second
 )
+
+// defaultAllocConfigPath returns the path to config.json based on NOMAD_ALLOC_DIR.
+// In production, Nomad sets NOMAD_ALLOC_DIR to the allocation directory.
+// In local dev, it defaults to /alloc (where docker-compose mounts the alloc directory).
+func defaultAllocConfigPath() string {
+	allocDir := os.Getenv("NOMAD_ALLOC_DIR")
+	if allocDir == "" {
+		allocDir = "/alloc"
+	}
+	return filepath.Join(allocDir, "config.json")
+}
 
 // Secret represents a generic SYSTEM_MANAGED secret wrapper
 // T is the type of the secret value (string, DatabaseConfig, etc.)
@@ -98,7 +107,7 @@ type Loader struct {
 }
 
 // NewLoader creates a new config loader with default cache TTL
-// If path is empty, uses DefaultAllocConfigPath
+// If path is empty, uses defaultAllocConfigPath() (respects NOMAD_ALLOC_DIR)
 func NewLoader(path string) *Loader {
 	return NewLoaderWithTTL(path, DefaultCacheTTL)
 }
@@ -107,7 +116,7 @@ func NewLoader(path string) *Loader {
 // Set ttl to 0 to disable caching (always read from disk)
 func NewLoaderWithTTL(path string, ttl time.Duration) *Loader {
 	if path == "" {
-		path = DefaultAllocConfigPath
+		path = defaultAllocConfigPath()
 	}
 	return &Loader{
 		path:     path,
