@@ -1,12 +1,14 @@
 'use client';
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { FormattedMessage } from 'react-intl';
 import Alert from '@ux/alert';
 import Button from '@ux/button';
 import text from '@ux/text';
 
 import { ChatTab, SettingsSection } from '@/app/develop/components/types';
+import { Feedback } from '@/components/feedback/Feedback';
+import { FEEDBACK_ID } from '@/components/feedback/utils';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { usePublishApp } from '@/hooks/usePublishApp';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
@@ -36,6 +38,7 @@ import { hasBeenPublished } from '@/utils/site';
  */
 export default function PublishStatusAlert() {
   const t = useTranslations();
+  const [showFeedback, setShowFeedback] = useState(false);
   const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
@@ -169,9 +172,32 @@ export default function PublishStatusAlert() {
     }
   }, [isGoLiveEnabled, showSuccessAlert, currentAppId, site, getPublishState, setShowGoLiveModal]);
 
+  useEffect(() => {
+    if (!isPublishing && !publishError && !showSuccessAlert) {
+      setShowFeedback(false);
+    }
+  }, [isPublishing, publishError, showSuccessAlert]);
+
   if (!isPublishing && !publishError && !showSuccessAlert) {
     return null;
   }
+
+  const feedbackButton = (
+    <Button
+      design="secondary"
+      text={t('builder_settings_nav_feedback')}
+      data-eid={generateClickEID('publish-alert.feedback')}
+      onClick={() => setShowFeedback(true)}
+    />
+  );
+
+  const feedbackModal = showFeedback && (
+    <Feedback
+      feedbackId={FEEDBACK_ID}
+      onClose={() => setShowFeedback(false)}
+      onSubmitSuccess={() => setShowFeedback(false)}
+    />
+  );
 
   // Show success alert when deployment completes
   if (showSuccessAlert && currentAppId && hasBeenPublished(site)) {
@@ -194,20 +220,32 @@ export default function PublishStatusAlert() {
             />
           )}
         >
-          <FormattedMessage
-            id='builder_publish_success_message'
-            values={{
-              fqdn: (
-                <Button
-                  design='inline'
-                  href={fqdn}
-                  text={fqdn.replace('https://', '')}
-                  external
-                />
-              )
-            }}
-          />
+          <div className='flex flex-col gap-0.5'>
+            <span>
+              <FormattedMessage
+                id='builder_publish_success_message'
+                values={{
+                  fqdn: (
+                    <Button
+                      design='inline'
+                      href={fqdn}
+                      text={fqdn.replace('https://', '')}
+                      external
+                    />
+                  )
+                }}
+              />
+            </span>
+            <Button
+              design='inline'
+              data-eid={generateClickEID('publish-alert.success.feedback')}
+              onClick={() => setShowFeedback(true)}
+            >
+              <text.span emphasis='passive'>{t('builder_settings_nav_feedback')}</text.span>
+            </Button>
+          </div>
         </Alert>
+        {feedbackModal}
       </div>
     );
   }
@@ -218,9 +256,11 @@ export default function PublishStatusAlert() {
         <Alert
           emphasis='info'
           title={t('builder_publish_progress_title')}
+          actions={feedbackButton}
         >
           {t('builder_publish_progress_message')}
         </Alert>
+        {feedbackModal}
       </div>
     );
   }

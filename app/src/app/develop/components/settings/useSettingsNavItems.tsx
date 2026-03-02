@@ -15,6 +15,7 @@ import SocialIcon from '@ux/icon/social';
 import Users3Icon from '@ux/icon/users3';
 
 import { SettingsSection } from '@/app/develop/components/types';
+import { FEEDBACK_ID } from '@/components/feedback/utils';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
@@ -55,8 +56,8 @@ export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] 
   const { data: isMarketingEnabled } = useSwitchboard('appbuilder-settings-marketing', { enabled });
 
   const handleFeedbackClick = () => {
-    localStorage.removeItem('airo-feedback-shown:airo#app-builder');
-    openFeedbackModal('airo#app-builder');
+    localStorage.removeItem(`airo-feedback-shown:${FEEDBACK_ID}`);
+    openFeedbackModal(FEEDBACK_ID);
   };
 
   return [

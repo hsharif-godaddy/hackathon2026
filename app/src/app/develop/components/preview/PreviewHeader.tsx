@@ -13,6 +13,7 @@ import IconButton from '@/app/develop/components/IconButton'
 import DeviceSelector from '@/app/develop/components/preview/DeviceSelector'
 import { SettingsSection, ViewMode } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
+import { FEEDBACK_ID } from '@/components/feedback/utils'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -156,7 +157,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
           } else if (actualPort) {
             window.open(`http://localhost:${actualPort}`, '_blank')
           }
-          openFeedbackModal('airo#app-builder')
+          openFeedbackModal(FEEDBACK_ID)
         }}
         dataEid={ generateClickEID('develop.preview.new_tab') }
         disabled={!actualPort || isRestarting}

@@ -54,8 +54,6 @@ export function Feedback(props: FeedbackProps) {
     });
   }, [feedbackId, onClose]);
 
-  if (!config) return null;
-
   return (
     <Modal
       className="max-w-2xl"

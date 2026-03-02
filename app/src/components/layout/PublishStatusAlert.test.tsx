@@ -3,6 +3,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
+import { FEEDBACK_ID } from '@/components/feedback/utils';
 import { renderWithProviders } from '@/tests/test-utils';
 import PublishStatusAlert from './PublishStatusAlert';
 
@@ -64,6 +65,17 @@ vi.mock('@/hooks/useChatTabs', () => ({
 }));
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: () => mockUseSwitchboard(),
+}));
+vi.mock('@/components/feedback/Feedback', () => ({
+  Feedback: ({ onClose, onSubmitSuccess }: { onClose: () => void; onSubmitSuccess: () => void }) => (
+    <div data-testid='feedback-modal'>
+      <button onClick={onClose}>close-feedback</button>
+      <button onClick={onSubmitSuccess}>submit-feedback</button>
+    </div>
+  ),
+}));
+vi.mock('@/components/feedback/utils', () => ({
+  FEEDBACK_ID: 'airo#app-builder',
 }));
 
 describe('PublishStatusAlert', () => {
@@ -406,5 +418,157 @@ describe('PublishStatusAlert', () => {
     renderWithProviders(<PublishStatusAlert />);
 
     expect(mockDevelopStore.setShowGoLiveModal).not.toHaveBeenCalled();
+  });
+
+  describe('feedback button', () => {
+    it('should render feedback button in publishing state', () => {
+      mockDevelopStore.publishStates = {
+        'app-123': { isPublishing: true },
+      };
+
+      renderWithProviders(<PublishStatusAlert />);
+
+      expect(screen.getByText('builder_settings_nav_feedback')).toBeInTheDocument();
+    });
+
+    it('should open feedback modal when feedback button clicked in publishing state', async () => {
+      mockDevelopStore.publishStates = {
+        'app-123': { isPublishing: true },
+      };
+
+      const { user } = renderWithProviders(<PublishStatusAlert />);
+
+      await user.click(screen.getByText('builder_settings_nav_feedback'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('feedback-modal')).toBeInTheDocument();
+      });
+    });
+
+    it('should render feedback link in success state', () => {
+      mockDevelopStore.publishStates = {
+        'app-123': { showSuccessAlert: true },
+      };
+      mockSiteStore.getSite.mockReturnValue({
+        id: 'app-123',
+        published_url: 'https://example.com',
+      });
+
+      renderWithProviders(<PublishStatusAlert />);
+
+      expect(screen.getByText('builder_settings_nav_feedback')).toBeInTheDocument();
+    });
+
+    it('should open feedback modal when feedback link clicked in success state', async () => {
+      mockDevelopStore.publishStates = {
+        'app-123': { showSuccessAlert: true },
+      };
+      mockSiteStore.getSite.mockReturnValue({
+        id: 'app-123',
+        published_url: 'https://example.com',
+      });
+
+      const { user } = renderWithProviders(<PublishStatusAlert />);
+
+      await user.click(screen.getByText('builder_settings_nav_feedback'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('feedback-modal')).toBeInTheDocument();
+      });
+    });
+
+    it('should close feedback modal via onClose callback', async () => {
+      mockDevelopStore.publishStates = {
+        'app-123': { isPublishing: true },
+      };
+
+      const { user } = renderWithProviders(<PublishStatusAlert />);
+
+      await user.click(screen.getByText('builder_settings_nav_feedback'));
+      await waitFor(() => expect(screen.getByTestId('feedback-modal')).toBeInTheDocument());
+
+      await user.click(screen.getByText('close-feedback'));
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('feedback-modal')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should close feedback modal via onSubmitSuccess callback', async () => {
+      mockDevelopStore.publishStates = {
+        'app-123': { isPublishing: true },
+      };
+
+      const { user } = renderWithProviders(<PublishStatusAlert />);
+
+      await user.click(screen.getByText('builder_settings_nav_feedback'));
+      await waitFor(() => expect(screen.getByTestId('feedback-modal')).toBeInTheDocument());
+
+      await user.click(screen.getByText('submit-feedback'));
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('feedback-modal')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should reset showFeedback when alert state clears', async () => {
+      mockDevelopStore.publishStates = {
+        'app-123': { isPublishing: true },
+      };
+
+      const { user, rerender } = renderWithProviders(<PublishStatusAlert />);
+
+      await user.click(screen.getByText('builder_settings_nav_feedback'));
+      await waitFor(() => expect(screen.getByTestId('feedback-modal')).toBeInTheDocument());
+
+      // Simulate publish completing — alert disappears
+      mockDevelopStore.publishStates = {};
+      rerender(<PublishStatusAlert />);
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('feedback-modal')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should not reopen feedback modal on next publish after previous session', async () => {
+      mockDevelopStore.publishStates = {
+        'app-123': { isPublishing: true },
+      };
+
+      const { user, rerender } = renderWithProviders(<PublishStatusAlert />);
+
+      await user.click(screen.getByText('builder_settings_nav_feedback'));
+      await waitFor(() => expect(screen.getByTestId('feedback-modal')).toBeInTheDocument());
+
+      // Alert disappears
+      mockDevelopStore.publishStates = {};
+      rerender(<PublishStatusAlert />);
+      await waitFor(() => expect(screen.queryByTestId('feedback-modal')).not.toBeInTheDocument());
+
+      // Next publish starts
+      mockDevelopStore.publishStates = {
+        'app-123': { isPublishing: true },
+      };
+      rerender(<PublishStatusAlert />);
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('feedback-modal')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should use FEEDBACK_ID constant for feedbackId prop', async () => {
+      mockDevelopStore.publishStates = {
+        'app-123': { isPublishing: true },
+      };
+
+      const { user } = renderWithProviders(<PublishStatusAlert />);
+
+      await user.click(screen.getByText('builder_settings_nav_feedback'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('feedback-modal')).toBeInTheDocument();
+        expect(FEEDBACK_ID).toBe('airo#app-builder');
+      });
+    });
   });
 });

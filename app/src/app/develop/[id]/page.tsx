@@ -23,6 +23,7 @@ import { clearExpiredWidgetStates } from '@/app/develop/components/widgets'
 import { useInitialization } from '@/app/develop/hooks/useInitialization'
 import { ProtectedRoute } from '@/components/auth'
 import { Feedback } from '@/components/feedback/Feedback'
+import { FEEDBACK_ID } from '@/components/feedback/utils'
 import Header from '@/components/layout/Header'
 import PostPublishGoLiveModal from '@/components/layout/PostPublishGoLiveModal'
 import PublishLimitModal from '@/components/layout/PublishLimitModal'
@@ -1022,9 +1023,9 @@ function DevelopPageContent() {
           </div>
         )}
 
-        {openFeedbackId === "airo#app-builder" && (
+        {openFeedbackId === FEEDBACK_ID && (
           <Feedback
-            feedbackId="airo#app-builder"
+            feedbackId={FEEDBACK_ID}
             onClose={closeFeedbackModal}
             onSubmitSuccess={closeFeedbackModal}
           />

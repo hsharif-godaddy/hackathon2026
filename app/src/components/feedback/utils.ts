@@ -8,6 +8,8 @@ declare global {
   }
 }
 
+export const FEEDBACK_ID = 'airo#app-builder';
+
 export const getBaseUrl = () => {
   const hostname = window.location.hostname;
   const envPrefix = hostname.includes('dev-') ? 'dev-' : hostname.includes('test-') ? 'test-' : '';
