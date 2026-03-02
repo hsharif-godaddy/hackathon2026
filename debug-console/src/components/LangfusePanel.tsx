@@ -70,6 +70,7 @@ interface Observation {
   output?: unknown;
   statusMessage?: string;
   level?: string;
+  parentObservationId?: string;
   startTime?: string;
   endTime?: string;
   promptTokens?: number;
@@ -137,9 +138,26 @@ interface ToolCallInfo {
   toolCallId?: string;
 }
 
+interface AgentStep {
+  generationId: string;
+  text: string;
+  toolCalls: {
+    name: string;
+    args?: string;
+    toolCallId?: string;
+    result?: unknown;
+    durationMs?: number;
+    success?: boolean;
+    statusMessage?: string;
+  }[];
+  durationMs?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+}
+
 interface ConversationItem {
   id: string;
-  type: 'user' | 'assistant';
+  type: 'user' | 'assistant' | 'summarization';
   timestamp: string;
   content: string;
   agentName?: string;
@@ -165,6 +183,19 @@ interface ConversationItem {
   cacheCreationTokens?: number;
   cacheReadTokens?: number;
   toolObservations?: Observation[];
+  traceLatencyMs?: number;
+  llmStepCount?: number;
+  toolTimings?: { name: string; durationMs: number }[];
+  totalToolTimeMs?: number;
+  totalLlmTimeMs?: number;
+  summaryTimeMs?: number;
+  ragTimeMs?: number;
+  observationErrors?: { name: string; message: string; obsType?: string }[];
+  agentSteps?: AgentStep[];
+  // Summarization-only trace fields
+  summaryStepCount?: number;
+  summarySteps?: { name: string; durationMs: number; inputTokens: number; outputTokens: number; outputPreview?: string }[];
+  queueDelayMs?: number;
 }
 
 interface LangfusePanelProps {
@@ -186,6 +217,10 @@ function formatNumber(n: number): string {
   return n.toString();
 }
 
+function formatMs(ms: number): string {
+  return Math.round(ms).toLocaleString('en-US');
+}
+
 function getMessageContent(content: Message['content']): string | null {
   if (!content) return null;
   if (typeof content === 'string') return content;
@@ -196,7 +231,14 @@ function getMessageContent(content: Message['content']): string | null {
   return null;
 }
 
-function extractConversationItems(sessions: Session[]): ConversationItem[] {
+// Fraction of generations that must be summarization-type for a trace to be treated as a
+// summarization-only card. 0.75 means if >75% of generations are summarization, render as
+// a compact summarization card instead of an agent response bubble.
+const SUMMARIZATION_DOMINANCE_THRESHOLD = 0.75;
+
+// Exported for testing
+export type { Session, ConversationItem };
+export function extractConversationItems(sessions: Session[]): ConversationItem[] {
   const items: ConversationItem[] = [];
   let itemId = 0;
 
@@ -206,12 +248,27 @@ function extractConversationItems(sessions: Session[]): ConversationItem[] {
     const sortedTraces = [...session.traces].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
     for (const trace of sortedTraces) {
-      const generationObservations = trace.observations?.filter(obs => obs.type === 'GENERATION') || [];
-      const generationObs = generationObservations[0];
-      const obsAttrs = generationObs?.metadata?.attributes;
+      const generationObservations = (trace.observations?.filter(obs => obs.type === 'GENERATION') || [])
+        .sort((a, b) => new Date(a.startTime || a.endTime || trace.timestamp).getTime() - new Date(b.startTime || b.endTime || trace.timestamp).getTime());
+
+      // Separate agent vs non-agent (summarization) generations for proper selection
+      const agentGenObs = generationObservations.filter(obs => !obs.name || /^agent-/i.test(obs.name));
+      const nonAgentGenObs = generationObservations.filter(obs => obs.name && !/^agent-/i.test(obs.name));
+
+      // Pick the text-producing generation: prefer agent generation with ai.response.text,
+      // then last agent generation, then any generation with ai.response.text, then last overall.
+      // This avoids picking summarization output as the "assistant response".
+      const textGenObs =
+        agentGenObs.find(obs => obs.metadata?.attributes?.['ai.response.text']) ||
+        (agentGenObs.length > 0 ? agentGenObs[agentGenObs.length - 1] : null) ||
+        generationObservations.find(obs => obs.metadata?.attributes?.['ai.response.text']) ||
+        generationObservations[generationObservations.length - 1];
+      // First generation has the initial input/messages for display
+      const firstGenObs = generationObservations[0];
+      const obsAttrs = textGenObs?.metadata?.attributes;
 
       const traceInput = trace.input;
-      const obsInput = generationObs?.input;
+      const obsInput = firstGenObs?.input;
       const input = (traceInput && typeof traceInput === 'object') ? traceInput : obsInput;
 
       let messagesArray: Message[] | undefined;
@@ -231,34 +288,49 @@ function extractConversationItems(sessions: Session[]): ConversationItem[] {
         systemPrompt = (input as TraceInput).system;
       }
 
-      const inputTokens = generationObs?.promptTokens;
-      const outputTokens = generationObs?.completionTokens;
-      const totalTokens = generationObs?.totalTokens;
+      // Aggregate tokens across all generation steps for accurate totals
+      let inputTokens = 0;
+      let outputTokens = 0;
+      let totalTokens = 0;
+      let totalCost = 0;
+      for (const gen of generationObservations) {
+        inputTokens += gen.promptTokens || 0;
+        outputTokens += gen.completionTokens || 0;
+        totalTokens += gen.totalTokens || 0;
+        totalCost += gen.calculatedTotalCost || 0;
+      }
+      // If no generations had tokens, set to undefined to avoid showing 0
+      const hasTokenData = generationObservations.some(g => g.promptTokens || g.completionTokens);
 
-      // Parse ai.usage.cachedInputTokens (can be JSON string like '{"intValue":0}' or plain number)
+      // Parse ai.usage.cachedInputTokens from the text-producing generation
       let cachedTokens: number | undefined;
-      const cachedTokensRaw = obsAttrs?.['ai.usage.cachedInputTokens'];
-      if (cachedTokensRaw) {
-        if (typeof cachedTokensRaw === 'number') {
-          cachedTokens = cachedTokensRaw;
-        } else if (typeof cachedTokensRaw === 'string') {
-          try {
-            const parsed = JSON.parse(cachedTokensRaw);
-            cachedTokens = parsed.intValue ?? parsed;
-          } catch {
-            const num = parseInt(cachedTokensRaw, 10);
-            cachedTokens = isNaN(num) ? undefined : num;
+      // Also check all generations for cached tokens
+      for (const gen of generationObservations) {
+        const genAttrs = gen.metadata?.attributes;
+        const cachedTokensRaw = genAttrs?.['ai.usage.cachedInputTokens'];
+        if (cachedTokensRaw) {
+          if (typeof cachedTokensRaw === 'number') {
+            cachedTokens = (cachedTokens || 0) + cachedTokensRaw;
+          } else if (typeof cachedTokensRaw === 'string') {
+            try {
+              const parsed = JSON.parse(cachedTokensRaw);
+              const val = parsed.intValue ?? parsed;
+              if (typeof val === 'number') cachedTokens = (cachedTokens || 0) + val;
+            } catch {
+              const num = parseInt(cachedTokensRaw, 10);
+              if (!isNaN(num)) cachedTokens = (cachedTokens || 0) + num;
+            }
           }
         }
       }
 
-      const cost = generationObs?.calculatedTotalCost;
-      const model = obsAttrs?.['ai.model.id'] || generationObs?.model;
+      const cost = totalCost || undefined;
+      const model = obsAttrs?.['ai.model.id'] || textGenObs?.model;
       const provider = obsAttrs?.['ai.model.provider'];
       const temperature = obsAttrs?.['ai.settings.temperature'] ? parseFloat(obsAttrs['ai.settings.temperature']) : undefined;
       const finishReason = obsAttrs?.['ai.response.finishReason'];
 
-      // Extract streaming performance metrics
+      // Extract streaming performance metrics from the text-producing generation
       const msToFirstChunkStr = obsAttrs?.['ai.response.msToFirstChunk'];
       const msToFirstChunk = typeof msToFirstChunkStr === 'string'
         ? parseInt(msToFirstChunkStr, 10)
@@ -281,6 +353,66 @@ function extractConversationItems(sessions: Session[]): ConversationItem[] {
       // Extract cache metrics from providerMetadata
       const cacheCreationTokens = providerMetadata?.cache_creation_input_tokens as number | undefined;
       const cacheReadTokens = providerMetadata?.cache_read_input_tokens as number | undefined;
+
+      // Compute trace-level metrics from all observations
+      const allObservations = trace.observations || [];
+
+      // traceLatencyMs: max(obs.endTime) - trace.timestamp
+      const traceStartMs = new Date(trace.timestamp).getTime();
+      const endTimes = allObservations
+        .filter(obs => obs.endTime)
+        .map(obs => new Date(obs.endTime!).getTime());
+      const traceLatencyMs = endTimes.length > 0
+        ? Math.max(...endTimes) - traceStartMs
+        : undefined;
+
+      // Reuse agentGenObs/nonAgentGenObs from above for metrics
+      const summaryGenerations = nonAgentGenObs.filter(obs => obs.name && /^summarization/i.test(obs.name));
+
+      // llmStepCount: only agent steps
+      const llmStepCount = agentGenObs.length;
+
+      // totalLlmTimeMs: sum of (endTime - startTime) for agent GENERATIONs only
+      let totalLlmTimeMs = 0;
+      for (const gen of agentGenObs) {
+        if (gen.startTime && gen.endTime) {
+          totalLlmTimeMs += new Date(gen.endTime).getTime() - new Date(gen.startTime).getTime();
+        }
+      }
+
+      // summaryTimeMs: sum of summarization GENERATIONs
+      let summaryTimeMs = 0;
+      for (const gen of summaryGenerations) {
+        if (gen.startTime && gen.endTime) {
+          summaryTimeMs += new Date(gen.endTime).getTime() - new Date(gen.startTime).getTime();
+        }
+      }
+
+      // toolTimings: per-tool timing from TOOL observations
+      const toolObsForTimings = allObservations.filter(obs => obs.type === 'TOOL');
+      const toolTimings: { name: string; durationMs: number }[] = [];
+      let totalToolTimeMs = 0;
+      for (const toolObs of toolObsForTimings) {
+        if (toolObs.startTime && toolObs.endTime) {
+          const dur = new Date(toolObs.endTime).getTime() - new Date(toolObs.startTime).getTime();
+          toolTimings.push({ name: toolObs.name, durationMs: dur });
+          totalToolTimeMs += dur;
+        }
+      }
+
+      // ragTimeMs: find SPAN observation with name containing KnowB, Retrieval, or rag
+      let ragTimeMs: number | undefined;
+      const ragObs = allObservations.find(obs =>
+        obs.type === 'SPAN' && obs.name && /knowb|retrieval|rag/i.test(obs.name)
+      );
+      if (ragObs?.startTime && ragObs?.endTime) {
+        ragTimeMs = new Date(ragObs.endTime).getTime() - new Date(ragObs.startTime).getTime();
+      }
+
+      // observationErrors: observations with level === 'ERROR'
+      const observationErrors = allObservations
+        .filter(obs => obs.level === 'ERROR')
+        .map(obs => ({ name: obs.name, message: obs.statusMessage || 'Unknown error', obsType: obs.type }));
 
       const toolCalls: ToolCallInfo[] = [];
 
@@ -387,8 +519,68 @@ function extractConversationItems(sessions: Session[]): ConversationItem[] {
         }
       }
 
-      const messageTimestamp = generationObs?.startTime || trace.timestamp;
-      const responseTimestamp = generationObs?.endTime || trace.timestamp;
+      const messageTimestamp = firstGenObs?.startTime || trace.timestamp;
+      const responseTimestamp = textGenObs?.endTime || trace.timestamp;
+
+      // Detect summarization-dominated traces: when summarization generations make up the
+      // majority of all generations. Threshold is 75% because mixed traces (e.g., 1 agent gen +
+      // 3 summarization gens) should still render as agent responses with summary timing in the
+      // details section, not as standalone summarization cards.
+      const isSummarizationOnly = summaryGenerations.length > 0
+        && summaryGenerations.length > generationObservations.length * SUMMARIZATION_DOMINANCE_THRESHOLD;
+
+      if (isSummarizationOnly) {
+        // Build per-step details for the summarization card
+        const summarySteps: ConversationItem['summarySteps'] = [];
+        for (const gen of summaryGenerations) {
+          const dur = gen.startTime && gen.endTime
+            ? new Date(gen.endTime).getTime() - new Date(gen.startTime).getTime()
+            : 0;
+          let outputPreview: string | undefined;
+          if (gen.output && typeof gen.output === 'object' && 'content' in gen.output) {
+            const content = (gen.output as { content?: string }).content;
+            if (typeof content === 'string') outputPreview = content.substring(0, 200);
+          } else if (typeof gen.output === 'string') {
+            outputPreview = gen.output.substring(0, 200);
+          }
+          summarySteps.push({
+            name: gen.name || 'summarization',
+            durationMs: dur,
+            inputTokens: gen.promptTokens || 0,
+            outputTokens: gen.completionTokens || 0,
+            outputPreview,
+          });
+        }
+
+        // Queue delay: trace.timestamp → first generation startTime
+        const firstSummaryStart = summaryGenerations[0]?.startTime;
+        const queueDelayMs = firstSummaryStart
+          ? new Date(firstSummaryStart).getTime() - traceStartMs
+          : undefined;
+
+        items.push({
+          id: `item-${itemId++}`,
+          type: 'summarization',
+          timestamp: messageTimestamp,
+          content: `${summaryGenerations.length} summarization steps [${trace.id}]`,
+          traceId: trace.id,
+          sessionId: session.sessionId,
+          inputTokens: hasTokenData ? inputTokens : undefined,
+          outputTokens: hasTokenData ? outputTokens : undefined,
+          totalTokens: hasTokenData ? totalTokens : undefined,
+          cost,
+          model,
+          provider,
+          temperature,
+          traceLatencyMs,
+          summaryTimeMs: summaryTimeMs > 0 ? summaryTimeMs : undefined,
+          summaryStepCount: summaryGenerations.length,
+          summarySteps,
+          queueDelayMs: queueDelayMs != null && queueDelayMs > 5000 ? queueDelayMs : undefined,
+          observationErrors: observationErrors.length > 0 ? observationErrors : undefined,
+        });
+      } else {
+      // Normal user/assistant flow
 
       let userContent: string | undefined;
 
@@ -414,7 +606,7 @@ function extractConversationItems(sessions: Session[]): ConversationItem[] {
           userContent.length > 20) {
         const exists = items.some(i => i.type === 'user' && i.content === userContent);
         if (!exists) {
-          const isLargeContext = (inputTokens || 0) > 50000;
+          const isLargeContext = inputTokens > 50000;
           const previousItem = items[items.length - 1];
           const previousAgentName = previousItem?.type === 'assistant' ? previousItem.agentName : undefined;
           const isAgentHandoff = isLargeContext && !!previousAgentName && previousAgentName !== agentName;
@@ -427,7 +619,7 @@ function extractConversationItems(sessions: Session[]): ConversationItem[] {
             content: userContent,
             traceId: trace.id,
             sessionId: session.sessionId,
-            inputTokens,
+            inputTokens: hasTokenData ? inputTokens : undefined,
             systemPrompt,
             rawInput: input,
             isAgentHandoff,
@@ -438,9 +630,9 @@ function extractConversationItems(sessions: Session[]): ConversationItem[] {
 
       let responseText: string | undefined;
 
-      // Priority 1: output.content in GENERATION observation (NEW Langfuse format)
-      if (generationObs?.output) {
-        const genOutput = generationObs.output;
+      // Priority 1: output.content in text-producing GENERATION observation (NEW Langfuse format)
+      if (textGenObs?.output) {
+        const genOutput = textGenObs.output;
         if (typeof genOutput === 'object' && 'content' in genOutput) {
           const content = (genOutput as { content?: string }).content;
           if (typeof content === 'string' && content.length > 0) {
@@ -456,7 +648,22 @@ function extractConversationItems(sessions: Session[]): ConversationItem[] {
         responseText = obsAttrs['ai.response.text'];
       }
 
-      // Priority 3: trace.output (fallback)
+      // Priority 3: First agent generation with output content (agent thinking text)
+      // In tool-loop traces where the last step ends with tool_calls, the first generation
+      // often has the agent's initial response/plan text.
+      if (!responseText && agentGenObs.length > 0) {
+        for (const gen of agentGenObs) {
+          if (gen.output && typeof gen.output === 'object' && 'content' in gen.output) {
+            const content = (gen.output as { content?: string }).content;
+            if (typeof content === 'string' && content.length > 0) {
+              responseText = content;
+              break;
+            }
+          }
+        }
+      }
+
+      // Priority 4: trace.output (fallback)
       if (!responseText) {
         const output = trace.output;
         if (typeof output === 'string' && output.length > 0) {
@@ -464,6 +671,122 @@ function extractConversationItems(sessions: Session[]): ConversationItem[] {
         } else if (output && typeof output === 'object') {
           const outputObj = output as { text?: string; content?: string; 'ai.response.text'?: string };
           responseText = outputObj.content || outputObj.text || outputObj['ai.response.text'];
+        }
+      }
+
+      // Build agent steps: interleave each agent GENERATION's text with its tool calls
+      let agentSteps: AgentStep[] | undefined;
+      if (agentGenObs.length > 0) {
+        const steps: AgentStep[] = [];
+        for (let gi = 0; gi < agentGenObs.length; gi++) {
+          const gen = agentGenObs[gi];
+
+          // Extract text from generation output
+          let stepText = '';
+          if (gen.output && typeof gen.output === 'object' && 'content' in gen.output) {
+            const content = (gen.output as { content?: string }).content;
+            if (typeof content === 'string') stepText = content;
+          } else if (typeof gen.output === 'string') {
+            stepText = gen.output;
+          }
+
+          // Parse tool_calls from generation output
+          const stepToolCalls: AgentStep['toolCalls'] = [];
+          const matchedToolObsIds = new Set<string>();
+          if (gen.output && typeof gen.output === 'object') {
+            const genOut = gen.output as { tool_calls?: string; toolCalls?: Array<{ toolName?: string; name?: string; args?: unknown; input?: unknown; toolCallId?: string }> };
+            let parsedCalls: Array<{ toolName?: string; name?: string; args?: unknown; input?: unknown; toolCallId?: string }> = [];
+            if (typeof genOut.tool_calls === 'string') {
+              try { parsedCalls = JSON.parse(genOut.tool_calls); } catch { /* ignore */ }
+            } else if (Array.isArray(genOut.toolCalls)) {
+              parsedCalls = genOut.toolCalls;
+            }
+            for (const tc of parsedCalls) {
+              const tcName = tc.toolName || tc.name;
+              if (!tcName) continue;
+              const tcArgs = (tc.input || tc.args) ? JSON.stringify(tc.input || tc.args, null, 2) : undefined;
+              const tcId = tc.toolCallId;
+
+              // Find matching TOOL observation by parentObservationId → generationId, or by toolCallId, or by name+time window
+              const nextGenStart = gi + 1 < agentGenObs.length
+                ? new Date(agentGenObs[gi + 1].startTime || 0).getTime()
+                : Infinity;
+              const genStartMs = new Date(gen.startTime || 0).getTime();
+
+              // Track which TOOL observations have already been claimed by a prior tool call in this step
+              const matchedToolObs = toolTypeObservations.find(tObs => {
+                if (matchedToolObsIds.has(tObs.id)) return false;
+                // Strategy 1: Match by toolCallId (most precise, works across parents)
+                const obsToolCallId = tObs.metadata?.attributes?.['ai.toolCall.id'] as string | undefined;
+                if (tcId && obsToolCallId && obsToolCallId === tcId) return true;
+                // Strategy 2: Match by parentObservationId + name
+                if (tObs.parentObservationId === gen.id && tObs.name === tcName) return true;
+                // Strategy 3: Fallback - name + time window (between this gen start and next gen start)
+                // Applies when tool has no parent, or parent doesn't match any agent generation
+                // (e.g., parented to a SPAN wrapper rather than the GENERATION directly)
+                if (tObs.name === tcName && tObs.parentObservationId !== gen.id) {
+                  const toolStartMs = new Date(tObs.startTime || 0).getTime();
+                  return toolStartMs >= genStartMs && toolStartMs < nextGenStart;
+                }
+                return false;
+              });
+              if (matchedToolObs) matchedToolObsIds.add(matchedToolObs.id);
+
+              const toolDur = matchedToolObs?.startTime && matchedToolObs?.endTime
+                ? new Date(matchedToolObs.endTime).getTime() - new Date(matchedToolObs.startTime).getTime()
+                : undefined;
+              const isSuccess = matchedToolObs ? matchedToolObs.level !== 'ERROR' : undefined;
+
+              stepToolCalls.push({
+                name: tcName,
+                args: tcArgs,
+                toolCallId: tcId,
+                result: matchedToolObs?.output,
+                durationMs: toolDur,
+                success: isSuccess,
+                statusMessage: matchedToolObs?.statusMessage,
+              });
+            }
+          }
+
+          // Also pick up TOOL observations parented to this generation but not already matched
+          for (const tObs of toolTypeObservations) {
+            if (matchedToolObsIds.has(tObs.id)) continue;
+            if (tObs.parentObservationId === gen.id) {
+              matchedToolObsIds.add(tObs.id);
+              const toolDur = tObs.startTime && tObs.endTime
+                ? new Date(tObs.endTime).getTime() - new Date(tObs.startTime).getTime()
+                : undefined;
+              stepToolCalls.push({
+                name: tObs.name,
+                args: tObs.input ? JSON.stringify(tObs.input, null, 2) : undefined,
+                toolCallId: tObs.metadata?.attributes?.['ai.toolCall.id'] as string | undefined,
+                result: tObs.output,
+                durationMs: toolDur,
+                success: tObs.level !== 'ERROR',
+                statusMessage: tObs.statusMessage,
+              });
+            }
+          }
+
+          const genDur = gen.startTime && gen.endTime
+            ? new Date(gen.endTime).getTime() - new Date(gen.startTime).getTime()
+            : undefined;
+
+          // Only add step if it has text or tool calls
+          if (stepText || stepToolCalls.length > 0) {
+            steps.push({
+              generationId: gen.id,
+              text: stepText,
+              toolCalls: stepToolCalls,
+              durationMs: genDur,
+              inputTokens: gen.promptTokens,
+              outputTokens: gen.completionTokens,
+            });
+          }
+        }
+        if (steps.length > 1 || (steps.length === 1 && steps[0].toolCalls.length > 0)) {
+          agentSteps = steps;
         }
       }
 
@@ -476,9 +799,9 @@ function extractConversationItems(sessions: Session[]): ConversationItem[] {
           agentName,
           traceId: trace.id,
           sessionId: session.sessionId,
-          inputTokens,
-          outputTokens,
-          totalTokens,
+          inputTokens: hasTokenData ? inputTokens : undefined,
+          outputTokens: hasTokenData ? outputTokens : undefined,
+          totalTokens: hasTokenData ? totalTokens : undefined,
           cachedTokens,
           cost,
           model,
@@ -492,8 +815,19 @@ function extractConversationItems(sessions: Session[]): ConversationItem[] {
           cacheCreationTokens,
           cacheReadTokens,
           toolObservations: toolTypeObservations,
+          traceLatencyMs,
+          llmStepCount: llmStepCount > 0 ? llmStepCount : undefined,
+          toolTimings: toolTimings.length > 0 ? toolTimings : undefined,
+          totalToolTimeMs: toolTimings.length > 0 ? totalToolTimeMs : undefined,
+          totalLlmTimeMs: totalLlmTimeMs > 0 ? totalLlmTimeMs : undefined,
+          summaryTimeMs: summaryTimeMs > 0 ? summaryTimeMs : undefined,
+          ragTimeMs,
+          observationErrors: observationErrors.length > 0 ? observationErrors : undefined,
+          agentSteps,
         });
       }
+
+      } // end normal user/assistant flow
     }
   }
 
@@ -507,6 +841,49 @@ function extractConversationItems(sessions: Session[]): ConversationItem[] {
   }
 
   return deduped;
+}
+
+function InfoTip({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+      <span
+        onClick={() => setOpen(!open)}
+        style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: '12px', height: '12px', borderRadius: '50%',
+          fontSize: '0.45rem', fontWeight: 700, fontStyle: 'italic', fontFamily: 'serif',
+          color: '#94a3b8', border: '1px solid #cbd5e1',
+          cursor: 'pointer', marginLeft: '0.25rem', flexShrink: 0,
+          userSelect: 'none',
+        }}
+      >
+        i
+      </span>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 99 }} />
+          <div style={{
+            position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+            marginBottom: '6px', zIndex: 100,
+            backgroundColor: '#1e293b', color: '#f1f5f9',
+            fontSize: '0.65rem', lineHeight: 1.5, padding: '0.5rem 0.75rem',
+            borderRadius: '6px', width: '280px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+            whiteSpace: 'pre-wrap',
+          }}>
+            {text}
+            <div style={{
+              position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+              width: 0, height: 0,
+              borderLeft: '6px solid transparent', borderRight: '6px solid transparent',
+              borderTop: '6px solid #1e293b',
+            }} />
+          </div>
+        </>
+      )}
+    </span>
+  );
 }
 
 function TokenBadge({ label, value, color }: { label: string; value?: number; color: string }) {
@@ -564,6 +941,11 @@ function ToolsSection({ tools, item, expanded: initialExpanded = false }: { tool
             // Langfuse sets level='ERROR' for failed tools, otherwise 'DEFAULT' or success
             const isSuccess = hasOutput && toolObs?.level !== 'ERROR';
 
+            // Compute execution duration from observation timestamps
+            const toolDurationMs = toolObs?.startTime && toolObs?.endTime
+              ? new Date(toolObs.endTime).getTime() - new Date(toolObs.startTime).getTime()
+              : undefined;
+
             return (
               <details key={idx} style={{ marginBottom: '0.2rem' }}>
                 <summary style={{
@@ -586,6 +968,11 @@ function ToolsSection({ tools, item, expanded: initialExpanded = false }: { tool
                     {isSuccess ? '✓' : hasOutput ? '✗' : '⏳'}
                   </span>
                   {tool.name}
+                  {toolDurationMs != null && (
+                    <span style={{ color: '#94a3b8', fontWeight: 400 }}>
+                      {formatMs(toolDurationMs)}ms
+                    </span>
+                  )}
                 </summary>
 
                 {/* Tool input (args) */}
@@ -638,6 +1025,241 @@ function ToolsSection({ tools, item, expanded: initialExpanded = false }: { tool
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function getToolResultSummary(tc: AgentStep['toolCalls'][number]): string {
+  const name = tc.name;
+  const argsObj = tc.args ? (() => { try { return JSON.parse(tc.args!); } catch { return null; } })() : null;
+  const resultObj = tc.result;
+
+  if (name === 'readFile' || name === 'readDir') {
+    const filePath = argsObj?.filePath || argsObj?.path;
+    if (filePath) return String(filePath).split('/').pop() || filePath;
+  }
+  if (name === 'textEditor' || name === 'fileEdit' || name === 'writeFile' || name === 'createFile') {
+    const filePath = argsObj?.filePath || argsObj?.path || argsObj?.file_path;
+    if (filePath) return String(filePath).split('/').pop() || filePath;
+  }
+  if (name === 'setProjectName') {
+    const projectName = argsObj?.name || argsObj?.projectName;
+    if (projectName) return `"${projectName}"`;
+  }
+  if (name === 'todoList') {
+    const items = argsObj?.items;
+    if (Array.isArray(items)) return `${items.length} items`;
+    const op = argsObj?.operation;
+    if (op) return op;
+  }
+  if (name === 'handoff') {
+    const target = argsObj?.targetAgent || argsObj?.agent;
+    if (target) return String(target);
+  }
+  if (name === 'fontTheme') {
+    const theme = argsObj?.theme || argsObj?.name;
+    if (theme) return String(theme);
+  }
+  if (name === 'colorScheme') {
+    const scheme = argsObj?.scheme || argsObj?.name;
+    if (scheme) return String(scheme);
+  }
+  if (name === 'suggestedResponse' || name === 'suggestedResponses') {
+    const suggestions = argsObj?.suggestions || argsObj?.responses;
+    if (Array.isArray(suggestions)) return `${suggestions.length} suggestions`;
+  }
+  if (name === 'grepSearch' || name === 'searchFiles') {
+    const query = argsObj?.query || argsObj?.pattern;
+    if (query) return `"${String(query).substring(0, 40)}"`;
+  }
+  if (name === 'terminalCommand' || name === 'runTerminalCommand') {
+    const cmd = argsObj?.command;
+    if (cmd) return String(cmd).substring(0, 50);
+  }
+
+  // Default: compact result preview
+  if (resultObj != null) {
+    const str = typeof resultObj === 'string' ? resultObj : JSON.stringify(resultObj);
+    if (str.length <= 100) return str;
+    return str.substring(0, 100) + '...';
+  }
+  return '';
+}
+
+function StepByStepContent({ steps }: { steps: AgentStep[] }) {
+  const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
+  const [expandedStepTools, setExpandedStepTools] = useState<Set<number>>(new Set());
+  const TOOL_COLLAPSE_THRESHOLD = 4;
+
+  const toggleTool = (key: string) => {
+    setExpandedTools(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      {steps.map((step, stepIdx) => (
+        <div key={step.generationId} style={{
+          borderTop: stepIdx > 0 ? '1px solid #d1fae5' : undefined,
+          paddingTop: stepIdx > 0 ? '0.5rem' : undefined,
+          marginTop: stepIdx > 0 ? '0.5rem' : undefined,
+        }}>
+          {/* Step header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.3rem' }}>
+            <span style={{
+              fontSize: '0.6rem', fontWeight: 700, color: '#94a3b8',
+              backgroundColor: '#f1f5f9', padding: '0.1rem 0.35rem', borderRadius: '3px',
+              fontFamily: 'monospace',
+            }}>
+              Step {stepIdx + 1}
+            </span>
+            {step.durationMs != null && (
+              <span style={{ fontSize: '0.55rem', color: '#94a3b8', fontFamily: 'monospace' }}>
+                {formatMs(step.durationMs)}ms
+              </span>
+            )}
+            {step.outputTokens != null && step.outputTokens > 0 && (
+              <span style={{ fontSize: '0.55rem', color: '#10b981', fontFamily: 'monospace' }}>
+                {formatNumber(step.outputTokens)} out
+              </span>
+            )}
+          </div>
+
+          {/* Step text */}
+          {step.text && (
+            <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginBottom: step.toolCalls.length > 0 ? '0.35rem' : 0, fontSize: '0.85rem' }}>
+              {step.text}
+            </div>
+          )}
+
+          {/* Tool calls inline */}
+          {step.toolCalls.length > 0 && (() => {
+            const shouldCollapse = step.toolCalls.length > TOOL_COLLAPSE_THRESHOLD;
+            const isStepToolsExpanded = expandedStepTools.has(stepIdx);
+            const visibleTools = shouldCollapse && !isStepToolsExpanded
+              ? step.toolCalls.slice(0, TOOL_COLLAPSE_THRESHOLD)
+              : step.toolCalls;
+            const hiddenCount = step.toolCalls.length - TOOL_COLLAPSE_THRESHOLD;
+            const failedHiddenCount = shouldCollapse && !isStepToolsExpanded
+              ? step.toolCalls.slice(TOOL_COLLAPSE_THRESHOLD).filter(t => t.success === false).length
+              : 0;
+
+            return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', paddingLeft: '0.25rem' }}>
+              {visibleTools.map((tc, tcIdx) => {
+                const realIdx = tcIdx; // index in full array matches since visibleTools is a prefix slice
+                const toolKey = `${stepIdx}-${realIdx}`;
+                const isExpanded = expandedTools.has(toolKey);
+                const isFailed = tc.success === false;
+                const statusIcon = tc.success === true ? '✓' : isFailed ? '✗' : '·';
+                const statusColor = tc.success === true ? '#10b981' : isFailed ? '#dc2626' : '#94a3b8';
+                const nameColor = isFailed ? '#991b1b' : '#065f46';
+                const summary = isFailed && tc.statusMessage
+                  ? tc.statusMessage.substring(0, 120)
+                  : getToolResultSummary(tc);
+
+                return (
+                  <div key={realIdx}>
+                    <div
+                      onClick={() => toggleTool(toolKey)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '0.3rem',
+                        cursor: 'pointer', fontSize: '0.65rem', fontFamily: 'monospace',
+                        color: nameColor, padding: '0.1rem 0',
+                        backgroundColor: isFailed ? '#fef2f2' : undefined,
+                        borderRadius: isFailed ? '3px' : undefined,
+                        paddingLeft: isFailed ? '0.25rem' : undefined,
+                      }}
+                    >
+                      <span style={{ color: statusColor, fontWeight: 700, fontSize: '0.7rem' }}>{statusIcon}</span>
+                      <span style={{ fontWeight: 600 }}>{tc.name}</span>
+                      {tc.durationMs != null && (
+                        <span style={{ color: '#94a3b8', fontWeight: 400 }}>{formatMs(tc.durationMs)}ms</span>
+                      )}
+                      {summary && (
+                        <span style={{ color: isFailed ? '#dc2626' : '#6b7280', fontWeight: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}>
+                          {summary}
+                        </span>
+                      )}
+                      <span style={{ color: '#cbd5e1', marginLeft: 'auto', flexShrink: 0 }}>{isExpanded ? '▼' : '▶'}</span>
+                    </div>
+
+                    {isExpanded && (
+                      <div style={{ paddingLeft: '1rem', marginBottom: '0.2rem' }}>
+                        {tc.args && (
+                          <div style={{ marginTop: '0.15rem' }}>
+                            <div style={{ fontSize: '0.55rem', color: '#64748b', fontWeight: 600, marginBottom: '0.1rem' }}>Input:</div>
+                            <pre style={{
+                              fontSize: '0.55rem', backgroundColor: '#ecfdf5', padding: '0.3rem',
+                              borderRadius: '3px', overflow: 'auto', maxHeight: '80px',
+                              margin: 0, border: '1px solid #d1fae5',
+                            }}>
+                              {tc.args}
+                            </pre>
+                          </div>
+                        )}
+                        {tc.result != null && (
+                          <div style={{ marginTop: '0.15rem' }}>
+                            <div style={{ fontSize: '0.55rem', color: '#64748b', fontWeight: 600, marginBottom: '0.1rem' }}>Output:</div>
+                            <pre style={{
+                              fontSize: '0.55rem',
+                              backgroundColor: tc.success !== false ? '#f0fdf4' : '#fef2f2',
+                              padding: '0.3rem', borderRadius: '3px', overflow: 'auto',
+                              maxHeight: '120px', margin: 0,
+                              border: `1px solid ${tc.success !== false ? '#bbf7d0' : '#fecaca'}`,
+                            }}>
+                              {typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                        {tc.statusMessage && tc.result == null && (
+                          <div style={{ marginTop: '0.15rem' }}>
+                            <div style={{ fontSize: '0.55rem', color: '#64748b', fontWeight: 600, marginBottom: '0.1rem' }}>Status:</div>
+                            <pre style={{
+                              fontSize: '0.55rem', backgroundColor: '#fef2f2', padding: '0.3rem',
+                              borderRadius: '3px', overflow: 'auto', maxHeight: '80px',
+                              margin: 0, border: '1px solid #fecaca',
+                            }}>
+                              {tc.statusMessage}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {shouldCollapse && (
+                <div
+                  onClick={() => setExpandedStepTools(prev => {
+                    const next = new Set(prev);
+                    if (next.has(stepIdx)) next.delete(stepIdx);
+                    else next.add(stepIdx);
+                    return next;
+                  })}
+                  style={{
+                    cursor: 'pointer', fontSize: '0.6rem', fontFamily: 'monospace',
+                    color: '#047857', padding: '0.15rem 0', display: 'flex', alignItems: 'center', gap: '0.3rem',
+                  }}
+                >
+                  <span style={{ color: '#94a3b8' }}>{isStepToolsExpanded ? '▲' : '▼'}</span>
+                  <span style={{ fontWeight: 600 }}>
+                    {isStepToolsExpanded ? 'show less' : `${hiddenCount} more tool${hiddenCount > 1 ? 's' : ''}`}
+                  </span>
+                  {failedHiddenCount > 0 && (
+                    <span style={{ color: '#dc2626', fontWeight: 600 }}>({failedHiddenCount} failed)</span>
+                  )}
+                </div>
+              )}
+            </div>
+            );
+          })()}
+        </div>
+      ))}
     </div>
   );
 }
@@ -774,7 +1396,6 @@ function FormattedContent({ content }: { content: string }) {
 
 function UserMessage({ item, langfuseBaseUrl }: { item: ConversationItem; langfuseBaseUrl?: string }) {
   const [expanded, setExpanded] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
 
   const hasStructuredContent = /^(User:|Assistant actions?:|Tool result:|Read:|Write:|Edit:|Terminal:)/m.test(item.content);
 
@@ -798,6 +1419,8 @@ function UserMessage({ item, langfuseBaseUrl }: { item: ConversationItem; langfu
   const textColor = isHandoff ? '#78350f' : '#1e3a8a';
   const label = isHandoff ? `Handoff from ${item.sourceAgent || 'Agent'}` : 'User';
 
+  const traceLink = langfuseBaseUrl && item.traceId ? `${langfuseBaseUrl}/trace/${item.traceId}` : undefined;
+
   return (
     <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.6rem' }}>
       <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: avatarBg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.9rem', flexShrink: 0 }}>{avatarIcon}</div>
@@ -806,9 +1429,6 @@ function UserMessage({ item, langfuseBaseUrl }: { item: ConversationItem; langfu
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 600, color: labelColor }}>{label}</span>
             <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{formatTime(item.timestamp)}</span>
-            <button onClick={() => setShowDetails(!showDetails)} style={{ background: 'none', border: 'none', fontSize: '0.65rem', color: '#94a3b8', cursor: 'pointer', padding: '0 0.25rem' }}>
-              {showDetails ? '▼' : '▶'} details
-            </button>
             {hasFullContent && (
               <button onClick={() => setExpanded(!expanded)} style={{ background: 'none', border: 'none', fontSize: '0.65rem', color: isHandoff ? '#f59e0b' : '#3b82f6', cursor: 'pointer', padding: '0 0.25rem' }}>
                 {expanded ? '↑ collapse' : '↓ full context'}
@@ -829,22 +1449,32 @@ function UserMessage({ item, langfuseBaseUrl }: { item: ConversationItem; langfu
             </div>
           )}
         </div>
-        {showDetails && (
-          <div style={{ marginTop: '0.35rem', padding: '0.5rem', backgroundColor: '#f8fafc', borderRadius: '6px', fontSize: '0.6rem', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.15rem 0.5rem' }}>
-            <span style={{ color: '#64748b' }}>Trace:</span><span style={{ fontFamily: 'monospace', color: '#1f2937' }}>{item.traceId?.substring(0, 16)}...</span>
-            <span style={{ color: '#64748b' }}>Session:</span><span style={{ fontFamily: 'monospace', color: '#1f2937' }}>{item.sessionId?.substring(0, 16)}...</span>
-            {item.systemPrompt && (
+        {/* Always-visible details */}
+        <div style={{ marginTop: '0.35rem', padding: '0.4rem 0.5rem', backgroundColor: '#f8fafc', borderRadius: '6px', fontSize: '0.6rem', color: '#64748b' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap', fontFamily: 'monospace' }}>
+            {item.traceId && (
+              traceLink ? (
+                <a href={traceLink} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>
+                  trace {item.traceId}
+                </a>
+              ) : (
+                <span style={{ color: '#1f2937' }}>trace {item.traceId}</span>
+              )
+            )}
+            {item.sessionId && (
               <>
-                <span style={{ color: '#64748b' }}>System:</span>
-                <details style={{ color: '#1f2937' }}>
-                  <summary style={{ cursor: 'pointer' }}>View prompt ({item.systemPrompt.length} chars)</summary>
-                  <pre style={{ fontSize: '0.55rem', backgroundColor: '#fff', padding: '0.35rem', borderRadius: '3px', overflow: 'auto', maxHeight: '120px', whiteSpace: 'pre-wrap', margin: '0.25rem 0 0 0', border: '1px solid #e5e7eb' }}>{item.systemPrompt}</pre>
-                </details>
+                <span style={{ color: '#cbd5e1' }}>,</span>
+                <span style={{ color: '#1f2937' }}>session {item.sessionId}</span>
               </>
             )}
-            {langfuseBaseUrl && <><span style={{ color: '#64748b' }}>Link:</span><a href={`${langfuseBaseUrl}/trace/${item.traceId}`} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>Open in Langfuse ↗</a></>}
           </div>
-        )}
+          {item.systemPrompt && (
+            <details style={{ marginTop: '0.2rem', color: '#1f2937' }}>
+              <summary style={{ cursor: 'pointer', color: '#64748b' }}>system prompt ({item.systemPrompt.length} chars)</summary>
+              <pre style={{ fontSize: '0.55rem', backgroundColor: '#fff', padding: '0.35rem', borderRadius: '3px', overflow: 'auto', maxHeight: '120px', whiteSpace: 'pre-wrap', margin: '0.25rem 0 0 0', border: '1px solid #e5e7eb' }}>{item.systemPrompt}</pre>
+            </details>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -852,13 +1482,14 @@ function UserMessage({ item, langfuseBaseUrl }: { item: ConversationItem; langfu
 
 function AssistantMessage({ item, langfuseBaseUrl }: { item: ConversationItem; langfuseBaseUrl?: string }) {
   const [expanded, setExpanded] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
 
   const hasStructuredContent = /^(User:|Assistant actions?:|Tool result:|Read:|Write:|Edit:|Terminal:)/m.test(item.content);
   const hasContent = item.content.length > 0;
 
   const firstLine = item.content.split('\n')[0] || '';
   const hasMoreLines = item.content.includes('\n') || item.content.length > 150;
+
+  const traceLink = langfuseBaseUrl && item.traceId ? `${langfuseBaseUrl}/trace/${item.traceId}` : undefined;
 
   return (
     <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.6rem' }}>
@@ -868,13 +1499,15 @@ function AssistantMessage({ item, langfuseBaseUrl }: { item: ConversationItem; l
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#047857' }}>{item.agentName || 'Assistant'}</span>
             <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{formatTime(item.timestamp)}</span>
-            <button onClick={() => setShowDetails(!showDetails)} style={{ background: 'none', border: 'none', fontSize: '0.65rem', color: '#94a3b8', cursor: 'pointer', padding: '0 0.25rem' }}>
-              {showDetails ? '▼' : '▶'} details
-            </button>
-            {!hasStructuredContent && hasMoreLines && (
+            {!item.agentSteps && !hasStructuredContent && hasMoreLines && (
               <button onClick={() => setExpanded(!expanded)} style={{ background: 'none', border: 'none', fontSize: '0.65rem', color: '#10b981', cursor: 'pointer', padding: '0 0.25rem' }}>
                 {expanded ? '↑ collapse' : '↓ expand'}
               </button>
+            )}
+            {item.agentSteps && (
+              <span style={{ fontSize: '0.6rem', fontWeight: 600, color: '#047857', backgroundColor: '#d1fae5', padding: '0.1rem 0.35rem', borderRadius: '4px' }}>
+                {item.agentSteps.length} steps
+              </span>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -882,78 +1515,211 @@ function AssistantMessage({ item, langfuseBaseUrl }: { item: ConversationItem; l
             <TokenBadge label="out" value={item.outputTokens} color="#10b981" />
             {item.cachedTokens !== undefined && <TokenBadge label="cached" value={item.cachedTokens} color="#8b5cf6" />}
             <CostBadge value={item.cost} />
-            {/* Streaming performance badges */}
-            {item.msToFirstChunk && (
-              <span style={{
-                fontSize: '0.65rem',
-                fontWeight: 600,
-                color: '#8b5cf6',
-                backgroundColor: '#ede9fe',
-                padding: '0.15rem 0.4rem',
-                borderRadius: '4px',
-                fontFamily: 'monospace'
-              }}>
-                ⚡ {Math.round(item.msToFirstChunk)}ms TTFB
-              </span>
-            )}
-            {item.msToFinish && (
-              <span style={{
-                fontSize: '0.65rem',
-                fontWeight: 600,
-                color: '#6366f1',
-                backgroundColor: '#e0e7ff',
-                padding: '0.15rem 0.4rem',
-                borderRadius: '4px',
-                fontFamily: 'monospace'
-              }}>
-                ⏱️ {(item.msToFinish / 1000).toFixed(1)}s total
-              </span>
-            )}
             {item.finishReason && !['stop', 'tool-calls', 'tool_calls'].includes(item.finishReason) && (
               <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#f59e0b', backgroundColor: '#fef3c7', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>{item.finishReason}</span>
             )}
           </div>
         </div>
         <div style={{ backgroundColor: '#f0fdf4', borderRadius: '12px', borderTopLeftRadius: '2px', padding: '0.75rem 1rem', fontSize: '0.9rem', color: '#14532d', lineHeight: 1.6 }}>
-          {hasContent ? (
-            hasStructuredContent ? (
-              <FormattedContent content={item.content} />
-            ) : (
-              <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                {expanded ? item.content : (firstLine.length > 150 ? firstLine.substring(0, 150) + '...' : firstLine)}
-              </div>
-            )
+          {item.agentSteps ? (
+            <StepByStepContent steps={item.agentSteps} />
           ) : (
-            <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.7rem' }}>Processing...</span>
+            <>
+              {hasContent ? (
+                hasStructuredContent ? (
+                  <FormattedContent content={item.content} />
+                ) : (
+                  <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    {expanded ? item.content : (firstLine.length > 150 ? firstLine.substring(0, 150) + '...' : firstLine)}
+                  </div>
+                )
+              ) : (
+                <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.7rem' }}>Processing...</span>
+              )}
+              <ToolsSection tools={item.tools || []} item={item} />
+            </>
           )}
-          <ToolsSection tools={item.tools || []} item={item} />
         </div>
-        {showDetails && (
-          <div style={{ marginTop: '0.35rem', padding: '0.5rem', backgroundColor: '#f8fafc', borderRadius: '6px', fontSize: '0.6rem', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.15rem 0.5rem' }}>
-            {item.model && <><span style={{ color: '#64748b' }}>Model:</span><span style={{ fontFamily: 'monospace', color: '#1f2937' }}>{item.model}</span></>}
-            {item.provider && <><span style={{ color: '#64748b' }}>Provider:</span><span style={{ color: '#1f2937' }}>{item.provider}</span></>}
-            {item.temperature !== undefined && <><span style={{ color: '#64748b' }}>Temp:</span><span style={{ color: '#1f2937' }}>{item.temperature}</span></>}
-            {/* Cache metrics */}
-            {item.cacheCreationTokens !== undefined && item.cacheCreationTokens > 0 && (
+        {/* Always-visible details */}
+        <div style={{ marginTop: '0.35rem', padding: '0.4rem 0.5rem', backgroundColor: '#f8fafc', borderRadius: '6px', fontSize: '0.6rem', color: '#64748b' }}>
+          {/* Model info line */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap', fontFamily: 'monospace' }}>
+            {item.provider && <span style={{ color: '#1f2937' }}>{item.provider}</span>}
+            {item.provider && item.model && <span style={{ color: '#cbd5e1' }}>:</span>}
+            {item.model && <span style={{ color: '#1f2937' }}>{item.model}</span>}
+            {item.temperature !== undefined && <><span style={{ color: '#cbd5e1' }}>:</span><span style={{ color: '#1f2937' }}>temp {item.temperature}</span></>}
+            {item.traceId && (
               <>
-                <span style={{ color: '#64748b' }}>Cache Created:</span>
-                <span style={{ color: '#8b5cf6', fontWeight: 600 }}>
-                  {formatNumber(item.cacheCreationTokens)} tokens
-                </span>
+                <span style={{ color: '#cbd5e1' }}>,</span>
+                {traceLink ? (
+                  <a href={traceLink} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>
+                    trace {item.traceId}
+                  </a>
+                ) : (
+                  <span style={{ color: '#1f2937' }}>trace {item.traceId}</span>
+                )}
               </>
             )}
-            {item.cacheReadTokens !== undefined && item.cacheReadTokens > 0 && (
-              <>
-                <span style={{ color: '#64748b' }}>Cache Hit:</span>
-                <span style={{ color: '#10b981', fontWeight: 600 }}>
-                  {formatNumber(item.cacheReadTokens)} tokens
-                </span>
-              </>
+          </div>
+          {/* Cache metrics */}
+          {(item.cacheCreationTokens != null && item.cacheCreationTokens > 0) || (item.cacheReadTokens != null && item.cacheReadTokens > 0) ? (
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.2rem', fontFamily: 'monospace' }}>
+              {item.cacheCreationTokens != null && item.cacheCreationTokens > 0 && (
+                <span style={{ color: '#8b5cf6' }}>cache created: {formatNumber(item.cacheCreationTokens)} tokens</span>
+              )}
+              {item.cacheReadTokens != null && item.cacheReadTokens > 0 && (
+                <span style={{ color: '#10b981' }}>cache hit: {formatNumber(item.cacheReadTokens)} tokens</span>
+              )}
+            </div>
+          ) : null}
+          {/* System prompt */}
+          {item.systemPrompt && (
+            <details style={{ marginTop: '0.2rem', color: '#1f2937' }}>
+              <summary style={{ cursor: 'pointer', color: '#64748b' }}>system prompt ({item.systemPrompt.length} chars)</summary>
+              <pre style={{ fontSize: '0.55rem', backgroundColor: '#fff', padding: '0.35rem', borderRadius: '3px', overflow: 'auto', maxHeight: '120px', whiteSpace: 'pre-wrap', margin: '0.25rem 0 0 0', border: '1px solid #e5e7eb' }}>{item.systemPrompt}</pre>
+            </details>
+          )}
+          {/* Timing breakdown */}
+          {(item.msToFirstChunk || item.msToFinish || item.traceLatencyMs != null || item.totalLlmTimeMs != null || item.totalToolTimeMs != null || item.ragTimeMs != null || item.summaryTimeMs != null) && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.1rem 0.5rem', marginTop: '0.3rem', borderTop: '1px solid #e5e7eb', paddingTop: '0.3rem' }}>
+              {item.traceLatencyMs != null && (
+                <><span style={{ color: '#d97706' }}>End-to-end:</span><span style={{ fontFamily: 'monospace', color: '#1f2937', display: 'flex', alignItems: 'center' }}>{formatMs(item.traceLatencyMs)}ms<InfoTip text={"Wall-clock time from trace start to the last observation completing.\n\nThis is the total user wait time for this request. It includes RAG retrieval, all LLM calls (agent steps + summarization), tool executions, and any framework overhead or gaps between steps."} /></span></>
+              )}
+              {item.ragTimeMs != null && (
+                <><span style={{ color: '#2563eb' }}>RAG:</span><span style={{ fontFamily: 'monospace', color: '#1f2937', display: 'flex', alignItems: 'center' }}>{formatMs(item.ragTimeMs)}ms<InfoTip text={"Time spent retrieving context from the knowledge base (KnowB Documentation Retrieval).\n\nThis happens before the agent starts reasoning. It fetches relevant documentation chunks to include in the LLM context for better answers."} /></span></>
+              )}
+              {item.totalLlmTimeMs != null && (
+                <><span style={{ color: '#6366f1' }}>Agent LLM:</span><span style={{ fontFamily: 'monospace', color: '#1f2937', display: 'flex', alignItems: 'center' }}>{formatMs(item.totalLlmTimeMs)}ms{item.llmStepCount != null && item.llmStepCount > 1 ? ` (${item.llmStepCount} steps)` : ''}<InfoTip text={"Sum of all agent LLM generation times (observations starting with \"agent-\").\n\nIn a tool-loop agent, each step is a separate LLM call: the model reads context, decides to call a tool or produce text, then waits for the tool result before the next step. Multiple steps means the agent used tools before producing its final answer.\n\nExcludes summarization LLM calls which run after the agent finishes."} /></span></>
+              )}
+              {item.msToFirstChunk && (
+                <><span style={{ color: '#8b5cf6' }}>TTFB:</span><span style={{ fontFamily: 'monospace', color: '#1f2937', display: 'flex', alignItems: 'center' }}>{formatMs(item.msToFirstChunk)}ms<InfoTip text={"Time To First Byte \u2014 how long until the first token of the final text response started streaming.\n\nMeasured from the last (text-producing) LLM generation only. Lower TTFB means the user sees text appearing sooner. This does not include tool-call steps, only the final streaming response."} /></span></>
+              )}
+              {item.totalToolTimeMs != null && item.toolTimings && (
+                <><span style={{ color: '#0d9488' }}>Tools:</span><span style={{ fontFamily: 'monospace', color: '#1f2937', display: 'flex', alignItems: 'center' }}>{formatMs(item.totalToolTimeMs)}ms ({item.toolTimings.length} calls)<InfoTip text={"Sum of execution time for all tool calls (readFile, fileEdit, grepSearch, terminalCommand, etc.).\n\nEach tool call runs between LLM steps. Tool time is usually small compared to LLM time, but file edits and terminal commands can take longer. Failed tools (level=ERROR) are included in this total."} /></span></>
+              )}
+              {item.summaryTimeMs != null && (
+                <><span style={{ color: '#a855f7' }}>Summary:</span><span style={{ fontFamily: 'monospace', color: '#1f2937', display: 'flex', alignItems: 'center' }}>{formatMs(item.summaryTimeMs)}ms<InfoTip text={"Time spent on post-agent summarization (observations starting with \"summarization-\").\n\nAfter the agent finishes its tool loop and produces a response, a separate LLM call summarizes the changes made. This runs after the user sees the agent's response but before the trace completes. It can be significant (30-60s) for complex multi-file edits."} /></span></>
+              )}
+            </div>
+          )}
+          {/* Observation errors - when agentSteps present, only show non-TOOL errors (TOOL errors are inline) */}
+          {(() => {
+            const errors = item.observationErrors;
+            if (!errors || errors.length === 0) return null;
+            const filtered = item.agentSteps ? errors.filter(e => e.obsType !== 'TOOL') : errors;
+            if (filtered.length === 0) return null;
+            return (
+              <div style={{ marginTop: '0.2rem', borderTop: '1px solid #e5e7eb', paddingTop: '0.2rem' }}>
+                <span style={{ fontWeight: 600, color: '#dc2626' }}>Errors:</span>
+                {filtered.map((err, i) => (
+                  <div key={i} style={{ color: '#991b1b', fontFamily: 'monospace' }}>
+                    {err.name}: {err.message}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SummarizationMessage({ item, langfuseBaseUrl }: { item: ConversationItem; langfuseBaseUrl?: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const traceLink = langfuseBaseUrl && item.traceId ? `${langfuseBaseUrl}/trace/${item.traceId}` : undefined;
+  const steps = item.summarySteps || [];
+  const totalProcessingMs = item.summaryTimeMs || steps.reduce((sum, s) => sum + s.durationMs, 0);
+  const stepCount = item.summaryStepCount || steps.length;
+
+  return (
+    <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.5rem' }}>
+      <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#a855f7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.6rem', flexShrink: 0 }}>
+        <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>S</span>
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {/* Compact inline summary */}
+        <div
+          onClick={() => setExpanded(!expanded)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap',
+            cursor: 'pointer', padding: '0.35rem 0.6rem',
+            backgroundColor: '#faf5ff', borderRadius: '8px', borderLeft: '2px solid #a855f7',
+            fontSize: '0.7rem', color: '#6b21a8',
+          }}
+        >
+          <span style={{ fontWeight: 600 }}>Summarization</span>
+          <span style={{ color: '#94a3b8', fontSize: '0.65rem' }}>{formatTime(item.timestamp)}</span>
+          <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+            {stepCount > 1 ? `${stepCount} steps` : ''}{stepCount > 1 ? ' · ' : ''}{formatMs(totalProcessingMs)}ms
+          </span>
+          {item.queueDelayMs != null && (
+            <span style={{ fontFamily: 'monospace', color: '#d97706', fontSize: '0.6rem' }}>queued {formatMs(item.queueDelayMs)}ms</span>
+          )}
+          <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <TokenBadge label="in" value={item.inputTokens} color="#64748b" />
+            <TokenBadge label="out" value={item.outputTokens} color="#a855f7" />
+            <CostBadge value={item.cost} />
+            <span style={{ color: '#cbd5e1', fontSize: '0.6rem' }}>{expanded ? '▼' : '▶'}</span>
+          </span>
+        </div>
+
+        {/* Expanded details */}
+        {expanded && (
+          <div style={{ marginTop: '0.25rem', padding: '0.35rem 0.5rem', backgroundColor: '#f8fafc', borderRadius: '6px', fontSize: '0.6rem', color: '#64748b' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap', fontFamily: 'monospace' }}>
+              {item.model && <span style={{ color: '#1f2937' }}>{item.model}</span>}
+              {item.traceId && (
+                <>
+                  <span style={{ color: '#cbd5e1' }}>,</span>
+                  {traceLink ? (
+                    <a href={traceLink} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>trace {item.traceId}</a>
+                  ) : (
+                    <span style={{ color: '#1f2937' }}>trace {item.traceId}</span>
+                  )}
+                </>
+              )}
+            </div>
+            {/* Per-step breakdown */}
+            {steps.length > 1 && (
+              <div style={{ marginTop: '0.25rem', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                {steps.map((step, idx) => (
+                  <details key={idx} style={{ fontSize: '0.6rem' }}>
+                    <summary style={{
+                      display: 'flex', gap: '0.5rem', cursor: step.outputPreview ? 'pointer' : 'default',
+                      fontFamily: 'monospace', color: '#581c87', alignItems: 'center',
+                    }}>
+                      <span style={{ color: '#94a3b8', width: '1.2rem' }}>{idx + 1}</span>
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{step.name}</span>
+                      <span style={{ fontWeight: 600 }}>{formatMs(step.durationMs)}ms</span>
+                      <span style={{ color: '#64748b' }}>{formatNumber(step.inputTokens)}in</span>
+                      <span style={{ color: '#a855f7' }}>{formatNumber(step.outputTokens)}out</span>
+                    </summary>
+                    {step.outputPreview && (
+                      <pre style={{
+                        fontSize: '0.55rem', backgroundColor: '#fff', padding: '0.3rem', borderRadius: '3px',
+                        overflow: 'auto', maxHeight: '80px', whiteSpace: 'pre-wrap',
+                        margin: '0.15rem 0 0.15rem 1.7rem', border: '1px solid #e9d5ff', color: '#374151',
+                      }}>
+                        {step.outputPreview}{step.outputPreview.length >= 200 ? '...' : ''}
+                      </pre>
+                    )}
+                  </details>
+                ))}
+              </div>
             )}
-            {item.totalTokens && <><span style={{ color: '#64748b' }}>Total:</span><span style={{ color: '#1f2937' }}>{formatNumber(item.totalTokens)} tokens</span></>}
-            {item.cost && <><span style={{ color: '#64748b' }}>Cost:</span><span style={{ color: '#059669', fontWeight: 600 }}>${item.cost.toFixed(4)}</span></>}
-            <span style={{ color: '#64748b' }}>Trace:</span><span style={{ fontFamily: 'monospace', color: '#1f2937' }}>{item.traceId?.substring(0, 16)}...</span>
-            {langfuseBaseUrl && <><span style={{ color: '#64748b' }}>Link:</span><a href={`${langfuseBaseUrl}/trace/${item.traceId}`} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>Open in Langfuse ↗</a></>}
+            {/* Observation errors */}
+            {item.observationErrors && item.observationErrors.length > 0 && (
+              <div style={{ marginTop: '0.2rem', borderTop: '1px solid #e5e7eb', paddingTop: '0.2rem' }}>
+                <span style={{ fontWeight: 600, color: '#dc2626' }}>Errors:</span>
+                {item.observationErrors.map((err, i) => (
+                  <div key={i} style={{ color: '#991b1b', fontFamily: 'monospace' }}>
+                    {err.name}: {err.message}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1026,6 +1792,7 @@ function ConversationView({ items, errors, langfuseBaseUrl }: { items: Conversat
             {item.type === 'error' && <ErrorMessage error={item.data as ESError} />}
             {item.type === 'conversation' && (item.data as ConversationItem).type === 'user' && <UserMessage item={item.data as ConversationItem} langfuseBaseUrl={langfuseBaseUrl} />}
             {item.type === 'conversation' && (item.data as ConversationItem).type === 'assistant' && <AssistantMessage item={item.data as ConversationItem} langfuseBaseUrl={langfuseBaseUrl} />}
+            {item.type === 'conversation' && (item.data as ConversationItem).type === 'summarization' && <SummarizationMessage item={item.data as ConversationItem} langfuseBaseUrl={langfuseBaseUrl} />}
           </React.Fragment>
         );
       })}
@@ -1071,60 +1838,74 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
   }, []);
 
   const loadingMoreRef = useRef(false);
+  const [loadingAll, setLoadingAll] = useState(false);
+  const [loadAllProgress, setLoadAllProgress] = useState({ loaded: 0, total: 0 });
 
-  const fetchPage = useCallback(async function fetchPageData(pageToFetch: number, knownTotalPages?: number, forceRefresh = false) {
-    if (!globalAppId) return;
-    if (loadingMoreRef.current && !forceRefresh) return;
+  const fetchAllPages = useCallback(async () => {
+    if (!globalAppId || loadingMoreRef.current) return;
 
-    const isInitial = knownTotalPages === undefined;
-    if (isInitial) {
-      setLoading(true);
-      setSessions([]);
-    } else {
-      setLoadingMore(true);
-      loadingMoreRef.current = true;
-    }
-    setError(null);
+    setLoadingAll(true);
+    setLoadingMore(true);
+    loadingMoreRef.current = true;
 
     try {
-      let actualPage = pageToFetch;
-      let totalPagesValue = knownTotalPages;
+      let nextPage = currentPage + 1;
+      while (nextPage <= totalPages) {
+        setLoadAllProgress({ loaded: nextPage - currentPage, total: totalPages - currentPage });
+        const lfResponse = await fetch(`/api/langfuse/sessions/${encodeURIComponent(globalAppId)}?page=${nextPage}`);
+        if (!lfResponse?.ok) throw new Error(`Failed to fetch page ${nextPage}: ${lfResponse?.status}`);
+        const data: SessionsResponse = await lfResponse.json();
 
-      if (isInitial) {
-        const metaResponse = await fetch(`/api/langfuse/sessions/${encodeURIComponent(globalAppId)}?page=1`);
-        if (!metaResponse?.ok) throw new Error(`Failed to fetch: ${metaResponse?.status}`);
-        const metaData: SessionsResponse = await metaResponse.json();
-        totalPagesValue = metaData.pagination?.totalPages || 1;
+        const totalPagesValue = data.pagination?.totalPages || 1;
         setTotalPages(totalPagesValue);
+        setSessions(prev => mergeSessions(prev, data.sessions));
+        setCurrentPage(nextPage);
 
-        if (totalPagesValue === 1) {
-          setSessions(metaData.sessions);
-          setCurrentPage(1);
+        if (nextPage >= totalPagesValue) {
           setHasMore(false);
-          setLoading(false);
-          return;
+          break;
         }
-
-        actualPage = totalPagesValue;
-      }
-
-      const lfResponse = await fetch(`/api/langfuse/sessions/${encodeURIComponent(globalAppId)}?page=${actualPage}`);
-      if (!lfResponse?.ok) throw new Error(`Failed to fetch: ${lfResponse?.status}`);
-      const data: SessionsResponse = await lfResponse.json();
-
-      setSessions(prev => isInitial ? data.sessions : mergeSessions(prev, data.sessions));
-      setCurrentPage(actualPage);
-      const morePages = actualPage > 1;
-      setHasMore(morePages);
-
-      if (morePages) {
-        loadingMoreRef.current = false;
-        setTimeout(() => fetchPage(actualPage - 1, totalPagesValue), 100);
+        nextPage++;
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch sessions');
     } finally {
-      if (isInitial) setLoading(false);
+      setLoadingAll(false);
+      setLoadingMore(false);
+      loadingMoreRef.current = false;
+      setLoadAllProgress({ loaded: 0, total: 0 });
+    }
+  }, [globalAppId, currentPage, totalPages, mergeSessions]);
+
+  const fetchPage = useCallback(async function fetchPageData(pageToFetch: number, options?: { forceRefresh?: boolean; isLoadMore?: boolean }) {
+    if (!globalAppId) return;
+    const { forceRefresh = false, isLoadMore = false } = options || {};
+    if (loadingMoreRef.current && !forceRefresh) return;
+
+    if (isLoadMore) {
+      setLoadingMore(true);
+      loadingMoreRef.current = true;
+    } else {
+      setLoading(true);
+      setSessions([]);
+    }
+    setError(null);
+
+    try {
+      const lfResponse = await fetch(`/api/langfuse/sessions/${encodeURIComponent(globalAppId)}?page=${pageToFetch}`);
+      if (!lfResponse?.ok) throw new Error(`Failed to fetch: ${lfResponse?.status}`);
+      const data: SessionsResponse = await lfResponse.json();
+
+      const totalPagesValue = data.pagination?.totalPages || 1;
+      setTotalPages(totalPagesValue);
+      setCurrentPage(pageToFetch);
+      setHasMore(pageToFetch < totalPagesValue);
+
+      setSessions(prev => isLoadMore ? mergeSessions(prev, data.sessions) : data.sessions);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch sessions');
+    } finally {
+      if (!isLoadMore) setLoading(false);
       setLoadingMore(false);
       loadingMoreRef.current = false;
     }
@@ -1147,12 +1928,12 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
       setEsErrors(null);
       setCurrentPage(0);
       setHasMore(true);
-      fetchPage(1, undefined, true); // forceRefresh = true
+      fetchPage(1, { forceRefresh: true });
     }
   }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (hasMore || loading || sessions.length === 0 || !globalAppId) return;
+    if (loading || sessions.length === 0 || !globalAppId) return;
 
     let earliestTimestamp: string | undefined;
     for (const session of sessions) {
@@ -1167,7 +1948,7 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
       .then(res => res.ok ? res.json() : null)
       .then(data => { if (data) setEsErrors(data); })
       .catch(() => {});
-  }, [globalAppId, hasMore, loading, sessions]);
+  }, [globalAppId, loading, sessions]);
 
   useEffect(() => {
     getLangfuseConfig().then(config => {
@@ -1249,39 +2030,16 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
               {globalAppId.substring(0, 12)}...
             </span>
           )}
-          {/* Loading Progress */}
-          {globalAppId && (hasMore || loadingMore || loading) && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ fontSize: '0.7rem', color: '#f59e0b' }}>⏳</span>
-              <div style={{
-                width: '60px',
-                height: '6px',
-                backgroundColor: '#e5e7eb',
-                borderRadius: '3px',
-                overflow: 'hidden'
-              }}>
-                <div style={{
-                  width: `${totalPages > 0 ? Math.round(((totalPages - currentPage + 1) / totalPages) * 100) : 0}%`,
-                  height: '100%',
-                  backgroundColor: '#f59e0b',
-                  borderRadius: '3px',
-                  transition: 'width 0.3s ease'
-                }} />
-              </div>
-              <span style={{ fontSize: '0.65rem', color: '#6b7280' }}>
-                ({currentPage > 0 ? currentPage - 1 : 0} remaining of {totalPages})
-              </span>
-            </div>
-          )}
-          {globalAppId && !hasMore && !loadingMore && !loading && conversationItems.length > 0 && (
+          {/* Loading Status */}
+          {globalAppId && !loading && conversationItems.length > 0 && (
             <span style={{
               fontSize: '0.7rem',
-              color: '#16a34a',
+              color: hasMore ? '#6b7280' : '#16a34a',
               display: 'flex',
               alignItems: 'center',
               gap: '0.25rem'
             }}>
-              ✓ Loaded
+              {hasMore ? `Page ${currentPage} of ${totalPages}` : '✓ All loaded'}
             </span>
           )}
         </div>
@@ -1340,7 +2098,7 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
           padding: '2rem',
           color: '#6b7280'
         }}>
-          ⏳ Loading page {currentPage}{totalPages > 1 ? ` of ${totalPages}` : ''}...
+          ⏳ Loading latest traces...
         </div>
       ) : conversationItems.length === 0 ? (
         <div style={{
@@ -1387,6 +2145,56 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
 
           {/* Conversation View */}
           <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, maxHeight: '600px' }}>
+            {/* Load More (older traces) */}
+            {hasMore && (
+              <div style={{ textAlign: 'center', padding: '0.5rem 0 0.75rem', display: 'flex', justifyContent: 'center', gap: '0.5rem', alignItems: 'center' }}>
+                <button
+                  onClick={() => fetchPage(currentPage + 1, { isLoadMore: true })}
+                  disabled={loadingMore}
+                  style={{
+                    padding: '0.4rem 1rem',
+                    backgroundColor: loadingMore ? '#e5e7eb' : '#f0f9ff',
+                    color: loadingMore ? '#9ca3af' : '#3b82f6',
+                    border: '1px solid',
+                    borderColor: loadingMore ? '#d1d5db' : '#93c5fd',
+                    borderRadius: '6px',
+                    cursor: loadingMore ? 'not-allowed' : 'pointer',
+                    fontSize: '0.75rem',
+                    fontWeight: 500,
+                  }}
+                >
+                  {loadingMore && !loadingAll ? '⏳ Loading...' : `Load older traces (page ${currentPage + 1} of ${totalPages})`}
+                </button>
+                {totalPages - currentPage > 1 && (
+                  <button
+                    onClick={() => {
+                      const remaining = totalPages - currentPage;
+                      const confirmed = window.confirm(
+                        `Load all ${remaining} remaining pages?\n\n` +
+                        `This may take a while and is rarely needed. ` +
+                        `Recent conversations are usually most relevant — ` +
+                        `older traces may not reflect the current user experience.`
+                      );
+                      if (confirmed) fetchAllPages();
+                    }}
+                    disabled={loadingMore}
+                    style={{
+                      padding: '0.4rem 1rem',
+                      backgroundColor: loadingMore ? '#e5e7eb' : '#fefce8',
+                      color: loadingMore ? '#9ca3af' : '#a16207',
+                      border: '1px solid',
+                      borderColor: loadingMore ? '#d1d5db' : '#fde047',
+                      borderRadius: '6px',
+                      cursor: loadingMore ? 'not-allowed' : 'pointer',
+                      fontSize: '0.75rem',
+                      fontWeight: 500,
+                    }}
+                  >
+                    {loadingAll ? `⏳ Loading ${loadAllProgress.loaded}/${loadAllProgress.total}...` : 'Load all'}
+                  </button>
+                )}
+              </div>
+            )}
             <ConversationView items={conversationItems} errors={esErrors?.errors} langfuseBaseUrl={langfuseBaseUrl} />
           </div>
         </>
