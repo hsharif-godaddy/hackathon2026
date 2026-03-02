@@ -125,3 +125,13 @@ export function getDistPath(appId: string): string {
 export function getAllocPath(appId: string): string {
 	return path.join(getBasePath(appId), 'alloc');
 }
+
+/**
+ * Get the task-local directory path for a given appId and variant
+ * Maps to NOMAD_TASK_DIR (/local) inside the container
+ * Each variant gets its own isolated directory (matching Nomad's task isolation)
+ * Example: /tmp/apps/{appId}/local/preview or /tmp/apps/{appId}/local/publish
+ */
+export function getTaskLocalPath(appId: string, variant: 'preview' | 'publish'): string {
+	return path.join(getBasePath(appId), 'local', variant);
+}

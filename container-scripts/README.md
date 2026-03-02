@@ -14,6 +14,9 @@ container-scripts/
 │
 └── publish/              # Scripts for publish containers (production mode)
     ├── run-app.sh                     # Main startup script for publish container
+    ├── build-and-run.sh               # Fallback: build from source when no pre-built artifacts
+    ├── common.sh                      # Shared utility functions (logging, env file creation)
+    ├── entrypoint.sh                  # Dev-supervisor wrapper entrypoint (used by pioneer-infra)
     └── coming-soon.js                 # Fallback server for publish containers
 ```
 
@@ -22,6 +25,7 @@ container-scripts/
 These scripts are provided to Docker builds via the `--build-context container-scripts` flag:
 
 **Preview Image (Dockerfile.dev):**
+
 ```bash
 docker build \
   --build-context container-scripts=container-scripts \
@@ -30,12 +34,16 @@ docker build \
 ```
 
 **Publish Image (app-publish/Dockerfile.dev):**
+
 ```bash
 docker build \
   --build-context container-scripts=container-scripts \
   -f app-publish/Dockerfile.dev \
   app-publish/
 ```
+
+**Pioneer-infra Publish Dockerfile:**
+The production Dockerfile in `pioneer-infra/docker/airo-app-builder-publish/` copies scripts from `app/container-scripts/publish/` — this repo is the single source of truth.
 
 ## Script Descriptions
 
@@ -48,21 +56,29 @@ docker build \
 
 ### Publish Scripts
 
-- **run-app.sh**: Main entrypoint for publish containers. Handles tarball extraction, npm installation, and application startup.
-- **coming-soon.js**: Fallback Express server that displays a "Coming Soon" page when the application is not yet ready.
+- **run-app.sh**: Main startup script for publish containers. Extracts pre-built tarballs, handles Nomad configuration (no-op locally), and starts the application. Falls back to `build-and-run.sh` when no pre-built artifacts are found.
+- **build-and-run.sh**: Fallback build script for non-pre-built archives. Detects the package manager (npm or pnpm), installs dependencies, runs the build, applies database migrations, and starts the app.
+- **common.sh**: Shared utility functions used by `run-app.sh` and `build-and-run.sh`. Provides logging helpers (`log`, `log_warn`, `error_exit`), environment file creation, and default configuration.
+- **entrypoint.sh**: One-liner wrapper that starts dev-supervisor with `run-app.sh` as the managed process. Used as the Docker ENTRYPOINT in the pioneer-infra production Dockerfile. In local dev, `Dockerfile.dev` uses dev-supervisor directly as ENTRYPOINT instead.
+- **coming-soon.js**: Fallback HTTP server that displays a "Coming Soon" page when no application has been published yet.
 
 ## Container Paths
 
 Scripts are copied to these locations inside containers:
 
 **Preview containers:**
+
 - `/management-scripts/nomad_setup.sh`
 - `/management-scripts/sync-package-additions.js`
 - `/management-scripts/sync-template-files.js`
 - `/usr/local/bin/dev-supervisor-healthcheck.sh`
 
 **Publish containers:**
+
 - `/publish/run-app.sh`
+- `/publish/build-and-run.sh`
+- `/publish/common.sh`
+- `/publish/entrypoint.sh`
 - `/publish/coming-soon.js`
 
 ## Development

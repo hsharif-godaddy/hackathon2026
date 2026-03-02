@@ -130,20 +130,18 @@ func TestPeerSecMiddleware(t *testing.T) {
 	allowedTypes := []string{"airo_agent_container.process", "airo_supervisor_t"}
 	middleware := PeerSec(allowedTypes)(nextHandler)
 
-	t.Run("rejects request without security context", func(t *testing.T) {
-		t.Setenv("NOMAD_ALLOC_DIR", "/alloc")
+	t.Run("skips enforcement without security context", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		rec := httptest.NewRecorder()
 
 		middleware.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusForbidden {
-			t.Errorf("expected status %d, got %d", http.StatusForbidden, rec.Code)
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
 		}
 	})
 
 	t.Run("rejects request with unauthorized SELinux type", func(t *testing.T) {
-		t.Setenv("NOMAD_ALLOC_DIR", "/alloc")
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		ctx := context.WithValue(req.Context(), peerSecContextKey{}, &SELinuxContext{
 			User:  "system_u",
@@ -163,7 +161,6 @@ func TestPeerSecMiddleware(t *testing.T) {
 	})
 
 	t.Run("allows request with authorized SELinux type", func(t *testing.T) {
-		t.Setenv("NOMAD_ALLOC_DIR", "/alloc")
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		ctx := context.WithValue(req.Context(), peerSecContextKey{}, &SELinuxContext{
 			User:  "system_u",
@@ -173,18 +170,6 @@ func TestPeerSecMiddleware(t *testing.T) {
 			Raw:   "system_u:system_r:airo_agent_container.process:s0",
 		})
 		req = req.WithContext(ctx)
-		rec := httptest.NewRecorder()
-
-		middleware.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusOK {
-			t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
-		}
-	})
-
-	t.Run("bypasses restriction when nomad env missing", func(t *testing.T) {
-		t.Setenv("NOMAD_ALLOC_DIR", "")
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		rec := httptest.NewRecorder()
 
 		middleware.ServeHTTP(rec, req)

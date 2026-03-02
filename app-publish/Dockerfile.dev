@@ -37,8 +37,8 @@ ARG HOST_UID=790
 ARG HOST_GID=790
 
 # Install runtime dependencies
-# Publish image only extracts pre-built tarballs - no compilation needed
-RUN apk add --no-cache curl git ca-certificates tzdata bash jq yq ripgrep
+# Includes build tools (python3, make, g++) for build-and-run.sh native module compilation
+RUN apk add --no-cache curl git ca-certificates tzdata bash jq yq ripgrep python3 py3-setuptools make g++
 
 # Create the group and user with dynamic UID/GID
 # This allows the container user to match the host user for proper file permissions
@@ -71,6 +71,9 @@ COPY --chown=agent:agent --from=dev-supervisor-builder /usr/local/bin/dev-superv
 
 # Copy publish scripts from container-scripts build context (already executable)
 COPY --from=container-scripts --chown=agent:agent publish/run-app.sh /publish/run-app.sh
+COPY --from=container-scripts --chown=agent:agent publish/build-and-run.sh /publish/build-and-run.sh
+COPY --from=container-scripts --chown=agent:agent publish/common.sh /publish/common.sh
+COPY --from=container-scripts --chown=agent:agent publish/entrypoint.sh /publish/entrypoint.sh
 COPY --from=container-scripts --chown=agent:agent publish/coming-soon.js /publish/coming-soon.js
 
 # Enable corepack (for pnpm), create directories, and set permissions
@@ -79,8 +82,8 @@ RUN \
     npm install --yes --global corepack@0.34.0 && \
     corepack enable && \
     corepack install --global pnpm@10.17.0 && \
-    mkdir -p logs /app /dist && \
-    chown -R agent:agent /app /dist /publish logs
+    mkdir -p logs /app /dist /local && \
+    chown -R agent:agent /app /dist /publish /local logs
 
 # Environment variables for production mode
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \

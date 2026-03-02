@@ -11,7 +11,7 @@ import { SharedMySQLService } from './shared-mysql-service';
 import { auth, devSupervisor } from '../../features';
 import { logger } from '../../request-context';
 import { DevDatabase } from '../database/DevDatabase';
-import { getAllocPath, getAppPath, getBasePath } from '../utils/app-paths';
+import { getAllocPath, getAppPath, getBasePath, getTaskLocalPath } from '../utils/app-paths';
 import { ConfigJsonManager } from '../utils/config-json';
 
 /**
@@ -492,10 +492,26 @@ export class DockerContainerManager {
 				jwtRedirectUrl = `${appUrl}/develop/${appId}?siteId=${appId}`;
 			}
 
-			// Write config.json with database, OAuth, and JWT redirect URL to alloc directory
+			// Write variant-specific config files to alloc directory (for container startup scripts)
+			// and to task-local directories (for host-side reads by agents/app services).
+			//
+			// In production, the secrets worker writes preview-config.json and publish-config.json
+			// to the alloc dir. Container scripts then move them to NOMAD_TASK_DIR/config.json
+			// and symlink NOMAD_ALLOC_DIR/config.json back. The symlink only resolves inside
+			// the container, so host-side services read from the task-local paths directly.
 			const allocPath = getAllocPath(appId);
-			const configPath = path.join(allocPath, 'config.json');
-			ConfigJsonManager.writeConfigFile(configPath, dbConfig, oauthConfig, jwtRedirectUrl);
+			const previewLocalPath = getTaskLocalPath(appId, 'preview');
+			const publishLocalPath = getTaskLocalPath(appId, 'publish');
+			mkdirSync(previewLocalPath, { recursive: true });
+			mkdirSync(publishLocalPath, { recursive: true });
+
+			// Alloc files: consumed by container startup scripts (nomad_setup.sh, run-app.sh)
+			ConfigJsonManager.writeConfigFile(path.join(allocPath, 'preview-config.json'), dbConfig, oauthConfig, jwtRedirectUrl);
+			ConfigJsonManager.writeConfigFile(path.join(allocPath, 'publish-config.json'), dbConfig, oauthConfig, jwtRedirectUrl);
+
+			// Task-local files: stable host-readable paths for agents/app services
+			ConfigJsonManager.writeConfigFile(path.join(previewLocalPath, 'config.json'), dbConfig, oauthConfig, jwtRedirectUrl);
+			ConfigJsonManager.writeConfigFile(path.join(publishLocalPath, 'config.json'), dbConfig, oauthConfig, jwtRedirectUrl);
 
 			logger.info('database.provision.success', {
 				appId

@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"strings"
 
 	"golang.org/x/sys/unix"
@@ -120,20 +119,13 @@ func PeerSec(allowedTypes []string) func(http.Handler) http.Handler {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Skip enforcement if not in production (NOMAD_ALLOC_DIR not set)
-			if os.Getenv("NOMAD_ALLOC_DIR") == "" {
-				next.ServeHTTP(w, r)
-				return
-			}
-
 			sec := peerSecFromContext(r.Context())
 			if sec == nil {
-				slog.Warn("peer_sec.missing", "path", r.URL.Path, "method", r.Method)
-				http.Error(
-					w,
-					`{"error":"security_context_required","message":"SELinux security context not available"}`,
-					http.StatusForbidden,
-				)
+				// No SELinux context available - SO_PEERSEC failed or returned nothing.
+				// This means SELinux is not active on this host (e.g., local Docker).
+				// Skip enforcement since there's nothing to enforce against.
+				slog.Debug("peer_sec.skipped", "path", r.URL.Path, "method", r.Method, "reason", "no_selinux_context")
+				next.ServeHTTP(w, r)
 				return
 			}
 

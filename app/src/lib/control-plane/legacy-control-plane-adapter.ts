@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 
 import { PrismaSiteService } from '@/lib/database/prisma-site-service';
 import { deploymentAdapter } from '@/lib/deployment';
-import { getAllocPath } from '@/lib/dev-environment/utils/app-paths';
+import { getTaskLocalPath } from '@/lib/dev-environment/utils/app-paths';
 import { logger } from '@/lib/request-context';
 import { CreateSiteParams, CreateSiteResult, DeploySiteOptions, IControlPlaneAdapter, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate, SiteInfo } from './types';
 
@@ -372,13 +372,11 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
   /**
    * Get secrets for an app (Legacy: reads from local JSON files)
    *
-   * For preview variant: reads from /tmp/apps/{appId}/alloc/config.json
-   * For publish variant: reads from /tmp/apps/{appId}/alloc/publish-config.json
+   * Reads from task-local path: /tmp/apps/{appId}/local/{variant}/config.json
+   * This is the stable host-readable path that maps to NOMAD_TASK_DIR inside containers.
    */
   async getSecrets(appId: string, variant: 'preview' | 'publish'): Promise<SecretsResponse> {
-    const allocPath = getAllocPath(appId);
-    const configFileName = variant === 'preview' ? 'config.json' : 'publish-config.json';
-    const configPath = join(allocPath, configFileName);
+    const configPath = join(getTaskLocalPath(appId, variant), 'config.json');
 
     const variantSecrets = await this.readSecretsFile(configPath);
 
@@ -398,8 +396,8 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
   /**
    * Perform bulk secret operations (Legacy: writes to local JSON files)
    *
-   * For preview variant: writes to /tmp/apps/{appId}/alloc/config.json
-   * For publish variant: writes to /tmp/apps/{appId}/alloc/publish-config.json
+   * Writes to task-local path: /tmp/apps/{appId}/local/{variant}/config.json
+   * This path is bind-mounted into the container at /local/config.json (NOMAD_TASK_DIR).
    */
   async updateSecrets(
     appId: string,
@@ -408,11 +406,10 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
   ): Promise<SecretOperationsResult> {
     const { additions = [], updates = [], deletions = [] } = operations;
 
-    const allocPath = getAllocPath(appId);
-    await mkdir(allocPath, { recursive: true });
+    const taskLocalPath = getTaskLocalPath(appId, variant);
+    await mkdir(taskLocalPath, { recursive: true });
 
-    const configFileName = variant === 'preview' ? 'config.json' : 'publish-config.json';
-    const variantPath = join(allocPath, configFileName);
+    const variantPath = join(taskLocalPath, 'config.json');
 
     const currentSecrets = await this.readSecretsFile(variantPath);
 
@@ -520,16 +517,9 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
     sourceVariant: 'preview' | 'publish',
     destinationVariant: 'preview' | 'publish'
   ): Promise<SecretsDiffResult> {
-    const allocPath = getAllocPath(appId);
+    const sourcePath = join(getTaskLocalPath(appId, sourceVariant), 'config.json');
+    const destPath = join(getTaskLocalPath(appId, destinationVariant), 'config.json');
 
-    // Get config file names for each variant
-    const sourceFileName = sourceVariant === 'preview' ? 'config.json' : 'publish-config.json';
-    const destFileName = destinationVariant === 'preview' ? 'config.json' : 'publish-config.json';
-
-    const sourcePath = join(allocPath, sourceFileName);
-    const destPath = join(allocPath, destFileName);
-
-    // Read both files
     const sourceSecrets = await this.readSecretsFile(sourcePath);
     const destSecrets = await this.readSecretsFile(destPath);
 
@@ -599,16 +589,9 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
     destinationVariant: 'preview' | 'publish'
   ): Promise<SecretOperationsResult> {
     try {
-      const allocPath = getAllocPath(appId);
+      const sourcePath = join(getTaskLocalPath(appId, sourceVariant), 'config.json');
+      const destPath = join(getTaskLocalPath(appId, destinationVariant), 'config.json');
 
-      // Get config file names for each variant
-      const sourceFileName = sourceVariant === 'preview' ? 'config.json' : 'publish-config.json';
-      const destFileName = destinationVariant === 'preview' ? 'config.json' : 'publish-config.json';
-
-      const sourcePath = join(allocPath, sourceFileName);
-      const destPath = join(allocPath, destFileName);
-
-      // Read both files
       const sourceSecrets = await this.readSecretsFile(sourcePath);
       const destSecrets = await this.readSecretsFile(destPath);
 

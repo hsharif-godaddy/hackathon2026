@@ -165,6 +165,14 @@ export class DockerComposeGenerator {
 		// In production, this is set by the deployment system. For local docker-compose, we set it explicitly.
 		env.SITE_ID = config.appId;
 
+		// Nomad filesystem environment variables for script compatibility
+		// NOMAD_ALLOC_DIR (/alloc) is shared between tasks - config/secrets
+		// NOMAD_TASK_DIR (/local) is task-private - each task gets its own /local directory
+		// In production, Nomad sets these automatically. Locally, we set them to match
+		// the volume mounts so scripts work identically in both environments.
+		env.NOMAD_ALLOC_DIR = "/alloc";
+		env.NOMAD_TASK_DIR = "/local";
+
 		// Start-on-request configuration (preview only)
 		// Automatically starts the process when a request arrives and stops it after idle timeout
 		// NOMAD_TASK_NAME signals the variant (required for start-on-request to activate)
@@ -206,6 +214,12 @@ export class DockerComposeGenerator {
 			PORT: PUBLISH_INTERNAL_PORT.toString(),
 			DIST_DIR: "/dist",
 		};
+
+		// Nomad filesystem environment variables for script compatibility
+		// NOMAD_ALLOC_DIR (/alloc) is shared between tasks - config/secrets
+		// NOMAD_TASK_DIR (/local) is task-private - each task gets its own /local directory
+		env.NOMAD_ALLOC_DIR = "/alloc";
+		env.NOMAD_TASK_DIR = "/local";
 
 		// Identify this as the publish variant (always-on, no start-on-request)
 		env.NOMAD_TASK_NAME = "publish";
@@ -256,6 +270,7 @@ export class DockerComposeGenerator {
 		const assetsPath = config.appPath.replace(/\/preview$/, '/assets');
 		const distPath = config.appPath.replace(/\/preview$/, '/dist');
 		const tmpPath = config.appPath.replace(/\/preview$/, '/tmp');
+		const previewLocalPath = config.appPath.replace(/\/preview$/, '/local/preview');
 
 		const previewEnv = this.generatePreviewEnvironment(config);
 		const envLines = Object.entries(previewEnv).map(([key, value]) => `      ${key}: "${value}"`).join('\n');
@@ -265,7 +280,8 @@ export class DockerComposeGenerator {
 		const volumes = [
 			`${config.appPath}:/app`,                           // Preview workspace
 			`${distPath}:/dist`,                                // Dist directory
-			`${allocPath}:/alloc:ro`,                           // Config/secrets
+			`${allocPath}:/alloc`,                               // Config/secrets (shared between tasks, writable for Nomad config moves)
+			`${previewLocalPath}:/local`,                       // Task-private dir (NOMAD_TASK_DIR)
 			`${gitRepoPath}/.git:/app/.git`,                    // Git repo bind mount
 			`${assetsPath}/public:/app/public/assets`,          // Public assets
 			`${assetsPath}/private:/private`,                   // Private assets
@@ -348,6 +364,7 @@ ${volumeLines}
 		const publishPath = config.appPath.replace(/\/preview$/, '/publish');
 		const assetsPath = config.appPath.replace(/\/preview$/, '/assets');
 		const tmpPath = config.appPath.replace(/\/preview$/, '/tmp');
+		const publishLocalPath = config.appPath.replace(/\/preview$/, '/local/publish');
 
 		const publishEnv = this.generatePublishEnvironment(config);
 		const envLines = Object.entries(publishEnv).map(([key, value]) => `      ${key}: "${value}"`).join('\n');
@@ -360,7 +377,8 @@ ${volumeLines}
 		const volumes = [
 			`${distPath}:/dist`,
 			`${publishPath}:/app`,
-			`${allocPath}:/alloc:ro`,
+			`${allocPath}:/alloc`,                               // Config/secrets (shared between tasks, writable for Nomad config moves)
+			`${publishLocalPath}:/local`,                       // Task-private dir (NOMAD_TASK_DIR)
 			`${sslPath}:/app/.ssl:ro`,
 			`${assetsPath}/public:/app/public/assets`,
 			`${assetsPath}/private:/private`,

@@ -139,12 +139,13 @@ export class MySQLUtils {
     let configPath: string;
 
     if (process.env.NOMAD_ALLOC_DIR) {
-      // Production: config is in the NOMAD_ALLOC_DIR
+      // Production: container scripts symlink config.json from the variant-specific file
       configPath = join(process.env.NOMAD_ALLOC_DIR, 'config.json');
     } else {
-      // Local development: construct path from APPS_BASE_DIR + appId
+      // Local development: read from task-local path (matches NOMAD_TASK_DIR inside container)
+      // docker-container-manager pre-populates this, and it's bind-mounted into the container
       const appsBaseDir = process.env.APPS_BASE_DIR || '/tmp/airo-app-builder';
-      configPath = join(appsBaseDir, app.id, 'alloc', 'config.json');
+      configPath = join(appsBaseDir, app.id, 'local', 'preview', 'config.json');
     }
 
     // Check if config.json file exists
