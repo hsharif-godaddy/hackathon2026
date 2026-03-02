@@ -187,7 +187,7 @@ export class ConnectionManager {
         callbacks.onSocketReady?.(sharedSocket, { isNew: false })
         if (sharedSocket.connected) {
           // If already connected, connect event won't re-fire; proactively notify.
-          callbacks.onConnect?.({ socket: sharedSocket, recovered: Boolean(sharedSocket.recovered) })
+          callbacks.onConnect?.({ socket: sharedSocket, recovered: false })
         } else {
           // Ensure the socket is actively connecting so we eventually get onConnect.
           sharedSocket.connect()
@@ -340,7 +340,6 @@ export class ConnectionManager {
       reconnectionDelay: 2000,
       reconnectionDelayMax: 5000,
       randomizationFactor: 0.5,
-      connectionStateRecovery: {},
       auth: {
         ...(token && { token }),
         ...(previousSocketId && { previousSocketId }),
@@ -376,12 +375,7 @@ export class ConnectionManager {
       onConnect: () => {
         const previousSocketId = this.getStoredSocketId(appId)
 
-        let recovered = false
-        if (socket.recovered) {
-          recovered = true
-        } else if (previousSocketId && previousSocketId !== socket.id) {
-          recovered = true
-        }
+        const recovered = !!(previousSocketId && previousSocketId !== socket.id)
 
         this.storeSocketId(appId, socket.id)
         this.tokenRefreshCount = 0

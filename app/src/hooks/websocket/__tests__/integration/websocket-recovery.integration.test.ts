@@ -248,7 +248,7 @@ describe('WebSocket Recovery Integration', () => {
     // Simulate successful connection
     if (socket) {
       await act(async () => {
-        socket.simulateConnect(false)
+        socket.simulateConnect()
         vi.runAllTimers()
         await Promise.resolve()
         await Promise.resolve()
@@ -547,7 +547,7 @@ describe('WebSocket Recovery Integration', () => {
 
       // Reconnect before timeout - this should clear the retry state
       await act(async () => {
-        socket!.simulateConnect(true)
+        socket!.simulateConnect()
         vi.runOnlyPendingTimers()
         await Promise.resolve()
         await Promise.resolve()

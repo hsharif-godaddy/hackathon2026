@@ -78,7 +78,6 @@ describe('WebSocket Duplicate Events Bug - Multiple Reconnection Cycles', () => 
       }),
       on: vi.fn(),
       connected: true,
-      recovered: false,
       handshake: { auth: {} }
     }
 
@@ -147,9 +146,8 @@ describe('WebSocket Duplicate Events Bug - Multiple Reconnection Cycles', () => 
       agentName: 'test-agent'
     })
 
-    // Step 5: Simulate reconnect (socket-A, socket.recovered = true)
+    // Step 5: Simulate reconnect (socket-A reconnects)
     // Manual replay sends events 4-5 via socket.emit()
-    mockSocketA.recovered = true
     mockSocketA.connected = true
 
     const missedEvents = eventChannel.getEventsSince('test-conv-id', 2)
@@ -196,7 +194,7 @@ describe('WebSocket Duplicate Events Bug - Multiple Reconnection Cycles', () => 
       agentName: 'test-agent'
     })
 
-    // Step 8: Simulate second reconnect with socket.recovered = true
+    // Step 8: Simulate second reconnect
     // Socket.IO would replay its buffer (which includes events 1-5)
     // Then manual replay would send events 6-7
 
@@ -287,7 +285,6 @@ describe('WebSocket Duplicate Events Bug - Multiple Reconnection Cycles', () => 
       },
       on: vi.fn(),
       connected: true,
-      recovered: false,
       handshake: { auth: {} }
     }
 

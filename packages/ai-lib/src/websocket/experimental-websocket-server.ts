@@ -414,11 +414,10 @@ export class WebSocketServer {
       },
       // Default buffer size for large payloads (e.g., screenshots)
       maxHttpBufferSize: 50 * 1024 * 1024, // 50MB default
-      // Enable connection state recovery to preserve socket IDs and allow reconnection
-      connectionStateRecovery: {
-        maxDisconnectionDuration: this.STREAM_RECOVERY_WINDOW,
-        skipMiddlewares: true
-      },
+      // NOTE: connectionStateRecovery is intentionally disabled.
+      // Our custom recovery protocol (manual/conversation/initial modes) handles all
+      // reconnection scenarios. The built-in CSR replays packets during socket construction
+      // — before client-side deduplication is active — causing duplicates.
       ...config.socketOptions
     })
 
@@ -650,7 +649,6 @@ export class WebSocketServer {
         hasAuth: !!auth,
         authKeys: Object.keys(auth),
         previousSocketId: previousSocketId || 'none',
-        recovered: socket.recovered
       })
 
       // Send server config immediately after connection
@@ -682,25 +680,6 @@ export class WebSocketServer {
 
       // Use recovery manager to detect and handle recovery
       const detectedRecoveryMode = await this.recoveryManager.attemptRecovery(socket)
-
-      // Delegate to recovery manager for all recovery scenarios
-      if (detectedRecoveryMode === 'automatic') {
-        await this.recoveryManager.handleAutomaticRecovery(socket, {
-          onRecoveryComplete: (_completedSocketId, _events, _finalSequence) => {
-            // State manager handles all state updates
-            // No local Map updates needed
-          },
-          onRecoveryFailed: (_failedSocketId, _reason) => {
-            // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
-            // No additional cleanup needed
-          },
-          createWebSocketSubscriber: (sock) => new WebSocketSubscriber(
-            sock,
-            (id) => this.stateManager.isDisconnected(id)
-          )
-        })
-        return // Recovery handled, skip fresh connection setup
-      }
 
       // Check for manual recovery after page reload (client sends previousSocketId)
       if (detectedRecoveryMode === 'manual') {

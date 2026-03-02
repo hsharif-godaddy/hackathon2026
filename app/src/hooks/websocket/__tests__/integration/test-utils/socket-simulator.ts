@@ -15,7 +15,6 @@ export interface ClientEmission {
 export interface SocketSimulator {
   id: string
   connected: boolean
-  recovered: boolean
   emit: ReturnType<typeof vi.fn>
   on: ReturnType<typeof vi.fn>
   once: ReturnType<typeof vi.fn>
@@ -28,7 +27,7 @@ export interface SocketSimulator {
 
   // Server simulation methods
   serverEmit: (event: string, data: unknown, ack?: () => void) => void
-  simulateConnect: (recovered?: boolean) => void
+  simulateConnect: () => void
   simulateDisconnect: (reason: string) => void
   simulateReconnect: (attempt: number) => void
   simulateReconnectAttempt: (attempt: number) => void
@@ -60,7 +59,6 @@ export function createSocketSimulator(): SocketSimulator {
   const socket: SocketSimulator = {
     id: socketId,
     connected: false,
-    recovered: false,
 
     // Client → Server (tracked for assertions)
     emit: vi.fn((event: string, data: unknown) => {
@@ -139,9 +137,8 @@ export function createSocketSimulator(): SocketSimulator {
     },
 
     // Connection lifecycle simulation
-    simulateConnect(recovered = false) {
+    simulateConnect() {
       socket.connected = true
-      socket.recovered = recovered
       handlers.get('connect')?.forEach((h) => h())
     },
 

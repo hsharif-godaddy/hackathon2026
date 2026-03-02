@@ -11,7 +11,6 @@ import type { StreamingEvent } from '../interfaces.js'
 // Mock Socket.IO socket
 const createMockSocket = (overrides: Partial<{
   id: string
-  recovered: boolean
   handshake: { auth: Record<string, unknown> }
 }> = {}) => {
   const handlers: Record<string, Array<(...args: any[]) => void>> = {}
@@ -19,7 +18,6 @@ const createMockSocket = (overrides: Partial<{
 
   return {
     id: overrides.id ?? 'socket-123',
-    recovered: overrides.recovered ?? false,
     handshake: overrides.handshake ?? { auth: {} },
     emit: vi.fn(),
     volatile: { emit: vi.fn() },
@@ -125,18 +123,6 @@ describe('ConnectionRecoveryManager', () => {
   })
 
   describe('attemptRecovery', () => {
-    it('returns automatic for recovered socket with disconnected stream', async () => {
-      const socket = createMockSocket({
-        id: 'socket-1',
-        recovered: true
-      })
-
-      createDisconnectedConnection('socket-1', 'conv-1')
-
-      const mode = await manager.attemptRecovery(socket)
-      expect(mode).toBe('automatic')
-    })
-
     it('returns manual for socket with previousSocketId', async () => {
       const socket = createMockSocket({
         id: 'socket-new',
@@ -179,180 +165,21 @@ describe('ConnectionRecoveryManager', () => {
     })
   })
 
-  describe('handleAutomaticRecovery', () => {
-    let socket: ReturnType<typeof createMockSocket>
-    let callbacks: any
-
-    beforeEach(() => {
-      socket = createMockSocket({
-        id: 'socket-1',
-        recovered: true
-      })
-
-      callbacks = {
-        onRecoveryComplete: vi.fn(),
-        onRecoveryFailed: vi.fn(),
-        createWebSocketSubscriber: vi.fn().mockReturnValue({
-          id: 'websocket-socket-1'
-        })
-      }
-
-      // Set up state
-      createDisconnectedConnection('socket-1', 'conv-1', 5)
-    })
-
-    it('sends recovery_status with buffered events info', async () => {
-      const events: StreamingEvent[] = [
-        {
-          id: 'evt-1',
-          conversationId: 'conv-1',
-          sequence: 6,
-          type: 'chunk',
-          content: 'hello',
-          data: {},
-          timestamp: new Date(),
-          agentName: 'test-agent'
-        }
-      ]
-      eventChannel.getEventsSince.mockReturnValue(events)
-
-      await manager.handleAutomaticRecovery(socket, callbacks)
-
-      expect(socket.emit).toHaveBeenCalledWith('message', expect.objectContaining({
-        type: 'recovery_status',
-        data: expect.objectContaining({
-          isRecovering: true,
-          hasBufferedEvents: true,
-          bufferedEventCount: 1,
-          recoveryMode: 'automatic',
-          requiresAck: true
-        })
-      }))
-    })
-
-    it('replays buffered events via volatile.emit (not regular emit)', async () => {
-      const events: StreamingEvent[] = [
-        {
-          id: 'evt-1',
-          conversationId: 'conv-1',
-          sequence: 6,
-          type: 'chunk',
-          content: 'hello',
-          data: { key: 'value' },
-          timestamp: new Date(),
-          agentName: 'test-agent'
-        }
-      ]
-      eventChannel.getEventsSince.mockReturnValue(events)
-
-      await manager.handleAutomaticRecovery(socket, callbacks)
-
-      // Must use volatile.emit to prevent Socket.IO adapter from storing
-      // replay packets (which would cause duplicates on future reconnections)
-      expect(socket.volatile.emit).toHaveBeenCalledWith('message', {
-        type: 'chunk',
-        content: 'hello',
-        data: { key: 'value', sequence: 6 }
-      })
-      // Must NOT use regular emit for chunk events (only for control messages)
-      const regularChunkEmit = (socket.emit as any).mock.calls.find(
-        (call: any[]) => call[1]?.type === 'chunk'
-      )
-      expect(regularChunkEmit).toBeUndefined()
-    })
-
-    it('sends replay_complete after events', async () => {
-      const events: StreamingEvent[] = [
-        {
-          id: 'evt-1',
-          conversationId: 'conv-1',
-          sequence: 6,
-          type: 'chunk',
-          content: 'hello',
-          data: {},
-          timestamp: new Date(),
-          agentName: 'test-agent'
-        }
-      ]
-      eventChannel.getEventsSince.mockReturnValue(events)
-
-      await manager.handleAutomaticRecovery(socket, callbacks)
-
-      expect(socket.emit).toHaveBeenCalledWith('message', expect.objectContaining({
-        type: 'replay_complete',
-        data: expect.objectContaining({
-          lastSequence: 6,
-          eventsReplayed: 1
-        })
-      }))
-    })
-
-    it('calls onRecoveryComplete after ACK received', async () => {
-      eventChannel.getEventsSince.mockReturnValue([])
-
-      await manager.handleAutomaticRecovery(socket, callbacks)
-
-      // Simulate client ACK
-      socket.trigger('recovery_ack', {
-        conversationId: 'conv-1',
-        lastSequence: 5
-      })
-
-      expect(callbacks.onRecoveryComplete).toHaveBeenCalledWith(
-        'socket-1',
-        [],
-        5 // finalSequence from ackData.lastSequence
-      )
-    })
-
-    it('calls onRecoveryFailed after ACK timeout', async () => {
-      eventChannel.getEventsSince.mockReturnValue([])
-
-      await manager.handleAutomaticRecovery(socket, callbacks)
-
-      // Advance past ACK timeout
-      vi.advanceTimersByTime(config.ackTimeout + 1000)
-
-      expect(callbacks.onRecoveryFailed).toHaveBeenCalledWith(
-        'socket-1',
-        'ack_timeout'
-      )
-    })
-
-    it('ignores ACK with wrong conversationId', async () => {
-      eventChannel.getEventsSince.mockReturnValue([])
-
-      await manager.handleAutomaticRecovery(socket, callbacks)
-
-      // Simulate client ACK with wrong conversationId
-      socket.trigger('recovery_ack', {
-        conversationId: 'wrong-conv',
-        lastSequence: 5
-      })
-
-      expect(callbacks.onRecoveryComplete).not.toHaveBeenCalled()
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        'recovery.ack_mismatch',
-        expect.any(Object)
-      )
-    })
-  })
-
   describe('duplication prevention (Fix: text stuttering bug)', () => {
     let socket: ReturnType<typeof createMockSocket>
     let callbacks: any
 
     beforeEach(() => {
       socket = createMockSocket({
-        id: 'socket-1',
-        recovered: true
+        id: 'socket-new',
+        handshake: { auth: { previousSocketId: 'socket-old' } }
       })
       callbacks = {
         onRecoveryComplete: vi.fn(),
         onRecoveryFailed: vi.fn(),
-        createWebSocketSubscriber: vi.fn().mockReturnValue({ id: 'websocket-socket-1' })
+        createWebSocketSubscriber: vi.fn().mockReturnValue({ id: 'websocket-socket-new' })
       }
-      createDisconnectedConnection('socket-1', 'conv-1', 5)
+      createDisconnectedConnection('socket-old', 'conv-1', 5)
     })
 
     describe('persisted event filtering', () => {
@@ -394,7 +221,7 @@ describe('ConnectionRecoveryManager', () => {
 
         eventChannel.getEventsSince.mockReturnValue([persistedEvent, unpersisted])
 
-        await managerWithHistory.handleAutomaticRecovery(socket, callbacks)
+        await managerWithHistory.handleManualRecovery(socket, 'socket-old', callbacks)
 
         // Persisted event must NOT be replayed (its content is already in history)
         const allVolatileEmits = (socket.volatile.emit as any).mock.calls
@@ -444,7 +271,7 @@ describe('ConnectionRecoveryManager', () => {
 
         eventChannel.getEventsSince.mockReturnValue([persistedEvent, liveEvent])
 
-        await managerWithHistory.handleAutomaticRecovery(socket, callbacks)
+        await managerWithHistory.handleManualRecovery(socket, 'socket-old', callbacks)
 
         // recovery_status should report only the 1 un-persisted event
         const recoveryStatusCall = (socket.emit as any).mock.calls.find(
@@ -495,7 +322,7 @@ describe('ConnectionRecoveryManager', () => {
 
         eventChannel.getEventsSince.mockReturnValue(events)
 
-        await managerWithHistory.handleAutomaticRecovery(socket, callbacks)
+        await managerWithHistory.handleManualRecovery(socket, 'socket-old', callbacks)
 
         const replayCompleteCall = (socket.emit as any).mock.calls.find(
           (call: any[]) => call[1]?.type === 'replay_complete'
@@ -533,7 +360,7 @@ describe('ConnectionRecoveryManager', () => {
         eventChannel.getEventsSince.mockReturnValue(events)
 
         // manager from beforeEach has no historyProvider
-        await manager.handleAutomaticRecovery(socket, callbacks)
+        await manager.handleManualRecovery(socket, 'socket-old', callbacks)
 
         const replayedContents = (socket.volatile.emit as any).mock.calls
           .filter((call: any[]) => call[0] === 'message' && call[1]?.type === 'chunk')
@@ -560,7 +387,7 @@ describe('ConnectionRecoveryManager', () => {
           }
         ])
 
-        await manager.handleAutomaticRecovery(socket, callbacks)
+        await manager.handleManualRecovery(socket, 'socket-old', callbacks)
 
         expect(socket.volatile.emit).toHaveBeenCalled()
         // Regular emit must not carry chunk-type messages
@@ -573,7 +400,7 @@ describe('ConnectionRecoveryManager', () => {
       it('uses regular emit for control messages (recovery_status, replay_complete)', async () => {
         eventChannel.getEventsSince.mockReturnValue([])
 
-        await manager.handleAutomaticRecovery(socket, callbacks)
+        await manager.handleManualRecovery(socket, 'socket-old', callbacks)
 
         const controlMessages = (socket.emit as any).mock.calls
           .filter((call: any[]) => call[0] === 'message')
@@ -599,7 +426,7 @@ describe('ConnectionRecoveryManager', () => {
           }
         ])
 
-        await manager.handleAutomaticRecovery(socket, callbacks)
+        await manager.handleManualRecovery(socket, 'socket-old', callbacks)
 
         expect(socket.volatile.emit).toHaveBeenCalledWith('message', {
           type: 'chunk',
@@ -622,7 +449,7 @@ describe('ConnectionRecoveryManager', () => {
         }
         eventChannel.getEventsSince.mockReturnValue([event])
 
-        await manager.handleAutomaticRecovery(socket, callbacks)
+        await manager.handleManualRecovery(socket, 'socket-old', callbacks)
 
         // Original event data must not be mutated
         expect(originalData).toEqual({ step: 1 })
@@ -656,6 +483,34 @@ describe('ConnectionRecoveryManager', () => {
           data: { tool: 'bash', sequence: 99 }
         })
       })
+    })
+
+    it('scales ACK timeout with replayed event count', async () => {
+      const manyEvents = Array.from({ length: 200 }, (_, i) => ({
+        id: `evt-${i}`,
+        conversationId: 'conv-1',
+        sequence: i + 1,
+        type: 'chunk',
+        content: `chunk-${i}`,
+        data: {},
+        timestamp: new Date(),
+        agentName: 'test-agent'
+      }))
+      eventChannel.getEventsSince.mockReturnValue(manyEvents)
+
+      await manager.handleManualRecovery(socket, 'socket-old', callbacks)
+
+      // Base timeout (30s) should NOT trigger failure when events extend the window
+      // 200 events × 100ms = 20s extra, so adaptive timeout = 50s
+      vi.advanceTimersByTime(config.ackTimeout + 1000) // 31s — within adaptive window
+      expect(callbacks.onRecoveryFailed).not.toHaveBeenCalled()
+
+      // Advance past adaptive timeout (50s total)
+      vi.advanceTimersByTime(200 * 100) // +20s = 51s total
+      expect(callbacks.onRecoveryFailed).toHaveBeenCalledWith(
+        'socket-new',
+        'ack_timeout'
+      )
     })
   })
 
@@ -947,6 +802,35 @@ describe('ConnectionRecoveryManager', () => {
 
       vi.advanceTimersByTime(config.ackTimeout + 1000)
 
+      expect(onTimeout).toHaveBeenCalled()
+    })
+
+    it('scales catch-up ACK timeout with event count', () => {
+      const onTimeout = vi.fn()
+      const manyEvents: StreamingEvent[] = Array.from({ length: 300 }, (_, i) => ({
+        id: `evt-${i}`,
+        conversationId: 'conv-1',
+        sequence: i + 1,
+        type: 'chunk',
+        content: `chunk-${i}`,
+        data: {},
+        timestamp: new Date(),
+        agentName: 'test-agent'
+      }))
+
+      manager.beginCatchUpHandshake(socket, {
+        conversationId: 'conv-1',
+        events: manyEvents,
+        onComplete: vi.fn(),
+        onTimeout
+      })
+
+      // Base timeout (30s) should NOT trigger — adaptive = 30s + 300*100ms = 60s
+      vi.advanceTimersByTime(config.ackTimeout + 1000)
+      expect(onTimeout).not.toHaveBeenCalled()
+
+      // Advance past adaptive timeout
+      vi.advanceTimersByTime(300 * 100)
       expect(onTimeout).toHaveBeenCalled()
     })
 

@@ -209,7 +209,7 @@ describe('WebSocketServer - Error Handling', () => {
       expect(retryCall[1].messages.length).toBeGreaterThan(1) // Should include error context
     })
 
-    it('should require acknowledgement for automatic recovery and deliver catch-up events', async () => {
+    it('should require acknowledgement for manual recovery and deliver catch-up events', async () => {
       vi.clearAllMocks()
 
       let connectionHandler: any
@@ -243,13 +243,12 @@ describe('WebSocketServer - Error Handling', () => {
         .mockReturnValueOnce(catchUpEvents)
 
       const mockSocketAuto = {
-        id: 'auto-socket-id',
+        id: 'auto-socket-new',
         emit: vi.fn(),
         on: vi.fn(),
         once: vi.fn(),
         off: vi.fn(),
-        recovered: true,
-        handshake: { auth: {} },
+        handshake: { auth: { previousSocketId: 'auto-socket-id' } },
         volatile: { emit: vi.fn() }
       }
 
@@ -303,9 +302,9 @@ describe('WebSocketServer - Error Handling', () => {
         )
         expect(catchUpEmits.length).toBe(1)
 
-        // Verify connection is no longer disconnected and has active stream
-        expect(stateManager.isDisconnected('auto-socket-id')).toBe(false)
-        expect(stateManager.hasActiveStream('auto-socket-id')).toBe(true)
+        // Verify connection is no longer disconnected and has active stream (migrated to new socket ID)
+        expect(stateManager.isDisconnected('auto-socket-new')).toBe(false)
+        expect(stateManager.hasActiveStream('auto-socket-new')).toBe(true)
       }
 
       // Clean up - timeout is managed by stateManager internally
@@ -351,7 +350,6 @@ describe('WebSocketServer - Error Handling', () => {
         on: vi.fn(),
         once: vi.fn(),
         off: vi.fn(),
-        recovered: false,
         handshake: { auth: { previousSocketId: 'old-socket-id' } },
         volatile: { emit: vi.fn() }
       }
@@ -420,13 +418,12 @@ describe('WebSocketServer - Error Handling', () => {
       vi.spyOn(eventChannel, 'getEventsSince').mockReturnValue([])
 
       const lossSocket = {
-        id: 'loss-socket-id',
+        id: 'loss-socket-new',
         emit: vi.fn(),
         on: vi.fn(),
         once: vi.fn(),
         off: vi.fn(),
-        recovered: true,
-        handshake: { auth: {} },
+        handshake: { auth: { previousSocketId: 'loss-socket-id' } },
         volatile: { emit: vi.fn() }
       }
 
@@ -1109,7 +1106,6 @@ describe('WebSocketServer - Error Handling', () => {
         emit: vi.fn(),
         on: vi.fn(),
         once: vi.fn(),
-        recovered: false,
         handshake: {
           auth: { previousSocketId: 'old-socket-id' }
         },
@@ -1342,7 +1338,6 @@ describe('WebSocketServer - Error Handling', () => {
         on: vi.fn(),
         once: vi.fn(),
         off: vi.fn(),
-        recovered: false,
         handshake: {
           auth: { previousSocketId: 'old-socket-id' }
         },
@@ -1358,7 +1353,8 @@ describe('WebSocketServer - Error Handling', () => {
         expect(stateManager2.isDisconnected('old-socket-id')).toBe(true)
 
         const ackTimeout = (testServer2 as any).ACK_TIMEOUT_MS ?? 30_000
-        vi.advanceTimersByTime(ackTimeout + 10)
+        // Adaptive timeout: base + 100ms per replayed event (2 events here)
+        vi.advanceTimersByTime(ackTimeout + missedEvents.length * 100 + 10)
 
         // The timeout handler runs synchronously and aborts the stream
         expect(abortController.signal.aborted).toBe(true)

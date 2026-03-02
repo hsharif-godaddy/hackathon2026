@@ -53,7 +53,7 @@ function extractAppId(auth: unknown): string | undefined {
 /**
  * Recovery modes for connection recovery
  */
-export type RecoveryMode = 'automatic' | 'manual' | 'conversation' | 'initial'
+export type RecoveryMode = 'manual' | 'conversation' | 'initial'
 
 /**
  * Context for a recovery operation
@@ -111,9 +111,9 @@ export interface ConnectionRecoveryManagerDependencies {
  * Handles all connection recovery scenarios for WebSocket connections
  *
  * Extracts recovery logic from WebSocketServer to reduce complexity:
- * - Automatic recovery (Socket.IO CSR)
  * - Manual recovery (previousSocketId from sessionStorage)
  * - Conversation-based recovery (conversationId cookie)
+ * - Initial recovery (conversationId exists but no previous socket state)
  * - Catch-up handshake for events arriving during ACK wait
  */
 export class ConnectionRecoveryManager {
@@ -150,11 +150,6 @@ export class ConnectionRecoveryManager {
     const socketId = socket.id
     const auth = socket.handshake.auth || {}
     const previousSocketId = auth.previousSocketId
-
-    // Check automatic recovery (Socket.IO CSR)
-    if (socket.recovered && this.stateManager.isDisconnected(socketId)) {
-      return 'automatic'
-    }
 
     // Check manual recovery (previousSocketId in auth)
     if (previousSocketId && this.stateManager.isDisconnected(previousSocketId)) {
@@ -203,48 +198,6 @@ export class ConnectionRecoveryManager {
     }
 
     return null
-  }
-
-  /**
-   * Handle automatic recovery (Socket.IO built-in CSR)
-   */
-  async handleAutomaticRecovery(
-    socket: Socket,
-    callbacks: {
-      onRecoveryComplete: (socketId: string, events: StreamingEvent[], finalSequence: number) => void
-      onRecoveryFailed: (socketId: string, reason: string) => void
-      createWebSocketSubscriber: (socket: Socket) => WebSocketSubscriber
-    }
-  ): Promise<void> {
-    const socketId = socket.id
-    const stateData = this.stateManager.getStateData(socketId)
-
-    if (!stateData || stateData.state !== 'disconnected') {
-      this.logger.warn('recovery.automatic.no_stream_data', { socketId })
-      return
-    }
-
-    this.logger.info('recovery.automatic.started', {
-      socketId,
-      conversationId: stateData.conversationId
-    })
-
-    // Cancel the original abort timeout
-    if (stateData.recoveryTimeoutId) {
-      clearTimeout(stateData.recoveryTimeoutId)
-      this.stateManager.updateConnection(socketId, { recoveryTimeoutId: null })
-    }
-
-    const context: RecoveryContext = {
-      mode: 'automatic',
-      newSocketId: socketId,
-      oldSocketId: socketId, // Same for automatic recovery
-      conversationId: stateData.conversationId,
-      lastDeliveredSequence: stateData.lastDeliveredSequence,
-      abortController: stateData.abortController
-    }
-
-    await this.executeRecoveryFlow(socket, context, stateData, callbacks)
   }
 
   /**
@@ -840,7 +793,7 @@ export class ConnectionRecoveryManager {
         socketId: context.newSocketId,
         oldSocketId: context.oldSocketId,
         recoveryMode: context.mode,
-        timeout: this.config.ackTimeout
+        timeout: adaptiveTimeout
       })
 
       // Cleanup and abort
@@ -848,7 +801,9 @@ export class ConnectionRecoveryManager {
       callbacks.onRecoveryFailed(context.newSocketId, 'ack_timeout')
     }
 
-    const ackTimeoutId = setTimeout(handleAckTimeout, this.config.ackTimeout)
+    // Scale timeout with event count: base + 100ms per event
+    const adaptiveTimeout = this.config.ackTimeout + (replayedEvents.length * 100)
+    const ackTimeoutId = setTimeout(handleAckTimeout, adaptiveTimeout)
 
     // Update state with new timeout
     this.stateManager.updateConnection(context.oldSocketId, {
@@ -857,11 +812,8 @@ export class ConnectionRecoveryManager {
     })
 
     const finalizeRecovery = (finalSequence: number, catchUpCount = 0) => {
-      // Transition state
-      if (context.mode !== 'automatic') {
-        // For manual/conversation recovery, migrate socket ID
-        this.stateManager.migrateSocketId(context.oldSocketId, context.newSocketId)
-      }
+      // Migrate socket ID for recovery (old socket → new socket)
+      this.stateManager.migrateSocketId(context.oldSocketId, context.newSocketId)
 
       this.stateManager.transitionTo(context.newSocketId, 'connected', {
         lastDeliveredSequence: finalSequence,
@@ -1009,7 +961,9 @@ export class ConnectionRecoveryManager {
       onTimeout()
     }
 
-    const timeoutId = setTimeout(handleTimeout, this.config.ackTimeout)
+    // Scale timeout with event count: base + 100ms per event
+    const adaptiveTimeout = this.config.ackTimeout + (events.length * 100)
+    const timeoutId = setTimeout(handleTimeout, adaptiveTimeout)
 
     const handleCatchUpAck = (ackData: { conversationId: string; lastSequence: number }) => {
       if (ackData.conversationId !== conversationId) {
