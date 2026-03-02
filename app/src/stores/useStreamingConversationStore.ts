@@ -538,34 +538,65 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       toolName: toolCall.name
     })
 
-    const segment: StreamSegment = {
-      id: generateId(),
-      type: 'tool_start',
-      content: `Starting ${toolCall.name}...`,
-      timestamp: new Date(),
-      toolCall
-    }
+    // Check if tool already exists (created early by a tool_input_delta that arrived before this tool_start)
+    const existingTool = activeStream.toolCalls.find(tc => tc.id === toolCall.id)
 
-    const updatedStream = {
-      ...activeStream,
-      segments: [...activeStream.segments, segment],
-      toolCalls: [...activeStream.toolCalls, toolCall]
-    }
+    if (existingTool) {
+      // Update existing tool and its segment with the correct name/data from the authoritative tool_start event
+      const updatedToolCalls = activeStream.toolCalls.map(tc =>
+        tc.id === toolCall.id ? { ...tc, ...toolCall } : tc
+      )
+      const updatedSegments = activeStream.segments.map(segment => {
+        if ((segment.type === 'tool_start' || segment.type === 'tool_call') && segment.toolCall?.id === toolCall.id) {
+          return {
+            ...segment,
+            content: `Starting ${toolCall.name}...`,
+            toolCall: { ...segment.toolCall, ...toolCall }
+          }
+        }
+        return segment
+      })
 
-    set({ activeStream: updatedStream })
+      set({
+        activeStream: {
+          ...activeStream,
+          toolCalls: updatedToolCalls,
+          segments: updatedSegments
+        }
+      })
+    } else {
+      const segment: StreamSegment = {
+        id: generateId(),
+        type: 'tool_start',
+        content: `Starting ${toolCall.name}...`,
+        timestamp: new Date(),
+        toolCall
+      }
+
+      set({
+        activeStream: {
+          ...activeStream,
+          segments: [...activeStream.segments, segment],
+          toolCalls: [...activeStream.toolCalls, toolCall]
+        }
+      })
+    }
   },
 
   addToolCallSegment: (toolCall: ToolCall) => {
     const { activeStream } = get()
     if (!activeStream) return
 
-    // Find and update the existing tool_start segment with the input
+    // Find and update the existing tool_start segment with the input and name
     const updatedSegments = activeStream.segments.map(segment => {
       if (segment.type === 'tool_start' && segment.toolCall?.id === toolCall.id) {
+        const resolvedName = toolCall.name || segment.toolCall.name
         return {
           ...segment,
+          content: resolvedName !== segment.toolCall.name ? `Starting ${resolvedName}...` : segment.content,
           toolCall: {
             ...segment.toolCall,
+            name: resolvedName,
             input: toolCall.input
           }
         }
@@ -573,9 +604,9 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       return segment
     })
 
-    // Also update the toolCall in the toolCalls array with the input
+    // Also update the toolCall in the toolCalls array with the input and name
     const updatedToolCalls = activeStream.toolCalls.map(tc =>
-      tc.id === toolCall.id ? { ...tc, input: toolCall.input } : tc
+      tc.id === toolCall.id ? { ...tc, name: toolCall.name || tc.name, input: toolCall.input } : tc
     )
 
     const updatedStream = {

@@ -321,6 +321,104 @@ describe('useStreamingConversationStore', function packageTests() {
     });
   });
 
+  describe('#addToolStartSegment', function addToolStartSegmentTests() {
+    it('should update existing tool when tool_start arrives after tool_input_delta', function fixupDeltaRace() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Edit a file');
+      });
+
+      // Simulate tool_input_delta arriving first (creates tool with unknown-tool name)
+      act(() => {
+        useStreamingConversationStore.getState().updateToolDelta('tool-1', 'unknown-tool', '{"command":"str_replace"');
+      });
+
+      const streamBefore = useStreamingConversationStore.getState().activeStream;
+      expect(streamBefore?.toolCalls).toHaveLength(1);
+      expect(streamBefore?.toolCalls[0].name).toBe('unknown-tool');
+
+      // Now tool_start arrives with correct name
+      act(() => {
+        useStreamingConversationStore.getState().addToolStartSegment({
+          id: 'tool-1',
+          name: 'textEditor',
+          input: {},
+          status: 'running',
+        });
+      });
+
+      const streamAfter = useStreamingConversationStore.getState().activeStream;
+      // Should have exactly 1 tool, not 2
+      expect(streamAfter?.toolCalls).toHaveLength(1);
+      expect(streamAfter?.toolCalls[0].name).toBe('textEditor');
+      expect(streamAfter?.toolCalls[0].id).toBe('tool-1');
+
+      // Segment should also be updated with correct name
+      const toolSegment = streamAfter?.segments.find(s => s.type === 'tool_start' && s.toolCall?.id === 'tool-1');
+      expect(toolSegment?.toolCall?.name).toBe('textEditor');
+      expect(toolSegment?.content).toBe('Starting textEditor...');
+    });
+
+    it('should append normally when no existing tool with same ID', function normalAppend() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Edit a file');
+      });
+
+      act(() => {
+        useStreamingConversationStore.getState().addToolStartSegment({
+          id: 'tool-1',
+          name: 'textEditor',
+          input: {},
+          status: 'running',
+        });
+      });
+
+      const stream = useStreamingConversationStore.getState().activeStream;
+      expect(stream?.toolCalls).toHaveLength(1);
+      expect(stream?.toolCalls[0].name).toBe('textEditor');
+    });
+  });
+
+  describe('#addToolCallSegment', function addToolCallSegmentTests() {
+    it('should fix up tool name when tool_call arrives with correct name', function fixupName() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Edit a file');
+      });
+
+      // Simulate delta creating tool with unknown name, then tool_start fixing it
+      act(() => {
+        useStreamingConversationStore.getState().updateToolDelta('tool-1', 'unknown-tool', '{"command":');
+      });
+
+      // tool_call arrives with correct name and full input
+      act(() => {
+        useStreamingConversationStore.getState().addToolCallSegment({
+          id: 'tool-1',
+          name: 'textEditor',
+          input: { command: 'str_replace', path: '/app/page.tsx' },
+          status: 'running',
+        });
+      });
+
+      const stream = useStreamingConversationStore.getState().activeStream;
+      expect(stream?.toolCalls).toHaveLength(1);
+      expect(stream?.toolCalls[0].name).toBe('textEditor');
+
+      // Segment should also have updated name and content
+      const toolSegment = stream?.segments.find(s => s.type === 'tool_start' && s.toolCall?.id === 'tool-1');
+      expect(toolSegment?.toolCall?.name).toBe('textEditor');
+      expect(toolSegment?.content).toBe('Starting textEditor...');
+    });
+  });
+
   describe('#addToolResultSegment', function addToolResultSegmentTests() {
     it('should apply tool result to active stream', function applyToActive() {
       const store = useStreamingConversationStore.getState();
