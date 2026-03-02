@@ -21,10 +21,10 @@ vi.mock('./ThinkingIndicator', () => ({
   default: () => <div data-testid="thinking-indicator" />,
 }));
 
-vi.mock('@/hooks/useStreamingWebSocket', () => ({
-  useStreamingWebSocket: () => ({
+vi.mock('@/contexts/WebSocketContext', () => ({
+  useWebSocketContext: () => ({
+    sendMessage: vi.fn(),
     loadMoreHistory: vi.fn(() => false),
-    isConnected: true,
   }),
 }));
 
@@ -81,6 +81,7 @@ vi.mock('@/stores/useStreamingConversationStore', () => {
     useHistoryLoadingComplete: () => mockStreamingStore.historyLoadingComplete,
     useIsLoading: () => mockStreamingStore.isLoading,
     useLoadMoreConversations: () => mockStreamingStore.loadMoreConversations,
+    useWebSocketState: () => ({ connected: true, status: 'connected' }),
   };
 });
 

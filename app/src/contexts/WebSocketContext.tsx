@@ -19,13 +19,15 @@ interface WebSocketContextValue {
     isActionRequest?: boolean,
     customContext?: any
   ) => Promise<void>
+  loadMoreHistory: (params: { cursor: string; limit?: number }) => boolean
 }
 
 const WebSocketContext = createContext<WebSocketContextValue | null>(null)
 
 export function WebSocketProvider({
   children,
-  sendMessage
+  sendMessage,
+  loadMoreHistory
 }: {
   children: React.ReactNode
   // Type must match the sendMessage signature returned by useStreamingWebSocket
@@ -37,9 +39,10 @@ export function WebSocketProvider({
     isActionRequest?: boolean,
     customContext?: any
   ) => Promise<void>
+  loadMoreHistory: (params: { cursor: string; limit?: number }) => boolean
 }) {
   return (
-    <WebSocketContext.Provider value={{ sendMessage }}>
+    <WebSocketContext.Provider value={{ sendMessage, loadMoreHistory }}>
       {children}
     </WebSocketContext.Provider>
   )

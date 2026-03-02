@@ -102,7 +102,7 @@ function DevelopPageContent() {
   const setInputValue = useSetInputValue()
   const setAiEditContext = useSetAiEditContext()
   const autoSendInitialMessage = useAutoSendInitialMessage()
-  const { sendMessage, webSocketState } = useStreamingWebSocket()
+  const { sendMessage, loadMoreHistory, webSocketState } = useStreamingWebSocket()
   const isLoading = useIsLoading()
   const isStreaming = useIsActivelyStreaming()
 
@@ -801,7 +801,7 @@ function DevelopPageContent() {
   };
 
   return (
-    <WebSocketProvider sendMessage={sendMessage}>
+    <WebSocketProvider sendMessage={sendMessage} loadMoreHistory={loadMoreHistory}>
       <div
         className={cn("fixed inset-0 flex flex-col overflow-hidden", {
           "ios-fixed-container": isMobile

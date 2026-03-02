@@ -8,8 +8,8 @@ import Skeleton from '@ux/skeleton'
 import Spinner from '@ux/spinner'
 
 import { useAppIdFromParams } from '@/app/develop/components/utils'
+import { useWebSocketContext } from '@/contexts/WebSocketContext'
 import { useSound } from '@/hooks/useSound'
-import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { useTranslations } from '@/hooks/useTranslations'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -21,6 +21,7 @@ import {
   useIsActivelyStreaming,
   useIsLoading,
   useStreamingConversationStore,
+  useWebSocketState,
 } from '@/stores/useStreamingConversationStore'
 import StreamingMessage from './StreamingMessage'
 import ThinkingIndicator from './ThinkingIndicator'
@@ -64,8 +65,8 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   const historyLoadingMore = useStreamingConversationStore((s) => s.historyLoadingMore)
   const setHistoryLoadingMore = useStreamingConversationStore((s) => s.setHistoryLoadingMore)
 
-  // WebSocket hook for loading more history
-  const { loadMoreHistory, isConnected } = useStreamingWebSocket()
+  const { loadMoreHistory } = useWebSocketContext()
+  const isConnected = useWebSocketState().connected
 
   // Keep refs in sync so handleScroll reads latest values without dependency churn
   userHasScrolledUpRef.current = userHasScrolledUp
