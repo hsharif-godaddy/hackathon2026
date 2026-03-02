@@ -74,6 +74,18 @@ export interface GitArchiveResult {
   commitHash: string;
 }
 
+export interface ArchiveOptions extends GitCommandOptions {
+  /**
+   * Controls archive content strategy:
+   * - `undefined` (default): Auto-detects based on dist/server.bundle.cjs presence
+   * - `true`: Force full source (for apps without bundled server)
+   * - `false`: Force dist-only (for apps with bundled server)
+   *
+   * Full source archive excludes: node_modules/, .git/, .env* files
+   */
+  includeSource?: boolean;
+}
+
 /**
  * Git Utility Class
  * Provides convenient methods for common Git operations
@@ -519,27 +531,20 @@ export class GitUtils {
   }
 
   /**
-   * Create a production archive tarball containing build artifacts and media assets
+   * Create a production archive tarball containing build artifacts and optionally source code.
    * Archives are created in {DIST_DIR}/{commitHash}.tar.gz
    * The output directory will be created if it doesn't exist.
    *
-   * This method packages production assets for deployment:
-   * - dist/ folder (bundled JavaScript) - required
-   * - airo-media.json (media manifest) - optional, included if exists
-   * - public/media/ (user uploads) - optional, included if exists
+   * Archive strategy is auto-detected based on build output:
+   * - If dist/server.bundle.cjs exists → dist/ only (fast path)
+   * - If dist/server.bundle.cjs missing → full source (fallback path needs source)
    *
-   * Source code is excluded to reduce archive size and improve security.
-   *
-   * Process:
-   * 1. Verify dist/ folder exists
-   * 2. Check for optional media files (airo-media.json, public/media/)
-   * 3. Create output directory
-   * 4. Create tar.gz archive with all required and optional files
+   * Auto-detection can be overridden by explicitly setting includeSource option.
    *
    * @param repoPath - Path to the git repository
    * @param commitHash - The commit hash to archive (short or full)
    * @param outputDir - Directory to store the archive (default: DIST_DIR env var or '/publish/dist'). Will be created if it doesn't exist.
-   * @param options - Git command options
+   * @param options - Archive options. If includeSource is undefined, auto-detects based on dist/server.bundle.cjs
    * @returns GitArchiveResult with the archive path and commit hash
    * @throws Error if dev-supervisor is not available, dist/ folder doesn't exist, or command fails
    */
@@ -547,9 +552,9 @@ export class GitUtils {
     repoPath: string,
     commitHash: string,
     outputDir: string = process.env.DIST_DIR || '/publish/dist',
-    options: GitCommandOptions = {}
+    options: ArchiveOptions = {}
   ): Promise<GitArchiveResult> {
-    const timeout = options.timeout || 60000; // 60 seconds for large repos
+    const { timeout = 60000 } = options;
 
     if (!this.isDevSupervisorAvailable()) {
       throw new Error(
@@ -558,21 +563,15 @@ export class GitUtils {
     }
 
     // Validate commit hash format to prevent path traversal vulnerabilities
-    // Git hashes are hexadecimal strings between 7 (short hash) and 40 (full SHA-1) characters
     if (!/^[a-f0-9]{7,40}$/i.test(commitHash)) {
       throw new Error(
         `Invalid commit hash format: "${commitHash}". Expected hexadecimal string between 7 and 40 characters.`
       );
     }
 
-    // Create archive filename and path
-    const archiveFilename = `${commitHash}.tar.gz`;
-    const archivePath = `${outputDir}/${archiveFilename}`;
+    const archivePath = `${outputDir}/${commitHash}.tar.gz`;
 
-    // Multi-stage archive creation using sequential commands
-    // Dev-supervisor doesn't allow complex shell features (&&, |, if), so we execute each step separately
-
-    // Stage 1: Verify dist/ folder exists
+    // Verify dist/ folder exists (required for both strategies)
     const distCheckResult = await this.devSupervisor!.exec({
       command: buildShellCommand(['test', '-d', 'dist']),
       working_dir: '/app',
@@ -583,14 +582,51 @@ export class GitUtils {
       throw new Error('dist/ folder not found - application must be built before publishing');
     }
 
-    // Stage 2: Copy airo-media.json INTO dist/ so it's available after extraction
-    // The publish container extracts to /app/{hash}/ and runs from /app/{hash}/dist/
-    // By placing media manifest in dist/, it'll be accessible at runtime
-    //
-    // Note: public/media/ (user uploads) is already handled by Vite build process
-    // which copies public/* to dist/* (so public/media/foo.jpg → dist/media/foo.jpg)
+    // Determine archive strategy: auto-detect or use explicit override
+    const includeSource = await this.shouldIncludeSource(options.includeSource);
 
-    // Copy airo-media.json into dist/ if it exists (media manifest for image slots)
+    // Create archive using appropriate strategy
+    if (includeSource) {
+      await this.createFullSourceArchive(archivePath, outputDir, timeout);
+    } else {
+      await this.createDistOnlyArchive(archivePath, outputDir, timeout);
+    }
+
+    return {
+      path: archivePath,
+      commitHash: commitHash
+    };
+  }
+
+  /**
+   * Determine whether to include full source in archive.
+   * Auto-detects based on dist/server.bundle.cjs presence if not explicitly specified.
+   */
+  private async shouldIncludeSource(explicitValue?: boolean): Promise<boolean> {
+    if (explicitValue !== undefined) {
+      return explicitValue;
+    }
+
+    // Auto-detect: include source if bundled server NOT found
+    const bundleCheckResult = await this.devSupervisor!.exec({
+      command: buildShellCommand(['test', '-f', 'dist/server.bundle.cjs']),
+      working_dir: '/app',
+      timeout: 5,
+      capture_output: true
+    });
+    return !bundleCheckResult.success;
+  }
+
+  /**
+   * Create archive containing only the dist/ folder.
+   * Used for apps with bundled server (fast path).
+   */
+  private async createDistOnlyArchive(
+    archivePath: string,
+    outputDir: string,
+    timeout: number
+  ): Promise<void> {
+    // Copy airo-media.json into dist/ if it exists
     const manifestCheckResult = await this.devSupervisor!.exec({
       command: buildShellCommand(['test', '-f', 'airo-media.json']),
       working_dir: '/app',
@@ -598,26 +634,29 @@ export class GitUtils {
       capture_output: true
     });
     if (manifestCheckResult.success) {
-      await this.devSupervisor!.exec({
+      const copyResult = await this.devSupervisor!.exec({
         command: buildShellCommand(['cp', 'airo-media.json', 'dist/airo-media.json']),
         working_dir: '/app',
         timeout: 5,
         capture_output: true
       });
+      if (!copyResult.success) {
+        throw new Error(`Failed to copy airo-media.json to dist/: ${copyResult.stderr || 'Unknown error'}`);
+      }
     }
 
-    // Stage 3: Create output directory
-    const mkdirOutResult = await this.devSupervisor!.exec({
+    // Create output directory
+    const mkdirResult = await this.devSupervisor!.exec({
       command: buildShellCommand(['mkdir', '-p', outputDir]),
       working_dir: '/app',
       timeout: 10,
       capture_output: true
     });
-    if (!mkdirOutResult.success) {
-      throw new Error(`Failed to create output directory: ${mkdirOutResult.stderr || 'Unknown error'}`);
+    if (!mkdirResult.success) {
+      throw new Error(`Failed to create output directory: ${mkdirResult.stderr || 'Unknown error'}`);
     }
 
-    // Stage 4: Create tar.gz archive (dist/ now contains all needed files)
+    // Create tar.gz archive of dist/ folder
     const tarResult = await this.devSupervisor!.exec({
       command: buildShellCommand(['tar', '-czf', archivePath, '-C', '/app', 'dist']),
       working_dir: '/app',
@@ -627,11 +666,47 @@ export class GitUtils {
     if (!tarResult.success) {
       throw new Error(`Failed to create archive: ${tarResult.stderr || 'Unknown error'}`);
     }
+  }
 
-    return {
-      path: archivePath,
-      commitHash: commitHash
-    };
+  /**
+   * Create archive containing full source code with exclusions.
+   * Used for PaaS apps without bundled server (fallback path).
+   * Excludes: node_modules/, .git/, .env* files
+   */
+  private async createFullSourceArchive(
+    archivePath: string,
+    outputDir: string,
+    timeout: number
+  ): Promise<void> {
+    // Create output directory
+    const mkdirResult = await this.devSupervisor!.exec({
+      command: buildShellCommand(['mkdir', '-p', outputDir]),
+      working_dir: '/app',
+      timeout: 10,
+      capture_output: true
+    });
+    if (!mkdirResult.success) {
+      throw new Error(`Failed to create output directory: ${mkdirResult.stderr || 'Unknown error'}`);
+    }
+
+    // Create tar.gz archive with exclusions
+    const tarResult = await this.devSupervisor!.exec({
+      command: buildShellCommand([
+        'tar', '-czf', archivePath,
+        '--exclude=node_modules',
+        '--exclude=.git',
+        '--exclude=.env',
+        '--exclude=.env.*',
+        '--exclude=.env.local',
+        '-C', '/app', '.'
+      ]),
+      working_dir: '/app',
+      timeout: Math.floor(timeout / 1000),
+      capture_output: true
+    });
+    if (!tarResult.success) {
+      throw new Error(`Failed to create archive: ${tarResult.stderr || 'Unknown error'}`);
+    }
   }
 
   /**

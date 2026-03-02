@@ -453,8 +453,13 @@ export class ProjectImportService {
       }
 
       // Phase 10: Create PaaS configuration file for uploaded apps
+      const pm = validation.packageManager || 'npm';
+      const startCommand = params.commands?.start
+        || (validation.hasStartScript ? `${pm} start` : null)
+        || (validation.hasDevScript ? `${pm} run dev` : null)
+        || DEFAULT_START_COMMAND;
       this.logger.info('project-import.config.create', { jobId, appId });
-      await appRestartService.createPaasConfig(app.path, undefined, params.commands?.start);
+      await appRestartService.createPaasConfig(app.path, undefined, startCommand);
       this.logger.info('project-import.config.created', { jobId, appId });
 
       // Phase 10.5: Cleanup temp files BEFORE git commit to prevent them from being committed
@@ -495,11 +500,6 @@ export class ProjectImportService {
       // Phase 12: Restart dev server with start command (or custom command)
       // Priority: user-provided command > start script > dev script > default
       await this.updateStatus(jobId, ImportJobStatus.RESTARTING);
-      const pm = validation.packageManager || 'npm';
-      const startCommand = params.commands?.start
-        || (validation.hasStartScript ? `${pm} start` : null)
-        || (validation.hasDevScript ? `${pm} run dev` : null)
-        || DEFAULT_START_COMMAND;
       const restartResult = await appRestartService.restartDevServer(appId, startCommand);
 
       if (!restartResult.success) {

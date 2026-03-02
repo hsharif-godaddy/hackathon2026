@@ -20,7 +20,7 @@ const RESTART_TIMEOUTS = {
 
 // Node.js defaults - customers define their own start script in package.json
 export const DEFAULT_START_COMMAND = 'npm start';
-export const DEFAULT_INSTALL_COMMAND = 'npm install';
+export const DEFAULT_INSTALL_COMMAND = 'npm install --include=dev';
 export const DEFAULT_BUILD_COMMAND = 'npm run build';
 
 /**
@@ -365,18 +365,15 @@ export class AppRestartService {
     const configPath = join(airoDir, 'config.json');
 
     // Always use Node.js commands - customers define their own scripts
-    const devCommand = customStartCommand || DEFAULT_START_COMMAND;
+    const finalStartCmd = customStartCommand || DEFAULT_START_COMMAND;
 
     const paasConfig = {
       runtime: {
-        dev: {
-          command: devCommand,
-        },
         build: {
           command: DEFAULT_BUILD_COMMAND,
         },
         serve: {
-          command: DEFAULT_START_COMMAND,
+          command: finalStartCmd,
         },
       },
     };

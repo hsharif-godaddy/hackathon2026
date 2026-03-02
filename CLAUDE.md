@@ -2,6 +2,8 @@
 
 AI-powered app development platform. Multi-service architecture with AI agents, real-time collaboration, and flexible deployment.
 
+**CRITICAL: Always read existing code before modifying it. Verify refactors with `git diff` to ensure unchanged logic paths remain identical.**
+
 ## Deployment Topology
 
 **Production:** One agent + preview + publish per app, deployed together as a Nomad job. The `app` (management UI) is a separate Katana deployment with hosted MySQL. Job allocation managed by [mhp-core](https://github.com/gdcorp-partners/mhp-core) control plane.

@@ -189,13 +189,14 @@ describe('GitUtils', () => {
       const commitHash = 'abc1234';
 
       // Flow: dist check -> manifest check (not found) -> mkdir -> tar
+      // Note: Using explicit includeSource: false to skip auto-detect
       mockDevSupervisor.exec
         .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
         .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: '' }) // airo-media.json check (not found)
         .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
         .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
-      const result = await gitUtils.createArchive('/app', commitHash);
+      const result = await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: false });
 
       expect(result).toEqual({
         path: expect.stringContaining(`${commitHash}.tar.gz`),
@@ -215,6 +216,7 @@ describe('GitUtils', () => {
       const commitHash = 'abc1234';
 
       // Flow: dist check -> manifest check (found) -> copy manifest -> mkdir -> tar
+      // Note: Using explicit includeSource: false to skip auto-detect
       mockDevSupervisor.exec
         .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
         .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // airo-media.json check (found)
@@ -222,7 +224,7 @@ describe('GitUtils', () => {
         .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
         .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
-      const result = await gitUtils.createArchive('/app', commitHash);
+      const result = await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: false });
 
       expect(result).toEqual({
         path: expect.stringContaining(`${commitHash}.tar.gz`),
@@ -244,20 +246,41 @@ describe('GitUtils', () => {
       expect(tarCallArgs.command).toContain('dist');
     });
 
+    it('should throw error when copying airo-media.json fails', async () => {
+      // Flow: dist check -> manifest check (found) -> copy fails
+      // Note: Using explicit includeSource: false to skip auto-detect
+      mockDevSupervisor.exec
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // airo-media.json check (found)
+        .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: 'Permission denied' }); // cp fails
+
+      await expect(
+        gitUtils.createArchive('/app', 'abc1234', undefined, { includeSource: false })
+      ).rejects.toThrow('Failed to copy airo-media.json to dist/');
+
+      // Verify the copy command was attempted
+      expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(3);
+      const copyCallArgs = mockDevSupervisor.exec.mock.calls[2][0];
+      expect(copyCallArgs.command).toContain('cp');
+      expect(copyCallArgs.command).toContain('airo-media.json');
+    });
+
     it('should throw error when mkdir fails', async () => {
       // Flow: dist check -> manifest check (not found) -> mkdir fails
+      // Note: Using explicit includeSource: false to skip auto-detect
       mockDevSupervisor.exec
         .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
         .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: '' }) // airo-media.json check
         .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: 'Permission denied' }); // mkdir fails
 
       await expect(
-        gitUtils.createArchive('/app', 'abc1234')
+        gitUtils.createArchive('/app', 'abc1234', undefined, { includeSource: false })
       ).rejects.toThrow('Failed to create output directory');
     });
 
     it('should throw error when tar command fails', async () => {
       // Flow: dist check -> manifest check (not found) -> mkdir -> tar fails
+      // Note: Using explicit includeSource: false to skip auto-detect
       mockDevSupervisor.exec
         .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
         .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: '' }) // airo-media.json check
@@ -265,8 +288,161 @@ describe('GitUtils', () => {
         .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: 'No space left on device' }); // tar fails
 
       await expect(
-        gitUtils.createArchive('/app', 'abc1234')
+        gitUtils.createArchive('/app', 'abc1234', undefined, { includeSource: false })
       ).rejects.toThrow('Failed to create archive');
+    });
+
+    describe('includeSource option', () => {
+      describe('auto-detect (when includeSource not specified)', () => {
+        it('should auto-detect dist-only when dist/server.bundle.cjs exists', async () => {
+          const commitHash = 'abc1234';
+
+          // Flow: dist check -> bundle check (exists) -> manifest check -> mkdir -> tar (dist only)
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // bundle check (exists)
+            .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: '' }) // airo-media.json check (not found)
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
+
+          await gitUtils.createArchive('/app', commitHash);
+
+          // Verify bundle check was called
+          const bundleCheckCall = mockDevSupervisor.exec.mock.calls[1][0];
+          expect(bundleCheckCall.command).toContain('server.bundle.cjs');
+
+          // Verify tar only archives dist/ (no exclusions)
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[4][0];
+          expect(tarCallArgs.command).toContain('dist');
+          expect(tarCallArgs.command).not.toContain('--exclude');
+        });
+
+        it('should auto-detect full-source when dist/server.bundle.cjs does not exist', async () => {
+          const commitHash = 'abc1234';
+
+          // Flow: dist check -> bundle check (not exists) -> mkdir -> tar (full source with exclusions)
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
+            .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: '' }) // bundle check (not exists)
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
+
+          await gitUtils.createArchive('/app', commitHash);
+
+          // Verify tar archives full source with exclusions
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[3][0];
+          expect(tarCallArgs.command).toContain('tar');
+          expect(tarCallArgs.command).toContain('--exclude');
+          expect(tarCallArgs.command).toContain('node_modules');
+          expect(tarCallArgs.command).toContain("'.'");
+        });
+      });
+
+      describe('explicit override', () => {
+        it('should use dist-only when includeSource is explicitly false (skip auto-detect)', async () => {
+          const commitHash = 'abc1234';
+
+          // Flow: dist check -> manifest check (not found) -> mkdir -> tar
+          // Note: No bundle check because includeSource is explicit
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
+            .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: '' }) // airo-media.json check (not found)
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
+
+          await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: false });
+
+          // Verify no bundle check was called (first call after dist check is manifest check)
+          const secondCall = mockDevSupervisor.exec.mock.calls[1][0];
+          expect(secondCall.command).not.toContain('server.bundle.cjs');
+
+          // Verify tar only archives dist/
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[3][0];
+          expect(tarCallArgs.command).toContain('dist');
+          expect(tarCallArgs.command).not.toContain('--exclude');
+        });
+
+        it('should use full-source when includeSource is explicitly true (skip auto-detect)', async () => {
+          const commitHash = 'abc1234';
+
+          // Flow: dist check -> mkdir -> tar (with exclusions)
+          // Note: No bundle check because includeSource is explicit
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
+
+          await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true });
+
+          // Verify no bundle check was called
+          expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(3);
+          const allCommands = mockDevSupervisor.exec.mock.calls.map(call => call[0].command);
+          const hasBundleCheck = allCommands.some(cmd => cmd.includes('server.bundle.cjs'));
+          expect(hasBundleCheck).toBe(false);
+
+          // Verify tar archives full source with exclusions
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[2][0];
+          expect(tarCallArgs.command).toContain('--exclude');
+          expect(tarCallArgs.command).toContain("'.'");
+        });
+      });
+
+      describe('full source archive behavior', () => {
+        it('should exclude node_modules, .git, and .env files in full source archive', async () => {
+          const commitHash = 'abc1234';
+
+          // Flow: dist check -> mkdir -> tar (with exclusions)
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
+
+          await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true });
+
+          // Verify all exclusions are present
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[2][0];
+          expect(tarCallArgs.command).toMatch(/--exclude.*node_modules/);
+          expect(tarCallArgs.command).toMatch(/--exclude.*\.git/);
+          expect(tarCallArgs.command).toMatch(/--exclude.*\.env/);
+        });
+
+        it('should skip airo-media.json copy when includeSource is true (included in full archive)', async () => {
+          const commitHash = 'abc1234';
+
+          // Flow: dist check -> mkdir -> tar
+          // Note: No manifest check or copy when includeSource is true
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
+
+          await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true });
+
+          // Should only have 3 calls: dist check, mkdir, tar
+          // No manifest check or copy because full source includes everything
+          expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(3);
+
+          // Verify no cp command was called
+          const allCommands = mockDevSupervisor.exec.mock.calls.map(call => call[0].command);
+          const hasCopy = allCommands.some(cmd => cmd.includes('cp') && cmd.includes('airo-media.json'));
+          expect(hasCopy).toBe(false);
+        });
+
+        it('should archive from root directory when includeSource is true', async () => {
+          const commitHash = 'abc1234';
+
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
+
+          await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true });
+
+          // Verify tar uses '.' to archive from root
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[2][0];
+          expect(tarCallArgs.command).toContain("'.'");
+        });
+      });
     });
   });
 });

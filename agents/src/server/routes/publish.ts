@@ -9,6 +9,8 @@ import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import type { DevSupervisorClient, PublishResponse, PublishSuccessResponse } from '../../services/DevSupervisorClient.js';
 import { requirePermission } from '../middleware/require-permission.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
+import { getPublishStrategy, BuildError } from './publish/strategies/index.js';
+import type { PublishContext } from './publish/strategies/index.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
@@ -20,31 +22,36 @@ router.use('/apps/:id', validateAppOwnership);
 /**
  * POST /apps/:id/publish
  *
- * Creates a production archive (tar.gz) containing only build artifacts for deployment.
- * This endpoint performs a five-step workflow:
+ * Creates a production archive (tar.gz) for deployment. Supports two strategies:
+ *
+ * **Default strategy** (AAB apps):
  * 1. Get current commit hash from HEAD
  * 2. Check git status to verify repository state
  * 3. Get commit details from git log to validate the commit exists
  * 4. Build verification - run `npm run build` to ensure project is buildable
- * 5. Create archive at {DIST_DIR}/{fullCommitHash}.tar.gz by tarring dist/ folder directly
+ * 5. Create archive at {DIST_DIR}/{commitHash}.tar.gz
+ *    - Auto-detects content: dist-only if bundled server exists, full-source otherwise
+ *
+ * **PaaS strategy** (`deploymentStrategy: "paas"`):
+ * 1. Skip git operations entirely
+ * 2. Generate hex timestamp identifier (e.g., "019cab3def12")
+ * 3. Run build via dev-supervisor
+ * 4. Create full-source archive (includes package.json, src/, excludes node_modules, .git, .env*)
  *
  * For local dev with unified job (AIRO_SUPERVISOR_PUBLISH_SOCKET_PATH set):
- * - Performs production-parity publish: archive → extract → run bundled JavaScript (dist/ folder) with .env.local
+ * - Performs production-parity publish: archive → extract → run bundled JavaScript with .env.local
  * - Calls publish supervisor to update symlink and restart app
  *
  * Note: Database migrations are handled during development by the develop agent
- * and are committed to the repository before publish. This step no longer
- * generates migrations as they should already exist in the commit being published.
- *
- * Security: Source code is excluded from the archive to reduce size and improve security.
- * Only bundled JavaScript (dist/ folder) is included in the production deployment.
+ * and are committed to the repository before publish.
  *
  * @route POST /apps/:id/publish
  * @param {string} req.params.id - The application ID
+ * @param {string} [req.body.deploymentStrategy] - Optional: "paas" for PaaS flow (skips git, uses full-source)
  *
  * @returns {Object} Response object
  * @returns {boolean} response.success - Whether the operation succeeded
- * @returns {string} response.commitHash - The full SHA-1 commit hash (40 characters)
+ * @returns {string} response.commitHash - Git SHA (default) or hex timestamp (PaaS)
  * @returns {Object} response.archive - Archive information
  * @returns {string} response.archive.path - Path to the created archive
  *
@@ -53,8 +60,12 @@ router.use('/apps/:id', validateAppOwnership);
  * @throws {500} If git operations fail
  *
  * @example
- * // Request (no body needed)
+ * // Default request (no body needed)
  * POST /apps/abc123/publish
+ *
+ * // PaaS request
+ * POST /apps/abc123/publish
+ * { "deploymentStrategy": "paas" }
  *
  * // Response
  * {
@@ -68,6 +79,7 @@ router.use('/apps/:id', validateAppOwnership);
 router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, res) => {
   try {
     const { id } = req.params;
+    const { deploymentStrategy } = req.body;
 
     if (!id) {
       return res.status(400).json({ error: 'App ID is required' });
@@ -98,309 +110,54 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
     const devSupervisor = DevSupervisorClientFactory.createForApp(id);
     const gitUtils = new GitUtils(devSupervisor || undefined);
 
-    // CRITICAL: Ensure we're on main branch before publishing
-    // If we're on a feature branch, merge it to main first
-    // Note: Detached HEAD (when user manually selected an old commit) is allowed
-    try {
-      const currentBranch = await gitUtils.getCurrentBranch(app.path);
-
-      // Skip merge logic if in detached HEAD state (user manually selected old commit to publish)
-      // In detached HEAD, getCurrentBranch returns 'HEAD' or the commit hash
-      const isDetachedHead = currentBranch === 'HEAD' || currentBranch.match(/^[0-9a-f]{7,40}$/i);
-
-      if (isDetachedHead) {
-        contextLogger.info('route.publish.detached-head', {
-          currentBranch,
-          message: 'Publishing from detached HEAD (manually selected commit)',
-        });
-      } else if (currentBranch !== 'main') {
-        contextLogger.warn('route.publish.not-on-main', {
-          currentBranch,
-          action: 'squash-merging-to-main',
-        });
-
-        // Check for uncommitted changes and commit them first
-        const hasChanges = await gitUtils.hasUncommittedChanges(app.path);
-        if (hasChanges) {
-          // Only stage tracked modified files (not untracked files like screenshots, IDE files)
-          await gitUtils.addFiles(app.path, ['-u']);
-          const commitResult = await gitUtils.commit(app.path, `Pre-publish commit from ${currentBranch}`);
-
-          // If commit succeeded, log it. If it failed, that's okay - probably nothing was staged
-          // (only untracked files exist, which git add -u doesn't stage)
-          if (commitResult.success) {
-            contextLogger.info('route.publish.pre-publish-commit', {
-              currentBranch,
-            });
-          } else {
-            contextLogger.debug('route.publish.no-changes-to-commit', {
-              currentBranch,
-              message: 'No tracked modified files to commit (untracked files may exist)',
-            });
-          }
-        }
-
-        // Switch to main and verify it's in a clean state before merging
-        await gitUtils.switchBranch(app.path, 'main');
-
-        // Verify main branch has no staged or modified files before merging
-        // Note: Untracked files are allowed (e.g., screenshots, IDE files, etc.)
-        const mainStatus = await gitUtils.getStatus(app.path);
-        if (mainStatus.stagedFiles > 0 || mainStatus.modifiedFiles > 0) {
-          throw new Error('Main branch has staged or modified files - cannot safely merge');
-        }
-
-        contextLogger.info('route.publish.main-verified', {
-          branch: mainStatus.branch,
-          isClean: mainStatus.isClean,
-        });
-
-        // Check if we can do a fast-forward merge (preserves commit history)
-        // Fast-forward is possible when main is a direct ancestor of the feature branch
-        const canFastForward = await gitUtils.canFastForwardMerge(app.path, currentBranch);
-
-        let mergeResult: { success: boolean; stdout: string };
-        let mergeType: 'fast-forward' | 'squash' | 'none' = 'none';
-
-        if (canFastForward) {
-          // Fast-forward merge - preserves all original commit messages
-          // This keeps history clean with descriptive commit messages
-          contextLogger.info('route.publish.merge-strategy', {
-            strategy: 'fast-forward',
-            reason: 'main is ancestor of feature branch',
-          });
-
-          mergeResult = await gitUtils.fastForwardMerge(app.path, currentBranch);
-          mergeType = 'fast-forward';
-
-          contextLogger.info('route.publish.merged-to-main', {
-            fromBranch: currentBranch,
-            mergeType: 'fast-forward',
-          });
-        } else {
-          // Can't fast-forward - need to squash merge
-          // This happens when main has moved forward since the feature branch was created
-          contextLogger.info('route.publish.merge-strategy', {
-            strategy: 'squash',
-            reason: 'main has diverged from feature branch',
-          });
-
-          mergeResult = await gitUtils.squashMerge(app.path, currentBranch, 'Publish: merge feature branch');
-
-          // Check if there were actually changes merged
-          const branchHasNewCommits = !mergeResult.stdout.includes('No changes to commit') && !mergeResult.stdout.includes('already merged');
-
-          if (!branchHasNewCommits) {
-            contextLogger.info('route.publish.branch-already-merged', {
-              fromBranch: currentBranch,
-              message: 'Feature branch has no new commits - already up-to-date with main',
-            });
-            mergeType = 'none';
-          } else {
-            contextLogger.info('route.publish.merged-to-main', {
-              fromBranch: currentBranch,
-              mergeType: 'squash',
-            });
-            mergeType = 'squash';
-          }
-        }
-
-        // Clean up the feature branch after successful merge (but not if no merge happened)
-        if (mergeType !== 'none') {
-          try {
-            await gitUtils.deleteBranch(app.path, currentBranch);
-            contextLogger.info('route.publish.branch-cleanup', {
-              deletedBranch: currentBranch,
-              mergeType,
-            });
-          } catch (cleanupError) {
-            // Non-critical - log warning but continue
-            contextLogger.warn('route.publish.branch-cleanup-failed', {
-              branch: currentBranch,
-              error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
-            });
-          }
-        }
-      }
-    } catch (error) {
-      contextLogger.error('route.publish.merge-to-main-failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return res.status(400).json({
-        error: 'Failed to merge feature branch to main',
-        details: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    // Get current commit hash (we're guaranteed to be on main at this point)
-    let fullCommitHash: string;
-    try {
-      fullCommitHash = await gitUtils.getCurrentCommit(app.path);
-      contextLogger.info('route.publish.begin', {
-        commitHash: fullCommitHash.substring(0, 7),
-      });
-    } catch (error) {
-      contextLogger.error('route.publish.get-commit-failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return res.status(400).json({
-        error: 'Failed to get current commit',
-        details: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    // Step 1: Check git status
-    contextLogger.info('route.publish.git-status.begin', {});
-
-    try {
-      const status = await gitUtils.getStatus(app.path);
-      contextLogger.info('route.publish.git-status.success', {
-        branch: status.branch,
-        isClean: status.isClean,
-      });
-    } catch (error) {
-      contextLogger.error('route.publish.git-status.failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return res.status(400).json({
-        error: 'Failed to check git status',
-        details: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    // Step 2: Get commit details from git log to validate commit exists
-    contextLogger.info('route.publish.git-log.begin', {});
-
-    try {
-      const commits = await gitUtils.getCommitHistory(app.path, 100);
-
-      // Validate that the requested commit exists in recent history
-      const commitExists = commits.some(
-        (commit) => commit.hash === fullCommitHash
-      );
-
-      if (!commitExists && commits.length > 0) {
-        contextLogger.warn('route.publish.commit-not-in-recent-history', {
-          commitHash: fullCommitHash.substring(0, 7),
-          recentCommitsCount: commits.length,
-        });
-        // Still proceed - commit might be older than the 100 we checked
-      }
-
-      contextLogger.info('route.publish.git-log.success', {
-        commitsCount: commits.length,
-        latestCommit: commits[0]?.hash.substring(0, 7),
-      });
-    } catch (error) {
-      contextLogger.error('route.publish.git-log.failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return res.status(400).json({
-        error: 'Failed to get commit log',
-        details: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    // Step 3: Build verification
-    contextLogger.info('route.publish.build.begin', {
-      commitHash: fullCommitHash.substring(0, 7),
-    });
-
-    // Check if dev-supervisor is available for build execution
+    // Check if dev-supervisor is available
     if (!devSupervisor) {
-      contextLogger.error('route.publish.build.supervisor-unavailable', {
-        commitHash: fullCommitHash.substring(0, 7),
-      });
+      contextLogger.error('route.publish.build.supervisor-unavailable', {});
       return res.status(500).json({
         error: 'Dev supervisor not available',
         details: 'Unable to execute build - dev supervisor connection not established'
       });
     }
 
-    try {
-      // Build the application for production
-      // Always use /app as working directory since all deployments are containerized
-      // The app.path is the host path, but inside the container it's always /app
-      // NOTE: Explicitly set NODE_ENV=production so Vite builds with import.meta.env.DEV=false
-      // The preview container has NODE_ENV=development by default, which would cause DEV=true
-      const buildResult = await devSupervisor.exec({
-        command: 'NODE_ENV=production npm run build',
-        working_dir: '/app',
-        timeout: 120,
-        capture_output: true
-      });
-
-      if (!buildResult.success) {
-        contextLogger.error('route.publish.build.failed', {
-          commitHash: fullCommitHash.substring(0, 7),
-          exitCode: buildResult.exit_code,
-          stderr: buildResult.stderr,
-        });
-        return res.status(400).json({
-          error: 'Build failed',
-          details: buildResult.stderr || buildResult.stdout,
-          exitCode: buildResult.exit_code
-        });
-      }
-
-      contextLogger.info('route.publish.build.success', {
-        commitHash: fullCommitHash.substring(0, 7),
-        executionTime: buildResult.execution_time
-      });
-    } catch (error) {
-      contextLogger.error('route.publish.build.failed', {
-        commitHash: fullCommitHash.substring(0, 7),
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return res.status(400).json({
-        error: 'Build verification failed',
-        details: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    // Step 4: Create production archive with full commit hash
-    // Archive contains only build artifacts (dist/ folder), no source code
-    // Detect environment and job type
+    // Detect environment and job type for archive path
     const isLocalDev = !process.env.NOMAD_ALLOC_DIR;
     const publishSocketPath = process.env.AIRO_SUPERVISOR_PUBLISH_SOCKET_PATH;
-
-    // For production: check for Unix socket (set by infrastructure)
-    // For local dev: always unified job (uses TCP for supervisors)
     const isUnifiedJob = isLocalDev || (publishSocketPath && existsSync(publishSocketPath));
+    const targetDir = isUnifiedJob && isLocalDev ? '/dist' : undefined;
 
-    contextLogger.info('route.publish.archive.begin', {
-      commitHash: fullCommitHash.substring(0, 7),
-      isUnifiedJob,
-      isLocalDev,
-      publishSocketPath: publishSocketPath || 'tcp',
+    // Get strategy via factory
+    const strategy = getPublishStrategy(deploymentStrategy);
+    contextLogger.info('route.publish.strategy-selected', {
+      strategy: strategy.key,
     });
 
+    // Create context for strategy
+    const publishContext: PublishContext = {
+      appId: id,
+      appPath: app.path,
+      targetDir,
+      devSupervisor,
+      gitUtils,
+      logger: contextLogger,
+    };
+
+    // Execute strategy
+    let fullCommitHash: string;
     let archivePath: string;
+
     try {
-      // For local dev with unified job, create archive to /dist directory
-      // For production, use default archive location
-      const targetDir = isUnifiedJob && isLocalDev ? '/dist' : undefined;
-
-      const archiveResult = await gitUtils.createArchive(
-        app.path,
-        fullCommitHash,
-        targetDir
-      );
-      archivePath = archiveResult.path;
-
-      contextLogger.info('route.publish.archive.success', {
-        commitHash: fullCommitHash.substring(0, 7),
-        archivePath,
-      });
+      const result = await strategy.publish(publishContext);
+      fullCommitHash = result.commitHash;
+      archivePath = result.archivePath;
     } catch (error) {
-      contextLogger.error('route.publish.archive.failed', {
-        commitHash: fullCommitHash.substring(0, 7),
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return res.status(400).json({
-        error: 'Failed to create archive',
-        details: error instanceof Error ? error.message : String(error),
-      });
+      if (error instanceof BuildError) {
+        return res.status(400).json({
+          error: error.message,
+          details: error.details,
+          exitCode: error.exitCode,
+        });
+      }
+      throw error;
     }
 
     // Step 5 (v4 unified only): Call publish supervisor to update symlink and reload app
@@ -437,7 +194,7 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
           commitHash: fullCommitHash,
           force: false,
           waitForHealthy: true,
-          healthTimeoutSeconds: 60
+          healthTimeoutSeconds: strategy.key === 'paas' ? 120 : 60
         });
 
         if (publishResponse.status === 'error') {
