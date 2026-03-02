@@ -627,6 +627,73 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleUnpublish(w http.ResponseWriter, _ *http.Request) {
+	slog.Info("unpublish.request.received")
+
+	distDir := config.GetEnvStringWithDefault("DIST_DIR", "/dist")
+	currentSymlink := fmt.Sprintf("%s/current", distDir)
+
+	info, lstatErr := os.Lstat(currentSymlink)
+	if lstatErr != nil {
+		if os.IsNotExist(lstatErr) {
+			slog.Info("unpublish.already_unpublished", "symlink", currentSymlink)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			if err := json.NewEncoder(w).Encode(map[string]any{"status": "not_published"}); err != nil {
+				slog.Error("failed to encode JSON response", "error", err)
+			}
+			return
+		}
+		slog.Error("unpublish.symlink.lstat_failed", "error", lstatErr, "symlink", currentSymlink)
+		s.sendError(w, http.StatusInternalServerError, "lstat_failed", "Failed to inspect current symlink")
+		return
+	}
+
+	if info.Mode()&os.ModeSymlink == 0 {
+		slog.Error("unpublish.not_a_symlink", "symlink", currentSymlink, "mode", info.Mode().String())
+		s.sendError(w, http.StatusInternalServerError, "not_a_symlink", "Current is not a symlink - refusing to delete")
+		return
+	}
+
+	if err := os.Remove(currentSymlink); err != nil {
+		if os.IsNotExist(err) {
+			slog.Info("unpublish.already_unpublished.concurrent", "symlink", currentSymlink)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			if encErr := json.NewEncoder(w).Encode(map[string]any{"status": "not_published"}); encErr != nil {
+				slog.Error("failed to encode JSON response", "error", encErr)
+			}
+			return
+		}
+		slog.Error("unpublish.symlink.remove_failed", "error", err)
+		s.sendError(w, http.StatusInternalServerError, "symlink_failed", "Failed to remove current symlink")
+		return
+	}
+
+	slog.Info("unpublish.symlink.removed", "symlink", currentSymlink)
+
+	slog.Info("unpublish.restart.begin")
+	restartReq := processmanager.ProcessRestartRequest{Graceful: true}
+	if err := s.procMgr.Restart(restartReq); err != nil {
+		slog.Error("unpublish.restart.failed", "error", err)
+		s.sendError(
+			w,
+			http.StatusInternalServerError,
+			"restart_failed",
+			fmt.Sprintf("Symlink removed but process restart failed: %s", err.Error()),
+		)
+		return
+	}
+
+	slog.Info("unpublish.restart.success")
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(map[string]any{"status": "success"}); err != nil {
+		slog.Error("failed to encode JSON response", "error", err)
+	}
+}
+
 func (s *Server) handlePublishStatus(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	linesParam := r.URL.Query().Get("lines")

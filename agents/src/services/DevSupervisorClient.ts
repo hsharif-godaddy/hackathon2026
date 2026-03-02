@@ -253,6 +253,17 @@ export interface PublishErrorResponse {
 export type PublishResponse = PublishSuccessResponse | PublishErrorResponse;
 
 /**
+ * Response from POST /unpublish endpoint
+ *
+ * Errors are returned as non-2xx responses and handled by makeRequest,
+ * so this type describes only successful (2xx) payloads.
+ */
+export interface UnpublishResponse {
+  /** Status of the unpublish operation */
+  status: 'success' | 'not_published';
+}
+
+/**
  * Response from /publish/status endpoint
  */
 export interface PublishStatusResponse {
@@ -659,11 +670,39 @@ export class DevSupervisorClient {
   }
 
   /**
+   * Unpublish the current version
+   *
+   * Removes the `current` symlink and restarts the process so the app
+   * reverts to serving the Coming Soon page.
+   *
+   * @returns Unpublish response with status
+   * @throws Error if unpublish fails
+   */
+  async unpublish(): Promise<UnpublishResponse> {
+    this.logger.info('dev_supervisor.unpublish.begin', {});
+
+    try {
+      const response = await this.makeRequest('POST', '/unpublish');
+
+      this.logger.info('dev_supervisor.unpublish.success', {
+        status: response.status
+      });
+
+      return response as UnpublishResponse;
+    } catch (error) {
+      this.logger.error('dev_supervisor.unpublish.failure', {
+        error: getErrorMessage(error)
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Get publish status
-   * 
+   *
    * Returns the current version being served, health status, process state, and logs.
    * Useful for diagnosing production issues when users report problems.
-   * 
+   *
    * @param options - Options for the status request
    * @returns Publish status response with version, health, process, and logs
    */

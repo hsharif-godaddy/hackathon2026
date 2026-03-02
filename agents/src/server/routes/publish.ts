@@ -6,7 +6,7 @@ import { GitUtils } from '../../utils/git.js';
 import { log } from '../../logging/index.js';
 import { Router } from 'express';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
-import type { DevSupervisorClient, PublishResponse, PublishSuccessResponse } from '../../services/DevSupervisorClient.js';
+import type { DevSupervisorClient, PublishResponse, PublishSuccessResponse, UnpublishResponse } from '../../services/DevSupervisorClient.js';
 import { requirePermission } from '../middleware/require-permission.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { getPublishStrategy, BuildError } from './publish/strategies/index.js';
@@ -267,6 +267,76 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
     log.error(contextLogger, 'route.publish.error', error as Error, {});
     return res.status(500).json({
       error: 'Failed to publish archive',
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+/**
+ * POST /apps/:id/unpublish
+ *
+ * Removes the published version so the app reverts to the Coming Soon page.
+ * Calls the publish supervisor to delete the `current` symlink and restart the process.
+ *
+ * @route POST /apps/:id/unpublish
+ * @param {string} req.params.id - The application ID
+ *
+ * @returns {Object} Response object
+ * @returns {boolean} response.success - Whether the operation succeeded
+ *
+ * @throws {400} If app ID is missing
+ * @throws {404} If app is not found
+ * @throws {500} If publish supervisor is unavailable or unpublish fails
+ */
+router.post('/apps/:id/unpublish', requirePermission('canPublish'), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    const contextLogger = log.forApp(id);
+
+    const app = appRepository.findById(id);
+    if (!app) {
+      contextLogger.error('route.unpublish.app-not-found', {});
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    const publishSocketPath = process.env.AIRO_SUPERVISOR_PUBLISH_SOCKET_PATH;
+    let publishSupervisor: DevSupervisorClient | null = null;
+
+    if (publishSocketPath && existsSync(publishSocketPath)) {
+      publishSupervisor = DevSupervisorClientFactory.createForSocketPath(publishSocketPath, id);
+    } else if (app.publishSupervisorPath) {
+      publishSupervisor = DevSupervisorClientFactory.createForSocketPath(app.publishSupervisorPath, id);
+    }
+
+    if (!publishSupervisor) {
+      contextLogger.error('route.unpublish.supervisor-unavailable', {});
+      return res.status(500).json({
+        error: 'Publish supervisor not available',
+        details: 'Unable to unpublish - publish supervisor connection not established'
+      });
+    }
+
+    contextLogger.info('route.unpublish.begin', {
+      socketPath: publishSocketPath || app.publishSupervisorPath || 'unknown',
+    });
+
+    const response: UnpublishResponse = await publishSupervisor.unpublish();
+
+    contextLogger.info('route.unpublish.success', {
+      status: response.status,
+    });
+
+    return res.json({ success: true, status: response.status });
+  } catch (error) {
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : log.forAgent('publish-routes');
+    log.error(contextLogger, 'route.unpublish.error', error as Error, {});
+    return res.status(500).json({
+      error: 'Failed to unpublish',
       details: error instanceof Error ? error.message : String(error),
     });
   }

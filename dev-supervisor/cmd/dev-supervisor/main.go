@@ -194,6 +194,7 @@ func (s *Server) setupRoutes() {
 	// Publish endpoints (V4 unified job architecture)
 	s.router.HandleFunc("/publish", s.handlePublish).Methods("POST")
 	s.router.HandleFunc("/publish/status", s.handlePublishStatus).Methods("GET")
+	s.router.HandleFunc("/unpublish", s.handleUnpublish).Methods("POST")
 }
 
 func (s *Server) getConfiguredAddress() string {
