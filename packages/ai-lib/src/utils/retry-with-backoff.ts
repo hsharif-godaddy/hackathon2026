@@ -5,7 +5,7 @@
  * Only a unified logger interface is supported for structured events.
  */
 
-import { BudgetExceededError, isTransientBadRequest } from './errors.js'
+import { BudgetExceededError, isTransientBadRequest, containsBudgetExceededPattern } from './errors.js'
 import { APICallError } from '@ai-sdk/provider'
 
 /**
@@ -58,10 +58,64 @@ export interface RetryDecision {
   category?: 'transient' | 'rate_limit' | 'budget_exceeded' | undefined
   statusCode?: number | undefined
   message: string
+  /** Server-suggested retry delay in ms (from retry-after, x-ratelimit-reset-requests, or x-ratelimit-reset-tokens headers) */
+  retryAfterMs?: number | undefined
 }
 
 function isObject(val: unknown): val is Record<string, unknown> {
   return typeof val === 'object' && val !== null
+}
+
+/**
+ * Parse retry delay from HTTP response headers.
+ * Supports standard `retry-after` (seconds or HTTP-date) and
+ * LiteLLM's `x-ratelimit-reset-requests` / `x-ratelimit-reset-tokens`
+ * (ISO timestamp or duration like "1s", "30s").
+ * Returns delay in milliseconds, or undefined if no usable header found.
+ */
+function parseRetryAfterMs(headers: Record<string, string> | undefined): number | undefined {
+  if (!headers) return undefined
+
+  // Standard retry-after header (case-insensitive lookup)
+  const retryAfter = headers['retry-after'] ?? headers['Retry-After']
+  if (retryAfter) {
+    // Could be seconds (e.g. "30") or an HTTP-date (e.g. "Fri, 31 Dec 2025 23:59:59 GMT")
+    const seconds = Number(retryAfter)
+    if (!Number.isNaN(seconds) && seconds > 0) {
+      return seconds * 1000
+    }
+    // Try parsing as HTTP-date
+    const date = Date.parse(retryAfter)
+    if (!Number.isNaN(date)) {
+      const delayMs = date - Date.now()
+      return delayMs > 0 ? delayMs : undefined
+    }
+  }
+
+  // LiteLLM x-ratelimit-reset-requests and x-ratelimit-reset-tokens
+  // Check both: requests for RPM limits, tokens for TPM limits (common with LLMs)
+  const resetRequests = headers['x-ratelimit-reset-requests']
+  const resetTokens = headers['x-ratelimit-reset-tokens']
+  const resetValue = resetRequests ?? resetTokens
+  if (resetValue) {
+    // Duration format: "1s", "30s", "1m", etc.
+    const durationMatch = resetValue.match(/^(\d+(?:\.\d+)?)(s|ms|m)$/)
+    if (durationMatch && durationMatch[1] && durationMatch[2]) {
+      const value = parseFloat(durationMatch[1])
+      const unit = durationMatch[2]
+      if (unit === 'ms') return value
+      if (unit === 's') return value * 1000
+      if (unit === 'm') return value * 60_000
+    }
+    // Try as ISO timestamp
+    const date = Date.parse(resetValue)
+    if (!Number.isNaN(date)) {
+      const delayMs = date - Date.now()
+      return delayMs > 0 ? delayMs : undefined
+    }
+  }
+
+  return undefined
 }
 
 function classify(error: unknown): RetryDecision {
@@ -80,19 +134,25 @@ function classify(error: unknown): RetryDecision {
     const message = error.message
     const statusCode = error.statusCode
     const messageLower = message.toLowerCase()
+    const retryAfterMs = parseRetryAfterMs(error.responseHeaders)
 
     // Rate limiting
     if (statusCode === 429 || messageLower.includes('rate limit') || messageLower.includes('too many requests')) {
-      return { retryable: true, category: 'rate_limit', statusCode, message }
+      return { retryable: true, category: 'rate_limit', statusCode, message, retryAfterMs }
     }
 
     // Transient server errors and 408 Request Timeout
     if (statusCode === 408 || (statusCode && statusCode >= 500)) {
-      return { retryable: true, category: 'transient', statusCode, message }
+      return { retryable: true, category: 'transient', statusCode, message, retryAfterMs }
     }
 
     // Client errors - check for transient 400s before marking as non-retryable
     if (statusCode && statusCode >= 400 && statusCode < 500) {
+      // Budget exceeded from raw API response (before normalization to BudgetExceededError)
+      // LiteLLM returns 400 for model budgets and 401 for key/team budgets
+      if ((statusCode === 400 || statusCode === 401) && error.responseBody && containsBudgetExceededPattern(error.responseBody)) {
+        return { retryable: false, category: 'budget_exceeded', statusCode, message }
+      }
       // Check if this is a transient 400 that might succeed on retry
       if (statusCode === 400 && isTransientBadRequest(message, error.responseBody)) {
         return { retryable: true, category: 'transient', statusCode, message }
@@ -161,10 +221,21 @@ export function isRetryableError(error: unknown): boolean {
 }
 
 /**
- * Calculate delay with exponential backoff and optional jitter
+ * Calculate delay with exponential backoff and optional jitter.
+ * If the server provided a retry-after hint, use it (clamped to maxDelayMs)
+ * instead of the computed backoff — the server knows its own capacity best.
  */
-function computeDelay(retryOrdinal: number, opts: Required<RetryOptions>): number {
-  // retryOrdinal: 1 for first retry after initial attempt
+function computeDelay(retryOrdinal: number, opts: Required<RetryOptions>, retryAfterMs?: number): number {
+  if (retryAfterMs !== undefined && retryAfterMs > 0) {
+    // Use server-suggested delay, clamped to our max to avoid absurd waits
+    const clamped = Math.min(retryAfterMs, opts.maxDelayMs)
+    // Add small jitter (10%) even on server-suggested delays to avoid thundering herd
+    // when multiple clients get the same retry-after value
+    if (!opts.jitter) return Math.round(clamped)
+    const jitter = Math.floor(clamped * 0.1 * Math.random())
+    return Math.round(clamped + jitter)
+  }
+  // Fallback: exponential backoff with full jitter
   const raw = Math.min(opts.maxDelayMs, opts.baseDelayMs * Math.pow(opts.factor, retryOrdinal - 1))
   if (!opts.jitter) return raw
   return Math.floor(Math.random() * raw) // full jitter
@@ -259,13 +330,14 @@ export async function retryWithBackoff<T>(fn: () => Promise<T> | T, options: Ret
         throw err
       }
       const nextAttempt = attempt + 1
-      const delay = computeDelay(nextAttempt - 1, opts)
+      const delay = computeDelay(nextAttempt - 1, opts, decision.retryAfterMs)
       if (context.logger) {
         context.logger.warn('llm.api_call.retry', {
           attempt,
           nextAttempt,
           maxAttempts: opts.maxAttempts,
           delayMs: delay,
+          ...(decision.retryAfterMs !== undefined && { serverRetryAfterMs: decision.retryAfterMs }),
           category: decision.category,
           statusCode: decision.statusCode,
           message: decision.message,

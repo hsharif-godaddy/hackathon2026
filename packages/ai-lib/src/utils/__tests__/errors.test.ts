@@ -35,7 +35,8 @@ describe('errors', () => {
     it('returns false when response body contains budget exceeded pattern', () => {
       expect(isTransientBadRequest('Bad Request', 'exceededbudget limit reached')).toBe(false)
       expect(isTransientBadRequest('Bad Request', 'User is over budget')).toBe(false)
-      expect(isTransientBadRequest('Bad Request', 'budget exceeded for this month')).toBe(false)
+      expect(isTransientBadRequest('Bad Request', 'exceeded budget for this month')).toBe(false)
+      expect(isTransientBadRequest('Bad Request', '{"type":"budget_exceeded"}')).toBe(false)
     })
 
     it('returns true when response body does not contain budget pattern', () => {
@@ -58,13 +59,15 @@ describe('errors', () => {
     it('detects budget exceeded patterns', () => {
       expect(containsBudgetExceededPattern('exceededbudget')).toBe(true)
       expect(containsBudgetExceededPattern('User is over budget')).toBe(true)
-      expect(containsBudgetExceededPattern('budget exceeded')).toBe(true)
+      expect(containsBudgetExceededPattern('exceeded budget for model')).toBe(true)
+      expect(containsBudgetExceededPattern('{"type":"budget_exceeded"}')).toBe(true)
     })
 
     it('is case insensitive', () => {
       expect(containsBudgetExceededPattern('EXCEEDEDBUDGET')).toBe(true)
       expect(containsBudgetExceededPattern('Over Budget')).toBe(true)
-      expect(containsBudgetExceededPattern('BUDGET EXCEEDED')).toBe(true)
+      expect(containsBudgetExceededPattern('EXCEEDED BUDGET')).toBe(true)
+      expect(containsBudgetExceededPattern('BUDGET_EXCEEDED')).toBe(true)
     })
 
     it('returns false for non-budget errors', () => {
@@ -83,9 +86,10 @@ describe('errors', () => {
 
     it('BUDGET_EXCEEDED_PATTERNS contains expected patterns', () => {
       expect(BUDGET_EXCEEDED_PATTERNS).toContain('exceededbudget')
+      expect(BUDGET_EXCEEDED_PATTERNS).toContain('budget_exceeded')
+      expect(BUDGET_EXCEEDED_PATTERNS).toContain('exceeded budget')
       expect(BUDGET_EXCEEDED_PATTERNS).toContain('over budget')
-      expect(BUDGET_EXCEEDED_PATTERNS).toContain('budget exceeded')
-      expect(BUDGET_EXCEEDED_PATTERNS.length).toBe(3)
+      expect(BUDGET_EXCEEDED_PATTERNS.length).toBe(4)
     })
   })
 })

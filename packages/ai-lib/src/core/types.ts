@@ -1,5 +1,6 @@
 import type { LanguageModel, Tool, ModelMessage } from 'ai'
 import type { z } from 'zod'
+import type { RetryOptions } from '../utils/retry-with-backoff.js'
 
 // Re-export AI SDK types for convenience
 export type { ModelMessage, LanguageModel, Tool } from 'ai'
@@ -105,13 +106,19 @@ export interface AgentConfig {
     includeContext?: boolean
   }>
   /**
-   * Override default retry options.
-   * Note: Only maxAttempts is used. Retry delay timing is controlled by the
-   * AI SDK provider implementation (typically ~2s initial with exponential backoff).
+   * Override default retry options for LLM API calls.
+   * Uses retryWithBackoff with exponential backoff + jitter.
+   * Default: 5 attempts, 1s base delay, 2x factor, 16s max delay.
    */
-  retryConfig?: {
-    /** Maximum number of attempts (including initial attempt). Default: 5 */
-    maxAttempts?: number
+  retryConfig?: RetryOptions
+  /** Timeout configuration for LLM calls (passed to AI SDK) */
+  timeout?: {
+    /** Total timeout for entire agent run in ms */
+    totalMs?: number
+    /** Timeout per individual LLM step in ms */
+    stepMs?: number
+    /** Timeout between stream chunks in ms (streaming only) — detects stalled streams */
+    chunkMs?: number
   }
   /** Unified structured logger (preferred over callbacks) */
   logger?: {

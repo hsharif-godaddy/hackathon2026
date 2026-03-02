@@ -6,7 +6,7 @@ import type { AgentFactory, AgentWrapper } from '../core/agent-factory.js'
 import { createAgentFactory } from '../core/agent-factory.js'
 import { calculateCostEstimate, formatCostEstimate, getCacheHitRate, type TokenUsage } from '../utils/model-pricing.js'
 import { classifyError } from '../utils/retry-with-backoff.js'
-import { BudgetExceededError, containsBudgetExceededPattern } from '../utils/errors.js'
+import { BudgetExceededError, isBudgetExceededAPIError } from '../utils/errors.js'
 import type { AgentsCollection } from '../core/types.js'
 import type { HandoffStateManager } from '../tools/handoff-helpers.js'
 import { createLogger } from '../utils/logger.js'
@@ -267,18 +267,6 @@ export interface WebSocketMessage {
   type: 'step_start' | 'chunk' | 'tool_start' | 'tool_input_delta' | 'tool_call' | 'tool_result' | 'step_complete' | 'complete' | 'error' | 'agents_available' | 'recovery_status' | 'replay_complete' | 'catchup_status' | 'catchup_complete' | 'history_complete' | 'server_config' | 'conversation_info'
   content: string
   data: Record<string, unknown>
-}
-
-/**
- * Type guard to check if an error is a budget exceeded API error
- * Encapsulates the budget error detection logic to avoid duplication
- * Narrows the type to APICallError with statusCode guaranteed to be 400
- */
-function isBudgetExceededAPIError(error: unknown): error is APICallError & { statusCode: 400; responseBody: string } {
-  return APICallError.isInstance(error) &&
-    error.statusCode === 400 &&
-    !!error.responseBody &&
-    containsBudgetExceededPattern(error.responseBody)
 }
 
 /**
@@ -1400,7 +1388,7 @@ export class WebSocketServer {
                 // Convert to BudgetExceededError for UI
                 throw new BudgetExceededError(
                   'Your AI usage budget has been reached.',
-                  error.statusCode,
+                  error.statusCode ?? 400,
                   error.responseBody
                 )
               }
@@ -1585,7 +1573,7 @@ export class WebSocketServer {
 
           throw new BudgetExceededError(
             'Your AI usage budget has been reached.',
-            error.statusCode,
+            error.statusCode ?? 400,
             error.responseBody
           );
         }
@@ -2879,7 +2867,7 @@ export class WebSocketServer {
         invocation.end({ error, success: false })
         throw new BudgetExceededError(
           'Your AI usage budget has been reached.',
-          error.statusCode,
+          error.statusCode ?? 400,
           error.responseBody
         )
       }

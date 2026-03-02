@@ -90,6 +90,7 @@ export async function createInitialAgent(
     maxSteps: 10,
     temperature: 0.5,
     maxOutputTokens: 2000,
+    timeout: { stepMs: 60_000, chunkMs: 30_000 },
     logger: createAgentTelemetryLogger('initial'),
 
     // Enable prompt caching for cost savings

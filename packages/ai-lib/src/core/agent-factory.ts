@@ -21,7 +21,7 @@ import { createDuplicateResponseStopCondition } from './duplicate-detection.js'
 import { buildHybridContent } from '../utils/image-content-builder.js'
 import type { ContentBlock, TextContentBlock, ImageContentBlock } from '../utils/image-content-builder.js'
 import { createLogger } from '../utils/logger.js'
-import { serializeError } from '../utils/errors.js'
+import { serializeError, isBudgetExceededAPIError } from '../utils/errors.js'
 import { addCacheControlToMessages, addCacheControlToSystemPrompt, logCachingStats } from '../utils/prompt-caching.js'
 import { llmMetadataContext, type LitellmMetadata } from '../providers/unified-provider.js'
 import {
@@ -32,18 +32,9 @@ import {
   GrantErrorCode,
 } from '../grants/index.js'
 import { BudgetExceededError } from '../utils/errors.js'
+import { retryWithBackoff, type RetryContext } from '../utils/retry-with-backoff.js'
 
 const logger = createLogger('agent-factory')
-
-/**
- * Default maximum retry attempts for AI SDK calls.
- *
- * Note: Only maxAttempts is configurable via AgentConfig.retryConfig.
- * Retry delay timing (initial delay, backoff factor, jitter) is controlled
- * by the AI SDK provider implementation and cannot be customized here.
- * Most providers use ~2s initial delay with exponential backoff.
- */
-const DEFAULT_MAX_RETRY_ATTEMPTS = 5
 
 /**
  * Maximum grant retry attempts to prevent infinite loops
@@ -260,8 +251,10 @@ export class AgentWrapper {
     // Wrap tools with execution hooks if provided
     const wrappedTools = this.wrapToolsWithHooks(config.tools || {})
 
-    const configuredMaxAttempts = config.retryConfig?.maxAttempts ?? DEFAULT_MAX_RETRY_ATTEMPTS
-    const maxRetries = configuredMaxAttempts > 0 ? Math.max(0, configuredMaxAttempts - 1) : 0
+    // Disable SDK-native retries — retryWithBackoff handles retries with proper
+    // error classification (429/5xx), jitter, and structured logging.
+    // The SDK only retries when isRetryable===true, which most providers don't set.
+    const maxRetries = 0
 
     const telemetryHooks = this.createTelemetryHooks(config.logger)
 
@@ -907,12 +900,28 @@ export class AgentWrapper {
     // Extract and set LiteLLM metadata for cost tracking
     const litellmMetadata = extractLitellmMetadata(options?.executionContext, this.config.id)
 
-    // Wrap LLM call with AsyncLocalStorage context for per-request metadata
-    const result = await (litellmMetadata
-      ? llmMetadataContext.run(litellmMetadata, async () => {
-          return await this.agent.generate({ prompt, options: callOptions })
-        })
-      : this.agent.generate({ prompt, options: callOptions }))
+    const retryContext: RetryContext = {
+      operation: 'generate',
+      agentName: this.config.name,
+      modelName: this.config.modelName || 'unknown',
+      ...(this.config.logger && { logger: this.config.logger })
+    }
+
+    // Wrap LLM call with retryWithBackoff for proper 429/5xx retry handling
+    const generateParams = {
+      prompt,
+      options: callOptions,
+      ...(this.config.timeout && { timeout: this.config.timeout }),
+    }
+    const result = await retryWithBackoff(
+      () => litellmMetadata
+        ? llmMetadataContext.run(litellmMetadata, async () => {
+            return await this.agent.generate(generateParams)
+          })
+        : this.agent.generate(generateParams),
+      this.config.retryConfig,
+      retryContext
+    )
 
     // Await all promises from ToolLoopAgent
     const [usage, finishReason, toolCalls] = await Promise.all([
@@ -1096,29 +1105,50 @@ export class AgentWrapper {
       // Extract and set LiteLLM metadata for cost tracking
       const litellmMetadata = extractLitellmMetadata(options?.executionContext, this.config.id)
 
-      // Wrap LLM call with AsyncLocalStorage context for per-request metadata
-      streamResult = await (litellmMetadata
-        ? llmMetadataContext.run(litellmMetadata, async () => {
-            return await propagateAttributes(
+      const retryContext: RetryContext = {
+        operation: 'stream',
+        agentName: this.config.name,
+        modelName: this.config.modelName || 'unknown',
+        ...(this.config.logger && { logger: this.config.logger })
+      }
+
+      // Wrap LLM call with retryWithBackoff for proper 429/5xx retry handling
+      const streamParams = {
+        prompt,
+        options: callOptions,
+        ...(this.config.timeout && { timeout: this.config.timeout }),
+      }
+      streamResult = await retryWithBackoff(
+        () => litellmMetadata
+          ? llmMetadataContext.run(litellmMetadata, async () => {
+              return await propagateAttributes(
+                attributes,
+                async () => {
+                  return await this.agent.stream(streamParams)
+                }
+              )
+            })
+          : propagateAttributes(
               attributes,
               async () => {
-                return await this.agent.stream({ prompt, options: callOptions })
+                return await this.agent.stream(streamParams)
               }
-            )
-          })
-        : propagateAttributes(
-            attributes,
-            async () => {
-              return await this.agent.stream({ prompt, options: callOptions })
-            }
-          ))
+            ),
+        this.config.retryConfig,
+        retryContext
+      )
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
-      // Handle budget exceeded errors with grant fallback
-      if (BudgetExceededError.isInstance(error)) {
+      // Normalize APICallError budget errors to BudgetExceededError so grant fallback works
+      let normalizedError = error
+      if (isBudgetExceededAPIError(error) && !BudgetExceededError.isInstance(error)) {
+        normalizedError = new BudgetExceededError(error.message, error.statusCode ?? 400, error.responseBody)
+        if (error.stack) normalizedError.stack = error.stack
+      }
+      if (BudgetExceededError.isInstance(normalizedError)) {
         // Check if grants feature is active for this session
         if (!socketId || !grantSessionManager.isFeatureEnabled(socketId)) {
-          throw error // No grant fallback available
+          throw normalizedError // No grant fallback available
         }
 
         // Prevent infinite retry loops

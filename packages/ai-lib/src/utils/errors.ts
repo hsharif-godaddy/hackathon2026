@@ -5,6 +5,8 @@
  * special handling throughout the application.
  */
 
+import { APICallError } from '@ai-sdk/provider'
+
 /**
  * Check if a value is a plain object
  */
@@ -13,10 +15,18 @@ function isObject(val: unknown): val is Record<string, unknown> {
 }
 
 /**
- * Strings that indicate a budget exceeded error in API responses
- * GoCode/LiteLLM returns 400 with these patterns in the response body
+ * Strings that indicate a budget exceeded error in API responses.
+ * LiteLLM uses several formats:
+ *   - "ExceededTokenBudget" / "ExceededBudget" (status 401, key/team budgets)
+ *   - "type": "budget_exceeded" (status 400, model budgets)
+ *   - "exceeded budget" (general)
  */
-export const BUDGET_EXCEEDED_PATTERNS = ['exceededbudget', 'over budget', 'budget exceeded'] as const;
+export const BUDGET_EXCEEDED_PATTERNS = [
+  'exceededbudget',     // matches "ExceededTokenBudget" and "ExceededBudget" (case-insensitive, no-space)
+  'budget_exceeded',    // matches JSON type field: "type":"budget_exceeded"
+  'exceeded budget',    // matches "exceeded budget for model=..."
+  'over budget',
+] as const;
 
 /**
  * Check if text contains any budget exceeded pattern
@@ -203,6 +213,17 @@ export class BudgetExceededError extends Error {
     return error instanceof BudgetExceededError ||
       (isObject(error) && error.isBudgetExceeded === true);
   }
+}
+
+/**
+ * Check if an error is an APICallError with a budget exceeded pattern in the response body.
+ * LiteLLM returns budget errors as either 400 (model budgets) or 401 (key/team budgets).
+ */
+export function isBudgetExceededAPIError(error: unknown): error is APICallError & { responseBody: string } {
+  return APICallError.isInstance(error) &&
+    (error.statusCode === 400 || error.statusCode === 401) &&
+    !!error.responseBody &&
+    containsBudgetExceededPattern(error.responseBody)
 }
 
 /**

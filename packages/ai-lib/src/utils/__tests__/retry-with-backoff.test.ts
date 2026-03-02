@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { retryWithBackoff, DEFAULT_RETRY_CONFIG, hasRetryMetadata, getRetryMetadata, isRetryableError } from '../retry-with-backoff.js'
-import { createNetworkError, createRateLimitError, createServerError, createAuthError, createBadRequestError, createServiceUnavailableError, createFailingFunction, createTransientBadRequestError, createToolValidationError } from './test-helpers.js'
+import { retryWithBackoff, DEFAULT_RETRY_CONFIG, hasRetryMetadata, getRetryMetadata, isRetryableError, classifyError } from '../retry-with-backoff.js'
+import { createNetworkError, createRateLimitError, createServerError, createAuthError, createBadRequestError, createServiceUnavailableError, createFailingFunction, createTransientBadRequestError, createToolValidationError, createAPICallErrorWithHeaders } from './test-helpers.js'
 
 describe('retry-with-backoff simplified', () => {
   let events: { info: any[]; warn: any[]; error: any[] }
@@ -137,5 +137,193 @@ describe('retry-with-backoff simplified', () => {
     // Non-transient 400s should NOT be retryable
     expect(isRetryableError(createBadRequestError('Invalid parameter'))).toBe(false)
     expect(isRetryableError(createToolValidationError())).toBe(false)
+  })
+})
+
+describe('retry-after header support', () => {
+  let events: { info: any[]; warn: any[]; error: any[] }
+  let logger: { info: (e: string, d: unknown) => void; warn: (e: string, d: unknown) => void; error: (e: string, d: unknown) => void }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    events = { info: [], warn: [], error: [] }
+    logger = {
+      info: (e, d) => events.info.push({ e, d }),
+      warn: (e, d) => events.warn.push({ e, d }),
+      error: (e, d) => events.error.push({ e, d })
+    }
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  describe('classifyError extracts retryAfterMs from APICallError headers', () => {
+    it('parses retry-after header in seconds', () => {
+      const error = createAPICallErrorWithHeaders(429, { 'retry-after': '30' })
+      const decision = classifyError(error)
+      expect(decision.retryable).toBe(true)
+      expect(decision.category).toBe('rate_limit')
+      expect(decision.retryAfterMs).toBe(30_000)
+    })
+
+    it('parses x-ratelimit-reset-requests duration', () => {
+      const error = createAPICallErrorWithHeaders(429, {
+        'x-ratelimit-reset-requests': '5s'
+      })
+      const decision = classifyError(error)
+      expect(decision.retryable).toBe(true)
+      expect(decision.retryAfterMs).toBe(5_000)
+    })
+
+    it('parses x-ratelimit-reset-tokens as fallback', () => {
+      const error = createAPICallErrorWithHeaders(429, {
+        'x-ratelimit-reset-tokens': '10s'
+      })
+      const decision = classifyError(error)
+      expect(decision.retryable).toBe(true)
+      expect(decision.retryAfterMs).toBe(10_000)
+    })
+
+    it('prefers retry-after over x-ratelimit-reset-* headers', () => {
+      const error = createAPICallErrorWithHeaders(429, {
+        'retry-after': '2',
+        'x-ratelimit-reset-requests': '60s'
+      })
+      const decision = classifyError(error)
+      expect(decision.retryAfterMs).toBe(2_000) // retry-after wins
+    })
+
+    it('prefers x-ratelimit-reset-requests over x-ratelimit-reset-tokens', () => {
+      const error = createAPICallErrorWithHeaders(429, {
+        'x-ratelimit-reset-requests': '3s',
+        'x-ratelimit-reset-tokens': '30s'
+      })
+      const decision = classifyError(error)
+      expect(decision.retryAfterMs).toBe(3_000) // requests wins
+    })
+
+    it('prioritizes retry-after > x-ratelimit-reset-requests > x-ratelimit-reset-tokens', () => {
+      const error = createAPICallErrorWithHeaders(429, {
+        'retry-after': '5',
+        'x-ratelimit-reset-requests': '10s',
+        'x-ratelimit-reset-tokens': '30s'
+      })
+      const decision = classifyError(error)
+      expect(decision.retryAfterMs).toBe(5_000) // retry-after wins over both
+    })
+
+    it('parses fractional duration values', () => {
+      const error = createAPICallErrorWithHeaders(429, {
+        'x-ratelimit-reset-requests': '1.5s'
+      })
+      const decision = classifyError(error)
+      expect(decision.retryAfterMs).toBe(1_500)
+    })
+
+    it('parses minute duration values', () => {
+      const error = createAPICallErrorWithHeaders(429, {
+        'x-ratelimit-reset-requests': '2m'
+      })
+      const decision = classifyError(error)
+      expect(decision.retryAfterMs).toBe(120_000)
+    })
+
+    it('parses ms duration values', () => {
+      const error = createAPICallErrorWithHeaders(429, {
+        'x-ratelimit-reset-requests': '500ms'
+      })
+      const decision = classifyError(error)
+      expect(decision.retryAfterMs).toBe(500)
+    })
+
+    it('returns retryAfterMs for 5xx errors too', () => {
+      const error = createAPICallErrorWithHeaders(503, {
+        'retry-after': '10'
+      })
+      const decision = classifyError(error)
+      expect(decision.retryable).toBe(true)
+      expect(decision.category).toBe('transient')
+      expect(decision.retryAfterMs).toBe(10_000)
+    })
+
+    it('returns undefined retryAfterMs when no headers present', () => {
+      const error = createAPICallErrorWithHeaders(429, {})
+      const decision = classifyError(error)
+      expect(decision.retryable).toBe(true)
+      expect(decision.retryAfterMs).toBeUndefined()
+    })
+  })
+
+  describe('retryWithBackoff uses server-suggested delay', () => {
+    it('uses retry-after header delay instead of exponential backoff', async () => {
+      // 429 with retry-after: 2 (seconds) — should wait ~2000ms not exponential backoff
+      let attempt = 0
+      const fn = async () => {
+        attempt++
+        if (attempt === 1) {
+          throw createAPICallErrorWithHeaders(429, { 'retry-after': '2' })
+        }
+        return 'ok'
+      }
+
+      const p = retryWithBackoff(fn, { ...DEFAULT_RETRY_CONFIG, jitter: false }, { operation: 'generate', logger })
+      await vi.runAllTimersAsync()
+      const res = await p
+      expect(res).toBe('ok')
+
+      // Verify the warn log includes serverRetryAfterMs
+      expect(events.warn).toHaveLength(1)
+      expect(events.warn[0].d.serverRetryAfterMs).toBe(2_000)
+      // With jitter disabled, delay should be exactly the server-suggested value (clamped)
+      expect(events.warn[0].d.delayMs).toBe(2_000)
+    })
+
+    it('clamps server-suggested delay to maxDelayMs', async () => {
+      let attempt = 0
+      const fn = async () => {
+        attempt++
+        if (attempt === 1) {
+          throw createAPICallErrorWithHeaders(429, { 'retry-after': '120' }) // 120s > 16s max
+        }
+        return 'ok'
+      }
+
+      const p = retryWithBackoff(
+        fn,
+        { ...DEFAULT_RETRY_CONFIG, jitter: false, maxDelayMs: 16_000 },
+        { operation: 'generate', logger }
+      )
+      await vi.runAllTimersAsync()
+      const res = await p
+      expect(res).toBe('ok')
+
+      // Delay should be clamped to maxDelayMs
+      expect(events.warn[0].d.delayMs).toBe(16_000)
+      expect(events.warn[0].d.serverRetryAfterMs).toBe(120_000)
+    })
+
+    it('falls back to exponential backoff when no retry-after header', async () => {
+      let attempt = 0
+      const fn = async () => {
+        attempt++
+        if (attempt === 1) {
+          throw createAPICallErrorWithHeaders(429, {}) // no retry-after
+        }
+        return 'ok'
+      }
+
+      const p = retryWithBackoff(
+        fn,
+        { ...DEFAULT_RETRY_CONFIG, jitter: false, baseDelayMs: 1000 },
+        { operation: 'generate', logger }
+      )
+      await vi.runAllTimersAsync()
+      const res = await p
+      expect(res).toBe('ok')
+
+      // Without server hint, should use exponential backoff (1000ms for first retry)
+      expect(events.warn[0].d.serverRetryAfterMs).toBeUndefined()
+      expect(events.warn[0].d.delayMs).toBe(1_000)
+    })
   })
 })

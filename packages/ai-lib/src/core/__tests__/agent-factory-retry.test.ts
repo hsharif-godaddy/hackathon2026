@@ -178,8 +178,8 @@ describe('AgentWrapper integration with ToolLoopAgent settings', () => {
     expect(prepared.messages[0].role).toBe('user')
   })
 
-  it('derives maxRetries from retryConfig.maxAttempts', () => {
-    expect(lastSettings.maxRetries).toBe(3) // 4 attempts => 3 retries
+  it('disables SDK-native retries (retryWithBackoff handles retries instead)', () => {
+    expect(lastSettings.maxRetries).toBe(0)
   })
 
   it('invokes structured logger hooks for steps and completion', async () => {

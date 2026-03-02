@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { APICallError } from '@ai-sdk/provider'
 
 import { AgentWrapper } from '../agent-factory.js'
 import type { AgentConfig } from '../types.js'
@@ -131,6 +132,69 @@ describe('AgentWrapper - exhausted grants refresh', function exhaustedGrantsTest
 
       expect(grantSessionManager.requestGrantRefreshAndWait).not.toHaveBeenCalled()
       expect(mockStream).toHaveBeenCalledTimes(1)
+    })
+
+    it('normalizes raw APICallError budget error and triggers grant fallback', async function rawAPICallErrorBudget() {
+      const { grantSessionManager, isGrantsExhausted } = await import('../../grants/index.js')
+
+      // Pre-call: grants not exhausted, so stream is attempted
+      vi.mocked(grantSessionManager.isFeatureEnabled).mockReturnValue(true)
+      vi.mocked(grantSessionManager.hasGrants).mockReturnValue(true)
+      vi.mocked(isGrantsExhausted).mockReturnValue(false)
+
+      // Stream throws a raw APICallError with budget exceeded pattern
+      // (not a BudgetExceededError — this is what LiteLLM returns before normalization)
+      const budgetAPIError = new APICallError({
+        message: 'Budget has been exceeded',
+        url: 'https://litellm.example.com/v1/chat/completions',
+        requestBodyValues: {},
+        statusCode: 400,
+        responseBody: '{"error":{"message":"Budget has been exceeded! Current cost: 50.01, Max budget: 50.00","type":"budget_exceeded"}}',
+        isRetryable: false,
+      })
+      mockStream.mockRejectedValueOnce(budgetAPIError)
+
+      // Grant fallback: advance succeeds, second stream call works
+      vi.mocked(grantSessionManager.advanceToNextGrant).mockReturnValue(true)
+      vi.mocked(grantSessionManager.getCurrentUserId).mockReturnValue('airo-builder:grant:pack-2')
+      mockStream.mockResolvedValueOnce(makeValidStream())
+
+      const result = await agentWrapper.streamGenerate('test prompt', { executionContext })
+
+      // Should have advanced to next grant and retried
+      expect(grantSessionManager.advanceToNextGrant).toHaveBeenCalledWith(socketId)
+      expect(mockStream).toHaveBeenCalledTimes(2)
+
+      const chunks: string[] = []
+      for await (const chunk of result.textStream) {
+        chunks.push(chunk)
+      }
+      expect(chunks).toEqual(['response'])
+    })
+
+    it('throws raw APICallError budget error when grants feature is disabled', async function rawAPICallErrorNoGrants() {
+      const { grantSessionManager, isGrantsExhausted } = await import('../../grants/index.js')
+
+      vi.mocked(grantSessionManager.isFeatureEnabled).mockReturnValue(false)
+      vi.mocked(grantSessionManager.hasGrants).mockReturnValue(false)
+      vi.mocked(isGrantsExhausted).mockReturnValue(false)
+
+      const budgetAPIError = new APICallError({
+        message: 'Budget has been exceeded',
+        url: 'https://litellm.example.com/v1/chat/completions',
+        requestBodyValues: {},
+        statusCode: 400,
+        responseBody: '{"error":{"message":"exceededbudget"}}',
+        isRetryable: false,
+      })
+      mockStream.mockRejectedValueOnce(budgetAPIError)
+
+      // Should throw (normalized to BudgetExceededError) since no grant fallback
+      await expect(
+        agentWrapper.streamGenerate('test prompt', { executionContext })
+      ).rejects.toThrow()
+
+      expect(grantSessionManager.advanceToNextGrant).not.toHaveBeenCalled()
     })
   })
 })

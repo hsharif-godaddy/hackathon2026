@@ -1,4 +1,5 @@
 import { vi } from 'vitest'
+import { APICallError } from '@ai-sdk/provider'
 
 /**
  * Test Helper Utilities for Retry and Agent Testing
@@ -84,6 +85,26 @@ export function createServiceUnavailableError(message: string = 'Service tempora
   error.status = 503
   error.statusCode = 503
   return error
+}
+
+/**
+ * Creates a real APICallError with response headers for testing header-based retry logic.
+ * Uses the AI SDK's APICallError class so `APICallError.isInstance()` returns true.
+ */
+export function createAPICallErrorWithHeaders(
+  statusCode: number,
+  responseHeaders: Record<string, string>,
+  message: string = `API error: ${statusCode}`
+): APICallError {
+  return new APICallError({
+    message,
+    url: 'https://litellm.example.com/v1/chat/completions',
+    requestBodyValues: {},
+    statusCode,
+    responseHeaders,
+    responseBody: message,
+    isRetryable: undefined as unknown as boolean,
+  })
 }
 
 /**
