@@ -53,6 +53,7 @@ type DatabaseConfig struct {
 type Config struct {
 	Database       *Secret[DatabaseConfig] `json:"DATABASE"`
 	JWTRedirectURL *Secret[string]         `json:"JWT_REDIRECT_URL"`
+	ProductID      *Secret[string]         `json:"PRODUCT_ID"`
 }
 
 // Copy returns a deep copy of the Config
@@ -74,6 +75,11 @@ func (c *Config) Copy() *Config {
 		configCopy.JWTRedirectURL = &jwtCopy
 	}
 
+	if c.ProductID != nil {
+		pidCopy := *c.ProductID
+		configCopy.ProductID = &pidCopy
+	}
+
 	return configCopy
 }
 
@@ -88,7 +94,7 @@ var (
 // Use NewLoader/NewLoaderWithTTL for tests that need custom paths or TTL values.
 func Default() *Loader {
 	defaultLoaderOnce.Do(func() {
-		defaultLoader = NewLoaderWithTTL(DefaultAllocConfigPath, DefaultCacheTTL)
+		defaultLoader = NewLoaderWithTTL(defaultAllocConfigPath(), DefaultCacheTTL)
 	})
 	return defaultLoader
 }

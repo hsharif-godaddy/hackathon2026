@@ -1,21 +1,53 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 
 	"golang.org/x/term"
 
+	"github.com/airo-ai-builder/dev-supervisor/internal/allocconfig"
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 )
 
 var logger *slog.Logger
 
+// productIDHandler wraps a handler and injects product_id dynamically on each log call.
+// This ensures the product_id is picked up even if the config file is populated after startup.
+type productIDHandler struct {
+	inner  slog.Handler
+	siteID string
+}
+
+func (h *productIDHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.inner.Enabled(ctx, level)
+}
+
+func (h *productIDHandler) Handle(ctx context.Context, r slog.Record) error {
+	// Add app_id (static) and product_id (dynamic) to every log record.
+	// allocconfig.Default() has built-in 5s TTL caching and singleflight.
+	r.AddAttrs(
+		slog.String("app_id", h.siteID),
+		slog.String("product_id", allocconfig.GetProductIDOrDefault("notfound")),
+	)
+	return h.inner.Handle(ctx, r)
+}
+
+func (h *productIDHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &productIDHandler{inner: h.inner.WithAttrs(attrs), siteID: h.siteID}
+}
+
+func (h *productIDHandler) WithGroup(name string) slog.Handler {
+	return &productIDHandler{inner: h.inner.WithGroup(name), siteID: h.siteID}
+}
+
 // newLoggerWithHandler creates a new logger with the given handler
-// and includes app_id from SITE_ID environment variable as a default field
+// and includes app_id from SITE_ID environment variable as a default field.
+// product_id is injected dynamically via productIDHandler to handle late config loading.
 func newLoggerWithHandler(handler slog.Handler) *slog.Logger {
 	siteID := os.Getenv("SITE_ID")
-	return slog.New(handler).With("app_id", siteID)
+	return slog.New(&productIDHandler{inner: handler, siteID: siteID})
 }
 
 // getLogLevel returns the configured log level from environment variable

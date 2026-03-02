@@ -1,7 +1,35 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { LogLevel, LoggerConfig, LogHandler } from './types.js';
 import { ProductionHandler } from './handlers/ProductionHandler.js';
 import { DevelopmentHandler } from './handlers/DevelopmentHandler.js';
 import { TestHandler } from './handlers/TestHandler.js';
+
+// Inline productId reader to avoid circular dependency with nomad-config.ts
+// (nomad-config.ts imports Logger, which imports this config file)
+// This is intentionally minimal - no logging since we're configuring the logger
+let _cachedProductId: string | undefined;
+function getProductIdForConfig(): string {
+  if (_cachedProductId !== undefined) return _cachedProductId;
+
+  const allocConfigPath = join(process.env.NOMAD_ALLOC_DIR || '/alloc', 'config.json');
+  if (!existsSync(allocConfigPath)) {
+    _cachedProductId = 'notfound';
+    return _cachedProductId;
+  }
+
+  try {
+    const raw = readFileSync(allocConfigPath, 'utf-8');
+    const parsed = JSON.parse(raw) as Record<string, { VALUE?: string }> | null;
+    const value = parsed?.PRODUCT_ID?.VALUE;
+    // Treat empty strings as missing (consistent with Go implementation)
+    _cachedProductId = typeof value === 'string' && value !== '' ? value : 'notfound';
+    return _cachedProductId;
+  } catch {
+    _cachedProductId = 'notfound';
+    return _cachedProductId;
+  }
+}
 
 /**
  * Configuration utilities for the logging system
@@ -80,6 +108,7 @@ export function createConfigFromEnvironment(): LoggerConfig {
       version: process.env.npm_package_version || '1.0.0',
       environment: process.env.NODE_ENV || 'development',
       appId: process.env.SITE_ID || '',
+      productId: getProductIdForConfig(),
     },
   };
 
@@ -203,6 +232,7 @@ export const LoggingPresets = {
         service: 'airo-agents',
         version: process.env.npm_package_version || '1.0.0',
         environment: 'production',
+        productId: getProductIdForConfig(),
       },
     };
   },
@@ -223,6 +253,7 @@ export const LoggingPresets = {
         service: 'airo-agents',
         version: process.env.npm_package_version || '1.0.0',
         environment: 'development',
+        productId: getProductIdForConfig(),
       },
     };
   },
@@ -238,6 +269,7 @@ export const LoggingPresets = {
         service: 'airo-agents',
         version: process.env.npm_package_version || '1.0.0',
         environment: 'test',
+        productId: getProductIdForConfig(),
       },
     };
   },
@@ -253,6 +285,7 @@ export const LoggingPresets = {
         service: 'airo-agents',
         version: process.env.npm_package_version || '1.0.0',
         environment: 'silent',
+        productId: getProductIdForConfig(),
       },
     };
   },
@@ -273,6 +306,7 @@ export const LoggingPresets = {
         service: 'airo-agents',
         version: process.env.npm_package_version || '1.0.0',
         environment: 'debug',
+        productId: getProductIdForConfig(),
       },
     };
   },

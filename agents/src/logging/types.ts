@@ -12,6 +12,7 @@ export interface LogContext {
   conversationId?: string;
   service?: string;
   version?: string;
+  productId?: string;
   [key: string]: any;
 }
 
