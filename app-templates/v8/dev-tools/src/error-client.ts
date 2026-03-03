@@ -124,11 +124,32 @@ function renderErrorOverlay(rawError: any) {
   root.appendChild(container);
 }
 
-// Only hook into Vite HMR in development
+// Catch initial page load failures (import errors before HMR is connected)
+if (import.meta.env.MODE === 'development') {
+  window.addEventListener('vite:initial-error', ((event: CustomEvent) => {
+    renderErrorOverlay(event.detail);
+    sendErrorToParent(formatErrorMessage(event.detail));
+  }) as EventListener);
+}
+
+// Hook into Vite HMR for errors during development
 if (import.meta.env.MODE === 'development' && import.meta.hot) {
+  let hasErrorOverlay = false;
+  let reloadScheduled = false;
+
   const handleHmrError = (data: any) => {
     console.error('Vite compile error (standalone client):', data);
+    hasErrorOverlay = true;
     renderErrorOverlay(data);
+  };
+
+  const handleAfterUpdate = () => {
+    if (hasErrorOverlay && !reloadScheduled) {
+      hasErrorOverlay = false;
+      reloadScheduled = true;
+      // Defer reload to avoid interrupting the HMR event handler
+      setTimeout(() => window.location.reload(), 0);
+    }
   };
 
   // Standard Vite error event
@@ -136,4 +157,16 @@ if (import.meta.env.MODE === 'development' && import.meta.hot) {
 
   // Custom compile error event emitted by our error interceptor plugin
   import.meta.hot.on('compile-error', handleHmrError);
+
+  // Recover after a successful HMR update clears a previous error
+  import.meta.hot.on('vite:afterUpdate', handleAfterUpdate);
+
+  // Clean up listeners on module disposal to prevent accumulation
+  import.meta.hot.dispose(() => {
+    hasErrorOverlay = false;
+    reloadScheduled = false;
+    import.meta.hot!.off('vite:error', handleHmrError);
+    import.meta.hot!.off('compile-error', handleHmrError);
+    import.meta.hot!.off('vite:afterUpdate', handleAfterUpdate);
+  });
 }

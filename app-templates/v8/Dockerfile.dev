@@ -188,7 +188,6 @@ EXPOSE 3000
 
 # Set development environment variables
 ENV NODE_ENV=development
-ENV VITE_HMR_HOST=0.0.0.0
 ENV RUNNING_IN_DOCKER=true
 ENV DEV_SUPERVISOR_SOCKET_PATH=/tmp/supervisor/dev-supervisor.sock
 ENV NPM_CONFIG_CACHE=/npm-cache

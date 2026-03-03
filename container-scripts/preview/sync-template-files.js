@@ -91,7 +91,10 @@ const SYNC_MANIFEST = [
     description: 'Vite build and dev server configuration',
     known_hashes: [
       '16269c87b3b6fc698e25d57e46a431f7', // Older version - hardcoded host: "0.0.0.0"
-      'd18a56841b551364f6ec0c0cdeccaca2'  // Before watch.ignored was added
+      'a4186186a022994547055e21bc92ceaa', // 0d42af30 - before errorInterceptor removal
+      'd18a56841b551364f6ec0c0cdeccaca2', // e9c5d478 - configurable host binding
+      '4bec07f7c9c3412478c08afd333ece87', // 08a99145 - errorInterceptor removed (broken)
+      'd26b3f1349b07a524c7df4df29c55883'  // 4839907 - added watch.ignored
     ],
     force: false
   }
