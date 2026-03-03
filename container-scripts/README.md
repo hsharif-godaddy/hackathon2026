@@ -17,7 +17,7 @@ container-scripts/
     ├── build-and-run.sh               # Fallback: build from source when no pre-built artifacts
     ├── common.sh                      # Shared utility functions (logging, env file creation)
     ├── entrypoint.sh                  # Dev-supervisor wrapper entrypoint (used by pioneer-infra)
-    └── coming-soon.js                 # Fallback server for publish containers
+    └── status-page.js                  # Multi-mode status page server (coming-soon, suspended, custom)
 ```
 
 ## Usage
@@ -60,7 +60,7 @@ The production Dockerfile in `pioneer-infra/docker/airo-app-builder-publish/` co
 - **build-and-run.sh**: Fallback build script for non-pre-built archives. Detects the package manager (npm or pnpm), installs dependencies, runs the build, applies database migrations, and starts the app.
 - **common.sh**: Shared utility functions used by `run-app.sh` and `build-and-run.sh`. Provides logging helpers (`log`, `log_warn`, `error_exit`), environment file creation, and default configuration.
 - **entrypoint.sh**: One-liner wrapper that starts dev-supervisor with `run-app.sh` as the managed process. Used as the Docker ENTRYPOINT in the pioneer-infra production Dockerfile. In local dev, `Dockerfile.dev` uses dev-supervisor directly as ENTRYPOINT instead.
-- **coming-soon.js**: Fallback HTTP server that displays a "Coming Soon" page when no application has been published yet.
+- **status-page.js**: Multi-mode HTTP status page server. Displays a "Coming Soon" page by default when no application has been published. Set `SUSPENDED=true` to show a "Site Suspended" message. Supports custom overrides via `STATUS_PAGE_TITLE` and `STATUS_PAGE_MESSAGE` environment variables.
 
 ## Container Paths
 
@@ -79,7 +79,7 @@ Scripts are copied to these locations inside containers:
 - `/publish/build-and-run.sh`
 - `/publish/common.sh`
 - `/publish/entrypoint.sh`
-- `/publish/coming-soon.js`
+- `/publish/status-page.js`
 
 ## Development
 

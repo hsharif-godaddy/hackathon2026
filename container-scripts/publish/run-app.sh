@@ -22,6 +22,18 @@ if [ -f "${NOMAD_ALLOC_DIR}/publish-config.json" ]; then
     echo "Configured secrets at ${NOMAD_TASK_DIR}/config.json (symlinked from ${NOMAD_ALLOC_DIR}/config.json)"
 fi
 
+# Verify app directory exists and is writable
+[[ ! -d "$APP_DIR" ]] && error_exit "App directory not found: $APP_DIR"
+[[ ! -w "$APP_DIR" ]] && error_exit "App directory is not writable: $APP_DIR"
+
+# Serve status page if site is suspended (takes priority over customer app)
+if [[ "${SUSPENDED:-}" == "true" ]]; then
+    log "Site is suspended - serving status page"
+    cp /publish/status-page.js "${APP_DIR}/app.js"
+    cd "$APP_DIR" || error_exit "Failed to change directory to $APP_DIR"
+    exec /usr/local/bin/node ./app.js
+fi
+
 # Determine archive path from argument or current file
 if [[ -n "${1:-}" ]]; then
     log "Archive argument provided: $1"
@@ -30,9 +42,9 @@ elif [[ -f "${DIST_DIR}/current" ]]; then
     log "No archive argument - using current"
     readonly ARCHIVE_PATH="${DIST_DIR}/current"
 else
-    log "No archive argument and no current file - serving Coming Soon page"
-    cp /publish/coming-soon.js "${APP_DIR}/app.js"
-    log "Created Coming Soon app at ${APP_DIR}/app.js"
+    log "No archive argument and no current file - serving status page"
+    cp /publish/status-page.js "${APP_DIR}/app.js"
+    log "Created status page app at ${APP_DIR}/app.js"
     cd "$APP_DIR" || error_exit "Failed to change directory to $APP_DIR"
     exec /usr/local/bin/node ./app.js
 fi
@@ -49,10 +61,6 @@ log "Starting application deployment process"
 # Log archive details
 log "Archive path: $ARCHIVE_PATH"
 log "Archive size: $(ls -lhL "$ARCHIVE_PATH" | awk '{print $5}')"
-
-# Verify app directory exists and is writable
-[[ ! -d "$APP_DIR" ]] && error_exit "App directory not found: $APP_DIR"
-[[ ! -w "$APP_DIR" ]] && error_exit "App directory is not writable: $APP_DIR"
 
 # Extract archive
 log "Extracting archive to: $APP_DIR"
