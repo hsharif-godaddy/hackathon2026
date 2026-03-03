@@ -16,6 +16,7 @@ export interface LoggerConfig {
   prefix?: string;
   enableColors?: boolean;
   enableTimestamps?: boolean;
+  format?: 'text' | 'json';
 }
 
 /**
@@ -53,11 +54,11 @@ export class Logger {
 
   constructor(config: Partial<LoggerConfig> = {}) {
     this.config = {
-      level: (process.env.AI_LIB_LOG_LEVEL as LogLevel) || 'info',
+      level: config.level ?? ((process.env.AI_LIB_LOG_LEVEL as LogLevel) || 'info'),
       prefix: config.prefix || '@airo/ai-lib',
       enableColors: config.enableColors ?? (process.stdout.isTTY ?? false),
       enableTimestamps: config.enableTimestamps ?? true,
-      ...config,
+      format: config.format ?? (process.env.LOG_FORMAT === 'json' ? 'json' : 'text'),
     };
   }
 
@@ -104,8 +105,50 @@ export class Logger {
   }
 
   /**
+   * Convert prefix to dot-delimited event name for JSON output.
+   * e.g. "@airo/ai-lib:module-name" → "ai-lib.module-name"
+   */
+  private prefixToEvent(prefix: string): string {
+    return prefix.replace(/^@airo\//, '').replace(/:/g, '.');
+  }
+
+  /**
+   * Write a structured JSON log line to stdout/stderr.
+   */
+  private logJson(level: LogLevel, message: string, data?: any): void {
+    const entry: Record<string, unknown> = {
+      level,
+      event: this.config.prefix ? this.prefixToEvent(this.config.prefix) : 'ai-lib',
+      message,
+      service: 'airo-ai-lib',
+    };
+
+    if (this.config.enableTimestamps) {
+      entry.timestamp = new Date().toISOString();
+    }
+
+    if (data !== undefined) {
+      entry.data = data;
+    }
+
+    let line: string;
+    try {
+      line = JSON.stringify(entry) + '\n';
+    } catch {
+      entry.data = '[Circular or Non-serializable Data]';
+      line = JSON.stringify(entry) + '\n';
+    }
+
+    if (level === 'error' || level === 'fatal') {
+      process.stderr.write(line);
+    } else {
+      process.stdout.write(line);
+    }
+  }
+
+  /**
    * Log a message at the specified level
-   * 
+   *
    * @param level - Log level
    * @param message - Message to log
    * @param data - Optional data to include
@@ -115,8 +158,13 @@ export class Logger {
       return;
     }
 
+    if (this.config.format === 'json') {
+      this.logJson(level, message, data);
+      return;
+    }
+
     let formatted = this.format(level, message);
-    
+
     if (data !== undefined) {
       try {
         formatted += ' ' + JSON.stringify(data);
