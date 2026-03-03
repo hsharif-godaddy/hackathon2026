@@ -49,7 +49,9 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
     const previousUpdateCount = context.incrementalUpdateCount ?? 0;
     // Regenerate from scratch every 5 incremental updates to maintain quality
     // and ensure cumulative drift doesn't lose important context
-    const shouldRegenerateFromScratch = previousUpdateCount >= 5;
+    // Respect disableFullRegeneration from BackgroundSummarizer config
+    const shouldRegenerateFromScratch = !context.disableFullRegeneration
+      && previousUpdateCount >= 5;
 
     // Determine which messages to use:
     // - For regeneration: use fullMessageHistory (complete history before recent turns)

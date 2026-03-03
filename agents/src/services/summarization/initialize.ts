@@ -24,6 +24,7 @@ export async function initializeBackgroundSummarization(config?: {
   maxPromptTokens?: number;
   debounceMs?: number;
   keepRecentTurns?: number;
+  disableFullRegeneration?: boolean;
   strategy?: SummarizationStrategyType;
 }): Promise<BackgroundSummarizer> {
   if (isInitialized && backgroundSummarizer) {
@@ -36,20 +37,23 @@ export async function initializeBackgroundSummarization(config?: {
   const strategyType = config?.strategy || 'detailed-llm';
 
   // Build config object only with explicitly provided values
-  // This allows BackgroundSummarizer's tuned defaults (40k max prompt, 30s debounce, 4 turns) to apply
+  // This allows BackgroundSummarizer's defaults (10k max prompt, 3s debounce, 4 turns) to apply
   const summarizerConfig: Partial<{
     maxPromptTokens: number;
     debounceMs: number;
     keepRecentTurns: number;
+    disableFullRegeneration: boolean;
   }> = {};
   if (config?.maxPromptTokens !== undefined) summarizerConfig.maxPromptTokens = config.maxPromptTokens;
   if (config?.debounceMs !== undefined) summarizerConfig.debounceMs = config.debounceMs;
   if (config?.keepRecentTurns !== undefined) summarizerConfig.keepRecentTurns = config.keepRecentTurns;
+  if (config?.disableFullRegeneration !== undefined) summarizerConfig.disableFullRegeneration = config.disableFullRegeneration;
 
   logger.info('summarization.initialize.begin', {
-    maxPromptTokens: config?.maxPromptTokens ?? 40000,
-    debounceMs: config?.debounceMs ?? 30000,
+    maxPromptTokens: config?.maxPromptTokens ?? 10000,
+    debounceMs: config?.debounceMs ?? 3000,
     keepRecentTurns: config?.keepRecentTurns ?? 4,
+    disableFullRegeneration: config?.disableFullRegeneration ?? true,
     strategy: strategyType,
     usingDefaults: Object.keys(summarizerConfig).length === 0,
   });

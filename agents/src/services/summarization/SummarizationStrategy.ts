@@ -35,6 +35,8 @@ export interface SummarizationContext {
   incrementalUpdateCount?: number;
   /** ISO timestamp when summary was last fully regenerated from scratch */
   lastFullSummarizationAt?: string;
+  /** When true, strategies must not enter the full-regeneration codepath */
+  disableFullRegeneration?: boolean;
 }
 
 /**

@@ -269,7 +269,20 @@ describe('BackgroundSummarizer', () => {
   });
 
   describe('Regeneration Loading', () => {
-    it('should load full history when incrementalUpdateCount triggers regeneration', async () => {
+    it('should load full history when incrementalUpdateCount triggers regeneration and full regen is enabled', async () => {
+      // Create a summarizer with full regeneration explicitly enabled
+      const regenSummarizer = new BackgroundSummarizer(
+        conversationRepo,
+        summaryRepo,
+        strategy,
+        {
+          maxPromptTokens: 1000,
+          debounceMs: 0,
+          keepRecentTurns: 0,
+          disableFullRegeneration: false,
+        }
+      );
+
       const mockConversations = [
         { id: 'conv1', appId: 'app-123', agentId: 'initial', title: 'Conv 1' }
       ];
@@ -336,7 +349,7 @@ describe('BackgroundSummarizer', () => {
       const { countTokens } = await import('../../../utils/token-counter.js');
       vi.mocked(countTokens).mockResolvedValue({ tokenCount: 600 });
 
-      await summarizer.checkAndSummarize('app-123');
+      await regenSummarizer.checkAndSummarize('app-123');
       await new Promise(resolve => setTimeout(resolve, 10));
 
       expect(conversationRepo.getMessagesBatch).toHaveBeenCalledWith(['conv1']);
@@ -345,6 +358,63 @@ describe('BackgroundSummarizer', () => {
       expect(strategy.summarize).toHaveBeenCalled();
       const contextArg = vi.mocked(strategy.summarize).mock.calls[0][0];
       expect(contextArg.fullMessageHistory?.length).toBe(4);
+    });
+
+    it('should skip full regeneration when disableFullRegeneration is true (default)', async () => {
+      const mockConversations = [
+        { id: 'conv1', appId: 'app-123', agentId: 'initial', title: 'Conv 1' }
+      ];
+      const mockExistingSummary = {
+        id: 'summary-1',
+        appId: 'app-123',
+        summaryText: 'Previous summary',
+        summaryTokenCount: 50,
+        originalTokenCount: 100,
+        messageCount: 2,
+        messageRangeStart: 'msg1',
+        messageRangeEnd: 'msg2',
+        operationLog: JSON.stringify({ version: 1, entries: [] }),
+        createdAt: new Date(),
+        modelUsed: 'claude-3-5-sonnet',
+        incrementalUpdateCount: 5,
+        lastFullSummarizationAt: new Date()
+      };
+      const mockNewMessages: DatabaseMessage[] = [
+        {
+          id: 'msg3',
+          conversationId: 'conv1',
+          sender: 'user',
+          content: 'New message',
+          createdAt: new Date('2024-01-01T10:02:00Z')
+        },
+        {
+          id: 'msg4',
+          conversationId: 'conv1',
+          sender: 'agent',
+          content: 'Response',
+          createdAt: new Date('2024-01-01T10:03:00Z')
+        }
+      ];
+
+      vi.mocked(summaryRepo.findLatestForApp).mockResolvedValue(mockExistingSummary);
+      vi.mocked(conversationRepo.getByAppId).mockResolvedValue(mockConversations);
+      vi.mocked(conversationRepo.getMessagesAfterMessageId).mockResolvedValue(mockNewMessages);
+
+      const { countTokens } = await import('../../../utils/token-counter.js');
+      vi.mocked(countTokens).mockResolvedValue({ tokenCount: 600 });
+
+      await summarizer.checkAndSummarize('app-123');
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      // Should use incremental path, not full history
+      expect(conversationRepo.getMessagesAfterMessageId).toHaveBeenCalledWith('app-123', 'msg2');
+      expect(conversationRepo.getMessagesBatch).not.toHaveBeenCalled();
+
+      // Strategy should receive existingSummary (not cleared by regeneration logic)
+      expect(strategy.summarize).toHaveBeenCalled();
+      const contextArg = vi.mocked(strategy.summarize).mock.calls[0]![0]!;
+      expect(contextArg.existingSummary).toBe('Previous summary');
+      expect(contextArg.disableFullRegeneration).toBe(true);
     });
   });
 

@@ -45,6 +45,22 @@ export interface BackgroundSummarizerConfig {
   debounceMs: number;
   /** Number of recent conversation messages to keep unsummarized / excluded from summarization (default: 4) */
   keepRecentTurns: number;
+  /**
+   * Disable periodic full regeneration of summaries from scratch (default: true).
+   * When true, the summarizer prefers incremental updates and does not schedule
+   * full-history regenerations on a periodic basis.
+   *
+   * Full-history work can still occur in fallback cases, including:
+   * - when there is no existing summary yet (first summarization)
+   * - when incremental summarization falls back due to a missing reference message
+   * - when rebuilding a legacy operation log from raw messages
+   *
+   * Full regeneration reprocesses the entire conversation history, whose cost grows
+   * linearly with conversation length. The operation log already provides durable
+   * structured context that survives incremental updates, making periodic full
+   * regeneration unnecessary in most cases.
+   */
+  disableFullRegeneration: boolean;
 }
 
 /**
@@ -75,6 +91,7 @@ export class BackgroundSummarizer {
       maxPromptTokens: config.maxPromptTokens ?? 10000,
       debounceMs: config.debounceMs ?? 3000,
       keepRecentTurns: config.keepRecentTurns ?? 4,
+      disableFullRegeneration: config.disableFullRegeneration ?? true,
     };
   }
 
@@ -137,8 +154,11 @@ export class BackgroundSummarizer {
       // Load messages based on summarization mode
       let allMessages: DatabaseMessage[] = [];
       // Regenerate from scratch every 5 incremental updates to maintain quality
-      // and ensure cumulative drift doesn't lose important context
-      const shouldRegenerateFromScratch = (existingSummary?.incrementalUpdateCount ?? 0) >= 5;
+      // and ensure cumulative drift doesn't lose important context.
+      // Disabled by default: full regeneration cost grows linearly with conversation
+      // length and the operation log already provides durable structured context.
+      const shouldRegenerateFromScratch = !this.config.disableFullRegeneration
+        && (existingSummary?.incrementalUpdateCount ?? 0) >= 5;
       const shouldLoadFullHistory = !existingSummary || shouldRegenerateFromScratch;
       // Track if we're in incremental mode (affects keepRecentTurns behavior)
       const isIncrementalMode = !shouldLoadFullHistory && !!existingSummary;
@@ -473,6 +493,7 @@ export class BackgroundSummarizer {
         },
         originalTokenCount: cumulativeOriginalTokenCount,
         incrementalTokenCount: summarizableTokenCount,
+        disableFullRegeneration: this.config.disableFullRegeneration,
       };
 
       // Only add operationLog if it has content
