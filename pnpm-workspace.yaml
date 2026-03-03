@@ -8,5 +8,6 @@ packages:
   - "bedrock-log-viewer"
   - "debug-console"
   - "agentic-qa"
+  - "agentic-qa-langfuse"
   - "design-rag"
   - "!app-templates/**"

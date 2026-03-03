@@ -1,0 +1,21 @@
+{
+  "name": "agentic-qa-langfuse",
+  "version": "1.0.0",
+  "description": "Langfuse trace failure analysis pipeline using Anthropic Claude as AI judge",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.12",
+    "tsx": "^4.6.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=20.10.0"
+  }
+}

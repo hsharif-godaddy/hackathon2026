@@ -118,6 +118,18 @@ importers:
         specifier: 5.9.2
         version: 5.9.2
 
+  agentic-qa-langfuse:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.18.12
+        version: 22.18.12
+      tsx:
+        specifier: ^4.6.0
+        version: 4.20.5
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
+
   agents:
     dependencies:
       '@ai-sdk/amazon-bedrock':
