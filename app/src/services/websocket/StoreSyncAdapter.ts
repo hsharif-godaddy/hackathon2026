@@ -45,12 +45,11 @@ export interface StoreSyncStore {
 
 /**
  * Application-level store actions (outside machine state)
- * These handle connection retry tracking and escalation timeouts
+ * These handle connection retry tracking
  */
 export interface ApplicationStore extends StoreSyncStore {
   startConnectionRetry: (socketId: string) => void
   clearConnectionRetry: () => void
-  setEscalationTimeout: (timeoutId: NodeJS.Timeout) => void
   connectionRetry: {
     isRetrying: boolean
     retryStartedAt: number | null
@@ -87,7 +86,6 @@ const TRANSPORT_STATE_MAP: Record<string, Partial<WebSocketState>> = {
   // Reconnecting is explicitly NOT connected at the transport layer.
   'transport.reconnecting.retrying': { status: 'connecting', connected: false },
   'transport.reconnecting.exhausted': { status: 'error', connected: false },
-  'transport.failed': { status: 'error', connected: false },
 }
 
 /**
@@ -113,8 +111,6 @@ export class StoreSyncAdapter {
   private machineSubscription: { unsubscribe: () => void } | null = null
   private previousStreamState: string | null = null
   private previousTransportState: string | null = null
-  private escalationTimeoutId: NodeJS.Timeout | null = null
-
   constructor(
     private machine: Actor<WebSocketMachine>,
     private controller: ControllerLike,
@@ -223,13 +219,6 @@ export class StoreSyncAdapter {
           this.store.finalizeStream()
         }
 
-        // Send STREAM_ERROR to machine
-        this.machine.send({
-          type: 'STREAM_ERROR',
-          error: new Error('Connection lost - retry timeout exceeded'),
-          retryable: false,
-        })
-
         if (this.store.clearConnectionRetry) {
           this.store.clearConnectionRetry()
         }
@@ -254,13 +243,6 @@ export class StoreSyncAdapter {
           type: 'NETWORK_ERROR',
         })
         this.store.finalizeStream()
-
-        // Send STREAM_ERROR to machine
-        this.machine.send({
-          type: 'STREAM_ERROR',
-          error: new Error('Failed to reconnect after multiple attempts'),
-          retryable: false,
-        })
       }
     })
 
@@ -378,10 +360,7 @@ export class StoreSyncAdapter {
     this.syncStreamState(snapshot, currentStreamState, streamStateChanged, context)
 
     // ============ ERROR HANDLING ============
-    if (
-      snapshot.matches({ transport: 'failed' }) ||
-      snapshot.matches({ transport: { reconnecting: 'exhausted' } })
-    ) {
+    if (snapshot.matches({ transport: { reconnecting: 'exhausted' } })) {
       if (context.lastError) {
         this.store.setError(context.lastError)
       }
@@ -460,7 +439,6 @@ export class StoreSyncAdapter {
     }
     if (snapshot.matches({ transport: { reconnecting: 'retrying' } })) return 'transport.reconnecting.retrying'
     if (snapshot.matches({ transport: { reconnecting: 'exhausted' } })) return 'transport.reconnecting.exhausted'
-    if (snapshot.matches({ transport: 'failed' })) return 'transport.failed'
     return null
   }
 
@@ -495,9 +473,5 @@ export class StoreSyncAdapter {
       this.machineSubscription = null
     }
 
-    if (this.escalationTimeoutId) {
-      clearTimeout(this.escalationTimeoutId)
-      this.escalationTimeoutId = null
-    }
   }
 }

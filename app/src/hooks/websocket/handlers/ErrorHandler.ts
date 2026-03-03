@@ -11,12 +11,12 @@
 
 import { logger } from '@/lib/request-context'
 import type { AgentsAppChatMessage, AgentsAppContext } from '@/types/websocket-context'
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import type { LifecycleHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 export class ErrorHandler implements MessageHandler {
   readonly type = 'error'
 
-  async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
+  async handle(data: WebSocketMessage, context: LifecycleHandlerContext): Promise<void> {
     // Flush any buffered tool deltas
     context.actions.flushToolDeltaBufferImmediate()
 
@@ -78,7 +78,7 @@ export class ErrorHandler implements MessageHandler {
    */
   private handleBudgetExceeded(
     data: WebSocketMessage,
-    context: MessageContext,
+    context: LifecycleHandlerContext,
   ): void {
     logger.warn('websocket.error.budget_exceeded', {
       message: 'Budget exceeded error received',
@@ -107,7 +107,7 @@ export class ErrorHandler implements MessageHandler {
    */
   private handleAppNotFoundRetry(
     data: WebSocketMessage,
-    context: MessageContext,
+    context: LifecycleHandlerContext,
     retryState: {
       pendingMessage?: { chatMessage: any; startTime: number }
       retryCount: number
@@ -177,7 +177,7 @@ export class ErrorHandler implements MessageHandler {
    */
   private handleTerminalError(
     data: WebSocketMessage,
-    context: MessageContext,
+    context: LifecycleHandlerContext,
     isAppNotFound: boolean,
     elapsedTime: number,
     retryState: {

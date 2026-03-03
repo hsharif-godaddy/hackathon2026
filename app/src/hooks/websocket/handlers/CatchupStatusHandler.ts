@@ -6,12 +6,12 @@
  */
 
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import type { LifecycleHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 export class CatchupStatusHandler implements MessageHandler {
   readonly type = 'catchup_status'
 
-  async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
+  async handle(data: WebSocketMessage, context: LifecycleHandlerContext): Promise<void> {
     // Guard: Clear stale recovery state if app has changed to prevent
     // stale ack from leaking into new app's recovery attempt
     if (useStreamingConversationStore.getState().currentAppId !== context.currentAppId) {

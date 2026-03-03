@@ -6,12 +6,12 @@
  */
 
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import type { DataHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 export class ToolStartHandler implements MessageHandler {
   readonly type = 'tool_start'
 
-  async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
+  async handle(data: WebSocketMessage, context: DataHandlerContext): Promise<void> {
     if (data.data?.tool) {
       const tool = data.data.tool as any
 

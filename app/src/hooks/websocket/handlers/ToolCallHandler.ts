@@ -7,12 +7,12 @@
 
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import { fileOperationHandler } from './FileOperationHandler'
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import type { DataHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 export class ToolCallHandler implements MessageHandler {
   readonly type = 'tool_call'
 
-  async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
+  async handle(data: WebSocketMessage, context: DataHandlerContext): Promise<void> {
     if (data.data?.tool) {
       // Flush any buffered deltas before processing complete tool call
       context.actions.flushToolDeltaBufferImmediate()

@@ -6,12 +6,12 @@
  */
 
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import type { DataHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 export class StepStartHandler implements MessageHandler {
   readonly type = 'step_start'
 
-  async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
+  async handle(data: WebSocketMessage, context: DataHandlerContext): Promise<void> {
     // Send tool impression for analytics
     context.helpers.sendToolImpression('start')
 

@@ -10,7 +10,7 @@ import { logger } from '@/lib/request-context'
 import { useSitesStore } from '@/stores/useSitesStore'
 import { useSiteStore } from '@/stores/useSiteStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import type { LifecycleHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 // Session storage keys for tracking prompts and feedback
 const SESSION_PROMPT_COUNT_KEY = 'airo_session_prompt_count'
@@ -110,7 +110,7 @@ function injectFeedbackWidget(appId: string, conversationId: string | undefined,
 export class CompleteHandler implements MessageHandler {
   readonly type = 'complete'
 
-  async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
+  async handle(data: WebSocketMessage, context: LifecycleHandlerContext): Promise<void> {
     // Flush any buffered tool input deltas
     context.actions.flushToolDeltaBufferImmediate()
 

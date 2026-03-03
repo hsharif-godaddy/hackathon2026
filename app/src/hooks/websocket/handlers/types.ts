@@ -162,6 +162,20 @@ export interface MessageContext {
 }
 
 /**
+ * Context for data-only handlers (Tier 2)
+ * These handlers process streaming data (chunks, tools, steps) and MUST NOT
+ * send machine events or read machine state.
+ */
+export type DataHandlerContext = Omit<MessageContext, 'machine'>
+
+/**
+ * Context for lifecycle handlers (Tier 1)
+ * These handlers manage connection/streaming lifecycle and CAN send machine events.
+ * Identical to MessageContext - this alias makes the intent explicit.
+ */
+export type LifecycleHandlerContext = MessageContext
+
+/**
  * Interface for message handlers
  * Each handler processes one message type
  */

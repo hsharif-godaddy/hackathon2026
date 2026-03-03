@@ -16,7 +16,7 @@
  * - Tool delta buffering (performance optimization)
  */
 
-import { type ActorRefFrom, assign, raise, setup, type SnapshotFrom } from 'xstate'
+import { type ActorRefFrom, assign, setup, type SnapshotFrom } from 'xstate'
 
 import { logger } from '@/lib/request-context'
 import type { MachineContext, MachineEvent } from './stateMachineTypes'
@@ -429,7 +429,6 @@ export const webSocketMachine = setup({
                 },
 
                 sendingAck: {
-                  entry: raise({ type: 'RECOVERY_ACK_NEEDED' }),
                   on: {
                     RECOVERY_ACK_SENT: {
                       target: '#webSocket.transport.connected.idle',
@@ -472,12 +471,6 @@ export const webSocketMachine = setup({
                 ],
               },
 
-              on: {
-                RETRY_NOW: {
-                  target: '#webSocket.transport.connecting',
-                  guard: 'canRetry',
-                },
-              },
             },
 
             exhausted: {
@@ -487,10 +480,6 @@ export const webSocketMachine = setup({
           },
         },
 
-        failed: {
-          type: 'final',
-          entry: ['setError'],
-        },
       },
     },
 

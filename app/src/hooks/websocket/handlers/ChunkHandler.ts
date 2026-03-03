@@ -6,12 +6,12 @@
  */
 
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import type { DataHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 export class ChunkHandler implements MessageHandler {
   readonly type = 'chunk'
 
-  async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
+  async handle(data: WebSocketMessage, context: DataHandlerContext): Promise<void> {
     const store = useStreamingConversationStore.getState()
 
     // Machine should already be in streaming state when chunks arrive

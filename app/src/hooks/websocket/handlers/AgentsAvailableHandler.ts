@@ -1,11 +1,11 @@
 import { logger } from '@/lib/request-context'
 import { type AgentSummary, useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import type { DataHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 export class AgentsAvailableHandler implements MessageHandler {
   readonly type = 'agents_available'
 
-  async handle(data: WebSocketMessage, _context: MessageContext): Promise<void> {
+  async handle(data: WebSocketMessage, _context: DataHandlerContext): Promise<void> {
     const payload = data.data as { agents?: unknown; defaultAgent?: unknown } | undefined
     const rawAgents = Array.isArray(payload?.agents) ? payload?.agents : []
     const sanitizedAgents: AgentSummary[] = rawAgents

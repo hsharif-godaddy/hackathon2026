@@ -70,17 +70,7 @@ export type MachineEvent =
   | { type: 'REPLAY_COMPLETE' }
   | { type: 'CATCHUP_STATUS'; catchupId: string }
   | { type: 'CATCHUP_COMPLETE' }
-  | { type: 'RECOVERY_ACK_NEEDED' }
   | { type: 'RECOVERY_ACK_SENT' }
-
-  // Retry events
-  | { type: 'RETRY_NOW' }
-  | { type: 'RETRY_EXHAUSTED' }
-
-  // Error events
-  | { type: 'APP_NOT_FOUND'; error: Error }
-  | { type: 'BUDGET_EXCEEDED'; error: Error }
-  | { type: 'TOOL_VALIDATION_ERROR'; error: Error }
 
   // Config events
   | { type: 'SERVER_CONFIG_RECEIVED'; config: ServerConfig }

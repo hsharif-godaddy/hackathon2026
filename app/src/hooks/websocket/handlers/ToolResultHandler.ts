@@ -9,12 +9,12 @@ import { logger } from '@/lib/request-context'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import { useTodoListStore } from '@/stores/useTodoListStore'
 import { fileOperationHandler } from './FileOperationHandler'
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import type { DataHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 export class ToolResultHandler implements MessageHandler {
   readonly type = 'tool_result'
 
-  async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
+  async handle(data: WebSocketMessage, context: DataHandlerContext): Promise<void> {
     if (data.data?.tool) {
       // Flush any buffered deltas before processing result
       context.actions.flushToolDeltaBufferImmediate()

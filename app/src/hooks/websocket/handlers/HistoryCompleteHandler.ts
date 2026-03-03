@@ -9,12 +9,12 @@
 import { logger } from '@/lib/request-context'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import { HistoryMessageHandler } from './HistoryMessageHandler'
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import type { LifecycleHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 export class HistoryCompleteHandler implements MessageHandler {
   readonly type = 'history_complete'
 
-  async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
+  async handle(data: WebSocketMessage, context: LifecycleHandlerContext): Promise<void> {
     // Flush any remaining batched messages
     const historyHandler = new HistoryMessageHandler()
     historyHandler.flushBatch(context)

@@ -6,7 +6,7 @@ import Growl from '@ux/growl'
 
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import type { DataHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 interface VideoEventData {
   status: string
@@ -31,7 +31,7 @@ function isVideoEventData(raw: unknown): raw is VideoEventData {
 export class VideoHandler implements MessageHandler {
   readonly type = 'video'
 
-  async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
+  async handle(data: WebSocketMessage, context: DataHandlerContext): Promise<void> {
     const raw = data.data ?? {}
     const clientAppId = context.currentAppId
 

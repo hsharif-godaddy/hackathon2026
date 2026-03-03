@@ -5,12 +5,12 @@
  * Accumulates partial input deltas in a buffer for batched UI updates.
  */
 
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import type { DataHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 export class ToolInputDeltaHandler implements MessageHandler {
   readonly type = 'tool_input_delta'
 
-  async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
+  async handle(data: WebSocketMessage, context: DataHandlerContext): Promise<void> {
     // Tool input streaming delta - update partial input accumulation
     // Only require toolId and delta - toolName can be looked up from existing tool calls
     // Skip empty deltas (they don't add any information)

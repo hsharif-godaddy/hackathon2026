@@ -6,12 +6,12 @@
  */
 
 import { logger } from '@/lib/request-context'
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import type { DataHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 export class StepCompleteHandler implements MessageHandler {
   readonly type = 'step_complete'
 
-  async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
+  async handle(data: WebSocketMessage, context: DataHandlerContext): Promise<void> {
     if (data.data?.maxStepsReached === true) {
       logger.warn('websocket.steps.max-reached')
       context.actions.markMaxStepsReached()

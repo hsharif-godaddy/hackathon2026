@@ -10,14 +10,14 @@
 
 import { logger } from '@/lib/request-context'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import type { LifecycleHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 const DATA_LOSS_ERROR_MESSAGE = 'Some earlier data could not be recovered due to buffer limits.'
 
 export class RecoveryStatusHandler implements MessageHandler {
   readonly type = 'recovery_status'
 
-  async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
+  async handle(data: WebSocketMessage, context: LifecycleHandlerContext): Promise<void> {
     const storeAppId = useStreamingConversationStore.getState().currentAppId;
 
     // Guard: Clear stale recovery state if app has changed since this event was sent
@@ -66,7 +66,7 @@ export class RecoveryStatusHandler implements MessageHandler {
    */
   private async handleStreamCompleted(
     data: WebSocketMessage,
-    context: MessageContext
+    context: LifecycleHandlerContext
   ): Promise<void> {
     const conversationId = data.data?.conversationId as string | undefined
 
@@ -135,7 +135,7 @@ export class RecoveryStatusHandler implements MessageHandler {
   /**
    * Handle scenario where recovery is complete and stream is active again
    */
-  private handleRecoveryFinalized(data: WebSocketMessage, context: MessageContext): void {
+  private handleRecoveryFinalized(data: WebSocketMessage, context: LifecycleHandlerContext): void {
     // Recovery complete, stream is active again
     // Send CATCHUP_COMPLETE to transition machine back to idle state
     context.machine.send({ type: 'CATCHUP_COMPLETE' })
@@ -150,7 +150,7 @@ export class RecoveryStatusHandler implements MessageHandler {
    */
   private async handleBufferedEvents(
     data: WebSocketMessage,
-    context: MessageContext
+    context: LifecycleHandlerContext
   ): Promise<void> {
     // CRITICAL: Set up ack tracking BEFORE any async operations
     // Buffered events arrive during the async history load, and trackReplayEventReceipt
@@ -251,7 +251,7 @@ export class RecoveryStatusHandler implements MessageHandler {
   /**
    * Initialize stream for recovery when no history available
    */
-  private initializeRecoveryStream(context: MessageContext, conversationId: string): void {
+  private initializeRecoveryStream(context: LifecycleHandlerContext, conversationId: string): void {
     // Guard: only create if not already streaming (avoid overwriting on duplicate recovery)
     const store = useStreamingConversationStore.getState()
     if (!store.activeStream) {
@@ -262,7 +262,7 @@ export class RecoveryStatusHandler implements MessageHandler {
   /**
    * Create a recovered stream message
    */
-  private createRecoveredStream(context: MessageContext, conversationId: string): void {
+  private createRecoveredStream(context: LifecycleHandlerContext, conversationId: string): void {
     const streamingMessage = {
       id: `recovered_${Date.now()}`,
       role: 'assistant' as const,
@@ -294,7 +294,7 @@ export class RecoveryStatusHandler implements MessageHandler {
    * completed but server didn't explicitly set streamCompleted: true.
    * We should load history to ensure UI is up to date.
    */
-  private async handleRequiresAck(data: WebSocketMessage, context: MessageContext): Promise<void> {
+  private async handleRequiresAck(data: WebSocketMessage, context: LifecycleHandlerContext): Promise<void> {
     const expectedCount = (data.data?.bufferedEventCount as number) ?? 0
     const recoveryId = data.data!.conversationId as string
 

@@ -7,7 +7,7 @@
 
 import { logger } from '@/lib/request-context'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import type { LifecycleHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 const HISTORY_BATCH_SIZE = 10 // Messages per batch
 const HISTORY_BATCH_TIMEOUT_MS = 50 // Max wait time before flush
@@ -15,7 +15,7 @@ const HISTORY_BATCH_TIMEOUT_MS = 50 // Max wait time before flush
 export class HistoryMessageHandler implements MessageHandler {
   readonly type = 'history_message'
 
-  async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
+  async handle(data: WebSocketMessage, context: LifecycleHandlerContext): Promise<void> {
     // Initialize batch buffer if needed
     if (!context.refs.historyBatch) {
       logger.warn('websocket.history.no_batch_ref', {
@@ -56,7 +56,7 @@ export class HistoryMessageHandler implements MessageHandler {
    * Flush accumulated batch to store
    * Made public so HistoryCompleteHandler can call it
    */
-  flushBatch(context: MessageContext): void {
+  flushBatch(context: LifecycleHandlerContext): void {
     if (!context.refs.historyBatch || !context.refs.historyBatch.current) {
       return
     }

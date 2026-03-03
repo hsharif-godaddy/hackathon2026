@@ -6,13 +6,13 @@
  */
 
 import { logger } from '@/lib/request-context'
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import type { DataHandlerContext, MessageHandler, WebSocketMessage } from './types'
 import { clientActionExecutors } from '../actions'
 
 export class ClientActionHandler implements MessageHandler {
   readonly type = 'client_action'
 
-  async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
+  async handle(data: WebSocketMessage, context: DataHandlerContext): Promise<void> {
     // Validate message structure
     if (!data.data || typeof data.data !== 'object') {
       logger.error('websocket.client-action.invalid-message', {
@@ -111,7 +111,7 @@ export class ClientActionHandler implements MessageHandler {
   }
 
   private async sendResult(
-    context: MessageContext,
+    context: DataHandlerContext,
     requestId: string,
     result: {
       success: boolean

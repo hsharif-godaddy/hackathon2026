@@ -7,14 +7,14 @@
 
 import { logger } from '@/lib/request-context'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import type { LifecycleHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 const CONNECTION_RETRY_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes - fallback default
 
 export class ServerConfigHandler implements MessageHandler {
   readonly type = 'server_config'
 
-  async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
+  async handle(data: WebSocketMessage, context: LifecycleHandlerContext): Promise<void> {
     // Server sends configuration during handshake for timeout synchronization
     // This ensures client and server use the same recovery window
     const config = {

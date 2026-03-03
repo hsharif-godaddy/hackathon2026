@@ -5,14 +5,14 @@
  * Persists conversationId to cookie and acknowledges receipt to server.
  */
 
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import type { DataHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 export class ConversationInfoHandler implements MessageHandler {
   readonly type = 'conversation_info'
 
   async handle(
     data: WebSocketMessage,
-    context: MessageContext,
+    context: DataHandlerContext,
     ack?: () => void
   ): Promise<void> {
     // Control-plane message for durable conversationId delivery

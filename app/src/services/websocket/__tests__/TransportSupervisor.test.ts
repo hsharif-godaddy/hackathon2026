@@ -435,6 +435,14 @@ describe('TransportSupervisor', () => {
       vi.advanceTimersByTime(5 * 60 * 1000)
 
       expect(onEscalationSpy).toHaveBeenCalledWith({ socketId: 'socket-123' })
+
+      // Should send STREAM_ERROR to machine when escalation fires
+      expect(mockMachine.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'STREAM_ERROR',
+          retryable: false,
+        })
+      )
     })
 
     it('should use server config timeout if available', async () => {
@@ -593,6 +601,14 @@ describe('TransportSupervisor', () => {
         socket: mockSocket,
         wasStreaming: true,
       })
+
+      // Should send STREAM_ERROR to machine when reconnect fails during streaming
+      expect(mockMachine.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'STREAM_ERROR',
+          retryable: false,
+        })
+      )
     })
   })
 

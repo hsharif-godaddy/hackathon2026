@@ -267,6 +267,11 @@ export class TransportSupervisor extends EventEmitter {
           socketId: socket.id,
         })
 
+        this.deps.machine.send({
+          type: 'STREAM_ERROR',
+          error: new Error('Connection lost - retry timeout exceeded'),
+          retryable: false,
+        })
         this.emit('transport:escalation-timeout', { socketId: socket.id })
       }, this.deps.refs.serverConfig.current?.streamRecoveryWindow ?? CONNECTION_RETRY_TIMEOUT_MS)
     }
@@ -296,6 +301,14 @@ export class TransportSupervisor extends EventEmitter {
     const { streamingState, activeStream } = this.deps.getStreamingState()
     const isStreaming =
       streamingState === 'streaming' || streamingState === 'retrying' || activeStream !== null
+
+    if (isStreaming && activeStream) {
+      this.deps.machine.send({
+        type: 'STREAM_ERROR',
+        error: new Error('Failed to reconnect after multiple attempts'),
+        retryable: false,
+      })
+    }
 
     this.emit('reconnect:failed', { socket, wasStreaming: isStreaming })
   }
