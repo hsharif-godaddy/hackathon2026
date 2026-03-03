@@ -88,7 +88,7 @@ var (
 // Use NewLoader/NewLoaderWithTTL for tests that need custom paths or TTL values.
 func Default() *Loader {
 	defaultLoaderOnce.Do(func() {
-		defaultLoader = NewLoaderWithTTL(DefaultAllocConfigPath, DefaultCacheTTL)
+		defaultLoader = NewLoaderWithTTL(defaultAllocConfigPath(), DefaultCacheTTL)
 	})
 	return defaultLoader
 }
