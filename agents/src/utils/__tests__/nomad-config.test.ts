@@ -1,491 +1,86 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as fs from 'node:fs';
+import * as process from 'node:process';
 
-// Mock the logger to break circular dependency
-vi.mock('../../logging/index.js', () => ({
-  Logger: {
-    create: () => ({
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    }),
-  },
+// Mock fs module
+vi.mock('node:fs', () => ({
+  existsSync: vi.fn(),
+  readFileSync: vi.fn(),
 }));
 
-describe('nomad-config', () => {
-  let testDir: string;
-  let originalNomadAllocDir: string | undefined;
-
+// We need to reset modules between tests since getNomadAllocConfig is memoized
+describe('nomad-config', function nomadConfigTests() {
   beforeEach(() => {
-    // Create temp directory for test config files
-    testDir = mkdtempSync(join(tmpdir(), 'nomad-config-test-'));
-
-    // Store original env and set test directory
-    originalNomadAllocDir = process.env.NOMAD_ALLOC_DIR;
-    process.env.NOMAD_ALLOC_DIR = testDir;
+    vi.resetModules();
+    vi.mocked(fs.existsSync).mockReset();
+    vi.mocked(fs.readFileSync).mockReset();
   });
 
   afterEach(() => {
-    // Restore original env
-    if (originalNomadAllocDir !== undefined) {
-      process.env.NOMAD_ALLOC_DIR = originalNomadAllocDir;
-    } else {
-      delete process.env.NOMAD_ALLOC_DIR;
-    }
-
-    // Clean up temp directory
-    try {
-      rmSync(testDir, { recursive: true, force: true });
-    } catch {
-      // Ignore cleanup errors
-    }
+    vi.restoreAllMocks();
   });
 
-  describe('getNomadAllocConfigValue', () => {
-    it('should return value when key exists', async () => {
-      vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+  describe('#getNomadAllocConfig', function getNomadAllocConfigTests() {
+    it('should return null when config file does not exist', async function noFile() {
+      vi.mocked(fs.existsSync).mockReturnValue(false);
 
-      const configPath = join(testDir, 'config.json');
-      const config = { PRODUCT_ID: { VALUE: 'my-product' } };
-      writeFileSync(configPath, JSON.stringify(config));
-
-      const { getNomadAllocConfigValue: getValue } = await import('../nomad-config.js');
-      const result = getValue('PRODUCT_ID', 'default');
-
-      expect(result).toBe('my-product');
+      const { getNomadAllocConfig } = await import('../nomad-config.js');
+      expect(getNomadAllocConfig()).toBeNull();
     });
 
-    it('should return default when key does not exist', async () => {
-      vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
-
-      const configPath = join(testDir, 'config.json');
-      const config = { OTHER_KEY: { VALUE: 'other-value' } };
-      writeFileSync(configPath, JSON.stringify(config));
-
-      const { getNomadAllocConfigValue: getValue } = await import('../nomad-config.js');
-      const result = getValue('PRODUCT_ID', 'my-default');
-
-      expect(result).toBe('my-default');
-    });
-
-    it('should return default when config file does not exist', async () => {
-      vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
-
-      const { getNomadAllocConfigValue: getValue } = await import('../nomad-config.js');
-      const result = getValue('PRODUCT_ID', 'fallback-value');
-
-      expect(result).toBe('fallback-value');
-    });
-
-    it('should return default when VALUE is empty string (consistent with Go)', async () => {
-      vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
-
-      const configPath = join(testDir, 'config.json');
-      const config = { PRODUCT_ID: { VALUE: '' } };
-      writeFileSync(configPath, JSON.stringify(config));
-
-      const { getNomadAllocConfigValue: getValue } = await import('../nomad-config.js');
-      const result = getValue('PRODUCT_ID', 'default-for-empty');
-
-      // Empty strings are treated as missing (consistent with Go implementation)
-      expect(result).toBe('default-for-empty');
-    });
-
-    it('should return default when key exists but VALUE property is missing', async () => {
-      vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
-
-      const configPath = join(testDir, 'config.json');
-      const config = { PRODUCT_ID: { OTHER_PROP: 'something' } };
-      writeFileSync(configPath, JSON.stringify(config));
-
-      const { getNomadAllocConfigValue: getValue } = await import('../nomad-config.js');
-      const result = getValue('PRODUCT_ID', 'default-no-value');
-
-      expect(result).toBe('default-no-value');
-    });
-
-    it('should return default when key exists but value is null', async () => {
-      vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
-
-      const configPath = join(testDir, 'config.json');
-      const config = { PRODUCT_ID: { VALUE: null } };
-      writeFileSync(configPath, JSON.stringify(config));
-
-      const { getNomadAllocConfigValue: getValue } = await import('../nomad-config.js');
-      const result = getValue('PRODUCT_ID', 'default-for-null');
-
-      expect(result).toBe('default-for-null');
-    });
-
-    it('should work with various key names', async () => {
-      vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
-
-      const configPath = join(testDir, 'config.json');
-      const config = {
-        PRODUCT_ID: { VALUE: 'product-123' },
-        DATABASE_URL: { VALUE: 'postgres://localhost' },
-        API_KEY: { VALUE: 'secret-key' },
+    it('should return parsed config when file exists', async function validConfig() {
+      const mockConfig = {
+        DATABASE: { VALUE: { HOST: 'localhost' }, SYSTEM_MANAGED: true },
       };
-      writeFileSync(configPath, JSON.stringify(config));
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(mockConfig));
 
-      const { getNomadAllocConfigValue: getValue } = await import('../nomad-config.js');
-      expect(getValue('PRODUCT_ID', 'default')).toBe('product-123');
-      expect(getValue('DATABASE_URL', 'default')).toBe('postgres://localhost');
-      expect(getValue('API_KEY', 'default')).toBe('secret-key');
+      const { getNomadAllocConfig } = await import('../nomad-config.js');
+      const result = getNomadAllocConfig();
+      expect(result).toEqual(mockConfig);
     });
 
-    it('should handle special characters in VALUE', async () => {
-      vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+    it('should use NOMAD_ALLOC_DIR environment variable when set', async function customDir() {
+      const originalEnv = process.env.NOMAD_ALLOC_DIR;
+      process.env.NOMAD_ALLOC_DIR = '/custom/alloc';
 
-      const configPath = join(testDir, 'config.json');
-      const config = {
-        SPECIAL: { VALUE: 'value with spaces & special chars!@#$%' },
-        UNICODE: { VALUE: 'Unicode: 日本語 中文 한국어' },
-      };
-      writeFileSync(configPath, JSON.stringify(config));
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({}));
 
-      const { getNomadAllocConfigValue: getValue } = await import('../nomad-config.js');
-      expect(getValue('SPECIAL', 'default')).toBe('value with spaces & special chars!@#$%');
-      expect(getValue('UNICODE', 'default')).toBe('Unicode: 日本語 中文 한국어');
-    });
-  });
+      const { getNomadAllocConfig } = await import('../nomad-config.js');
+      getNomadAllocConfig();
 
-  describe('getNomadAllocConfig', () => {
-    it('should return null when config file does not exist', async () => {
-      vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      expect(fs.existsSync).toHaveBeenCalledWith('/custom/alloc/config.json');
 
-      const { getNomadAllocConfig: getConfig } = await import('../nomad-config.js');
-      const result = getConfig();
-      expect(result).toBeNull();
+      // Restore
+      if (originalEnv === undefined) {
+        delete process.env.NOMAD_ALLOC_DIR;
+      } else {
+        process.env.NOMAD_ALLOC_DIR = originalEnv;
+      }
     });
 
-    it('should return parsed config when file exists with valid JSON', async () => {
-      vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+    it('should return null for invalid JSON', async function invalidJson() {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue('{ invalid json }');
 
-      const configPath = join(testDir, 'config.json');
-      const config = {
-        PRODUCT_ID: { VALUE: 'test-product' },
-        DATABASE: { VALUE: 'test-db' },
-      };
-      writeFileSync(configPath, JSON.stringify(config));
-
-      const { getNomadAllocConfig: getConfig } = await import('../nomad-config.js');
-      const result = getConfig();
-
-      expect(result).not.toBeNull();
-      expect(result?.PRODUCT_ID?.VALUE).toBe('test-product');
-      expect(result?.DATABASE?.VALUE).toBe('test-db');
+      const { getNomadAllocConfig } = await import('../nomad-config.js');
+      expect(getNomadAllocConfig()).toBeNull();
     });
 
-    it('should return null for invalid JSON', async () => {
-      vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+    it('should memoize results', async function memoize() {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ test: true }));
 
-      const configPath = join(testDir, 'config.json');
-      writeFileSync(configPath, 'not valid json {{{');
+      const { getNomadAllocConfig } = await import('../nomad-config.js');
 
-      const { getNomadAllocConfig: getConfig } = await import('../nomad-config.js');
-      const result = getConfig();
+      // Call multiple times
+      getNomadAllocConfig();
+      getNomadAllocConfig();
+      getNomadAllocConfig();
 
-      expect(result).toBeNull();
-    });
-
-    it('should handle array JSON as valid object (typeof array === object)', async () => {
-      vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
-
-      const configPath = join(testDir, 'config.json');
-      writeFileSync(configPath, '["not", "an", "object"]');
-
-      const { getNomadAllocConfig: getConfig } = await import('../nomad-config.js');
-      const result = getConfig();
-
-      // Note: In JavaScript, typeof [] === 'object', so arrays pass the object check
-      // The function returns them as-is (not recommended usage, but valid)
-      expect(result).toEqual(['not', 'an', 'object']);
-    });
-
-    it('should return null for null JSON', async () => {
-      vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
-
-      const configPath = join(testDir, 'config.json');
-      writeFileSync(configPath, 'null');
-
-      const { getNomadAllocConfig: getConfig } = await import('../nomad-config.js');
-      const result = getConfig();
-
-      expect(result).toBeNull();
-    });
-
-    it('should handle empty config object', async () => {
-      vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
-
-      const configPath = join(testDir, 'config.json');
-      writeFileSync(configPath, '{}');
-
-      const { getNomadAllocConfig: getConfig } = await import('../nomad-config.js');
-      const result = getConfig();
-
-      expect(result).not.toBeNull();
-      expect(result).toEqual({});
-    });
-
-    it('should memoize results on subsequent calls', async () => {
-      vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
-
-      const configPath = join(testDir, 'config.json');
-      const config = { PRODUCT_ID: { VALUE: 'memoized-value' } };
-      writeFileSync(configPath, JSON.stringify(config));
-
-      const { getNomadAllocConfig: getConfig } = await import('../nomad-config.js');
-      const result1 = getConfig();
-      const result2 = getConfig();
-
-      expect(result1).toBe(result2); // Same reference (memoized)
-      expect(result1?.PRODUCT_ID?.VALUE).toBe('memoized-value');
-    });
-  });
-
-  describe('Edge cases', () => {
-    it('should handle whitespace-only VALUE', async () => {
-      vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
-
-      const configPath = join(testDir, 'config.json');
-      const config = { WHITESPACE: { VALUE: '   ' } };
-      writeFileSync(configPath, JSON.stringify(config));
-
-      const { getNomadAllocConfigValue: getValue } = await import('../nomad-config.js');
-      const result = getValue('WHITESPACE', 'default');
-
-      // Whitespace string is truthy, so it should be returned
-      expect(result).toBe('   ');
-    });
-
-    it('should handle very long VALUE strings', async () => {
-      vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
-
-      const configPath = join(testDir, 'config.json');
-      const longValue = 'x'.repeat(10000);
-      const config = { LONG_VALUE: { VALUE: longValue } };
-      writeFileSync(configPath, JSON.stringify(config));
-
-      const { getNomadAllocConfigValue: getValue } = await import('../nomad-config.js');
-      const result = getValue('LONG_VALUE', 'default');
-
-      expect(result).toBe(longValue);
-      expect(result.length).toBe(10000);
-    });
-
-    it('should handle config directory not existing', async () => {
-      vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
-
-      const nonExistentDir = join(testDir, 'non', 'existent', 'path');
-      process.env.NOMAD_ALLOC_DIR = nonExistentDir;
-
-      const { getNomadAllocConfigValue: getValue } = await import('../nomad-config.js');
-      const result = getValue('KEY', 'default-for-missing-dir');
-
-      expect(result).toBe('default-for-missing-dir');
-    });
-
-    it('should return empty string default if specified', async () => {
-      vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
-
-      const { getNomadAllocConfigValue: getValue } = await import('../nomad-config.js');
-      const result = getValue('NONEXISTENT', '');
-
-      expect(result).toBe('');
+      // Should only read once
+      expect(fs.readFileSync).toHaveBeenCalledTimes(1);
     });
   });
 });

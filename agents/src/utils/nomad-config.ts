@@ -39,20 +39,3 @@ export function getNomadAllocConfig(): Record<string, { VALUE: string }> | null 
   cachedConfig = null;
   return cachedConfig;
 }
-
-/**
- * Gets a specific config value from Nomad alloc config with a default fallback.
- * Internally uses getNomadAllocConfig() which is memoized.
- * @param key - The config key to retrieve (e.g., 'PRODUCT_ID', 'DATABASE')
- * @param defaultValue - Value to return if key doesn't exist, config is unavailable, or value is empty string
- * @returns The config value or the default value
- */
-export function getNomadAllocConfigValue(key: string, defaultValue: string): string {
-  const config = getNomadAllocConfig();
-  // Use || instead of ?? to treat empty strings as missing (consistent with Go implementation)
-  return config?.[key]?.VALUE || defaultValue;
-}
-
-export function getProductId(): string {
-  return getNomadAllocConfigValue('PRODUCT_ID', 'notfound');
-}
