@@ -1,5 +1,10 @@
+import type { PostImageData, ValidationDetails } from '@airo/shared/social'
+
 import { PublishablePlatform } from '@/lib/social-platforms'
 import type { SocialPublishResult } from './social'
+
+// Re-export shared types for local consumers
+export type { PostImageData, ValidationDetails } from '@airo/shared/social'
 
 /**
  * State of a social post in the database
@@ -26,32 +31,6 @@ export enum PostModalView {
 export enum PublishTiming {
   NOW = 'now',
   LATER = 'later'
-}
-
-/**
- * Validation details for social posts
- */
-export interface ValidationDetails {
-  isValid: boolean
-  characterCount: number      // Total character count
-  contentLength: number       // Length of main content text
-  hashtagsLength: number      // Length of all hashtags
-  callToActionLength: number  // Length of call-to-action
-  maxCharacters: number
-  minImages: number
-  maxImages: number
-  errorMessages?: string[]
-}
-
-/**
- * Image data structure for social posts
- */
-export interface PostImageData {
-  url: string
-  prompt?: string
-  width: number
-  height: number
-  fileSizeKB?: number
 }
 
 /**

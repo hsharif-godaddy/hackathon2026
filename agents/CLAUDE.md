@@ -79,9 +79,9 @@ Base class: `src/base/base-agent.ts` — `getSystemPrompt()` → `loadSystemProm
 
 Key methods: `addFiles`, `removeFiles`, `writeTree`, `commitTree`, `reset`, `push`, `commit`, `getStatus`.
 
-## ai-lib Coupling
+## ai-lib & Shared Types
 
-`packages/ai-lib/` is this project's only consumer. It wraps Vercel AI SDK and provides:
+`packages/ai-lib/` is consumed by agents. It wraps Vercel AI SDK and provides:
 
 - **AgentFactory** — multi-agent lifecycle, tool calling loops, streaming
 - **WebSocket server** — `experimental-websocket-server.ts` (base class extended by agents service)
@@ -91,6 +91,8 @@ Key methods: `addFiles`, `removeFiles`, `writeTree`, `commitTree`, `reset`, `pus
 **Integration via callbacks** (not hard coupling): `agentRouter`, `contextProvider`, `messageProvider`, `messagePersistence`. The agents service provides domain-specific implementations.
 
 Key integration file: `src/server/ai-lib-websocket-server.ts` (~89KB, extends ai-lib's base WS server).
+
+**Shared domain types** (grants, context-attachment, social, websocket-context) live in `@airo/shared`. Agents-specific extensions (type guards, Zod schemas, rendering infrastructure) stay local in `src/types/`.
 
 ## Database
 

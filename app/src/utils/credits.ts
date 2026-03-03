@@ -1,4 +1,4 @@
-import { GrantManager } from '@airo/ai-lib/grants/client'
+import { GrantManager } from '@airo/shared/grants'
 
 import type { AiroSubscription } from '@/lib/mgmt-airo';
 import type { CreditGrant } from '@/types/credits';

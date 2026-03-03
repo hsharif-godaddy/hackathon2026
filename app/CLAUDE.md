@@ -102,6 +102,17 @@ Key files: `src/services/websocket/webSocketMachine.ts`, `StoreSyncAdapter.ts`, 
 
 Full docs: `docs/client-websocket-architecture.md`. Tests: 129 tests in `src/services/websocket/__tests__/`.
 
+## Shared Types (`@airo/shared`)
+
+App uses `@airo/shared` for grants types, context-attachment, social types, and websocket-context. App does **NOT** depend on `@airo/ai-lib` — shared types come from `@airo/shared`.
+
+| Import path | Contents |
+| --- | --- |
+| `@airo/shared/grants` | `CreditGrant`, `GrantType`, `GrantFinalState`, `GrantManager` |
+| `@airo/shared/context-attachment` | `ContextAttachment`, `createContextAttachment` |
+| `@airo/shared/websocket` | `AgentsAppContext`, `AgentsAppChatMessage` |
+| `@airo/shared/social` | `ValidationDetails`, `PostImageData`, `CONNECT_REQUEST_FROM_PUBLISH` |
+
 ## Initialization State Machine
 
 XState v5 machine managing develop page lifecycle: `idle` → `checkingCreation` → `creating` → `initializingPage` → `loadingHistory` → `ready` (sub-phases: `waitingForWebSocket` → `websocketConnected` → `waitingForFirstEdit` → `active`).

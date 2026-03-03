@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { SocialPlatform, CONNECT_REQUEST_FROM_PUBLISH } from '../../types/social.js';
 import { Logger } from '../../logging/index.js';
 import type { AgentsAppContext } from '../../types/websocket-context.js';
-import type { ContextAttachment } from '../../types/context-attachment.js';
+import type { ContextAttachment } from '@airo/shared/context-attachment';
 
 const logger = Logger.create({ service: 'social-connect' });
 

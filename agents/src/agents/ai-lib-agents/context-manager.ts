@@ -23,7 +23,7 @@ import { existsSync, readFileSync } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { contextAttachmentRegistry } from '../../services/ContextAttachmentRegistry.js'
-import type { ContextAttachment } from '../../types/context-attachment.js'
+import type { ContextAttachment } from '@airo/shared/context-attachment'
 
 type AttachmentContextMessage = {
   role: 'user' | 'system'

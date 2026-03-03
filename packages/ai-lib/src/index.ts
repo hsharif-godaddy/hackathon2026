@@ -103,7 +103,7 @@ export {
   SpecialSubscriptionId,
 } from './grants/build-metadata.js'
 export type { ExecutionContext, ExecutionContextMetadata } from './grants/build-metadata.js'
-export { GrantManager, GrantUnusableReason } from './grants/grant-manager.js'
-export { GrantSessionManager, grantSessionManager } from './grants/grant-session-manager.js'
-export type { CreditGrant, GrantContextPayload } from './grants/types.js'
-export { GrantType, GrantFinalState } from './grants/types.js'
+export { GrantManager, GrantUnusableReason } from './grants/index.js'
+export { GrantSessionManager, grantSessionManager } from './grants/index.js'
+export type { CreditGrant, GrantContextPayload } from './grants/index.js'
+export { GrantType, GrantFinalState } from './grants/index.js'

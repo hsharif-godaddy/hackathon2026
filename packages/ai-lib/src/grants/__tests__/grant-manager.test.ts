@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
-import { GrantManager, GrantUnusableReason } from '../grant-manager.js'
-import { GrantType, GrantFinalState, type CreditGrant } from '../types.js'
+import { GrantManager, GrantUnusableReason } from '@airo/shared/grants'
+import { GrantType, GrantFinalState, type CreditGrant } from '@airo/shared/grants'
 
 describe('grant-manager', function grantManagerTests() {
   function createGrant(overrides: Partial<CreditGrant> = {}): CreditGrant {

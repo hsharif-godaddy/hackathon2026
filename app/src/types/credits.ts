@@ -2,10 +2,10 @@
  * Credit grant types - re-exported from shared library
  * This ensures frontend and agent use identical type definitions
  */
-import type { CreditGrant as CreditGrantType } from '@airo/ai-lib/grants/client'
+import type { CreditGrant as CreditGrantType } from '@airo/shared/grants'
 
-export type { CreditGrant, GrantContextPayload } from '@airo/ai-lib/grants/client'
-export { GrantFinalState, GrantType } from '@airo/ai-lib/grants/client'
+export type { CreditGrant, GrantContextPayload } from '@airo/shared/grants'
+export { GrantFinalState, GrantType } from '@airo/shared/grants'
 
 /**
  * API response for credit grants

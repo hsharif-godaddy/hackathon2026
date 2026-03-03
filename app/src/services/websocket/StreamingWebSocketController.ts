@@ -15,6 +15,7 @@ import { EventEmitter } from 'events'
 import type { Socket } from 'socket.io-client'
 import type { Actor } from 'xstate'
 import { createActor } from 'xstate'
+import type { AgentsAppChatMessage } from '@airo/shared/websocket'
 
 import type { VisualContext } from '@/app/develop/components/visualContextCapture'
 import type {
@@ -29,7 +30,6 @@ import {
   getConversationIdFromCookie,
 } from '@/hooks/websocket/useWebSocketHelpers'
 import { logger } from '@/lib/request-context'
-import type { AgentsAppChatMessage } from '@/types/websocket-context'
 import {
   type AIEditContext,
   type Asset,

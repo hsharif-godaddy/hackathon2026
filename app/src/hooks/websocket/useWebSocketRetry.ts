@@ -6,8 +6,7 @@
  */
 
 import { type MutableRefObject, useCallback, useRef } from 'react'
-
-import type { AgentsAppChatMessage } from '@/types/websocket-context'
+import type { AgentsAppChatMessage } from '@airo/shared/websocket'
 
 export interface RetryState {
   pendingMessage?: { chatMessage: AgentsAppChatMessage; startTime: number }

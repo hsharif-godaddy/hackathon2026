@@ -7,6 +7,7 @@ on:
     paths:
       - "agents/**"
       - "packages/ai-lib/**"
+      - "packages/shared/**"
       - "package.json"
       - "pnpm-workspace.yaml"
       - "pnpm-lock.yaml"
@@ -18,6 +19,7 @@ on:
     paths:
       - "agents/**"
       - "packages/ai-lib/**"
+      - "packages/shared/**"
       - "package.json"
       - "pnpm-workspace.yaml"
       - "pnpm-lock.yaml"
@@ -36,5 +38,6 @@ jobs:
       package-name: agents
       pnpm-filter: "@airo/agents"
       working-directory: ./agents
+      build-dependencies: true
       skip-tests: true  # Agent tests currently have failures
     secrets: inherit

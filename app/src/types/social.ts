@@ -1,9 +1,10 @@
 /**
  * Frontend social platform types
- * These match the backend types but are defined separately to avoid coupling
+ * Shared constants come from @airo/shared/social. Platform enums remain
+ * frontend-specific (lowercase values vs agents' uppercase).
  */
 
-export const CONNECT_REQUEST_FROM_PUBLISH = 'social_connect_with_post'
+export { CONNECT_REQUEST_FROM_PUBLISH } from '@airo/shared/social'
 
 export enum SocialPlatform {
   FACEBOOK = 'facebook',

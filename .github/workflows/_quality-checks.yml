@@ -30,8 +30,8 @@ on:
         required: false
         type: boolean
         default: false
-      build-ai-lib:
-        description: "Build @airo/ai-lib before tests (app only)"
+      build-dependencies:
+        description: "Build workspace dependencies before build/test (uses pnpm --filter ...^)"
         required: false
         type: boolean
         default: false
@@ -143,9 +143,10 @@ jobs:
       - name: Run linting
         run: pnpm --filter ${{ inputs.pnpm-filter }} lint
 
-      - name: Build @airo/ai-lib
-        if: inputs.build-ai-lib
-        run: pnpm --filter @airo/ai-lib build
+      - name: Build workspace dependencies
+        if: inputs.build-dependencies
+        # <pkg>^... = only dependencies of <pkg>, excluding <pkg> itself
+        run: pnpm --filter "${{ inputs.pnpm-filter }}^..." build
 
       - name: Run build
         run: pnpm --filter ${{ inputs.pnpm-filter }} build
@@ -227,9 +228,10 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         run: npx prisma generate
 
-      - name: Build @airo/ai-lib
-        if: inputs.build-ai-lib
-        run: pnpm --filter @airo/ai-lib build
+      - name: Build workspace dependencies
+        if: inputs.build-dependencies
+        # <pkg>^... = only dependencies of <pkg>, excluding <pkg> itself
+        run: pnpm --filter "${{ inputs.pnpm-filter }}^..." build
 
       - name: Run tests
         run: pnpm --filter ${{ inputs.pnpm-filter }} test

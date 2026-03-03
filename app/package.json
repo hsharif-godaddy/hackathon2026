@@ -10,7 +10,7 @@
     "local:prod": "GASKET_ENV=local.prod node ../scripts/load-env.js npm run local",
     "local:prod:v2": "GASKET_ENV=local.prod USE_V2_CONTROL_PLANE=true node ../scripts/load-env.js npm run local",
     "dev:mysql": "node scripts/setup-database-url.js npm run local",
-    "local": "concurrently \"npm run build:tsc:watch\" \"npm run local:https\" \"next dev --experimental-https\"",
+    "local": "concurrently \"npm run local:https\" \"next dev --experimental-https\"",
     "local:https": "tsx watch server.ts",
     "prebuild": "prisma generate && tsx gasket.ts build",
     "build": "npm run build:tsc && next build",
@@ -34,7 +34,7 @@
   },
   "dependencies": {
     "@airo-ux/loader": "^2.1.0",
-    "@airo/ai-lib": "workspace:*",
+    "@airo/shared": "workspace:*",
     "@aws-sdk/client-s3": "^3.893.0",
     "@aws-sdk/client-secrets-manager": "3.679.0",
     "@aws-sdk/client-sts": "3.679.0",

@@ -2,7 +2,6 @@
  * Grant types for LLM billing
  *
  * This is the SINGLE SOURCE OF TRUTH for grant types.
- * Frontend re-exports via @airo/ai-lib/grants subpath.
  */
 
 export enum GrantType {

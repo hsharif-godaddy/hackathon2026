@@ -2,7 +2,7 @@
  * Enhanced types for AI-Lib agents with rich context support
  */
 
-import type { ContextAttachment } from '../../types/context-attachment.js'
+import type { ContextAttachment } from '@airo/shared/context-attachment'
 
 /**
  * Enhanced Agent Context Interface

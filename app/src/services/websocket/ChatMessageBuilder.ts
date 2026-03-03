@@ -5,9 +5,10 @@
  * Extracted from useStreamingWebSocket to improve testability and separation of concerns.
  */
 
+import type { ContextAttachment } from '@airo/shared/context-attachment'
+import type { AgentsAppChatMessage, AgentsAppContext } from '@airo/shared/websocket'
+
 import type { VisualContext } from '@/app/develop/components/visualContextCapture'
-import type { ContextAttachment } from '@/types/context-attachment'
-import type { AgentsAppChatMessage, AgentsAppContext } from '@/types/websocket-context'
 
 export interface Asset {
   imageUrl?: string

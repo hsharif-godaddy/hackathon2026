@@ -26,25 +26,7 @@ export default gasket.actions.getNextConfig({
     // Reduce file watching to prevent EMFILE errors
     if (dev) {
       config.watchOptions = {
-        ignored: [
-          '**/node_modules/**',
-          '**/.git/**',
-          '**/.next/**',
-          '**/dist/**',
-          '**/build/**',
-          '**/coverage/**',
-          '**/*.test.ts',
-          '**/*.test.tsx',
-          '**/__tests__/**',
-          '**/packages/**',
-          '**/agents/**',
-          '**/scripts/**',
-          '**/app-templates/**',
-          '**/certificates/**',
-          '**/.cursor/**',
-          '**/data/**',
-          '**/tests/**',
-        ],
+        ignored: /[\\/](node_modules|\.git|\.next|dist|build|coverage|__tests__|packages|agents|scripts|app-templates|certificates|\.cursor|data|tests|dev-supervisor|proxy|design-rag|bedrock-log-viewer|debug-console|agentic-qa|e2e|cdk|setup|website|\.worktrees|\.claude)[\\/]/,
         aggregateTimeout: 300,
       };
     }

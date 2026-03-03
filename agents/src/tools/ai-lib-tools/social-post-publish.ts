@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { Logger } from '../../logging/index.js';
 import type { AgentsAppContext } from '../../types/websocket-context.js';
-import type { ContextAttachment } from '../../types/context-attachment.js';
+import type { ContextAttachment } from '@airo/shared/context-attachment';
 import type { SocialPost } from '../../types/social-posts.js';
 
 const logger = Logger.create({ service: 'social-post-publish' });

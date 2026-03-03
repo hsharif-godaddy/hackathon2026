@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 
 import { buildLitellmMetadataFromContext, isGrantsExhausted, LlmCallSource, GrantErrorCode, SpecialSubscriptionId } from '../build-metadata.js'
 import { grantSessionManager } from '../grant-session-manager.js'
-import { GrantType, type CreditGrant } from '../types.js'
+import { GrantType, type CreditGrant } from '@airo/shared/grants'
 
 describe('build-metadata', function tests() {
   function createGrant(overrides: Partial<CreditGrant> = {}): CreditGrant {

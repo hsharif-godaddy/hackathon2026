@@ -1,48 +1,23 @@
 /**
- * App-specific WebSocket context types
- * These extend the generic ai-lib ChatMessage with application-specific context
+ * App-specific WebSocket context types (agents extensions)
+ * Base types come from @airo/shared/websocket
  */
 
 import type { ChatMessage } from '@airo/ai-lib'
-import type { ContextAttachment } from './context-attachment.js'
+import type { AgentsAppContext as BaseAgentsAppContext } from '@airo/shared/websocket'
 import type { ClientActionService } from '../services/ClientActionService.js'
 
 /**
- * App-specific context structure for agents application
+ * Agents-specific extension of AgentsAppContext with server-only fields
  */
-export interface AgentsAppContext {
-  // Generic context attachments (new flexible system)
-  contextAttachments?: ContextAttachment[]
-  // Basic metadata
-  metadata?: {
-    appId?: string
-    userId?: string
-    sessionId?: string
+export interface AgentsAppContext extends BaseAgentsAppContext {
+  metadata?: BaseAgentsAppContext['metadata'] & {
     clientActionService?: ClientActionService
-    [key: string]: unknown
   }
-
-  // Conversation context
-  conversation?: {
-    conversationId?: string
-    maxMessages?: number
-    includeHistory?: boolean
-  }
-
-  // App context - project understanding
-  appContext?: {
-    includeDirectoryListing?: boolean
-    includePackageInfo?: boolean
-    includeDependencyStatus?: boolean
-    maxDirectoryDepth?: number
-  }
-
-  // Extensibility for future context types
-  [key: string]: unknown
 }
 
 /**
- * App-specific ChatMessage with typed context
+ * Agents-specific ChatMessage with typed context (extends ai-lib ChatMessage)
  */
 export interface AgentsAppChatMessage extends Omit<ChatMessage, 'context'> {
   context?: AgentsAppContext

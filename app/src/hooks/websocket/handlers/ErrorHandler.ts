@@ -9,8 +9,9 @@
  * - Other errors: Mark as error and finalize
  */
 
+import type { AgentsAppChatMessage, AgentsAppContext } from '@airo/shared/websocket'
+
 import { logger } from '@/lib/request-context'
-import type { AgentsAppChatMessage, AgentsAppContext } from '@/types/websocket-context'
 import type { LifecycleHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 export class ErrorHandler implements MessageHandler {

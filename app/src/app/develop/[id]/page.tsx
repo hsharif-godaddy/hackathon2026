@@ -546,7 +546,7 @@ function DevelopPageContent() {
         case 'error-fix-request':
           // Handle runtime error fix requests from AiroErrorBoundary (new format with errorData)
           if (event.data.errorData) {
-            const { message, name, stack, componentStack, url, timestamp } = event.data.errorData as import('@/types/context-attachment').RuntimeErrorData
+            const { message, name, stack, componentStack, url, timestamp } = event.data.errorData as import('@/types/runtime-error').RuntimeErrorData
             logger.info('develop-page.error-fix-request', {
               appId,
               errorName: name,

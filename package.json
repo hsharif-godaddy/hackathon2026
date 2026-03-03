@@ -10,7 +10,7 @@
     "dev:agents": "pnpm --filter @airo/agents dev",
     "dev:app": "pnpm --filter website dev",
     "dev:setup": "pnpm --filter airo-setup dev",
-    "build": "pnpm --filter \"@airo/*\" build && pnpm --filter website build",
+    "build": "pnpm --filter @airo/shared build && pnpm --filter @airo/ai-lib build && pnpm --filter @airo/agents build && pnpm --filter website build",
     "build:all": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
@@ -110,8 +110,6 @@
     ]
   },
   "dependencies": {
-    "agents": "^0.3.6",
-    "dotenv": "^17.2.3",
-    "xml2js": "^0.6.2"
+    "dotenv": "^17.2.3"
   }
 }

@@ -15,7 +15,6 @@ export enum GrantUnusableReason {
  * Pure functions for grant validation and selection
  *
  * This is the SINGLE SOURCE OF TRUTH for grant logic.
- * Frontend imports via @airo/ai-lib/grants subpath export.
  */
 export class GrantManager {
   /**

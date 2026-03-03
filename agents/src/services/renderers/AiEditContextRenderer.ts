@@ -1,4 +1,4 @@
-import type { ContextAttachment, ContextAttachmentRenderer, RenderedContext } from '../../types/context-attachment.js'
+import type { ContextAttachment, ContextAttachmentRenderer, RenderedContext } from '@airo/shared/context-attachment'
 import { logger } from '../../logging/index.js'
 
 /**

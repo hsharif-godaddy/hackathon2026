@@ -1,9 +1,9 @@
 /**
- * App-specific WebSocket context types for the frontend
- * These match the backend types but are defined separately to avoid coupling
+ * App-specific WebSocket context types
+ * Shared between frontend (app/) and backend (agents/)
  */
 
-import type { ContextAttachment } from './context-attachment'
+import type { ContextAttachment } from '../context-attachment/types.js'
 
 /**
  * App-specific context structure for agents application
@@ -18,14 +18,14 @@ export interface AgentsAppContext {
     sessionId?: string
     [key: string]: unknown
   }
-  
+
   // Conversation context
   conversation?: {
     conversationId?: string
     maxMessages?: number
     includeHistory?: boolean
   }
-  
+
   // App context - project understanding
   appContext?: {
     includeDirectoryListing?: boolean
@@ -33,7 +33,7 @@ export interface AgentsAppContext {
     includeDependencyStatus?: boolean
     maxDirectoryDepth?: number
   }
-  
+
   // Extensibility for future context types
   [key: string]: unknown
 }

@@ -1,6 +1,6 @@
 /**
  * Generic Context Attachment Framework
- * 
+ *
  * Provides a flexible, extensible system for attaching various types of context
  * to agent conversations. Supports custom rendering, persistence, and UI display.
  */
@@ -18,16 +18,16 @@ export interface ContextAttachmentMetadata {
 /**
  * How to render the context attachment in the LLM prompt
  */
-export type RenderStrategy = 
+export type RenderStrategy =
   | 'before_prompt'  // Render before user's message
-  | 'after_prompt'   // Render after user's message  
+  | 'after_prompt'   // Render after user's message
   | 'replace_prompt' // Replace the user's prompt entirely
   | 'hidden'         // Don't render (use for side effects only)
 
 /**
  * Whether to persist the attachment to conversation history
  */
-export type PersistenceStrategy = 
+export type PersistenceStrategy =
   | 'save'      // Save to history for replay
   | 'ephemeral' // Don't save, only for current turn
 
@@ -39,7 +39,7 @@ export interface ContextAttachment<T = unknown> {
   data: T
   metadata?: ContextAttachmentMetadata
   persistence?: PersistenceStrategy
-  /** 
+  /**
    * Render strategy hint (currently only used by DefaultContextRenderer fallback).
    * Custom renderers control their own insertionOrder directly.
    */
@@ -59,15 +59,15 @@ export interface RenderedContext {
 
 /**
  * Context attachment renderer interface
- * 
+ *
  * Implement this interface to create custom renderers for specific context types.
  * Renderers can transform data, fetch additional information, or modify the user prompt.
  */
 export interface ContextAttachmentRenderer<T = unknown> {
   canHandle(type: string): boolean
-  
+
   render(
-    attachment: ContextAttachment<T>, 
+    attachment: ContextAttachment<T>,
     userPrompt: string,
     context?: {
       appId?: string
@@ -75,7 +75,7 @@ export interface ContextAttachmentRenderer<T = unknown> {
       conversationId?: string
     }
   ): Promise<RenderedContext | null> | RenderedContext | null
-  
+
   shouldPersist?(attachment: ContextAttachment<T>): boolean
 }
 

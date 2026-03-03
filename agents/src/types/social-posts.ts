@@ -5,20 +5,10 @@
  */
 
 import { z } from 'zod'
+import type { ValidationDetails, PostImageData } from '@airo/shared/social'
 
-/**
- * Validation details interface
- */
-export interface ValidationDetails {
-  isValid: boolean
-  characterCount: number      // Total character count
-  contentLength: number       // Length of main content text
-  hashtagsLength: number      // Length of all hashtags
-  callToActionLength: number  // Length of call-to-action
-  maxCharacters: number
-  maxImages: number
-  errorMessages?: string[]
-}
+// Re-export shared types
+export type { ValidationDetails, PostImageData } from '@airo/shared/social'
 
 /**
  * Zod schema for validation details
@@ -30,20 +20,10 @@ export const ValidationDetailsSchema = z.object({
   hashtagsLength: z.number(),
   callToActionLength: z.number(),
   maxCharacters: z.number(),
+  minImages: z.number().optional(),
   maxImages: z.number(),
   errorMessages: z.array(z.string()).optional()
 })
-
-/**
- * Image data structure for social posts
- */
-export interface PostImageData {
-  url: string
-  prompt?: string
-  width: number
-  height: number
-  fileSizeKB?: number
-}
 
 /**
  * Zod schema for post image data

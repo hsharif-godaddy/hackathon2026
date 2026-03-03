@@ -1,7 +1,7 @@
 import { grantSessionManager } from './grant-session-manager.js'
 import type { LitellmMetadata } from '../providers/unified-provider.js'
 import { logger } from '../utils/logger.js'
-import { LlmCallSource } from './types.js'
+import { LlmCallSource } from '@airo/shared/grants'
 
 /**
  * Prefix for subscription-based billing identifiers
@@ -52,8 +52,8 @@ export enum SpecialSubscriptionId {
   CareAgent = 'airo-builder:care-agent',
 }
 
-// Re-export enums from types for backward compatibility
-export { LlmCallSource, GrantErrorCode } from './types.js'
+// Re-export enums from shared
+export { LlmCallSource, GrantErrorCode } from '@airo/shared/grants'
 
 interface MetadataOptions {
   agentId?: string | undefined

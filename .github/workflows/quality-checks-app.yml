@@ -6,7 +6,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - "app/**"
-      - "packages/ai-lib/**"
+      - "packages/shared/**"
       - "package.json"
       - "pnpm-workspace.yaml"
       - "pnpm-lock.yaml"
@@ -17,7 +17,7 @@ on:
     branches: [main]
     paths:
       - "app/**"
-      - "packages/ai-lib/**"
+      - "packages/shared/**"
       - "package.json"
       - "pnpm-workspace.yaml"
       - "pnpm-lock.yaml"
@@ -37,6 +37,6 @@ jobs:
       pnpm-filter: website
       working-directory: ./app
       run-prisma-generate: true
-      build-ai-lib: true
+      build-dependencies: true
       cache-next-build: true
     secrets: inherit

@@ -1,15 +1,15 @@
-// Types
-export type { CreditGrant, GrantContextPayload } from './types.js'
-export { GrantType, GrantFinalState } from './types.js'
+// Types (from @airo/shared)
+export type { CreditGrant, GrantContextPayload } from '@airo/shared/grants'
+export { GrantType, GrantFinalState } from '@airo/shared/grants'
 
-// Grant Manager
-export { GrantManager, GrantUnusableReason } from './grant-manager.js'
+// Grant Manager (from @airo/shared)
+export { GrantManager, GrantUnusableReason } from '@airo/shared/grants'
 
-// Session Manager
+// Session Manager (ai-lib specific — heavy deps on logger, AsyncLocalStorage)
 export { GrantSessionManager, grantSessionManager } from './grant-session-manager.js'
 export type { GrantRefreshCallback } from './grant-session-manager.js'
 
-// Metadata Builder
+// Metadata Builder (ai-lib specific — depends on session manager, logger, LitellmMetadata)
 export {
   buildLitellmMetadataFromContext,
   isGrantsExhausted,

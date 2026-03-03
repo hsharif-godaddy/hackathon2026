@@ -1,5 +1,5 @@
-import type { CreditGrant } from './types.js'
-import { GrantManager } from './grant-manager.js'
+import type { CreditGrant } from '@airo/shared/grants'
+import { GrantManager } from '@airo/shared/grants'
 import { logger } from '../utils/logger.js'
 
 /**
