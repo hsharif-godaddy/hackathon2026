@@ -333,6 +333,51 @@ describe('ChatInput', () => {
     });
   });
 
+  describe('budget exceeded', () => {
+    it('should display budget exceeded placeholder when isBudgetExceeded is true', () => {
+      renderWithProviders(<ChatInput {...defaultProps} isBudgetExceeded={true} />);
+
+      expect(screen.getByPlaceholderText('builder_chatinput_budget_exceeded')).toBeInTheDocument();
+    });
+
+    it('should disable textarea when isBudgetExceeded is true', () => {
+      renderWithProviders(<ChatInput {...defaultProps} isBudgetExceeded={true} />);
+
+      const textarea = screen.getByRole('textbox');
+      expect(textarea).toBeDisabled();
+    });
+
+    it('should disable send button when isBudgetExceeded is true even with input value', () => {
+      renderWithProviders(<ChatInput {...defaultProps} inputValue="Test" isBudgetExceeded={true} />);
+
+      const sendButton = screen.getByRole('button', { name: 'builder_chatinput_send' });
+      expect(sendButton).toBeDisabled();
+    });
+
+    it('should disable attachment menu when isBudgetExceeded is true', () => {
+      const { container } = renderWithProviders(
+        <ChatInput {...defaultProps} appId="test-app-123" onFilesUploaded={vi.fn()} isBudgetExceeded={true} />
+      );
+
+      const attachmentButton = container.querySelector('[data-eid="develop.chat_input.attachment_menu"]');
+      expect(attachmentButton).toBeDisabled();
+    });
+
+    it('should disable speech button when isBudgetExceeded is true', () => {
+      renderWithProviders(<ChatInput {...defaultProps} isBudgetExceeded={true} />);
+
+      const speechButton = screen.getByRole('button', { name: '' });
+      expect(speechButton).toBeDisabled();
+    });
+
+    it('should prioritize budget exceeded placeholder over processing placeholder', () => {
+      renderWithProviders(<ChatInput {...defaultProps} isDisabled={true} isBudgetExceeded={true} />);
+
+      expect(screen.getByPlaceholderText('builder_chatinput_budget_exceeded')).toBeInTheDocument();
+      expect(screen.queryByPlaceholderText('builder_chatinput_processing')).not.toBeInTheDocument();
+    });
+  });
+
   describe('speech recognition', () => {
     it('should disable textarea when listening', function disableTextareaWhileListening() {
       mockSpeechRecognition.isListening = true;

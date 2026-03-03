@@ -1,6 +1,5 @@
 'use client'
 
-import clsx from 'clsx'
 import { FormattedMessage } from 'react-intl'
 import { SparklesIcon } from '@heroicons/react/24/outline'
 import Box from '@ux/box'
@@ -143,7 +142,7 @@ export function GrantsPopoverContent({
         </text.p>
       )}
 
-      <Box orientation="horizontal" gap="md">
+      <Box orientation="vertical" gap="sm">
         {isFreePlan && (
           <Button
             design="primary"
@@ -159,7 +158,6 @@ export function GrantsPopoverContent({
         <Button
           design={isFreePlan ? 'secondary' : 'primary'}
           size="sm"
-          className={clsx(!isFreePlan && 'flex-1')}
           data-partial="componentAiro"
           data-eid={generateClickEID('usage_gauge.popover.buy_credits')}
           onClick={onBuyCreditsClick}

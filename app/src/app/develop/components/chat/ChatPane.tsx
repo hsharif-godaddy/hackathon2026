@@ -16,6 +16,9 @@ import { ChatTab } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import VersionHistory from '@/app/develop/components/VersionHistory'
 import { useChatTabs } from '@/hooks/useChatTabs'
+import { useCreditGrants } from '@/hooks/useCreditGrants'
+import { useSubscription } from '@/hooks/useSubscription'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { appFetch } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
@@ -26,6 +29,7 @@ import { useSiteStore } from '@/stores/useSiteStore'
 import {
   useActiveStream,
   useAiEditContext,
+  useBudgetExceeded,
   useBuildErrorContext,
   useCurrentAppId,
   useDevelopmentPlan,
@@ -39,6 +43,7 @@ import {
   useSetInputValue,
   useStreamingConversationStore,
 } from '@/stores/useStreamingConversationStore'
+import { getActiveGrant } from '@/utils/credits'
 import { logAiroHQEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 
@@ -61,10 +66,21 @@ export default function ChatPane({
   const developmentPlan = useDevelopmentPlan()
   const aiEditContext = useAiEditContext()
   const buildErrorContext = useBuildErrorContext()
+  const budgetExceededFlag = useBudgetExceeded()
   const setInputValue = useSetInputValue()
   const setAiEditContext = useSetAiEditContext()
   const setBuildErrorContext = useSetBuildErrorContext()
   const setCurrentAppId = useSetCurrentAppId()
+
+  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants')
+  const { data: subscription } = useSubscription()
+  const { data: grants } = useCreditGrants({
+    subscriptionId: isGrantsEnabled ? subscription?.id : undefined,
+  })
+
+  // Only block input if budget flag is set AND user has no available credits
+  const hasAvailableCredits = isGrantsEnabled && grants && getActiveGrant(grants) !== undefined
+  const budgetExceeded = budgetExceededFlag && !hasAvailableCredits
 
   const hasLoggedFirstUserMessageRef = useRef(false)
 
@@ -655,6 +671,7 @@ export default function ChatPane({
             appId={appId}
             inputValue={safeInputValue}
             isDisabled={isProcessing}
+            isBudgetExceeded={budgetExceeded}
             onInputChange={setInputValue}
             onSendMessage={handleSendMessage}
             selectedAssets={selectedAssets}
@@ -738,6 +755,7 @@ export default function ChatPane({
             appId={appId}
             inputValue={safeInputValue}
             isDisabled={isProcessing}
+            isBudgetExceeded={budgetExceeded}
             onInputChange={setInputValue}
             onSendMessage={handleSendMessage}
             selectedAssets={selectedAssets}

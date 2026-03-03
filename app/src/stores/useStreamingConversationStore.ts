@@ -1334,6 +1334,15 @@ export const useAddToolResultSegment = () => useStreamingConversationStore(state
 export const useMarkMaxStepsReached = () => useStreamingConversationStore(state => state.markMaxStepsReached)
 export const useMarkUpstreamError = () => useStreamingConversationStore(state => state.markUpstreamError)
 export const useMarkBudgetExceeded = () => useStreamingConversationStore(state => state.markBudgetExceeded)
+
+// Derived selector: check if the most recent message or active stream has budgetExceeded
+const hasBudgetExceededSelector = (state: StreamingConversationState) => {
+  if (state.activeStream?.budgetExceeded) return true
+  const lastMessage = state.messages[state.messages.length - 1]
+  return lastMessage?.budgetExceeded === true
+}
+
+export const useBudgetExceeded = () => useStreamingConversationStore(hasBudgetExceededSelector)
 export const useFinalizeStream = () => useStreamingConversationStore(state => state.finalizeStream)
 export const useAutoSendInitialMessage = () => useStreamingConversationStore(state => state.autoSendInitialMessage)
 

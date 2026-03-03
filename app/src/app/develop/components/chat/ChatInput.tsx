@@ -21,6 +21,7 @@ interface ChatInputProps {
   appId?: string | null
   inputValue?: string
   isDisabled?: boolean
+  isBudgetExceeded?: boolean
   onInputChange: (value: string) => void
   onSendMessage: (content?: string, options?: SendMessageOptions) => void
   onKeyDown?: (e: React.KeyboardEvent<Element>) => void;
@@ -44,6 +45,7 @@ export default function ChatInput({
   appId = null,
   inputValue = '',
   isDisabled,
+  isBudgetExceeded,
   onInputChange,
   onSendMessage,
   selectedAssets = [],
@@ -190,9 +192,9 @@ export default function ChatInput({
                   onInputChange(e.target.value)
                 }}
                 onKeyDown={onKeyDown}
-                placeholder={isDisabled ? t('builder_chatinput_processing') : t('builder_chatinput_ask_airo')}
+                placeholder={isBudgetExceeded ? t('builder_chatinput_budget_exceeded') : isDisabled ? t('builder_chatinput_processing') : t('builder_chatinput_ask_airo')}
                 rows={3}
-                disabled={isDisabled || isListening}
+                disabled={isDisabled || isListening || isBudgetExceeded}
                 className={`w-full h-full resize-none border-0 focus:ring-0 focus:outline-none text-base md:text-sm chat-input-text`}
               />
             </div>
@@ -208,7 +210,7 @@ export default function ChatInput({
                   onFileReferencesSelected={onFileReferencesSelected}
                   onUploadStart={onUploadStart}
                   onUploadError={onUploadError}
-                  disabled={isDisabled || !canAddAsset}
+                  disabled={isDisabled || isBudgetExceeded || !canAddAsset}
                 />
               )}
               {isChatGaugeEnabled && <UsageGauge appId={appId} />}
@@ -220,7 +222,7 @@ export default function ChatInput({
                   onClick={toggleSpeech}
                   onMouseDown={(e) => e.preventDefault()}
                   data-eid={generateClickEID('develop.prompt.speech')}
-                  disabled={isDisabled}
+                  disabled={isDisabled || isBudgetExceeded}
                   design={isListening ? 'primary' : 'control'}
                   className={isListening
                     ? '!bg-intents-ux-feedbackHighContrastCritical-feedbackColor !border-none'
@@ -235,7 +237,7 @@ export default function ChatInput({
                 data-testid="chat-send-button"
                 onClick={handleSend}
                 data-eid={generateClickEID('develop.prompt.send')}
-                disabled={!inputValue?.trim() || isDisabled}
+                disabled={!inputValue?.trim() || isDisabled || isBudgetExceeded}
                 aria-label={t('builder_chatinput_send')}
                 design="primary"
                 icon={<SendIcon />}
