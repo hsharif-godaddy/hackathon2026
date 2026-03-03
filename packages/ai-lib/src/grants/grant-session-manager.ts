@@ -216,8 +216,33 @@ export class GrantSessionManager {
         // Current grant still exists in new list
         const currentGrantInNewList = sortedGrants[newIndex]
         if (currentGrantInNewList && GrantManager.isGrantUsable(currentGrantInNewList)) {
-          // Current grant is still usable - preserve position
-          currentIndex = newIndex
+          // Current grant is still usable, but check if there's a NEW grant (not in previous list)
+          // at a lower index that expires sooner. 
+          const existingGrantIds = new Set(existingState.grants.map((g) => g.id))
+          let betterNewGrantIndex = -1
+
+          for (let i = 0; i < newIndex; i++) {
+            const grant = sortedGrants[i]
+            if (grant && GrantManager.isGrantUsable(grant) && !existingGrantIds.has(grant.id)) {
+              betterNewGrantIndex = i
+              break
+            }
+          }
+
+          if (betterNewGrantIndex >= 0) {
+            currentIndex = betterNewGrantIndex
+            logger.info('grants.session.index_reset', {
+              sessionId,
+              subscriptionId,
+              previousGrantId: currentGrantId,
+              newIndex: currentIndex,
+              newGrantId: sortedGrants[betterNewGrantIndex]?.id,
+              reason: 'new_better_grant_available',
+            })
+          } else {
+            // No new better grant available - preserve current position
+            currentIndex = newIndex
+          }
         } else {
           // Current grant exists but is no longer usable (exhausted/expired)
           // Find the first usable grant in the list

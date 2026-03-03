@@ -21,6 +21,8 @@ import {
   getFullModelName as getFullModelNameFromNormalization
 } from '../utils/model-normalization.js'
 import { getS2SProviderConfig, isS2SAuthEnabled, getDefaultAnthropicProxyEndpoint, refreshS2SToken, getS2SToken, type S2SAuthConfig } from '../utils/s2s-auth.js'
+import { grantSessionManager } from '../grants/grant-session-manager.js'
+import { containsBudgetExceededPattern } from '../utils/errors.js'
 
 /**
  * Claude models that can be routed through OpenAI proxy
@@ -274,6 +276,11 @@ export async function createOpenAIClient(config?: ProviderConfig): Promise<any> 
 export interface LitellmMetadata {
   user?: string       // subscriptionId for budget tracking
   tags?: string[]     // customerId and appId for tagging/filtering
+  /** Internal fields for grant fallback - NOT sent to GoCode */
+  _internal?: {
+    socketId?: string
+    customerId?: string
+  }
 }
 
 /**
@@ -282,6 +289,128 @@ export interface LitellmMetadata {
  * This prevents cross-tenant metadata leakage in concurrent request scenarios
  */
 export const llmMetadataContext = new AsyncLocalStorage<LitellmMetadata>()
+
+/**
+ * Resolve the current grant userId for an LLM request.
+ * Reads from the grant session manager to reflect any mid-stream grant advances,
+ * falling back to the original metadata.user if no session context is available.
+ */
+function resolveCurrentUser(metadata: LitellmMetadata): string | undefined {
+  if (metadata._internal?.socketId) {
+    return grantSessionManager.getCurrentUserId(metadata._internal.socketId, metadata._internal.customerId) ?? metadata.user
+  }
+  return metadata.user
+}
+
+/**
+ * Inject litellm_metadata into a request body, resolving the current grant userId.
+ * Strips _internal fields so only user and tags are sent to GoCode.
+ */
+function injectLitellmMetadata(metadata: LitellmMetadata, body: Record<string, unknown>, url: string): void {
+  const currentUser = resolveCurrentUser(metadata)
+  body.litellm_metadata = { user: currentUser, tags: metadata.tags }
+  logger.info('litellm_metadata injected into API request', { user: currentUser, tags: metadata.tags, url })
+}
+
+/**
+ * Handle budget exceeded responses by advancing to the next grant and retrying.
+ * This allows seamless continuation of agentic loops when a grant is exhausted mid-execution.
+ *
+ * Flow:
+ * 1. Advance to next locally-cached grant
+ * 2. If none available, request refresh from frontend and wait up to 5s
+ * 3. Retry the single HTTP request with the new grant's userId
+ *
+ * @returns The retry response if successful, or null to use the original response
+ */
+async function handleBudgetExceededWithGrantFallback(
+  response: Response,
+  metadata: LitellmMetadata,
+  url: RequestInfo | URL,
+  init: RequestInit | undefined,
+  modifiedInit: RequestInit
+): Promise<Response | null> {
+  if (response.status !== 400 || !metadata._internal?.socketId || !init?.body) return null
+
+  const bodyText = await response.clone().text()
+  if (!containsBudgetExceededPattern(bodyText)) return null
+
+  const { socketId, customerId } = metadata._internal
+  if (!grantSessionManager.isFeatureEnabled(socketId)) return null
+
+  // Extract the userId from the failed request to detect concurrent advances
+  let failedUserId: string | undefined
+  try {
+    const failedBody = JSON.parse(init.body as string)
+    failedUserId = failedBody.litellm_metadata?.user
+  } catch {
+    return null
+  }
+
+  let newUserId: string | undefined
+
+  // Check if another concurrent request already advanced past the failed grant.
+  const currentUserId = grantSessionManager.getCurrentUserId(socketId, customerId)
+  if (currentUserId && currentUserId !== failedUserId) {
+    newUserId = currentUserId
+    logger.info('grants.fetch.fallback.already_advanced', {
+      socketId,
+      failedUserId,
+      currentUserId,
+      message: 'Another request already advanced the grant - retrying with current'
+    })
+  } else {
+    // Try to advance to next local grant
+    let hasUsableGrant = grantSessionManager.advanceToNextGrant(socketId)
+
+    // If no more local grants, request refresh from frontend
+    if (!hasUsableGrant) {
+      logger.info('grants.fetch.fallback.requesting_refresh', {
+        socketId,
+        message: 'No more local grants - requesting refresh from frontend'
+      })
+
+      const gotNewGrants = await grantSessionManager.requestGrantRefreshAndWait(socketId, 5000)
+      if (gotNewGrants) {
+        hasUsableGrant = grantSessionManager.getCurrentUserId(socketId, customerId) !== undefined
+      }
+    }
+
+    if (!hasUsableGrant) {
+      logger.warn('grants.fetch.fallback.all_exhausted', {
+        socketId,
+        message: 'Budget exceeded and no grants available after refresh'
+      })
+      return null
+    }
+
+    newUserId = grantSessionManager.getCurrentUserId(socketId, customerId)
+  }
+
+  if (!newUserId) return null
+
+  logger.info('grants.fetch.fallback.retry', {
+    socketId,
+    previousUser: failedUserId,
+    newUser: newUserId,
+    message: 'Budget exceeded - switching to next grant and retrying request'
+  })
+
+  try {
+    const originalBody = JSON.parse(init.body as string)
+    originalBody.litellm_metadata = { user: newUserId, tags: metadata.tags }
+    const retryBody = JSON.stringify(originalBody)
+    const retryInit: RequestInit = { ...modifiedInit, body: retryBody }
+    modifiedInit.body = retryBody
+    return await fetch(url, retryInit)
+  } catch (retryError) {
+    logger.error('grants.fetch.fallback.retry_failed', {
+      socketId,
+      error: retryError instanceof Error ? retryError.message : String(retryError)
+    })
+    return null
+  }
+}
 
 /**
  * Create a fetch wrapper that injects current S2S token on every request
@@ -301,34 +430,31 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
     filterAnthropicBetaHeaders(headers, options?.blockedBetaHeaders)
 
     // Inject litellm_metadata into request body if available from AsyncLocalStorage context
-    const modifiedInit = { ...init, headers }
+    const modifiedInit: RequestInit = { ...init, headers }
     const metadata = llmMetadataContext.getStore()
-    
+
     if (metadata && init?.body) {
       try {
         const body = JSON.parse(init.body as string)
-        body.litellm_metadata = metadata
+        injectLitellmMetadata(metadata, body, typeof url === 'string' ? url : url.toString())
         modifiedInit.body = JSON.stringify(body)
-
-        // Log successful injection
-        logger.info('litellm_metadata injected into API request', {
-          user: metadata.user,
-          tags: metadata.tags,
-          url: typeof url === 'string' ? url : url.toString()
-        })
       } catch (error) {
-        // If body parsing fails, proceed without litellm_metadata
         logger.warn('Failed to inject litellm_metadata', { error: error instanceof Error ? error.message : String(error) })
       }
     } else if (!metadata && init?.body) {
-      // Warn if no metadata available - indicates missing context wrapping
       logger.warn('No litellm_metadata in AsyncLocalStorage context - cost tracking may be incomplete', {
         url: typeof url === 'string' ? url : url.toString()
       })
     }
 
     // Make request with Headers instance and modified body
-    const response = await fetch(url, modifiedInit)
+    let response = await fetch(url, modifiedInit)
+
+    // Handle budget exceeded with grant fallback
+    if (metadata) {
+      const retryResponse = await handleBudgetExceededWithGrantFallback(response, metadata, url, init, modifiedInit)
+      if (retryResponse) response = retryResponse
+    }
 
     // Attempt token refresh on authentication failure
     if (response.status === 401 || response.status === 403) {
@@ -369,23 +495,23 @@ function createSelectiveBetaHeaderFetch(blockedHeaders?: string[]): typeof fetch
     if (metadata && init?.body) {
       try {
         const body = JSON.parse(init.body as string)
-        body.litellm_metadata = metadata
+        injectLitellmMetadata(metadata, body, typeof url === 'string' ? url : url.toString())
         modifiedInit.body = JSON.stringify(body)
-
-        logger.info('litellm_metadata injected into API request', {
-          user: metadata.user,
-          tags: metadata.tags,
-          url: typeof url === 'string' ? url : url.toString()
-        })
       } catch (error) {
-        logger.warn('Failed to inject litellm_metadata', {
-          error: error instanceof Error ? error.message : String(error)
-        })
+        logger.warn('Failed to inject litellm_metadata', { error: error instanceof Error ? error.message : String(error) })
       }
     }
 
     // Make request with modified headers and body
-    return await fetch(url, modifiedInit)
+    let response = await fetch(url, modifiedInit)
+
+    // Handle budget exceeded with grant fallback
+    if (metadata) {
+      const retryResponse = await handleBudgetExceededWithGrantFallback(response, metadata, url, init, modifiedInit)
+      if (retryResponse) response = retryResponse
+    }
+
+    return response
   }
 }
 

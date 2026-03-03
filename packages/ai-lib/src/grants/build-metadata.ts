@@ -119,7 +119,15 @@ export function buildLitellmMetadataFromContext(
     if (userId) {
       // APM: Track which grant is being used
       apm?.setLabel?.('litellm.user_type', 'grant')
-      const metadata = { user: userId, tags }
+      // Include _internal fields for fetch-level grant fallback
+      const metadata: LitellmMetadata = {
+        user: userId,
+        tags,
+        _internal: {
+          socketId,
+          ...(customerId && { customerId })
+        }
+      }
       logger.debug('grants.build_metadata.result', {
         appId,
         socketId,

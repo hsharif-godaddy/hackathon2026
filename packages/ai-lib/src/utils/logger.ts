@@ -56,7 +56,7 @@ export class Logger {
     this.config = {
       level: config.level ?? ((process.env.AI_LIB_LOG_LEVEL as LogLevel) || 'info'),
       prefix: config.prefix || '@airo/ai-lib',
-      enableColors: config.enableColors ?? (process.stdout.isTTY ?? false),
+      enableColors: config.enableColors ?? ((typeof process !== 'undefined' && process.stdout?.isTTY) ?? false),
       enableTimestamps: config.enableTimestamps ?? true,
       format: config.format ?? (process.env.LOG_FORMAT === 'json' ? 'json' : 'text'),
     };

@@ -720,6 +720,71 @@ describe('grant-session-manager', function tests() {
       // Should automatically switch to the new credit pack
       expect(sessionManager.getCurrentUserId('session-1')).toBe('airo-builder:grant:pack')
     })
+
+    it('should switch to earlier-expiring grant when user upgrades plan (Issue 2 fix)', function switchToEarlierGrant() {
+      const now = Date.now()
+
+      // Initial state: Free plan exhausted, using credit pack
+      const initialGrants = [
+        createGrant({
+          id: 'grant-free',
+          subscriptionId: 'sub-1',
+          llmBudgetUserId: 'airo-builder:grant:free',
+          creditsSpent: 1500, // Exhausted
+          creditsMax: 1500,
+          useBefore: new Date(now + 5 * 24 * 60 * 60 * 1000).toISOString(), // 5 days
+        }),
+        createGrant({
+          id: 'grant-credit-pack',
+          subscriptionId: 'sub-1',
+          type: GrantType.CreditPack,
+          llmBudgetUserId: 'airo-builder:grant:credit-pack',
+          creditsSpent: 100,
+          creditsMax: 5000,
+          useBefore: new Date(now + 365 * 24 * 60 * 60 * 1000).toISOString(), // 365 days
+        }),
+      ]
+
+      sessionManager.setGrants('session-1', initialGrants, true)
+
+      // Free is exhausted, so should be using credit pack
+      expect(sessionManager.getCurrentUserId('session-1')).toBe('airo-builder:grant:credit-pack')
+
+      // Verify currentIndex is at credit pack (index 1)
+      const stateBeforeUpgrade = sessionManager.getState('session-1')
+      expect(stateBeforeUpgrade?.currentIndex).toBe(1)
+
+      // User upgrades to Starter - new plan grant replaces free, credit pack remains
+      const upgradeGrants = [
+        createGrant({
+          id: 'grant-starter',
+          subscriptionId: 'sub-1',
+          llmBudgetUserId: 'airo-builder:grant:starter',
+          creditsSpent: 0, // Fresh grant
+          creditsMax: 3000,
+          useBefore: new Date(now + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
+        }),
+        createGrant({
+          id: 'grant-credit-pack',
+          subscriptionId: 'sub-1',
+          type: GrantType.CreditPack,
+          llmBudgetUserId: 'airo-builder:grant:credit-pack',
+          creditsSpent: 100,
+          creditsMax: 5000,
+          useBefore: new Date(now + 365 * 24 * 60 * 60 * 1000).toISOString(), // 365 days
+        }),
+      ]
+
+      sessionManager.setGrants('session-1', upgradeGrants, true)
+
+      // Should switch to Starter (expires sooner at 30 days vs credit pack at 365 days)
+      // even though credit pack is still usable
+      expect(sessionManager.getCurrentUserId('session-1')).toBe('airo-builder:grant:starter')
+
+      // Verify currentIndex is at starter (index 0)
+      const stateAfterUpgrade = sessionManager.getState('session-1')
+      expect(stateAfterUpgrade?.currentIndex).toBe(0)
+    })
   })
 
   describe('#requestGrantRefreshAndWait', function refreshWaitTests() {
