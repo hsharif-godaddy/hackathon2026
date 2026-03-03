@@ -144,7 +144,7 @@ describe('TransportSupervisor', () => {
     const deps: TransportSupervisorDeps = {
       connectionManager: mockConnectionManager,
       machine: mockMachine,
-      actions: mockActions,
+      getActions: () => mockActions,
       getHelpers: () => mockHelpers,
       refs: mockRefs,
       getStreamingState: mockGetStreamingState,

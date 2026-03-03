@@ -67,7 +67,7 @@ export interface StreamingWebSocketControllerEvents {
 export interface StreamingWebSocketControllerDeps {
   connectionManager: ConnectionManager
   messageBuilder: ChatMessageBuilder
-  actions: MessageHandlerActions
+  getActions: () => MessageHandlerActions
   getHelpers: () => Omit<MessageHandlerHelpers, 'maybeSendRecoveryAck' | 'trackReplayEventReceipt' | 'clearRetryState'>
   t?: (id: string, values?: Record<string, any>) => string
   toolDeltaBufferRef: { current: Map<string, { name: string; delta: string; hasExplicitName: boolean }> }
@@ -137,7 +137,7 @@ export class StreamingWebSocketController extends EventEmitter {
     this.supervisor = new TransportSupervisor({
       connectionManager: this.deps.connectionManager,
       machine: this.machine,
-      actions: this.deps.actions,
+      getActions: this.deps.getActions,
       getHelpers: this.deps.getHelpers,
       t: this.deps.t,
       qualityMonitor: this.qualityMonitor,
@@ -386,7 +386,7 @@ export class StreamingWebSocketController extends EventEmitter {
       // Create user message in store (Tier 2 - transcript data)
       // Extract referencedFiles from customContext if present
       const referencedFiles = params.customContext?.referencedFiles as Array<{ path: string; content: string }> | undefined
-      this.deps.actions.startNewStream(content, params.selectedAssets, referencedFiles)
+      this.deps.getActions().startNewStream(content, params.selectedAssets, referencedFiles)
 
       const store = this.deps.getStoreState()
       const { buildErrorContext } = store
@@ -479,14 +479,14 @@ export class StreamingWebSocketController extends EventEmitter {
    * Flush tool delta buffer immediately
    */
   flushToolDeltaBufferImmediate(): void {
-    this.deps.actions.flushToolDeltaBufferImmediate()
+    this.deps.getActions().flushToolDeltaBufferImmediate()
   }
 
   /**
    * Schedule tool delta flush
    */
   scheduleToolDeltaFlush(): void {
-    this.deps.actions.scheduleToolDeltaFlush()
+    this.deps.getActions().scheduleToolDeltaFlush()
   }
 
   /**

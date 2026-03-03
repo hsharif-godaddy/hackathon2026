@@ -7,6 +7,15 @@ const mockMarkUpstreamErrorAction = vi.fn()
 
 const mockSetIsLoadingAction = vi.fn()
 
+const mockAppendTextSegment = vi.fn()
+const mockStartNewStream = vi.fn()
+const mockAddToolStartSegment = vi.fn()
+const mockAddToolCallSegment = vi.fn()
+const mockAddToolResultSegment = vi.fn()
+const mockMarkMaxStepsReached = vi.fn()
+const mockMarkBudgetExceeded = vi.fn()
+const mockFinalizeStream = vi.fn()
+
 const createStreamingStoreState = () => ({
   streamingState: 'idle',
   activeStream: null,
@@ -28,8 +37,15 @@ const createStreamingStoreState = () => ({
   setWebSocketState: mockSetWebSocketState,  // Use shared mock for assertions
   setStreamingState: vi.fn(),
   setIsLoading: mockSetIsLoadingAction,
+  startNewStream: mockStartNewStream,
+  appendTextSegment: mockAppendTextSegment,
+  addToolStartSegment: mockAddToolStartSegment,
+  addToolCallSegment: mockAddToolCallSegment,
+  addToolResultSegment: mockAddToolResultSegment,
+  markMaxStepsReached: mockMarkMaxStepsReached,
   markUpstreamError: mockMarkUpstreamErrorAction,
-  finalizeStream: vi.fn(),
+  markBudgetExceeded: mockMarkBudgetExceeded,
+  finalizeStream: mockFinalizeStream,
   // Phase 3 additions - machine/adapter integration
   startStream: vi.fn(),
   setError: mockSetError,  // Use shared mock for assertions
@@ -409,49 +425,34 @@ describe('useStreamingWebSocket', () => {
   });
 
   describe('Store integration', () => {
-    it('should use all required store hooks', async () => {
+    it('should use required store selector hooks and getState for actions', async () => {
       const { useStreamingWebSocket } = await import('./useStreamingWebSocket');
       const {
         useWebSocketState,
         useCurrentAppId,
-        useStartNewStream,
-        useAppendTextSegment,
-        useAddToolStartSegment,
-        useAddToolCallSegment,
-        useAddToolResultSegment,
-        useMarkMaxStepsReached,
-        useMarkUpstreamError,
-        useFinalizeStream,
-        useSetWebSocketState,
-        useSetStreamingState,
-        useSetIsLoading
+        useStreamingConversationStore,
       } = await import('@/stores/useStreamingConversationStore');
 
       renderHook(() => useStreamingWebSocket());
 
-      // Verify all store hooks are called
+      // Verify selector hooks are still called for rendering
       expect(useWebSocketState).toHaveBeenCalled();
       expect(useCurrentAppId).toHaveBeenCalled();
-      expect(useStartNewStream).toHaveBeenCalled();
-      expect(useAppendTextSegment).toHaveBeenCalled();
-      expect(useAddToolStartSegment).toHaveBeenCalled();
-      expect(useAddToolCallSegment).toHaveBeenCalled();
-      expect(useAddToolResultSegment).toHaveBeenCalled();
-      expect(useMarkMaxStepsReached).toHaveBeenCalled();
-      expect(useMarkUpstreamError).toHaveBeenCalled();
-      expect(useFinalizeStream).toHaveBeenCalled();
-      expect(useSetWebSocketState).toHaveBeenCalled();
-      expect(useSetStreamingState).toHaveBeenCalled();
-      expect(useSetIsLoading).toHaveBeenCalled();
+
+      // Actions are now accessed via store.getState() (getActions pattern)
+      // rather than individual hook selectors
+      expect(useStreamingConversationStore.getState).toHaveBeenCalled();
     });
 
-    it('should subscribe to store updates', async () => {
+    it('should read store state at flush time via getState', async () => {
       const { useStreamingWebSocket } = await import('./useStreamingWebSocket');
       const { useStreamingConversationStore } = await import('@/stores/useStreamingConversationStore');
 
       renderHook(() => useStreamingWebSocket());
 
-      expect(useStreamingConversationStore.subscribe).toHaveBeenCalled();
+      // The module-level tool delta buffer reads updateToolDelta via getState()
+      // at flush time rather than subscribing to the store.
+      expect(useStreamingConversationStore.getState).toHaveBeenCalled();
     });
   });
 
@@ -495,17 +496,11 @@ describe('useStreamingWebSocket', () => {
   describe('Cleanup', () => {
     it('should cleanup on unmount', async () => {
       const { useStreamingWebSocket } = await import('./useStreamingWebSocket');
-      const { useStreamingConversationStore } = await import('@/stores/useStreamingConversationStore');
-
-      const unsubscribeMock = vi.fn();
-      vi.mocked(useStreamingConversationStore.subscribe).mockReturnValue(unsubscribeMock);
 
       const { unmount } = renderHook(() => useStreamingWebSocket());
 
-      unmount();
-
-      // Verify unsubscribe was called
-      expect(unsubscribeMock).toHaveBeenCalled();
+      // Should unmount without errors
+      expect(() => unmount()).not.toThrow();
     });
   });
 

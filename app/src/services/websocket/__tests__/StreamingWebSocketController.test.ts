@@ -116,7 +116,7 @@ describe('StreamingWebSocketController', () => {
     const deps: StreamingWebSocketControllerDeps = {
       connectionManager: mockConnectionManager,
       messageBuilder: mockMessageBuilder,
-      actions: mockActions,
+      getActions: () => mockActions,
       getHelpers: () => mockHelpers,
       toolDeltaBufferRef: { current: new Map() },
       getStoreState: mockGetStoreState,
@@ -325,7 +325,7 @@ describe('StreamingWebSocketController', () => {
       const newController = new StreamingWebSocketController({
         connectionManager: mockConnectionManager,
         messageBuilder: mockMessageBuilder,
-        actions: mockActions,
+        getActions: () => mockActions,
         getHelpers: () => mockHelpers,
         toolDeltaBufferRef: { current: new Map() },
         getStoreState: mockGetStoreState,
@@ -534,7 +534,7 @@ describe('StreamingWebSocketController', () => {
       const customDeps: StreamingWebSocketControllerDeps = {
         connectionManager: mockConnectionManager,
         messageBuilder: mockMessageBuilder,
-        actions: mockActions,
+        getActions: () => mockActions,
         getHelpers: vi.fn().mockReturnValue(mockHelpers),
         toolDeltaBufferRef: { current: customBuffer },
         getStoreState: mockGetStoreState,

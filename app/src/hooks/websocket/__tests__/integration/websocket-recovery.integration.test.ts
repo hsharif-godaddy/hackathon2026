@@ -182,6 +182,20 @@ describe('WebSocket Recovery Integration', () => {
     mockMarkBudgetExceeded.mockReset()
     mockFinalizeStream.mockReset()
 
+    // Wire shared mocks into store state so getActions() returns tracked references
+    storeState.setWebSocketState = mockSetWebSocketState
+    storeState.setStreamingState = mockSetStreamingState
+    storeState.setIsLoading = mockSetIsLoading
+    storeState.startNewStream = mockStartNewStream
+    storeState.appendTextSegment = mockAppendTextSegment
+    storeState.addToolStartSegment = mockAddToolStartSegment
+    storeState.addToolCallSegment = mockAddToolCallSegment
+    storeState.addToolResultSegment = mockAddToolResultSegment
+    storeState.markMaxStepsReached = mockMarkMaxStepsReached
+    storeState.markUpstreamError = mockMarkUpstreamError
+    storeState.markBudgetExceeded = mockMarkBudgetExceeded
+    storeState.finalizeStream = mockFinalizeStream
+
     // Reset logger mocks
     mockLogger.debug.mockReset()
     mockLogger.info.mockReset()

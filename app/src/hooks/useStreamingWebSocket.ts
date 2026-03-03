@@ -11,28 +11,21 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { ChatMessageBuilder } from '@/services/websocket/ChatMessageBuilder'
 import { ConnectionManager } from '@/services/websocket/ConnectionManager'
+import { clearController, setController } from '@/services/websocket/controllerRegistry'
 import { StreamingWebSocketController } from '@/services/websocket/StreamingWebSocketController'
+import {
+  flushToolDeltaBufferImmediate,
+  getToolDeltaBuffer,
+  scheduleToolDeltaFlush,
+} from '@/services/websocket/toolDeltaBuffer'
 import { useSitesStore } from '@/stores/useSitesStore'
 import {
-  useAddToolCallSegment,
-  useAddToolResultSegment,
-  useAddToolStartSegment,
-  useAppendTextSegment,
   useCurrentAppId,
-  useFinalizeStream,
-  useMarkBudgetExceeded,
-  useMarkMaxStepsReached,
-  useMarkUpstreamError,
-  useSetIsLoading,
-  useSetStreamingState,
-  useSetWebSocketState,
-  useStartNewStream,
   useStreamingConversationStore,
   useWebSocketState,
 } from '@/stores/useStreamingConversationStore'
 import {
   useGrantContext,
-  useToolDeltaBuffer,
   useWebSocketHelpers,
 } from './websocket'
 import {
@@ -47,7 +40,6 @@ export function useStreamingWebSocket() {
   const connectionManagerRef = useRef<ConnectionManager | null>(null)
   const messageBuilderRef = useRef<ChatMessageBuilder | null>(null)
   const previousAppIdRef = useRef<string | null>(null)
-  const isTransitioningRef = useRef(false)
 
   const webSocketState = useWebSocketState()
   const currentAppId = useCurrentAppId()
@@ -58,24 +50,9 @@ export function useStreamingWebSocket() {
     return state.getSite(currentAppId)?.subscription_id
   })
 
-  // Store actions
-  const startNewStream = useStartNewStream()
-  const appendTextSegment = useAppendTextSegment()
-  const addToolStartSegment = useAddToolStartSegment()
-  const addToolCallSegment = useAddToolCallSegment()
-  const addToolResultSegment = useAddToolResultSegment()
-  const markMaxStepsReached = useMarkMaxStepsReached()
-  const markUpstreamError = useMarkUpstreamError()
-  const markBudgetExceeded = useMarkBudgetExceeded()
-  const finalizeStream = useFinalizeStream()
-  const setWebSocketState = useSetWebSocketState()
-  const setStreamingState = useSetStreamingState()
-  const setIsLoading = useSetIsLoading()
-
   const t = useTranslations()
 
   // Sub-hooks for focused concerns
-  const { toolDeltaBufferRef, scheduleToolDeltaFlush, flushToolDeltaBufferImmediate } = useToolDeltaBuffer()
   const { clearStoredSocketId, handleCommitComplete, sendToolImpression } = useWebSocketHelpers(currentAppId)
 
   // Store helpers in ref so controller always has latest versions (fixes stale closure bug)
@@ -110,30 +87,31 @@ export function useStreamingWebSocket() {
   }
 
   if (!controllerRef.current) {
-    const store = useStreamingConversationStore.getState() // eslint-disable-line @typescript-eslint/no-unused-vars
-
     controllerRef.current = new StreamingWebSocketController({
       connectionManager: connectionManagerRef.current,
       messageBuilder: messageBuilderRef.current,
-      actions: {
-        setWebSocketState,
-        setStreamingState,
-        setIsLoading,
-        startNewStream,
-        appendTextSegment,
-        addToolStartSegment,
-        addToolCallSegment,
-        addToolResultSegment,
-        markMaxStepsReached,
-        markUpstreamError,
-        markBudgetExceeded,
-        finalizeStream,
-        flushToolDeltaBufferImmediate,
-        scheduleToolDeltaFlush,
+      getActions: () => {
+        const state = useStreamingConversationStore.getState()
+        return {
+          setWebSocketState: state.setWebSocketState,
+          setStreamingState: state.setStreamingState,
+          setIsLoading: state.setIsLoading,
+          startNewStream: state.startNewStream,
+          appendTextSegment: state.appendTextSegment,
+          addToolStartSegment: state.addToolStartSegment,
+          addToolCallSegment: state.addToolCallSegment,
+          addToolResultSegment: state.addToolResultSegment,
+          markMaxStepsReached: state.markMaxStepsReached,
+          markUpstreamError: state.markUpstreamError,
+          markBudgetExceeded: state.markBudgetExceeded,
+          finalizeStream: state.finalizeStream,
+          flushToolDeltaBufferImmediate,
+          scheduleToolDeltaFlush,
+        }
       },
       getHelpers: () => helpersRef.current,
       t,
-      toolDeltaBufferRef,
+      toolDeltaBufferRef: { current: getToolDeltaBuffer() },
       getStoreState: () => {
         const state = useStreamingConversationStore.getState()
         return {
@@ -158,6 +136,7 @@ export function useStreamingWebSocket() {
         }
       },
     })
+    setController(controllerRef.current, currentAppId ?? null)
   }
 
   useEffect(() => {
@@ -168,18 +147,14 @@ export function useStreamingWebSocket() {
 
     const previousAppId = previousAppIdRef.current
 
-    // Handle app switching - disconnect before connecting to new app
+    // Handle app switching - flush stale tool deltas and disconnect before connecting to new app
     if (previousAppId && previousAppId !== currentAppId) {
-      isTransitioningRef.current = true;
+      flushToolDeltaBufferImmediate()
       controller.disconnect();
     }
 
     // Connect to the new app
-    void controller.connect(currentAppId).then(() => {
-      if (isTransitioningRef.current) {
-        isTransitioningRef.current = false;
-      }
-    });
+    void controller.connect(currentAppId);
 
     previousAppIdRef.current = currentAppId;
 
@@ -192,6 +167,7 @@ export function useStreamingWebSocket() {
     return () => {
       controllerRef.current?.destroy()
       controllerRef.current = null
+      clearController()
     }
   }, [])
 
@@ -230,7 +206,7 @@ export function useStreamingWebSocket() {
         return
       }
 
-      setIsLoading(true)
+      useStreamingConversationStore.getState().setIsLoading(true)
 
       // Capture visual context from iframe (with error handling)
       let visualContext: ReturnType<typeof captureVisualContext> extends Promise<infer T> ? T : never = null
@@ -257,10 +233,10 @@ export function useStreamingWebSocket() {
         logger.error('websocket.send_message.invoke_failed', {
           error: error instanceof Error ? error.message : String(error),
         })
-        setIsLoading(false)
+        useStreamingConversationStore.getState().setIsLoading(false)
       }
     },
-    [setIsLoading]
+    []
   )
 
   /**

@@ -76,7 +76,7 @@ export interface TransportSupervisorEvents {
 export interface TransportSupervisorDeps {
   connectionManager: ConnectionManager
   machine: WebSocketActor
-  actions: MessageHandlerActions
+  getActions: () => MessageHandlerActions
   getHelpers: () => Omit<MessageHandlerHelpers, 'maybeSendRecoveryAck' | 'trackReplayEventReceipt' | 'clearRetryState'>
   t?: (id: string, values?: Record<string, any>) => string
   qualityMonitor?: NetworkQualityMonitor
@@ -340,7 +340,7 @@ export class TransportSupervisor extends EventEmitter {
     const messageContext: MessageContext = {
       socket,
       currentAppId: this.deps.getCurrentAppId?.() ?? this.currentAppId,
-      actions: this.deps.actions,
+      actions: this.deps.getActions(),
       helpers: {
         ...this.deps.getHelpers(),
         maybeSendRecoveryAck: (socket, force) => this.maybeSendRecoveryAck(socket, force),

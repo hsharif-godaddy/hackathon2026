@@ -64,7 +64,6 @@ interface ControllerLike extends EventEmitter {
   on(event: 'transport:retry-started', listener: (data: { socketId: string }) => void): this
   on(event: 'transport:retry-cleared', listener: () => void): this
   on(event: 'transport:escalation-timeout', listener: (data: { socketId: string }) => void): this
-  on(event: 'connection:established', listener: (data: { socket: any; recovered: boolean }) => void): this
   on(event: 'reconnect:success', listener: () => void): this
   on(event: 'reconnect:failed', listener: () => void): this
   on(event: 'stream:error', listener: (data: { error: Error; shouldFinalize: boolean }) => void): this
@@ -145,40 +144,6 @@ export class StoreSyncAdapter {
     this.controller.on('transport:retry-started', ({ socketId }) => {
       if (this.store.startConnectionRetry) {
         this.store.startConnectionRetry(socketId)
-      }
-    })
-
-    this.controller.on('connection:established', ({ socket }) => {
-      // Keep store `websocket.connected` in sync with actual transport connectivity.
-      //
-      // In development, React StrictMode and appId transitions can temporarily stop the XState actor
-      // during an in-flight connection attempt. When that happens, machine transitions can be dropped,
-      // leaving the store stuck at `connected=false` even though Socket.IO is connected.
-      //
-      // Downstream: the create-flow auto-send waits on `webSocketState.connected` before sending the
-      // initial prompt, so failing to flip this flag can stall the entire chat panel.
-      const storeState = useStreamingConversationStore.getState()
-      const isAlreadyConnected = storeState.websocket?.connected === true
-      if (!isAlreadyConnected) {
-        this.store.setWebSocketState({ connected: true, status: 'idle' })
-      }
-
-      // Clear connection retry tracking if active
-      if (this.store.clearConnectionRetry && this.store.connectionRetry?.isRetrying) {
-        const snapshot = this.machine.getSnapshot()
-        logger.info('websocket.connect.clearing-stale-retry', {
-          socketId: socket.id,
-          elapsedMs: this.store.connectionRetry.retryStartedAt
-            ? Date.now() - this.store.connectionRetry.retryStartedAt
-            : null,
-        })
-
-        // Check if stream is in streaming state
-        if (snapshot.matches({ stream: { streaming: 'receiving' } })) {
-          logger.info('websocket.stream.recovered-on-connect', { socketId: socket.id })
-        }
-
-        this.store.clearConnectionRetry()
       }
     })
 

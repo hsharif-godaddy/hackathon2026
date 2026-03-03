@@ -66,6 +66,30 @@ export function clearConversationIdCookie(appId: string | null): void {
   document.cookie = `${cookieName}=; path=/; max-age=0; SameSite=Lax`
 }
 
+/**
+ * Clear stored socket ID from sessionStorage
+ * Standalone version for use outside React
+ */
+export function clearStoredSocketIdForApp(appId: string | null): void {
+  if (!appId) return
+  const key = `socket_id_${appId}`
+  const existingValue = sessionStorage.getItem(key)
+  sessionStorage.removeItem(key)
+  logger.debug('websocket.socket_id.cleared', {
+    appId,
+    key,
+    previousValue: existingValue,
+  })
+}
+
+/**
+ * Send tool impression event for analytics
+ * Standalone version for use outside React
+ */
+export function sendToolImpressionEvent(tool: string): void {
+  logImpressionEvent(`develop.tool.${tool}`)()
+}
+
 export interface UseWebSocketHelpersReturn {
   /**
    * Clear stored socket ID from sessionStorage

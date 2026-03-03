@@ -1,10 +1,13 @@
 /**
  * useToolDeltaBuffer Tests
+ *
+ * Tests both the React hook wrapper and the underlying module-level utility.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 
+import { getToolDeltaBuffer } from '@/services/websocket/toolDeltaBuffer'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import { useToolDeltaBuffer } from './useToolDeltaBuffer'
 
@@ -26,6 +29,9 @@ describe('useToolDeltaBuffer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockUpdateToolDelta = vi.fn()
+
+    // Clear the shared module-level buffer between tests
+    getToolDeltaBuffer().clear()
 
     mockStore.getState.mockReturnValue({
       updateToolDelta: mockUpdateToolDelta,
@@ -230,18 +236,5 @@ describe('useToolDeltaBuffer', () => {
       delta: 'content',
       hasExplicitName: true,
     })
-  })
-
-  it('subscribes to store on mount and unsubscribes on unmount', () => {
-    const unsubscribe = vi.fn()
-    mockStore.subscribe.mockReturnValue(unsubscribe)
-
-    const { unmount } = renderHook(() => useToolDeltaBuffer())
-
-    expect(mockStore.subscribe).toHaveBeenCalled()
-
-    unmount()
-
-    expect(unsubscribe).toHaveBeenCalled()
   })
 })
