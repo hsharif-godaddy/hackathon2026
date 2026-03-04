@@ -1,10 +1,11 @@
-import Box from "@ux/box";
+import Box from '@ux/box';
 import CircleFilledIcon from '@ux/icon/circle-filled';
 import Tag from '@ux/tag';
-import text from "@ux/text";
+import text from '@ux/text';
 
 import { StatusValue } from "@/app/develop/components/types";
 import { useTranslations } from "@/hooks/useTranslations";
+import { cn } from "@/lib/utils";
 
 interface BigCardProps {
   children?: React.ReactNode
@@ -13,18 +14,19 @@ interface BigCardProps {
   status?: StatusValue
   hideStatus?: boolean
   button?: React.ReactNode
+  className?: string
 }
 
-export default function BigCard({ children, title, description, status, button, hideStatus }: BigCardProps) {
+export default function BigCard({ children, title, description, status, button, hideStatus, className }: BigCardProps) {
   return (
     <Box
       gap="lg"
-      className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-3 @md:p-4 @lg:p-5"
+      className={cn("bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-3 @md:p-4 @lg:p-5", className)}
     >
       <div
         className="flex flex-col @md:flex-row justify-between items-center @md:items-start gap-1 @md:gap-3"
       >
-        <Box gap="sm" className="flex-1">
+        <Box gap="sm" className="flex-1 w-full">
           {title && (
             <text.h3 as="title" size={2}>{title}</text.h3>
           )}

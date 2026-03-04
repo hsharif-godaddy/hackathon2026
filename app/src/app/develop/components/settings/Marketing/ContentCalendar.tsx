@@ -9,14 +9,85 @@ import CheckmarkIcon from '@ux/icon/checkmark';
 import ChevronLeftIcon from '@ux/icon/chevron-left';
 import ChevronRightIcon from '@ux/icon/chevron-right';
 import ClockIcon from '@ux/icon/clock';
-import text from '@ux/text';
+import Tag from '@ux/tag';
+import text, { type Emphasis } from '@ux/text';
 
+import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { useTranslations } from '@/hooks/useTranslations';
 import { fetchCalendarData } from '@/lib/marketing/fetch-calendar-data';
 import { cn } from '@/lib/utils';
 import { CalendarEvent, ScheduledPost } from '@/types/marketing';
 import CalendarDay from './CalendarDay';
 import EventModal from './EventModal';
+
+interface LegendItemProps {
+  emphasis: Emphasis;
+  dotColor: string;
+  icon: React.ReactNode;
+  label: string;
+}
+
+function LegendItem({ emphasis, dotColor, icon, label }: LegendItemProps) {
+  return (
+    <div className="flex items-center gap-1">
+      <div className={cn('w-2 h-2 rounded-full xl:hidden', dotColor)} />
+      <text.span emphasis={emphasis} className="hidden xl:block">
+        {icon}
+      </text.span>
+      <text.strong as="caption">{label}</text.strong>
+    </div>
+  );
+}
+
+interface EventCardItemProps {
+  description?: React.ReactNode;
+  emphasis: Emphasis;
+  eyebrow?: React.ReactNode;
+  icon: React.ReactNode;
+  onClick?: () => void;
+  title: string;
+}
+
+function EventCardItem({
+  description,
+  emphasis,
+  eyebrow,
+  icon,
+  onClick,
+  title,
+}: EventCardItemProps) {
+  const t = useTranslations();
+  const { isLgBreakpoint } = useBreakpoints();
+  return (
+    <Box gap="sm" orientation="horizontal" stretch>
+      <text.span emphasis={emphasis}>
+        {icon}
+      </text.span>
+      <Box
+        gap="md"
+        orientation={isLgBreakpoint ? 'horizontal' : 'vertical'}
+        inlineAlignChildren={isLgBreakpoint ? 'start' : undefined}
+        stretch
+      >
+        <Box gap="sm" orientation="vertical" inlineAlignChildren="start" stretch>
+          <text.div as="title" size={-1}>{title}</text.div>
+          {eyebrow}
+          {description && (
+            <text.div as="paragraph" size={-1} emphasis="passive">{description}</text.div>
+          )}
+        </Box>
+        {onClick && (
+          <Button
+            design="secondary"
+            size="sm"
+            onClick={onClick}
+            text={t('builder_marketing_schedule_post')}
+          />
+        )}
+      </Box>
+    </Box>
+  );
+}
 
 interface ContentCalendarProps {
   appId: string;
@@ -26,6 +97,7 @@ interface ContentCalendarProps {
 export default function ContentCalendar({ appId, onLoadingChange }: ContentCalendarProps) {
   const t = useTranslations();
   const intl = useIntl();
+  const { isXlBreakpoint } = useBreakpoints();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [scheduledPosts, setScheduledPosts] = useState<ScheduledPost[]>([]);
@@ -52,7 +124,7 @@ export default function ContentCalendar({ appId, onLoadingChange }: ContentCalen
     t('builder_marketing_day_tuesday'),
     t('builder_marketing_day_wednesday'),
     t('builder_marketing_day_thursday'),
-    t('builder_marketing_day_friday2'),
+    t('builder_marketing_day_friday2'), // replaces bad "extra space" key
     t('builder_marketing_day_saturday')
   ], [t]);
 
@@ -62,10 +134,10 @@ export default function ContentCalendar({ appId, onLoadingChange }: ContentCalen
 
   // Auto-select today on mobile
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 1280) {
+    if (!isXlBreakpoint) {
       setSelectedDate(new Date());
     }
-  }, []);
+  }, [isXlBreakpoint]);
 
   // Fetch calendar data
   useEffect(() => {
@@ -132,16 +204,16 @@ export default function ContentCalendar({ appId, onLoadingChange }: ContentCalen
   const handleDayClick = (date: Date) => {
     setSelectedDate(date);
     setSelectedEvent(null);
-    // On desktop, open modal immediately. On mobile, just show details below calendar
-    if (typeof window !== 'undefined' && window.innerWidth >= 1280) {
+    if (isXlBreakpoint) {
       setIsModalOpen(true);
+    } else {
+      document.getElementById('mobile-date-header')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
 
   const handleEventClick = (event: CalendarEvent) => {
     setSelectedEvent(event);
-    // Scroll to top on mobile FIRST, then open modal
-    if (typeof window !== 'undefined' && window.innerWidth < 1280) {
+    if (!isXlBreakpoint) {
       window.scrollTo({ top: 0, behavior: 'instant' });
     }
     setIsModalOpen(true);
@@ -189,47 +261,42 @@ export default function ContentCalendar({ appId, onLoadingChange }: ContentCalen
   };
 
   return (
-    <Box gap="xl" className="max-w-[1400px]">
+    <Box gap="lg" className="max-w-[1400px] mt-2">
       {/* Header with Legend - Responsive */}
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+
         {/* Legend */}
-        <div className="flex flex-wrap items-center gap-3 xl:gap-4">
-          <div className="flex items-center gap-1.5">
-            {/* Warning dot on mobile, clock icon on desktop */}
-            <div className="w-2 h-2 bg-intents-ux-feedbackHighContrastWarning-feedbackColor rounded-full xl:hidden" />
-            <div className="hidden xl:flex items-center justify-center w-4 h-4 rounded text-intents-ux-warning-textColor">
-              <ClockIcon className="w-3.5 h-3.5" />
-            </div>
-            <span className="text-sm font-medium text-intents-ux-textStandard-textColor">{t('builder_marketing_legend_scheduled')}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {/* Success dot on mobile, checkmark on desktop */}
-            <div className="w-2 h-2 bg-intents-ux-feedbackHighContrastSuccess-feedbackColor rounded-full xl:hidden" />
-            <div className="hidden xl:flex items-center justify-center w-4 h-4 rounded text-intents-ux-feedbackSuccess-textColor">
-              <CheckmarkIcon className="w-3.5 h-3.5" />
-            </div>
-            <span className="text-sm font-medium text-intents-ux-textStandard-textColor">{t('builder_marketing_legend_published')}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {/* Info dot on mobile, calendar icon on desktop */}
-            <div className="w-2 h-2 bg-intents-ux-feedbackHighContrastInfo-feedbackColor rounded-full xl:hidden" />
-            <div className="hidden xl:flex items-center justify-center w-4 h-4 rounded text-intents-ux-info-textColor">
-              <CalendarIcon className="w-3.5 h-3.5" />
-            </div>
-            <span className="text-sm font-medium text-intents-ux-textStandard-textColor">{t('builder_marketing_legend_marketing_events')}</span>
-          </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 xl:gap-4">
+          <LegendItem
+            emphasis="warning"
+            dotColor="bg-intents-ux-feedbackHighContrastWarning-feedbackColor"
+            icon={<ClockIcon className="size-3" />}
+            label={t('builder_marketing_legend_scheduled')}
+          />
+          <LegendItem
+            emphasis="success"
+            dotColor="bg-intents-ux-feedbackHighContrastSuccess-feedbackColor"
+            icon={<CheckmarkIcon className="size-3" />}
+            label={t('builder_marketing_legend_published')}
+          />
+          <LegendItem
+            emphasis="info"
+            dotColor="bg-intents-ux-feedbackHighContrastInfo-feedbackColor"
+            icon={<CalendarIcon className="size-3" />}
+            label={t('builder_marketing_legend_marketing_events')}
+          />
         </div>
 
         {/* Month Navigation */}
         <div className="flex items-center justify-center gap-3">
           <Button
             onClick={handlePrevMonth}
-            design="tertiary"
+            design="minimal"
             size="md"
             icon={<ChevronLeftIcon />}
             aria-label={t('builder_marketing_previous_month')}
           />
-          <text.h3 className="min-w-[140px] xl:min-w-[200px] text-center text-lg xl:text-xl font-bold text-intents-ux-textStandard-textColor">
+          <text.h3 as="title" className="text-center">
             {intl.formatDate(currentMonth, {
               month: 'long',
               year: 'numeric',
@@ -238,183 +305,144 @@ export default function ContentCalendar({ appId, onLoadingChange }: ContentCalen
           </text.h3>
           <Button
             onClick={handleNextMonth}
-            design="tertiary"
+            design="minimal"
             size="md"
             icon={<ChevronRightIcon />}
             aria-label={t('builder_marketing_next_month')}
           />
         </div>
+
       </div>
 
       {/* Calendar Grid */}
-      <div className="rounded-2xl xl:border border-intents-ux-boxLowContrast-borderColor overflow-hidden xl:bg-intents-ux-boxStandard-backgroundColor xl:shadow-lg">
-            {/* Day names header */}
-            <div className="grid grid-cols-7 xl:border-b-2 border-intents-ux-boxLowContrast-borderColor xl:bg-intents-ux-boxLowContrast-backgroundColor">
-              {dayNames.map((day, idx) => (
-                <div
-                  key={idx}
-                  className="text-center text-xs xl:text-sm font-bold uppercase tracking-wider text-intents-ux-textStandard-textColor py-2 xl:py-4 px-1 xl:px-3 xl:border-r border-intents-ux-boxLowContrast-borderColor last:border-r-0"
-                >
-                  {day.slice(0, 3)}
-                </div>
-              ))}
+      <div className="overflow-hidden xl:bg-intents-ux-box-backgroundColor xl:border-intents-ux-box-borderColor xl:border-r xl:border-t">
+        {/* Day names header */}
+        <div className="grid grid-cols-7">
+          {dayNames.map((day, idx) => (
+            <div
+              key={idx}
+              className="text-center overflow-hidden py-1 px-0.5 xl:px-2 xl:border-intents-ux-box-borderColor xl:border-l xl:border-b"
+            >
+              <text.strong as="label" size={isXlBreakpoint ? 0 : -1}>
+                {day.slice(0, 3)}
+              </text.strong>
+            </div>
+          ))}
+        </div>
+
+        {/* Calendar days */}
+        <div className="grid grid-cols-7">
+          {calendarDays.map((day, idx) => (
+            <div key={idx} className="border-t border-intents-ux-box-borderColor xl:min-h-[160px] xl:border-l xl:border-b xl:border-t-0">
+              <CalendarDay
+                date={day}
+                isCurrentMonth={isCurrentMonthDay(day)}
+                isToday={isToday(day)}
+                isSelected={selectedDate?.toDateString() === day.toDateString()}
+                isXlBreakpoint={isXlBreakpoint}
+                events={getEventsForDate(day)}
+                scheduledPosts={getScheduledPostsForDate(day)}
+                onClick={handleDayClick}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Selected Day Details - Mobile Only */}
+      {selectedDate && (
+        <div className="xl:hidden">
+          <Box gap="lg">
+            {/* Date Header */}
+            <div id="mobile-date-header" className="text-center pb-2 border-b border-intents-ux-boxLowContrast-borderColor">
+              <text.p as="title">
+                {intl.formatDate(selectedDate, {
+                  weekday: 'long',
+                  month: 'long',
+                  day: 'numeric',
+                  timeZone: userTimezone
+                })}
+              </text.p>
             </div>
 
-            {/* Calendar days */}
-            <div className="grid grid-cols-7 xl:bg-intents-ux-boxStandard-backgroundColor">
-              {calendarDays.map((day, idx) => (
-                <CalendarDay
-                  key={idx}
-                  date={day}
-                  isCurrentMonth={isCurrentMonthDay(day)}
-                  isToday={isToday(day)}
-                  isSelected={selectedDate?.toDateString() === day.toDateString()}
-                  events={getEventsForDate(day)}
-                  scheduledPosts={getScheduledPostsForDate(day)}
-                  onClick={handleDayClick}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Selected Day Details - Mobile Only */}
-          {selectedDate && (
-            <div className="xl:hidden">
-              <Box gap="md">
-                {/* Date Header */}
-                <div className="text-center py-4 border-b border-intents-ux-boxLowContrast-borderColor">
-                  <text.p className="text-lg font-semibold text-intents-ux-textStandard-textColor">
-                    {intl.formatDate(selectedDate, {
-                      weekday: 'long',
-                      month: 'long',
-                      day: 'numeric',
-                      timeZone: userTimezone
-                    })}
-                  </text.p>
-                </div>
-
-                {(getEventsForDate(selectedDate).length > 0 || getScheduledPostsForDate(selectedDate).length > 0) ? (
-                  <Box gap="sm">
-                    {/* Blog Posts (Scheduled and Published) */}
-                    {getScheduledPostsForDate(selectedDate).map((post, idx) => {
-                      const isScheduled = post.status === 'scheduled';
-                      return (
-                        <div
-                          key={`post-${idx}`}
-                          className={cn(
-                            'p-3 rounded-lg bg-intents-ux-boxStandard-backgroundColor border-l-4 flex items-center gap-3 shadow-sm',
-                            isScheduled ? 'border-l-intents-ux-warning-borderColor' : 'border-l-intents-ux-feedbackSuccess-borderColor'
-                          )}
-                        >
-                          <div className={cn(
-                            'flex-shrink-0',
-                            isScheduled ? 'text-intents-ux-warning-textColor' : 'text-intents-ux-feedbackSuccess-textColor'
-                          )}>
-                            {isScheduled ? (
-                              <ClockIcon className="w-5 h-5" />
-                            ) : (
-                              <CheckmarkIcon className="w-5 h-5" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <text.p className="font-semibold text-sm text-intents-ux-textStandard-textColor">
-                              {isScheduled ? t('builder_marketing_scheduled_blog_post') : t('builder_marketing_published_blog_post')}
-                            </text.p>
-                            <div className="flex items-center gap-2">
-                              <text.p className="text-xs text-intents-ux-textSubdued-textColor">
-                                {intl.formatTime(new Date(post.publishedAt), {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                  timeZone: userTimezone
-                                })}
-                              </text.p>
-                            </div>
-                            <text.p className="text-sm text-intents-ux-textSubdued-textColor">
-                              {post.title}
-                            </text.p>
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {/* Marketing Events */}
-                    {getEventsForDate(selectedDate).map((event, idx) => (
-                      <button
-                        key={`event-${idx}`}
-                        onClick={() => handleEventClick(event)}
-                        className={cn(
-                          'p-4 rounded-lg border-2 border-dashed w-full text-left',
-                          'transition-all duration-150 hover:shadow-md active:scale-[0.99] cursor-pointer',
-                          'border-intents-ux-info-borderColor bg-intents-ux-info-backgroundColor',
-                          'hover:border-intents-ux-info-textColor'
-                        )}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="flex-shrink-0 text-intents-ux-info-textColor">
-                            <CalendarIcon className="w-6 h-6" />
-                          </div>
-                          <div className="flex-1 min-w-0 flex flex-col gap-1">
-                            <span className="text-xs font-bold text-intents-ux-info-textColor uppercase tracking-wide">
-                              {t('builder_marketing_suggested_marketing_event')}
-                            </span>
-                            <text.p className="font-semibold text-base text-intents-ux-textStandard-textColor">
-                              {event.name}
-                            </text.p>
-                            {event.description && (
-                              <text.p className="text-sm text-intents-ux-textSubdued-textColor">
-                                {event.description}
-                              </text.p>
-                            )}
-                          </div>
-                          <div className="flex-shrink-0 text-intents-ux-textSubdued-textColor">
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-
-                    {/* Add Custom Marketing Action button */}
-                    <Button
-                      onClick={() => {
-                        setSelectedEvent(null);
-                        if (typeof window !== 'undefined' && window.innerWidth < 1280) {
-                          window.scrollTo({ top: 0, behavior: 'instant' });
-                        }
-                        setIsModalOpen(true);
-                      }}
-                      design="primary"
-                      size="md"
-                      className="w-full"
+            {(getEventsForDate(selectedDate).length > 0 || getScheduledPostsForDate(selectedDate).length > 0) ? (
+              <Box gap="sm">
+                {getScheduledPostsForDate(selectedDate).map((post, idx) => {
+                  const isScheduled = post.status === 'scheduled';
+                  return (
+                    <Box
+                      key={`post-${idx}`}
+                      elevation="card"
+                      inlinePadding="md"
+                      blockPadding="md"
                     >
-                      {t('builder_marketing_add_custom_marketing_action')}
-                    </Button>
-                  </Box>
-                ) : (
-                  <Box gap="sm">
-                    <text.p className="text-center text-sm text-intents-ux-textSubdued-textColor py-4">
-                      {t('builder_marketing_no_events_scheduled')}
-                    </text.p>
-                    <Button
-                      onClick={() => {
-                        setSelectedEvent(null);
-                        if (typeof window !== 'undefined' && window.innerWidth < 1280) {
-                          window.scrollTo({ top: 0, behavior: 'instant' });
+                      <EventCardItem
+                        title={isScheduled ? t('builder_marketing_scheduled_blog_post') : t('builder_marketing_published_blog_post')}
+                        emphasis={isScheduled ? 'warning' : 'success'}
+                        icon={isScheduled ? <ClockIcon /> : <CheckmarkIcon />}
+                        description={
+                          <div className="flex flex-col gap-0.5 text-intents-ux-feedbackHighContrastPassive-feedbackColor">
+                            <p>
+                              {intl.formatTime(new Date(post.publishedAt), {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                timeZone: userTimezone
+                              })}
+                            </p>
+                            <p>{post.title}</p>
+                          </div>
                         }
-                        setIsModalOpen(true);
-                      }}
-                      design="primary"
-                      size="md"
-                      className="w-full"
-                    >
-                      {t('builder_marketing_add_custom_marketing_action')}
-                    </Button>
+                      />
+                    </Box>
+                  );
+                })}
+
+                {getEventsForDate(selectedDate).map((event, idx) => (
+                  <Box
+                    key={`event-${idx}`}
+                    elevation="card"
+                    inlinePadding="md"
+                    blockPadding="md"
+                  >
+                    <EventCardItem
+                      description={event.description}
+                      emphasis="info"
+                      eyebrow={
+                        <Tag emphasis="info" size="sm">
+                          {t('builder_marketing_suggested_marketing_event')}
+                        </Tag>
+                      }
+                      icon={<CalendarIcon />}
+                      title={event.name}
+                      onClick={() => handleEventClick(event)}
+                    />
                   </Box>
-                )}
+                ))}
               </Box>
-            </div>
-          )}
+            ) : (
+              <Box gap="sm" inlinePadding="md" blockPadding="md" className="text-center border-0 intents-ux-box">
+                <text.p>
+                  {t('builder_marketing_no_events_scheduled')}
+                </text.p>
+              </Box>
+            )}
+
+            <Button
+              onClick={() => {
+                setSelectedEvent(null);
+                if (!isXlBreakpoint) {
+                  window.scrollTo({ top: 0, behavior: 'instant' });
+                }
+                setIsModalOpen(true);
+              }}
+              design="primary"
+              size="md"
+              className="w-full"
+              text={t('builder_marketing_add_custom_marketing_action')}
+            />
+          </Box>
+        </div>
+      )}
 
       {/* Event Modal */}
       {selectedDate && (

@@ -1,6 +1,7 @@
 'use client';
 
 import PlusIcon from '@ux/icon/plus';
+import text from '@ux/text';
 
 import { useTranslations } from '@/hooks/useTranslations';
 import { cn } from '@/lib/utils';
@@ -12,6 +13,7 @@ interface CalendarDayProps {
   isCurrentMonth: boolean;
   isToday: boolean;
   isSelected?: boolean;
+  isXlBreakpoint: boolean;
   events: CalendarEvent[];
   scheduledPosts: ScheduledPost[];
   onClick: (date: Date) => void;
@@ -22,6 +24,7 @@ export default function CalendarDay({
   isCurrentMonth,
   isToday,
   isSelected = false,
+  isXlBreakpoint,
   events,
   scheduledPosts,
   onClick
@@ -43,60 +46,58 @@ export default function CalendarDay({
     <button
       onClick={() => onClick(date)}
       className={cn(
-        'group relative w-full aspect-square pt-3 px-2 pb-2',
+        'group relative w-full py-1 px-0.5 !rounded-none !border-none',
         'flex flex-col items-center overflow-hidden',
-        'transition-all duration-200 ease-out',
-        'xl:aspect-auto xl:min-h-[160px] xl:items-start xl:text-left xl:pt-3 xl:px-1 xl:pb-2',
-        'xl:border-r xl:border-b xl:border-intents-ux-boxLowContrast-borderColor',
-        !isCurrentMonth && 'xl:bg-intents-ux-boxLowContrast-backgroundColor/50',
-        isCurrentMonth && 'xl:bg-intents-ux-boxStandard-backgroundColor',
-        isToday && 'max-lg:rounded-xl max-lg:bg-intents-ux-feedbackInfo-feedbackColor',
-        isToday && 'xl:bg-intents-ux-boxStandard-backgroundColor',
-        isSelected && !isToday && 'border-2 border-intents-ux-actionPrimary-backgroundColor rounded-xl xl:ring-2 xl:ring-inset xl:ring-intents-ux-actionPrimary-backgroundColor xl:border-0 xl:rounded-none',
+        'xl:aspect-auto xl:items-start xl:text-left xl:p-2 xl:!pt-1 xl:h-full',
+        !isCurrentMonth && 'max-xl:invisible xl:bg-intents-ux-boxLowContrast-backgroundColor xl:text-intents-ux-boxLowContrast-foregroundColor',
+        isCurrentMonth && 'xl:bg-intents-ux-box-backgroundColor xl:text-intents-ux-box-foregroundColor',
         isPast ? 'opacity-50' : 'cursor-pointer'
       )}
       aria-label={t('builder_marketing_calendar_day_aria_label', { date: date.toDateString(), count: allItems.length })}
     >
       {/* Hover overlay with plus icon - Desktop only */}
       {!isPast && (
-        <div className="hidden xl:flex absolute inset-0 bg-intents-ux-boxLowContrastOverlay-backgroundColor backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 items-center justify-center pointer-events-none z-10">
+        <div className={cn(
+          'hidden xl:flex absolute inset-0 p-1',
+          'bg-intents-ux-boxLowContrastOverlay-backgroundColor text-intents-ux-boxLowContrastOverlay-foregroundColor',
+          'backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 items-center justify-center pointer-events-none z-10'
+        )}>
           <div className="flex flex-col items-center gap-1">
-            <div className="w-8 h-8 rounded-full bg-intents-ux-feedbackInfo-feedbackColor flex items-center justify-center shadow-md">
-              <PlusIcon className="w-5 h-5" />
+            <div className="size-6 rounded-full intents-ux-actionPrimary flex items-center justify-center">
+              <PlusIcon className="size-3" />
             </div>
-            <span className="text-xs font-medium text-intents-ux-actionPrimary-textColor text-center">
+            <text.span as="caption" size={-1} className="text-center">
               {t('builder_marketing_add_marketing_action')}
-            </span>
+            </text.span>
           </div>
         </div>
       )}
 
-      <div className="h-full w-full flex flex-col relative items-center xl:items-start justify-center xl:justify-start min-w-0">
+      <div className="h-full w-full flex flex-col relative items-center xl:items-start justify-start min-w-0">
         {/* Header with day number */}
-        <div className="mb-0.5 xl:mb-1.5 text-center xl:text-left">
-          <span
-            className={cn(
-              'text-xs font-semibold transition-all duration-200',
-              isToday
-                ? 'xl:inline-flex xl:items-center xl:justify-center xl:w-6 xl:h-6 xl:rounded-full xl:bg-intents-ux-feedbackInfo-feedbackColor xl:shadow-md'
-                : 'xl:text-sm text-intents-ux-textStandard-textColor group-hover:text-intents-ux-actionPrimary-textColor'
-            )}
-          >
+        <div className={cn(
+          'flex justify-center items-center rounded-full size-4 aspect-square mb-0.5 xl:mb-1.5',
+          isToday
+            ? 'border border-current xl:text-intents-ux-boxHighContrast-foregroundColor xl:bg-intents-ux-boxHighContrast-backgroundColor'
+            : 'xl:text-intents-ux-feedbackHighContrastPassive-feedbackColor',
+          isSelected && 'border border-current !text-intents-ux-feedbackHighContrastHighlight-onFeedbackColor !bg-intents-ux-feedbackHighContrastHighlight-feedbackColor',
+        )}>
+          <text.span as="caption" size={isXlBreakpoint ? 0 : 1}>
             {dayNumber}
-          </span>
+          </text.span>
         </div>
 
-        {/* Mobile: Show dots (warning for scheduled, success for published, info for events) */}
+        {/* Mobile: Show pills (warning for scheduled, success for published, info for events) */}
         {allItems.length > 0 && (
-          <div className="max-xl:flex flex-row items-center justify-center gap-1 mb-1 xl:hidden">
+          <div className="max-xl:flex flex-row gap-[1px] h-[6px] w-full max-w-[40px] rounded-full overflow-hidden xl:hidden">
             {scheduledPosts.some(p => p.status === 'scheduled') && (
-              <div className="w-2 h-2 bg-intents-ux-feedbackHighContrastWarning-feedbackColor rounded-full flex-shrink-0" />
+              <div className="size-full bg-intents-ux-feedbackHighContrastWarning-feedbackColor" />
             )}
             {scheduledPosts.some(p => p.status === 'published') && (
-              <div className="w-2 h-2 bg-intents-ux-feedbackHighContrastSuccess-feedbackColor rounded-full flex-shrink-0" />
+              <div className="size-full bg-intents-ux-feedbackHighContrastSuccess-feedbackColor" />
             )}
             {events.length > 0 && (
-              <div className="w-2 h-2 bg-intents-ux-feedbackHighContrastInfo-feedbackColor rounded-full flex-shrink-0" />
+              <div className="size-full bg-intents-ux-feedbackHighContrastInfo-feedbackColor" />
             )}
           </div>
         )}
@@ -113,9 +114,9 @@ export default function CalendarDay({
           })}
 
           {remainingCount > 0 && (
-            <div className="text-xs text-intents-ux-actionPrimary-textColor font-semibold text-left pt-0.5 group-hover:underline">
+            <text.span as="caption" className="text-intents-ux-actionPrimary-foregroundColor text-left pt-0.5 group-hover:underline">
               {t('builder_marketing_more_items', { count: remainingCount })}
-            </div>
+            </text.span>
           )}
         </div>
       </div>

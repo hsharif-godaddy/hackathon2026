@@ -38,10 +38,11 @@ export default function MarketingPanel() {
           title={t('builder_marketing_loading_calendar')}
         />
       )}
-      <Box gap="lg" className={isCalendarLoading ? '!hidden' : '@container'}>
+      <Box className={isCalendarLoading ? '!hidden' : '@container'}>
         <BigCard
           title={t('builder_marketing_calendar')}
           description={t('builder_marketing_calendar_description')}
+          className="min-w-[340px]"
         >
           <ContentCalendar appId={appId} onLoadingChange={setIsCalendarLoading} />
         </BigCard>

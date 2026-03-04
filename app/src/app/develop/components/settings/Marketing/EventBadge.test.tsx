@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom';
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { screen } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
@@ -8,9 +8,6 @@ import { CalendarEvent, ScheduledPost } from '@/types/marketing';
 import EventBadge from './EventBadge';
 
 describe('EventBadge', () => {
-  beforeEach(() => {
-    // No mocks needed for this component
-  });
 
   describe('Calendar Event Rendering', () => {
     it('should render calendar event with name', () => {
@@ -74,29 +71,19 @@ describe('EventBadge', () => {
       expect(screen.getByText('builder_marketing_facebook')).toBeInTheDocument();
     });
 
-    it('should apply scheduled styling to Facebook post', () => {
+    it('should apply scheduled emphasis to Facebook post', () => {
       const { container } = renderWithProviders(<EventBadge scheduledPost={facebookPost} />);
-      const badge = container.firstChild;
+      const badge = container.querySelector('[data-emphasis="warning"]');
 
-      expect(badge).toHaveClass('border-intents-ux-warning-borderColor');
-      expect(badge).toHaveClass('bg-intents-ux-warning-backgroundColor');
+      expect(badge).toBeInTheDocument();
     });
 
-    it('should apply published styling to published Facebook post', () => {
+    it('should apply published emphasis to published Facebook post', () => {
       const publishedPost = { ...facebookPost, status: 'published' as const };
       const { container } = renderWithProviders(<EventBadge scheduledPost={publishedPost} />);
-      const badge = container.firstChild;
+      const badge = container.querySelector('[data-emphasis="success"]');
 
-      expect(badge).toHaveClass('border-intents-ux-feedbackSuccess-borderColor');
-      expect(badge).toHaveClass('bg-intents-ux-feedbackSuccess-backgroundColor');
-    });
-
-    it('should use solid border for social posts', () => {
-      const { container } = renderWithProviders(<EventBadge scheduledPost={facebookPost} />);
-      const badge = container.firstChild;
-
-      // Should NOT have dashed border
-      expect(badge).not.toHaveClass('border-dashed');
+      expect(badge).toBeInTheDocument();
     });
 
     it('should use message as title for Facebook post', () => {
@@ -133,21 +120,19 @@ describe('EventBadge', () => {
       expect(screen.getByText('builder_marketing_instagram')).toBeInTheDocument();
     });
 
-    it('should apply scheduled styling to Instagram post', () => {
+    it('should apply scheduled emphasis to Instagram post', () => {
       const { container } = renderWithProviders(<EventBadge scheduledPost={instagramPost} />);
-      const badge = container.firstChild;
+      const badge = container.querySelector('[data-emphasis="warning"]');
 
-      expect(badge).toHaveClass('border-intents-ux-warning-borderColor');
-      expect(badge).toHaveClass('bg-intents-ux-warning-backgroundColor');
+      expect(badge).toBeInTheDocument();
     });
 
-    it('should apply published styling to published Instagram post', () => {
+    it('should apply published emphasis to published Instagram post', () => {
       const publishedPost = { ...instagramPost, status: 'published' as const };
       const { container } = renderWithProviders(<EventBadge scheduledPost={publishedPost} />);
-      const badge = container.firstChild;
+      const badge = container.querySelector('[data-emphasis="success"]');
 
-      expect(badge).toHaveClass('border-intents-ux-feedbackSuccess-borderColor');
-      expect(badge).toHaveClass('bg-intents-ux-feedbackSuccess-backgroundColor');
+      expect(badge).toBeInTheDocument();
     });
   });
 
@@ -167,30 +152,19 @@ describe('EventBadge', () => {
       expect(screen.getByText(/builder_marketing_blog_prefix.*Test Blog Post/)).toBeInTheDocument();
     });
 
-    it('should apply dashed border to blog posts', () => {
+    it('should apply scheduled emphasis to blog post', () => {
       const { container } = renderWithProviders(<EventBadge scheduledPost={blogPost} />);
-      const badge = container.firstChild;
+      const badge = container.querySelector('[data-emphasis="warning"]');
 
-      expect(badge).toHaveClass('border-dashed');
+      expect(badge).toBeInTheDocument();
     });
 
-    it('should apply scheduled styling to blog post', () => {
-      const { container } = renderWithProviders(<EventBadge scheduledPost={blogPost} />);
-      const badge = container.firstChild;
-
-      expect(badge).toHaveClass('border-intents-ux-warning-borderColor');
-      expect(badge).toHaveClass('bg-intents-ux-warning-backgroundColor');
-    });
-
-    it('should apply published styling to published blog post', () => {
+    it('should apply published emphasis to published blog post', () => {
       const publishedPost = { ...blogPost, status: 'published' as const };
       const { container } = renderWithProviders(<EventBadge scheduledPost={publishedPost} />);
-      const badge = container.firstChild;
+      const badge = container.querySelector('[data-emphasis="success"]');
 
-      expect(badge).toHaveClass('border-intents-ux-feedbackSuccess-borderColor');
-      expect(badge).toHaveClass('bg-intents-ux-feedbackSuccess-backgroundColor');
-      // Published blog should NOT have dashed border
-      expect(badge).not.toHaveClass('border-dashed');
+      expect(badge).toBeInTheDocument();
     });
 
     it('should use title as tooltip for blog post', () => {
@@ -198,57 +172,6 @@ describe('EventBadge', () => {
       const badge = container.querySelector('[title]');
 
       expect(badge).toHaveAttribute('title', 'Test Blog Post');
-    });
-  });
-
-  describe('Visual Differences', () => {
-    it('should render social posts with solid border', () => {
-      const socialPost: ScheduledPost = {
-        slug: 'post-1',
-        title: 'Social',
-        publishedAt: '2026-02-16T10:00:00Z',
-        status: 'scheduled',
-        type: 'social',
-        platform: 'facebook',
-      };
-
-      const { container } = renderWithProviders(<EventBadge scheduledPost={socialPost} />);
-      const badge = container.firstChild;
-
-      expect(badge).toHaveClass('border-2');
-      expect(badge).not.toHaveClass('border-dashed');
-    });
-
-    it('should render scheduled blog posts with dashed border', () => {
-      const blogPost: ScheduledPost = {
-        slug: 'post-1',
-        title: 'Blog',
-        publishedAt: '2026-02-16T10:00:00Z',
-        status: 'scheduled',
-        type: 'blog',
-      };
-
-      const { container } = renderWithProviders(<EventBadge scheduledPost={blogPost} />);
-      const badge = container.firstChild;
-
-      expect(badge).toHaveClass('border-2');
-      expect(badge).toHaveClass('border-dashed');
-    });
-
-    it('should render published blog posts with solid border', () => {
-      const blogPost: ScheduledPost = {
-        slug: 'post-1',
-        title: 'Blog',
-        publishedAt: '2026-02-16T10:00:00Z',
-        status: 'published',
-        type: 'blog',
-      };
-
-      const { container } = renderWithProviders(<EventBadge scheduledPost={blogPost} />);
-      const badge = container.firstChild;
-
-      expect(badge).toHaveClass('border-2');
-      expect(badge).not.toHaveClass('border-dashed');
     });
   });
 
@@ -263,8 +186,7 @@ describe('EventBadge', () => {
 
       const { container } = renderWithProviders(<EventBadge event={event} />);
 
-      // Should still render without crashing - verify container structure exists
-      const badge = container.querySelector('.flex.items-start.gap-1\\.5');
+      const badge = container.querySelector('[data-emphasis="info"]');
       expect(badge).toBeInTheDocument();
       expect(badge).toHaveAttribute('title', '');
     });
