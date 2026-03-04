@@ -68,7 +68,7 @@ For multiple independent files, invoke all textEditor calls simultaneously.`,
     path: z.string()
       .describe('File path relative to app root'),
 
-    view_range: z.tuple([z.number(), z.number()]).optional()
+    view_range: z.array(z.number()).min(2).max(2).optional()
       .describe('Optional [start_line, end_line] for view command (1-indexed). Use -1 for end to read to EOF'),
 
     old_str: z.string().optional()
@@ -150,7 +150,11 @@ For multiple independent files, invoke all textEditor calls simultaneously.`,
 
     switch (command) {
       case 'view':
-        return handleView(fullPath, view_range);
+{
+          const range: [number, number] | undefined =
+            view_range && view_range.length >= 2 ? [view_range[0]!, view_range[1]!] : undefined;
+          return handleView(fullPath, range);
+        }
 
       case 'str_replace':
         if (!old_str || new_str === undefined) {
