@@ -52,6 +52,8 @@ export interface CommandOverrides {
   install?: string;
   /** Custom build command (default: 'npm run build') */
   build?: string;
+  /** Custom dev command for runtime.dev.command */
+  dev?: string;
   /** Custom start command (default: 'npm start' for Node.js, vite for Vite) */
   start?: string;
 }
@@ -454,12 +456,19 @@ export class ProjectImportService {
 
       // Phase 10: Create PaaS configuration file for uploaded apps
       const pm = validation.packageManager || 'npm';
+      // When falling back to a dev script, force development mode because some
+      // React/Vite apps break when `npm run dev` runs with NODE_ENV=production.
       const startCommand = params.commands?.start
         || (validation.hasStartScript ? `${pm} start` : null)
-        || (validation.hasDevScript ? `${pm} run dev` : null)
+        || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
         || DEFAULT_START_COMMAND;
       this.logger.info('project-import.config.create', { jobId, appId });
-      await appRestartService.createPaasConfig(app.path, undefined, startCommand);
+      await appRestartService.createPaasConfig(
+        app.path,
+        undefined,
+        startCommand,
+        params.commands?.dev
+      );
       this.logger.info('project-import.config.created', { jobId, appId });
 
       // Phase 10.5: Cleanup temp files BEFORE git commit to prevent them from being committed

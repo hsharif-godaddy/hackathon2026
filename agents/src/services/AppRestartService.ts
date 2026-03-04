@@ -34,6 +34,7 @@ export type BuildToolType = 'nodejs';
 export interface CommandOverrides {
   install?: string;
   build?: string;
+  dev?: string;
   start?: string;
 }
 
@@ -150,7 +151,12 @@ export class AppRestartService {
       }
 
       // Step 4: Create PaaS config
-      await this.createPaasConfig(appPath, options?.buildToolType, options?.commands?.start);
+      await this.createPaasConfig(
+        appPath,
+        options?.buildToolType,
+        options?.commands?.start,
+        options?.commands?.dev
+      );
 
       // Step 5: Restart dev server with resolved start command
       const startCommand = this.resolveStartCommand(options);
@@ -359,16 +365,21 @@ export class AppRestartService {
   async createPaasConfig(
     appPath: string,
     _buildToolType?: BuildToolType,
-    customStartCommand?: string
+    customStartCommand?: string,
+    customDevCommand?: string
   ): Promise<void> {
     const airoDir = join(appPath, '.airo');
     const configPath = join(airoDir, 'config.json');
 
     // Always use Node.js commands - customers define their own scripts
     const finalStartCmd = customStartCommand || DEFAULT_START_COMMAND;
+    const finalDevCmd = customDevCommand || finalStartCmd;
 
     const paasConfig = {
       runtime: {
+        dev: {
+          command: finalDevCmd,
+        },
         build: {
           command: DEFAULT_BUILD_COMMAND,
         },

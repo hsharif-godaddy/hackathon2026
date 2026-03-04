@@ -47,6 +47,8 @@ export interface CommandOverrides {
   install?: string;
   /** Custom build command (default: 'npm run build') */
   build?: string;
+  /** Custom dev command for runtime.dev.command */
+  dev?: string;
   /** Custom start command (default: 'npm start' for Node.js, vite for Vite) */
   start?: string;
 }

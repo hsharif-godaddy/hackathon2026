@@ -309,7 +309,11 @@ describe('ProjectImportService', () => {
     describe('Start Command Selection Logic', () => {
       /**
        * Test the command selection logic directly
-       * Logic: params.commands?.start || (hasStartScript ? `${pm} start` : null) || (hasDevScript ? `${pm} run dev` : null) || DEFAULT_START_COMMAND
+       * Logic:
+       * params.commands?.start
+       *   || (hasStartScript ? `${pm} start` : null)
+       *   || (hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
+       *   || DEFAULT_START_COMMAND
        */
 
       it('should use user-provided command when available (highest priority)', () => {
@@ -319,7 +323,7 @@ describe('ProjectImportService', () => {
 
         const startCommand = userCommand
           || (validation.hasStartScript ? `${pm} start` : null)
-          || (validation.hasDevScript ? `${pm} run dev` : null)
+          || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
           || 'npm start';
 
         expect(startCommand).toBe('node custom-server.js');
@@ -332,23 +336,23 @@ describe('ProjectImportService', () => {
 
         const startCommand = userCommand
           || (validation.hasStartScript ? `${pm} start` : null)
-          || (validation.hasDevScript ? `${pm} run dev` : null)
+          || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
           || 'npm start';
 
         expect(startCommand).toBe('npm start');
       });
 
-      it('should use npm run dev when only hasDevScript is true (Vite projects)', () => {
+      it('should use NODE_ENV=development npm run dev when only hasDevScript is true (Vite projects)', () => {
         const userCommand = undefined;
         const validation = { hasStartScript: false, hasDevScript: true, packageManager: 'npm' as const };
         const pm = validation.packageManager || 'npm';
 
         const startCommand = userCommand
           || (validation.hasStartScript ? `${pm} start` : null)
-          || (validation.hasDevScript ? `${pm} run dev` : null)
+          || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
           || 'npm start';
 
-        expect(startCommand).toBe('npm run dev');
+        expect(startCommand).toBe('NODE_ENV=development npm run dev');
       });
 
       it('should fallback to default when no scripts exist', () => {
@@ -358,7 +362,7 @@ describe('ProjectImportService', () => {
 
         const startCommand = userCommand
           || (validation.hasStartScript ? `${pm} start` : null)
-          || (validation.hasDevScript ? `${pm} run dev` : null)
+          || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
           || 'npm start';
 
         expect(startCommand).toBe('npm start');
@@ -371,7 +375,7 @@ describe('ProjectImportService', () => {
 
         const startCommand = userCommand
           || (validation.hasStartScript ? `${pm} start` : null)
-          || (validation.hasDevScript ? `${pm} run dev` : null)
+          || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
           || 'npm start';
 
         expect(startCommand).toBe('npm start');
@@ -384,7 +388,7 @@ describe('ProjectImportService', () => {
 
         const startCommand = userCommand
           || (validation.hasStartScript ? `${pm} start` : null)
-          || (validation.hasDevScript ? `${pm} run dev` : null)
+          || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
           || 'npm start';
 
         expect(startCommand).toBe('python app.py');
@@ -403,17 +407,17 @@ describe('ProjectImportService', () => {
         expect(startCommand).toBe('yarn start');
       });
 
-      it('should use yarn run dev when packageManager is yarn and only hasDevScript is true', () => {
+      it('should use NODE_ENV=development yarn run dev when packageManager is yarn and only hasDevScript is true', () => {
         const userCommand = undefined;
         const validation = { hasStartScript: false, hasDevScript: true, packageManager: 'yarn' as const };
         const pm = validation.packageManager || 'npm';
 
         const startCommand = userCommand
           || (validation.hasStartScript ? `${pm} start` : null)
-          || (validation.hasDevScript ? `${pm} run dev` : null)
+          || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
           || 'npm start';
 
-        expect(startCommand).toBe('yarn run dev');
+        expect(startCommand).toBe('NODE_ENV=development yarn run dev');
       });
 
       it('should use pnpm start when packageManager is pnpm and hasStartScript is true', () => {
@@ -423,23 +427,23 @@ describe('ProjectImportService', () => {
 
         const startCommand = userCommand
           || (validation.hasStartScript ? `${pm} start` : null)
-          || (validation.hasDevScript ? `${pm} run dev` : null)
+          || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
           || 'npm start';
 
         expect(startCommand).toBe('pnpm start');
       });
 
-      it('should use pnpm run dev when packageManager is pnpm and only hasDevScript is true', () => {
+      it('should use NODE_ENV=development pnpm run dev when packageManager is pnpm and only hasDevScript is true', () => {
         const userCommand = undefined;
         const validation = { hasStartScript: false, hasDevScript: true, packageManager: 'pnpm' as const };
         const pm = validation.packageManager || 'npm';
 
         const startCommand = userCommand
           || (validation.hasStartScript ? `${pm} start` : null)
-          || (validation.hasDevScript ? `${pm} run dev` : null)
+          || (validation.hasDevScript ? `NODE_ENV=development ${pm} run dev` : null)
           || 'npm start';
 
-        expect(startCommand).toBe('pnpm run dev');
+        expect(startCommand).toBe('NODE_ENV=development pnpm run dev');
       });
     });
 

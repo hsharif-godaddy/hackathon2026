@@ -227,6 +227,16 @@ describe('AppRestartService', () => {
       const writtenConfig = JSON.parse(writeCall[1] as string);
       expect(writtenConfig.runtime.dev.command).toBe('node server.js');
       expect(writtenConfig.runtime.build.command).toBe('npm run build');
+      expect(writtenConfig.runtime.serve.command).toBe('node server.js');
+    });
+
+    it('should use custom dev command when provided', async () => {
+      await service.createPaasConfig(testAppPath, undefined, 'npm start', 'npm run dev');
+
+      const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
+      const writtenConfig = JSON.parse(writeCall[1] as string);
+      expect(writtenConfig.runtime.dev.command).toBe('npm run dev');
+      expect(writtenConfig.runtime.build.command).toBe('npm run build');
       expect(writtenConfig.runtime.serve.command).toBe('npm start');
     });
   });

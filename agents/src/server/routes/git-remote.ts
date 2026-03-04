@@ -282,6 +282,7 @@ router.post(
       entryFile,
       installCommand,
       buildCommand,
+      devCommand,
       startCommand,
     } = req.body;
 
@@ -304,8 +305,8 @@ router.post(
       modifyViteConfig,
       // PaaS Node.js parameters
       entryFile,
-      commands: (installCommand || buildCommand || startCommand)
-        ? { install: installCommand, build: buildCommand, start: startCommand }
+      commands: (installCommand || buildCommand || devCommand || startCommand)
+        ? { install: installCommand, build: buildCommand, dev: devCommand, start: startCommand }
         : undefined,
     });
 
