@@ -1,11 +1,11 @@
 name: Agentic QA Evaluation
 
-run-name: "Agentic QA Evaluation - ${{ github.event_name == 'pull_request' && '1' || inputs.hours || '8' }}h (by ${{ github.actor }})"
+run-name: "Agentic QA Evaluation - ${{ github.event_name == 'pull_request' && '1' || inputs.hours || '4' }}h (by ${{ github.actor }})"
 
 on:
   schedule:
-    # 3x daily: 6 AM, 2 PM, 10 PM UTC (every 8 hours)
-    - cron: "0 6,14,22 * * *"
+    # 6x daily: every 4 hours starting at midnight UTC
+    - cron: "0 0,4,8,12,16,20 * * *"
 
   pull_request:
     paths:
@@ -17,7 +17,7 @@ on:
       hours:
         description: "Time window: process traces from the last N hours"
         required: false
-        default: "8"
+        default: "4"
         type: string
       session:
         description: "Session ID to scope to (optional, overrides hours)"
@@ -28,11 +28,15 @@ on:
         required: false
         default: "10"
         type: string
-      intent:
-        description: "Run intent classification instead of error classification"
+      evaluator:
+        description: "Run a single evaluator only. Leave empty to run all."
         required: false
-        type: boolean
-        default: false
+        type: choice
+        default: ""
+        options:
+          - ""
+          - "error"
+          - "intent"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -127,7 +131,7 @@ jobs:
         run: |
           BASE_ARGS=("--filter" "agentic-qa-langfuse" "start")
 
-          HOURS_INPUT="${{ inputs.hours || '8' }}"
+          HOURS_INPUT="${{ inputs.hours || '4' }}"
           WORKERS_INPUT="${{ inputs.workers || '10' }}"
           if ! [[ "$HOURS_INPUT" =~ ^[0-9]+$ ]] || ! [[ "$WORKERS_INPUT" =~ ^[0-9]+$ ]]; then
             echo "Error: hours ('$HOURS_INPUT') and workers ('$WORKERS_INPUT') must be positive integers."
@@ -150,25 +154,10 @@ jobs:
 
           BASE_ARGS+=("--workers" "$WORKERS_INPUT")
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            # Manual dispatch: respect user's pipeline selection
-            ARGS=("${BASE_ARGS[@]}")
-
-            if [ "${{ inputs.intent }}" = "true" ]; then
-              ARGS+=("--intent")
-            fi
-
-            echo "Running: pnpm ${ARGS[*]}"
-            pnpm "${ARGS[@]}"
-          else
-            # Scheduled / PR: run both error and intent pipelines
-            echo "=== Running error classification ==="
-            echo "Running: pnpm ${BASE_ARGS[*]}"
-            pnpm "${BASE_ARGS[@]}"
-
-            echo ""
-            echo "=== Running intent classification ==="
-            INTENT_ARGS=("${BASE_ARGS[@]}" "--intent")
-            echo "Running: pnpm ${INTENT_ARGS[*]}"
-            pnpm "${INTENT_ARGS[@]}"
+          EVALUATOR="${{ inputs.evaluator }}"
+          if [ -n "$EVALUATOR" ]; then
+            BASE_ARGS+=("--${EVALUATOR}")
           fi
+
+          echo "Running: pnpm ${BASE_ARGS[*]}"
+          pnpm "${BASE_ARGS[@]}"

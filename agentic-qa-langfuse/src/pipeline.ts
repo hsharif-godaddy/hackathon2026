@@ -8,6 +8,7 @@ import {
   TRACES_ENVIRONMENT,
 } from './config.js';
 import { print as printCost, reset as resetCost } from './cost-tracker.js';
+import { type EvalContext, type Evaluator } from './evaluator.js';
 import { classify as classifyIntent } from './intent-classifier.js';
 import {
   createScore,
@@ -39,12 +40,6 @@ export interface PipelineOptions {
   workers: number;
 }
 
-export interface IntentPipelineOptions {
-  sessions?: string[];
-  hours?: number;
-  workers: number;
-}
-
 export interface SessionData {
   messages: string[];
   traceIds: string[];
@@ -62,7 +57,7 @@ export interface IntentResult {
   reasoning: string;
 }
 
-// -- Step A: Fetch traces --
+// -- Trace fetching --
 
 export async function fetchTraces(
   creds: LangfuseCredentials,
@@ -86,7 +81,6 @@ export async function fetchTraces(
         });
         if (!result.data.length) break;
         allTraces.push(...result.data);
-        console.log(`  Session ${sessionId.slice(0, 12)}... page ${page}, ${result.data.length} traces`);
         if (result.data.length < BATCH_SIZE) break;
         page++;
       }
@@ -102,7 +96,6 @@ export async function fetchTraces(
       });
       if (!result.data.length) break;
       allTraces.push(...result.data);
-      console.log(`  Page ${page} -- ${result.data.length} traces`);
       if (result.data.length < BATCH_SIZE) break;
       page++;
     }
@@ -111,7 +104,30 @@ export async function fetchTraces(
   return allTraces;
 }
 
-// -- Observation scanning --
+// -- Shared concurrency helper --
+
+async function runWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = [];
+  let index = 0;
+
+  async function worker(): Promise<void> {
+    while (index < items.length) {
+      const current = index++;
+      results[current] = await fn(items[current]);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Error classification evaluator
+// ---------------------------------------------------------------------------
 
 function parseMetadata(obs: LangfuseObservation): Record<string, unknown> {
   if (obs.metadata == null) return {};
@@ -167,50 +183,21 @@ async function scanTrace(
   return events;
 }
 
-async function runWithConcurrency<T, R>(
-  items: T[],
-  concurrency: number,
-  fn: (item: T) => Promise<R>
-): Promise<R[]> {
-  const results: R[] = [];
-  let index = 0;
-
-  async function worker(): Promise<void> {
-    while (index < items.length) {
-      const current = index++;
-      results[current] = await fn(items[current]);
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
-  return results;
-}
-
 export async function extractErrorEvents(
   creds: LangfuseCredentials,
   traces: LangfuseTrace[],
   workers: number
 ): Promise<ErrorEvent[]> {
-  let scanned = 0;
-  const allEvents: ErrorEvent[] = [];
-
   const batchResults = await runWithConcurrency(traces, workers, async function scan(trace) {
-    const events = await scanTrace(creds, trace);
-    scanned++;
-    if (scanned % 50 === 0 || scanned === traces.length) {
-      console.log(`  Scanned ${scanned}/${traces.length} traces, ${allEvents.length + events.length} error events so far`);
-    }
-    return events;
+    return scanTrace(creds, trace);
   });
 
+  const allEvents: ErrorEvent[] = [];
   for (const events of batchResults) {
     allEvents.push(...events);
   }
-
   return allEvents;
 }
-
-// -- Step B: Classify and score --
 
 export async function classifyAndScore(
   creds: LangfuseCredentials,
@@ -218,35 +205,29 @@ export async function classifyAndScore(
   errorEvents: ErrorEvent[],
   workers: number
 ): Promise<ClassifiedEvent[]> {
-  let classified = 0;
-
   const results = await runWithConcurrency(errorEvents, workers, async function classifySingle(ev) {
     const classification = await classify(ev.errorMessage, config.llm);
 
-    await createScore(creds, {
-      traceId: ev.traceId,
-      observationId: ev.observationId,
-      name: 'error_category',
-      value: classification.category,
-      dataType: 'CATEGORICAL',
-      comment: classification.reasoning,
-      id: `${ev.observationId}-error_category`,
-    });
-
-    await createScore(creds, {
-      traceId: ev.traceId,
-      observationId: ev.observationId,
-      name: 'error_category_confidence',
-      value: classification.confidence,
-      dataType: 'NUMERIC',
-      comment: classification.reasoning,
-      id: `${ev.observationId}-error_category_confidence`,
-    });
-
-    classified++;
-    if (classified % 10 === 0 || classified === errorEvents.length) {
-      console.log(`  Classified ${classified}/${errorEvents.length} error events`);
-    }
+    await Promise.all([
+      createScore(creds, {
+        traceId: ev.traceId,
+        observationId: ev.observationId,
+        name: 'error_category',
+        value: classification.category,
+        dataType: 'CATEGORICAL',
+        comment: classification.reasoning,
+        id: `${ev.observationId}-error_category`,
+      }),
+      createScore(creds, {
+        traceId: ev.traceId,
+        observationId: ev.observationId,
+        name: 'error_category_confidence',
+        value: classification.confidence,
+        dataType: 'NUMERIC',
+        comment: classification.reasoning,
+        id: `${ev.observationId}-error_category_confidence`,
+      }),
+    ]);
 
     return {
       ...ev,
@@ -255,7 +236,6 @@ export async function classifyAndScore(
     };
   });
 
-  // Trace-level summary scores
   const byTrace = new Map<string, ClassifiedEvent[]>();
   for (const r of results) {
     const list = byTrace.get(r.traceId) ?? [];
@@ -279,37 +259,34 @@ export async function classifyAndScore(
       }
     }
 
-    await createScore(creds, {
-      traceId,
-      name: 'error_count',
-      value: errorCount,
-      dataType: 'NUMERIC',
-      comment: `${errorCount} agent_error_trace event(s) in this trace`,
-      id: `${traceId}-error_count`,
-    });
-
-    await createScore(creds, {
-      traceId,
-      name: 'primary_error_category',
-      value: primaryCategory,
-      dataType: 'CATEGORICAL',
-      comment: `Most frequent error category across ${errorCount} error event(s)`,
-      id: `${traceId}-primary_error_category`,
-    });
+    await Promise.all([
+      createScore(creds, {
+        traceId,
+        name: 'error_count',
+        value: errorCount,
+        dataType: 'NUMERIC',
+        comment: `${errorCount} agent_error_trace event(s) in this trace`,
+        id: `${traceId}-error_count`,
+      }),
+      createScore(creds, {
+        traceId,
+        name: 'primary_error_category',
+        value: primaryCategory,
+        dataType: 'CATEGORICAL',
+        comment: `Most frequent error category across ${errorCount} error event(s)`,
+        id: `${traceId}-primary_error_category`,
+      }),
+    ]);
   }
 
   return results;
 }
 
-// -- Step C: Report --
+export function formatErrorReport(results: ClassifiedEvent[], langfuseBaseUrl: string): string {
+  if (!results.length) return '  No error events found.';
 
-export function printReport(results: ClassifiedEvent[], langfuseBaseUrl: string): void {
+  const lines: string[] = [];
   const total = results.length;
-  if (total === 0) {
-    console.log('\nNo error events found.');
-    return;
-  }
-
   const tracesWithErrors = new Set(results.map(r => r.traceId)).size;
   const categoryCounts = new Map<string, number>();
   const byCategory = new Map<string, ClassifiedEvent[]>();
@@ -324,27 +301,27 @@ export function printReport(results: ClassifiedEvent[], langfuseBaseUrl: string)
   const sep = '='.repeat(72);
   const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
 
-  console.log(`\n${sep}`);
-  console.log(`  TOOL FAILURE ANALYSIS REPORT -- ${now}`);
-  console.log(sep);
-  console.log(`\n  Error events classified:   ${total}`);
-  console.log(`  Traces with errors:        ${tracesWithErrors}\n`);
-  console.log('  Category Distribution:');
-  console.log(`  ${'-'.repeat(55)}`);
+  lines.push(`\n${sep}`);
+  lines.push(`  TOOL FAILURE ANALYSIS REPORT -- ${now}`);
+  lines.push(sep);
+  lines.push(`\n  Error events classified:   ${total}`);
+  lines.push(`  Traces with errors:        ${tracesWithErrors}\n`);
+  lines.push('  Category Distribution:');
+  lines.push(`  ${'-'.repeat(55)}`);
 
   for (const cat of ERROR_CATEGORIES) {
     const count = categoryCounts.get(cat) ?? 0;
     const pct = total ? (count / total) * 100 : 0;
     const bar = '#'.repeat(Math.floor(pct / 2));
-    console.log(`  ${cat.padEnd(30)} ${String(count).padStart(5)}  (${pct.toFixed(1).padStart(5)}%)  ${bar}`);
+    lines.push(`  ${cat.padEnd(30)} ${String(count).padStart(5)}  (${pct.toFixed(1).padStart(5)}%)  ${bar}`);
   }
-  console.log(`  ${'-'.repeat(55)}`);
+  lines.push(`  ${'-'.repeat(55)}`);
 
   for (const cat of ERROR_CATEGORIES) {
     const tracesInCat = byCategory.get(cat);
     if (!tracesInCat?.length) continue;
 
-    console.log(`\n  [${cat}] -- Top error messages:`);
+    lines.push(`\n  [${cat}] -- Top error messages:`);
     const msgCounts = new Map<string, number>();
     for (const r of tracesInCat) {
       const key = r.errorMessage.slice(0, 120).replace(/\n/g, ' ');
@@ -352,73 +329,47 @@ export function printReport(results: ClassifiedEvent[], langfuseBaseUrl: string)
     }
     const sorted = [...msgCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
     for (const [msg, cnt] of sorted) {
-      console.log(`    (${cnt}x) ${msg}`);
+      lines.push(`    (${cnt}x) ${msg}`);
     }
     const sample = tracesInCat[0];
-    console.log(`  Sample: ${langfuseBaseUrl}/trace/${sample.traceId}?observation=${sample.observationId}`);
+    lines.push(`  Sample: ${langfuseBaseUrl}/trace/${sample.traceId}?observation=${sample.observationId}`);
   }
 
   if (lowConfidence.length) {
-    console.log(`\n  Low-confidence classifications (${lowConfidence.length}):`);
+    lines.push(`\n  Low-confidence classifications (${lowConfidence.length}):`);
     for (const r of lowConfidence.slice(0, 10)) {
-      console.log(`    [${r.confidence.toFixed(2)}] ${r.category.padEnd(28)} ${langfuseBaseUrl}/trace/${r.traceId}`);
+      lines.push(`    [${r.confidence.toFixed(2)}] ${r.category.padEnd(28)} ${langfuseBaseUrl}/trace/${r.traceId}`);
     }
     if (lowConfidence.length > 10) {
-      console.log(`    ... and ${lowConfidence.length - 10} more`);
+      lines.push(`    ... and ${lowConfidence.length - 10} more`);
     }
   }
 
-  console.log(`\n${sep}`);
+  lines.push(`\n${sep}`);
+  return lines.join('\n');
 }
 
-// -- Main entry --
+export const errorEvaluator: Evaluator = {
+  name: 'error',
+  async run(ctx: EvalContext): Promise<string> {
+    const errorEvents = await extractErrorEvents(ctx.creds, ctx.traces, ctx.workers);
+    if (!errorEvents.length) return '  No error events found.';
 
-export async function run(config: Config, options: PipelineOptions): Promise<void> {
-  resetCost();
-  const creds: LangfuseCredentials = config.langfuse;
+    const results = await classifyAndScore(ctx.creds, ctx.config, errorEvents, ctx.workers);
+    return formatErrorReport(results, ctx.creds.baseUrl);
+  },
+};
 
-  const scopeParts: string[] = [];
-  if (options.sessions?.length) {
-    scopeParts.push(`sessions: ${options.sessions.map(s => s.slice(0, 12) + '...').join(', ')}`);
-  }
-  if (options.hours) {
-    scopeParts.push(`last ${options.hours}h`);
-  }
+// ---------------------------------------------------------------------------
+// Intent classification evaluator
+// ---------------------------------------------------------------------------
 
-  console.log(`Step 1: Fetching traces (${scopeParts.join(', ')})...`);
-  const traces = await fetchTraces(creds, { sessions: options.sessions, hours: options.hours });
-  console.log(`  -> ${traces.length} traces found.\n`);
-
-  if (!traces.length) {
-    console.log('No traces found. Exiting.');
-    return;
-  }
-
-  console.log(`Step 2: Scanning observations (${options.workers} workers)...`);
-  const t0 = Date.now();
-  const errorEvents = await extractErrorEvents(creds, traces, options.workers);
-  console.log(`  -> ${errorEvents.length} error events found in ${((Date.now() - t0) / 1000).toFixed(1)}s.\n`);
-
-  if (!errorEvents.length) {
-    console.log('No error events found in these traces. Exiting.');
-    return;
-  }
-
-  console.log(`Step 3: Classifying errors (${options.workers} workers)...`);
-  const t1 = Date.now();
-  const results = await classifyAndScore(creds, config, errorEvents, options.workers);
-  console.log(`  -> Classification done in ${((Date.now() - t1) / 1000).toFixed(1)}s.\n`);
-
-  console.log('Step 4: Generating report...');
-  printReport(results, creds.baseUrl);
-  printCost();
+export interface SessionGroupResult {
+  sessions: Map<string, LangfuseTrace[]>;
+  skipped: number;
 }
 
-// ---------------------------------------------------------------------------
-// Intent classification pipeline
-// ---------------------------------------------------------------------------
-
-export function groupBySession(traces: LangfuseTrace[]): Map<string, LangfuseTrace[]> {
+export function groupBySession(traces: LangfuseTrace[]): SessionGroupResult {
   const sessions = new Map<string, LangfuseTrace[]>();
   let skipped = 0;
 
@@ -432,11 +383,7 @@ export function groupBySession(traces: LangfuseTrace[]): Map<string, LangfuseTra
     sessions.set(trace.sessionId, list);
   }
 
-  if (skipped) {
-    console.log(`  Warning: ${skipped} trace(s) have no sessionId and were skipped.`);
-  }
-
-  return sessions;
+  return { sessions, skipped };
 }
 
 function extractInputText(input: unknown): string | null {
@@ -482,56 +429,57 @@ export async function classifyAndScoreIntents(
   sessionInputs: Map<string, SessionData>,
   workers: number
 ): Promise<IntentResult[]> {
-  let classified = 0;
   const entries = [...sessionInputs.entries()];
-  const total = entries.length;
 
-  const results = await runWithConcurrency(entries, workers, async function classifySession(
+  return runWithConcurrency(entries, workers, async function classifySession(
     [sessionId, data]
   ) {
-    let result: IntentResult;
     try {
       const classification = await classifyIntent(data.messages, config.llm);
 
-      await createScore(creds, {
-        sessionId,
-        name: 'intent_primary_category',
-        value: classification.primaryCategory,
-        dataType: 'CATEGORICAL',
-        comment: classification.reasoning,
-        id: `${sessionId}-intent_primary_category`,
-      });
-
-      await createScore(creds, {
-        sessionId,
-        name: 'intent_primary_confidence',
-        value: classification.primaryConfidence,
-        dataType: 'NUMERIC',
-        comment: classification.reasoning,
-        id: `${sessionId}-intent_primary_confidence`,
-      });
-
-      if (classification.secondaryCategory) {
-        await createScore(creds, {
+      const scores: Promise<void>[] = [
+        createScore(creds, {
           sessionId,
-          name: 'intent_secondary_category',
-          value: classification.secondaryCategory,
+          name: 'intent_primary_category',
+          value: classification.primaryCategory,
           dataType: 'CATEGORICAL',
           comment: classification.reasoning,
-          id: `${sessionId}-intent_secondary_category`,
-        });
-
-        await createScore(creds, {
+          id: `${sessionId}-intent_primary_category`,
+        }),
+        createScore(creds, {
           sessionId,
-          name: 'intent_secondary_confidence',
-          value: classification.secondaryConfidence,
+          name: 'intent_primary_confidence',
+          value: classification.primaryConfidence,
           dataType: 'NUMERIC',
           comment: classification.reasoning,
-          id: `${sessionId}-intent_secondary_confidence`,
-        });
+          id: `${sessionId}-intent_primary_confidence`,
+        }),
+      ];
+
+      if (classification.secondaryCategory) {
+        scores.push(
+          createScore(creds, {
+            sessionId,
+            name: 'intent_secondary_category',
+            value: classification.secondaryCategory,
+            dataType: 'CATEGORICAL',
+            comment: classification.reasoning,
+            id: `${sessionId}-intent_secondary_category`,
+          }),
+          createScore(creds, {
+            sessionId,
+            name: 'intent_secondary_confidence',
+            value: classification.secondaryConfidence,
+            dataType: 'NUMERIC',
+            comment: classification.reasoning,
+            id: `${sessionId}-intent_secondary_confidence`,
+          }),
+        );
       }
 
-      result = {
+      await Promise.all(scores);
+
+      return {
         sessionId,
         traceCount: data.traceIds.length,
         messageCount: data.messages.length,
@@ -539,40 +487,29 @@ export async function classifyAndScoreIntents(
         ...classification,
       };
     } catch (error) {
-      console.log(`  ERROR classifying session ${sessionId.slice(0, 30)}: ${error instanceof Error ? error.message : String(error)}`);
-      result = {
+      return {
         sessionId,
         traceCount: data.traceIds.length,
         messageCount: data.messages.length,
         traceIds: data.traceIds,
-        primaryCategory: 'other',
+        primaryCategory: 'other' as const,
         primaryConfidence: 0.0,
         secondaryCategory: null,
         secondaryConfidence: 0.0,
         reasoning: `Classification failed: ${String(error).slice(0, 200)}`,
       };
     }
-
-    classified++;
-    if (classified % 10 === 0 || classified === total) {
-      console.log(`  Classified ${classified}/${total} sessions`);
-    }
-
-    return result;
   });
-
-  return results;
 }
 
-export function printIntentReport(results: IntentResult[], langfuseBaseUrl: string): void {
-  const total = results.length;
-  if (total === 0) {
-    console.log('\nNo sessions to classify.');
-    return;
-  }
+export function formatIntentReport(results: IntentResult[], langfuseBaseUrl: string): string {
+  if (!results.length) return '  No sessions to classify.';
 
+  const lines: string[] = [];
+  const total = results.length;
   const totalTraces = results.reduce(function sum(acc, r) { return acc + r.traceCount; }, 0);
   const sessionsWithSecondary = results.filter(function hasSecondary(r) { return r.secondaryCategory != null; }).length;
+  const failed = results.filter(function isFailed(r) { return r.primaryConfidence === 0.0 && r.primaryCategory === 'other'; }).length;
 
   const primaryCounts = new Map<string, number>();
   const secondaryCounts = new Map<string, number>();
@@ -591,103 +528,146 @@ export function printIntentReport(results: IntentResult[], langfuseBaseUrl: stri
   const sep = '='.repeat(72);
   const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
 
-  console.log(`\n${sep}`);
-  console.log(`  INTENT CLASSIFICATION REPORT -- ${now}`);
-  console.log(sep);
-  console.log(`\n  Sessions classified:       ${total}`);
-  console.log(`  Total traces in sessions:  ${totalTraces}`);
-  console.log(`  Sessions with secondary:   ${sessionsWithSecondary}\n`);
+  lines.push(`\n${sep}`);
+  lines.push(`  INTENT CLASSIFICATION REPORT -- ${now}`);
+  lines.push(sep);
+  lines.push(`\n  Sessions classified:       ${total}`);
+  lines.push(`  Total traces in sessions:  ${totalTraces}`);
+  lines.push(`  Sessions with secondary:   ${sessionsWithSecondary}`);
+  if (failed) lines.push(`  Classification failures:   ${failed}`);
 
-  console.log('  Primary Intent Distribution:');
-  console.log(`  ${'-'.repeat(55)}`);
+  lines.push('\n  Primary Intent Distribution:');
+  lines.push(`  ${'-'.repeat(55)}`);
   for (const cat of INTENT_CATEGORIES) {
     const count = primaryCounts.get(cat) ?? 0;
     const pct = total ? (count / total) * 100 : 0;
     const bar = '#'.repeat(Math.floor(pct / 2));
-    console.log(`  ${cat.padEnd(25)} ${String(count).padStart(5)}  (${pct.toFixed(1).padStart(5)}%)  ${bar}`);
+    lines.push(`  ${cat.padEnd(25)} ${String(count).padStart(5)}  (${pct.toFixed(1).padStart(5)}%)  ${bar}`);
   }
-  console.log(`  ${'-'.repeat(55)}`);
+  lines.push(`  ${'-'.repeat(55)}`);
 
   if (sessionsWithSecondary) {
-    console.log('\n  Secondary Intent Distribution:');
-    console.log(`  ${'-'.repeat(55)}`);
+    lines.push('\n  Secondary Intent Distribution:');
+    lines.push(`  ${'-'.repeat(55)}`);
     for (const cat of INTENT_CATEGORIES) {
       const count = secondaryCounts.get(cat) ?? 0;
       if (!count) continue;
       const pct = (count / sessionsWithSecondary) * 100;
       const bar = '#'.repeat(Math.floor(pct / 2));
-      console.log(`  ${cat.padEnd(25)} ${String(count).padStart(5)}  (${pct.toFixed(1).padStart(5)}%)  ${bar}`);
+      lines.push(`  ${cat.padEnd(25)} ${String(count).padStart(5)}  (${pct.toFixed(1).padStart(5)}%)  ${bar}`);
     }
-    console.log(`  ${'-'.repeat(55)}`);
+    lines.push(`  ${'-'.repeat(55)}`);
   }
 
   for (const cat of INTENT_CATEGORIES) {
     const sessionsInCat = byPrimary.get(cat);
     if (!sessionsInCat?.length) continue;
 
-    console.log(`\n  [${cat}] -- Sample sessions:`);
+    lines.push(`\n  [${cat}] -- Sample sessions:`);
     for (const r of sessionsInCat.slice(0, 3)) {
       const secondary = r.secondaryCategory ? `, secondary=${r.secondaryCategory}` : '';
-      console.log(`    Session: ${r.sessionId.slice(0, 40)}  (${r.messageCount} msgs, ${r.traceCount} traces, conf=${r.primaryConfidence.toFixed(2)}${secondary})`);
-      console.log(`      Reasoning: ${r.reasoning.slice(0, 120)}`);
+      lines.push(`    Session: ${r.sessionId.slice(0, 40)}  (${r.messageCount} msgs, ${r.traceCount} traces, conf=${r.primaryConfidence.toFixed(2)}${secondary})`);
+      lines.push(`      Reasoning: ${r.reasoning.slice(0, 120)}`);
       if (r.traceIds.length) {
-        console.log(`      Link: ${langfuseBaseUrl}/trace/${r.traceIds[0]}`);
+        lines.push(`      Link: ${langfuseBaseUrl}/trace/${r.traceIds[0]}`);
       }
     }
   }
 
   if (lowConfidence.length) {
-    console.log(`\n  Low-confidence primary classifications (${lowConfidence.length}):`);
+    lines.push(`\n  Low-confidence primary classifications (${lowConfidence.length}):`);
     for (const r of lowConfidence.slice(0, 10)) {
-      console.log(`    [${r.primaryConfidence.toFixed(2)}] ${r.primaryCategory.padEnd(25)} session=${r.sessionId.slice(0, 30)}`);
+      lines.push(`    [${r.primaryConfidence.toFixed(2)}] ${r.primaryCategory.padEnd(25)} session=${r.sessionId.slice(0, 30)}`);
     }
     if (lowConfidence.length > 10) {
-      console.log(`    ... and ${lowConfidence.length - 10} more`);
+      lines.push(`    ... and ${lowConfidence.length - 10} more`);
     }
   }
 
-  console.log(`\n${sep}`);
+  lines.push(`\n${sep}`);
+  return lines.join('\n');
 }
 
-export async function runIntent(config: Config, options: IntentPipelineOptions): Promise<void> {
-  resetCost();
-  const creds: LangfuseCredentials = config.langfuse;
+export const intentEvaluator: Evaluator = {
+  name: 'intent',
+  async run(ctx: EvalContext): Promise<string> {
+    const { sessions } = groupBySession(ctx.traces);
+    const sessionInputs = extractSessionInputs(sessions);
+    const results = await classifyAndScoreIntents(ctx.creds, ctx.config, sessionInputs, ctx.workers);
+    return formatIntentReport(results, ctx.creds.baseUrl);
+  },
+};
 
-  const scopeParts: string[] = [];
+// ---------------------------------------------------------------------------
+// Evaluator registry
+// ---------------------------------------------------------------------------
+
+export const EVALUATORS: Evaluator[] = [errorEvaluator, intentEvaluator];
+
+export function findEvaluators(names: string[]): Evaluator[] {
+  return names.map(function find(name) {
+    const match = EVALUATORS.find(function match(e) { return e.name === name; });
+    if (!match) throw new Error(`Unknown evaluator: "${name}". Available: ${EVALUATORS.map(e => e.name).join(', ')}`);
+    return match;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Entry points
+// ---------------------------------------------------------------------------
+
+function formatScope(options: PipelineOptions): string {
+  const parts: string[] = [];
   if (options.sessions?.length) {
-    scopeParts.push(`sessions: ${options.sessions.map(function truncate(s) { return s.slice(0, 12) + '...'; }).join(', ')}`);
+    parts.push(`sessions: ${options.sessions.map(function truncate(s) { return s.slice(0, 12) + '...'; }).join(', ')}`);
   }
   if (options.hours) {
-    scopeParts.push(`last ${options.hours}h`);
+    parts.push(`last ${options.hours}h`);
   }
+  return parts.join(', ');
+}
 
-  console.log(`Step 1: Fetching traces (${scopeParts.join(', ')}) [mode=intent]...`);
+export async function runAll(config: Config, options: PipelineOptions, evaluators?: Evaluator[]): Promise<void> {
+  resetCost();
+  const creds: LangfuseCredentials = config.langfuse;
+  const selected = evaluators ?? EVALUATORS;
+
   const traces = await fetchTraces(creds, { sessions: options.sessions, hours: options.hours });
-  console.log(`  -> ${traces.length} traces found.\n`);
+  const sessionCount = new Set(traces.map(t => t.sessionId).filter(Boolean)).size;
+
+  console.log(`Scope: ${formatScope(options)}`);
+  console.log(`Traces: ${traces.length}, Sessions: ${sessionCount}`);
+  console.log(`Evaluators: ${selected.map(e => e.name).join(', ')}`);
 
   if (!traces.length) {
     console.log('No traces found. Exiting.');
     return;
   }
 
-  console.log('Step 2: Grouping traces by session...');
-  const sessions = groupBySession(traces);
-  console.log(`  -> ${sessions.size} sessions found.\n`);
+  const ctx: EvalContext = { creds, config, traces, workers: options.workers };
 
-  console.log('Step 3: Extracting user inputs per session...');
-  const sessionInputs = extractSessionInputs(sessions);
-  let sessionsWithMessages = 0;
-  for (const data of sessionInputs.values()) {
-    if (data.messages.length) sessionsWithMessages++;
+  let reports: string[];
+  if (selected.length === 1) {
+    reports = [await selected[0].run(ctx)];
+  } else {
+    reports = await Promise.all(selected.map(function execute(evaluator) {
+      return evaluator.run(ctx);
+    }));
   }
-  console.log(`  -> ${sessionsWithMessages}/${sessionInputs.size} sessions have user messages.\n`);
 
-  console.log(`Step 4: Classifying intents (${options.workers} workers)...`);
-  const t0 = Date.now();
-  const results = await classifyAndScoreIntents(creds, config, sessionInputs, options.workers);
-  console.log(`  -> Classification done in ${((Date.now() - t0) / 1000).toFixed(1)}s.\n`);
+  for (const report of reports) {
+    console.log(report);
+  }
 
-  console.log('Step 5: Generating intent report...');
-  printIntentReport(results, creds.baseUrl);
   printCost();
+}
+
+// Backward-compatible thin wrappers
+
+export async function run(config: Config, options: PipelineOptions): Promise<void> {
+  await runAll(config, options, [errorEvaluator]);
+}
+
+export async function runIntent(config: Config, options: PipelineOptions): Promise<void> {
+  await runAll(config, options, [intentEvaluator]);
 }

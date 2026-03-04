@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util';
 
 import { DEFAULT_WORKERS, load } from './config.js';
-import { run, runIntent } from './pipeline.js';
+import { findEvaluators, run, runAll, runIntent } from './pipeline.js';
 
 // Strip standalone '--' that pnpm injects when forwarding script args
 const args = process.argv.slice(2).filter(a => a !== '--');
@@ -13,6 +13,7 @@ const { values } = parseArgs({
     hours: { type: 'string' },
     workers: { type: 'string' },
     intent: { type: 'boolean', default: false },
+    error: { type: 'boolean', default: false },
   },
   strict: false,
 });
@@ -25,6 +26,7 @@ if (!sessions?.length && !hours) {
   console.error('  Example: tsx src/index.ts --session abc123');
   console.error('  Example: tsx src/index.ts --hours 24');
   console.error('  Example: tsx src/index.ts --intent --hours 24');
+  console.error('  Example: tsx src/index.ts --error --hours 24');
   process.exit(1);
 }
 
@@ -41,9 +43,16 @@ function parsePositiveInt(value: string | undefined, fallback: number, name: str
 const config = load();
 const workers = parsePositiveInt(values.workers as string | undefined, DEFAULT_WORKERS, 'workers');
 const parsedHours = hours ? parsePositiveInt(hours, 0, 'hours') : undefined;
+const options = { sessions, hours: parsedHours, workers };
 
-if (values.intent) {
-  await runIntent(config, { sessions, hours: parsedHours, workers });
+if (values.intent && values.error) {
+  // Both flags explicit -- same as runAll but lets user be explicit
+  await runAll(config, options, findEvaluators(['error', 'intent']));
+} else if (values.intent) {
+  await runIntent(config, options);
+} else if (values.error) {
+  await run(config, options);
 } else {
-  await run(config, { sessions, hours: parsedHours, workers });
+  // No flag: run all evaluators (default for scheduled / PR runs)
+  await runAll(config, options);
 }
