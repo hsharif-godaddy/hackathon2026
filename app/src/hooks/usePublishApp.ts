@@ -90,15 +90,17 @@ async function handleLocalDevPublishSuccess(
     setPublishSuccess(appId, true);
   }
 
-  // Invalidate git history and secrets diff to reflect the completed sync
-  await queryClient.invalidateQueries({
-    queryKey: ['git-history', appId],
-    refetchType: 'active'
-  });
-  await queryClient.invalidateQueries({
-    queryKey: ['secretsDiff', appId],
-    refetchType: 'active'
-  });
+  // Invalidate git history and secrets diff in parallel to reflect the completed sync
+  await Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: ['git-history', appId],
+      refetchType: 'active'
+    }),
+    queryClient.invalidateQueries({
+      queryKey: ['secretsDiff', appId],
+      refetchType: 'active'
+    }),
+  ]);
 }
 
 /**
@@ -182,12 +184,12 @@ export function usePublishApp() {
         }
       }
 
-      // Regenerate JWT with fresh permissions before publish
+      // Regenerate JWT and fetch agent URL in parallel (independent lookups)
       logger.info('publish.regenerate-token', { appId });
-      const tokenResult = await regenerateToken({ siteId: appId, force: true });
-
-      // Get agent URL for this site
-      const apiConfig = await dynamicApiConfigService.getConfigForSite(appId);
+      const [tokenResult, apiConfig] = await Promise.all([
+        regenerateToken({ siteId: appId, force: true }),
+        dynamicApiConfigService.getConfigForSite(appId),
+      ]);
 
       if (!apiConfig.agentUrl) {
         throw new Error('Agent URL not available for this site');

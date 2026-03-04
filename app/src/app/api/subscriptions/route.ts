@@ -48,21 +48,16 @@ export const GET = withCustomerAuth(async (
     const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
     const client = new AiroMgmtClient({ baseUrl, jwt: authContext.jwt });
 
-    // Check if grants feature is enabled
-    const isGrantsEnabled = await checkSwitchboardFlag(
-      'app-builder-grants',
-      authContext.jwt,
-      request.headers
-    );
-
     logger.info('subscriptions.api.start', {
       message: 'Fetching all subscriptions with best selection',
       customerId: authContext.user.customerId,
-      grantsEnabled: isGrantsEnabled
     });
 
-    // Get all customer's subscriptions
-    const subscriptions = await client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER);
+    // Fetch grants flag and subscriptions in parallel (independent lookups)
+    const [isGrantsEnabled, subscriptions] = await Promise.all([
+      checkSwitchboardFlag('app-builder-grants', authContext.jwt, request.headers),
+      client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER),
+    ]);
 
     logger.info('subscriptions.api.fetched', {
       count: subscriptions.length,

@@ -469,31 +469,39 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
           continue;
         }
 
-        for (const system of systems) {
-          try {
+        // Search all systems in parallel within this subscription
+        const systemResults = await Promise.allSettled(
+          systems.map(async (system) => {
             const apps = await client.getAppsForSystem(sub.id, system.id);
             const matchingApp = apps.find(app => app.id === siteId);
+            return matchingApp ? { system, app: matchingApp } : null;
+          })
+        );
 
-            if (matchingApp) {
-              // getAppsForSystem returns summary data without variables
-              // Fetch full app details to get variables (including initialPrompt) and CDN info
-              try {
-                const fullApp = await client.getApp(sub.id, system.id, matchingApp.id, true);
-                return this.mapAppToSiteInfo(fullApp, customerId);
-              } catch (fetchError) {
-                logger.warn('v2-control-plane.get-site.full-app-fetch-failed', {
-                  siteId,
-                  error: fetchError instanceof Error ? fetchError.message : 'Unknown error'
-                });
-                return this.mapAppToSiteInfo(matchingApp, customerId);
-              }
-            }
-          } catch (error) {
+        for (const [index, result] of systemResults.entries()) {
+          if (result.status === 'rejected') {
             logger.warn('v2-control-plane.get-site.system-search-failed', {
               siteId,
               subscriptionId: sub.id,
-              systemId: system.id
+              systemId: systems[index]?.id,
             });
+            continue;
+          }
+
+          const match = result.value;
+          if (match) {
+            // getAppsForSystem returns summary data without variables
+            // Fetch full app details to get variables (including initialPrompt) and CDN info
+            try {
+              const fullApp = await client.getApp(sub.id, match.system.id, match.app.id, true);
+              return this.mapAppToSiteInfo(fullApp, customerId);
+            } catch (fetchError) {
+              logger.warn('v2-control-plane.get-site.full-app-fetch-failed', {
+                siteId,
+                error: fetchError instanceof Error ? fetchError.message : 'Unknown error'
+              });
+              return this.mapAppToSiteInfo(match.app, customerId);
+            }
           }
         }
       }

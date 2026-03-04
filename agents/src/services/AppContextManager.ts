@@ -69,17 +69,13 @@ export class AppContextManager {
         return null;
       }
 
-      // Get package.json information
-      const packageInfo = await this.getPackageInfo(context);
-
-      // Get color scheme information
-      const colorSchemeInfo = await this.getColorSchemeInfo(appId);
-
-      // Get secrets information
-      const secretsInfo = await this.getSecretsInfo(appId);
-
-      // Get media slots information
-      const mediaSlotsInfo = await this.getMediaSlotsInfo(appId);
+      // Fetch all context data in parallel (these are independent lookups)
+      const [packageInfo, colorSchemeInfo, secretsInfo, mediaSlotsInfo] = await Promise.all([
+        this.getPackageInfo(context),
+        this.getColorSchemeInfo(appId),
+        this.getSecretsInfo(appId),
+        this.getMediaSlotsInfo(appId),
+      ]);
 
       // Format directory listing and package info into context message
       const formattedContext = this.formatAppContext(

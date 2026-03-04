@@ -94,12 +94,13 @@ router.get('/conversations/:appId', validateAppIdParam, async (req, res) => {
 
   try {
     
-    const conversations = await conversationRepo.getConversationsWithMessageCount(appId, {
-      limit: limitNum,
-      offset: offsetNum
-    });
-    
-    const total = await conversationRepo.getConversationCount(appId);
+    const [conversations, total] = await Promise.all([
+      conversationRepo.getConversationsWithMessageCount(appId, {
+        limit: limitNum,
+        offset: offsetNum
+      }),
+      conversationRepo.getConversationCount(appId),
+    ]);
     const hasMore = offsetNum + conversations.length < total;
     
     logger.info('conversations.fetch.success', {

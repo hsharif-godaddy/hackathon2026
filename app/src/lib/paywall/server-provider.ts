@@ -182,21 +182,16 @@ export class ServerPaywallProvider implements PaywallDataProvider {
     const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
     const client = new AiroMgmtClient({ baseUrl, jwt: this.jwt });
 
-    // Check if grants feature is enabled
-    const isGrantsEnabled = await checkSwitchboardFlag(
-      'app-builder-grants',
-      this.jwt,
-      this.headers
-    );
+    // Fetch grants flag and subscriptions in parallel (independent lookups)
+    const [isGrantsEnabled, subscriptions] = await Promise.all([
+      checkSwitchboardFlag('app-builder-grants', this.jwt, this.headers),
+      client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER),
+    ]);
 
     logger.info('paywall.server-provider.get-account-subscription', {
-      message: 'Fetching account subscription',
+      message: 'Fetched account subscription data',
       grantsEnabled: isGrantsEnabled
     });
-
-    const subscriptions = await client.getSubscriptions(
-      AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER
-    );
 
     // Prioritize subscriptions by plan type for selection
     // Order of precedence: starter > free > airoPlus > none
