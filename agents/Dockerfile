@@ -18,9 +18,10 @@ USER agent
 
 WORKDIR /workspace
 
-RUN mkdir -p /workspace/packages/ai-lib /workspace/agents
+RUN mkdir -p /workspace/packages/shared /workspace/packages/ai-lib /workspace/agents
 
 COPY --chown=agent:agent ./package.json ./pnpm-lock.yaml ./pnpm-workspace.yaml /workspace/
+COPY --chown=agent:agent ./packages/shared/package.json /workspace/packages/shared/
 COPY --chown=agent:agent ./packages/ai-lib/package.json /workspace/packages/ai-lib/
 COPY --chown=agent:agent ./agents/package.json /workspace/agents/
 
@@ -28,6 +29,9 @@ RUN --mount=type=secret,id=npm_token,uid=790 \
   printf "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=%s\n//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:always-auth=true\nregistry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/\n" "$(cat /run/secrets/npm_token)" > ~/.npmrc && \
   pnpm install --frozen-lockfile && \
   rm -f ~/.npmrc
+
+COPY --chown=agent:agent ./packages/shared /workspace/packages/shared
+RUN cd /workspace/packages/shared && pnpm build
 
 COPY --chown=agent:agent ./packages/ai-lib /workspace/packages/ai-lib
 RUN cd /workspace/packages/ai-lib && pnpm build

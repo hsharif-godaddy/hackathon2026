@@ -14,6 +14,7 @@ WORKDIR /workspace
 # Copy workspace files first (for pnpm workspace setup)
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY app/package.json ./app/
+COPY packages/shared/package.json ./packages/shared/
 COPY packages/ai-lib/package.json ./packages/ai-lib/
 COPY app/.npmrc ./
 
@@ -22,7 +23,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Install dependencies using pnpm workspace
 RUN pnpm install
 
-# Copy ai-lib source and build it (app depends on @airo/ai-lib client-side workspace package)
+# Copy shared and ai-lib sources and build them (app depends on both workspace packages)
+COPY packages/shared/ ./packages/shared/
+RUN pnpm --filter @airo/shared build
+
 COPY packages/ai-lib/ ./packages/ai-lib/
 RUN pnpm --filter @airo/ai-lib build
 
