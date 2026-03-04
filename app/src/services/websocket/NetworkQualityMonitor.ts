@@ -12,6 +12,7 @@
 import type { Socket } from 'socket.io-client'
 
 import { logger } from '@/lib/request-context'
+import type { ConnectionPhases } from './ConnectionManager'
 
 // Thresholds
 export const PING_LATENCY_WARN_MS = 500
@@ -24,6 +25,7 @@ export class NetworkQualityMonitor {
   private connectStartedAt: number | null = null
   private appId: string | null = null
   private lastWarnedRetryCount = 0
+  private phases: ConnectionPhases | null = null
 
   // Engine event listeners (stored for cleanup)
   private pingSentAt: number | null = null
@@ -91,7 +93,16 @@ export class NetworkQualityMonitor {
   }
 
   /**
+   * Accept phase-level timing data from ConnectionManager.
+   * Called via the onConnectionPhases callback after socket connects.
+   */
+  setConnectionPhases(phases: ConnectionPhases): void {
+    this.phases = phases
+  }
+
+  /**
    * Log if connection took longer than threshold.
+   * When phases are available, include full breakdown in the warning payload.
    */
   markConnectEstablished(socketId: string): void {
     if (this.connectStartedAt === null) return
@@ -104,8 +115,20 @@ export class NetworkQualityMonitor {
         appId: this.appId,
         socketId,
         threshold: CONNECT_DURATION_WARN_MS,
+        // Include phase breakdown when available — this is the key diagnostic data
+        ...(this.phases && {
+          connectAttemptId: this.phases.connectAttemptId,
+          configFetchMs: this.phases.configFetchMs,
+          tokenFetchMs: this.phases.tokenFetchMs,
+          preSocketMs: this.phases.preSocketMs,
+          socketHandshakeMs: this.phases.socketHandshakeMs,
+          tokenResourceTiming: this.phases.tokenResourceTiming,
+          wsResourceTiming: this.phases.wsResourceTiming,
+        }),
       })
     }
+
+    this.phases = null
   }
 
   /**
@@ -181,5 +204,6 @@ export class NetworkQualityMonitor {
     this.connectStartedAt = null
     this.appId = null
     this.lastWarnedRetryCount = 0
+    this.phases = null
   }
 }

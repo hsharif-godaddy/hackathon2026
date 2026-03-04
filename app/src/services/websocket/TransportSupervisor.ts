@@ -147,6 +147,7 @@ export class TransportSupervisor extends EventEmitter {
       onConnect: (params) => this.handleConnectionEstablished(params),
       onConnectionFailed: (error) => this.handleConnectionFailed(error),
       onConnectError: (error) => this.handleConnectError(error),
+      onConnectionPhases: (phases) => this.deps.qualityMonitor?.setConnectionPhases(phases),
       onDisconnect: (params) => this.handleDisconnect(params),
       onReconnectAttempt: (params) => this.handleReconnectAttempt(params),
       onReconnect: (params) => this.handleReconnect(params),

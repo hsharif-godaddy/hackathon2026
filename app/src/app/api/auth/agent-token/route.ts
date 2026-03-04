@@ -89,8 +89,13 @@ async function validateSiteAccess(siteId: string, user: CustomerUser, jwt: strin
 }
 
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext): Promise<NextResponse> => {
+  const routeStart = Date.now();
+  const timing: Record<string, number> = {};
+
   try {
+    const bodyParseStart = Date.now();
     const body: CreateAgentTokenRequest = await request.json();
+    timing.bodyParseMs = Date.now() - bodyParseStart;
     const { user } = authContext;
 
     if (!body.siteId) {
@@ -113,7 +118,10 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       }
     }
 
+    const siteAccessStart = Date.now();
     const validationError = await validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct);
+    timing.siteAccessMs = Date.now() - siteAccessStart;
+
     if (validationError) {
       return validationError;
     }
@@ -124,6 +132,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     let canPurchaseDomain = false;
     let eligibilityDetails: Record<string, unknown> = {};
 
+    const paywallStart = Date.now();
     try {
       const provider = new ServerPaywallProvider(
         authContext.jwt || '',
@@ -176,8 +185,10 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       canDownload = false;
       canPublish = false;
     }
+    timing.paywallCheckMs = Date.now() - paywallStart;
 
     // Check domain purchase feature flag (fail closed - deny if check fails)
+    const switchboardStart = Date.now();
     try {
       canPurchaseDomain = await checkSwitchboardFlag(
         'appbuilder-domain-purchase',
@@ -192,7 +203,9 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       });
       canPurchaseDomain = false;
     }
+    timing.switchboardMs = Date.now() - switchboardStart;
 
+    const jwtStart = Date.now();
     const jwtService = getJWTService();
     const tokenOptions = {
       siteId: body.siteId,
@@ -206,6 +219,15 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     const result = body.expiresInSeconds
       ? await jwtService.createToken(tokenOptions, body.expiresInSeconds)
       : await jwtService.getToken(tokenOptions);
+    timing.jwtGenerationMs = Date.now() - jwtStart;
+
+    timing.totalMs = Date.now() - routeStart;
+
+    logger.info('agent-token.timing', {
+      siteId: body.siteId,
+      customerId: user.customerId,
+      ...timing,
+    });
 
     const response: Record<string, unknown> = {
       token: result.token,

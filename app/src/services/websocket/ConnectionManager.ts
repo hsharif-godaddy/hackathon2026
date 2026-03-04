@@ -16,6 +16,34 @@ import { io, type Socket } from 'socket.io-client'
 import { logger } from '@/lib/request-context'
 import { getSharedSocket, setSharedSocket } from '@/lib/socketRegistry'
 
+/**
+ * Toggle for connection diagnostics logging.
+ * When true, emits detailed phase-level timing at info level.
+ * The enhanced `slow_connect` warning (>10s) always includes phase data regardless.
+ * Flip to false once the slow-connect root cause is resolved.
+ */
+const CONNECTION_DIAGNOSTICS_ENABLED = true
+
+export interface ConnectionPhases {
+  connectAttemptId: string
+  configFetchMs: number
+  tokenFetchMs: number
+  preSocketMs: number
+  socketHandshakeMs?: number
+  tokenResourceTiming?: {
+    serverProcessingMs: number
+    transferMs: number
+    totalFetchMs: number
+    connectionReused: boolean
+  }
+  wsResourceTiming?: {
+    dnsMs: number
+    tcpMs: number
+    tlsMs: number
+    wsHandshakeMs: number
+  }
+}
+
 type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
 
 export interface ConnectionCallbacks {
@@ -39,6 +67,11 @@ export interface ConnectionCallbacks {
    * Invoked when Socket.IO emits a connect_error that is not handled internally (e.g., non-token errors).
    */
   onConnectError?: (error: Error) => void
+
+  /**
+   * Invoked with phase-level timing data after connection completes (for NetworkQualityMonitor).
+   */
+  onConnectionPhases?: (phases: ConnectionPhases) => void
 
   /**
    * Invoked when the socket disconnects after being connected.
@@ -132,6 +165,8 @@ export class ConnectionManager {
   private tokenRefreshCount = 0
   private socketUrl: string | null = null
   private connectPromise: Promise<void> | null = null
+  private connectionPhases: ConnectionPhases | null = null
+  private connectAttemptStart: number | null = null
   private lifecycleHandlersBySocket = new WeakMap<
     Socket,
     {
@@ -254,6 +289,8 @@ export class ConnectionManager {
     this.callbacks = null
     this.tokenRefreshCount = 0
     this.socketUrl = null
+    this.connectionPhases = null
+    this.connectAttemptStart = null
   }
 
   /**
@@ -270,27 +307,56 @@ export class ConnectionManager {
       return
     }
 
-    try {
-      const config = await this.deps.getConfigForSite(appId)
+    const initStart = Date.now()
+    const connectAttemptId = `${appId}-${initStart}-${Math.random().toString(36).slice(2, 6)}`
 
-      // Re-check after async operation
+    try {
+      // Config fetch and token fetch run in parallel — token only needs appId, not socket URL
+      // Each promise captures its own start time so durations reflect individual execution
+      const [configResult, tokenResult] = await Promise.all([
+        (async () => {
+          const start = Date.now()
+          const result = await this.deps.getConfigForSite(appId)
+          return { result, durationMs: Date.now() - start }
+        })(),
+        (async () => {
+          const start = Date.now()
+          const result = await this.deps.fetchAgentToken(appId)
+          return { result, durationMs: Date.now() - start }
+        })(),
+      ])
+
+      const config = configResult.result
+      const token = tokenResult.result
+      const configFetchMs = configResult.durationMs
+      const tokenFetchMs = tokenResult.durationMs
+
+      // Re-check after async operations
       if (appId !== this.currentAppId) {
         return
       }
 
       this.socketUrl = config.baseUrl
 
-      const token = await this.deps.fetchAgentToken(appId)
-
-      // Re-check after async operation
-      if (appId !== this.currentAppId) {
-        return
-      }
-
       if (!token) {
         this.callbacks?.onConnectionFailed?.(new Error('Failed to acquire authentication token'))
         return
       }
+
+      const preSocketMs = Date.now() - initStart
+
+      // Collect Resource Timing for the token fetch (same-origin, full timing available)
+      const tokenResourceTiming = this.getTokenResourceTiming()
+
+      // Initialize phase data — socketHandshakeMs will be set in onConnect handler
+      this.connectionPhases = {
+        connectAttemptId,
+        configFetchMs,
+        tokenFetchMs,
+        preSocketMs,
+        ...(tokenResourceTiming && { tokenResourceTiming }),
+      }
+      this.connectAttemptStart = Date.now()
 
       const previousSocketId = this.getStoredSocketId(appId)
 
@@ -299,6 +365,7 @@ export class ConnectionManager {
         token,
         previousSocketId,
         isNew: true,
+        connectAttemptId,
       })
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error))
@@ -306,8 +373,76 @@ export class ConnectionManager {
         message: err.message,
         stack: err.stack,
         appId,
+        connectAttemptId,
       })
       this.callbacks?.onConnectionFailed?.(err)
+    }
+  }
+
+  /**
+   * Query browser Performance API for the agent-token fetch Resource Timing entry.
+   * Same-origin, so full timing is available without Timing-Allow-Origin.
+   */
+  private getTokenResourceTiming(): ConnectionPhases['tokenResourceTiming'] | null {
+    if (typeof performance === 'undefined') return null
+    try {
+      const entries = performance.getEntriesByType('resource') as PerformanceResourceTiming[]
+      const entry = entries.filter(e => e.name.includes('/api/auth/agent-token')).pop()
+      if (!entry) return null
+      return {
+        serverProcessingMs: Math.round(entry.responseStart - entry.requestStart),
+        transferMs: Math.round(entry.responseEnd - entry.responseStart),
+        totalFetchMs: Math.round(entry.responseEnd - entry.startTime),
+        connectionReused: entry.connectEnd - entry.connectStart === 0,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Query browser Performance API for the WebSocket connection Resource Timing entry.
+   * Cross-origin — requires Timing-Allow-Origin header from agents server for detailed breakdown.
+   */
+  private getWsResourceTiming(agentBaseUrl: string): ConnectionPhases['wsResourceTiming'] | null {
+    if (typeof performance === 'undefined') return null
+    try {
+      const agentUrl = new URL(agentBaseUrl)
+      const entries = performance.getEntriesByType('resource') as PerformanceResourceTiming[]
+
+      // Match by hostname and prefer WebSocket transport entries.
+      // Socket.IO may create both HTTP polling and WS upgrade entries for the same host.
+      const hostEntries = entries.filter(e => {
+        try {
+          const entryUrl = new URL(e.name)
+          return entryUrl.hostname === agentUrl.hostname
+        } catch {
+          return false
+        }
+      })
+
+      // Prefer ws:/wss: entries; fall back to the most recent matching entry
+      const wsEntry =
+        hostEntries.filter(e => e.name.startsWith('ws:') || e.name.startsWith('wss:')).pop() ??
+        hostEntries.pop()
+
+      if (!wsEntry) return null
+      return {
+        dnsMs: Math.round(wsEntry.domainLookupEnd - wsEntry.domainLookupStart),
+        tcpMs: Math.round(
+          wsEntry.secureConnectionStart > 0
+            ? wsEntry.secureConnectionStart - wsEntry.connectStart
+            : wsEntry.connectEnd - wsEntry.connectStart
+        ),
+        tlsMs: Math.round(
+          wsEntry.secureConnectionStart > 0
+            ? wsEntry.connectEnd - wsEntry.secureConnectionStart
+            : 0
+        ),
+        wsHandshakeMs: Math.round(wsEntry.responseStart - wsEntry.requestStart),
+      }
+    } catch {
+      return null
     }
   }
 
@@ -316,6 +451,7 @@ export class ConnectionManager {
     token: string | null
     previousSocketId: string | null
     isNew: boolean
+    connectAttemptId?: string
   }): void {
     if (!this.socketUrl) {
       const error = new Error('Socket URL not initialized')
@@ -324,7 +460,7 @@ export class ConnectionManager {
       return
     }
 
-    const { appId, token, previousSocketId, isNew } = params
+    const { appId, token, previousSocketId, isNew, connectAttemptId } = params
 
     const conversationId =
       this.deps.getConversationId && appId ? this.deps.getConversationId(appId) : null
@@ -364,7 +500,62 @@ export class ConnectionManager {
 
     this.callbacks?.onSocketReady?.(socket, { isNew })
 
+    const socketConnectStart = Date.now()
     socket.connect()
+
+    // Attach engine transport event listeners for diagnostics
+    if (CONNECTION_DIAGNOSTICS_ENABLED && connectAttemptId) {
+      this.attachEngineListeners(socket, appId, connectAttemptId, socketConnectStart)
+    }
+  }
+
+  /**
+   * Attach listeners to Socket.IO engine for transport-level diagnostics.
+   */
+  private attachEngineListeners(
+    socket: Socket,
+    appId: string,
+    connectAttemptId: string,
+    socketConnectStart: number
+  ): void {
+    // Engine is synchronously available after socket.connect() — Manager.open()
+    // creates the Engine.IO client before initiating the async handshake.
+    const engine = (socket as any).io?.engine
+    if (!engine) return
+
+    engine.once('open', () => {
+      const durationMs = Date.now() - socketConnectStart
+      logger.info('websocket.transport.engine_open', {
+        appId,
+        connectAttemptId,
+        transport: engine.transport?.name,
+        durationMs,
+      })
+    })
+
+    engine.on('upgrade', (transport: any) => {
+      logger.info('websocket.transport.upgraded', {
+        appId,
+        connectAttemptId,
+        transport: transport?.name,
+      })
+    })
+
+    engine.on('upgradeError', (error: Error) => {
+      logger.warn('websocket.transport.upgrade_failed', {
+        appId,
+        connectAttemptId,
+        error: error?.message,
+      })
+    })
+
+    engine.once('close', (reason: string) => {
+      logger.info('websocket.transport.engine_close', {
+        appId,
+        connectAttemptId,
+        reason,
+      })
+    })
   }
 
   private registerLifecycleHandlers(socket: Socket, appId: string): void {
@@ -379,6 +570,32 @@ export class ConnectionManager {
 
         this.storeSocketId(appId, socket.id)
         this.tokenRefreshCount = 0
+
+        // Compute socket handshake duration and finalize phase data
+        if (this.connectionPhases && this.connectAttemptStart) {
+          this.connectionPhases.socketHandshakeMs = Date.now() - this.connectAttemptStart
+          this.connectAttemptStart = null
+
+          // Collect WS Resource Timing (cross-origin — needs Timing-Allow-Origin)
+          if (this.socketUrl) {
+            const wsResourceTiming = this.getWsResourceTiming(this.socketUrl)
+            if (wsResourceTiming) {
+              this.connectionPhases.wsResourceTiming = wsResourceTiming
+            }
+          }
+
+          // Log full phase breakdown
+          if (CONNECTION_DIAGNOSTICS_ENABLED) {
+            logger.info('websocket.connection.phases', {
+              appId,
+              socketId: socket.id,
+              ...this.connectionPhases,
+            })
+          }
+
+          // Notify callback (NetworkQualityMonitor consumes this)
+          this.callbacks?.onConnectionPhases?.(this.connectionPhases)
+        }
 
         this.callbacks?.onConnect?.({ socket, recovered })
       },
@@ -412,6 +629,7 @@ export class ConnectionManager {
           appId,
           message: error.message,
           stack: error.stack,
+          connectAttemptId: this.connectionPhases?.connectAttemptId,
         })
       },
     }
@@ -456,6 +674,10 @@ export class ConnectionManager {
   }
 
   private async handleTokenExpiration(appId: string): Promise<void> {
+    // Reset phase state so stale data from the previous attempt doesn't leak
+    this.connectionPhases = null
+    this.connectAttemptStart = null
+
     if (this.tokenRefreshCount >= MAX_TOKEN_REFRESH_ATTEMPTS) {
       logger.error('websocket.token.refresh_limit_exceeded', {
         message: 'Maximum token refresh attempts exceeded, rejecting connection',
