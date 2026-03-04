@@ -1,21 +1,21 @@
 /**
  * Media Skill Tools
  *
- * Provides MCP-based tools for:
- * - Logo generation (logo-agent MCP server)
+ * Provides tools for:
+ * - Logo generation (direct REST API call via LogoService with S2S auth)
  * - Image generation (imagegen-agent MCP server)
  * - Image editing (imagegen-agent MCP server)
  * - Video generation (imagegen-agent MCP server)
- *
- * Security: MCP calls are proxied through the browser via ClientActionService.
- * This allows the browser to make requests with its auth_idp cookie,
- * so user credentials never flow through the agent context.
  */
 
 import { z } from 'zod';
 import { logger } from '../../../logging/index.js';
 import { getClientActionService } from '../../../server/ai-lib-websocket-server.js';
+import { grantSessionManager } from '@airo/ai-lib';
 import type { SkillToolDefinition } from '@airo/ai-lib';
+import { logoService } from '../../../services/LogoService.js';
+import { appRepository } from '../../../database/repositories/index.js';
+import { appPlanTool } from '../../../tools/app-plan-tool.js';
 
 // ============================================================================
 // Environment Configuration
@@ -43,7 +43,6 @@ function getMcpEnvironmentPrefix(): EnvironmentPrefix {
 function getMcpServerUrls() {
   const envPrefix = getMcpEnvironmentPrefix();
   return {
-    logoAgent: `https://logo-agent.mvci.api.${envPrefix}godaddy.com/mcp`,
     imagegenAgent: `https://imagegen-agent.mvci.api.${envPrefix}godaddy.com/mcp`,
   };
 }
@@ -126,34 +125,91 @@ async function callMcpTool<T>(
 // ============================================================================
 // Input Schemas
 // ============================================================================
+type LogoStyle =
+  | 'line'
+  | 'glyph'
+  | 'full-color'
+  | 'dual-tone'
+  | '3d'
+  | 'badge'
+  | 'flat'
+  | 'colored-line'
+  | 'handmade'
+  | 'mascot'
+  | 'monogram'
+  | 'name-mark';
+
+const LOGO_STYLES: LogoStyle[] = [
+  'line',
+  'glyph',
+  'full-color',
+  'dual-tone',
+  '3d',
+  'badge',
+  'flat',
+  'colored-line',
+  'handmade',
+  'mascot',
+  'monogram',
+  'name-mark'
+];
 
 const GenerateLogoInputSchema = z.object({
-  businessName: z
+  brandName: z.string().min(1).max(100).describe('Primary text for the logo (business/brand name)'),
+
+  brandTagline: z.string().max(100).optional().describe('Secondary text like tagline, slogan, or "Est. 2020"'),
+
+  brandDescription: z
     .string()
-    .min(1, { message: 'Business name required' })
-    .describe('The name of the business'),
-  businessDescription: z
-    .string()
-    .min(1, { message: 'Business description required' })
-    .describe('A description of the business'),
-  businessVibe: z
-    .string()
-    .optional()
-    .describe('The desired vibe or feeling for the logo (e.g., modern, playful, professional)'),
-  logoColors: z
-    .string()
-    .optional()
-    .describe('Desired colors for the logo as a text description (e.g., "warm earth tones", "blue and white")'),
-  logoSymbol: z.string().optional().describe('Desired symbol or icon for the logo'),
-  logoText: z.string().optional().describe('Text to include in the logo'),
-  logoCount: z
-    .coerce // Coerce string to number since LLMs often pass numbers as strings
-    .number()
-    .int()
     .min(1)
-    .max(4)
-    .default(4)
-    .describe('Number of logos to generate as a number (1-4, default: 4)'),
+    .max(500)
+    .describe('What the business does - informs visual choices for the logo design'),
+
+  style: z
+    .enum(LOGO_STYLES as [string, ...string[]])
+    .describe(
+      'Logo visual style preset. Options: line (minimalist line art), glyph (iconic symbol), ' +
+        'full-color (vibrant illustrated), dual-tone (two colors), 3d (depth/dimension), ' +
+        'badge (emblem/seal), flat (modern flat design), colored-line (line art with color), ' +
+        'handmade (hand-drawn feel), mascot (character illustration), monogram (initials/lettermark), ' +
+        'name-mark (stylized typography)'
+    ),
+
+  styleDescription: z
+    .string()
+    .max(200)
+    .optional()
+    .describe(
+      'Additional custom style direction beyond the preset (e.g., "make it more playful" or "corporate and serious")'
+    ),
+
+  symbol: z
+    .string()
+    .max(100)
+    .optional()
+    .describe('Icon or imagery to incorporate into the logo (e.g., "coffee cup", "mountain", "abstract waves")'),
+
+  brandColors: z
+    .string()
+    .max(100)
+    .optional()
+    .describe(
+      'Color preferences as a description (e.g., "warm orange and brown", "professional blue"). Leave empty for AI to choose appropriate colors.'
+    ),
+
+  brandPersonality: z
+    .string()
+    .max(200)
+    .optional()
+    .describe('Brand personality traits (e.g., "professional and trustworthy", "playful and creative")'),
+
+  brandAudience: z
+    .string()
+    .max(200)
+    .optional()
+    .describe('Target audience description (e.g., "young professionals", "families with children")'),
+
+  count: z.number().int().min(1).max(4).default(4).describe('Number of logo variations to generate (1-4, default: 4)'),
 });
 
 const GenerateImageInputSchema = z.object({
@@ -220,7 +276,7 @@ type GenerateVideoInput = z.infer<typeof GenerateVideoInputSchema>;
 // ============================================================================
 
 /**
- * Logo generation tool using logo-agent MCP server
+ * Logo generation tool using direct REST API call via LogoService
  */
 export const generateLogoTool: SkillToolDefinition = {
   name: 'generate_logo',
@@ -230,20 +286,77 @@ export const generateLogoTool: SkillToolDefinition = {
   parameters: GenerateLogoInputSchema,
 
   async execute(input: GenerateLogoInput, context?: unknown) {
-    const servers = getMcpServerUrls();
+    const appId = (context as { metadata?: { appId?: string } })?.metadata?.appId;
+    const socketId = (context as { socketId?: string })?.socketId;
 
     logger.info('skills.media.tools.generate_logo.start', {
-      businessName: input.businessName,
-      logoCount: input.logoCount,
+      brandName: input.brandName,
+      logoCount: input.count,
+      appId,
     });
 
-    const result = await callMcpTool(servers.logoAgent, 'generate_logo', input, context);
+    // 1. Get customer context from app database
+    const app = appId ? appRepository.findById(appId) : null;
+    const customerId = app?.customerId;
+
+    if (!customerId) {
+      logger.error('logo.generate.no_customer', { appId });
+      return { error: 'Unable to determine customer identity for logo generation' };
+    }
+
+    // 2. Get budget user from grant system (required — logo generation must be billed)
+    // getCurrentUserId returns: grant's llmBudgetUserId > fallback customerId > undefined (all exhausted)
+    const budgetUserId = socketId
+      ? grantSessionManager.getCurrentUserId(socketId, customerId)
+      : customerId;
+
+    if (!budgetUserId) {
+      // undefined means all grants exhausted — fail-closed, same as normal LLM calls
+      logger.error('logo.generate.grants_exhausted', { appId, socketId, budgetUserId });
+      return { error: 'All credit grants have been exhausted. Please purchase additional credits to generate logos.' };
+    }
+
+    // 3. Enrich optional brand fields from app plan
+    const enrichedInput = { ...input };
+
+    if (!enrichedInput.brandColors && appId) {
+      try {
+        const planResult = await appPlanTool.execute({ appId, operation: 'get' });
+        const palette = planResult.data?.colorPalette;
+        if (palette?.primary) {
+          const parts = [`primary: ${palette.primary}`];
+          if (palette.secondary) parts.push(`secondary: ${palette.secondary}`);
+          if (palette.accent) parts.push(`accent: ${palette.accent}`);
+          enrichedInput.brandColors = parts.join(', ');
+        }
+      } catch {
+        // App plan lookup is best-effort
+      }
+    }
+
+    // 4. Call logo API
+    const result = await logoService.generateLogos({
+      ...enrichedInput,
+      customerId,
+      budgetUserId,
+    });
+
+    if (!result) {
+      return { error: 'Logo generation failed. Please try again.' };
+    }
 
     logger.info('skills.media.tools.generate_logo.success', {
-      businessName: input.businessName,
+      brandName: input.brandName,
+      sessionId: result.sessionId,
     });
 
-    return result;
+    // 5. Return structured result for the frontend
+    return {
+      structuredContent: {
+        logos: result.logos,
+        sessionId: result.sessionId,
+      },
+    };
   },
 
   config: {

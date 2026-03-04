@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
 import MediaModal from '@/app/develop/components/tool-renderers/MediaModal'
 import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
-import LogoGridWidget, { type LogoData } from '@/app/develop/components/widgets/LogoGridWidget'
+import LogoGridWidget, { getLogoDisplayUrl, type LogoData } from '@/app/develop/components/widgets/LogoGridWidget'
 import { logger } from '@/lib/request-context'
 
 type LogoResult = LogoData
@@ -27,15 +27,15 @@ export default function LogoGeneratorToolRenderer({
   const [selectedLogoIndex, setSelectedLogoIndex] = useState(0)
   const thumbnailRefs = useRef<(HTMLButtonElement | null)[]>([])
 
-  // Parse result - expects the MCP response format
+  // Parse result - expects structuredContent from REST API or MCP response
   const logos: LogoResult[] = []
 
-  // Parse input to get business name for display
-  let businessName = 'Logo'
+  // Parse input to get brand name for display
+  let brandName = 'Logo'
   if (_input) {
     try {
       const inputObj = typeof _input === 'string' ? JSON.parse(_input) : _input
-      businessName = inputObj?.businessName || 'Logo'
+      brandName = inputObj?.brandName || inputObj?.businessName || inputObj?.name || 'Logo'
     } catch {
       // Keep default
     }
@@ -56,7 +56,7 @@ export default function LogoGeneratorToolRenderer({
       }
 
       if (resultObj) {
-        // Handle structuredContent from MCP response
+        // Handle structuredContent from REST API / MCP response
         if (resultObj.structuredContent?.logos) {
           logos.push(...resultObj.structuredContent.logos)
         }
@@ -133,7 +133,7 @@ export default function LogoGeneratorToolRenderer({
 
   // Build display name based on state
   const displayName = toolStatus === 'completed' && hasLogos
-    ? `Generated ${logoCount} logo${logoCount !== 1 ? 's' : ''} for "${businessName}"`
+    ? `Generated ${logoCount} logo${logoCount !== 1 ? 's' : ''} for "${brandName}"`
     : 'Generating logos...'
 
   return (
@@ -173,7 +173,7 @@ export default function LogoGeneratorToolRenderer({
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={logo.url}
+                  src={getLogoDisplayUrl(logo)}
                   alt={`Logo ${index + 1}`}
                   className="w-full h-full object-contain"
                 />
@@ -213,7 +213,7 @@ export default function LogoGeneratorToolRenderer({
           <div className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-4 flex items-center justify-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={selectedLogo?.url}
+              src={selectedLogo ? getLogoDisplayUrl(selectedLogo) : undefined}
               alt={`Logo ${selectedLogoIndex + 1}`}
               className="max-w-full max-h-[50vh] object-contain"
             />

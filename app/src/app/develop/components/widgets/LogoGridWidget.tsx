@@ -14,8 +14,15 @@ import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConve
  */
 export interface LogoData {
   id: string
-  url: string
+  // V2 URLs
+  transparentUrl?: string
+  solidUrl?: string
   mockupUrl?: string
+  // V1 Extra Urls when not entitled or deprecated
+  watermarkedTransparentUrl?: string
+  watermarkedSolidUrl?: string
+  url?: string
+  // Existing optional fields
   logoFeatures?: {
     logoStyle?: string
     businessDescription?: string
@@ -27,6 +34,16 @@ export interface LogoData {
   foregroundColor?: string
   backgroundColor?: string
   palette?: string[]
+}
+
+/**
+ * Get the appropriate logo URL based on entitlement and background preference
+ */
+export function getLogoDisplayUrl(
+  logo: LogoData,
+): string | undefined {
+  // Get the first available best URL to use
+  return logo.transparentUrl || logo.url || logo.watermarkedTransparentUrl || logo.solidUrl || logo.watermarkedSolidUrl;
 }
 
 /**
@@ -136,7 +153,7 @@ export default function LogoGridWidget({ logos, className = '' }: LogoGridWidget
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={logo.url}
+              src={getLogoDisplayUrl(logo)}
               alt={`Logo ${index + 1}`}
               className="w-full h-full object-contain p-2 opacity-90 group-hover:opacity-100 transition-opacity"
             />

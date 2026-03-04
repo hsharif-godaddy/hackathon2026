@@ -5,7 +5,7 @@ description: AI generation of logos, images, and videos. Only load when user exp
 
 # Media Skill
 
-**Purpose:** Generate professional logos, images, and videos for applications using AI-powered MCP services.
+**Purpose:** Generate professional logos, images, and videos for applications using AI-powered services.
 
 > **Note:** This skill provides specialized tools for media generation that are automatically loaded when you activate the skill. Tools are prefixed with the skill name (e.g., `media__generate_logo`) to prevent naming conflicts. You can unload a skill's tools with `skill({ action: 'unload', skill: 'media' })` when no longer needed.
 
@@ -42,27 +42,55 @@ Default to stock photo search. Only use AI generation when explicitly requested.
 
 **`media__generate_logo`** - Generate professional logos for a business
 
-| Parameter             | Type             | Required | Description                                                                                                        |
-| --------------------- | ---------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
-| `businessName`        | string           | Yes      | Name of the business/app                                                                                           |
-| `businessDescription` | string           | Yes      | What the business does (1-2 sentences)                                                                             |
-| `businessVibe`        | string           | No       | Desired feeling (modern, playful, professional, elegant, minimalist, bold)                                         |
-| `logoColors`          | string or object | No       | Color preferences - either natural language ("warm earth tones") or `{ description: string, hexValues: string[] }` |
-| `logoSymbol`          | string           | No       | Specific icon/symbol (e.g., "coffee cup", "mountain", "shield")                                                    |
-| `logoText`            | string           | No       | Text to incorporate into the logo                                                                                  |
-| `logoCount`           | number (1-4)     | No       | Number of variations to generate (default: 4)                                                                      |
+| Parameter          | Type         | Required | Description                                     |
+| ------------------ | ------------ | -------- | ----------------------------------------------- |
+| `brandName`        | string       | Yes      | Primary text for the logo (business/brand name) |
+| `brandTagline`     | string       | No       | Secondary text like tagline or slogan           |
+| `brandDescription` | string       | Yes      | What the business does — informs visual choices |
+| `style`            | enum         | Yes      | Logo style preset (see options below)           |
+| `styleDescription` | string       | No       | Additional custom style direction               |
+| `symbol`           | string       | No       | Icon or imagery to incorporate                  |
+| `brandColors`      | string       | No       | Color preferences as description                |
+| `brandPersonality` | string       | No       | Brand personality traits                        |
+| `brandAudience`    | string       | No       | Target audience description                     |
+| `count`            | number (1-4) | No       | Number of logo variations (default: 4)          |
+
+**Style options:** `line`, `glyph`, `full-color`, `dual-tone`, `3d`, `badge`, `flat`, `colored-line`, `handmade`, `mascot`, `monogram`, `name-mark`
 
 **Example:**
 
 ```typescript
 media__generate_logo({
-  businessName: 'Sunrise Cafe',
-  businessDescription: 'A cozy neighborhood coffee shop serving artisan coffee and fresh pastries',
-  businessVibe: 'warm and welcoming',
-  logoColors: 'warm earth tones with orange accents',
-  logoSymbol: 'coffee cup with sunrise',
+  brandName: 'Sunrise Cafe',
+  brandDescription: 'A cozy neighborhood coffee shop serving artisan coffee and fresh pastries',
+  style: 'handmade',
+  styleDescription: 'warm and welcoming',
+  brandColors: 'warm earth tones with orange accents',
+  symbol: 'coffee cup with sunrise',
 });
 ```
+
+**Output Format:**
+
+The tool returns a structured response with:
+
+```typescript
+{
+  structuredContent: {
+    sessionId: string,
+    logos: [
+      {
+        id: string,
+        transparentUrl: string,  // PNG with transparent background
+        solidUrl: string,        // PNG with solid background
+        mockupUrl: string        // Mockup showing logo in context
+      }
+    ]
+  }
+}
+```
+
+Use `transparentUrl` or `solidUrl` for placing the logo. The `mockupUrl` shows the logo in a realistic context.
 
 ---
 
@@ -157,20 +185,31 @@ The returned URLs are production-ready CDN links. Use them directly in component
 
 ### Logo Generation
 
+**Brand Data from Context:**
+
+Before calling `media__generate_logo`, check the conversation context for existing brand information:
+
+- **Brand name**: Use `app.title` from memory context if available
+- **Description**: Use `app.description` from memory context if available
+- **Colors**: Use the color palette from the app plan context if available
+
+Only ask the user for information that isn't already available in the context. The tool will also auto-enrich missing fields from stored data as a fallback.
+
 **DO:**
 
-- Always ask for business name and description before generating
-- Offer style customization options (vibe, colors, symbols)
+- Use known brand data from context before asking the user
+- Offer style customization options (style preset, colors, symbol)
 - Generate multiple variations (3-4) so user has choices
 - Use the CDN URLs directly in components
 - Provide clear usage instructions with the CDN URL
+- Fill in aesthetic and style details to get the best results (determine style based on brand personality and audience if not specified)
 
 **DON'T:**
 
-- Generate logos without gathering business context first
+- Ask for brand name/description if already known from context
 - Use generic image generation for logos (use `generate_logo` instead)
 - Download and re-save CDN media locally (wastes storage, slower delivery)
-- Assume business details - always ask the user
+- Assume business details beyond what's in context - ask the user for unknowns
 
 ### Image Generation
 
@@ -195,7 +234,7 @@ The returned URLs are production-ready CDN links. Use them directly in component
 
 ## Fallback Strategy
 
-If MCP servers are unavailable, fall back to existing tools:
+If generation services are unavailable, fall back to existing tools:
 
 1. **For image generation**: Use `media` tool (stock photos as alternative)
 2. **For image editing**: Use `imageEditor` tool
