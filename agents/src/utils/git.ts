@@ -84,6 +84,8 @@ export interface ArchiveOptions extends GitCommandOptions {
    * Full source archive excludes: node_modules/, .git/, .env* files
    */
   includeSource?: boolean;
+  /** Exclude git-untracked files from full source archives (default: false) */
+  excludeUntracked?: boolean;
 }
 
 /**
@@ -587,7 +589,7 @@ export class GitUtils {
 
     // Create archive using appropriate strategy
     if (includeSource) {
-      await this.createFullSourceArchive(archivePath, outputDir, timeout);
+      await this.createFullSourceArchive(archivePath, outputDir, timeout, options.excludeUntracked === true);
     } else {
       await this.createDistOnlyArchive(archivePath, outputDir, timeout);
     }
@@ -676,7 +678,8 @@ export class GitUtils {
   private async createFullSourceArchive(
     archivePath: string,
     outputDir: string,
-    timeout: number
+    timeout: number,
+    excludeUntracked: boolean
   ): Promise<void> {
     // Create output directory
     const mkdirResult = await this.devSupervisor!.exec({
@@ -689,17 +692,23 @@ export class GitUtils {
       throw new Error(`Failed to create output directory: ${mkdirResult.stderr || 'Unknown error'}`);
     }
 
+    const untrackedExclusions = !excludeUntracked
+      ? []
+      : await this.getUntrackedExclusions();
+
     // Create tar.gz archive with exclusions
+    const tarArgs = [
+      'tar', '-czf', archivePath,
+      '--exclude=node_modules',
+      '--exclude=.git',
+      '--exclude=.env',
+      '--exclude=.env.*',
+      '--exclude=.env.local',
+      ...untrackedExclusions.map(file => `--exclude=${file}`),
+      '-C', '/app', '.'
+    ];
     const tarResult = await this.devSupervisor!.exec({
-      command: buildShellCommand([
-        'tar', '-czf', archivePath,
-        '--exclude=node_modules',
-        '--exclude=.git',
-        '--exclude=.env',
-        '--exclude=.env.*',
-        '--exclude=.env.local',
-        '-C', '/app', '.'
-      ]),
+      command: buildShellCommand(tarArgs),
       working_dir: '/app',
       timeout: Math.floor(timeout / 1000),
       capture_output: true
@@ -707,6 +716,26 @@ export class GitUtils {
     if (!tarResult.success) {
       throw new Error(`Failed to create archive: ${tarResult.stderr || 'Unknown error'}`);
     }
+  }
+
+  private async getUntrackedExclusions(): Promise<string[]> {
+    const untrackedResult = await this.devSupervisor!.exec({
+      command: buildShellCommand(['git', '-C', '/app', 'ls-files', '-z', '--others', '--exclude-standard']),
+      working_dir: '/app',
+      timeout: 5,
+      capture_output: true
+    });
+    if (!untrackedResult.success) {
+      logger.debug('git.archive.untracked.exclude.skip', {
+        message: 'Failed to list untracked files; proceeding without untracked exclusions',
+        stderr: untrackedResult.stderr,
+      });
+      return [];
+    }
+    return untrackedResult.stdout
+      .split('\0')
+      .map(file => file.replace(/\r?\n$/, ''))
+      .filter(file => file.length > 0);
   }
 
   /**

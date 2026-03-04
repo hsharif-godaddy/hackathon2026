@@ -64,7 +64,7 @@ export class PaaSPublishStrategy implements PublishStrategy {
       appPath,
       commitHash,
       targetDir,
-      { includeSource: true }
+      { includeSource: true, excludeUntracked: true }
     );
 
     logger.info(`route.publish.${this.key}.archive.success`, {

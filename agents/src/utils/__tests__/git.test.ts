@@ -406,6 +406,65 @@ describe('GitUtils', () => {
           expect(tarCallArgs.command).toMatch(/--exclude.*\.env/);
         });
 
+        it('should exclude untracked files in full source archive when git reports them', async () => {
+          const commitHash = 'abc1234';
+
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }) // dist/ check
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }) // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: 'test.json\u0000tmp/cache.db\u0000', stderr: '' }) // list untracked
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
+
+          await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true, excludeUntracked: true });
+
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[3][0];
+          expect(tarCallArgs.command).toContain('--exclude=test.json');
+          expect(tarCallArgs.command).toContain('--exclude=tmp/cache.db');
+        });
+
+        it('should preserve leading and trailing spaces in untracked file names', async () => {
+          const commitHash = 'abc1234';
+
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }) // dist/ check
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }) // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: ' leading.txt\u0000trailing.txt \u0000', stderr: '' }) // list untracked
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
+
+          await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true, excludeUntracked: true });
+
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[3][0];
+          expect(tarCallArgs.command).toContain('--exclude= leading.txt');
+          expect(tarCallArgs.command).toContain('--exclude=trailing.txt ');
+        });
+
+        it('should continue archive creation when listing untracked files fails', async () => {
+          const commitHash = 'abc1234';
+
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }) // dist/ check
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }) // mkdir output dir
+            .mockResolvedValueOnce({
+              success: false,
+              exit_code: 1,
+              stdout: '',
+              stderr: 'not a git repository',
+            }) // list untracked (fails)
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
+
+          await expect(
+            gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true, excludeUntracked: true })
+          ).resolves.toEqual({
+            path: '/publish/dist/abc1234.tar.gz',
+            commitHash: 'abc1234',
+          });
+
+          expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(4);
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[3][0];
+          expect(tarCallArgs.command).not.toContain('--exclude=test.json');
+          expect(tarCallArgs.command).not.toContain('--exclude=tmp/cache.db');
+        });
+
         it('should skip airo-media.json copy when includeSource is true (included in full archive)', async () => {
           const commitHash = 'abc1234';
 
