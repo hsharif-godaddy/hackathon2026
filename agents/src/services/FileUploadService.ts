@@ -10,6 +10,7 @@ import { FileValidationError, SVGSanitizationError } from './errors/file-upload-
 import { getAgentConfig } from './features.js'
 import { createSafePathBuilder } from '../utils/safe-path.js'
 import { sanitizeSVG, isSVGFile } from '../utils/svg-sanitizer.js'
+import { clearExtensionResolved } from '../utils/upload-resolution-tracking.js'
 
 export interface UploadedFile {
   id: string
@@ -376,6 +377,9 @@ export class FileUploadService {
       totalSize: uploadedFiles.reduce((sum, f) => sum + f.size, 0)
     })
 
+    // Reset extension-based resolution tracking so new uploads get a fresh start
+    clearExtensionResolved(appId)
+
     return {
       uploadId,
       appId,
@@ -680,6 +684,8 @@ export class FileUploadService {
         operation: 'app-cleanup'
       })
       return deletedCount
+    } finally {
+      clearExtensionResolved(appId)
     }
   }
 

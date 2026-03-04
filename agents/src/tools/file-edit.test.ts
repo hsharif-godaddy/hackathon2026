@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { FileEditTool } from './file-edit.js';
 import { fileUploadService } from '../services/FileUploadService.js';
+import { clearExtensionResolved } from '../utils/upload-resolution-tracking.js';
 import { mkdir, writeFile, rm, readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -11,15 +12,14 @@ describe('FileEditTool - Auto Resolution from Uploads', () => {
   const tool = new FileEditTool();
 
   beforeEach(async () => {
-    // Clean up test directories
     if (existsSync(testProjectDir)) {
       await rm(testProjectDir, { recursive: true, force: true });
     }
 
     await mkdir(testProjectDir, { recursive: true });
 
-    // Clean up any test uploads
-    const uploadsDir = fileUploadService['uploadsDir'];
+    clearExtensionResolved(testAppId);
+
     const testAppUploadsDir = fileUploadService['pathBuilder'].join(testAppId);
     if (existsSync(testAppUploadsDir)) {
       await rm(testAppUploadsDir, { recursive: true, force: true });
@@ -27,12 +27,12 @@ describe('FileEditTool - Auto Resolution from Uploads', () => {
   });
 
   afterEach(async () => {
-    // Clean up
     if (existsSync(testProjectDir)) {
       await rm(testProjectDir, { recursive: true, force: true });
     }
 
-    // Clean up test uploads
+    clearExtensionResolved(testAppId);
+
     const testAppUploadsDir = fileUploadService['pathBuilder'].join(testAppId);
     if (existsSync(testAppUploadsDir)) {
       await rm(testAppUploadsDir, { recursive: true, force: true });
@@ -126,7 +126,6 @@ describe('FileEditTool - Auto Resolution from Uploads', () => {
   });
 
   it('should match by originalName when filename is different', async () => {
-    // Upload a file (filename will be auto-generated, different from originalname)
     const testFile = {
       originalname: 'my-logo.png',
       mimetype: 'image/png',
@@ -136,7 +135,6 @@ describe('FileEditTool - Auto Resolution from Uploads', () => {
 
     await fileUploadService.processUpload(testAppId, [testFile]);
 
-    // Try to create file using original name
     const result = await tool.editFiles(testProjectDir, {
       operations: [{
         path: 'public/my-logo.png',
@@ -148,11 +146,89 @@ describe('FileEditTool - Auto Resolution from Uploads', () => {
 
     expect(result.success).toBe(true);
 
-    // Verify file was auto-resolved
     const projectFilePath = join(testProjectDir, 'public/my-logo.png');
     expect(existsSync(projectFilePath)).toBe(true);
 
     const content = await readFile(projectFilePath);
     expect(content.toString()).toBe('logo-content');
+  });
+
+  it('should resolve two different uploaded images to different target files (no duplicates)', async () => {
+    // Upload two distinct images with the same extension
+    const slide1File = {
+      originalname: 'slide1.jpg',
+      mimetype: 'image/jpeg',
+      size: 13,
+      buffer: Buffer.from('slide1-content')
+    } as Express.Multer.File;
+
+    const slide2File = {
+      originalname: 'slide2.jpg',
+      mimetype: 'image/jpeg',
+      size: 13,
+      buffer: Buffer.from('slide2-content')
+    } as Express.Multer.File;
+
+    await fileUploadService.processUpload(testAppId, [slide1File, slide2File]);
+
+    // Sequential calls simulating what the LLM does via Promise.all with custom names
+    const result1 = await tool.editFiles(testProjectDir, {
+      operations: [{ path: 'public/hero.jpg', mode: 'create', content: '' }],
+      createDirs: true
+    }, { appId: testAppId });
+
+    const result2 = await tool.editFiles(testProjectDir, {
+      operations: [{ path: 'public/banner.jpg', mode: 'create', content: '' }],
+      createDirs: true
+    }, { appId: testAppId });
+
+    expect(result1.success).toBe(true);
+    expect(result2.success).toBe(true);
+
+    const heroContent = (await readFile(join(testProjectDir, 'public/hero.jpg'))).toString();
+    const bannerContent = (await readFile(join(testProjectDir, 'public/banner.jpg'))).toString();
+
+    // Each target file must have received a distinct uploaded image
+    expect(heroContent).not.toBe(bannerContent);
+    expect(new Set([heroContent, bannerContent])).toEqual(
+      new Set(['slide1-content', 'slide2-content'])
+    );
+  });
+
+  it('should clear tracking state after processUpload so next upload batch starts fresh', async () => {
+    const imageFile = {
+      originalname: 'photo.jpg',
+      mimetype: 'image/jpeg',
+      size: 12,
+      buffer: Buffer.from('first-upload')
+    } as Express.Multer.File;
+
+    await fileUploadService.processUpload(testAppId, [imageFile]);
+
+    // Consume the upload via extension resolution
+    await tool.editFiles(testProjectDir, {
+      operations: [{ path: 'public/a.jpg', mode: 'create', content: '' }],
+      createDirs: true
+    }, { appId: testAppId });
+
+    // Second upload batch — clearExtensionResolved should have been called
+    const newImage = {
+      originalname: 'photo.jpg',
+      mimetype: 'image/jpeg',
+      size: 11,
+      buffer: Buffer.from('second-upload')
+    } as Express.Multer.File;
+
+    await fileUploadService.processUpload(testAppId, [newImage]);
+
+    const result = await tool.editFiles(testProjectDir, {
+      operations: [{ path: 'public/b.jpg', mode: 'create', content: '' }],
+      createDirs: true
+    }, { appId: testAppId });
+
+    expect(result.success).toBe(true);
+
+    const content = (await readFile(join(testProjectDir, 'public/b.jpg'))).toString();
+    expect(content).toBe('second-upload');
   });
 });

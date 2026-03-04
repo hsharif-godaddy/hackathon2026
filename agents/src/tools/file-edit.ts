@@ -13,6 +13,7 @@ import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-facto
 import { fileUploadService } from '../services/FileUploadService.js';
 import { createSafePathBuilder } from '../utils/safe-path.js';
 import { isSourceFile, BINARY_FILE_REGEX } from '../utils/file-types.js';
+import { pickAndMarkExtensionResolved } from '../utils/upload-resolution-tracking.js';
 
 // Constants for consistent text truncation
 const EDIT_RESULT_TRUNCATION_LENGTH = 50;
@@ -744,7 +745,9 @@ export class FileEditTool {
         .sort((a, b) => compareByUploadDate(a.uploadedAt, b.uploadedAt));
       let matchingFile = exactMatches[0] ?? null;
 
-      // Strategy 2: If no exact match, try matching by file extension
+      // Strategy 2: If no exact match, try matching by file extension.
+      // Uses pickAndMarkExtensionResolved for atomic pick+mark to avoid race
+      // conditions when multiple file_edit calls run concurrently via Promise.all.
       if (!matchingFile && targetExt) {
         const filesWithSameExt = uploadedFiles.filter(f => {
           const uploadExt = f.originalName.includes('.')
@@ -753,25 +756,23 @@ export class FileEditTool {
           return uploadExt === targetExt;
         });
 
-        if (filesWithSameExt.length === 1) {
-          matchingFile = filesWithSameExt[0]!;
-          logger.info('file-edit.auto-resolve.extension-match', {
+        if (filesWithSameExt.length > 0) {
+          matchingFile = pickAndMarkExtensionResolved(
             appId,
-            requestedFilename: filename,
-            matchedOriginalName: matchingFile.originalName,
-            matchingStrategy: 'single-extension-match'
-          });
-        } else if (filesWithSameExt.length > 1) {
-          matchingFile = filesWithSameExt.sort((a, b) =>
-            compareByUploadDate(a.uploadedAt, b.uploadedAt)
-          )[0]!;
-          logger.info('file-edit.auto-resolve.extension-match', {
-            appId,
-            requestedFilename: filename,
-            matchedOriginalName: matchingFile.originalName,
-            candidateCount: filesWithSameExt.length,
-            matchingStrategy: 'most-recent-by-extension'
-          });
+            filesWithSameExt,
+            (a, b) =>
+              scoreNameSimilarity(filename, b.originalName) - scoreNameSimilarity(filename, a.originalName)
+              || compareByUploadDate(a.uploadedAt, b.uploadedAt)
+          );
+          if (matchingFile) {
+            logger.info('file-edit.auto-resolve.extension-match', {
+              appId,
+              requestedFilename: filename,
+              matchedOriginalName: matchingFile.originalName,
+              candidateCount: filesWithSameExt.length,
+              matchingStrategy: filesWithSameExt.length === 1 ? 'single-extension-match' : 'name-similarity'
+            });
+          }
         }
       }
 
@@ -1722,7 +1723,9 @@ export async function resolveSourceFile(
       .sort((a, b) => compareByUploadDate(a.uploadedAt, b.uploadedAt));
     let matchingFile = exactMatches[0] ?? null;
 
-    // Strategy 2: Match by extension with name similarity scoring
+    // Strategy 2: Match by extension with name similarity scoring.
+    // Uses pickAndMarkExtensionResolved for atomic pick+mark to avoid race
+    // conditions when multiple file_edit calls run concurrently via Promise.all.
     if (!matchingFile && targetExt) {
       const filesWithSameExt = uploadedFiles.filter(f => {
         const uploadExt = f.originalName.includes('.')
@@ -1731,31 +1734,23 @@ export async function resolveSourceFile(
         return uploadExt === targetExt;
       });
 
-      if (filesWithSameExt.length === 1) {
-        matchingFile = filesWithSameExt[0]!;
-        logger.info('file-edit.auto-resolve.extension-match', {
+      if (filesWithSameExt.length > 0) {
+        matchingFile = pickAndMarkExtensionResolved(
           appId,
-          requestedFilename: filename,
-          matchedOriginalName: matchingFile.originalName,
-          matchingStrategy: 'single-extension-match'
-        });
-      } else if (filesWithSameExt.length > 1) {
-        // Score by name similarity first, then by recency
-        const scored = filesWithSameExt
-          .map(f => ({ file: f, score: scoreNameSimilarity(filename, f.originalName) }))
-          .sort((a, b) =>
-            b.score - a.score
-            || compareByUploadDate(a.file.uploadedAt, b.file.uploadedAt)
-          );
-        matchingFile = scored[0]!.file;
-        logger.info('file-edit.auto-resolve.extension-match', {
-          appId,
-          requestedFilename: filename,
-          matchedOriginalName: matchingFile.originalName,
-          candidateCount: filesWithSameExt.length,
-          similarityScore: scored[0]!.score,
-          matchingStrategy: 'name-similarity'
-        });
+          filesWithSameExt,
+          (a, b) =>
+            scoreNameSimilarity(filename, b.originalName) - scoreNameSimilarity(filename, a.originalName)
+            || compareByUploadDate(a.uploadedAt, b.uploadedAt)
+        );
+        if (matchingFile) {
+          logger.info('file-edit.auto-resolve.extension-match', {
+            appId,
+            requestedFilename: filename,
+            matchedOriginalName: matchingFile.originalName,
+            candidateCount: filesWithSameExt.length,
+            matchingStrategy: filesWithSameExt.length === 1 ? 'single-extension-match' : 'name-similarity'
+          });
+        }
       }
     }
 
