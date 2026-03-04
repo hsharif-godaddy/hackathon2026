@@ -16,12 +16,15 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY app/package.json ./app/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/ai-lib/package.json ./packages/ai-lib/
-COPY app/.npmrc ./
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Install dependencies using pnpm workspace
-RUN pnpm install
+# Secret mount injects Artifactory token at build time without persisting in layers
+# Cache mount persists pnpm store across builds, avoiding redundant downloads
+RUN --mount=type=secret,id=npmrc,target=/workspace/.npmrc \
+    --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile
 
 # Copy shared and ai-lib sources and build them (app depends on both workspace packages)
 COPY packages/shared/ ./packages/shared/

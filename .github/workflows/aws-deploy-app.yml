@@ -51,23 +51,51 @@ jobs:
           OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }} # Use the token as you'd normally use a token or password
         run: |
           echo "::add-mask::$OIDC_TOKEN"
-          rm -rf app/.npmrc
-          echo "always-auth=true" > app/.npmrc
-          echo "progress=false" >> app/.npmrc
-          echo registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ >> app/.npmrc
-          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/:_authToken=${OIDC_TOKEN}" >> app/.npmrc
+          echo "always-auth=true" > /tmp/.npmrc-secret
+          echo "progress=false" >> /tmp/.npmrc-secret
+          echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" >> /tmp/.npmrc-secret
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/:_authToken=${OIDC_TOKEN}" >> /tmp/.npmrc-secret
 
       # Sets up authentication with Amazon ECR in the chosen region. Note that the URL can be obtained from GoDaddy's Golden Containers Registry at `https://gcr.katana.int.gdcorp.tools/`.
       - name: Golden Container Registry Login
         run: |
           aws ecr get-login-password --region us-west-2 | docker login 764525110978.dkr.ecr.us-west-2.amazonaws.com -u AWS --password-stdin
 
-      # Execute the necessary commands to build your application's Docker container image. Place any further build commands under `run:`
-      - name: Build Container
-        env:
-          NODE_ENV: production
+      # Login to team ECR for remote build cache
+      - name: Cache Registry Login
         run: |
-          docker build --platform linux/amd64 -f app/Dockerfile -t ${{ steps.katana-app.outputs.app }}:${{ github.sha }} .
+          set -e
+          unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+          export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
+          $(aws sts assume-role --role-arn arn:aws:iam::694282668781:role/GD-AWS-SSG-Deploy-Role --role-session-name GHASession --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" --output text))
+          aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 694282668781.dkr.ecr.us-west-2.amazonaws.com
+
+      # Set up Docker Buildx for advanced caching
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
+        with:
+          driver: docker-container
+
+      # Build with remote layer caching via ECR registry
+      - name: Build Container
+        uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355 # v6.10.0
+        with:
+          context: .
+          file: app/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: ${{ steps.katana-app.outputs.app }}:${{ github.sha }}
+          secret-files: |
+            npmrc=/tmp/.npmrc-secret
+          cache-from: type=registry,ref=694282668781.dkr.ecr.us-west-2.amazonaws.com/airo-builder/app:cache
+          cache-to: type=registry,ref=694282668781.dkr.ecr.us-west-2.amazonaws.com/airo-builder/app:cache,mode=max
+          build-args: |
+            NODE_ENV=production
+
+      # Clean up credentials after build
+      - name: Cleanup Credentials
+        if: always()
+        run: rm -f /tmp/.npmrc-secret
 
       # Publish the built container image to Katana with the katana-publish-artifact GitHub Action
       - id: katana-publish
