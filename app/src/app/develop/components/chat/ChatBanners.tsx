@@ -1,7 +1,7 @@
 'use client'
 
 import SessionExpirationBanner from '@/components/auth/SessionExpirationBanner'
-import { useDailyUsage } from '@/hooks/useDailyUsage'
+import { useUsage } from '@/hooks/useUsage'
 import UpgradeBanner from './UpgradeBanner'
 import UsageWarningBanner from './UsageWarningBanner'
 
@@ -17,7 +17,7 @@ interface ChatBannersProps {
  * 3. UpgradeBanner (no Airo Plus subscription)
  */
 export default function ChatBanners({ appId }: ChatBannersProps) {
-  const { isWarningBannerActive } = useDailyUsage({ appId, enabled: !!appId })
+  const { isWarningBannerActive } = useUsage({ appId, enabled: !!appId })
 
   // Priority 1: Session expiration (critical - user will be logged out)
   // This component manages its own visibility state

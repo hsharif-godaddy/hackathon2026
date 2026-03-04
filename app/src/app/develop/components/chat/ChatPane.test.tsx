@@ -133,7 +133,8 @@ vi.mock('@/hooks/useCreditGrants', () => ({
   useCreditGrants: () => mockGrantsData,
 }));
 
-vi.mock('@/utils/credits', () => ({
+vi.mock('@/utils/credits', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/utils/credits')>()),
   getActiveGrant: () => mockActiveGrant.result,
 }));
 

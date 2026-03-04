@@ -16,8 +16,8 @@ import text from '@ux/text';
 import { ButtonBar } from '@/components/layout/PostPublishGoLiveModal/components/ButtonBar';
 import { FeatureCard } from '@/components/layout/PostPublishGoLiveModal/components/FeatureCard';
 import { TokenBadge, TokenCostLevel } from '@/components/layout/PostPublishGoLiveModal/components/TokenBadge';
-import { useDailyUsage } from '@/hooks/useDailyUsage';
 import { useTranslations } from '@/hooks/useTranslations';
+import { useUsage } from '@/hooks/useUsage';
 import { WarningLevel } from '@/types/usage';
 
 export interface FeatureSelections {
@@ -35,7 +35,7 @@ interface SelectFeaturesStepProps {
 
 export function SelectFeaturesStep({ appId, onConfirm, onCancel }: SelectFeaturesStepProps) {
   const t = useTranslations();
-  const { data: usageData, warningLevel } = useDailyUsage({ appId });
+  const { percentage, warningLevel, isLoading } = useUsage({ appId });
 
   const [selections, setSelections] = useState<FeatureSelections>({
     qa: true,
@@ -60,14 +60,12 @@ export function SelectFeaturesStep({ appId, onConfirm, onCancel }: SelectFeature
 
   const hasAnySelection = Object.values(selections).some(v => v);
   // Show warning banner when usage is at/above 75% (WarningLevel.WARNING) or 100% (WarningLevel.EXCEEDED)
-  // These thresholds are defined by useDailyUsage hook based on percentage of daily token limit
+  // Thresholds apply to both grants-based credits and legacy token-budget modes via useUsage hook
   const showTokenWarning = warningLevel === WarningLevel.WARNING ||
                           warningLevel === WarningLevel.EXCEEDED;
 
   const getUsageMessage = () => {
-    if (!usageData) return null;
-
-    const { percentage } = usageData;
+    if (isLoading) return null;
 
     if (percentage >= 100) {
       return t('builder_golive_token_exceeded_warning');

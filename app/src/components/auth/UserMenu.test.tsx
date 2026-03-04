@@ -204,7 +204,7 @@ describe('UserMenu', function userMenuTests() {
       });
     });
 
-    it('should navigate to /manage-plan when clicked', async function navigateOnClick() {
+    it('should have link to /manage-plan', async function navigateOnClick() {
       mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
       mockUseSubscription.mockReturnValue({
         data: { id: 'sub-1', builderEntitlementId: 'entitlement-123' },
@@ -219,9 +219,9 @@ describe('UserMenu', function userMenuTests() {
         expect(screen.getByText('builder_usermenu_manage_plan')).toBeInTheDocument();
       });
 
-      await user.click(screen.getByText('builder_usermenu_manage_plan'));
-
-      expect(mockPush).toHaveBeenCalledWith('/manage-plan');
+      // Verify the Link has correct href (navigation is handled by Next.js Link component)
+      const managePlanLink = screen.getByText('builder_usermenu_manage_plan').closest('a');
+      expect(managePlanLink).toHaveAttribute('href', '/manage-plan');
     });
   });
 });

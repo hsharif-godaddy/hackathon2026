@@ -1,6 +1,7 @@
 'use client';
 
-import { usePathname, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import UserIcon from '@ux/icon/user';
 
@@ -28,7 +29,6 @@ interface UserMenuProps {
 
 export default function UserMenu({ onShowMockLogin, location = 'unknown' }: UserMenuProps = {}) {
   const t = useTranslations();
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const pathname = usePathname();
@@ -91,13 +91,15 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
                 <Button
                   variant="ghost"
                   className="justify-start px-1 hover:cursor-pointer"
-                  onClick={() => {
-                    setOpen(false);
-                    router.push('/manage-plan');
-                  }}
-                  data-eid={generateClickEID(`${location}.user_menu.manage_plan`)}
+                  asChild
                 >
-                  {t('builder_usermenu_manage_plan')}
+                  <Link
+                    href="/manage-plan"
+                    onClick={() => setOpen(false)}
+                    data-eid={generateClickEID(`${location}.user_menu.manage_plan`)}
+                  >
+                    {t('builder_usermenu_manage_plan')}
+                  </Link>
                 </Button>
                 <Separator className="my-0.5" />
               </>

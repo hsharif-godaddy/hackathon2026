@@ -1,13 +1,12 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
 import { FormattedMessage } from 'react-intl'
 
-import { SettingsSection } from '@/app/develop/components/types'
-import { useChatTabs } from '@/hooks/useChatTabs'
-import { useDailyUsage } from '@/hooks/useDailyUsage'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useUsage } from '@/hooks/useUsage'
 import ChatBanner from '@/lib/ChatBanner'
 
 interface UsageWarningBannerProps {
@@ -18,22 +17,12 @@ export default function UsageWarningBanner({ appId }: UsageWarningBannerProps) {
   const t = useTranslations()
   const [isDismissed, setIsDismissed] = useState(false)
   const { data: purchaseEnabled } = useSwitchboard('appbuilder-usage-purchase')
-  const { setActiveSettingsSection } = useChatTabs()
-
-  const { isWarningBannerActive } = useDailyUsage({
-    appId,
-    enabled: !!appId
-  })
+  const { isWarningBannerActive } = useUsage({ appId, enabled: !!appId })
 
   if (isDismissed || !isWarningBannerActive) return null
 
   const handleClose = () => {
     setIsDismissed(true)
-  }
-
-  const handleLinkClick = (e: React.MouseEvent) => {
-    e.preventDefault()
-    setActiveSettingsSection(SettingsSection.PROJECT)
   }
 
   const rawLinkText = purchaseEnabled
@@ -43,9 +32,9 @@ export default function UsageWarningBanner({ appId }: UsageWarningBannerProps) {
   const linkText = rawLinkText.charAt(0).toUpperCase() + rawLinkText.slice(1)
 
   const link = (
-    <a href="#" className="underline !cursor-pointer !normal-case" onClick={handleLinkClick}>
+    <Link href="/manage-plan" className="underline !cursor-pointer !normal-case">
       {linkText}
-    </a>
+    </Link>
   )
 
   const messageId = purchaseEnabled
