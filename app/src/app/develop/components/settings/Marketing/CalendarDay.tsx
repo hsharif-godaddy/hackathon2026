@@ -114,7 +114,7 @@ export default function CalendarDay({
           })}
 
           {remainingCount > 0 && (
-            <text.span as="caption" className="text-intents-ux-actionPrimary-foregroundColor text-left pt-0.5 group-hover:underline">
+            <text.span as="caption" size={-1} emphasis='passive'>
               {t('builder_marketing_more_items', { count: remainingCount })}
             </text.span>
           )}
