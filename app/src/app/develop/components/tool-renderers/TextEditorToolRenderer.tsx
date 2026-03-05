@@ -293,6 +293,19 @@ export default function TextEditorToolRenderer({
             </text.p>
           </div>
         )}
+
+        {/* File Contents - create command */}
+        {!toolCallError && result && operation?.command === 'create' && input?.file_text && (
+          <div className="mb-2">
+            <text.p className="mb-1" size={0}>
+              File Contents
+            </text.p>
+            <pre className="text-xs font-mono whitespace-pre-wrap break-words bg-muted p-2 rounded border border-border">
+              {String(input.file_text)}
+            </pre>
+          </div>
+        )}
+
       </div>
     </ToolModal>
   )
