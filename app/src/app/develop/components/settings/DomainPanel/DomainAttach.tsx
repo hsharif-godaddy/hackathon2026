@@ -349,10 +349,10 @@ export default function DomainAttach() {
   const isPublished = hasBeenPublished(site);
 
   const shouldDisableAddingDomain =
-              hasActiveOrPendingCustomDomain ||
-              hasActiveOrPendingDomain ||
-              !isPublished ||
-              modifyDomainsMutation.isPending;
+    hasActiveOrPendingCustomDomain ||
+    hasActiveOrPendingDomain ||
+    !isPublished ||
+    modifyDomainsMutation.isPending;
 
   const getCustomDomainStatus = () => {
     const connectedDomains = appDetails?.domains?.filter(d => d.domainType !== 'prefix') || [];
@@ -472,7 +472,7 @@ export default function DomainAttach() {
           errorMessage={getValidationErrorMessage()}
         />
       </Box>
-      { customDomain && (
+      {customDomain && (
         <div>
           <Button
             text={isValidatingDomain || (customDomain !== debouncedDomain)
@@ -492,7 +492,7 @@ export default function DomainAttach() {
             className="!hover:bg-transparent"
           />
         </div>
-      ) }
+      )}
 
       {showAddConfirmation && (
         <Modal onClose={() => setShowAddConfirmation(false)} title={t('builder_custom_domain_modal_title')} centered>
@@ -547,4 +547,3 @@ export default function DomainAttach() {
     </BigCard>
   );
 }
-

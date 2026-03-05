@@ -18,6 +18,8 @@ const mockDevelopStore = {
   isChatPaneCollapsed: false,
   isVersionHistoryOpen: false,
   site: { name: 'Test App', domains: [{ fqdn: 'testapp.com', domainType: 'custom' }] },
+  app: { name: 'Test App' },
+  setActiveChatTab: vi.fn(),
   handleViewModeChange: vi.fn(),
   setPreviewViewMode: vi.fn(),
   setSelectedDeviceId: vi.fn(),
@@ -58,6 +60,22 @@ vi.mock('@/hooks/useChatTabs', () => ({
 }));
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: () => ({ data: true }),
+}));
+vi.mock('@/contexts/WebSocketContext', () => ({
+  useWebSocketContext: () => ({ sendMessage: vi.fn() }),
+}));
+vi.mock('@/stores/useStreamingConversationStore', () => ({
+  useIsActivelyStreaming: () => false,
+  useIsLoading: () => false,
+}));
+vi.mock('@/hooks/useDomainSearch', () => ({
+  useDomainSearch: () => ({ data: null, isError: false }),
+}));
+vi.mock('@/lib/logging', () => ({
+  shipAnalyticsLog: vi.fn(),
+}));
+vi.mock('@/utils/site', () => ({
+  hasBeenPublished: () => false,
 }));
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((id) => id),
@@ -218,23 +236,23 @@ describe('PreviewHeader', () => {
   });
 
   it('should show custom domain button for airoapp.ai subdomain', () => {
-    mockDevelopStore.site = { 
+    mockDevelopStore.site = {
       name: 'Test App',
       domains: [{ fqdn: 'test.airoapp.ai', domainType: 'prefix' }]
     };
     renderWithProviders(<PreviewHeader {...defaultProps} />);
     expect(screen.getByText('builder_custom_domain_button_add')).toBeInTheDocument();
   });
-  
+
   it('should hide custom domain button when custom domain is attached', () => {
-    mockDevelopStore.site = { 
+    mockDevelopStore.site = {
       name: 'Test App',
       domains: [{ fqdn: 'custom.example.com', domainType: 'custom' }]
     };
     renderWithProviders(<PreviewHeader {...defaultProps} />);
     expect(screen.queryByText('builder_custom_domain_button_add')).not.toBeInTheDocument();
   });
-  
+
   it('should call setActiveSettingsSection when custom domain button is clicked', async () => {
     const mockSetActiveSettingsSection = vi.fn();
     vi.mocked(useChatTabs).mockReturnValue({
