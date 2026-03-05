@@ -6,6 +6,7 @@ import Alert from '@ux/alert';
 import Modal from '@ux/modal';
 import Spinner from '@ux/spinner';
 
+import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { SsoExpirationCode } from '@/lib/features';
 import { logger } from '@/lib/request-context';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
@@ -66,6 +67,7 @@ export default function SsoLogin() {
   const [error, setError] = useState<string | null>(null);
   const [ssoHost, setSsoHost] = useState<string | null>(null);
   const [currentOrigin, setCurrentOrigin] = useState<string>('');
+  const { isSmBreakpoint } = useBreakpoints();
 
   const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, redirectUrl, setRedirectUrl, authReason } = useAuthUIStore();
   const clearRequiresAuth = useSitesStore((state) => state.clearRequiresAuth);
@@ -290,10 +292,11 @@ export default function SsoLogin() {
   // Min dimensions sized to fit SsoDeck iframe content and prevent layout shift when loading
   return (
     <Modal
-      className='sso-login-modal min-h-[520px] sm:min-h-[620px] min-w-[300px] md:min-w-[600px]'
+      className='sso-login-modal min-h-[520px] sm:min-h-[620px] sm:min-w-[580px] max-sm:!px-0'
       title=''
       onClose={closeSsoLogin}
       strategy='fixed'
+      stretch={!isSmBreakpoint}
     >
       <>
         {error && (
