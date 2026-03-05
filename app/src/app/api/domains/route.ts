@@ -71,7 +71,7 @@ export const GET = withCustomerAuth(async (
       startIndex: number;
       total: number;
       pageSize: number;
-      domains: Array<{ domain: string }>;
+      domains: Array<{ domain: string; nameservers?: string[]; hasInternalNameservers?: boolean }>;
     };
 
     logger.info('domains.api.success', {

@@ -16,8 +16,10 @@ export interface Domain {
   isLocked?: boolean;
   isPrivate?: boolean;
   hasAutoRenew?: boolean;
+  hasInternalNameservers?: boolean;
   status?: number;
   nameservers?: string[];
+  internationalDisplayName?: string;
 }
 
 /**

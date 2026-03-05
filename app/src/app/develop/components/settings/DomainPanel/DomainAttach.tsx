@@ -122,16 +122,21 @@ export default function DomainAttach() {
 
   // Handle customer domain attachment with automatic DNS configuration
   // Hook receives appDetails from above query and manages auto-attach flow for GoDaddy domains
-  useCustomerDomainAttach(appDetails, domains, isDCVEnabled);
+  const {
+    pendingCustomerDomain: pendingCustomerDomainForAttach,
+    requiresManualDnsSetup,
+  } = useCustomerDomainAttach(appDetails, domains, isDCVEnabled);
 
-  /**
-   * Find CUSTOM domains (not prefix domains, not customer domains) that are pending
-   *
-   * We don't show DNS instructions for prefix/project domains or customer GoDaddy domains.
-   */
   const pendingDomain = useMemo(() => {
     if (!appDetails?.domains) return null;
 
+    // First, check for customer domain that requires manual DNS setup
+    // This covers: external nameservers OR attach API failed
+    if (requiresManualDnsSetup && pendingCustomerDomainForAttach) {
+      return pendingCustomerDomainForAttach.fqdn;
+    }
+
+    // Then check for custom domains (not customer-owned)
     const pending = appDetails.domains.find((d) => {
       // Exclude prefix/project domains
       if (d.domainType === 'prefix') return false;
@@ -149,7 +154,7 @@ export default function DomainAttach() {
     });
 
     return pending ? pending.fqdn : null;
-  }, [appDetails, domains]);
+  }, [appDetails, domains, requiresManualDnsSetup, pendingCustomerDomainForAttach]);
 
   // Cleanup validation timeout on unmount
   useEffect(() => {
@@ -535,7 +540,9 @@ export default function DomainAttach() {
       )}
 
       {pendingDomainDetails && (
-        <DomainDNS domainDetails={pendingDomainDetails} />
+        <DomainDNS
+          domainDetails={pendingDomainDetails}
+        />
       )}
     </BigCard>
   );

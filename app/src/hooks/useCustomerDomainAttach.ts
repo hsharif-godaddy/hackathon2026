@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { Domain } from '@/hooks/useDomainsQuery';
 import { CdnStatus, DomainStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
-import { isCustomerDomain } from '@/utils/domain';
+import { findCustomerDomain, hasExternalNameservers, isCustomerDomain } from '@/utils/domain';
 import { AppDomain } from './useAppDetails';
 import { useDomainAttach } from './useDomainAttach';
 
@@ -31,6 +31,7 @@ export function useCustomerDomainAttach(
 ) {
   const attachMutation = useDomainAttach();
   const hasCalledAttachRef = useRef<Set<string>>(new Set());
+  const lastAttemptedDomainRef = useRef<string | null>(null);
 
   /**
    * Get the currently pending customer domain
@@ -50,6 +51,24 @@ export function useCustomerDomainAttach(
     }) || null;
   }, [appDetails?.domains, customerDomains]);
 
+  // Find the customer domain data (including nameservers) for the pending domain
+  const pendingDomainCustomerData = useMemo(() => {
+    if (!pendingCustomerDomain) return null;
+    return findCustomerDomain(pendingCustomerDomain.fqdn, customerDomains);
+  }, [pendingCustomerDomain, customerDomains]);
+
+  /**
+   * Check if the pending domain uses external (non-GoDaddy) nameservers
+   * If true, auto-attach will be skipped and user must configure DNS manually
+   */
+  const pendingDomainHasExternalNameservers = useMemo(() => {
+    if (!pendingDomainCustomerData) return false;
+    return hasExternalNameservers(
+      pendingDomainCustomerData.hasInternalNameservers,
+      pendingDomainCustomerData.nameservers
+    );
+  }, [pendingDomainCustomerData]);
+
   /**
    * Check if domain is ready for attach API call
    */
@@ -62,6 +81,8 @@ export function useCustomerDomainAttach(
       alreadyCalled: pendingCustomerDomain ? hasCalledAttachRef.current.has(pendingCustomerDomain.fqdn) : false,
       domainStatus: pendingCustomerDomain?.status,
       cdnStatus: pendingCustomerDomain?.cdnStatus,
+      hasExternalNameservers: pendingDomainHasExternalNameservers,
+      hasInternalNameservers: pendingDomainCustomerData?.hasInternalNameservers,
     });
 
     if (!pendingCustomerDomain) return false;
@@ -69,9 +90,19 @@ export function useCustomerDomainAttach(
     if (isDCVEnabled && !pendingCustomerDomain.certificateValidationCname) return false;
     if (attachMutation.isPending) return false;
 
+    // Skip auto-attach for domains with external nameservers
+    if (pendingDomainHasExternalNameservers) {
+      logger.info('domain-attach.skip-external-nameservers', {
+        message: 'Skipping auto-attach for domain with external nameservers',
+        domainFqdn: pendingCustomerDomain.fqdn,
+        hasInternalNameservers: pendingDomainCustomerData?.hasInternalNameservers,
+      });
+      return false;
+    }
+
     // Check if we've already called attach for this domain
     return !hasCalledAttachRef.current.has(pendingCustomerDomain.fqdn);
-  }, [pendingCustomerDomain, attachMutation.isPending, isDCVEnabled]);
+  }, [pendingCustomerDomain, attachMutation.isPending, isDCVEnabled, pendingDomainHasExternalNameservers, pendingDomainCustomerData]);
 
   /**
    * Call attach API when domain is ready
@@ -90,6 +121,7 @@ export function useCustomerDomainAttach(
 
     // Mark as called to prevent duplicate calls
     hasCalledAttachRef.current.add(domainName);
+    lastAttemptedDomainRef.current = domainName;
 
     logger.info('domain-attach.hook.calling-mutation', {
       message: 'Calling domain attach mutation',
@@ -129,10 +161,20 @@ export function useCustomerDomainAttach(
     }
   }, [pendingCustomerDomain]);
 
+  // Only consider attach error relevant if it's for the current pending domain
+  const attachFailedForCurrentDomain =
+    attachMutation.isError &&
+    lastAttemptedDomainRef.current === pendingCustomerDomain?.fqdn;
+
+  const requiresManualDnsSetup = pendingDomainHasExternalNameservers || attachFailedForCurrentDomain;
+
   return {
     pendingCustomerDomain,
     isPolling: !!pendingCustomerDomain,
     isAttaching: attachMutation.isPending,
+    hasExternalNameservers: pendingDomainHasExternalNameservers,
+    attachFailed: attachFailedForCurrentDomain,
+    requiresManualDnsSetup,
   };
 }
 

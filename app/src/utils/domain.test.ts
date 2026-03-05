@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  findCustomerDomain,
   getDnsRecords,
+  hasExternalNameservers,
   isAiroSubdomain,
   isCustomerDomain,
   parseDomain,
@@ -670,5 +672,196 @@ describe('resolveSiteFqdn', () => {
       domains: undefined,
       published_url: undefined,
     })).toBe('');
+  });
+});
+
+describe('findCustomerDomain', () => {
+  const mockCustomerDomains = [
+    { domain: 'example.com', hasInternalNameservers: true, nameservers: ['ns1.domaincontrol.com'] },
+    { domain: 'another.com', hasInternalNameservers: false, nameservers: ['ns1.cloudflare.com'] },
+    { name: 'named-domain.org', hasInternalNameservers: true },
+  ];
+
+  describe('exact matches', () => {
+    it('should return domain object for exact domain match', () => {
+      const result = findCustomerDomain('example.com', mockCustomerDomains);
+      expect(result).toEqual(mockCustomerDomains[0]);
+    });
+
+    it('should return domain object for exact match with name field', () => {
+      const result = findCustomerDomain('named-domain.org', mockCustomerDomains);
+      expect(result).toEqual(mockCustomerDomains[2]);
+    });
+
+    it('should return null for non-matching domain', () => {
+      const result = findCustomerDomain('notowned.com', mockCustomerDomains);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('subdomain matching', () => {
+    it('should return root domain object for subdomain', () => {
+      const result = findCustomerDomain('blog.example.com', mockCustomerDomains);
+      expect(result).toEqual(mockCustomerDomains[0]);
+    });
+
+    it('should return root domain object for www subdomain', () => {
+      const result = findCustomerDomain('www.example.com', mockCustomerDomains);
+      expect(result).toEqual(mockCustomerDomains[0]);
+    });
+
+    it('should return root domain object for multi-level subdomain', () => {
+      const result = findCustomerDomain('api.staging.example.com', mockCustomerDomains);
+      expect(result).toEqual(mockCustomerDomains[0]);
+    });
+
+    it('should return null for subdomain of non-owned domain', () => {
+      const result = findCustomerDomain('blog.notowned.com', mockCustomerDomains);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('edge cases', () => {
+    it('should return null for invalid domain', () => {
+      const result = findCustomerDomain('invalid', mockCustomerDomains);
+      expect(result).toBeNull();
+    });
+
+    it('should return null with empty customer domains', () => {
+      const result = findCustomerDomain('example.com', []);
+      expect(result).toBeNull();
+    });
+
+    it('should preserve all properties from matched domain', () => {
+      const result = findCustomerDomain('example.com', mockCustomerDomains);
+      expect(result?.hasInternalNameservers).toBe(true);
+      expect(result?.nameservers).toEqual(['ns1.domaincontrol.com']);
+    });
+  });
+
+  describe('internationalDisplayName fallback', () => {
+    it('should match on internationalDisplayName when domain and name are missing', () => {
+      const domains = [{ internationalDisplayName: 'münchen.de' }];
+      const result = findCustomerDomain('münchen.de', domains);
+      expect(result).toEqual(domains[0]);
+    });
+  });
+});
+
+describe('hasExternalNameservers', () => {
+  describe('using hasInternalNameservers flag', () => {
+    it('should return false when hasInternalNameservers is true and nameservers contain domaincontrol.com', () => {
+      expect(hasExternalNameservers(true, ['ns1.domaincontrol.com', 'ns2.domaincontrol.com'])).toBe(false);
+    });
+
+    it('should return true when hasInternalNameservers is false', () => {
+      expect(hasExternalNameservers(false, ['ns1.domaincontrol.com'])).toBe(true);
+    });
+
+    it('should return true when hasInternalNameservers is false even with GoDaddy nameservers', () => {
+      expect(hasExternalNameservers(false, ['ns1.domaincontrol.com', 'ns2.domaincontrol.com'])).toBe(true);
+    });
+  });
+
+  describe('nameserver pattern matching', () => {
+    it('should return true when nameservers do not contain domaincontrol.com', () => {
+      expect(hasExternalNameservers(undefined, ['ns1.cloudflare.com', 'ns2.cloudflare.com'])).toBe(true);
+    });
+
+    it('should return false when nameservers contain domaincontrol.com (no flag)', () => {
+      expect(hasExternalNameservers(undefined, ['ns31.domaincontrol.com', 'ns32.domaincontrol.com'])).toBe(false);
+    });
+
+    it('should return true for mixed nameservers (requires ALL to be GoDaddy)', () => {
+      expect(hasExternalNameservers(undefined, ['ns1.cloudflare.com', 'ns31.domaincontrol.com'])).toBe(true);
+    });
+
+    it('should return false only when ALL nameservers are GoDaddy', () => {
+      expect(hasExternalNameservers(undefined, ['ns31.domaincontrol.com', 'ns32.domaincontrol.com'])).toBe(false);
+    });
+
+    it('should be case-insensitive for nameserver matching', () => {
+      expect(hasExternalNameservers(undefined, ['NS1.DOMAINCONTROL.COM'])).toBe(false);
+    });
+
+    it('should handle various GoDaddy nameserver patterns', () => {
+      expect(hasExternalNameservers(undefined, ['pdns13.domaincontrol.com'])).toBe(false);
+      expect(hasExternalNameservers(undefined, ['ns31.domaincontrol.com'])).toBe(false);
+    });
+  });
+
+  describe('mismatch scenarios (belt and suspenders)', () => {
+    it('should return true when flag is true but nameservers are external', () => {
+      // Flag says internal but nameservers say external - trust the nameservers
+      expect(hasExternalNameservers(true, ['ns1.cloudflare.com', 'ns2.cloudflare.com'])).toBe(true);
+    });
+  });
+
+  describe('edge cases', () => {
+    it('should return false when both flag and nameservers are undefined', () => {
+      expect(hasExternalNameservers(undefined, undefined)).toBe(false);
+    });
+
+    it('should return false when flag is undefined and nameservers is empty array', () => {
+      expect(hasExternalNameservers(undefined, [])).toBe(false);
+    });
+
+    it('should return false when flag is true and nameservers is undefined', () => {
+      expect(hasExternalNameservers(true, undefined)).toBe(false);
+    });
+
+    it('should return true when flag is false and nameservers is undefined', () => {
+      expect(hasExternalNameservers(false, undefined)).toBe(true);
+    });
+  });
+
+  describe('real-world nameserver examples', () => {
+    it('should detect Cloudflare nameservers as external', () => {
+      expect(hasExternalNameservers(false, ['bart.ns.cloudflare.com', 'lisa.ns.cloudflare.com'])).toBe(true);
+    });
+
+    it('should detect AWS Route53 nameservers as external', () => {
+      expect(hasExternalNameservers(false, ['ns-123.awsdns-45.com', 'ns-678.awsdns-90.net'])).toBe(true);
+    });
+
+    it('should detect Google Cloud DNS nameservers as external', () => {
+      expect(hasExternalNameservers(false, ['ns-cloud-a1.googledomains.com'])).toBe(true);
+    });
+
+    it('should recognize standard GoDaddy nameservers', () => {
+      expect(hasExternalNameservers(true, ['ns31.domaincontrol.com', 'ns32.domaincontrol.com'])).toBe(false);
+      expect(hasExternalNameservers(true, ['pdns13.domaincontrol.com', 'pdns14.domaincontrol.com'])).toBe(false);
+    });
+  });
+
+  describe('spoofing prevention (strict suffix matching)', () => {
+    it('should detect fake-domaincontrol.com as external', () => {
+      expect(hasExternalNameservers(undefined, ['fake-domaincontrol.com'])).toBe(true);
+    });
+
+    it('should detect domaincontrol.com.evil.com as external', () => {
+      expect(hasExternalNameservers(undefined, ['domaincontrol.com.evil.com'])).toBe(true);
+    });
+
+    it('should detect ns1-domaincontrol.com as external', () => {
+      expect(hasExternalNameservers(undefined, ['ns1-domaincontrol.com'])).toBe(true);
+    });
+
+    it('should detect mydomaincontrol.com as external', () => {
+      expect(hasExternalNameservers(undefined, ['mydomaincontrol.com'])).toBe(true);
+    });
+
+    it('should accept exact domaincontrol.com as valid', () => {
+      expect(hasExternalNameservers(undefined, ['domaincontrol.com'])).toBe(false);
+    });
+
+    it('should only accept proper subdomains of domaincontrol.com', () => {
+      // Valid: ends with .domaincontrol.com
+      expect(hasExternalNameservers(undefined, ['ns31.domaincontrol.com'])).toBe(false);
+      expect(hasExternalNameservers(undefined, ['pdns13.domaincontrol.com'])).toBe(false);
+
+      // Invalid: doesn't end with .domaincontrol.com
+      expect(hasExternalNameservers(undefined, ['notdomaincontrol.com'])).toBe(true);
+    });
   });
 });

@@ -212,6 +212,39 @@ export function validateDomain(domain: string): DomainValidationResult {
 }
 
 /**
+ * Find the customer domain that matches a given domain
+ * Matches exact domain or root domain (for subdomains)
+ *
+ * @param domainToCheck - Domain to check (could be root domain or subdomain)
+ * @param customerDomains - List of customer domains
+ * @returns The matching customer domain object, or null if not found
+ */
+export function findCustomerDomain<T extends { domain?: string; name?: string; internationalDisplayName?: string }>(
+  domainToCheck: string,
+  customerDomains: T[]
+): T | null {
+  const parsed = parseDomain(domainToCheck);
+  if (!parsed) return null;
+
+  const exactMatch = customerDomains.find((customerDomain) => {
+    const customerDomainName = customerDomain.domain || customerDomain.name || customerDomain.internationalDisplayName;
+    return customerDomainName === parsed.fqdn;
+  });
+
+  if (exactMatch) return exactMatch;
+
+  if (parsed.isSubdomain) {
+    const rootMatch = customerDomains.find((customerDomain) => {
+      const customerDomainName = customerDomain.domain || customerDomain.name || customerDomain.internationalDisplayName;
+      return customerDomainName === parsed.rootDomain;
+    });
+    return rootMatch || null;
+  }
+
+  return null;
+}
+
+/**
  * Check if a domain is owned by the customer
  * This includes checking if the domain or its root domain is in the customer's domain list
  *
@@ -228,23 +261,39 @@ export function isCustomerDomain(
   domainToCheck: string,
   customerDomains: Array<{ domain?: string; name?: string; internationalDisplayName?: string }>
 ): boolean {
-  const parsed = parseDomain(domainToCheck);
-  if (!parsed) return false;
+  return findCustomerDomain(domainToCheck, customerDomains) !== null;
+}
 
-  // Check if the exact domain matches
-  const exactMatch = customerDomains.some((customerDomain) => {
-    const customerDomainName = customerDomain.domain || customerDomain.name || customerDomain.internationalDisplayName;
-    return customerDomainName === parsed.fqdn;
-  });
+const GODADDY_NAMESERVER_SUFFIX = '.domaincontrol.com';
 
-  if (exactMatch) return true;
+function isGoDaddyNameserver(nameserver: string): boolean {
+  const ns = nameserver.toLowerCase();
+  return ns.endsWith(GODADDY_NAMESERVER_SUFFIX) || ns === 'domaincontrol.com';
+}
 
-  // If it's a subdomain, check if the root domain is owned by the customer
-  if (parsed.isSubdomain) {
-    return customerDomains.some((customerDomain) => {
-      const customerDomainName = customerDomain.domain || customerDomain.name || customerDomain.internationalDisplayName;
-      return customerDomainName === parsed.rootDomain;
-    });
+/**
+ * Check if a domain uses external (non-GoDaddy) nameservers
+ * Requires BOTH hasInternalNameservers flag AND ALL nameservers to be GoDaddy to confirm GoDaddy managed
+ * If either signal indicates external, returns true (show manual DNS)
+ *
+ * @param hasInternalNameservers - Boolean flag from domain data (true = GoDaddy managed)
+ * @param nameservers - Array of nameserver hostnames
+ * @returns true if nameservers are external (not GoDaddy managed)
+ */
+export function hasExternalNameservers(
+  hasInternalNameservers?: boolean,
+  nameservers?: string[]
+): boolean {
+  const allNameserversAreGoDaddy = nameservers && nameservers.length > 0
+    ? nameservers.every(isGoDaddyNameserver)
+    : false;
+
+  if (hasInternalNameservers === false) {
+    return true;
+  }
+
+  if (nameservers && nameservers.length > 0 && !allNameserversAreGoDaddy) {
+    return true;
   }
 
   return false;
