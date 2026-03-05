@@ -112,7 +112,9 @@ export default function ChatInput({
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSend()
+      if (uploadingFiles.length === 0) {
+        handleSend()
+      }
     }
   }
 
@@ -237,7 +239,7 @@ export default function ChatInput({
                 data-testid="chat-send-button"
                 onClick={handleSend}
                 data-eid={generateClickEID('develop.prompt.send')}
-                disabled={!inputValue?.trim() || isDisabled || isBudgetExceeded}
+                disabled={!inputValue?.trim() || isDisabled || isBudgetExceeded || uploadingFiles.length > 0}
                 aria-label={t('builder_chatinput_send')}
                 design="primary"
                 icon={<SendIcon />}

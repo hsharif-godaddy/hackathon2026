@@ -154,6 +154,35 @@ describe('ChatInput', () => {
     expect(sendButton).toBeDisabled();
   });
 
+  it('should disable send button while files are uploading', () => {
+    const uploadingFiles = [{ id: 'upload-1', name: 'photo.jpg' }];
+    renderWithProviders(
+      <ChatInput {...defaultProps} inputValue="Test" uploadingFiles={uploadingFiles} />
+    );
+
+    const sendButton = screen.getByRole('button', { name: 'builder_chatinput_send' });
+    expect(sendButton).toBeDisabled();
+  });
+
+  it('should not call onSendMessage via Enter key while files are uploading', async () => {
+    const onSendMessage = vi.fn();
+    const uploadingFiles = [{ id: 'upload-1', name: 'photo.jpg' }];
+    const { user } = renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        onSendMessage={onSendMessage}
+        uploadingFiles={uploadingFiles}
+      />
+    );
+
+    const textarea = screen.getByRole('textbox');
+    await user.click(textarea);
+    await user.keyboard('{Enter}');
+
+    expect(onSendMessage).not.toHaveBeenCalled();
+  });
+
   it('should disable textarea when isDisabled is true', () => {
     renderWithProviders(<ChatInput {...defaultProps} isDisabled={true} />);
 
