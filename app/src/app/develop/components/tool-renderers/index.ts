@@ -67,7 +67,8 @@ export const toolRendererRegistry = {
   handoff: HandoffToolRenderer,
   readFile: ReadFileToolRenderer,
   fileEdit: FileEditToolRenderer,
-  textEditor: TextEditorToolRenderer,
+  str_replace_based_edit_tool: TextEditorToolRenderer,
+  textEditor: TextEditorToolRenderer,  // Legacy name for old chat history
   terminalCommand: TerminalCommandToolRenderer,
   media: MediaSlotToolRenderer,
   mediaSearch: MediaSearchToolRenderer,

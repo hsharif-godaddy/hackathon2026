@@ -1,15 +1,18 @@
 /**
  * Text Editor Tool for AI-Lib
  *
- * Implements a simple command-based interface for file operations inspired by
- * Anthropic's text_editor_20250728 tool. While not schema-less, this provides
- * a clearer interface than the batch tool with command-based operations.
+ * Uses Anthropic's native text_editor_20250728 schema-less tool via the
+ * Vercel AI SDK. The SDK's toolNameMapping handles bidirectional translation
+ * The tool MUST be registered as "str_replace_based_edit_tool" in the tools
+ * record — the SDK returns this name in tool_use responses and looks it up
+ * by key. UI and history layers map both old ("textEditor") and new names.
  */
 
 import { basename } from 'node:path';
 
-import { createTool, type Tool } from '@airo/ai-lib';
-import { z } from 'zod';
+import { anthropic } from '@ai-sdk/anthropic';
+import type { Tool } from '@airo/ai-lib';
+import type { AgentContext } from '@airo/ai-lib';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { isFileBlocked } from '../read-file.js';
 import {
@@ -28,66 +31,17 @@ import {
 const appRepo = new AppRepository();
 
 /**
- * Text Editor Tool - Command-based file operations
+ * Text Editor Tool — Native Anthropic text_editor_20250728
  *
- * Provides four commands for file manipulation:
- * - view: Read file contents or list directory
- * - str_replace: Replace exact text match (must be unique)
- * - create: Create new file
- * - insert: Insert text at specific line number
+ * The SDK sends this as a schema-less tool with type "text_editor_20250728"
+ * and name "str_replace_based_edit_tool" to the API. The model has built-in
+ * training for this tool interface.
+ *
+ * Commands: view, str_replace, create, insert
  */
-export const textEditorAITool: Tool = createTool(
-  `Command-based file editor with four operations:
-
-**view** - Read file or list directory contents
-  Required: path
-  Optional: view_range (array of [start_line, end_line])
-
-**str_replace** - Replace exact text (must match exactly once)
-  Required: path, old_str, new_str
-  CRITICAL: You MUST read the file with readFile BEFORE using str_replace to get the exact current content.
-  The old_str parameter must match the file content EXACTLY (including all whitespace, indentation, line breaks).
-  If old_str doesn't match exactly, the operation will fail.
-
-**create** - Create new file
-  Required: path, file_text
-
-**insert** - Insert text at line number
-  Required: path, insert_line, insert_text
-
-MANDATORY WORKFLOW for str_replace:
-1. First call readFile to see the exact current content
-2. Then call textEditor with str_replace using the EXACT text from readFile
-
-For multiple independent files, invoke all textEditor calls simultaneously.`,
-
-  z.object({
-    command: z.enum(['view', 'str_replace', 'create', 'insert'])
-      .describe('Operation to perform: view, str_replace, create, or insert'),
-
-    path: z.string()
-      .describe('File path relative to app root'),
-
-    view_range: z.array(z.number()).min(2).max(2).optional()
-      .describe('Optional [start_line, end_line] for view command (1-indexed). Use -1 for end to read to EOF'),
-
-    old_str: z.string().optional()
-      .describe('Exact text to find for str_replace (must match exactly once in file). You MUST read the file first with readFile to get this exact content.'),
-
-    new_str: z.string().optional()
-      .describe('Replacement text for str_replace'),
-
-    file_text: z.string().optional()
-      .describe('Full file content for create command'),
-
-    insert_line: z.number().optional()
-      .describe('Line number after which to insert text. Use 0 to insert at the beginning of the file.'),
-
-    insert_text: z.string().optional()
-      .describe('Text to insert at insert_line')
-  }),
-
-  async (input, context) => {
+export const textEditorAITool: Tool = anthropic.tools.textEditor_20250728({
+  async execute({ command, path, view_range, old_str, new_str, file_text, insert_line, insert_text }, { experimental_context }) {
+    const context = experimental_context as AgentContext | undefined;
     const appId = context?.metadata?.appId as string;
     if (!appId) {
       throw new Error('App ID is required for file operations');
@@ -97,8 +51,6 @@ For multiple independent files, invoke all textEditor calls simultaneously.`,
     if (!app) {
       throw new Error(`App '${appId}' not found`);
     }
-
-    const { command, path, view_range, old_str, new_str, file_text, insert_line, insert_text } = input;
 
     // Resolve full path with security checks
     const fullPath = resolveFilePath(app.path, path);
@@ -113,8 +65,8 @@ For multiple independent files, invoke all textEditor calls simultaneously.`,
       }
     }
 
-    // 2. Immutability checks on modifications
-    if (['str_replace', 'insert'].includes(command)) {
+    // 2. Immutability checks on modifications (includes create since it can overwrite)
+    if (['str_replace', 'create', 'insert'].includes(command)) {
       const immutable = await isFileImmutable(fullPath);
       if (immutable) {
         throw new Error(
@@ -149,12 +101,11 @@ For multiple independent files, invoke all textEditor calls simultaneously.`,
     // === EXECUTE COMMAND ===
 
     switch (command) {
-      case 'view':
-{
-          const range: [number, number] | undefined =
-            view_range && view_range.length >= 2 ? [view_range[0]!, view_range[1]!] : undefined;
-          return handleView(fullPath, range);
-        }
+      case 'view': {
+        const range: [number, number] | undefined =
+          view_range && view_range.length >= 2 ? [view_range[0]!, view_range[1]!] : undefined;
+        return handleView(fullPath, range);
+      }
 
       case 'str_replace':
         if (!old_str || new_str === undefined) {
@@ -166,7 +117,7 @@ For multiple independent files, invoke all textEditor calls simultaneously.`,
         if (binaryCopied) {
           return `Successfully created ${basename(path)} (binary file auto-resolved from uploads)`;
         }
-        if (!resolvedFileText) {
+        if (resolvedFileText == null) {
           throw new Error('create requires file_text');
         }
         return handleCreate(fullPath, resolvedFileText);
@@ -181,4 +132,4 @@ For multiple independent files, invoke all textEditor calls simultaneously.`,
         throw new Error(`Unknown command: ${command}`);
     }
   }
-);
+}) as Tool;

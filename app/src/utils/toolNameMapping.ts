@@ -15,6 +15,7 @@ export function getToolDisplayName(toolName: string): string {
     case 'file_edit':
     case 'fileEdit':
       return 'File Edit'
+    case 'str_replace_based_edit_tool':
     case 'text_editor':
     case 'textEditor':
       return 'Text Editor'

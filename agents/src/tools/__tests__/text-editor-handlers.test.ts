@@ -119,10 +119,12 @@ describe('text-editor-handlers', () => {
       expect(readFileSync(filePath, 'utf-8')).toBe('nested content')
     })
 
-    it('should throw if file already exists', async () => {
+    it('should overwrite if file already exists', async () => {
       const filePath = join(testDir, 'exists.txt')
       writeFileSync(filePath, 'existing')
-      await expect(handleCreate(filePath, 'new')).rejects.toThrow('File already exists')
+      const result = await handleCreate(filePath, 'new')
+      expect(result).toContain('Successfully created')
+      expect(readFileSync(filePath, 'utf-8')).toBe('new')
     })
 
     it('should handle empty content', async () => {

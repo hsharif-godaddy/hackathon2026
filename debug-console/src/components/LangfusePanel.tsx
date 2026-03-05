@@ -1038,7 +1038,7 @@ function getToolResultSummary(tc: AgentStep['toolCalls'][number]): string {
     const filePath = argsObj?.filePath || argsObj?.path;
     if (filePath) return String(filePath).split('/').pop() || filePath;
   }
-  if (name === 'textEditor' || name === 'fileEdit' || name === 'writeFile' || name === 'createFile') {
+  if (name === 'str_replace_based_edit_tool' || name === 'textEditor' || name === 'fileEdit' || name === 'writeFile' || name === 'createFile') {
     const filePath = argsObj?.filePath || argsObj?.path || argsObj?.file_path;
     if (filePath) return String(filePath).split('/').pop() || filePath;
   }

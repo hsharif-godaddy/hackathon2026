@@ -397,7 +397,7 @@ export class ConversationHistoryLoader {
             role: 'tool',
             content: toolContent,
             tool_call_id: segment.tool_call.id,
-            name: segment.tool_call.tool_name,
+            name: segment.tool_call.tool_name === 'textEditor' ? 'str_replace_based_edit_tool' : segment.tool_call.tool_name,
           });
         }
       }
@@ -1276,7 +1276,7 @@ export class ConversationHistoryLoader {
       id: toolCall.id,
       type: 'function',
       function: {
-        name: toolCall.tool_name,
+        name: toolCall.tool_name === 'textEditor' ? 'str_replace_based_edit_tool' : toolCall.tool_name,
         arguments: typeof toolCall.tool_args === 'string' ? toolCall.tool_args : JSON.stringify(toolCall.tool_args),
       },
     };

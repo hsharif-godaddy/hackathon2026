@@ -123,8 +123,8 @@ import { mediaSlotAITool } from './media-slot.js';
  * Use this for agents that need access to all tools
  */
 export const allAILibTools: Record<string, Tool> = {
-  textEditor: textEditorAITool,  // NEW: Command-based text editor (replaces fileEdit)
-  fileEdit: fileEditAITool,       // LEGACY: Batch tool (deprecated, use textEditor)
+  str_replace_based_edit_tool: textEditorAITool,  // Native Anthropic text_editor_20250728
+  fileEdit: fileEditAITool,       // LEGACY: Batch tool (deprecated, use str_replace_based_edit_tool)
   directoryListing: directoryListingAITool,
   terminalCommand: terminalCommandAITool,
   readFile: readFileAITool,
@@ -182,7 +182,7 @@ export const allAILibTools: Record<string, Tool> = {
 export const toolGroups: Record<string, Record<string, Tool>> = {
   // Core development tools
   core: {
-    textEditor: textEditorAITool,
+    str_replace_based_edit_tool: textEditorAITool,
     directoryListing: directoryListingAITool,
     readFile: readFileAITool,
     grepSearch: grepSearchAITool,

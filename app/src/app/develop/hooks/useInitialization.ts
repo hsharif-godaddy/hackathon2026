@@ -989,7 +989,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     if (state.context.hasSeenFirstFileEdit) return
 
     const completedFileEdit = activeStream?.toolCalls.find(
-      tc => (tc.name === 'textEditor' || tc.name === 'fileEdit') &&
+      tc => (tc.name === 'str_replace_based_edit_tool' || tc.name === 'textEditor' || tc.name === 'fileEdit') &&
            tc.status === 'completed' &&
            !tc.error
     )

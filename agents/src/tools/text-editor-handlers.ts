@@ -135,14 +135,10 @@ export async function handleCreate(
   fullPath: string,
   fileText: string
 ): Promise<string> {
-  if (existsSync(fullPath)) {
-    throw new Error('File already exists. Use str_replace to modify existing files.');
-  }
-
   // Create parent directories
   await mkdir(dirname(fullPath), { recursive: true });
 
-  // Write file
+  // Write file (overwrites if exists, matching native text_editor_20250728 behavior)
   await writeFile(fullPath, fileText, 'utf-8');
 
   return `Successfully created ${basename(fullPath)}`;

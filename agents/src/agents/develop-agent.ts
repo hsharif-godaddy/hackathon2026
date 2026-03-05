@@ -62,7 +62,7 @@ const afterToolExecution: AfterToolExecutionHook = async (
   const argsObj = args as any
 
   // Track specific development operations
-  if ((toolName === 'textEditor' || toolName === 'fileEdit') && (resultObj?.success || typeof result === 'string')) {
+  if ((toolName === 'str_replace_based_edit_tool' || toolName === 'textEditor' || toolName === 'fileEdit') && (resultObj?.success || typeof result === 'string')) {
     // Handle batch operations (fileEdit schema)
     if (resultObj.operations && Array.isArray(resultObj.operations)) {
       const paths = resultObj.operations.map((op: any) => op.path).filter(Boolean);
@@ -229,7 +229,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       // Core development tools
       directoryListing: allAILibTools.directoryListing,
       terminalCommand: allAILibTools.terminalCommand,
-      textEditor: allAILibTools.textEditor,  // NEW: Command-based text editor (95%+ success rate)
+      str_replace_based_edit_tool: allAILibTools.str_replace_based_edit_tool,  // Native Anthropic text editor
       readFile: allAILibTools.readFile,
       grepSearch: allAILibTools.grepSearch,
 

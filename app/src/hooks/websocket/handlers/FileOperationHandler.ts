@@ -11,7 +11,8 @@ import type { MessageHandler, WebSocketMessage } from './types'
 
 // File operation tool names
 const FILE_OPERATION_TOOLS = new Set([
-  'textEditor',  // New command-based editor
+  'str_replace_based_edit_tool',  // Native Anthropic text editor
+  'textEditor',  // Legacy name
   'fileEdit',    // Legacy batch tool
   'write_file',
   'delete_file',
@@ -38,10 +39,17 @@ function extractFilePaths(toolName: string, input: any): string[] {
 }
 
 /**
- * Determine operation type from tool name
+ * Determine operation type from tool name and input
+ * For the text editor tool, the command determines the operation type
  */
-function getOperationType(toolName: string): FileOperationType | null {
-  if (toolName === 'textEditor' || toolName === 'fileEdit') return 'modify'
+function getOperationType(toolName: string, input?: any): FileOperationType | null {
+  if (toolName === 'str_replace_based_edit_tool' || toolName === 'textEditor') {
+    const command = input?.command
+    if (command === 'view') return null  // view doesn't modify files
+    if (command === 'create') return 'create'
+    return 'modify'  // str_replace, insert
+  }
+  if (toolName === 'fileEdit') return 'modify'
   if (toolName === 'write_file' || toolName === 'create_file') return 'create'
   if (toolName === 'delete_file') return 'delete'
   return null
@@ -82,7 +90,7 @@ export class FileOperationHandler implements MessageHandler {
       return
     }
 
-    const operationType = getOperationType(toolName)
+    const operationType = getOperationType(toolName, tool.input)
     if (!operationType) return
 
     const { markFileStreaming, markFileComplete, clearFileChange } = useCodeSyncStore.getState()

@@ -139,12 +139,12 @@ export function estimateLineCountsFromPartial(partialInput: string): { additions
 /**
  * Get display verb for command
  */
-function getCommandVerb(command: string, t: (key: string) => string): string {
+function getCommandVerb(command: string, t: (key: string, values?: Record<string, any>, defaultMessage?: string) => string): string {
   const verbMap: Record<string, string> = {
-    'view': t('builder_common_view'),
-    'str_replace': t('builder_common_edit'),
-    'create': t('builder_common_created'),
-    'insert': t('builder_common_insert')
+    'view': t('builder_common_view', undefined, 'View'),
+    'str_replace': t('builder_common_edit', undefined, 'Edit'),
+    'create': t('builder_common_created', undefined, 'Created'),
+    'insert': t('builder_common_insert', undefined, 'Insert')
   }
   return verbMap[command] || command
 }
