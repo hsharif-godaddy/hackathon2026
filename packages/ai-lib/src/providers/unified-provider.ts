@@ -29,6 +29,7 @@ import { containsBudgetExceededPattern } from '../utils/errors.js'
  * Maps short names to their OpenAI proxy model identifiers
  */
 const CLAUDE_PROXY_MODELS = {
+  'claude-sonnet-4-6': 'claude-sonnet-4-6',
   'claude-sonnet-4-5-20250929': 'claude-sonnet-4-5-20250929',
   'claude-sonnet-4-5': 'claude-sonnet-4-5-20250929',
   'sonnet': 'claude-sonnet-4-5-20250929',

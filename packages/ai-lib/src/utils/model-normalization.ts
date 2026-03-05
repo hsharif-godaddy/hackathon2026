@@ -83,6 +83,11 @@ const MODELS: Record<string, ModelDefinition> = {
   },
 
   // Claude Models (available on multiple providers)
+  'claude-sonnet-4-6': {
+    normalizedName: 'claude-sonnet-4-6',
+    anthropic: 'claude-sonnet-4-6',
+    bedrock: 'global.anthropic.claude-sonnet-4-6'
+  },
   'claude-sonnet-4-5': {
     normalizedName: 'claude-sonnet-4-5',
     anthropic: 'claude-sonnet-4-5-20250929',

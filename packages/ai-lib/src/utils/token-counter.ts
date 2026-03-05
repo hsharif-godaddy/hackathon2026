@@ -145,6 +145,7 @@ export type SupportedModel =
   | 'claude-3-5-haiku'
   | 'claude-sonnet-4'
   | 'claude-sonnet-4-5'
+  | 'claude-sonnet-4-6'
   | 'claude-haiku-4-5'
   // Bedrock Claude Models (full names)
   | 'us.anthropic.claude-3-5-sonnet-20240620-v1:0'
@@ -188,6 +189,7 @@ const MODEL_TO_TOKENIZER: Record<string, string> = {
   'claude-3-5-haiku': 'anthropic/claude-3.5-haiku',
   'claude-sonnet-4': 'anthropic/claude-sonnet-4',
   'claude-sonnet-4-5': 'anthropic/claude-sonnet-4.5',
+  'claude-sonnet-4-6': 'anthropic/claude-sonnet-4.6',
   'claude-haiku-4-5': 'anthropic/claude-haiku-4.5',
   // Gemini models
   'gemini-3-flash-preview': 'google/gemini-3-pro-preview',
