@@ -300,7 +300,7 @@ function HomeContent() {
 
   return (
     <>
-      <div className="relative w-full overflow-hidden bg-gradient bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor">
+      <div className="isolate relative w-full overflow-hidden bg-gradient bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor">
         <div className="w-full h-full relative">
           <Header
             className="absolute top-0 left-0 w-full border-0!"

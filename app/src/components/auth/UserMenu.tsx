@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import UserIcon from '@ux/icon/user';
 
+import { Feedback } from '@/components/feedback/Feedback';
+import { FEEDBACK_ID } from '@/components/feedback/utils';
 import DiscordLink, { DiscordLinkVariant } from '@/components/layout/DiscordLink';
 import InviteFriends, { InviteFriendsVariant } from '@/components/layout/InviteFriends';
 import InviteFriendsModal from '@/components/layout/InviteFriendsModal';
@@ -31,6 +33,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
   const t = useTranslations();
   const [open, setOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const pathname = usePathname();
   const isDevelopPage = pathname?.includes('/develop');
 
@@ -45,9 +48,16 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
   const { data: activeSubscription } = useSubscription({ enabled: isAuthenticated && !!isManagePlanEnabled });
 
   const handleSignInClick = () => {
-    setOpen(false); // Close the popover
+    setOpen(false);
     signIn({ onShowMockLogin });
   };
+
+  function openFeedback() {
+    setOpen(false);
+    setFeedbackOpen(true);
+  }
+
+  const closeFeedback = useCallback(() => setFeedbackOpen(false), []);
 
   return (
     <>
@@ -104,6 +114,16 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
                 <Separator className="my-0.5" />
               </>
             )}
+            {isAuthenticated && (
+              <Button
+                variant="ghost"
+                className="justify-start px-1 hover:cursor-pointer"
+                onClick={openFeedback}
+                data-eid={generateClickEID(`${location}.user_menu.give_feedback`)}
+              >
+                {t('builder_settings_nav_feedback')}
+              </Button>
+            )}
             {isAuthenticated && !isAuthDisabled && (
               <Button
                 variant="ghost"
@@ -122,6 +142,13 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
         onClose={() => setInviteModalOpen(false)}
         location={location}
       />
+      {feedbackOpen && (
+        <Feedback
+          feedbackId={FEEDBACK_ID}
+          onClose={closeFeedback}
+          onSubmitSuccess={closeFeedback}
+        />
+      )}
     </>
   );
 }

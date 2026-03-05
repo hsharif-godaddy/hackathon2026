@@ -7,6 +7,19 @@ import { mockAuthContext, mockRouter } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 import UserMenu from './UserMenu';
 
+vi.mock('@/components/feedback/Feedback', () => ({
+  Feedback: ({ onClose, onSubmitSuccess }: { onClose: () => void; onSubmitSuccess: () => void }) => (
+    <div data-testid="feedback-modal">
+      <button onClick={onClose}>close-feedback</button>
+      <button onClick={onSubmitSuccess}>submit-feedback</button>
+    </div>
+  ),
+}));
+
+vi.mock('@/components/feedback/utils', () => ({
+  FEEDBACK_ID: 'airo#app-builder',
+}));
+
 // Mock ResizeObserver for UX components
 global.ResizeObserver = vi.fn().mockImplementation(() => ({
   observe: vi.fn(),
@@ -26,6 +39,7 @@ Object.defineProperty(navigator, 'clipboard', {
 const mockPush = vi.fn();
 const mockUseSwitchboard = vi.fn();
 const mockUseSubscription = vi.fn();
+const mockUseAuthContext = vi.fn();
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/develop',
@@ -58,7 +72,7 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 vi.mock('@/components/providers/AuthProvider', () => ({
-  useAuthContext: () => mockAuthContext({ isAuthenticated: true, isAuthDisabled: false }),
+  useAuthContext: () => mockUseAuthContext(),
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
@@ -73,7 +87,7 @@ describe('UserMenu', function userMenuTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
     mockPush.mockClear();
-    // Default mock values
+    mockUseAuthContext.mockReturnValue(mockAuthContext({ isAuthenticated: true, isAuthDisabled: false }));
     mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false });
     mockUseSubscription.mockReturnValue({ data: undefined, isLoading: false });
   });
@@ -222,6 +236,120 @@ describe('UserMenu', function userMenuTests() {
       // Verify the Link has correct href (navigation is handled by Next.js Link component)
       const managePlanLink = screen.getByText('builder_usermenu_manage_plan').closest('a');
       expect(managePlanLink).toHaveAttribute('href', '/manage-plan');
+    });
+  });
+
+  describe('Give Feedback button', function giveFeedbackTests() {
+    it('should show Give Feedback when authenticated', async function showWhenAuthenticated() {
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByTestId('user-menu-trigger'));
+
+      await waitFor(function checkFeedbackButton() {
+        expect(screen.getByText('builder_settings_nav_feedback')).toBeInTheDocument();
+      });
+    });
+
+    it('should not show Give Feedback when unauthenticated', async function hideWhenUnauthenticated() {
+      mockUseAuthContext.mockReturnValue(mockAuthContext({ isAuthenticated: false, isAuthDisabled: false }));
+
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByTestId('user-menu-trigger'));
+
+      await waitFor(function checkSignIn() {
+        expect(screen.getByText('builder_common_signin')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('builder_settings_nav_feedback')).not.toBeInTheDocument();
+    });
+
+    it('should open feedback modal when Give Feedback is clicked', async function openModal() {
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByTestId('user-menu-trigger'));
+      await waitFor(function checkFeedbackButton() {
+        expect(screen.getByText('builder_settings_nav_feedback')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('builder_settings_nav_feedback'));
+
+      await waitFor(function checkModalOpen() {
+        expect(screen.getByTestId('feedback-modal')).toBeInTheDocument();
+      });
+    });
+
+    it('should close popover when Give Feedback is clicked', async function closePopover() {
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByTestId('user-menu-trigger'));
+      await waitFor(function checkFeedbackButton() {
+        expect(screen.getByText('builder_settings_nav_feedback')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('builder_settings_nav_feedback'));
+
+      await waitFor(function checkPopoverClosed() {
+        expect(screen.queryByText('builder_common_signout')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should close feedback modal via onClose callback', async function closeViaOnClose() {
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByTestId('user-menu-trigger'));
+      await waitFor(function checkFeedbackButton() {
+        expect(screen.getByText('builder_settings_nav_feedback')).toBeInTheDocument();
+      });
+      await user.click(screen.getByText('builder_settings_nav_feedback'));
+      await waitFor(function checkModalOpen() {
+        expect(screen.getByTestId('feedback-modal')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('close-feedback'));
+
+      await waitFor(function checkModalClosed() {
+        expect(screen.queryByTestId('feedback-modal')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should close feedback modal via onSubmitSuccess callback', async function closeViaSubmit() {
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByTestId('user-menu-trigger'));
+      await waitFor(function checkFeedbackButton() {
+        expect(screen.getByText('builder_settings_nav_feedback')).toBeInTheDocument();
+      });
+      await user.click(screen.getByText('builder_settings_nav_feedback'));
+      await waitFor(function checkModalOpen() {
+        expect(screen.getByTestId('feedback-modal')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('submit-feedback'));
+
+      await waitFor(function checkModalClosed() {
+        expect(screen.queryByTestId('feedback-modal')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should not render feedback modal before Give Feedback is clicked', function notRenderedInitially() {
+      renderWithProviders(<UserMenu location="develop" />);
+
+      expect(screen.queryByTestId('feedback-modal')).not.toBeInTheDocument();
+    });
+
+    it('should not mutate the airo-feedback-shown localStorage key when opening', async function noLocalStorageSideEffect() {
+      const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem');
+
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByTestId('user-menu-trigger'));
+      await waitFor(function checkFeedbackButton() {
+        expect(screen.getByText('builder_settings_nav_feedback')).toBeInTheDocument();
+      });
+      await user.click(screen.getByText('builder_settings_nav_feedback'));
+
+      expect(removeItemSpy).not.toHaveBeenCalledWith(expect.stringContaining('airo-feedback-shown'));
     });
   });
 });
