@@ -2,6 +2,28 @@ import { config } from '../config';
 import { BaseClient, BaseAPIResponse } from './base-client';
 import { GettySearchParams, GettyAPIResponse } from '../types';
 
+/**
+ * Build a query string that correctly handles array values as repeated params.
+ * Express parses ?orientations=horizontal&orientations=square into an array,
+ * but URLSearchParams(obj) would join arrays with commas, which Getty rejects.
+ */
+export function buildQueryString(params: GettySearchParams): string {
+  const qs = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === null || value === undefined) {
+      continue;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        qs.append(key, String(item));
+      }
+    } else {
+      qs.append(key, String(value));
+    }
+  }
+  return qs.toString();
+}
+
 class GettyClient extends BaseClient {
   constructor() {
     super({
@@ -13,7 +35,7 @@ class GettyClient extends BaseClient {
 
   async search(params: GettySearchParams, requestId: string = 'unknown'): Promise<GettyAPIResponse> {
     return this.executeWithTiming(async () => {
-      const queryString = new URLSearchParams(params as Record<string, string>).toString();
+      const queryString = buildQueryString(params);
       const gettyUrl = `${config.getty.upstream}/v1/search?${queryString}`;
 
       return (await this.makeRequest(gettyUrl, requestId, 'GET', undefined, {
@@ -25,7 +47,7 @@ class GettyClient extends BaseClient {
 
   async videoSearch(params: GettySearchParams, requestId: string = 'unknown'): Promise<GettyAPIResponse> {
     return this.executeWithTiming(async () => {
-      const queryString = new URLSearchParams(params as Record<string, string>).toString();
+      const queryString = buildQueryString(params);
       const gettyUrl = `${config.getty.upstream}/v1/videos/search?${queryString}`;
 
       return (await this.makeRequest(gettyUrl, requestId, 'GET', undefined, {

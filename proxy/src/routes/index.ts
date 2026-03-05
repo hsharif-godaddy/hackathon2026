@@ -185,7 +185,7 @@ router.get('/v1/search',
       res.send(response.data);
 
     } catch (error) {
-      const err = error as { message: string; statusCode?: number; duration?: number };
+      const err = error as { message: string; statusCode?: number; duration?: number; response?: string };
       const totalDuration = Date.now() - startTime;
 
       // Single comprehensive error log statement
@@ -196,6 +196,7 @@ router.get('/v1/search',
         query: req.query,
         userToken: req.userToken ? req.userToken.substring(0, 10) + '...' : 'unknown',
         error: err.message,
+        ...(err.statusCode === 400 && err.response && { upstreamResponse: err.response.substring(0, 500) }),
         statusCode: err.statusCode,
         gettyDuration: err.duration ? `${err.duration}ms` : 'unknown',
         totalDuration: `${totalDuration}ms`,
