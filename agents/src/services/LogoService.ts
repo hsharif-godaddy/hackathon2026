@@ -157,8 +157,8 @@ class LogoService {
       }
 
       logger.error('logo.generate.error', {
-        error,
-        cause: error instanceof Error ? error.cause : undefined,
+        error: error instanceof Error ? error.message : String(error),
+        cause: error instanceof Error ? (error.cause !== undefined ? (error.cause instanceof Error ? error.cause.message : String(error.cause)) : undefined) : undefined,
         customerId: input.customerId,
       });
       return null;

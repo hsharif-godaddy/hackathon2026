@@ -300,7 +300,7 @@ export const generateLogoTool: SkillToolDefinition = {
     const customerId = app?.customerId;
 
     if (!customerId) {
-      logger.error('logo.generate.no_customer', { appId });
+      logger.error('skills.media.tools.generate_logo.no_customer', { appId });
       return { error: 'Unable to determine customer identity for logo generation' };
     }
 
@@ -312,7 +312,7 @@ export const generateLogoTool: SkillToolDefinition = {
 
     if (!budgetUserId) {
       // undefined means all grants exhausted — fail-closed, same as normal LLM calls
-      logger.error('logo.generate.grants_exhausted', { appId, socketId, budgetUserId });
+      logger.error('skills.media.tools.generate_logo.grants_exhausted', { appId, socketId, budgetUserId });
       return { error: 'All credit grants have been exhausted. Please purchase additional credits to generate logos.' };
     }
 
@@ -342,6 +342,7 @@ export const generateLogoTool: SkillToolDefinition = {
     });
 
     if (!result) {
+      logger.error('skills.media.tools.generate_logo.no_result', { customerId, budgetUserId });
       return { error: 'Logo generation failed. Please try again.' };
     }
 
