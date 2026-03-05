@@ -97,6 +97,11 @@ export async function createSiteAnalyzerAgent(): Promise<AgentConfig> {
     maxSteps: 5,
     temperature: 0.3,
     maxOutputTokens: 4000,
+    providerOptions: {
+      anthropic: {
+        effort: 'medium',
+      },
+    },
     logger: createAgentTelemetryLogger('site-analyzer'),
     enablePromptCaching: false,
 

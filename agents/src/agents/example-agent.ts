@@ -78,6 +78,11 @@ export async function createExampleAgent(): Promise<AgentConfig> {
     maxSteps: 10,
     temperature: 0.3,
     maxOutputTokens: 2000,
+    providerOptions: {
+      anthropic: {
+        effort: 'medium',
+      },
+    },
     logger: createAgentTelemetryLogger('example')
   }
 }

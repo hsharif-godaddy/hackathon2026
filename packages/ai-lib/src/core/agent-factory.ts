@@ -18,6 +18,7 @@ import type {
 } from 'ai'
 import type { GlobalAgentConfig, AgentContext, ProcessedFile, AgentConfig } from './types.js'
 import { createDuplicateResponseStopCondition } from './duplicate-detection.js'
+import { supportsEffort } from '../utils/model-normalization.js'
 import { buildHybridContent } from '../utils/image-content-builder.js'
 import type { ContentBlock, TextContentBlock, ImageContentBlock } from '../utils/image-content-builder.js'
 import { createLogger } from '../utils/logger.js'
@@ -275,9 +276,9 @@ export class AgentWrapper {
       ...(config.temperature !== undefined && { temperature: config.temperature }),
       ...(config.maxOutputTokens !== undefined && { maxOutputTokens: config.maxOutputTokens }),
       stopWhen: stopWhen.length > 0 ? stopWhen : [stepCountIs(10)], // Default max 10 steps
-      // Pass provider-specific options (e.g., disableParallelToolUse for Anthropic)
+      // Pass provider-specific options (e.g., effort, disableParallelToolUse for Anthropic)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...(config.providerOptions && { providerOptions: config.providerOptions as any }),
+      ...(config.providerOptions && { providerOptions: this.filterProviderOptions(config.providerOptions, config.model, config.modelName) as any }),
       maxRetries,
       // Enable OpenTelemetry telemetry for Elastic APM and Langfuse integration
       experimental_telemetry: { isEnabled: true, functionId: `agent-${config.name}` },
@@ -1316,6 +1317,41 @@ Please retry your tool call with corrected input formatting.`
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getToolLoopAgent(): ToolLoopAgent<any, any, any> {
     return this.agent
+  }
+
+  /**
+   * Strip provider options the current model doesn't support (e.g. effort on older Claude models)
+   */
+  private filterProviderOptions(
+    providerOptions: Record<string, unknown>,
+    model: import('ai').LanguageModel,
+    modelName?: string
+  ): Record<string, unknown> | undefined {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const anthropic = providerOptions.anthropic as Record<string, any> | undefined
+    if (!anthropic?.effort) {
+      return providerOptions
+    }
+
+    const resolvedName = (model as any).modelId || modelName || ''
+    if (supportsEffort(resolvedName)) {
+      return providerOptions
+    }
+
+    logger.warn('provider_options.effort.unsupported', {
+      model: resolvedName,
+      effort: anthropic.effort,
+      message: `Stripping effort parameter — model '${resolvedName}' does not support it`
+    })
+
+    const { effort: _, ...restAnthropic } = anthropic
+    const filtered: Record<string, unknown> = { ...providerOptions }
+    if (Object.keys(restAnthropic).length > 0) {
+      filtered.anthropic = restAnthropic
+    } else {
+      delete filtered.anthropic
+    }
+    return Object.keys(filtered).length > 0 ? filtered : undefined
   }
 }
 

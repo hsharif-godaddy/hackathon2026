@@ -91,6 +91,11 @@ export async function createInitialAgent(
     temperature: 0.5,
     maxOutputTokens: 2000,
     timeout: { stepMs: 60_000 },
+    providerOptions: {
+      anthropic: {
+        effort: 'low',
+      },
+    },
     logger: createAgentTelemetryLogger('initial'),
 
     // Enable prompt caching for cost savings

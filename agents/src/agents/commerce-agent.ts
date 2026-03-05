@@ -133,6 +133,11 @@ export async function createCommerceAgent(_options?: { appPath?: string }): Prom
     temperature: 0.3,
     maxOutputTokens: 2000,
     timeout: { stepMs: 60_000 },
+    providerOptions: {
+      anthropic: {
+        effort: 'medium',
+      },
+    },
 
     // Enable prompt caching for cost savings
     // Commerce agent has large system prompt (~6K tokens) with detailed product catalog instructions

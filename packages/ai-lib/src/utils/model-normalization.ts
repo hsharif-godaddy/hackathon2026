@@ -345,6 +345,18 @@ export function getLegacyModelMappings(): Record<string, string> {
   return mappings
 }
 
+const EFFORT_SUPPORTED_MODELS = new Set([
+  'claude-sonnet-4-6',
+])
+
+/**
+ * Check if a model supports the Anthropic `effort` parameter.
+ */
+export function supportsEffort(modelName: string): boolean {
+  const { normalizedName } = normalizeModelName(modelName)
+  return EFFORT_SUPPORTED_MODELS.has(normalizedName)
+}
+
 /**
  * Export model definitions for advanced usage
  */
