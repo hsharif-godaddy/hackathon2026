@@ -620,12 +620,15 @@ async function shutdown() {
 
     if (wsServer) {
       try {
+        // Socket.IO 4.8.3: io.close() no longer throws on a stopped server,
+        // but we still catch to keep shutdown best-effort for unexpected errors.
         wsServer.close();
         logger.info('server.websocket.shutdown.success', {
           service: serviceName,
         });
       } catch (error) {
-        logger.error('server.websocket.shutdown.failure', {
+        logger.warn('server.websocket.shutdown.unexpected_error', {
+          service: serviceName,
           error: error instanceof Error ? error.message : String(error),
           stack: error instanceof Error ? error.stack : undefined,
         });
