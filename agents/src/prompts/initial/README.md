@@ -1,6 +1,6 @@
 # Initial Agent - Modular Prompt System
 
-This directory contains the modular system prompt for the Initial Agent, optimized for Claude 4.5 based on [Claude 4 best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-4-best-practices).
+This directory contains the modular system prompt for the Initial Agent, optimized for Claude Sonnet 4.6 based on [Claude prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices).
 
 ## Prompt Sections
 
@@ -16,7 +16,7 @@ The complete prompt is assembled from these files in order:
 
 ## Optimizations Applied
 
-Based on [Claude 4 best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-4-best-practices):
+Based on [Claude prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices):
 
 ### 1. Explicit Instructions
 
