@@ -65,6 +65,7 @@ class LogoService {
       style: input.style,
       count: input.count ?? 4,
       customerId: input.customerId,
+      url: url,
     });
 
     try {
@@ -156,7 +157,8 @@ class LogoService {
       }
 
       logger.error('logo.generate.error', {
-        error: error instanceof Error ? error.message : String(error),
+        error,
+        cause: error instanceof Error ? error.cause : undefined,
         customerId: input.customerId,
       });
       return null;
