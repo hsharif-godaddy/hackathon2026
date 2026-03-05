@@ -119,7 +119,7 @@ describe('LogoService', () => {
     expect(callHeaders['x-budget-user-id']).toBe('budget-user-abc');
   });
 
-  it('should return null on API failure', async () => {
+  it('should throw on API failure', async () => {
     const { logoService } = await import('../LogoService.js');
 
     mockFetch.mockResolvedValueOnce({
@@ -128,31 +128,31 @@ describe('LogoService', () => {
       text: () => Promise.resolve('Internal Server Error'),
     });
 
-    const result = await logoService.generateLogos({
-      brandName: 'Test',
-      brandDescription: 'Test',
-      style: 'flat',
-      customerId: 'cust-123',
-      budgetUserId: 'budget-user-1',
-    });
-
-    expect(result).toBeNull();
+    await expect(
+      logoService.generateLogos({
+        brandName: 'Test',
+        brandDescription: 'Test',
+        style: 'flat',
+        customerId: 'cust-123',
+        budgetUserId: 'budget-user-1',
+      })
+    ).rejects.toThrow('Logo API error: 500 Internal Server Error');
   });
 
-  it('should return null on network error', async () => {
+  it('should throw on network error', async () => {
     const { logoService } = await import('../LogoService.js');
 
     mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
-    const result = await logoService.generateLogos({
-      brandName: 'Test',
-      brandDescription: 'Test',
-      style: 'flat',
-      customerId: 'cust-123',
-      budgetUserId: 'budget-user-1',
-    });
-
-    expect(result).toBeNull();
+    await expect(
+      logoService.generateLogos({
+        brandName: 'Test',
+        brandDescription: 'Test',
+        style: 'flat',
+        customerId: 'cust-123',
+        budgetUserId: 'budget-user-1',
+      })
+    ).rejects.toThrow('Network error');
   });
 
   it('should send optional body fields when provided', async () => {

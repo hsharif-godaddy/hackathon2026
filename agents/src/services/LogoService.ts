@@ -56,7 +56,7 @@ function getLogoApiBaseUrl(): string {
 class LogoService {
   private readonly appKey = 'airo-app-builder';
 
-  async generateLogos(input: LogoGenerateInput): Promise<LogoGenerateResult | null> {
+  async generateLogos(input: LogoGenerateInput): Promise<LogoGenerateResult> {
     const baseUrl = getLogoApiBaseUrl();
     const url = `${baseUrl}/api/logo`;
 
@@ -122,7 +122,8 @@ class LogoService {
           error: errorText.slice(0, 500),
           customerId: input.customerId,
         });
-        return null;
+
+        throw new Error(`Logo API error: ${response.status} ${errorText.slice(0, 500)}`);
       }
 
       const result = (await response.json()) as LogoGenerateResult;
@@ -146,14 +147,14 @@ class LogoService {
           timeoutMs: 120_000,
           customerId: input.customerId,
         });
-        return null;
+        throw error;
       }
 
       if (error instanceof DOMException && error.name === 'AbortError') {
         logger.error('logo.generate.aborted', {
           customerId: input.customerId,
         });
-        return null;
+        throw error;
       }
 
       logger.error('logo.generate.error', {
@@ -161,7 +162,9 @@ class LogoService {
         cause: error instanceof Error ? (error.cause !== undefined ? (error.cause instanceof Error ? error.cause.message : String(error.cause)) : undefined) : undefined,
         customerId: input.customerId,
       });
-      return null;
+
+      const normalizedError = error instanceof Error ? error : new Error(String(error), { cause: error });
+      throw normalizedError;
     }
   }
 }

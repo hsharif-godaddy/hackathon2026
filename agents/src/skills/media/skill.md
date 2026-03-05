@@ -55,7 +55,7 @@ Default to stock photo search. Only use AI generation when explicitly requested.
 | `brandAudience`    | string       | No       | Target audience description                     |
 | `count`            | number (1-4) | No       | Number of logo variations (default: 4)          |
 
-**Style options:** `line`, `glyph`, `full-color`, `dual-tone`, `3d`, `badge`, `flat`, `colored-line`, `handmade`, `mascot`, `monogram`, `name-mark`
+**Style options:** `line`, `glyph`, `full-color`, `dual-tone`, `3d`, `badge`, `colored-line`, `handmade`, `mascot`, `monogram`, `name-mark`
 
 **Example:**
 

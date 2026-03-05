@@ -175,8 +175,8 @@ describe('generateLogoTool', () => {
     expect(mockGenerateLogos).not.toHaveBeenCalled();
   });
 
-  it('should return error when logoService returns null', async () => {
-    mockGenerateLogos.mockResolvedValue(null);
+  it('should propagate error when logoService throws', async () => {
+    mockGenerateLogos.mockRejectedValue(new Error('Logo API error: 500 Internal Server Error'));
 
     const { generateLogoTool } = await import('../index.js');
 
@@ -185,18 +185,16 @@ describe('generateLogoTool', () => {
       metadata: { appId: 'app-123' },
     };
 
-    const result = await generateLogoTool.execute(
-      {
-        brandName: 'Test',
-        brandDescription: 'Test',
-        style: 'flat',
-      },
-      context
-    );
-
-    expect(result).toEqual({
-      error: 'Logo generation failed. Please try again.',
-    });
+    await expect(
+      generateLogoTool.execute(
+        {
+          brandName: 'Test',
+          brandDescription: 'Test',
+          style: 'flat',
+        },
+        context
+      )
+    ).rejects.toThrow('Logo API error: 500 Internal Server Error');
   });
 
   it('should return error when grant state missing', async () => {

@@ -132,7 +132,6 @@ type LogoStyle =
   | 'dual-tone'
   | '3d'
   | 'badge'
-  | 'flat'
   | 'colored-line'
   | 'handmade'
   | 'mascot'
@@ -146,7 +145,6 @@ const LOGO_STYLES: LogoStyle[] = [
   'dual-tone',
   '3d',
   'badge',
-  'flat',
   'colored-line',
   'handmade',
   'mascot',
@@ -329,8 +327,11 @@ export const generateLogoTool: SkillToolDefinition = {
           if (palette.accent) parts.push(`accent: ${palette.accent}`);
           enrichedInput.brandColors = parts.join(', ');
         }
-      } catch {
-        // App plan lookup is best-effort
+      } catch (e) {
+        logger.warn('skills.media.tools.generate_logo.enrich_colors_failed', {
+          appId,
+          error: e instanceof Error ? e.message : String(e),
+        });
       }
     }
 
@@ -340,11 +341,6 @@ export const generateLogoTool: SkillToolDefinition = {
       customerId,
       budgetUserId,
     });
-
-    if (!result) {
-      logger.error('skills.media.tools.generate_logo.no_result', { customerId, budgetUserId });
-      return { error: 'Logo generation failed. Please try again.' };
-    }
 
     logger.info('skills.media.tools.generate_logo.success', {
       brandName: input.brandName,
