@@ -65,6 +65,7 @@ export default makeGasket({
       }
     },
     'local.test': {
+      airoAppDomain: 'test-airoapp.ai',
       http: false,
       https: {
         port: 443
@@ -107,6 +108,7 @@ export default makeGasket({
       }
     },
     'local.prod': {
+      airoAppDomain: 'airoapp.ai',
       http: false,
       https: {
         port: 443
@@ -155,11 +157,13 @@ export default makeGasket({
       }
     },
     'test': {
+      airoAppDomain: 'test-airoapp.ai',
       switchboard: {
         env: 'test'
       }
     },
     'production': {
+      airoAppDomain: 'airoapp.ai',
       switchboard: {
         env: 'production'
       }
@@ -335,5 +339,7 @@ export default makeGasket({
     },
     enableGasketData: true
   },
+  // Base domain for airoapp.ai URLs — overridden per environment above
+  airoAppDomain: 'test-airoapp.ai',
   data: gasketData,
 } as GasketConfigDefinition);

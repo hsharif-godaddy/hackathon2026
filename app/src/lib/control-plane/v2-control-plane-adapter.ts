@@ -4,6 +4,7 @@ import { getDatacenterFromMarketId } from '@/lib/utils/dc-mapping';
 import { extractCustomerId } from '@/lib/utils/jwt-utils';
 import { useSubscriptionCacheStore } from '@/stores/useSubscriptionCacheStore';
 import { CreateSiteParams, CreateSiteResult, DeploySiteOptions, IControlPlaneAdapter, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate, SiteInfo, SiteStatus, SiteVariant } from './types';
+import gasket from '../../../gasket.ts';
 
 /**
  * ID length constants for distinguishing job IDs from app IDs
@@ -1015,19 +1016,19 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       published_url = urls.publish;
     }
 
-    // Override published_url if custom domains are active (only for published sites)
-    if (hasPublishVariant(app.variants) && app.domains && Array.isArray(app.domains)) {
-      // Find active custom domain
+    // Override published_url with active custom/prefix domains.
+    // Priority: custom domain > prefix domain (project domain) > default.
+    // This runs regardless of publish status so the preview header always
+    // shows the best available domain (e.g. prompt-design-lab.c24.airoapp.ai).
+    if (app.domains && Array.isArray(app.domains)) {
       const customDomain = app.domains.find(
         (d: any) => d.domainType !== 'prefix' && d.status === 'active'
       );
 
-      // Find active prefix domain (project domain)
       const prefixDomain = app.domains.find(
         (d: any) => d.domainType === 'prefix' && d.status === 'active'
       );
 
-      // Priority: custom domain > prefix domain > default
       if (customDomain) {
         published_url = `https://${customDomain.fqdn}`;
       } else if (prefixDomain) {
@@ -1063,7 +1064,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
   /**
    * Construct URLs for an app
    *
-   * V2 URL pattern: https://{appId}.{type}.{cellPrefix}.test-airoapp.ai
+   * V2 URL pattern: https://{appId}.{type}.{cellPrefix}.{baseDomain}
    * Example: https://egy3rfaop6.agent.c4.test-airoapp.ai
    * URLs are returned for pending/provisioning/active apps (optimistic URL construction)
    */
@@ -1088,7 +1089,8 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       }
     }
 
-    const domain = `${cellPrefix}.test-airoapp.ai`;
+    const baseDomain = (gasket.config as any).airoAppDomain || 'test-airoapp.ai';
+    const domain = `${cellPrefix}.${baseDomain}`;
 
     return {
       agent: `https://${appId}.agent.${domain}`,

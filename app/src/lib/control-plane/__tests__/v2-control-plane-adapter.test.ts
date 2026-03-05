@@ -41,6 +41,14 @@ vi.mock('@/lib/utils/jwt-utils', () => ({
 }));
 
 /**
+ * Mock gasket config
+ */
+const mockGasketConfig = vi.hoisted(() => ({ airoAppDomain: 'test-airoapp.ai' }));
+vi.mock('../../../../gasket.ts', () => ({
+  default: { config: mockGasketConfig }
+}));
+
+/**
  * Mock subscription cache store
  */
 vi.mock('@/stores/useSubscriptionCacheStore', () => ({
@@ -67,7 +75,6 @@ const MOCK_APP_ID = 'nxOMNRQOtCBBHG7e3CI8R';
 const MOCK_SYSTEM_ID = 'sys-abc123';
 const MOCK_ACCOUNT_ID = 'account-123';
 const MOCK_PROMPT = 'Create a todo app with React';
-
 describe('V2ControlPlaneAdapter', () => {
   let adapter: V2ControlPlaneAdapter;
 
@@ -75,7 +82,8 @@ describe('V2ControlPlaneAdapter', () => {
     adapter = new V2ControlPlaneAdapter();
     mockFetch.mockClear();
     vi.clearAllMocks();
-    
+    mockGasketConfig.airoAppDomain = 'test-airoapp.ai';
+
     // Clear subscription cache between tests to prevent interference
     const { useSubscriptionCacheStore } = await import('../../../stores/useSubscriptionCacheStore');
     useSubscriptionCacheStore.getState().invalidate();
@@ -1104,6 +1112,158 @@ describe('V2ControlPlaneAdapter', () => {
 
       expect(site?.agent_url).toBe(customUrls.agent);
       expect(site?.preview_url).toBe(customUrls.preview);
+    });
+
+    it('should construct production domain when airoAppDomain is airoapp.ai', async () => {
+      mockGasketConfig.airoAppDomain = 'airoapp.ai';
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c38-prod-us-east-1',
+            variables: { title: 'App' },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+
+      expect(site?.agent_url).toBe(`https://${MOCK_APP_ID}.agent.c38.airoapp.ai`);
+      expect(site?.preview_url).toBe(`https://${MOCK_APP_ID}.preview.c38.airoapp.ai`);
+    });
+
+    it('should construct test domain when airoAppDomain is test-airoapp.ai', async () => {
+      mockGasketConfig.airoAppDomain = 'test-airoapp.ai';
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c9-test-eu-west-1',
+            variables: { title: 'App' },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+
+      expect(site?.agent_url).toBe(`https://${MOCK_APP_ID}.agent.c9.test-airoapp.ai`);
+      expect(site?.preview_url).toBe(`https://${MOCK_APP_ID}.preview.c9.test-airoapp.ai`);
+    });
+
+    it('should fall back to test-airoapp.ai when airoAppDomain is not configured', async () => {
+      mockGasketConfig.airoAppDomain = undefined as any;
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c4-dev-sxb1-eu-central-1',
+            variables: { title: 'App' },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+
+      expect(site?.agent_url).toBe(`https://${MOCK_APP_ID}.agent.c4.test-airoapp.ai`);
+      expect(site?.preview_url).toBe(`https://${MOCK_APP_ID}.preview.c4.test-airoapp.ai`);
+    });
+
+    it('should use active prefix domain for published_url when no custom domain is set', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c24-prod-us-east-1',
+            variables: { title: 'App' },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z',
+            variants: ['preview'],
+            domains: [
+              { fqdn: 'prompt-design-lab.c24.test-airoapp.ai', domainType: 'prefix', status: 'active' }
+            ]
+          }]
+        })
+      });
+
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+
+      expect(site?.published_url).toBe('https://prompt-design-lab.c24.test-airoapp.ai');
+    });
+
+    it('should prefer custom domain over prefix domain for published_url', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c24-prod-us-east-1',
+            variables: { title: 'App' },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z',
+            variants: ['preview', 'publish'],
+            domains: [
+              { fqdn: 'prompt-design-lab.c24.test-airoapp.ai', domainType: 'prefix', status: 'active' },
+              { fqdn: 'mycustomsite.com', domainType: 'custom', status: 'active' }
+            ]
+          }]
+        })
+      });
+
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+
+      expect(site?.published_url).toBe('https://mycustomsite.com');
+    });
+
+    it('should not use inactive prefix domain for published_url', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c24-prod-us-east-1',
+            variables: { title: 'App' },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z',
+            variants: ['preview', 'publish'],
+            domains: [
+              { fqdn: 'prompt-design-lab.c24.test-airoapp.ai', domainType: 'prefix', status: 'pending' }
+            ]
+          }]
+        })
+      });
+
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+
+      // Falls back to constructed URL since prefix domain is not active
+      expect(site?.published_url).toBe(`https://${MOCK_APP_ID}.c24.test-airoapp.ai`);
     });
   });
 
