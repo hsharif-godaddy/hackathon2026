@@ -476,24 +476,7 @@ async function fullSetup(yesToAll: boolean = false): Promise<void> {
   if (!dockerOk) {
     console.log(chalk.red('\n❌ Docker dependencies not satisfied.'));
     console.log('Please install missing dependencies and run this setup again.');
-
-    if (yesToAll) {
-      console.log(chalk.red('Automated mode requires Docker. Exiting...'));
-      process.exit(1);
-    }
-
-    const { continueAnyway } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'continueAnyway',
-        message: 'Continue with environment setup anyway?',
-        default: false
-      }
-    ]);
-
-    if (!continueAnyway) {
-      return;
-    }
+    throw new Error('Docker dependencies not satisfied');
   }
 
   printSeparator();
