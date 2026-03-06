@@ -74,6 +74,8 @@ export interface StartImportParams {
   // For PaaS Node.js imports
   /** Entry file for Node.js projects (e.g., 'src/server.ts') */
   entryFile?: string;
+  /** Product ID (e.g., 'paas-nodejs-v1') for runtime behavior */
+  productId?: string;
   /** Custom commands to override defaults */
   commands?: CommandOverrides;
 }
@@ -467,6 +469,7 @@ export class ProjectImportService {
         app.path,
         undefined,
         startCommand,
+        params.productId,
         params.commands?.dev
       );
       this.logger.info('project-import.config.created', { jobId, appId });

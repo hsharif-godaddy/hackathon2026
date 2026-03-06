@@ -62,6 +62,17 @@ log "Starting application deployment process"
 log "Archive path: $ARCHIVE_PATH"
 log "Archive size: $(ls -lhL "$ARCHIVE_PATH" | awk '{print $5}')"
 
+# Publish cleanup before extraction to remove stale files when explicitly enabled
+AIRO_CONFIG_PATH="${APP_DIR}/.airo/config.json"
+CLEANUP_ENABLED=$(jq -r '.cleanAppDirBeforeExtract // false' "$AIRO_CONFIG_PATH" 2>/dev/null || echo "false")
+
+if [[ "$CLEANUP_ENABLED" == "true" ]]; then
+    log "Cleanup enabled - cleaning app directory before extraction"
+    find "$APP_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + 2>/dev/null || true
+else
+    log "Skipping cleanup (cleanAppDirBeforeExtract: ${CLEANUP_ENABLED})"
+fi
+
 # Extract archive
 log "Extracting archive to: $APP_DIR"
 tar zxf "$ARCHIVE_PATH" -C "$APP_DIR" || error_exit "Failed to extract archive"

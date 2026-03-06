@@ -22,6 +22,7 @@ const RESTART_TIMEOUTS = {
 export const DEFAULT_START_COMMAND = 'npm start';
 export const DEFAULT_INSTALL_COMMAND = 'npm install --include=dev';
 export const DEFAULT_BUILD_COMMAND = 'npm run build';
+export const PAAS_NODEJS_V1_PRODUCT_ID = 'paas-nodejs-v1';
 
 /**
  * @deprecated Build tool type is no longer used - always Node.js
@@ -59,6 +60,16 @@ export interface RestartCycleResult {
     install: boolean;
     build: boolean;
     restart: boolean;
+  };
+}
+
+export interface PaasConfig {
+  productId?: string;
+  cleanAppDirBeforeExtract?: boolean;
+  runtime: {
+    build: { command: string };
+    serve: { command: string };
+    dev: { command: string };
   };
 }
 
@@ -361,11 +372,14 @@ export class AppRestartService {
    * @param appPath - Path to the app directory
    * @param _buildToolType - Deprecated, no longer used
    * @param customStartCommand - Custom start command override
+   * @param productId - Optional product identifier for runtime behavior
+   * @param customDevCommand - Custom dev command override
    */
   async createPaasConfig(
     appPath: string,
     _buildToolType?: BuildToolType,
     customStartCommand?: string,
+    productId?: string,
     customDevCommand?: string
   ): Promise<void> {
     const airoDir = join(appPath, '.airo');
@@ -375,7 +389,7 @@ export class AppRestartService {
     const finalStartCmd = customStartCommand || DEFAULT_START_COMMAND;
     const finalDevCmd = customDevCommand || finalStartCmd;
 
-    const paasConfig = {
+    const paasConfig: PaasConfig = {
       runtime: {
         dev: {
           command: finalDevCmd,
@@ -388,6 +402,13 @@ export class AppRestartService {
         },
       },
     };
+    if (productId) {
+      paasConfig.productId = productId;
+    }
+
+    if (productId === PAAS_NODEJS_V1_PRODUCT_ID) {
+      paasConfig.cleanAppDirBeforeExtract = true;
+    }
 
     await mkdir(airoDir, { recursive: true });
     await writeFile(configPath, JSON.stringify(paasConfig, null, 2), 'utf-8');

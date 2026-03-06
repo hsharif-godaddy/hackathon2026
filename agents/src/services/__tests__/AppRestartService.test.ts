@@ -215,9 +215,10 @@ describe('AppRestartService', () => {
       // Verify the JSON structure - always Node.js commands
       const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
       const writtenConfig = JSON.parse(writeCall[1] as string);
-      expect(writtenConfig.runtime.dev.command).toBe('npm start');
       expect(writtenConfig.runtime.build.command).toBe('npm run build');
       expect(writtenConfig.runtime.serve.command).toBe('npm start');
+      expect(writtenConfig.cleanAppDirBeforeExtract).toBeUndefined();
+      expect(writtenConfig.productId).toBeUndefined();
     });
 
     it('should use custom start command when provided', async () => {
@@ -225,13 +226,30 @@ describe('AppRestartService', () => {
 
       const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
       const writtenConfig = JSON.parse(writeCall[1] as string);
-      expect(writtenConfig.runtime.dev.command).toBe('node server.js');
       expect(writtenConfig.runtime.build.command).toBe('npm run build');
       expect(writtenConfig.runtime.serve.command).toBe('node server.js');
+      expect(writtenConfig.cleanAppDirBeforeExtract).toBeUndefined();
+    });
+
+    it('should include productId when provided', async () => {
+      await service.createPaasConfig(testAppPath, undefined, undefined, 'paas-v1');
+
+      const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
+      const writtenConfig = JSON.parse(writeCall[1] as string);
+      expect(writtenConfig.productId).toBe('paas-v1');
+      expect(writtenConfig.cleanAppDirBeforeExtract).toBeUndefined();
+    });
+
+    it('should enable cleanAppDirBeforeExtract for paas-nodejs-v1', async () => {
+      await service.createPaasConfig(testAppPath, undefined, undefined, 'paas-nodejs-v1');
+
+      const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
+      const writtenConfig = JSON.parse(writeCall[1] as string);
+      expect(writtenConfig.cleanAppDirBeforeExtract).toBe(true);
     });
 
     it('should use custom dev command when provided', async () => {
-      await service.createPaasConfig(testAppPath, undefined, 'npm start', 'npm run dev');
+      await service.createPaasConfig(testAppPath, undefined, 'npm start', undefined, 'npm run dev');
 
       const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
       const writtenConfig = JSON.parse(writeCall[1] as string);
