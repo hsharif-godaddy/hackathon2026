@@ -19,7 +19,8 @@ export class ServerConfigHandler implements MessageHandler {
     // This ensures client and server use the same recovery window
     const config = {
       streamRecoveryWindow: (data.data?.streamRecoveryWindow as number | undefined) ?? CONNECTION_RETRY_TIMEOUT_MS,
-      ackTimeout: (data.data?.ackTimeout as number | undefined) ?? 30000
+      ackTimeout: (data.data?.ackTimeout as number | undefined) ?? 30000,
+      supportsConnectThenAuth: data.data?.supportsConnectThenAuth === true,
     }
 
     context.refs.serverConfig.current = config

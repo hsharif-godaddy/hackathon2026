@@ -47,8 +47,10 @@ stateDiagram-v2
     [*] --> disconnected
     disconnected --> connecting : CONNECT
     connecting --> connecting : TOKEN_REFRESHED
-    connecting --> connected : CONNECTION_ESTABLISHED
+    connecting --> authenticating : CONNECTION_ESTABLISHED
     connecting --> reconnecting : CONNECTION_FAILED / TOKEN_REFRESH_FAILED
+    authenticating --> connected : AUTH_SUCCESS
+    authenticating --> reconnecting : AUTH_FAILED / DISCONNECT
     connected --> reconnecting : DISCONNECT
     connected --> recovering : RECOVERY_STATUS
     recovering --> connected : RECOVERY_ACK_SENT | CATCHUP_COMPLETE
@@ -256,17 +258,74 @@ sequenceDiagram
 - Machine stayed in `completed` state → `STREAM_COMPLETE` had no transition → `isLoading` stuck at `true`
 - Solution: Send `STREAM_STARTED` immediately when in-progress message detected, then `finalizeStream()` + `STREAM_COMPLETE` when recovery confirms stream is done
 
+## Connect-Then-Auth Protocol
+
+ConnectionManager implements a two-phase authentication protocol that decouples WebSocket transport connection from JWT authentication.
+
+### Flow
+
+```mermaid
+sequenceDiagram
+  participant Client as ConnectionManager
+  participant Socket as Socket.IO
+  participant Server as Agents Service
+
+  Client->>Socket: createSocket(url, { auth: { appId, previousSocketId } })
+  Note over Client: No token in handshake — connect first
+  Socket->>Server: WebSocket handshake (no JWT)
+  Server->>Server: io.use() middleware: no token → set pendingAuth: true
+  Server-->>Socket: Connection accepted
+  Server-->>Client: server_config (supportsConnectThenAuth, ackTimeout)
+
+  Client->>Client: Token fetch completes (parallel with connect)
+  Client->>Socket: emit('authenticate', { token: JWT })
+  Socket->>Server: authenticate event
+  Server->>Server: Validate JWT, create agentContext
+  Server->>Server: completeConnectionSetup (recovery, agents, history)
+
+  alt Auth Success
+    Server-->>Client: authenticateSuccess({ socketId })
+    Client->>Client: onAuthenticated callback → AUTH_SUCCESS
+  else Auth Failure
+    Server-->>Client: authenticateError({ error })
+    Client->>Client: onAuthFailed callback → AUTH_FAILED, clear cachedToken
+  else Auth Timeout (30s)
+    Client->>Client: onAuthFailed callback → AUTH_FAILED
+  end
+```
+
+### Auth Mode Decision on Connect
+
+The `onConnect` handler determines auth mode by inspecting the socket state:
+
+1. **`handshakeAuthMode` flag** (first connect with old server): Call `onAuthenticated` directly, consume flag.
+2. **Token in `socket.auth`** (reconnect of handshake-auth socket): Server already validated via `io.use()` middleware — call `onAuthenticated` directly, skip `authenticate` event.
+3. **No token in `socket.auth`** (connect-then-auth): Send `authenticate` event with `cachedToken`.
+
+Tokens are **never stored in `socket.auth`** after auth success. This prevents Socket.IO auto-reconnect from sending a stale token in the handshake, which would cause the server to skip `pendingAuth` and send recovery data before the client has explicitly authenticated.
+
+### Backward/Forward Compatibility
+
+| Client | Server | Connect | Reconnect |
+|--------|--------|---------|-----------|
+| New | New | No token → `pendingAuth` → authenticate event | Same (no token in `socket.auth`) |
+| New | Old | No token → rejected → `handshakeAuthMode` fallback creates socket WITH token | Token in `socket.auth` from construction → `onAuthenticated` directly |
+| Old | New | Token in handshake → middleware validates → no `pendingAuth` | Same (token persists in `socket.auth`) |
+| Old | Old | Token in handshake → middleware validates | Same |
+
+The `handshakeAuthMode` fallback detects old servers by the `'Missing or invalid Authorization'` error message on `connect_error`, creates a new socket with the token in the handshake auth object, and sets the flag so `onConnect` skips the authenticate event.
+
 ## Testing Strategy
 
-**Test Coverage**: 180+ WebSocket tests across 7 test files
+**Test Coverage**: 390+ WebSocket tests across 25 test files
 
-- 28 machine state transition tests
+- 28 machine state transition tests (includes `authenticating` state)
 - 22 adapter mapping tests
-- 49 supervisor lifecycle tests
-- 33 controller orchestration tests
-- 31 message builder tests
-- 12 connection manager tests
-- 5 HistoryCompleteHandler tests (new)
+- 39 supervisor lifecycle tests
+- 29 controller orchestration tests
+- 28 message builder tests
+- 19 connection manager tests (includes 10 connect-then-auth tests)
+- 6 HistoryCompleteHandler tests
 
 | Layer                                       | Primary tests                                     | Coverage highlights                                                                |
 | ------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------- |
@@ -277,7 +336,18 @@ sequenceDiagram
 | Message Builder (`ChatMessageBuilder`)      | `ChatMessageBuilder.test.ts` (31 tests)           | Message construction, context handling, payload formatting                         |
 | Connection Manager (`ConnectionManager`)    | `ConnectionManager.test.ts` (12 tests)            | Socket lifecycle, connection state management                                      |
 
-## Recent Updates (Jan 2026)
+## Recent Updates
+
+### March 2026 — Connect-Then-Auth
+
+- **Connect-then-auth protocol**: Decoupled WebSocket transport connection from JWT authentication. Client connects without token, then authenticates via `authenticate` event. Server defers `completeConnectionSetup` (recovery, agents, history) until after authentication.
+- **`authenticating` machine state**: New state between `connecting` and `connected` in the transport state chart. `CONNECTION_ESTABLISHED` → `authenticating` → `AUTH_SUCCESS` → `connected`. `AUTH_FAILED` transitions to `reconnecting`.
+- **Backward/forward compatibility**: `handshakeAuthMode` fallback for old servers + `hasHandshakeToken` guard for reconnects of handshake-auth sockets. See "Connect-Then-Auth Protocol" section.
+- **`supportsConnectThenAuth` capability flag**: Server sends in `server_config` event. Client stores via `ServerConfigHandler` → `serverConfigRef`.
+- **Token leak prevention**: Tokens never stored in `socket.auth` after auth — prevents auto-reconnect from bypassing `pendingAuth` and leaking recovery data before authentication.
+- **Adaptive auth timeout**: Uses `ackTimeout` from server_config when available, falls back to 30s.
+
+### Jan 2026
 
 - **Phase 3 Refactor**: Extracted TransportSupervisor from controller (49% LOC reduction: 610 → 312 lines)
 - **Event-driven architecture**: Controller emits events → Adapter subscribes (eliminates dual state authority)

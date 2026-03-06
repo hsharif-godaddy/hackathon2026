@@ -46,7 +46,7 @@ export const webSocketMachine = setup({
 
     setSocketId: assign({
       socketId: ({ event }) => {
-        if (event.type === 'CONNECTION_ESTABLISHED') {
+        if (event.type === 'CONNECTION_ESTABLISHED' || event.type === 'AUTH_SUCCESS') {
           return event.socketId
         }
         return null
@@ -343,30 +343,35 @@ export const webSocketMachine = setup({
         },
 
         connecting: {
-          initial: 'fetchingToken',
-
-          states: {
-            fetchingToken: {
-              on: {
-                TOKEN_REFRESHED: 'establishingConnection',
-                TOKEN_REFRESH_FAILED: {
-                  target: '#webSocket.transport.reconnecting',
-                  actions: ['setError'],
-                },
-              },
+          on: {
+            CONNECTION_ESTABLISHED: {
+              target: 'authenticating',
+              actions: ['setSocketId'],
             },
+            CONNECTION_FAILED: {
+              target: 'reconnecting',
+              actions: ['setError', 'logConnectionFailed'],
+            },
+            DISCONNECT: {
+              target: 'reconnecting',
+              actions: ['setError', 'logDisconnect'],
+            },
+          },
+        },
 
-            establishingConnection: {
-              on: {
-                CONNECTION_ESTABLISHED: {
-                  target: '#webSocket.transport.connected',
-                  actions: ['setSocketId', 'resetRetry', 'logConnectionEstablished'],
-                },
-                CONNECTION_FAILED: {
-                  target: '#webSocket.transport.reconnecting',
-                  actions: ['setError', 'logConnectionFailed'],
-                },
-              },
+        authenticating: {
+          on: {
+            AUTH_SUCCESS: {
+              target: 'connected',
+              actions: ['setSocketId', 'resetRetry', 'logConnectionEstablished'],
+            },
+            AUTH_FAILED: {
+              target: 'reconnecting',
+              actions: ['setError', 'logConnectionFailed'],
+            },
+            DISCONNECT: {
+              target: 'reconnecting',
+              actions: ['setError', 'logDisconnect'],
             },
           },
         },

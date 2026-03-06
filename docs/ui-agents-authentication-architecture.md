@@ -113,92 +113,130 @@ sequenceDiagram
 
 ## WebSocket Authentication Flow
 
-### WebSocket Authentication with Socket.IO
+### Connect-Then-Auth (Current)
+
+The current protocol decouples WebSocket transport connection from JWT authentication. The client connects without a token, then authenticates over the established connection. This reduces connection latency by parallelizing token fetch with socket connect.
 
 ```mermaid
 sequenceDiagram
     participant Browser
-    participant CDN as Edge gateway
     participant UI as Next.js UI
-    participant WSHook as WebSocket Hook
+    participant ConnMgr as ConnectionManager
     participant SocketIO as Socket.IO Client
     participant Agents as AI Agents Service
     participant WSAuth as WS Auth Middleware
 
-    Browser->>CDN: Initiate WebSocket Connection
-    CDN->>UI: Route to UI Instance
-    UI->>WSHook: useStreamingWebSocket(appId)
-    WSHook->>WSHook: getAgentJWTToken(siteId)
+    Browser->>UI: Navigate to app
+    UI->>ConnMgr: connect(appId)
+    ConnMgr->>ConnMgr: Start token fetch (parallel)
+    ConnMgr->>SocketIO: Create socket WITHOUT token
+    Note over SocketIO: auth: { appId, previousSocketId }
 
-    alt Token Cached
-        WSHook-->>WSHook: Use Cached JWT
-    else Generate New Token
-        WSHook->>WSHook: Generate JWT with RSA Private Key
-        Note over WSHook: Claims: { iss, aud, exp, iat, siteId }
+    SocketIO->>Agents: WebSocket Handshake (no JWT)
+    Agents->>WSAuth: io.use() middleware
+    WSAuth->>WSAuth: No token → set pendingAuth: true
+    WSAuth-->>Agents: Connection accepted (deferred setup)
+    Agents-->>SocketIO: server_config { supportsConnectThenAuth, ackTimeout }
+    SocketIO-->>ConnMgr: 'connect' event
+
+    ConnMgr->>ConnMgr: Token fetch completes
+    ConnMgr->>SocketIO: emit('authenticate', { token: JWT })
+    SocketIO->>Agents: authenticate event
+    Agents->>WSAuth: Validate JWT with RSA Public Key
+    WSAuth->>WSAuth: Extract siteId, create agentContext
+
+    alt Authentication Success
+        Agents->>Agents: completeConnectionSetup (recovery, agents, history)
+        Agents-->>SocketIO: authenticateSuccess({ socketId })
+        SocketIO-->>ConnMgr: onAuthenticated → AUTH_SUCCESS
+        ConnMgr-->>UI: WebSocket ready, machine → connected
+    else Authentication Failure
+        Agents-->>SocketIO: authenticateError({ error })
+        SocketIO-->>ConnMgr: onAuthFailed → AUTH_FAILED, clear cachedToken
+        ConnMgr-->>UI: Auth failed, machine → reconnecting
     end
 
-    WSHook->>SocketIO: Create connection with JWT
-    Note over SocketIO: auth: { token: JWT }, extraHeaders: { Authorization: Bearer JWT }
+    Note over Browser,Agents: Subsequent messages use validated siteId context
+```
+
+**Key design decisions:**
+- **Token NOT stored in `socket.auth`** after auth success — prevents Socket.IO auto-reconnect from sending a stale token in the handshake, which would bypass `pendingAuth` and leak recovery data before authentication.
+- **`server_config` sent before auth** — client needs timeout config and capability flags (`supportsConnectThenAuth`, `ackTimeout`) before authenticating.
+- **`completeConnectionSetup` deferred** — for `pendingAuth` sockets, recovery/history/agents are initialized only after the `authenticate` event succeeds. This prevents unauthenticated access to conversation data.
+
+### Auth Mode Decision on Reconnect
+
+On `connect`, ConnectionManager determines auth mode by inspecting the socket state:
+
+| Condition | Action | Reason |
+|-----------|--------|--------|
+| `handshakeAuthMode` flag set | Call `onAuthenticated` directly, consume flag | First connect after old-server fallback |
+| Token present in `socket.auth` | Call `onAuthenticated` directly | Reconnect of handshake-auth socket — server already validated via `io.use()` |
+| No token in `socket.auth` | Send `authenticate` event with `cachedToken` | Connect-then-auth flow |
+
+### Backward/Forward Compatibility
+
+| Client | Server | Connect | Reconnect |
+|--------|--------|---------|-----------|
+| **New** | **New** | No token → `pendingAuth` → authenticate event | Same (no token in `socket.auth`) |
+| **New** | **Old** | No token → rejected → `handshakeAuthMode` fallback | Token in `socket.auth` from construction → `onAuthenticated` directly |
+| **Old** | **New** | Token in handshake → middleware validates | Same (token persists in `socket.auth`) |
+| **Old** | **Old** | Token in handshake → middleware validates | Same |
+
+The `handshakeAuthMode` fallback detects old servers by the `'Missing or invalid Authorization'` connect_error, creates a new socket with the token in the handshake, and sets the flag so `onConnect` skips the authenticate event.
+
+### Handshake Auth (Legacy / Fallback)
+
+Old clients (or fallback after detecting an old server) include the JWT in the Socket.IO handshake:
+
+```mermaid
+sequenceDiagram
+    participant ConnMgr as ConnectionManager
+    participant SocketIO as Socket.IO Client
+    participant Agents as AI Agents Service
+    participant WSAuth as WS Auth Middleware
+
+    ConnMgr->>SocketIO: Create socket WITH token
+    Note over SocketIO: auth: { token: JWT, appId }, extraHeaders: { Authorization: Bearer JWT }
 
     SocketIO->>Agents: WebSocket Handshake + JWT
-    Agents->>WSAuth: Socket Authentication Middleware
+    Agents->>WSAuth: io.use() middleware
     WSAuth->>WSAuth: Extract JWT from handshake.auth.token or Authorization header
-
     WSAuth->>WSAuth: Validate JWT with RSA Public Key
     WSAuth->>WSAuth: Extract siteId from JWT payload
 
     alt Authentication Success
         WSAuth->>WSAuth: Store validated context in socket session
-        WSAuth-->>Agents: Connection Approved with siteId
+        Agents->>Agents: completeConnectionSetup immediately
         Agents-->>SocketIO: WebSocket Connected
-        SocketIO-->>WSHook: 'connect' event
-        WSHook-->>UI: WebSocket Ready
-        UI-->>Browser: Real-time connection active
-
-        Note over Browser,Agents: Subsequent messages use validated siteId context
-        Browser->>UI: Send AI Message
-        UI->>SocketIO: emit('ai-stream', { message, context: { metadata: { appId: siteId } } })
-        SocketIO->>Agents: Forward message with context
-        Agents->>Agents: Process with siteId from context.metadata.appId
-        Agents-->>SocketIO: AI Response Stream
-        SocketIO-->>UI: Real-time AI updates
-        UI-->>Browser: Live UI updates
-
+        SocketIO-->>ConnMgr: 'connect' event → onAuthenticated
     else Authentication Failure
         WSAuth-->>Agents: Connection Rejected
-        Agents-->>SocketIO: Connection Failed
-        SocketIO-->>WSHook: 'connect_error' event
-        WSHook-->>UI: Authentication Error
-        UI-->>Browser: Error Message
+        Agents-->>SocketIO: connect_error
     end
 ```
 
-### WebSocket Token Refresh Flow
+### WebSocket Token Expiration on Reconnect
+
+When a handshake-auth socket reconnects and the token has expired, the server rejects the handshake. ConnectionManager handles this by fetching a fresh token and creating a new socket:
 
 ```mermaid
 sequenceDiagram
-    participant UI as Next.js UI
+    participant ConnMgr as ConnectionManager
     participant SocketIO as Socket.IO Client
     participant Agents as AI Agents Service
 
-    Note over UI,Agents: Active connection, JWT nearing expiration
+    Note over ConnMgr,Agents: Socket.IO auto-reconnect with stale token
+    SocketIO->>Agents: Handshake with expired JWT
+    Agents-->>SocketIO: connect_error('JWT validation failed: Token expired')
+    SocketIO-->>ConnMgr: onConnectError
 
-    Agents->>Agents: Detect token expiration (configurable threshold)
-    Agents->>SocketIO: emit('token-refresh-required')
-    SocketIO->>UI: Token refresh event
-
-    UI->>UI: Generate fresh JWT with RSA private key
-    Note over UI: New token with updated exp/iat, same siteId
-    UI->>SocketIO: emit('refresh-token', {newJWT})
-    SocketIO->>Agents: Forward new token
-
-    Agents->>Agents: Validate new JWT with RSA public key
-    Agents->>Agents: Update cached context with new token
-    Agents->>SocketIO: emit('token-refreshed', {success: true})
-    SocketIO->>UI: Token refresh confirmed
-
-    Note over UI,Agents: Connection continues with fresh token
-    Note over Agents: Automatic refresh continues every token cycle
+    ConnMgr->>ConnMgr: handleTokenExpiration (max 7 retries)
+    ConnMgr->>ConnMgr: Fetch fresh JWT
+    ConnMgr->>SocketIO: Create new socket with fresh token
+    SocketIO->>Agents: Handshake with fresh JWT
+    Agents-->>SocketIO: Connection accepted
+    SocketIO-->>ConnMgr: 'connect' event → onAuthenticated
 ```
 
 ## Data Flow Diagrams
@@ -370,15 +408,18 @@ HTTP client for authenticated requests to agents using `agentFetch`.
 - Request ID generation for tracing across services
 - Comprehensive error logging for monitoring
 
-### 3. WebSocket Authentication Manager
+### 3. WebSocket Authentication (ConnectionManager)
 
-WebSocket manager with JWT authentication support.
+ConnectionManager handles WebSocket authentication lifecycle.
 
 **Key Features**:
 
-- Site-specific JWT token generation
-- Socket.IO auth object and header-based authentication
-- Automatic token refresh for long-lived connections
+- **Connect-then-auth**: Connects without token, authenticates via `authenticate` event after socket is established
+- **Parallel token fetch**: Token fetched concurrently with socket connect to reduce latency
+- **Handshake-auth fallback**: Detects old servers and falls back to token-in-handshake
+- **Reconnect-aware**: Uses `hasHandshakeToken` check to determine auth mode on reconnect
+- **Token leak prevention**: Never stores token in `socket.auth` after auth to prevent stale tokens on auto-reconnect
+- **Auth timeout**: Configurable via server_config `ackTimeout`, defaults to 30s
 
 ### 4. Agents Service JWT Validation
 
@@ -387,6 +428,8 @@ Server-side JWT validation for both HTTP and WebSocket using RSA public key.
 **Middleware Integration**:
 
 - HTTP requests: Express middleware with JWT validation
-- WebSocket: Socket.IO handshake middleware with auth object support
+- WebSocket `io.use()` middleware: Validates handshake token if present, sets `pendingAuth` if not
+- WebSocket `authenticate` event handler: Validates token from connect-then-auth clients, calls `completeConnectionSetup`
+- `completeConnectionSetup` idempotency: Runs only once per socket regardless of auth path
 - Direct public key validation (no external dependencies)
 - Bypass mode for existing containers

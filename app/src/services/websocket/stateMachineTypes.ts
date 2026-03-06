@@ -15,6 +15,7 @@
 export interface ServerConfig {
   streamRecoveryWindow: number
   ackTimeout: number
+  supportsConnectThenAuth?: boolean
 }
 
 /**
@@ -55,8 +56,8 @@ export type MachineEvent =
   | { type: 'CONNECTION_ESTABLISHED'; socketId: string }
   | { type: 'CONNECTION_FAILED'; error: Error }
   | { type: 'DISCONNECT'; reason: string }
-  | { type: 'TOKEN_REFRESHED' }
-  | { type: 'TOKEN_REFRESH_FAILED'; error: Error }
+  | { type: 'AUTH_SUCCESS'; socketId: string }
+  | { type: 'AUTH_FAILED'; error: Error }
 
   // Streaming events
   | { type: 'SEND_MESSAGE'; message: unknown; conversationId: string }

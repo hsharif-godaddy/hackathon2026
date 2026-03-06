@@ -7,17 +7,20 @@ Next.js app (port 3000) serving the Airo Builder UI and BFF layer. Package: `web
 Gasket is GoDaddy's internal plugin-based framework that wraps Next.js. It uses a three-tier architecture (Plugins → Presets → Templates) and provides HTTPS proxying, authentication, i18n, feature flags, and server-side data serialization. Docs: [gasket.dev](https://gasket.dev/) (public), [godaddy.gasket.dev](https://godaddy.gasket.dev/) (internal). Source: [github.com/gdcorp-uxp/gasket](https://github.com/gdcorp-uxp/gasket).
 
 **Key config files:**
+
 - `gasket.ts` — Main config: plugins, environment-specific settings, auth, i18n, switchboard
 - `gasket.edge.ts` — Minimal config for Next.js Middleware (only `pluginVisitor`, since Middleware can't use Node runtime)
 - `next.config.js` — Delegates to Gasket: `gasket.actions.getNextConfig()`
 - `server.ts` — Starts Gasket HTTPS proxy: `gasket.actions.startProxyServer()`
 
 **Environment switching via `GASKET_ENV`:**
+
 - `local.dev` — HTTPS proxy on `:8443` → Next.js on `:3000`, dev certs. Access via `https://local.gasket.dev-godaddy.com:8443`
 - `local.test` / `local.prod` — Self-signed certs pointing at test/prod SSO
 - `development`, `test`, `production` — Deployed environments
 
 **This is NOT standard Next.js.** Key differences:
+
 - HTTPS proxy layer sits in front of Next.js (Gasket handles TLS, not Next.js)
 - Auth plugin conditionally loaded based on `AUTH_TYPE` env var (JWT mode vs mock)
 - `pluginVisitor` must load before `pluginAuth` (populates `visitor.hostname` for SSO)
@@ -39,13 +42,13 @@ The BFF is Next.js App Router API routes at `src/app/api/`. It does NOT just pro
 
 ### Key BFF Routes
 
-| Route | Purpose | Downstream |
-| ----- | ------- | ---------- |
-| `POST /api/apps/create` | Create app | SiteAdapterFactory |
-| `GET/POST/DELETE /api/sites` | Site management | Control Plane Adapter |
-| `POST /api/auth/agent-token` | JWT for agents service | JWT Service + paywall + switchboard |
-| `GET /api/apps/[id]/deployments` | Deployment history | mgmt-airo API |
-| `GET /api/config` | Feature flags + config | Returns flags |
+| Route                            | Purpose                | Downstream                          |
+| -------------------------------- | ---------------------- | ----------------------------------- |
+| `POST /api/apps/create`          | Create app             | SiteAdapterFactory                  |
+| `GET/POST/DELETE /api/sites`     | Site management        | Control Plane Adapter               |
+| `POST /api/auth/agent-token`     | JWT for agents service | JWT Service + paywall + switchboard |
+| `GET /api/apps/[id]/deployments` | Deployment history     | mgmt-airo API                       |
+| `GET /api/config`                | Feature flags + config | Returns flags                       |
 
 ## Feature Flags
 
@@ -89,29 +92,34 @@ pnpm --filter website exec prisma studio         # Database GUI
 Socket.IO + XState v5 state machine for agent communication lifecycle.
 
 **Two-tier pattern:**
+
 - **Tier 1 (Lifecycle):** Machine → StoreSyncAdapter → Store (connection/streaming states)
 - **Tier 2 (Data):** Handlers → Store directly (transcript, tool calls)
 
+**Transport state flow:** `disconnected → connecting → authenticating → connected`. Connect-then-auth protocol: client connects without token, authenticates via `authenticate` event. Handshake-auth fallback for old servers.
+
 **Critical rules:**
+
 - Handlers NEVER call lifecycle methods (`setWebSocketState`, `setStreamingState`, `setIsLoading`)
 - Lifecycle flows through Machine → Adapter → Store only
 - Machine is REQUIRED in handler context (not optional)
 - Always call `controller.destroy()` in cleanup
+- Never store tokens in `socket.auth` after auth success (prevents reconnect data leak)
 
-Key files: `src/services/websocket/webSocketMachine.ts`, `StoreSyncAdapter.ts`, `StreamingWebSocketController.ts`. Handlers: `src/hooks/websocket/handlers/`.
+Key files: `src/services/websocket/webSocketMachine.ts`, `StoreSyncAdapter.ts`, `StreamingWebSocketController.ts`, `ConnectionManager.ts`. Handlers: `src/hooks/websocket/handlers/`.
 
-Full docs: `docs/client-websocket-architecture.md`. Tests: 129 tests in `src/services/websocket/__tests__/`.
+Full docs: `docs/client-websocket-architecture.md`, `docs/ui-agents-authentication-architecture.md`. Tests: 390+ tests across 25 websocket test files.
 
 ## Shared Types (`@airo/shared`)
 
 App uses `@airo/shared` for grants types, context-attachment, social types, and websocket-context. App does **NOT** depend on `@airo/ai-lib` — shared types come from `@airo/shared`.
 
-| Import path | Contents |
-| --- | --- |
-| `@airo/shared/grants` | `CreditGrant`, `GrantType`, `GrantFinalState`, `GrantManager` |
-| `@airo/shared/context-attachment` | `ContextAttachment`, `createContextAttachment` |
-| `@airo/shared/websocket` | `AgentsAppContext`, `AgentsAppChatMessage` |
-| `@airo/shared/social` | `ValidationDetails`, `PostImageData`, `CONNECT_REQUEST_FROM_PUBLISH` |
+| Import path                       | Contents                                                             |
+| --------------------------------- | -------------------------------------------------------------------- |
+| `@airo/shared/grants`             | `CreditGrant`, `GrantType`, `GrantFinalState`, `GrantManager`        |
+| `@airo/shared/context-attachment` | `ContextAttachment`, `createContextAttachment`                       |
+| `@airo/shared/websocket`          | `AgentsAppContext`, `AgentsAppChatMessage`                           |
+| `@airo/shared/social`             | `ValidationDetails`, `PostImageData`, `CONNECT_REQUEST_FROM_PUBLISH` |
 
 ## Initialization State Machine
 
@@ -120,6 +128,7 @@ XState v5 machine managing develop page lifecycle: `idle` → `checkingCreation`
 Location: `src/app/develop/hooks/initializationMachine.ts` and `useInitialization.ts`.
 
 **Critical patterns:**
+
 - **Token-based cancellation:** Validate `initializationTokenRef` before firing events to prevent cross-app contamination
 - **Job→App tracking:** `jobIdToRealAppIdRef` maps job IDs to real app IDs to prevent false RESET during navigation
 - **AbortSignal:** All HTTP requests use AbortController for navigation cancellation

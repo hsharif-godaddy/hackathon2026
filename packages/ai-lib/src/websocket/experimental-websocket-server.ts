@@ -639,8 +639,9 @@ export class WebSocketServer {
         previousSocketId: previousSocketId || 'none',
       })
 
-      // Send server config immediately after connection
-      // Includes both timeout configuration and capability flags
+      // Send server config immediately after connection (intentionally pre-auth).
+      // Client needs timeout config and capability flags before authenticating,
+      // so this is emitted before the authenticate event is received.
       socket.emit('message', {
         type: 'server_config',
         content: '',
@@ -651,6 +652,7 @@ export class WebSocketServer {
 
           // Capability flags (for backwards compatibility)
           supportsWebSocketHistory: !!this.config.historyProvider,
+          supportsConnectThenAuth: true,
           serverVersion: '2.0' // Increment when breaking changes occur
         }
       })
@@ -666,229 +668,254 @@ export class WebSocketServer {
         })
       }
 
-      // Use recovery manager to detect and handle recovery
-      const detectedRecoveryMode = await this.recoveryManager.attemptRecovery(socket)
-
-      // Check for manual recovery after page reload (client sends previousSocketId)
-      if (detectedRecoveryMode === 'manual') {
-        await this.recoveryManager.handleManualRecovery(socket, previousSocketId!, {
-          onRecoveryComplete: (_completedSocketId, _events, _finalSequence) => {
-            // State manager handles all state updates including socket ID migration
-            // No local Map updates needed
-          },
-          onRecoveryFailed: (_failedSocketId, _reason) => {
-            // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
-            // No additional cleanup needed
-          },
-          createWebSocketSubscriber: (sock) => new WebSocketSubscriber(
-            sock,
-            (id) => this.stateManager.isDisconnected(id)
-          )
-        })
-        return // Recovery handled, skip fresh connection setup
+      // For sockets already authenticated via handshake (old clients, PaaS, reconnects),
+      // complete connection setup immediately. For pendingAuth sockets, the authenticate
+      // handler will call completeConnectionSetup after successful auth.
+      if (!auth.pendingAuth) {
+        await this.completeConnectionSetup(socket)
       }
+    })
+  }
 
-      // Check if client is trying to recover but stream already completed/cleaned up
-      // This handles edge case where previousSocketId exists but no conversationId
-      if (previousSocketId && !detectedRecoveryMode) {
-        this.logger.info('Recovery attempted but no buffered events found', {
-          newSocketId: socketId,
-          previousSocketId,
-          hasConversationId: !!auth.conversationId
-        })
+  /**
+   * Complete connection setup after authentication.
+   * Called immediately for handshake-auth sockets, deferred for connect-then-auth sockets.
+   *
+   * Includes: recovery detection, onConnection callback, sendAvailableAgents, history_complete,
+   * and cancel handler registration.
+   */
+  async completeConnectionSetup(socket: import('socket.io').Socket): Promise<void> {
+    // Idempotency guard — prevent duplicate setup if called more than once
+    if (socket.data?.connectionSetupComplete) {
+      this.logger.debug('websocket.setup.already_complete', { socketId: socket.id })
+      return
+    }
+    // Set flag eagerly BEFORE async work to prevent interleaving
+    socket.data = { ...socket.data, connectionSetupComplete: true }
 
-        // Extract appId from auth for history loading
-        // Same logic as connection-recovery-manager.ts extractAppId()
-        const extractAppId = (auth: unknown): string | undefined => {
-          if (!auth || typeof auth !== 'object') return undefined
-          const authRecord = auth as Record<string, unknown>
+    const socketId = socket.id
+    const auth = socket.handshake.auth || {}
+    const previousSocketId = auth.previousSocketId
 
-          // Try direct appId first (most common)
-          if (typeof authRecord.appId === 'string') return authRecord.appId
+    // Use recovery manager to detect and handle recovery
+    const detectedRecoveryMode = await this.recoveryManager.attemptRecovery(socket)
 
-          // Try agentContext.appId (JWT auth)
-          const agentContext = authRecord.agentContext as Record<string, unknown> | undefined
-          if (agentContext && typeof agentContext.appId === 'string') return agentContext.appId
-
-          // Try decoded.appId (JWT auth fallback)
-          const decoded = authRecord.decoded as Record<string, unknown> | undefined
-          if (decoded && typeof decoded.appId === 'string') return decoded.appId
-
-          return undefined
-        }
-
-        // Use sendStreamCompletedStatus for consistent history handling
-        // This will load and stream persisted history if conversationId exists
-        await this.recoveryManager.sendStreamCompletedStatus(
-          socket,
-          auth.conversationId,
-          extractAppId(auth)
+    // Check for manual recovery after page reload (client sends previousSocketId)
+    if (detectedRecoveryMode === 'manual') {
+      await this.recoveryManager.handleManualRecovery(socket, previousSocketId!, {
+        onRecoveryComplete: (_completedSocketId, _events, _finalSequence) => {
+          // State manager handles all state updates including socket ID migration
+          // No local Map updates needed
+        },
+        onRecoveryFailed: (_failedSocketId, _reason) => {
+          // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
+          // No additional cleanup needed
+        },
+        createWebSocketSubscriber: (sock) => new WebSocketSubscriber(
+          sock,
+          (id) => this.stateManager.isDisconnected(id)
         )
-      }
-      // Conversation-based recovery fallback (for tab-closure recovery when socket ID is lost)
-      // This allows recovery using a durable conversationId cookie instead of ephemeral sessionStorage
-      if (detectedRecoveryMode === 'conversation') {
-        // Find the connection state for validation
-        const entry = this.stateManager.findDisconnectedByConversationId(auth.conversationId)
-        const stateData = entry?.[1]
+      })
+      return // Recovery handled, skip fresh connection setup
+    }
 
-        // Validation function for security check
-        // Checks siteId from all possible auth sources:
-        // - agentContext.siteId (JWT auth)
-        // - decoded.siteId (JWT auth fallback)
-        // - siteId (NONE/MOCK auth modes)
-        interface AuthDataWithSiteId {
-          agentContext?: { siteId?: string }
-          decoded?: { siteId?: string }
-          siteId?: string
-        }
-        const validateAppId = (conversationId: string, authData: Record<string, unknown>): boolean => {
-          const typedAuth = authData as AuthDataWithSiteId
-          const authenticatedSiteId =
-            typedAuth.agentContext?.siteId ||
-            typedAuth.decoded?.siteId ||
-            typedAuth.siteId
-
-          // Block recovery if we can't determine the authenticated site
-          if (!authenticatedSiteId) {
-            this.logger.warn('recovery.conversation.no_site_id', {
-              socketId,
-              conversationId,
-              authKeys: Object.keys(authData)
-            })
-            return false
-          }
-
-          // Block recovery if site doesn't match the conversation's app
-          if (stateData && stateData.context?.appId !== authenticatedSiteId) {
-            this.logger.warn('recovery.conversation.site_mismatch', {
-              socketId,
-              conversationId,
-              authenticatedSiteId,
-              conversationAppId: stateData.context?.appId
-            })
-            return false
-          }
-
-          return true
-        }
-
-        await this.recoveryManager.handleConversationRecovery(socket, auth.conversationId, validateAppId, {
-          onRecoveryComplete: (_completedSocketId, _events, _finalSequence) => {
-            // State manager handles all state updates including socket ID migration
-            // No local Map updates needed
-          },
-          onRecoveryFailed: (_failedSocketId, _reason) => {
-            // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
-            // No additional cleanup needed
-          },
-          createWebSocketSubscriber: (sock) => new WebSocketSubscriber(
-            sock,
-            (id) => this.stateManager.isDisconnected(id)
-          )
-        })
-        return // Recovery handled, skip fresh connection setup
-      }
-
-      // Initial recovery (conversationId exists but no disconnected state)
-      // Triggered on: initial load with existing conversation OR page reload after recovery window
-      if (detectedRecoveryMode === 'initial') {
-        // Validation function for security check (same logic as conversation recovery)
-        interface AuthDataWithSiteId {
-          agentContext?: { siteId?: string }
-          decoded?: { siteId?: string }
-          siteId?: string
-        }
-        const validateAppId = (conversationId: string, authData: Record<string, unknown>): boolean => {
-          const typedAuth = authData as AuthDataWithSiteId
-          const authenticatedSiteId =
-            typedAuth.agentContext?.siteId ||
-            typedAuth.decoded?.siteId ||
-            typedAuth.siteId
-
-          // Block recovery if we can't determine the authenticated site
-          if (!authenticatedSiteId) {
-            this.logger.warn('recovery.initial.no_site_id', {
-              socketId,
-              conversationId,
-              authKeys: Object.keys(authData)
-            })
-            return false
-          }
-
-          // For initial recovery, we can't validate against stateData (it doesn't exist)
-          // The authentication middleware has already validated the user's access to the appId
-          // We return true if we have a valid authenticated site ID, as the conversationId
-          // cookie is already scoped to the authenticated domain
-          this.logger.debug('recovery.initial.validation', {
-            socketId,
-            conversationId,
-            authenticatedSiteId
-          })
-          return true
-        }
-
-        await this.recoveryManager.handleInitialRecovery(socket, auth.conversationId, validateAppId, {
-          onRecoveryComplete: (_completedSocketId, _events, _finalSequence) => {
-            // State manager handles all state updates
-            // No local Map updates needed
-          },
-          onRecoveryFailed: (_failedSocketId, _reason) => {
-            // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
-            // No additional cleanup needed
-          },
-          createWebSocketSubscriber: (sock) => new WebSocketSubscriber(
-            sock,
-            (id) => this.stateManager.isDisconnected(id)
-          )
-        })
-        return // Recovery handled, skip fresh connection setup
-      }
-
-      // Call connection handler (await to ensure async initialization completes before subsequent handlers)
-      await this.config.onConnection?.(socketId)
-
-      // Send available agents on connection
-      this.sendAvailableAgents(socket)
-
-      // Send history_complete for fresh connections (no history to load)
-      // This ensures client initialization completes immediately for new users
-      socket.emit('message', {
-        type: 'history_complete',
-        content: '',
-        data: {
-          messageCount: 0
-        }
-      } as WebSocketMessage)
-
-      // Handle explicit stream cancellation (user clicked cancel button)
-      socket.on('cancel', () => {
-        this.logger.info('Stream explicitly cancelled by user', { socketId })
-
-        // Cancel any active or disconnected stream via state manager
-        const controller = this.stateManager.getAbortController(socketId)
-        const cancelStateData = this.stateManager.getStateData(socketId)
-
-        if (controller) {
-          controller.abort()
-
-          // Clear any pending recovery timeout
-          if (cancelStateData?.recoveryTimeoutId) {
-            clearTimeout(cancelStateData.recoveryTimeoutId)
-          }
-
-          // Clean up conversation (handles persistence and state cleanup)
-          this.cleanupConversation(socketId).catch(err => {
-            this.logger.error('websocket.cancel.cleanup_failed', {
-              socketId,
-              error: err instanceof Error ? err.message : String(err)
-            })
-          })
-        }
+    // Check if client is trying to recover but stream already completed/cleaned up
+    // This handles edge case where previousSocketId exists but no conversationId
+    if (previousSocketId && !detectedRecoveryMode) {
+      this.logger.info('Recovery attempted but no buffered events found', {
+        newSocketId: socketId,
+        previousSocketId,
+        hasConversationId: !!auth.conversationId
       })
 
-      // load_more_history handler is registered at the top of setupEventHandlers()
-      // to ensure it's available after recovery paths that return early
+      // Extract appId from auth for history loading
+      // Same logic as connection-recovery-manager.ts extractAppId()
+      const extractAppId = (authData: unknown): string | undefined => {
+        if (!authData || typeof authData !== 'object') return undefined
+        const authRecord = authData as Record<string, unknown>
+
+        // Try direct appId first (most common)
+        if (typeof authRecord.appId === 'string') return authRecord.appId
+
+        // Try agentContext.appId (JWT auth)
+        const agentContext = authRecord.agentContext as Record<string, unknown> | undefined
+        if (agentContext && typeof agentContext.appId === 'string') return agentContext.appId
+
+        // Try decoded.appId (JWT auth fallback)
+        const decoded = authRecord.decoded as Record<string, unknown> | undefined
+        if (decoded && typeof decoded.appId === 'string') return decoded.appId
+
+        return undefined
+      }
+
+      // Use sendStreamCompletedStatus for consistent history handling
+      // This will load and stream persisted history if conversationId exists
+      await this.recoveryManager.sendStreamCompletedStatus(
+        socket,
+        auth.conversationId,
+        extractAppId(auth)
+      )
+    }
+    // Conversation-based recovery fallback (for tab-closure recovery when socket ID is lost)
+    // This allows recovery using a durable conversationId cookie instead of ephemeral sessionStorage
+    if (detectedRecoveryMode === 'conversation') {
+      // Find the connection state for validation
+      const entry = this.stateManager.findDisconnectedByConversationId(auth.conversationId)
+      const stateData = entry?.[1]
+
+      // Validation function for security check
+      // Checks siteId from all possible auth sources:
+      // - agentContext.siteId (JWT auth)
+      // - decoded.siteId (JWT auth fallback)
+      // - siteId (NONE/MOCK auth modes)
+      interface AuthDataWithSiteId {
+        agentContext?: { siteId?: string }
+        decoded?: { siteId?: string }
+        siteId?: string
+      }
+      const validateAppId = (conversationId: string, authData: Record<string, unknown>): boolean => {
+        const typedAuth = authData as AuthDataWithSiteId
+        const authenticatedSiteId =
+          typedAuth.agentContext?.siteId ||
+          typedAuth.decoded?.siteId ||
+          typedAuth.siteId
+
+        // Block recovery if we can't determine the authenticated site
+        if (!authenticatedSiteId) {
+          this.logger.warn('recovery.conversation.no_site_id', {
+            socketId,
+            conversationId,
+            authKeys: Object.keys(authData)
+          })
+          return false
+        }
+
+        // Block recovery if site doesn't match the conversation's app
+        if (stateData && stateData.context?.appId !== authenticatedSiteId) {
+          this.logger.warn('recovery.conversation.site_mismatch', {
+            socketId,
+            conversationId,
+            authenticatedSiteId,
+            conversationAppId: stateData.context?.appId
+          })
+          return false
+        }
+
+        return true
+      }
+
+      await this.recoveryManager.handleConversationRecovery(socket, auth.conversationId, validateAppId, {
+        onRecoveryComplete: (_completedSocketId, _events, _finalSequence) => {
+          // State manager handles all state updates including socket ID migration
+          // No local Map updates needed
+        },
+        onRecoveryFailed: (_failedSocketId, _reason) => {
+          // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
+          // No additional cleanup needed
+        },
+        createWebSocketSubscriber: (sock) => new WebSocketSubscriber(
+          sock,
+          (id) => this.stateManager.isDisconnected(id)
+        )
+      })
+      return // Recovery handled, skip fresh connection setup
+    }
+
+    // Initial recovery (conversationId exists but no disconnected state)
+    // Triggered on: initial load with existing conversation OR page reload after recovery window
+    if (detectedRecoveryMode === 'initial') {
+      // Validation function for security check (same logic as conversation recovery)
+      interface AuthDataWithSiteId {
+        agentContext?: { siteId?: string }
+        decoded?: { siteId?: string }
+        siteId?: string
+      }
+      const validateAppId = (conversationId: string, authData: Record<string, unknown>): boolean => {
+        const typedAuth = authData as AuthDataWithSiteId
+        const authenticatedSiteId =
+          typedAuth.agentContext?.siteId ||
+          typedAuth.decoded?.siteId ||
+          typedAuth.siteId
+
+        // Block recovery if we can't determine the authenticated site
+        if (!authenticatedSiteId) {
+          this.logger.warn('recovery.initial.no_site_id', {
+            socketId,
+            conversationId,
+            authKeys: Object.keys(authData)
+          })
+          return false
+        }
+
+        // For initial recovery, we can't validate against stateData (it doesn't exist)
+        // The authentication middleware has already validated the user's access to the appId
+        // We return true if we have a valid authenticated site ID, as the conversationId
+        // cookie is already scoped to the authenticated domain
+        this.logger.debug('recovery.initial.validation', {
+          socketId,
+          conversationId,
+          authenticatedSiteId
+        })
+        return true
+      }
+
+      await this.recoveryManager.handleInitialRecovery(socket, auth.conversationId, validateAppId, {
+        onRecoveryComplete: (_completedSocketId, _events, _finalSequence) => {
+          // State manager handles all state updates
+          // No local Map updates needed
+        },
+        onRecoveryFailed: (_failedSocketId, _reason) => {
+          // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
+          // No additional cleanup needed
+        },
+        createWebSocketSubscriber: (sock) => new WebSocketSubscriber(
+          sock,
+          (id) => this.stateManager.isDisconnected(id)
+        )
+      })
+      return // Recovery handled, skip fresh connection setup
+    }
+
+    // Call connection handler (await to ensure async initialization completes before subsequent handlers)
+    await this.config.onConnection?.(socketId)
+
+    // Send available agents on connection
+    this.sendAvailableAgents(socket)
+
+    // Send history_complete for fresh connections (no history to load)
+    // This ensures client initialization completes immediately for new users
+    socket.emit('message', {
+      type: 'history_complete',
+      content: '',
+      data: {
+        messageCount: 0
+      }
+    } as WebSocketMessage)
+
+    // Handle explicit stream cancellation (user clicked cancel button)
+    socket.on('cancel', () => {
+      this.logger.info('Stream explicitly cancelled by user', { socketId })
+
+      // Cancel any active or disconnected stream via state manager
+      const controller = this.stateManager.getAbortController(socketId)
+      const cancelStateData = this.stateManager.getStateData(socketId)
+
+      if (controller) {
+        controller.abort()
+
+        // Clear any pending recovery timeout
+        if (cancelStateData?.recoveryTimeoutId) {
+          clearTimeout(cancelStateData.recoveryTimeoutId)
+        }
+
+        // Clean up conversation (handles persistence and state cleanup)
+        this.cleanupConversation(socketId).catch(err => {
+          this.logger.error('websocket.cancel.cleanup_failed', {
+            socketId,
+            error: err instanceof Error ? err.message : String(err)
+          })
+        })
+      }
     })
   }
 

@@ -2096,3 +2096,123 @@ describe('WebSocketServer - Accumulated Content Newline Separation', () => {
     expect(conversation.accumulatedContent).toBe('Hello World')
   })
 })
+
+describe('connect-then-auth support', () => {
+  let httpServer: HTTPServer
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    httpServer = new HTTPServer()
+    // Reset mockSocket handshake auth for each test
+    mockSocket.handshake.auth = {}
+  })
+
+  it('server_config includes supportsConnectThenAuth: true', async () => {
+    let connectionHandler: ((socket: any) => Promise<void>) | null = null
+
+    mockIO.on.mockImplementation((event: string, handler: any) => {
+      if (event === 'connection') {
+        connectionHandler = handler
+      }
+    })
+
+    const server = new WebSocketServer(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence()
+    })
+
+    if (connectionHandler) {
+      await connectionHandler(mockSocket)
+    }
+
+    // Find the server_config emit call
+    const serverConfigCall = mockSocket.emit.mock.calls.find(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'server_config'
+    )
+
+    expect(serverConfigCall).toBeDefined()
+    expect(serverConfigCall![1].data.supportsConnectThenAuth).toBe(true)
+
+    server.close()
+  })
+
+  it('completeConnectionSetup is idempotent', async () => {
+    let connectionHandler: ((socket: any) => Promise<void>) | null = null
+
+    mockIO.on.mockImplementation((event: string, handler: any) => {
+      if (event === 'connection') {
+        connectionHandler = handler
+      }
+    })
+
+    const server = new WebSocketServer(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence()
+    })
+
+    // Trigger connection (which calls completeConnectionSetup once for non-pendingAuth)
+    if (connectionHandler) {
+      await connectionHandler(mockSocket)
+    }
+
+    const emitCountAfterFirstSetup = mockSocket.emit.mock.calls.length
+
+    // Call completeConnectionSetup again — should be a no-op
+    await server.completeConnectionSetup(mockSocket as any)
+
+    expect(mockSocket.emit.mock.calls.length).toBe(emitCountAfterFirstSetup)
+  })
+
+  it('pendingAuth socket skips immediate connection setup', async () => {
+    let connectionHandler: ((socket: any) => Promise<void>) | null = null
+
+    mockIO.on.mockImplementation((event: string, handler: any) => {
+      if (event === 'connection') {
+        connectionHandler = handler
+      }
+    })
+
+    const onConnectionSpy = vi.fn()
+
+    const server = new WebSocketServer(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence(),
+      onConnection: onConnectionSpy
+    })
+
+    // Create a pendingAuth mock socket
+    const pendingAuthSocket = {
+      id: 'pending-auth-socket-id',
+      emit: vi.fn(),
+      on: vi.fn(),
+      connected: true,
+      handshake: {
+        auth: { pendingAuth: true }
+      },
+      volatile: {
+        emit: vi.fn()
+      }
+    }
+
+    if (connectionHandler) {
+      await connectionHandler(pendingAuthSocket)
+    }
+
+    // onConnection should NOT have been called (it's part of completeConnectionSetup)
+    expect(onConnectionSpy).not.toHaveBeenCalled()
+
+    // server_config should still be emitted (it's pre-auth)
+    const serverConfigCall = pendingAuthSocket.emit.mock.calls.find(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'server_config'
+    )
+    expect(serverConfigCall).toBeDefined()
+
+    // connectionSetupComplete flag should NOT be set
+    expect(pendingAuthSocket.data?.connectionSetupComplete).toBeFalsy()
+
+    server.close()
+  })
+})

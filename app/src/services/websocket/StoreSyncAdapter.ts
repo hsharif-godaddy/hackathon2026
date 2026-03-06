@@ -75,8 +75,8 @@ interface ControllerLike extends EventEmitter {
  */
 const TRANSPORT_STATE_MAP: Record<string, Partial<WebSocketState>> = {
   'transport.disconnected': { status: 'idle', connected: false },
-  'transport.connecting.fetchingToken': { status: 'connecting', connected: false },
-  'transport.connecting.establishingConnection': { status: 'connecting', connected: false },
+  'transport.connecting': { status: 'connecting', connected: false },
+  'transport.authenticating': { status: 'authenticating', connected: false },
   'transport.connected.idle': { status: 'idle', connected: true },
   // Recovery is still "connected" at the transport layer. Recovery state is reflected via recoveryState.
   'transport.connected.recovering.pendingAck': { status: 'idle', connected: true },
@@ -390,8 +390,8 @@ export class StoreSyncAdapter {
    */
   private getTransportStateKey(snapshot: WebSocketSnapshot): string | null {
     if (snapshot.matches({ transport: 'disconnected' })) return 'transport.disconnected'
-    if (snapshot.matches({ transport: { connecting: 'fetchingToken' } })) return 'transport.connecting.fetchingToken'
-    if (snapshot.matches({ transport: { connecting: 'establishingConnection' } })) return 'transport.connecting.establishingConnection'
+    if (snapshot.matches({ transport: 'connecting' })) return 'transport.connecting'
+    if (snapshot.matches({ transport: 'authenticating' })) return 'transport.authenticating'
     if (snapshot.matches({ transport: { connected: 'idle' } })) return 'transport.connected.idle'
     if (snapshot.matches({ transport: { connected: { recovering: 'pendingAck' } } })) {
       return 'transport.connected.recovering.pendingAck'

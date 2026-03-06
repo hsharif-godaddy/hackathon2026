@@ -145,6 +145,8 @@ export class TransportSupervisor extends EventEmitter {
         this.handleSocketReady(socket)
       },
       onConnect: (params) => this.handleConnectionEstablished(params),
+      onAuthenticated: (params) => this.handleAuthenticated(params),
+      onAuthFailed: (error) => this.handleAuthFailed(error),
       onConnectionFailed: (error) => this.handleConnectionFailed(error),
       onConnectError: (error) => this.handleConnectError(error),
       onConnectionPhases: (phases) => this.deps.qualityMonitor?.setConnectionPhases(phases),
@@ -154,6 +156,9 @@ export class TransportSupervisor extends EventEmitter {
       onReconnectError: (params) => this.handleReconnectError(params),
       onReconnectFailed: (params) => this.handleReconnectFailed(params),
     }
+
+    // Share server config ref so ConnectionManager can read capability flags and timeouts
+    this.deps.connectionManager.setServerConfigRef(this.deps.refs.serverConfig)
 
     await this.deps.connectionManager.connect(appId, callbacks)
   }
@@ -201,9 +206,6 @@ export class TransportSupervisor extends EventEmitter {
   private handleSocketReady(socket: Socket): void {
     this.socket = socket
 
-    // Send TOKEN_REFRESHED to machine (token was successfully fetched)
-    this.deps.machine.send({ type: 'TOKEN_REFRESHED' })
-
     if (!this.socketsWithHandlers.has(socket)) {
       this.setupEventHandlers(socket)
       this.socketsWithHandlers.add(socket)
@@ -223,6 +225,24 @@ export class TransportSupervisor extends EventEmitter {
     this.emit('connection:established', { socket, recovered })
   }
 
+  private handleAuthenticated({ socket }: { socket: Socket }): void {
+    this.deps.machine.send({ type: 'AUTH_SUCCESS', socketId: socket.id })
+
+    logger.info('websocket.auth.success', {
+      appId: this.currentAppId,
+      socketId: socket.id,
+    })
+  }
+
+  private handleAuthFailed(error: Error): void {
+    logger.error('websocket.auth.failed', {
+      appId: this.currentAppId,
+      error: error.message,
+    })
+
+    this.deps.machine.send({ type: 'AUTH_FAILED', error })
+  }
+
   private handleConnectionFailed(error: Error): void {
     const errorMessage = error?.message ?? 'Unknown error'
     logger.error('websocket.connection.init_failed', {
@@ -231,8 +251,6 @@ export class TransportSupervisor extends EventEmitter {
       appId: this.currentAppId,
     })
 
-    // Send TOKEN_REFRESH_FAILED or CONNECTION_FAILED to machine
-    this.deps.machine.send({ type: 'TOKEN_REFRESH_FAILED', error })
     this.deps.machine.send({ type: 'CONNECTION_FAILED', error })
 
     this.emit('connection:failed', { error })

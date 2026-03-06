@@ -30,21 +30,21 @@ describe('webSocketMachine', () => {
       harness.destroy()
     })
 
-    it('should transition from disconnected → connecting → connected', async () => {
+    it('should transition from disconnected → connecting → authenticating → connected', async () => {
       const harness = new StateMachineTestHarness(webSocketMachine)
 
       harness.simulateConnect('app-123')
       harness.assertState((s) =>
-        s.matches({ transport: { connecting: 'fetchingToken' } })
+        s.matches({ transport: 'connecting' })
       )
       harness.assertContext((ctx) => ctx.appId === 'app-123')
 
-      harness.actor.send({ type: 'TOKEN_REFRESHED' })
+      harness.simulateConnectionEstablished('socket-456')
       harness.assertState((s) =>
-        s.matches({ transport: { connecting: 'establishingConnection' } })
+        s.matches({ transport: 'authenticating' })
       )
 
-      harness.simulateConnectionEstablished('socket-456')
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
       harness.assertState((s) =>
         s.matches({ transport: { connected: 'idle' } })
       )
@@ -54,14 +54,53 @@ describe('webSocketMachine', () => {
       harness.destroy()
     })
 
-    it('should handle connection failure with retry', async () => {
+    it('should handle DISCONNECT during connecting state', async () => {
       const harness = new StateMachineTestHarness(webSocketMachine)
 
       harness.simulateConnect('app-123')
-      harness.actor.send({ type: 'TOKEN_REFRESHED' })
+      harness.assertState((s) => s.matches({ transport: 'connecting' }))
+
+      // Disconnect while connecting (e.g., socket closed before handshake)
       harness.actor.send({
-        type: 'CONNECTION_FAILED',
-        error: new Error('Network error'),
+        type: 'DISCONNECT',
+        reason: 'transport close',
+      })
+
+      harness.assertState((s) =>
+        s.matches({ transport: { reconnecting: 'retrying' } })
+      )
+
+      harness.destroy()
+    })
+
+    it('should handle DISCONNECT during authenticating state', async () => {
+      const harness = new StateMachineTestHarness(webSocketMachine)
+
+      harness.simulateConnect('app-123')
+      harness.simulateConnectionEstablished('socket-456')
+      harness.assertState((s) => s.matches({ transport: 'authenticating' }))
+
+      // Disconnect while authenticating
+      harness.actor.send({
+        type: 'DISCONNECT',
+        reason: 'transport close',
+      })
+
+      harness.assertState((s) =>
+        s.matches({ transport: { reconnecting: 'retrying' } })
+      )
+
+      harness.destroy()
+    })
+
+    it('should handle auth failure with retry', async () => {
+      const harness = new StateMachineTestHarness(webSocketMachine)
+
+      harness.simulateConnect('app-123')
+      harness.simulateConnectionEstablished('socket-456')
+      harness.actor.send({
+        type: 'AUTH_FAILED',
+        error: new Error('Auth error'),
       })
 
       harness.assertState((s) =>
@@ -74,7 +113,7 @@ describe('webSocketMachine', () => {
       await vi.advanceTimersByTimeAsync(1000)
 
       harness.assertState((s) =>
-        s.matches({ transport: { connecting: 'fetchingToken' } })
+        s.matches({ transport: 'connecting' })
       )
 
       harness.destroy()
@@ -83,13 +122,13 @@ describe('webSocketMachine', () => {
     it('should exhaust retries after max attempts', async () => {
       const harness = new StateMachineTestHarness(webSocketMachine)
 
-      // Fail connection MAX_RETRY_COUNT times to exhaust retries
+      // Fail auth MAX_RETRY_COUNT times to exhaust retries
       for (let i = 0; i < MAX_RETRY_COUNT; i++) {
         harness.actor.send({ type: 'CONNECT', appId: 'app-123' })
-        harness.actor.send({ type: 'TOKEN_REFRESHED' })
+        harness.simulateConnectionEstablished('socket-456')
         harness.actor.send({
-          type: 'CONNECTION_FAILED',
-          error: new Error('Connection failed'),
+          type: 'AUTH_FAILED',
+          error: new Error('Auth failed'),
         })
 
         // Advance through retry delay
@@ -112,13 +151,14 @@ describe('webSocketMachine', () => {
       harness.destroy()
     })
 
-    it('should handle token refresh failure', () => {
+    it('should handle auth failure', () => {
       const harness = new StateMachineTestHarness(webSocketMachine)
 
       harness.simulateConnect('app-123')
+      harness.simulateConnectionEstablished('socket-456')
       harness.actor.send({
-        type: 'TOKEN_REFRESH_FAILED',
-        error: new Error('Token expired'),
+        type: 'AUTH_FAILED',
+        error: new Error('Auth failed'),
       })
 
       harness.assertState((s) =>
@@ -136,8 +176,8 @@ describe('webSocketMachine', () => {
 
       // Setup connection first
       harness.simulateConnect('app-123')
-      harness.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.simulateConnectionEstablished('socket-456')
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
 
       // Start stream
       harness.actor.send({
@@ -164,8 +204,8 @@ describe('webSocketMachine', () => {
 
       // Setup connection and streaming
       harness.simulateConnect('app-123')
-      harness.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.simulateConnectionEstablished('socket-456')
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
       harness.actor.send({
         type: 'SEND_MESSAGE',
         message: {},
@@ -186,8 +226,8 @@ describe('webSocketMachine', () => {
 
       // Setup connection and streaming
       harness.simulateConnect('app-123')
-      harness.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.simulateConnectionEstablished('socket-456')
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
       harness.actor.send({
         type: 'SEND_MESSAGE',
         message: {},
@@ -235,8 +275,8 @@ describe('webSocketMachine', () => {
 
       // Setup connection
       harness.simulateConnect('app-123')
-      harness.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.simulateConnectionEstablished('socket-456')
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
 
       // Start recovery
       harness.simulateRecoveryFlow('recovery-123', 3)
@@ -275,8 +315,8 @@ describe('webSocketMachine', () => {
 
       // Setup connection and recovery
       harness.simulateConnect('app-123')
-      harness.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.simulateConnectionEstablished('socket-456')
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
       harness.simulateRecoveryFlow('recovery-123', 5)
 
       // Mark replay complete (even if not all events received)
@@ -295,8 +335,8 @@ describe('webSocketMachine', () => {
 
       // Setup connection and recovery
       harness.simulateConnect('app-123')
-      harness.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.simulateConnectionEstablished('socket-456')
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
       harness.simulateRecoveryFlow('recovery-123', 100)
 
       // Wait for timeout
@@ -314,8 +354,8 @@ describe('webSocketMachine', () => {
 
       // Setup connection and recovery
       harness.simulateConnect('app-123')
-      harness.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.simulateConnectionEstablished('socket-456')
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
       harness.simulateRecoveryFlow('recovery-123', 3)
 
       // Transition to catchup
@@ -340,8 +380,8 @@ describe('webSocketMachine', () => {
 
       // Setup connection + streaming
       harness.simulateConnect('app-123')
-      harness.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.simulateConnectionEstablished('socket-456')
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
       harness.actor.send({
         type: 'SEND_MESSAGE',
         message: {},
@@ -374,8 +414,8 @@ describe('webSocketMachine', () => {
 
       // Setup streaming
       harness.simulateConnect('app-123')
-      harness.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.simulateConnectionEstablished('socket-456')
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
       harness.actor.send({
         type: 'SEND_MESSAGE',
         message: {},
@@ -389,8 +429,8 @@ describe('webSocketMachine', () => {
 
       // Reconnect
       await vi.advanceTimersByTimeAsync(1000)
-      harness.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.simulateConnectionEstablished('socket-new')
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-new' })
 
       // Verify context preserved
       harness.assertContext((ctx) => ctx.conversationId === conversationId)
@@ -404,8 +444,8 @@ describe('webSocketMachine', () => {
       const harness = new StateMachineTestHarness(webSocketMachine)
 
       harness.simulateConnect('app-123')
-      harness.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.simulateConnectionEstablished('socket-456')
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
 
       const config = {
         streamRecoveryWindow: 30000,
@@ -455,13 +495,13 @@ describe('webSocketMachine', () => {
     it('should allow retry when under max count', async () => {
       const harness = new StateMachineTestHarness(webSocketMachine)
 
-      // Fail connection a few times
+      // Fail auth a few times
       for (let i = 0; i < 5; i++) {
         harness.actor.send({ type: 'CONNECT', appId: 'app-123' })
-        harness.actor.send({ type: 'TOKEN_REFRESHED' })
+        harness.simulateConnectionEstablished('socket-456')
         harness.actor.send({
-          type: 'CONNECTION_FAILED',
-          error: new Error('Connection failed'),
+          type: 'AUTH_FAILED',
+          error: new Error('Auth failed'),
         })
 
         const delay = Math.min(500 * Math.pow(2, i + 1), MAX_RETRY_DELAY_MS)
@@ -478,13 +518,13 @@ describe('webSocketMachine', () => {
     it('should prevent retry when max count exceeded', async () => {
       const harness = new StateMachineTestHarness(webSocketMachine)
 
-      // Fail connection MAX_RETRY_COUNT times to reach max
+      // Fail auth MAX_RETRY_COUNT times to reach max
       for (let i = 0; i < MAX_RETRY_COUNT; i++) {
         harness.actor.send({ type: 'CONNECT', appId: 'app-123' })
-        harness.actor.send({ type: 'TOKEN_REFRESHED' })
+        harness.simulateConnectionEstablished('socket-456')
         harness.actor.send({
-          type: 'CONNECTION_FAILED',
-          error: new Error('Connection failed'),
+          type: 'AUTH_FAILED',
+          error: new Error('Auth failed'),
         })
 
         if (i < MAX_RETRY_COUNT - 1) {

@@ -1893,6 +1893,163 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       })
     })
 
+    // Shared JWT validation logic used by both handshake middleware and authenticate event
+    const AUTH_TIMEOUT_MS = 30000;
+
+    const validateAndCreateAgentContext = async (token: string): Promise<{
+      valid: boolean;
+      error?: string;
+      claims?: any;
+      agentContext?: {
+        siteId: string;
+        canDownload: boolean;
+        canPublish: boolean;
+        canPurchaseDomain: boolean;
+        isE2S: boolean;
+        exp: number;
+        iat: number;
+      };
+    }> => {
+      logger.info('websocket.auth.jwt_validation.start', {
+        message: 'Validating JWT token using public key'
+      }, { tags: ['security'] });
+
+      const validationResult = await jwtAuthMiddleware.jwtValidator.validateToken(token);
+
+      if (!validationResult.valid) {
+        logger.warn('websocket.auth.connection_rejected', {
+          message: 'CONNECTION REJECTED: JWT validation failed',
+          reason: validationResult.reason
+        }, { tags: ['security'] });
+        return { valid: false, error: `JWT validation failed: ${validationResult.reason}` };
+      }
+
+      const agentContext = {
+        siteId: validationResult.claims?.siteId || '',
+        canDownload: validationResult.claims?.canDownload ?? false,
+        canPublish: validationResult.claims?.canPublish ?? false,
+        canPurchaseDomain: validationResult.claims?.canPurchaseDomain ?? false,
+        isE2S: validationResult.claims?.isE2S ?? false,
+        exp: validationResult.claims?.exp || 0,
+        iat: validationResult.claims?.iat || 0
+      };
+
+      const ttlValidation = jwtAuthMiddleware.validateWebSocketTokenTTL(agentContext);
+      if (!ttlValidation.valid) {
+        logger.warn('websocket.auth.connection_rejected.ttl', {
+          message: 'CONNECTION REJECTED: Token TTL validation failed',
+          error: ttlValidation.error,
+          tokenTTL: agentContext.exp - agentContext.iat,
+          maxAllowed: 600
+        });
+        return { valid: false, error: ttlValidation.error || 'Token TTL validation failed' };
+      }
+
+      return { valid: true, claims: validationResult.claims, agentContext };
+    };
+
+    // Register tokenRefresh handler on a socket (shared between handshake-auth and authenticate-event paths)
+    const registerTokenRefreshHandler = (socket: any): void => {
+      socket.on('tokenRefresh', async (data: any) => {
+        try {
+          const originalSiteId = socket.handshake.auth.agentContext?.siteId;
+
+          if (!originalSiteId) {
+            logger.error('websocket.auth.token_refresh.no_original_siteid', {
+              message: 'Token refresh attempted but no original siteId found',
+              socketId: socket.id
+            }, { tags: ['security'] });
+            socket.emit('tokenRefreshError', { error: 'Session state invalid - please reconnect' });
+            return;
+          }
+
+          logger.info('websocket.auth.token_refresh.requested', {
+            message: 'Token refresh requested',
+            siteId: originalSiteId,
+            socketId: socket.id
+          }, { tags: ['security'] });
+
+          const refreshResult = await jwtAuthMiddleware.jwtValidator.validateToken(data.newToken);
+
+          if (!refreshResult.valid) {
+            logger.warn('websocket.auth.token_refresh.failed', {
+              message: 'Token refresh failed - invalid token',
+              reason: refreshResult.reason,
+              siteId: originalSiteId
+            }, { tags: ['security'] });
+            socket.emit('tokenRefreshError', { error: refreshResult.reason });
+            return;
+          }
+
+          const refreshAgentContext = {
+            siteId: refreshResult.claims?.siteId || '',
+            canDownload: refreshResult.claims?.canDownload ?? false,
+            canPublish: refreshResult.claims?.canPublish ?? false,
+            canPurchaseDomain: refreshResult.claims?.canPurchaseDomain ?? false,
+            isE2S: refreshResult.claims?.isE2S ?? false,
+            exp: refreshResult.claims?.exp || 0,
+            iat: refreshResult.claims?.iat || 0
+          };
+
+          const refreshTTLValidation = jwtAuthMiddleware.validateWebSocketTokenTTL(refreshAgentContext);
+          if (!refreshTTLValidation.valid) {
+            logger.warn('websocket.auth.token_refresh.ttl_failed', {
+              message: 'Token refresh TTL validation failed',
+              error: refreshTTLValidation.error,
+              tokenTTL: refreshAgentContext.exp - refreshAgentContext.iat,
+              siteId: originalSiteId
+            }, { tags: ['security'] });
+            socket.emit('tokenRefreshError', { error: refreshTTLValidation.error });
+            return;
+          }
+
+          if (refreshAgentContext.siteId !== originalSiteId) {
+            logger.error('websocket.auth.token_refresh.siteid_mismatch', {
+              message: 'SECURITY VIOLATION: Token refresh attempted with different siteId',
+              originalSiteId,
+              newSiteId: refreshAgentContext.siteId,
+              socketId: socket.id,
+              action: 'disconnecting_socket'
+            }, { tags: ['security', 'authorization-failure'] });
+            socket.emit('tokenRefreshError', {
+              error: 'Token tenant mismatch - please reconnect with correct credentials'
+            });
+            socket.disconnect(true);
+            return;
+          }
+
+          const preservedAuth = socket.handshake.auth;
+          socket.handshake.auth = {
+            ...preservedAuth,
+            token: data.newToken,
+            decoded: refreshResult.claims,
+            agentContext: refreshAgentContext
+          };
+
+          logger.info('websocket.auth.token_refresh.success', {
+            message: 'Token refreshed successfully - siteId verified',
+            siteId: refreshAgentContext.siteId,
+            tokenTTL: refreshAgentContext.exp - refreshAgentContext.iat,
+            expiryTime: new Date((refreshResult.claims?.exp || 0) * 1000).toISOString(),
+            preservedMetadata: Object.keys(preservedAuth).filter(k => k !== 'token' && k !== 'decoded' && k !== 'agentContext')
+          }, { tags: ['security'] });
+          socket.emit('tokenRefreshSuccess', {
+            newExpiry: refreshResult.claims?.exp,
+            siteId: refreshResult.claims?.siteId
+          });
+
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          logger.error('websocket.auth.token_refresh.error', {
+            message: 'Token refresh error',
+            error: errorMessage,
+            socketId: socket.id
+          }, { tags: ['security'] });
+          socket.emit('tokenRefreshError', { error: errorMessage });
+        }
+      });
+    };
+
     // Add Socket.IO authentication middleware
     wsServer.getIO().use(async (socket, next) => {
       try {
@@ -1959,7 +2116,6 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Extract JWT token from handshake (check auth object and headers only)
         let token = null;
 
-
         // First try Socket.IO auth object (this should work for WebSocket transport)
         if (socket.handshake.auth && socket.handshake.auth.token) {
           token = socket.handshake.auth.token;
@@ -1974,205 +2130,49 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           }
         }
 
+        // Connect-then-auth: If no token, allow connection with pendingAuth flag.
+        // The client will send an `authenticate` event with the token after connecting.
         if (!token) {
-          logger.error('websocket.auth.no_token', {
-            message: 'No JWT token found in handshake',
+          logger.debug('websocket.auth.pending', {
+            message: 'No JWT token in handshake, allowing connection with pending auth',
             hasAuth: !!socket.handshake.auth,
             hasAuthHeader: !!socket.handshake.headers.authorization
           }, {
             tags: ['security']
           });
-          throw new Error('Missing or invalid Authorization header');
+          socket.handshake.auth = {
+            ...socket.handshake.auth,
+            pendingAuth: true,
+          };
+          next();
+          return;
         }
 
-        // Validate JWT using JWKS endpoint
-        logger.info('websocket.auth.jwt_validation.start', {
-          message: 'Validating JWT token using public key'
-        }, {
-          tags: ['security']
-        });
-
-        const validationResult = await jwtAuthMiddleware.jwtValidator.validateToken(token);
-
-        if (!validationResult.valid) {
-          logger.warn('websocket.auth.connection_rejected', {
-            message: 'CONNECTION REJECTED: JWT validation failed',
-            reason: validationResult.reason
-          }, {
-            tags: ['security']
-          });
-          throw new Error(`JWT validation failed: ${validationResult.reason}`);
+        // Token present in handshake — validate inline (backward compatible with old clients and PaaS)
+        const authResult = await validateAndCreateAgentContext(token);
+        if (!authResult.valid) {
+          throw new Error(authResult.error!);
         }
-
-        // Validate token TTL for WebSocket connections (must be 10 minutes or less)
-        const agentContext = {
-          siteId: validationResult.claims?.siteId || '',
-          canDownload: validationResult.claims?.canDownload ?? false,
-          canPublish: validationResult.claims?.canPublish ?? false,
-          canPurchaseDomain: validationResult.claims?.canPurchaseDomain ?? false,
-          isE2S: validationResult.claims?.isE2S ?? false,
-          exp: validationResult.claims?.exp || 0,
-          iat: validationResult.claims?.iat || 0
-        };
-
-        const ttlValidation = jwtAuthMiddleware.validateWebSocketTokenTTL(agentContext);
-        if (!ttlValidation.valid) {
-          logger.warn('websocket.auth.connection_rejected.ttl', {
-            message: 'CONNECTION REJECTED: Token TTL validation failed',
-            error: ttlValidation.error,
-            tokenTTL: agentContext.exp - agentContext.iat,
-            maxAllowed: 600
-          });
-          throw new Error(ttlValidation.error || 'Token TTL validation failed');
-        }
-
-        logger.info('websocket.auth.connection_approved', {
-          message: 'Connection approved: JWT validation passed',
-          siteId: validationResult.claims?.siteId,
-          tokenTTL: agentContext.exp - agentContext.iat,
-        }, {
-          tags: ['security']
-        });
 
         // Store validated context in socket for reuse
-        // Preserve any existing auth data (like previousSocketId for recovery)
         const originalAuth = socket.handshake.auth;
         socket.handshake.auth = {
-          ...originalAuth, // Preserve original auth data including previousSocketId
+          ...originalAuth,
           token,
-          decoded: validationResult.claims,
-          agentContext
+          decoded: authResult.claims,
+          agentContext: authResult.agentContext
         };
 
-        // Debug: Log final auth object
-        logger.info('websocket.auth.final', {
-          message: 'Final auth object after processing',
-          authKeys: Object.keys(socket.handshake.auth),
-          hasPreviousSocketId: !!(socket.handshake.auth as any).previousSocketId,
-          previousSocketId: (socket.handshake.auth as any).previousSocketId || 'none'
+        logger.info('websocket.auth.connection_approved', {
+          message: 'Connection approved: JWT validation passed (handshake)',
+          siteId: authResult.agentContext!.siteId,
+          tokenTTL: authResult.agentContext!.exp - authResult.agentContext!.iat,
+        }, {
+          tags: ['security']
         });
 
-        // Add token refresh handler for this socket
-        socket.on('tokenRefresh', async (data) => {
-          try {
-            // SECURITY: Store original siteId to prevent tenant switching attacks
-            const originalSiteId = socket.handshake.auth.agentContext?.siteId;
-
-            if (!originalSiteId) {
-              logger.error('websocket.auth.token_refresh.no_original_siteid', {
-                message: 'Token refresh attempted but no original siteId found',
-                socketId: socket.id
-              }, {
-                tags: ['security']
-              });
-              socket.emit('tokenRefreshError', { error: 'Session state invalid - please reconnect' });
-              return;
-            }
-
-            logger.info('websocket.auth.token_refresh.requested', {
-              message: 'Token refresh requested',
-              siteId: originalSiteId,
-              socketId: socket.id
-            }, {
-              tags: ['security']
-            });
-
-            const refreshResult = await jwtAuthMiddleware.jwtValidator.validateToken(data.newToken);
-
-            if (!refreshResult.valid) {
-              logger.warn('websocket.auth.token_refresh.failed', {
-                message: 'Token refresh failed - invalid token',
-                reason: refreshResult.reason,
-                siteId: originalSiteId
-              }, {
-                tags: ['security']
-              });
-              socket.emit('tokenRefreshError', { error: refreshResult.reason });
-              return;
-            }
-
-            // Validate TTL for refreshed token
-            const refreshAgentContext = {
-              siteId: refreshResult.claims?.siteId || '',
-              canDownload: refreshResult.claims?.canDownload ?? false,
-              canPublish: refreshResult.claims?.canPublish ?? false,
-              canPurchaseDomain: refreshResult.claims?.canPurchaseDomain ?? false,
-              isE2S: refreshResult.claims?.isE2S ?? false,
-              exp: refreshResult.claims?.exp || 0,
-              iat: refreshResult.claims?.iat || 0
-            };
-
-            const refreshTTLValidation = jwtAuthMiddleware.validateWebSocketTokenTTL(refreshAgentContext);
-            if (!refreshTTLValidation.valid) {
-              logger.warn('websocket.auth.token_refresh.ttl_failed', {
-                message: 'Token refresh TTL validation failed',
-                error: refreshTTLValidation.error,
-                tokenTTL: refreshAgentContext.exp - refreshAgentContext.iat,
-                siteId: originalSiteId
-              }, {
-                tags: ['security']
-              });
-              socket.emit('tokenRefreshError', { error: refreshTTLValidation.error });
-              return;
-            }
-
-            // SECURITY: Verify new token's siteId matches the original authenticated siteId
-            // This prevents an attacker from upgrading their session to a different tenant
-            // by presenting a valid JWT for another customer during token refresh
-            if (refreshAgentContext.siteId !== originalSiteId) {
-              logger.error('websocket.auth.token_refresh.siteid_mismatch', {
-                message: 'SECURITY VIOLATION: Token refresh attempted with different siteId',
-                originalSiteId,
-                newSiteId: refreshAgentContext.siteId,
-                socketId: socket.id,
-                action: 'disconnecting_socket'
-              }, {
-                tags: ['security', 'authorization-failure']
-              });
-              socket.emit('tokenRefreshError', {
-                error: 'Token tenant mismatch - please reconnect with correct credentials'
-              });
-              // Force disconnect to prevent any further abuse of this connection
-              socket.disconnect(true);
-              return;
-            }
-
-            // SECURITY: Preserve existing auth metadata (previousSocketId, etc.)
-            // This maintains session recovery capability and prevents loss of important context
-            const preservedAuth = socket.handshake.auth;
-            socket.handshake.auth = {
-              ...preservedAuth,  // Preserve previousSocketId and other metadata
-              token: data.newToken,
-              decoded: refreshResult.claims,
-              agentContext: refreshAgentContext
-            };
-
-            logger.info('websocket.auth.token_refresh.success', {
-              message: 'Token refreshed successfully - siteId verified',
-              siteId: refreshAgentContext.siteId,
-              tokenTTL: refreshAgentContext.exp - refreshAgentContext.iat,
-              expiryTime: new Date((refreshResult.claims?.exp || 0) * 1000).toISOString(),
-              preservedMetadata: Object.keys(preservedAuth).filter(k => k !== 'token' && k !== 'decoded' && k !== 'agentContext')
-            }, {
-              tags: ['security']
-            });
-            socket.emit('tokenRefreshSuccess', {
-              newExpiry: refreshResult.claims?.exp,
-              siteId: refreshResult.claims?.siteId
-            });
-
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            logger.error('websocket.auth.token_refresh.error', {
-              message: 'Token refresh error',
-              error: errorMessage,
-              socketId: socket.id
-            }, {
-              tags: ['security']
-            });
-            socket.emit('tokenRefreshError', { error: errorMessage });
-          }
-        });
+        // Register token refresh handler
+        registerTokenRefreshHandler(socket);
 
         next(); // Allow connection
 
@@ -2184,6 +2184,161 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         });
         next(new Error(`Authentication failed: ${errorMessage}`));
       }
+    });
+
+    // Connect-then-auth: Handle auth state for all connected sockets
+    wsServer.getIO().on('connection', (socket: any) => {
+      const isHandshakeAuth = socket.handshake.auth?.agentContext && !socket.handshake.auth?.pendingAuth;
+
+      // For handshake-auth sockets (old clients, PaaS, reconnects), register an
+      // `authenticate` handler that responds with `authenticateSuccess` immediately.
+      // This avoids a race condition where emitting `authenticateSuccess` in the
+      // connection handler could fire before the client registers its listeners.
+      if (isHandshakeAuth) {
+        socket.on('authenticate', () => {
+          socket.emit('authenticateSuccess', {
+            siteId: socket.handshake.auth.agentContext.siteId,
+            socketId: socket.id,
+          });
+        });
+        return;
+      }
+
+      if (!socket.handshake.auth?.pendingAuth) return;
+
+      // Auth timeout — disconnect if not authenticated within AUTH_TIMEOUT_MS
+      const authTimeout = setTimeout(() => {
+        if (socket.handshake.auth?.pendingAuth) {
+          logger.warn('websocket.auth.timeout', {
+            message: 'Authentication timeout - disconnecting unauthenticated socket',
+            socketId: socket.id,
+            timeoutMs: AUTH_TIMEOUT_MS,
+          }, { tags: ['security'] });
+          socket.emit('authenticateError', { error: 'Authentication timeout' });
+          socket.disconnect(true);
+        }
+      }, AUTH_TIMEOUT_MS);
+
+      // Packet middleware — gate ALL inbound events except `authenticate` and `disconnect`
+      socket.use(([event]: [string, ...any[]], next: (err?: Error) => void) => {
+        if (socket.handshake.auth?.pendingAuth && event !== 'authenticate' && event !== 'disconnect') {
+          logger.debug('websocket.auth.blocked_event', {
+            message: 'Blocked event from unauthenticated socket',
+            event,
+            socketId: socket.id,
+          });
+          next(new Error('Authentication required'));
+          return;
+        }
+        next();
+      });
+
+      // `authenticate` event handler — single-use initial authentication.
+      // Extracted to a named function for readability given the nested try/finally/catch.
+      let authInProgress = false;
+
+      const handleAuthenticate = async (data: { token: string }) => {
+        // Prevent concurrent authenticate events from racing
+        if (authInProgress) {
+          logger.debug('websocket.auth.concurrent_rejected', {
+            message: 'Rejected concurrent authenticate event',
+            socketId: socket.id,
+          });
+          socket.emit('authenticateError', { error: 'Authentication already in progress' });
+          return;
+        }
+
+        // Reject if already authenticated (single-use to prevent tenant-switch attacks)
+        if (socket.handshake.auth?.agentContext) {
+          logger.warn('websocket.auth.already_authenticated', {
+            message: 'Rejected authenticate event on already-authenticated socket',
+            socketId: socket.id,
+            siteId: socket.handshake.auth.agentContext.siteId,
+          }, { tags: ['security'] });
+          socket.emit('authenticateError', { error: 'Already authenticated' });
+          return;
+        }
+
+        if (!data?.token) {
+          socket.emit('authenticateError', { error: 'Missing token' });
+          return;
+        }
+
+        authInProgress = true;
+        // Auth timeout stays active as a backstop — if validateAndCreateAgentContext
+        // hangs (e.g., JWKS endpoint unreachable), the timeout will fire and disconnect.
+        // Timeout is cleared on completion (success or failure).
+        try {
+          const authResult = await validateAndCreateAgentContext(data.token);
+          if (!authResult.valid) {
+            clearTimeout(authTimeout);
+            logger.warn('websocket.auth.authenticate_failed', {
+              message: 'Authentication failed via authenticate event',
+              error: authResult.error,
+              socketId: socket.id,
+            }, { tags: ['security'] });
+            socket.emit('authenticateError', { error: authResult.error });
+            socket.disconnect(true);
+            return;
+          }
+
+          // Auth succeeded — clear the timeout and set context
+          clearTimeout(authTimeout);
+          const originalAuth = socket.handshake.auth;
+          socket.handshake.auth = {
+            ...originalAuth,
+            pendingAuth: false,
+            token: data.token,
+            decoded: authResult.claims,
+            agentContext: authResult.agentContext,
+          };
+
+          logger.info('websocket.auth.connection_approved', {
+            message: 'Connection approved: JWT validation passed (authenticate event)',
+            siteId: authResult.agentContext!.siteId,
+            tokenTTL: authResult.agentContext!.exp - authResult.agentContext!.iat,
+            socketId: socket.id,
+          }, { tags: ['security'] });
+
+          registerTokenRefreshHandler(socket);
+
+          socket.emit('authenticateSuccess', {
+            siteId: authResult.agentContext!.siteId,
+            socketId: socket.id,
+          });
+
+          // Complete the deferred connection setup now that auth is done.
+          // For pendingAuth sockets, the base class skips recovery/agents/history
+          // until this point to prevent leaking data to unauthenticated connections.
+          if (socket.connected) {
+            await wsServer.completeConnectionSetup(socket);
+          } else {
+            logger.info('websocket.auth.disconnected_during_auth', {
+              message: 'Socket disconnected during authentication - skipping connection setup',
+              socketId: socket.id,
+            });
+          }
+        } catch (error) {
+          clearTimeout(authTimeout);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          logger.error('websocket.auth.authenticate_error', {
+            message: 'Error during authenticate event',
+            error: errorMessage,
+            socketId: socket.id,
+          }, { tags: ['security'] });
+          socket.emit('authenticateError', { error: errorMessage });
+          socket.disconnect(true);
+        } finally {
+          authInProgress = false;
+        }
+      };
+
+      socket.on('authenticate', handleAuthenticate);
+
+      // Clean up timeout on disconnect
+      socket.on('disconnect', () => {
+        clearTimeout(authTimeout);
+      });
     });
 
     // SECURITY: Add message-level tenant isolation validation

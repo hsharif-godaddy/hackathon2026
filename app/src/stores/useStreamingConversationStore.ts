@@ -131,7 +131,7 @@ export interface ChatMessage {
 // WebSocket connection state
 export interface WebSocketState {
   connected: boolean
-  status: 'idle' | 'connecting' | 'streaming' | 'completing' | 'error'
+  status: 'idle' | 'connecting' | 'authenticating' | 'streaming' | 'completing' | 'error'
   error?: StructuredError
 }
 

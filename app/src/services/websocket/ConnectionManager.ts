@@ -15,6 +15,7 @@ import { io, type Socket } from 'socket.io-client'
 
 import { logger } from '@/lib/request-context'
 import { getSharedSocket, setSharedSocket } from '@/lib/socketRegistry'
+import type { ServerConfig } from './stateMachineTypes'
 
 /**
  * Toggle for connection diagnostics logging.
@@ -28,8 +29,8 @@ export interface ConnectionPhases {
   connectAttemptId: string
   configFetchMs: number
   tokenFetchMs: number
-  preSocketMs: number
-  socketHandshakeMs?: number
+  socketConnectMs?: number
+  authMs?: number
   tokenResourceTiming?: {
     serverProcessingMs: number
     transferMs: number
@@ -46,6 +47,11 @@ export interface ConnectionPhases {
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
 
+/** Socket.IO auth can be an object or a callback. This narrows to the object form and checks for a token. */
+function hasAuthToken(auth: Socket['auth']): boolean {
+  return typeof auth === 'object' && auth !== null && 'token' in auth && !!auth.token
+}
+
 export interface ConnectionCallbacks {
   /**
    * Invoked whenever the manager produces a socket that requires handler wiring.
@@ -54,9 +60,19 @@ export interface ConnectionCallbacks {
   onSocketReady?: (socket: Socket, meta: { isNew: boolean }) => void
 
   /**
-   * Invoked after the socket reports a successful connection.
+   * Invoked after the socket reports a successful connection (transport-level).
    */
   onConnect?: (params: { socket: Socket; recovered: boolean }) => void
+
+  /**
+   * Invoked after the socket successfully authenticates via the `authenticate` event.
+   */
+  onAuthenticated?: (params: { socket: Socket }) => void
+
+  /**
+   * Invoked when authentication fails over the established connection.
+   */
+  onAuthFailed?: (error: Error) => void
 
   /**
    * Invoked when the connection fails irrecoverably (config/token fetch failure or exhausted retries).
@@ -167,6 +183,21 @@ export class ConnectionManager {
   private connectPromise: Promise<void> | null = null
   private connectionPhases: ConnectionPhases | null = null
   private connectAttemptStart: number | null = null
+  private cachedToken: string | null = null
+  private authTimeoutId: ReturnType<typeof setTimeout> | null = null
+  /**
+   * When true, the socket was created as a fallback for an old server that
+   * doesn't support connect-then-auth. The old server already validated the
+   * token in io.use() middleware, so we skip emitting `authenticate` and go
+   * straight to onAuthenticated.
+   */
+  private handshakeAuthMode = false
+  /**
+   * Reference to the latest server config, shared with TransportSupervisor.
+   * Used to read `supportsConnectThenAuth` for reconnection decisions
+   * and `ackTimeout` for auth timeout.
+   */
+  private serverConfigRef: { current: ServerConfig | null } = { current: null }
   private lifecycleHandlersBySocket = new WeakMap<
     Socket,
     {
@@ -284,6 +315,11 @@ export class ConnectionManager {
       }
     }
 
+    if (this.authTimeoutId) {
+      clearTimeout(this.authTimeoutId)
+      this.authTimeoutId = null
+    }
+
     this.socket = null
     this.createdHere = false
     this.callbacks = null
@@ -291,6 +327,8 @@ export class ConnectionManager {
     this.socketUrl = null
     this.connectionPhases = null
     this.connectAttemptStart = null
+    this.cachedToken = null
+    this.handshakeAuthMode = false
   }
 
   /**
@@ -298,6 +336,14 @@ export class ConnectionManager {
    */
   getSocket(): Socket | null {
     return this.socket
+  }
+
+  /**
+   * Set the server config reference. Called by TransportSupervisor to share
+   * the config ref so ConnectionManager can read capability flags.
+   */
+  setServerConfigRef(ref: { current: ServerConfig | null }): void {
+    this.serverConfigRef = ref
   }
 
   private async initializeSocket(appId: string): Promise<void> {
@@ -311,25 +357,13 @@ export class ConnectionManager {
     const connectAttemptId = `${appId}-${initStart}-${Math.random().toString(36).slice(2, 6)}`
 
     try {
-      // Config fetch and token fetch run in parallel — token only needs appId, not socket URL
-      // Each promise captures its own start time so durations reflect individual execution
-      const [configResult, tokenResult] = await Promise.all([
-        (async () => {
-          const start = Date.now()
-          const result = await this.deps.getConfigForSite(appId)
-          return { result, durationMs: Date.now() - start }
-        })(),
-        (async () => {
-          const start = Date.now()
-          const result = await this.deps.fetchAgentToken(appId)
-          return { result, durationMs: Date.now() - start }
-        })(),
-      ])
+      // Phase 1: Start token fetch in parallel, await only config (needed for URL)
+      const tokenStart = Date.now()
+      const tokenPromise = this.deps.fetchAgentToken(appId)
 
-      const config = configResult.result
-      const token = tokenResult.result
-      const configFetchMs = configResult.durationMs
-      const tokenFetchMs = tokenResult.durationMs
+      const configStart = Date.now()
+      const config = await this.deps.getConfigForSite(appId)
+      const configFetchMs = Date.now() - configStart
 
       // Re-check after async operations
       if (appId !== this.currentAppId) {
@@ -338,35 +372,60 @@ export class ConnectionManager {
 
       this.socketUrl = config.baseUrl
 
-      if (!token) {
-        this.callbacks?.onConnectionFailed?.(new Error('Failed to acquire authentication token'))
-        return
-      }
-
-      const preSocketMs = Date.now() - initStart
-
       // Collect Resource Timing for the token fetch (same-origin, full timing available)
       const tokenResourceTiming = this.getTokenResourceTiming()
 
-      // Initialize phase data — socketHandshakeMs will be set in onConnect handler
+      // Initialize phase data — socketConnectMs and authMs will be set later
       this.connectionPhases = {
         connectAttemptId,
         configFetchMs,
-        tokenFetchMs,
-        preSocketMs,
+        tokenFetchMs: 0, // Updated when token resolves
         ...(tokenResourceTiming && { tokenResourceTiming }),
       }
       this.connectAttemptStart = Date.now()
 
       const previousSocketId = this.getStoredSocketId(appId)
 
+      // Phase 2: Connect without token (connect-then-auth)
       this.createAndRegisterSocket({
         appId,
-        token,
+        token: null,
         previousSocketId,
         isNew: true,
         connectAttemptId,
       })
+
+      // Phase 3: Await token, then authenticate over the established socket
+      const token = await tokenPromise
+      const tokenFetchMs = Date.now() - tokenStart
+
+      if (this.connectionPhases) {
+        this.connectionPhases.tokenFetchMs = tokenFetchMs
+      }
+
+      // Re-check after async operations
+      if (appId !== this.currentAppId) {
+        return
+      }
+
+      if (!token) {
+        // Clean up the socket we created since we can't authenticate
+        if (this.socket && this.createdHere) {
+          this.socket.removeAllListeners()
+          this.socket.disconnect()
+          this.socket = null
+          setSharedSocket(null)
+        }
+        this.callbacks?.onConnectionFailed?.(new Error('Failed to acquire authentication token'))
+        return
+      }
+
+      this.cachedToken = token
+
+      // Authenticate once the socket is connected (or queue for when it connects)
+      if (this.socket && !this.handshakeAuthMode) {
+        this.authenticateSocket(this.socket, token, appId)
+      }
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error))
       logger.error('websocket.connection.init_failed', {
@@ -377,6 +436,109 @@ export class ConnectionManager {
       })
       this.callbacks?.onConnectionFailed?.(err)
     }
+  }
+
+  /**
+   * Authenticate over an established socket connection.
+   * Emits `authenticate` with the JWT, listens for success/failure responses.
+   */
+  private authenticateSocket(socket: Socket, token: string, appId: string): void {
+    if (!socket.connected) {
+      // Socket not yet connected; authentication will be triggered in the onConnect handler
+      return
+    }
+
+    const authStart = Date.now()
+
+    // Clear any previous auth timeout
+    if (this.authTimeoutId) {
+      clearTimeout(this.authTimeoutId)
+      this.authTimeoutId = null
+    }
+
+    const onAuthSuccess = (_data: { socketId?: string }) => {
+      cleanup()
+
+      // Guard against stale auth responses after appId change
+      if (appId !== this.currentAppId) {
+        logger.debug('websocket.auth.stale_success', {
+          appId,
+          currentAppId: this.currentAppId,
+        })
+        return
+      }
+
+      const authMs = Date.now() - authStart
+      if (this.connectionPhases) {
+        this.connectionPhases.authMs = authMs
+      }
+
+      // Log full phase breakdown now that auth is complete
+      if (CONNECTION_DIAGNOSTICS_ENABLED && this.connectionPhases) {
+        logger.info('websocket.connection.phases', {
+          appId,
+          socketId: socket.id,
+          ...this.connectionPhases,
+        })
+      }
+
+      // Notify callback (NetworkQualityMonitor consumes this)
+      if (this.connectionPhases) {
+        this.callbacks?.onConnectionPhases?.(this.connectionPhases)
+      }
+
+      this.callbacks?.onAuthenticated?.({ socket })
+    }
+
+    const onAuthError = (data: { error?: string }) => {
+      cleanup()
+
+      // Guard against stale auth responses after appId change
+      if (appId !== this.currentAppId) {
+        return
+      }
+
+      // Clear cached token to force a fresh fetch on retry
+      this.cachedToken = null
+
+      const error = new Error(data?.error ?? 'Authentication failed')
+      logger.error('websocket.auth.error', {
+        appId,
+        socketId: socket.id,
+        error: error.message,
+      })
+      this.callbacks?.onAuthFailed?.(error)
+    }
+
+    const cleanup = () => {
+      socket.off('authenticateSuccess', onAuthSuccess)
+      socket.off('authenticateError', onAuthError)
+      if (this.authTimeoutId) {
+        clearTimeout(this.authTimeoutId)
+        this.authTimeoutId = null
+      }
+    }
+
+    // Client-side auth timeout. Use server-provided ackTimeout if available,
+    // otherwise fall back to 30s (matching server-side AUTH_TIMEOUT_MS default).
+    const authTimeoutMs = this.serverConfigRef.current?.ackTimeout ?? 30_000
+    this.authTimeoutId = setTimeout(() => {
+      cleanup()
+      // Clear cached token to force a fresh fetch on retry
+      this.cachedToken = null
+      const error = new Error('Authentication timed out')
+      logger.warn('websocket.auth.client_timeout', {
+        appId,
+        socketId: socket.id,
+        timeoutMs: authTimeoutMs,
+      })
+      this.callbacks?.onAuthFailed?.(error)
+    }, authTimeoutMs)
+
+    socket.on('authenticateSuccess', onAuthSuccess)
+    socket.on('authenticateError', onAuthError)
+
+    socket.emit('authenticate', { token })
   }
 
   /**
@@ -571,9 +733,9 @@ export class ConnectionManager {
         this.storeSocketId(appId, socket.id)
         this.tokenRefreshCount = 0
 
-        // Compute socket handshake duration and finalize phase data
+        // Compute socket connect duration
         if (this.connectionPhases && this.connectAttemptStart) {
-          this.connectionPhases.socketHandshakeMs = Date.now() - this.connectAttemptStart
+          this.connectionPhases.socketConnectMs = Date.now() - this.connectAttemptStart
           this.connectAttemptStart = null
 
           // Collect WS Resource Timing (cross-origin — needs Timing-Allow-Origin)
@@ -583,24 +745,41 @@ export class ConnectionManager {
               this.connectionPhases.wsResourceTiming = wsResourceTiming
             }
           }
-
-          // Log full phase breakdown
-          if (CONNECTION_DIAGNOSTICS_ENABLED) {
-            logger.info('websocket.connection.phases', {
-              appId,
-              socketId: socket.id,
-              ...this.connectionPhases,
-            })
-          }
-
-          // Notify callback (NetworkQualityMonitor consumes this)
-          this.callbacks?.onConnectionPhases?.(this.connectionPhases)
         }
 
         this.callbacks?.onConnect?.({ socket, recovered })
+
+        // Fallback path: old server already authenticated via io.use() — skip authenticate event
+        if (this.handshakeAuthMode) {
+          this.handshakeAuthMode = false
+          this.callbacks?.onAuthenticated?.({ socket })
+          return
+        }
+
+        // If a token was included in the handshake auth at socket construction time
+        // (handshakeAuthMode fallback, handleTokenExpiration, or Socket.IO auto-reconnect
+        // of such a socket), the server already validated it in io.use() middleware.
+        // Skip the authenticate event — the server has no handler for it in handshake-auth
+        // mode and sending it would cause a 30s auth timeout on old servers.
+        if (hasAuthToken(socket.auth)) {
+          this.callbacks?.onAuthenticated?.({ socket })
+          return
+        }
+
+        // Connect-then-auth: no token in handshake, authenticate over the established connection.
+        // Always use cachedToken — tokens are never stored in socket.auth to prevent
+        // Socket.IO auto-reconnect from sending a stale token in the handshake,
+        // which would cause the server to skip pendingAuth and send recovery data
+        // before the client has explicitly authenticated.
+        if (this.cachedToken) {
+          this.authenticateSocket(socket, this.cachedToken, appId)
+        }
       },
 
       onConnectError: (error: Error) => {
+        // Clear handshakeAuthMode so a failed fallback doesn't cause the next
+        // normal connection to skip authentication
+        this.handshakeAuthMode = false
         void this.handleConnectError(error, appId)
       },
 
@@ -665,6 +844,28 @@ export class ConnectionManager {
   private async handleConnectError(error: Error, appId: string): Promise<void> {
     const message = error.message || String(error)
 
+    // Old server doesn't support connect-then-auth: falls back to token-in-handshake
+    if (message.includes('Missing or invalid Authorization')) {
+      logger.info('websocket.auth.fallback_to_handshake', {
+        appId,
+        message: 'Server does not support connect-then-auth, falling back to token in handshake',
+      })
+      const token = this.cachedToken ?? await this.deps.fetchAgentToken(appId)
+      if (token && appId === this.currentAppId) {
+        this.cachedToken = token
+        if (this.socket) {
+          this.socket.removeAllListeners()
+          this.socket.disconnect()
+        }
+        const previousSocketId = this.getStoredSocketId(appId)
+        this.handshakeAuthMode = true
+        this.createAndRegisterSocket({ appId, token, previousSocketId, isNew: true })
+      } else {
+        this.callbacks?.onConnectionFailed?.(new Error('Failed to acquire authentication token for fallback'))
+      }
+      return
+    }
+
     if (message.includes('JWT validation failed') && message.includes('Token expired')) {
       await this.handleTokenExpiration(appId)
       return
@@ -699,6 +900,9 @@ export class ConnectionManager {
       this.callbacks?.onConnectionFailed?.(new Error('Failed to refresh authentication token'))
       return
     }
+
+    // Keep cachedToken in sync so reconnect onConnect handler uses the fresh token
+    this.cachedToken = newToken
 
     if (this.socket) {
       this.socket.removeAllListeners()

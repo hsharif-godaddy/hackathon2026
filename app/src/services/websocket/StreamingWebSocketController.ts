@@ -383,6 +383,12 @@ export class StreamingWebSocketController extends EventEmitter {
         throw new Error('WebSocket not connected. Connection may be reconnecting...')
       }
 
+      // Prevent sending messages during the authentication window
+      const snapshot = this.machine.getSnapshot()
+      if (!snapshot.matches({ transport: 'connected' })) {
+        throw new Error('WebSocket not authenticated. Please wait for authentication to complete.')
+      }
+
       // Create user message in store (Tier 2 - transcript data)
       // Extract referencedFiles from customContext if present
       const referencedFiles = params.customContext?.referencedFiles as Array<{ path: string; content: string }> | undefined

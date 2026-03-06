@@ -56,3 +56,4 @@ proxy-logs/
 
 # GoDaddy Golden Container Image metadata (fetch from s3://gd-goldenami-prod-ecr-repolist/gci-metadata.json)
 gci-metadata.json
+all.log

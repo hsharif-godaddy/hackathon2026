@@ -41,6 +41,7 @@ describe('StreamingWebSocketController', () => {
       connect: vi.fn().mockResolvedValue(undefined),
       disconnect: vi.fn(),
       getSocket: vi.fn(),
+      setServerConfigRef: vi.fn(),
     } as any
 
     // Mock ChatMessageBuilder
@@ -212,7 +213,7 @@ describe('StreamingWebSocketController', () => {
       // Mock socket getter
       ;(mockConnectionManager.getSocket as any).mockReturnValue(mockSocket)
 
-      // Reset store state mock to return conversations
+      // Reset store state mock BEFORE simulating connection (adapter syncs on transitions)
       mockGetStoreState.mockReturnValue({
         streamingState: 'idle',
         activeStream: null,
@@ -230,7 +231,15 @@ describe('StreamingWebSocketController', () => {
         setIsLoading: vi.fn(),
         markUpstreamError: vi.fn(),
         finalizeStream: vi.fn(),
+        setRecoveryState: vi.fn(),
+        setRetryState: vi.fn(),
+        setError: vi.fn(),
+        startStream: vi.fn(),
       })
+
+      // Simulate the full connect-then-auth flow to move machine to connected state
+      callbacks.onConnect?.({ socket: mockSocket, recovered: false })
+      callbacks.onAuthenticated?.({ socket: mockSocket })
     })
 
     it('should build message using ChatMessageBuilder', async () => {
@@ -318,6 +327,42 @@ describe('StreamingWebSocketController', () => {
 
       expect(mockMessageBuilder.build).not.toHaveBeenCalled()
       expect(mockSocket.emit).not.toHaveBeenCalled()
+    })
+
+    it('should reject sendMessage when not authenticated', async () => {
+      // Create a fresh controller and connect, but do NOT call onAuthenticated
+      const freshController = new StreamingWebSocketController({
+        connectionManager: mockConnectionManager,
+        messageBuilder: mockMessageBuilder,
+        getActions: () => mockActions,
+        getHelpers: () => mockHelpers,
+        toolDeltaBufferRef: { current: new Map() },
+        getStoreState: mockGetStoreState,
+      })
+
+      const onErrorSpy = vi.fn()
+      freshController.on('message:error', onErrorSpy)
+
+      await freshController.connect('app-123')
+      const callbacks = (mockConnectionManager.connect as any).mock.calls[1][1] as ConnectionCallbacks
+      callbacks.onSocketReady?.(mockSocket, { isNew: true })
+      ;(mockConnectionManager.getSocket as any).mockReturnValue(mockSocket)
+
+      // Simulate connect but NOT authenticate
+      callbacks.onConnect?.({ socket: mockSocket, recovered: false })
+
+      await freshController.sendMessage({
+        content: 'Test',
+        visualContext: null,
+      })
+
+      expect(onErrorSpy).toHaveBeenCalledWith({
+        error: expect.objectContaining({
+          message: expect.stringContaining('not authenticated'),
+        }),
+      })
+
+      freshController.destroy()
     })
 
     it('should do nothing if appId is not set', async () => {

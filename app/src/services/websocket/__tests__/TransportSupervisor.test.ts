@@ -14,7 +14,7 @@
  *
  * 3. Connection Lifecycle Events (4 tests)
  *    - Emits connection:established/failed/error
- *    - Sends machine events (CONNECTION_ESTABLISHED, TOKEN_REFRESHED, etc.)
+ *    - Sends machine events (CONNECTION_ESTABLISHED, AUTH_SUCCESS, etc.)
  *
  * 4. Disconnect Handling (3 tests)
  *    - Emits disconnect with wasStreaming flag
@@ -83,6 +83,7 @@ describe('TransportSupervisor', () => {
       connect: vi.fn().mockResolvedValue(undefined),
       disconnect: vi.fn(),
       getSocket: vi.fn(),
+      setServerConfigRef: vi.fn(),
     } as any
 
     // Mock XState machine actor
@@ -281,10 +282,6 @@ describe('TransportSupervisor', () => {
 
       expect(onFailedSpy).toHaveBeenCalledWith({ error })
       expect(mockMachine.send).toHaveBeenCalledWith({
-        type: 'TOKEN_REFRESH_FAILED',
-        error,
-      })
-      expect(mockMachine.send).toHaveBeenCalledWith({
         type: 'CONNECTION_FAILED',
         error,
       })
@@ -303,13 +300,39 @@ describe('TransportSupervisor', () => {
       expect(onErrorSpy).toHaveBeenCalledWith({ error })
     })
 
-    it('should send TOKEN_REFRESHED when socket is ready', async () => {
+    it('should set up event handlers when socket is ready', async () => {
       await supervisor.connect('app-123')
       const callbacks = (mockConnectionManager.connect as any).mock.calls[0][1] as ConnectionCallbacks
 
       callbacks.onSocketReady?.(mockSocket, { isNew: true })
 
-      expect(mockMachine.send).toHaveBeenCalledWith({ type: 'TOKEN_REFRESHED' })
+      // Socket ready no longer sends TOKEN_REFRESHED — auth happens via authenticate event
+      expect(mockMachine.send).not.toHaveBeenCalledWith({ type: 'TOKEN_REFRESHED' })
+    })
+
+    it('should send AUTH_SUCCESS to machine when onAuthenticated fires', async () => {
+      await supervisor.connect('app-123')
+      const callbacks = (mockConnectionManager.connect as any).mock.calls[0][1] as ConnectionCallbacks
+
+      callbacks.onAuthenticated?.({ socket: mockSocket })
+
+      expect(mockMachine.send).toHaveBeenCalledWith({
+        type: 'AUTH_SUCCESS',
+        socketId: 'socket-123',
+      })
+    })
+
+    it('should send AUTH_FAILED to machine when onAuthFailed fires', async () => {
+      await supervisor.connect('app-123')
+      const callbacks = (mockConnectionManager.connect as any).mock.calls[0][1] as ConnectionCallbacks
+
+      const error = new Error('Authentication failed')
+      callbacks.onAuthFailed?.(error)
+
+      expect(mockMachine.send).toHaveBeenCalledWith({
+        type: 'AUTH_FAILED',
+        error,
+      })
     })
   })
 

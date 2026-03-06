@@ -60,7 +60,7 @@ describe('StoreSyncAdapter', () => {
       harness.destroy()
     })
 
-    it('should sync connecting → connected transition', async () => {
+    it('should sync connecting → authenticating → connected transition', async () => {
       const harness = new StoreSyncAdapterTestHarness()
 
       // Wait for microtask (initial sync) to complete
@@ -75,18 +75,17 @@ describe('StoreSyncAdapter', () => {
         connected: false,
       })
 
-      // Token refreshed
+      // Connection established → authenticating
       harness.mockStore.setWebSocketState.mockClear()
-      harness.machine.actor.send({ type: 'TOKEN_REFRESHED' })
-      // Still connecting
+      harness.machine.simulateConnectionEstablished('socket-456')
       harness.assertStoreActionCalledWith('setWebSocketState', {
-        status: 'connecting',
+        status: 'authenticating',
         connected: false,
       })
 
-      // Connection established
+      // Auth success → connected
       harness.mockStore.setWebSocketState.mockClear()
-      harness.machine.simulateConnectionEstablished('socket-456')
+      harness.machine.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
 
       harness.assertStoreActionCalledWith('setWebSocketState', {
         status: 'idle',
@@ -103,7 +102,6 @@ describe('StoreSyncAdapter', () => {
 
       // Attempt connection
       harness.machine.simulateConnect('app-123')
-      harness.machine.actor.send({ type: 'TOKEN_REFRESHED' })
 
       // Fail connection
       harness.mockStore.setRetryState.mockClear()
@@ -130,8 +128,8 @@ describe('StoreSyncAdapter', () => {
 
       // Setup connection
       harness.machine.simulateConnect('app-123')
-      harness.machine.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.machine.simulateConnectionEstablished('socket-456')
+      harness.machine.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
 
       harness.mockStore.setRecoveryState.mockClear()
 
@@ -153,8 +151,8 @@ describe('StoreSyncAdapter', () => {
 
       // Setup connection and recovery
       harness.machine.simulateConnect('app-123')
-      harness.machine.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.machine.simulateConnectionEstablished('socket-456')
+      harness.machine.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
       harness.machine.simulateRecoveryFlow('recovery-123', 3)
 
       // Receive replay events
@@ -179,8 +177,8 @@ describe('StoreSyncAdapter', () => {
 
       // Setup connection, recovery, and complete recovery
       harness.machine.simulateConnect('app-123')
-      harness.machine.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.machine.simulateConnectionEstablished('socket-456')
+      harness.machine.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
       harness.machine.simulateRecoveryFlow('recovery-123', 1)
       harness.machine.simulateReplayEvent()
 
@@ -207,8 +205,8 @@ describe('StoreSyncAdapter', () => {
 
       // Setup connection
       harness.machine.simulateConnect('app-123')
-      harness.machine.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.machine.simulateConnectionEstablished('socket-456')
+      harness.machine.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
 
       harness.clearAllMocks()
 
@@ -244,8 +242,8 @@ describe('StoreSyncAdapter', () => {
 
       // Setup connection and streaming
       harness.machine.simulateConnect('app-123')
-      harness.machine.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.machine.simulateConnectionEstablished('socket-456')
+      harness.machine.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
       harness.machine.actor.send({
         type: 'STREAM_STARTED',
         conversationId: 'conv-789',
@@ -273,8 +271,8 @@ describe('StoreSyncAdapter', () => {
 
       // Setup connection and streaming
       harness.machine.simulateConnect('app-123')
-      harness.machine.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.machine.simulateConnectionEstablished('socket-456')
+      harness.machine.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
       harness.machine.actor.send({
         type: 'STREAM_STARTED',
         conversationId: 'conv-789',
@@ -305,7 +303,6 @@ describe('StoreSyncAdapter', () => {
       // Fail connection MAX_RETRY_COUNT times
       for (let i = 0; i < MAX_RETRY_COUNT; i++) {
         harness.machine.actor.send({ type: 'CONNECT', appId: 'app-123' })
-        harness.machine.actor.send({ type: 'TOKEN_REFRESHED' })
         harness.machine.actor.send({
           type: 'CONNECTION_FAILED',
           error: new Error('Connection failed'),
@@ -340,8 +337,8 @@ describe('StoreSyncAdapter', () => {
 
       // Setup connection + streaming
       harness.machine.simulateConnect('app-123')
-      harness.machine.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.machine.simulateConnectionEstablished('socket-456')
+      harness.machine.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
       harness.machine.actor.send({
         type: 'STREAM_STARTED',
         conversationId: 'conv-789',
@@ -390,8 +387,8 @@ describe('StoreSyncAdapter', () => {
 
       // Setup connection
       harness.machine.simulateConnect('app-123')
-      harness.machine.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.machine.simulateConnectionEstablished('socket-456')
+      harness.machine.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
 
       // Start streaming
       harness.machine.actor.send({
@@ -431,8 +428,8 @@ describe('StoreSyncAdapter', () => {
 
       // Transport state changes (connect/disconnect) shouldn't affect stream state
       harness.machine.simulateConnect('app-123')
-      harness.machine.actor.send({ type: 'TOKEN_REFRESHED' })
       harness.machine.simulateConnectionEstablished('socket-456')
+      harness.machine.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
 
       // Stream should still be in completed (parallel regions are independent)
       harness.machine.assertState((s) => s.matches({ stream: 'completed' }))
