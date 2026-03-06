@@ -20,6 +20,7 @@ import { regenerateToken } from '@/lib/jwt-regeneration'
 import { logger } from '@/lib/request-context'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
+import { compressImageFile } from '@/utils/image-compression'
 import { generateClickEID } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 
@@ -273,8 +274,12 @@ export function MediaSlotDialog() {
       setIsUploading(true)
 
       try {
-        const tokenResult = await regenerateToken({ siteId: appId, force: true })
-        const apiConfig = await dynamicApiConfigService.getConfigForSite(appId)
+        // Compress image, fetch token, and resolve agent URL all in parallel
+        const [compressed, tokenResult, apiConfig] = await Promise.all([
+          compressImageFile(file),
+          regenerateToken({ siteId: appId, force: true }),
+          dynamicApiConfigService.getConfigForSite(appId),
+        ])
 
         if (!apiConfig.agentUrl) {
           throw new Error('Agent URL not available')
@@ -282,8 +287,15 @@ export function MediaSlotDialog() {
 
         const baseAgentUrl = apiConfig.agentUrl.replace(`/apps/${appId}`, '')
 
+        logger.debug('media_slot_dialog.upload_compressed', {
+          appId,
+          slotName: activeSlotName,
+          originalSize: file.size,
+          compressedSize: compressed.size,
+        })
+
         const formData = new FormData()
-        formData.append('image', file)
+        formData.append('image', compressed)
 
         const response = await fetch(
           `${baseAgentUrl}/media/${appId}/slots/${activeSlotName}/upload`,

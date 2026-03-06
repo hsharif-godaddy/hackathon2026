@@ -14,6 +14,7 @@ vi.mock('@/utils/instrumentation', () => ({
 }))
 vi.mock('@/lib/request-context', () => ({
   logger: {
+    debug: vi.fn(),
     error: vi.fn(),
     info: vi.fn(),
   },
@@ -85,11 +86,18 @@ vi.mock('./UploadedImagesSection', () => ({
   UploadedImagesSection: () => null,
 }))
 
+// vi.hoisted ensures this is initialized before vi.mock factories run (which are hoisted to top of file)
+const mockCompressImageFile = vi.hoisted(() => vi.fn(async (file: File) => file))
+vi.mock('@/utils/image-compression', () => ({
+  compressImageFile: mockCompressImageFile,
+}))
+
 describe('MediaSlotDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // Reset fetch mock
     global.fetch = vi.fn()
+    // Restore default implementation after clearAllMocks may reset it
+    mockCompressImageFile.mockImplementation(async (file: File) => file)
   })
 
   it('renders upload button', () => {
@@ -276,6 +284,86 @@ describe('MediaSlotDialog', () => {
     await waitFor(() => {
       // The error message from the server response
       expect(screen.getByText('Server error')).toBeInTheDocument()
+    })
+  })
+
+  describe('image compression', () => {
+    it('should compress image before upload', async function compresses() {
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ success: true, uploadedUrl: 'http://example.com/uploaded.jpg' }),
+      } as Response)
+
+      renderWithProviders(<MediaSlotDialog />)
+
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
+
+      fireEvent.change(fileInput, { target: { files: [file] } })
+
+      await waitFor(() => {
+        expect(mockCompressImageFile).toHaveBeenCalledWith(file)
+      })
+    })
+
+    it('should upload the compressed file not the original', async function uploadsCompressed() {
+      const compressedFile = new File(['smaller'], 'test.jpg', { type: 'image/jpeg' })
+      mockCompressImageFile.mockResolvedValueOnce(compressedFile)
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ success: true, uploadedUrl: 'http://example.com/uploaded.jpg' }),
+      } as Response)
+
+      renderWithProviders(<MediaSlotDialog />)
+
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const originalFile = new File([new ArrayBuffer(5 * 1024 * 1024)], 'test.jpg', { type: 'image/jpeg' })
+
+      fireEvent.change(fileInput, { target: { files: [originalFile] } })
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalled()
+        const formData = vi.mocked(global.fetch).mock.calls[0][1]?.body as FormData
+        expect(formData.get('image')).toBe(compressedFile)
+      })
+    })
+
+    it('should run compression and token fetch in parallel', async function runsParallel() {
+      const { regenerateToken } = await import('@/lib/jwt-regeneration')
+      const { dynamicApiConfigService } = await import('@/config/dynamic-api')
+
+      const order: string[] = []
+      mockCompressImageFile.mockImplementation(async (file: File) => {
+        order.push('compress')
+        return file
+      })
+      vi.mocked(regenerateToken).mockImplementation(async () => {
+        order.push('token')
+        return { token: 'test-token' }
+      })
+      vi.mocked(dynamicApiConfigService.getConfigForSite).mockImplementation(async () => {
+        order.push('config')
+        return { agentUrl: 'http://localhost:4000' }
+      })
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ success: true, uploadedUrl: 'http://example.com/uploaded.jpg' }),
+      } as Response)
+
+      renderWithProviders(<MediaSlotDialog />)
+
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
+
+      fireEvent.change(fileInput, { target: { files: [file] } })
+
+      await waitFor(() => {
+        expect(order).toContain('compress')
+        expect(order).toContain('token')
+        expect(order).toContain('config')
+      })
     })
   })
 })

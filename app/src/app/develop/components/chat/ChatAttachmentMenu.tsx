@@ -15,6 +15,7 @@ import { logger } from '@/lib/request-context';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { ACCEPTED_UPLOAD_FILE_TYPES } from '@/utils/file-types';
 import { UPLOAD_TIMEOUT_MS, UPLOAD_TIMEOUT_SECONDS, validate } from '@/utils/file-upload-validation';
+import { compressImageFiles } from '@/utils/image-compression';
 import { generateClickEID } from '@/utils/instrumentation';
 
 export type { UploadedFile } from '@/app/develop/components/chat/FileUploadButton';
@@ -92,15 +93,24 @@ export default function ChatAttachmentMenu({
         totalSize: files.reduce((sum, f) => sum + f.size, 0)
       });
 
+      const [compressed, { token, uploadUrl }] = await Promise.all([
+        compressImageFiles(files),
+        getFileUploadAgent(appId)
+      ]);
+
+      logger.debug('file-upload.chat.compressed', {
+        appId,
+        originalSize: files.reduce((sum, f) => sum + f.size, 0),
+        compressedSize: compressed.reduce((sum, f) => sum + f.size, 0)
+      });
+
       const formData = new FormData();
       formData.append('appId', appId);
-      files.forEach(file => formData.append('files', file));
-
-      const { token, uploadUrl } = await getFileUploadAgent(appId);
+      compressed.forEach(file => formData.append('files', file));
 
       const response = await fetch(uploadUrl, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
         signal: controller.signal
       });
