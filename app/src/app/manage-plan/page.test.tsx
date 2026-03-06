@@ -43,6 +43,9 @@ vi.mock('@/lib/features', () => ({
     isMock: vi.fn().mockReturnValue(false),
     isDisabled: vi.fn().mockReturnValue(true),
   },
+  authUtils: {
+    getSupportedAuthTypes: vi.fn().mockReturnValue(['basic', 'e2s', 's2s']),
+  },
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
@@ -97,6 +100,23 @@ vi.mock('@/lib/logging', () => ({
 
 vi.mock('@/utils/getRootDomain', () => ({
   getRootDomain: () => 'godaddy.com',
+}));
+
+vi.mock('@/stores/useSitesStore', () => ({
+  useSites: () => ({
+    sites: [],
+    isLoading: false,
+    error: null,
+  }),
+  useSitesStore: vi.fn((selector) => {
+    const state = {
+      allSites: [],
+      isLoadingAll: false,
+      error: null,
+      fetchAllSites: vi.fn(),
+    };
+    return selector ? selector(state) : state;
+  }),
 }));
 
 // Mock @ux/modal to avoid Disrupt rendering issues in test environment

@@ -130,6 +130,7 @@ function DevelopPageContent() {
   const upgradeModalSource = useDevelopPageStore((state) => state.upgradeModalSource);
   const upgradeModalItc = useDevelopPageStore((state) => state.upgradeModalItc);
   const closeUpgradeModal = useDevelopPageStore((state) => state.closeUpgradeModal);
+  const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal);
   const publishLimitModalState = useDevelopPageStore((state) =>
     appId ? state.publishStates[appId] : undefined
   );
@@ -1071,6 +1072,14 @@ function DevelopPageContent() {
               setShowPublishLimitModal(appId, false)
               setShowPaywallModal(appId, false)
               shipAnalyticsLog('publish.limit.modal.dismissed', {
+                appId,
+                plan: publishLimitData.plan,
+              })
+            }}
+            onUpgrade={() => {
+              setShowPublishLimitModal(appId, false)
+              openUpgradeModal('publish_limit')
+              shipAnalyticsLog('publish.limit.modal.upgrade_clicked', {
                 appId,
                 plan: publishLimitData.plan,
               })

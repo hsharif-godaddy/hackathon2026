@@ -1,13 +1,21 @@
 import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { renderWithProviders } from '@/tests/test-utils';
 import type { CreditGrant } from '@/types/credits';
 import { GrantType, SubscriptionPlan } from '@/types/credits';
 import CreditPacksCard from './AddonCreditCard';
+
+/**
+ * Helper to collapse the card by clicking the chevron button (card starts expanded)
+ */
+function collapseCard() {
+  const collapseButton = screen.getByRole('button', { name: /Collapse/i });
+  fireEvent.click(collapseButton);
+}
 
 vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string) => key,
@@ -44,7 +52,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
   });
 
   describe('renders with credit packs', function withPacksTests() {
-    it('should render description text', function renderDescription() {
+    it('should render description text when expanded', function renderDescription() {
       renderWithProviders(
         <CreditPacksCard
           creditPacks={[createMockGrant()]}
@@ -52,11 +60,12 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           isGrantsEnabled={true}
         />
       );
+      // Card starts expanded by default
 
       expect(screen.getByText('builder_manageplan_credits_description')).toBeInTheDocument();
     });
 
-    it('should render all credit pack rows', function renderAllRows() {
+    it('should render all credit pack rows when expanded', function renderAllRows() {
       const packs = [
         createMockGrant({ id: 'pack-1' }),
         createMockGrant({ id: 'pack-2' }),
@@ -66,13 +75,14 @@ describe('CreditPacksCard', function creditPacksCardTests() {
       renderWithProviders(
         <CreditPacksCard creditPacks={packs} onOpenPaywall={mockOnOpenPaywall} isGrantsEnabled={true} />
       );
+      // Card starts expanded by default
 
       // Each pack should be rendered - check for pack names
       const packNames = screen.getAllByText('builder_manageplan_pack');
       expect(packNames).toHaveLength(3);
     });
 
-    it('should pass activeGrantId to rows', function passActiveId() {
+    it('should pass activeGrantId to rows when expanded', function passActiveId() {
       const packs = [
         createMockGrant({ id: 'pack-1' }),
         createMockGrant({ id: 'pack-2' }),
@@ -86,11 +96,44 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           isGrantsEnabled={true}
         />
       );
+      // Card starts expanded by default
 
       // The active tag should be shown for the active grant
       // Two ActiveTags are rendered (mobile and desktop versions)
       const activeTags = screen.getAllByText('builder_manageplan_active');
       expect(activeTags.length).toBe(2);
+    });
+
+    it('should show credits count in header when collapsed', function showsCreditsCount() {
+      const packs = [
+        createMockGrant({ id: 'pack-1', creditsSpent: 1000, creditsMax: 2000 }),
+        createMockGrant({ id: 'pack-2', creditsSpent: 500, creditsMax: 3000 }),
+      ];
+
+      renderWithProviders(
+        <CreditPacksCard creditPacks={packs} onOpenPaywall={mockOnOpenPaywall} isGrantsEnabled={true} />
+      );
+
+      // Collapse the card first (it starts expanded)
+      collapseCard();
+
+      // Should show total credits used / max in header when collapsed (text is split across elements for styling)
+      expect(screen.getByText((content, element) => {
+        return element?.textContent === '1500/5000';
+      })).toBeInTheDocument();
+    });
+
+    it('should be expanded by default', function expandedByDefault() {
+      renderWithProviders(
+        <CreditPacksCard
+          creditPacks={[createMockGrant()]}
+          onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
+        />
+      );
+
+      // Description should be visible when expanded (default)
+      expect(screen.getByText('builder_manageplan_credits_description')).toBeInTheDocument();
     });
   });
 
@@ -290,7 +333,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
   });
 
   describe('handles different plan types with credit packs', function planTypesWithPacksTests() {
-    it('should render packs for Free plan', function freeWithPacks() {
+    it('should render packs for Free plan when expanded', function freeWithPacks() {
       renderWithProviders(
         <CreditPacksCard
           creditPacks={[createMockGrant()]}
@@ -299,12 +342,13 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           isGrantsEnabled={true}
         />
       );
+      // Card starts expanded by default
 
       expect(screen.getByText('builder_manageplan_credits_description')).toBeInTheDocument();
       expect(screen.getByText('builder_manageplan_pack')).toBeInTheDocument();
     });
 
-    it('should render packs for Starter plan', function starterWithPacks() {
+    it('should render packs for Starter plan when expanded', function starterWithPacks() {
       renderWithProviders(
         <CreditPacksCard
           creditPacks={[createMockGrant()]}
@@ -313,11 +357,12 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           isGrantsEnabled={true}
         />
       );
+      // Card starts expanded by default
 
       expect(screen.getByText('builder_manageplan_credits_description')).toBeInTheDocument();
     });
 
-    it('should render packs for AiroPlus plan', function airoPlusWithPacks() {
+    it('should render packs for AiroPlus plan when expanded', function airoPlusWithPacks() {
       renderWithProviders(
         <CreditPacksCard
           creditPacks={[createMockGrant()]}
@@ -326,13 +371,14 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           isGrantsEnabled={true}
         />
       );
+      // Card starts expanded by default
 
       expect(screen.getByText('builder_manageplan_credits_description')).toBeInTheDocument();
     });
   });
 
   describe('handles locale', function localeTests() {
-    it('should pass locale to CreditGrantRow', function passLocale() {
+    it('should pass locale to CreditGrantRow when expanded', function passLocale() {
       renderWithProviders(
         <CreditPacksCard
           creditPacks={[createMockGrant()]}
@@ -341,6 +387,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           isGrantsEnabled={true}
         />
       );
+      // Card starts expanded by default
 
       // The component should render without errors with locale
       expect(screen.getByText('builder_manageplan_pack')).toBeInTheDocument();

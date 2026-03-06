@@ -68,8 +68,9 @@ describe('CreditGrantRow', function creditGrantRowTests() {
         <CreditGrantRow grant={createMockGrant({ creditsSpent: 3491, creditsMax: 5000 })} />
       );
 
-      // The translation mock returns "spent/max" format for credits_count
-      expect(screen.getByText('3,491/5,000')).toBeInTheDocument();
+      // Text is split across elements for styling (spent is passive)
+      const elements = screen.getAllByText((content, element) => element?.textContent === '3,491/5,000');
+      expect(elements.length).toBeGreaterThan(0);
     });
 
     it('should render progress bar', function renderProgressBar() {
@@ -210,7 +211,8 @@ describe('CreditGrantRow', function creditGrantRowTests() {
         <CreditGrantRow grant={createMockGrant({ creditsSpent: 0, creditsMax: 5000 })} />
       );
 
-      expect(screen.getByText('0/5,000')).toBeInTheDocument();
+      const elements = screen.getAllByText((content, element) => element?.textContent === '0/5,000');
+      expect(elements.length).toBeGreaterThan(0);
     });
 
     it('should handle fully consumed credits', function fullyConsumed() {
@@ -218,7 +220,8 @@ describe('CreditGrantRow', function creditGrantRowTests() {
         <CreditGrantRow grant={createMockGrant({ creditsSpent: 5000, creditsMax: 5000 })} />
       );
 
-      expect(screen.getByText('5,000/5,000')).toBeInTheDocument();
+      const elements = screen.getAllByText((content, element) => element?.textContent === '5,000/5,000');
+      expect(elements.length).toBeGreaterThan(0);
     });
   });
 });

@@ -1,7 +1,10 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import Box from '@ux/box';
 import Button from '@ux/button';
+import ChevronDownIcon from '@ux/icon/chevron-down';
+import ChevronUpIcon from '@ux/icon/chevron-up';
 import text from '@ux/text';
 
 import { useTranslations } from '@/hooks/useTranslations';
@@ -29,6 +32,12 @@ interface CreditPacksCardProps {
  */
 export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeGrantId, locale, onOpenPaywall, isGrantsEnabled, builderEntitlementId }: CreditPacksCardProps) {
   const t = useTranslations();
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  const { totalCreditsUsed, totalCreditsMax } = useMemo(() => ({
+    totalCreditsUsed: creditPacks.reduce((sum, pack) => sum + pack.creditsSpent, 0),
+    totalCreditsMax: creditPacks.reduce((sum, pack) => sum + pack.creditsMax, 0),
+  }), [creditPacks]);
 
   const isNonPaidPlan = !isPaidPlanForGrants(subscriptionPlan, isGrantsEnabled);
   // Disable buttons when grants enabled but entitlement not yet available (async subscription)
@@ -82,22 +91,42 @@ export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeG
   }
 
   return (
-    <div className="flex flex-col md:col-span-2 md:max-h-56 bg-intents-ux-box-backgroundColor rounded-xl border border-border p-2 sm:p-4">
-      <text.strong as="title" size={0} className="block mb-2" text={t('builder_manageplan_addons_title')} />
-      <text.p as="paragraph" className="mb-2 flex-shrink-0" text={t('builder_manageplan_credits_description')} />
-
-      <div className="flex flex-col flex-1 min-h-0 overflow-y-auto pr-1">
-        {creditPacks.map(function renderGrant(grant) {
-          return (
-            <CreditGrantRow
-              key={grant.id}
-              grant={grant}
-              isActive={activeGrantId === grant.id}
-              locale={locale}
-            />
-          );
-        })}
+    <div className="flex flex-col md:col-span-2 bg-intents-ux-box-backgroundColor rounded-xl border border-border p-2 sm:p-4">
+      <div className="flex items-center gap-2 w-full">
+        <button
+          type="button"
+          className="flex-shrink-0 cursor-pointer"
+          onClick={() => setIsExpanded(!isExpanded)}
+          aria-expanded={isExpanded}
+          aria-label={isExpanded ? 'Collapse' : 'Expand'}
+        >
+          {isExpanded ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
+        </button>
+        <text.strong as="title" size={0} className="block" text={t('builder_manageplan_addons_title')} />
+        { !isExpanded && (
+          <text.p as="paragraph" size={-1} className="ml-auto">
+            <span className="text-intents-ux-passive-foregroundColor">{totalCreditsUsed}</span>/{totalCreditsMax}
+          </text.p>
+        )}
       </div>
+
+      {isExpanded && (
+        <>
+          <text.p as="paragraph" className="mt-2 mb-2 flex-shrink-0" text={t('builder_manageplan_credits_description')} />
+          <div className="flex flex-col flex-1 min-h-0 overflow-y-auto pr-1 max-h-40">
+            {creditPacks.map(function renderGrant(grant) {
+              return (
+                <CreditGrantRow
+                  key={grant.id}
+                  grant={grant}
+                  isActive={activeGrantId === grant.id}
+                  locale={locale}
+                />
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }

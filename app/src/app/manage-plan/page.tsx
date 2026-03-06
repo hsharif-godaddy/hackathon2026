@@ -10,6 +10,7 @@ import text from '@ux/text';
 import { CreditsUpgradeContainer, GrantPollingModal, SinglePlanUpgradeContainer } from '@/app/develop/components/paywall';
 import {
   AddonCreditCard,
+  AppsAndSitesCard,
   DowngradeModal,
   DowngradeScheduledAlert,
   ManagePlanSkeleton,
@@ -27,6 +28,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { ClientLogBuffer, shipAnalyticsLog } from '@/lib/logging';
 import { isPaidPlanForGrants, type PaywallType } from '@/lib/paywall/shared';
+import { useSites } from '@/stores/useSitesStore';
 import type { CreditGrant } from '@/types/credits';
 import {
   getActiveGrant,
@@ -110,6 +112,7 @@ function ManagePlanContent() {
   const [isAlertDismissed, setIsAlertDismissed] = useState(false);
   const { setAutoRenew } = useEcommSubscriptionAutoRenew();
   const isCreditPolling = useIsCreditPolling();
+  const { data: isUnpublishEnabled } = useSwitchboard('appbuilder-unpublish');
 
   const openPaywall = (source: string, type: PaywallType = 'upgrade', itc?: string) => {
     setPaywallSource(source);
@@ -146,6 +149,8 @@ function ManagePlanContent() {
   });
 
   const { data: autoRenewStatus } = useEcommSubscriptionAutoRenewStatus(builderEntitlementId);
+
+  const { sites, isLoading: isSitesLoading } = useSites({ enabled: isUnpublishEnabled === true });
 
   const { totalCreditsSpent, totalCreditsMax } = useMemo(
     function calculateTotalCredits() {
@@ -356,7 +361,7 @@ function ManagePlanContent() {
                     href={`https://www.${rootDomain}/help/godaddy-airo-ai-builder-credits-faq-42828`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="underline"
+                    className="underline hover:text-ai-light"
                   >
                     {chunks}
                   </a>
@@ -366,7 +371,7 @@ function ManagePlanContent() {
                     href={`https://www.${rootDomain}/help/godaddy-airo-ai-builder-prompt-best-practices-42854`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="underline"
+                    className="underline hover:text-ai-light"
                   >
                     {chunks}
                   </a>
@@ -402,6 +407,14 @@ function ManagePlanContent() {
                   onOpenPaywall={openPaywall}
                   isGrantsEnabled={isGrantsEnabled ?? true}
                   builderEntitlementId={builderEntitlementId}
+                />
+              )}
+              {isUnpublishEnabled && (
+                <AppsAndSitesCard
+                  sites={sites}
+                  isLoading={isSitesLoading}
+                  subscriptionPlan={currentPlan}
+                  onOpenPaywall={openPaywall}
                 />
               )}
             </div>

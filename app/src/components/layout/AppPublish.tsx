@@ -22,6 +22,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
+import { isPublishedApp } from '@/lib/publish-limit';
 import { logger } from '@/lib/request-context';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { Separator } from '@/lib/shadcn/separator';
@@ -272,8 +273,11 @@ export default function AppPublish({ location }: { location?: string }) {
     + (secretsDiff?.updated.length ?? 0)
     + (secretsDiff?.deleted.length ?? 0);
 
-  /** True when there are no code changes and no secret changes to publish (show Republish, "no changes" info). */
-  const hasNoChangesToPublish = isCurrentCommitDeployed && unsyncedSecretsCount === 0;
+  // Check if the publish variant is currently active (not unpublished)
+  const isPublishVariantActive = site ? isPublishedApp(site) : false;
+
+  /** True when there are no code changes, no secret changes, AND the publish variant is active (show "no changes" info). */
+  const hasNoChangesToPublish = isCurrentCommitDeployed && unsyncedSecretsCount === 0 && isPublishVariantActive;
 
   /** Combined count for summary line so "X changes since last publish" matches the Unpublished section. */
   const totalChangesToPublish = unpublishedCount + unsyncedSecretsCount;

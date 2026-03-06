@@ -73,6 +73,7 @@ export interface AiroSystem {
  */
 export interface AiroApp {
   id: string;
+  name?: string;
   systemId: string;
   subscriptionId: string;
   appTemplateName: string;
@@ -356,6 +357,18 @@ export interface AiroPublishAppResponse {
   systemId: string;
   appId: string;
   gitHash: string;
+}
+
+/**
+ * Unpublish app response - marks publish variant as inactive
+ *
+ * POST /airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/unpublish
+ */
+export interface AiroUnpublishAppResponse {
+  message: string;
+  subscriptionId: string;
+  systemId: string;
+  appId: string;
 }
 
 /**

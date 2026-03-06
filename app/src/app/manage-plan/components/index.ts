@@ -1,5 +1,7 @@
 export { default as ActiveTag } from './ActiveTag';
 export { default as AddonCreditCard } from './AddonCreditCard';
+export { default as AppsAndSitesCard } from './AppsAndSitesCard';
+export { default as AppSiteRow } from './AppSiteRow';
 export { default as CreditGrantRow } from './CreditGrantRow';
 export { default as CreditProgressBar } from './CreditProgressBar';
 export { default as DowngradeModal } from './DowngradeModal';

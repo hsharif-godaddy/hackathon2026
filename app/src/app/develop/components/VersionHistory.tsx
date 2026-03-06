@@ -11,11 +11,13 @@ import { useChatTabs } from '@/hooks/useChatTabs'
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
+import { useTranslations } from '@/hooks/useTranslations'
 import { DeploymentStatus } from '@/lib/mgmt-airo/types'
 import { logger } from '@/lib/request-context'
 import { useGitStore } from '@/stores/useGitStore'
 import { useSiteStore } from '@/stores/useSiteStore'
 import { formatDate } from '@/utils/common'
+import { hasBeenPublished } from '@/utils/site'
 import { ChatTab } from './types'
 import { useAppIdFromParams } from './utils'
 
@@ -27,6 +29,7 @@ interface Commit {
 }
 
 export default function VersionHistory() {
+  const t = useTranslations();
   const commitsListRef = useRef<HTMLUListElement>(null)
   const appId = useAppIdFromParams()
   const queryClient = useQueryClient()
@@ -44,7 +47,8 @@ export default function VersionHistory() {
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button')
   const isPublishButtonEnabledFlag = isPublishButtonEnabled === true
 
-  const isHistoryTabActive = activeChatTab === ChatTab.HISTORY
+  const isHistoryTabActive = activeChatTab === ChatTab.HISTORY;
+  const isAppPublished = hasBeenPublished(site);
 
   const {
     data,
@@ -244,7 +248,7 @@ export default function VersionHistory() {
                 <div className="flex items-center gap-1">
                   <Tag type="info">{commit.hash.substring(0, 7)}</Tag>
                   {isPublished && (
-                    <Tag emphasis="success">PUBLISHED</Tag>
+                    <Tag emphasis={isAppPublished ? "success" : "passive"}>{isAppPublished ? t("builder_status_published") : t("builder_status_unpublished")}</Tag>
                   )}
                   <span className="text-xs">
                     {formatDate(commit.date, true)}

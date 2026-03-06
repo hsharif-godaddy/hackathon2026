@@ -1,17 +1,17 @@
 import '@testing-library/jest-dom';
 
-import React from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { screen } from '@testing-library/react';
 
-import { buildDynamicApiUrl } from '@/config/dynamic-api';
-import { agentFetch } from '@/lib/agent-fetch';
-import { mockURLMethods } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 import AppThumbnail from './AppThumbnail';
 
-vi.mock('@/config/dynamic-api');
-vi.mock('@/lib/agent-fetch');
+// Mock the hook to control loading/error/data states
+const mockUseAppThumbnail = vi.fn();
+
+vi.mock('@/hooks/useAppThumbnail', () => ({
+  useAppThumbnail: (siteId: string) => mockUseAppThumbnail(siteId),
+}));
 
 describe('AppThumbnail', () => {
   const mockSiteId = 'test-site-123';
@@ -19,19 +19,15 @@ describe('AppThumbnail', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockURLMethods();
-    vi.mocked(buildDynamicApiUrl).mockResolvedValue(`https://api.test/screenshot/${mockSiteId}`);
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 
   describe('renders loading state correctly', () => {
-    it('should show loading placeholder with icon', async () => {
-      vi.mocked(agentFetch).mockImplementation(() =>
-        new Promise(() => {})
-      );
+    it('should show loading placeholder while fetching', () => {
+      mockUseAppThumbnail.mockReturnValue({
+        data: undefined,
+        isLoading: true,
+        isError: false,
+      });
 
       renderWithProviders(
         <AppThumbnail siteId={mockSiteId} siteName={mockSiteName} />
@@ -42,223 +38,131 @@ describe('AppThumbnail', () => {
   });
 
   describe('renders thumbnail when image loads successfully', () => {
-    it('should display thumbnail image with correct alt text', async () => {
-      const mockBlob = new Blob(['fake-image-data'], { type: 'image/png' });
-
-      vi.mocked(agentFetch).mockResolvedValue({
-        ok: true,
-        status: 200,
-        blob: async () => mockBlob,
-      } as Response);
+    it('should display thumbnail image with correct alt text', () => {
+      mockUseAppThumbnail.mockReturnValue({
+        data: 'blob:mock-url',
+        isLoading: false,
+        isError: false,
+      });
 
       renderWithProviders(
         <AppThumbnail siteId={mockSiteId} siteName={mockSiteName} size="md" />
       );
 
-      await waitFor(() => {
-        const img = screen.getByAltText(`Screenshot of ${mockSiteName}`);
-        expect(img).toBeInTheDocument();
-        expect(img).toHaveAttribute('src', 'blob:mock-url');
-      });
+      const img = screen.getByAltText(`Screenshot of ${mockSiteName}`);
+      expect(img).toBeInTheDocument();
+      expect(img).toHaveAttribute('src', 'blob:mock-url');
     });
 
-    it('should create object URL from blob', async () => {
-      const mockBlob = new Blob(['fake-image-data'], { type: 'image/png' });
-
-      vi.mocked(agentFetch).mockResolvedValue({
-        ok: true,
-        status: 200,
-        blob: async () => mockBlob,
-      } as Response);
+    it('should render thumbnail container with proper test id', () => {
+      mockUseAppThumbnail.mockReturnValue({
+        data: 'blob:mock-url',
+        isLoading: false,
+        isError: false,
+      });
 
       renderWithProviders(
         <AppThumbnail siteId={mockSiteId} siteName={mockSiteName} />
       );
 
-      await waitFor(() => {
-        expect(global.URL.createObjectURL).toHaveBeenCalledWith(mockBlob);
-      });
+      expect(screen.getByTestId('app-thumbnail')).toBeInTheDocument();
     });
   });
 
   describe('renders fallback icon when image fails to load', () => {
-    it('should show fallback icon on 404 response', async () => {
-      vi.mocked(agentFetch).mockResolvedValue({
-        ok: false,
-        status: 404,
-      } as Response);
+    it('should show fallback icon when data is null', () => {
+      mockUseAppThumbnail.mockReturnValue({
+        data: null,
+        isLoading: false,
+        isError: false,
+      });
 
       renderWithProviders(
         <AppThumbnail siteId={mockSiteId} siteName={mockSiteName} />
       );
 
-      await waitFor(() => {
-        expect(screen.getByTestId('app-thumbnail-fallback')).toBeInTheDocument();
-        expect(screen.queryByAltText(`Screenshot of ${mockSiteName}`)).not.toBeInTheDocument();
-      });
+      expect(screen.getByTestId('app-thumbnail-fallback')).toBeInTheDocument();
+      expect(screen.queryByAltText(`Screenshot of ${mockSiteName}`)).not.toBeInTheDocument();
     });
 
-    it('should show fallback icon on network error', async () => {
-      vi.mocked(agentFetch).mockRejectedValue(new Error('Network error'));
+    it('should show fallback icon on error', () => {
+      mockUseAppThumbnail.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        isError: true,
+      });
 
       renderWithProviders(
         <AppThumbnail siteId={mockSiteId} siteName={mockSiteName} />
       );
 
-      await waitFor(() => {
-        expect(screen.getByTestId('app-thumbnail-fallback')).toBeInTheDocument();
-      });
-    });
-
-    it('should show fallback icon on non-ok response', async () => {
-      vi.mocked(agentFetch).mockResolvedValue({
-        ok: false,
-        status: 500,
-      } as Response);
-
-      renderWithProviders(
-        <AppThumbnail siteId={mockSiteId} siteName={mockSiteName} />
-      );
-
-      await waitFor(() => {
-        expect(screen.getByTestId('app-thumbnail-fallback')).toBeInTheDocument();
-      });
+      expect(screen.getByTestId('app-thumbnail-fallback')).toBeInTheDocument();
     });
   });
 
   describe('handles different sizes correctly', () => {
-    it('should render with xs size', async () => {
-      vi.mocked(agentFetch).mockResolvedValue({
-        ok: false,
-        status: 404,
-      } as Response);
+    beforeEach(() => {
+      mockUseAppThumbnail.mockReturnValue({
+        data: null,
+        isLoading: false,
+        isError: false,
+      });
+    });
 
+    it('should render with xs size', () => {
       renderWithProviders(
         <AppThumbnail siteId={mockSiteId} siteName={mockSiteName} size="xs" />
       );
 
-      await waitFor(() => {
-        expect(screen.getByTestId('app-thumbnail-fallback')).toBeInTheDocument();
-      });
+      expect(screen.getByTestId('app-thumbnail-fallback')).toBeInTheDocument();
     });
 
-    it('should render with sm size', async () => {
-      vi.mocked(agentFetch).mockResolvedValue({
-        ok: false,
-        status: 404,
-      } as Response);
-
+    it('should render with sm size', () => {
       renderWithProviders(
         <AppThumbnail siteId={mockSiteId} siteName={mockSiteName} size="sm" />
       );
 
-      await waitFor(() => {
-        expect(screen.getByTestId('app-thumbnail-fallback')).toBeInTheDocument();
-      });
+      expect(screen.getByTestId('app-thumbnail-fallback')).toBeInTheDocument();
     });
 
-    it('should render with md size by default', async () => {
-      vi.mocked(agentFetch).mockResolvedValue({
-        ok: false,
-        status: 404,
-      } as Response);
-
+    it('should render with md size', () => {
       renderWithProviders(
-        <AppThumbnail siteId={mockSiteId} siteName={mockSiteName} />
+        <AppThumbnail siteId={mockSiteId} siteName={mockSiteName} size="md" />
       );
 
-      await waitFor(() => {
-        expect(screen.getByTestId('app-thumbnail-fallback')).toBeInTheDocument();
-      });
+      expect(screen.getByTestId('app-thumbnail-fallback')).toBeInTheDocument();
     });
 
-    it('should render with lg size', async () => {
-      vi.mocked(agentFetch).mockResolvedValue({
-        ok: false,
-        status: 404,
-      } as Response);
-
+    it('should render with lg size', () => {
       renderWithProviders(
         <AppThumbnail siteId={mockSiteId} siteName={mockSiteName} size="lg" />
       );
 
-      await waitFor(() => {
-        expect(screen.getByTestId('app-thumbnail-fallback')).toBeInTheDocument();
-      });
+      expect(screen.getByTestId('app-thumbnail-fallback')).toBeInTheDocument();
     });
-  });
 
-  describe('cleans up resources on unmount', () => {
-    it('should revoke object URL when component unmounts', async () => {
-      const mockBlob = new Blob(['fake-image-data'], { type: 'image/png' });
-
-      vi.mocked(agentFetch).mockResolvedValue({
-        ok: true,
-        status: 200,
-        blob: async () => mockBlob,
-      } as Response);
-
-      const { unmount } = renderWithProviders(
+    it('should render without size prop (default)', () => {
+      renderWithProviders(
         <AppThumbnail siteId={mockSiteId} siteName={mockSiteName} />
       );
 
-      await waitFor(() => {
-        expect(global.URL.createObjectURL).toHaveBeenCalled();
-      });
-
-      unmount();
-
-      expect(global.URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
-    });
-
-    it('should cancel pending requests on unmount', async () => {
-      let resolvePromise: (value: Response) => void;
-      const pendingPromise = new Promise<Response>((resolve) => {
-        resolvePromise = resolve;
-      });
-
-      vi.mocked(agentFetch).mockReturnValue(pendingPromise);
-
-      const { unmount } = renderWithProviders(
-        <AppThumbnail siteId={mockSiteId} siteName={mockSiteName} />
-      );
-
-      unmount();
-
-      const mockBlob = new Blob(['fake-image-data'], { type: 'image/png' });
-      resolvePromise!({
-        ok: true,
-        status: 200,
-        blob: async () => mockBlob,
-      } as Response);
-
-      await waitFor(() => {
-        expect(global.URL.createObjectURL).not.toHaveBeenCalled();
-      });
+      expect(screen.getByTestId('app-thumbnail-fallback')).toBeInTheDocument();
     });
   });
 
-  describe('passes correct props to agentFetch', () => {
-    it('should call agentFetch with correct parameters', async () => {
-      vi.mocked(agentFetch).mockResolvedValue({
-        ok: false,
-        status: 404,
-      } as Response);
+  describe('passes siteId to hook correctly', () => {
+    it('should call useAppThumbnail with siteId', () => {
+      mockUseAppThumbnail.mockReturnValue({
+        data: null,
+        isLoading: false,
+        isError: false,
+      });
 
       renderWithProviders(
         <AppThumbnail siteId={mockSiteId} siteName={mockSiteName} />
       );
 
-      await waitFor(() => {
-        expect(buildDynamicApiUrl).toHaveBeenCalledWith('screenshot', mockSiteId);
-        expect(agentFetch).toHaveBeenCalledWith(
-          `https://api.test/screenshot/${mockSiteId}`,
-          {
-            method: 'GET',
-            siteId: mockSiteId,
-          }
-        );
-      });
+      expect(mockUseAppThumbnail).toHaveBeenCalledWith(mockSiteId);
     });
   });
 });

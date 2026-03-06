@@ -1,17 +1,20 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { FormattedMessage } from 'react-intl';
 import Box from '@ux/box';
+import Button from '@ux/button';
 import InfoIcon from '@ux/icon/information';
 import Modal from '@ux/modal';
 import text from '@ux/text';
 
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
 import { SubscriptionPlan } from '@/types/credits';
 import { getPlanDisplayLabelKey } from '@/utils/credits';
-import { logImpressionEvent } from '@/utils/instrumentation';
+import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation';
 
 interface PublishLimitModalProps {
   plan: SubscriptionPlan | undefined;
@@ -19,6 +22,7 @@ interface PublishLimitModalProps {
   limit: number | null;
   publishedApps: SiteInfo[];
   onClose: () => void;
+  onUpgrade?: () => void;
 }
 
 /**
@@ -30,8 +34,12 @@ export default function PublishLimitModal({
   limit,
   publishedApps,
   onClose,
+  onUpgrade,
 }: PublishLimitModalProps) {
   const t = useTranslations();
+  const router = useRouter();
+  const { data: isUnpublishEnabled } = useSwitchboard('appbuilder-unpublish');
+  const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans');
   const planName = plan ? t(getPlanDisplayLabelKey(plan)) : '';
 
   useEffect(() => {
@@ -42,6 +50,11 @@ export default function PublishLimitModal({
     onClose();
   };
 
+  const handleManageApps = () => {
+    onClose();
+    router.push('/manage-plan');
+  };
+
   return (
     <Modal
       title={t('builder_publish_limit_title')}
@@ -49,8 +62,35 @@ export default function PublishLimitModal({
       data-partial="componentAiro"
     >
       <Box className="md:max-w-lg" orientation="vertical" gap="lg">
-        <div className="flex gap-2 bg-ai-light/15 rounded-lg p-3">
-          <InfoIcon className="w-3 h-3 flex-shrink-0" />
+        {isHigherPlansEnabled ? (
+          <div className="flex flex-col gap-2">
+            <text.p size={-1} text={t('builder_publish_limit_plan_info', {planName, limit, strong: (chunks) => <strong>{chunks}</strong>})}/>
+            <div className="flex gap-2 bg-ai-light/15 border border-border rounded-lg p-3">
+              <InfoIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <text.p>
+                <FormattedMessage
+                  id="builder_publish_limit_upgrade_hint"
+                  values={{
+                    myAppsLink: (chunks) => (
+                      <Button
+                        design="inline"
+                        data-partial="componentAiro"
+                        data-eid={generateClickEID('publish_limit.buttons.my_apps')}
+                        onClick={() => {
+                          onClose();
+                          router.push('/apps');
+                        }}
+                        text={chunks.toString()}
+                      />
+                    ),
+                  }}
+                />
+              </text.p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex gap-2 bg-ai-light/15 rounded-lg p-3">
+            <InfoIcon className="w-3 h-3 flex-shrink-0" />
             <text.p>
               <FormattedMessage
                 id="builder_publish_limit_message"
@@ -62,7 +102,8 @@ export default function PublishLimitModal({
                 }}
               />
             </text.p>
-        </div>
+          </div>
+        )}
 
         {publishedApps.length > 0 ? (
           <div className="flex flex-col gap-2">
@@ -81,6 +122,27 @@ export default function PublishLimitModal({
           <text.p size={-1} className="text-secondary">
             {t('builder_publish_limit_no_apps_found')}
           </text.p>
+        ) : null}
+
+        {isHigherPlansEnabled && plan !== SubscriptionPlan.Ultimate && onUpgrade ? (
+          <Button
+            design="primary"
+            data-partial="componentAiro"
+            data-eid={generateClickEID('publish_limit.buttons.upgrade')}
+            text={t('builder_publish_limit_upgrade')}
+            onClick={() => {
+              onClose();
+              onUpgrade();
+            }}
+          />
+        ) : isUnpublishEnabled ? (
+          <Button
+            design="secondary"
+            data-partial="componentAiro"
+            data-eid={generateClickEID('publish_limit.buttons.manage_apps')}
+            text={t('builder_publish_limit_manage_apps')}
+            onClick={handleManageApps}
+          />
         ) : null}
       </Box>
     </Modal>

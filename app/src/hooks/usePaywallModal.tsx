@@ -248,6 +248,16 @@ export function usePaywallModal({
               plan: publishLimitData.plan,
             })
           }}
+          onUpgrade={() => {
+            setShowPublishLimitModal(false)
+            setPublishLimitData(null)
+            setShowAiroPlusPaywall(true)
+            shipAnalyticsLog('publish.limit.modal.upgrade_clicked', {
+              appId,
+              appName: site?.name,
+              plan: publishLimitData.plan,
+            })
+          }}
         />
       )
     }

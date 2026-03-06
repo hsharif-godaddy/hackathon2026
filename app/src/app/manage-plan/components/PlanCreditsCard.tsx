@@ -1,6 +1,8 @@
-import clsx from 'clsx';
+import { useState } from 'react';
 import Box from '@ux/box';
 import Button from '@ux/button';
+import ChevronDownIcon from '@ux/icon/chevron-down';
+import ChevronUpIcon from '@ux/icon/chevron-up';
 import Tag from '@ux/tag';
 import text from '@ux/text';
 
@@ -28,6 +30,7 @@ interface PlanCreditsCardProps {
 
 const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, creditPacks, openPaywall, autoRenewStatus, onDowngradeClick, isGrantsEnabled }: PlanCreditsCardProps) => {
   const t = useTranslations();
+  const [isExpanded, setIsExpanded] = useState(true);
 
   if (!planGrant || !subscription) {
     return null;
@@ -60,78 +63,88 @@ const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, credi
     : null;
 
   return (
-    <div className="flex flex-col md:col-span-2 md:max-h-60 bg-intents-ux-box-backgroundColor rounded-xl border border-border gap-2 p-2 sm:p-4">
-        <div className={clsx(
-          "flex flex-col-reverse items-stretch gap-2",
-          isActive
-            ? "lg:flex-row lg:justify-between lg:items-center"
-            : "md:flex-row md:justify-between md:items-center"
-        )}>
-          <div className="flex items-center gap-2">
-            <text.strong as="title" size={0} className="block" text={t('builder_manageplan_plan_title')} />
-            {isActive && <ActiveTag tooltipText={t('builder_manageplan_using_monthly')} />}
-          </div>
-          <div className={clsx("self-end", isActive && "lg:self-auto")}>
-            {isFreePlan ? (
-              <Tag emphasis="passive">
-                {planDisplayLabel}
-              </Tag>
-            ) : planDisplayLabel ? (
-              <Tag className="!bg-ai-light !text-intents-ux-boxHighContrast-foregroundColor">
-                {planDisplayLabel}
-              </Tag>
-            ) : null}
-          </div>
+    <div className="flex flex-col md:col-span-2 bg-intents-ux-box-backgroundColor rounded-xl border border-border gap-2 p-2 sm:p-4">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="flex-shrink-0 cursor-pointer"
+            onClick={() => setIsExpanded(!isExpanded)}
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? 'Collapse' : 'Expand'}
+          >
+            {isExpanded ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
+          </button>
+          <text.strong as="title" size={0} className="block flex-shrink-0" text={t('builder_manageplan_plan_title')} />
+          {isActive && <ActiveTag tooltipText={t('builder_manageplan_using_monthly')} />}
         </div>
+        {/* Row 2 on mobile, same row on desktop: Plan tag */}
+        <div className="flex items-center gap-2 sm:ml-auto">
+          {isFreePlan ? (
+            <Tag emphasis="passive">
+              {planDisplayLabel}
+            </Tag>
+          ) : planDisplayLabel ? (
+            <Tag className="!bg-ai-light !text-intents-ux-boxHighContrast-foregroundColor">
+              {planDisplayLabel}
+            </Tag>
+          ) : null}
+        </div>
+      </div>
+
+      {isExpanded && (
+        <>
           {resetDate && resetTime && (
-              <text.p as="paragraph">
+            <text.p as="paragraph">
               {t('builder_manageplan_reset_info', {
-                  date: resetDate,
-                  time: resetTime,
+                date: resetDate,
+                time: resetTime,
               })}
-              </text.p>
+            </text.p>
           )}
           {hasCreditsNoPlan && (
-              <text.p as="label" text={t('builder_manageplan_creditpacks_empty_plan_description')} />
+            <text.p as="label" text={t('builder_manageplan_creditpacks_empty_plan_description')} />
           )}
           <CreditProgressBar spent={getEffectiveCreditsSpent(planGrant.creditsSpent, planGrant.creditsMax)} max={planGrant.creditsMax} />
-        { (creditPacks.length > 0 || (!isFreePlan && creditPacks.length === 0)) && currentPlan && (
-          <Box orientation="horizontal" gap="md">
-              { isFreePlan && creditPacks.length > 0 && (
-                  <Button
-                      design="primary"
-                      data-partial='componentAiro'
-                      data-eid={generateClickEID('manageplan.buttons.upgrade')}
-                      size="sm"
-                      text={t('builder_manageplan_upgrade')}
-                      onClick={() => openPaywall('manage_plan.upgrade', PAYWALL_TYPE.UPGRADE, PAYWALL_ITC.UPGRADE)}
-                      disabled={isButtonDisabled}
-                  />
+          {(creditPacks.length > 0 || (!isFreePlan && creditPacks.length === 0)) && currentPlan && (
+            <Box orientation="horizontal" gap="md">
+              {isFreePlan && creditPacks.length > 0 && (
+                <Button
+                  design="primary"
+                  data-partial='componentAiro'
+                  data-eid={generateClickEID('manageplan.buttons.upgrade')}
+                  size="sm"
+                  text={t('builder_manageplan_upgrade')}
+                  onClick={() => openPaywall('manage_plan.upgrade', PAYWALL_TYPE.UPGRADE, PAYWALL_ITC.UPGRADE)}
+                  disabled={isButtonDisabled}
+                />
               )}
-              { creditPacks.length > 0 && (
-                  <Button
-                      design="secondary"
-                      data-partial='componentAiro'
-                      data-eid={generateClickEID('manageplan.buttons.buy_credits')}
-                      size="sm"
-                      text={t('builder_manageplan_buy_credits')}
-                      onClick={() => openPaywall('manage_plan.buy_credits', PAYWALL_TYPE.CREDITS, PAYWALL_ITC.CREDITS)}
-                      disabled={isButtonDisabled}
-                  />
+              {creditPacks.length > 0 && (
+                <Button
+                  design="secondary"
+                  data-partial='componentAiro'
+                  data-eid={generateClickEID('manageplan.buttons.buy_credits')}
+                  size="sm"
+                  text={t('builder_manageplan_buy_credits')}
+                  onClick={() => openPaywall('manage_plan.buy_credits', PAYWALL_TYPE.CREDITS, PAYWALL_ITC.CREDITS)}
+                  disabled={isButtonDisabled}
+                />
               )}
-              { isPaidPlan && autoRenewStatus?.autoRenew === true && onDowngradeClick && (
-                  <Button
-                      className="items-center"
-                      design="inline"
-                      data-partial='componentAiro'
-                      data-eid={generateClickEID('manageplan.buttons.downgrade_plan')}
-                      size="sm"
-                      text={t('builder_manageplan_downgrade_plan')}
-                      onClick={onDowngradeClick}
-                  />
+              {isPaidPlan && autoRenewStatus?.autoRenew === true && onDowngradeClick && (
+                <Button
+                  className="items-center"
+                  design="inline"
+                  data-partial='componentAiro'
+                  data-eid={generateClickEID('manageplan.buttons.downgrade_plan')}
+                  size="sm"
+                  text={t('builder_manageplan_downgrade_plan')}
+                  onClick={onDowngradeClick}
+                />
               )}
-          </Box>
-        )}
+            </Box>
+          )}
+        </>
+      )}
     </div>
   );
 };

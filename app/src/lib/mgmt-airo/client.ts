@@ -32,6 +32,7 @@ import {
   type AiroSubscription,
   type AiroSystem,
   type AiroTokenBudgetResponse,
+  type AiroUnpublishAppResponse,
   type AiroUpdateAppPayload,
   type AiroUpdateAttributePayload,
   type AiroUpdateProjectDomainPayload,
@@ -569,6 +570,31 @@ export class AiroMgmtClient {
       `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/publish`,
       { gitHash },
       { logEvent: 'mgmt-airo.publish-app' }
+    );
+  }
+
+  /**
+   * Unpublish app - mark publish variant as inactive
+   *
+   * POST /api/airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/unpublish
+   *
+   * The app remains accessible via preview URL. Re-publishing restores the publish variant.
+   *
+   * @param subscriptionId - Subscription ID
+   * @param systemId - System ID
+   * @param appId - App ID
+   * @returns Promise resolving to unpublish response
+   */
+  async unpublishApp(
+    subscriptionId: string,
+    systemId: string,
+    appId: string
+  ): Promise<AiroUnpublishAppResponse> {
+    return this.request<AiroUnpublishAppResponse>(
+      'POST',
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/unpublish`,
+      undefined,
+      { logEvent: 'mgmt-airo.unpublish-app' }
     );
   }
 

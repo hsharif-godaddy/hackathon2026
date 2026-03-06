@@ -40,8 +40,8 @@ describe('TotalCreditCard', function totalCreditCardTests() {
         />
       );
 
-      // The translation mock returns "spent/max" format
-      expect(screen.getByText('1,129/1,500')).toBeInTheDocument();
+      // Text is split across elements for styling (spent is passive)
+      expect(screen.getByText((content, element) => element?.textContent === '1,129/1,500')).toBeInTheDocument();
     });
 
     it('should render circular gauge', function renderGauge() {
@@ -65,7 +65,7 @@ describe('TotalCreditCard', function totalCreditCardTests() {
 
       // Should show the gauge, not error
       expect(screen.queryByText('builder_manageplan_credits_load_error')).not.toBeInTheDocument();
-      expect(screen.getByText('0/1,500')).toBeInTheDocument();
+      expect(screen.getByText((content, element) => element?.textContent === '0/1,500')).toBeInTheDocument();
     });
 
     it('should render error state when totalCreditsMax is 0', function renderErrorZeroMax() {
@@ -106,7 +106,7 @@ describe('TotalCreditCard', function totalCreditCardTests() {
         />
       );
 
-      expect(screen.getByText('1,500/1,500')).toBeInTheDocument();
+      expect(screen.getByText((content, element) => element?.textContent === '1,500/1,500')).toBeInTheDocument();
     });
 
     it('should handle large credit numbers', function largeNumbers() {
@@ -117,7 +117,7 @@ describe('TotalCreditCard', function totalCreditCardTests() {
         />
       );
 
-      expect(screen.getByText('10,000/50,000')).toBeInTheDocument();
+      expect(screen.getByText((content, element) => element?.textContent === '10,000/50,000')).toBeInTheDocument();
     });
 
     it('should handle credits from multiple grants', function multipleGrants() {
@@ -129,7 +129,7 @@ describe('TotalCreditCard', function totalCreditCardTests() {
         />
       );
 
-      expect(screen.getByText('3,500/15,000')).toBeInTheDocument();
+      expect(screen.getByText((content, element) => element?.textContent === '3,500/15,000')).toBeInTheDocument();
     });
   });
 
@@ -141,7 +141,7 @@ describe('TotalCreditCard', function totalCreditCardTests() {
       rerender(<TotalCreditCard {...defaultTotalCredits} />);
 
       expect(screen.getByText('builder_manageplan_total_credits')).toBeInTheDocument();
-      expect(screen.getByText('1,129/1,500')).toBeInTheDocument();
+      expect(screen.getByText((content, element) => element?.textContent === '1,129/1,500')).toBeInTheDocument();
     });
   });
 });

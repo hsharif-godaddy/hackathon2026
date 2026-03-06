@@ -82,6 +82,30 @@ export default function ManagePlanSkeleton() {
               })}
             </div>
           </div>
+          {/* App and Site Card*/}
+          <div className="flex flex-col bg-intents-ux-box-backgroundColor rounded-xl border border-border p-2 sm:p-4">
+            {/* Title */}
+            <Skeleton size="md" width="120px" height="24px" className="mb-2" />
+            {/* Description */}
+            <Skeleton size="sm" width="300px" height="18px" className="mb-2" />
+            {/* Credit grant rows */}
+            <div className="flex flex-col">
+              {[1, 2].map(function renderSkeleton(i) {
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between py-3 border-b border-border last:border-b-0"
+                  >
+                    <div className="flex items-center gap-1">
+                      <Skeleton size="md" width="48px" height="48px" />
+                      <Skeleton size="md" width="120px" height="18px" />
+                    </div>
+                    <Skeleton size="sm" width="200px" height="16px" />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
     </div>

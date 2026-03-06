@@ -11,6 +11,7 @@ import PlusIcon from '@ux/icon/plus'
 import SettingsIcon from '@ux/icon/settings'
 import ShowIcon from '@ux/icon/show'
 import TrashIcon from '@ux/icon/trash'
+import UnlinkIcon from '@ux/icon/unlink'
 import WebsiteIcon from '@ux/icon/website'
 import { Menu, MenuButton, MenuItem, MenuList, MenuSeparator } from '@ux/menu'
 import Modal from '@ux/modal'
@@ -19,9 +20,12 @@ import text from '@ux/text'
 import TextInput from '@ux/text-input'
 
 import AppThumbnail from '@/app/apps/AppThumbnail'
+import UnpublishConfirmationModal from '@/components/layout/UnpublishConfirmationModal'
 import { useAppRename } from '@/hooks/useAppRename'
 import { useMenuClickPrevention } from '@/hooks/useMenuClickPrevention'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useUnpublishApp } from '@/hooks/useUnpublishApp'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
@@ -44,12 +48,16 @@ export default function AppCard({ site }: { site: SiteInfo }) {
   const [alertState, setAlertState] = useState<AlertState>({ siteId: null, type: null, message: '' })
   const [publishedUrl, setPublishedUrl] = useState<string | null>(null)
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
+  const [isUnpublishModalOpen, setIsUnpublishModalOpen] = useState(false)
   const [newName, setNewName] = useState(site.name || '')
   const [renameError, setRenameError] = useState<string | null>(null)
 
   const { menuWrapperProps, menuItemProps, shouldPreventClick } = useMenuClickPrevention()
   const deleteSite = useSitesStore((state) => state.deleteSite)
+  const fetchAllSites = useSitesStore((state) => state.fetchAllSites)
   const { mutate: renameApp, isPending: isRenamePending } = useAppRename()
+  const { data: isUnpublishEnabled } = useSwitchboard('appbuilder-unpublish')
+  const unpublishMutation = useUnpublishApp()
 
   useEffect(() => {
     const fetchSiteDetails = async () => {
@@ -111,6 +119,19 @@ export default function AppCard({ site }: { site: SiteInfo }) {
     setIsRenameDialogOpen(false)
     setNewName(site.name || '')
     setRenameError(null)
+  }
+
+  const handleUnpublish = (disconnectDomain: boolean) => {
+    unpublishMutation.mutate(
+      { appId: site.id, disconnectDomain },
+      {
+        onSuccess: async () => {
+          setIsUnpublishModalOpen(false)
+          setPublishedUrl(null)
+          await fetchAllSites()
+        },
+      }
+    )
   }
 
   const handleRename = () => {
@@ -206,6 +227,19 @@ export default function AppCard({ site }: { site: SiteInfo }) {
               <Box orientation="horizontal" gap="sm">
                 <WebsiteIcon />
                 <text.span>{t('builder_apps_menu_visit')}</text.span>
+              </Box>
+            </MenuItem>
+          )}
+          {isUnpublishEnabled && hasBeenPublished(site) && (
+            <MenuItem
+              {...menuItemProps()}
+              data-eid={generateClickEID('apps.app.unpublish')}
+              data-testid="app-card-unpublish-button"
+              onClick={() => setIsUnpublishModalOpen(true)}
+            >
+              <Box orientation="horizontal" gap="sm">
+                <UnlinkIcon />
+                <text.span>{t('builder_apps_menu_unpublish')}</text.span>
               </Box>
             </MenuItem>
           )}
@@ -404,6 +438,18 @@ export default function AppCard({ site }: { site: SiteInfo }) {
             </Box>
           </Box>
         </Modal>
+      )}
+
+      {isUnpublishModalOpen && (
+        <UnpublishConfirmationModal
+          appName={site.name || t('builder_apps_alert_delete_untitled')}
+          publishedUrl={publishedUrl}
+          onClose={() => setIsUnpublishModalOpen(false)}
+          onConfirm={handleUnpublish}
+          isLoading={unpublishMutation.isPending}
+          error={unpublishMutation.error}
+          onRetry={unpublishMutation.error?.retryable ? () => handleUnpublish(false) : undefined}
+        />
       )}
     </>
   )
