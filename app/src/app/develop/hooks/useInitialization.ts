@@ -981,20 +981,36 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     }
   }, [webSocketError])
 
-  // EFFECT: Track first file edit
-  // Note: FileEdit tool calls complete successfully even if no files changed (git hook handles commits)
-  // This is intentionally permissive - we want to clear the overlay when the agent starts working,
-  // even if the first attempt doesn't result in changes
+  // EFFECT: Track first meaningful file edit for the "big reveal"
+  // During initial build the agent sets up fonts, colors, header, footer before building the page.
+  // We wait for a page file edit (src/pages/) or suggestedResponse (after any edit) to reveal,
+  // so the user sees the finished page rather than intermediate scaffolding.
   useEffect(() => {
     if (state.context.hasSeenFirstFileEdit) return
 
-    const completedFileEdit = activeStream?.toolCalls.find(
-      tc => (tc.name === 'str_replace_based_edit_tool' || tc.name === 'textEditor' || tc.name === 'fileEdit') &&
+    const toolCalls = activeStream?.toolCalls ?? []
+
+    const isFileEditTool = (name: string) =>
+      name === 'str_replace_based_edit_tool' || name === 'textEditor' || name === 'fileEdit'
+
+    // Reveal on page file edit (src/pages/)
+    const hasPageFileEdit = toolCalls.some(
+      tc => isFileEditTool(tc.name) &&
            tc.status === 'completed' &&
-           !tc.error
+           !tc.error &&
+           typeof tc.input?.path === 'string' &&
+           tc.input.path.includes('src/pages/')
     )
 
-    if (completedFileEdit) {
+    // Reveal on suggestedResponse if any file edit has already completed
+    const hasAnyFileEdit = toolCalls.some(
+      tc => isFileEditTool(tc.name) && tc.status === 'completed' && !tc.error
+    )
+    const hasSuggestedResponse = toolCalls.some(
+      tc => tc.name === 'suggestedResponse' && tc.status === 'completed'
+    )
+
+    if (hasPageFileEdit || (hasAnyFileEdit && hasSuggestedResponse)) {
       send({ type: 'FIRST_FILE_EDIT_SEEN' })
     }
   }, [state.context.hasSeenFirstFileEdit, activeStream, send])

@@ -373,16 +373,25 @@ CONSISTENCY:
 Maintain design quality throughout - footer and CTA should match hero energy. Animation style should be consistent.
 
 BUILD ORDER:
-1. Search for images if needed (hero images, product shots, etc.)
-2. Build homepage structure (index.tsx) with layout, typography, sections, and animations
-3. Build header with navigation
-4. Build footer with links and branding
-5. Set font stack using the setFontStack tool (choose fonts that match design direction)
-6. Set color scheme using the setColorScheme tool (choose colors that match design direction)
-7. Mark the Homepage todo item as COMPLETE using the todoList tool
-8. Show the completed design
 
-CRITICAL: Build structure first, then apply fonts and colors. Users need to see the full design with styling applied.
+Phase 1 — Setup (run these in parallel):
+- Search for images (hero, services, gallery, etc.)
+- Set font stack using the fontTheme tool (choose fonts that match design direction)
+- Set color scheme using the colorScheme tool (choose colors that match design direction)
+
+Phase 2 — Structure (run these in parallel, after Phase 1):
+- Build header with navigation
+- Build footer with links and branding
+
+Phase 3 — Page (after Phase 1 & 2 are complete):
+- Build homepage (index.tsx) with all sections and animations
+
+Phase 4 — Finalize:
+- Run type-check and fix any errors
+- Mark the Homepage todo item as COMPLETE using the todoList tool
+- Show the completed design using suggestedResponse
+
+CRITICAL: Build homepage (index.tsx) LAST — after setup, header, and footer are done. This ensures the page renders with all styling, images, and layout in place.
 
 TODO LIST MANAGEMENT:
 After completing the homepage design:
@@ -446,14 +455,21 @@ DIFFERENTIATION:
 Include [unexpected element]. This should feel [emotional positioning], not [generic template feel].
 
 BUILD ORDER:
-1. Remove header and footer from RootLayout.tsx (this app needs fullscreen space)
-2. Build main app structure (index.tsx) with [app-specific layout] and animations
-3. Set font stack using the setFontStack tool (choose fonts that match design direction)
-4. Set color scheme using the setColorScheme tool (choose colors that match design direction)
-5. Mark the Homepage todo item as COMPLETE using the todoList tool
-6. Show the completed design
 
-CRITICAL: First step is removing header/footer from RootLayout - this app type needs the full viewport.
+Phase 1 — Setup (run these in parallel):
+- Remove header and footer from RootLayout.tsx (this app needs fullscreen space)
+- Set font stack using the fontTheme tool (choose fonts that match design direction)
+- Set color scheme using the colorScheme tool (choose colors that match design direction)
+
+Phase 2 — Page (after Phase 1):
+- Build main app structure (index.tsx) with [app-specific layout] and animations
+
+Phase 3 — Finalize:
+- Run type-check and fix any errors
+- Mark the Homepage todo item as COMPLETE using the todoList tool
+- Show the completed design using suggestedResponse
+
+CRITICAL: Build index.tsx LAST — after setup is done. This ensures the page renders with all styling in place.
 
 TODO LIST MANAGEMENT:
 After completing the app design:

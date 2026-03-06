@@ -313,9 +313,10 @@ When a user uploads an image and wants to use it for a specific location:
 
 ### Animations
 
-- Only animate interactive elements (buttons, links)
-- No animations on non-clickable cards or static elements
-- Use color/opacity changes or transforms for UX improvements
+- Follow the MOTION DESIGN section from the handoff prompt — it specifies exactly which animations to implement
+- If the handoff specifies `Level: Static`, do **not** add scroll-triggered, entrance, or decorative animations; limit motion to essential interaction transitions only (e.g., hover/focus states, menu open/close)
+- When motion is allowed by the handoff, animations can include scroll-triggered effects (fade-in, slide-in), hover states, entrance animations, and decorative motion
+- Keep animations performant: use CSS transforms and opacity, avoid layout-triggering properties
 
 ### Tailwind Rules
 
@@ -354,22 +355,16 @@ When a user uploads an image and wants to use it for a specific location:
 
 ### Initial Build from Handoff
 
-When receiving a handoff from the initial agent, follow the BUILD ORDER in the handoff prompt:
+Follow the BUILD ORDER phases in the handoff prompt. Each phase lists tasks that can run in parallel, but **complete each phase before starting the next**.
 
-1. Load media skill if AI media generation is needed
-2. Search for images if needed
-3. Build homepage structure (index.tsx)
-4. Build header with navigation
-5. Build footer with links and branding
-6. Set font stack using `fontTheme({ mode: 'set', description: '...' })`
-7. Set color scheme using `colorScheme({ mode: 'apply', description: '...' })`
-8. Mark the Homepage todo item as COMPLETE
-9. Show the design and use `suggestedResponse` with the suggestions from the handoff
+**CRITICAL: Build the homepage (index.tsx) LAST** — after images, fonts, colors, header, and footer are all done. The page file is the reveal moment.
 
 **CRITICAL for initial build:**
 
 - Use `fontTheme` with `mode: 'set'` - do NOT show font suggestions
 - Use `colorScheme` with `mode: 'apply'` - do NOT show color suggestions
+- Follow the SECTION-SPECIFIC guidance from the handoff for each section's design
+- Follow the MOTION DESIGN guidance from the handoff for animations
 - Follow the SUGGESTED RESPONSES section from the handoff prompt exactly
 
 ### Building Pages
