@@ -2947,11 +2947,10 @@ Please try again with corrected formatting.`
         try {
           currentStep++
 
-          // Add the error as a user message to help the agent understand what went wrong
+          // Add the original prompt to history; retryPrompt is passed as the
+          // first arg to streamGenerate which appends it as the current turn.
           const retryMessages = [...messages,
-            { role: 'user' as const, content: originalPrompt },
-            { role: 'assistant' as const, content: 'I encountered an error with my tool call due to invalid JSON syntax. Let me fix that and try again.' },
-            { role: 'user' as const, content: retryPrompt }
+            { role: 'user' as const, content: originalPrompt }
           ]
 
           streamResult = await otelContext.with(invocation.context, () =>
