@@ -1,0 +1,130 @@
+name: go-agent CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "go-agent/**"
+      - ".github/workflows/go-agent.yml"
+  pull_request:
+    paths:
+      - "go-agent/**"
+      - ".github/workflows/go-agent.yml"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache-dependency-path: go-agent/go.mod
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.8.0
+          working-directory: go-agent
+          args: --timeout=5m
+
+      - name: Run go vet
+        working-directory: go-agent
+        run: go vet ./...
+
+      - name: Run go fmt check
+        working-directory: go-agent
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "The following files are not properly formatted:"
+            gofmt -s -l .
+            exit 1
+          fi
+
+  test:
+    name: Test
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache-dependency-path: go-agent/go.mod
+
+      - name: Download dependencies
+        working-directory: go-agent
+        run: go mod download
+
+      - name: Verify dependencies
+        working-directory: go-agent
+        run: go mod verify
+
+      - name: Run tests
+        working-directory: go-agent
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: go-agent/coverage.out
+          flags: go-agent
+          name: go-agent
+
+  build:
+    name: Build
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    needs: [lint, test]
+    strategy:
+      matrix:
+        goos: [linux]
+        goarch: [amd64, arm64]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache-dependency-path: go-agent/go.mod
+
+      - name: Download dependencies
+        working-directory: go-agent
+        run: go mod download
+
+      - name: Build binary
+        working-directory: go-agent
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          mkdir -p dist
+          VERSION="${GITHUB_REF_NAME:-${GITHUB_SHA::8}}"
+          go build \
+            -ldflags="-w -s -X main.Version=${VERSION}" \
+            -o "dist/go-agent-${GOOS}-${GOARCH}" \
+            ./cmd/agent
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: go-agent-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: go-agent/dist/
