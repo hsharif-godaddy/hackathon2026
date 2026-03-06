@@ -176,7 +176,7 @@ import { createServer } from 'http';
 import { corsMiddleware, timingAllowOriginMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware } from './middleware/index.js';
 import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, todoListRouter, securityScanRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, secretsScanRouter,oauthRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, customerLogsRouter, zipImportRouter, shareRouter, mediaRouter } from './routes/index.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
-import { setupAILibWebSocketServer, getWebSocketServerInfo } from './ai-lib-websocket-server.js';
+import { setupAILibWebSocketServer, getWebSocketServerInfo, getGitHookService } from './ai-lib-websocket-server.js';
 import { getDatabase } from '../database/index.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { fileCleanupService } from '../services/FileCleanupService.js';
@@ -635,6 +635,28 @@ async function shutdown() {
       } finally {
         wsServer = null;
       }
+    }
+
+    // Wait for disconnect-triggered git operations to complete.
+    // wsServer.close() fires socket disconnect events which trigger handleConnectionEnd
+    // asynchronously. We must await those before exiting or work will be lost.
+    try {
+      const gitHookService = getGitHookService();
+
+      logger.info('server.shutdown.git.await', {
+        service: serviceName,
+      });
+
+      await gitHookService.waitForInFlightOps();
+
+      logger.info('server.shutdown.git.complete', {
+        service: serviceName,
+      });
+    } catch (error) {
+      logger.error('server.shutdown.git.error', {
+        service: serviceName,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     const SERVER_CLOSE_TIMEOUT_MS = 20000; // 20 seconds

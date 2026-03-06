@@ -15,7 +15,6 @@ import { logger, log } from '../logging/index.js'
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { agents as featureAgents } from '../services/features.js'
-import { GitHookService } from '../services/git-hook-service.js'
 import { SkillLoaderTool } from '../tools/skill-loader-tool.js'
 import { skillToolManager } from '../tools/skill-tool-manager.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
@@ -23,8 +22,6 @@ import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 /**
  * Develop Agent - AI developer for building web applications
  */
-
-const gitHookService = new GitHookService()
 
 /**
  * Tool execution logging hook
@@ -89,18 +86,6 @@ const afterToolExecution: AfterToolExecutionHook = async (
 
   if (toolName === 'serverRestart' && resultObj?.success) {
     contextLogger.info('develop_agent.tool.server_restart.success', {});
-  }
-
-  // Git hook: Commit changes after tool execution
-  if (appId) {
-    try {
-      await gitHookService.handleToolCallComplete(appId, toolName);
-    } catch (error) {
-      contextLogger.warn('develop_agent.git_hook.tool_call.error', {
-        toolName,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
   }
 
   // Track skill tool usage for step-based inactivity management

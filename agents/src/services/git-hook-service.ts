@@ -17,22 +17,34 @@ interface AppBranchInfo {
 
 /**
  * Git Hook Service
- * 
+ *
  * Manages automated git operations throughout the message lifecycle:
  * - Recovery check and feature branch creation at message start
- * - Automatic commits after each tool call
- * - Squash merge to main at message completion
- * 
+ * - Commit all changes and squash merge to main at message completion
+ *
+ * All changes accumulate on the feature branch during the AI response, then
+ * get committed and squash-merged to main at the end. This avoids race conditions
+ * from parallel tool calls competing for .git/index.lock.
+ *
  * All operations are transparent to the LLM and designed to never block execution.
  * Tracks branches per appId since git operations are per-repository.
+ *
+ * Shutdown integration:
+ * When the server receives SIGTERM, wsServer.close() fires socket disconnect
+ * events which trigger handleConnectionEnd asynchronously. The shutdown sequence
+ * in app.ts calls waitForInFlightOps() to block until those git operations
+ * complete, ensuring no work is lost. Callers must register promises via
+ * trackOperation() for this to work.
  */
 export class GitHookService {
   private appRepository: AppRepository;
   private appBranches: Map<string, AppBranchInfo>;
+  private inFlightOps: Set<Promise<unknown>>;
 
   constructor() {
     this.appRepository = new AppRepository();
     this.appBranches = new Map();
+    this.inFlightOps = new Set();
   }
 
   /**
@@ -261,69 +273,6 @@ export class GitHookService {
   }
 
   /**
-   * Handle tool call completion: Check for changes and commit if needed
-   * 
-   * Workflow:
-   * 1. Check git status for changes
-   * 2. If changes exist: git add . && git commit -m "{timestamp}-{toolName}"
-   * 3. Log silently on errors (don't block execution)
-   */
-  async handleToolCallComplete(appId: string, toolName: string): Promise<void> {
-    try {
-      const app = this.appRepository.findById(appId);
-      if (!app) {
-        this.logGitError(appId, 'handleToolCallComplete', 'App not found');
-        return;
-      }
-
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor) {
-        this.logGitError(appId, 'handleToolCallComplete', 'DevSupervisor not available');
-        return;
-      }
-
-      const gitUtils = new GitUtils(devSupervisor);
-
-      // Check if this is a git repository
-      const isRepo = await gitUtils.isGitRepository(app.path);
-      if (!isRepo) {
-        return;
-      }
-
-      // Check for changes
-      const hasChanges = await gitUtils.hasUncommittedChanges(app.path);
-      
-      if (!hasChanges) {
-        logger.debug('git_hook.tool_call.no_changes', {
-          appId,
-          toolName
-        });
-        return;
-      }
-
-      // Commit changes with timestamp-toolName format
-      const timestamp = this.generateTimestamp();
-      const commitMessage = `${timestamp}-${toolName}`;
-      
-      try {
-        await gitUtils.addFiles(app.path, ['.']);
-        await gitUtils.commit(app.path, commitMessage);
-        
-        logger.info('git_hook.tool_call.committed', {
-          appId,
-          toolName,
-          commitMessage
-        });
-      } catch (error) {
-        this.logGitError(appId, 'toolCallCommit', error as Error);
-      }
-
-    } catch (error) {
-      this.logGitError(appId, 'handleToolCallComplete', error as Error);
-    }
-  }
-
-  /**
    * Handle message completion: Final commit and squash merge to main
    * 
    * Workflow:
@@ -541,6 +490,28 @@ export class GitHookService {
    */
   getActiveAppIds(): string[] {
     return Array.from(this.appBranches.keys());
+  }
+
+  /**
+   * Track an in-flight handleConnectionEnd promise so shutdown can await it.
+   * The promise is removed from the set when it settles.
+   */
+  trackOperation(op: Promise<unknown>): void {
+    this.inFlightOps.add(op);
+    // Catch prevents unhandled rejection from the derived .finally() chain.
+    // The original rejection is still observable via waitForInFlightOps/Promise.allSettled.
+    op.catch(() => {}).finally(() => this.inFlightOps.delete(op));
+  }
+
+  /**
+   * Wait for all in-flight git operations to complete.
+   * Used during graceful shutdown to ensure disconnect-triggered
+   * git commits finish before the process exits.
+   */
+  async waitForInFlightOps(): Promise<void> {
+    if (this.inFlightOps.size > 0) {
+      await Promise.allSettled(Array.from(this.inFlightOps));
+    }
   }
 }
 

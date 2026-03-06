@@ -1606,18 +1606,17 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const appId = gitHookService.findAppIdBySocketId(socketId);
 
         if (appId) {
-          try {
-            // Get branch info to extract conversationId if available
-            const branchInfo = gitHookService.getAppBranch(appId);
-            const conversationId = branchInfo?.conversationId;
+          // Get branch info to extract conversationId if available
+          const branchInfo = gitHookService.getAppBranch(appId);
+          const conversationId = branchInfo?.conversationId;
 
-            await gitHookService.handleConnectionEnd(
-              appId,
-              'disconnection',
-              conversationId,
-              socketId
-            );
-
+          // Track the git operation so shutdown can await it
+          const gitOp = gitHookService.handleConnectionEnd(
+            appId,
+            'disconnection',
+            conversationId,
+            socketId
+          ).then(() => {
             logger.debug('websocket.git_hook.connection_end.success', {
               message: 'Git hook connection end completed on disconnection',
               appId,
@@ -1625,7 +1624,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               socketId,
               reason: 'disconnection'
             });
-          } catch (error) {
+          }).catch((error: unknown) => {
             logger.warn('websocket.git_hook.connection_end.error', {
               message: 'Git hook connection end failed (non-blocking)',
               appId,
@@ -1633,7 +1632,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               reason: 'disconnection',
               error: error instanceof Error ? error.message : String(error)
             });
-          }
+          });
+
+          gitHookService.trackOperation(gitOp);
+          await gitOp;
         } else {
           logger.debug('websocket.git_hook.connection_end.no_app', {
             message: 'No active branch found for disconnected socket',
@@ -2312,4 +2314,11 @@ export function getWebSocketServerInfo() {
  */
 export function getSocketIO() {
   return ioInstance
+}
+
+/**
+ * Get the GitHookService instance for shutdown git operations
+ */
+export function getGitHookService() {
+  return gitHookService;
 }
