@@ -1,5 +1,6 @@
 'use client'
 
+import { diffLines } from 'diff'
 import { useEffect, useRef, useState } from 'react'
 import EditIcon from '@ux/icon/edit'
 import Tag from '@ux/tag'
@@ -260,7 +261,7 @@ export default function TextEditorToolRenderer({
 
         {/* Tool Call Error (invalid parameters, validation errors, etc.) */}
         {toolCallError && (
-          <div className="mb-2 p-1.5 bg-intents-ux-feedbackCritical-feedbackColor/10 border border-intents-ux-feedbackCritical-feedbackColor/30 rounded-md">
+          <div className="mb-2 p-1.5 bg-[color-mix(in_srgb,var(--intents-ux-feedbackCritical-feedbackColor)_15%,transparent)] border border-intents-ux-feedbackCritical-feedbackColor rounded-md">
             <Tag emphasis="critical" size="sm" className="mb-1">
               Tool Call Error
             </Tag>
@@ -274,7 +275,7 @@ export default function TextEditorToolRenderer({
             <text.p className="mb-1" size={0}>
               File Contents
             </text.p>
-            <div className="border border-border rounded-md p-2 bg-muted max-h-96 overflow-y-auto">
+            <div className="border border-border rounded-md p-2 bg-muted">
               <pre className="text-xs font-mono whitespace-pre-wrap break-words">
                 {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
               </pre>
@@ -284,13 +285,71 @@ export default function TextEditorToolRenderer({
 
         {/* Success Message - all non-view commands */}
         {!toolCallError && result && operation?.command !== 'view' && (
-          <div className="mb-2 p-1.5 bg-intents-ux-feedbackPositive-feedbackColor/10 border border-intents-ux-feedbackPositive-feedbackColor/30 rounded-md">
+          <div className="mb-2 p-1.5 bg-[color-mix(in_srgb,var(--intents-ux-feedbackSuccess-feedbackColor)_15%,transparent)] border border-intents-ux-feedbackSuccess-feedbackColor rounded-md">
             <Tag emphasis="success" size="sm" className="mb-1">
               {t('builder_status_success')}
             </Tag>
             <text.p size={0} className="whitespace-pre-wrap">
               {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
             </text.p>
+          </div>
+        )}
+
+        {/* Changes - str_replace command (unified diff) */}
+        {!toolCallError && operation?.command === 'str_replace' && input?.old_str && (() => {
+          const oldStr = String(input.old_str)
+          const newStr = String(input.new_str || '')
+          const changes = diffLines(oldStr, newStr)
+          return (
+            <div className="mb-2">
+              <text.p className="mb-1" size={0}>
+                Changes
+              </text.p>
+              <div className="border border-border rounded-md bg-muted overflow-hidden">
+                <pre className="text-xs font-mono whitespace-pre-wrap break-words">
+                  {changes.map((change, i) => {
+                    const lines = change.value.replace(/\n$/, '').split('\n')
+                    if (change.added) {
+                      return lines.map((line, j) => (
+                        <div key={`${i}-${j}`} className="px-2 bg-[color-mix(in_srgb,var(--intents-ux-feedbackSuccess-feedbackColor)_15%,transparent)]">
+                          <span className="select-none text-intents-ux-feedbackHighContrastSuccess-feedbackColor inline-block w-4">+</span>{line}
+                        </div>
+                      ))
+                    }
+                    if (change.removed) {
+                      return lines.map((line, j) => (
+                        <div key={`${i}-${j}`} className="px-2 bg-[color-mix(in_srgb,var(--intents-ux-feedbackCritical-feedbackColor)_15%,transparent)]">
+                          <span className="select-none text-intents-ux-feedbackHighContrastCritical-feedbackColor inline-block w-4">-</span>{line}
+                        </div>
+                      ))
+                    }
+                    return lines.map((line, j) => (
+                      <div key={`${i}-${j}`} className="px-2">
+                        <span className="select-none inline-block w-4"> </span>{line}
+                      </div>
+                    ))
+                  })}
+                </pre>
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* Changes - insert command */}
+        {!toolCallError && operation?.command === 'insert' && input?.insert_text && (
+          <div className="mb-2">
+            <text.p className="mb-1" size={0}>
+              Inserted{input.insert_line != null ? ` at line ${input.insert_line}` : ''}
+            </text.p>
+            <div className="border border-border rounded-md bg-muted overflow-hidden">
+              <pre className="text-xs font-mono whitespace-pre-wrap break-words">
+                {String(input.insert_text).split('\n').map((line: string, i: number) => (
+                  <div key={i} className="px-2 bg-[color-mix(in_srgb,var(--intents-ux-feedbackSuccess-feedbackColor)_15%,transparent)]">
+                    <span className="select-none text-intents-ux-feedbackHighContrastSuccess-feedbackColor inline-block w-4">+</span>{line}
+                  </div>
+                ))}
+              </pre>
+            </div>
           </div>
         )}
 
