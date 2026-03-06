@@ -102,6 +102,7 @@ export default function DomainAttach() {
   // This single polling instance handles both customer and custom domains
   const { data: appDetails, isFetched: isAppDetailsFetched } = useAppDetails(currentAppId, {
     enabled: !!currentAppId,
+    includeCdn: true,
     refetchInterval: (data) => {
       const hasPendingDomain = data?.domains?.some(d => {
         if (d.domainType === 'prefix') return false;
@@ -117,7 +118,6 @@ export default function DomainAttach() {
 
       return hasPendingDomain ? 5000 : false;
     },
-    includeCdn: true,
   });
 
   // Handle customer domain attachment with automatic DNS configuration

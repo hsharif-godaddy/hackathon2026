@@ -193,7 +193,7 @@ describe('useAppDetails', () => {
     });
   });
 
-  it('should handle includeCdn option', async () => {
+  it('should include CDN query param when includeCdn is true', async () => {
     const mockAppDetails = {
       id: 'app-123',
       name: 'My App',
@@ -205,12 +205,12 @@ describe('useAppDetails', () => {
       json: async () => mockAppDetails,
     } as Response);
 
-    renderHook(() => useAppDetails('app-123', { includeCdn: false }), {
+    renderHook(() => useAppDetails('app-123', { includeCdn: true }), {
       wrapper: createWrapper(),
     });
 
     await waitFor(() => {
-      expect(appFetch).toHaveBeenCalled();
+      expect(appFetch).toHaveBeenCalledWith('/api/sites/app-123?includeCdn=true');
     });
   });
 

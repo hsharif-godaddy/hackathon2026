@@ -13,8 +13,9 @@ export const dynamic = 'force-dynamic';
 
 // GET /api/sites/[id] - Get specific site
 async function handleGetSite(request: NextRequest, siteId: string, authContext: CustomerAuthContext) {
+  const includeCdn = request.nextUrl.searchParams.get('includeCdn') === 'true';
   const adapter = getControlPlaneAdapter();
-  const site = await adapter.getSite(siteId, authContext.jwt);
+  const site = await adapter.getSite(siteId, authContext.jwt, undefined, { includeCdn });
 
   if (!site) {
     return NextResponse.json({ error: 'Site not found' }, { status: 404 });

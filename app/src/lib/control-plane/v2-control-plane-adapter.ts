@@ -240,13 +240,13 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
     subscriptionId: string,
     systemId: string,
     jwt: string,
-    customerId?: string
+    customerId?: string,
+    includeCdn = false
   ): Promise<SiteInfo | null> {
     const client = this.createClient(jwt);
 
     try {
-      // SINGLE API CALL - Direct app fetch with CDN info for domains
-      const app = await client.getApp(subscriptionId, systemId, appId, true);
+      const app = await client.getApp(subscriptionId, systemId, appId, includeCdn);
 
       // Use provided customerId or fallback to cache
       const cache = useSubscriptionCacheStore.getState();
@@ -353,7 +353,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
     }
   }
 
-  async getSite(siteId: string, jwt: string, owningProduct?: string): Promise<SiteInfo | null> {
+  async getSite(siteId: string, jwt: string, owningProduct?: string, options?: { includeCdn?: boolean }): Promise<SiteInfo | null> {
     try {
       const customerId = extractCustomerId(jwt);
       if (!customerId) {
@@ -389,7 +389,8 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
               location.subscriptionId,
               location.systemId,
               jwt,
-              customerId || undefined
+              customerId || undefined,
+              options?.includeCdn
             );
 
             if (result) {
@@ -415,7 +416,8 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
               retryLocation.subscriptionId,
               retryLocation.systemId,
               jwt,
-              customerId || undefined
+              customerId || undefined,
+              options?.includeCdn
             );
 
             if (result) {
@@ -492,9 +494,9 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
           const match = result.value;
           if (match) {
             // getAppsForSystem returns summary data without variables
-            // Fetch full app details to get variables (including initialPrompt) and CDN info
+            // Fetch full app details to get variables (including initialPrompt)
             try {
-              const fullApp = await client.getApp(sub.id, match.system.id, match.app.id, true);
+              const fullApp = await client.getApp(sub.id, match.system.id, match.app.id, options?.includeCdn);
               return this.mapAppToSiteInfo(fullApp, customerId);
             } catch (fetchError) {
               logger.warn('v2-control-plane.get-site.full-app-fetch-failed', {
@@ -883,7 +885,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         return null;
       }
 
-      const currentApp = await client.getApp(site.subscription_id, site.system_id, siteId, true);
+      const currentApp = await client.getApp(site.subscription_id, site.system_id, siteId);
       const currentVariables = currentApp.variables || {};
       const updatedVariables = { ...currentVariables };
 
@@ -914,7 +916,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       }
 
       await client.updateApp(site.subscription_id, site.system_id, siteId, patchPayload);
-      const updatedApp = await client.getApp(site.subscription_id, site.system_id, siteId, true);
+      const updatedApp = await client.getApp(site.subscription_id, site.system_id, siteId);
 
       // Get customerId from site's account_id (was fetched in getSite earlier)
       return this.mapAppToSiteInfo(updatedApp, site.account_id);
@@ -951,7 +953,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         return null;
       }
 
-      const currentApp = await client.getApp(site.subscription_id, site.system_id, siteId, true);
+      const currentApp = await client.getApp(site.subscription_id, site.system_id, siteId);
       const currentVariables = currentApp.variables || {};
       const updatedVariables = { ...currentVariables, ...variableUpdates };
 
@@ -969,7 +971,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         variables: updatedVariables
       });
 
-      const updatedApp = await client.getApp(site.subscription_id, site.system_id, siteId, true);
+      const updatedApp = await client.getApp(site.subscription_id, site.system_id, siteId);
       // Get customerId from site's account_id (was fetched in getSite earlier)
       return this.mapAppToSiteInfo(updatedApp, site.account_id);
     } catch (error: any) {

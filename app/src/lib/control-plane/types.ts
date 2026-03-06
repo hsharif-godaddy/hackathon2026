@@ -148,9 +148,10 @@ export interface IControlPlaneAdapter {
    * @param siteId - Site identifier (statusJobId or appId for V2, db ID for legacy)
    * @param jwt - Customer JWT token
    * @param owningProduct - Optional owner product filter (defaults to AiroAppBuilder)
+   * @param options - Optional flags; `includeCdn` (default: false) controls whether CDN-related data (cdnStatus, anycastIp) is included in the response
    * @returns Site information or null if not found
    */
-  getSite(siteId: string, jwt: string, owningProduct?: string): Promise<SiteInfo | null>;
+  getSite(siteId: string, jwt: string, owningProduct?: string, options?: { includeCdn?: boolean }): Promise<SiteInfo | null>;
 
   /**
    * List all sites for customer

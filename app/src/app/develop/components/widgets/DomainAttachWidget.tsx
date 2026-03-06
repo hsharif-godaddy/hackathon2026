@@ -118,6 +118,7 @@ export default function DomainAttachWidget({
   // Get app details for displaying domain list with polling for pending domains
   const { data: appDetails, isFetched: isAppDetailsFetched } = useAppDetails(appId, {
     enabled: !!appId,
+    includeCdn: true,
     refetchInterval: (data) => {
       const hasPendingDomain = data?.domains?.some(d => {
         if (d.domainType === 'prefix') return false;
@@ -131,7 +132,6 @@ export default function DomainAttachWidget({
       });
       return hasPendingDomain ? 5000 : false;
     },
-    includeCdn: true,
   });
 
   // Handle customer domain attachment with automatic DNS configuration

@@ -40,7 +40,7 @@ export interface AppDetailsResponse {
  * @param options - Query configuration options
  * @param options.enabled - Whether query should run (default: true)
  * @param options.refetchInterval - Polling interval in ms, false to disable, or function that returns interval based on data
- * @param options.includeCdn - Whether to include CDN information (default: true)
+ * @param options.includeCdn - Whether to include CDN information (default: false)
  * @returns Query result with app details data
  *
  * @example
@@ -67,7 +67,7 @@ export function useAppDetails(
     includeCdn?: boolean;
   } = {}
 ) {
-  const { enabled = true, refetchInterval, includeCdn = true } = options;
+  const { enabled = true, refetchInterval, includeCdn = false } = options;
 
   return useQuery({
     queryKey: ['app-details', siteId, includeCdn],
@@ -82,7 +82,8 @@ export function useAppDetails(
         includeCdn,
       });
 
-      const response = await appFetch(`/api/sites/${siteId}`);
+      const params = includeCdn ? '?includeCdn=true' : '';
+      const response = await appFetch(`/api/sites/${siteId}${params}`);
 
       if (!response.ok) {
         const errorMessage = `Failed to fetch app details: ${response.status}`;

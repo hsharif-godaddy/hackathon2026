@@ -108,7 +108,7 @@ describe('V2ControlPlaneAdapter with Cache', function adapterCacheTests() {
 
     // Should make direct API call using cached IDs
     expect(mockClient.getApp).toHaveBeenCalledTimes(1)
-    expect(mockClient.getApp).toHaveBeenCalledWith('sub-1', 'sys-sub-1-1', 'test-app-id', true)
+    expect(mockClient.getApp).toHaveBeenCalledWith('sub-1', 'sys-sub-1-1', 'test-app-id', false)
 
     // Should NOT call the expensive search methods
     expect(mockClient.getSubscriptions).toHaveBeenCalledTimes(0)
@@ -128,7 +128,7 @@ describe('V2ControlPlaneAdapter with Cache', function adapterCacheTests() {
     expect(mockClient.getCustomerTree).toHaveBeenCalled()
 
     // Should find the app and get full details
-    expect(mockClient.getApp).toHaveBeenCalledWith('sub-1', 'sys-sub-1-1', 'test-app-id', true)
+    expect(mockClient.getApp).toHaveBeenCalledWith('sub-1', 'sys-sub-1-1', 'test-app-id', false)
 
     expect(site).not.toBe(null)
     expect(site?.id).toBe('test-app-id')
@@ -179,7 +179,7 @@ describe('V2ControlPlaneAdapter with Cache', function adapterCacheTests() {
     const site = await adapter.getSite(deletedAppId, mockJwt)
 
     // Should have tried direct lookup first
-    expect(mockClient.getApp).toHaveBeenCalledWith('sub-1', 'sys-sub-1-1', deletedAppId, true)
+    expect(mockClient.getApp).toHaveBeenCalledWith('sub-1', 'sys-sub-1-1', deletedAppId, false)
 
     // Should have removed the app from cache after 404
     const store = useSubscriptionCacheStore.getState()
