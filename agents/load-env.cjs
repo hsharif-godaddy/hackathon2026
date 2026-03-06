@@ -231,12 +231,12 @@ async function validateGoCodeKey() {
  */
 function spawnChildProcess() {
   // Spawn without shell for better security
-  // Use detached on POSIX to create process group for proper signal forwarding
+  // Keep child in the same process group so Ctrl-C (SIGINT) is delivered
+  // directly by the OS to all processes — no manual forwarding needed
   const child = spawn(command, commandArgs, {
     stdio: 'inherit',
     env: process.env,
-    shell: false,
-    ...(process.platform !== 'win32' && { detached: true })
+    shell: false
   });
 
   // Guard to prevent double-exit from error and exit events
@@ -248,28 +248,24 @@ function spawnChildProcess() {
     process.exit(code);
   }
 
-  // Forward signals to child process (or process group on POSIX)
+  // Forward signals to child process
+  // For Ctrl-C (SIGINT), the OS already delivers to all processes in the
+  // foreground group. This forwarding handles programmatic signals (e.g., kill).
   function forwardSignal(sig) {
     if (!child || child.killed || child.exitCode !== null) return;
     try {
-      // On POSIX systems, forward to process group to catch grandchildren
-      // On Windows, only direct child kill is supported
-      if (process.platform !== 'win32') {
-        process.kill(-child.pid, sig);
-      } else {
-        child.kill(sig);
-      }
+      child.kill(sig);
     } catch (err) {
-      // Only ignore ESRCH (process doesn't exist) - log other errors
       if (err.code !== 'ESRCH') {
         console.error(`Warning: Failed to forward signal ${sig}: ${err.message}`);
       }
     }
   }
 
-  // Forward common signals to child
-  // SIGINT (Ctrl+C), SIGTERM (kill), SIGHUP (terminal disconnect), SIGQUIT (Ctrl+\)
-  ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'].forEach((sig) => {
+  // Forward programmatic signals to child
+  // SIGINT is excluded — the OS delivers it directly to all processes in the
+  // foreground group on Ctrl-C. Forwarding it would cause double delivery.
+  ['SIGTERM', 'SIGHUP', 'SIGQUIT'].forEach((sig) => {
     process.on(sig, () => forwardSignal(sig));
   });
 
