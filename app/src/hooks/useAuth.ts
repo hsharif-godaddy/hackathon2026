@@ -166,7 +166,7 @@ export function useAuth(options: UseAuthOptions = {}) {
 
     previousAuthValidRef.current = authState.valid;
     previousNeedsReauthRef.current = needsReauth;
-  }, [authState.valid, authState.status, shouldUseJWT, isMockAuth, isAuthDisabled, needsReauth, needsReauthSeq]);
+  }, [authState.valid, authState.status, shouldUseJWT, isMockAuth, isAuthDisabled, needsReauth, needsReauthSeq]); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally using specific authState properties to avoid re-running on every auth object change
 
   // Helper function to get user email from auth details
   const getUserEmail = () => {

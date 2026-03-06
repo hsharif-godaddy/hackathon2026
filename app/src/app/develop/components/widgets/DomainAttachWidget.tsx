@@ -238,7 +238,7 @@ export default function DomainAttachWidget({
     }
     // Case 2: brandName is not a domain or empty -> Show full widget (default behavior)
 
-  }, [brandName, domains, isDomainsFetched, appId, showOwnedDomainConfirmation, matchedOwnedDomain, customDomain]);
+  }, [brandName, domains, isDomainsFetched, appId, showOwnedDomainConfirmation, matchedOwnedDomain, customDomain]); // eslint-disable-line react-hooks/exhaustive-deps -- reconstructDomain is a stable inner function that doesn't depend on state
 
   function handleCustomDomainChange(value: string) {
     setCustomDomain(value);

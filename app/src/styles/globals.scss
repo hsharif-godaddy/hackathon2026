@@ -58,6 +58,7 @@
   --color-sidebar: var(--sidebar);
 
   --color-agent: var(--agent);
+  --color-develop-bg: var(--develop-bg);
 }
 
 @layer base {
@@ -100,6 +101,7 @@
     --sidebar-border: oklch(0.92 0.004 286.32);
     --sidebar-ring: oklch(0.606 0.25 292.717);
 
+    --develop-bg: #F5F7F8;
     --card-height: 65vh;
     --card-width: calc(var(--card-height) / 1.5);
 
@@ -108,6 +110,7 @@
 
   /* Shadcn Dark Theme */
   .dark {
+    --develop-bg: oklch(0.178 0.005 285.823);
     --background: oklch(0.141 0.005 285.823);
     --foreground: oklch(0.985 0 0);
     --card: oklch(0.21 0.006 285.885);

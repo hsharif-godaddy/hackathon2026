@@ -281,6 +281,7 @@ export default function ChatAttachmentMenu({
             design="stateless"
             size="sm"
             icon={<PlusIcon />}
+            className={`!bg-intents-ux-box-backgroundColor !border !border-border !rounded-lg transition-all duration-200 hover:!shadow-md ${open ? '!shadow-md' : ''}`}
             data-eid={generateClickEID('develop.chat_input.attachment_menu')}
           />
         </PopoverTrigger>

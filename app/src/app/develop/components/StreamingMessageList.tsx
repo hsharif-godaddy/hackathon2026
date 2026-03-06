@@ -257,7 +257,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
     if (!isNearBottomRef.current && activeStream && !activeStream.isComplete) {
       setShowNewMessageIndicator(true)
     }
-  }, [activeStream?.id]) // Only trigger when a new stream starts
+  }, [activeStream?.id]) // eslint-disable-line react-hooks/exhaustive-deps -- only trigger when a new stream starts, not on every activeStream property change
 
   // Initial scroll - use useLayoutEffect to prevent flicker
   // Wait for historyLoadingComplete so all messages render at once with no visible scroll

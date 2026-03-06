@@ -22,7 +22,6 @@ export default function PersistentTodoList() {
   const updatedItemIds = useUpdatedItemIds()
   const appId = useCurrentAppId()
   const setCurrentList = useTodoListStore((state) => state.setCurrentList)
-  const setViewState = useTodoListStore((state) => state.setViewState)
   const toggleViewState = useTodoListStore((state) => state.toggleViewState)
 
   const [isLoading, setIsLoading] = useState(false)
@@ -100,9 +99,10 @@ export default function PersistentTodoList() {
    * Render header bar - shared across all states
    */
   function renderHeader() {
+    const isExpanded = viewState === 'open' || viewState === 'update'
     return (
       <div
-        className="px-2 py-1 cursor-pointer hover:bg-intents-ux-boxLowContrast-backgroundColor transition-colors"
+        className="px-2 py-1 cursor-pointer"
         onClick={toggleViewState}
       >
         <div className="flex items-center justify-between text-sm min-w-0">
@@ -115,87 +115,45 @@ export default function PersistentTodoList() {
             )}
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
-            {viewState === 'open' && (
-              <button
-                className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setViewState('closed')
-                }}
-                title={t('builder_common_collapse')}
-              >
-                <svg
-                  className="w-2 h-2"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <title>{t('builder_common_collapse')}</title>
-                  <path d="M5 15l7-7 7 7" />
-                </svg>
-              </button>
-            )}
             <span className="text-muted-foreground text-xs">
               {completedCount}/{totalItems}
             </span>
+            <svg
+              className="w-2 h-2 text-muted-foreground transition-transform duration-200"
+              style={{ transform: isExpanded ? 'rotate(180deg)' : undefined }}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path d="M19 9l-7 7-7-7" />
+            </svg>
           </div>
         </div>
       </div>
     )
   }
 
-  /**
-   * Render closed state - compact single line
-   */
-  function renderClosedState() {
-    return (
-      <motion.div
-        initial={{ opacity: 0, height: 0 }}
-        animate={{ opacity: 1, height: 'auto' }}
-        exit={{ opacity: 0, height: 0 }}
-        transition={{ duration: 0.2, ease: 'easeInOut' }}
-        className="bg-intents-ux-box-backgroundColor border-b border-border"
-      >
-        {renderHeader()}
-      </motion.div>
-    )
-  }
+  function renderExpandedContent() {
+    if (viewState === 'update') {
+      const firstUpdatedIndex = items.findIndex(item => updatedItemIds.has(item.id))
 
-  /**
-   * Render update state - shows 1 item before, updated item, and 2 items after
-   */
-  function renderUpdateState() {
-    // Find the first updated item
-    const firstUpdatedIndex = items.findIndex(item => updatedItemIds.has(item.id))
+      let itemsToShow = items
+      let remainingCount = 0
 
-    let itemsToShow = items
-    let remainingCount = 0
+      if (firstUpdatedIndex !== -1) {
+        const startIndex = Math.max(0, firstUpdatedIndex - 1)
+        const endIndex = Math.min(items.length, firstUpdatedIndex + 3)
+        itemsToShow = items.slice(startIndex, endIndex)
+        remainingCount = items.length - itemsToShow.length
+      } else {
+        itemsToShow = items.slice(0, 4)
+        remainingCount = items.length - 4
+      }
 
-    if (firstUpdatedIndex !== -1) {
-      // Show 1 item before, the updated item, and 2 items after (total 4 items)
-      const startIndex = Math.max(0, firstUpdatedIndex - 1)
-      const endIndex = Math.min(items.length, firstUpdatedIndex + 3)
-      itemsToShow = items.slice(startIndex, endIndex)
-      remainingCount = items.length - itemsToShow.length
-    } else {
-      // Fallback: show first 4 items if no updated item found
-      itemsToShow = items.slice(0, 4)
-      remainingCount = items.length - 4
-    }
-
-    return (
-      <motion.div
-        initial={{ opacity: 0, height: 0 }}
-        animate={{ opacity: 1, height: 'auto' }}
-        exit={{ opacity: 0, height: 0 }}
-        transition={{ duration: 0.2, ease: 'easeInOut' }}
-        className="bg-intents-ux-box-backgroundColor border-b border-border"
-      >
-        {renderHeader()}
-
+      return (
         <div
           ref={updateContainerRef}
           className="max-h-16 overflow-y-auto px-2 py-1 space-y-0.5"
@@ -216,65 +174,75 @@ export default function PersistentTodoList() {
             </div>
           )}
         </div>
-      </motion.div>
-    )
-  }
+      )
+    }
 
-  /**
-   * Render open state - shows all items
-   */
-  function renderOpenState() {
-    return (
-      <motion.div
-        initial={{ opacity: 0, height: 0 }}
-        animate={{ opacity: 1, height: 'auto' }}
-        exit={{ opacity: 0, height: 0 }}
-        transition={{ duration: 0.2, ease: 'easeInOut' }}
-        className="bg-intents-ux-box-backgroundColor border-b border-border"
-      >
-        {renderHeader()}
-
-        <div className="px-2 py-1">
-          <div className="flex items-center justify-between mb-1">
-            <div className="text-xs text-muted-foreground">
-              {t('builder_todo_count_completed', { completedCount, totalItems })}
+    if (viewState === 'open') {
+      return (
+        <>
+          <div className="px-2 py-1">
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-xs text-muted-foreground">
+                {t('builder_todo_count_completed', { completedCount, totalItems })}
+              </div>
+              <button
+                className="text-xs text-intents-info-color hover:text-foreground"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setIsModalOpen(true)
+                }}
+              >
+                {t('builder_todo_details')}
+              </button>
             </div>
-            <button
-              className="text-xs text-intents-info-color hover:text-foreground"
-              onClick={(e) => {
-                e.stopPropagation()
-                setIsModalOpen(true)
-              }}
-            >
-              {t('builder_todo_details')}
-            </button>
           </div>
-        </div>
 
-        <div className="max-h-48 overflow-y-auto px-2 pb-2">
-          {items.length > 0 ? (
-            <div className="space-y-0.5">
-              {items.map((item) => (
-                <TodoItemRow key={item.id} item={item} />
-              ))}
-            </div>
-          ) : (
-            <div className="text-sm text-muted-foreground text-center py-2">
-              {t('builder_common_todo_no_items')}
-            </div>
-          )}
-        </div>
-      </motion.div>
-    )
+          <div className="max-h-48 overflow-y-auto px-2 pb-2">
+            {items.length > 0 ? (
+              <div className="space-y-0.5">
+                {items.map((item) => (
+                  <TodoItemRow key={item.id} item={item} />
+                ))}
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground text-center py-2">
+                {t('builder_common_todo_no_items')}
+              </div>
+            )}
+          </div>
+        </>
+      )
+    }
+
+    return null
   }
+
+  const isExpanded = viewState === 'open' || viewState === 'update'
 
   return (
     <>
-      <AnimatePresence mode="wait">
-        {viewState === 'closed' && renderClosedState()}
-        {viewState === 'update' && renderUpdateState()}
-        {viewState === 'open' && renderOpenState()}
-      </AnimatePresence>
+      <div className="relative z-10">
+        <div className={`absolute left-0 right-0 top-0 bg-intents-ux-box-backgroundColor border border-border rounded-xl transition-all duration-200 hover:shadow-md ${isExpanded ? 'shadow-md' : ''}`}>
+          {renderHeader()}
+          <AnimatePresence>
+            {isExpanded && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+                className="overflow-hidden"
+              >
+                {renderExpandedContent()}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+        {/* Invisible spacer to reserve header height in flow */}
+        <div className="invisible">
+          {renderHeader()}
+        </div>
+      </div>
 
       <TodoListModal
         isOpen={isModalOpen}

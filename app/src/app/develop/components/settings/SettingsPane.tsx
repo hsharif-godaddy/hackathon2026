@@ -29,7 +29,7 @@ export default function SettingsPane() {
             icon={item.icon}
             text={item.label}
             disabled={item.disabled}
-            className="!justify-start"
+            className={`!justify-start ${activeSettingsSection === item.id ? '!bg-intents-ux-boxHighContrast-backgroundColor !text-intents-ux-boxHighContrast-foregroundColor [&_svg]:!text-intents-ux-boxHighContrast-foregroundColor' : ''}`}
             onClick={() => {
               if (item.onClick) {
                 item.onClick()

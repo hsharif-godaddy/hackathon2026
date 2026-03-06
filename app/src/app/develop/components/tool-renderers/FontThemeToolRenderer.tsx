@@ -168,7 +168,7 @@ export default function FontThemeToolRenderer({
           <button
             type="button"
             onClick={() => setIsModalOpen(true)}
-            className="w-full rounded-md border-2 border-border bg-intents-ux-success-backgroundColor p-2 transition-all duration-300 hover:shadow-md hover:cursor-pointer hover:border-intents-ux-boxHighContrast-borderColor text-left"
+            className="w-full rounded-md border-2 border-border bg-intents-ux-box-backgroundColor p-2 transition-all duration-300 hover:shadow-md hover:cursor-pointer hover:border-intents-ux-boxHighContrast-borderColor text-left"
           >
             <div className="flex flex-row gap-1 justify-between items-center w-full">
               <div className="flex flex-col items-start">
@@ -208,7 +208,7 @@ export default function FontThemeToolRenderer({
           <button
             type="button"
             onClick={() => setIsModalOpen(true)}
-            className="w-full rounded-md border-2 border-border bg-intents-ux-boxLowContrast-backgroundColor p-2 transition-all duration-300 hover:shadow-md hover:cursor-pointer hover:border-intents-ux-boxHighContrast-borderColor text-left"
+            className="w-full rounded-md border-2 border-border bg-intents-ux-box-backgroundColor p-2 transition-all duration-300 hover:shadow-md hover:cursor-pointer hover:border-intents-ux-boxHighContrast-borderColor text-left"
           >
             <div className="flex flex-row gap-1 justify-between items-center w-full">
               <div className="flex flex-col items-start">

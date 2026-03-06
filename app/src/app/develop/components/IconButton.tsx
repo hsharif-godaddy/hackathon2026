@@ -65,11 +65,11 @@ const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconB
     <button
       id={id}
       className={clsx(
-        "flex gap-0 items-center relative border rounded-xl px-1 py-0.5 leading-none transition-opacity duration-700", {
+        "flex gap-0 items-center relative border border-border rounded-xl px-1 py-0.5 leading-none bg-intents-ux-box-backgroundColor transition-all duration-200", {
           "mr-2 after:absolute after:-right-1.5 after:top-0 after:bottom-0 after:block after:content after:w-px after:bg-intents-ux-box-borderColor": separator,
           "bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor shadow-md border-intents-ux-boxHighContrast-borderColor": active,
           "opacity-25 pointer-events-none": disabled,
-          "hover:cursor-pointer": !disabled && onClick,
+          "hover:shadow-md hover:cursor-pointer": !disabled && onClick,
         },
         className
       )}
