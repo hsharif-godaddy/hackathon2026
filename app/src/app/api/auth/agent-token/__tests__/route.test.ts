@@ -9,6 +9,7 @@ import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { POST } from '../route';
+import { clearSiteValidationCache } from '../site-validation-cache';
 
 /**
  * Mock dependencies using vi.hoisted to avoid hoisting issues
@@ -180,6 +181,7 @@ describe('agent-token', function packageTests() {
   describe('#POST', function postTests() {
     beforeEach(function resetMocks() {
       vi.clearAllMocks();
+      clearSiteValidationCache();
 
       // Default mock implementations - use legacy mode by default
       mockIsV2ControlPlaneEnabled.mockReturnValue(false);
@@ -622,6 +624,76 @@ describe('agent-token', function packageTests() {
           { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false },
           300
         );
+      });
+    });
+
+    describe('site validation cache', function cacheTests() {
+      it('should skip getSite on second request for same customer+site within TTL', async function cacheHit() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
+
+        // First request — cache miss, calls getSiteById
+        const request1 = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response1 = await POST(request1);
+        expect(response1.status).toBe(200);
+        expect(mockSiteAdapter.getSiteById).toHaveBeenCalledTimes(1);
+
+        // Second request — cache hit, should NOT call getSiteById again
+        const request2 = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response2 = await POST(request2);
+        expect(response2.status).toBe(200);
+        expect(mockSiteAdapter.getSiteById).toHaveBeenCalledTimes(1);
+      });
+
+      it('should not cache failed validations', async function cacheNoFailure() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        // First request — site not found
+        mockSiteAdapter.getSiteById.mockResolvedValueOnce(null);
+        const request1 = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response1 = await POST(request1);
+        expect(response1.status).toBe(404);
+
+        // Second request — should still call getSiteById (not cached)
+        mockSiteAdapter.getSiteById.mockResolvedValueOnce(MOCK_SITE);
+        const request2 = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response2 = await POST(request2);
+        expect(response2.status).toBe(200);
+        expect(mockSiteAdapter.getSiteById).toHaveBeenCalledTimes(2);
+      });
+
+      it('should cache separately per site', async function cacheSeparateSites() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        const site1 = { ...MOCK_SITE, id: 'site-1', account_id: MOCK_ACCOUNT_ID };
+        const site2 = { ...MOCK_SITE, id: 'site-2', account_id: MOCK_ACCOUNT_ID };
+
+        mockSiteAdapter.getSiteById.mockResolvedValueOnce(site1);
+        await POST(createMockRequest({ siteId: 'site-1' }));
+
+        mockSiteAdapter.getSiteById.mockResolvedValueOnce(site2);
+        await POST(createMockRequest({ siteId: 'site-2' }));
+
+        // Both sites required a lookup
+        expect(mockSiteAdapter.getSiteById).toHaveBeenCalledTimes(2);
+
+        // Repeat — both should be cached
+        await POST(createMockRequest({ siteId: 'site-1' }));
+        await POST(createMockRequest({ siteId: 'site-2' }));
+        expect(mockSiteAdapter.getSiteById).toHaveBeenCalledTimes(2);
       });
     });
 

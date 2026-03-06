@@ -240,6 +240,91 @@ describe('NetworkQualityMonitor', () => {
     })
   })
 
+  describe('backgrounded tab guard', () => {
+    it('should not start connect timer when tab is hidden', () => {
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'hidden',
+        writable: true,
+        configurable: true,
+      })
+
+      monitor.markConnectStart('app-1')
+      vi.advanceTimersByTime(CONNECT_DURATION_WARN_MS + 500)
+      monitor.markConnectEstablished('sock-1')
+
+      // Should not warn because timer was never started
+      expect(mockLogger.warn).not.toHaveBeenCalled()
+
+      // Restore
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'visible',
+        writable: true,
+        configurable: true,
+      })
+    })
+
+    it('should invalidate in-progress connect timer when tab is backgrounded', () => {
+      // Start with visible tab
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'visible',
+        writable: true,
+        configurable: true,
+      })
+
+      monitor.markConnectStart('app-1')
+      vi.advanceTimersByTime(5000)
+
+      // Tab goes to background
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'hidden',
+        writable: true,
+        configurable: true,
+      })
+      document.dispatchEvent(new Event('visibilitychange'))
+
+      // Connection completes much later
+      vi.advanceTimersByTime(60_000)
+      monitor.markConnectEstablished('sock-1')
+
+      // Should not warn because timer was invalidated
+      expect(mockLogger.warn).not.toHaveBeenCalled()
+
+      // Restore
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'visible',
+        writable: true,
+        configurable: true,
+      })
+    })
+
+    it('should not invalidate timer if tab stays visible', () => {
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'visible',
+        writable: true,
+        configurable: true,
+      })
+
+      monitor.markConnectStart('app-1')
+      vi.advanceTimersByTime(CONNECT_DURATION_WARN_MS + 500)
+      monitor.markConnectEstablished('sock-1')
+
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'websocket.quality.slow_connect',
+        expect.objectContaining({
+          appId: 'app-1',
+        })
+      )
+    })
+
+    it('should remove visibilitychange listener on destroy', () => {
+      const removeListenerSpy = vi.spyOn(document, 'removeEventListener')
+      monitor.destroy()
+
+      expect(removeListenerSpy).toHaveBeenCalledWith('visibilitychange', expect.any(Function))
+      removeListenerSpy.mockRestore()
+    })
+  })
+
   describe('destroy', () => {
     it('should be idempotent', () => {
       monitor.destroy()

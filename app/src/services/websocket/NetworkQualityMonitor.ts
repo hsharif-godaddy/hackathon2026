@@ -33,6 +33,25 @@ export class NetworkQualityMonitor {
   private onPong: (() => void) | null = null
   private attachedEngine: any = null
 
+  // Visibility change listener to invalidate timers when tab is backgrounded
+  private onVisibilityChange: (() => void) | null = null
+
+  constructor() {
+    if (typeof document !== 'undefined') {
+      this.onVisibilityChange = () => {
+        if (document.visibilityState === 'hidden' && this.connectStartedAt !== null) {
+          logger.debug('websocket.quality.connect_timer_invalidated', {
+            message: 'Tab backgrounded during connect, invalidating timer',
+            appId: this.appId,
+          })
+          this.connectStartedAt = null
+          this.phases = null
+        }
+      }
+      document.addEventListener('visibilitychange', this.onVisibilityChange)
+    }
+  }
+
   /**
    * Attach to a connected socket's engine to monitor ping/pong latency.
    * Must be called after connection is established (engine is available).
@@ -89,6 +108,11 @@ export class NetworkQualityMonitor {
    */
   markConnectStart(appId: string): void {
     this.appId = appId
+    // Don't start timing connects for backgrounded tabs — they produce extreme outliers
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      this.connectStartedAt = null
+      return
+    }
     this.connectStartedAt = Date.now()
   }
 
@@ -205,5 +229,9 @@ export class NetworkQualityMonitor {
     this.appId = null
     this.lastWarnedRetryCount = 0
     this.phases = null
+    if (this.onVisibilityChange && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.onVisibilityChange)
+    }
+    this.onVisibilityChange = null
   }
 }

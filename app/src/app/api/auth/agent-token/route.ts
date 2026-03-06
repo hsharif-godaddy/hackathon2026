@@ -20,6 +20,7 @@ import { PaywallDenialReason } from '@/lib/paywall/shared';
 import { logger } from '@/lib/request-context';
 import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
+import { getSiteValidationFromCache, setSiteValidationCache } from './site-validation-cache';
 
 export interface CreateAgentTokenRequest {
   siteId: string;
@@ -119,8 +120,16 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     }
 
     const siteAccessStart = Date.now();
-    const validationError = await validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct);
+    const cacheHit = getSiteValidationFromCache(user.customerId, body.siteId, body.owningProduct);
+    let validationError: NextResponse | null = null;
+    if (!cacheHit) {
+      validationError = await validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct);
+      if (!validationError) {
+        setSiteValidationCache(user.customerId, body.siteId, body.owningProduct);
+      }
+    }
     timing.siteAccessMs = Date.now() - siteAccessStart;
+    timing.siteAccessCacheHit = cacheHit ? 1 : 0;
 
     if (validationError) {
       return validationError;
