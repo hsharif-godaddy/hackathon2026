@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import React, { useCallback, useEffect, useState } from 'react';
 
+import AppDetailsPanel from '@/components/AppDetailsPanel';
 import LangfusePanel from '@/components/LangfusePanel';
 import LogsPanel, { type LogSource } from '@/components/LogsPanel';
 import PublishEventsPanel from '@/components/PublishEventsPanel';
@@ -34,7 +35,7 @@ interface AppContext {
   errorSummary: ErrorSummary;
 }
 
-type TabId = 'summary' | 'conversation' | 'agent-logs' | 'ui-logs' | 'hosting-logs' | 'publish';
+type TabId = 'details' | 'summary' | 'conversation' | 'agent-logs' | 'ui-logs' | 'hosting-logs' | 'publish';
 
 function formatTimestamp(timestamp: string): string {
   try {
@@ -58,7 +59,7 @@ export default function Dashboard() {
   const [appId, setAppId] = useState('');
   const [submittedAppId, setSubmittedAppId] = useState('');
   const [timeRange, setTimeRange] = useState('24h');
-  const [activeTab, setActiveTab] = useState<TabId>('summary');
+  const [activeTab, setActiveTab] = useState<TabId>('details');
   const [sources, setSources] = useState<LogSource[]>([]);
   const [context, setContext] = useState<AppContext | null>(null);
   const [loading, setLoading] = useState(false);
@@ -68,6 +69,7 @@ export default function Dashboard() {
 
   // Refresh keys to trigger re-fetches for each tab
   const [refreshKeys, setRefreshKeys] = useState({
+    details: 0,
     summary: 0,
     conversation: 0,
     'agent-logs': 0,
@@ -88,7 +90,7 @@ export default function Dashboard() {
       setAppId(urlAppId);
       setSubmittedAppId(urlAppId);
     }
-    if (urlTab && ['summary', 'conversation', 'agent-logs', 'ui-logs', 'hosting-logs', 'publish'].includes(urlTab)) {
+    if (urlTab && ['details', 'summary', 'conversation', 'agent-logs', 'ui-logs', 'hosting-logs', 'publish'].includes(urlTab)) {
       setActiveTab(urlTab);
     }
   }, [searchParams]);
@@ -148,7 +150,7 @@ export default function Dashboard() {
     if (effectiveAppId) {
       params.set('appId', effectiveAppId);
     }
-    if (effectiveTab && effectiveTab !== 'summary') {
+    if (effectiveTab && effectiveTab !== 'details') {
       params.set('tab', effectiveTab);
     }
 
@@ -160,7 +162,8 @@ export default function Dashboard() {
     const trimmed = appId.trim();
     if (trimmed) {
       setSubmittedAppId(trimmed);
-      updateUrl(trimmed, activeTab);
+      setActiveTab('details');
+      updateUrl(trimmed, 'details');
     }
   };
 
@@ -203,6 +206,7 @@ export default function Dashboard() {
   };
 
   const tabs: { id: TabId; label: string; icon: string }[] = [
+    { id: 'details', label: 'Details', icon: '🗂️' },
     { id: 'summary', label: 'Summary', icon: '📊' },
     { id: 'conversation', label: 'Conversation', icon: '💬' },
     { id: 'agent-logs', label: 'Agent Logs', icon: '🤖' },
@@ -517,6 +521,28 @@ export default function Dashboard() {
                   {error}
                 </div>
               )}
+
+              {/* Details Tab */}
+              <div style={{ display: activeTab === 'details' ? 'flex' : 'none', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => handleRefreshTab('details')}
+                    style={{
+                      padding: '0.625rem 1.25rem',
+                      backgroundColor: '#3b82f6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '0.875rem',
+                      fontWeight: 500
+                    }}
+                  >
+                    Refresh
+                  </button>
+                </div>
+                <AppDetailsPanel appId={submittedAppId} refreshKey={refreshKeys.details} onRefresh={() => handleRefreshTab('details')} />
+              </div>
 
               {/* Summary Tab */}
               <div style={{ display: activeTab === 'summary' ? 'flex' : 'none', flexDirection: 'column', gap: '1rem' }}>

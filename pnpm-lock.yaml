@@ -979,6 +979,9 @@ importers:
       gd-auth:
         specifier: 1.4.1
         version: 1.4.1
+      gd-auth-client:
+        specifier: ^1.3.2
+        version: 1.3.2
       next:
         specifier: 14.2.35
         version: 14.2.35(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(@playwright/test@1.56.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(sass@1.92.1)
@@ -3363,6 +3366,7 @@ packages:
   '@humanwhocodes/config-array@0.13.0':
     resolution: {integrity: sha512-DZLEEqFWQFiyK6h5YIeynKx7JlvCYWL0cImfSRXZ9l4Sg2efkFGTuFf6vzXjK1cq6IYkU+Eg/JizXw+TD2vRNw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@humanwhocodes/config-array/-/humanwhocodes-config-array-0.13.0.tgz}
     engines: {node: '>=10.10.0'}
+    deprecated: Use @eslint/config-array instead
 
   '@humanwhocodes/module-importer@1.0.1':
     resolution: {integrity: sha512-bxveV4V8v5Yb4ncFTT3rPSgZBOpCkjfK0y4oVVVJwIuDVBRMDXrPyXRL988i5ap9m9bnyEEjWfm5WkBmtffLfA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@humanwhocodes/module-importer/-/humanwhocodes-module-importer-1.0.1.tgz}
