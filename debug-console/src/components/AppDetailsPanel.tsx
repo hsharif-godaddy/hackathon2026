@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 
-import type { MgmtAppDetails, MgmtImageStatus, MgmtVariantWithLifecycle } from '@/lib/mgmt-control-plane-adapter';
+import type { MgmtAppDetails, MgmtGrant, MgmtImageStatus, MgmtSubscription, MgmtSubscriptionGrants, MgmtVariantWithLifecycle } from '@/lib/mgmt-control-plane-adapter';
 
 interface Props {
     appId: string;
@@ -175,12 +175,160 @@ function DetailedStatusBlock({ name, url, variant, imageStatus, imageStatusLoadi
     );
 }
 
+function formatCredits(n: number): string {
+    return n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+
+interface SubscriptionBlockProps {
+    subscriptionId: string;
+    subscription: MgmtSubscription | null;
+    subscriptionLoading: boolean;
+    grants: MgmtSubscriptionGrants | null;
+    grantsLoading: boolean;
+}
+
+function SubscriptionBlock({ subscriptionId, subscription, subscriptionLoading, grants, grantsLoading }: SubscriptionBlockProps) {
+    const activeGrant: MgmtGrant | undefined = grants?.activeGrant
+        ? grants.grants.find(g => g.id === grants.activeGrant)
+        : grants?.grants.find(g => g.isAvailable);
+
+    const isLoading = subscriptionLoading || grantsLoading;
+
+    return (
+        <div style={{ padding: '1rem', backgroundColor: '#f9fafb', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
+            <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>
+                Subscription Details
+            </h4>
+            {isLoading && !subscription && !grants ? (
+                <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>Loading subscription details…</span>
+            ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {/* Subscription fields */}
+                    {subscription && (
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+                            gap: '0.75rem'
+                        }}>
+                            <Field label="Plan">
+                                <span style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{subscription.plan}</span>
+                            </Field>
+                            <Field label="Sub Status">
+                                <StatusBadge value={subscription.status} green={['active']} red={['inactive', 'cancelled', 'expired']} />
+                            </Field>
+                            <Field label="Trial">
+                                <StatusBadge value={subscription.isTrial ? 'yes' : 'no'} green={['no']} red={[]} />
+                            </Field>
+                            <Field label="Customer ID">
+                                <span style={{ fontFamily: 'monospace', fontSize: '0.8rem', wordBreak: 'break-all' }}>{subscription.customerId}</span>
+                            </Field>
+                        </div>
+                    )}
+
+                    {/* Grants list — all grants, newest first */}
+                    {grantsLoading && !grants ? (
+                        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Loading grant data…</span>
+                    ) : grants && grants.grants.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                Grants ({grants.grants.length})
+                            </div>
+                            {[...grants.grants]
+                                .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                                .map(grant => {
+                                    const isActive = grant.id === grants.activeGrant;
+                                    const pctUsed = grant.creditsMax > 0 ? (grant.creditsSpent / grant.creditsMax) * 100 : 0;
+                                    return (
+                                        <div key={grant.id} style={{
+                                            padding: '0.75rem',
+                                            backgroundColor: isActive ? '#f0fdf4' : '#fff',
+                                            borderRadius: '6px',
+                                            border: `1px solid ${isActive ? '#bbf7d0' : '#e5e7eb'}`,
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '0.5rem'
+                                        }}>
+                                            {/* Header row */}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                {isActive && <StatusBadge value="active" green={['active']} />}
+                                                {!isActive && grant.isAvailable && <StatusBadge value="available" green={['available']} />}
+                                                {!grant.isAvailable && (
+                                                    <StatusBadge
+                                                        value={grant.finalState ?? 'spent'}
+                                                        green={[]}
+                                                        red={['expired', 'cancelled']}
+                                                    />
+                                                )}
+                                                <StatusBadge value={grant.type} green={['recurring', 'paid']} red={[]} />
+                                                {grant.source && (
+                                                    <span style={{ fontSize: '0.7rem', color: '#6b7280', fontFamily: 'monospace' }}>{grant.source}</span>
+                                                )}
+                                                <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#9ca3af', fontFamily: 'monospace' }}>
+                                                    {grant.id}
+                                                </span>
+                                            </div>
+
+                                            {/* Credits progress bar */}
+                                            <div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                                                    <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                                                        {formatCredits(grant.creditsSpent)} / {formatCredits(grant.creditsMax)} credits
+                                                    </span>
+                                                    <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                                                        {pctUsed.toFixed(1)}%
+                                                    </span>
+                                                </div>
+                                                <div style={{ height: '4px', backgroundColor: '#e5e7eb', borderRadius: '2px', overflow: 'hidden' }}>
+                                                    <div style={{
+                                                        height: '100%',
+                                                        width: `${Math.min(100, pctUsed)}%`,
+                                                        backgroundColor: pctUsed >= 90 ? '#dc2626' : pctUsed >= 70 ? '#d97706' : '#16a34a',
+                                                        borderRadius: '2px'
+                                                    }} />
+                                                </div>
+                                            </div>
+
+                                            {/* Detail row */}
+                                            <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                                                <div>
+                                                    <div style={{ fontSize: '0.65rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Use Before</div>
+                                                    <Timestamp iso={grant.useBefore} style={{ fontSize: '0.75rem', color: '#374151' }} />
+                                                </div>
+                                                <div>
+                                                    <div style={{ fontSize: '0.65rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Created</div>
+                                                    <Timestamp iso={grant.createdAt} style={{ fontSize: '0.75rem', color: '#374151' }} />
+                                                </div>
+                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <div style={{ fontSize: '0.65rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>LLM Budget User</div>
+                                                    <span style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: '#374151', wordBreak: 'break-all' }}>
+                                                        {grant.llmBudgetUserId}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            }
+                        </div>
+                    ) : grants ? (
+                        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>No grants found</span>
+                    ) : null}
+                </div>
+            )}
+        </div>
+    );
+}
+
 export default function AppDetailsPanel({ appId, refreshKey, onRefresh }: Props) {
     const [app, setApp] = useState<MgmtAppDetails | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [imageStatus, setImageStatus] = useState<MgmtImageStatus | null>(null);
     const [imageStatusLoading, setImageStatusLoading] = useState(false);
+    const [subscription, setSubscription] = useState<MgmtSubscription | null>(null);
+    const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+    const [grants, setGrants] = useState<MgmtSubscriptionGrants | null>(null);
+    const [grantsLoading, setGrantsLoading] = useState(false);
     const [reloadPhase, setReloadPhase] = useState<'idle' | 'calling' | 'polling'>('idle');
     const [reloadStatusText, setReloadStatusText] = useState('');
     const [reloadError, setReloadError] = useState<string | null>(null);
@@ -202,7 +350,42 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh }: Props)
         setReloadPhase('idle');
         setReloadStatusText('');
         setReloadError(null);
+        setSubscription(null);
+        setGrants(null);
     }, [appId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Fetch subscription + grants when subscriptionId becomes known
+    useEffect(() => {
+        const subId = app?.subscriptionId;
+        if (!subId) return;
+
+        setSubscriptionLoading(true);
+        setGrantsLoading(true);
+
+        const controller = new AbortController();
+
+        fetch(`/api/mgmt/subscriptions/${encodeURIComponent(subId)}`, { signal: controller.signal })
+            .then(async res => {
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+                return data as MgmtSubscription;
+            })
+            .then(setSubscription)
+            .catch(err => { if (err.name !== 'AbortError') console.warn('[AppDetailsPanel] subscription fetch failed', err); })
+            .finally(() => setSubscriptionLoading(false));
+
+        fetch(`/api/mgmt/subscriptions/${encodeURIComponent(subId)}/grants`, { signal: controller.signal })
+            .then(async res => {
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+                return data as MgmtSubscriptionGrants;
+            })
+            .then(setGrants)
+            .catch(err => { if (err.name !== 'AbortError') console.warn('[AppDetailsPanel] grants fetch failed', err); })
+            .finally(() => setGrantsLoading(false));
+
+        return () => controller.abort();
+    }, [app?.subscriptionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     async function handleReload() {
         if (!app) return;
@@ -370,7 +553,12 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh }: Props)
                     <span style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{app.provisionType}</span>
                 </Field>
                 <Field label="Shopper ID">
-                    <span style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{app.shopperId}</span>
+                    <a
+                        href={`https://crm.int.godaddy.com/app/_/customer/search/results?shopperId=${encodeURIComponent(app.shopperId)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}
+                    >{app.shopperId}</a>
                 </Field>
                 <Field label="System ID">
                     <span style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{app.systemId}</span>
@@ -484,6 +672,17 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh }: Props)
                     ))}
                 </div>
             </div>
+
+            {/* Subscription Details */}
+            {app.subscriptionId && (
+                <SubscriptionBlock
+                    subscriptionId={app.subscriptionId}
+                    subscription={subscription}
+                    subscriptionLoading={subscriptionLoading}
+                    grants={grants}
+                    grantsLoading={grantsLoading}
+                />
+            )}
 
             {/* Initial Prompt */}
             {app.variables.initialPrompt && (

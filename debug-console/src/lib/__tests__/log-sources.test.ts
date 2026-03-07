@@ -223,41 +223,19 @@ describe('log-sources', () => {
         displayFields: []
       };
 
-      it('should construct bool query with both legacy and unified patterns', () => {
+      it('should construct prefix query with airo- pattern', () => {
         const query = buildAppIdQuery('test-app-123', nomadFieldMapping);
 
         expect(query).toEqual({
-          bool: {
-            should: [
-              { prefix: { 'com.hashicorp.nomad.job_name': 'app-test-app-123-' } },
-              { prefix: { 'com.hashicorp.nomad.job_name': 'airo-test-app-123' } }
-            ],
-            minimum_should_match: 1
-          }
+          prefix: { 'com.hashicorp.nomad.job_name': 'airo-test-app-123' }
         });
       });
 
-      it('should handle legacy pattern (app-{appId}-preview)', () => {
+      it('should handle simple app IDs', () => {
         const query = buildAppIdQuery('my-app', nomadFieldMapping);
 
-        expect(query).toMatchObject({
-          bool: {
-            should: expect.arrayContaining([
-              { prefix: { 'com.hashicorp.nomad.job_name': 'app-my-app-' } }
-            ])
-          }
-        });
-      });
-
-      it('should handle unified pattern (airo-{appId})', () => {
-        const query = buildAppIdQuery('my-app', nomadFieldMapping);
-
-        expect(query).toMatchObject({
-          bool: {
-            should: expect.arrayContaining([
-              { prefix: { 'com.hashicorp.nomad.job_name': 'airo-my-app' } }
-            ])
-          }
+        expect(query).toEqual({
+          prefix: { 'com.hashicorp.nomad.job_name': 'airo-my-app' }
         });
       });
 
@@ -265,13 +243,7 @@ describe('log-sources', () => {
         const query = buildAppIdQuery('app-with-dashes', nomadFieldMapping);
 
         expect(query).toEqual({
-          bool: {
-            should: [
-              { prefix: { 'com.hashicorp.nomad.job_name': 'app-app-with-dashes-' } },
-              { prefix: { 'com.hashicorp.nomad.job_name': 'airo-app-with-dashes' } }
-            ],
-            minimum_should_match: 1
-          }
+          prefix: { 'com.hashicorp.nomad.job_name': 'airo-app-with-dashes' }
         });
       });
     });

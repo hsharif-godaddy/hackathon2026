@@ -1410,6 +1410,7 @@ function UserMessage({ item, langfuseBaseUrl }: { item: ConversationItem; langfu
   const isLong = userPrompt.length > 250;
   const displayContent = isLong && !expanded ? userPrompt.substring(0, 250) + '...' : userPrompt;
   const hasFullContent = hasStructuredContent && item.content !== userPrompt;
+  const isCollapsible = isLong || hasFullContent;
 
   const isHandoff = item.isAgentHandoff;
   const avatarBg = isHandoff ? '#f59e0b' : '#3b82f6';
@@ -1429,9 +1430,9 @@ function UserMessage({ item, langfuseBaseUrl }: { item: ConversationItem; langfu
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 600, color: labelColor }}>{label}</span>
             <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{formatTime(item.timestamp)}</span>
-            {hasFullContent && (
-              <button onClick={() => setExpanded(!expanded)} style={{ background: 'none', border: 'none', fontSize: '0.65rem', color: isHandoff ? '#f59e0b' : '#3b82f6', cursor: 'pointer', padding: '0 0.25rem' }}>
-                {expanded ? '↑ collapse' : '↓ full context'}
+            {isCollapsible && expanded && (
+              <button onClick={() => setExpanded(false)} style={{ background: 'none', border: 'none', fontSize: '0.65rem', color: isHandoff ? '#f59e0b' : '#3b82f6', cursor: 'pointer', padding: '0 0.25rem' }}>
+                ↑ less
               </button>
             )}
           </div>
@@ -1440,12 +1441,16 @@ function UserMessage({ item, langfuseBaseUrl }: { item: ConversationItem; langfu
           </div>
         </div>
         <div style={{ backgroundColor: bubbleBg, borderRadius: '12px', borderTopLeftRadius: '2px', padding: '0.75rem 1rem', fontSize: '0.9rem', color: textColor, lineHeight: 1.6, borderLeft: isHandoff ? '3px solid #f59e0b' : undefined }}>
-          {expanded && hasFullContent ? (
-            <FormattedContent content={item.content} />
+          {expanded ? (
+            hasFullContent ? (
+              <FormattedContent content={item.content} />
+            ) : (
+              <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{userPrompt}</div>
+            )
           ) : (
             <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
               {displayContent}
-              {isLong && !hasFullContent && <button onClick={() => setExpanded(!expanded)} style={{ display: 'block', background: 'none', border: 'none', color: '#3b82f6', fontSize: '0.65rem', cursor: 'pointer', marginTop: '0.25rem', padding: 0 }}>{expanded ? '↑ less' : '↓ more'}</button>}
+              {isCollapsible && <button onClick={() => setExpanded(true)} style={{ display: 'block', background: 'none', border: 'none', color: isHandoff ? '#f59e0b' : '#3b82f6', fontSize: '0.65rem', cursor: 'pointer', marginTop: '0.25rem', padding: 0 }}>↓ more</button>}
             </div>
           )}
         </div>
@@ -1488,6 +1493,7 @@ function AssistantMessage({ item, langfuseBaseUrl }: { item: ConversationItem; l
 
   const firstLine = item.content.split('\n')[0] || '';
   const hasMoreLines = item.content.includes('\n') || item.content.length > 150;
+  const isCollapsible = hasContent && (hasMoreLines || hasStructuredContent || !!item.agentSteps);
 
   const traceLink = langfuseBaseUrl && item.traceId ? `${langfuseBaseUrl}/trace/${item.traceId}` : undefined;
 
@@ -1499,9 +1505,9 @@ function AssistantMessage({ item, langfuseBaseUrl }: { item: ConversationItem; l
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#047857' }}>{item.agentName || 'Assistant'}</span>
             <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{formatTime(item.timestamp)}</span>
-            {!item.agentSteps && !hasStructuredContent && hasMoreLines && (
-              <button onClick={() => setExpanded(!expanded)} style={{ background: 'none', border: 'none', fontSize: '0.65rem', color: '#10b981', cursor: 'pointer', padding: '0 0.25rem' }}>
-                {expanded ? '↑ collapse' : '↓ expand'}
+            {isCollapsible && expanded && (
+              <button onClick={() => setExpanded(false)} style={{ background: 'none', border: 'none', fontSize: '0.65rem', color: '#10b981', cursor: 'pointer', padding: '0 0.25rem' }}>
+                ↑ less
               </button>
             )}
             {item.agentSteps && (
@@ -1522,21 +1528,31 @@ function AssistantMessage({ item, langfuseBaseUrl }: { item: ConversationItem; l
         </div>
         <div style={{ backgroundColor: '#f0fdf4', borderRadius: '12px', borderTopLeftRadius: '2px', padding: '0.75rem 1rem', fontSize: '0.9rem', color: '#14532d', lineHeight: 1.6 }}>
           {item.agentSteps ? (
-            <StepByStepContent steps={item.agentSteps} />
+            expanded ? <StepByStepContent steps={item.agentSteps} /> : (
+              <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {firstLine.length > 150 ? firstLine.substring(0, 150) + '...' : firstLine || `${item.agentSteps.length} agent steps`}
+                {isCollapsible && <button onClick={() => setExpanded(true)} style={{ display: 'block', background: 'none', border: 'none', color: '#10b981', fontSize: '0.65rem', cursor: 'pointer', marginTop: '0.25rem', padding: 0 }}>↓ more</button>}
+              </div>
+            )
           ) : (
             <>
               {hasContent ? (
-                hasStructuredContent ? (
-                  <FormattedContent content={item.content} />
+                expanded ? (
+                  hasStructuredContent ? (
+                    <FormattedContent content={item.content} />
+                  ) : (
+                    <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{item.content}</div>
+                  )
                 ) : (
                   <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                    {expanded ? item.content : (firstLine.length > 150 ? firstLine.substring(0, 150) + '...' : firstLine)}
+                    {firstLine.length > 150 ? firstLine.substring(0, 150) + '...' : firstLine}
+                    {isCollapsible && <button onClick={() => setExpanded(true)} style={{ display: 'block', background: 'none', border: 'none', color: '#10b981', fontSize: '0.65rem', cursor: 'pointer', marginTop: '0.25rem', padding: 0 }}>↓ more</button>}
                   </div>
                 )
               ) : (
                 <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.7rem' }}>Processing...</span>
               )}
-              <ToolsSection tools={item.tools || []} item={item} />
+              {expanded && <ToolsSection tools={item.tools || []} item={item} />}
             </>
           )}
         </div>
@@ -1840,9 +1856,13 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
   const loadingMoreRef = useRef(false);
   const [loadingAll, setLoadingAll] = useState(false);
   const [loadAllProgress, setLoadAllProgress] = useState({ loaded: 0, total: 0 });
+  const loadAllAbortRef = useRef<AbortController | null>(null);
 
   const fetchAllPages = useCallback(async () => {
     if (!globalAppId || loadingMoreRef.current) return;
+
+    const abortController = new AbortController();
+    loadAllAbortRef.current = abortController;
 
     setLoadingAll(true);
     setLoadingMore(true);
@@ -1851,8 +1871,12 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
     try {
       let nextPage = currentPage + 1;
       while (nextPage <= totalPages) {
+        if (abortController.signal.aborted) break;
         setLoadAllProgress({ loaded: nextPage - currentPage, total: totalPages - currentPage });
-        const lfResponse = await fetch(`/api/langfuse/sessions/${encodeURIComponent(globalAppId)}?page=${nextPage}`);
+        const lfResponse = await fetch(
+          `/api/langfuse/sessions/${encodeURIComponent(globalAppId)}?page=${nextPage}`,
+          { signal: abortController.signal }
+        );
         if (!lfResponse?.ok) throw new Error(`Failed to fetch page ${nextPage}: ${lfResponse?.status}`);
         const data: SessionsResponse = await lfResponse.json();
 
@@ -1868,14 +1892,24 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
         nextPage++;
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch sessions');
+      // AbortError is expected when user clicks Stop — don't show as error
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        // Cancelled by user
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to fetch sessions');
+      }
     } finally {
       setLoadingAll(false);
       setLoadingMore(false);
       loadingMoreRef.current = false;
+      loadAllAbortRef.current = null;
       setLoadAllProgress({ loaded: 0, total: 0 });
     }
   }, [globalAppId, currentPage, totalPages, mergeSessions]);
+
+  const stopLoadAll = useCallback(() => {
+    loadAllAbortRef.current?.abort();
+  }, []);
 
   const fetchPage = useCallback(async function fetchPageData(pageToFetch: number, options?: { forceRefresh?: boolean; isLoadMore?: boolean }) {
     if (!globalAppId) return;
@@ -1964,6 +1998,7 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
 
   const lfTotals = useMemo(() => {
     let inputTokens = 0;
+    let cachedInputTokens = 0;
     let outputTokens = 0;
     let totalTokens = 0;
     let cost = 0;
@@ -1975,14 +2010,23 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
         traceCount++;
         for (const obs of (trace.observations || [])) {
           observationCount++;
-          inputTokens += obs.promptTokens || 0;
-          outputTokens += obs.completionTokens || 0;
-          totalTokens += obs.totalTokens || 0;
-          cost += obs.calculatedTotalCost || 0;
+          // Only count tokens and cost from GENERATION observations to avoid
+          // double-counting parent SPANs that aggregate their children's costs
+          if (obs.type === 'GENERATION') {
+            inputTokens += obs.promptTokens || 0;
+            outputTokens += obs.completionTokens || 0;
+            totalTokens += obs.totalTokens || 0;
+            cost += obs.calculatedTotalCost || 0;
+            const cachedRaw = obs.metadata?.attributes?.['ai.usage.cachedInputTokens'];
+            if (cachedRaw) {
+              const num = typeof cachedRaw === 'number' ? cachedRaw : parseInt(String(cachedRaw), 10);
+              if (!isNaN(num)) cachedInputTokens += num;
+            }
+          }
         }
       }
     }
-    return { inputTokens, outputTokens, totalTokens, cost, observationCount, traceCount };
+    return { inputTokens, cachedInputTokens, outputTokens, totalTokens, cost, observationCount, traceCount };
   }, [sessions]);
 
   return (
@@ -2130,7 +2174,14 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
             <span>🔧 {totalTools}</span>
             <span style={{ color: '#64748b' }}>|</span>
             <span style={{ color: '#64748b' }}>{lfTotals.traceCount} traces</span>
-            <span style={{ color: '#334155', fontWeight: 600 }}>📥 {formatNumber(lfTotals.inputTokens)}</span>
+            <span style={{ color: '#334155', fontWeight: 600 }}>
+              📥 {formatNumber(Math.max(0, lfTotals.inputTokens - lfTotals.cachedInputTokens))}
+              {lfTotals.cachedInputTokens > 0 && (
+                <span style={{ color: '#8b5cf6', fontWeight: 400, marginLeft: '0.3rem' }}>
+                  +{formatNumber(lfTotals.cachedInputTokens)} cached
+                </span>
+              )}
+            </span>
             <span style={{ color: '#334155', fontWeight: 600 }}>📤 {formatNumber(lfTotals.outputTokens)}</span>
             {lfTotals.cost > 0 && <span style={{ color: '#059669', fontWeight: 600 }}>💰 ${lfTotals.cost.toFixed(2)}</span>}
             {esErrors && esErrors.uniqueErrors > 0 && (
@@ -2166,32 +2217,50 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
                   {loadingMore && !loadingAll ? '⏳ Loading...' : `Load older traces (page ${currentPage + 1} of ${totalPages})`}
                 </button>
                 {totalPages - currentPage > 1 && (
-                  <button
-                    onClick={() => {
-                      const remaining = totalPages - currentPage;
-                      const confirmed = window.confirm(
-                        `Load all ${remaining} remaining pages?\n\n` +
-                        `This may take a while and is rarely needed. ` +
-                        `Recent conversations are usually most relevant — ` +
-                        `older traces may not reflect the current user experience.`
-                      );
-                      if (confirmed) fetchAllPages();
-                    }}
-                    disabled={loadingMore}
-                    style={{
-                      padding: '0.4rem 1rem',
-                      backgroundColor: loadingMore ? '#e5e7eb' : '#fefce8',
-                      color: loadingMore ? '#9ca3af' : '#a16207',
-                      border: '1px solid',
-                      borderColor: loadingMore ? '#d1d5db' : '#fde047',
-                      borderRadius: '6px',
-                      cursor: loadingMore ? 'not-allowed' : 'pointer',
-                      fontSize: '0.75rem',
-                      fontWeight: 500,
-                    }}
-                  >
-                    {loadingAll ? `⏳ Loading ${loadAllProgress.loaded}/${loadAllProgress.total}...` : 'Load all'}
-                  </button>
+                  loadingAll ? (
+                    <button
+                      onClick={stopLoadAll}
+                      style={{
+                        padding: '0.4rem 1rem',
+                        backgroundColor: '#fef2f2',
+                        color: '#dc2626',
+                        border: '1px solid #fca5a5',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '0.75rem',
+                        fontWeight: 500,
+                      }}
+                    >
+                      ⏳ Loading {loadAllProgress.loaded}/{loadAllProgress.total}... Stop
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        const remaining = totalPages - currentPage;
+                        const confirmed = window.confirm(
+                          `Load all ${remaining} remaining pages?\n\n` +
+                          `This may take a while and is rarely needed. ` +
+                          `Recent conversations are usually most relevant — ` +
+                          `older traces may not reflect the current user experience.`
+                        );
+                        if (confirmed) fetchAllPages();
+                      }}
+                      disabled={loadingMore}
+                      style={{
+                        padding: '0.4rem 1rem',
+                        backgroundColor: loadingMore ? '#e5e7eb' : '#fefce8',
+                        color: loadingMore ? '#9ca3af' : '#a16207',
+                        border: '1px solid',
+                        borderColor: loadingMore ? '#d1d5db' : '#fde047',
+                        borderRadius: '6px',
+                        cursor: loadingMore ? 'not-allowed' : 'pointer',
+                        fontSize: '0.75rem',
+                        fontWeight: 500,
+                      }}
+                    >
+                      Load all
+                    </button>
+                  )
                 )}
               </div>
             )}

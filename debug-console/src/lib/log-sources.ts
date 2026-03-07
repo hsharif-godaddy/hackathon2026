@@ -231,15 +231,7 @@ export function buildAppIdQuery(
 
   if (fieldMapping.appIdQueryType === 'prefix') {
     if (fieldMapping.appIdField === 'com.hashicorp.nomad.job_name') {
-      return {
-        bool: {
-          should: [
-            { prefix: { [fieldMapping.appIdField]: `app-${appId}-` } },
-            { prefix: { [fieldMapping.appIdField]: `airo-${appId}` } }
-          ],
-          minimum_should_match: 1
-        }
-      };
+      return { prefix: { [fieldMapping.appIdField]: `airo-${appId}` } };
     }
     // For other fields using prefix, use simple prefix query
     return { prefix: { [fieldMapping.appIdField]: appId } };

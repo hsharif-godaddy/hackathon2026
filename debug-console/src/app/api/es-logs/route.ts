@@ -73,13 +73,46 @@ export const GET = withAuth(async (request) => {
 
     if (levels) {
       const levelList = levels.split(',').map(l => sourceConfig.fieldMapping.logLevelFieldMap?.[l.trim().toLowerCase()] || l.trim().toUpperCase());
+      const rawLevelPatterns = levels.split(',').map(l => l.trim().toUpperCase());
+      // Level filtering for mixed structured/unstructured logs:
+      // - Structured logs: match the indexed level keyword field (e.g. level.keyword = "INFO")
+      // - Unstructured logs (no level field): fall back to match_phrase on raw `log` text
+      //   (e.g. log contains "INFO"), but only when the structured field doesn't exist
+      //   to avoid false positives from log message content
       mustClauses.push({
-        terms: { [levelKeywordField]: levelList }
+        bool: {
+          should: [
+            { terms: { [levelKeywordField]: levelList } },
+            ...rawLevelPatterns.map(p => ({
+              bool: {
+                must: [
+                  { match_phrase: { log: p } },
+                  { bool: { must_not: [{ exists: { field: levelKeywordField } }] } }
+                ]
+              }
+            }))
+          ],
+          minimum_should_match: 1
+        }
       });
     } else if (level && level !== 'all') {
       const mappedLevel = sourceConfig.fieldMapping.logLevelFieldMap?.[level.toLowerCase()] || level.toUpperCase();
+      // Same mixed-log level filtering as above, for single level value
       mustClauses.push({
-        term: { [levelKeywordField]: mappedLevel }
+        bool: {
+          should: [
+            { term: { [levelKeywordField]: mappedLevel } },
+            {
+              bool: {
+                must: [
+                  { match_phrase: { log: level.toUpperCase() } },
+                  { bool: { must_not: [{ exists: { field: levelKeywordField } }] } }
+                ]
+              }
+            }
+          ],
+          minimum_should_match: 1
+        }
       });
     }
 
@@ -87,7 +120,7 @@ export const GET = withAuth(async (request) => {
       mustClauses.push({
         multi_match: {
           query,
-          fields: ['message^2', 'event', 'logger', 'service', 'app_id', 'appId', 'customerId', 'customer.id', 'hostname', 'environment', 'region', 'version', 'data.message'],
+          fields: ['message^2', 'log', 'event', 'logger', 'service', 'app_id', 'appId', 'customerId', 'customer.id', 'hostname', 'environment', 'region', 'version', 'data.message'],
           type: 'best_fields',
           fuzziness: 'AUTO'
         }
@@ -186,11 +219,26 @@ export const GET = withAuth(async (request) => {
     const { fieldMapping } = sourceConfig;
     const logs = data.hits.hits.map((hit) => {
       const src = hit._source as Record<string, unknown>;
+      const rawLog = src.log as string | undefined;
+
+      // For unstructured logs (only have `log` field), parse level and message from the text
+      // Format: "[2026-03-03T11:03:48.609Z] INFO  [@airo/ai-lib] grants.session.updated {...}"
+      let level = (getNestedValue(src, fieldMapping.levelField) as string) || '';
+      let message = (getNestedValue(src, fieldMapping.messageField) as string) || '';
+
+      if (!level && rawLog) {
+        const levelMatch = rawLog.match(/\]\s+(DEBUG|INFO|WARN|ERROR|FATAL)\s+/i);
+        level = levelMatch ? levelMatch[1].toLowerCase() : '';
+      }
+      if (!message && rawLog) {
+        message = rawLog;
+      }
+
       return {
         id: hit._id,
         timestamp: getNestedValue(src, fieldMapping.timestampField) as string,
-        level: (getNestedValue(src, fieldMapping.levelField) as string) || 'INFO',
-        message: (getNestedValue(src, fieldMapping.messageField) as string) || '',
+        level: level || 'unknown',
+        message,
         event: getNestedValue(src, fieldMapping.eventField) as string | undefined,
         appId: fieldMapping.appIdField ? getNestedValue(src, fieldMapping.appIdField) as string : undefined,
         logger: src.logger as string | undefined,

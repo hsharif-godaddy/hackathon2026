@@ -9,12 +9,14 @@ import LogsPanel, { type LogSource } from '@/components/LogsPanel';
 import PublishEventsPanel from '@/components/PublishEventsPanel';
 
 const TIME_RANGES = [
-  { label: 'Last 15 minutes', value: '15m' },
   { label: 'Last 1 hour', value: '1h' },
   { label: 'Last 6 hours', value: '6h' },
   { label: 'Last 24 hours', value: '24h' },
   { label: 'Last 7 days', value: '7d' },
+  { label: 'Last 14 days', value: '14d' },
 ] as const;
+
+const VALID_TIME_RANGE_VALUES = TIME_RANGES.map(r => r.value) as readonly string[];
 
 interface ErrorSummary {
   total: number;
@@ -31,11 +33,32 @@ interface AppContext {
   appId: string;
   metadata: {
     lastActivity?: string;
+    subscriptionId?: string;
   };
   errorSummary: ErrorSummary;
 }
 
-type TabId = 'details' | 'summary' | 'conversation' | 'agent-logs' | 'ui-logs' | 'hosting-logs' | 'publish';
+interface SpendDay {
+  date: string;
+  spend: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cacheReadTokens: number;
+  requests: number;
+}
+
+interface LlmSpendData {
+  subscriptionId: string;
+  grantUserIds: string[];
+  totalSpend: number;
+  totalTokens: number;
+  totalRequests: number;
+  dailySpend: SpendDay[];
+  docCount: number;
+}
+
+type TabId = 'details' | 'summary' | 'conversation' | 'agent-logs' | 'ui-logs' | 'hosting-logs' | 'publish' | 'llm-spend';
 
 function formatTimestamp(timestamp: string): string {
   try {
@@ -66,6 +89,9 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [expandedError, setExpandedError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<Record<string, Array<{ timestamp: string; message: string; event?: string; service?: string; raw: Record<string, unknown> }>>>({});
+  const [llmSpend, setLlmSpend] = useState<LlmSpendData | null>(null);
+  const [llmSpendLoading, setLlmSpendLoading] = useState(false);
+  const [llmSpendError, setLlmSpendError] = useState<string | null>(null);
 
   // Refresh keys to trigger re-fetches for each tab
   const [refreshKeys, setRefreshKeys] = useState({
@@ -76,6 +102,7 @@ export default function Dashboard() {
     'ui-logs': 0,
     'hosting-logs': 0,
     'publish': 0,
+    'llm-spend': 0,
   });
 
   const handleRefreshTab = useCallback((tabId: TabId) => {
@@ -86,12 +113,16 @@ export default function Dashboard() {
   useEffect(() => {
     const urlAppId = searchParams?.get('appId');
     const urlTab = searchParams?.get('tab') as TabId | null;
+    const urlTimeRange = searchParams?.get('timeRange');
     if (urlAppId) {
       setAppId(urlAppId);
       setSubmittedAppId(urlAppId);
     }
-    if (urlTab && ['details', 'summary', 'conversation', 'agent-logs', 'ui-logs', 'hosting-logs', 'publish'].includes(urlTab)) {
+    if (urlTab && ['details', 'summary', 'conversation', 'agent-logs', 'ui-logs', 'hosting-logs', 'publish', 'llm-spend'].includes(urlTab)) {
       setActiveTab(urlTab);
+    }
+    if (urlTimeRange && VALID_TIME_RANGE_VALUES.includes(urlTimeRange)) {
+      setTimeRange(urlTimeRange);
     }
   }, [searchParams]);
 
@@ -142,10 +173,67 @@ export default function Dashboard() {
     }
   }, [refreshKeys.summary]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const updateUrl = useCallback((newAppId?: string, newTab?: TabId) => {
+  // Fetch LLM spend when subscriptionId becomes available.
+  // First fetches grants to collect all llmBudgetUserIds (airo-builder:grant:* / airo-builder:sid:*),
+  // then queries llm-spend with both the billing SID and those user IDs.
+  useEffect(() => {
+    const billingSid = context?.metadata?.subscriptionId;
+    if (!billingSid) {
+      setLlmSpend(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    setLlmSpendLoading(true);
+    setLlmSpendError(null);
+
+    // Extract raw subscription ID (strip 'airo-build:sid:' prefix) to call the mgmt grants API
+    const BILLING_PREFIX = 'airo-build:sid:';
+    const rawSubId = billingSid.startsWith(BILLING_PREFIX) ? billingSid.slice(BILLING_PREFIX.length) : null;
+
+    const grantsPromise = rawSubId
+      ? fetch(`/api/mgmt/subscriptions/${encodeURIComponent(rawSubId)}/grants`, { signal: controller.signal })
+          .then(res => res.ok ? res.json() : null)
+          .catch((err) => {
+            if (err.name === 'AbortError') throw err;
+            return null;
+          })
+      : Promise.resolve(null);
+
+    grantsPromise
+      .then((grantsData: { grants?: Array<{ isAvailable: boolean; llmBudgetUserId?: string }> } | null) => {
+        const grantUserIds: string[] = grantsData?.grants
+          ?.filter(g => g.isAvailable && g.llmBudgetUserId)
+          ?.map(g => g.llmBudgetUserId as string) ?? [];
+
+        const params = new URLSearchParams({ subscriptionId: billingSid });
+        for (const uid of grantUserIds) {
+          params.append('grantUserId', uid);
+        }
+        return fetch(`/api/llm-spend?${params}`, { signal: controller.signal });
+      })
+      .then(res => {
+        if (!res.ok) throw new Error(`Failed to fetch LLM spend: ${res.status}`);
+        return res.json();
+      })
+      .then(data => setLlmSpend(data))
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+        setLlmSpend(null);
+        setLlmSpendError(err instanceof Error ? err.message : 'Failed to fetch LLM spend data');
+      })
+      .finally(() => {
+        if (controller.signal.aborted) return;
+        setLlmSpendLoading(false);
+      });
+    return () => controller.abort();
+  }, [context?.metadata?.subscriptionId]);
+
+  const updateUrl = useCallback((newAppId?: string, newTab?: TabId, newTimeRange?: string) => {
     const params = new URLSearchParams();
     const effectiveAppId = newAppId ?? submittedAppId;
     const effectiveTab = newTab ?? activeTab;
+    const effectiveTimeRange = newTimeRange ?? timeRange;
 
     if (effectiveAppId) {
       params.set('appId', effectiveAppId);
@@ -153,10 +241,13 @@ export default function Dashboard() {
     if (effectiveTab && effectiveTab !== 'details') {
       params.set('tab', effectiveTab);
     }
+    if (effectiveTimeRange && effectiveTimeRange !== '24h') {
+      params.set('timeRange', effectiveTimeRange);
+    }
 
     const query = params.toString();
     router.push(query ? `/?${query}` : '/', { scroll: false });
-  }, [router, submittedAppId, activeTab]);
+  }, [router, submittedAppId, activeTab, timeRange]);
 
   const handleSearch = () => {
     const trimmed = appId.trim();
@@ -213,6 +304,7 @@ export default function Dashboard() {
     { id: 'ui-logs', label: 'UI Logs', icon: '🖥️' },
     { id: 'hosting-logs', label: 'Hosting Logs', icon: '☁️' },
     { id: 'publish', label: 'Publish Events', icon: '🚀' },
+    { id: 'llm-spend', label: 'Actual LLM Spend', icon: '💰' },
   ];
 
   return (
@@ -385,7 +477,7 @@ export default function Dashboard() {
               </label>
               <select
                 value={timeRange}
-                onChange={(e) => setTimeRange(e.target.value)}
+                onChange={(e) => { setTimeRange(e.target.value); updateUrl(undefined, undefined, e.target.value); }}
                 style={{
                   width: '100%',
                   padding: '0.625rem 0.75rem',
@@ -457,21 +549,21 @@ export default function Dashboard() {
                 }}>
                   App: {submittedAppId}
                 </h2>
-                {context?.metadata?.lastActivity && (
-                  <p style={{
-                    margin: '0.25rem 0 0 0',
-                    fontSize: '0.75rem',
-                    color: '#6b7280'
-                  }}>
-                    Last activity: {formatTimestamp(context.metadata.lastActivity)}
-                  </p>
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.25rem' }}>
+                  {context?.metadata?.lastActivity && (
+                    <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                      Last activity: {formatTimestamp(context.metadata.lastActivity)}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                {loading && (
+                  <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                    Loading...
+                  </span>
                 )}
               </div>
-              {loading && (
-                <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                  Loading...
-                </span>
-              )}
             </div>
 
             {/* Tabs */}
@@ -859,6 +951,201 @@ export default function Dashboard() {
                   refreshKey={refreshKeys['publish']}
                   onRefresh={() => handleRefreshTab('publish')}
                 />
+              </div>
+
+              {/* Actual LLM Spend Tab */}
+              <div style={{ display: activeTab === 'llm-spend' ? 'flex' : 'none', flexDirection: 'column', gap: '1rem' }}>
+                {!context?.metadata?.subscriptionId ? (
+                  <div style={{
+                    padding: '3rem 2rem',
+                    textAlign: 'center',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '6px',
+                    border: '1px solid #e5e7eb'
+                  }}>
+                    <p style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem' }}>
+                      No billing subscription ID found for this app
+                    </p>
+                  </div>
+                ) : llmSpendLoading ? (
+                  <div style={{
+                    padding: '3rem 2rem',
+                    textAlign: 'center',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '6px',
+                    border: '1px solid #e5e7eb'
+                  }}>
+                    <p style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem' }}>
+                      Loading spend data...
+                    </p>
+                  </div>
+                ) : llmSpendError ? (
+                  <div style={{
+                    padding: '3rem 2rem',
+                    textAlign: 'center',
+                    backgroundColor: '#fef2f2',
+                    borderRadius: '6px',
+                    border: '1px solid #fecaca'
+                  }}>
+                    <p style={{ margin: 0, color: '#dc2626', fontSize: '0.875rem' }}>
+                      {llmSpendError}
+                    </p>
+                  </div>
+                ) : !llmSpend ? (
+                  <div style={{
+                    padding: '3rem 2rem',
+                    textAlign: 'center',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '6px',
+                    border: '1px solid #e5e7eb'
+                  }}>
+                    <p style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem' }}>
+                      No spend data available
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Subscription Header */}
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.375rem',
+                      padding: '0.75rem 1rem',
+                      backgroundColor: '#f9fafb',
+                      borderRadius: '6px',
+                      border: '1px solid #e5e7eb'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                          Billing SID: <span style={{ fontFamily: 'monospace', color: '#374151' }}>{context.metadata.subscriptionId}</span>
+                        </span>
+                        <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                          {llmSpend.docCount} records
+                        </span>
+                      </div>
+                      {llmSpend.grantUserIds?.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                          {llmSpend.grantUserIds.map(uid => (
+                            <span key={uid} style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                              Grant user: <span style={{ fontFamily: 'monospace', color: '#374151' }}>{uid}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Spend Summary Cards */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                      gap: '0.75rem'
+                    }}>
+                      <div style={{
+                        padding: '1rem',
+                        backgroundColor: '#f0fdf4',
+                        borderRadius: '6px',
+                        border: '1px solid #bbf7d0',
+                        textAlign: 'center'
+                      }}>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#059669' }}>
+                          ${llmSpend.totalSpend.toFixed(2)}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Total Spend</div>
+                      </div>
+                      <div style={{
+                        padding: '1rem',
+                        backgroundColor: '#eff6ff',
+                        borderRadius: '6px',
+                        border: '1px solid #bfdbfe',
+                        textAlign: 'center'
+                      }}>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#3b82f6' }}>
+                          {(llmSpend.totalTokens / 1_000_000).toFixed(1)}M
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Total Tokens</div>
+                      </div>
+                      <div style={{
+                        padding: '1rem',
+                        backgroundColor: '#f5f3ff',
+                        borderRadius: '6px',
+                        border: '1px solid #ddd6fe',
+                        textAlign: 'center'
+                      }}>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#8b5cf6' }}>
+                          {llmSpend.totalRequests.toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>API Requests</div>
+                      </div>
+                      <div style={{
+                        padding: '1rem',
+                        backgroundColor: '#f9fafb',
+                        borderRadius: '6px',
+                        border: '1px solid #e5e7eb',
+                        textAlign: 'center'
+                      }}>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#6b7280' }}>
+                          {llmSpend.dailySpend.length}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Active Days</div>
+                      </div>
+                    </div>
+
+                    {/* Daily Spend Table */}
+                    {llmSpend.dailySpend.length > 0 && (
+                      <div style={{
+                        backgroundColor: 'white',
+                        borderRadius: '6px',
+                        border: '1px solid #e5e7eb',
+                        overflow: 'hidden'
+                      }}>
+                        <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
+                          <table style={{
+                            width: '100%',
+                            borderCollapse: 'collapse',
+                            fontSize: '0.8rem'
+                          }}>
+                            <thead>
+                              <tr style={{ backgroundColor: '#f3f4f6', position: 'sticky', top: 0 }}>
+                                <th style={{ padding: '0.625rem 1rem', textAlign: 'left', fontWeight: 600, color: '#374151' }}>Date</th>
+                                <th style={{ padding: '0.625rem 1rem', textAlign: 'right', fontWeight: 600, color: '#374151' }}>Spend</th>
+                                <th style={{ padding: '0.625rem 1rem', textAlign: 'right', fontWeight: 600, color: '#374151' }}>Prompt</th>
+                                <th style={{ padding: '0.625rem 1rem', textAlign: 'right', fontWeight: 600, color: '#374151' }}>Completion</th>
+                                <th style={{ padding: '0.625rem 1rem', textAlign: 'right', fontWeight: 600, color: '#374151' }}>Total Tokens</th>
+                                <th style={{ padding: '0.625rem 1rem', textAlign: 'right', fontWeight: 600, color: '#374151' }}>Cache Read</th>
+                                <th style={{ padding: '0.625rem 1rem', textAlign: 'right', fontWeight: 600, color: '#374151' }}>Requests</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {llmSpend.dailySpend.map((day) => (
+                                <tr key={day.date} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                  <td style={{ padding: '0.625rem 1rem', fontFamily: 'monospace', color: '#374151' }}>{day.date}</td>
+                                  <td style={{ padding: '0.625rem 1rem', textAlign: 'right', fontFamily: 'monospace', color: '#059669', fontWeight: 600 }}>
+                                    ${day.spend.toFixed(4)}
+                                  </td>
+                                  <td style={{ padding: '0.625rem 1rem', textAlign: 'right', fontFamily: 'monospace', color: '#3b82f6' }}>
+                                    {(day.promptTokens / 1000).toFixed(0)}k
+                                  </td>
+                                  <td style={{ padding: '0.625rem 1rem', textAlign: 'right', fontFamily: 'monospace', color: '#3b82f6' }}>
+                                    {(day.completionTokens / 1000).toFixed(0)}k
+                                  </td>
+                                  <td style={{ padding: '0.625rem 1rem', textAlign: 'right', fontFamily: 'monospace', color: '#374151', fontWeight: 500 }}>
+                                    {(day.totalTokens / 1000).toFixed(0)}k
+                                  </td>
+                                  <td style={{ padding: '0.625rem 1rem', textAlign: 'right', fontFamily: 'monospace', color: '#8b5cf6' }}>
+                                    {(day.cacheReadTokens / 1000).toFixed(0)}k
+                                  </td>
+                                  <td style={{ padding: '0.625rem 1rem', textAlign: 'right', fontFamily: 'monospace', color: '#6b7280' }}>
+                                    {day.requests.toLocaleString()}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           </div>

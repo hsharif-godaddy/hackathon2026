@@ -140,6 +140,44 @@ export interface MgmtReloadResponse {
     failedAt?: string;
 }
 
+export interface MgmtSubscription {
+    id: string;
+    productId: string;
+    customerId: string;
+    status: string;
+    isTrial: boolean;
+    tokenBudgetId: string;
+    builderEntitlementId: string;
+    plan: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface MgmtGrant {
+    id: string;
+    subscriptionId: string;
+    type: string;
+    source: string;
+    creditsMax: number;
+    creditsSpent: number;
+    creditsSpentRaw: number;
+    isAvailable: boolean;
+    finalState: string | null;
+    useBefore: string;
+    llmBudgetUserId: string;
+    llmBudgetId: string;
+    profitCoefficient: number;
+    creditsReportedForConsumption: number;
+    createdAt: string;
+    updatedAt: string;
+    removedAt: string | null;
+}
+
+export interface MgmtSubscriptionGrants {
+    grants: MgmtGrant[];
+    activeGrant: string | null;
+}
+
 export class MgmtControlPlaneAdapter {
     private async request<T>(path: string, init?: RequestInit): Promise<T> {
         const response = await mgmtSSOClient.fetch(path, init);
@@ -162,6 +200,14 @@ export class MgmtControlPlaneAdapter {
             : `/api/hosting/v1/apps/${encodeURIComponent(appId)}/image-status?tryCount=${tryCount}`;
 
         return this.request(path);
+    }
+
+    getSubscription(subscriptionId: string): Promise<MgmtSubscription> {
+        return this.request(`/api/airo/v1/subscriptions/${encodeURIComponent(subscriptionId)}`);
+    }
+
+    getSubscriptionGrants(subscriptionId: string): Promise<MgmtSubscriptionGrants> {
+        return this.request(`/api/airo/v1/subscriptions/${encodeURIComponent(subscriptionId)}/credits/grants`);
     }
 
     reloadApp(appId: string, opts?: { subscriptionId?: string; systemId?: string }): Promise<MgmtReloadResponse> {

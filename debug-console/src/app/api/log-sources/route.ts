@@ -14,7 +14,7 @@ export const GET = withAuth(async () => {
       sources: sources.map(source => {
         // Derive Kibana URL from ES endpoint by replacing .es. with .kb.
         let kibanaUrl: string | undefined;
-        if ((source.id === 'airo-app' || source.id === 'airo-agents') && source.endpoint) {
+        if (source.endpoint) {
           kibanaUrl = source.endpoint.replace('.es.', '.kb.');
         }
 

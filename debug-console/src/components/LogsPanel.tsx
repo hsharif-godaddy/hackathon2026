@@ -4,6 +4,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import LogDetailPanel from './LogDetailPanel';
 
+function escapeKQL(value: string): string {
+  return '"' + value.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
 export interface LogSource {
   id: string;
   name: string;
@@ -134,7 +138,6 @@ interface LogsPanelProps {
 const INITIAL_COLUMN_WIDTHS = {
   timestamp: 160,
   level: 80,
-  customerId: 140,
   event: 200
 };
 
@@ -475,16 +478,21 @@ export default function LogsPanel({
               let dataViewId: string;
 
               if (selectedSource === 'airo-agents') {
-                query = globalAppId ? `app_id:${globalAppId}` : '*';
+                query = globalAppId ? `com.hashicorp.nomad.job_name:airo-${escapeKQL(globalAppId)}*` : '*';
                 dataViewId = '6b6e4be0-1f3d-4b22-b8f3-5270cd9cc2df';
+              } else if (selectedSource === 'control_plane') {
+                query = globalAppId ? `app_id:${escapeKQL(globalAppId)}` : '*';
+                dataViewId = 'pagely-mgmt-worker-hosting-activity-*';
               } else {
                 query = globalAppId
-                  ? `KATANA_NAMESPACE:airobuilde AND data.appId:${globalAppId}`
+                  ? `KATANA_NAMESPACE:airobuilde AND data.appId:${escapeKQL(globalAppId)}`
                   : 'KATANA_NAMESPACE:airobuilde';
                 dataViewId = 'logs-*';
               }
 
-              const kibanaParams = `_g=(time:(from:now-24h,to:now))&_a=(dataSource:(dataViewId%3A%27${dataViewId}%27,type:dataView),query:(language:kuery,query:'${encodeURIComponent(query)}'))`;
+              // Map timeRange prop to Kibana time format
+              const kibanaFrom = timeRange === 'all' ? 'now-30d' : `now-${timeRange}`;
+              const kibanaParams = `_g=(time:(from:${kibanaFrom},to:now))&_a=(dataSource:(dataViewId%3A%27${dataViewId}%27,type:dataView),query:(language:kuery,query:'${encodeURIComponent(query)}'))`;
               return (
                 <a
                   href={`${currentSource.kibanaUrl}/app/discover#/?${kibanaParams}`}
@@ -697,43 +705,6 @@ export default function LogsPanel({
                       aria-orientation="vertical"
                     />
                   </th>
-                  {selectedSource === 'airo-app' && (
-                    <th style={{
-                      textAlign: 'left',
-                      padding: '0.75rem 1rem',
-                      fontWeight: 600,
-                      width: `${columnWidths.customerId}px`,
-                      color: '#374151',
-                      position: 'relative',
-                      borderRight: '1px solid #e5e7eb'
-                    }}>
-                      Customer ID
-                      <button
-                        type="button"
-                        onMouseDown={(e) => handleColumnMouseDown('customerId', e)}
-                        onKeyDown={(e) => handleColumnKeyDown('customerId', e)}
-                        style={{
-                          position: 'absolute',
-                          right: -3,
-                          top: 0,
-                          bottom: 0,
-                          width: '6px',
-                          cursor: 'col-resize',
-                          backgroundColor: 'transparent',
-                          zIndex: 10,
-                          border: 'none',
-                          padding: 0
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                        onFocus={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
-                        onBlur={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                        aria-label="Resize customer ID column"
-                        role="separator"
-                        aria-orientation="vertical"
-                      />
-                    </th>
-                  )}
                   <th style={{
                     textAlign: 'left',
                     padding: '0.75rem 1rem',
@@ -819,32 +790,6 @@ export default function LogsPanel({
                           {(log.level || '').toString().toLowerCase()}
                         </span>
                       </td>
-                      {selectedSource === 'airo-app' && (() => {
-                        const customerId = fieldMapping.getIdValue(log);
-                        return (
-                          <td style={{
-                            padding: '0.75rem 1rem',
-                            fontFamily: 'monospace',
-                            fontSize: '0.75rem',
-                            maxWidth: '140px',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'
-                          }} title={safeRender(customerId)}>
-                            {customerId ? (
-                              <a
-                                href={`https://crm.int.godaddy.com/app/_/customer/search/results?shopperId=${encodeURIComponent(customerId)}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                style={{ color: '#3b82f6', textDecoration: 'none' }}
-                              >
-                                {customerId}
-                              </a>
-                            ) : '-'}
-                          </td>
-                        );
-                      })()}
                       <td style={{
                         padding: '0.75rem 1rem',
                         fontFamily: 'monospace',

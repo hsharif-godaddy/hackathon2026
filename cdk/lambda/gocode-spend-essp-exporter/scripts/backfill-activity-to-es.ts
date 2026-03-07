@@ -39,6 +39,7 @@ const AWS_ACCOUNT_ID = process.env.AWS_ACCOUNT_ID || '644094189644';
 const ENTITY_ARN = `arn:aws:iam::${AWS_ACCOUNT_ID}:role/airobuilde-custom-${ENV_NAME}-airo-builder-gocode-access`;
 
 const DRY_RUN = process.env.DRY_RUN === 'true';
+const ENDUSER_ONLY = process.argv.includes('--enduser-only');
 
 async function getJwtViaAws(): Promise<string> {
   const sts = new STSClient({ region: AWS_REGION });
@@ -150,6 +151,7 @@ function listDays(startStr: string, endStr: string): string[] {
 }
 
 async function run(): Promise<void> {
+  console.log(`Mode: ${ENDUSER_ONLY ? 'enduser only' : 'model + enduser'}`);
   console.log(`Environment: ${ENV_NAME}, GoCode: ${GOCODE_ENDPOINT}, SSO: ${SSO_HOST}`);
   console.log(`Entity ARN: ${ENTITY_ARN}`);
 
@@ -172,12 +174,14 @@ async function run(): Promise<void> {
   for (const day of days) {
     console.log(`\n${day}:`);
 
-    const userParams = new URLSearchParams({ start_date: day, end_date: day });
-    const userResults = await fetchAllPages(jwt, fetchUserDaily, userParams);
-    const modelDocs = extractModelDocs(userResults, ENTITY_ARN);
-    const modelIndexed = await indexDocs(esClient, ES_INDEX_MODEL, modelDocs, doc => `${doc.date}-${doc.model}`);
-    console.log(`  Models: ${modelDocs.length} docs, ${modelIndexed} indexed`);
-    totalModelDocs += modelIndexed;
+    if (!ENDUSER_ONLY) {
+      const userParams = new URLSearchParams({ start_date: day, end_date: day });
+      const userResults = await fetchAllPages(jwt, fetchUserDaily, userParams);
+      const modelDocs = extractModelDocs(userResults, ENTITY_ARN);
+      const modelIndexed = await indexDocs(esClient, ES_INDEX_MODEL, modelDocs, doc => `${doc.date}-${doc.model}`);
+      console.log(`  Models: ${modelDocs.length} docs, ${modelIndexed} indexed`);
+      totalModelDocs += modelIndexed;
+    }
 
     const custParams = new URLSearchParams({ start_date: day, end_date: day });
     const custResults = await fetchAllPages(jwt, fetchCustomerDaily, custParams);

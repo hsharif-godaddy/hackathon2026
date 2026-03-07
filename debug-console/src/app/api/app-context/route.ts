@@ -82,6 +82,7 @@ interface AppContext {
     version?: string;
     createdAt?: string;
     lastActivity?: string;
+    subscriptionId?: string;  // billing sid: airo-build:sid:<sid>
   };
   recentActivity: Array<{
     id: string;
@@ -566,6 +567,128 @@ async function fetchLifetimeStats(
   return { lastActivity };
 }
 
+const BILLING_SID_PREFIX = 'airo-build:sid:';
+
+/** Sentinel value: care-agent subscriptions are not real billing subscriptions */
+const CARE_AGENT_SID = 'airo-builder:care-agent';
+
+/** Normalize a subscriptionId to the billing sid format used in llm_spend_enduser_daily */
+function toBillingSid(raw: string): string {
+  if (!raw) return raw;
+  return raw.startsWith(BILLING_SID_PREFIX) ? raw : `${BILLING_SID_PREFIX}${raw}`;
+}
+
+/** Returns true if the subscriptionId is a real billing subscription (not care-agent) */
+function isValidBillingSid(sid: unknown): sid is string {
+  return typeof sid === 'string' && sid.length > 0 && sid !== CARE_AGENT_SID;
+}
+
+/** Execute a single-doc ES search against a log source. Returns the _source of the first hit or null. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function queryESFirst(
+  endpoint: string,
+  index: string,
+  apiKey: string,
+  mustClauses: Array<Record<string, unknown>>,
+  sourceFields: string[]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<any> {
+  const response = await fetch(
+    `${endpoint}/${index}/_search`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `ApiKey ${apiKey}`
+      },
+      body: JSON.stringify({
+        size: 1,
+        sort: [{ '@timestamp': { order: 'desc' } }],
+        query: { bool: { must: mustClauses } },
+        _source: sourceFields
+      })
+    }
+  );
+  if (!response.ok) return null;
+  const data = await response.json();
+  return data.hits?.hits?.[0]?._source ?? null;
+}
+
+async function fetchSubscriptionInfo(
+  appId: string
+): Promise<{ subscriptionId?: string }> {
+  const sources = getAllLogSources();
+  const pioneerSource = sources.find(s => s.id === 'airo-agents');
+
+  if (pioneerSource?.apiKey && pioneerSource?.endpoint) {
+    const appIdQuery = buildAppIdQuery(appId, pioneerSource.fieldMapping);
+    const mustBase = appIdQuery ? [appIdQuery] : [];
+
+    // Strategy 1: event=summarization.detailed_llm.app_lookup
+    try {
+      const hit = await queryESFirst(
+        pioneerSource.endpoint, pioneerSource.index, pioneerSource.apiKey,
+        [...mustBase, { match: { event: 'summarization.detailed_llm.app_lookup' } }, { exists: { field: 'data.subscriptionId' } }],
+        ['data.subscriptionId']
+      );
+      if (isValidBillingSid(hit?.data?.subscriptionId)) {
+        return { subscriptionId: toBillingSid(hit.data.subscriptionId as string) };
+      }
+    } catch (error) {
+      console.error('[app-context] subscription.strategy1.error', { appId, error: error instanceof Error ? error.message : String(error) });
+    }
+
+    // Strategy 2: Any Pioneer event with data.subscriptionId for this app
+    try {
+      const hit = await queryESFirst(
+        pioneerSource.endpoint, pioneerSource.index, pioneerSource.apiKey,
+        [...mustBase, { exists: { field: 'data.subscriptionId' } }],
+        ['data.subscriptionId']
+      );
+      if (isValidBillingSid(hit?.data?.subscriptionId)) {
+        return { subscriptionId: toBillingSid(hit.data.subscriptionId as string) };
+      }
+    } catch (error) {
+      console.error('[app-context] subscription.strategy2.error', { appId, error: error instanceof Error ? error.message : String(error) });
+    }
+
+    // Strategy 3: Top-level subscriptionId field (context metadata)
+    try {
+      const hit = await queryESFirst(
+        pioneerSource.endpoint, pioneerSource.index, pioneerSource.apiKey,
+        [...mustBase, { exists: { field: 'subscriptionId' } }],
+        ['subscriptionId']
+      );
+      const sid = hit?.subscriptionId;
+      if (isValidBillingSid(sid)) {
+        return { subscriptionId: toBillingSid(sid) };
+      }
+    } catch (error) {
+      console.error('[app-context] subscription.strategy3.error', { appId, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // Strategy 4: Check airo-app (builder client) logs for subscriptionId
+  const appSource = sources.find(s => s.id === 'airo-app');
+  if (appSource?.apiKey && appSource?.endpoint) {
+    try {
+      const hit = await queryESFirst(
+        appSource.endpoint, appSource.index, appSource.apiKey,
+        [{ term: { 'data.appId': appId } }, { exists: { field: 'data.subscriptionId' } }],
+        ['data.subscriptionId']
+      );
+      const sid = hit?.data?.subscriptionId;
+      if (isValidBillingSid(sid)) {
+        return { subscriptionId: toBillingSid(sid as string) };
+      }
+    } catch (error) {
+      console.error('[app-context] subscription.strategy4.error', { appId, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  return {};
+}
+
 async function fetchAPMTraces(
   appId: string,
   timeRange: string = '24h',
@@ -827,7 +950,9 @@ export const GET = withAuth(async (request) => {
       const diffHours = diffMs / (1000 * 60 * 60);
       const diffDays = diffMs / (1000 * 60 * 60 * 24);
 
-      if (diffDays >= 7) {
+      if (diffDays >= 14) {
+        timeRange = '14d';
+      } else if (diffDays >= 7) {
         timeRange = '7d';
       } else if (diffHours >= 24) {
         timeRange = '24h';
@@ -860,11 +985,12 @@ export const GET = withAuth(async (request) => {
     const customStartTime = startTimeParam || undefined;
     const customEndTime = endTimeParam || undefined;
 
-    const [logs, apmTracesResult, lifetimeStats, errorSummary] = await Promise.all([
+    const [logs, apmTracesResult, lifetimeStats, errorSummary, subscriptionInfo] = await Promise.all([
       fetchLogsForApp(appId, sourceIds, timeRange, customStartTime, customEndTime),
       fetchAPMTraces(appId, timeRange, traceIdsPage, traceIdsPageSize, spansPage, spansPageSize, customStartTime, customEndTime),
       fetchLifetimeStats(appId, sourceIds),
-      fetchErrorSummary(appId, sourceIds, timeRange)
+      fetchErrorSummary(appId, sourceIds, timeRange),
+      fetchSubscriptionInfo(appId)
     ]);
 
     if (logs.length === 0) {
@@ -906,7 +1032,16 @@ export const GET = withAuth(async (request) => {
     const eventCounts: Record<string, number> = {};
 
     logs.forEach((log) => {
-      const level = log._source.level || 'UNKNOWN';
+      let level = log._source.level || '';
+      if (!level) {
+        const rawLog = (log._source as Record<string, unknown>).log as string | undefined;
+        if (rawLog) {
+          const m = rawLog.match(/\]\s+(DEBUG|INFO|WARN|ERROR|FATAL)\s+/i);
+          level = m ? m[1].toLowerCase() : 'unknown';
+        } else {
+          level = 'unknown';
+        }
+      }
       levelCounts[level] = (levelCounts[level] || 0) + 1;
 
       if (log._source.service) {
@@ -956,13 +1091,14 @@ export const GET = withAuth(async (request) => {
 
     const recentActivity = logs.slice(0, 50).map((log) => {
       const fieldMapping = log._fieldMapping;
+      const rawLog = (log._source as Record<string, unknown>).log as string | undefined;
 
       // Extract values using field mapping if available
-      const level = fieldMapping
-        ? String(getNestedValue(log._source, fieldMapping.levelField) || 'INFO')
-        : (log._source.level || 'INFO');
+      let level = fieldMapping
+        ? String(getNestedValue(log._source, fieldMapping.levelField) || '')
+        : (log._source.level || '');
 
-      const message = fieldMapping
+      let message = fieldMapping
         ? String(
           getNestedValue(log._source, 'data.message') ||
           getNestedValue(log._source, fieldMapping.messageField) ||
@@ -970,6 +1106,15 @@ export const GET = withAuth(async (request) => {
           ''
         )
         : (log._source.data?.message || log._source.message || log._source.event || '');
+
+      // For unstructured logs, parse level and use raw log text as message
+      if (!level && rawLog) {
+        const levelMatch = rawLog.match(/\]\s+(DEBUG|INFO|WARN|ERROR|FATAL)\s+/i);
+        level = levelMatch ? levelMatch[1].toLowerCase() : '';
+      }
+      if (!message && rawLog) {
+        message = rawLog;
+      }
 
       const event = fieldMapping
         ? String(getNestedValue(log._source, fieldMapping.eventField) || '')
@@ -982,7 +1127,7 @@ export const GET = withAuth(async (request) => {
       return {
         id: log._id,
         timestamp: log._source['@timestamp'],
-        level,
+        level: level || 'unknown',
         message,
         event: event || undefined,
         service: service || undefined,
@@ -992,6 +1137,19 @@ export const GET = withAuth(async (request) => {
     });
 
     const lastActivityLog = logs[0];
+
+    // Fallback: scan fetched logs for subscriptionId if dedicated queries didn't find it
+    if (!subscriptionInfo.subscriptionId) {
+      for (const log of logs) {
+        const src = log._source;
+        const sid = (src as Record<string, unknown>).subscriptionId
+          || (src.data as Record<string, unknown> | undefined)?.subscriptionId;
+        if (isValidBillingSid(sid)) {
+          subscriptionInfo.subscriptionId = toBillingSid(sid);
+          break;
+        }
+      }
+    }
 
     const formattedTraces = apmTracesResult.traces.map((trace) => ({
       timestamp: trace['@timestamp'],
@@ -1008,7 +1166,8 @@ export const GET = withAuth(async (request) => {
         name: appId,
         lastActivity: lastActivityLog?._source['@timestamp'],
         version: lastActivityLog?._source.version,
-        status: 'active'
+        status: 'active',
+        subscriptionId: subscriptionInfo.subscriptionId,
       },
       recentActivity,
       errorSummary,
