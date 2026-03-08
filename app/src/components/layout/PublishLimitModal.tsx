@@ -76,10 +76,7 @@ export default function PublishLimitModal({
                         design="inline"
                         data-partial="componentAiro"
                         data-eid={generateClickEID('publish_limit.buttons.my_apps')}
-                        onClick={() => {
-                          onClose();
-                          router.push('/apps');
-                        }}
+                        onClick={handleManageApps}
                         text={chunks.toString()}
                       />
                     ),

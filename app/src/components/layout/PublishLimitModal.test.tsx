@@ -26,6 +26,30 @@ vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: vi.fn(() => vi.fn()),
 }));
 
+vi.mock('react-intl', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-intl')>();
+  return {
+    ...actual,
+    FormattedMessage: ({
+      id,
+      values,
+    }: {
+      id: string;
+      values?: Record<string, (chunks: string) => React.ReactNode>;
+    }) => {
+      if (values?.myAppsLink) {
+        return (
+          <span>
+            {id}
+            {values.myAppsLink('My Apps')}
+          </span>
+        );
+      }
+      return <span>{id}</span>;
+    },
+  };
+});
+
 const mockUseSwitchboard = vi.fn();
 
 vi.mock('@/hooks/useSwitchboard', () => ({
@@ -253,6 +277,19 @@ describe('PublishLimitModal', function publishLimitModalTests() {
       // The FormattedMessage with id builder_publish_limit_upgrade_hint should be rendered
       // Since we mock translations, it will just show the key
       expect(screen.getByText('builder_publish_limit_upgrade_hint')).toBeInTheDocument();
+    });
+
+    it('should navigate to manage-plan when My Apps link in upgrade hint is clicked', function navigatesFromUpgradeHint() {
+      const onClose = vi.fn();
+      renderWithProviders(
+        <PublishLimitModal {...defaultProps} onClose={onClose} onUpgrade={vi.fn()} />
+      );
+
+      const myAppsButton = screen.getByRole('button', { name: 'My Apps' });
+      fireEvent.click(myAppsButton);
+
+      expect(onClose).toHaveBeenCalled();
+      expect(mockPush).toHaveBeenCalledWith('/manage-plan');
     });
   });
 
