@@ -33,7 +33,6 @@ vi.mock('@/hooks/useSwitchboard', () => ({
     if (feature === 'appbuilder-settings-domain') return { data: true };
     if (feature === 'appbuilder-settings-backups') return { data: true };
     if (feature === 'appbuilder-settings-security') return { data: true };
-    if (feature === 'appbuilder-settings-database') return { data: true };
     if (feature === 'appbuilder-settings-secrets') return { data: true };
     if (feature === 'appbuilder-settings-visualscan') return { data: false };
     return { data: false };

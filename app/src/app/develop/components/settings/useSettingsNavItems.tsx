@@ -48,7 +48,6 @@ export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] 
   const { data: isSecurityEnabled } = useSwitchboard('appbuilder-settings-security', { enabled });
   const { data: isShareLinksEnabled } = useSwitchboard('appbuilder-share-links', { enabled });
   const { data: isTeamEnabled } = useSwitchboard('appbuilder-settings-team', { enabled });
-  const { data: isDatabaseEnabled } = useSwitchboard('appbuilder-settings-database', { enabled });
   const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan', { enabled });
   const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets', { enabled });
   const { data: isSocialEnabled } = useSwitchboard('appbuilder-settings-social', { enabled });
@@ -101,7 +100,7 @@ export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] 
       id: SettingsSection.DATABASE,
       label: t('builder_settings_nav_database'),
       icon: <DatabaseIcon />,
-      disabled: isDatabaseEnabled !== true,
+      disabled: false,
     },
     {
       id: SettingsSection.SECRETS,

@@ -27,7 +27,6 @@ export default function SettingsView() {
   const { data: isSecurityEnabled } = useSwitchboard('appbuilder-settings-security');
   const { data: isShareLinksEnabled } = useSwitchboard('appbuilder-share-links');
   const { data: isTeamEnabled } = useSwitchboard('appbuilder-settings-team');
-  const { data: isDatabaseEnabled } = useSwitchboard('appbuilder-settings-database');
   const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan');
   const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets');
   const { data: isSocialEnabled } = useSwitchboard('appbuilder-settings-social');
@@ -49,7 +48,7 @@ export default function SettingsView() {
       case SettingsSection.TEAM:
         return isTeamEnabled ? <TeamPanel /> : null;
       case SettingsSection.DATABASE:
-        return isDatabaseEnabled ? <DatabasePanel appId={appId} /> : null;
+        return <DatabasePanel appId={appId} />;
       case SettingsSection.SECRETS:
         return isSecretsEnabled ? <SecretsPanel appId={appId} variant="preview" /> : null;
       case SettingsSection.SOCIAL:
