@@ -539,7 +539,7 @@ describe('StreamingWebSocketController', () => {
       // Simulate 'complete' message which calls handleCommitComplete
       const messageHandler = (mockSocket.on as any).mock.calls.find((call: any) => call[0] === 'message')?.[1]
       expect(messageHandler).toBeDefined()
-      await messageHandler({ type: 'complete', content: '', data: {} })
+      await messageHandler({ type: 'complete', content: '', data: { commitHash: 'abc123' } })
 
       // First helper should have been called
       expect(firstHelper).toHaveBeenCalledTimes(1)
@@ -563,7 +563,7 @@ describe('StreamingWebSocketController', () => {
       // Find the new message handler
       const newMessageHandler = newSocket.on.mock.calls.find((call: any) => call[0] === 'message')?.[1]
       expect(newMessageHandler).toBeDefined()
-      await newMessageHandler({ type: 'complete', content: '', data: {} })
+      await newMessageHandler({ type: 'complete', content: '', data: { commitHash: 'def456' } })
 
       // Second helper should have been called, not first (proving fresh helpers were used)
       expect(firstHelper).not.toHaveBeenCalled()

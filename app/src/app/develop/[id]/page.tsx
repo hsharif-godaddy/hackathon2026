@@ -16,8 +16,7 @@ import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
 import { AppIntroTour } from '@/app/develop/components/tour/AppIntroTour'
 import { ChatTab } from '@/app/develop/components/types'
-import { useAppIdFromParams } from '@/app/develop/components/utils'
-import { handlePreviewRefresh } from '@/app/develop/components/utils'
+import { extractNewPageRoute, handlePreviewRefresh, navigatePreviewToRoute, requestPreviewScreenshot, useAppIdFromParams } from '@/app/develop/components/utils'
 import VersionHistory from '@/app/develop/components/VersionHistory'
 import { clearExpiredWidgetStates } from '@/app/develop/components/widgets'
 import { useInitialization } from '@/app/develop/hooks/useInitialization'
@@ -57,7 +56,8 @@ import {
   useIsLoading,
   useMessages,
   useSetAiEditContext,
-  useSetInputValue
+  useSetInputValue,
+  useStreamingConversationStore
 } from '@/stores/useStreamingConversationStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 
@@ -539,11 +539,32 @@ function DevelopPageContent() {
           // Handle URL changes in iframe (navigation)
           lastIframeState.current.url = event.data.url
           break
-        case 'MESSAGE_COMPLETE':
+        case 'MESSAGE_COMPLETE': {
+          // Capture message data now so the microtask uses a stable snapshot
+          // rather than reading store state that could shift before it runs.
+          const { messages: completedMessages } = useStreamingConversationStore.getState()
+          const completedMessage = completedMessages[completedMessages.length - 1]
+          const toolCallsAtCompletion = completedMessage?.role === 'assistant'
+            ? (completedMessage.toolCalls ?? [])
+            : []
+
           scheduleMicrotask(() => {
-            handlePreviewRefresh({ lastIframeState })
+            const newPageRoute = toolCallsAtCompletion.length
+              ? extractNewPageRoute(toolCallsAtCompletion)
+              : null
+
+            if (newPageRoute) {
+              logger.info('develop-page.preview.navigate-to-new-page', { appId, route: newPageRoute })
+              lastIframeState.current.url = newPageRoute
+              lastIframeState.current.scrollPosition = { x: 0, y: 0 }
+              requestPreviewScreenshot()
+              navigatePreviewToRoute(newPageRoute)
+            } else {
+              handlePreviewRefresh({ lastIframeState })
+            }
           })
           break
+        }
         case 'error-fix-request':
           // Handle runtime error fix requests from AiroErrorBoundary (new format with errorData)
           if (event.data.errorData) {

@@ -156,8 +156,29 @@ export class CompleteHandler implements MessageHandler {
     // Machine handles UI state transitions via STREAM_COMPLETE event
     // Adapter syncs: setWebSocketState, setStreamingState, setIsLoading, finalizeStream
 
-    // Handle commit selection and preview refresh
-    await context.helpers.handleCommitComplete(data.data?.commitHash as string | undefined)
+    const commitHash = data.data?.commitHash as string | undefined
+
+    if (commitHash) {
+      // Handle commit selection and preview refresh.
+      // handleCommitComplete posts MESSAGE_COMPLETE, which triggers page.tsx
+      // to detect new-page creation and navigate the preview.
+      await context.helpers.handleCommitComplete(commitHash)
+    } else {
+      // No commit hash — check if the agent created a new page.
+      // Vite HMR handles the file-change refresh but won't navigate to the
+      // new route, so we fire MESSAGE_COMPLETE ourselves when a page was created.
+      const { messages: finalizedMessages } = useStreamingConversationStore.getState()
+      const lastMsg = finalizedMessages[finalizedMessages.length - 1]
+      if (lastMsg?.role === 'assistant' && lastMsg.toolCalls?.length) {
+        const { extractNewPageRoute } = await import('@/app/develop/components/utils')
+        if (extractNewPageRoute(lastMsg.toolCalls)) {
+          window.postMessage(
+            { type: 'MESSAGE_COMPLETE', source: 'websocket' },
+            window.location.origin
+          )
+        }
+      }
+    }
 
     // Update site's updated_at timestamp so it moves to top of apps list
     // Call the backend API to persist a lastInteractionAt variable, then update frontend stores

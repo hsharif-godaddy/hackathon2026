@@ -125,6 +125,46 @@ export function handlePreviewRefresh({ lastIframeState }: { lastIframeState: Ref
 }
 
 /**
+ * Navigates the preview iframe to a route without a full reload.
+ * Uses RESTORE_STATE_AFTER_REFRESH + pushState inside the iframe so the
+ * browser doesn't flash the home page before landing on the target route.
+ * Vite HMR has already processed the new file by the time this runs.
+ */
+export function navigatePreviewToRoute(route: string) {
+  const iframe = document.querySelector('#preview-iframe') as HTMLIFrameElement
+  if (!iframe?.contentWindow) return
+  try {
+    postMessageToIframe(iframe, {
+      type: 'RESTORE_STATE_AFTER_REFRESH',
+      url: route,
+      scrollPosition: { x: 0, y: 0 }
+    })
+  } catch (error) {
+    logger.error('develop.preview-navigate.failed', {
+      route,
+      error: error instanceof Error ? error.message : String(error)
+    })
+  }
+}
+
+/**
+ * Requests a screenshot from the preview iframe for AI visual context.
+ * This is a fire-and-forget operation — the screenshot response is handled
+ * by the SCREENSHOT_RESPONSE message handler in page.tsx.
+ */
+export function requestPreviewScreenshot() {
+  const iframe = document.querySelector('#preview-iframe') as HTMLIFrameElement
+  if (!iframe || !iframe.contentWindow) return
+  try {
+    postMessageToIframe(iframe, { type: 'REQUEST_SCREENSHOT' })
+  } catch (error) {
+    logger.error('develop.screenshot.request.failed', {
+      error: error instanceof Error ? error.message : String(error)
+    })
+  }
+}
+
+/**
  * Checks if a message is a StreamingMessage (active, incomplete message)
  *
  * @param message - Message to check
@@ -152,4 +192,94 @@ export function hasValidSegments(message: ChatMessage | StreamingMessage): boole
  */
 export function getToolCallsFromMessage(message: ChatMessage | StreamingMessage): ToolCall[] {
   return message.toolCalls || []
+}
+
+// Matches page files directly inside src/pages/ (not subdirectories).
+// The (?:^|\/) prefix handles both relative paths (src/pages/...) and
+// absolute paths (/workspace/app/src/pages/...) without matching deeper paths
+// like src/pages/components/Button.tsx (which contain a second slash after pages/).
+// Agents run on Linux so paths always use forward slashes.
+const PAGE_FILE_PATTERN = /(?:^|\/)src\/pages\/([^/]+)\.(tsx|jsx|ts|js)$/
+
+const EXCLUDED_PAGE_NAMES = new Set(['index', '404', '_404', '_error'])
+
+/**
+ * Extracts the route for a newly created page from the tool calls of a completed message.
+ * Only considers page file creations (not modifications) in src/pages/.
+ *
+ * Returns the last created page's route, or null if no new pages were created.
+ * Skips index, 404, error pages, and dynamic routes (e.g. [id].tsx).
+ *
+ * @example
+ * // Agent created src/pages/about.tsx → returns '/about'
+ * extractNewPageRoute([
+ *   { name: 'textEditor', input: { command: 'create', path: 'src/pages/about.tsx' }, status: 'completed', ... }
+ * ])
+ *
+ * // Agent only edited existing files → returns null
+ * extractNewPageRoute([
+ *   { name: 'textEditor', input: { command: 'str_replace', path: 'src/pages/index.tsx' }, status: 'completed', ... }
+ * ])
+ */
+export function extractNewPageRoute(toolCalls: ToolCall[]): string | null {
+  let lastRoute: string | null = null
+
+  for (const tc of toolCalls) {
+    if (tc.status !== 'completed' || tc.error) continue
+
+    for (const pagePath of extractCreatedPagePaths(tc)) {
+      const route = pagePathToRoute(pagePath)
+      if (route) lastRoute = route
+    }
+  }
+
+  return lastRoute
+}
+
+function extractCreatedPagePaths(tc: ToolCall): string[] {
+  const input = tc.input
+  if (!input) return []
+
+  switch (tc.name) {
+    case 'str_replace_based_edit_tool':
+    case 'textEditor': {
+      if (input.command !== 'create') return []
+      const path = input.path
+      return typeof path === 'string' && isPageFile(path) ? [path] : []
+    }
+
+    case 'create_file':
+    case 'write_file': {
+      const path = input.path ?? input.file_path
+      return typeof path === 'string' && isPageFile(path) ? [path] : []
+    }
+
+    case 'fileEdit': {
+      if (!Array.isArray(input.operations)) return []
+      return (input.operations as Array<Record<string, unknown>>)
+        .filter((op): op is Record<string, unknown> & { path: string } =>
+          op.type === 'create' && typeof op.path === 'string' && isPageFile(op.path)
+        )
+        .map(op => op.path)
+    }
+
+    default:
+      return []
+  }
+}
+
+function isPageFile(filePath: string): boolean {
+  return PAGE_FILE_PATTERN.test(filePath)
+}
+
+function pagePathToRoute(filePath: string): string | null {
+  const match = filePath.match(PAGE_FILE_PATTERN)
+  if (!match) return null
+
+  const fileName = match[1].toLowerCase()
+
+  if (EXCLUDED_PAGE_NAMES.has(fileName)) return null
+  if (fileName.includes('[') || fileName.includes(']')) return null
+
+  return '/' + fileName
 }
