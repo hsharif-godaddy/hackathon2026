@@ -98,6 +98,136 @@ describe('GitUtils', () => {
     });
   });
 
+  describe('commitTree', () => {
+    it('should create orphan commit when no parent specified', async () => {
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: true,
+        exit_code: 0,
+        stdout: 'abc123def456\n',
+        stderr: ''
+      });
+
+      await gitUtils.commitTree('/app', 'tree-hash-123', 'test message');
+
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
+      expect(callArgs.command).toContain('commit-tree');
+      expect(callArgs.command).toContain('tree-hash-123');
+      expect(callArgs.command).toContain('test message');
+      expect(callArgs.command).not.toContain('-p');
+    });
+
+    it('should create commit with parent when parentHash specified', async () => {
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: true,
+        exit_code: 0,
+        stdout: 'abc123def456\n',
+        stderr: ''
+      });
+
+      await gitUtils.commitTree('/app', 'tree-hash-123', 'test message', { parentHash: 'parent-hash-456' });
+
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
+      expect(callArgs.command).toContain('commit-tree');
+      expect(callArgs.command).toContain('tree-hash-123');
+      expect(callArgs.command).toContain('-p');
+      expect(callArgs.command).toContain('parent-hash-456');
+      expect(callArgs.command).toContain('test message');
+    });
+
+    it('should return failure result when commit-tree fails', async () => {
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: false,
+        exit_code: 1,
+        stdout: '',
+        stderr: 'fatal: not a valid tree object'
+      });
+
+      const result = await gitUtils.commitTree('/app', 'bad-tree', 'test message');
+
+      expect(result.success).toBe(false);
+      expect(result.stderr).toContain('not a valid tree object');
+    });
+  });
+
+  describe('getTreeHash', () => {
+    it('should resolve tree hash for a ref', async () => {
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: true,
+        exit_code: 0,
+        stdout: 'tree-hash-abc123\n',
+        stderr: ''
+      });
+
+      const result = await gitUtils.getTreeHash('/app', 'HEAD');
+
+      expect(result).toBe('tree-hash-abc123');
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
+      expect(callArgs.command).toContain('rev-parse');
+      expect(callArgs.command).toContain('HEAD^{tree}');
+    });
+
+    it('should throw when ref cannot be resolved', async () => {
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: false,
+        exit_code: 128,
+        stdout: '',
+        stderr: 'fatal: not a valid object name'
+      });
+
+      await expect(gitUtils.getTreeHash('/app', 'nonexistent')).rejects.toThrow(
+        "Failed to get tree hash for 'nonexistent'"
+      );
+    });
+  });
+
+  describe('updateRef', () => {
+    it('should update a ref to point to a commit', async () => {
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: true,
+        exit_code: 0,
+        stdout: '',
+        stderr: ''
+      });
+
+      await gitUtils.updateRef('/app', 'refs/heads/main', 'commit-hash-789');
+
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
+      expect(callArgs.command).toContain('update-ref');
+      expect(callArgs.command).toContain('refs/heads/main');
+      expect(callArgs.command).toContain('commit-hash-789');
+    });
+
+    it('should include old value for compare-and-swap when provided', async () => {
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: true,
+        exit_code: 0,
+        stdout: '',
+        stderr: ''
+      });
+
+      await gitUtils.updateRef('/app', 'refs/heads/main', 'new-hash', 'old-hash');
+
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
+      expect(callArgs.command).toContain('update-ref');
+      expect(callArgs.command).toContain('refs/heads/main');
+      expect(callArgs.command).toContain('new-hash');
+      expect(callArgs.command).toContain('old-hash');
+    });
+
+    it('should throw when update-ref fails', async () => {
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: false,
+        exit_code: 1,
+        stdout: '',
+        stderr: 'fatal: update_ref failed'
+      });
+
+      await expect(
+        gitUtils.updateRef('/app', 'refs/heads/main', 'commit-hash-789')
+      ).rejects.toThrow("Failed to update ref 'refs/heads/main'");
+    });
+  });
+
   describe('addFiles', () => {
     it('should use 60 second default timeout for large repos', async () => {
       await gitUtils.addFiles('/app', ['.']);

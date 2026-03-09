@@ -247,16 +247,33 @@ export class GitHookService {
         });
       }
 
-      // Step 2: Use simple recovery commit message
+      // Step 2: Squash merge to main using plumbing (avoids transient file reverts)
       const recoveryMessage = 'Recovery from interrupted session';
-      
-      // Step 3: Squash merge to main
+      const featureTree = await gitUtils.getTreeHash(appPath, 'HEAD');
+      const mainTree = await gitUtils.getTreeHash(appPath, 'main');
+
+      if (featureTree === mainTree) {
+        // No changes — just switch back to main
+        await gitUtils.switchBranch(appPath, 'main');
+        logger.info('git_hook.recovery.no_changes', { appId, currentBranch });
+        return;
+      }
+
+      const mainCommit = await gitUtils.resolveCommitHash(appPath, 'main');
+      const commitResult = await gitUtils.commitTree(
+        appPath, featureTree, recoveryMessage, { parentHash: mainCommit }
+      );
+      if (!commitResult.success) {
+        throw new Error(`Failed to create recovery commit: ${commitResult.stderr}`);
+      }
+      const commitHash = commitResult.stdout.trim();
+      await gitUtils.updateRef(appPath, 'refs/heads/main', commitHash, mainCommit);
       await gitUtils.switchBranch(appPath, 'main');
-      await gitUtils.squashMerge(appPath, currentBranch, recoveryMessage);
-      
+
       logger.info('git_hook.recovery.complete', {
         appId,
         previousBranch: currentBranch,
+        commitHash: commitHash.substring(0, 7),
         commitMessage: recoveryMessage
       });
 
@@ -382,26 +399,65 @@ export class GitHookService {
         squashMessage = squashMessage.substring(0, 69) + '...';
       }
 
-      // Step 3: Squash merge to main
+      // Step 3: Squash merge to main using git plumbing (avoids changing working directory)
+      //
+      // Instead of `git checkout main && git merge --squash feature && git commit`, we use
+      // plumbing commands to create the squash commit directly. This avoids a transient state
+      // where `git checkout main` reverts files on disk before `merge --squash` restores them,
+      // which can cause Vite's module graph to cache stale content.
+      //
+      // This is safe because the feature branch always forks from the current main tip
+      // (created in handleMessageStart), and no other process modifies main during the message.
+      // So the feature branch's tree IS the correct merged result — no conflict resolution needed.
       try {
+        // Compare trees to detect if there are actual changes
+        const featureTree = await gitUtils.getTreeHash(app.path, 'HEAD');
+        const mainTree = await gitUtils.getTreeHash(app.path, 'main');
+
+        if (featureTree === mainTree) {
+          // No file changes — just switch back to main without creating an empty commit
+          logger.info('git_hook.connection_end.no_changes', {
+            appId,
+            socketId,
+            featureBranch: currentBranch,
+            reason
+          });
+          await gitUtils.switchBranch(app.path, 'main');
+          this.appBranches.delete(appId);
+          return null;
+        }
+
+        // Get main's current commit to use as parent
+        const mainCommit = await gitUtils.resolveCommitHash(app.path, 'main');
+
+        // Create the squash commit: feature branch's tree on top of main
+        const commitResult = await gitUtils.commitTree(
+          app.path,
+          featureTree,
+          squashMessage,
+          { parentHash: mainCommit }
+        );
+
+        if (!commitResult.success) {
+          throw new Error(`Failed to create squash commit: ${commitResult.stderr}`);
+        }
+
+        const commitHash = commitResult.stdout.trim();
+
+        // Advance main to the new commit (no working directory changes)
+        // Uses compare-and-swap: only succeeds if main still points to mainCommit
+        await gitUtils.updateRef(app.path, 'refs/heads/main', commitHash, mainCommit);
+
+        // Switch to main — this is a no-op for the working directory since
+        // main's tree now matches the feature branch's tree (our current files)
         await gitUtils.switchBranch(app.path, 'main');
-        await gitUtils.squashMerge(app.path, currentBranch, squashMessage);
 
         logger.info('git_hook.connection_end.squash_merged', {
           appId,
           socketId,
           featureBranch: currentBranch,
+          commitHash: commitHash.substring(0, 7),
           squashMessage,
-          reason
-        });
-
-        // Get the commit hash we just created
-        const commits = await gitUtils.getCommitHistory(app.path, 1);
-        const commitHash = commits[0]?.hash || null;
-
-        logger.info('git_hook.connection_end.commit_hash', {
-          appId,
-          commitHash: commitHash ? commitHash.substring(0, 7) : 'unknown',
           reason
         });
 

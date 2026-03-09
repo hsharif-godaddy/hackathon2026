@@ -960,24 +960,92 @@ export class GitUtils {
 
   /**
    * Create a commit object from a tree hash
-   * Uses `git commit-tree` to create an orphan commit (no parent)
+   * Uses `git commit-tree` to create a commit with an optional parent
    *
    * @param repoPath - Path to the git repository
    * @param treeHash - The tree SHA to create a commit from
    * @param message - Commit message
-   * @param options - Git command options
+   * @param options - Git command options plus optional parentHash for non-orphan commits
    * @returns GitCommandResult with commit hash in stdout
    */
   async commitTree(
     repoPath: string,
     treeHash: string,
     message: string,
+    options: GitCommandOptions & { parentHash?: string } = {}
+  ): Promise<GitCommandResult> {
+    const { parentHash, ...gitOptions } = options;
+    const args = ['commit-tree', treeHash];
+    if (parentHash) {
+      args.push('-p', parentHash);
+    }
+    args.push('-m', message);
+    return this.executeGitCommand(args, repoPath, {
+      ...gitOptions,
+      timeout: gitOptions.timeout || 30000
+    });
+  }
+
+  /**
+   * Get the tree hash for a given ref (commit, branch, HEAD, etc.)
+   * Uses `git rev-parse <ref>^{tree}` to resolve to a tree object
+   *
+   * @param repoPath - Path to the git repository
+   * @param ref - Git ref to resolve (e.g., 'HEAD', 'main', commit hash)
+   * @param options - Git command options
+   * @returns The tree hash string
+   * @throws Error if the ref cannot be resolved
+   */
+  async getTreeHash(
+    repoPath: string,
+    ref: string,
+    options: GitCommandOptions = {}
+  ): Promise<string> {
+    const result = await this.executeGitCommand(
+      ['rev-parse', `${ref}^{tree}`],
+      repoPath,
+      options
+    );
+    if (!result.success) {
+      throw new Error(`Failed to get tree hash for '${ref}': ${result.stderr}`);
+    }
+    return result.stdout.trim();
+  }
+
+  /**
+   * Update a git ref to point to a specific commit
+   * Uses `git update-ref` to atomically update a ref without changing the working directory
+   *
+   * When oldValue is provided, acts as a compare-and-swap: the update only succeeds
+   * if the ref currently points to oldValue, preventing silent overwrites from
+   * concurrent changes.
+   *
+   * @param repoPath - Path to the git repository
+   * @param ref - The ref to update (e.g., 'refs/heads/main')
+   * @param commitHash - The commit hash to point the ref to
+   * @param oldValue - Optional expected current value for atomic compare-and-swap
+   * @param options - Git command options
+   * @throws Error if the update fails
+   */
+  async updateRef(
+    repoPath: string,
+    ref: string,
+    commitHash: string,
+    oldValue?: string,
     options: GitCommandOptions = {}
   ): Promise<GitCommandResult> {
-    return this.executeGitCommand(['commit-tree', treeHash, '-m', message], repoPath, {
+    const args = ['update-ref', ref, commitHash];
+    if (oldValue !== undefined) {
+      args.push(oldValue);
+    }
+    const result = await this.executeGitCommand(args, repoPath, {
       ...options,
       timeout: options.timeout || 30000
     });
+    if (!result.success) {
+      throw new Error(`Failed to update ref '${ref}': ${result.stderr}`);
+    }
+    return result;
   }
 
   /**
