@@ -805,7 +805,8 @@ function DevelopPageContent() {
   return (
     <WebSocketProvider sendMessage={sendMessage} loadMoreHistory={loadMoreHistory}>
       <div
-        className={cn("fixed inset-0 flex flex-col overflow-hidden bg-develop-bg", {
+        // Switch from fixed to absolute to support PresentationCentral delegation/browser deprecation banners
+        className={cn("absolute inset-0 flex flex-col overflow-hidden bg-develop-bg", {
           "ios-fixed-container": isMobile
         })}
         style={isMobile ? {

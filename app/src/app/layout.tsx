@@ -183,7 +183,7 @@ async function RootLayout({
               <SubscriptionCacheProvider>
                 <SessionTimeoutManager />
                 <AuthBoundary>
-                  <main className="flex-1 min-h-screen">
+                  <main className="flex-1 relative min-h-dvh">
                     {children}
                   </main>
                 </AuthBoundary>
