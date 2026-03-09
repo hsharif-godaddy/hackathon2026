@@ -13,6 +13,7 @@ import {
 vi.mock('@/lib/request-context', () => ({
   logger: {
     error: vi.fn(),
+    warn: vi.fn(),
   },
 }));
 
@@ -51,7 +52,7 @@ describe('instrumentation utilities', () => {
     it('should return empty strings for missing EID', () => {
       const result = parseEID('');
       expect(result).toEqual({ product: '', section: '', widget: '' });
-      expect(logger.error).toHaveBeenCalledWith(
+      expect(logger.warn).toHaveBeenCalledWith(
         'instrumentation.parseEID.failure',
         expect.objectContaining({
           message: expect.stringContaining('missing attributes'),
@@ -62,7 +63,7 @@ describe('instrumentation utilities', () => {
     it('should return empty strings for invalid EID with too few dots', () => {
       const result = parseEID('product.section');
       expect(result).toEqual({ product: '', section: '', widget: '' });
-      expect(logger.error).toHaveBeenCalledWith(
+      expect(logger.warn).toHaveBeenCalledWith(
         'instrumentation.parseEID.failure',
         expect.objectContaining({
           message: 'parseEID is invalid',
@@ -73,7 +74,7 @@ describe('instrumentation utilities', () => {
     it('should return empty strings for invalid EID with too many dots', () => {
       const result = parseEID('product.section.widget.extra');
       expect(result).toEqual({ product: '', section: '', widget: '' });
-      expect(logger.error).toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalled();
     });
 
     it('should handle single dot', () => {
@@ -96,7 +97,7 @@ describe('instrumentation utilities', () => {
     it('should return empty string for invalid EID', () => {
       const result = generateClickEID('invalid');
       expect(result).toBe('');
-      expect(logger.error).toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalled();
     });
 
     it('should return empty string for empty EID', () => {
@@ -104,9 +105,9 @@ describe('instrumentation utilities', () => {
       expect(result).toBe('');
     });
 
-    it('should log error for missing attributes', () => {
+    it('should log warn for missing attributes', () => {
       generateClickEID('invalid.eid');
-      expect(logger.error).toHaveBeenCalledWith(
+      expect(logger.warn).toHaveBeenCalledWith(
         'instrumentation.generateClickEID.failure',
         expect.objectContaining({
           message: 'generateClickEID is missing attributes',
@@ -149,7 +150,7 @@ describe('instrumentation utilities', () => {
       logClick();
 
       expect(mockDataLayer).toHaveLength(0);
-      expect(logger.error).toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalled();
     });
 
     it('should not push event for empty EID', () => {
@@ -169,7 +170,7 @@ describe('instrumentation utilities', () => {
       const logClick = logClickEvent('product.section.widget');
       logClick();
       // Should not throw error
-      expect(logger.error).not.toHaveBeenCalled();
+      expect(logger.warn).not.toHaveBeenCalled();
     });
   });
 
@@ -220,7 +221,7 @@ describe('instrumentation utilities', () => {
       logAction();
 
       expect(mockDataLayer).toHaveLength(0);
-      expect(logger.error).toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalled();
     });
 
     it('should not push event for invalid EID', () => {
@@ -228,7 +229,7 @@ describe('instrumentation utilities', () => {
       logAction();
 
       expect(mockDataLayer).toHaveLength(0);
-      expect(logger.error).toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalled();
     });
 
     it('should return a function', () => {
@@ -273,7 +274,7 @@ describe('instrumentation utilities', () => {
       logImpression();
 
       expect(mockDataLayer).toHaveLength(0);
-      expect(logger.error).toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalled();
     });
 
     it('should not push event for empty EID', () => {
@@ -418,7 +419,7 @@ describe('instrumentation utilities', () => {
       const logClick = logClickEvent('product.section.widget');
       logClick();
       // Should not throw error
-      expect(logger.error).not.toHaveBeenCalled();
+      expect(logger.warn).not.toHaveBeenCalled();
     });
 
     it('should handle undefined window in logActionEvent', () => {
@@ -426,7 +427,7 @@ describe('instrumentation utilities', () => {
       const logAction = logActionEvent({ eid: 'product.section.widget', action: 'hover' });
       logAction();
       // Should not throw error
-      expect(logger.error).not.toHaveBeenCalled();
+      expect(logger.warn).not.toHaveBeenCalled();
     });
 
     it('should handle undefined window in logImpressionEvent', () => {
@@ -434,7 +435,7 @@ describe('instrumentation utilities', () => {
       const logImpression = logImpressionEvent('product.section.widget');
       logImpression();
       // Should not throw error
-      expect(logger.error).not.toHaveBeenCalled();
+      expect(logger.warn).not.toHaveBeenCalled();
     });
 
     it('should handle undefined window in logAiroHQEvent', () => {
@@ -442,7 +443,7 @@ describe('instrumentation utilities', () => {
       const logEvent = logAiroHQEvent({ category: 'click' });
       logEvent();
       // Should not throw error
-      expect(logger.error).not.toHaveBeenCalled();
+      expect(logger.warn).not.toHaveBeenCalled();
     });
   });
 });

@@ -49,7 +49,7 @@ function LandingPageContent({ data }: LandingPageProps) {
   const slug = data.route.useCase
 
   useEffect(() => {
-    logImpressionEvent(`landing.${slug}.page.view`)();
+    logImpressionEvent(`landing-${slug}.page.view`)();
     logAiroHQEvent({
       category: 'impression',
       recommendation_task: `builder_landing_${slug}_viewed`,

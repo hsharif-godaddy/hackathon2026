@@ -49,11 +49,11 @@ interface EventImpressionsData {
 
 export const parseEID = (eid: string) => {
   if (!eid) {
-    logger.error('instrumentation.parseEID.failure', { message: `parseEID is missing attributes : ${eid}` });
+    logger.warn('instrumentation.parseEID.failure', { message: `parseEID is missing attributes : ${eid}` });
     return {product: '', section: '', widget: ''};
   }
   if ((eid.match(/\./g) || []).length !== 2) {
-    logger.error('instrumentation.parseEID.failure', { message: 'parseEID is invalid' });
+    logger.warn('instrumentation.parseEID.failure', { message: 'parseEID is invalid' });
     return {product: '', section: '', widget: ''};
   }
   const [product, section, widget] = eid.split('.');
@@ -70,7 +70,7 @@ export const parseEID = (eid: string) => {
 export const generateClickEID = (eid: string) => {
   const { product, section, widget } = parseEID(eid);
   if (!product || !section || !widget) {
-    logger.error('instrumentation.generateClickEID.failure', { message: 'generateClickEID is missing attributes', product, section, widget });
+    logger.warn('instrumentation.generateClickEID.failure', { message: 'generateClickEID is missing attributes', product, section, widget });
     return '';
   }
   return `${DEFAULT_AREA}.${product}.${section}.${widget}.click`;
@@ -88,7 +88,7 @@ export const generateClickEID = (eid: string) => {
 export const logClickEvent = (eid: string): () => void => () => {
   const { product, section, widget } = parseEID(eid);
   if (!product || !section || !widget) {
-    logger.error('instrumentation.logClickEvent.failure', { message: 'logClickEvent is missing attributes' });
+    logger.warn('instrumentation.logClickEvent.failure', { message: 'logClickEvent is missing attributes' });
     return;
   }
   try {
@@ -105,8 +105,8 @@ export const logClickEvent = (eid: string): () => void => () => {
       targets: ['fullstory']
     }
     getExpDataLayer()?.push(eventData);
-  } catch (_e) {
-    logger.error('instrumentation.logClickEvent.failure', { message: 'Failed to log click event information', section, widget });
+  } catch (e) {
+    logger.error('instrumentation.logClickEvent.failure', { message: 'Failed to log click event information', error: e, section, widget });
   }
 };
 
@@ -125,7 +125,7 @@ export const logActionEvent = ({
 }: EventActionProps): () => void => () => {
   const { product, section, widget } = parseEID(eid);
   if (!product || !section || !widget || !action) {
-    logger.error('instrumentation.logActionEvent.failure', { message: 'logActionEvent is missing attributes' });
+    logger.warn('instrumentation.logActionEvent.failure', { message: 'logActionEvent is missing attributes' });
     return;
   }
   try {
@@ -142,8 +142,8 @@ export const logActionEvent = ({
       targets: ['fullstory']
     }
     getExpDataLayer()?.push(eventData);
-  } catch (_e) {
-    logger.error('instrumentation.logActionEvent.failure', { message: 'Failed to log action event information', section, widget });
+  } catch (e) {
+    logger.error('instrumentation.logActionEvent.failure', { message: 'Failed to log action event information', error: e, section, widget });
   }
 };
 
@@ -159,7 +159,7 @@ export const logActionEvent = ({
 export const logImpressionEvent = (eid: string): () => void => () => {
   const { product, section, widget } = parseEID(eid);
   if (!product || !section || !widget) {
-    logger.error('instrumentation.logImpressionEvent.failure', { message: 'logImpressionEvent is missing attributes' });
+    logger.warn('instrumentation.logImpressionEvent.failure', { message: 'logImpressionEvent is missing attributes' });
     return;
   }
   try {
@@ -178,8 +178,8 @@ export const logImpressionEvent = (eid: string): () => void => () => {
       targets: ['fullstory']
     }
     getExpDataLayer()?.push(eventData);
-  } catch (_e) {
-    logger.error('instrumentation.logImpressionEvent.failure', { message: 'Failed to log impression event information', section, widget });
+  } catch (e) {
+    logger.error('instrumentation.logImpressionEvent.failure', { message: 'Failed to log impression event information', error: e, section, widget });
   }
 };
 
@@ -232,8 +232,9 @@ export const logAiroHQEvent = ({
       }
     }
     getExpDataLayer()?.push(eventData);
-  } catch (_e) {
+  } catch (e) {
     logger.error('instrumentation.logAiroHQImpressionEvent.failure', {
+      error: e,
       message: 'Failed to log Airo HQ impression event information',
       category,
       custom_properties: {

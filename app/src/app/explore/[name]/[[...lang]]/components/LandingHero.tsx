@@ -341,7 +341,7 @@ const LandingHero = forwardRef<LandingHeroRef, LandingHeroProps>(({
                   <Button
                     onClick={toggleSpeech}
                     onMouseDown={(e) => e.preventDefault()}
-                    data-eid={generateClickEID(`landing.${slug}.prompt.speech`)}
+                    data-eid={generateClickEID(`landing-${slug}.prompt.speech`)}
                     disabled={isLoading || isTyping}
                     design={isListening ? 'primary' : 'control'}
                     className={clsx('cursor-pointer !rounded-full aspect-square !border-none', {
@@ -356,7 +356,7 @@ const LandingHero = forwardRef<LandingHeroRef, LandingHeroProps>(({
                 <Button
                   onClick={handleStartBuilding}
                   data-partial="componentAiro"
-                  data-eid={generateClickEID(`landing.${slug}.prompt.submit`)}
+                  data-eid={generateClickEID(`landing-${slug}.prompt.submit`)}
                   disabled={!promptText.trim() || isLoading || isTyping || promptText.length >= MAX_PROMPT_LENGTH}
                   design='primary'
                   className='cursor-pointer !rounded-full aspect-square !border-none'
@@ -422,7 +422,7 @@ const LandingHero = forwardRef<LandingHeroRef, LandingHeroProps>(({
             <button
               onClick={scrollToNextSection}
               className="mx-auto mt-2 flex items-center gap-1 text-sm opacity-60 hover:opacity-100 hover:cursor-pointer transition-opacity group"
-              data-eid={generateClickEID(`landing.${slug}.hero.see_how_it_works`)}
+              data-eid={generateClickEID(`landing-${slug}.hero.see_how_it_works`)}
             >
               <Box blockAlignChildren='center' inlineAlignChildren='center' gap="md">
                 <text.p size={0} className='font-medium'>{hero.scrollLabel}</text.p>

@@ -341,7 +341,7 @@ export function PublishWidget({ appId, publishId, toolId, conversationId, initia
               href={url}
               target="_blank"
               rel="noopener noreferrer"
-              data-eid={generateClickEID(`social.publish.view_post.${platform}`)}
+              data-eid={generateClickEID(`social.publish.view_post_${platform}`)}
             />
           ))}
         </div>

@@ -100,6 +100,6 @@ describe('SocialPublishStatusMessage', () => {
     )
 
     const button = screen.getByRole('link', { name: 'builder_widgets_socialpublish_view_post' })
-    expect(button).toHaveAttribute('data-eid', 'social.publish.view_post.history')
+    expect(button).toHaveAttribute('data-eid', 'social.publish.view_post_history')
   })
 })

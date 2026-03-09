@@ -101,7 +101,7 @@ export const SocialPublishStatusMessage = memo(function SocialPublishStatusMessa
               href={platformUrl}
               target="_blank"
               rel="noopener noreferrer"
-              data-eid={generateClickEID('social.publish.view_post.history')}
+              data-eid={generateClickEID('social.publish.view_post_history')}
             />
           </div>
         )}

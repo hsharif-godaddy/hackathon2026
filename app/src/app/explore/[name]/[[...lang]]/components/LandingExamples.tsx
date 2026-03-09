@@ -56,10 +56,10 @@ export default function LandingExamples({ examples, onExampleClick, slug }: Land
           <button
             key={example.title}
             data-testid="landing-suggestion-button"
-            data-eid={generateClickEID(`landing.${slug}.examples.${example.slug ?? index}`)}
+            data-eid={generateClickEID(`landing-${slug}.examples.${example.slug ?? index}`)}
             onClick={() => {
               onExampleClick(example.prompt);
-              logClickEvent(`landing.${slug}.examples.example`)();
+              logClickEvent(`landing-${slug}.examples.example`)();
             }}
             className={clsx(
               'group bg-ai-dark-transparent px-2 py-0.5 rounded-lg hover:shadow-md transition-all duration-300 text-sm cursor-pointer transform',

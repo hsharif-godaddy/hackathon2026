@@ -148,7 +148,7 @@ export default function DomainItem({
                     onClick={handleConnectClick}
                     disabled={isLoading || disableConnect}
                     data-eid={generateClickEID(
-                      `settings/domains.custom_domain.connect`,
+                      `settings-domains.custom_domain.connect`,
                     )}
                     text={t("builder_domain_button_connect")}
                     size="sm"
@@ -162,7 +162,7 @@ export default function DomainItem({
                     onClick={handleDisconnect}
                     disabled={isLoading}
                     data-eid={generateClickEID(
-                      `settings/domains.custom_domain.disconnect`,
+                      `settings-domains.custom_domain.disconnect`,
                     )}
                     text={t("builder_domain_button_disconnect")}
                     size="sm"
@@ -176,7 +176,7 @@ export default function DomainItem({
                     design="tertiary"
                     onClick={() => setOpen(false)}
                     data-eid={generateClickEID(
-                      `settings/domains.custom_domain.manage`,
+                      `settings-domains.custom_domain.manage`,
                     )}
                     text={t("builder_domain_button_manage")}
                     href={`https://dcc.godaddy.com/control/dnsmanagement?domainName=${domainName}`}
