@@ -95,9 +95,9 @@ if (isApmEnabled) {
         span.setOutcome(response.ok ? 'success' : 'failure');
       }
 
-      // Clone the response to ensure the caller can still read the body
-      // (Response bodies can only be read once)
-      return response.clone();
+      // Return the original response. Cloning a streamed response here can
+      // force tee buffering of the unread branch and blow up heap usage.
+      return response;
     } catch (error) {
       if (span) {
         span.setOutcome('failure');
