@@ -93,6 +93,17 @@ type ProcessManager struct {
 	deferredSetupRequest  *validation.ProcessStartRequest // Start request to use after deferred setup
 	deferredSetupExecuted atomic.Bool                     // True if deferred setup has been executed
 	deferredSetupMutex    sync.Mutex                      // Protects deferred setup execution (idempotency)
+	deferredSetupRunning  atomic.Bool                     // True while setup script is executing
+	deferredSetupError    atomic.Value                    // stores string; empty = no error
+}
+
+// SetupStatus represents the current state of setup script configuration and execution.
+type SetupStatus struct {
+	SetupConfigured bool    `json:"setup_configured"`
+	SetupDeferred   bool    `json:"setup_deferred"`
+	SetupExecuted   bool    `json:"setup_executed"`
+	SetupRunning    bool    `json:"setup_running"`
+	SetupError      *string `json:"setup_error"`
 }
 
 func NewProcessManager(logMgr logs.Logger, pid1Mgr *process.PID1Manager) *ProcessManager {
@@ -563,6 +574,34 @@ func (pm *ProcessManager) HasDeferredSetup() bool {
 	return pm.deferredSetupScript != "" && !pm.deferredSetupExecuted.Load()
 }
 
+// GetSetupStatus returns a best-effort snapshot of the current setup configuration and execution state.
+// SetupDeferred means "configured but not yet successfully completed" — it remains true while
+// setup is actively running (check SetupRunning to distinguish pending vs in-progress).
+//
+// Note: executed/running/error are atomics written under deferredSetupMutex, not pm.mu,
+// so this snapshot can be momentarily stale — acceptable for a status-polling endpoint.
+func (pm *ProcessManager) GetSetupStatus() SetupStatus {
+	pm.mu.RLock()
+	configured := pm.deferredSetupScript != ""
+	pm.mu.RUnlock()
+
+	executed := pm.deferredSetupExecuted.Load()
+
+	running := pm.deferredSetupRunning.Load()
+	status := SetupStatus{
+		SetupConfigured: configured,
+		SetupDeferred:   configured && !executed,
+		SetupExecuted:   executed,
+		SetupRunning:    running,
+	}
+
+	if errVal, ok := pm.deferredSetupError.Load().(string); ok && errVal != "" {
+		status.SetupError = &errVal
+	}
+
+	return status
+}
+
 // ExecuteDeferredSetup executes the deferred setup script if configured and not yet executed.
 // This is called by the HTTP proxy on the first request to complete setup before starting the process.
 // Execution is idempotent - concurrent calls will block and only one will execute the setup.
@@ -608,7 +647,12 @@ func (pm *ProcessManager) ExecuteDeferredSetup() error {
 
 	// Execute setup script
 	slog.Info("process.deferred_setup.executing", "setup_script", setupScript, "timeout", timeout)
-	if err := RunSetupScriptInternal(setupScript, timeout); err != nil {
+	pm.deferredSetupRunning.Store(true)
+	pm.deferredSetupError.Store("") // Clear previous error
+	defer pm.deferredSetupRunning.Store(false)
+
+	if err := RunSetupScriptInternal(setupScript, timeout, pm.pid1Mgr); err != nil {
+		pm.deferredSetupError.Store(err.Error())
 		slog.Error("process.deferred_setup.failed", "setup_script", setupScript, "error", err)
 		return fmt.Errorf("deferred setup failed: %w", err)
 	}

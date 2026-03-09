@@ -946,6 +946,72 @@ func TestProcessManager_HasDeferredSetup(t *testing.T) {
 	}
 }
 
+// TestProcessManager_GetSetupStatus tests the GetSetupStatus method across different states
+func TestProcessManager_GetSetupStatus(t *testing.T) {
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+
+	t.Run("default_no_setup", func(t *testing.T) {
+		pm := NewProcessManager(logMgr, pid1Mgr)
+		status := pm.GetSetupStatus()
+
+		assert.False(t, status.SetupConfigured, "should not be configured")
+		assert.False(t, status.SetupDeferred, "should not be deferred")
+		assert.False(t, status.SetupExecuted, "should not be executed")
+		assert.False(t, status.SetupRunning, "should not be running")
+		assert.Nil(t, status.SetupError, "should have no error")
+	})
+
+	t.Run("configured_pending", func(t *testing.T) {
+		pm := NewProcessManager(logMgr, pid1Mgr)
+		pm.SetDeferredSetup("/app/setup.sh", 5*time.Minute, validation.ProcessStartRequest{})
+		status := pm.GetSetupStatus()
+
+		assert.True(t, status.SetupConfigured, "should be configured")
+		assert.True(t, status.SetupDeferred, "should be deferred")
+		assert.False(t, status.SetupExecuted, "should not be executed")
+		assert.False(t, status.SetupRunning, "should not be running")
+		assert.Nil(t, status.SetupError, "should have no error")
+	})
+
+	t.Run("executed_success", func(t *testing.T) {
+		pm := NewProcessManager(logMgr, pid1Mgr)
+
+		tmpScript := t.TempDir() + "/test-setup.sh"
+		require.NoError(t, os.WriteFile(tmpScript, []byte("#!/bin/sh\nexit 0\n"), 0755))
+
+		pm.SetDeferredSetup(tmpScript, 10*time.Second, validation.ProcessStartRequest{})
+		require.NoError(t, pm.ExecuteDeferredSetup())
+
+		status := pm.GetSetupStatus()
+
+		assert.True(t, status.SetupConfigured, "should be configured")
+		assert.False(t, status.SetupDeferred, "should no longer be deferred after execution")
+		assert.True(t, status.SetupExecuted, "should be executed")
+		assert.False(t, status.SetupRunning, "should not be running")
+		assert.Nil(t, status.SetupError, "should have no error")
+	})
+
+	t.Run("executed_failure", func(t *testing.T) {
+		pm := NewProcessManager(logMgr, pid1Mgr)
+
+		tmpScript := t.TempDir() + "/test-setup-fail.sh"
+		require.NoError(t, os.WriteFile(tmpScript, []byte("#!/bin/sh\nexit 1\n"), 0755))
+
+		pm.SetDeferredSetup(tmpScript, 10*time.Second, validation.ProcessStartRequest{})
+		_ = pm.ExecuteDeferredSetup() // Expected to fail
+
+		status := pm.GetSetupStatus()
+
+		assert.True(t, status.SetupConfigured, "should be configured")
+		assert.True(t, status.SetupDeferred, "should still be deferred after failure")
+		assert.False(t, status.SetupExecuted, "should not be marked as executed on failure")
+		assert.False(t, status.SetupRunning, "should not be running after completion")
+		assert.NotNil(t, status.SetupError, "should have an error")
+		assert.Contains(t, *status.SetupError, "setup script failed", "error should mention script failure")
+	})
+}
+
 // TestProcessManager_ExecuteDeferredSetup_NoConfiguration tests error when not configured
 func TestProcessManager_ExecuteDeferredSetup_NoConfiguration(t *testing.T) {
 	logMgr := logs.NewManager(100)

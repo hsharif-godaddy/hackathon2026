@@ -13,11 +13,15 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 )
 
 // RunSetupScriptInternal executes a setup script with structured logging, timeout, and signal cancellation.
 // This is called by main.go for immediate setup and by ProcessManager.ExecuteDeferredSetup for deferred setup.
-func RunSetupScriptInternal(scriptPath string, timeout time.Duration) error {
+// When pid1Mgr is non-nil, the child process is registered with the PID1 manager so the orphan reaper
+// skips it — preventing "waitid: no child processes" errors when running as PID 1.
+func RunSetupScriptInternal(scriptPath string, timeout time.Duration, pid1Mgr *process.PID1Manager) error {
 	if scriptPath == "" {
 		slog.Info("startup.setup.not_configured", "behavior", "skip_setup")
 		return nil
@@ -81,8 +85,19 @@ func RunSetupScriptInternal(scriptPath string, timeout time.Duration) error {
 
 	// Start the command first, then start streaming goroutines
 	// This prevents goroutine leaks if cmd.Start() fails
-	if err := cmd.Start(); err != nil {
+	if err = cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start setup script: %w", err)
+	}
+
+	// Register with PID1 manager so the orphan reaper skips this process.
+	// nil managedProcess = tracked in map (reaper skips it) but no lifecycle watcher.
+	//
+	// Note: there is a tiny window between cmd.Start() and RegisterChildProcess() where a
+	// very short-lived script could exit and be reaped before registration. In practice this
+	// is negligible (microseconds) and only affects scripts that exit immediately. The previous
+	// code had no registration at all, so this is a substantial improvement.
+	if pid1Mgr != nil {
+		pid1Mgr.RegisterChildProcess(cmd.Process, nil)
 	}
 
 	var wg sync.WaitGroup
@@ -100,7 +115,14 @@ func RunSetupScriptInternal(scriptPath string, timeout time.Duration) error {
 
 	wg.Wait()
 
-	if err := cmd.Wait(); err != nil {
+	err = cmd.Wait()
+
+	// Unregister AFTER Wait so the reaper cannot steal the exit status while we're waiting.
+	if pid1Mgr != nil {
+		pid1Mgr.UnregisterChildProcess(cmd.Process.Pid)
+	}
+
+	if err != nil {
 		// Check if it was canceled due to timeout or signal
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			slog.Error("startup.setup.timeout", "script", scriptPath, "timeout", timeout)

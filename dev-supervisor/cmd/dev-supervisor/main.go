@@ -191,6 +191,9 @@ func (s *Server) setupRoutes() {
 	proxyRouter.HandleFunc("/status", s.handleProxyStatus).Methods("GET")
 	proxyRouter.HandleFunc("/config", s.handleProxyConfig).Methods("GET")
 
+	// Setup status endpoint
+	s.router.HandleFunc("/setup/status", s.handleSetupStatus).Methods("GET")
+
 	// Publish endpoints (V4 unified job architecture)
 	s.router.HandleFunc("/publish", s.handlePublish).Methods("POST")
 	s.router.HandleFunc("/publish/status", s.handlePublishStatus).Methods("GET")
@@ -832,7 +835,10 @@ func handleConditionalSetup(server *Server, cfg *Config, startReq validation.Pro
 		return true
 	}
 
-	if err := processmanager.RunSetupScriptInternal(cfg.SetupScript, cfg.SetupScriptTimeout); err != nil {
+	err = processmanager.RunSetupScriptInternal(
+		cfg.SetupScript, cfg.SetupScriptTimeout, server.pid1Mgr,
+	)
+	if err != nil {
 		slog.Error("startup.setup.failed", "error", err)
 		os.Exit(1)
 	}

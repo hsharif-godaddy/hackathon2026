@@ -287,6 +287,22 @@ export interface PublishStatusResponse {
 }
 
 /**
+ * Response from /setup/status endpoint
+ */
+export interface SetupStatus {
+  /** Whether a setup script is configured */
+  setup_configured: boolean;
+  /** Whether setup is still deferred/pending (configured but not yet executed) */
+  setup_deferred: boolean;
+  /** Whether setup has been executed successfully */
+  setup_executed: boolean;
+  /** Whether setup is currently running */
+  setup_running: boolean;
+  /** Error message if setup failed */
+  setup_error: string | null;
+}
+
+/**
  * Client for communicating with dev-supervisor over Unix domain socket or TCP
  */
 export class DevSupervisorClient {
@@ -731,6 +747,21 @@ export class DevSupervisorClient {
       return response as PublishStatusResponse;
     } catch (error) {
       this.logger.error('dev_supervisor.publish_status.failure', {
+        error: getErrorMessage(error)
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get setup script status (deferred setup tracking)
+   */
+  async getSetupStatus(): Promise<SetupStatus> {
+    try {
+      const response = await this.makeRequest('GET', '/setup/status');
+      return response;
+    } catch (error) {
+      this.logger.error('dev_supervisor.setup_status.failure', {
         error: getErrorMessage(error)
       });
       throw error;

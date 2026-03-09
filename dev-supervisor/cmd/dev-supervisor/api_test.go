@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -1122,6 +1123,165 @@ func TestHandleHealthConfigSetPartialConfig(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status code 200, got %d", w.Code)
+	}
+}
+
+func TestHandleSetupStatus_NoSetup(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/setup/status", nil)
+	w := httptest.NewRecorder()
+
+	server.handleSetupStatus(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status code 200, got %d", w.Code)
+	}
+
+	var response processmanager.SetupStatus
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.SetupConfigured {
+		t.Error("Expected setup_configured to be false")
+	}
+	if response.SetupDeferred {
+		t.Error("Expected setup_deferred to be false")
+	}
+	if response.SetupExecuted {
+		t.Error("Expected setup_executed to be false")
+	}
+	if response.SetupRunning {
+		t.Error("Expected setup_running to be false")
+	}
+	if response.SetupError != nil {
+		t.Errorf("Expected setup_error to be nil, got %v", response.SetupError)
+	}
+}
+
+func TestHandleSetupStatus_DeferredPending(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer()
+
+	// Configure deferred setup
+	server.procMgr.SetDeferredSetup("/nonexistent/setup.sh", 10*time.Minute, validation.ProcessStartRequest{
+		Command:    "npm start",
+		WorkingDir: "/app",
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/setup/status", nil)
+	w := httptest.NewRecorder()
+
+	server.handleSetupStatus(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status code 200, got %d", w.Code)
+	}
+
+	var response processmanager.SetupStatus
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if !response.SetupConfigured {
+		t.Error("Expected setup_configured to be true")
+	}
+	if !response.SetupDeferred {
+		t.Error("Expected setup_deferred to be true")
+	}
+	if response.SetupExecuted {
+		t.Error("Expected setup_executed to be false")
+	}
+	if response.SetupRunning {
+		t.Error("Expected setup_running to be false")
+	}
+}
+
+func TestHandleSetupStatus_DeferredExecuted(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer()
+
+	// Create a test script that succeeds
+	tmpDir := t.TempDir()
+	scriptPath := tmpDir + "/test-setup.sh"
+	scriptContent := "#!/bin/sh\necho 'Setup complete'\nexit 0\n"
+	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
+		t.Fatalf("Failed to write test script: %v", err)
+	}
+
+	// Configure and execute deferred setup
+	server.procMgr.SetDeferredSetup(scriptPath, 10*time.Second, validation.ProcessStartRequest{})
+	if err := server.procMgr.ExecuteDeferredSetup(); err != nil {
+		t.Fatalf("Failed to execute deferred setup: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/setup/status", nil)
+	w := httptest.NewRecorder()
+
+	server.handleSetupStatus(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status code 200, got %d", w.Code)
+	}
+
+	var response processmanager.SetupStatus
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if !response.SetupConfigured {
+		t.Error("Expected setup_configured to be true")
+	}
+	if response.SetupDeferred {
+		t.Error("Expected setup_deferred to be false after execution")
+	}
+	if !response.SetupExecuted {
+		t.Error("Expected setup_executed to be true")
+	}
+	if response.SetupRunning {
+		t.Error("Expected setup_running to be false after completion")
+	}
+	if response.SetupError != nil {
+		t.Errorf("Expected setup_error to be nil, got %v", response.SetupError)
+	}
+}
+
+func TestHandleProcessStart_DeferredSetupFailure(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer()
+
+	// Configure deferred setup with a script that fails
+	tmpDir := t.TempDir()
+	scriptPath := tmpDir + "/fail-setup.sh"
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/sh\nexit 1\n"), 0755); err != nil {
+		t.Fatalf("Failed to write test script: %v", err)
+	}
+
+	server.procMgr.SetDeferredSetup(scriptPath, 10*time.Second, validation.ProcessStartRequest{})
+
+	body := `{"command":"npm start","working_dir":"/app"}`
+	req := httptest.NewRequest(http.MethodPost, "/process/start", strings.NewReader(body))
+	w := httptest.NewRecorder()
+
+	server.handleProcessStart(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status code 500, got %d", w.Code)
+	}
+
+	var response ErrorResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.Error != "setup_failed" {
+		t.Errorf("Expected error code 'setup_failed', got %q", response.Error)
 	}
 }
 

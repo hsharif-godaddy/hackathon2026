@@ -75,6 +75,14 @@ func (s *Server) handleInfo(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
+func (s *Server) handleSetupStatus(w http.ResponseWriter, _ *http.Request) {
+	status := s.procMgr.GetSetupStatus()
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(status); err != nil {
+		slog.Error("failed to encode setup status response", "error", err)
+	}
+}
+
 func (s *Server) handleProcessStart(w http.ResponseWriter, r *http.Request) {
 	var req validation.ProcessStartRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -90,6 +98,15 @@ func (s *Server) handleProcessStart(w http.ResponseWriter, r *http.Request) {
 
 	// Sanitize command
 	req.Command = validation.SanitizeCommand(req.Command)
+
+	// Run deferred setup if pending (safety net — normally triggered by HTTP proxy via iframe)
+	if s.procMgr.HasDeferredSetup() {
+		if err := s.procMgr.ExecuteDeferredSetup(); err != nil {
+			slog.Error("process.start.deferred_setup_failed", "error", err)
+			s.sendError(w, http.StatusInternalServerError, "setup_failed", err.Error())
+			return
+		}
+	}
 
 	if err := s.procMgr.Start(req); err != nil {
 		s.sendError(w, http.StatusBadRequest, "start_failed", err.Error())

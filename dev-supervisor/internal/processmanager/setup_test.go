@@ -12,7 +12,7 @@ import (
 
 // TestRunSetupScriptInternal_NoScript tests that when no script is configured, it returns success
 func TestRunSetupScriptInternal_NoScript(t *testing.T) {
-	err := processmanager.RunSetupScriptInternal("", 10*time.Minute)
+	err := processmanager.RunSetupScriptInternal("", 10*time.Minute, nil)
 	if err != nil {
 		t.Fatalf("should not error when no script configured: %v", err)
 	}
@@ -28,7 +28,7 @@ func TestRunSetupScriptInternal_Success(t *testing.T) {
 		t.Fatalf("should write test script: %v", err)
 	}
 
-	err = processmanager.RunSetupScriptInternal(scriptPath, 10*time.Minute)
+	err = processmanager.RunSetupScriptInternal(scriptPath, 10*time.Minute, nil)
 	if err != nil {
 		t.Fatalf("should not error on successful script: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestRunSetupScriptInternal_Failure(t *testing.T) {
 		t.Fatalf("should write test script: %v", err)
 	}
 
-	err = processmanager.RunSetupScriptInternal(scriptPath, 10*time.Minute)
+	err = processmanager.RunSetupScriptInternal(scriptPath, 10*time.Minute, nil)
 	if err == nil {
 		t.Fatal("should error on failing script")
 	}
@@ -63,7 +63,7 @@ func TestRunSetupScriptInternal_OutputStreaming(t *testing.T) {
 		t.Fatalf("should write test script: %v", err)
 	}
 
-	err = processmanager.RunSetupScriptInternal(scriptPath, 10*time.Minute)
+	err = processmanager.RunSetupScriptInternal(scriptPath, 10*time.Minute, nil)
 	if err != nil {
 		t.Fatalf("should not error on successful script with output: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestRunSetupScriptInternal_OutputStreaming(t *testing.T) {
 
 // TestRunSetupScriptInternal_ScriptNotFound tests handling of missing script
 func TestRunSetupScriptInternal_ScriptNotFound(t *testing.T) {
-	err := processmanager.RunSetupScriptInternal("/nonexistent/setup.sh", 10*time.Minute)
+	err := processmanager.RunSetupScriptInternal("/nonexistent/setup.sh", 10*time.Minute, nil)
 	if err == nil {
 		t.Fatal("should error on missing script")
 	}
@@ -87,7 +87,7 @@ func TestRunSetupScriptInternal_Timeout(t *testing.T) {
 		t.Fatalf("should write test script: %v", err)
 	}
 
-	err = processmanager.RunSetupScriptInternal(scriptPath, 500*time.Millisecond)
+	err = processmanager.RunSetupScriptInternal(scriptPath, 500*time.Millisecond, nil)
 	if err == nil {
 		t.Fatal("should error on timeout")
 	}
@@ -111,7 +111,7 @@ func TestRunSetupScriptInternal_PermissionDenied(t *testing.T) {
 		t.Fatalf("should write test script: %v", err)
 	}
 
-	err = processmanager.RunSetupScriptInternal(scriptPath, 10*time.Minute)
+	err = processmanager.RunSetupScriptInternal(scriptPath, 10*time.Minute, nil)
 	if err == nil {
 		t.Fatal("should error on permission denied")
 	}
