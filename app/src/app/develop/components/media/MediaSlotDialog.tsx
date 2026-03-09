@@ -451,6 +451,7 @@ export function MediaSlotDialog() {
   )
 
   const allImages = slot ? [slot.currentUrl, ...slot.alternatives] : []
+  const previewSrc = getSlotImageUrl(activeSlotName, allImages[selectedImageIndex] || allImages[0] || '', previewBaseUrl)
 
   const SkeletonContent = () => (
     <div className="flex flex-col gap-2">
@@ -467,7 +468,7 @@ export function MediaSlotDialog() {
       </div>
 
       {/* Main image skeleton */}
-      <Skeleton width="100%" height="250px" className="aspect-video" />
+      <Skeleton width="100%" height="250px" />
 
       {/* Image options skeleton */}
       <div className="space-y-2">
@@ -593,12 +594,21 @@ export function MediaSlotDialog() {
               </div>
 
               {/* Full Width Selected Image */}
-              <div className="w-full overflow-hidden aspect-video flex items-center justify-center">
+              <div className="relative w-full h-[250px] overflow-hidden rounded-md">
+                {/* Blurred background fill */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={getSlotImageUrl(activeSlotName, allImages[selectedImageIndex] || allImages[0] || '', previewBaseUrl)}
+                  src={previewSrc}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl brightness-75"
+                />
+                {/* Main image */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={previewSrc}
                   alt={t('builder_mediaslot_selected_image')}
-                  className="w-full h-auto max-h-[250px]"
+                  className="relative w-full h-full object-contain"
                 />
               </div>
 
