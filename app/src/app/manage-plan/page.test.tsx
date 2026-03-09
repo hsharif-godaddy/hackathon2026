@@ -261,6 +261,48 @@ describe('ManagePlan', function managePlanTests() {
     });
   });
 
+  describe('new account zero state', function newAccountZeroStateTests() {
+    beforeEach(function setupFeatureEnabled() {
+      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+    });
+
+    it('should show new account zero state when subscription does not exist', function showZeroState() {
+      mockUseActiveSubscription.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        isError: false,
+      });
+      mockUseCreditGrants.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        isError: false,
+      });
+
+      renderWithProviders(<ManagePlan />);
+
+      expect(screen.getByText('builder_manageplan_newaccount_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_manageplan_newaccount_description')).toBeInTheDocument();
+      expect(screen.getByText('builder_manageplan_newaccount_cta')).toBeInTheDocument();
+    });
+
+    it('should not show regular content when subscription does not exist', function hideRegularContent() {
+      mockUseActiveSubscription.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        isError: false,
+      });
+      mockUseCreditGrants.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        isError: false,
+      });
+
+      renderWithProviders(<ManagePlan />);
+
+      expect(screen.queryByText('builder_manageplan_title')).not.toBeInTheDocument();
+    });
+  });
+
   describe('error states', function errorTests() {
     beforeEach(function setupFeatureEnabled() {
       mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });

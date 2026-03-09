@@ -14,6 +14,7 @@ import {
   DowngradeModal,
   DowngradeScheduledAlert,
   ManagePlanSkeleton,
+  NewAccountZeroState,
   PageLayout,
   TotalCreditsCard,
 } from '@/app/manage-plan/components';
@@ -180,6 +181,14 @@ function ManagePlanContent() {
     return (
       <PageLayout>
           <text.p as="paragraph" className="text-center" text={t('builder_manageplan_error')} />
+      </PageLayout>
+    );
+  }
+
+  if (!subscription) {
+    return (
+      <PageLayout>
+        <NewAccountZeroState />
       </PageLayout>
     );
   }
