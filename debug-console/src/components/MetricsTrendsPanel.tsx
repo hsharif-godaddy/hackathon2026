@@ -13,20 +13,7 @@ import {
     YAxis,
 } from 'recharts';
 
-interface MetricDataPoint {
-    name: string;
-    time_dimension: string;
-    avg_value: number;
-}
-
-interface MetricsResponse {
-    data: MetricDataPoint[];
-}
-
-interface ChartDataPoint {
-    time: string;
-    [key: string]: string | number;
-}
+import type { ChartDataPoint, MetricsResponse } from '@/lib/langfuse-types';
 
 interface MetricsTrendsPanelProps {
     compact?: boolean;

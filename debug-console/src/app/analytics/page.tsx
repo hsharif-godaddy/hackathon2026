@@ -632,10 +632,6 @@ function AnalyticsContent() {
     return `${d.getMonth() + 1}/${d.getDate()}`;
   }
 
-  function formatNumber(n: number) {
-    return n.toLocaleString();
-  }
-
   // Preset button style
   const presetBtn = (preset: DatePreset, label: string) => (
     <button

@@ -41,7 +41,7 @@ export interface LogSourceConfig {
   fieldMapping: FieldMapping;
 }
 
-export interface LogSourceRegistry {
+interface LogSourceRegistry {
   [sourceId: string]: LogSourceConfig;
 }
 

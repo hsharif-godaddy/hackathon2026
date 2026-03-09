@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 
+import { formatTimestamp } from '@/lib/date-utils';
+
 interface PublishEvent {
   id: string;
   timestamp: string;
@@ -26,30 +28,9 @@ interface Props {
   onRefresh?: () => void;
 }
 
+const DAYS_FOR_RANGE: Record<string, number> = { '15m': 1, '1h': 1, '6h': 1, '24h': 1, '7d': 7 };
 function timeRangeToDays(timeRange: string): number {
-  switch (timeRange) {
-    case '15m': return 1;
-    case '1h': return 1;
-    case '6h': return 1;
-    case '24h': return 1;
-    case '7d': return 7;
-    default: return 7;
-  }
-}
-
-function formatTimestamp(timestamp: string): string {
-  try {
-    return new Date(timestamp).toLocaleString('en-US', {
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
-    });
-  } catch {
-    return timestamp;
-  }
+  return DAYS_FOR_RANGE[timeRange] ?? 7;
 }
 
 function getEventTypeStyle(eventType: PublishEvent['eventType']): React.CSSProperties {

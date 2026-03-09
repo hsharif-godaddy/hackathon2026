@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
 import { buildAppIdQuery, getAllLogSources } from '@/lib/log-sources';
+import { parseTimeRange } from '@/lib/time-range';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -38,23 +39,7 @@ export const GET = withAuth(async (request) => {
     const sources = getAllLogSources();
     const sourceIds = ['airo-agents', 'control-plane'];
 
-    const endTime: Date = new Date();
-    const now = new Date();
-    const value = parseInt(timeRange.slice(0, -1), 10);
-    const unit = timeRange.slice(-1);
-    const startTime = new Date(now);
-
-    switch (unit) {
-      case 'm':
-        startTime.setMinutes(startTime.getMinutes() - value);
-        break;
-      case 'h':
-        startTime.setHours(startTime.getHours() - value);
-        break;
-      case 'd':
-        startTime.setDate(startTime.getDate() - value);
-        break;
-    }
+    const { startTime, endTime } = parseTimeRange(timeRange);
 
     const allErrors: ErrorDetail[] = [];
 

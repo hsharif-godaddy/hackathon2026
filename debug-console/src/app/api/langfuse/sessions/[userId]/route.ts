@@ -1,15 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
-
-const LANGFUSE_BASE_URL = process.env.LANGFUSE_BASE_URL;
-const LANGFUSE_PUBLIC_KEY = process.env.LANGFUSE_PUBLIC_KEY;
-const LANGFUSE_SECRET_KEY = process.env.LANGFUSE_SECRET_KEY;
-
-// Cache auth header at module level to avoid exposing in error responses
-const langfuseAuthHeader = LANGFUSE_PUBLIC_KEY && LANGFUSE_SECRET_KEY
-  ? `Basic ${Buffer.from(`${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}`).toString('base64')}`
-  : null;
+import { getLangfuseConfig } from '@/lib/langfuse-client';
 
 interface Observation {
   id: string;
@@ -48,7 +40,8 @@ interface TraceWithObservations {
 
 export const GET = withAuth<{ userId: string }>(async (request, _auth, context) => {
   try {
-    if (!LANGFUSE_BASE_URL || !langfuseAuthHeader) {
+    const lf = getLangfuseConfig();
+    if (!lf) {
       return NextResponse.json(
         { error: 'Langfuse credentials not configured' },
         { status: 500 }
@@ -75,9 +68,9 @@ export const GET = withAuth<{ userId: string }>(async (request, _auth, context) 
       tracesParams.append('toTimestamp', toTimestamp);
     }
 
-    const tracesResponse = await fetch(`${LANGFUSE_BASE_URL}/api/public/traces?${tracesParams}`, {
+    const tracesResponse = await fetch(`${lf.baseUrl}/api/public/traces?${tracesParams}`, {
       headers: {
-        'Authorization': langfuseAuthHeader,
+        'Authorization': lf.authHeader,
         'Content-Type': 'application/json',
       },
     });
@@ -106,9 +99,9 @@ export const GET = withAuth<{ userId: string }>(async (request, _auth, context) 
       const batchResults = await Promise.all(
         batch.map(async (traceId: string) => {
           try {
-            const traceResponse = await fetch(`${LANGFUSE_BASE_URL}/api/public/traces/${traceId}`, {
+            const traceResponse = await fetch(`${lf.baseUrl}/api/public/traces/${traceId}`, {
               headers: {
-                'Authorization': langfuseAuthHeader,
+                'Authorization': lf.authHeader,
                 'Content-Type': 'application/json',
               },
             });

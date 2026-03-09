@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { buildAppIdQuery, getAllLogSources, getNestedValue } from '@/lib/log-sources';
 import type { FieldMapping } from '@/lib/log-sources';
+import { parseTimeRange } from '@/lib/time-range';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -148,30 +149,7 @@ async function fetchLogsForApp(
   const allLogs: LogEntryWithSourceConfig[] = [];
   const sources = getAllLogSources();
 
-  let startTime: Date;
-  let endTime: Date = new Date();
-
-  if (customStartTime && customEndTime) {
-    startTime = new Date(customStartTime);
-    endTime = new Date(customEndTime);
-  } else {
-    const now = new Date();
-    const value = parseInt(timeRange.slice(0, -1), 10);
-    const unit = timeRange.slice(-1);
-    startTime = new Date(now);
-
-    switch (unit) {
-      case 'm':
-        startTime.setMinutes(startTime.getMinutes() - value);
-        break;
-      case 'h':
-        startTime.setHours(startTime.getHours() - value);
-        break;
-      case 'd':
-        startTime.setDate(startTime.getDate() - value);
-        break;
-    }
-  }
+  const { startTime, endTime } = parseTimeRange(timeRange, { customStartTime, customEndTime });
 
   for (const sourceId of sourceIds) {
     const sourceConfig = sources.find((s) => s.id === sourceId);
@@ -242,6 +220,36 @@ async function fetchLogsForApp(
   );
 }
 
+interface AggBucket {
+  key: string;
+  doc_count: number;
+  last_seen?: { value_as_string?: string };
+  top_event?: { buckets?: Array<{ key: string }> };
+}
+
+function mergeAggregationBuckets(
+  buckets: AggBucket[] | undefined,
+  map: Map<string, { count: number; lastSeen: string | null; event: string | null }>
+): void {
+  if (!buckets) return;
+  for (const bucket of buckets) {
+    const msg = bucket.key;
+    if (msg && msg.trim()) {
+      const existing = map.get(msg) || { count: 0, lastSeen: null, event: null };
+      const bucketLastSeen = bucket.last_seen?.value_as_string || null;
+      const bucketEvent = bucket.top_event?.buckets?.[0]?.key || null;
+      const newLastSeen = bucketLastSeen && (!existing.lastSeen || bucketLastSeen > existing.lastSeen)
+        ? bucketLastSeen
+        : existing.lastSeen;
+      map.set(msg, {
+        count: existing.count + bucket.doc_count,
+        lastSeen: newLastSeen,
+        event: existing.event || bucketEvent
+      });
+    }
+  }
+}
+
 interface ErrorGroup {
   message: string;
   count: number;
@@ -262,24 +270,7 @@ async function fetchErrorSummary(
 ): Promise<ErrorSummaryResult> {
   const sources = getAllLogSources();
 
-  const endTime: Date = new Date();
-  const now = new Date();
-  const value = parseInt(timeRange.slice(0, -1), 10);
-  const unit = timeRange.slice(-1);
-  const startTime = new Date(now);
-
-  switch (unit) {
-    case 'm':
-      startTime.setMinutes(startTime.getMinutes() - value);
-      break;
-    case 'h':
-      startTime.setHours(startTime.getHours() - value);
-      break;
-    case 'd':
-      startTime.setDate(startTime.getDate() - value);
-      break;
-  }
-
+  const { startTime, endTime } = parseTimeRange(timeRange);
   const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   let totalErrors = 0;
@@ -408,65 +399,10 @@ async function fetchErrorSummary(
         totalErrors += data.hits?.total?.value || 0;
         last24HoursCount += data.aggregations?.last_24h_count?.doc_count || 0;
 
-        // Process error_messages aggregation (main message field)
-        if (data.aggregations?.error_messages?.buckets) {
-          for (const bucket of data.aggregations.error_messages.buckets) {
-            const msg = bucket.key as string;
-            if (msg && msg.trim()) {
-              const existing = messageCountMap.get(msg) || { count: 0, lastSeen: null, event: null };
-              const bucketLastSeen = bucket.last_seen?.value_as_string || null;
-              const bucketEvent = bucket.top_event?.buckets?.[0]?.key || null;
-              const newLastSeen = bucketLastSeen && (!existing.lastSeen || bucketLastSeen > existing.lastSeen)
-                ? bucketLastSeen
-                : existing.lastSeen;
-              messageCountMap.set(msg, {
-                count: existing.count + bucket.doc_count,
-                lastSeen: newLastSeen,
-                event: existing.event || bucketEvent
-              });
-            }
-          }
-        }
-
-        // Process data.error aggregation (nested error field)
-        if (data.aggregations?.data_error_messages?.buckets) {
-          for (const bucket of data.aggregations.data_error_messages.buckets) {
-            const msg = bucket.key as string;
-            if (msg && msg.trim()) {
-              const existing = messageCountMap.get(msg) || { count: 0, lastSeen: null, event: null };
-              const bucketLastSeen = bucket.last_seen?.value_as_string || null;
-              const bucketEvent = bucket.top_event?.buckets?.[0]?.key || null;
-              const newLastSeen = bucketLastSeen && (!existing.lastSeen || bucketLastSeen > existing.lastSeen)
-                ? bucketLastSeen
-                : existing.lastSeen;
-              messageCountMap.set(msg, {
-                count: existing.count + bucket.doc_count,
-                lastSeen: newLastSeen,
-                event: existing.event || bucketEvent
-              });
-            }
-          }
-        }
-
-        // Process data.message aggregation (nested message field)
-        if (data.aggregations?.data_message_errors?.buckets) {
-          for (const bucket of data.aggregations.data_message_errors.buckets) {
-            const msg = bucket.key as string;
-            if (msg && msg.trim()) {
-              const existing = messageCountMap.get(msg) || { count: 0, lastSeen: null, event: null };
-              const bucketLastSeen = bucket.last_seen?.value_as_string || null;
-              const bucketEvent = bucket.top_event?.buckets?.[0]?.key || null;
-              const newLastSeen = bucketLastSeen && (!existing.lastSeen || bucketLastSeen > existing.lastSeen)
-                ? bucketLastSeen
-                : existing.lastSeen;
-              messageCountMap.set(msg, {
-                count: existing.count + bucket.doc_count,
-                lastSeen: newLastSeen,
-                event: existing.event || bucketEvent
-              });
-            }
-          }
-        }
+        // Process error_messages (main message field), data.error, and data.message aggregations
+        mergeAggregationBuckets(data.aggregations?.error_messages?.buckets, messageCountMap);
+        mergeAggregationBuckets(data.aggregations?.data_error_messages?.buckets, messageCountMap);
+        mergeAggregationBuckets(data.aggregations?.data_message_errors?.buckets, messageCountMap);
       }
     } catch (error) {
       console.error('Error fetching error summary from source:', sourceId, error);
@@ -715,30 +651,7 @@ async function fetchAPMTraces(
   }
 
   try {
-    let startTime: Date;
-    let endTime: Date = new Date();
-
-    if (customStartTime && customEndTime) {
-      startTime = new Date(customStartTime);
-      endTime = new Date(customEndTime);
-    } else {
-      const now = new Date();
-      const value = parseInt(timeRange.slice(0, -1), 10);
-      const unit = timeRange.slice(-1);
-      startTime = new Date(now);
-
-      switch (unit) {
-        case 'm':
-          startTime.setMinutes(startTime.getMinutes() - value);
-          break;
-        case 'h':
-          startTime.setHours(startTime.getHours() - value);
-          break;
-        case 'd':
-          startTime.setDate(startTime.getDate() - value);
-          break;
-      }
-    }
+    const { startTime, endTime } = parseTimeRange(timeRange, { customStartTime, customEndTime });
 
     // Step 1: Get trace IDs from transactions using Elasticsearch Query DSL
     const searchUrl = endpoint.endsWith('/')

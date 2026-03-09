@@ -1471,34 +1471,6 @@ export async function getHealthMetrics() {
   };
 }
 
-// Get max timestamp from all indices (for scheduler)
-export async function getMaxTimestamp(): Promise<Date | null> {
-  const maxTimestamps = await Promise.all(Object.values(INDICES).map(async (indexName) => {
-    try {
-      const response = await writeClient.search({
-        index: indexName,
-        size: 1,
-        body: {
-          sort: [{ timestamp: 'desc' }],
-          _source: ['timestamp']
-        }
-      });
-      if (response.hits.hits.length > 0) {
-        return new Date((response.hits.hits[0]._source as { timestamp: string }).timestamp);
-      }
-    } catch {
-      // Index might not exist
-    }
-    return null;
-  }));
-
-  return maxTimestamps.reduce((latest, current) => {
-    if (!latest) return current;
-    if (!current) return latest;
-    return current > latest ? current : latest;
-  }, null);
-}
-
 export async function init() {
   await initIndices();
 }
@@ -1659,4 +1631,3 @@ export async function getAppErrors(appId: string, fromTimestamp?: string) {
 }
 
 export { INDICES };
-

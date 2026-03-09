@@ -4,6 +4,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import AppDetailsPanel from '@/components/AppDetailsPanel';
+import type { MgmtSubscription, MgmtSubscriptionGrants } from '@/lib/mgmt-control-plane-adapter';
+import { formatTimestamp } from '@/lib/date-utils';
 import LangfusePanel from '@/components/LangfusePanel';
 import LogsPanel, { type LogSource } from '@/components/LogsPanel';
 import PublishEventsPanel from '@/components/PublishEventsPanel';
@@ -45,34 +47,110 @@ interface SpendDay {
   completionTokens: number;
   totalTokens: number;
   cacheReadTokens: number;
+  cacheWriteTokens: number;
   requests: number;
 }
 
+interface GrantBreakdown {
+  grantUserId: string;
+  totalSpend: number;
+  totalTokens: number;
+  totalRequests: number;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  totalCacheReadTokens: number;
+  totalCacheWriteTokens: number;
+  dailySpend: SpendDay[];
+}
+
 interface LlmSpendData {
-  subscriptionId: string;
+  subscriptionId?: string;
   grantUserIds: string[];
   totalSpend: number;
   totalTokens: number;
   totalRequests: number;
-  dailySpend: SpendDay[];
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  totalCacheReadTokens: number;
+  totalCacheWriteTokens: number;
+  grantBreakdowns: GrantBreakdown[];
   docCount: number;
+  truncated?: boolean;
 }
 
 type TabId = 'details' | 'summary' | 'conversation' | 'agent-logs' | 'ui-logs' | 'hosting-logs' | 'publish' | 'llm-spend';
 
-function formatTimestamp(timestamp: string): string {
-  try {
-    return new Date(timestamp).toLocaleString('en-US', {
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
-    });
-  } catch {
-    return timestamp;
-  }
+
+function GrantSpendSection({ grant, mgmtGrant, isActive }: { grant: GrantBreakdown; mgmtGrant?: import('@/lib/mgmt-control-plane-adapter').MgmtGrant; isActive?: boolean }) {
+  const [expanded, setExpanded] = React.useState(true);
+  const fmt = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k` : String(n);
+  const pct = mgmtGrant && mgmtGrant.creditsMax > 0 ? Math.min(100, Math.round(mgmtGrant.creditsSpent / mgmtGrant.creditsMax * 100)) : null;
+  return (
+    <div style={{ border: '1px solid #e5e7eb', borderRadius: '6px', overflow: 'hidden' }}>
+      {/* Grant header */}
+      <button
+        onClick={() => setExpanded(e => !e)}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 1rem', backgroundColor: '#f9fafb', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+      >
+        <span style={{ fontSize: '0.65rem', color: '#6b7280' }}>{expanded ? '▼' : '▶'}</span>
+        <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: '#1f2937', fontWeight: 600, flexShrink: 0 }}>{grant.grantUserId}</span>
+        {isActive && <span style={{ fontSize: '0.6rem', color: '#2563eb', backgroundColor: '#dbeafe', padding: '0.1rem 0.35rem', borderRadius: '9999px', fontWeight: 600, flexShrink: 0 }}>active</span>}
+        {mgmtGrant && <span style={{ fontSize: '0.7rem', color: mgmtGrant.isAvailable ? '#16a34a' : '#6b7280', flexShrink: 0 }}>{mgmtGrant.isAvailable ? 'available' : (mgmtGrant.finalState ?? 'unavailable')}</span>}
+        {/* Credit gauge */}
+        {pct !== null && mgmtGrant && (
+          <>
+            <div style={{ width: '80px', height: '4px', backgroundColor: '#e5e7eb', borderRadius: '2px', overflow: 'hidden', flexShrink: 0 }}>
+              <div style={{ width: `${pct}%`, height: '100%', backgroundColor: pct > 90 ? '#ef4444' : '#3b82f6', borderRadius: '2px' }} />
+            </div>
+            <span style={{ fontSize: '0.7rem', fontFamily: 'monospace', color: '#374151', flexShrink: 0 }}>{mgmtGrant.creditsSpent}/{mgmtGrant.creditsMax} ({pct}%)</span>
+            {mgmtGrant.useBefore && <span style={{ fontSize: '0.7rem', color: '#6b7280', flexShrink: 0 }}>until {mgmtGrant.useBefore.split('T')[0]}</span>}
+          </>
+        )}
+        <span style={{ flex: 1 }} />
+        <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: '#059669', fontWeight: 700, flexShrink: 0 }}>${grant.totalSpend.toFixed(4)}</span>
+        <span style={{ fontSize: '0.72rem', color: '#6b7280', flexShrink: 0 }}>{fmt(grant.totalTokens)} tokens</span>
+        <span style={{ fontSize: '0.72rem', color: '#8b5cf6', flexShrink: 0 }}>{grant.totalRequests.toLocaleString()} reqs</span>
+        <span style={{ fontSize: '0.72rem', color: '#6b7280', flexShrink: 0 }}>{grant.dailySpend.length} days</span>
+      </button>
+      {expanded && (
+        <div style={{ padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {/* Daily table */}
+          {grant.dailySpend.length > 0 && (
+            <div style={{ maxHeight: '360px', overflowY: 'auto', border: '1px solid #f3f4f6', borderRadius: '4px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f9fafb', position: 'sticky', top: 0 }}>
+                    <th style={{ padding: '0.4rem 0.75rem', textAlign: 'left', fontWeight: 600, color: '#374151' }}>Date</th>
+                    <th style={{ padding: '0.4rem 0.75rem', textAlign: 'right', fontWeight: 600, color: '#059669' }}>Spend</th>
+                    <th style={{ padding: '0.4rem 0.75rem', textAlign: 'right', fontWeight: 600, color: '#3b82f6' }}>Input</th>
+                    <th style={{ padding: '0.4rem 0.75rem', textAlign: 'right', fontWeight: 600, color: '#8b5cf6' }}>Cache Read</th>
+                    <th style={{ padding: '0.4rem 0.75rem', textAlign: 'right', fontWeight: 600, color: '#d97706' }}>Cache Write</th>
+                    <th style={{ padding: '0.4rem 0.75rem', textAlign: 'right', fontWeight: 600, color: '#10b981' }}>Output</th>
+                    <th style={{ padding: '0.4rem 0.75rem', textAlign: 'right', fontWeight: 600, color: '#374151' }}>Total</th>
+                    <th style={{ padding: '0.4rem 0.75rem', textAlign: 'right', fontWeight: 600, color: '#6b7280' }}>Reqs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {grant.dailySpend.map(day => (
+                    <tr key={day.date} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                      <td style={{ padding: '0.35rem 0.75rem', fontFamily: 'monospace', color: '#374151' }}>{day.date}</td>
+                      <td style={{ padding: '0.35rem 0.75rem', textAlign: 'right', fontFamily: 'monospace', color: '#059669', fontWeight: 600 }}>${day.spend.toFixed(4)}</td>
+                      <td style={{ padding: '0.35rem 0.75rem', textAlign: 'right', fontFamily: 'monospace', color: '#3b82f6' }}>{(day.promptTokens / 1000).toFixed(1)}k</td>
+                      <td style={{ padding: '0.35rem 0.75rem', textAlign: 'right', fontFamily: 'monospace', color: '#8b5cf6' }}>{day.cacheReadTokens > 0 ? `${(day.cacheReadTokens / 1000).toFixed(1)}k` : '—'}</td>
+                      <td style={{ padding: '0.35rem 0.75rem', textAlign: 'right', fontFamily: 'monospace', color: '#d97706' }}>{day.cacheWriteTokens > 0 ? `${(day.cacheWriteTokens / 1000).toFixed(1)}k` : '—'}</td>
+                      <td style={{ padding: '0.35rem 0.75rem', textAlign: 'right', fontFamily: 'monospace', color: '#10b981' }}>{(day.completionTokens / 1000).toFixed(1)}k</td>
+                      <td style={{ padding: '0.35rem 0.75rem', textAlign: 'right', fontFamily: 'monospace', color: '#374151', fontWeight: 500 }}>{(day.totalTokens / 1000).toFixed(1)}k</td>
+                      <td style={{ padding: '0.35rem 0.75rem', textAlign: 'right', fontFamily: 'monospace', color: '#6b7280' }}>{day.requests.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function Dashboard() {
@@ -92,6 +170,13 @@ export default function Dashboard() {
   const [llmSpend, setLlmSpend] = useState<LlmSpendData | null>(null);
   const [llmSpendLoading, setLlmSpendLoading] = useState(false);
   const [llmSpendError, setLlmSpendError] = useState<string | null>(null);
+  // Subscription + grant data lifted from AppDetailsPanel
+  const [mgmtRawSubId, setMgmtRawSubId] = useState<string | null>(null);
+  const [mgmtGrantUserIds, setMgmtGrantUserIds] = useState<string[]>([]);
+  const [mgmtSubscription, setMgmtSubscription] = useState<MgmtSubscription | null>(null);
+  const [mgmtGrants, setMgmtGrants] = useState<MgmtSubscriptionGrants | null>(null);
+  // true once AppDetailsPanel confirms whether a subscription exists or not
+  const [mgmtSubscriptionResolved, setMgmtSubscriptionResolved] = useState(false);
 
   // Refresh keys to trigger re-fetches for each tab
   const [refreshKeys, setRefreshKeys] = useState({
@@ -173,12 +258,21 @@ export default function Dashboard() {
     }
   }, [refreshKeys.summary]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch LLM spend when subscriptionId becomes available.
-  // First fetches grants to collect all llmBudgetUserIds (airo-builder:grant:* / airo-builder:sid:*),
-  // then queries llm-spend with both the billing SID and those user IDs.
+  // Reset mgmt data when the app changes
   useEffect(() => {
-    const billingSid = context?.metadata?.subscriptionId;
-    if (!billingSid) {
+    setMgmtRawSubId(null);
+    setMgmtGrantUserIds([]);
+    setMgmtSubscription(null);
+    setMgmtGrants(null);
+    setMgmtSubscriptionResolved(false);
+    setLlmSpend(null);
+  }, [submittedAppId]);
+
+  // Fetch LLM spend once grants are available from AppDetailsPanel (via onGrantsLoaded callback).
+  // Uses llmBudgetUserId from ALL grants (active + historical) sourced from the mgmt API —
+  // no dependency on the log-derived billing SID from app-context.
+  useEffect(() => {
+    if (mgmtGrantUserIds.length === 0) {
       setLlmSpend(null);
       return;
     }
@@ -187,31 +281,16 @@ export default function Dashboard() {
     setLlmSpendLoading(true);
     setLlmSpendError(null);
 
-    // Extract raw subscription ID (strip 'airo-build:sid:' prefix) to call the mgmt grants API
-    const BILLING_PREFIX = 'airo-build:sid:';
-    const rawSubId = billingSid.startsWith(BILLING_PREFIX) ? billingSid.slice(BILLING_PREFIX.length) : null;
+    const params = new URLSearchParams();
+    if (mgmtRawSubId) params.set('subscriptionId', mgmtRawSubId);
+    for (const uid of mgmtGrantUserIds) {
+      params.append('grantUserId', uid);
+    }
+    // Also include the subscription-level end_user (airo-builder:sid:<subId>) which
+    // may carry spend from calls that use the subscription ID directly (e.g. older billing).
+    if (mgmtRawSubId) params.append('grantUserId', `airo-builder:sid:${mgmtRawSubId}`);
 
-    const grantsPromise = rawSubId
-      ? fetch(`/api/mgmt/subscriptions/${encodeURIComponent(rawSubId)}/grants`, { signal: controller.signal })
-          .then(res => res.ok ? res.json() : null)
-          .catch((err) => {
-            if (err.name === 'AbortError') throw err;
-            return null;
-          })
-      : Promise.resolve(null);
-
-    grantsPromise
-      .then((grantsData: { grants?: Array<{ isAvailable: boolean; llmBudgetUserId?: string }> } | null) => {
-        const grantUserIds: string[] = grantsData?.grants
-          ?.filter(g => g.isAvailable && g.llmBudgetUserId)
-          ?.map(g => g.llmBudgetUserId as string) ?? [];
-
-        const params = new URLSearchParams({ subscriptionId: billingSid });
-        for (const uid of grantUserIds) {
-          params.append('grantUserId', uid);
-        }
-        return fetch(`/api/llm-spend?${params}`, { signal: controller.signal });
-      })
+    fetch(`/api/llm-spend?${params}`, { signal: controller.signal })
       .then(res => {
         if (!res.ok) throw new Error(`Failed to fetch LLM spend: ${res.status}`);
         return res.json();
@@ -227,7 +306,7 @@ export default function Dashboard() {
         setLlmSpendLoading(false);
       });
     return () => controller.abort();
-  }, [context?.metadata?.subscriptionId]);
+  }, [mgmtGrantUserIds, mgmtRawSubId]);
 
   const updateUrl = useCallback((newAppId?: string, newTab?: TabId, newTimeRange?: string) => {
     const params = new URLSearchParams();
@@ -257,6 +336,31 @@ export default function Dashboard() {
       updateUrl(trimmed, 'details');
     }
   };
+
+  // Collect llmBudgetUserId from ALL grants (active + historical) so LLM Spend captures
+  // spend across every billing period — deduplicated to avoid duplicate ES query terms.
+  // Raw subscriptionId from mgmt is stored for display purposes only.
+  const handleGrantsLoaded = useCallback((subscriptionId: string, grants: MgmtSubscriptionGrants) => {
+    setMgmtRawSubId(subscriptionId);
+    const ids = [...new Set(
+      grants.grants
+        .map(g => g.llmBudgetUserId)
+        .filter((id): id is string => Boolean(id))
+    )];
+    setMgmtGrantUserIds(ids);
+  }, []);
+
+  const handleSubscriptionLoaded = useCallback((subscription: MgmtSubscription, grants: MgmtSubscriptionGrants) => {
+    setMgmtSubscription(subscription);
+    setMgmtGrants(grants);
+    setMgmtSubscriptionResolved(true);
+  }, []);
+
+  // Called by AppDetailsPanel when the app has no subscriptionId — marks the tab as resolved
+  // so the Subscription tab doesn't show "Loading…" indefinitely.
+  const handleNoSubscription = useCallback(() => {
+    setMgmtSubscriptionResolved(true);
+  }, []);
 
   const handleClear = () => {
     setAppId('');
@@ -304,7 +408,7 @@ export default function Dashboard() {
     { id: 'ui-logs', label: 'UI Logs', icon: '🖥️' },
     { id: 'hosting-logs', label: 'Hosting Logs', icon: '☁️' },
     { id: 'publish', label: 'Publish Events', icon: '🚀' },
-    { id: 'llm-spend', label: 'Actual LLM Spend', icon: '💰' },
+    { id: 'llm-spend', label: 'Subscription', icon: '💳' },
   ];
 
   return (
@@ -633,7 +737,7 @@ export default function Dashboard() {
                     Refresh
                   </button>
                 </div>
-                <AppDetailsPanel appId={submittedAppId} refreshKey={refreshKeys.details} onRefresh={() => handleRefreshTab('details')} />
+                <AppDetailsPanel appId={submittedAppId} refreshKey={refreshKeys.details} onRefresh={() => handleRefreshTab('details')} onGrantsLoaded={handleGrantsLoaded} onSubscriptionLoaded={handleSubscriptionLoaded} onNoSubscription={handleNoSubscription} />
               </div>
 
               {/* Summary Tab */}
@@ -953,9 +1057,30 @@ export default function Dashboard() {
                 />
               </div>
 
-              {/* Actual LLM Spend Tab */}
+              {/* Subscription Tab */}
               <div style={{ display: activeTab === 'llm-spend' ? 'flex' : 'none', flexDirection: 'column', gap: '1rem' }}>
-                {!context?.metadata?.subscriptionId ? (
+
+                {/* Subscription details — shown as soon as data is available */}
+                {mgmtSubscription && (
+                  <div style={{ padding: '1rem', backgroundColor: '#f9fafb', borderRadius: '6px', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {/* Subscription fields + per-grant gauges in one header block */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '2rem', flexWrap: 'wrap', fontSize: '0.8rem' }}>
+                      {[
+                        { label: 'Plan', value: mgmtSubscription.plan },
+                        { label: 'Status', value: mgmtSubscription.status },
+                        { label: 'Trial', value: mgmtSubscription.isTrial ? 'yes' : 'no' },
+                        { label: 'Sub ID', value: mgmtSubscription.id },
+                      ].map(({ label, value }) => (
+                        <div key={label}>
+                          <div style={{ fontSize: '0.6rem', color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.15rem' }}>{label}</div>
+                          <div style={{ fontFamily: 'monospace', color: '#111827' }}>{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {mgmtGrantUserIds.length === 0 ? (
                   <div style={{
                     padding: '3rem 2rem',
                     textAlign: 'center',
@@ -964,7 +1089,11 @@ export default function Dashboard() {
                     border: '1px solid #e5e7eb'
                   }}>
                     <p style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem' }}>
-                      No billing subscription ID found for this app
+                      {!submittedAppId
+                        ? 'Enter an app ID to view subscription data'
+                        : !mgmtSubscriptionResolved
+                          ? 'Loading subscription data...'
+                          : 'No grant data available for this app — check the Details tab'}
                     </p>
                   </div>
                 ) : llmSpendLoading ? (
@@ -1005,145 +1134,31 @@ export default function Dashboard() {
                   </div>
                 ) : (
                   <>
-                    {/* Subscription Header */}
-                    <div style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.375rem',
-                      padding: '0.75rem 1rem',
-                      backgroundColor: '#f9fafb',
-                      borderRadius: '6px',
-                      border: '1px solid #e5e7eb'
-                    }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>
-                          Billing SID: <span style={{ fontFamily: 'monospace', color: '#374151' }}>{context.metadata.subscriptionId}</span>
-                        </span>
-                        <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>
-                          {llmSpend.docCount} records
-                        </span>
-                      </div>
-                      {llmSpend.grantUserIds?.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                          {llmSpend.grantUserIds.map(uid => (
-                            <span key={uid} style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                              Grant user: <span style={{ fontFamily: 'monospace', color: '#374151' }}>{uid}</span>
-                            </span>
-                          ))}
-                        </div>
-                      )}
+                    {/* Summary row */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '0.25rem 0', fontSize: '0.8rem', flexWrap: 'wrap' }}>
+                      <span>Total: <strong style={{ color: '#059669' }}>${llmSpend.totalSpend.toFixed(2)}</strong></span>
+                      <span style={{ color: '#6b7280' }}>{llmSpend.totalRequests.toLocaleString()} requests</span>
                     </div>
 
-                    {/* Spend Summary Cards */}
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-                      gap: '0.75rem'
-                    }}>
-                      <div style={{
-                        padding: '1rem',
-                        backgroundColor: '#f0fdf4',
-                        borderRadius: '6px',
-                        border: '1px solid #bbf7d0',
-                        textAlign: 'center'
-                      }}>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#059669' }}>
-                          ${llmSpend.totalSpend.toFixed(2)}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Total Spend</div>
-                      </div>
-                      <div style={{
-                        padding: '1rem',
-                        backgroundColor: '#eff6ff',
-                        borderRadius: '6px',
-                        border: '1px solid #bfdbfe',
-                        textAlign: 'center'
-                      }}>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#3b82f6' }}>
-                          {(llmSpend.totalTokens / 1_000_000).toFixed(1)}M
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Total Tokens</div>
-                      </div>
-                      <div style={{
-                        padding: '1rem',
-                        backgroundColor: '#f5f3ff',
-                        borderRadius: '6px',
-                        border: '1px solid #ddd6fe',
-                        textAlign: 'center'
-                      }}>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#8b5cf6' }}>
-                          {llmSpend.totalRequests.toLocaleString()}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>API Requests</div>
-                      </div>
-                      <div style={{
-                        padding: '1rem',
-                        backgroundColor: '#f9fafb',
-                        borderRadius: '6px',
-                        border: '1px solid #e5e7eb',
-                        textAlign: 'center'
-                      }}>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#6b7280' }}>
-                          {llmSpend.dailySpend.length}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Active Days</div>
-                      </div>
-                    </div>
-
-                    {/* Daily Spend Table */}
-                    {llmSpend.dailySpend.length > 0 && (
-                      <div style={{
-                        backgroundColor: 'white',
-                        borderRadius: '6px',
-                        border: '1px solid #e5e7eb',
-                        overflow: 'hidden'
-                      }}>
-                        <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
-                          <table style={{
-                            width: '100%',
-                            borderCollapse: 'collapse',
-                            fontSize: '0.8rem'
-                          }}>
-                            <thead>
-                              <tr style={{ backgroundColor: '#f3f4f6', position: 'sticky', top: 0 }}>
-                                <th style={{ padding: '0.625rem 1rem', textAlign: 'left', fontWeight: 600, color: '#374151' }}>Date</th>
-                                <th style={{ padding: '0.625rem 1rem', textAlign: 'right', fontWeight: 600, color: '#374151' }}>Spend</th>
-                                <th style={{ padding: '0.625rem 1rem', textAlign: 'right', fontWeight: 600, color: '#374151' }}>Prompt</th>
-                                <th style={{ padding: '0.625rem 1rem', textAlign: 'right', fontWeight: 600, color: '#374151' }}>Completion</th>
-                                <th style={{ padding: '0.625rem 1rem', textAlign: 'right', fontWeight: 600, color: '#374151' }}>Total Tokens</th>
-                                <th style={{ padding: '0.625rem 1rem', textAlign: 'right', fontWeight: 600, color: '#374151' }}>Cache Read</th>
-                                <th style={{ padding: '0.625rem 1rem', textAlign: 'right', fontWeight: 600, color: '#374151' }}>Requests</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {llmSpend.dailySpend.map((day) => (
-                                <tr key={day.date} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                                  <td style={{ padding: '0.625rem 1rem', fontFamily: 'monospace', color: '#374151' }}>{day.date}</td>
-                                  <td style={{ padding: '0.625rem 1rem', textAlign: 'right', fontFamily: 'monospace', color: '#059669', fontWeight: 600 }}>
-                                    ${day.spend.toFixed(4)}
-                                  </td>
-                                  <td style={{ padding: '0.625rem 1rem', textAlign: 'right', fontFamily: 'monospace', color: '#3b82f6' }}>
-                                    {(day.promptTokens / 1000).toFixed(0)}k
-                                  </td>
-                                  <td style={{ padding: '0.625rem 1rem', textAlign: 'right', fontFamily: 'monospace', color: '#3b82f6' }}>
-                                    {(day.completionTokens / 1000).toFixed(0)}k
-                                  </td>
-                                  <td style={{ padding: '0.625rem 1rem', textAlign: 'right', fontFamily: 'monospace', color: '#374151', fontWeight: 500 }}>
-                                    {(day.totalTokens / 1000).toFixed(0)}k
-                                  </td>
-                                  <td style={{ padding: '0.625rem 1rem', textAlign: 'right', fontFamily: 'monospace', color: '#8b5cf6' }}>
-                                    {(day.cacheReadTokens / 1000).toFixed(0)}k
-                                  </td>
-                                  <td style={{ padding: '0.625rem 1rem', textAlign: 'right', fontFamily: 'monospace', color: '#6b7280' }}>
-                                    {day.requests.toLocaleString()}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+                    {/* Truncation warning */}
+                    {llmSpend.truncated && (
+                      <div style={{ padding: '0.5rem 0.75rem', backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', fontSize: '0.78rem', color: '#92400e' }}>
+                        ⚠ Results are truncated — {llmSpend.docCount} total records matched but only the first 500 are shown. Totals may be incomplete.
                       </div>
                     )}
+
+                    {/* Per-grant sections */}
+                    {llmSpend.grantBreakdowns.map(grant => {
+                      const mg = mgmtGrants?.grants.find(g => g.llmBudgetUserId === grant.grantUserId);
+                      return (
+                        <GrantSpendSection
+                          key={grant.grantUserId}
+                          grant={grant}
+                          mgmtGrant={mg}
+                          isActive={!!mg && mg.id === mgmtGrants?.activeGrant}
+                        />
+                      );
+                    })}
                   </>
                 )}
               </div>

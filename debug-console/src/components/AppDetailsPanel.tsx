@@ -2,12 +2,15 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 
-import type { MgmtAppDetails, MgmtGrant, MgmtImageStatus, MgmtSubscription, MgmtSubscriptionGrants, MgmtVariantWithLifecycle } from '@/lib/mgmt-control-plane-adapter';
+import type { MgmtAppDetails, MgmtImageStatus, MgmtSubscription, MgmtSubscriptionGrants, MgmtVariantWithLifecycle } from '@/lib/mgmt-control-plane-adapter';
 
 interface Props {
     appId: string;
     refreshKey: number;
     onRefresh?: () => void;
+    onGrantsLoaded?: (subscriptionId: string, grants: MgmtSubscriptionGrants) => void;
+    onSubscriptionLoaded?: (subscription: MgmtSubscription, grants: MgmtSubscriptionGrants) => void;
+    onNoSubscription?: () => void;
 }
 
 const SPIN_STYLE = `@keyframes spin-icon{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`;
@@ -180,18 +183,13 @@ function formatCredits(n: number): string {
 }
 
 interface SubscriptionBlockProps {
-    subscriptionId: string;
     subscription: MgmtSubscription | null;
     subscriptionLoading: boolean;
     grants: MgmtSubscriptionGrants | null;
     grantsLoading: boolean;
 }
 
-function SubscriptionBlock({ subscriptionId, subscription, subscriptionLoading, grants, grantsLoading }: SubscriptionBlockProps) {
-    const activeGrant: MgmtGrant | undefined = grants?.activeGrant
-        ? grants.grants.find(g => g.id === grants.activeGrant)
-        : grants?.grants.find(g => g.isAvailable);
-
+function SubscriptionBlock({ subscription, subscriptionLoading, grants, grantsLoading }: SubscriptionBlockProps) {
     const isLoading = subscriptionLoading || grantsLoading;
 
     return (
@@ -319,7 +317,7 @@ function SubscriptionBlock({ subscriptionId, subscription, subscriptionLoading, 
     );
 }
 
-export default function AppDetailsPanel({ appId, refreshKey, onRefresh }: Props) {
+export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrantsLoaded, onSubscriptionLoaded, onNoSubscription }: Props) {
     const [app, setApp] = useState<MgmtAppDetails | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -333,6 +331,14 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh }: Props)
     const [reloadStatusText, setReloadStatusText] = useState('');
     const [reloadError, setReloadError] = useState<string | null>(null);
     const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Stable refs for parent callbacks — avoids including them in the subscription
+    // useEffect dep array (which would re-run on every poll tick if passed as new function refs).
+    const onGrantsLoadedRef = useRef(onGrantsLoaded);
+    onGrantsLoadedRef.current = onGrantsLoaded;
+    const onSubscriptionLoadedRef = useRef(onSubscriptionLoaded);
+    onSubscriptionLoadedRef.current = onSubscriptionLoaded;
+    const onNoSubscriptionRef = useRef(onNoSubscription);
+    onNoSubscriptionRef.current = onNoSubscription;
 
     function stopPolling() {
         if (pollingRef.current) {
@@ -354,38 +360,56 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh }: Props)
         setGrants(null);
     }, [appId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Fetch subscription + grants when subscriptionId becomes known
+    // Fetch subscription + grants when subscriptionId becomes known.
+    // Deps: app?.subscriptionId (re-run when sub changes) + !!app (re-run when app first loads,
+    // e.g. to fire onNoSubscription). Callbacks are accessed via refs so they never appear in
+    // the dep array — preventing re-runs on every poll tick when app reference changes.
     useEffect(() => {
         const subId = app?.subscriptionId;
-        if (!subId) return;
+        if (!subId) {
+            // app is loaded but has no subscription — signal resolved with nothing
+            if (app !== null) onNoSubscriptionRef.current?.();
+            return;
+        }
 
         setSubscriptionLoading(true);
         setGrantsLoading(true);
 
         const controller = new AbortController();
 
-        fetch(`/api/mgmt/subscriptions/${encodeURIComponent(subId)}`, { signal: controller.signal })
+        const subFetch = fetch(`/api/mgmt/subscriptions/${encodeURIComponent(subId)}`, { signal: controller.signal })
             .then(async res => {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
                 return data as MgmtSubscription;
             })
-            .then(setSubscription)
-            .catch(err => { if (err.name !== 'AbortError') console.warn('[AppDetailsPanel] subscription fetch failed', err); })
-            .finally(() => setSubscriptionLoading(false));
+            .then(data => { setSubscription(data); return data; })
+            .catch(err => { if (err.name !== 'AbortError') console.warn('[AppDetailsPanel] subscription fetch failed', err); setSubscriptionLoading(false); return null; });
 
-        fetch(`/api/mgmt/subscriptions/${encodeURIComponent(subId)}/grants`, { signal: controller.signal })
+        const grantsFetch = fetch(`/api/mgmt/subscriptions/${encodeURIComponent(subId)}/grants`, { signal: controller.signal })
             .then(async res => {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
                 return data as MgmtSubscriptionGrants;
             })
-            .then(setGrants)
-            .catch(err => { if (err.name !== 'AbortError') console.warn('[AppDetailsPanel] grants fetch failed', err); })
-            .finally(() => setGrantsLoading(false));
+            .then(data => { setGrants(data); onGrantsLoadedRef.current?.(subId, data); return data; })
+            .catch(err => { if (err.name !== 'AbortError') console.warn('[AppDetailsPanel] grants fetch failed', err); setGrantsLoading(false); return null; });
+
+        Promise.all([subFetch, grantsFetch]).then(([sub, grantsData]) => {
+            setSubscriptionLoading(false);
+            setGrantsLoading(false);
+            if (sub && grantsData) {
+                onSubscriptionLoadedRef.current?.(sub, grantsData);
+            } else {
+                // One or both fetches failed — still signal resolved so the parent
+                // doesn't show "Loading..." indefinitely.
+                onNoSubscriptionRef.current?.();
+            }
+        });
 
         return () => controller.abort();
-    }, [app?.subscriptionId]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [app?.subscriptionId, !!app]);
 
     async function handleReload() {
         if (!app) return;
@@ -676,7 +700,6 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh }: Props)
             {/* Subscription Details */}
             {app.subscriptionId && (
                 <SubscriptionBlock
-                    subscriptionId={app.subscriptionId}
                     subscription={subscription}
                     subscriptionLoading={subscriptionLoading}
                     grants={grants}

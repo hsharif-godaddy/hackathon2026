@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
+import { formatTimestamp } from '@/lib/date-utils';
 import LogDetailPanel from './LogDetailPanel';
 
 function escapeKQL(value: string): string {
@@ -35,72 +36,27 @@ export interface LogEntry {
   raw: Record<string, unknown>;
 }
 
+const BASE_LOG_LEVEL_STYLE: React.CSSProperties = {
+  padding: '0.125rem 0.5rem',
+  borderRadius: '4px',
+  fontSize: '0.75rem',
+  fontFamily: 'monospace',
+  fontWeight: 600,
+  border: '1px solid',
+  display: 'inline-block',
+};
+
+const LOG_LEVEL_COLORS: Record<string, React.CSSProperties> = {
+  ERROR: { backgroundColor: '#fee2e2', color: '#991b1b', borderColor: '#fca5a5' },
+  WARN:  { backgroundColor: '#fef3c7', color: '#92400e', borderColor: '#fcd34d' },
+  INFO:  { backgroundColor: '#dbeafe', color: '#1e40af', borderColor: '#93c5fd' },
+  DEBUG: { backgroundColor: '#f3f4f6', color: '#374151', borderColor: '#d1d5db' },
+};
+const DEFAULT_LOG_LEVEL_COLORS: React.CSSProperties = { backgroundColor: '#f3f4f6', color: '#4b5563', borderColor: '#e5e7eb' };
+
 function getLogLevelBadgeStyle(level: string): React.CSSProperties {
-  const base: React.CSSProperties = {
-    padding: '0.125rem 0.5rem',
-    borderRadius: '4px',
-    fontSize: '0.75rem',
-    fontFamily: 'monospace',
-    fontWeight: 600,
-    border: '1px solid',
-    display: 'inline-block'
-  };
-
-  const levelStr = level != null ? String(level) : '';
-  const upperLevel = levelStr.toUpperCase();
-
-  switch (upperLevel) {
-    case 'ERROR':
-      return {
-        ...base,
-        backgroundColor: '#fee2e2',
-        color: '#991b1b',
-        borderColor: '#fca5a5'
-      };
-    case 'WARN':
-      return {
-        ...base,
-        backgroundColor: '#fef3c7',
-        color: '#92400e',
-        borderColor: '#fcd34d'
-      };
-    case 'INFO':
-      return {
-        ...base,
-        backgroundColor: '#dbeafe',
-        color: '#1e40af',
-        borderColor: '#93c5fd'
-      };
-    case 'DEBUG':
-      return {
-        ...base,
-        backgroundColor: '#f3f4f6',
-        color: '#374151',
-        borderColor: '#d1d5db'
-      };
-    default:
-      return {
-        ...base,
-        backgroundColor: '#f3f4f6',
-        color: '#4b5563',
-        borderColor: '#e5e7eb'
-      };
-  }
-}
-
-function formatTimestamp(timestamp: string): string {
-  try {
-    return new Date(timestamp).toLocaleString('en-US', {
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
-    });
-  } catch {
-    return timestamp;
-  }
+  const upper = level ? String(level).toUpperCase() : '';
+  return { ...BASE_LOG_LEVEL_STYLE, ...(LOG_LEVEL_COLORS[upper] ?? DEFAULT_LOG_LEVEL_COLORS) };
 }
 
 function safeRender(value: unknown): string {

@@ -2,17 +2,8 @@
 
 import React, { Component, ErrorInfo, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 
+import type { MetricDataPoint, MetricsResponse } from '@/lib/langfuse-types';
 import MetricsTrendsPanel from './MetricsTrendsPanel';
-
-interface MetricDataPoint {
-    name: string;
-    time_dimension: string;
-    avg_value: number;
-}
-
-interface MetricsResponse {
-    data: MetricDataPoint[];
-}
 
 interface ChartDataPoint {
     time: string;

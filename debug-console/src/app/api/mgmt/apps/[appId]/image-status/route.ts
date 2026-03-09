@@ -1,18 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
-import mgmtControlPlaneAdapter, { MgmtControlPlaneError } from '@/lib/mgmt-control-plane-adapter';
+import mgmtControlPlaneAdapter from '@/lib/mgmt-control-plane-adapter';
+import { APP_ID_RE, validateId, handleMgmtError } from '@/lib/mgmt-helpers';
 
 export const dynamic = 'force-dynamic';
-
-const ID_RE = /^[A-Za-z0-9]{8,20}$/i;
-
-function validateId(value: string, name: string): NextResponse | null {
-    if (!ID_RE.test(value)) {
-        return NextResponse.json({ error: `Invalid ${name}` }, { status: 400 });
-    }
-    return null;
-}
 
 export const GET = withAuth<{ appId: string }>(async function getImageStatus(
     request: NextRequest,
@@ -25,25 +17,14 @@ export const GET = withAuth<{ appId: string }>(async function getImageStatus(
     const tryCount = Number(request.nextUrl.searchParams.get('tryCount') ?? 0);
 
     const invalid =
-        validateId(appId, 'appId') ??
-        (subscriptionId ? validateId(subscriptionId, 'subscriptionId') : null) ??
-        (systemId ? validateId(systemId, 'systemId') : null);
+        validateId(appId, 'appId', APP_ID_RE) ??
+        (subscriptionId ? validateId(subscriptionId, 'subscriptionId', APP_ID_RE) : null) ??
+        (systemId ? validateId(systemId, 'systemId', APP_ID_RE) : null);
     if (invalid) return invalid;
 
     try {
         return NextResponse.json(await mgmtControlPlaneAdapter.getImageStatus(appId, { subscriptionId, systemId, tryCount }));
     } catch (error) {
-        if (error instanceof MgmtControlPlaneError) {
-            return NextResponse.json(
-                { error: error.message, details: error.responseJson ?? error.responseBody },
-                { status: error.statusCode }
-            );
-        }
-
-        console.error('[mgmt-apps] getImageStatus failed', {
-            appId,
-            error: error instanceof Error ? error.message : String(error)
-        });
-        return NextResponse.json({ error: 'Failed to fetch image status' }, { status: 502 });
+        return handleMgmtError(error, 'fetch image status', { appId });
     }
 });

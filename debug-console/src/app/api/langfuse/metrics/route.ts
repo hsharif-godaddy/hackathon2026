@@ -1,14 +1,12 @@
 import { NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
-
-const LANGFUSE_BASE_URL = process.env.LANGFUSE_BASE_URL;
-const LANGFUSE_PUBLIC_KEY = process.env.LANGFUSE_PUBLIC_KEY;
-const LANGFUSE_SECRET_KEY = process.env.LANGFUSE_SECRET_KEY;
+import { getLangfuseConfig } from '@/lib/langfuse-client';
 
 export const GET = withAuth(async (request) => {
     try {
-        if (!LANGFUSE_BASE_URL || !LANGFUSE_PUBLIC_KEY || !LANGFUSE_SECRET_KEY) {
+        const lf = getLangfuseConfig();
+        if (!lf) {
             return NextResponse.json(
                 { error: 'Langfuse credentials not configured' },
                 { status: 500 }
@@ -34,14 +32,12 @@ export const GET = withAuth(async (request) => {
             );
         }
 
-        const authHeader = `Basic ${Buffer.from(`${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}`).toString('base64')}`;
-
-        const url = `${LANGFUSE_BASE_URL}/api/public/metrics?query=${encodeURIComponent(queryParam)}`;
+        const url = `${lf.baseUrl}/api/public/metrics?query=${encodeURIComponent(queryParam)}`;
 
         const response = await fetch(url, {
             method: 'GET',
             headers: {
-                'Authorization': authHeader,
+                'Authorization': lf.authHeader,
                 'Content-Type': 'application/json',
             },
         });

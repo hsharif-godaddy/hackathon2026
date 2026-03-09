@@ -166,7 +166,7 @@ interface ConversationItem {
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
-  cachedTokens?: number;
+  cacheReadInputTokens?: number;
   cost?: number;
   model?: string;
   provider?: string;
@@ -180,8 +180,7 @@ interface ConversationItem {
   sourceAgent?: string;
   msToFirstChunk?: number;
   msToFinish?: number;
-  cacheCreationTokens?: number;
-  cacheReadTokens?: number;
+  cacheWriteInputTokens?: number;
   toolObservations?: Observation[];
   traceLatencyMs?: number;
   llmStepCount?: number;
@@ -205,11 +204,11 @@ interface LangfusePanelProps {
 }
 
 function formatTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  return new Date(dateStr).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  return new Date(dateStr).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatNumber(n: number): string {
@@ -302,23 +301,22 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
       // If no generations had tokens, set to undefined to avoid showing 0
       const hasTokenData = generationObservations.some(g => g.promptTokens || g.completionTokens);
 
-      // Parse ai.usage.cachedInputTokens from the text-producing generation
-      let cachedTokens: number | undefined;
-      // Also check all generations for cached tokens
+      // Parse ai.usage.cachedInputTokens (cache reads) from all generation observations
+      let cacheReadInputTokens: number | undefined;
       for (const gen of generationObservations) {
         const genAttrs = gen.metadata?.attributes;
         const cachedTokensRaw = genAttrs?.['ai.usage.cachedInputTokens'];
         if (cachedTokensRaw) {
           if (typeof cachedTokensRaw === 'number') {
-            cachedTokens = (cachedTokens || 0) + cachedTokensRaw;
+            cacheReadInputTokens = (cacheReadInputTokens || 0) + cachedTokensRaw;
           } else if (typeof cachedTokensRaw === 'string') {
             try {
               const parsed = JSON.parse(cachedTokensRaw);
               const val = parsed.intValue ?? parsed;
-              if (typeof val === 'number') cachedTokens = (cachedTokens || 0) + val;
+              if (typeof val === 'number') cacheReadInputTokens = (cacheReadInputTokens || 0) + val;
             } catch {
               const num = parseInt(cachedTokensRaw, 10);
-              if (!isNaN(num)) cachedTokens = (cachedTokens || 0) + num;
+              if (!isNaN(num)) cacheReadInputTokens = (cacheReadInputTokens || 0) + num;
             }
           }
         }
@@ -340,19 +338,35 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
         ? parseInt(msToFinishStr, 10)
         : undefined;
 
-      // Parse providerMetadata for cache metrics
-      let providerMetadata: Record<string, unknown> | undefined;
-      const providerMetaStr = obsAttrs?.['ai.response.providerMetadata'];
-      if (typeof providerMetaStr === 'string') {
+      // Aggregate cache write tokens from providerMetadata across ALL generation observations.
+      // For cache reads: providerMetadata is used as a per-observation fallback only when the
+      // AI SDK did not emit ai.usage.cachedInputTokens for that observation (avoids double-counting).
+      let cacheWriteInputTokens: number | undefined;
+      for (const gen of generationObservations) {
+        const genAttrs = gen.metadata?.attributes;
+        const metaStr = genAttrs?.['ai.response.providerMetadata'];
+        if (typeof metaStr !== 'string') continue;
         try {
-          const parsed = JSON.parse(providerMetaStr);
-          providerMetadata = parsed.anthropic || parsed; // Handle nested structure
+          const parsed = JSON.parse(metaStr);
+          // After `parsed.anthropic || parsed`, top-level keys are camelCase per @ai-sdk/anthropic
+          // The nested `usage` object retains the raw Anthropic snake_case fields as a fallback
+          const meta: Record<string, unknown> = parsed.anthropic || parsed;
+          const rawUsage = meta.usage as Record<string, unknown> | undefined;
+          const write =
+            (meta.cacheCreationInputTokens as number | null) ??
+            (rawUsage?.cache_creation_input_tokens as number | undefined);
+          if (typeof write === 'number' && write > 0) cacheWriteInputTokens = (cacheWriteInputTokens || 0) + write;
+          // Only use providerMetadata reads as fallback when this observation didn't emit
+          // the AI SDK attribute — otherwise we'd double-count with the loop above.
+          const hasAiSdkRead = !!genAttrs?.['ai.usage.cachedInputTokens'];
+          if (!hasAiSdkRead) {
+            const read =
+              (meta.cacheReadInputTokens as number | null) ??
+              (rawUsage?.cache_read_input_tokens as number | undefined);
+            if (typeof read === 'number' && read > 0) cacheReadInputTokens = (cacheReadInputTokens || 0) + read;
+          }
         } catch { /* ignore parse errors */ }
       }
-
-      // Extract cache metrics from providerMetadata
-      const cacheCreationTokens = providerMetadata?.cache_creation_input_tokens as number | undefined;
-      const cacheReadTokens = providerMetadata?.cache_read_input_tokens as number | undefined;
 
       // Compute trace-level metrics from all observations
       const allObservations = trace.observations || [];
@@ -802,7 +816,7 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
           inputTokens: hasTokenData ? inputTokens : undefined,
           outputTokens: hasTokenData ? outputTokens : undefined,
           totalTokens: hasTokenData ? totalTokens : undefined,
-          cachedTokens,
+          cacheReadInputTokens,
           cost,
           model,
           provider,
@@ -812,8 +826,7 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
           rawOutput: trace.output,
           msToFirstChunk,
           msToFinish,
-          cacheCreationTokens,
-          cacheReadTokens,
+          cacheWriteInputTokens,
           toolObservations: toolTypeObservations,
           traceLatencyMs,
           llmStepCount: llmStepCount > 0 ? llmStepCount : undefined,
@@ -886,11 +899,11 @@ function InfoTip({ text }: { text: string }) {
   );
 }
 
-function TokenBadge({ label, value, color }: { label: string; value?: number; color: string }) {
+function TokenBadge({ label, value, color, suffix }: { label: string; value?: number; color: string; suffix?: string }) {
   if (!value) return null;
   return (
     <span style={{ fontSize: '0.7rem', fontWeight: 600, color, backgroundColor: `${color}18`, padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
-      {label}: {formatNumber(value)}
+      {label}: {formatNumber(value)}{suffix ? ` ${suffix}` : ''}
     </span>
   );
 }
@@ -1518,8 +1531,12 @@ function AssistantMessage({ item, langfuseBaseUrl }: { item: ConversationItem; l
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             <TokenBadge label="in" value={item.inputTokens} color="#64748b" />
+            <TokenBadge
+              label="c.read" value={item.cacheReadInputTokens} color="#8b5cf6"
+              suffix={item.cacheReadInputTokens && item.inputTokens ? `(${Math.round(item.cacheReadInputTokens / item.inputTokens * 100)}%)` : undefined}
+            />
+            <TokenBadge label="c.write" value={item.cacheWriteInputTokens} color="#d97706" />
             <TokenBadge label="out" value={item.outputTokens} color="#10b981" />
-            {item.cachedTokens !== undefined && <TokenBadge label="cached" value={item.cachedTokens} color="#8b5cf6" />}
             <CostBadge value={item.cost} />
             {item.finishReason && !['stop', 'tool-calls', 'tool_calls'].includes(item.finishReason) && (
               <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#f59e0b', backgroundColor: '#fef3c7', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>{item.finishReason}</span>
@@ -1577,17 +1594,6 @@ function AssistantMessage({ item, langfuseBaseUrl }: { item: ConversationItem; l
               </>
             )}
           </div>
-          {/* Cache metrics */}
-          {(item.cacheCreationTokens != null && item.cacheCreationTokens > 0) || (item.cacheReadTokens != null && item.cacheReadTokens > 0) ? (
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.2rem', fontFamily: 'monospace' }}>
-              {item.cacheCreationTokens != null && item.cacheCreationTokens > 0 && (
-                <span style={{ color: '#8b5cf6' }}>cache created: {formatNumber(item.cacheCreationTokens)} tokens</span>
-              )}
-              {item.cacheReadTokens != null && item.cacheReadTokens > 0 && (
-                <span style={{ color: '#10b981' }}>cache hit: {formatNumber(item.cacheReadTokens)} tokens</span>
-              )}
-            </div>
-          ) : null}
           {/* System prompt */}
           {item.systemPrompt && (
             <details style={{ marginTop: '0.2rem', color: '#1f2937' }}>
@@ -2179,6 +2185,11 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
               {lfTotals.cachedInputTokens > 0 && (
                 <span style={{ color: '#8b5cf6', fontWeight: 400, marginLeft: '0.3rem' }}>
                   +{formatNumber(lfTotals.cachedInputTokens)} cached
+                  {lfTotals.inputTokens > 0 && (
+                    <span style={{ color: '#7c3aed', marginLeft: '0.25rem' }}>
+                      ({Math.round(lfTotals.cachedInputTokens / lfTotals.inputTokens * 100)}%)
+                    </span>
+                  )}
                 </span>
               )}
             </span>

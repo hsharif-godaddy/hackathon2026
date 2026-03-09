@@ -84,6 +84,43 @@ interface QARunDetail extends QARun {
   visualPlaceholders: number;
 }
 
+interface LangfuseStatsResult {
+  traces: number;
+  totalTokens: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalCost: number;
+  models: string[];
+  langfuseUrl: string | null;
+}
+
+function computeLangfuseStats(
+  tracesData: { data: Array<{ totalTokens?: number; promptTokens?: number; completionTokens?: number; totalCost?: number; metadata?: { attributes?: Record<string, unknown> } }>; meta?: { totalItems?: number } },
+  config: { baseUrl?: string; projectId?: string } | null,
+  appId: string
+): LangfuseStatsResult {
+  const traces = tracesData.data;
+  let totalTokens = 0, promptTokens = 0, completionTokens = 0, totalCost = 0;
+  const modelSet = new Set<string>();
+  for (const t of traces) {
+    totalTokens += t.totalTokens || 0;
+    promptTokens += t.promptTokens || 0;
+    completionTokens += t.completionTokens || 0;
+    totalCost += t.totalCost || 0;
+    const model = t.metadata?.attributes?.['ai.model.id'];
+    if (typeof model === 'string') modelSet.add(model);
+  }
+  const langfuseUrl = config?.baseUrl && config?.projectId
+    ? `${config.baseUrl}/project/${config.projectId}/users/${appId}`
+    : null;
+  return {
+    traces: tracesData.meta?.totalItems ?? traces.length,
+    totalTokens, promptTokens, completionTokens, totalCost,
+    models: Array.from(modelSet),
+    langfuseUrl,
+  };
+}
+
 function extractAppId(finalPageUrl?: string, urls?: string[]): string | null {
   if (finalPageUrl) {
     const match = finalPageUrl.match(/\/develop\/([a-z0-9]+)(?:\?|$)/);
@@ -412,67 +449,28 @@ export default function QAResultsPanel() {
   const actions = detail?.actionsJson ? parseActions(detail.actionsJson) : [];
 
   // Langfuse stats for the appId
-  const [langfuseStats, setLangfuseStats] = useState<{
-    traces: number;
-    totalTokens: number;
-    promptTokens: number;
-    completionTokens: number;
-    totalCost: number;
-    models: string[];
-    langfuseUrl: string | null;
-  } | null>(null);
+  const [langfuseStats, setLangfuseStats] = useState<LangfuseStatsResult | null>(null);
   const [langfuseLoading, setLangfuseLoading] = useState(false);
 
-  useEffect(() => {
-    if (!appId) {
-      setLangfuseStats(null);
-      return;
-    }
-
+  const fetchLangfuseStats = useCallback(async () => {
+    if (!appId) { setLangfuseStats(null); return; }
     setLangfuseLoading(true);
-    const tracesParams = new URLSearchParams({ appId, limit: '100' });
-    Promise.all([
-      fetch(`/api/langfuse/traces?${tracesParams}`).then(r => r.ok ? r.json() : null),
-      fetch('/api/langfuse/config').then(r => r.ok ? r.json() : null)
-    ])
-      .then(function processLangfuseStats([tracesData, config]) {
-        if (!tracesData?.data) {
-          setLangfuseStats(null);
-          return;
-        }
-        const traces = tracesData.data;
-        let totalTokens = 0, promptTokens = 0, completionTokens = 0, totalCost = 0;
-        const modelSet = new Set<string>();
-
-        for (const t of traces) {
-          totalTokens += t.totalTokens || 0;
-          promptTokens += t.promptTokens || 0;
-          completionTokens += t.completionTokens || 0;
-          totalCost += t.totalCost || 0;
-          const model = t.metadata?.attributes?.['ai.model.id'];
-          if (model) modelSet.add(model);
-        }
-
-        const langfuseUrl = config?.baseUrl && config?.projectId
-          ? `${config.baseUrl}/project/${config.projectId}/users/${appId}`
-          : null;
-
-        setLangfuseStats({
-          traces: tracesData.meta?.totalItems || traces.length,
-          totalTokens,
-          promptTokens,
-          completionTokens,
-          totalCost,
-          models: Array.from(modelSet),
-          langfuseUrl
-        });
-      })
-      .catch(err => {
-        console.error('Failed to fetch Langfuse stats:', err);
-        setLangfuseStats(null);
-      })
-      .finally(() => setLangfuseLoading(false));
+    try {
+      const tracesParams = new URLSearchParams({ appId, limit: '100' });
+      const [tracesData, config] = await Promise.all([
+        fetch(`/api/langfuse/traces?${tracesParams}`).then(r => r.ok ? r.json() : null),
+        fetch('/api/langfuse/config').then(r => r.ok ? r.json() : null),
+      ]);
+      setLangfuseStats(tracesData?.data ? computeLangfuseStats(tracesData, config, appId) : null);
+    } catch (err) {
+      console.error('Failed to fetch Langfuse stats:', err);
+      setLangfuseStats(null);
+    } finally {
+      setLangfuseLoading(false);
+    }
   }, [appId]);
+
+  useEffect(() => { void fetchLangfuseStats(); }, [fetchLangfuseStats]);
 
   return (
     <div style={{
