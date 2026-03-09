@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 
 import { useCreditGrants } from '@/hooks/useCreditGrants'
 import { useDailyUsage } from '@/hooks/useDailyUsage'
@@ -30,6 +30,37 @@ interface UsageGaugeProps {
 export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
   const t = useTranslations()
   const [open, setOpen] = useState(false)
+  const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  const handleMouseEnter = () => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current)
+      closeTimeoutRef.current = null
+    }
+    setOpen(true)
+  }
+
+  const handleMouseLeave = () => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current)
+      closeTimeoutRef.current = null
+    }
+    closeTimeoutRef.current = setTimeout(() => {
+      setOpen(false)
+      closeTimeoutRef.current = null
+    }, 200)
+  }
+
+  // Cleanup timeout on unmount to prevent setState on unmounted component
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current)
+        closeTimeoutRef.current = null
+      }
+    }
+  }, [])
+
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
   const openCreditsModal = useDevelopPageStore((state) => state.openCreditsModal)
   const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants')
@@ -117,10 +148,9 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
         <button
           className="relative w-5 h-5 flex items-center justify-center cursor-pointer focus:outline-none rounded-full group"
           onMouseDown={(e) => e.preventDefault()}
-          onClick={(e) => {
-            e.stopPropagation()
-            setOpen(true)
-          }}
+          onClick={() => setOpen(!open)}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
           data-eid={generateClickEID('usage_gauge.trigger.open')}
           aria-label={t('builder_usage_gauge_aria_label', { percentage: String(Math.round(percentage)) })}
         >
@@ -128,7 +158,7 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
             <CircularGauge
               value={percentage}
               size={20}
-              strokeWidth={3}
+              strokeWidth={4}
             />
           </div>
         </button>
@@ -139,6 +169,9 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
         side="top"
         sideOffset={8}
         className={isGrantsEnabled ? 'w-48 p-3' : 'w-40 p-3'}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        onOpenAutoFocus={(e) => e.preventDefault()}
       >
         {isGrantsEnabled ? (
           <GrantsPopoverContent

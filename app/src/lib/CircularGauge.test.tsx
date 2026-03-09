@@ -123,4 +123,20 @@ describe('CircularGauge', function circularGaugeTests() {
       expect(progressCircle).toHaveClass('transition-all');
     });
   });
+
+  describe('colors', function colorTests() {
+    it('should use CSS variable for track color', function trackColor() {
+      const { container } = renderWithProviders(<CircularGauge value={50} />);
+
+      const trackCircle = container.querySelectorAll('circle')[0];
+      expect(trackCircle).toHaveAttribute('stroke', 'var(--color-gauge-track, #D9D9D9)');
+    });
+
+    it('should use CSS variable for fill color', function fillColor() {
+      const { container } = renderWithProviders(<CircularGauge value={50} />);
+
+      const progressCircle = container.querySelectorAll('circle')[1];
+      expect(progressCircle).toHaveAttribute('stroke', 'var(--color-ai, #613EA3)');
+    });
+  });
 });

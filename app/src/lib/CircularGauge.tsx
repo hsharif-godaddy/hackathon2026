@@ -14,7 +14,7 @@ interface CircularGaugeProps {
 }
 
 const GAUGE_FILL_COLOR = 'var(--color-ai, #613EA3)'
-const GAUGE_TRACK_COLOR = 'var(--color-light-purple, #744BC4)'
+const GAUGE_TRACK_COLOR = 'var(--color-gauge-track, #D9D9D9)'
 
 export default memo(function CircularGauge({
   value,
