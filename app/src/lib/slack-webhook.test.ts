@@ -158,6 +158,9 @@ describe('slack-webhook', function slackWebhookTests() {
               type: 'mrkdwn',
               text: '*Test Title*\n\nTest Message'
             }
+          },
+          {
+            type: 'divider'
           }
         ]
       });

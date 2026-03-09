@@ -19,17 +19,24 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
-import { sendSlackMessage } from '@/lib/slack-webhook';
+import { sendSlackBlockMessage, sendSlackMessage, type SlackBlockMessage } from '@/lib/slack-webhook';
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic';
 
 /**
- * Feedback request payload
+ * Feedback request payload (legacy format)
  */
 interface FeedbackPayload {
   title: string;
   message: string;
+}
+
+/**
+ * Feedback request payload (Block Kit format)
+ */
+interface FeedbackBlockPayload {
+  blockMessage: SlackBlockMessage;
 }
 
 /**
@@ -63,7 +70,7 @@ export const POST = withCustomerAuth(async (
     }
 
     // Parse request body
-    let payload: FeedbackPayload;
+    let payload: FeedbackPayload | FeedbackBlockPayload;
     try {
       payload = await request.json();
     } catch {
@@ -73,30 +80,62 @@ export const POST = withCustomerAuth(async (
       return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
     }
 
-    // Validate required fields
-    if (!payload.title || !payload.message) {
-      logger.warn('feedback.slack.invalid_payload', {
-        message: 'Missing required fields in payload',
-        hasTitle: !!payload.title,
-        hasMessage: !!payload.message,
+    // Determine if using Block Kit format or legacy format
+    const isBlockFormat = 'blockMessage' in payload;
+    let result;
+
+    if (isBlockFormat) {
+      // Block Kit format
+      const blockPayload = payload as FeedbackBlockPayload;
+
+      if (!blockPayload.blockMessage) {
+        logger.warn('feedback.slack.invalid_block_payload', {
+          message: 'Missing required field: blockMessage',
+        });
+        return NextResponse.json(
+          { error: 'Missing required field: blockMessage' },
+          { status: 400 }
+        );
+      }
+
+      logger.info('feedback.slack.sending_blocks', {
+        title: blockPayload.blockMessage.title || 'Untitled',
+        fieldCount: blockPayload.blockMessage.fields?.length || 0,
+        linkCount: blockPayload.blockMessage.links?.length || 0,
       });
-      return NextResponse.json(
-        { error: 'Missing required fields: title and message' },
-        { status: 400 }
-      );
+
+      result = await sendSlackBlockMessage(webhookUrl, blockPayload.blockMessage);
+    } else {
+      // Legacy format
+      const legacyPayload = payload as FeedbackPayload;
+
+      if (!legacyPayload.title || !legacyPayload.message) {
+        logger.warn('feedback.slack.invalid_payload', {
+          message: 'Missing required fields in payload',
+          hasTitle: !!legacyPayload.title,
+          hasMessage: !!legacyPayload.message,
+        });
+        return NextResponse.json(
+          { error: 'Missing required fields: title and message' },
+          { status: 400 }
+        );
+      }
+
+      logger.info('feedback.slack.sending', {
+        title: legacyPayload.title,
+        messageLength: legacyPayload.message.length,
+      });
+
+      result = await sendSlackMessage(webhookUrl, legacyPayload.title, legacyPayload.message);
     }
 
-    logger.info('feedback.slack.sending', {
-      title: payload.title,
-      messageLength: payload.message.length,
-    });
-
-    // Send message to Slack directly using shared utility
-    const result = await sendSlackMessage(webhookUrl, payload.title, payload.message);
-
     if (!result.success) {
+      const title = isBlockFormat
+        ? ((payload as FeedbackBlockPayload).blockMessage.title || 'Feedback')
+        : (payload as FeedbackPayload).title;
+
       logger.error('feedback.slack.send_failed', {
-        title: payload.title,
+        title,
         error: result.error,
         status: result.status,
       });
@@ -106,8 +145,12 @@ export const POST = withCustomerAuth(async (
       );
     }
 
+    const title = isBlockFormat
+      ? ((payload as FeedbackBlockPayload).blockMessage.title || 'Feedback')
+      : (payload as FeedbackPayload).title;
+
     logger.info('feedback.slack.sent', {
-      title: payload.title,
+      title,
       success: true,
     });
 

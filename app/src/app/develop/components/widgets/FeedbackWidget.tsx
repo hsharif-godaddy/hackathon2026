@@ -9,6 +9,7 @@ import { getFullStorySessionUrl } from '@/components/feedback/utils'
 import { useTranslations } from '@/hooks/useTranslations'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
+import type { SlackLink } from '@/lib/slack-webhook'
 import { getRootDomain } from '@/utils/getRootDomain'
 
 export interface FeedbackWidgetProps {
@@ -43,9 +44,15 @@ const COMMENT_PLACEHOLDER_KEYS: Record<FeedbackRating, string> = {
 }
 
 const RATING_SLACK_EMOJIS: Record<FeedbackRating, string> = {
-  [FeedbackRating.Bad]: ':white_frowning_face: - Session rated as Bad',
-  [FeedbackRating.Fine]: ':neutral_face: - Session rated as Neutral',
-  [FeedbackRating.Good]: ':slightly_smiling_face: - Session rated as Good',
+  [FeedbackRating.Bad]: ':white_frowning_face:',
+  [FeedbackRating.Fine]: ':neutral_face:',
+  [FeedbackRating.Good]: ':slightly_smiling_face:',
+}
+
+const RATING_LABELS: Record<FeedbackRating, string> = {
+  [FeedbackRating.Bad]: 'Needs improvement',
+  [FeedbackRating.Fine]: 'Neutral',
+  [FeedbackRating.Good]: 'Very positive',
 }
 
 export default function FeedbackWidget({ conversationId, appId }: FeedbackWidgetProps) {
@@ -58,35 +65,131 @@ export default function FeedbackWidget({ conversationId, appId }: FeedbackWidget
 
   const sendToSlack = async (rating: FeedbackRating, userComment: string) => {
     try {
-      const feedbackLines = [
-        `*Rating*: ${RATING_SLACK_EMOJIS[rating]}`,
+      // Build left column fields
+      const leftFields: Array<{ label: string; value: string }> = []
+
+      // App ID
+      if (appId) {
+        leftFields.push({
+          label: 'App ID',
+          value: appId,
+        })
+      }
+
+      // Conversation ID
+      if (conversationId) {
+        leftFields.push({
+          label: 'Conversation ID',
+          value: conversationId,
+        })
+      }
+
+      // Fetch subscription and credit grant info
+      let subscriptionInfo = ''
+      try {
+        const subscriptionResponse = await fetch('/api/subscriptions', {
+          credentials: 'include',
+        })
+        if (subscriptionResponse.ok) {
+          const subscriptionData = await subscriptionResponse.json()
+          const activeSubscription = subscriptionData.data?.active
+
+          if (activeSubscription) {
+            const plan = activeSubscription.plan || 'Unknown'
+            // Capitalize first letter of plan name
+            const planName = plan.charAt(0).toUpperCase() + plan.slice(1)
+
+            // Get credit grants
+            if (activeSubscription.id) {
+              const creditsResponse = await fetch(`/api/credits/grants?subscriptionId=${activeSubscription.id}&syncSpend=false`, {
+                credentials: 'include',
+              })
+              if (creditsResponse.ok) {
+                const creditsData = await creditsResponse.json()
+                if (creditsData.success && Array.isArray(creditsData.data)) {
+                  const totalCredits = creditsData.data.reduce((sum, grant) => sum + (grant.creditsMax || 0), 0)
+                  const totalSpent = creditsData.data.reduce((sum, grant) => sum + (grant.creditsSpent || 0), 0)
+                  const remaining = totalCredits - totalSpent
+                  subscriptionInfo = `${planName} - ${remaining}/${totalCredits}`
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        logger.warn('feedback.session.subscription_fetch_failed', {
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+
+      // Build right column with rating (big emoji + score - label)
+      const ratingEmoji = RATING_SLACK_EMOJIS[rating]
+      const ratingLabel = RATING_LABELS[rating]
+
+      // Map rating to numeric score (session feedback uses Bad/Fine/Good)
+      const ratingScores: Record<FeedbackRating, string> = {
+        [FeedbackRating.Bad]: '1-3',
+        [FeedbackRating.Fine]: '4-5',
+        [FeedbackRating.Good]: '6-7',
+      }
+      const ratingScore = ratingScores[rating]
+
+      const ratingDisplay = `${ratingScore}/7 - ${ratingLabel}\n${ratingEmoji}`
+
+      const rightFields: Array<{ label?: string; value: string }> = [
+        {
+          value: ratingDisplay,
+        },
       ]
 
+      // Build single-column sections
+      const singleColumnSections: Array<{ label?: string; value: string }> = []
+
+      // Subscription information (full-width section)
+      if (subscriptionInfo) {
+        singleColumnSections.push({
+          label: 'Subscription',
+          value: subscriptionInfo,
+        })
+      }
+
+      // Comment section
       if (userComment.trim()) {
-        feedbackLines.push(`*Comment*: ${userComment.trim()}`)
+        singleColumnSections.push({
+          label: 'Comment',
+          value: userComment.trim(),
+        })
       }
 
-      if (conversationId) {
-        feedbackLines.push(`*Conversation ID*: ${conversationId}`)
-      }
+      // Build links
+      const links: SlackLink[] = []
 
-      // Get FullStory session URL
+      // FullStory link
       const fullStoryUrl = await getFullStorySessionUrl(true)
       if (fullStoryUrl) {
-        feedbackLines.push(`*FullStory Session*: ${fullStoryUrl}`)
+        links.push({ url: fullStoryUrl, text: 'FullStory session' })
       }
 
-      const message = feedbackLines.join('\n')
-      const title = `New Session Feedback${appId ? ` for App ID: ${appId}` : ''}`
+      // Console link (at the end)
+      if (appId) {
+        links.push({ url: `https://console.airo-builder.godaddy.com/?appId=${appId}`, text: 'Console' })
+      }
 
+      // Send Block Kit formatted message with two-column layout (no title)
       await fetch('/api/slack-webhook/feedback', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          title,
-          message,
+          blockMessage: {
+            twoColumnSection: {
+              leftFields,
+              rightFields,
+            },
+            singleColumnSections: singleColumnSections.length > 0 ? singleColumnSections : undefined,
+            links: links.length > 0 ? links : undefined,
+          },
         }),
       })
     } catch (err) {
