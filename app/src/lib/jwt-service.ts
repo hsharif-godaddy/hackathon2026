@@ -128,7 +128,7 @@ export class JWTService {
       throw new Error('No active signing key found');
     }
 
-    logger.info('jwt.key.retrieved', {
+    logger.debug('jwt.key.retrieved', {
       keyId: activeKey.keyId,
       status: activeKey.status
     });
