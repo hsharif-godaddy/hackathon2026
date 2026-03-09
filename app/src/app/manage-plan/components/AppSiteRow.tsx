@@ -18,6 +18,8 @@ interface AppSiteRowProps {
   isDisconnectingDomain: boolean;
   isUnpublishEnabled: boolean;
   isPaidPlan: boolean;
+  isAtPublishLimit: boolean;
+  canUpgrade: boolean;
   onPublishClick: (siteId: string) => void;
   onUnpublishClick: (site: SiteInfo) => void;
   onOpenPaywall?: (source: string, type?: PaywallType, itc?: string) => void;
@@ -36,6 +38,8 @@ export default function AppSiteRow({
   isDisconnectingDomain,
   isUnpublishEnabled,
   isPaidPlan,
+  isAtPublishLimit,
+  canUpgrade,
   onPublishClick,
   onUnpublishClick,
   onOpenPaywall,
@@ -94,10 +98,11 @@ export default function AppSiteRow({
             }
             onClick={() => onUnpublishClick(site)}
           />
-        ) : !isPublished && !isPaidPlan && onOpenPaywall ? (
+        ) : !isPublished && (!isPaidPlan || (isAtPublishLimit && canUpgrade)) && onOpenPaywall ? (
           <Button
             design="primary"
             size="sm"
+            disabled={disabled}
             data-partial="componentAiro"
             data-eid={generateClickEID('manageplan.buttons.upgrade_to_publish')}
             text={t('builder_manageplan_apps_upgrade_to_publish')}
@@ -107,7 +112,7 @@ export default function AppSiteRow({
           <Button
             design="primary"
             size="sm"
-            disabled={disabled}
+            disabled={disabled || isAtPublishLimit}
             data-partial="componentAiro"
             data-eid={generateClickEID('manageplan.buttons.publish_app')}
             text={

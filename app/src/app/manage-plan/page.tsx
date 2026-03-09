@@ -423,6 +423,7 @@ function ManagePlanContent() {
                   sites={sites}
                   isLoading={isSitesLoading}
                   subscriptionPlan={currentPlan}
+                  entitlementId={subscription?.entitlementId}
                   onOpenPaywall={openPaywall}
                 />
               )}

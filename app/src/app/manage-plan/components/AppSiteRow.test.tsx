@@ -37,6 +37,8 @@ describe('AppSiteRow', function appSiteRowTests() {
     isDisconnectingDomain: false,
     isUnpublishEnabled: true,
     isPaidPlan: true,
+    isAtPublishLimit: false,
+    canUpgrade: true,
     onPublishClick: vi.fn(),
     onUnpublishClick: vi.fn(),
   };
@@ -232,6 +234,74 @@ describe('AppSiteRow', function appSiteRowTests() {
         />
       );
 
+      expect(screen.queryByRole('button', { name: 'builder_manageplan_apps_upgrade_to_publish' })).not.toBeInTheDocument();
+    });
+
+    it('should disable Upgrade to Publish button for free users when disabled prop is true', function disablesUpgradeForFreeUser() {
+      const onOpenPaywall = vi.fn();
+      renderWithProviders(
+        <AppSiteRow
+          {...defaultProps}
+          disabled={true}
+          isPublished={false}
+          isPaidPlan={false}
+          onOpenPaywall={onOpenPaywall}
+        />
+      );
+
+      expect(screen.getByRole('button', { name: 'builder_manageplan_apps_upgrade_to_publish' })).toBeDisabled();
+    });
+
+    it('should render Upgrade to Publish button for paid users at publish limit who can upgrade', function renderUpgradeAtLimit() {
+      const onOpenPaywall = vi.fn();
+      renderWithProviders(
+        <AppSiteRow
+          {...defaultProps}
+          isPublished={false}
+          isPaidPlan={true}
+          isAtPublishLimit={true}
+          canUpgrade={true}
+          onOpenPaywall={onOpenPaywall}
+        />
+      );
+
+      expect(screen.getByRole('button', { name: 'builder_manageplan_apps_upgrade_to_publish' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'builder_manageplan_apps_publish' })).not.toBeInTheDocument();
+    });
+
+    it('should disable Upgrade to Publish button when disabled prop is true', function disablesUpgradeButton() {
+      const onOpenPaywall = vi.fn();
+      renderWithProviders(
+        <AppSiteRow
+          {...defaultProps}
+          disabled={true}
+          isPublished={false}
+          isPaidPlan={true}
+          isAtPublishLimit={true}
+          canUpgrade={true}
+          onOpenPaywall={onOpenPaywall}
+        />
+      );
+
+      expect(screen.getByRole('button', { name: 'builder_manageplan_apps_upgrade_to_publish' })).toBeDisabled();
+    });
+
+    it('should show disabled Publish button for Ultimate users at publish limit', function disabledPublishForUltimate() {
+      const onOpenPaywall = vi.fn();
+      renderWithProviders(
+        <AppSiteRow
+          {...defaultProps}
+          isPublished={false}
+          isPaidPlan={true}
+          isAtPublishLimit={true}
+          canUpgrade={false}
+          onOpenPaywall={onOpenPaywall}
+        />
+      );
+
+      // Should show Publish button, not Upgrade
+      expect(screen.getByRole('button', { name: 'builder_manageplan_apps_publish' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'builder_manageplan_apps_publish' })).toBeDisabled();
       expect(screen.queryByRole('button', { name: 'builder_manageplan_apps_upgrade_to_publish' })).not.toBeInTheDocument();
     });
   });

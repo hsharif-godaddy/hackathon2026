@@ -29,6 +29,8 @@ interface AppsAndSitesCardProps {
   sites: SiteInfo[];
   isLoading?: boolean;
   subscriptionPlan?: SubscriptionPlan;
+  //Legacy AiroPlus entitlement ID
+  entitlementId?: string;
   onOpenPaywall?: (source: string, type?: PaywallType, itc?: string) => void;
 }
 
@@ -44,6 +46,7 @@ export default function AppsAndSitesCard({
   sites,
   isLoading = false,
   subscriptionPlan,
+  entitlementId,
   onOpenPaywall,
 }: AppsAndSitesCardProps) {
   const t = useTranslations();
@@ -54,18 +57,25 @@ export default function AppsAndSitesCard({
   const publishMutation = usePublishApp();
   const fetchAllSites = useSitesStore((state) => state.fetchAllSites);
 
-  const publishLimit = getPublishLimit(subscriptionPlan);
+  const isLegacyAiroPlus = subscriptionPlan === SubscriptionPlan.Starter && !!entitlementId;
+  const effectivePlanForLimits = isLegacyAiroPlus ? SubscriptionPlan.AiroPlus : subscriptionPlan;
+
+  const publishLimit = getPublishLimit(effectivePlanForLimits);
   const planLabelKey = subscriptionPlan ? getPlanDisplayLabelKey(subscriptionPlan) : null;
   const planName = planLabelKey ? t(planLabelKey) : '';
   const isPaidPlan = isPaidPlanForGrants(subscriptionPlan, isGrantsEnabled);
 
   const canUpgradeForMorePublishes =
-    subscriptionPlan && subscriptionPlan !== SubscriptionPlan.Ultimate;
+    effectivePlanForLimits &&
+    effectivePlanForLimits !== SubscriptionPlan.Ultimate &&
+    effectivePlanForLimits !== SubscriptionPlan.AiroPlus;
 
   const publishedCount = useMemo(
     () => sites.filter(isPublishedApp).length,
     [sites]
   );
+
+  const isAtPublishLimit = publishLimit !== null && publishedCount >= publishLimit;
 
   const [isExpanded, setIsExpanded] = useState(true);
   const [selectedApp, setSelectedApp] = useState<SiteInfo | null>(null);
@@ -283,7 +293,11 @@ export default function AppsAndSitesCard({
           <text.p as="paragraph" size={-1} className="mb-3 text-intents-ux-passive-foregroundColor">
             <FormattedMessage
               id="builder_manageplan_apps_plan_limit"
-              values={{ planName, limit: publishLimit }}
+              values={{
+                planName,
+                limit: publishLimit,
+                strong: (chunks) => <strong>{chunks}</strong>,
+              }}
             />
           </text.p>
         )}
@@ -336,13 +350,15 @@ export default function AppsAndSitesCard({
               <text.p as="paragraph" size={-1} className="mt-2 mb-3 flex-shrink-0 text-intents-ux-passive-foregroundColor">
                 {canUpgradeForMorePublishes && onOpenPaywall ? (
                   <FormattedMessage
-                    id={canUpgradeForMorePublishes ? "builder_manageplan_apps_plan_limit_with_upgrade" : "builder_manageplan_apps_plan_limit"}
+                    id="builder_manageplan_apps_plan_limit_with_upgrade"
                     values={{
                       planName,
                       limit: publishLimit,
+                      strong: (chunks) => <strong>{chunks}</strong>,
                       upgradeLink: (chunks) => (
                         <Button
                           design="inline"
+                          size="sm"
                           data-partial="componentAiro"
                           onClick={() => onOpenPaywall('manage_plan.apps_upgrade', 'upgrade', PAYWALL_ITC.UPGRADE)}
                           text={chunks.toString()}
@@ -353,7 +369,11 @@ export default function AppsAndSitesCard({
                 ) : (
                   <FormattedMessage
                     id="builder_manageplan_apps_plan_limit"
-                    values={{ planName, limit: publishLimit }}
+                    values={{
+                      planName,
+                      limit: publishLimit,
+                      strong: (chunks) => <strong>{chunks}</strong>,
+                    }}
                   />
                 )}
               </text.p>
@@ -372,6 +392,8 @@ export default function AppsAndSitesCard({
                   isDisconnectingDomain={disconnectingDomainApps.has(site.id)}
                   isUnpublishEnabled={isUnpublishEnabled ?? false}
                   isPaidPlan={isPaidPlan}
+                  isAtPublishLimit={isAtPublishLimit}
+                  canUpgrade={canUpgradeForMorePublishes ?? false}
                   onPublishClick={handlePublishClick}
                   onUnpublishClick={handleUnpublishClick}
                   onOpenPaywall={onOpenPaywall}

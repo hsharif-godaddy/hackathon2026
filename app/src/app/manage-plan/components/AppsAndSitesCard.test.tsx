@@ -203,7 +203,7 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
 
     it('should call publish mutation when Publish is clicked', function callsPublishMutation() {
       const unpublishedSite = createMockSite({ id: 'site-456', variants: ['preview'] });
-      renderWithProviders(<AppsAndSitesCard sites={[unpublishedSite]} />);
+      renderWithProviders(<AppsAndSitesCard sites={[unpublishedSite]} subscriptionPlan={SubscriptionPlan.Starter} />);
       // Card starts expanded by default
       fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
 
@@ -325,6 +325,82 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
       );
       // Card starts expanded by default
       expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Upgrade to Publish' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('publish limit behavior', function publishLimitTests() {
+    it('should show Upgrade to Publish for Starter user at publish limit', function starterAtLimit() {
+      const mockOpenPaywall = vi.fn();
+      // Starter plan has limit of 1 - create 1 published + 1 unpublished
+      const publishedSite = createMockSite({ id: 'published-1', name: 'Published App', variants: ['preview', 'publish'] });
+      const unpublishedSite = createMockSite({ id: 'unpublished-1', name: 'Unpublished App', variants: ['preview'] });
+
+      renderWithProviders(
+        <AppsAndSitesCard
+          sites={[publishedSite, unpublishedSite]}
+          subscriptionPlan={SubscriptionPlan.Starter}
+          onOpenPaywall={mockOpenPaywall}
+        />
+      );
+
+      // Published app should show Unpublish
+      expect(screen.getByRole('button', { name: 'Unpublish' })).toBeInTheDocument();
+      // Unpublished app at limit should show Upgrade to Publish (Starter can upgrade)
+      expect(screen.getByRole('button', { name: 'Upgrade to Publish' })).toBeInTheDocument();
+      // Should NOT show regular Publish button
+      expect(screen.queryByRole('button', { name: 'Publish' })).not.toBeInTheDocument();
+    });
+
+    it('should show disabled Publish button for Ultimate user at publish limit', function ultimateAtLimit() {
+      const mockOpenPaywall = vi.fn();
+      // Ultimate plan has limit of 10 - create 10 published + 1 unpublished
+      const publishedSites = Array.from({ length: 10 }, (_, i) =>
+        createMockSite({ id: `published-${i}`, name: `Published App ${i}`, variants: ['preview', 'publish'] })
+      );
+      const unpublishedSite = createMockSite({ id: 'unpublished-1', name: 'Unpublished App', variants: ['preview'] });
+
+      renderWithProviders(
+        <AppsAndSitesCard
+          sites={[...publishedSites, unpublishedSite]}
+          subscriptionPlan={SubscriptionPlan.Ultimate}
+          onOpenPaywall={mockOpenPaywall}
+        />
+      );
+
+      // Should show Publish button (not Upgrade) since Ultimate can't upgrade
+      const publishButtons = screen.getAllByRole('button', { name: 'Publish' });
+      expect(publishButtons).toHaveLength(1);
+      // The Publish button should be disabled since at limit
+      expect(publishButtons[0]).toBeDisabled();
+      // Should NOT show Upgrade to Publish
+      expect(screen.queryByRole('button', { name: 'Upgrade to Publish' })).not.toBeInTheDocument();
+    });
+
+    it('should treat legacy AiroPlus users correctly with entitlementId', function legacyAiroPlusLimit() {
+      const mockOpenPaywall = vi.fn();
+      // Legacy AiroPlus = Starter plan + entitlementId, limit of 9
+      // Create 9 published + 1 unpublished
+      const publishedSites = Array.from({ length: 9 }, (_, i) =>
+        createMockSite({ id: `published-${i}`, name: `Published App ${i}`, variants: ['preview', 'publish'] })
+      );
+      const unpublishedSite = createMockSite({ id: 'unpublished-1', name: 'Unpublished App', variants: ['preview'] });
+
+      renderWithProviders(
+        <AppsAndSitesCard
+          sites={[...publishedSites, unpublishedSite]}
+          subscriptionPlan={SubscriptionPlan.Starter}
+          entitlementId="legacy-airo-plus-entitlement"
+          onOpenPaywall={mockOpenPaywall}
+        />
+      );
+
+      // Should show Publish button (not Upgrade) since AiroPlus can't upgrade
+      const publishButtons = screen.getAllByRole('button', { name: 'Publish' });
+      expect(publishButtons).toHaveLength(1);
+      // The Publish button should be disabled since at limit
+      expect(publishButtons[0]).toBeDisabled();
+      // Should NOT show Upgrade to Publish for legacy AiroPlus
       expect(screen.queryByRole('button', { name: 'Upgrade to Publish' })).not.toBeInTheDocument();
     });
   });
