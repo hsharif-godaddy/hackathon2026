@@ -116,9 +116,15 @@ describe('RecoveryStatusHandler', () => {
 
     // Should NOT call clearActiveStream - that would lose data
     expect(clearActiveStream).not.toHaveBeenCalled()
+    // Should flush buffers before finalizing (prevents buffered data loss)
+    expect(context.actions.flushToolDeltaBufferImmediate).toHaveBeenCalled()
     // Should call finalizeStream to preserve the in-memory response
     // finalizeStream sets streamingState: 'idle' and isLoading: false internally
     expect(context.actions.finalizeStream).toHaveBeenCalledWith({})
+    // Flush must happen before finalize
+    const flushMock = context.actions.flushToolDeltaBufferImmediate as unknown as ReturnType<typeof vi.fn>
+    const finalizeMock = context.actions.finalizeStream as unknown as ReturnType<typeof vi.fn>
+    expect(flushMock.mock.invocationCallOrder[0]).toBeLessThan(finalizeMock.mock.invocationCallOrder[0])
   })
 
   it('prepares buffered event replay and sets pending ack with WebSocket history', async () => {

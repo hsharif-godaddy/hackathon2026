@@ -104,6 +104,8 @@ export class RecoveryStatusHandler implements MessageHandler {
       } else {
         // History load failed - preserve in-memory response by finalizing it
         // This promotes activeStream to a completed message so user doesn't lose data
+        // Flush any buffered store updates first (text chunks, tool segments)
+        context.actions.flushToolDeltaBufferImmediate()
         context.actions.finalizeStream({})
         logger.info('websocket.recovery.finalized_on_history_failure', {
           messageId: store.activeStream.id,

@@ -152,6 +152,17 @@ vi.mock('@/config/dynamic-api', () => ({
   },
 }))
 
+// Mock storeUpdateBuffer to bypass RAF buffering (fake timers don't fire RAF callbacks).
+// Pass through synchronously so integration tests see store updates immediately.
+vi.mock('@/services/websocket/storeUpdateBuffer', () => ({
+  bufferTextChunk: (content: string) => {
+    mockGetState().appendTextSegment(content)
+  },
+  bufferStoreUpdate: (fn: () => void) => fn(),
+  flushStoreUpdateBufferImmediate: vi.fn(),
+  clearStoreUpdateBuffer: vi.fn(),
+}))
+
 describe('WebSocket Recovery Integration', () => {
   beforeEach(() => {
     vi.useFakeTimers()

@@ -62,6 +62,8 @@ export class HistoryCompleteHandler implements MessageHandler {
           conversationId: pendingAck.conversationId
         })
 
+        // Flush any buffered store updates before finalizing (text chunks, tool segments)
+        context.actions.flushToolDeltaBufferImmediate()
         // Finalize the stream first (Tier 2): moves activeStream to messages, persists to DB
         // Then transition machine (Tier 1): streaming.receiving → streaming.completing → completed
         context.actions.finalizeStream({})

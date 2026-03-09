@@ -131,8 +131,14 @@ describe('HistoryCompleteHandler', () => {
       nextCursor: null,
     })
     expect(setHistoryLoadingComplete).toHaveBeenCalledWith(true)
+    // Should flush buffers before finalizing (prevents buffered data loss)
+    expect(context.actions.flushToolDeltaBufferImmediate).toHaveBeenCalled()
     // Should finalize the stream first (moves to messages, persists)
     expect(context.actions.finalizeStream).toHaveBeenCalledWith({})
+    // Flush must happen before finalize
+    const flushMock = context.actions.flushToolDeltaBufferImmediate as unknown as ReturnType<typeof vi.fn>
+    const finalizeMock = context.actions.finalizeStream as unknown as ReturnType<typeof vi.fn>
+    expect(flushMock.mock.invocationCallOrder[0]).toBeLessThan(finalizeMock.mock.invocationCallOrder[0])
     // Then send STREAM_COMPLETE to transition from streaming.receiving to completed
     expect(context.machine.send).toHaveBeenCalledWith({ type: 'STREAM_COMPLETE' })
   })

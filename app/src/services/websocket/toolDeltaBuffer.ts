@@ -12,8 +12,7 @@
 
 import { logger } from '@/lib/request-context'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
-
-const RAF_FALLBACK_DELAY_MS = 16 // ~60fps frame duration for setTimeout fallback
+import { createRAFScheduler } from './rafScheduler'
 
 export interface ToolDeltaEntry {
   name: string
@@ -26,20 +25,10 @@ export interface ToolDeltaEntry {
 // ---------------------------------------------------------------------------
 
 const toolDeltaBuffer: Map<string, ToolDeltaEntry> = new Map()
-let flushScheduled = false
-let rafId: number | null = null
-let usedRaf = false
 
 // ---------------------------------------------------------------------------
-// Public API
+// Flush logic
 // ---------------------------------------------------------------------------
-
-/**
- * Returns the shared module-level buffer map.
- */
-export function getToolDeltaBuffer(): Map<string, ToolDeltaEntry> {
-  return toolDeltaBuffer
-}
 
 /**
  * Flush buffered tool deltas to the store.
@@ -84,84 +73,41 @@ function flushToolDeltaBuffer(): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Scheduler (shared RAF utility)
+// ---------------------------------------------------------------------------
+
+const scheduler = createRAFScheduler(flushToolDeltaBuffer, 'tool_delta')
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the shared module-level buffer map.
+ */
+export function getToolDeltaBuffer(): Map<string, ToolDeltaEntry> {
+  return toolDeltaBuffer
+}
+
 /**
  * Immediately flush all buffered tool deltas.
  * Cancels any pending scheduled flush to prevent duplicate flushes.
  */
-export function flushToolDeltaBufferImmediate(): void {
-  if (rafId !== null) {
-    if (usedRaf) {
-      window.cancelAnimationFrame(rafId)
-    } else {
-      clearTimeout(rafId)
-    }
-    rafId = null
-    usedRaf = false
-  }
-  flushScheduled = false
-  flushToolDeltaBuffer()
-}
+export const flushToolDeltaBufferImmediate = scheduler.flushImmediate
 
 /**
  * Schedule a batched flush using requestAnimationFrame.
  * Multiple calls within the same frame are deduplicated.
  */
-export function scheduleToolDeltaFlush(): void {
-  if (flushScheduled) {
-    return
-  }
+export const scheduleToolDeltaFlush = scheduler.schedule
 
-  flushScheduled = true
-
-  const runFlush = () => {
-    try {
-      rafId = null
-      flushScheduled = false
-      flushToolDeltaBuffer()
-    } catch (error) {
-      logger.error('websocket.tool_delta.flush_execution_error', {
-        message: 'Failed to execute scheduled flush',
-        error: error instanceof Error ? error.message : String(error),
-      })
-      // Reset flag to allow future flush attempts
-      rafId = null
-      flushScheduled = false
-      // Attempt immediate fallback flush
-      try {
-        flushToolDeltaBuffer()
-      } catch (fallbackError) {
-        logger.error('websocket.tool_delta.flush_fallback_error', {
-          message: 'Fallback flush also failed',
-          error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
-        })
-      }
-    }
-  }
-
-  // Try requestAnimationFrame with fallback to setTimeout
-  try {
-    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-      rafId = window.requestAnimationFrame(runFlush)
-      usedRaf = true
-    } else {
-      rafId = setTimeout(runFlush, RAF_FALLBACK_DELAY_MS) as unknown as number
-      usedRaf = false
-    }
-  } catch (schedulingError) {
-    logger.error('websocket.tool_delta.flush_scheduling_error', {
-      message: 'Failed to schedule flush, attempting immediate fallback',
-      error: schedulingError instanceof Error ? schedulingError.message : String(schedulingError),
-    })
-    // Reset flag and attempt immediate flush as fallback
-    rafId = null
-    flushScheduled = false
-    try {
-      flushToolDeltaBuffer()
-    } catch (fallbackError) {
-      logger.error('websocket.tool_delta.flush_immediate_fallback_error', {
-        message: 'Immediate fallback flush failed',
-        error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
-      })
-    }
-  }
+/**
+ * Discard all pending tool deltas without flushing.
+ * Cancels any scheduled RAF flush.
+ * Used on app switch to prevent stale data from bleeding into the new app.
+ */
+export function clearToolDeltaBuffer(): void {
+  scheduler.cancel()
+  toolDeltaBuffer.clear()
 }

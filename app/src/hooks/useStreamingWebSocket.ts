@@ -12,8 +12,15 @@ import { logger } from '@/lib/request-context'
 import { ChatMessageBuilder } from '@/services/websocket/ChatMessageBuilder'
 import { ConnectionManager } from '@/services/websocket/ConnectionManager'
 import { clearController, setController } from '@/services/websocket/controllerRegistry'
+import {
+  bufferStoreUpdate,
+  bufferTextChunk,
+  clearStoreUpdateBuffer,
+  flushStoreUpdateBufferImmediate,
+} from '@/services/websocket/storeUpdateBuffer'
 import { StreamingWebSocketController } from '@/services/websocket/StreamingWebSocketController'
 import {
+  clearToolDeltaBuffer,
   flushToolDeltaBufferImmediate,
   getToolDeltaBuffer,
   scheduleToolDeltaFlush,
@@ -97,15 +104,22 @@ export function useStreamingWebSocket() {
           setStreamingState: state.setStreamingState,
           setIsLoading: state.setIsLoading,
           startNewStream: state.startNewStream,
-          appendTextSegment: state.appendTextSegment,
-          addToolStartSegment: state.addToolStartSegment,
-          addToolCallSegment: state.addToolCallSegment,
-          addToolResultSegment: state.addToolResultSegment,
+          // Hot-path actions buffered via RAF to avoid React Error #185
+          appendTextSegment: (content: string) => bufferTextChunk(content),
+          addToolStartSegment: (tc: Parameters<typeof state.addToolStartSegment>[0]) =>
+            bufferStoreUpdate(() => state.addToolStartSegment(tc)),
+          addToolCallSegment: (tc: Parameters<typeof state.addToolCallSegment>[0]) =>
+            bufferStoreUpdate(() => state.addToolCallSegment(tc)),
+          addToolResultSegment: (tc: Parameters<typeof state.addToolResultSegment>[0]) =>
+            bufferStoreUpdate(() => state.addToolResultSegment(tc)),
           markMaxStepsReached: state.markMaxStepsReached,
           markUpstreamError: state.markUpstreamError,
           markBudgetExceeded: state.markBudgetExceeded,
           finalizeStream: state.finalizeStream,
-          flushToolDeltaBufferImmediate,
+          flushToolDeltaBufferImmediate: () => {
+            flushToolDeltaBufferImmediate()
+            flushStoreUpdateBufferImmediate()
+          },
           scheduleToolDeltaFlush,
         }
       },
@@ -147,9 +161,11 @@ export function useStreamingWebSocket() {
 
     const previousAppId = previousAppIdRef.current
 
-    // Handle app switching - flush stale tool deltas and disconnect before connecting to new app
+    // Handle app switching - discard stale buffers and disconnect before connecting to new app
+    // We clear (not flush) to prevent data from the old app bleeding into the new app's store
     if (previousAppId && previousAppId !== currentAppId) {
-      flushToolDeltaBufferImmediate()
+      clearToolDeltaBuffer()
+      clearStoreUpdateBuffer()
       controller.disconnect();
     }
 

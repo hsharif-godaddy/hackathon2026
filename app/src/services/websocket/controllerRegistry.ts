@@ -9,6 +9,7 @@
  */
 
 import { logger } from '@/lib/request-context'
+import { flushStoreUpdateBufferImmediate } from './storeUpdateBuffer'
 import type { StreamingWebSocketController } from './StreamingWebSocketController'
 import { flushToolDeltaBufferImmediate } from './toolDeltaBuffer'
 
@@ -56,6 +57,7 @@ export function setController(
  */
 export function clearController(): void {
   flushToolDeltaBufferImmediate()
+  flushStoreUpdateBufferImmediate()
   activeController = null
   activeAppId = null
 }
