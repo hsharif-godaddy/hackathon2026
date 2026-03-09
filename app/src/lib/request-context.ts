@@ -1,6 +1,5 @@
-import { context as otelContext, trace } from '@opentelemetry/api';
-
-import { ClientLogBuffer } from './logging/client-log-buffer';
+import { getApmTraceIds } from '@/lib/apm-context';
+import { ClientLogBuffer } from '@/lib/logging/client-log-buffer';
 
 // Conditional import for server-only AsyncLocalStorage
 let AsyncLocalStorage: any;
@@ -220,26 +219,10 @@ export class ContextLogger {
 
   /**
    * Extract OpenTelemetry trace context for log correlation
-   * Returns trace.id, span.id, and transaction.id in Elastic APM format
+   * Returns trace.id, span.id, and transaction.id for Elastic APM compatibility
    */
   private getTraceContext(): { 'trace.id'?: string; 'span.id'?: string; 'transaction.id'?: string } {
-    try {
-      const span = trace.getSpan(otelContext.active());
-      if (span) {
-        const spanContext = span.spanContext();
-        if (spanContext && spanContext.traceId && spanContext.spanId) {
-          return {
-            'trace.id': spanContext.traceId,
-            'span.id': spanContext.spanId,
-            'transaction.id': spanContext.traceId
-          };
-        }
-      }
-    } catch (error) {
-      // Silently fail if OTel context is not available
-      // This can happen in client-side rendering or before OTel is initialized
-    }
-    return {};
+    return getApmTraceIds();
   }
 
   /**

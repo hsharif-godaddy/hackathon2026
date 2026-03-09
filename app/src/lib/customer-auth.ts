@@ -4,50 +4,43 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { context as otelContext, trace } from '@opentelemetry/api';
 
 import { AccountAdapterFactory } from '@/lib/account-adapters/AccountAdapterFactory';
+import {
+  addApmContext,
+  extractAppIdFromPath,
+  setApmAppId,
+  setApmCustomerId,
+  setApmJobId,
+  setApmUserContext,
+  startApmTransaction
+} from '@/lib/apm-context';
 import { isFeatureEnabled } from '@/lib/features';
 import { isAuthDisabled } from '@/lib/gasket-config';
 import { MOCK_USER } from '@/lib/mock-auth';
 import { logger, type RequestContext, RequestContextService } from '@/lib/request-context';
 
 /**
- * Set OpenTelemetry span attribute for APM correlation
- * Safe to call even if OTel is not initialized
- */
-function setSpanAttribute(key: string, value: string | number | boolean): void {
-  try {
-    const span = trace.getSpan(otelContext.active());
-    if (span) {
-      span.setAttribute(key, value);
-    }
-  } catch {
-    // Silently fail if OTel is not available
-  }
-}
-
-/**
- * Set appId on the current OpenTelemetry span for APM correlation
+ * Set appId on the current APM transaction for correlation
  * Call this from API routes that have access to appId
  */
 export function setSpanAppId(appId: string): void {
-  setSpanAttribute('appId', appId);
+  setApmAppId(appId);
 }
 
 /**
- * Set customerId on the current OpenTelemetry span for APM correlation
+ * Set customerId on the current APM transaction for correlation
  */
 export function setSpanCustomerId(customerId: string): void {
-  setSpanAttribute('customerId', customerId);
+  setApmCustomerId(customerId);
 }
 
 /**
- * Set jobId on the current OpenTelemetry span for APM correlation
+ * Set jobId on the current APM transaction for correlation
  * Used when appId is not yet available (e.g., during async job creation)
  */
 export function setSpanJobId(jobId: string): void {
-  setSpanAttribute('jobId', jobId);
+  setApmJobId(jobId);
 }
 
 /**
@@ -220,79 +213,112 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
 }
 
 /**
- * Extract appId from URL path if present
- * Matches app-related routes with [id] or [appId] parameters
- */
-function extractAppIdFromPath(url: string): string | null {
-  try {
-    const pathname = new URL(url).pathname;
-
-    // Routes with [id] or [appId] that represent appId
-    // Excludes: quick-create, create (these create new apps, ID comes from response)
-    // Note: database and secrets routes use [appId] param name instead of [id]
-    const idRouteMatch = pathname.match(/\/api\/(?:sites|apps|servers|develop|conversations|database|secrets)\/([a-zA-Z0-9-]+)(?:\/|$)/);
-    if (idRouteMatch && idRouteMatch[1] && !['quick-create', 'create'].includes(idRouteMatch[1])) {
-      return idRouteMatch[1];
-    }
-
-    // Routes with explicit [appId] parameter
-    const appIdRouteMatch = pathname.match(/\/api\/(?:database|secrets)\/([a-zA-Z0-9-]+)(?:\/|$)/);
-    if (appIdRouteMatch && appIdRouteMatch[1]) {
-      return appIdRouteMatch[1];
-    }
-  } catch {
-    // Ignore URL parsing errors
-  }
-  return null;
-}
-
-/**
  * Middleware wrapper for API routes requiring customer authentication
+ *
+ * APM context behavior:
+ * - Starts an APM transaction with the route name
+ * - Sets a best-effort UNVERIFIED cid early (before auth) to help debug 401s
+ * - Sets verified cid/appId labels after successful authentication
+ * - The early unverified cid is for observability only, not a security signal
  */
 export function withCustomerAuth<T extends unknown[]>(
   handler: (request: NextRequest, context: CustomerAuthContext, ...args: T) => Promise<NextResponse>
 ) {
   return async (request: NextRequest, ...args: T): Promise<NextResponse> => {
-    const authContext = await authenticateCustomer(request);
+    // Start APM transaction for this API request
+    const urlPath = new URL(request.url).pathname;
+    const txName = `${request.method} ${urlPath}`;
+    const transaction = startApmTransaction(txName, 'request');
 
-    if (!authContext.isAuthenticated) {
-      const errorMessage = (authContext as UnauthenticatedCustomerContext).error;
+    // Track if we set cid early (before auth) - used to avoid redundant label setting
+    let cidSetEarly = false;
 
-      return NextResponse.json(
-        {
-          error: 'Unauthorized',
-          message: errorMessage,
-          requiresAuth: true
-        },
-        { status: 401 }
-      );
+    // EARLY: Extract cid from token BEFORE authentication (best-effort for APM)
+    // This ensures cid is set even when auth fails (401), helping debug auth issues
+    // Use standalone functions to avoid instantiating auth service when no token exists
+    try {
+      const { extractTokenFromRequest, decodeTokenPayload } = await import('@/lib/gd-auth-service');
+      const token = extractTokenFromRequest(request);
+      if (token && transaction) {
+        const claims = decodeTokenPayload(token);
+        if (claims?.cid) {
+          transaction.setLabel('cid', claims.cid);
+          cidSetEarly = true;
+        }
+      }
+    } catch {
+      // Ignore - best effort only
     }
 
-    // Token expiration is now handled by gd-auth with use12HourExpiration=true and level=2
-    // which enforces gateway requirements:
-    // - VAT ≤ 5 minutes (only for basic/s2s, not e2s)
-    // - IAT ≤ 12 hours (per=true) or ≤ 1 hour (per=false)
-    // - e2s tokens: 2 hour expiration
-    // No need for custom isTokenTooOld() check - gd-auth handles it correctly
+    try {
+      const authContext = await authenticateCustomer(request);
 
-    // Set up request context for the entire request lifecycle
-    const requestContext: RequestContext = {
-      customerId: authContext.user.customerId
-    };
+      if (!authContext.isAuthenticated) {
+        const errorMessage = (authContext as UnauthenticatedCustomerContext).error;
 
-    // Set customerId on OpenTelemetry span for APM correlation
-    setSpanCustomerId(authContext.user.customerId);
+        transaction?.end('HTTP 401');
+        return NextResponse.json(
+          {
+            error: 'Unauthorized',
+            message: errorMessage,
+            requiresAuth: true
+          },
+          { status: 401 }
+        );
+      }
 
-    // Auto-extract and set appId from URL path if present (e.g., /api/sites/[id]/...)
-    const appIdFromPath = extractAppIdFromPath(request.url);
-    if (appIdFromPath) {
-      setSpanAppId(appIdFromPath);
+      // Set up request context for the entire request lifecycle
+      const requestContext: RequestContext = {
+        customerId: authContext.user.customerId
+      };
+
+      // Set APM labels directly on the transaction object we captured
+      // This avoids async context issues that can occur with agent-level APIs
+      // Only set cid if not already set early (validated cid should match early cid)
+      if (transaction && !cidSetEarly) {
+        transaction.setLabel('cid', authContext.user.customerId);
+      }
+
+      // Always set appId when present (not dependent on cidSetEarly)
+      if (transaction) {
+        const appIdFromPath = extractAppIdFromPath(request.url);
+        if (appIdFromPath) {
+          transaction.setLabel('appId', appIdFromPath);
+        }
+
+        // Set delegated label for employee-to-shopper impersonation
+        if (authContext.user.authType === 'e2s') {
+          transaction.setLabel('delegated', true);
+        }
+      }
+
+      // Also try agent-level APIs as backup (may work if context is preserved)
+      addApmContext(request, authContext);
+      setApmUserContext(authContext.user.customerId);
+
+      // Run the handler within the request context
+      const response = await RequestContextService.run(requestContext, () => {
+        return handler(request, authContext, ...args);
+      });
+
+      // End transaction with appropriate result based on response status
+      const status = response.status;
+      if (status >= 200 && status < 300) {
+        transaction?.end('HTTP 2xx');
+      } else if (status >= 400 && status < 500) {
+        transaction?.end('HTTP 4xx');
+      } else if (status >= 500) {
+        transaction?.end('HTTP 5xx');
+      } else {
+        transaction?.end(`HTTP ${status}`);
+      }
+
+      return response;
+    } catch (error) {
+      // End transaction with error
+      transaction?.end('error');
+      throw error;
     }
-
-    // Run the handler within the request context
-    return RequestContextService.run(requestContext, () => {
-      return handler(request, authContext, ...args);
-    });
   };
 }
 

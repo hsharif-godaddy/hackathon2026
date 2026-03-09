@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { withApmRoute } from '@/lib/apm-context';
 import { ensureTestUserExists } from '@/lib/database/seed-test-user';
 import { isFeatureEnabled } from '@/lib/features';
 // Lazy import to avoid initializing gd-auth during module loading
@@ -7,7 +8,7 @@ import { isAuthDisabled } from '@/lib/gasket-config';
 import { MOCK_USER } from '@/lib/mock-auth';
 import { logger } from '@/lib/request-context';
 
-export async function GET(request: NextRequest) {
+async function validateHandler(request: NextRequest) {
   try {
     // Handle mock authentication
     if (isFeatureEnabled.mockLogin()) {
@@ -86,7 +87,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export const GET = withApmRoute(validateHandler);
+
 // Handle POST requests as well (some auth flows might use POST)
-export async function POST(request: NextRequest) {
-  return GET(request);
-}
+export const POST = withApmRoute(validateHandler);

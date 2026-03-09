@@ -21,6 +21,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
+import { withApmRoute } from '@/lib/apm-context';
 import { authenticateCustomer } from '@/lib/customer-auth';
 import { logger, LogLevel } from '@/lib/request-context';
 
@@ -192,7 +193,7 @@ function sanitizeLog(log: unknown): ClientLogPayload | null {
  * @param request - Incoming request with log batch
  * @returns JSON response with processing result
  */
-export async function POST(request: NextRequest): Promise<NextResponse> {
+export const POST = withApmRoute(async (request: NextRequest): Promise<NextResponse> => {
   try {
     // Parse request body
     let payload: LogsRequestPayload;
@@ -306,12 +307,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { status: 500 }
     );
   }
-}
+});
 
 /**
  * OPTIONS handler for CORS preflight
  */
-export async function OPTIONS(): Promise<NextResponse> {
+export const OPTIONS = withApmRoute(async (_request): Promise<NextResponse> => {
   return new NextResponse(null, {
     status: 204,
     headers: {
@@ -319,5 +320,5 @@ export async function OPTIONS(): Promise<NextResponse> {
       'Access-Control-Allow-Headers': 'Content-Type',
     },
   });
-}
+});
 

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { decodeTokenPayload, extractTokenFromRequest } from './gd-auth-service';
+
 // Create shared mock authenticate function at module level
 const mockAuthenticate = vi.fn();
 
@@ -22,6 +24,153 @@ vi.mock('@/lib/request-context', () => ({
     error: vi.fn()
   }
 }));
+
+function encodeJwtPayload(payload: object): string {
+  return Buffer.from(JSON.stringify(payload)).toString('base64url');
+}
+
+function createMockJwt(payload: object): string {
+  const header = encodeJwtPayload({ alg: 'HS256', typ: 'JWT' });
+  const body = encodeJwtPayload(payload);
+  const signature = 'mock-signature';
+  return `${header}.${body}.${signature}`;
+}
+
+describe('decodeTokenPayload', () => {
+  it('should extract cid from valid JWT', () => {
+    const token = createMockJwt({ cid: 'customer-123', shopperId: 'shopper-456' });
+
+    const result = decodeTokenPayload(token);
+
+    expect(result).not.toBeNull();
+    expect(result?.cid).toBe('customer-123');
+    expect(result?.shopperId).toBe('shopper-456');
+  });
+
+  it('should fall back to customerId when cid is not present', () => {
+    const token = createMockJwt({ customerId: 'fallback-customer-789' });
+
+    const result = decodeTokenPayload(token);
+
+    expect(result).not.toBeNull();
+    expect(result?.cid).toBe('fallback-customer-789');
+  });
+
+  it('should fall back to sub when shopperId is not present', () => {
+    const token = createMockJwt({ sub: 'subject-user-123' });
+
+    const result = decodeTokenPayload(token);
+
+    expect(result).not.toBeNull();
+    expect(result?.shopperId).toBe('subject-user-123');
+  });
+
+  it('should return null for invalid JWT format (missing parts)', () => {
+    expect(decodeTokenPayload('not-a-jwt')).toBeNull();
+    expect(decodeTokenPayload('only.two')).toBeNull();
+    expect(decodeTokenPayload('')).toBeNull();
+  });
+
+  it('should return null for malformed base64 payload', () => {
+    const token = 'header.!!!invalid-base64!!!.signature';
+
+    const result = decodeTokenPayload(token);
+
+    expect(result).toBeNull();
+  });
+
+  it('should return null for non-JSON payload', () => {
+    const header = encodeJwtPayload({ alg: 'HS256' });
+    const notJson = Buffer.from('this is not json').toString('base64url');
+    const token = `${header}.${notJson}.signature`;
+
+    const result = decodeTokenPayload(token);
+
+    expect(result).toBeNull();
+  });
+
+  it('should return empty object when payload has no cid/customerId/shopperId/sub', () => {
+    const token = createMockJwt({ exp: 12345, iat: 12345 });
+
+    const result = decodeTokenPayload(token);
+
+    expect(result).not.toBeNull();
+    expect(result?.cid).toBeUndefined();
+    expect(result?.shopperId).toBeUndefined();
+  });
+});
+
+describe('extractTokenFromRequest (standalone function)', () => {
+  it('should extract token from Bearer authorization header', () => {
+    const request = {
+      headers: {
+        get: vi.fn((name: string) => {
+          if (name === 'authorization') return 'Bearer standalone-token-123';
+          return null;
+        })
+      },
+      cookies: { get: vi.fn() }
+    };
+
+    const token = extractTokenFromRequest(request);
+
+    expect(token).toBe('standalone-token-123');
+  });
+
+  it('should extract token from sso-jwt authorization header', () => {
+    const request = {
+      headers: {
+        get: vi.fn((name: string) => {
+          if (name === 'authorization') return 'sso-jwt standalone-token-456';
+          return null;
+        })
+      },
+      cookies: { get: vi.fn() }
+    };
+
+    const token = extractTokenFromRequest(request);
+
+    expect(token).toBe('standalone-token-456');
+  });
+
+  it('should extract token from auth_idp cookie', () => {
+    const request = {
+      headers: { get: vi.fn(() => null) },
+      cookies: {
+        get: vi.fn((name: string) => {
+          if (name === 'auth_idp') return { value: 'cookie-token-standalone' };
+          return null;
+        })
+      }
+    };
+
+    const token = extractTokenFromRequest(request);
+
+    expect(token).toBe('cookie-token-standalone');
+  });
+
+  it('should return null when no token is present', () => {
+    const request = {
+      headers: { get: vi.fn(() => null) },
+      cookies: { get: vi.fn(() => null) }
+    };
+
+    const token = extractTokenFromRequest(request);
+
+    expect(token).toBeNull();
+  });
+
+  it('should handle missing cookies object gracefully', () => {
+    const request = {
+      headers: { get: vi.fn(() => null) },
+      cookies: undefined
+    };
+
+    const token = extractTokenFromRequest(request);
+
+    expect(token).toBeNull();
+  });
+});
 
 describe('GdAuthService', () => {
   let service: any;
@@ -152,11 +301,11 @@ describe('GdAuthService', () => {
       expect(token).toBe('test-token-123');
     });
 
-    it('should extract token from idp-jwt authorization header', () => {
+    it('should extract token from sso-jwt authorization header', () => {
       const request = {
         headers: {
           get: vi.fn((name: string) => {
-            if (name === 'authorization') return 'idp-jwt test-token-456';
+            if (name === 'authorization') return 'sso-jwt test-token-456';
             return null;
           })
         },

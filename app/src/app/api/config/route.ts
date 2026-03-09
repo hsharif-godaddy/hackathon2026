@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 
+import { withApmRoute } from '@/lib/apm-context';
 import { getGasketConfig } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 
 // Force dynamic rendering to ensure runtime environment variables are used
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export const GET = withApmRoute(async (_request) => {
   try {
     const config = await getGasketConfig();
 
@@ -26,4 +27,4 @@ export async function GET() {
       { status: 500 }
     );
   }
-}
+});

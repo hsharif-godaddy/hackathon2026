@@ -1,21 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { withApmRoute } from '@/lib/apm-context';
 import { logger } from '@/lib/request-context';
 import { loadTranslations } from '@/lib/translations/load-translations';
 
 /**
  * Public API route for fetching translation packages (No Authentication Required)
- * 
+ *
  * Thin wrapper around loadTranslations utility for client-side requests.
  * Server components should call loadTranslations directly (no HTTP overhead).
- * 
+ *
  * No authentication required - translations are public data.
- * 
+ *
  * @example
  * GET /api/i18n/package?packageName=@airo/app-builder
  * GET /api/i18n/package?packageName=@airo/app-builder&locale=es-ES
  */
-export async function GET(request: NextRequest) {
+export const GET = withApmRoute(async (request: NextRequest) => {
   try {
     const searchParams = request.nextUrl.searchParams;
     const packageName = searchParams.get('packageName');
@@ -52,5 +53,5 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { withApmRoute } from '@/lib/apm-context';
 import { logger } from '@/lib/request-context';
 
 /**
@@ -11,7 +12,7 @@ import { logger } from '@/lib/request-context';
  * @param request - The incoming Next.js request with referralId and path
  * @returns NextResponse with success status
  */
-export async function POST(request: NextRequest) {
+export const POST = withApmRoute(async (request: NextRequest) => {
   try {
     const body = await request.json();
     const { referralId, path } = body;
@@ -39,4 +40,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

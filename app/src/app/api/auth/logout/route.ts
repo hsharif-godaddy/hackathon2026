@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { logger } from "@/lib/request-context";
+import { withApmRoute } from '@/lib/apm-context';
+import { logger } from '@/lib/request-context';
 
-export async function POST() {
+export const POST = withApmRoute(async (_request) => {
   try {
     // For Gasket auth, we just need to acknowledge the logout
     // The actual logout happens via SSO redirect in the client
@@ -30,4 +31,4 @@ export async function POST() {
       { status: 500 },
     );
   }
-}
+});

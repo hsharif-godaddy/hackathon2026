@@ -1,22 +1,24 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { logger } from './src/lib/request-context'
 
-// This will run once when the middleware is first loaded
+import { logger } from './src/lib/request-context'
 import { logStartupConfiguration } from './src/lib/startup-config'
 
-// Log startup configuration when middleware loads
 logStartupConfiguration()
 
 /**
- * Middleware to log all API requests with OpenTelemetry trace correlation
+ * Middleware for API request logging
+ *
+ * Note: OpenTelemetry instrumentation for pages is handled in root layout (layout.tsx)
+ * because middleware runs in Edge Runtime where @vercel/otel context is NOT available.
+ * Page instrumentation must happen in Node.js context (layout, route handlers).
  */
 export function middleware(request: NextRequest) {
   const start = Date.now()
   const { pathname, searchParams } = new URL(request.url)
   const method = request.method
-  
-  // Log incoming request
+
+  // Log incoming API request
   logger.info('api.request.start', {
     message: `${method} ${pathname}`,
     method,
@@ -25,10 +27,9 @@ export function middleware(request: NextRequest) {
     userAgent: request.headers.get('user-agent'),
     referer: request.headers.get('referer')
   })
-  
-  // Continue processing
+
   const response = NextResponse.next()
-  
+
   // Log request completion
   const duration = Date.now() - start
   logger.info('api.request.complete', {
@@ -38,11 +39,13 @@ export function middleware(request: NextRequest) {
     status: response.status,
     durationMs: duration
   })
-  
+
   return response
 }
 
 export const config = {
-  // Match all API routes to ensure middleware runs
-  matcher: '/api/:path*'
+  matcher: [
+    // Match API routes for logging (pages just pass through)
+    '/api/:path*'
+  ]
 }

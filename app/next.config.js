@@ -39,6 +39,14 @@ export default gasket.actions.getNextConfig({
       /Critical dependency: the request of a dependency is an expression/,
     ];
 
+    if (isServer) {
+      // Externalize server-only packages that webpack can't bundle
+      config.externals = config.externals || [];
+      config.externals.push({
+        '@azure/functions-core': 'commonjs @azure/functions-core',
+      });
+    }
+
     if (!isServer) {
       // Exclude server-only modules from client bundle
       // This is the standard Next.js approach for conditional server imports
@@ -62,7 +70,18 @@ export default gasket.actions.getNextConfig({
         https: false,
         zlib: false,
         async_hooks: false,
+        worker_threads: false,
+        child_process: false,
+        dns: false,
+        dgram: false,
+        module: false,
+        perf_hooks: false,
+        v8: false,
+        inspector: false,
+        constants: false,
+        util: false,
       };
+
     }
     return config;
   },

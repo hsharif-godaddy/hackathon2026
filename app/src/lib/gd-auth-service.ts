@@ -6,6 +6,63 @@
 import { authConfigs, getSsoHostSync } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 
+/**
+ * Extract auth token from request headers or cookies (lightweight, no service instantiation)
+ * Use this for quick token presence checks without initializing gd-auth
+ */
+export function extractTokenFromRequest(request: any): string | null {
+  // Try Authorization header first
+  const authHeader = request.headers.get('authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    return authHeader.substring(7);
+  } else if (authHeader?.includes('sso-jwt ')) {
+    return authHeader.split('sso-jwt ')[1];
+  }
+
+  // Try cookies
+  const cookieToken = request.cookies?.get('auth_idp')?.value;
+  if (cookieToken) {
+    return cookieToken;
+  }
+
+  return null;
+}
+
+/**
+ * Decode JWT payload without validation (for APM labeling only)
+ *
+ * SECURITY EXCEPTION: This function intentionally bypasses gd-auth validation.
+ * This is an approved exception to CLAUDE.md's "use gd-auth for JWT" rule because:
+ * 1. Used ONLY for APM observability labels, never for authorization
+ * 2. Full gd-auth validation still happens before any business logic
+ * 3. Enables debugging auth failures by capturing cid before validation fails
+ * 4. Silently fails on malformed tokens (returns null)
+ *
+ * WARNING: Do NOT use this function for authorization decisions.
+ */
+export function decodeTokenPayload(token: string): { cid?: string; shopperId?: string; auth?: string } | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+
+    const payload = parts[1];
+    const decoded = Buffer.from(payload, 'base64url').toString('utf8');
+    const claims = JSON.parse(decoded);
+
+    // For e2s tokens, cid and shopperId are nested in the e2s object
+    const cid = claims.cid || claims.customerId || claims.e2s?.cid;
+    const shopperId = claims.shopperId || claims.sub || claims.e2s?.shopperId;
+
+    return {
+      cid,
+      shopperId,
+      auth: claims.auth
+    };
+  } catch {
+    return null;
+  }
+}
+
 export class GdAuthService {
   private gdAuth: any;
   private ssoHost: string;
@@ -123,8 +180,8 @@ export class GdAuthService {
     const authHeader = request.headers.get('authorization');
     if (authHeader?.startsWith('Bearer ')) {
       return authHeader.substring(7);
-    } else if (authHeader?.includes('idp-jwt ')) {
-      return authHeader.split('idp-jwt ')[1];
+    } else if (authHeader?.includes('sso-jwt ')) {
+      return authHeader.split('sso-jwt ')[1];
     }
 
     // Try cookies

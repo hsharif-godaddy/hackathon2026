@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { withApmRoute } from '@/lib/apm-context';
 import { logger } from '@/lib/request-context';
 import { getApiBaseUrl } from '@/utils/getServerRootDomain';
 
@@ -68,7 +69,7 @@ function filterCookies(cookieHeader: string): string {
   return filtered.join('; ');
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withApmRoute(async (request: NextRequest) => {
   try {
     const offerGraphApiUrl = `${getApiBaseUrl(request, 'og.api')}/graphql`;
 
@@ -128,4 +129,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

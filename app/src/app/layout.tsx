@@ -18,6 +18,7 @@ import { TranslationsProvider } from "@/components/providers/TranslationProvider
 import ConversationIdCookie from "@/components/security/ConversationIdCookie";
 import FrameBuster from "@/components/security/FrameBuster";
 import ReferralTracker from "@/components/tracking/ReferralTracker";
+import { instrumentPageRequest } from "@/lib/apm-context";
 import { logger } from "@/lib/request-context";
 import { detectLocale, getServerIntl } from "@/lib/translations";
 import { loadTranslations } from "@/lib/translations/load-translations";
@@ -126,6 +127,13 @@ async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const headersList = await headers();
+
+  // Instrument page request for APM tracking (sets cid, span.type, pathname)
+  // This runs in Node.js context where OpenTelemetry is active
+  // Note: Middleware can't do this - it runs in Edge Runtime without OTel context
+  await instrumentPageRequest(headersList);
+
   const locale = await detectLocale();
 
   let messages: Record<string, string> | undefined;
@@ -143,7 +151,6 @@ async function RootLayout({
 
   // Trigger A/A experiment server-side
   try {
-    const headersList = await headers();
     const headersObj: Record<string, string> = {};
     headersList.forEach((value, key) => {
       headersObj[key] = value;
