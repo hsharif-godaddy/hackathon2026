@@ -41,6 +41,7 @@ export interface VisualContext {
     y: number
   }
   active_section?: string
+  visible_sections?: { name: string; id?: string; visible_area: number }[]
   viewport: {
     width: number
     height: number

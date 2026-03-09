@@ -8,6 +8,7 @@ export interface VisualContextData {
   page?: string
   scroll_position?: { x: number; y: number }
   active_section?: string
+  visible_sections?: { name: string; id?: string; visible_area: number }[]
   viewport?: { width: number; height: number }
   timestamp?: number
 }
@@ -74,13 +75,33 @@ export class VisualContextRenderer implements ContextAttachmentRenderer<VisualCo
       }
 
       const activePageSection = `The user is currently viewing the "${sanitizedContext.active_section}" section.`
-      const contextNotes = `The user's message refers to content visible at their current scroll position (${sanitizedContext.scroll_position.y}px from top). When they say "this" or "here", they likely mean elements visible in the "${sanitizedContext.active_section}" section around this scroll position.`
+
+      // Build visible sections list (sanitized)
+      const visibleSections = Array.isArray(data.visible_sections)
+        ? data.visible_sections
+          .filter((s): s is { name: string; id?: string; visible_area: number } =>
+            typeof s?.name === 'string' && Number.isFinite(s?.visible_area) && s.visible_area >= 0)
+          .slice(0, 5)
+          .map(s => {
+            const name = String(s.name).substring(0, 100)
+            const id = s.id ? String(s.id).substring(0, 100) : null
+            return id ? `  - "${name}" (id="${id}")` : `  - "${name}"`
+          })
+        : []
+
+      const visibleSectionsText = visibleSections.length > 1
+        ? `\n\nAll Visible Sections (by size in viewport):\n${visibleSections.join('\n')}`
+        : ''
+
+      const contextNotes = visibleSections.length > 1
+        ? `The user's message refers to content visible at their current scroll position (${sanitizedContext.scroll_position.y}px from top). Multiple sections are visible — when they say "this" or "here", consider all visible sections but the "${sanitizedContext.active_section}" section occupies the most viewport space.`
+        : `The user's message refers to content visible at their current scroll position (${sanitizedContext.scroll_position.y}px from top). When they say "this" or "here", they likely mean elements visible in the "${sanitizedContext.active_section}" section around this scroll position.`
 
       const content = `[User's Current Visual Context]
 
 Page Information:
 - Current Page: ${sanitizedContext.page}
-- ${activePageSection}
+- ${activePageSection}${visibleSectionsText}
 
 Scroll Position:
 - Horizontal: ${sanitizedContext.scroll_position.x}px

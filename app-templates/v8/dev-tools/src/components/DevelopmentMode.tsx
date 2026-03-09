@@ -29,14 +29,16 @@ export default function DevelopmentMode() {
   // Visual context capture for AI assistance
   useEffect(() => {
     let activeSection = 'unknown'
+    let visibleSections: { name: string; id?: string; visible_area: number }[] = []
     let sectionsObserver: IntersectionObserver | null = null
     let isScriptReady = false
 
     // Cached visual context for instant responses
     let cachedContext = {
-      page: window.location.pathname + window.location.search,
+      page: window.location.pathname + window.location.search + window.location.hash,
       scroll_position: { x: 0, y: 0 },
       active_section: 'unknown',
+      visible_sections: [] as { name: string; id?: string; visible_area: number }[],
       viewport: { width: window.innerWidth, height: window.innerHeight },
       timestamp: Date.now(),
       script_ready: false
@@ -45,12 +47,13 @@ export default function DevelopmentMode() {
     // Update cached context
     const updateCachedContext = () => {
       cachedContext = {
-        page: window.location.pathname + window.location.search,
+        page: window.location.pathname + window.location.search + window.location.hash,
         scroll_position: {
           x: window.scrollX || window.pageXOffset || 0,
           y: window.scrollY || window.pageYOffset || 0
         },
         active_section: activeSection,
+        visible_sections: visibleSections,
         viewport: {
           width: window.innerWidth,
           height: window.innerHeight
@@ -88,19 +91,111 @@ export default function DevelopmentMode() {
       })
     }
 
+    // Track visible area of all observed sections for accurate detection
+    const sectionVisibility = new Map<Element, { ratio: number; visibleArea: number }>()
+
+    // Extract a human-readable name for a section element
+    function getSectionName(element: HTMLElement): string {
+      // 1. Explicit attributes
+      if (element.getAttribute('data-section')) return element.getAttribute('data-section')!
+      if (element.getAttribute('id')) return element.getAttribute('id')!
+      if (element.getAttribute('aria-label')) return element.getAttribute('aria-label')!
+
+      // 2. First heading inside the section (most reliable for agent-generated pages)
+      const heading = element.querySelector('h1, h2, h3, h4, h5, h6')
+      if (heading?.textContent) {
+        const text = heading.textContent.trim().substring(0, 60)
+        if (text) return text
+      }
+
+      // 3. Tag name fallback
+      return element.tagName.toLowerCase()
+    }
+
+    // Debug overlay for visualizing section detection (Ctrl+Shift+D to toggle)
+    let debugVisible = false
+    const debugOverlay = document.createElement('div')
+    debugOverlay.setAttribute('data-airo-dev-tools', '')
+    debugOverlay.style.cssText = 'position:fixed;bottom:8px;right:8px;z-index:999999;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:11px;padding:8px 10px;border-radius:6px;pointer-events:none;max-width:300px;line-height:1.4;display:none;'
+    document.body.appendChild(debugOverlay)
+
+    const handleDebugToggle = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+        e.preventDefault()
+        debugVisible = !debugVisible
+        debugOverlay.style.display = debugVisible ? 'block' : 'none'
+        if (debugVisible) {
+          updateDebugOverlay()
+        } else if (prevHighlighted) {
+          prevHighlighted.style.outline = ''
+          prevHighlighted = null
+        }
+      }
+    }
+    window.addEventListener('keydown', handleDebugToggle)
+
+    let prevHighlighted: HTMLElement | null = null
+    function addLine(parent: HTMLElement, text: string, color?: string) {
+      const span = document.createElement('span')
+      span.textContent = text
+      if (color) span.style.color = color
+      parent.appendChild(span)
+      parent.appendChild(document.createElement('br'))
+    }
+
+    function updateDebugOverlay() {
+      if (!debugVisible) return
+
+      // Build ranked list of visible sections
+      const ranked: { name: string; area: number; ratio: number; el: Element }[] = []
+      sectionVisibility.forEach((info, el) => {
+        const name = getSectionName(el as HTMLElement)
+        ranked.push({ name, area: info.visibleArea, ratio: info.ratio, el })
+      })
+      ranked.sort((a, b) => b.area - a.area)
+
+      const scrollY = Math.round(window.scrollY || 0)
+
+      // Clear and rebuild with DOM APIs (no innerHTML)
+      debugOverlay.textContent = ''
+      addLine(debugOverlay, `active: ${activeSection}`, '#ff0')
+      addLine(debugOverlay, `scroll: ${scrollY}px`)
+      addLine(debugOverlay, `page: ${(window.location.pathname + window.location.search + window.location.hash).substring(0, 40)}`)
+      addLine(debugOverlay, '---')
+      ranked.slice(0, 8).forEach((r, i) => {
+        addLine(debugOverlay, `${i === 0 ? '>' : ' '} ${r.name} (${Math.round(r.area)}px\u00B2 ${Math.round(r.ratio * 100)}%)`)
+      })
+
+      // Highlight the winning section
+      if (prevHighlighted) {
+        prevHighlighted.style.outline = ''
+        prevHighlighted = null
+      }
+      if (ranked.length > 0) {
+        const winner = ranked[0].el as HTMLElement
+        winner.style.outline = '2px dashed rgba(0,255,0,0.6)'
+        prevHighlighted = winner
+      }
+    }
+
     // Set up intersection observer for section detection
     function setupSectionObserver() {
       try {
-        // Use compound selector for efficient single DOM query
-        const compoundSelector = [
-          '[data-section]', 'section[id]', 'main > div[id]', 'main > section',
-          '.section', 'header', 'nav', 'main', 'aside', 'footer',
-          '[class*="section"]', '[class*="hero"]', '[class*="about"]',
-          '[class*="contact"]', '[class*="education"]', '[class*="experience"]'
-        ].join(', ')
+        // Query content sections and page boundaries only.
+        // Structural containers (main, nav, aside) are excluded — they wrap
+        // content sections and always win area-based ranking, defeating detection.
+        // Class-based selectors ([class*="hero"] etc.) are excluded — they cause
+        // nested elements to inflate parent rankings. Templates use <section> tags;
+        // data-section is the escape hatch for non-section layouts.
+        const candidates = Array.from(new Set(
+          document.querySelectorAll('[data-section], section, header, footer')
+        ))
 
-        // Single query with compound selector to reduce DOM traversal
-        const sections = Array.from(new Set(document.querySelectorAll(compoundSelector)))
+        // Filter out descendant elements: if a <section> contains a <header>,
+        // keep the outer <section> to avoid understating its visible area.
+        const sections = candidates.filter(el =>
+          !candidates.some(other => other !== el && other.contains(el))
+        )
 
         if (sections.length === 0) {
           activeSection = 'main-content'
@@ -109,32 +204,53 @@ export default function DevelopmentMode() {
         }
 
         sectionsObserver = new IntersectionObserver((entries) => {
-          let bestMatch: Element | null = null
-          let bestRatio = 0
-
+          // Update visibility map with changed entries
           entries.forEach(entry => {
-            if (entry.isIntersecting && entry.intersectionRatio > bestRatio) {
-              bestRatio = entry.intersectionRatio
-              bestMatch = entry.target
+            if (entry.isIntersecting) {
+              sectionVisibility.set(entry.target, {
+                ratio: entry.intersectionRatio,
+                visibleArea: entry.intersectionRect.width * entry.intersectionRect.height
+              })
+            } else {
+              sectionVisibility.delete(entry.target)
             }
           })
 
-          if (bestMatch && bestRatio > 0.3) {
-            const element = bestMatch as HTMLElement
-            const sectionName =
-              element.getAttribute('data-section') ||
-              element.getAttribute('id') ||
-              element.className.split(' ').find((c: string) =>
-                c.includes('section') || c.includes('hero') || c.includes('about') ||
-                c.includes('contact') || c.includes('education') || c.includes('experience')
-              ) ||
-              element.tagName.toLowerCase()
+          // Find section with largest visible area from ALL tracked sections
+          let bestMatch: Element | null = null
+          let bestArea = 0
+
+          sectionVisibility.forEach((info, element) => {
+            if (info.visibleArea > bestArea) {
+              bestArea = info.visibleArea
+              bestMatch = element
+            }
+          })
+
+          // Build ranked list of visible sections (capped to limit payload size)
+          const ranked: { name: string; id?: string; visible_area: number }[] = []
+          sectionVisibility.forEach((info, element) => {
+            const htmlEl = element as HTMLElement
+            const entry: { name: string; id?: string; visible_area: number } = {
+              name: getSectionName(htmlEl),
+              visible_area: info.visibleArea
+            }
+            const id = htmlEl.getAttribute('id')
+            if (id) entry.id = id
+            ranked.push(entry)
+          })
+          ranked.sort((a, b) => b.visible_area - a.visible_area)
+          visibleSections = ranked.slice(0, 5)
+
+          if (bestMatch && bestArea > 0) {
+            const sectionName = getSectionName(bestMatch as HTMLElement)
 
             if (sectionName && sectionName !== activeSection) {
               activeSection = sectionName
               updateCachedContext()
             }
           }
+          updateDebugOverlay()
         }, {
           threshold: [0, 0.1, 0.3, 0.5, 0.7, 1],
           rootMargin: '-10% 0px -10% 0px'
@@ -157,6 +273,7 @@ export default function DevelopmentMode() {
       if (scrollTimeout) return
       scrollTimeout = setTimeout(() => {
         updateCachedContext()
+        updateDebugOverlay()
         scrollTimeout = null
       }, 150) // Throttle to every 150ms
     }
@@ -171,6 +288,37 @@ export default function DevelopmentMode() {
       }, 150)
     }
 
+    // Re-initialize section observer on SPA navigation
+    let navigationTimeout: ReturnType<typeof setTimeout> | null = null
+    const handleNavigation = () => {
+      // Debounce rapid navigation events
+      if (navigationTimeout) clearTimeout(navigationTimeout)
+      navigationTimeout = setTimeout(() => {
+        if (sectionsObserver) {
+          sectionsObserver.disconnect()
+        }
+        sectionVisibility.clear()
+        activeSection = 'unknown'
+        visibleSections = []
+        setupSectionObserver()
+        updateCachedContext()
+        navigationTimeout = null
+      }, 150)
+    }
+
+    // Intercept pushState/replaceState for SPA navigation detection
+    // React Router uses pushState for <Link> clicks, which doesn't fire popstate
+    const originalPushState = history.pushState.bind(history)
+    const originalReplaceState = history.replaceState.bind(history)
+    history.pushState = (...args: Parameters<typeof history.pushState>) => {
+      originalPushState(...args)
+      handleNavigation()
+    }
+    history.replaceState = (...args: Parameters<typeof history.replaceState>) => {
+      originalReplaceState(...args)
+      handleNavigation()
+    }
+
     // Initialize when DOM is ready
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', setupSectionObserver)
@@ -181,6 +329,8 @@ export default function DevelopmentMode() {
     // Listen for scroll and resize to keep cache fresh
     window.addEventListener('scroll', handleScroll, { passive: true })
     window.addEventListener('resize', handleResize)
+    // Listen for browser back/forward (popstate covers hash changes in modern browsers)
+    window.addEventListener('popstate', handleNavigation)
 
     // Listen for visual context requests from parent window
     const handleMessage = (event: MessageEvent) => {
@@ -202,11 +352,11 @@ export default function DevelopmentMode() {
         } else if (event.data && event.data.type === 'RESTORE_STATE_AFTER_REFRESH') {
           // Restore URL/navigation first
           if (event.data.url) {
-            const currentPath = window.location.pathname + window.location.search
+            const currentPath = window.location.pathname + window.location.search + window.location.hash
             if (currentPath !== event.data.url) {
               try {
-                // Use history API to navigate without full page reload
-                window.history.pushState(null, '', event.data.url)
+                // Use original pushState to avoid triggering our monkey-patched navigation handler
+                originalPushState(null, '', event.data.url)
 
                 // Dispatch a popstate event to notify React Router of the navigation
                 const popStateEvent = new PopStateEvent('popstate', { state: null })
@@ -285,11 +435,20 @@ export default function DevelopmentMode() {
       if (sectionsObserver) {
         sectionsObserver.disconnect()
       }
+      sectionVisibility.clear()
+      if (prevHighlighted) prevHighlighted.style.outline = ''
+      debugOverlay.remove()
+      window.removeEventListener('keydown', handleDebugToggle)
+      history.pushState = originalPushState
+      history.replaceState = originalReplaceState
       window.removeEventListener('message', handleMessage)
       window.removeEventListener('scroll', handleScroll)
       window.removeEventListener('resize', handleResize)
+      window.removeEventListener('popstate', handleNavigation)
+      document.removeEventListener('DOMContentLoaded', setupSectionObserver)
       if (scrollTimeout) clearTimeout(scrollTimeout)
       if (resizeTimeout) clearTimeout(resizeTimeout)
+      if (navigationTimeout) clearTimeout(navigationTimeout)
     }
   }, [])
 
