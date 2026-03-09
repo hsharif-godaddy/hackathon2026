@@ -5,10 +5,14 @@
  * and available providers (Bedrock vs OpenAI)
  */
 
+import { stat, writeFile } from 'node:fs/promises'
+import path from 'node:path'
+
 import type { LanguageModel } from 'ai'
 import { wrapLanguageModel } from 'ai'
 import { devToolsMiddleware } from '@ai-sdk/devtools'
 import { getModel, getModelInfo } from '@airo/ai-lib'
+
 import { logger } from '../logging/index.js'
 
 /**
@@ -20,11 +24,73 @@ function isDevToolsEnabled(): boolean {
     (process.env.NODE_ENV === 'development' && enableDevTools !== 'false')
 }
 
+export const DEVTOOLS_DB_MAX_BYTES = 5 * 1024 * 1024
+let devToolsDbChecked = false
+
+export function resetDevToolsCheck() {
+  devToolsDbChecked = false
+}
+
+/**
+ * Reset the devtools generations.json if it exceeds the size limit.
+ * Must run before devToolsMiddleware() is created so the library's
+ * in-memory cache loads the truncated (or empty) version.
+ */
+export async function truncateDevToolsDb(): Promise<void> {
+  if (devToolsDbChecked) return
+
+  const dbPath = path.join(process.cwd(), '.devtools', 'generations.json')
+
+  let fileSize: number
+  try {
+    fileSize = (await stat(dbPath)).size
+  } catch (error: unknown) {
+    devToolsDbChecked = true
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+
+    logger.warn('devtools.db.stat.failed', {
+      error: error instanceof Error ? error.message : String(error)
+    })
+    return
+  }
+
+  if (fileSize <= DEVTOOLS_DB_MAX_BYTES) {
+    devToolsDbChecked = true
+    return
+  }
+
+  const sizeMB = parseFloat((fileSize / (1024 * 1024)).toFixed(1))
+  logger.warn('devtools.db.truncate', {
+    sizeMB,
+    reason: 'generations.json exceeded 5MB limit, resetting to prevent OOM'
+  })
+
+  try {
+    await writeFile(dbPath, JSON.stringify({ runs: [], steps: [] }, null, 2))
+    logger.info('devtools.db.truncated', { previousSizeMB: sizeMB })
+    devToolsDbChecked = true
+  } catch (error: unknown) {
+    logger.error('devtools.db.truncate.failed', {
+      error: error instanceof Error ? error.message : String(error)
+    })
+    throw error
+  }
+}
+
 /**
  * Wrap model with DevTools middleware when enabled
  */
-function wrapWithDevTools(model: LanguageModel): LanguageModel {
+async function wrapWithDevTools(model: LanguageModel): Promise<LanguageModel> {
   if (!isDevToolsEnabled()) {
+    return model
+  }
+
+  try {
+    await truncateDevToolsDb()
+  } catch {
+    logger.warn('devtools.skipped', {
+      reason: 'Could not truncate oversized generations.json, skipping devtools to prevent OOM'
+    })
     return model
   }
 
@@ -147,7 +213,7 @@ export async function getAgentModel(tier: ModelTier): Promise<LanguageModel> {
           usingProxy: modelInfo.usingProxy
         }
       })
-      return wrapWithDevTools(model)
+      return await wrapWithDevTools(model)
     } catch (error) {
       logger.error('model.override.failure', {
         tier,
@@ -224,7 +290,7 @@ export async function getAgentModel(tier: ModelTier): Promise<LanguageModel> {
       }
     })
 
-    return wrapWithDevTools(model)
+    return await wrapWithDevTools(model)
   } catch (error) {
     logger.error('model.selection.failure', {
       tier,
@@ -268,7 +334,7 @@ export async function getAgentModelWithName(tier: ModelTier): Promise<{model: an
           usingProxy: modelInfo.usingProxy
         }
       })
-      return { model: wrapWithDevTools(model), modelName: overrideModel }
+      return { model: await wrapWithDevTools(model), modelName: overrideModel }
     } catch (error) {
       logger.error('model.override.failure', {
         tier,
@@ -350,7 +416,7 @@ export async function getAgentModelWithName(tier: ModelTier): Promise<{model: an
       }
     })
 
-    return { model: wrapWithDevTools(model), modelName: selectedModel }
+    return { model: await wrapWithDevTools(model), modelName: selectedModel }
   } catch (error) {
     logger.error('model.selection.with_name.failure', {
       tier,
