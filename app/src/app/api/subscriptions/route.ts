@@ -116,7 +116,9 @@ export const GET = withCustomerAuth(async (
     }), origin);
 
   } catch (error) {
-    logger.error('subscriptions.api.error', {
+    // Auth failures (401/403) are expected for unregistered/expired users — log at warn, not error
+    const isAuthError = error instanceof AiroHttpError && (error.status === 401 || error.status === 403);
+    logger[isAuthError ? 'warn' : 'error']('subscriptions.api.error', {
       message: 'Failed to fetch subscriptions',
       customerId: authContext.user.customerId,
       error: error instanceof Error ? error.message : 'Unknown error'

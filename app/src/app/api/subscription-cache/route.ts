@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
-import { AiroMgmtClient } from '@/lib/mgmt-airo';
+import { AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 
 // Force dynamic rendering
@@ -116,11 +116,20 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
     return NextResponse.json(response);
 
   } catch (error) {
-    logger.error('subscription-cache.api.error', {
+    // Auth failures (401/403) are expected for unregistered/expired users — log at warn, not error
+    const isAuthError = error instanceof AiroHttpError && (error.status === 401 || error.status === 403);
+    logger[isAuthError ? 'warn' : 'error']('subscription-cache.api.error', {
       message: 'Failed to fetch subscription cache data',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
-    
+
+    if (error instanceof AiroHttpError) {
+      return NextResponse.json(
+        { error: 'Failed to fetch subscription cache data' },
+        { status: error.status ?? 500 }
+      );
+    }
+
     return NextResponse.json(
       { error: 'Failed to fetch subscription cache data' },
       { status: 500 }

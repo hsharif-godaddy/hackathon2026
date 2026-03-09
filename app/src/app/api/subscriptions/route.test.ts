@@ -156,6 +156,40 @@ describe('GET /api/subscriptions', function describeRoute() {
       expect(data.error).toBe('Failed to fetch subscriptions');
     });
 
+    it('should log at warn level for 401 auth errors', async function authWarn401() {
+      const request = new NextRequest('http://localhost/api/subscriptions');
+      const authContext = createAuthContext('jwt-token');
+      const { logger } = await import('@/lib/request-context');
+
+      const { AiroHttpError } = await import('@/lib/mgmt-airo');
+      mockClient.getSubscriptions.mockRejectedValue(
+        new AiroHttpError(401, 'Unauthorized', 'Unauthorized')
+      );
+
+      const response = await GET(request, authContext);
+
+      expect(response.status).toBe(401);
+      expect(logger.warn).toHaveBeenCalledWith('subscriptions.api.error', expect.objectContaining({ message: 'Failed to fetch subscriptions' }));
+      expect(logger.error).not.toHaveBeenCalledWith('subscriptions.api.error', expect.anything());
+    });
+
+    it('should log at warn level for 403 auth errors', async function authWarn403() {
+      const request = new NextRequest('http://localhost/api/subscriptions');
+      const authContext = createAuthContext('jwt-token');
+      const { logger } = await import('@/lib/request-context');
+
+      const { AiroHttpError } = await import('@/lib/mgmt-airo');
+      mockClient.getSubscriptions.mockRejectedValue(
+        new AiroHttpError(403, 'Forbidden', 'Forbidden')
+      );
+
+      const response = await GET(request, authContext);
+
+      expect(response.status).toBe(403);
+      expect(logger.warn).toHaveBeenCalledWith('subscriptions.api.error', expect.objectContaining({ message: 'Failed to fetch subscriptions' }));
+      expect(logger.error).not.toHaveBeenCalledWith('subscriptions.api.error', expect.anything());
+    });
+
     it('should return 404 when AiroHttpError with 404 status', async function notFound() {
       const request = new NextRequest('http://localhost/api/subscriptions');
       const authContext = createAuthContext('jwt-token');

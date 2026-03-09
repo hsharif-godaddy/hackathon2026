@@ -642,7 +642,11 @@ describe('AiroMgmtClient', () => {
       expect(mockFetch).toHaveBeenCalledTimes(3);
     });
 
-    it('should not retry on 401 Unauthorized', async () => {
+    it('should not retry on 401 Unauthorized and log at warn level', async () => {
+      const { logger } = await import('@/lib/request-context');
+      vi.mocked(logger.warn).mockClear();
+      vi.mocked(logger.error).mockClear();
+
       const errorResponse = {
         ok: false,
         status: 401,
@@ -655,9 +659,15 @@ describe('AiroMgmtClient', () => {
 
       await expect(client.getSubscriptions()).rejects.toBeInstanceOf(Error);
       expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledWith('mgmt-airo.api.auth-error.no-retry', expect.objectContaining({ url: expect.any(String) }));
+      expect(logger.error).not.toHaveBeenCalled();
     });
 
-    it('should not retry on 403 Forbidden', async () => {
+    it('should not retry on 403 Forbidden and log at warn level', async () => {
+      const { logger } = await import('@/lib/request-context');
+      vi.mocked(logger.warn).mockClear();
+      vi.mocked(logger.error).mockClear();
+
       const errorResponse = {
         ok: false,
         status: 403,
@@ -670,6 +680,8 @@ describe('AiroMgmtClient', () => {
 
       await expect(client.getSubscriptions()).rejects.toBeInstanceOf(Error);
       expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledWith('mgmt-airo.api.auth-error.no-retry', expect.objectContaining({ url: expect.any(String) }));
+      expect(logger.error).not.toHaveBeenCalled();
     });
 
     it('should retry on 404 when retryOn404 is enabled', async () => {

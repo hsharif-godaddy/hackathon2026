@@ -153,8 +153,9 @@ export class AiroMgmtClient {
             // Keep as string if not JSON
           }
 
-          // Log errors
-          logger.error(`${logEvent}.error`, {
+          // Log auth failures at warn level — 401/403 are expected for unauthenticated/unsubscribed users
+          const logLevel = response.status === 401 || response.status === 403 ? 'warn' : 'error';
+          logger[logLevel](`${logEvent}.error`, {
             url,
             method,
             status: response.status,
