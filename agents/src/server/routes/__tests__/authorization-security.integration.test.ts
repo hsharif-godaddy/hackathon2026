@@ -100,14 +100,6 @@ describe('Cross-Tenant Authorization Security - Integration Tests', () => {
       expect(response.status).not.toBe(403);
     });
 
-    it('should reject cross-tenant access to /apps/:id/usage', async () => {
-      const response = await request(app)
-        .get(`/apps/${siteB_id}/usage`)
-        .set('Authorization', `Bearer ${siteA_token}`);
-
-      expect(response.status).toBe(403);
-      expect(response.body).toHaveProperty('error', 'Access denied');
-    });
 
     it('should reject cross-tenant server operations /apps/:id/restart', async () => {
       const response = await request(app)

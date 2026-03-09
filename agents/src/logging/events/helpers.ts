@@ -40,7 +40,6 @@ import type {
   LLMRequestData,
   LLMResponseData,
   LLMRetryData,
-  LLMTokenUsageData,
   ToolAstEditData,
   ToolBuildOperationData,
   ToolCacheOperationData,
@@ -923,17 +922,6 @@ export const llmEvents = {
     log.error(logger, AppEvents.llm.error, error, data);
   },
 
-  tokenUsageBegin: (logger: ILogger, data: Pick<LLMTokenUsageData, 'appId' | 'operation' | 'tokenType'>) => {
-    logger.debug(AppEvents.llm.tokenUsage.begin, data);
-  },
-
-  tokenUsageSuccess: (logger: ILogger, data: LLMTokenUsageData) => {
-    logger.debug(AppEvents.llm.tokenUsage.success, data);
-  },
-
-  tokenUsageFailure: (logger: ILogger, error: Error, data: Pick<LLMTokenUsageData, 'appId' | 'operation' | 'tokenType'>) => {
-    log.error(logger, AppEvents.llm.tokenUsage.failure, error, data);
-  },
 
   retryAttempt: (logger: ILogger, data: LLMRetryData) => {
     logger.warn(AppEvents.llm.retry.attempt, data);

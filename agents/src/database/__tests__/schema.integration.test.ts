@@ -56,8 +56,7 @@ describe('Database Schema Integration Tests', () => {
         'oauth_tokens',
         'running_processes',
         'social_associations',
-        'social_posts',
-        'token_usage'
+        'social_posts'
       ]);
     });
 
@@ -121,10 +120,7 @@ describe('Database Schema Integration Tests', () => {
       expect(indexNames).toContain('idx_conversations_created_at');
       expect(indexNames).toContain('idx_conversation_messages_conversation_id');
       expect(indexNames).toContain('idx_conversation_messages_created_at');
-      expect(indexNames).toContain('idx_token_usage_app_id');
-      expect(indexNames).toContain('idx_token_usage_created_at');
-      expect(indexNames).toContain('idx_token_usage_operation');
-      expect(indexNames).toContain('idx_token_usage_conversation_id');
+
       expect(indexNames).toContain('idx_social_associations_app_id');
       expect(indexNames).toContain('idx_social_associations_app_platform');
       expect(indexNames).toContain('idx_social_posts_app_id');
@@ -238,16 +234,9 @@ describe('Database Schema Integration Tests', () => {
       `);
       insertConversation.run('conv-1', 'test-app-1', 'agent-1');
 
-      const insertTokenUsage = testDb.prepare(`
-        INSERT INTO token_usage (id, app_id, operation, prompt_tokens, completion_tokens, total_tokens, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-      `);
-      insertTokenUsage.run('token-1', 'test-app-1', 'llm_request', 100, 50, 150);
-
       // Verify all records exist
       expect(testDb.prepare('SELECT COUNT(*) as count FROM running_processes WHERE app_id = ?').get('test-app-1')).toEqual({ count: 1 });
       expect(testDb.prepare('SELECT COUNT(*) as count FROM conversations WHERE app_id = ?').get('test-app-1')).toEqual({ count: 1 });
-      expect(testDb.prepare('SELECT COUNT(*) as count FROM token_usage WHERE app_id = ?').get('test-app-1')).toEqual({ count: 1 });
 
       // Delete the app
       const deleteApp = testDb.prepare('DELETE FROM apps WHERE id = ?');
@@ -256,7 +245,6 @@ describe('Database Schema Integration Tests', () => {
       // Verify cascade deletes worked
       expect(testDb.prepare('SELECT COUNT(*) as count FROM running_processes WHERE app_id = ?').get('test-app-1')).toEqual({ count: 0 });
       expect(testDb.prepare('SELECT COUNT(*) as count FROM conversations WHERE app_id = ?').get('test-app-1')).toEqual({ count: 0 });
-      expect(testDb.prepare('SELECT COUNT(*) as count FROM token_usage WHERE app_id = ?').get('test-app-1')).toEqual({ count: 0 });
     });
 
     it('should support conversation messages with automatic timestamp updates', async () => {
@@ -424,36 +412,6 @@ describe('Database Schema Integration Tests', () => {
       }).toThrow();
     });
 
-    it('should enforce check constraints on token usage operation', () => {
-      // Create app first
-      const insertApp = testDb.prepare(`
-        INSERT INTO apps (id, name, path, port, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-      `);
-      insertApp.run('app-1', 'App 1', '/path', 3000, 'creating');
 
-      const insertTokenUsage = testDb.prepare(`
-        INSERT INTO token_usage (id, app_id, operation, prompt_tokens, completion_tokens, total_tokens, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-      `);
-
-      // Valid operations should work
-      expect(() => {
-        insertTokenUsage.run('token-1', 'app-1', 'llm_request', 100, 50, 150);
-      }).not.toThrow();
-
-      expect(() => {
-        insertTokenUsage.run('token-2', 'app-1', 'file_edit', 0, 0, 0);
-      }).not.toThrow();
-
-      expect(() => {
-        insertTokenUsage.run('token-3', 'app-1', 'tool_execution', 10, 5, 15);
-      }).not.toThrow();
-
-      // Invalid operation should fail
-      expect(() => {
-        insertTokenUsage.run('token-4', 'app-1', 'invalid-operation', 0, 0, 0);
-      }).toThrow();
-    });
   });
 });

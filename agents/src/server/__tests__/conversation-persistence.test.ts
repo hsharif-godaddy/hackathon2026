@@ -22,7 +22,6 @@ vi.mock('../../database/repositories/index.js', () => ({
     getOrCreateForApp: vi.fn(),
   },
   appRepository: { findById: vi.fn().mockReturnValue(null) },
-  tokenUsageRepository: { recordUsage: vi.fn().mockResolvedValue(undefined) },
 }))
 
 const mockLogger = {

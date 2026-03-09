@@ -587,17 +587,6 @@ export interface LLMResponseData extends LLMRequestData {
   duration: number;
 }
 
-export interface LLMTokenUsageData {
-  appId: string;
-  operation: 'record_usage' | 'record_streaming_usage';
-  tokenType: 'llm_request';
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens?: number | undefined;
-  model?: string | undefined;
-  conversationId?: string | undefined;
-  description?: string | undefined;
-}
 
 export interface LLMRetryData {
   attempt: number;
@@ -1051,16 +1040,11 @@ export const AppEvents = {
     },
   },
 
-  // LLM events: llm.{request|response|token_usage|error|retry}
+  // LLM events: llm.{request|response|error|retry}
   llm: {
     request: 'llm.request' as const,
     response: 'llm.response' as const,
     error: 'llm.error' as const,
-    tokenUsage: {
-      begin: 'llm.token_usage.begin' as const,
-      success: 'llm.token_usage.success' as const,
-      failure: 'llm.token_usage.failure' as const,
-    },
     retry: {
       attempt: 'llm.api_call.retry' as const,
       success: 'llm.api_call.retry_success' as const,

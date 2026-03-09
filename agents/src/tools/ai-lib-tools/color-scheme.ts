@@ -1,4 +1,4 @@
-import { createTool, generateTextWithTracking, calculateCostEstimate, llmMetadataContext, type LitellmMetadata, type Tool, buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-lib'
+import { createTool, generateTextWithTracking, llmMetadataContext, type LitellmMetadata, type Tool, buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-lib'
 import { z } from 'zod'
 
 import { generatePalette, updateCssColorPalette, type ColorPalette } from '../css-color-tool.js'
@@ -22,13 +22,12 @@ interface ColorPaletteWidget {
   }
 }
 import { AppRepository } from '../../database/repositories/AppRepository.js'
-import { TokenUsageRepository } from '../../database/repositories/TokenUsageRepository.js'
+
 import { appPlanTool } from '../app-plan-tool.js'
 import { getAgentModelWithName } from '../../utils/model-selection.js'
 import { logger } from '../../logging/index.js'
 
 const appRepo = new AppRepository()
-const tokenUsageRepo = new TokenUsageRepository()
 
 function formatPaletteForWidget(palette: ReturnType<typeof generatePalette>, name: string) {
   return {
@@ -205,35 +204,8 @@ Return ONLY the JSON object with the palettes array. No markdown, no code blocks
           system: COLOR_GENERATION_PROMPT,
           prompt: userPrompt,
           temperature: 0.8,
-          context: contextData,
-          onUsage: async function trackUsage(usage) {
-      if (!appId) return
-
-      const costEstimate = calculateCostEstimate(
-        {
-          inputTokens: usage.promptTokens,
-          outputTokens: usage.completionTokens,
-          totalTokens: usage.totalTokens,
-          ...(usage.cachedTokens && { cachedInputTokensRead: usage.cachedTokens })
-        },
-        modelName
-      )
-
-      await tokenUsageRepo.recordUsage(
-        appId,
-        'llm_request',
-        usage.promptTokens,
-        usage.completionTokens,
-        {
-          model: modelName,
-          conversationId: sessionId,
-          description: 'Color scheme generation (tool-initiated LLM call)',
-          cost: costEstimate.totalCost,
-          cacheReadTokens: usage.cachedTokens
-        }
-      )
-    }
-  })
+          context: contextData
+        })
       })
     : generateTextWithTracking({
         model,
@@ -241,34 +213,7 @@ Return ONLY the JSON object with the palettes array. No markdown, no code blocks
         system: COLOR_GENERATION_PROMPT,
         prompt: userPrompt,
         temperature: 0.8,
-        context: contextData,
-        onUsage: async function trackUsage(usage) {
-          if (!appId) return
-
-          const costEstimate = calculateCostEstimate(
-            {
-              inputTokens: usage.promptTokens,
-              outputTokens: usage.completionTokens,
-              totalTokens: usage.totalTokens,
-              ...(usage.cachedTokens && { cachedInputTokensRead: usage.cachedTokens })
-            },
-            modelName
-          )
-
-          await tokenUsageRepo.recordUsage(
-            appId,
-            'llm_request',
-            usage.promptTokens,
-            usage.completionTokens,
-            {
-              model: modelName,
-              conversationId: sessionId,
-              description: 'Color scheme generation (tool-initiated LLM call)',
-              cost: costEstimate.totalCost,
-              cacheReadTokens: usage.cachedTokens
-            }
-          )
-        }
+        context: contextData
       }))
 
   let cleanedText = result.text.trim()

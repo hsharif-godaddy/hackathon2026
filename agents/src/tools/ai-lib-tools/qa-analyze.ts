@@ -1,18 +1,17 @@
-import { createTool, generateTextWithTracking, calculateCostEstimate, llmMetadataContext, type LitellmMetadata, type Tool, type AgentContext, buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-lib'
+import { createTool, generateTextWithTracking, llmMetadataContext, type LitellmMetadata, type Tool, type AgentContext, buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-lib'
 import { z } from 'zod'
 import { readFile, writeFile, mkdir, access } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { readdir } from 'node:fs/promises'
 
 import { AppRepository } from '../../database/repositories/AppRepository.js'
-import { TokenUsageRepository } from '../../database/repositories/TokenUsageRepository.js'
+
 import { appPlanTool } from '../app-plan-tool.js'
 import { getAgentModelWithName } from '../../utils/model-selection.js'
 import { logger } from '../../logging/index.js'
 import { createQAReport, generateIssueId, type QAIssue, type QACategory, type QASummary, type QACategorySummary } from '../qa-analyze-tool.js'
 
 const appRepo = new AppRepository()
-const tokenUsageRepo = new TokenUsageRepository()
 
 /**
  * Generate text with optional LiteLLM metadata context wrapper.
@@ -906,34 +905,7 @@ Return ONLY the JSON object with issues array. No markdown, no code blocks, no e
         system: QA_ANALYSIS_PROMPT,
         prompt: userPrompt,
         temperature: 0.3,
-        context: contextData,
-        onUsage: async function trackUsage(usage) {
-            if (!appId) return
-
-            const costEstimate = calculateCostEstimate(
-                {
-                    inputTokens: usage.promptTokens,
-                    outputTokens: usage.completionTokens,
-                    totalTokens: usage.totalTokens,
-                    ...(usage.cachedTokens && { cachedInputTokensRead: usage.cachedTokens })
-                },
-                modelName
-            )
-
-            await tokenUsageRepo.recordUsage(
-                appId,
-                'llm_request',
-                usage.promptTokens,
-                usage.completionTokens,
-                {
-                    model: modelName,
-                    conversationId: sessionId,
-                    description: 'QA semantic analysis (tool-initiated LLM call)',
-                    cost: costEstimate.totalCost,
-                    cacheReadTokens: usage.cachedTokens
-                }
-            )
-        }
+        context: contextData
     }, litellmMetadata)
 
     let cleanedText = result.text.trim()

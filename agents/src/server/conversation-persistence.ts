@@ -12,10 +12,9 @@ import type {
 } from '@airo/ai-lib'
 import { calculateCostEstimate } from '@airo/ai-lib'
 import { emitConversationStart } from '@godaddy/agent-otel-sdk'
-import { conversationRepository, appRepository, tokenUsageRepository } from '../database/repositories/index.js'
+import { conversationRepository, appRepository } from '../database/repositories/index.js'
 import type { ConversationRepository } from '../database/repositories/index.js'
 import type { AppRepository } from '../database/repositories/index.js'
-import type { TokenUsageRepository } from '../database/repositories/index.js'
 import { MAX_PROMPT_LENGTH } from '../services/features.js'
 import { GitTool } from '../tools/git-tool.js'
 import { GitUtils } from '../utils/git.js'
@@ -30,7 +29,6 @@ import apm from 'elastic-apm-node'
 export class AgentsMessagePersistence implements ConversationPersistenceWithCleanup {
   private conversationRepo: ConversationRepository
   private appRepository: AppRepository
-  private tokenUsageRepo: TokenUsageRepository
 
   // Track conversations for cleanup
   private activeConversations = new Map<string, {
@@ -48,7 +46,6 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     // Use singleton repositories to ensure hooks work correctly
     this.conversationRepo = conversationRepository
     this.appRepository = appRepository
-    this.tokenUsageRepo = tokenUsageRepository
   }
 
   /**
@@ -671,21 +668,6 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
                   modelName
                 )
 
-                await this.tokenUsageRepo.recordUsage(
-                  context.appId!,
-                  'llm_request',
-                  handoffUsage.inputTokens || 0,
-                  handoffUsage.outputTokens || 0,
-                  {
-                    model: modelName,
-                    conversationId: conversationId,
-                    description: `Agent handoff: ${context.agentName} → ${targetAgent}`,
-                    cacheReadTokens: handoffCaching?.cachedInputTokens,
-                    cacheWriteTokens: handoffCaching?.cacheWriteInputTokens,
-                    cost: handoffCostEstimate.totalCost
-                  }
-                );
-
                 // Track handoff in APM for monitoring
                 this.trackTokenUsageInAPM(
                   'handoff',
@@ -729,40 +711,6 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
             }
           })
       );
-    }
-
-    // Track tool invocations for analytics (tools don't use tokens, but tracking usage is valuable)
-    if (toolCalls.length > 0 && context.appId) {
-      await Promise.all(
-        toolCalls.map(async (toolCall) => {
-          try {
-            await this.tokenUsageRepo.recordUsage(
-              context.appId!,
-              'tool_execution',
-              0, // Tools don't use tokens
-              0,
-              {
-                conversationId: conversationId,
-                description: `Tool execution: ${toolCall.name}`,
-              }
-            );
-          } catch (toolError) {
-            logger.warn('conversation.tool_tracking.failed', {
-              conversationId,
-              appId: context.appId,
-              toolName: toolCall.name,
-              error: toolError instanceof Error ? toolError.message : String(toolError),
-            });
-          }
-        })
-      );
-
-      logger.info('conversation.tool_usage.recorded', {
-        conversationId,
-        appId: context.appId,
-        toolCount: toolCalls.length,
-        tools: toolCalls.map(tc => tc.name),
-      });
     }
 
     // Create git commit if there are changes and store hash on context

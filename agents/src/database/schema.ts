@@ -120,21 +120,6 @@ export interface MessageSegment {
   timestamp: Date;
 }
 
-export interface TokenUsage {
-  id: string;
-  appId: string;
-  operation: 'llm_request' | 'file_edit' | 'tool_execution';
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
-  cacheReadTokens: number;
-  cacheWriteTokens: number;
-  model?: string | undefined;
-  cost?: number | undefined; // Optional cost calculation
-  conversationId?: string | undefined;
-  description?: string | undefined;
-  createdAt: Date;
-}
 
 export interface Memory {
   id: string;
@@ -270,7 +255,7 @@ export function initializeSchema(db: Database): void {
   createRunningProcessesTable(db);
   createConversationsTable(db);
   createConversationMessagesTable(db);
-  createTokenUsageTable(db);
+
   createFileContextTable(db);
   createMemoryTable(db);
   createImportJobsTable(db);
@@ -383,30 +368,6 @@ function createConversationMessagesTable(db: Database): void {
   `);
 }
 
-/**
- * Create the token_usage table for tracking LLM and operation costs
- */
-function createTokenUsageTable(db: Database): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS token_usage (
-      id TEXT PRIMARY KEY,
-      app_id TEXT NOT NULL,
-      operation TEXT NOT NULL CHECK(operation IN ('llm_request', 'file_edit', 'tool_execution')),
-      prompt_tokens INTEGER NOT NULL DEFAULT 0,
-      completion_tokens INTEGER NOT NULL DEFAULT 0,
-      total_tokens INTEGER NOT NULL DEFAULT 0,
-      cache_read_tokens INTEGER NOT NULL DEFAULT 0,
-      cache_write_tokens INTEGER NOT NULL DEFAULT 0,
-      model TEXT,
-      cost REAL DEFAULT 0,
-      conversation_id TEXT,
-      description TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE,
-      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL
-    )
-  `);
-}
 
 /**
  * Create the file_context table for tracking hot files state
@@ -647,22 +608,6 @@ function createIndexes(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_conversation_messages_created_at ON conversation_messages(created_at)
   `);
 
-  // Token usage table indexes
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_token_usage_app_id ON token_usage(app_id)
-  `);
-
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_token_usage_created_at ON token_usage(created_at)
-  `);
-
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_token_usage_operation ON token_usage(operation)
-  `);
-
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_token_usage_conversation_id ON token_usage(conversation_id)
-  `);
 
   // Memory table indexes
   db.exec(`
@@ -1102,13 +1047,6 @@ function migrateImportJobsStatusConstraint(db: Database): void {
  * This handles adding new columns to existing tables without breaking existing data
  */
 function applyMigrations(db: Database): void {
-  // Add cache token fields to token_usage table if they don't exist
-  try {
-    db.exec(`ALTER TABLE token_usage ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0`);
-    db.exec(`ALTER TABLE token_usage ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0`);
-  } catch (err) {
-    // Columns might already exist, that's fine
-  }
 
   // Add path column if it doesn't exist (for existing databases)
   try {

@@ -38,7 +38,7 @@ import {
 import { AILibContextManager } from '../agents/ai-lib-agents/context-manager.js'
 import { AgentsMessagePersistence } from './conversation-persistence.js'
 import { ConversationContextManager } from '../services/ConversationContextManager.js'
-import { TokenUsageRepository } from '../database/repositories/TokenUsageRepository.js'
+
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
 import { fileUploadService } from '../services/FileUploadService.js'
 import { logger, log } from '../logging/index.js'
@@ -1081,23 +1081,6 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               ...(usage.cacheWriteInputTokens !== undefined && { cachedInputTokensWrite: usage.cacheWriteInputTokens })
             },
             metadata.modelName
-          )
-
-          // Record to database
-          const tokenUsageRepo = new TokenUsageRepository()
-          await tokenUsageRepo.recordUsage(
-            metadata.appId,
-            'llm_request',
-            usage.inputTokens,
-            usage.outputTokens,
-            {
-              model: metadata.modelName,
-              conversationId: metadata.conversationId,
-              description: `Agent: ${metadata.agentName}${!metadata.conversationId ? ' (no conversation)' : ''}`,
-              cacheReadTokens: usage.cachedInputTokens,
-              cacheWriteTokens: usage.cacheWriteInputTokens,
-              cost: costEstimate.totalCost
-            }
           )
 
           // Track in APM

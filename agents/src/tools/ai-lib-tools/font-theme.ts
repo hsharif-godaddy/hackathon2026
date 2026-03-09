@@ -1,16 +1,15 @@
-import { createTool, generateTextWithTracking, calculateCostEstimate, llmMetadataContext, type LitellmMetadata, type Tool, createPromptBuilder, buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-lib'
+import { createTool, generateTextWithTracking, llmMetadataContext, type LitellmMetadata, type Tool, createPromptBuilder, buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-lib'
 import path from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 
 import { AppRepository } from '../../database/repositories/AppRepository.js'
-import { TokenUsageRepository } from '../../database/repositories/TokenUsageRepository.js'
+
 import { getAgentModelWithName } from '../../utils/model-selection.js'
 import { logger } from '../../logging/index.js'
 
 const appRepo = new AppRepository()
-const tokenUsageRepo = new TokenUsageRepository()
 
 type FontCategory = 'serif' | 'sans-serif' | 'monospace' | 'cursive' | 'fantasy'
 
@@ -215,34 +214,7 @@ Return ONLY the JSON object with the fonts array containing headerFont and bodyF
     system: systemPrompt,
     prompt: userPrompt,
     temperature: 0.7,
-    context: contextData,
-    onUsage: async function trackUsage(usage) {
-      if (!appId) return
-
-      const costEstimate = calculateCostEstimate(
-        {
-          inputTokens: usage.promptTokens,
-          outputTokens: usage.completionTokens,
-          totalTokens: usage.totalTokens,
-          ...(usage.cachedTokens && { cachedInputTokensRead: usage.cachedTokens })
-        },
-        modelName
-      )
-
-      await tokenUsageRepo.recordUsage(
-        appId,
-        'llm_request',
-        usage.promptTokens,
-        usage.completionTokens,
-        {
-          model: modelName,
-          conversationId: sessionId,
-          description: 'Font theme generation (tool-initiated LLM call)',
-          cost: costEstimate.totalCost,
-          cacheReadTokens: usage.cachedTokens
-        }
-      )
-    }
+    context: contextData
   })
 
   const result = await llmMetadataContext.run(metadata, generateFontsFn)

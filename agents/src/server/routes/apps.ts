@@ -16,7 +16,7 @@
 import { Router, Request, Response, IRouter } from 'express';
 import { existsSync, writeFileSync, createWriteStream, mkdirSync } from 'fs';
 import { join as pathJoin } from 'path';
-import apm from 'elastic-apm-node';
+
 import multer from 'multer';
 import { AppRepository } from '../../database/index.js';
 import type { CreateAppRequest, UpdateAppRequest } from '../../database/index.js';
@@ -26,11 +26,11 @@ import { FileEditTool } from '../../tools/file-edit.js';
 import { ASTStyleEditor } from '../../tools/ast-style-editor.js';
 import { ASTTextEditor } from '../../tools/ast-text-editor.js';
 import { astImageEditor } from '../../tools/ast-image-editor.js';
-import { TokenUsageRepository } from '../../database/index.js';
+
 import { ServerManagementTool } from '../../tools/server-management-tool.js';
 import { getNameSuggestionService } from '../../services/name-suggestion.js';
 import { Logger, log } from '../../logging/index.js';
-import { getFeatures, BYPASS_SITE_IDS } from '../../services/features.js';
+import { BYPASS_SITE_IDS } from '../../services/features.js';
 import { searchCode } from '../../utils/code-search.js';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
@@ -43,7 +43,7 @@ const readFileTool = new ReadFileTool();
 const fileEditTool = new FileEditTool();
 const astStyleEditor = new ASTStyleEditor();
 const astTextEditor = new ASTTextEditor();
-const tokenUsageRepo = new TokenUsageRepository();
+
 const logger = Logger.create({ service: 'apps-routes' });
 
 /**
@@ -1035,165 +1035,6 @@ router.post('/:id/images/replace', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /apps/:id/usage - Get token usage summary for an app
- */
-router.get('/:id/usage', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-
-    if (!id) {
-      return res.status(400).json({ error: 'App ID is required' });
-    }
-
-    const app = appRepo.findById(id);
-    if (!app) {
-      return res.status(404).json({ error: 'App not found' });
-    }
-
-    const usage = tokenUsageRepo.getUsageInfo(id);
-    return res.json({ usage });
-  } catch (error) {
-    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
-    log.error(contextLogger, 'route.apps.usage.get.error', error as Error, {});
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
- * GET /apps/:id/usage/daily - Get daily token usage with budget info (resets 00:10 UTC)
- */
-router.get('/:id/usage/daily', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-
-    if (!id) {
-      return res.status(400).json({ error: 'App ID is required' });
-    }
-
-    const app = appRepo.findById(id);
-    if (!app) {
-      return res.status(404).json({ error: 'App not found' });
-    }
-
-    const usage = tokenUsageRepo.getDailyUsage(id);
-    const limit = getFeatures().dailyPriceLimit;
-    const percentage = limit > 0 ? (usage.totalCost / limit) * 100 : 0;
-    const cappedPercentage = Math.min(percentage, 100);
-
-    if (cappedPercentage >= 90) {
-      const transaction = apm.currentTransaction;
-      if (transaction) {
-        transaction.setLabel('threshold_90_reached', true);
-        transaction.setLabel('usage_percentage', cappedPercentage);
-        transaction.setLabel('daily_limit', limit);
-        transaction.setLabel('total_cost', usage.totalCost);
-      }
-    }
-
-    return res.json({
-      percentage: cappedPercentage,
-      resetTime: usage.resetTime
-    });
-  } catch (error) {
-    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
-    log.error(contextLogger, 'route.apps.usage.daily.error', error as Error, {});
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
- * GET /apps/:id/usage/history - Get detailed token usage history for an app
- */
-router.get('/:id/usage/history', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { limit, offset, operation, conversationId } = req.query;
-
-    if (!id) {
-      return res.status(400).json({ error: 'App ID is required' });
-    }
-
-    const app = appRepo.findById(id);
-    if (!app) {
-      return res.status(404).json({ error: 'App not found' });
-    }
-
-    const options: any = {};
-    if (limit) options.limit = parseInt(limit as string);
-    if (offset) options.offset = parseInt(offset as string);
-    if (operation) options.operation = operation;
-    if (conversationId) options.conversationId = conversationId as string;
-
-    const history = tokenUsageRepo.getUsageHistory(id, options);
-
-    return res.json({ history });
-  } catch (error) {
-    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
-    log.error(contextLogger, 'route.apps.usage.history.error', error as Error, {});
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
- * GET /apps/:id/usage/stats - Get usage statistics by time period
- */
-router.get('/:id/usage/stats', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { period = 'day', limit = 30 } = req.query;
-
-    if (!id) {
-      return res.status(400).json({ error: 'App ID is required' });
-    }
-
-    const app = appRepo.findById(id);
-    if (!app) {
-      return res.status(404).json({ error: 'App not found' });
-    }
-
-    const stats = tokenUsageRepo.getUsageByPeriod(
-      id,
-      period as 'day' | 'week' | 'month',
-      parseInt(limit as string)
-    );
-
-    return res.json({ stats });
-  } catch (error) {
-    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
-    log.error(contextLogger, 'route.apps.usage.stats.error', error as Error, {});
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
- * DELETE /apps/:id/usage - Delete all token usage records for an app
- */
-router.delete('/:id/usage', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-
-    if (!id) {
-      return res.status(400).json({ error: 'App ID is required' });
-    }
-
-    const app = appRepo.findById(id);
-    if (!app) {
-      return res.status(404).json({ error: 'App not found' });
-    }
-
-    const deleted = tokenUsageRepo.deleteAppUsage(id);
-    if (!deleted) {
-      return res.status(404).json({ error: 'No usage records found' });
-    }
-
-    return res.json({ message: 'Usage records deleted successfully' });
-  } catch (error) {
-    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
-    log.error(contextLogger, 'route.apps.usage.delete.error', error as Error, {});
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
 
 /**
  * POST /apps/suggest-name - Generate a suggested name for a project based on prompt

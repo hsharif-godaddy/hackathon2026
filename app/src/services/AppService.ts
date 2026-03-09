@@ -97,18 +97,6 @@ export interface AppStatusData {
   updatedAt: string
 }
 
-export interface TokenUsage {
-  totalTokens: number
-  promptTokens: number
-  completionTokens: number
-  totalCost: number
-  operationCounts: {
-    llm_request: number
-    file_edit: number
-    tool_execution: number
-  }
-  lastUsed: string | null
-}
 
 export interface DailyUsageInfo {
   percentage: number
@@ -479,33 +467,6 @@ export class AppService {
     return response.json()
   }
 
-  /**
-   * Get token usage for an app
-   */
-  async getTokenUsage(appId: string): Promise<{ usage: TokenUsage }> {
-    const apiUrl = await buildDynamicApiUrl(`usage`, appId)
-    const response = await agentFetch(apiUrl, { siteId: appId })
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch usage data: ${response.status}`)
-    }
-
-    return response.json()
-  }
-
-  /**
-   * Get daily usage for an app (resets at 00:10 UTC)
-   */
-  async getDailyUsage(appId: string): Promise<DailyUsageInfo> {
-    const apiUrl = await buildDynamicApiUrl(`usage/daily`, appId)
-    const response = await agentFetch(apiUrl, { siteId: appId })
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch daily usage: ${response.status}`)
-    }
-
-    return response.json()
-  }
 
   /**
    * Get file tree for an app
