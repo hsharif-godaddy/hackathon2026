@@ -97,7 +97,7 @@ export const GET = withCustomerAuth(async (
     // Get control plane adapter and compare secrets
     const adapter = getControlPlaneAdapter();
 
-    logger.info('Comparing secrets between variants', {
+    logger.info('secrets.diff.start', {
       appId,
       sourceVariant,
       destinationVariant
@@ -110,7 +110,7 @@ export const GET = withCustomerAuth(async (
       authContext.jwt
     );
 
-    logger.info('Secret diff completed', {
+    logger.info('secrets.diff.success', {
       appId,
       sourceVariant,
       destinationVariant,
@@ -122,7 +122,8 @@ export const GET = withCustomerAuth(async (
     return NextResponse.json(diff, { status: 200 });
 
   } catch (error) {
-    logger.error('Failed to get secret diff', {
+    logger.error('secrets.diff.error', {
+      message: 'Failed to get secret diff',
       appId: (await params).appId,
       error: error instanceof Error ? error.message : String(error)
     });

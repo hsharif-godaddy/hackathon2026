@@ -6,6 +6,7 @@ import {
   type CustomerAuthContext,
   customerHasAccount,
   withCustomerAuth} from '@/lib/customer-auth'
+import { AiroHttpError } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 
 // Force dynamic rendering to prevent database calls during build
@@ -125,10 +126,14 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
       })
     }
   } catch (error) {
-    logger.error('Failed to get server details:', error)
+    const isAuthError = error instanceof AiroHttpError && (error.status === 401 || error.status === 403);
+    logger[isAuthError ? 'warn' : 'error']('servers.get.error', {
+      message: 'Failed to get server details',
+      error: error instanceof Error ? error.message : String(error)
+    })
     return NextResponse.json(
       { error: 'Failed to fetch server details', message: (error as Error).message },
-      { status: 500 }
+      { status: error instanceof AiroHttpError ? error.status : 500 }
     )
   }
 })

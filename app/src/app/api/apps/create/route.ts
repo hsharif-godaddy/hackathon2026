@@ -93,7 +93,10 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     return NextResponse.json(response, { status: 201 });
 
   } catch (error) {
-    logger.error('❌ Error creating app via site adapter:', error);
+    logger.error('apps.create.error', {
+      message: 'Failed to create app via site adapter',
+      error: error instanceof Error ? error.message : String(error)
+    });
     
     return NextResponse.json(
       {

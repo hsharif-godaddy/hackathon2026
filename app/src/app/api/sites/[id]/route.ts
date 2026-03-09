@@ -55,7 +55,10 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
     return await handleGetSite(request, siteId, authContext);
 
   } catch (error) {
-    logger.error('Error fetching site:', error);
+    logger.error('sites.get.error', {
+      message: 'Failed to fetch site',
+      error: error instanceof Error ? error.message : String(error)
+    });
     return NextResponse.json(
       { error: 'Failed to fetch site' },
       { status: 500 }
@@ -110,7 +113,10 @@ export const DELETE = withCustomerAuth(async (request: NextRequest, authContext:
     });
 
   } catch (error) {
-    logger.error('Error deleting site:', error);
+    logger.error('sites.delete.error', {
+      message: 'Failed to delete site',
+      error: error instanceof Error ? error.message : String(error)
+    });
     return NextResponse.json(
       { error: 'Failed to delete site' },
       { status: 500 }
@@ -163,7 +169,10 @@ export const PATCH = withCustomerAuth(async (request: NextRequest, authContext: 
 
     return NextResponse.json(updatedSite);
   } catch (error) {
-    logger.error('Error updating site:', error);
+    logger.error('sites.update.error', {
+      message: 'Failed to update site',
+      error: error instanceof Error ? error.message : String(error)
+    });
     return NextResponse.json(
       { error: 'Failed to update site' },
       { status: 500 }

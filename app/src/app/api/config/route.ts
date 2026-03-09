@@ -17,7 +17,10 @@ export async function GET() {
       },
     });
   } catch (error) {
-    logger.error('api_config', 'Error fetching server config', { error: error as Error });
+    logger.error('api.config.get.error', {
+      message: 'Failed to fetch server config',
+      error: error instanceof Error ? error.message : String(error)
+    });
     return NextResponse.json(
       { error: 'Failed to fetch configuration' },
       { status: 500 }

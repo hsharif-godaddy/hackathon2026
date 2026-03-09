@@ -19,11 +19,11 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
     const { user } = authContext
     const siteAdapter = SiteAdapterFactory.getInstance()
 
-    logger.info('api.servers.fetch.start', 'Fetching running servers')
+    logger.info('api.servers.fetch.start', { message: 'Fetching running servers' })
 
     // Check auth requirements
     if (siteAdapter.requiresAuth() && !customerHasAccount(user)) {
-      logger.warn('api.servers.access.denied', 'User attempted to access servers without account')
+      logger.warn('api.servers.access.denied', { message: 'User attempted to access servers without account' })
       return createCustomerAuthError('You must have an account to view servers', 403)
     }
 

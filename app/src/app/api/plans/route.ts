@@ -19,7 +19,10 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
       count: plans.length
     });
   } catch (error) {
-    logger.error('api_plans', 'Error fetching plans', { error: error as Error });
+    logger.error('api.plans.get.error', {
+      message: 'Failed to fetch plans',
+      error: error instanceof Error ? error.message : String(error)
+    });
     return NextResponse.json(
       {
         success: false,

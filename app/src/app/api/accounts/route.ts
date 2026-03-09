@@ -51,10 +51,13 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
     });
     
   } catch (error) {
-    logger.error('Error fetching account:', error);
+    logger.error('accounts.get.error', {
+      message: 'Failed to fetch account',
+      error: error instanceof Error ? error.message : String(error)
+    });
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error'
       },
@@ -94,10 +97,13 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     }, { status: 201 });
 
   } catch (error) {
-    logger.error('Error creating account:', error);
+    logger.error('accounts.create.error', {
+      message: 'Failed to create account',
+      error: error instanceof Error ? error.message : String(error)
+    });
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error'
       },
@@ -161,10 +167,13 @@ export const PATCH = withCustomerAuth(async (request: NextRequest, authContext: 
     });
 
   } catch (error) {
-    logger.error('Error updating account:', error);
+    logger.error('accounts.update.error', {
+      message: 'Failed to update account',
+      error: error instanceof Error ? error.message : String(error)
+    });
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error'
       },

@@ -58,7 +58,11 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     })
 
     if (!response.ok) {
-      logger.error(`Agent git/return failed: ${response.status} ${response.statusText}`)
+      logger.error('git.return.agent.error', {
+        message: 'Agent git/return request failed',
+        status: response.status,
+        statusText: response.statusText
+      })
       return NextResponse.json(
         { 
           error: 'Failed to return to latest commit',
@@ -72,7 +76,10 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     return NextResponse.json(data)
 
   } catch (error) {
-    logger.error('Error in git/return route:', error)
+    logger.error('git.return.error', {
+      message: 'Failed to return to latest commit',
+      error: error instanceof Error ? error.message : String(error)
+    })
     return NextResponse.json(
       { 
         error: 'Internal server error', 
