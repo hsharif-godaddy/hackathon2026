@@ -6,6 +6,8 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { getEditPaths, isCompletedFileEdit } from './useInitialization';
+
 describe('useInitialization', function hookTests() {
   
   describe('InitializationPhase enum', function phaseEnumTests() {
@@ -275,8 +277,137 @@ describe('useInitialization', function hookTests() {
     it('should map websocket wait to verifying-agent', function verifyingAgent() {
       const isWaitingForWebSocket = true;
       const mappedPhase = isWaitingForWebSocket ? 'verifying-agent' : 'idle';
-      
+
       expect(mappedPhase).toBe('verifying-agent');
+    });
+  });
+
+  describe('File edit detection helpers', function fileEditHelpers() {
+    function makeTc(overrides: Partial<{ name: string; status: string; error: string; input: Record<string, unknown> }> = {}) {
+      return {
+        name: 'textEditor',
+        status: 'completed',
+        error: undefined as string | undefined,
+        input: { command: 'str_replace', path: 'src/pages/index.tsx' } as Record<string, unknown>,
+        ...overrides,
+      };
+    }
+
+    describe('isCompletedFileEdit', function isCompletedFileEditTests() {
+      it('should return true for a completed textEditor edit', function completedTextEditor() {
+        expect(isCompletedFileEdit(makeTc())).toBe(true);
+      });
+
+      it('should return true for a completed str_replace_based_edit_tool', function completedStrReplace() {
+        expect(isCompletedFileEdit(makeTc({ name: 'str_replace_based_edit_tool' }))).toBe(true);
+      });
+
+      it('should return true for a completed fileEdit', function completedFileEdit() {
+        expect(isCompletedFileEdit(makeTc({ name: 'fileEdit', input: { path: 'src/components/Header.tsx' } }))).toBe(true);
+      });
+
+      it('should return false for view command', function viewCommand() {
+        expect(isCompletedFileEdit(makeTc({ input: { command: 'view', path: 'src/pages/index.tsx' } }))).toBe(false);
+      });
+
+      it('should return false for non-edit tool', function nonEditTool() {
+        expect(isCompletedFileEdit(makeTc({ name: 'fontTheme' }))).toBe(false);
+      });
+
+      it('should return false for running status', function runningStatus() {
+        expect(isCompletedFileEdit(makeTc({ status: 'running' }))).toBe(false);
+      });
+
+      it('should return false for errored tool call', function erroredCall() {
+        expect(isCompletedFileEdit(makeTc({ error: 'something failed' }))).toBe(false);
+      });
+    });
+
+    describe('getEditPaths', function getEditPathsTests() {
+      it('should extract path from input.path', function directPath() {
+        expect(getEditPaths(makeTc())).toEqual(['src/pages/index.tsx']);
+      });
+
+      it('should extract path from input.file_path', function filePath() {
+        expect(getEditPaths({ input: { file_path: 'src/pages/about.tsx' } })).toEqual(['src/pages/about.tsx']);
+      });
+
+      it('should extract paths from batch operations', function batchOps() {
+        const tc = { input: { operations: [{ path: 'src/components/Header.tsx' }, { path: 'src/pages/index.tsx' }] } };
+        expect(getEditPaths(tc)).toEqual(['src/components/Header.tsx', 'src/pages/index.tsx']);
+      });
+
+      it('should combine all path sources', function allSources() {
+        const tc = {
+          input: {
+            path: 'a.tsx',
+            file_path: 'b.tsx',
+            operations: [{ path: 'c.tsx' }],
+          },
+        };
+        expect(getEditPaths(tc)).toEqual(['a.tsx', 'b.tsx', 'c.tsx']);
+      });
+
+      it('should return empty array when no paths found', function noPaths() {
+        expect(getEditPaths({ input: {} })).toEqual([]);
+      });
+    });
+
+    describe('Big reveal detection logic', function bigRevealTests() {
+      // Simulates the reveal logic from the useEffect
+      function shouldReveal(toolCalls: ReturnType<typeof makeTc>[]) {
+        const hasPageFileEdit = toolCalls.some(
+          tc => isCompletedFileEdit(tc) && getEditPaths(tc).some(p => p.includes('src/pages/index'))
+        );
+        const hasAnyFileEdit = toolCalls.some(tc => isCompletedFileEdit(tc));
+        const hasSuggestedResponse = toolCalls.some(
+          tc => tc.name === 'suggestedResponse' && tc.status === 'completed'
+        );
+        return hasPageFileEdit || (hasAnyFileEdit && hasSuggestedResponse);
+      }
+
+      it('should reveal on page file edit', function pageEdit() {
+        const toolCalls = [makeTc({ input: { command: 'str_replace', path: 'src/pages/index.tsx' } })];
+        expect(shouldReveal(toolCalls)).toBe(true);
+      });
+
+      it('should reveal on batch fileEdit with page path in operations', function batchPageEdit() {
+        const toolCalls = [makeTc({
+          name: 'fileEdit',
+          input: { operations: [{ path: 'src/pages/index.tsx' }] },
+        })];
+        expect(shouldReveal(toolCalls)).toBe(true);
+      });
+
+      it('should reveal on suggestedResponse after any file edit', function suggestedAfterEdit() {
+        const toolCalls = [
+          makeTc({ input: { command: 'str_replace', path: 'src/components/Header.tsx' } }),
+          makeTc({ name: 'suggestedResponse', input: {}, status: 'completed' } as any),
+        ];
+        // suggestedResponse is not a file edit tool, so isCompletedFileEdit returns false for it,
+        // but the second condition (hasAnyFileEdit && hasSuggestedResponse) should trigger
+        expect(shouldReveal(toolCalls as any[])).toBe(true);
+      });
+
+      it('should not reveal on non-page edit alone', function nonPageEdit() {
+        const toolCalls = [makeTc({ input: { command: 'str_replace', path: 'src/components/Header.tsx' } })];
+        expect(shouldReveal(toolCalls)).toBe(false);
+      });
+
+      it('should not reveal on non-index page edit', function nonIndexPage() {
+        const toolCalls = [makeTc({ input: { command: 'str_replace', path: 'src/pages/about.tsx' } })];
+        expect(shouldReveal(toolCalls)).toBe(false);
+      });
+
+      it('should not reveal on suggestedResponse without any file edit', function suggestedAlone() {
+        const toolCalls = [makeTc({ name: 'suggestedResponse', input: {} })];
+        expect(shouldReveal(toolCalls)).toBe(false);
+      });
+
+      it('should not reveal on view-only command to page', function viewOnlyPage() {
+        const toolCalls = [makeTc({ input: { command: 'view', path: 'src/pages/index.tsx' } })];
+        expect(shouldReveal(toolCalls)).toBe(false);
+      });
     });
   });
 });

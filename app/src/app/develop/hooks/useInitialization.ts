@@ -238,6 +238,38 @@ export interface UseInitializationReturn {
 }
 
 // ============================================================================
+// FILE EDIT DETECTION HELPERS (exported for testing)
+// ============================================================================
+
+const FILE_EDIT_TOOLS = new Set(['str_replace_based_edit_tool', 'textEditor', 'fileEdit'])
+
+/** Check if a tool call is a completed, non-view file edit */
+export function isCompletedFileEdit(tc: { name: string; status: string; error?: string; input: Record<string, unknown> }): boolean {
+  if (!FILE_EDIT_TOOLS.has(tc.name) || tc.status !== 'completed' || tc.error) return false
+  // Exclude view-only commands (textEditor/str_replace_based_edit_tool)
+  if (tc.input.command === 'view') return false
+  return true
+}
+
+/** Extract file paths from a tool call input, handling all known shapes */
+export function getEditPaths(tc: { input: Record<string, unknown> }): string[] {
+  const paths: string[] = []
+  // Direct path field (textEditor, str_replace_based_edit_tool)
+  if (typeof tc.input.path === 'string') paths.push(tc.input.path)
+  // Alternative field name (file_path)
+  if (typeof tc.input.file_path === 'string') paths.push(tc.input.file_path)
+  // Batch operations (fileEdit with operations array)
+  if (Array.isArray(tc.input.operations)) {
+    for (const op of tc.input.operations) {
+      if (op && typeof op === 'object' && typeof (op as Record<string, unknown>).path === 'string') {
+        paths.push((op as Record<string, unknown>).path as string)
+      }
+    }
+  }
+  return paths
+}
+
+// ============================================================================
 // PURE COMPUTATION FUNCTIONS
 // ============================================================================
 
@@ -990,22 +1022,13 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
 
     const toolCalls = activeStream?.toolCalls ?? []
 
-    const isFileEditTool = (name: string) =>
-      name === 'str_replace_based_edit_tool' || name === 'textEditor' || name === 'fileEdit'
-
-    // Reveal on page file edit (src/pages/)
+    // Reveal on homepage file edit (src/pages/index)
     const hasPageFileEdit = toolCalls.some(
-      tc => isFileEditTool(tc.name) &&
-           tc.status === 'completed' &&
-           !tc.error &&
-           typeof tc.input?.path === 'string' &&
-           tc.input.path.includes('src/pages/')
+      tc => isCompletedFileEdit(tc) && getEditPaths(tc).some(p => p.includes('src/pages/index'))
     )
 
     // Reveal on suggestedResponse if any file edit has already completed
-    const hasAnyFileEdit = toolCalls.some(
-      tc => isFileEditTool(tc.name) && tc.status === 'completed' && !tc.error
-    )
+    const hasAnyFileEdit = toolCalls.some(tc => isCompletedFileEdit(tc))
     const hasSuggestedResponse = toolCalls.some(
       tc => tc.name === 'suggestedResponse' && tc.status === 'completed'
     )
@@ -1032,15 +1055,15 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     if (streamCompleteWithoutEditSentForRef.current === lastAssistant.id) return
 
     const hasCompletedFileEdit = lastAssistant.toolCalls?.some(
-      tc => tc.name === 'fileEdit' && tc.status === 'completed' && !tc.error
+      tc => isCompletedFileEdit(tc)
     )
     if (hasCompletedFileEdit) return
 
-    // Only fileEdit and terminalCommand can indicate "stream done but user may still see a first edit":
+    // File edit tools and terminalCommand can indicate "stream done but user may still see a first edit":
     // they are the tools that modify workspace (files/shell). Other tools (e.g. read_file, list_dir)
     // don't justify hiding the "waiting for first edit" overlay.
     const hasIncompleteFileEditOrTerminal = lastAssistant.toolCalls?.some(
-      tc => tc.status === 'incomplete' && (tc.name === 'fileEdit' || tc.name === 'terminalCommand')
+      tc => tc.status === 'incomplete' && (FILE_EDIT_TOOLS.has(tc.name) || tc.name === 'terminalCommand')
     )
     if (!hasIncompleteFileEditOrTerminal) return
 
