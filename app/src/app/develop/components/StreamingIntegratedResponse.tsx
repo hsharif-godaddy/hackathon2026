@@ -325,6 +325,15 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
           />
         )}
 
+        {/* Output token limit reached notification */}
+        {message.outputTokenLimitReached && (
+          <StreamingAlertMessage
+            type="Warning"
+            title={t('builder_output_limit_title', undefined, 'Output limit reached')}
+            message={t('builder_output_limit_message', undefined, 'The response was cut short because it exceeded the output size limit. Try continuing with a follow-up message, or break your request into smaller parts.')}
+          />
+        )}
+
         {/* Budget exceeded error notification */}
         {message.budgetExceeded && (
           <StreamingAlertMessage

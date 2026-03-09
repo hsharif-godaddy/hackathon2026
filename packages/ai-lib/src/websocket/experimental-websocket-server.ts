@@ -3239,6 +3239,7 @@ Please try again with corrected formatting.`
           toolCalls: finalResult.toolCalls || [],
           agentId: agentName,
           duration,
+          finishReason: finalResult.finishReason,
           messageId: activeConversation?.context?.agentMessageId  // NEW: Include message ID for pending message tracking
         }, agentName)
       }

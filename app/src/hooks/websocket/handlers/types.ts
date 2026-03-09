@@ -67,6 +67,7 @@ export interface FinalizeStreamData {
   agentId?: string
   usage?: unknown
   totalSteps?: number
+  finishReason?: string
 }
 
 /**

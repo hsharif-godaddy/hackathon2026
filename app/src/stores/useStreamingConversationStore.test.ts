@@ -319,6 +319,93 @@ describe('useStreamingConversationStore', function packageTests() {
       // Running tool becomes incomplete
       expect(assistantMsg?.toolCalls?.find(tc => tc.id === 'tool-2')?.status).toBe('incomplete');
     });
+
+    it('should set outputTokenLimitReached when finishReason is length and tools are incomplete', function outputTokenLimit() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Create a weather app');
+      });
+
+      // Add a running tool (simulates tool_start without tool_result)
+      act(() => {
+        useStreamingConversationStore.getState().addToolStartSegment({
+          id: 'tool-1',
+          name: 'fileEdit',
+          input: {},
+          status: 'running',
+        });
+      });
+
+      // Finalize with finishReason: 'length'
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream({ finishReason: 'length' });
+      });
+
+      const assistantMsg = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
+      expect(assistantMsg?.outputTokenLimitReached).toBe(true);
+    });
+
+    it('should not set outputTokenLimitReached when finishReason is not length', function noOutputTokenLimit() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Create a weather app');
+      });
+
+      act(() => {
+        useStreamingConversationStore.getState().addToolStartSegment({
+          id: 'tool-1',
+          name: 'fileEdit',
+          input: {},
+          status: 'running',
+        });
+      });
+
+      // Finalize with finishReason: 'stop'
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream({ finishReason: 'stop' });
+      });
+
+      const assistantMsg = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
+      expect(assistantMsg?.outputTokenLimitReached).toBeUndefined();
+    });
+
+    it('should set outputTokenLimitReached when finishReason is length even without incomplete tools', function textOnlyTruncation() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Create a weather app');
+      });
+
+      // Add a tool that completed normally (no running tools)
+      act(() => {
+        useStreamingConversationStore.getState().addToolStartSegment({
+          id: 'tool-1',
+          name: 'fileEdit',
+          input: {},
+          status: 'running',
+        });
+        useStreamingConversationStore.getState().addToolResultSegment({
+          id: 'tool-1',
+          name: 'fileEdit',
+          input: {},
+          result: { success: true },
+          status: 'completed',
+        });
+      });
+
+      // Finalize with finishReason: 'length' — text was truncated
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream({ finishReason: 'length' });
+      });
+
+      const assistantMsg = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
+      expect(assistantMsg?.outputTokenLimitReached).toBe(true);
+    });
   });
 
   describe('#addToolStartSegment', function addToolStartSegmentTests() {

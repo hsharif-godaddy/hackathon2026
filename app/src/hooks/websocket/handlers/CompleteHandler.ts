@@ -147,6 +147,7 @@ export class CompleteHandler implements MessageHandler {
       agentId: data.data?.agentId as string | undefined,
       usage: data.data?.usage,
       totalSteps: data.data?.step as number | undefined,
+      finishReason: data.data?.finishReason as string | undefined,
     })
 
     // Send analytics

@@ -79,6 +79,7 @@ export interface StreamingMessage {
   timestamp: Date
   isComplete: boolean
   maxStepsReached?: boolean        // True when agent hit max steps limit
+  outputTokenLimitReached?: boolean // True when LLM hit maxOutputTokens (text truncation or incomplete tools)
   upstreamError?: boolean           // True if an error from upstream service, if any
   budgetExceeded?: boolean         // True if user exceeded their usage budget
   error?: string                   // Error message
@@ -108,6 +109,7 @@ export interface ChatMessage {
   toolCalls?: ToolCall[]
   timestamp: Date
   maxStepsReached?: boolean        // True when agent hit max steps limit
+  outputTokenLimitReached?: boolean // True when LLM hit maxOutputTokens (text truncation or incomplete tools)
   upstreamError?: boolean          // True if an error from upstream service, if any
   budgetExceeded?: boolean         // True if user exceeded their usage budget
   error?: string                   // Error message
@@ -880,12 +882,24 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       })
     }
 
+    // Detect output token limit: LLM hit maxOutputTokens (text truncation or incomplete tools)
+    const outputTokenLimitReached = metadata?.finishReason === 'length'
+
+    if (outputTokenLimitReached) {
+      logger.warn('streaming-store.stream.finalize.output_limit', {
+        messageId: activeStream.id,
+        finishReason: metadata?.finishReason,
+        incompleteToolCount: runningToolIds.length
+      })
+    }
+
     logger.debug('streaming-store.stream.finalize', {
       messageId: activeStream.id,
       contentLength: activeStream.content.length,
       toolCallCount: activeStream.toolCalls.length,
       segmentCount: activeStream.segments.length,
       maxStepsReached: activeStream.maxStepsReached,
+      outputTokenLimitReached,
       upstreamError: activeStream.upstreamError,
       budgetExceeded: activeStream.budgetExceeded
     })
@@ -899,6 +913,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       toolCalls: finalizedToolCalls,
       timestamp: new Date(),
       maxStepsReached: activeStream.maxStepsReached,
+      outputTokenLimitReached: outputTokenLimitReached || undefined,
       upstreamError: activeStream.upstreamError,
       budgetExceeded: activeStream.budgetExceeded,
       ...(activeStream.error && { error: activeStream.error }),
