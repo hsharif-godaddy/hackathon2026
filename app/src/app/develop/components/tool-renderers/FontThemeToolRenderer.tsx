@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
 import FontThemeModal from '@/app/develop/components/tool-renderers/FontThemeModal'
 import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
+import ToolModal from '@/app/develop/components/tool-renderers/ToolModal'
 import FontThemeGridWidget from '@/app/develop/components/widgets/FontThemeGridWidget'
 import { useTranslations } from '@/hooks/useTranslations'
 
@@ -20,10 +21,12 @@ export default function FontThemeToolRenderer({
   toolName: _toolName,
   toolStatus,
   input,
-  result
+  result,
+  error
 }: DefaultToolRendererProps) {
   const t = useTranslations()
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isErrorModalOpen, setIsErrorModalOpen] = useState(false)
 
   const mode = input?.mode as 'suggest' | 'apply' | undefined
   const isSuggestMode = mode === 'suggest'
@@ -136,7 +139,7 @@ export default function FontThemeToolRenderer({
     ? `${t('builder_tools_font_theme', undefined, 'Font Theme')}: ${t('builder_tools_font_theme_options', undefined, 'Options')}`
     : t('builder_tools_font_theme', undefined, 'Font Theme')
 
-  // Show header only for suggest mode or while loading
+  // Show header only for suggest mode, while loading, or on error
   const showHeader = isSuggestMode || toolStatus !== 'completed'
 
   return (
@@ -146,8 +149,37 @@ export default function FontThemeToolRenderer({
           icon={<Type className="w-2 h-2" />}
           displayName={displayName}
           toolStatus={toolStatus}
-          hasDetails={false}
+          hasDetails={toolStatus === 'error' && !!error}
+          onOpenModal={toolStatus === 'error' && error ? () => setIsErrorModalOpen(true) : undefined}
         />
+      )}
+
+      {/* Error details modal */}
+      {toolStatus === 'error' && error && (
+        <ToolModal
+          isOpen={isErrorModalOpen}
+          onClose={() => setIsErrorModalOpen(false)}
+          title={t('builder_tools_font_theme', undefined, 'Font Theme')}
+        >
+          <div className="flex-1 overflow-y-auto space-y-2">
+            {input && Object.keys(input).length > 0 && (
+              <div>
+                <div className="text-sm font-bold mb-1">{t('builder_tools_default_arguments', undefined, 'Arguments')}</div>
+                <pre className="text-xs whitespace-pre-wrap font-mono bg-muted p-1.5 rounded border border-border max-h-32 overflow-y-auto">
+                  {JSON.stringify(input, null, 2)}
+                </pre>
+              </div>
+            )}
+            <div>
+              <div className="text-sm font-bold mb-1 text-destructive">{t('builder_status_error', undefined, 'Error')}</div>
+              <div className="bg-destructive/10 border border-destructive/30 p-1.5 rounded">
+                <pre className="text-xs whitespace-pre-wrap font-mono text-destructive-foreground">
+                  {error}
+                </pre>
+              </div>
+            </div>
+          </div>
+        </ToolModal>
       )}
 
       {/* SUGGEST MODE: Display font theme grid when completed */}

@@ -39,13 +39,27 @@ export interface SuggestedPalette {
 }
 
 /**
- * Suggested font data
+ * Font info for a single font (header or body)
+ */
+export interface SuggestedFontInfo {
+  name: string
+  weights: string[]
+  category: string
+}
+
+/**
+ * Suggested font data - supports both legacy single-font and new header/body pairings
  */
 export interface SuggestedFont {
   name: string
-  fontName: string
-  weights: string[]
-  category: string
+  /** @deprecated Use headerFont/bodyFont instead */
+  fontName?: string
+  /** @deprecated Use headerFont/bodyFont instead */
+  weights?: string[]
+  /** @deprecated Use headerFont/bodyFont instead */
+  category?: string
+  headerFont?: SuggestedFontInfo
+  bodyFont?: SuggestedFontInfo
 }
 
 /**

@@ -763,7 +763,11 @@ MODE SELECTION GUIDE:
           const fontsToStore = themes.map(theme => ({
             name: theme.name,
             headerFont: theme.headerFont,
-            bodyFont: theme.bodyFont
+            bodyFont: theme.bodyFont,
+            // Legacy fields for backwards compatibility
+            fontName: theme.headerFont.name,
+            weights: theme.headerFont.weights,
+            category: theme.headerFont.category
           }))
           stateManager.storeSuggestedFonts(sessionId, fontsToStore)
         }
@@ -880,20 +884,38 @@ MODE SELECTION GUIDE:
       } else if (extractedThemeName && sessionId && stateManager?.getSuggestedFont) {
         const suggestedFont = stateManager.getSuggestedFont(sessionId, extractedThemeName)
         if (suggestedFont) {
-          logger.info('fontTheme.apply.session_restored', {
-            sessionId,
-            themeName: extractedThemeName,
-            fontName: suggestedFont.fontName
-          })
-
-          // Use same font for both header and body when from session
-          const fontInfo: FontInfo = {
-            name: suggestedFont.fontName,
-            weights: suggestedFont.weights,
-            category: suggestedFont.category
+          // Use headerFont/bodyFont if available (new format), fall back to legacy fontName/weights
+          if (suggestedFont.headerFont && suggestedFont.bodyFont) {
+            logger.info('fontTheme.apply.session_restored', {
+              sessionId,
+              themeName: extractedThemeName,
+              headerFont: suggestedFont.headerFont.name,
+              bodyFont: suggestedFont.bodyFont.name
+            })
+            headerFont = {
+              ...suggestedFont.headerFont,
+              category: (suggestedFont.headerFont.category || 'sans-serif') as FontCategory
+            }
+            bodyFont = {
+              ...suggestedFont.bodyFont,
+              category: (suggestedFont.bodyFont.category || 'sans-serif') as FontCategory
+            }
+          } else if (suggestedFont.fontName && suggestedFont.weights) {
+            logger.info('fontTheme.apply.session_restored_legacy', {
+              sessionId,
+              themeName: extractedThemeName,
+              fontName: suggestedFont.fontName
+            })
+            const fontInfo: FontInfo = {
+              name: suggestedFont.fontName,
+              weights: suggestedFont.weights,
+              category: (suggestedFont.category || 'sans-serif') as FontCategory
+            }
+            headerFont = fontInfo
+            bodyFont = fontInfo
+          } else {
+            throw new Error(`Font theme '${extractedThemeName}' found in session but has invalid data. Please use suggest mode first.`)
           }
-          headerFont = fontInfo
-          bodyFont = fontInfo
           themeName = extractedThemeName
         } else if (input.fontName && input.weights) {
           logger.info('fontTheme.apply.fallback_to_explicit', {

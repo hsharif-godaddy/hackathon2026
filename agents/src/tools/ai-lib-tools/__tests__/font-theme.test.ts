@@ -13,8 +13,14 @@ vi.mock('../../../logging/index.js', () => ({
   },
   logger: {
     info: vi.fn(),
-    error: vi.fn()
+    error: vi.fn(),
+    warn: vi.fn()
   }
+}))
+vi.mock('../../../database/repositories/AppRepository.js', () => ({
+  AppRepository: vi.fn().mockImplementation(() => ({
+    findById: vi.fn((id: string) => id === 'test-app' ? { path: '/test/app' } : undefined)
+  }))
 }))
 
 // Import after mocks are set up
@@ -566,6 +572,114 @@ describe('font-theme', function packageTests() {
       // Should only have one family parameter
       const familyMatches = writtenContent.match(/family=Inter/g)
       expect(familyMatches).toHaveLength(1)
+    })
+  })
+
+  describe('apply mode session restore', function applySessionTests() {
+    const mockCss = `@layer base {
+  :root {
+    --font-sans: -apple-system, sans-serif;
+    --font-heading: -apple-system, sans-serif;
+  }
+  body {
+    font-family: var(--font-sans);
+  }
+}`
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      vi.mocked(readFile).mockResolvedValue(mockCss)
+      vi.mocked(writeFile).mockResolvedValue()
+    })
+
+    it('should apply fonts from session using headerFont/bodyFont format', async function applyNewFormat() {
+      const { fontThemeAITool } = await import('../font-theme.js')
+
+      const stateManager = {
+        getSuggestedFont: vi.fn().mockReturnValue({
+          name: 'Modern Roastery',
+          headerFont: { name: 'Merriweather', weights: ['700', '900'], category: 'serif' },
+          bodyFont: { name: 'Lato', weights: ['400', '500'], category: 'sans-serif' }
+        })
+      }
+
+      const context = {
+        metadata: {
+          appId: 'test-app',
+          sessionId: 'test-session',
+          stateManager
+        },
+        messages: [{ role: 'user', content: 'Apply font theme: Modern Roastery' }]
+      }
+
+      const result = await (fontThemeAITool as any).execute(
+        { mode: 'apply', themeName: 'Modern Roastery', count: 4 },
+        { experimental_context: context }
+      ) as any
+
+      expect(result.success).toBe(true)
+      expect(result.themeName).toBe('Modern Roastery')
+      const writtenContent = vi.mocked(writeFile).mock.calls[0]![1] as string
+      expect(writtenContent).toContain('"Merriweather"')
+      expect(writtenContent).toContain('"Lato"')
+    })
+
+    it('should apply fonts from session using legacy fontName/weights format', async function applyLegacyFormat() {
+      const { fontThemeAITool } = await import('../font-theme.js')
+
+      const stateManager = {
+        getSuggestedFont: vi.fn().mockReturnValue({
+          name: 'Classic Serif',
+          fontName: 'Georgia',
+          weights: ['400', '700'],
+          category: 'serif'
+        })
+      }
+
+      const context = {
+        metadata: {
+          appId: 'test-app',
+          sessionId: 'test-session',
+          stateManager
+        },
+        messages: [{ role: 'user', content: 'Apply font theme: Classic Serif' }]
+      }
+
+      const result = await (fontThemeAITool as any).execute(
+        { mode: 'apply', themeName: 'Classic Serif', count: 4 },
+        { experimental_context: context }
+      ) as any
+
+      expect(result.success).toBe(true)
+      const writtenContent = vi.mocked(writeFile).mock.calls[0]![1] as string
+      expect(writtenContent).toContain('"Georgia"')
+    })
+
+    it('should throw when session font has neither format', async function applyInvalidData() {
+      const { fontThemeAITool } = await import('../font-theme.js')
+
+      const stateManager = {
+        getSuggestedFont: vi.fn().mockReturnValue({
+          name: 'Bad Theme'
+          // Missing both headerFont/bodyFont and fontName/weights
+        })
+      }
+
+      const context = {
+        metadata: {
+          appId: 'test-app',
+          sessionId: 'test-session',
+          stateManager
+        },
+        messages: [{ role: 'user', content: 'Apply font theme: Bad Theme' }]
+      }
+
+      await expect(
+        (fontThemeAITool as any).execute(
+          { mode: 'apply', themeName: 'Bad Theme', count: 4 },
+          { experimental_context: context }
+        )
+      ).rejects.toThrow('found in session but has invalid data')
     })
   })
 
