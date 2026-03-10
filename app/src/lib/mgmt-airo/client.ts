@@ -19,6 +19,7 @@ import {
   type AiroDeployAppResponse,
   type AiroDeploymentsResponse,
   type AiroDomainCheckResponse,
+  type AiroDomainErrorResponse,
   type AiroGetCreditGrantsResponse,
   AiroHttpError,
   type AiroImageStatusResponse,
@@ -623,6 +624,35 @@ export class AiroMgmtClient {
       `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/domains`,
       payload,
       { logEvent: 'mgmt-airo.modify-domains' }
+    );
+  }
+
+  /**
+   * Get domain error details for a specific domain
+   *
+   * GET /api/airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/domain-error?fqdn=<domain>
+   *
+   * Retrieves error details for a specific domain if one exists.
+   * Throws AiroHttpError with status 404 if no error exists for the given domain.
+   *
+   * @param subscriptionId - Subscription ID
+   * @param systemId - System ID
+   * @param appId - Application ID
+   * @param fqdn - Fully qualified domain name to check for errors
+   * @returns Promise resolving to domain error details
+   * @throws AiroHttpError with status 404 if no error exists
+   */
+  async getDomainError(
+    subscriptionId: string,
+    systemId: string,
+    appId: string,
+    fqdn: string
+  ): Promise<AiroDomainErrorResponse> {
+    return this.request<AiroDomainErrorResponse>(
+      'GET',
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/domain-error?fqdn=${encodeURIComponent(fqdn)}`,
+      undefined,
+      { logEvent: 'mgmt-airo.get-domain-error' }
     );
   }
 

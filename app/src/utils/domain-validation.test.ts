@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { DomainValidationError, type DomainValidationErrorObject } from '@/lib/mgmt-airo/types';
-import { getDomainErrorMessage } from './domain-validation';
+import { ApiErrorCode } from './api-errors';
+import { DomainApiErrorCode, getDomainErrorMessage, translateDomainApiError } from './domain-validation';
 
 describe('getDomainErrorMessage', () => {
   // Mock translation function
@@ -18,6 +19,7 @@ describe('getDomainErrorMessage', () => {
         'builder_domain_error_subdomain_invalid': 'Invalid subdomain format.',
         'builder_domain_error_label_too_long': 'Domain label is too long.',
         'builder_domain_error_already_taken': 'This domain is already taken.',
+        'builder_domain_error_already_in_use': 'This domain is already in use.',
       };
       return translations[key] || key;
     });
@@ -137,7 +139,7 @@ describe('getDomainErrorMessage', () => {
       const errors: DomainValidationErrorObject[] = [{
         code: DomainValidationError.DOMAIN_FQDN_INVALID,
         message: 'Invalid FQDN',
-        field: 'customDomain',
+        field: 'fqdn',
         value: 'not-a-valid-fqdn',
       }];
       const result = getDomainErrorMessage(errors, t);
@@ -150,7 +152,7 @@ describe('getDomainErrorMessage', () => {
       const errors: DomainValidationErrorObject[] = [{
         code: DomainValidationError.DOMAIN_SUBDOMAIN_INVALID,
         message: 'Invalid subdomain',
-        field: 'customDomain',
+        field: 'fqdn',
         value: 'sub.-domain.example.com',
       }];
       const result = getDomainErrorMessage(errors, t);
@@ -163,7 +165,7 @@ describe('getDomainErrorMessage', () => {
       const errors: DomainValidationErrorObject[] = [{
         code: DomainValidationError.DOMAIN_LABEL_TOO_LONG,
         message: 'Label too long',
-        field: 'customDomain',
+        field: 'fqdn',
         value: 'verylongdomainlabelthatexceeds63characters123456789012345678901234567890.example.com',
       }];
       const result = getDomainErrorMessage(errors, t);
@@ -178,7 +180,7 @@ describe('getDomainErrorMessage', () => {
       const errors: DomainValidationErrorObject[] = [{
         code: DomainValidationError.DOMAIN_NOT_UNIQUE,
         message: 'Domain not unique',
-        field: 'domain',
+        field: 'projectPrefix',
         value: 'taken-domain',
       }];
       const result = getDomainErrorMessage(errors, t);
@@ -191,12 +193,38 @@ describe('getDomainErrorMessage', () => {
       const errors: DomainValidationErrorObject[] = [{
         code: DomainValidationError.DOMAIN_ALREADY_OWNED,
         message: 'Domain already owned',
-        field: 'domain',
+        field: 'projectPrefix',
         value: 'owned-domain',
       }];
       const result = getDomainErrorMessage(errors, t);
       expect(result).toBe('This domain is already taken.');
       expect(t).toHaveBeenCalledWith('builder_domain_error_already_taken');
+    });
+
+    it('should handle DOMAIN_NOT_UNIQUE error with fqdn field', () => {
+      const t = createMockTranslations();
+      const errors: DomainValidationErrorObject[] = [{
+        code: DomainValidationError.DOMAIN_NOT_UNIQUE,
+        message: 'Domain not unique',
+        field: 'fqdn',
+        value: 'taken.example.com',
+      }];
+      const result = getDomainErrorMessage(errors, t);
+      expect(result).toBe('This domain is already in use.');
+      expect(t).toHaveBeenCalledWith('builder_domain_error_already_in_use');
+    });
+
+    it('should handle DOMAIN_ALREADY_OWNED error with fqdn field', () => {
+      const t = createMockTranslations();
+      const errors: DomainValidationErrorObject[] = [{
+        code: DomainValidationError.DOMAIN_ALREADY_OWNED,
+        message: 'Domain already owned',
+        field: 'fqdn',
+        value: 'owned.example.com',
+      }];
+      const result = getDomainErrorMessage(errors, t);
+      expect(result).toBe('This domain is already in use.');
+      expect(t).toHaveBeenCalledWith('builder_domain_error_already_in_use');
     });
   });
 
@@ -248,11 +276,94 @@ describe('getDomainErrorMessage', () => {
       const errors: DomainValidationErrorObject[] = [{
         code: DomainValidationError.DOMAIN_RESERVED,
         message: '',
-        field: '',
+        field: 'projectPrefix',
         value: '',
       }];
       const result = getDomainErrorMessage(errors, t);
       expect(result).toBe('This subdomain is reserved and cannot be used.');
     });
+
+    it('should return firstError.message for unrecognized field value', () => {
+      const t = createMockTranslations();
+      const errors: DomainValidationErrorObject[] = [{
+        code: DomainValidationError.DOMAIN_RESERVED,
+        message: 'Server-provided message',
+        field: 'unknown' as string,
+        value: 'test',
+      }];
+      const result = getDomainErrorMessage(errors, t);
+      expect(result).toBe('Server-provided message');
+    });
+
+    it('should return default translation for unrecognized field with empty message', () => {
+      const t = createMockTranslations();
+      const errors: DomainValidationErrorObject[] = [{
+        code: DomainValidationError.DOMAIN_RESERVED,
+        message: '',
+        field: 'somethingNew' as string,
+        value: 'test',
+      }];
+      const result = getDomainErrorMessage(errors, t);
+      expect(result).toBe('An error occurred with your domain.');
+    });
+  });
+});
+
+describe('translateDomainApiError', () => {
+  const createMockTranslations = () => {
+    const t = vi.fn((key: string) => key);
+    return t as unknown as ReturnType<typeof import('@/hooks/useTranslations').useTranslations>;
+  };
+
+  it('should translate domain-specific error codes', () => {
+    const t = createMockTranslations();
+    expect(translateDomainApiError(DomainApiErrorCode.DOMAIN_MODIFY_FAILED, t))
+      .toBe('builder_domain_api_error_modify_failed');
+    expect(translateDomainApiError(DomainApiErrorCode.FQDN_REQUIRED, t))
+      .toBe('builder_domain_api_error_fqdn_required');
+    expect(translateDomainApiError(DomainApiErrorCode.INVALID_DOMAIN_FORMAT, t))
+      .toBe('builder_domain_api_error_invalid_format');
+  });
+
+  it('should fall back to generic API error codes', () => {
+    const t = createMockTranslations();
+    expect(translateDomainApiError(ApiErrorCode.SITE_NOT_FOUND, t))
+      .toBe('builder_api_error_site_not_found');
+    expect(translateDomainApiError(ApiErrorCode.AUTH_REQUIRED, t))
+      .toBe('builder_api_error_auth_required');
+    expect(translateDomainApiError(ApiErrorCode.SITE_CONFIG_INCOMPLETE, t))
+      .toBe('builder_api_error_site_config_incomplete');
+  });
+
+  it('should return fallback for unknown error codes', () => {
+    const t = createMockTranslations();
+    expect(translateDomainApiError('TOTALLY_UNKNOWN_CODE', t, 'Something went wrong'))
+      .toBe('Something went wrong');
+  });
+
+  it('should return default message when code is undefined and no fallback', () => {
+    const t = createMockTranslations();
+    expect(translateDomainApiError(undefined, t)).toBe('builder_api_error_default');
+  });
+
+  it('should return fallback when code is undefined', () => {
+    const t = createMockTranslations();
+    expect(translateDomainApiError(undefined, t, 'Fallback message')).toBe('Fallback message');
+  });
+
+  it('should translate all defined domain-specific error codes', () => {
+    const t = createMockTranslations();
+    for (const code of Object.values(DomainApiErrorCode)) {
+      const result = translateDomainApiError(code, t);
+      expect(result).not.toBe('builder_api_error_default');
+    }
+  });
+
+  it('should translate all defined generic error codes', () => {
+    const t = createMockTranslations();
+    for (const code of Object.values(ApiErrorCode)) {
+      const result = translateDomainApiError(code, t);
+      expect(result).not.toBe('builder_api_error_default');
+    }
   });
 });

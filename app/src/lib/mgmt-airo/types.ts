@@ -414,6 +414,30 @@ export interface AiroModifyDomainsResponse {
 }
 
 /**
+ * Domain error details
+ */
+export interface AiroDomainError {
+  code: string;
+  message: string;
+  action: 'RETRY' | 'SELF_SERVICE' | 'CONTACT_SUPPORT';
+  canRetry: boolean;
+}
+
+/**
+ * Domain error response
+ */
+export interface AiroDomainErrorResponse {
+  appId: string;
+  fqdn: string;
+  jobId: string;
+  status: string;
+  error: AiroDomainError;
+  affectedDomains: string[];
+  failedStep: string;
+  completedAt: string;
+}
+
+/**
  * Bulk customer apps response
  */
 export interface AiroBulkAppsResponse {

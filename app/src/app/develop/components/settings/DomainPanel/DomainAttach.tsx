@@ -16,7 +16,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
-import { useModifyDomains } from '@/hooks/useModifyDomains';
+import { DomainMutationError, useModifyDomains } from '@/hooks/useModifyDomains';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
@@ -24,7 +24,7 @@ import { CdnStatus, DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { useSiteStore } from "@/stores/useSiteStore";
 import { isCustomerDomain, sanitizeDomainInput, validateDomain } from '@/utils/domain';
-import { getDomainErrorMessage } from '@/utils/domain-validation';
+import { getDomainErrorMessage, translateDomainApiError } from '@/utils/domain-validation';
 import { getRootDomain } from '@/utils/getRootDomain';
 import { generateClickEID } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
@@ -200,11 +200,16 @@ export default function DomainAttach() {
       return getDomainErrorMessage(validationData.errors, t);
     }
     if (modifyDomainsMutation.error) {
-      const errorData = (modifyDomainsMutation.error as any)?.response || (modifyDomainsMutation.error as any);
-      if (errorData.validationErrors && Array.isArray(errorData.validationErrors)) {
-        return getDomainErrorMessage(errorData.validationErrors, t);
+      if (modifyDomainsMutation.error instanceof DomainMutationError) {
+        return translateDomainApiError(
+          modifyDomainsMutation.error.details.code,
+          t,
+          modifyDomainsMutation.error.details.message
+        );
       }
-      return errorData.error || t('builder_custom_domain_error_add_failed');
+      return modifyDomainsMutation.error instanceof Error
+        ? modifyDomainsMutation.error.message
+        : t('builder_custom_domain_error_add_failed');
     }
     if (hasValidationError) {
       return t('builder_custom_domain_error_validation_failed');
@@ -421,10 +426,12 @@ export default function DomainAttach() {
                   <DomainItem
                     domain={entry.customerDomain}
                     appDomain={rootAppDomain}
+                    siteId={currentAppId}
                     onConnect={handleConnectDomain}
                     onDisconnect={handleDisconnectDomain}
                     isLoading={modifyDomainsMutation.isPending}
                     disableConnect={shouldDisableAddingDomain}
+                    mutationError={modifyDomainsMutation.error}
                   />
                 );
               })()}
@@ -440,11 +447,13 @@ export default function DomainAttach() {
                       name: subdomain.fqdn,
                     }}
                     appDomain={subdomain}
+                    siteId={currentAppId}
                     onConnect={handleConnectDomain}
                     onDisconnect={handleDisconnectDomain}
                     isLoading={modifyDomainsMutation.isPending}
                     disableConnect={shouldDisableAddingDomain}
                     isCustomDomain={true}
+                    mutationError={modifyDomainsMutation.error}
                   />
                 ))}
             </Box>
@@ -529,11 +538,13 @@ export default function DomainAttach() {
                 name: appDomain.fqdn,
               }}
               appDomain={appDomain}
+              siteId={currentAppId}
               onConnect={handleConnectDomain}
               onDisconnect={handleDisconnectDomain}
               isLoading={modifyDomainsMutation.isPending}
               disableConnect={shouldDisableAddingDomain}
               isCustomDomain={true}
+              mutationError={modifyDomainsMutation.error}
             />
           ))}
         </Box>

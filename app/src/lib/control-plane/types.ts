@@ -59,6 +59,7 @@ export enum DomainStatus {
   INACTIVE = 'inactive',
   FAILED = 'failed',
   DELETING = 'deleting',
+  ERROR = 'error',
 }
 
 /**

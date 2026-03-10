@@ -37,7 +37,21 @@ export interface ModifyDomainsResponse {
   message: string;
 }
 
+export interface DomainMutationDetails {
+  code?: string;
+  message: string;
+  domainSpecificError?: Record<string, string>;
+}
 
+/**
+ * Typed error for domain mutation failures, avoids JSON serialization in Error.message
+ */
+export class DomainMutationError extends Error {
+  constructor(public readonly details: DomainMutationDetails) {
+    super(details.message);
+    this.name = 'DomainMutationError';
+  }
+}
 
 /**
  * React Query mutation hook for modifying app domains
@@ -83,14 +97,27 @@ export function useModifyDomains() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        const errorMessage = errorData.error || `Failed to modify domains: ${response.status}`;
+        const details = errorData.details;
+        const errorMessage =
+          (typeof details === 'object' ? details?.message : details) ||
+          errorData.error ||
+          `Failed to modify domains: ${response.status}`;
+        const domainSpecificError: Record<string, string> = {};
+        for (const d of payload.domainsToCreate ?? []) {
+          domainSpecificError[d.fqdn.trim().toLowerCase()] = errorMessage;
+        }
         logger.error('domain-operations.modify.failure', {
           message: errorMessage,
+          code: errorData.code,
           appId: siteId,
-          siteId,
+          errorBody: JSON.stringify(errorData),
           status: response.status,
         });
-        throw new Error(errorMessage);
+        throw new DomainMutationError({
+          code: errorData.code,
+          message: errorMessage,
+          ...(Object.keys(domainSpecificError).length > 0 && { domainSpecificError }),
+        });
       }
 
       const data: ModifyDomainsResponse = await response.json();

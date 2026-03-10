@@ -32,6 +32,7 @@ export interface GasketConfig {
     loginRedirectUrl: string;
     logoutRedirectUrl: string;
   };
+  supportUrl: string;
 }
 
 // Runtime configuration loader (lazy - only called when needed)
@@ -57,7 +58,8 @@ async function loadRuntimeConfig(): Promise<GasketConfig> {
       redirects: {
         loginRedirectUrl: process.env.LOGIN_REDIRECT_URL || 'https://airo-builder.test-godaddy.com/',
         logoutRedirectUrl: process.env.LOGOUT_REDIRECT_URL || 'https://airo-builder.test-godaddy.com/'
-      }
+      },
+      supportUrl: process.env.SUPPORT_URL || 'https://www.godaddy.com/help/contact-us'
     };
 
     return config;

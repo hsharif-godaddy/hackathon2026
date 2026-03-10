@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Box from "@ux/box";
 import Button from "@ux/button";
 import Card from "@ux/card";
@@ -12,9 +12,15 @@ import text from "@ux/text";
 
 import type { AppDomain } from '@/hooks/useAppDetails';
 import type { Domain } from '@/hooks/useDomainsQuery';
+import { useGasketConfig } from '@/hooks/useGasketConfig';
+import { DomainMutationError } from '@/hooks/useModifyDomains';
 import { useTranslations } from '@/hooks/useTranslations';
 import { DomainStatus } from '@/lib/control-plane/types';
+import type { AiroDomainErrorResponse } from '@/lib/mgmt-airo';
+import { CdnStatus } from "@/lib/mgmt-airo/types";
+import { logger } from '@/lib/request-context';
 import { Popover, PopoverContent, PopoverTrigger } from "@/lib/shadcn/popover"
+import { translateDomainApiError } from '@/utils/domain-validation';
 import { generateClickEID } from '@/utils/instrumentation';
 import DomainConnectConfirmation from './DomainConnectConfirmation';
 
@@ -26,6 +32,19 @@ function getDomainUrl(domain: string): string {
   return `https://${domain}`;
 }
 
+function getDomainSpecificError(error: Error | null, domainName: string, t: ReturnType<typeof useTranslations>): string | null {
+  if (!error || !domainName) return null;
+  if (error instanceof DomainMutationError) {
+    const specificError = error.details.domainSpecificError?.[domainName.trim().toLowerCase()];
+    if (specificError) return specificError;
+    if (error.details.code) {
+      return translateDomainApiError(error.details.code, t, error.details.message);
+    }
+    return error.details.message;
+  }
+  return null;
+}
+
 /**
  * Get translated status label based on domain connection status
  */
@@ -33,7 +52,7 @@ function getStatusLabel(appDomain: AppDomain | undefined, t: ReturnType<typeof u
   if (!appDomain) return t('builder_domain_status_not_connected');
   if (appDomain.status === DomainStatus.ACTIVE) return t('builder_domain_status_active');
   if (appDomain.status === DomainStatus.PENDING || !appDomain.status) return t('builder_domain_status_pending');
-  if (appDomain.status === DomainStatus.FAILED) return t('builder_domain_status_error');
+  if (appDomain.status === DomainStatus.FAILED || appDomain.status === DomainStatus.ERROR) return t('builder_domain_status_error');
   if (appDomain.status === DomainStatus.DELETING) return t('builder_domain_status_deleting');
   return appDomain.status;
 }
@@ -41,26 +60,86 @@ function getStatusLabel(appDomain: AppDomain | undefined, t: ReturnType<typeof u
 export default function DomainItem({
   domain,
   appDomain,
+  siteId,
   onConnect,
   onDisconnect,
   isLoading = false,
   disableConnect = false,
   isCustomDomain = false,
+  mutationError = null
 }: {
   domain: Domain;
   appDomain?: AppDomain;
+  siteId: string;
   onConnect: (domainName: string) => void;
   onDisconnect: (domainName: string) => void;
   isLoading?: boolean;
   disableConnect?: boolean;
   isCustomDomain?: boolean;
+  mutationError?: Error | null;
 }) {
   const t = useTranslations();
+  const { config } = useGasketConfig();
   const [open, setOpen] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [domainError, setDomainError] = useState<AiroDomainErrorResponse | null>(null);
   const domainName = domain.domain || domain.name || '';
   const isConnected = !!appDomain;
   const statusLabel = getStatusLabel(appDomain, t);
+
+  useEffect(() => {
+    const abortController = new AbortController();
+    const hasErrorStatus =
+      appDomain?.status === DomainStatus.FAILED ||
+      appDomain?.status === DomainStatus.ERROR ||
+      appDomain?.cdnStatus === CdnStatus.ERROR;
+
+    if (hasErrorStatus && siteId && domainName) {
+      const fetchDomainError = async () => {
+        try {
+          const response = await fetch(
+            `/api/sites/${siteId}/domain-errors?fqdn=${encodeURIComponent(domainName)}`,
+            { signal: abortController.signal }
+          );
+
+          if (response.status === 404) {
+            setDomainError(null);
+            return;
+          }
+
+          if (response.ok) {
+            const errorData: AiroDomainErrorResponse = await response.json();
+            setDomainError(errorData);
+          } else {
+            logger.warn('domain-item.fetch-error.unexpected-status', {
+              siteId,
+              domainName,
+              status: response.status
+            });
+            setDomainError(null);
+          }
+        } catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') {
+            return;
+          }
+          logger.error('domain-item.fetch-error.failure', {
+            message: 'Failed to fetch domain error',
+            siteId,
+            domainName,
+            error: error instanceof Error ? error.message : String(error)
+          });
+          setDomainError(null);
+        }
+      };
+      fetchDomainError();
+    } else {
+      setDomainError(null);
+    }
+
+    return () => {
+      abortController.abort();
+    };
+  }, [appDomain?.status, appDomain?.cdnStatus, siteId, domainName]);
 
   const handleConnectClick = () => {
     setShowConfirmation(true);
@@ -87,6 +166,11 @@ export default function DomainItem({
       setShowConfirmation(false);
     }
   };
+
+  const domainSpecificErrorMsg = getDomainSpecificError(mutationError, domainName, t);
+  const domainErrorMessage = domainError?.error?.code
+    ? translateDomainApiError(domainError.error.code, t, domainError.error.message)
+    : domainError?.error?.message;
 
   return (
     <Card space={{ inline: 'md', block: 'md' }}>
@@ -121,8 +205,11 @@ export default function DomainItem({
           {isConnected && (
             <Tag
               emphasis={
-                appDomain?.status === DomainStatus.ACTIVE ? "success" : "info"
-              }
+                appDomain?.status === DomainStatus.ACTIVE
+                  ? "success"
+                  : appDomain?.status === DomainStatus.FAILED || appDomain?.status === DomainStatus.ERROR
+                    ? "critical"
+                    : "info"}
             >
               {statusLabel}
             </Tag>
@@ -191,6 +278,22 @@ export default function DomainItem({
           </PopoverContent>
         </Popover>
       </Box>
+      {domainSpecificErrorMsg && (
+        <Box className="mt-2">
+          <text.p className="ux-text ux-text-caption ux-text-feedback-critical">{domainSpecificErrorMsg}</text.p>
+        </Box>
+      )}
+      {!domainSpecificErrorMsg && domainErrorMessage && (
+        <Box className="mt-2">
+          <text.p className="ux-text ux-text-caption">
+            <span>{domainErrorMessage}&nbsp;
+              {t('builder_domain_disconnect_and_reconnect')}&nbsp;</span>
+            <Button className="ux-text ux-text-caption ux-text-link" design="inline" href={config.supportUrl} external>
+              {t('builder_common_contact_support')}
+            </Button>
+          </text.p>
+        </Box>
+      )}
     </Card>
   );
 }

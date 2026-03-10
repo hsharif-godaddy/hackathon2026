@@ -341,5 +341,6 @@ export default makeGasket({
   },
   // Base domain for airoapp.ai URLs — overridden per environment above
   airoAppDomain: 'test-airoapp.ai',
+  supportUrl: 'https://www.godaddy.com/help/contact-us',
   data: gasketData,
 } as GasketConfigDefinition);

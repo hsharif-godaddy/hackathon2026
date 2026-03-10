@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-plane';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
-import { AiroMgmtClient } from '@/lib/mgmt-airo';
+import { type AiroApiError, AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
+import { ApiErrorCode } from '@/utils/api-errors';
+import { DomainApiErrorCode } from '@/utils/domain-validation';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,21 +29,30 @@ export const POST = withCustomerAuth(async (
   authContext: CustomerAuthContext,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> => {
+  let siteId: string | undefined;
+
   try {
-    const { id: siteId } = await params;
+    const { id } = await params;
+    siteId = id;
 
     if (!siteId) {
-      return NextResponse.json({ error: 'Site ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { code: ApiErrorCode.SITE_ID_REQUIRED, error: 'Site ID is required' },
+        { status: 400 }
+      );
     }
 
     if (!authContext.jwt) {
-      return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
+      return NextResponse.json(
+        { code: ApiErrorCode.AUTH_REQUIRED, error: 'Authentication token required' },
+        { status: 401 }
+      );
     }
 
     // Only V2 control plane supports domain management
     if (!isV2ControlPlaneEnabled()) {
       return NextResponse.json(
-        { error: 'Domain management requires V2 control plane' },
+        { code: ApiErrorCode.V2_CONTROL_PLANE_REQUIRED, error: 'Domain management requires V2 control plane' },
         { status: 400 }
       );
     }
@@ -51,7 +62,10 @@ export const POST = withCustomerAuth(async (
     const site = await adapter.getSite(siteId, authContext.jwt);
 
     if (!site) {
-      return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+      return NextResponse.json(
+        { code: ApiErrorCode.SITE_NOT_FOUND, error: 'Site not found' },
+        { status: 404 }
+      );
     }
 
     if (!site.subscription_id || !site.system_id) {
@@ -60,7 +74,7 @@ export const POST = withCustomerAuth(async (
         siteId,
       });
       return NextResponse.json(
-        { error: 'Site configuration incomplete' },
+        { code: ApiErrorCode.SITE_CONFIG_INCOMPLETE, error: 'Site configuration incomplete' },
         { status: 400 }
       );
     }
@@ -72,7 +86,7 @@ export const POST = withCustomerAuth(async (
     // Validate at least one operation is requested
     if (domainsToCreate.length === 0 && domainsToDelete.length === 0) {
       return NextResponse.json(
-        { error: 'Must specify at least one domain to create or delete' },
+        { code: DomainApiErrorCode.DOMAIN_OPERATION_REQUIRED, error: 'Must specify at least one domain to create or delete' },
         { status: 400 }
       );
     }
@@ -81,7 +95,7 @@ export const POST = withCustomerAuth(async (
     for (const domain of domainsToCreate) {
       if (!domain.fqdn || typeof domain.fqdn !== 'string') {
         return NextResponse.json(
-          { error: 'Invalid domain format: fqdn is required' },
+          { code: DomainApiErrorCode.INVALID_DOMAIN_FORMAT, error: 'Invalid domain format: fqdn is required' },
           { status: 400 }
         );
       }
@@ -90,7 +104,7 @@ export const POST = withCustomerAuth(async (
     for (const domain of domainsToDelete) {
       if (!domain.fqdn || typeof domain.fqdn !== 'string') {
         return NextResponse.json(
-          { error: 'Invalid domain format: fqdn is required' },
+          { code: DomainApiErrorCode.INVALID_DOMAIN_FORMAT, error: 'Invalid domain format: fqdn is required' },
           { status: 400 }
         );
       }
@@ -134,12 +148,22 @@ export const POST = withCustomerAuth(async (
   } catch (error) {
     logger.error('sites.domains.modify.error', {
       message: 'Failed to modify domains',
+      siteId,
       error: error instanceof Error ? error.message : 'Unknown error',
+      errorBody: error instanceof AiroHttpError ? JSON.stringify(error) : undefined,
     });
 
+    let errorMessage: string | AiroApiError = 'Unknown error';
+
+    if (error instanceof AiroHttpError) {
+      errorMessage = error.body;
+    } else if (error instanceof Error) {
+      errorMessage = error.message;
+    }
+
     return NextResponse.json(
-      { error: 'Failed to modify domains', details: error instanceof Error ? error.message : 'Unknown error' },
-      { status: error?.status ?? 500 }
+      { code: DomainApiErrorCode.DOMAIN_MODIFY_FAILED, error: 'Failed to modify domains', details: errorMessage },
+      { status: error instanceof AiroHttpError ? error.status : 500 }
     );
   }
 });
