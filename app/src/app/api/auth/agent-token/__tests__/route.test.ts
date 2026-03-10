@@ -25,7 +25,8 @@ const { mockJWTService, mockSiteAdapter, mockAuthenticateCustomer, mockControlPl
       getSiteById: vi.fn()
     },
     mockControlPlaneAdapter: {
-      getSite: vi.fn()
+      getSite: vi.fn(),
+      appExists: vi.fn()
     },
     mockIsV2ControlPlaneEnabled: vi.fn(),
     mockAuthenticateCustomer: vi.fn(),
@@ -709,7 +710,7 @@ describe('agent-token', function packageTests() {
           jwt: 'user-jwt-token'
         });
 
-        mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_SITE);
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
 
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
         const response = await POST(request);
@@ -722,7 +723,7 @@ describe('agent-token', function packageTests() {
           siteId: MOCK_SITE_ID,
           type: 'jwt'
         });
-        expect(mockControlPlaneAdapter.getSite).toHaveBeenCalledWith(MOCK_SITE_ID, 'user-jwt-token', 'AiroAppBuilder');
+        expect(mockControlPlaneAdapter.appExists).toHaveBeenCalledWith(MOCK_SITE_ID, 'user-jwt-token', 'AiroAppBuilder');
         expect(mockJWTService.getToken).toHaveBeenCalledWith({
           siteId: MOCK_SITE_ID,
           canDownload: false,
@@ -751,7 +752,7 @@ describe('agent-token', function packageTests() {
         expect(data).toEqual({
           error: 'You must have an account to create agent tokens'
         });
-        expect(mockControlPlaneAdapter.getSite).not.toHaveBeenCalled();
+        expect(mockControlPlaneAdapter.appExists).not.toHaveBeenCalled();
       });
 
       it('should return 404 when site not found in V2 mode', async function v2SiteNotFound() {
@@ -761,7 +762,7 @@ describe('agent-token', function packageTests() {
           jwt: 'user-jwt-token'
         });
 
-        mockControlPlaneAdapter.getSite.mockResolvedValue(null);
+        mockControlPlaneAdapter.appExists.mockResolvedValue(false);
 
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
         const response = await POST(request);
@@ -780,7 +781,7 @@ describe('agent-token', function packageTests() {
           jwt: 'user-jwt-token'
         });
 
-        mockControlPlaneAdapter.getSite.mockRejectedValue(new Error('Control plane connection failed'));
+        mockControlPlaneAdapter.appExists.mockRejectedValue(new Error('Control plane connection failed'));
 
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
         const response = await POST(request);
@@ -800,7 +801,7 @@ describe('agent-token', function packageTests() {
           jwt: 'user-jwt-token'
         });
 
-        mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_SITE);
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
 
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
         await POST(request);
@@ -817,7 +818,7 @@ describe('agent-token', function packageTests() {
           jwt: 'user-jwt-token'
         });
 
-        mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_SITE);
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
 
         const expiresInSeconds = 600;
         const request = createMockRequest({
@@ -854,7 +855,7 @@ describe('agent-token', function packageTests() {
         expect(data).toEqual({
           error: 'expiresInSeconds cannot exceed 43200 seconds (12 hours)'
         });
-        expect(mockControlPlaneAdapter.getSite).not.toHaveBeenCalled();
+        expect(mockControlPlaneAdapter.appExists).not.toHaveBeenCalled();
       });
     });
   });

@@ -36,7 +36,8 @@ export const dynamic = 'force-dynamic';
 const MAX_EXPIRATION_SECONDS = 12 * 60 * 60; // 43200 seconds
 
 /**
- * Validate and retrieve site using V2 control plane adapter
+ * Validate site existence using V2 control plane adapter (lightweight)
+ * Uses appExists() instead of getSite() to avoid expensive getApp() API call
  */
 async function getSiteV2(siteId: string, user: CustomerUser, jwt: string, owningProduct?: string): Promise<NextResponse | null> {
   if (!customerHasAccount(user)) {
@@ -45,9 +46,9 @@ async function getSiteV2(siteId: string, user: CustomerUser, jwt: string, owning
 
   const adapter = getControlPlaneAdapter();
   const productFilter = owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER;
-  const site = await adapter.getSite(siteId, jwt, productFilter);
+  const exists = await adapter.appExists(siteId, jwt, productFilter);
 
-  if (!site) {
+  if (!exists) {
     return NextResponse.json({
       error: 'Site not found'
     }, { status: 404 });
@@ -89,6 +90,77 @@ async function validateSiteAccess(siteId: string, user: CustomerUser, jwt: strin
   return isV2 ? await getSiteV2(siteId, user, jwt, owningProduct) : await getSiteLegacy(siteId, user);
 }
 
+/**
+ * Extract paywall permissions from a settled promise result (fail closed)
+ */
+function resolvePaywallResult(
+  result: PromiseSettledResult<Awaited<ReturnType<typeof checkPaywallEligibility>>>,
+  siteId: string,
+  customerId: string
+): { canDownload: boolean; canPublish: boolean } {
+  if (result.status === 'rejected') {
+    logger.error('agent-token.paywall-check-failed', {
+      siteId,
+      customerId,
+      error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+    });
+    return { canDownload: false, canPublish: false };
+  }
+
+  const eligibility = result.value;
+  const canPublish = eligibility.hasAccess;
+  const canDownload = eligibility.hasAccess || (
+    eligibility.reason === PaywallDenialReason.PublishLimitReached &&
+    eligibility.details.hasSubscription
+  );
+
+  const eligibilityDetails = {
+    hasAccess: eligibility.hasAccess,
+    reason: eligibility.reason,
+    hasSubscription: eligibility.details.hasSubscription,
+    hasEntitlements: eligibility.details.hasEntitlements,
+    hasMatchingProject: eligibility.details.hasMatchingProject,
+  };
+
+  if (canPublish || canDownload) {
+    logger.info('agent-token.permissions-granted', {
+      siteId,
+      customerId,
+      canPublish,
+      canDownload,
+      environment: process.env.NODE_ENV,
+      ...eligibilityDetails,
+    });
+  } else {
+    logger.info('agent-token.permissions-denied', {
+      siteId,
+      customerId,
+      ...eligibilityDetails,
+    });
+  }
+
+  return { canDownload, canPublish };
+}
+
+/**
+ * Extract switchboard flag from a settled promise result (fail closed)
+ */
+function resolveSwitchboardResult(
+  result: PromiseSettledResult<boolean>,
+  siteId: string,
+  customerId: string
+): boolean {
+  if (result.status === 'rejected') {
+    logger.warn('agent-token.domain-purchase-flag-check-failed', {
+      siteId,
+      customerId,
+      error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+    });
+    return false;
+  }
+  return result.value;
+}
+
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext): Promise<NextResponse> => {
   const routeStart = Date.now();
   const timing: Record<string, number> = {};
@@ -120,99 +192,63 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     }
 
     const siteAccessStart = Date.now();
-    const cacheHit = getSiteValidationFromCache(user.customerId, body.siteId, body.owningProduct);
+    const siteValidationCacheHit = getSiteValidationFromCache(user.customerId, body.siteId, body.owningProduct);
+
+    // When site-validation-cache misses, run site validation, paywall, and switchboard in parallel
+    // When cache hits, skip site validation but still need paywall + switchboard
     let validationError: NextResponse | null = null;
-    if (!cacheHit) {
-      validationError = await validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct);
+    let canDownload = false;
+    let canPublish = false;
+    let canPurchaseDomain = false;
+
+    if (siteValidationCacheHit) {
+      // Cache hit: skip site validation, run paywall + switchboard in parallel
+      const parallelStart = Date.now();
+      const [paywallResult, switchboardResult] = await Promise.allSettled([
+        checkPaywallEligibility(
+          new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
+          body.siteId,
+          PaywallAction.Publish
+        ),
+        checkSwitchboardFlag('appbuilder-domain-purchase', authContext.jwt || '', request.headers),
+      ]);
+      timing.parallelChecksMs = Date.now() - parallelStart;
+
+      ({ canDownload, canPublish } = resolvePaywallResult(paywallResult, body.siteId, user.customerId));
+      canPurchaseDomain = resolveSwitchboardResult(switchboardResult, body.siteId, user.customerId);
+    } else {
+      // Cache miss: run site validation, paywall, and switchboard all in parallel
+      const parallelStart = Date.now();
+      const [siteResult, paywallResult, switchboardResult] = await Promise.allSettled([
+        validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct),
+        checkPaywallEligibility(
+          new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
+          body.siteId,
+          PaywallAction.Publish
+        ),
+        checkSwitchboardFlag('appbuilder-domain-purchase', authContext.jwt || '', request.headers),
+      ]);
+      timing.parallelChecksMs = Date.now() - parallelStart;
+
+      // Check site validation first — if error, return immediately
+      if (siteResult.status === 'rejected') {
+        throw siteResult.reason;
+      }
+      validationError = siteResult.value;
       if (!validationError) {
         setSiteValidationCache(user.customerId, body.siteId, body.owningProduct);
       }
+
+      ({ canDownload, canPublish } = resolvePaywallResult(paywallResult, body.siteId, user.customerId));
+      canPurchaseDomain = resolveSwitchboardResult(switchboardResult, body.siteId, user.customerId);
     }
+
     timing.siteAccessMs = Date.now() - siteAccessStart;
-    timing.siteAccessCacheHit = cacheHit ? 1 : 0;
+    timing.siteAccessCacheHit = siteValidationCacheHit ? 1 : 0;
 
     if (validationError) {
       return validationError;
     }
-
-    // Check paywall eligibility to determine permissions
-    let canDownload = false;
-    let canPublish = false;
-    let canPurchaseDomain = false;
-    let eligibilityDetails: Record<string, unknown> = {};
-
-    const paywallStart = Date.now();
-    try {
-      const provider = new ServerPaywallProvider(
-        authContext.jwt || '',
-        user.customerId,
-        request.headers
-      );
-      const eligibility = await checkPaywallEligibility(provider, body.siteId, PaywallAction.Publish);
-
-      // Publish requires passing publish limit check, download does not
-      canPublish = eligibility.hasAccess;
-      // Allow download even if publish limit reached, but only if user has a paid subscription
-      // This prevents free users (limit=0) from getting download access via this bypass
-      canDownload = eligibility.hasAccess || (
-        eligibility.reason === PaywallDenialReason.PublishLimitReached &&
-        eligibility.details.hasSubscription
-      );
-
-      eligibilityDetails = {
-        hasAccess: eligibility.hasAccess,
-        reason: eligibility.reason,
-        hasSubscription: eligibility.details.hasSubscription,
-        hasEntitlements: eligibility.details.hasEntitlements,
-        hasMatchingProject: eligibility.details.hasMatchingProject,
-      };
-
-      // Log permission grants with full context for security auditing
-      if (canPublish || canDownload) {
-        logger.info('agent-token.permissions-granted', {
-          siteId: body.siteId,
-          customerId: user.customerId,
-          canPublish,
-          canDownload,
-          environment: process.env.NODE_ENV,
-          ...eligibilityDetails,
-        });
-      } else {
-        logger.info('agent-token.permissions-denied', {
-          siteId: body.siteId,
-          customerId: user.customerId,
-          ...eligibilityDetails,
-        });
-      }
-    } catch (error) {
-      // Fail closed - deny permissions if check fails
-      logger.error('agent-token.paywall-check-failed', {
-        siteId: body.siteId,
-        customerId: user.customerId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      canDownload = false;
-      canPublish = false;
-    }
-    timing.paywallCheckMs = Date.now() - paywallStart;
-
-    // Check domain purchase feature flag (fail closed - deny if check fails)
-    const switchboardStart = Date.now();
-    try {
-      canPurchaseDomain = await checkSwitchboardFlag(
-        'appbuilder-domain-purchase',
-        authContext.jwt || '',
-        request.headers
-      );
-    } catch (error) {
-      logger.warn('agent-token.domain-purchase-flag-check-failed', {
-        siteId: body.siteId,
-        customerId: user.customerId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      canPurchaseDomain = false;
-    }
-    timing.switchboardMs = Date.now() - switchboardStart;
 
     const jwtStart = Date.now();
     const jwtService = getJWTService();

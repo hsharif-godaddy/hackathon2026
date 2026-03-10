@@ -282,6 +282,97 @@ describe('V2ControlPlaneAdapter with Cache', function adapterCacheTests() {
     expect(store.cacheHits).toBeGreaterThan(cacheHitsAfterFirst)
   })
 
+  describe('appExists', function appExistsTests() {
+    it('should return true when app is in subscription cache', async function cacheHit() {
+      // Pre-populate cache
+      useSubscriptionCacheStore.setState((state) => {
+        state.appToSubscription.set('test-app-id', 'sub-1')
+        state.appToSystem.set('test-app-id', 'sys-sub-1-1')
+        state.customerId = 'customer-123'
+        state.lastRefresh = Date.now()
+      })
+
+      const exists = await adapter.appExists('test-app-id', mockJwt)
+
+      expect(exists).toBe(true)
+      // Should NOT call getApp — just cache lookup
+      expect(mockClient.getApp).not.toHaveBeenCalled()
+    })
+
+    it('should return true for APP_ID_LENGTH siteId after forced refresh finds it', async function refreshFindsApp() {
+      const appId = 'newapp1234' // exactly 10 chars (APP_ID_LENGTH)
+
+      // Initialized cache without the target app
+      useSubscriptionCacheStore.setState((state) => {
+        state.customerId = 'customer-123'
+        state.lastRefresh = Date.now()
+      })
+
+      // Refresh returns the new app
+      mockClient.getCustomerTree.mockResolvedValueOnce({
+        customerId: 'customer-123',
+        subscriptions: [{
+          subscriptionId: 'sub-1',
+          status: 'active',
+          systems: [{
+            systemId: 'sys-sub-1-1',
+            apps: [{ id: appId }]
+          }]
+        }]
+      })
+
+      const exists = await adapter.appExists(appId, mockJwt)
+
+      expect(exists).toBe(true)
+      expect(mockClient.getCustomerTree).toHaveBeenCalled()
+      expect(mockClient.getApp).not.toHaveBeenCalled()
+    })
+
+    it('should return false for APP_ID_LENGTH siteId not found after refresh', async function refreshNotFound() {
+      const appId = 'missing123' // exactly 10 chars
+
+      // Initialized cache
+      useSubscriptionCacheStore.setState((state) => {
+        state.customerId = 'customer-123'
+        state.lastRefresh = Date.now()
+      })
+
+      const exists = await adapter.appExists(appId, mockJwt)
+
+      expect(exists).toBe(false)
+      // Should have attempted a refresh
+      expect(mockClient.getCustomerTree).toHaveBeenCalled()
+    })
+
+    it('should use job lookup for non-APP_ID_LENGTH siteIds', async function jobLookup() {
+      // Initialized cache
+      useSubscriptionCacheStore.setState((state) => {
+        state.customerId = 'customer-123'
+        state.lastRefresh = Date.now()
+      })
+
+      mockClient.getAiroJobApps.mockResolvedValueOnce({
+        apps: [{ id: 'real-app-id', systemId: 'sys-1', subscriptionId: 'sub-1' }]
+      })
+
+      // Short ID (not APP_ID_LENGTH) → job lookup
+      const exists = await adapter.appExists('job123', mockJwt)
+
+      expect(exists).toBe(true)
+      expect(mockClient.getAiroJobApps).toHaveBeenCalledWith('job123')
+    })
+
+    it('should initialize cache on cold BFF', async function coldBff() {
+      // Empty cache (cold BFF)
+      await adapter.appExists('test-app-id', mockJwt)
+
+      // Should initialize cache via getCustomerTree
+      expect(mockClient.getCustomerTree).toHaveBeenCalled()
+      const store = useSubscriptionCacheStore.getState()
+      expect(store.customerId).toBe('customer-123')
+    })
+  })
+
   it('should update cache on successful delete', async function updateCacheOnDelete() {
     // Pre-populate cache
     useSubscriptionCacheStore.setState((state) => {

@@ -353,6 +353,78 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
     }
   }
 
+  /**
+   * Lightweight existence check — avoids the expensive getApp() API call.
+   *
+   * Cache strategy: initialize on cold BFF, check cache, refresh once on miss
+   * for APP_ID_LENGTH siteIds (covers apps created on a different BFF instance).
+   * Unlike getSite(), does NOT call directAppLookup/getApp after finding the
+   * location — just confirms the app is in the customer's tree.
+   *
+   * Note: only queries AAB apps via subscription cache. Non-AAB owningProduct
+   * falls back to getSite() for full cross-product search.
+   */
+  async appExists(siteId: string, jwt: string, owningProduct?: string): Promise<boolean> {
+    try {
+      const customerId = extractCustomerId(jwt);
+      if (!customerId) {
+        return false;
+      }
+
+      // Non-AAB products require full search — fall back to getSite()
+      const shouldSkipCache = owningProduct && owningProduct !== AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER;
+      if (shouldSkipCache) {
+        const site = await this.getSite(siteId, jwt, owningProduct);
+        return site !== null;
+      }
+
+      const subscriptionCache = useSubscriptionCacheStore.getState();
+
+      // Initialize cache on first use (cold BFF)
+      if (!subscriptionCache.customerId) {
+        await subscriptionCache.initialize(jwt);
+      }
+
+      // Check cache — fast path
+      const location = subscriptionCache.getAppLocation(siteId);
+      if (location) {
+        return true;
+      }
+
+      // For APP_ID_LENGTH siteIds: single forced refresh to pick up apps created
+      // on other BFF instances (e.g., new app created → first agent-token request
+      // lands on a different BFF). Still avoids getApp() call.
+      if (siteId.length === APP_ID_LENGTH) {
+        await subscriptionCache.refresh(jwt, true);
+        const retryLocation = subscriptionCache.getAppLocation(siteId);
+        if (retryLocation) {
+          return true;
+        }
+        return false;
+      }
+
+      // Non-APP_ID_LENGTH: try job lookup (apps still being created)
+      const jobResult = await this.jobIdLookup(siteId, jwt);
+      if (jobResult) {
+        if (owningProduct && jobResult.ownerProduct && jobResult.ownerProduct !== owningProduct) {
+          return false;
+        }
+        return true;
+      }
+
+      return false;
+    } catch (error: any) {
+      if (error.status === 401) {
+        throw error;
+      }
+      logger.error('v2-control-plane.app-exists.error', {
+        siteId,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      return false;
+    }
+  }
+
   async getSite(siteId: string, jwt: string, owningProduct?: string, options?: { includeCdn?: boolean }): Promise<SiteInfo | null> {
     try {
       const customerId = extractCustomerId(jwt);

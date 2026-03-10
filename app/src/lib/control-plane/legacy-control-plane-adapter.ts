@@ -73,6 +73,11 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
   }
 
 
+  async appExists(siteId: string, jwt: string, _owningProduct?: string): Promise<boolean> {
+    const site = await this.getSite(siteId, jwt);
+    return site !== null;
+  }
+
   /**
    * Get site by ID (handles both jobIds and real appIds)
    * Note: owningProduct parameter is not used in legacy mode (database-only)

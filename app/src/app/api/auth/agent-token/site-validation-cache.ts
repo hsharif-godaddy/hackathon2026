@@ -1,11 +1,11 @@
 /**
  * Short-lived cache for site validation results.
- * Keyed on `customerId:siteId:owningProduct`, caches successful validations for 60s.
+ * Keyed on `customerId:siteId:owningProduct`, caches successful validations for 5 minutes.
  * This avoids re-fetching site metadata on reconnects (which are the majority of connections).
  * The JWT itself is still validated on every request — the cache only skips the getSite() lookup.
  */
 
-const SITE_VALIDATION_CACHE_TTL_MS = 60_000;
+const SITE_VALIDATION_CACHE_TTL_MS = 300_000; // 5 minutes — site ownership changes are rare and JWT is validated every request
 const SITE_VALIDATION_CACHE_MAX_SIZE = 1000;
 const cache = new Map<string, { timestamp: number }>();
 

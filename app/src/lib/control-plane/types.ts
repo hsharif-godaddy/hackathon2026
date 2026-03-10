@@ -132,6 +132,20 @@ export interface CreateSiteResult {
  */
 export interface IControlPlaneAdapter {
   /**
+   * Check if an app exists for a customer (lightweight validation)
+   *
+   * Unlike getSite(), this does NOT fetch full app details. On subscription cache miss,
+   * it initializes the cache but does NOT do a forced refresh + retry, avoiding redundant
+   * tree refetches (saves p99=7.4s on the miss path).
+   *
+   * @param siteId - Site identifier
+   * @param jwt - Customer JWT token
+   * @param owningProduct - Optional owner product filter
+   * @returns true if app exists, false otherwise
+   */
+  appExists(siteId: string, jwt: string, owningProduct?: string): Promise<boolean>;
+
+  /**
    * Create a new site
    *
    * @param params - Site creation parameters
