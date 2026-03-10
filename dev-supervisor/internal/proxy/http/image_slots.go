@@ -234,6 +234,7 @@ func (h *mediaSlotHandler) serveSlot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Debug(h.mediaType+"_slot.redirect", "slot", slotPath, "url", targetURL)
+	w.Header().Set("Cache-Control", "no-cache")
 	http.Redirect(w, r, targetURL, http.StatusFound)
 }
 

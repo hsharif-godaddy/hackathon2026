@@ -2,11 +2,13 @@
 
 import { Image } from "lucide-react";
 import { useParams } from "next/navigation";
+import { useEffect, useRef } from "react";
 
 import type { DefaultToolRendererProps } from "@/app/develop/components/tool-renderers/DefaultToolRenderer";
 import ToolHeader from "@/app/develop/components/tool-renderers/ToolHeader";
 import { logger } from "@/lib/request-context";
 import { useMediaSlotDialogStore } from "@/stores/useMediaSlotDialogStore";
+import { postMessageToIframe } from "@/utils/postMessage";
 
 interface MediaSlotResultData {
 	success: boolean;
@@ -51,6 +53,29 @@ export default function MediaSlotToolRenderer({
 			});
 		}
 	}
+
+	// Extract stable primitives to avoid exhaustive-deps issues with parsedResult
+	// (which is re-created via JSON.parse on every render).
+	const slot = parsedResult?.slot;
+	const success = parsedResult?.success;
+
+	// When the media slot tool completes, notify the preview iframe to reload
+	// the slot. This handles the case where an existing image is replaced with
+	// a new search — only the manifest changes, not the page source, so the
+	// preview wouldn't otherwise know to re-fetch the image.
+	const hasNotifiedRef = useRef(false);
+	useEffect(() => {
+		if (toolStatus === 'completed' && success && slot && !hasNotifiedRef.current) {
+			hasNotifiedRef.current = true;
+			const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement;
+			if (iframe) {
+				postMessageToIframe(iframe, {
+					type: 'RELOAD_MEDIA_SLOT',
+					slotPath: slot,
+				});
+			}
+		}
+	}, [toolStatus, success, slot]);
 
 	const hasResult = parsedResult?.success && parsedResult?.resolvedUrl;
 	const isVideo = parsedResult?.mediaType === "video";
