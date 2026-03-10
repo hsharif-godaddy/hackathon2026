@@ -22,6 +22,8 @@ import type { ReadonlyHeaders } from 'next/dist/server/web/spec-extension/adapte
 import type { NextRequest, NextResponse } from 'next/server';
 import { context, Span, SpanStatusCode, trace } from '@opentelemetry/api';
 
+import { decodeTokenPayload, extractTokenFromRequest } from '@/lib/gd-auth-service';
+
 interface ApmAuthContext {
   user?: {
     customerId?: string;
@@ -410,7 +412,6 @@ export async function withApmTransaction<T>(
  */
 async function getCustomerIdFromRequest(request: NextRequest): Promise<string | null> {
   try {
-    const { extractTokenFromRequest, decodeTokenPayload } = await import('@/lib/gd-auth-service');
     const token = extractTokenFromRequest(request);
 
     if (!token) {
@@ -594,7 +595,6 @@ async function getAuthInfoFromHeaders(headersList: ReadonlyHeaders): Promise<Hea
       return null;
     }
 
-    const { decodeTokenPayload } = await import('@/lib/gd-auth-service');
     const claims = decodeTokenPayload(token);
 
     if (claims) {
