@@ -46,6 +46,9 @@ export default function ChatToolbar({
   const isVersionHistoryOpen = useDevelopPageStore((state) => state.isVersionHistoryOpen);
   const viewMode = useDevelopPageStore((state) => state.viewMode);
   const isSelectMode = useDevelopPageStore((state) => state.isSelectMode);
+  const isPublishing = useDevelopPageStore((state) =>
+    appId ? (state.publishStates?.[appId]?.isPublishing ?? false) : false
+  );
   const isSelectingCommit = useGitStore((state) => state.isSelectingCommit);
   const returnToMain = useGitStore((state) => state.returnToMain);
   const setSelectedCommitHash = useGitStore((state) => state.setSelectedCommitHash);
@@ -153,7 +156,7 @@ export default function ChatToolbar({
         onClick={() => handleTabClick(ChatTab.HISTORY)}
         label={t('builder_chat_toolbar_button_history')}
         active={displayActiveTab === ChatTab.HISTORY}
-        disabled={isProcessing || isFetchingCommits || isSelectingCommit || viewMode === ViewMode.CODE || isSelectMode}
+        disabled={isProcessing || isFetchingCommits || isSelectingCommit || viewMode === ViewMode.CODE || isSelectMode || isPublishing}
         showLabelAlways={!isMobile}
       />
       {isMobile ? (

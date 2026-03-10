@@ -47,11 +47,14 @@ const mockDevelopPageStore = {
   previewViewMode: PreviewViewMode.DESKTOP,
   viewMode: ViewMode.PREVIEW,
   setPreviewViewMode: vi.fn(),
+  publishStates: { 'test-app-123': { isPublishing: false } } as Record<string, { isPublishing: boolean }>,
 };
 
 const mockGitStore = {
   getSelectedCommitHash: vi.fn(() => null),
 };
+
+let mockGitHistoryData: { commits: Array<{ hash: string }> } = { commits: [] };
 
 vi.mock('@/stores/useServerPollingStore', () => ({
   useServerPollingStore: (selector: any) => selector(mockServerPollingStore),
@@ -78,7 +81,7 @@ vi.mock('@/hooks/useRestoreCommitMutation', () => ({
 
 vi.mock('@/hooks/useGitHistory', () => ({
   useGitHistoryQuery: () => ({
-    data: [],
+    data: mockGitHistoryData,
     isLoading: false,
   }),
 }));
@@ -104,7 +107,10 @@ describe('PreviewPane', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDevelopPageStore.viewMode = ViewMode.PREVIEW;
+    mockDevelopPageStore.publishStates = { 'test-app-123': { isPublishing: false } };
     mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: true, url: 'http://localhost:3000' }));
+    mockGitHistoryData = { commits: [] };
+    mockGitStore.getSelectedCommitHash = vi.fn(() => null);
   });
 
   it('should render without crashing', () => {
@@ -220,6 +226,38 @@ describe('PreviewPane', () => {
     await waitFor(() => {
       // The component may show an error or loading state
       expect(mockServerPollingStore.getServerState).toHaveBeenCalled();
+    });
+  });
+
+  describe('historical commit restore banner', () => {
+    const latestHash = 'latest-commit-hash';
+    const oldHash = 'old-commit-hash';
+
+    it('should show restore banner when viewing historical commit and not publishing', async () => {
+      mockGitHistoryData = { commits: [{ hash: latestHash }, { hash: oldHash }] };
+      mockGitStore.getSelectedCommitHash = vi.fn(() => oldHash);
+
+      renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_preview_git_text')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'builder_preview_error_restore' })).toBeInTheDocument();
+      });
+    });
+
+    it('should hide restore banner when viewing historical commit but publishing', async () => {
+      mockGitHistoryData = { commits: [{ hash: latestHash }, { hash: oldHash }] };
+      mockGitStore.getSelectedCommitHash = vi.fn(() => oldHash);
+      mockDevelopPageStore.publishStates['test-app-123'].isPublishing = true;
+
+      renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+      await waitFor(() => {
+        expect(document.querySelector('iframe')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('builder_preview_git_text')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'builder_preview_error_restore' })).not.toBeInTheDocument();
     });
   });
 });

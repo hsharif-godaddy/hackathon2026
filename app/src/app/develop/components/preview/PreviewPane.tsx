@@ -112,6 +112,9 @@ export default function PreviewPane({
   )
 
   const appId = useAppIdFromParams();
+  const isPublishing = useDevelopPageStore((state) =>
+    appId ? (state.publishStates?.[appId]?.isPublishing ?? false) : false
+  );
 
   // Get selected commit hash from git store
   const selectedCommitHash = useGitStore((state) => appId ? state.getSelectedCommitHash(appId) : null)
@@ -497,7 +500,7 @@ export default function PreviewPane({
   if (previewUrl && serverState?.isReady) {
     return (
       <div className="h-full flex flex-col">
-        {isViewingHistoricalCommit && (
+        {isViewingHistoricalCommit && !isPublishing && (
           <div className="mx-1 my-1 md:mx-2 md:my-0">
             <Alert
               emphasis="info"

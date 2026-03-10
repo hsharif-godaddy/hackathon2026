@@ -3,7 +3,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 
-import { ChatTab, SettingsSection } from '@/app/develop/components/types';
+import { ChatTab, SettingsSection, ViewMode } from '@/app/develop/components/types';
 import { renderWithProviders } from '@/tests/test-utils';
 import ChatToolbar from './ChatToolbar';
 
@@ -14,6 +14,9 @@ const mockDevelopStore = {
   isVersionHistoryOpen: false,
   isAssetManagerOpen: false,
   setIsAssetManagerOpen: vi.fn(),
+  publishStates: { 'app-123': { isPublishing: false } } as Record<string, { isPublishing: boolean }>,
+  viewMode: ViewMode.PREVIEW,
+  isSelectMode: false,
 };
 const mockChatTabs = {
   activeChatTab: ChatTab.CHAT,
@@ -73,6 +76,9 @@ describe('ChatToolbar', () => {
     mockDevelopStore.isMobile = false;
     mockDevelopStore.isVersionHistoryOpen = false;
     mockDevelopStore.isAssetManagerOpen = false;
+    mockDevelopStore.publishStates = { 'app-123': { isPublishing: false } };
+    mockDevelopStore.viewMode = ViewMode.PREVIEW;
+    mockDevelopStore.isSelectMode = false;
     mockChatTabs.activeChatTab = ChatTab.CHAT;
     mockChatTabs.activeSettingsSection = SettingsSection.DOMAIN;
     mockGitStore.isSelectingCommit = false;
@@ -162,6 +168,16 @@ describe('ChatToolbar', () => {
 
   it('should disable history button when selecting commit', () => {
     mockGitStore.isSelectingCommit = true;
+
+    const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
+
+    const buttons = container.querySelectorAll('button');
+    const historyButton = Array.from(buttons).find(btn => btn.textContent?.includes('builder_chat_toolbar_button_history'));
+    expect(historyButton).toBeDisabled();
+  });
+
+  it('should disable history button when publishing', () => {
+    mockDevelopStore.publishStates['app-123'].isPublishing = true;
 
     const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
 
