@@ -7,7 +7,7 @@ import { logger } from '../logging/index.js';
 import { countTokens } from '../utils/token-counter.js';
 
 // Default model for token counting when no specific model is provided
-const DEFAULT_TOKEN_COUNTING_MODEL = 'claude-sonnet-4-5';
+const DEFAULT_TOKEN_COUNTING_MODEL = 'claude-sonnet-4-6';
 import { MessageCompressor } from './compression/MessageCompressor.js';
 import type { CompressionStrategy } from './compression/MessageCompressor.js';
 import type { SummarizationStrategy } from './summarization/SummarizationStrategy.js';
