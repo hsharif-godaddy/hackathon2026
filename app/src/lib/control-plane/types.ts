@@ -39,10 +39,15 @@ export interface DeploySiteOptions {
 
 /**
  * Domain type enum
+ *
+ * Note: The mgmt service may return `null` or `'fqdn'` for custom domains,
+ * not just `'custom'`. Use `domainType !== DomainType.PREFIX` to detect
+ * custom domains rather than `domainType === DomainType.CUSTOM`.
  */
 export enum DomainType {
   PREFIX = 'prefix',
   CUSTOM = 'custom',
+  FQDN = 'fqdn',
 }
 
 /**
@@ -62,7 +67,8 @@ export enum DomainStatus {
 export interface SiteDomain {
   fqdn: string;
   isPrimary: boolean;
-  domainType: DomainType;
+  /** Domain type - may be null for custom domains from mgmt service */
+  domainType: DomainType | null;
   prefix: string;
   status: DomainStatus;
   createdAt: string;

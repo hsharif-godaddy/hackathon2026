@@ -164,7 +164,54 @@ const MOCK_V2_SITE = {
   system_id: MOCK_SYSTEM_ID,
   created_at: new Date(),
   updated_at: new Date(),
-  domains: [{ fqdn: 'example.com', domainType: 'custom' }],
+  // mgmt service returns domainType as null for custom domains (not 'custom')
+  // The validation logic uses d.domainType !== 'prefix' to detect custom domains
+  domains: [{ fqdn: 'example.com', domainType: null, status: 'active' }],
+};
+
+const MOCK_V2_SITE_WITH_FQDN_TYPE = {
+  id: MOCK_SITE_ID,
+  account_id: MOCK_ACCOUNT_ID,
+  name: 'Test Site',
+  status: 'running' as const,
+  agent_url: 'https://agent.example.com',
+  preview_url: 'https://preview.example.com',
+  subscription_id: MOCK_SUBSCRIPTION_ID,
+  system_id: MOCK_SYSTEM_ID,
+  created_at: new Date(),
+  updated_at: new Date(),
+  // mgmt service may also return domainType as 'fqdn' for custom domains
+  domains: [{ fqdn: 'fqdn-domain.com', domainType: 'fqdn', status: 'active' }],
+};
+
+const MOCK_V2_SITE_WITH_PENDING_DOMAIN = {
+  id: MOCK_SITE_ID,
+  account_id: MOCK_ACCOUNT_ID,
+  name: 'Test Site',
+  status: 'running' as const,
+  agent_url: 'https://agent.example.com',
+  preview_url: 'https://preview.example.com',
+  subscription_id: MOCK_SUBSCRIPTION_ID,
+  system_id: MOCK_SYSTEM_ID,
+  created_at: new Date(),
+  updated_at: new Date(),
+  // Non-active domains should be rejected
+  domains: [{ fqdn: 'pending-domain.com', domainType: null, status: 'pending' }],
+};
+
+const MOCK_V2_SITE_WITH_PREFIX_DOMAIN = {
+  id: MOCK_SITE_ID,
+  account_id: MOCK_ACCOUNT_ID,
+  name: 'Test Site',
+  status: 'running' as const,
+  agent_url: 'https://agent.example.com',
+  preview_url: 'https://preview.example.com',
+  subscription_id: MOCK_SUBSCRIPTION_ID,
+  system_id: MOCK_SYSTEM_ID,
+  created_at: new Date(),
+  updated_at: new Date(),
+  // Prefix domains cannot be disconnected
+  domains: [{ fqdn: 'prefix-domain.airoapp.ai', domainType: 'prefix', status: 'active' }],
 };
 
 const MOCK_LEGACY_SITE = {
@@ -415,7 +462,81 @@ describe('unpublish POST', function unpublishTests() {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBe('Domain not found on this site or is not a custom domain');
+      expect(data.error).toBe('Domain not found on this site');
+      expect(mockAiroMgmtClient.modifyDomains).not.toHaveBeenCalled();
+    });
+
+    it('should disconnect domain with domainType fqdn (non-prefix)', async function disconnectFqdnDomain() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token',
+      });
+
+      mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_V2_SITE_WITH_FQDN_TYPE);
+
+      const request = createMockRequest(MOCK_SITE_ID, {
+        disconnectDomain: true,
+        domainFqdn: 'fqdn-domain.com',
+      });
+      const response = await POST(request, {
+        params: Promise.resolve({ id: MOCK_SITE_ID }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockAiroMgmtClient.modifyDomains).toHaveBeenCalledWith(
+        MOCK_SUBSCRIPTION_ID,
+        MOCK_SYSTEM_ID,
+        MOCK_SITE_ID,
+        { domainsToDelete: [{ fqdn: 'fqdn-domain.com' }] }
+      );
+    });
+
+    it('should reject domain disconnect if domain is not active', async function rejectPendingDomain() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token',
+      });
+
+      mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_V2_SITE_WITH_PENDING_DOMAIN);
+      mockIsV2ControlPlaneEnabled.mockReturnValue(true);
+
+      const request = createMockRequest(MOCK_SITE_ID, {
+        disconnectDomain: true,
+        domainFqdn: 'pending-domain.com',
+      });
+      const response = await POST(request, {
+        params: Promise.resolve({ id: MOCK_SITE_ID }),
+      });
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toBe('Domain is not active (status: pending)');
+      expect(mockAiroMgmtClient.modifyDomains).not.toHaveBeenCalled();
+    });
+
+    it('should reject domain disconnect if domain is a prefix type', async function rejectPrefixDomain() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token',
+      });
+
+      mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_V2_SITE_WITH_PREFIX_DOMAIN);
+      mockIsV2ControlPlaneEnabled.mockReturnValue(true);
+
+      const request = createMockRequest(MOCK_SITE_ID, {
+        disconnectDomain: true,
+        domainFqdn: 'prefix-domain.airoapp.ai',
+      });
+      const response = await POST(request, {
+        params: Promise.resolve({ id: MOCK_SITE_ID }),
+      });
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toBe('Cannot disconnect a prefix domain');
       expect(mockAiroMgmtClient.modifyDomains).not.toHaveBeenCalled();
     });
 

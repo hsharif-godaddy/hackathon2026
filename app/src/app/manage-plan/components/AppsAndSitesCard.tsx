@@ -16,7 +16,7 @@ import { usePublishApp } from '@/hooks/usePublishApp';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { useUnpublishApp } from '@/hooks/useUnpublishApp';
-import { DomainType } from '@/lib/control-plane/types';
+import { DomainStatus, DomainType } from '@/lib/control-plane/types';
 import { isPaidPlanForGrants, type PaywallType } from '@/lib/paywall/shared';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { getPublishLimit, isPublishedApp } from '@/lib/publish-limit';
@@ -38,8 +38,21 @@ function getCustomDomain(site: SiteInfo): string | null {
   if (!site.domains?.length) {
     return null;
   }
-  const customDomain = site.domains.find((d) => d.domainType === DomainType.CUSTOM);
+
+  const customDomain = site.domains.find((d) => d.domainType !== DomainType.PREFIX && d.status === DomainStatus.ACTIVE);
   return customDomain?.fqdn ?? null;
+}
+
+/**
+ * Get the display URL for a site, preferring custom domain over default published_url.
+ * Returns URL with https:// protocol for use in href attributes.
+ */
+function getDisplayUrl(site: SiteInfo): string | null {
+  const customDomain = getCustomDomain(site);
+  if (customDomain) {
+    return `https://${customDomain}`;
+  }
+  return site.published_url ?? null;
 }
 
 export default function AppsAndSitesCard({
@@ -386,7 +399,7 @@ export default function AppsAndSitesCard({
                   disabled={publishingApps.has(site.id) || unpublishingApps.has(site.id) || disconnectingDomainApps.has(site.id)}
                   site={site}
                   isPublished={isPublishedApp(site)}
-                  publishedUrl={site.published_url ?? null}
+                  publishedUrl={getDisplayUrl(site)}
                   isPublishing={publishingApps.has(site.id)}
                   isUnpublishing={unpublishingApps.has(site.id)}
                   isDisconnectingDomain={disconnectingDomainApps.has(site.id)}
@@ -408,7 +421,7 @@ export default function AppsAndSitesCard({
         <UnpublishConfirmationModal
           appName={selectedApp.name}
           customDomain={getCustomDomain(selectedApp)}
-          publishedUrl={selectedApp.published_url ?? null}
+          publishedUrl={getDisplayUrl(selectedApp)}
           onClose={handleCloseModal}
           onConfirm={handleUnpublishConfirm}
           isLoading={unpublishingApps.has(selectedApp.id)}

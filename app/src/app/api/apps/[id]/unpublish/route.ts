@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-plane';
-import { DomainType } from '@/lib/control-plane/types';
+import { DomainStatus, DomainType } from '@/lib/control-plane/types';
 import {
   type CustomerAuthContext,
   customerHasAccount,
@@ -118,19 +118,43 @@ export const POST = withCustomerAuth(async (
     let domainJobId: string | undefined;
     let domainDisconnectFailed = false;
     if (body.disconnectDomain && body.domainFqdn && isV2 && site.subscription_id && site.system_id) {
-      // Validate that the domain belongs to this site and is a custom domain
-      const customDomain = site.domains?.find(
-        (d) => d.fqdn === body.domainFqdn && d.domainType === DomainType.CUSTOM
-      );
+      // Find the domain by fqdn first
+      const matchingDomain = site.domains?.find((d) => d.fqdn === body.domainFqdn);
 
-      if (!customDomain) {
-        logger.warn('unpublish.api.disconnect_domain.invalid', {
+      // Validate that the domain belongs to this site and is an active custom domain
+      // Match v2-control-plane-adapter logic: any domain that's NOT a prefix is considered custom (null or fqdn type)
+      if (!matchingDomain) {
+        logger.warn('unpublish.api.disconnect_domain.not_found', {
           siteId,
           domainFqdn: body.domainFqdn,
-          availableDomains: site.domains?.map((d) => ({ fqdn: d.fqdn, type: d.domainType })),
+          availableDomains: site.domains?.map((d) => ({ fqdn: d.fqdn, type: d.domainType, status: d.status })),
         });
         return NextResponse.json(
-          { error: 'Domain not found on this site or is not a custom domain' },
+          { error: 'Domain not found on this site' },
+          { status: 400 }
+        );
+      }
+
+      if (matchingDomain.domainType === DomainType.PREFIX) {
+        logger.warn('unpublish.api.disconnect_domain.prefix_type', {
+          siteId,
+          domainFqdn: body.domainFqdn,
+          domainType: matchingDomain.domainType,
+        });
+        return NextResponse.json(
+          { error: 'Cannot disconnect a prefix domain' },
+          { status: 400 }
+        );
+      }
+
+      if (matchingDomain.status !== DomainStatus.ACTIVE) {
+        logger.warn('unpublish.api.disconnect_domain.not_active', {
+          siteId,
+          domainFqdn: body.domainFqdn,
+          domainStatus: matchingDomain.status,
+        });
+        return NextResponse.json(
+          { error: `Domain is not active (status: ${matchingDomain.status})` },
           { status: 400 }
         );
       }

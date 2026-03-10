@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
 import { renderWithProviders } from '@/tests/test-utils';
@@ -129,6 +129,11 @@ function collapseCard() {
 describe('AppsAndSitesCard', function appsAndSitesCardTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
+    // Mock fetch for site details (used when opening unpublish modal)
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ id: 'site-123', name: 'Test App', domains: [] }),
+    });
   });
 
   describe('renders correctly', function renderTests() {
@@ -219,7 +224,7 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
       expect(screen.getByRole('button', { name: 'Unpublish' })).toBeInTheDocument();
     });
 
-    it('should open unpublish modal when Unpublish is clicked', function opensModal() {
+    it('should open unpublish modal when Unpublish is clicked', async function opensModal() {
       const publishedSite = createMockSite({
         name: 'Published App',
         variants: ['preview', 'publish'],
@@ -228,7 +233,10 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
       // Card starts expanded by default
       fireEvent.click(screen.getByRole('button', { name: 'Unpublish' }));
 
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      // Modal opens after async fetch of site details
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      });
     });
   });
 
@@ -402,6 +410,89 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
       expect(publishButtons[0]).toBeDisabled();
       // Should NOT show Upgrade to Publish for legacy AiroPlus
       expect(screen.queryByRole('button', { name: 'Upgrade to Publish' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('custom domain detection', function customDomainTests() {
+    it('should detect custom domain when domainType is null (not prefix)', function detectsNullDomainType() {
+      const siteWithNullDomainType = createMockSite({
+        name: 'App with null domain type',
+        variants: ['preview', 'publish'],
+        published_url: 'https://default.example.com',
+        domains: [{ fqdn: 'custom.example.com', domainType: null, status: 'active' }],
+      });
+      renderWithProviders(<AppsAndSitesCard sites={[siteWithNullDomainType]} />);
+
+      // Should display the custom domain URL with https:// prefix
+      expect(screen.getByText('custom.example.com')).toBeInTheDocument();
+      expect(screen.queryByText('default.example.com')).not.toBeInTheDocument();
+    });
+
+    it('should detect custom domain when domainType is fqdn', function detectsFqdnDomainType() {
+      const siteWithFqdnType = createMockSite({
+        name: 'App with fqdn domain type',
+        variants: ['preview', 'publish'],
+        published_url: 'https://default.example.com',
+        domains: [{ fqdn: 'fqdn.example.com', domainType: 'fqdn', status: 'active' }],
+      });
+      renderWithProviders(<AppsAndSitesCard sites={[siteWithFqdnType]} />);
+
+      // Should display the fqdn domain
+      expect(screen.getByText('fqdn.example.com')).toBeInTheDocument();
+      expect(screen.queryByText('default.example.com')).not.toBeInTheDocument();
+    });
+
+    it('should NOT detect domain when status is not active', function ignoresInactiveDomain() {
+      const siteWithPendingDomain = createMockSite({
+        name: 'App with pending domain',
+        variants: ['preview', 'publish'],
+        published_url: 'https://default.example.com',
+        domains: [{ fqdn: 'pending.example.com', domainType: null, status: 'pending' }],
+      });
+      renderWithProviders(<AppsAndSitesCard sites={[siteWithPendingDomain]} />);
+
+      // Should fall back to published_url since domain is not active
+      expect(screen.getByText('default.example.com')).toBeInTheDocument();
+      expect(screen.queryByText('pending.example.com')).not.toBeInTheDocument();
+    });
+
+    it('should NOT detect domain when domainType is prefix', function ignoresPrefixDomain() {
+      const siteWithPrefixDomain = createMockSite({
+        name: 'App with prefix domain',
+        variants: ['preview', 'publish'],
+        published_url: 'https://default.example.com',
+        domains: [{ fqdn: 'prefix.example.com', domainType: 'prefix', status: 'active' }],
+      });
+      renderWithProviders(<AppsAndSitesCard sites={[siteWithPrefixDomain]} />);
+
+      // Should fall back to published_url since prefix domains are not custom
+      expect(screen.getByText('default.example.com')).toBeInTheDocument();
+      expect(screen.queryByText('prefix.example.com')).not.toBeInTheDocument();
+    });
+
+    it('should fall back to published_url when no domains', function fallsBackToPublishedUrl() {
+      const siteWithNoDomains = createMockSite({
+        name: 'App with no domains',
+        variants: ['preview', 'publish'],
+        published_url: 'https://fallback.example.com',
+        domains: [],
+      });
+      renderWithProviders(<AppsAndSitesCard sites={[siteWithNoDomains]} />);
+
+      expect(screen.getByText('fallback.example.com')).toBeInTheDocument();
+    });
+
+    it('should use custom domain URL as clickable link with https protocol', function customDomainHasProtocol() {
+      const siteWithCustomDomain = createMockSite({
+        name: 'App with custom domain',
+        variants: ['preview', 'publish'],
+        published_url: 'https://default.example.com',
+        domains: [{ fqdn: 'custom.example.com', domainType: null, status: 'active' }],
+      });
+      renderWithProviders(<AppsAndSitesCard sites={[siteWithCustomDomain]} />);
+
+      const link = screen.getByRole('link', { name: 'custom.example.com' });
+      expect(link).toHaveAttribute('href', 'https://custom.example.com');
     });
   });
 

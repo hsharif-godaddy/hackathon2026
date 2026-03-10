@@ -3,7 +3,7 @@ import { logger } from '@/lib/request-context';
 import { getDatacenterFromMarketId } from '@/lib/utils/dc-mapping';
 import { extractCustomerId } from '@/lib/utils/jwt-utils';
 import { useSubscriptionCacheStore } from '@/stores/useSubscriptionCacheStore';
-import { CreateSiteParams, CreateSiteResult, DeploySiteOptions, IControlPlaneAdapter, ImageStatusResponse, ReloadImagesResponse, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate, SiteInfo, SiteStatus, SiteVariant } from './types';
+import { CreateSiteParams, CreateSiteResult, DeploySiteOptions, DomainStatus, DomainType, IControlPlaneAdapter, ImageStatusResponse, ReloadImagesResponse, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate, SiteDomain, SiteInfo, SiteStatus, SiteVariant } from './types';
 import gasket from '../../../gasket.ts';
 
 /**
@@ -1161,12 +1161,12 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
     // This runs regardless of publish status so the preview header always
     // shows the best available domain (e.g. prompt-design-lab.c24.airoapp.ai).
     if (app.domains && Array.isArray(app.domains)) {
-      const customDomain = app.domains.find(
-        (d: any) => d.domainType !== 'prefix' && d.status === 'active'
+      const customDomain = (app.domains as SiteDomain[]).find(
+        (d) => d.domainType !== DomainType.PREFIX && d.status === DomainStatus.ACTIVE
       );
 
-      const prefixDomain = app.domains.find(
-        (d: any) => d.domainType === 'prefix' && d.status === 'active'
+      const prefixDomain = (app.domains as SiteDomain[]).find(
+        (d) => d.domainType === DomainType.PREFIX && d.status === DomainStatus.ACTIVE
       );
 
       if (customDomain) {
