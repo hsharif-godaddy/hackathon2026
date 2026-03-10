@@ -6,7 +6,7 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { appFetch } from '@/lib/gasket-config';
 import { mockAuthContext, mockParams, mockRouter, mockSearchParams } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
-import Home from './page';
+import HomeContent from './HomeContent';
 
 const mockSignIn = vi.fn();
 
@@ -31,7 +31,6 @@ vi.mock('@/lib/features', () => ({
     developmentMode: vi.fn().mockReturnValue(false),
     galleryPage: vi.fn().mockReturnValue(false),
     devSupervisorTcp: vi.fn().mockReturnValue(false),
-    pricingSection: vi.fn().mockReturnValue(true),
   },
   MAX_PROMPT_LENGTH: 40000,
   auth: { enabled: false },
@@ -81,7 +80,7 @@ describe('Home Page', () => {
   });
 
   it('should render without crashing', async () => {
-    renderWithProviders(<Home />);
+    renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
 
     await waitFor(() => {
       expect(document.body).toBeTruthy();
@@ -91,7 +90,7 @@ describe('Home Page', () => {
   it('should log impression event on mount', async () => {
     const { logImpressionEvent } = await import('@/utils/instrumentation');
 
-    renderWithProviders(<Home />);
+    renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
 
     await waitFor(() => {
       expect(logImpressionEvent).toHaveBeenCalledWith('homepage.page.view');
@@ -101,7 +100,7 @@ describe('Home Page', () => {
   it('should handle localStorage operations', async () => {
     localStorage.setItem('airo-pending-prompt', 'Build a dashboard');
 
-    renderWithProviders(<Home />);
+    renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
 
     await waitFor(() => {
       expect(document.body).toBeTruthy();
@@ -111,7 +110,7 @@ describe('Home Page', () => {
   it('should handle errors gracefully', async () => {
     vi.mocked(appFetch).mockRejectedValue(new Error('Network error'));
 
-    renderWithProviders(<Home />);
+    renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
 
     await waitFor(() => {
       expect(document.body).toBeTruthy();
@@ -124,7 +123,7 @@ describe('Home Page', () => {
         { error: 'Authentication token required' }, 401
       ) as any);
 
-      renderWithProviders(<Home />);
+      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
       await typePromptAndSubmit('Build me an app');
 
       await waitFor(() => {
@@ -137,7 +136,7 @@ describe('Home Page', () => {
         { error: 'Failed to create site record', details: 'Subscription has no systems' }, 500
       ) as any);
 
-      renderWithProviders(<Home />);
+      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
       await typePromptAndSubmit('Build me an app');
 
       await waitFor(() => {
@@ -150,7 +149,7 @@ describe('Home Page', () => {
         { error: 'Failed to create site record' }, 500
       ) as any);
 
-      renderWithProviders(<Home />);
+      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
       await typePromptAndSubmit('Build me an app');
 
       await waitFor(() => {
@@ -163,7 +162,7 @@ describe('Home Page', () => {
         { error: 'Unauthorized' }, 401
       ) as any);
 
-      renderWithProviders(<Home />);
+      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
       await typePromptAndSubmit('Build a dashboard');
 
       await waitFor(() => {
@@ -173,22 +172,16 @@ describe('Home Page', () => {
   });
 
   describe('public sections rendering', () => {
-    it('should render Pricing section when feature flag is enabled', async () => {
-      const { isFeatureEnabled } = await import('@/lib/features');
-      vi.mocked(isFeatureEnabled.pricingSection).mockReturnValue(true);
-
-      renderWithProviders(<Home />);
+    it('should render Pricing section when serverFeatures.showPricingSection is true', async () => {
+      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
 
       await waitFor(() => {
         expect(screen.getByTestId('pricing-section')).toBeInTheDocument();
       });
     });
 
-    it('should not render Pricing section when feature flag is disabled', async () => {
-      const { isFeatureEnabled } = await import('@/lib/features');
-      vi.mocked(isFeatureEnabled.pricingSection).mockReturnValue(false);
-
-      renderWithProviders(<Home />);
+    it('should not render Pricing section when serverFeatures.showPricingSection is false', async () => {
+      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: false }} />);
 
       await waitFor(() => {
         expect(screen.queryByTestId('pricing-section')).not.toBeInTheDocument();
@@ -196,7 +189,7 @@ describe('Home Page', () => {
     });
 
     it('should always render FAQ section', async () => {
-      renderWithProviders(<Home />);
+      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
 
       await waitFor(() => {
         expect(screen.getByTestId('faq-section')).toBeInTheDocument();
@@ -207,7 +200,7 @@ describe('Home Page', () => {
       const mockUnauthContext = vi.fn(() => mockAuthContext({ isAuthenticated: false, isAuthDisabled: false }));
       vi.mocked(await import('@/components/providers/AuthProvider')).useAuthContext = mockUnauthContext as any;
 
-      renderWithProviders(<Home />);
+      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
 
       await waitFor(() => {
         expect(screen.getByTestId('faq-section')).toBeInTheDocument();
