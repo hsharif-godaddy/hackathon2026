@@ -5,7 +5,7 @@
  */
 
 import { propagateAttributes } from '@langfuse/tracing'
-import { ToolLoopAgent, stepCountIs, hasToolCall, tool } from 'ai'
+import { ToolLoopAgent, stepCountIs, tool } from 'ai'
 import { APICallError } from '@ai-sdk/provider'
 import type {
   PrepareStepFunction,
@@ -36,6 +36,30 @@ import { BudgetExceededError } from '../utils/errors.js'
 import { retryWithBackoff, type RetryContext } from '../utils/retry-with-backoff.js'
 
 const logger = createLogger('agent-factory')
+
+/**
+ * Like the AI SDK's `hasToolCall`, but only triggers when the tool call
+ * is considered successful because it produced a matching `tool-result`.
+ * This allows the LLM to retry when a stopAfterTools call results in a
+ * `tool-error` (for example, when a tool call fails validation).
+ */
+export function hasSuccessfulToolCall(toolName: string) {
+  return ({ steps }: { steps: Array<{ content: Array<{ type: string; toolName?: string; toolCallId?: string }> }> }): boolean => {
+    for (const step of steps) {
+      const matchingCall = step.content.find(
+        item => item.type === 'tool-call' && item.toolName === toolName
+      )
+      if (!matchingCall) continue
+
+      // Only stop if the tool call produced a successful result
+      const hasResult = step.content.some(
+        item => item.type === 'tool-result' && item.toolCallId === matchingCall.toolCallId
+      )
+      if (hasResult) return true
+    }
+    return false
+  }
+}
 
 /**
  * Maximum grant retry attempts to prevent infinite loops
@@ -239,9 +263,10 @@ export class AgentWrapper {
       stopWhen.push(stepCountIs(config.maxSteps))
     }
 
-    // Add stop after specific tools
+    // Add stop after specific tools — only when the tool succeeded (no tool-error).
+    // This allows the LLM to retry when a stopAfterTools call fails validation.
     if (config.stopAfterTools) {
-      stopWhen.push(...config.stopAfterTools.map(toolName => hasToolCall(toolName)))
+      stopWhen.push(...config.stopAfterTools.map(toolName => hasSuccessfulToolCall(toolName)))
     }
 
     // Add custom stop conditions

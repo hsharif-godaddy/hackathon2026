@@ -7,7 +7,7 @@ import Box from '@ux/box'
 import Text from '@ux/text'
 
 import { useSendUserMessage } from '@/app/develop/components/chat/ChatContext'
-import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import DefaultToolRenderer, { type DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
 import OptionButton from '@/app/develop/components/tool-renderers/OptionButton'
 import OptionInput from '@/app/develop/components/tool-renderers/OptionInput'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -42,9 +42,11 @@ interface ToolResult {
 }
 
 export default function AskQuestionToolRenderer({
-  toolName: _toolName,
+  toolName,
   toolStatus,
+  input,
   result,
+  error,
   isLastAssistantMessage
 }: DefaultToolRendererProps) {
   const t = useTranslations()
@@ -73,6 +75,19 @@ export default function AskQuestionToolRenderer({
       setFurthestQuestionReached(currentQuestionIndex)
     }
   }, [currentQuestionIndex, furthestQuestionReached])
+
+  if (toolStatus === 'error') {
+    return (
+      <DefaultToolRenderer
+        toolName={toolName}
+        toolStatus={toolStatus}
+        input={input}
+        result={result}
+        error={error}
+        isLastAssistantMessage={isLastAssistantMessage}
+      />
+    )
+  }
 
   if (toolStatus !== 'completed' || !result) {
     return null
