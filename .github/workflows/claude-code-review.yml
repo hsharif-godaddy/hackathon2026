@@ -39,6 +39,9 @@ jobs:
         3. Performance problems
         4. Missing error handling
         5. Test gaps for changed code paths
+        6. Non-descriptive PR title or missing/empty PR description
+        7. UI changes without screenshots or videos in the PR description
+        8. Translation strings using defaultMessage instead of key-only t() calls
 
         Report these as suggestions (optional improvements):
         - Code clarity or readability enhancements

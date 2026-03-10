@@ -45,10 +45,10 @@ if (options.token && options.repoUrl) {
 | **app/**             | `website`      | 3000 | Next.js BFF + builder UI, MySQL/Prisma        |
 | **dev-supervisor/**  | Go binary      | —    | PID1, process lifecycle, HTTP proxy, JWT auth |
 | **proxy/**           | `airo-proxy`   | —    | Getty Images API proxy                        |
-| **packages/shared/** | `@airo/shared`  | —    | Shared types and pure utilities (grants, context-attachment, social, websocket-context) |
+| **packages/shared/** | `@airo/shared`  | —    | Shared types and pure utilities (grants, context-attachment, social, websocket) |
 | **packages/ai-lib/** | `@airo/ai-lib` | —    | AI SDK wrapper, consumed by agents            |
 
-Additional: `website/` (marketing), `app-templates/` (v8 template), `packages/design-extractor/` (PDF RAG), `setup/` (config utility), `e2e/` (E2E tests)
+Additional: `app-templates/` (v8 template), `packages/design-extractor/` (PDF RAG), `setup/` (config utility), `e2e/` (E2E tests)
 
 See service-specific CLAUDE.md files: [agents/](agents/CLAUDE.md), [app/](app/CLAUDE.md), [dev-supervisor/](dev-supervisor/CLAUDE.md)
 

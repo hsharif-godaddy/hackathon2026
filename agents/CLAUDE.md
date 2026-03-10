@@ -8,18 +8,22 @@ Express API (port 4000) providing AI agent orchestration, app lifecycle, WebSock
 
 **Use middleware from `src/server/middleware/app-ownership.ts`:**
 
-| Middleware                        | Use when appId is in...  |
-| --------------------------------- | ----------------------- |
-| `validateAppOwnership`            | Route params (`:id`)     |
-| `validateAppOwnershipFromBody`    | Request body             |
-| `validateAppOwnershipFromQuery`   | Query parameters         |
-| `validateConversationOwnership`   | Conversation routes      |
+| Middleware                      | Use when appId is in... |
+| ------------------------------- | ----------------------- |
+| `validateAppOwnership`          | Route params (`:id`)    |
+| `validateAppOwnershipFromBody`  | Request body            |
+| `validateAppOwnershipFromQuery` | Query parameters        |
+| `validateConversationOwnership` | Conversation routes     |
 
 **Critical:** Middleware must be placed BEFORE the routes it protects. Express middleware only applies to routes defined after it — defining routes first and middleware later leaves them unprotected.
 
 **Regex pattern for apps routes** prevents matching static routes like `/create`:
+
 ```typescript
-router.use('/:id([a-z0-9]{10}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', validateAppOwnership);
+router.use(
+  '/:id([a-z0-9]{10}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})',
+  validateAppOwnership
+);
 ```
 
 **BYPASS_SITE_IDS** (`src/services/features.ts`): `bypass-site`, `default-site`, `local-dev-site`, `mock-site-id`, `unknown-site` — skip isolation for local dev/testing. Never in production.
@@ -40,13 +44,13 @@ When a user sends a message (`ai-lib-websocket-server.ts` → `experimental-webs
 
 ### Agents
 
-| Agent | Purpose | Handoff targets |
-| ----- | ------- | --------------- |
-| **InitialAgent** | First-time app scaffolding | — |
-| **DevelopAgent** | Feature development, code changes | marketing, commerce (if enabled) |
-| **MarketingAgent** | SEO/marketing content | — |
-| **CommerceAgent** | E-commerce (feature-flagged) | — |
-| **DesignAgent** | UI/UX design | — |
+| Agent              | Purpose                           | Handoff targets                  |
+| ------------------ | --------------------------------- | -------------------------------- |
+| **InitialAgent**   | First-time app scaffolding        | —                                |
+| **DevelopAgent**   | Feature development, code changes | marketing, commerce (if enabled) |
+| **MarketingAgent** | SEO/marketing content             | —                                |
+| **CommerceAgent**  | E-commerce (feature-flagged)      | —                                |
+| **DesignAgent**    | UI/UX design                      | —                                |
 
 Implementations: `src/agents/`. Factory: `src/agents/ai-lib-agents/index.ts`.
 
@@ -90,23 +94,23 @@ Key methods: `addFiles`, `removeFiles`, `writeTree`, `commitTree`, `reset`, `pus
 
 **Integration via callbacks** (not hard coupling): `agentRouter`, `contextProvider`, `messageProvider`, `messagePersistence`. The agents service provides domain-specific implementations.
 
-Key integration file: `src/server/ai-lib-websocket-server.ts` (~89KB, extends ai-lib's base WS server).
+Key integration file: `src/server/ai-lib-websocket-server.ts` (extends ai-lib's base WS server).
 
-**Shared domain types** (grants, context-attachment, social, websocket-context) live in `@airo/shared`. Agents-specific extensions (type guards, Zod schemas, rendering infrastructure) stay local in `src/types/`.
+**Shared domain types** (grants, context-attachment, social, websocket) live in `@airo/shared`. Agents-specific extensions (type guards, Zod schemas, rendering infrastructure) stay local in `src/types/`.
 
 ## Database
 
 **SQLite** at `agents/data/agents.db`. Required because production deploys one agent per app — no shared DB.
 
-| Table | Purpose |
-| ----- | ------- |
-| `apps` | Application records (AAB only, may not exist for PaaS) |
-| `conversations` | Chat conversations per app |
-| `conversation_messages` | Message history |
-| `git_remote_config` | Git repository config (AAB) |
-| `oauth_tokens` | OAuth tokens |
-| `token_usage` | LLM token tracking |
-| `file_context` | RAG file context |
+| Table                   | Purpose                                                |
+| ----------------------- | ------------------------------------------------------ |
+| `apps`                  | Application records (AAB only, may not exist for PaaS) |
+| `conversations`         | Chat conversations per app                             |
+| `conversation_messages` | Message history                                        |
+| `git_remote_config`     | Git repository config (AAB)                            |
+| `oauth_tokens`          | OAuth tokens                                           |
+| `token_usage`           | LLM token tracking                                     |
+| `file_context`          | RAG file context                                       |
 
 Repositories: `src/database/repositories/`.
 
@@ -115,6 +119,7 @@ Repositories: `src/database/repositories/`.
 Agent interactions instrumented via OpenTelemetry + Langfuse.
 
 **Context layering** (each level enriches spans):
+
 ```
 createTraceContext({ headers })       → Signals metadata (visitor, customer, session)
   → createAgentContext(...)           → Agent metadata (conversationId, agentId)

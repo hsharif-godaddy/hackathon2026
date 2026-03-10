@@ -63,7 +63,7 @@ Two-layer system:
 
 **Local dev override:** When `NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true`, a subset of switchboard flags are forced to `true`. The client and server allowlists differ — check `LOCAL_FEATURE_OVERRIDES` in `src/hooks/useSwitchboard.ts` (client) and `localOverrides` in `src/lib/switchboard/server.ts` (server).
 
-**Active switchboard flags:** `appbuilder-publish-button`, `appbuilder-manage-plan`, `appbuilder-settings-team`, `appbuilder-domain-purchase`, `appbuilder-domain-attach`, `appbuilder-share-links`, `app-builder-grants`, `app-builder-bypass-publish-limit`.
+**Finding active flags:** Grep for `useSwitchboard(` and `checkSwitchboardFlag(` to find current flags.
 
 **Layer 3 — Hivemind experiments** (A/B testing): Hivemind is GoDaddy's experimentation platform, separate from Switchboard but uses Switchboard under the hood for traffic splitting. Switchboard = simple feature flags (deploy/release decoupling). Hivemind = A/B experiments with metrics and analysis. Hivemind experiments are fetched via `gasket-plugin-switchboard` and serialized to the client through Gasket's data layer. Access client-side via `useGasketData()` → `switchboard` property or `useHivemind()` hook.
 
@@ -74,6 +74,28 @@ Two-layer system:
 - Read `uxcore-tailwind.md` before using any `intents-ux-` Tailwind classes
 - NO default Tailwind colors (`bg-white`, `text-blue-600`) — use intent classes
 - **`app-templates/` uses Shadcn/ui + Radix + Tailwind** — UXCore is NOT available in generated apps
+
+## Internationalization (i18n)
+
+Translations use react-intl via Gasket's `pluginIntl` (62 locales, default `en-US`). Translation strings are managed externally at [i18n.int.gdcorp.tools](https://i18n.int.gdcorp.tools/org/hcx/app/airo-app-builder) — no locale JSON files in the repo.
+
+**Usage:**
+
+```typescript
+import { useTranslations } from '@/hooks/useTranslations';
+
+const t = useTranslations();
+t('builder_publish_limit_title');                          // Key only (preferred)
+t('builder_publish_limit_plan_info', { planName, limit }); // With interpolation values
+```
+
+For JSX-embedded translations use `<FormattedMessage id="key" values={{ ... }} />`.
+
+**Do NOT specify `defaultMessage`.** All strings must exist in the translation system. Adding English defaults causes translations to silently fall back to English instead of surfacing missing keys.
+
+**Key structure:** `builder_{feature}_{element}` (e.g., `builder_settings_database_title`, `builder_common_retry`).
+
+**Key files:** `src/hooks/useTranslations.ts` (hook), `src/lib/translations/load-translations.ts` (server-side loader), `src/components/providers/TranslationProvider.tsx` (provider), `gasket.ts` (locale config).
 
 ## Database (MySQL/Prisma)
 
@@ -112,7 +134,7 @@ Full docs: `docs/client-websocket-architecture.md`, `docs/ui-agents-authenticati
 
 ## Shared Types (`@airo/shared`)
 
-App uses `@airo/shared` for grants types, context-attachment, social types, and websocket-context. App does **NOT** depend on `@airo/ai-lib` — shared types come from `@airo/shared`.
+App uses `@airo/shared` for grants types, context-attachment, social types, and websocket types. App does **NOT** depend on `@airo/ai-lib` — shared types come from `@airo/shared`.
 
 | Import path                       | Contents                                                             |
 | --------------------------------- | -------------------------------------------------------------------- |
