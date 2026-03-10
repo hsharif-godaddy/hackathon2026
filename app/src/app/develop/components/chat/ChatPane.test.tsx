@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 
 import { ChatTab } from '@/app/develop/components/types';
 import { renderWithProviders } from '@/tests/test-utils';
@@ -173,6 +173,7 @@ describe('ChatPane', () => {
     mockStreamingStore.activeStream = null;
     mockStreamingStore.inputValue = '';
     mockStreamingStore.isLoading = false;
+    mockStreamingStore.isActivelyStreaming = false;
 
     // Reset grants-related mocks
     mockSwitchboardData.data = false;
@@ -246,6 +247,89 @@ describe('ChatPane', () => {
 
     expect(screen.getByTestId('chat-input')).toBeInTheDocument();
   });
+
+  describe('airo-error-fix event', () => {
+    it('should send message when airo-error-fix fires with matching appId and input', () => {
+      mockStreamingStore.inputValue = 'fix this error'
+      const sendMessage = vi.fn()
+
+      renderWithProviders(<ChatPane sendMessage={sendMessage} />)
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('airo-error-fix', { detail: { appId: 'test-app-123' } })
+        )
+      })
+
+      expect(sendMessage).toHaveBeenCalledWith(
+        'fix this error',
+        expect.objectContaining({ screenshot: null }),
+        undefined
+      )
+    })
+
+    it('should not send message when airo-error-fix fires with mismatched appId', () => {
+      mockStreamingStore.inputValue = 'fix this error'
+      const sendMessage = vi.fn()
+
+      renderWithProviders(<ChatPane sendMessage={sendMessage} />)
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('airo-error-fix', { detail: { appId: 'different-app' } })
+        )
+      })
+
+      expect(sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('should not send message when airo-error-fix fires with empty input', () => {
+      mockStreamingStore.inputValue = ''
+      const sendMessage = vi.fn()
+
+      renderWithProviders(<ChatPane sendMessage={sendMessage} />)
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('airo-error-fix', { detail: { appId: 'test-app-123' } })
+        )
+      })
+
+      expect(sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('should not send message when isLoading is true', () => {
+      mockStreamingStore.inputValue = 'fix this error'
+      mockStreamingStore.isLoading = true
+      const sendMessage = vi.fn()
+
+      renderWithProviders(<ChatPane sendMessage={sendMessage} />)
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('airo-error-fix', { detail: { appId: 'test-app-123' } })
+        )
+      })
+
+      expect(sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('should not send message when isActivelyStreaming is true', () => {
+      mockStreamingStore.inputValue = 'fix this error'
+      mockStreamingStore.isActivelyStreaming = true
+      const sendMessage = vi.fn()
+
+      renderWithProviders(<ChatPane sendMessage={sendMessage} />)
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('airo-error-fix', { detail: { appId: 'test-app-123' } })
+        )
+      })
+
+      expect(sendMessage).not.toHaveBeenCalled()
+    })
+  })
 
   it('should render plan tracker when development plan exists', () => {
     mockStreamingStore.developmentPlan = { phases: [] };

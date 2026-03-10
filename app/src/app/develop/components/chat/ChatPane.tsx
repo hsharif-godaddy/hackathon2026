@@ -620,7 +620,7 @@ export default function ChatPane({
   // Listen for error fix requests from PreviewPaneSimple
   useEffect(() => {
     const handleErrorFixEvent = (event: CustomEvent) => {
-      if (event.detail.appId === appId && inputValue?.trim()) {
+      if (!isProcessing && event.detail.appId === appId && inputValue?.trim()) {
         // Use the actual sendMessage function from WebSocket hook
         sendMessage(inputValue, { ...safeAiEditContext, screenshot: null }, selectedAssets.length > 0 ? selectedAssets : undefined)
 
@@ -646,7 +646,7 @@ export default function ChatPane({
     return () => {
       window.removeEventListener('airo-error-fix', handleErrorFixEvent as EventListener)
     }
-  }, [appId, inputValue, sendMessage, safeAiEditContext, selectedAssets, safeBuildErrorContext, handleClearAiEditContext, handleClearSelectedAsset, handleClearBuildErrorContext])
+  }, [appId, inputValue, isProcessing, sendMessage, safeAiEditContext, selectedAssets, safeBuildErrorContext, handleClearAiEditContext, handleClearSelectedAsset, handleClearBuildErrorContext])
 
   if (isMobile) {
     return (

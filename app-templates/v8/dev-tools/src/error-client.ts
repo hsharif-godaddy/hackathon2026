@@ -147,6 +147,7 @@ if (import.meta.env.MODE === 'development' && import.meta.hot) {
     if (hasErrorOverlay && !reloadScheduled) {
       hasErrorOverlay = false;
       reloadScheduled = true;
+      safePostMessage(window.parent, { type: 'error-fix-resolved' });
       // Defer reload to avoid interrupting the HMR event handler
       setTimeout(() => window.location.reload(), 0);
     }

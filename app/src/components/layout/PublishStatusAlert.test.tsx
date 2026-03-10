@@ -42,6 +42,15 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 vi.mock('@/stores/useSiteStore', () => ({
   useSiteStore: (selector: any) => selector(mockSiteStore),
 }));
+
+const mockStreamingStore = {
+  isLoading: false,
+  isActivelyStreaming: false,
+};
+vi.mock('@/stores/useStreamingConversationStore', () => ({
+  useIsLoading: () => mockStreamingStore.isLoading,
+  useIsActivelyStreaming: () => mockStreamingStore.isActivelyStreaming,
+}));
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((id) => id),
 }));
@@ -84,8 +93,9 @@ describe('PublishStatusAlert', () => {
     mockDevelopStore.publishStates = {};
     mockDevelopStore.currentAppId = 'app-123';
     mockSiteStore.getSite.mockReturnValue(null);
-    // Reset useSwitchboard mock to default (enabled)
     mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+    mockStreamingStore.isLoading = false;
+    mockStreamingStore.isActivelyStreaming = false;
   });
 
   it('should render nothing when no publish status', () => {
@@ -271,6 +281,66 @@ describe('PublishStatusAlert', () => {
         }),
         window.location.origin
       );
+    });
+  });
+
+  it('should swap to fixing panel immediately after fix is clicked', async () => {
+    mockStreamingStore.isLoading = false;
+    mockDevelopStore.publishStates = {
+      'app-123': {
+        publishError: true,
+        buildErrorDetails: {
+          error: 'Build failed',
+          details: 'Detailed error',
+          exitCode: 1,
+        },
+      },
+    };
+
+    const { user } = renderWithProviders(<PublishStatusAlert />);
+
+    expect(screen.getByText('builder_publish_error_button_fix')).toBeInTheDocument();
+
+    await user.click(screen.getByText('builder_publish_error_button_fix'));
+
+    // Panel swaps immediately on click — no need to wait for isProcessing
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_fixing_title')).toBeInTheDocument();
+      expect(screen.queryByText('builder_publish_error_button_fix')).not.toBeInTheDocument();
+    });
+  });
+
+  it('should return to error panel when agent finishes processing', async () => {
+    mockStreamingStore.isLoading = false;
+    mockDevelopStore.publishStates = {
+      'app-123': {
+        publishError: true,
+        buildErrorDetails: {
+          error: 'Build failed',
+          details: 'Detailed error',
+        },
+      },
+    };
+
+    const { user, rerender } = renderWithProviders(<PublishStatusAlert />);
+
+    await user.click(screen.getByText('builder_publish_error_button_fix'));
+
+    // Agent starts processing
+    mockStreamingStore.isLoading = true;
+    rerender(<PublishStatusAlert />);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_fixing_title')).toBeInTheDocument();
+    });
+
+    // Agent finishes (true → false transition)
+    mockStreamingStore.isLoading = false;
+    rerender(<PublishStatusAlert />);
+
+    await waitFor(() => {
+      expect(screen.queryByText('builder_publish_fixing_title')).not.toBeInTheDocument();
+      expect(screen.getByText('builder_publish_error_button_fix')).toBeInTheDocument();
     });
   });
 

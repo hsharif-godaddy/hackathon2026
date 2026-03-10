@@ -153,6 +153,10 @@ function DevelopPageContent() {
   const [optimisticMobileTab, setOptimisticMobileTab] = useState<ChatTab>(activeChatTab)
   // Track preview updates for mobile notification
   const [hasPreviewUpdate, setHasPreviewUpdate] = useState(false)
+  // Track when an error fix request is in progress to show the fixing overlay
+  const [isFixingError, setIsFixingError] = useState(false)
+  const isFixingErrorRef = useRef(false)
+  const isProcessingRef = useRef(false)
 
   // Sync optimistic state with URL state
   useEffect(() => {
@@ -341,6 +345,35 @@ function DevelopPageContent() {
   const pendingUpdateRef = useRef<{ selector: string; property: string; value: string; newClassName: string; newStyle?: string } | null>(null)
   const isFirstUpdateRef = useRef(true)
   const isProcessing = isLoading || isStreaming
+
+  // Keep refs in sync so the message handler can read current values without being a dependency
+  isFixingErrorRef.current = isFixingError
+  isProcessingRef.current = isProcessing
+
+  // Reset fixing overlay when the agent finishes processing
+  const prevIsProcessingRef = useRef(isProcessing)
+  useEffect(() => {
+    const wasProcessing = prevIsProcessingRef.current
+    prevIsProcessingRef.current = isProcessing
+
+    if (wasProcessing && !isProcessing) {
+      setIsFixingError(false)
+      isFixingErrorRef.current = false
+    }
+  }, [isProcessing])
+
+  // Fallback: if isFixingError is set but isProcessing never becomes true
+  // (e.g. sendMessage silently fails), reset after a short window
+  useEffect(() => {
+    if (!isFixingError || isProcessing) return
+    const timeout = setTimeout(() => {
+      if (!isProcessingRef.current) {
+        setIsFixingError(false)
+        isFixingErrorRef.current = false
+      }
+    }, 5000)
+    return () => clearTimeout(timeout)
+  }, [isFixingError, isProcessing])
 
   const sendStyleUpdate = useCallback(async (styleData: { selector: string; property: string; value: string; newClassName: string; newStyle?: string }) => {
     if (!appId) return
@@ -566,6 +599,14 @@ function DevelopPageContent() {
           break
         }
         case 'error-fix-request':
+          if (isFixingErrorRef.current) break
+          // Agent is already working — don't interrupt with a second message
+          if (isProcessingRef.current) {
+            logger.info('develop-page.error-fix-request.skipped-processing', { appId })
+            break
+          }
+          isFixingErrorRef.current = true
+          setIsFixingError(true)
           // Handle runtime error fix requests from AiroErrorBoundary (new format with errorData)
           if (event.data.errorData) {
             const { message, name, stack, componentStack, url, timestamp } = event.data.errorData as import('@/types/runtime-error').RuntimeErrorData
@@ -577,10 +618,8 @@ function DevelopPageContent() {
               hasComponentStack: !!componentStack
             })
 
-            // Set a helpful message in the input
             setInputValue('Please analyze and fix this runtime error.')
 
-            // Auto-send with runtime error context attached (6th parameter: customContext)
             scheduleMicrotask(() => {
               void sendMessage(
                 'Please analyze and fix this runtime error.',
@@ -617,6 +656,10 @@ function DevelopPageContent() {
           }
           break
         case 'build-page-request':
+          if (isProcessingRef.current) {
+            logger.info('develop-page.build-page-request.skipped-processing', { appId })
+            break
+          }
           if (event.data.pathToBuild) {
             logger.info('develop-page.build-page-request', {
               appId,
@@ -630,6 +673,10 @@ function DevelopPageContent() {
           }
           break
         case 'build-error-fix-request':
+          if (isProcessingRef.current) {
+            logger.info('develop-page.build-error-fix-request.skipped-processing', { appId })
+            break
+          }
           // Handle build error fix requests from the publish alert
           if (event.data.errorMessage && event.data.errorDetails) {
             logger.info('develop-page.build-error-fix-request', {
@@ -674,6 +721,10 @@ function DevelopPageContent() {
           if (event.data.slotName && appId) {
             useMediaSlotDialogStore.getState().openDialog(appId, event.data.slotName)
           }
+          break
+        case 'error-fix-resolved':
+          setIsFixingError(false)
+          isFixingErrorRef.current = false
           break
       }
     }
@@ -922,6 +973,7 @@ function DevelopPageContent() {
                   <PreviewPane
                     onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
                     showBuildingOverlay={init.ui.showPreviewLoader}
+                    fixingOverlayMessage={isFixingError ? t('builder_preview_fixing_error') : null}
                     isHibernated={hibernation.isHibernated}
                     isResuming={hibernation.isResuming}
                     resumeFailed={hibernation.resumeFailed}
@@ -986,6 +1038,7 @@ function DevelopPageContent() {
                       <PreviewPane
                         onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
                         showBuildingOverlay={init.ui.showPreviewLoader}
+                        fixingOverlayMessage={isFixingError ? t('builder_preview_fixing_error') : null}
                         isHibernated={hibernation.isHibernated}
                         isResuming={hibernation.isResuming}
                         resumeFailed={hibernation.resumeFailed}

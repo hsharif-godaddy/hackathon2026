@@ -10,10 +10,11 @@ interface Props {
 interface State {
   error: Error | null;
   errorInfo: React.ErrorInfo | null;
+  isFixing: boolean;
 }
 
 export default class AiroErrorBoundary extends Component<Props, State> {
-  state: State = { error: null, errorInfo: null };
+  state: State = { error: null, errorInfo: null, isFixing: false };
   private hmrAfterUpdateHandler?: () => void;
 
   componentDidMount() {
@@ -22,7 +23,8 @@ export default class AiroErrorBoundary extends Component<Props, State> {
     if (import.meta.hot) {
       this.hmrAfterUpdateHandler = () => {
         if (this.state.error) {
-          this.setState({ error: null, errorInfo: null });
+          this.setState({ error: null, errorInfo: null, isFixing: false });
+          safePostMessage(window.parent, { type: 'error-fix-resolved' });
         }
       };
       import.meta.hot.on('vite:afterUpdate', this.hmrAfterUpdateHandler);
@@ -38,17 +40,20 @@ export default class AiroErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('Error caught by AiroErrorBoundary:', error, errorInfo);
-    this.setState({ error, errorInfo });
+    this.setState({ error, errorInfo, isFixing: false });
   }
 
   private handleAskAiroToFix = () => {
-    const { error, errorInfo } = this.state;
+    const { error, errorInfo, isFixing } = this.state;
 
-    // Defensive check - should not happen but prevents runtime errors
+    if (isFixing) return;
+
     if (!error) {
       console.error('handleAskAiroToFix called with no error in state');
       return;
     }
+
+    this.setState({ isFixing: true });
 
     const errorData: RuntimeErrorData = {
       message: error.message || 'An unexpected error occurred',
@@ -67,6 +72,7 @@ export default class AiroErrorBoundary extends Component<Props, State> {
       });
     } catch (err) {
       console.error('Failed to send message to parent from AiroErrorBoundary:', err);
+      this.setState({ isFixing: false });
     }
   };
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FormattedMessage } from 'react-intl';
 import Alert from '@ux/alert';
 import Button from '@ux/button';
@@ -16,6 +16,7 @@ import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';
+import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore';
 import { isAiroSubdomain, resolveSiteFqdn } from '@/utils/domain';
 import { generateClickEID } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
@@ -39,6 +40,11 @@ import { hasBeenPublished } from '@/utils/site';
 export default function PublishStatusAlert() {
   const t = useTranslations();
   const [showFeedback, setShowFeedback] = useState(false);
+  const [isFixingBuildError, setIsFixingBuildError] = useState(false);
+  const isLoading = useIsLoading();
+  const isStreaming = useIsActivelyStreaming();
+  const isProcessing = isLoading || isStreaming;
+  const prevIsProcessingRef = useRef(isProcessing);
   const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
@@ -120,6 +126,7 @@ export default function PublishStatusAlert() {
     });
 
     clearPublishStatus(currentAppId);
+    setIsFixingBuildError(false);
   }, [currentAppId, clearPublishStatus]);
 
   const handleFixBuildError = useCallback(() => {
@@ -129,6 +136,8 @@ export default function PublishStatusAlert() {
       message: 'User clicked fix build error',
       appId: currentAppId,
     });
+
+    setIsFixingBuildError(true);
 
     // Switch to chat tab so user sees the AI response
     setActiveChatTab(ChatTab.CHAT);
@@ -142,6 +151,31 @@ export default function PublishStatusAlert() {
       exitCode: buildErrorDetails.exitCode,
     }, window.location.origin);
   }, [currentAppId, buildErrorDetails, setActiveChatTab]);
+
+  // When the agent finishes processing (transitions true → false), clear the fixing
+  // state so the alert returns to the normal error view (user may still need to re-publish).
+  // Using prevIsProcessingRef avoids incorrectly resetting on the initial click, where
+  // isProcessing is still false before the agent has even started.
+  useEffect(() => {
+    const wasProcessing = prevIsProcessingRef.current;
+    prevIsProcessingRef.current = isProcessing;
+
+    if (wasProcessing && !isProcessing && isFixingBuildError) {
+      setIsFixingBuildError(false);
+    }
+  }, [isProcessing, isFixingBuildError]);
+
+  // Fallback: if isFixingBuildError is set but isProcessing never becomes true
+  // (e.g. sendMessage silently fails), reset after a short window
+  useEffect(() => {
+    if (!isFixingBuildError || isProcessing) return;
+    const timeout = setTimeout(() => {
+      if (!prevIsProcessingRef.current) {
+        setIsFixingBuildError(false);
+      }
+    }, 5000);
+    return () => clearTimeout(timeout);
+  }, [isFixingBuildError, isProcessing]);
 
   const handleViewSettings = useCallback(() => {
     if (!currentAppId) return;
@@ -267,6 +301,22 @@ export default function PublishStatusAlert() {
 
   // Show build error state with detailed error and fix button
   if (publishError && buildErrorDetails) {
+    // Swap to an info panel once the user has requested a fix.
+    // Show immediately on click (isFixingBuildError alone) to prevent double-send.
+    if (isFixingBuildError) {
+      return (
+        <div className='px-2 py-1'>
+          <Alert
+            emphasis='info'
+            onClose={handleDismiss}
+            title={t('builder_publish_fixing_title', undefined, 'Airo is fixing the issue...')}
+          >
+            {t('builder_publish_fixing_message', undefined, 'Airo is analyzing and fixing the build failure. Follow the progress in the chat.')}
+          </Alert>
+        </div>
+      );
+    }
+
     return (
       <div className='px-2 py-1'>
         <Alert

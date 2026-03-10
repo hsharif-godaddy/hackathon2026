@@ -62,6 +62,7 @@ interface PreviewPaneProps {
   onPreviewRefresh: () => void
   isMobile?: boolean
   showBuildingOverlay?: boolean
+  fixingOverlayMessage?: string | null
   isHibernated?: boolean
   isResuming?: boolean
   resumeFailed?: boolean
@@ -72,6 +73,7 @@ export default function PreviewPane({
   onPreviewRefresh,
   isMobile = false,
   showBuildingOverlay = false,
+  fixingOverlayMessage = null,
   isHibernated = false,
   isResuming = false,
   resumeFailed = false,
@@ -608,6 +610,11 @@ export default function PreviewPane({
               {showBuildingOverlay && (
                 <div className="absolute inset-0 z-50 bg-intents-ux-boxLowContrast-backgroundColor rounded-lg">
                   <Tips buildingMessage={t('builder_preview_building_app')} />
+                </div>
+              )}
+              {fixingOverlayMessage && (
+                <div className="absolute inset-0 z-50 bg-intents-ux-boxLowContrast-backgroundColor rounded-lg">
+                  <Tips buildingMessage={fixingOverlayMessage} />
                 </div>
               )}
             </div>
