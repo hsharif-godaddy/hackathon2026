@@ -1079,4 +1079,154 @@ describe('AiroMgmtClient', () => {
       expect(result.totalExports).toBe(3);
     });
   });
+
+  describe('#getImageStatus', () => {
+    it('should return image status for an app', async () => {
+      const mockResponse = {
+        appId: 'app-789',
+        compositionId: 'ai-builder',
+        compositionVersion: '1.0.0',
+        unifiedVariantJob: true,
+        status: 'current',
+        images: [
+          {
+            imageType: 'agent',
+            deployedTag: 'v1.0.0',
+            expectedTag: 'v1.0.0',
+            match: true
+          }
+        ]
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse
+      });
+
+      const result = await client.getImageStatus('sub-123', 'sys-456', 'app-789');
+
+      expect(result).toEqual(mockResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/systems/sys-456/apps/app-789/image-status',
+        expect.objectContaining({
+          method: 'GET'
+        })
+      );
+    });
+
+    it('should return stale status when images are outdated', async () => {
+      const mockResponse = {
+        appId: 'app-789',
+        compositionId: 'ai-builder',
+        compositionVersion: '1.0.0',
+        unifiedVariantJob: true,
+        status: 'stale',
+        images: [
+          {
+            imageType: 'agent',
+            deployedTag: 'v1.0.0',
+            expectedTag: 'v1.1.0',
+            match: false
+          }
+        ]
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse
+      });
+
+      const result = await client.getImageStatus('sub-123', 'sys-456', 'app-789');
+
+      expect(result.status).toBe('stale');
+      expect(result.images?.[0].match).toBe(false);
+    });
+
+    it('should return reloading status', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          appId: 'app-789',
+          compositionId: 'ai-builder',
+          compositionVersion: '1.0.0',
+          unifiedVariantJob: true,
+          status: 'reloading'
+        })
+      });
+
+      const result = await client.getImageStatus('sub-123', 'sys-456', 'app-789');
+
+      expect(result.status).toBe('reloading');
+    });
+
+    it('should handle API errors', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        json: async () => ({ error: 'Internal error' }),
+        text: async () => 'Internal error'
+      });
+
+      await expect(client.getImageStatus('sub-123', 'sys-456', 'app-789'))
+        .rejects.toThrow();
+    });
+  });
+
+  describe('#reloadImages', () => {
+    it('should trigger image reload for an app', async () => {
+      const mockResponse = {
+        appId: 'app-789',
+        status: 'reloading',
+        message: 'Image reload initiated',
+        jobId: 'job-abc',
+        startedAt: '2025-01-01T00:00:00Z'
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse
+      });
+
+      const result = await client.reloadImages('sub-123', 'sys-456', 'app-789');
+
+      expect(result).toEqual(mockResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/systems/sys-456/apps/app-789/reload',
+        expect.objectContaining({
+          method: 'POST',
+          body: '{}',
+        })
+      );
+    });
+
+    it('should handle already reloading status', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          appId: 'app-789',
+          status: 'reloading',
+          message: 'Reload already in progress'
+        })
+      });
+
+      const result = await client.reloadImages('sub-123', 'sys-456', 'app-789');
+
+      expect(result.status).toBe('reloading');
+      expect(result.message).toBe('Reload already in progress');
+    });
+
+    it('should handle API errors', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        json: async () => ({ error: 'Internal error' }),
+        text: async () => 'Internal error'
+      });
+
+      await expect(client.reloadImages('sub-123', 'sys-456', 'app-789'))
+        .rejects.toThrow();
+    });
+  });
 });

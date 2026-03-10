@@ -67,6 +67,9 @@ interface PreviewPaneProps {
   isResuming?: boolean
   resumeFailed?: boolean
   onRetryResume?: () => void
+  isImageReloading?: boolean
+  imageReloadFailed?: boolean
+  onRetryImageReload?: () => void
 }
 
 export default function PreviewPane({
@@ -78,6 +81,9 @@ export default function PreviewPane({
   isResuming = false,
   resumeFailed = false,
   onRetryResume,
+  isImageReloading = false,
+  imageReloadFailed = false,
+  onRetryImageReload,
 }: PreviewPaneProps) {
   const t = useTranslations();
 
@@ -455,6 +461,21 @@ export default function PreviewPane({
   // Show restarting message when app is hibernated or resuming
   if (isHibernated || isResuming) {
     return <Tips buildingMessage={t('builder_preview_resuming_message')} />
+  }
+
+  if (imageReloadFailed) {
+    return (
+      <PreviewError
+        title={t('builder_preview_image_reload_failed_title')}
+        error={t('builder_preview_image_reload_failed_message')}
+        buttonText={t('builder_common_try_again')}
+        buttonOnClick={onRetryImageReload || onPreviewRefresh}
+      />
+    )
+  }
+
+  if (isImageReloading) {
+    return <Tips buildingMessage={t('builder_preview_image_reloading_message')} />
   }
 
   if (isPollingEntitlements) {

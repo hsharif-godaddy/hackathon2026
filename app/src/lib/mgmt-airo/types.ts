@@ -730,3 +730,42 @@ export interface AiroCreditGrant {
 export interface AiroGetCreditGrantsResponse {
   grants: AiroCreditGrant[];
 }
+
+/**
+ * Image status values
+ */
+export type AiroImageStatus = 'current' | 'stale' | 'reloading' | 'unknown' | 'unavailable';
+
+/**
+ * Individual image entry in status response
+ */
+export interface AiroImageStatusEntry {
+  imageType: string;
+  deployedTag: string;
+  expectedTag: string;
+  match: boolean;
+}
+
+/**
+ * Response from GET image-status endpoint
+ */
+export interface AiroImageStatusResponse {
+  appId: string;
+  compositionId: string;
+  compositionVersion: string;
+  unifiedVariantJob: boolean;
+  status: AiroImageStatus;
+  images?: AiroImageStatusEntry[];
+}
+
+/**
+ * Response from POST reload endpoint
+ */
+export interface AiroReloadImagesResponse {
+  appId: string;
+  status: AiroImageStatus;
+  message: string;
+  jobId?: string;
+  startedAt?: string;
+  failedAt?: string;
+}

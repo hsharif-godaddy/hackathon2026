@@ -564,4 +564,54 @@ describe('LegacyControlPlaneAdapter', () => {
       );
     });
   });
+
+  describe('getImageStatus', () => {
+    it('should return current status in legacy mode', async () => {
+      const result = await adapter.getImageStatus(MOCK_SITE_ID, MOCK_JWT);
+
+      expect(result.status).toBe('current');
+      expect(result.appId).toBe(MOCK_SITE_ID);
+      expect(result.compositionId).toBe('');
+      expect(result.compositionVersion).toBe('');
+      expect(result.unifiedVariantJob).toBe(false);
+    });
+
+    it('should log warning for unsupported operation', async () => {
+      const { logger } = await import('@/lib/request-context');
+
+      await adapter.getImageStatus(MOCK_SITE_ID, MOCK_JWT);
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        'legacy-control-plane.get-image-status.not-implemented',
+        expect.objectContaining({
+          siteId: MOCK_SITE_ID,
+          message: expect.any(String)
+        })
+      );
+    });
+  });
+
+  describe('reloadImages', () => {
+    it('should return current status with not supported message', async () => {
+      const result = await adapter.reloadImages(MOCK_SITE_ID, MOCK_JWT);
+
+      expect(result.status).toBe('current');
+      expect(result.appId).toBe(MOCK_SITE_ID);
+      expect(result.message).toBe('Not supported in legacy mode');
+    });
+
+    it('should log warning for unsupported operation', async () => {
+      const { logger } = await import('@/lib/request-context');
+
+      await adapter.reloadImages(MOCK_SITE_ID, MOCK_JWT);
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        'legacy-control-plane.reload-images.not-implemented',
+        expect.objectContaining({
+          siteId: MOCK_SITE_ID,
+          message: expect.any(String)
+        })
+      );
+    });
+  });
 });

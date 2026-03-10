@@ -21,12 +21,14 @@ import {
   type AiroDomainCheckResponse,
   type AiroGetCreditGrantsResponse,
   AiroHttpError,
+  type AiroImageStatusResponse,
   type AiroJobStatus,
   type AiroMgmtClientConfig,
   type AiroModifyDomainsPayload,
   type AiroModifyDomainsResponse,
   type AiroPublishAppResponse,
   type AiroRawSecretsResponse,
+  type AiroReloadImagesResponse,
   type AiroSignupPayload,
   type AiroSignupResponse,
   type AiroSubscription,
@@ -1074,6 +1076,52 @@ export class AiroMgmtClient {
       `/api/airo/v1/subscriptions/${subscriptionId}/exports/status`,
       undefined,
       { logEvent: 'mgmt-airo.get-exports-status' }
+    );
+  }
+
+  /**
+   * Get image status for an app
+   *
+   * GET /api/airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/image-status
+   *
+   * @param subscriptionId - Subscription ID
+   * @param systemId - System ID
+   * @param appId - App ID
+   * @returns Promise resolving to image status response
+   */
+  async getImageStatus(
+    subscriptionId: string,
+    systemId: string,
+    appId: string
+  ): Promise<AiroImageStatusResponse> {
+    return this.request<AiroImageStatusResponse>(
+      'GET',
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/image-status`,
+      undefined,
+      { logEvent: 'mgmt-airo.get-image-status', noCache: true }
+    );
+  }
+
+  /**
+   * Reload images for an app
+   *
+   * POST /api/airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/reload
+   *
+   * @param subscriptionId - Subscription ID
+   * @param systemId - System ID
+   * @param appId - App ID
+   * @returns Promise resolving to reload response
+   */
+  async reloadImages(
+    subscriptionId: string,
+    systemId: string,
+    appId: string
+  ): Promise<AiroReloadImagesResponse> {
+    return this.request<AiroReloadImagesResponse>(
+      'POST',
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/reload`,
+      {},
+      { logEvent: 'mgmt-airo.reload-images' }
     );
   }
 }

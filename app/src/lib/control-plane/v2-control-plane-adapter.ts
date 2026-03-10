@@ -3,7 +3,7 @@ import { logger } from '@/lib/request-context';
 import { getDatacenterFromMarketId } from '@/lib/utils/dc-mapping';
 import { extractCustomerId } from '@/lib/utils/jwt-utils';
 import { useSubscriptionCacheStore } from '@/stores/useSubscriptionCacheStore';
-import { CreateSiteParams, CreateSiteResult, DeploySiteOptions, IControlPlaneAdapter, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate, SiteInfo, SiteStatus, SiteVariant } from './types';
+import { CreateSiteParams, CreateSiteResult, DeploySiteOptions, IControlPlaneAdapter, ImageStatusResponse, ReloadImagesResponse, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate, SiteInfo, SiteStatus, SiteVariant } from './types';
 import gasket from '../../../gasket.ts';
 
 /**
@@ -929,6 +929,72 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         error: error instanceof Error ? error.message : 'Unknown error'
       });
       throw new Error(`Resume failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async getImageStatus(siteId: string, jwt: string): Promise<ImageStatusResponse> {
+    try {
+      const site = await this.getSite(siteId, jwt);
+
+      if (!site) {
+        throw new Error('Site not found');
+      }
+
+      if (!site.system_id || !site.subscription_id) {
+        throw new Error('Site missing system_id or subscription_id');
+      }
+
+      const client = this.createClient(jwt);
+      const result = await client.getImageStatus(site.subscription_id, site.system_id, siteId);
+
+      logger.info('v2-control-plane.get-image-status.success', {
+        siteId,
+        status: result.status
+      });
+
+      return result;
+    } catch (error: any) {
+      if (typeof error?.status === 'number') {
+        throw error;
+      }
+      logger.error('v2-control-plane.get-image-status.error', {
+        siteId,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      throw new Error(`Get image status failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async reloadImages(siteId: string, jwt: string): Promise<ReloadImagesResponse> {
+    try {
+      const site = await this.getSite(siteId, jwt);
+
+      if (!site) {
+        throw new Error('Site not found');
+      }
+
+      if (!site.system_id || !site.subscription_id) {
+        throw new Error('Site missing system_id or subscription_id');
+      }
+
+      const client = this.createClient(jwt);
+      const result = await client.reloadImages(site.subscription_id, site.system_id, siteId);
+
+      logger.info('v2-control-plane.reload-images.success', {
+        siteId,
+        status: result.status
+      });
+
+      return result;
+    } catch (error: any) {
+      if (typeof error?.status === 'number') {
+        throw error;
+      }
+      logger.error('v2-control-plane.reload-images.error', {
+        siteId,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      throw new Error(`Reload images failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

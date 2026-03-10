@@ -6,6 +6,10 @@
  * - Legacy: Direct database + Nomad/SQS (internal)
  */
 
+import type {
+  AiroImageStatus as ImageStatus,
+  AiroImageStatusEntry as ImageStatusEntry,
+} from '@/lib/mgmt-airo';
 import type { SiteVariant } from '@/lib/site-adapters/interfaces/ISiteAdapter';
 
 // Re-export lifecycle types from ISiteAdapter for consumers
@@ -125,6 +129,32 @@ export interface CreateSiteResult {
   type?: IdType;        // 'job' for V2 job IDs, 'site' for real site IDs
 }
 
+export type { ImageStatus, ImageStatusEntry };
+
+/**
+ * Response from image status check
+ */
+export interface ImageStatusResponse {
+  appId: string;
+  compositionId: string;
+  compositionVersion: string;
+  unifiedVariantJob: boolean;
+  status: ImageStatus;
+  images?: ImageStatusEntry[];
+}
+
+/**
+ * Response from image reload trigger
+ */
+export interface ReloadImagesResponse {
+  appId: string;
+  status: ImageStatus;
+  message: string;
+  jobId?: string;
+  startedAt?: string;
+  failedAt?: string;
+}
+
 /**
  * Control Plane Adapter Interface
  *
@@ -210,6 +240,30 @@ export interface IControlPlaneAdapter {
    * @returns Resume result with success status
    */
   resumeSite(siteId: string, variant: string, jwt: string): Promise<{ success: boolean; message: string }>;
+
+  /**
+   * Get image status for an app
+   *
+   * V2: GET /airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/image-status
+   * Legacy: Returns { status: 'current' } (not supported)
+   *
+   * @param siteId - Site identifier
+   * @param jwt - Customer JWT token
+   * @returns Image status response
+   */
+  getImageStatus(siteId: string, jwt: string): Promise<ImageStatusResponse>;
+
+  /**
+   * Reload images for an app
+   *
+   * V2: POST /airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/reload
+   * Legacy: Returns { status: 'current' } (not supported)
+   *
+   * @param siteId - Site identifier
+   * @param jwt - Customer JWT token
+   * @returns Reload response with status
+   */
+  reloadImages(siteId: string, jwt: string): Promise<ReloadImagesResponse>;
 
   /**
    * Update site

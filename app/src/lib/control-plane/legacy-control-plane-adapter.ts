@@ -5,7 +5,7 @@ import { PrismaSiteService } from '@/lib/database/prisma-site-service';
 import { deploymentAdapter } from '@/lib/deployment';
 import { getTaskLocalPath } from '@/lib/dev-environment/utils/app-paths';
 import { logger } from '@/lib/request-context';
-import { CreateSiteParams, CreateSiteResult, DeploySiteOptions, IControlPlaneAdapter, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate, SiteInfo } from './types';
+import { CreateSiteParams, CreateSiteResult, DeploySiteOptions, IControlPlaneAdapter, ImageStatusResponse, ReloadImagesResponse, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate, SiteInfo } from './types';
 
 /**
  * Legacy Control Plane Adapter - Uses database + Nomad/SQS
@@ -256,6 +256,42 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
     return {
       success: false,
       message: 'Hibernation resume is not supported in legacy mode'
+    };
+  }
+
+  /**
+   * Get image status
+   *
+   * Legacy Mode: Not implemented - returns 'current' to allow fast-path
+   */
+  async getImageStatus(siteId: string, _jwt: string): Promise<ImageStatusResponse> {
+    logger.warn('legacy-control-plane.get-image-status.not-implemented', {
+      siteId,
+      message: 'Image status check is not supported in legacy mode'
+    });
+    return {
+      appId: siteId,
+      compositionId: '',
+      compositionVersion: '',
+      unifiedVariantJob: false,
+      status: 'current',
+    };
+  }
+
+  /**
+   * Reload images
+   *
+   * Legacy Mode: Not implemented - returns 'current' to allow fast-path
+   */
+  async reloadImages(siteId: string, _jwt: string): Promise<ReloadImagesResponse> {
+    logger.warn('legacy-control-plane.reload-images.not-implemented', {
+      siteId,
+      message: 'Image reload is not supported in legacy mode'
+    });
+    return {
+      appId: siteId,
+      status: 'current',
+      message: 'Not supported in legacy mode',
     };
   }
 

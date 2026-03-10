@@ -7,7 +7,7 @@ import Growl from '@ux/growl'
 
 import AppNotFound from '@/app/develop/components/AppNotFound'
 import ChatPane from '@/app/develop/components/chat/ChatPane'
-import ChatPaneLoader, { ResumeLoaderPhase } from '@/app/develop/components/chat/ChatPaneLoader'
+import ChatPaneLoader, { ImageReloadLoaderPhase, ResumeLoaderPhase } from '@/app/develop/components/chat/ChatPaneLoader'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
 import { MediaSlotDialog } from '@/app/develop/components/media/MediaSlotDialog'
 import { DevelopCreditsModal, SinglePlanUpgradeContainer } from '@/app/develop/components/paywall'
@@ -34,6 +34,7 @@ import { useAppDetails } from '@/hooks/useAppDetails'
 import { useAppHibernation } from '@/hooks/useAppHibernation'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
+import { useImageReadiness } from '@/hooks/useImageReadiness'
 import { usePageTiming } from '@/hooks/usePageTiming'
 import { usePaywallPrefetch } from '@/hooks/usePaywallPrefetch'
 import { useRumAppContext } from '@/hooks/useRumAppContext'
@@ -82,6 +83,9 @@ function DevelopPageContent() {
   // Hibernation handling - auto-resume when app is hibernated
   const appDetails = useAppDetails(appId);
   const hibernation = useAppHibernation(appDetails.data, appId, true);
+
+  // Image readiness - runs after hibernation resolves or immediately for non-hibernated apps
+  const imageReadiness = useImageReadiness(hibernation, appId);
 
   // Log when resume completes - history will be loaded via WebSocket
   useEffect(() => {
@@ -925,6 +929,24 @@ function DevelopPageContent() {
                   onRetry={() => {}}
                   onCancel={() => {}}
                 />
+              ) : imageReadiness.isChecking ? (
+                <ChatPaneLoader
+                  phase={ImageReloadLoaderPhase.CHECKING_IMAGES}
+                  error={null}
+                  retryCount={0}
+                  maxRetries={0}
+                  onRetry={() => {}}
+                  onCancel={() => router.push('/')}
+                />
+              ) : imageReadiness.isImageUpdating || imageReadiness.error ? (
+                <ChatPaneLoader
+                  phase={ImageReloadLoaderPhase.UPDATING_IMAGES}
+                  error={imageReadiness.error}
+                  retryCount={0}
+                  maxRetries={1}
+                  onRetry={() => imageReadiness.retry()}
+                  onCancel={() => router.push('/')}
+                />
               ) : (
                 <ChatPane
                   sendMessage={sendMessage}
@@ -978,6 +1000,9 @@ function DevelopPageContent() {
                     isResuming={hibernation.isResuming}
                     resumeFailed={hibernation.resumeFailed}
                     onRetryResume={() => hibernation.resume()}
+                    isImageReloading={imageReadiness.isImageUpdating}
+                    imageReloadFailed={!!imageReadiness.error}
+                    onRetryImageReload={() => imageReadiness.retry()}
                     isMobile={false}
                   />
                 </div>
@@ -1019,6 +1044,24 @@ function DevelopPageContent() {
                   onRetry={() => {}}
                   onCancel={() => {}}
                 />
+              ) : imageReadiness.isChecking ? (
+                <ChatPaneLoader
+                  phase={ImageReloadLoaderPhase.CHECKING_IMAGES}
+                  error={null}
+                  retryCount={0}
+                  maxRetries={0}
+                  onRetry={() => {}}
+                  onCancel={() => router.push('/')}
+                />
+              ) : imageReadiness.isImageUpdating || imageReadiness.error ? (
+                <ChatPaneLoader
+                  phase={ImageReloadLoaderPhase.UPDATING_IMAGES}
+                  error={imageReadiness.error}
+                  retryCount={0}
+                  maxRetries={1}
+                  onRetry={() => imageReadiness.retry()}
+                  onCancel={() => router.push('/')}
+                />
               ) : (
                 <>
                   <PublishStatusAlert />
@@ -1043,6 +1086,9 @@ function DevelopPageContent() {
                         isResuming={hibernation.isResuming}
                         resumeFailed={hibernation.resumeFailed}
                         onRetryResume={() => hibernation.resume()}
+                        isImageReloading={imageReadiness.isImageUpdating}
+                        imageReloadFailed={!!imageReadiness.error}
+                        onRetryImageReload={() => imageReadiness.retry()}
                         isMobile={true}
                       />
                     </div>

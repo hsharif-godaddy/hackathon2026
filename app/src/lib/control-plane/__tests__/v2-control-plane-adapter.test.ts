@@ -1348,5 +1348,277 @@ describe('V2ControlPlaneAdapter', () => {
       expect(result).not.toBeNull();
     });
   });
+
+  describe('#getImageStatus', () => {
+    it('should return image status for an app', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c4-dev-sxb1-eu-central-1',
+            variables: { title: 'App' },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+
+      const mockImageStatus = {
+        appId: MOCK_APP_ID,
+        compositionId: 'ai-builder',
+        compositionVersion: '1.0.0',
+        unifiedVariantJob: true,
+        status: 'current',
+        images: [{ imageType: 'agent', deployedTag: 'v1.0', expectedTag: 'v1.0', match: true }]
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockImageStatus
+      });
+
+      const result = await adapter.getImageStatus(MOCK_APP_ID, MOCK_JWT);
+
+      expect(result.status).toBe('current');
+      expect(result.appId).toBe(MOCK_APP_ID);
+
+      const imageStatusCall = mockFetch.mock.calls.find(c =>
+        String(c[0]).includes('/image-status')
+      );
+      expect(imageStatusCall).toBeDefined();
+      expect(imageStatusCall![0]).toContain(`/apps/${MOCK_APP_ID}/image-status`);
+    });
+
+    it('should throw when site is not found', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ apps: [] })
+      });
+
+      await expect(adapter.getImageStatus('nonexistent', MOCK_JWT))
+        .rejects.toThrow('Get image status failed');
+    });
+
+    it('should rethrow 401 errors for auth redirect', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c4-dev-sxb1-eu-central-1',
+            variables: { title: 'App' },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+
+      const authError = new Error('Unauthorized') as any;
+      authError.status = 401;
+      mockFetch.mockRejectedValueOnce(authError);
+
+      await expect(adapter.getImageStatus(MOCK_APP_ID, MOCK_JWT))
+        .rejects.toThrow();
+    });
+
+    it('should rethrow 403 errors for auth redirect', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c4-dev-sxb1-eu-central-1',
+            variables: { title: 'App' },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        text: async () => JSON.stringify({ error: 'Forbidden' })
+      });
+
+      await expect(adapter.getImageStatus(MOCK_APP_ID, MOCK_JWT))
+        .rejects.toHaveProperty('status', 403);
+    });
+
+    it('should rethrow 404 errors preserving status', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c4-dev-sxb1-eu-central-1',
+            variables: { title: 'App' },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+
+      const mock404 = {
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        text: async () => JSON.stringify({ error: 'Not Found' })
+      };
+      mockFetch
+        .mockResolvedValueOnce(mock404)
+        .mockResolvedValueOnce(mock404)
+        .mockResolvedValueOnce(mock404);
+
+      await expect(adapter.getImageStatus(MOCK_APP_ID, MOCK_JWT))
+        .rejects.toHaveProperty('status', 404);
+    });
+  });
+
+  describe('#reloadImages', () => {
+    it('should trigger image reload for an app', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c4-dev-sxb1-eu-central-1',
+            variables: { title: 'App' },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+
+      const mockReloadResponse = {
+        appId: MOCK_APP_ID,
+        status: 'reloading',
+        message: 'Image reload initiated',
+        jobId: 'job-abc',
+        startedAt: '2025-01-01T00:00:00Z'
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockReloadResponse
+      });
+
+      const result = await adapter.reloadImages(MOCK_APP_ID, MOCK_JWT);
+
+      expect(result.status).toBe('reloading');
+      expect(result.appId).toBe(MOCK_APP_ID);
+
+      const reloadCall = mockFetch.mock.calls.find(c =>
+        String(c[0]).includes('/reload') && c[1]?.method === 'POST'
+      );
+      expect(reloadCall).toBeDefined();
+      expect(reloadCall![0]).toContain(`/apps/${MOCK_APP_ID}/reload`);
+    });
+
+    it('should throw when site is not found', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ apps: [] })
+      });
+
+      await expect(adapter.reloadImages('nonexistent', MOCK_JWT))
+        .rejects.toThrow('Reload images failed');
+    });
+
+    it('should handle site missing system_id', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            variables: { title: 'App' },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+
+      await expect(adapter.reloadImages(MOCK_APP_ID, MOCK_JWT))
+        .rejects.toThrow('Reload images failed');
+    });
+
+    it('should rethrow 403 errors for auth redirect', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c4-dev-sxb1-eu-central-1',
+            variables: { title: 'App' },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        text: async () => JSON.stringify({ error: 'Forbidden' })
+      });
+
+      await expect(adapter.reloadImages(MOCK_APP_ID, MOCK_JWT))
+        .rejects.toHaveProperty('status', 403);
+    });
+
+    it('should rethrow 404 errors preserving status', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c4-dev-sxb1-eu-central-1',
+            variables: { title: 'App' },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+
+      const mock404 = {
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        text: async () => JSON.stringify({ error: 'Not Found' })
+      };
+      mockFetch
+        .mockResolvedValueOnce(mock404)
+        .mockResolvedValueOnce(mock404)
+        .mockResolvedValueOnce(mock404);
+
+      await expect(adapter.reloadImages(MOCK_APP_ID, MOCK_JWT))
+        .rejects.toHaveProperty('status', 404);
+    });
+  });
 });
 

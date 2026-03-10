@@ -9,7 +9,12 @@ export enum ResumeLoaderPhase {
   RESUMING = 'resuming',
 }
 
-export type LoaderPhase = SiteCreationPhase | ResumeLoaderPhase
+export enum ImageReloadLoaderPhase {
+  CHECKING_IMAGES = 'checking-images',
+  UPDATING_IMAGES = 'updating-images',
+}
+
+export type LoaderPhase = SiteCreationPhase | ResumeLoaderPhase | ImageReloadLoaderPhase
 
 interface ChatPaneLoaderProps {
   phase: LoaderPhase
@@ -28,7 +33,9 @@ const phaseMessageKeys: Record<LoaderPhase, string> = {
   'verifying-agent': 'builder_chatpane_phase_verifying-agent',
   'complete': 'builder_chatpane_phase_complete',
   'error': 'builder_chatpane_phase_error',
-  [ResumeLoaderPhase.RESUMING]: 'builder_chatpane_phase_resuming'
+  [ResumeLoaderPhase.RESUMING]: 'builder_chatpane_phase_resuming',
+  [ImageReloadLoaderPhase.CHECKING_IMAGES]: 'builder_chatpane_phase_checking_images',
+  [ImageReloadLoaderPhase.UPDATING_IMAGES]: 'builder_chatpane_phase_updating_images'
 }
 
 export default function ChatPaneLoader({

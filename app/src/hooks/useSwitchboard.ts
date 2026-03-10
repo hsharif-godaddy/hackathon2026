@@ -21,6 +21,7 @@ const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'app-builder-grants': true,
   'app-builder-bypass-publish-limit': true, // allows unlimited app publishing
   'appbuilder-social-video-generation': true,
+  'app-builder-app-on-demand-reload': true,
 };
 
 /**
