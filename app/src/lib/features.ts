@@ -2,6 +2,7 @@
  * Centralized feature configuration system
  * This module handles all environment variable parsing and feature flags
  */
+import { SUPPORTED_AUTH_TYPES } from '@/lib/auth-types';
 import { logger } from '@/lib/request-context';
 import { decodeJWT } from '@/lib/utils/jwt-utils';
 
@@ -59,12 +60,12 @@ export const MAX_PROMPT_LENGTH = 6000
 function determineAuthType(): AuthType {
   const nodeEnv = process.env.NODE_ENV
   const explicitAuthType = process.env.AUTH_TYPE?.toLowerCase() as AuthType
-  
+
   // Explicit AUTH_TYPE override (for testing/debugging)
   if (explicitAuthType && Object.values(AuthType).includes(explicitAuthType)) {
     return explicitAuthType
   }
-  
+
   // Default behavior based on NODE_ENV
   switch (nodeEnv) {
     case 'production':
@@ -74,7 +75,7 @@ function determineAuthType(): AuthType {
       if (process.env.AUTH_TYPE === 'none') {
         return AuthType.NONE
       }
-      if(process.env.AUTH_TYPE === 'jwt') {
+      if (process.env.AUTH_TYPE === 'jwt') {
         return AuthType.JWT
       }
       return AuthType.MOCK
@@ -89,7 +90,7 @@ function determineAuthType(): AuthType {
  */
 function parseEnvironmentFeatures(): FeatureConfig {
   const authType = determineAuthType()
-  
+
   return {
     showCodeEditor: process.env.NEXT_PUBLIC_SHOW_CODE_EDITOR === 'true',
     authType: authType,
@@ -150,17 +151,17 @@ export const devSupervisor = {
     if (!isFeatureEnabled.developmentMode()) {
       return false;
     }
-    
+
     // Enable if explicitly configured
     if (isFeatureEnabled.devSupervisorTcp()) {
       return true;
     }
-    
+
     // Auto-enable on macOS for better Docker compatibility (development only)
     if (typeof process !== 'undefined' && process.platform === 'darwin') {
       return true;
     }
-    
+
     return false;
   },
   /** Get the configured TCP port */
@@ -193,9 +194,9 @@ export const authUtils = {
    * - s2s2p: Shopper-to-shopper-to-partner
    */
   getSupportedAuthTypes: (): string[] => {
-    return ['basic', 'e2s', 's2s', 'e2s2s', 'e2s2p', 'e2s2snpr', 'e2s2s2p', 'cert2s', 'e2p', 's2p', 's2snpr', 's2s2p'];
+    return [...SUPPORTED_AUTH_TYPES];
   },
-  
+
   /**
    * Detect auth type from a JWT token
    * @param token - JWT token string
@@ -203,25 +204,25 @@ export const authUtils = {
    */
   detectAuthTypeFromToken: (token: string): string => {
     if (!token) return 'basic';
-    
+
     const payload = decodeJWT(token);
     if (!payload) return 'basic';
-    
+
     // Check for auth field first (gd-auth sets this)
     if (payload.auth) {
       return payload.auth;
     }
-    
+
     // Check for e2s (employee-to-shopper impersonation)
     if (payload.e2s && typeof payload.e2s === 'object') {
       return 'e2s';
     }
-    
+
     // Check for s2s (shopper-to-shopper delegation)
     if (payload.s2s && typeof payload.s2s === 'object') {
       return 's2s';
     }
-    
+
     // Check for other nested auth types (delegation chains and impersonation)
     const nestedAuthTypes = ['cert2s', 'e2s2s', 'e2s2p', 'e2s2snpr', 'e2s2s2p', 'e2p', 's2p', 's2snpr', 's2s2p'];
     for (const authType of nestedAuthTypes) {
@@ -229,7 +230,7 @@ export const authUtils = {
         return authType;
       }
     }
-    
+
     // Default to basic auth
     return 'basic';
   }

@@ -1,6 +1,7 @@
+import { SUPPORTED_AUTH_TYPES } from '@/lib/auth-types';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import { SHOPPER_AUTH_FAILURE_MESSAGE } from './customer-auth';
-import { auth, authUtils } from './features';
+import { auth } from './features';
 import { logger } from './request-context';
 // Gasket configuration for Airo Builder authentication
 
@@ -41,7 +42,7 @@ async function loadRuntimeConfig(): Promise<GasketConfig> {
       auth: {
         realm: 'idp',
         risk: 'low',
-        type: authUtils.getSupportedAuthTypes(),
+        type: [...SUPPORTED_AUTH_TYPES],
         authType: auth.getType(),
         isDisabled: auth.isDisabled(),
         isMock: auth.isMock(),
@@ -124,7 +125,7 @@ export const authConfigs = {
   user: {
     realm: 'idp',
     risk: 'low',
-    type: authUtils.getSupportedAuthTypes(),
+    type: SUPPORTED_AUTH_TYPES,
     allowHeartbeat: true,        // Enable automatic token refresh
     use12HourExpiration: true    // Use longer token expiration
   },
@@ -140,7 +141,7 @@ export const authConfigs = {
   sensitive: {
     realm: 'idp',
     risk: 'high',
-    type: authUtils.getSupportedAuthTypes(),
+    type: SUPPORTED_AUTH_TYPES,
     allowHeartbeat: true         // Keep heartbeat, but shorter expiration for security
   }
 };
