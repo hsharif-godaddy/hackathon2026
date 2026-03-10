@@ -59,6 +59,7 @@ interface LogEntry {
   app_id: string;
   agentId?: string;
   data: Record<string, unknown>;
+  error?: { name: string; message: string; stack?: string };
 }
 
 interface KatanaLogEntry {
@@ -255,54 +256,52 @@ function processPioneerLog(log: LogEntry): boolean {
 
       case 'tool.file.edit.operation.failure':
       case 'tool.file.edit.batch.failure': {
-        const d = log.data as { filePath?: string; error?: string; message?: string };
+        const d = log.data as { filePath?: string };
         insertToolFailure({
           es_id: log._id,
           timestamp: log.timestamp,
           app_id: log.app_id,
           agent_id: log.agentId,
           tool_name: 'fileEdit',
-          error_message: d.error || d.message,
+          error_message: log.error?.message,
           file_path: d.filePath
         });
       return true;
       }
 
       case 'tool.git.operation.failure': {
-        const d = log.data as { error?: string };
         insertToolFailure({
           es_id: log._id,
           timestamp: log.timestamp,
           app_id: log.app_id,
           agent_id: log.agentId,
           tool_name: 'git',
-          error_message: d.error
+          error_message: log.error?.message
         });
       return true;
       }
 
       case 'tool.image.search.failure': {
-        const d = log.data as { error?: string };
         insertToolFailure({
           es_id: log._id,
           timestamp: log.timestamp,
           app_id: log.app_id,
           agent_id: log.agentId,
           tool_name: 'imageSearch',
-          error_message: d.error
+          error_message: log.error?.message
         });
       return true;
       }
 
       case 'tool.ast.edit.failure': {
-        const d = log.data as { filePath?: string; error?: string };
+        const d = log.data as { filePath?: string };
         insertToolFailure({
           es_id: log._id,
           timestamp: log.timestamp,
           app_id: log.app_id,
           agent_id: log.agentId,
           tool_name: 'astEdit',
-          error_message: d.error,
+          error_message: log.error?.message,
           file_path: d.filePath
         });
       return true;
