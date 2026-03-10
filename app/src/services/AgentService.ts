@@ -136,6 +136,36 @@ export class AgentService {
   }
 
   /**
+   * Download the generated launch video as a Blob, proxied through the agents
+   * server to avoid CORS restrictions on the preview container URL.
+   */
+  async downloadVideo(appId: string): Promise<Blob> {
+    const apiUrl = await buildDynamicApiUrl(`/video`, appId);
+
+    const response = await agentFetch(apiUrl, { siteId: appId, method: 'GET' });
+
+    if (!response.ok) {
+      throw new Error(`Failed to download video: ${response.status}`);
+    }
+
+    return response.blob();
+  }
+
+  /**
+   * Delete the generated launch video and its metadata cache so the next
+   * generateLaunchVideo call runs a fresh pipeline instead of returning cached.
+   */
+  async deleteVideo(appId: string): Promise<void> {
+    const apiUrl = await buildDynamicApiUrl(`/video`, appId);
+
+    const response = await agentFetch(apiUrl, { siteId: appId, method: 'DELETE' });
+
+    if (!response.ok) {
+      throw new Error(`Failed to delete video: ${response.status}`);
+    }
+  }
+
+  /**
    * Start or poll video generation for an app (non-blocking, idempotent)
    */
   async generateLaunchVideo(appId: string, publishedUrl?: string): Promise<VideoGenerationResponse> {

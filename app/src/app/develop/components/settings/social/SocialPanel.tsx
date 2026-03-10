@@ -7,32 +7,25 @@ import BigCard from '@/components/layout/BigCard'
 import EmptyStateCard from '@/components/layout/EmptyStateCard'
 import { useSocialPanelActions } from '@/hooks/social/panel/useSocialPanelActions'
 import { useSocialPanelData } from '@/hooks/social/panel/useSocialPanelData'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { PlatformConnectionsList } from './PlatformConnectionsList'
 import { SocialPanelLoadingSkeleton } from './SocialPanelLoadingSkeleton'
+import { VideoGenerationSection } from './VideoGenerationSection'
 
 interface SocialPanelProps {
   siteId: string
 }
 
-export default function SocialPanel({ siteId }: SocialPanelProps) {
+function SocialPlatformsSection({ siteId }: SocialPanelProps) {
   const t = useTranslations()
-
-  // Fetch and compute all data
   const data = useSocialPanelData(siteId)
+  const actions = useSocialPanelActions({ siteId, siteLinks: data.siteLinks })
 
-  // Setup all actions and state management
-  const actions = useSocialPanelActions({
-    siteId,
-    siteLinks: data.siteLinks
-  })
-
-  // Loading state
   if (data.isLoading) {
     return <SocialPanelLoadingSkeleton />
   }
 
-  // Error state
   if (data.error) {
     return (
       <EmptyStateCard
@@ -69,6 +62,21 @@ export default function SocialPanel({ siteId }: SocialPanelProps) {
         selectedConnectionId={actions.selectedConnectionId}
         oauthState={actions.oauthState}
       />
+    </>
+  )
+}
+
+export default function SocialPanel({ siteId }: SocialPanelProps) {
+  const { data: isVideoGenerationEnabled } = useSwitchboard('appbuilder-social-video-generation')
+
+  return (
+    <>
+      <SocialPlatformsSection siteId={siteId} />
+      {isVideoGenerationEnabled === true && (
+        <div className="mt-4">
+          <VideoGenerationSection siteId={siteId} />
+        </div>
+      )}
     </>
   )
 }
