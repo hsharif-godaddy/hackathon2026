@@ -148,6 +148,11 @@ func (pm *ProcessManager) Start(req validation.ProcessStartRequest) error {
 	pm.lifecycleMu.Lock()
 	defer pm.lifecycleMu.Unlock() // Serialize lifecycle ops
 
+	return pm.startLocked(req)
+}
+
+// startLocked is the core start implementation. Caller MUST hold lifecycleMu.
+func (pm *ProcessManager) startLocked(req validation.ProcessStartRequest) error {
 	pm.mu.Lock()
 	// Check if we already have a running process
 	if pm.currentProcess != nil {
@@ -319,12 +324,15 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 	defer pm.lifecycleMu.Unlock() // Serialize lifecycle ops
 
 	pm.mu.Lock()
-	// Check if we have a current process to get config from
+	// Check if we have a current process to get config from.
+	// Invariant: currentProcess is never set back to nil after a Stop() — stopped processes
+	// retain their ManagedProcess reference. So nil here means no process was ever started
+	// (e.g., deferred setup mode where the first HTTP request hasn't arrived yet).
 	if pm.currentProcess == nil {
 		pm.mu.Unlock()
-		slog.Error("restart failed: no process to restart",
-			"restart_count", pm.restartCount)
-		return errors.New("no previous process to restart")
+		// No process ever started — fall back to running deferred setup (if pending)
+		// and starting the process from saved configuration.
+		return pm.restartFallbackToStart()
 	}
 
 	// Clear the "was healthy before idle" flag on restart
@@ -400,6 +408,54 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 		go pm.idleMonitorLoop(ctx, pm.idleCheckInterval)
 		slog.Debug("idle_monitor.restarted_after_restart")
 	}
+	pm.mu.Unlock()
+
+	return nil
+}
+
+// restartFallbackToStart handles the case where Restart() is called but no process
+// has ever been started. This occurs when deferred setup is configured and the process
+// was never triggered (e.g., no HTTP request arrived before the agent called serverRestart).
+//
+// Caller MUST hold lifecycleMu. This method executes deferred setup if pending,
+// retrieves the saved start configuration, and starts the process.
+func (pm *ProcessManager) restartFallbackToStart() error {
+	// Execute deferred setup if configured and not yet run
+	if pm.HasDeferredSetup() {
+		slog.Info("restart.executing_deferred_setup",
+			"reason", "restart called before first HTTP request")
+		if err := pm.ExecuteDeferredSetup(); err != nil {
+			return fmt.Errorf("restart: deferred setup failed: %w", err)
+		}
+	}
+
+	// Get start configuration. After ExecuteDeferredSetup() succeeds, it moves
+	// deferredSetupRequest → savedStartRequest, which GetStartRequest() returns.
+	startReq := pm.GetStartRequest()
+	if startReq == nil {
+		slog.Error("restart.no_start_config",
+			"restart_count", pm.restartCount)
+		return errors.New("no previous process to restart and no start configuration available")
+	}
+
+	slog.Info("restart.fallback_to_start",
+		"command", startReq.Command,
+		"working_dir", startReq.WorkingDir)
+
+	if err := pm.startLocked(*startReq); err != nil {
+		return err
+	}
+
+	// Increment restartCount for monitoring consistency — this path still
+	// represents a user-initiated Restart() call, even though no prior process existed.
+	pm.mu.Lock()
+	pm.restartCount++
+	newInfo := pm.currentProcess.GetInfo()
+	slog.Info("restart.fallback_to_start.completed",
+		"new_pid", newInfo.PID,
+		"command", startReq.Command,
+		"working_dir", startReq.WorkingDir,
+		"restart_count", pm.restartCount)
 	pm.mu.Unlock()
 
 	return nil

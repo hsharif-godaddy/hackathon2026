@@ -177,11 +177,10 @@ func TestProcessManager_RestartProcess(t *testing.T) {
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
-	// Test restart with no previous command
+	// Test restart with no previous command and no saved config
 	err := pm.Restart(ProcessRestartRequest{Graceful: true})
-	if err == nil {
-		t.Error("Expected error when restarting with no previous command")
-	}
+	require.Error(t, err, "expected error when restarting with no previous command and no config")
+	assert.Contains(t, err.Error(), "no start configuration available")
 
 	// Start a process first
 	req := validation.ProcessStartRequest{
@@ -1151,4 +1150,130 @@ exit 0
 	assert.Equal(t, startReq.Command, savedReq.Command, "command should match")
 	assert.Equal(t, startReq.WorkingDir, savedReq.WorkingDir, "working dir should match")
 	assert.Equal(t, startReq.Env, savedReq.Env, "env should match")
+}
+
+func TestProcessManager_Restart_FallbackToStart_WithDeferredSetup(t *testing.T) {
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Create a setup script that succeeds
+	tmpScript := t.TempDir() + "/test-setup.sh"
+	scriptContent := `#!/bin/sh
+echo "Setup executed"
+exit 0
+`
+	require.NoError(t, os.WriteFile(tmpScript, []byte(scriptContent), 0755))
+
+	// Configure deferred setup with a real command
+	startReq := validation.ProcessStartRequest{
+		Command:    "exec sleep 30",
+		WorkingDir: "/tmp",
+	}
+	pm.SetDeferredSetup(tmpScript, 10*time.Second, startReq)
+
+	// Restart should succeed by running deferred setup then starting
+	err := pm.Restart(ProcessRestartRequest{Graceful: true})
+	require.NoError(t, err, "restart should fall back to start with deferred setup")
+
+	// Verify process is running
+	status := pm.GetStatus()
+	assert.Equal(t, ProcessStateRunning, status.State, "process should be running after restart fallback")
+
+	// Verify deferred setup was executed
+	assert.True(t, pm.deferredSetupExecuted.Load(), "deferred setup should have been executed")
+
+	// Clean up
+	_ = pm.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
+}
+
+func TestProcessManager_Restart_FallbackToStart_WithSavedRequest(t *testing.T) {
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Manually set savedStartRequest (simulates deferred setup already executed)
+	pm.mu.Lock()
+	pm.savedStartRequest = &validation.ProcessStartRequest{
+		Command:    "exec sleep 30",
+		WorkingDir: "/tmp",
+	}
+	pm.mu.Unlock()
+
+	// Restart should use the saved start request
+	err := pm.Restart(ProcessRestartRequest{Graceful: true})
+	require.NoError(t, err, "restart should fall back to start with saved request")
+
+	status := pm.GetStatus()
+	assert.Equal(t, ProcessStateRunning, status.State, "process should be running")
+
+	// Clean up
+	_ = pm.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
+}
+
+func TestProcessManager_Restart_FallbackToStart_DeferredSetupFails(t *testing.T) {
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Create a setup script that fails
+	tmpScript := t.TempDir() + "/test-setup.sh"
+	scriptContent := `#!/bin/sh
+echo "Setup failed" >&2
+exit 1
+`
+	require.NoError(t, os.WriteFile(tmpScript, []byte(scriptContent), 0755))
+
+	startReq := validation.ProcessStartRequest{
+		Command:    "exec sleep 30",
+		WorkingDir: "/tmp",
+	}
+	pm.SetDeferredSetup(tmpScript, 10*time.Second, startReq)
+
+	// Restart should fail because deferred setup fails
+	err := pm.Restart(ProcessRestartRequest{Graceful: true})
+	require.Error(t, err, "restart should fail when deferred setup fails")
+	assert.Contains(t, err.Error(), "deferred setup failed")
+
+	// Process should NOT be running
+	status := pm.GetStatus()
+	assert.Equal(t, ProcessStateStopped, status.State, "process should remain stopped")
+}
+
+func TestProcessManager_Restart_AfterStop_UsesNormalPath(t *testing.T) {
+	// Guards the invariant that currentProcess is never nil after Stop(),
+	// so Restart() uses the normal restart path (not the fallback).
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Start a process
+	req := validation.ProcessStartRequest{
+		Command:    "exec sleep 30",
+		WorkingDir: "/tmp",
+	}
+	require.NoError(t, pm.Start(req), "start should succeed")
+
+	status := pm.GetStatus()
+	require.Equal(t, ProcessStateRunning, status.State)
+
+	// Stop the process
+	err := pm.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 5})
+	require.NoError(t, err, "stop should succeed")
+
+	// Verify invariant: currentProcess is NOT nil after stop
+	pm.mu.RLock()
+	assert.NotNil(t, pm.currentProcess, "currentProcess should not be nil after Stop()")
+	pm.mu.RUnlock()
+
+	// Restart should use the normal path (restart from currentProcess config),
+	// not the fallback-to-start path. The process should come back up.
+	err = pm.Restart(ProcessRestartRequest{Graceful: true})
+	require.NoError(t, err, "restart after stop should succeed via normal path")
+
+	status = pm.GetStatus()
+	assert.Equal(t, ProcessStateRunning, status.State, "process should be running after restart")
+
+	// Clean up
+	_ = pm.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
 }
