@@ -288,6 +288,7 @@ describe('LegacyControlPlaneAdapter', () => {
 
   describe('deleteSite', () => {
     it('should delete site and destroy deployment', async () => {
+      mockSiteService.getSiteById.mockResolvedValue(MOCK_SITE_DATA);
       mockDeploymentAdapter.destroy.mockResolvedValue({ success: true });
       mockSiteService.deleteSite.mockResolvedValue(true);
 
@@ -303,6 +304,7 @@ describe('LegacyControlPlaneAdapter', () => {
     });
 
     it('should handle deployment destroy failure gracefully', async () => {
+      mockSiteService.getSiteById.mockResolvedValue(MOCK_SITE_DATA);
       mockDeploymentAdapter.destroy.mockResolvedValue({ success: false, error: 'Destroy failed' });
       mockSiteService.deleteSite.mockResolvedValue(true);
 
@@ -313,6 +315,7 @@ describe('LegacyControlPlaneAdapter', () => {
     });
 
     it('should continue with deletion even if destroy throws error', async () => {
+      mockSiteService.getSiteById.mockResolvedValue(MOCK_SITE_DATA);
       mockDeploymentAdapter.destroy.mockRejectedValue(new Error('Destroy failed'));
       mockSiteService.deleteSite.mockResolvedValue(true);
 
@@ -324,6 +327,7 @@ describe('LegacyControlPlaneAdapter', () => {
     });
 
     it('should handle database deletion failure', async () => {
+      mockSiteService.getSiteById.mockResolvedValue(MOCK_SITE_DATA);
       mockDeploymentAdapter.destroy.mockResolvedValue({ success: true });
       mockSiteService.deleteSite.mockRejectedValue(new Error('Delete failed'));
 
@@ -331,6 +335,20 @@ describe('LegacyControlPlaneAdapter', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Delete failed');
+    });
+
+    it('should resolve jobId to real appId for destroy and deleteSite', async () => {
+      const jobId = `dev-job-${MOCK_SITE_ID}`;
+      mockSiteService.getSiteById.mockResolvedValue(MOCK_SITE_DATA);
+      mockDeploymentAdapter.destroy.mockResolvedValue({ success: true });
+      mockSiteService.deleteSite.mockResolvedValue(true);
+
+      const result = await adapter.deleteSite(jobId, MOCK_JWT);
+
+      expect(result.success).toBe(true);
+      // Should use resolved site.id, NOT the raw jobId
+      expect(mockDeploymentAdapter.destroy).toHaveBeenCalledWith(MOCK_SITE_ID);
+      expect(mockSiteService.deleteSite).toHaveBeenCalledWith(MOCK_SITE_ID);
     });
   });
 
@@ -353,6 +371,27 @@ describe('LegacyControlPlaneAdapter', () => {
 
       // Should update status to creating
       expect(mockSiteService.updateSite).toHaveBeenCalledWith(MOCK_SITE_ID, { status: 'creating' });
+    });
+
+    it('should resolve jobId to real appId for updateSite and deployInBackground', async () => {
+      const jobId = `dev-job-${MOCK_SITE_ID}`;
+      mockSiteService.getSiteById.mockResolvedValue({
+        ...MOCK_SITE_DATA,
+        status: 'init'
+      });
+      mockSiteService.updateSite.mockResolvedValueOnce({
+        ...MOCK_SITE_DATA,
+        status: 'creating'
+      });
+      mockDeploymentAdapter.deploy.mockResolvedValue(MOCK_DEPLOYMENT_RESULT);
+
+      const result = await adapter.deploySite(jobId, MOCK_JWT);
+
+      expect(result.success).toBe(true);
+      // Should use resolved site.id, NOT the raw jobId
+      expect(mockSiteService.updateSite).toHaveBeenCalledWith(MOCK_SITE_ID, { status: 'creating' });
+      // getSiteById should have been called with the stripped appId (from jobIdLookup)
+      expect(mockSiteService.getSiteById).toHaveBeenCalledWith(MOCK_SITE_ID);
     });
 
     it('should handle site not found', async () => {
@@ -389,6 +428,7 @@ describe('LegacyControlPlaneAdapter', () => {
         status: 'running'
       };
 
+      mockSiteService.getSiteById.mockResolvedValue(MOCK_SITE_DATA);
       mockSiteService.updateSite.mockResolvedValue(updatedSite);
 
       const result = await adapter.updateSite(MOCK_SITE_ID, updates, MOCK_JWT);
@@ -415,10 +455,28 @@ describe('LegacyControlPlaneAdapter', () => {
 
     it('should handle update failure', async () => {
       mockSiteService.updateSite.mockRejectedValue(new Error('Update failed'));
+      mockSiteService.getSiteById.mockResolvedValue(MOCK_SITE_DATA);
 
       // updateSite throws error on failure
       await expect(adapter.updateSite(MOCK_SITE_ID, { name: 'New Name' }, MOCK_JWT))
         .rejects.toThrow('Update failed');
+    });
+
+    it('should resolve jobId to real appId for siteService.updateSite', async () => {
+      const jobId = `dev-job-${MOCK_SITE_ID}`;
+      const updates: Partial<SiteInfo> = { name: 'Updated Name' };
+
+      mockSiteService.getSiteById.mockResolvedValue(MOCK_SITE_DATA);
+      mockSiteService.updateSite.mockResolvedValue({
+        ...MOCK_SITE_DATA,
+        title: 'Updated Name'
+      });
+
+      const result = await adapter.updateSite(jobId, updates, MOCK_JWT);
+
+      expect(result).toBeDefined();
+      // Should use resolved site.id, NOT the raw jobId
+      expect(mockSiteService.updateSite).toHaveBeenCalledWith(MOCK_SITE_ID, updates);
     });
   });
 
@@ -429,6 +487,7 @@ describe('LegacyControlPlaneAdapter', () => {
         updated_at: new Date('2025-01-02T00:00:00Z')
       };
 
+      mockSiteService.getSiteById.mockResolvedValue(MOCK_SITE_DATA);
       mockSiteService.updateSite.mockResolvedValue(updatedSite);
 
       const result = await adapter.updateSiteVariables(MOCK_SITE_ID, { lastInteractionAt: '2025-01-02' }, MOCK_JWT);
@@ -441,11 +500,27 @@ describe('LegacyControlPlaneAdapter', () => {
     });
 
     it('should return null when updateSite returns null', async () => {
+      mockSiteService.getSiteById.mockResolvedValue(MOCK_SITE_DATA);
       mockSiteService.updateSite.mockResolvedValue(null);
 
       const result = await adapter.updateSiteVariables(MOCK_SITE_ID, { lastInteractionAt: '2025-01-02' }, MOCK_JWT);
 
       expect(result).toBeNull();
+    });
+
+    it('should resolve jobId to real appId for siteService.updateSite', async () => {
+      const jobId = `dev-job-${MOCK_SITE_ID}`;
+      mockSiteService.getSiteById.mockResolvedValue(MOCK_SITE_DATA);
+      mockSiteService.updateSite.mockResolvedValue({
+        ...MOCK_SITE_DATA,
+        updated_at: new Date('2025-01-02T00:00:00Z')
+      });
+
+      const result = await adapter.updateSiteVariables(jobId, { lastInteractionAt: '2025-01-02' }, MOCK_JWT);
+
+      expect(result).toBeDefined();
+      // Should use resolved site.id, NOT the raw jobId
+      expect(mockSiteService.updateSite).toHaveBeenCalledWith(MOCK_SITE_ID, {});
     });
   });
 

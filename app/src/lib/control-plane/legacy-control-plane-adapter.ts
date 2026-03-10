@@ -147,13 +147,17 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
   /**
    * Delete site using legacy deployment cleanup
    */
-  async deleteSite(siteId: string, _jwt: string, _systemId?: string, _subscriptionId?: string): Promise<{ success: boolean; error?: string }> {
+  async deleteSite(siteId: string, jwt: string, _systemId?: string, _subscriptionId?: string): Promise<{ success: boolean; error?: string }> {
     try {
+      // Resolve siteId (may be a jobId like "dev-job-xxx") to real appId
+      const site = await this.getSite(siteId, jwt);
+      const resolvedId = site?.id ?? siteId;
+
       // Destroy infrastructure
-      await deploymentAdapter.destroy(siteId);
+      await deploymentAdapter.destroy(resolvedId);
 
       // Delete database record
-      await this.siteService.deleteSite(siteId);
+      await this.siteService.deleteSite(resolvedId);
 
       return { success: true };
     } catch (error) {
@@ -209,11 +213,11 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
         throw new Error(`Site status '${site.status}' does not allow deployment`);
       }
 
-      // Update status to creating
-      await this.siteService.updateSite(siteId, { status: 'creating' });
+      // Update status to creating (use site.id, not siteId — siteId may be a jobId like "dev-job-xxx")
+      await this.siteService.updateSite(site.id, { status: 'creating' });
 
       // Start background deployment (fire and forget)
-      this.deployInBackground(siteId, site.account_id, site.initial_prompt || '');
+      this.deployInBackground(site.id, site.account_id, site.initial_prompt || '');
 
       const updatedSite = {
         ...site,
@@ -314,10 +318,14 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
    *
    * Legacy Mode: Updates site metadata in database.
    */
-  async updateSite(siteId: string, updates: Partial<SiteInfo>, _jwt: string): Promise<SiteInfo | null> {
+  async updateSite(siteId: string, updates: Partial<SiteInfo>, jwt: string): Promise<SiteInfo | null> {
     try {
+      // Resolve siteId (may be a jobId like "dev-job-xxx") to real appId
+      const site = await this.getSite(siteId, jwt);
+      const resolvedId = site?.id ?? siteId;
+
       // Update site in database
-      const updatedSite = await this.siteService.updateSite(siteId, updates);
+      const updatedSite = await this.siteService.updateSite(resolvedId, updates);
 
       if (!updatedSite) {
         return null;
