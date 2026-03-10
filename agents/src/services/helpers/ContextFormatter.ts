@@ -31,7 +31,7 @@ export interface FormattedContext {
  * @param filename - The original filename
  * @returns Promise resolving to file content as string or null if read fails
  */
-async function readUploadedFileContent(imageUrl: string, filename: string): Promise<string | null> {
+export async function readUploadedFileContent(imageUrl: string, filename: string): Promise<string | null> {
   try {
     // Extract appId from imageUrl: .../files/uploads/{appId}/{filename}
     const urlMatch = imageUrl.match(/\/files\/uploads\/([^/]+)\/[^/]+$/)
