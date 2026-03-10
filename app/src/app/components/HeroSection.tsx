@@ -396,9 +396,9 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
               </div>
 
               {/* Action Buttons Container */}
-              <div className={clsx('absolute flex items-center right-1.5 transition-all duration-300', {
+              <div className={clsx('absolute flex items-center right-1.5 gap-0.5 transition-all duration-300', {
                 'bottom-1/2 translate-y-1/2 -space-x-1': !isExpanded,
-                'bottom-1.5 gap-1': isExpanded
+                'bottom-1.5': isExpanded
               })}>
                 {isSpeechSupported && (
                   <Button
@@ -409,7 +409,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                     design={isListening ? 'primary' : 'control'}
                     className={clsx('cursor-pointer !rounded-full aspect-square !border-none', {
                       '!bg-intents-ux-feedbackHighContrastCritical-feedbackColor': isListening,
-                      '!bg-transparent': !isListening,
+                      '!bg-transparent hover:!bg-intents-ux-boxLowContrast-backgroundColor': !isListening,
                     })}
                     icon={<MicIcon />}
                     aria-label={microphoneAriaLabel}
