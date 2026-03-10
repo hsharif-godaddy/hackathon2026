@@ -21,6 +21,24 @@ const (
 	invalidRequestErr = "invalid_request"
 )
 
+// writeTestScript writes an executable script file using explicit Sync+Close
+// to avoid "text file busy" race on Linux where the kernel may still hold a
+// write reference after os.WriteFile returns.
+func writeTestScript(t *testing.T, path, content string) {
+	t.Helper()
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create test script %s: %v", path, err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(content); err != nil {
+		t.Fatalf("Failed to write test script %s: %v", path, err)
+	}
+	if err := f.Sync(); err != nil {
+		t.Fatalf("Failed to sync test script %s: %v", path, err)
+	}
+}
+
 // Test helper function to marshal JSON with error handling
 func mustMarshalJSON(t *testing.T, v any) []byte {
 	t.Helper()
@@ -1206,13 +1224,9 @@ func TestHandleSetupStatus_DeferredExecuted(t *testing.T) {
 
 	server := NewServer()
 
-	// Create a test script that succeeds
 	tmpDir := t.TempDir()
 	scriptPath := tmpDir + "/test-setup.sh"
-	scriptContent := "#!/bin/sh\necho 'Setup complete'\nexit 0\n"
-	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
-		t.Fatalf("Failed to write test script: %v", err)
-	}
+	writeTestScript(t, scriptPath, "#!/bin/sh\necho 'Setup complete'\nexit 0\n")
 
 	// Configure and execute deferred setup
 	server.procMgr.SetDeferredSetup(scriptPath, 10*time.Second, validation.ProcessStartRequest{})
@@ -1256,12 +1270,9 @@ func TestHandleProcessStart_DeferredSetupFailure(t *testing.T) {
 
 	server := NewServer()
 
-	// Configure deferred setup with a script that fails
 	tmpDir := t.TempDir()
 	scriptPath := tmpDir + "/fail-setup.sh"
-	if err := os.WriteFile(scriptPath, []byte("#!/bin/sh\nexit 1\n"), 0755); err != nil {
-		t.Fatalf("Failed to write test script: %v", err)
-	}
+	writeTestScript(t, scriptPath, "#!/bin/sh\nexit 1\n")
 
 	server.procMgr.SetDeferredSetup(scriptPath, 10*time.Second, validation.ProcessStartRequest{})
 

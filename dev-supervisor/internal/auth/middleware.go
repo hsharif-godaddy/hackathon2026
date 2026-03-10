@@ -5,10 +5,17 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/allocconfig"
 	"github.com/airo-ai-builder/dev-supervisor/internal/middleware"
 )
+
+// TokenValidator validates JWT tokens and returns a result.
+// Extracted as an interface so tests can inject a stub without needing JWKS.
+type TokenValidator interface {
+	ValidateToken(tokenString string) ValidationResult
+}
 
 // JWTMiddlewareConfig defines configuration for JWT middleware
 // Authentication failure handling uses hybrid mode:
@@ -16,7 +23,7 @@ import (
 // - API/JSON requests: Return 401 Unauthorized with JSON error
 type JWTMiddlewareConfig struct {
 	Enabled        bool // Enable JWT validation
-	Validator      *JWTValidator
+	Validator      TokenValidator
 	ShareValidator *ShareValidator // Share token validator (optional, for public preview links)
 	SiteID         string          // Site ID for smart redirects (from SITE_ID env var, e.g., "41gb5nrnyl" or UUID)
 	ExcludedPaths  []string        // Paths to exclude from JWT validation (e.g., /health, /api/health)
@@ -123,14 +130,18 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 		if authHeader != "" {
 			// Only set cookie if token came from Authorization header (not from cookie itself to avoid loops)
 			// SameSite=None is required for cross-site iframe loads (builder on .dev-godaddy.com, preview on localhost)
+			// Partitioned (CHIPS) ensures the cookie works even when third-party cookies are blocked
+			// (e.g. incognito mode) by scoping it to the (top-level site, embedded site) pair
+			maxAge := CookieMaxAgeFromClaims(result.Claims)
 			http.SetCookie(w, &http.Cookie{
-				Name:     "auth_idp",
-				Value:    token,
-				Path:     "/",
-				HttpOnly: true,
-				Secure:   true,
-				SameSite: http.SameSiteNoneMode, // None required for cross-site iframe navigation
-				MaxAge:   43200,                 // 12 hours (typical JWT expiry)
+				Name:        "auth_idp",
+				Value:       token,
+				Path:        "/",
+				HttpOnly:    true,
+				Secure:      true,
+				SameSite:    http.SameSiteNoneMode, // None required for cross-site iframe navigation
+				MaxAge:      maxAge,
+				Partitioned: true, // CHIPS: works with third-party cookies disabled
 			})
 		}
 
@@ -378,6 +389,24 @@ func (m *JWTMiddleware) isAPIOrJSONRequest(r *http.Request) bool {
 	// Check Content-Type for JSON
 	contentType := r.Header.Get("Content-Type")
 	return strings.Contains(contentType, "application/json")
+}
+
+// CookieMaxAgeFromClaims computes the cookie MaxAge from the JWT's exp claim.
+// Falls back to 12 hours if the token has no expiration.
+func CookieMaxAgeFromClaims(claims *JWTClaims) int {
+	const fallbackMaxAge = 43200 // 12 hours
+
+	if claims == nil || claims.ExpiresAt == nil {
+		return fallbackMaxAge
+	}
+
+	remaining := int(time.Until(claims.ExpiresAt.Time).Seconds())
+	if remaining <= 0 {
+		// Token already expired — unreachable after successful validation, but
+		// return a minimal lifetime rather than implying a fresh 12-hour window
+		return 1
+	}
+	return remaining
 }
 
 // CORS utility functions removed - CORS is now handled by rs/cors middleware
