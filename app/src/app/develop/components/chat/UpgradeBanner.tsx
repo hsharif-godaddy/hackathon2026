@@ -9,6 +9,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import ChatBanner from '@/lib/ChatBanner'
 import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
 
 const STORAGE_KEY = 'airoplus_upgrade_banner_dismissed'
 
@@ -44,16 +45,25 @@ export default function UpgradeBanner({ appId }: UpgradeBannerProps) {
     setMounted(true)
   }, [])
 
+  const shouldShowBanner = mounted && !isFeatureLoading && !isPaywallLoading && featureEnabled && !isDismissed && showPaywall
+  useEffect(() => {
+    if (shouldShowBanner) {
+      logImpressionEvent('chat.upgradeBanner.view')()
+    }
+  }, [shouldShowBanner])
+
   // Wait for loading, then show only if feature enabled and user doesn't have Airo Plus
-  if (!mounted || isFeatureLoading || isPaywallLoading || !featureEnabled || isDismissed || !showPaywall) return null
+  if (!shouldShowBanner) return null
 
   const handleClose = () => {
+    logClickEvent('chat.upgradeBanner.close')()
     markDismissedToday()
     setIsDismissed(true)
   }
 
   const handleUpgradeClick = (e: React.MouseEvent) => {
     e.preventDefault()
+    logClickEvent('chat.upgradeBanner.upgrade')()
     openUpgradeModal('airoplus_upgrade_banner.upgrade', PAYWALL_ITC.UPGRADE)
   }
 

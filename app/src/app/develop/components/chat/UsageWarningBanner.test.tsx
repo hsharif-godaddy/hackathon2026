@@ -21,9 +21,19 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(() => ({ data: false })),
 }));
 
+const mockLogImpressionEvent = vi.fn(() => vi.fn());
+const mockLogClickEvent = vi.fn(() => vi.fn());
+
+vi.mock('@/utils/instrumentation', () => ({
+  logImpressionEvent: (eid: string) => mockLogImpressionEvent(eid),
+  logClickEvent: (eid: string) => mockLogClickEvent(eid),
+}));
+
 describe('UsageWarningBanner', function usageWarningBannerTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
+    mockLogImpressionEvent.mockClear();
+    mockLogClickEvent.mockClear();
   });
 
   describe('rendering', function renderingTests() {
@@ -146,6 +156,49 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
       // Without translations, FormattedMessage renders the message ID string
       // This test verifies the component renders when warning is active
       // The link's href is validated by integration tests with translations
+    });
+  });
+
+  describe('analytics', function analyticsTests() {
+    it('should log impression event when banner is shown', async function logImpressionOnShow() {
+      const { useUsage } = await import('@/hooks/useUsage');
+      vi.mocked(useUsage).mockReturnValue({
+        isWarningBannerActive: true,
+        percentage: 92,
+        warningLevel: WarningLevel.WARNING,
+        isLoading: false,
+        isGrantsEnabled: false,
+      });
+
+      const { container } = renderWithProviders(<UsageWarningBanner appId="test-app" />);
+
+      await waitFor(function waitForBanner() {
+        expect(container.querySelector('.bg-intents-ux-feedbackWarning-feedbackColor')).toBeInTheDocument();
+      });
+
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith('chat.usageWarningBanner.view');
+    });
+
+    it('should log click event when close button is clicked', async function logClickOnClose() {
+      const { useUsage } = await import('@/hooks/useUsage');
+      vi.mocked(useUsage).mockReturnValue({
+        isWarningBannerActive: true,
+        percentage: 92,
+        warningLevel: WarningLevel.WARNING,
+        isLoading: false,
+        isGrantsEnabled: false,
+      });
+
+      const { user, container } = renderWithProviders(<UsageWarningBanner appId="test-app" />);
+
+      await waitFor(function waitForBanner() {
+        expect(container.querySelector('.bg-intents-ux-feedbackWarning-feedbackColor')).toBeInTheDocument();
+      });
+
+      const closeButton = screen.getByRole('button');
+      await user.click(closeButton);
+
+      expect(mockLogClickEvent).toHaveBeenCalledWith('chat.usageWarningBanner.close');
     });
   });
 });

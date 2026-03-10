@@ -6,6 +6,7 @@ import { useTranslations } from '@/hooks/useTranslations';
 import ChatBanner from '@/lib/ChatBanner';
 import { logger } from '@/lib/request-context';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
+import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 
 interface SessionExpirationDetail {
   expiresAt: number;
@@ -47,6 +48,7 @@ export default function SessionExpirationBanner() {
           message: 'Session expiration warning displayed',
           minutesRemaining: mins
         });
+        logImpressionEvent('chat.sessionExpirationBanner.view')();
         hasLoggedShownRef.current = true;
       }
 
@@ -87,6 +89,7 @@ export default function SessionExpirationBanner() {
       message: 'User clicked extend session',
       minutesRemaining
     });
+    logClickEvent('chat.sessionExpirationBanner.extend')();
 
     // Open SSO login modal to refresh token
     openSsoLogin();
@@ -98,6 +101,7 @@ export default function SessionExpirationBanner() {
       message: 'User dismissed session expiration warning',
       minutesRemaining
     });
+    logClickEvent('chat.sessionExpirationBanner.close')();
 
     setShowBanner(false);
     // Banner will reappear on next check (30s) if still in warning window

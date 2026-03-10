@@ -149,6 +149,8 @@ vi.mock('@/lib/request-context', () => ({
 
 vi.mock('@/utils/instrumentation', () => ({
   logAiroHQEvent: vi.fn(() => vi.fn()),
+  logImpressionEvent: vi.fn(() => vi.fn()),
+  logClickEvent: vi.fn(() => vi.fn()),
 }));
 
 vi.mock('@/utils/postMessage', () => ({

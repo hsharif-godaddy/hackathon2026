@@ -49,10 +49,20 @@ vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
 }));
 
+const mockLogImpressionEvent = vi.fn(() => vi.fn());
+const mockLogClickEvent = vi.fn(() => vi.fn());
+
+vi.mock('@/utils/instrumentation', () => ({
+  logImpressionEvent: (eid: string) => mockLogImpressionEvent(eid),
+  logClickEvent: (eid: string) => mockLogClickEvent(eid),
+}));
+
 describe('UpgradeBanner', function upgradeBannerTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
     localStorage.clear();
+    mockLogImpressionEvent.mockClear();
+    mockLogClickEvent.mockClear();
   });
 
   describe('rendering', function renderingTests() {
@@ -161,6 +171,61 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       await user.click(screen.getByRole('link'));
 
       expect(mockOpenUpgradeModal).toHaveBeenCalledWith('airoplus_upgrade_banner.upgrade', PAYWALL_ITC.UPGRADE);
+    });
+  });
+
+  describe('analytics', function analyticsTests() {
+    it('should log impression event when banner is shown', async function logImpressionOnShow() {
+      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
+      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+
+      const { container } = renderWithProviders(<UpgradeBanner appId="test-app" />);
+
+      await waitFor(function waitForBanner() {
+        expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).toBeInTheDocument();
+      });
+
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith('chat.upgradeBanner.view');
+    });
+
+    it('should log click event when close button is clicked', async function logClickOnClose() {
+      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
+      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+
+      const { user, container } = renderWithProviders(<UpgradeBanner appId="test-app" />);
+
+      await waitFor(function waitForBanner() {
+        expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).toBeInTheDocument();
+      });
+
+      const closeButton = screen.getByRole('button');
+      await user.click(closeButton);
+
+      expect(mockLogClickEvent).toHaveBeenCalledWith('chat.upgradeBanner.close');
+    });
+
+    it('should log click event when upgrade link is clicked', async function logClickOnUpgrade() {
+      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
+      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+
+      const { user } = renderWithMessages(<UpgradeBanner appId="test-app" />);
+
+      await waitFor(function waitForLink() {
+        expect(screen.getByRole('link')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('link'));
+
+      expect(mockLogClickEvent).toHaveBeenCalledWith('chat.upgradeBanner.upgrade');
     });
   });
 });

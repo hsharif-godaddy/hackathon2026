@@ -1,13 +1,14 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
 
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useUsage } from '@/hooks/useUsage'
 import ChatBanner from '@/lib/ChatBanner'
+import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
 
 interface UsageWarningBannerProps {
   appId: string | null
@@ -19,9 +20,17 @@ export default function UsageWarningBanner({ appId }: UsageWarningBannerProps) {
   const { data: purchaseEnabled } = useSwitchboard('appbuilder-usage-purchase')
   const { isWarningBannerActive } = useUsage({ appId, enabled: !!appId })
 
-  if (isDismissed || !isWarningBannerActive) return null
+  const shouldShowBanner = !isDismissed && isWarningBannerActive
+  useEffect(() => {
+    if (shouldShowBanner) {
+      logImpressionEvent('chat.usageWarningBanner.view')()
+    }
+  }, [shouldShowBanner])
+
+  if (!shouldShowBanner) return null
 
   const handleClose = () => {
+    logClickEvent('chat.usageWarningBanner.close')()
     setIsDismissed(true)
   }
 
@@ -31,8 +40,12 @@ export default function UsageWarningBanner({ appId }: UsageWarningBannerProps) {
 
   const linkText = rawLinkText.charAt(0).toUpperCase() + rawLinkText.slice(1)
 
+  const handleLinkClick = () => {
+    logClickEvent('chat.usageWarningBanner.link')()
+  }
+
   const link = (
-    <Link href="/manage-plan" className="underline !cursor-pointer !normal-case">
+    <Link href="/manage-plan" className="underline !cursor-pointer !normal-case" onClick={handleLinkClick}>
       {linkText}
     </Link>
   )
