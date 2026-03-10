@@ -75,8 +75,8 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 
 		// Priority 2: Fall back to JWT validation
 		// Extract token from Authorization header or cookie
-		authHeader := r.Header.Get("Authorization")
-		token := ExtractTokenFromHeader(authHeader)
+		tokenFromHeader := ExtractTokenFromHeader(r.Header.Get("Authorization"))
+		token := tokenFromHeader
 
 		// Fallback to cookie if no Authorization header (for iframe navigation)
 		// GoDaddy SSO uses "auth_idp" cookie name
@@ -127,12 +127,27 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 		// Set cookie on localhost domain for iframe navigation
 		// The GoDaddy SSO auth_idp cookie is on .dev-godaddy.com and won't be sent to localhost
 		// So we need to set a cookie on the preview app's domain when valid auth is received
-		if authHeader != "" {
+		if tokenFromHeader != "" {
 			// Only set cookie if token came from Authorization header (not from cookie itself to avoid loops)
 			// SameSite=None is required for cross-site iframe loads (builder on .dev-godaddy.com, preview on localhost)
 			// Partitioned (CHIPS) ensures the cookie works even when third-party cookies are blocked
 			// (e.g. incognito mode) by scoping it to the (top-level site, embedded site) pair
 			maxAge := CookieMaxAgeFromClaims(result.Claims)
+
+			// Delete the old unpartitioned cookie to prevent conflicts.
+			// Chrome treats Partitioned and non-Partitioned cookies with the same name as
+			// separate entries. If both exist, r.Cookie() returns the older unpartitioned one
+			// first (per RFC 6265 ordering), which may hold a stale token and fail validation.
+			http.SetCookie(w, &http.Cookie{
+				Name:     "auth_idp",
+				Value:    "",
+				Path:     "/",
+				MaxAge:   -1, // Delete
+				HttpOnly: true,
+				Secure:   true,
+				SameSite: http.SameSiteNoneMode,
+			})
+
 			http.SetCookie(w, &http.Cookie{
 				Name:        "auth_idp",
 				Value:       token,

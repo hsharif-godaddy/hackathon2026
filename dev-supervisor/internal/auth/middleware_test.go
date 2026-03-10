@@ -44,11 +44,23 @@ func newTestMiddleware(t *testing.T, claims *auth.JWTClaims) http.Handler {
 	return mw.Wrap(inner)
 }
 
-// findAuthCookie returns the auth_idp cookie from the recorder's Set-Cookie headers.
+// findAuthCookie returns the active auth_idp cookie from the recorder's Set-Cookie headers.
+// Skips deletion entries (MaxAge < 0) so it returns the real partitioned cookie.
 func findAuthCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
 	t.Helper()
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == "auth_idp" {
+		if c.Name == "auth_idp" && c.MaxAge >= 0 {
+			return c
+		}
+	}
+	return nil
+}
+
+// findAuthDeletionCookie returns the auth_idp deletion cookie (MaxAge < 0).
+func findAuthDeletionCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
+	t.Helper()
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "auth_idp" && c.MaxAge < 0 {
 			return c
 		}
 	}
@@ -90,6 +102,15 @@ func TestAuthCookie_SetOnAuthorizationHeader(t *testing.T) {
 	if !c.Partitioned {
 		t.Error("expected Partitioned to be true")
 	}
+
+	// Verify that a deletion cookie is also sent to clear old unpartitioned cookies
+	del := findAuthDeletionCookie(t, rec)
+	if del == nil {
+		t.Fatal("auth_idp deletion cookie not set (needed to clear old unpartitioned cookie)")
+	}
+	if del.Partitioned {
+		t.Error("deletion cookie must NOT be Partitioned (it targets the old unpartitioned cookie)")
+	}
 }
 
 func TestAuthCookie_NotSetOnCookieAuth(t *testing.T) {
@@ -113,6 +134,11 @@ func TestAuthCookie_NotSetOnCookieAuth(t *testing.T) {
 	c := findAuthCookie(t, rec)
 	if c != nil {
 		t.Error("auth_idp cookie should NOT be set when auth comes from cookie")
+	}
+
+	del := findAuthDeletionCookie(t, rec)
+	if del != nil {
+		t.Error("auth_idp deletion cookie should NOT be set when auth comes from cookie")
 	}
 }
 
