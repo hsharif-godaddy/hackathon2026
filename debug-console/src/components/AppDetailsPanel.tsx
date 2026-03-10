@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { MgmtAppDetails, MgmtImageStatus, MgmtSubscription, MgmtSubscriptionGrants, MgmtVariantWithLifecycle } from '@/lib/mgmt-control-plane-adapter';
+import type { MgmtAppDetails, MgmtDomainError, MgmtImageStatus, MgmtSubscription, MgmtSubscriptionGrants, MgmtVariantWithLifecycle } from '@/lib/mgmt-control-plane-adapter';
 
 interface Props {
     appId: string;
@@ -327,6 +327,9 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
     const [subscriptionLoading, setSubscriptionLoading] = useState(false);
     const [grants, setGrants] = useState<MgmtSubscriptionGrants | null>(null);
     const [grantsLoading, setGrantsLoading] = useState(false);
+    const [domainErrors, setDomainErrors] = useState<Record<string, MgmtDomainError | null>>({});
+    const [domainErrorLoading, setDomainErrorLoading] = useState<Record<string, boolean>>({});
+    const [domainErrorMsg, setDomainErrorMsg] = useState<Record<string, string>>({});
     const [reloadPhase, setReloadPhase] = useState<'idle' | 'calling' | 'polling'>('idle');
     const [reloadStatusText, setReloadStatusText] = useState('');
     const [reloadError, setReloadError] = useState<string | null>(null);
@@ -411,6 +414,28 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [app?.subscriptionId, !!app]);
 
+    const fetchDomainError = useCallback(async function fetchDomainError(fqdn: string) {
+        if (!app?.subscriptionId || !app?.systemId) return;
+        setDomainErrorLoading(prev => ({ ...prev, [fqdn]: true }));
+        setDomainErrorMsg(prev => ({ ...prev, [fqdn]: '' }));
+        try {
+            const params = new URLSearchParams({ fqdn, subscriptionId: app.subscriptionId, systemId: app.systemId });
+            const res = await fetch(`/api/mgmt/apps/${encodeURIComponent(appId)}/domain-error?${params}`);
+            const data = await res.json();
+            if (!res.ok) {
+                setDomainErrors(prev => ({ ...prev, [fqdn]: null }));
+                setDomainErrorMsg(prev => ({ ...prev, [fqdn]: data.error ?? `HTTP ${res.status}` }));
+            } else {
+                setDomainErrors(prev => ({ ...prev, [fqdn]: data as MgmtDomainError }));
+            }
+        } catch (err) {
+            setDomainErrors(prev => ({ ...prev, [fqdn]: null }));
+            setDomainErrorMsg(prev => ({ ...prev, [fqdn]: err instanceof Error ? err.message : 'Request failed' }));
+        } finally {
+            setDomainErrorLoading(prev => ({ ...prev, [fqdn]: false }));
+        }
+    }, [app?.subscriptionId, app?.systemId, appId]);
+
     async function handleReload() {
         if (!app) return;
         stopPolling();
@@ -478,6 +503,9 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
         setLoading(true);
         setImageStatusLoading(true);
         setError(null);
+        setDomainErrors({});
+        setDomainErrorLoading({});
+        setDomainErrorMsg({});
 
         fetch(`/api/mgmt/apps/${encodeURIComponent(appId)}`)
             .then(async res => {
@@ -659,41 +687,139 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
                     ))}
 
                     {/* Custom domains */}
-                    {app.domains.map(domain => (
-                        <div key={domain.fqdn} style={{
-                            padding: '0.75rem 1rem',
-                            backgroundColor: '#f9fafb',
-                            borderRadius: '6px',
-                            border: '1px solid #e5e7eb',
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            gap: '1rem'
-                        }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', flex: 1, minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                    <a href={`https://${domain.fqdn}`} target="_blank" rel="noopener noreferrer"
-                                        style={{ fontSize: '0.875rem', fontWeight: 700, color: '#3b82f6', textDecoration: 'none', wordBreak: 'break-all' }}>
-                                        {domain.fqdn}
-                                    </a>
-                                    {domain.isPrimary && (
-                                        <StatusBadge value="primary" green={['primary']} />
-                                    )}
-                                    <StatusBadge value={domain.status} green={['active']} red={['inactive', 'failed', 'error']} />
-                                    {domain.domainType && (
-                                        <span style={{ fontSize: '0.7rem', color: '#6b7280', fontFamily: 'monospace' }}>
-                                            {domain.domainType}
+                    {app.domains.map(domain => {
+                        const isErrorStatus = ['inactive', 'failed', 'error'].includes(domain.status);
+                        const domainErr = domainErrors[domain.fqdn];
+                        const isLoadingErr = domainErrorLoading[domain.fqdn] ?? false;
+                        const errMsg = domainErrorMsg[domain.fqdn];
+                        return (
+                            <div key={domain.fqdn} style={{
+                                padding: '0.75rem 1rem',
+                                backgroundColor: '#f9fafb',
+                                borderRadius: '6px',
+                                border: '1px solid #e5e7eb',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '0.5rem'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', flex: 1, minWidth: 0 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                            <a href={`https://${domain.fqdn}`} target="_blank" rel="noopener noreferrer"
+                                                style={{ fontSize: '0.875rem', fontWeight: 700, color: '#3b82f6', textDecoration: 'none', wordBreak: 'break-all' }}>
+                                                {domain.fqdn}
+                                            </a>
+                                            {domain.isPrimary && (
+                                                <StatusBadge value="primary" green={['primary']} />
+                                            )}
+                                            <StatusBadge value={domain.status} green={['active']} red={['inactive', 'failed', 'error']} />
+                                            {domain.domainType && (
+                                                <span style={{ fontSize: '0.7rem', color: '#6b7280', fontFamily: 'monospace' }}>
+                                                    {domain.domainType}
+                                                </span>
+                                            )}
+                                            {isErrorStatus && app.subscriptionId && app.systemId && (
+                                                <button
+                                                    onClick={() => fetchDomainError(domain.fqdn)}
+                                                    disabled={isLoadingErr}
+                                                    style={{
+                                                        marginLeft: '0.25rem',
+                                                        padding: '0.125rem 0.5rem',
+                                                        fontSize: '0.7rem',
+                                                        fontWeight: 600,
+                                                        color: isLoadingErr ? '#6b7280' : '#dc2626',
+                                                        backgroundColor: isLoadingErr ? '#f3f4f6' : '#fef2f2',
+                                                        border: '1px solid',
+                                                        borderColor: isLoadingErr ? '#d1d5db' : '#fecaca',
+                                                        borderRadius: '4px',
+                                                        cursor: isLoadingErr ? 'not-allowed' : 'pointer',
+                                                        whiteSpace: 'nowrap'
+                                                    }}
+                                                >
+                                                    {isLoadingErr ? 'Loading…' : 'Error Details'}
+                                                </button>
+                                            )}
+                                        </div>
+                                        <span style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#374151', wordBreak: 'break-all' }}>
+                                            custom domain
                                         </span>
-                                    )}
+                                    </div>
+                                    <div style={{ flexShrink: 0 }}>
+                                        <Timestamp iso={domain.updatedAt} style={{ fontSize: '0.7rem', color: '#9ca3af' }} />
+                                    </div>
                                 </div>
-                                <span style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#374151', wordBreak: 'break-all' }}>
-                                    custom domain
-                                </span>
+
+                                {isErrorStatus && errMsg && (
+                                    <div style={{ padding: '0.5rem 0.75rem', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '4px', fontSize: '0.8rem', color: '#dc2626' }}>
+                                        {errMsg}
+                                    </div>
+                                )}
+
+                                {isErrorStatus && domainErr && (
+                                    <div style={{ padding: '0.75rem', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '4px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#991b1b' }}>
+                                                {domainErr.error.code}
+                                            </span>
+                                            <span style={{ fontSize: '0.75rem', color: '#dc2626' }}>
+                                                {domainErr.error.message}
+                                            </span>
+                                            <button
+                                                onClick={() => setDomainErrors(prev => ({ ...prev, [domain.fqdn]: null }))}
+                                                style={{
+                                                    marginLeft: 'auto',
+                                                    padding: '0.125rem 0.375rem',
+                                                    fontSize: '0.7rem',
+                                                    color: '#991b1b',
+                                                    backgroundColor: 'transparent',
+                                                    border: '1px solid #fecaca',
+                                                    borderRadius: '4px',
+                                                    cursor: 'pointer',
+                                                    lineHeight: 1
+                                                }}
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                                            <div>
+                                                <div style={{ fontSize: '0.65rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Action</div>
+                                                <span style={{ fontSize: '0.75rem', color: '#374151', fontFamily: 'monospace' }}>{domainErr.error.action}</span>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.65rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Can Retry</div>
+                                                <StatusBadge value={domainErr.error.canRetry ? 'yes' : 'no'} green={['yes']} red={['no']} />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.65rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Failed Step</div>
+                                                <span style={{ fontSize: '0.75rem', color: '#374151', fontFamily: 'monospace' }}>{domainErr.failedStep}</span>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.65rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Job ID</div>
+                                                <span style={{ fontSize: '0.75rem', color: '#374151', fontFamily: 'monospace' }}>{domainErr.jobId}</span>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.65rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Completed At</div>
+                                                <Timestamp iso={domainErr.completedAt} style={{ fontSize: '0.75rem', color: '#374151' }} />
+                                            </div>
+                                        </div>
+                                        {domainErr.affectedDomains.length > 0 && (
+                                            <div>
+                                                <div style={{ fontSize: '0.65rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Affected Domains</div>
+                                                <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                                                    {domainErr.affectedDomains.map(d => (
+                                                        <code key={d} style={{ fontSize: '0.75rem', color: '#374151', backgroundColor: '#fee2e2', padding: '0.125rem 0.375rem', borderRadius: '4px' }}>
+                                                            {d}
+                                                        </code>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
-                            <div style={{ flexShrink: 0 }}>
-                                <Timestamp iso={domain.updatedAt} style={{ fontSize: '0.7rem', color: '#9ca3af' }} />
-                            </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
 

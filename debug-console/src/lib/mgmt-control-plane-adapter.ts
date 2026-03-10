@@ -178,6 +178,24 @@ export interface MgmtSubscriptionGrants {
     activeGrant: string | null;
 }
 
+export interface MgmtDomainErrorDetail {
+    code: string;
+    message: string;
+    action: string;
+    canRetry: boolean;
+}
+
+export interface MgmtDomainError {
+    appId: string;
+    fqdn: string;
+    jobId: string;
+    status: string;
+    error: MgmtDomainErrorDetail;
+    affectedDomains: string[];
+    failedStep: string;
+    completedAt: string;
+}
+
 export class MgmtControlPlaneAdapter {
     private async request<T>(path: string, init?: RequestInit): Promise<T> {
         const response = await mgmtSSOClient.fetch(path, init);
@@ -208,6 +226,12 @@ export class MgmtControlPlaneAdapter {
 
     getSubscriptionGrants(subscriptionId: string): Promise<MgmtSubscriptionGrants> {
         return this.request(`/api/airo/v1/subscriptions/${encodeURIComponent(subscriptionId)}/credits/grants`);
+    }
+
+    getDomainError(appId: string, fqdn: string, opts: { subscriptionId: string; systemId: string }): Promise<MgmtDomainError> {
+        return this.request(
+            `/api/airo/v1/subscriptions/${encodeURIComponent(opts.subscriptionId)}/systems/${encodeURIComponent(opts.systemId)}/apps/${encodeURIComponent(appId)}/domain-error?fqdn=${encodeURIComponent(fqdn)}`
+        );
     }
 
     reloadApp(appId: string, opts?: { subscriptionId?: string; systemId?: string }): Promise<MgmtReloadResponse> {
