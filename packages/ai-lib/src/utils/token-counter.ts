@@ -189,7 +189,7 @@ const MODEL_TO_TOKENIZER: Record<string, string> = {
   'claude-3-5-haiku': 'anthropic/claude-3.5-haiku',
   'claude-sonnet-4': 'anthropic/claude-sonnet-4',
   'claude-sonnet-4-5': 'anthropic/claude-sonnet-4.5',
-  'claude-sonnet-4-6': 'anthropic/claude-sonnet-4.6',
+  'claude-sonnet-4-6': 'anthropic/claude-sonnet-4.5', // ai-tokenizer@1.0.6 doesn't include 4.6 yet; same tokenizer as 4.5
   'claude-haiku-4-5': 'anthropic/claude-haiku-4.5',
   // Gemini models
   'gemini-3-flash-preview': 'google/gemini-3-pro-preview',
