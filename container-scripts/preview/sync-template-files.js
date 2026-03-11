@@ -162,14 +162,9 @@ const MIGRATIONS = [
         console.log(`  ⏭️  Skipping: ${missing.join(', ')} not synced (customer modified), removing bundle.js would break the build`);
         return;
       }
-      // 1. Delete bundle.js if present
-      const bundlePath = join(customerDir, 'bundle.js');
-      if (existsSync(bundlePath)) {
-        unlinkSync(bundlePath);
-        console.log('  Deleted bundle.js');
-      }
-
-      // 2. Patch package.json build script
+      // 1. Patch package.json build script first (can fail on JSON parse),
+      //    before deleting bundle.js — avoids leaving a broken build script
+      //    referencing a deleted file.
       const pkgPath = join(customerDir, 'package.json');
       if (existsSync(pkgPath)) {
         const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
@@ -195,6 +190,13 @@ const MIGRATIONS = [
           writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
           console.log('  Patched package.json build scripts');
         }
+      }
+
+      // 2. Delete bundle.js after package.json is safely updated
+      const bundlePath = join(customerDir, 'bundle.js');
+      if (existsSync(bundlePath)) {
+        unlinkSync(bundlePath);
+        console.log('  Deleted bundle.js');
       }
     }
   }
