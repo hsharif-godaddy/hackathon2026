@@ -106,8 +106,22 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
   }
 
   /**
+   * Always resolves to the real app ID by stripping the job prefix if present.
+   * Use for internal operations (DB writes, deployment) that need the real ID
+   * regardless of container readiness state.
+   */
+  private resolveAppId(siteId: string): string {
+    if (this.isJobId(siteId)) {
+      return siteId.replace(LegacyControlPlaneAdapter.JOB_ID_PREFIX, '');
+    }
+    return siteId;
+  }
+
+  /**
    * Job ID lookup - strips dev-job- prefix and looks up real site
-   * Simple stateless approach - no job registry needed!
+   * Mirrors production behavior: keeps job ID until container is actually ready.
+   * In V2, getAiroJobApps() returns empty apps until Nomad allocation is healthy.
+   * Here we do the equivalent by checking for running status + URLs.
    */
   private async jobIdLookup(jobId: string): Promise<SiteInfo | null> {
     // Extract real appId by stripping prefix
@@ -120,7 +134,22 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
       return null;
     }
 
-    // Return site with real appId (triggers frontend transition)
+    // Don't resolve job → app until container is actually ready
+    // This prevents the frontend from transitioning out of the "creating" state
+    // before Docker containers are serving, matching production semantics
+    if (site.status !== 'running' || !site.agent_url || !site.preview_url) {
+      return {
+        id: jobId,
+        name: site.title,
+        status: site.status === 'failed' || site.status === 'error' ? 'failed' : 'creating',
+        account_id: site.account_id,
+        initial_prompt: site.initial_prompt,
+        created_at: site.created_at,
+        updated_at: site.updated_at,
+      };
+    }
+
+    // Container is ready — return real appId (triggers frontend transition)
     return this.mapToSiteInfo(site);
   }
 
@@ -147,11 +176,10 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
   /**
    * Delete site using legacy deployment cleanup
    */
-  async deleteSite(siteId: string, jwt: string, _systemId?: string, _subscriptionId?: string): Promise<{ success: boolean; error?: string }> {
+  async deleteSite(siteId: string, _jwt: string, _systemId?: string, _subscriptionId?: string): Promise<{ success: boolean; error?: string }> {
     try {
-      // Resolve siteId (may be a jobId like "dev-job-xxx") to real appId
-      const site = await this.getSite(siteId, jwt);
-      const resolvedId = site?.id ?? siteId;
+      // Always resolve to real appId for DB/infra operations
+      const resolvedId = this.resolveAppId(siteId);
 
       // Destroy infrastructure
       await deploymentAdapter.destroy(resolvedId);
@@ -182,14 +210,19 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
    * @param jwt - Customer JWT token
    * @param _options - Deployment options (unused in legacy mode)
    */
-  async deploySite(siteId: string, jwt: string, _options?: DeploySiteOptions): Promise<{ success: boolean; site: SiteInfo; message: string }> {
+  async deploySite(siteId: string, _jwt: string, _options?: DeploySiteOptions): Promise<{ success: boolean; site: SiteInfo; message: string }> {
     try {
-      // Get site to validate status
-      const site = await this.getSite(siteId, jwt);
+      // Always resolve to real appId for DB/infra operations
+      const resolvedId = this.resolveAppId(siteId);
 
-      if (!site) {
+      // Get site directly from DB to get real status (not the gated status from getSite)
+      const dbSite = await this.siteService.getSiteById(resolvedId);
+
+      if (!dbSite) {
         throw new Error('Site not found');
       }
+
+      const site = this.mapToSiteInfo(dbSite);
 
       // Check if already deployed or in progress
       if (site.status === 'running') {
@@ -213,11 +246,11 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
         throw new Error(`Site status '${site.status}' does not allow deployment`);
       }
 
-      // Update status to creating (use site.id, not siteId — siteId may be a jobId like "dev-job-xxx")
-      await this.siteService.updateSite(site.id, { status: 'creating' });
+      // Update status to creating
+      await this.siteService.updateSite(resolvedId, { status: 'creating' });
 
       // Start background deployment (fire and forget)
-      this.deployInBackground(site.id, site.account_id, site.initial_prompt || '');
+      this.deployInBackground(resolvedId, site.account_id, site.initial_prompt || '');
 
       const updatedSite = {
         ...site,
@@ -354,11 +387,10 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
    *
    * Legacy Mode: Updates site metadata in database.
    */
-  async updateSite(siteId: string, updates: Partial<SiteInfo>, jwt: string): Promise<SiteInfo | null> {
+  async updateSite(siteId: string, updates: Partial<SiteInfo>, _jwt: string): Promise<SiteInfo | null> {
     try {
-      // Resolve siteId (may be a jobId like "dev-job-xxx") to real appId
-      const site = await this.getSite(siteId, jwt);
-      const resolvedId = site?.id ?? siteId;
+      // Always resolve to real appId for DB operations
+      const resolvedId = this.resolveAppId(siteId);
 
       // Update site in database
       const updatedSite = await this.siteService.updateSite(resolvedId, updates);

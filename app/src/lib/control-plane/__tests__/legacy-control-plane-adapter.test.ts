@@ -248,6 +248,91 @@ describe('LegacyControlPlaneAdapter', () => {
 
       await expect(adapter.getSite(MOCK_SITE_ID, MOCK_JWT)).rejects.toThrow('Database connection failed');
     });
+
+    describe('job ID readiness gating', () => {
+      const jobId = `dev-job-${MOCK_SITE_ID}`;
+
+      it('should keep job ID when site is not yet running', async () => {
+        mockSiteService.getSiteById.mockResolvedValue({
+          ...MOCK_SITE_DATA,
+          status: 'creating',
+          agent_url: null,
+          preview_url: null
+        });
+
+        const result = await adapter.getSite(jobId, MOCK_JWT);
+
+        expect(result).not.toBeNull();
+        expect(result!.id).toBe(jobId); // Still a job ID
+        expect(result!.status).toBe('creating');
+      });
+
+      it('should keep job ID when running but missing agent_url', async () => {
+        mockSiteService.getSiteById.mockResolvedValue({
+          ...MOCK_SITE_DATA,
+          status: 'running',
+          agent_url: null
+        });
+
+        const result = await adapter.getSite(jobId, MOCK_JWT);
+
+        expect(result!.id).toBe(jobId);
+        expect(result!.status).toBe('creating');
+      });
+
+      it('should keep job ID when running but missing preview_url', async () => {
+        mockSiteService.getSiteById.mockResolvedValue({
+          ...MOCK_SITE_DATA,
+          status: 'running',
+          preview_url: null
+        });
+
+        const result = await adapter.getSite(jobId, MOCK_JWT);
+
+        expect(result!.id).toBe(jobId);
+        expect(result!.status).toBe('creating');
+      });
+
+      it('should resolve to real app ID when running with both URLs', async () => {
+        mockSiteService.getSiteById.mockResolvedValue({
+          ...MOCK_SITE_DATA,
+          status: 'running'
+        });
+
+        const result = await adapter.getSite(jobId, MOCK_JWT);
+
+        expect(result!.id).toBe(MOCK_SITE_ID); // Real app ID
+        expect(result!.status).toBe('running');
+      });
+
+      it('should surface failed status through the job ID', async () => {
+        mockSiteService.getSiteById.mockResolvedValue({
+          ...MOCK_SITE_DATA,
+          status: 'failed',
+          agent_url: null,
+          preview_url: null
+        });
+
+        const result = await adapter.getSite(jobId, MOCK_JWT);
+
+        expect(result!.id).toBe(jobId);
+        expect(result!.status).toBe('failed');
+      });
+
+      it('should surface error status as failed through the job ID', async () => {
+        mockSiteService.getSiteById.mockResolvedValue({
+          ...MOCK_SITE_DATA,
+          status: 'error',
+          agent_url: null,
+          preview_url: null
+        });
+
+        const result = await adapter.getSite(jobId, MOCK_JWT);
+
+        expect(result!.id).toBe(jobId);
+        expect(result!.status).toBe('failed');
+      });
+    });
   });
 
   describe('listSites', () => {
