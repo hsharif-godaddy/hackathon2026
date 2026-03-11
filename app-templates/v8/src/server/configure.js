@@ -1,6 +1,9 @@
 import express from "express";
 import { closeConnection } from "./db/client.ts";
-import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { dirname, join, extname } from "node:path";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export const viteServerBefore = (server, viteServer) => {
   console.log("VITEJS SERVER");
@@ -43,7 +46,7 @@ export const serverBefore = (server) => {
   server.use(express.json());
   server.use(express.urlencoded({ extended: true }));
 
-  server.use(express.static("client"));
+  server.use(express.static(join(__dirname, "client")));
 };
 
 export const serverAfter = (server) => {
@@ -62,12 +65,12 @@ export const serverAfter = (server) => {
     }
 
     // Skip if this is a static asset request (has file extension)
-    if (path.extname(req.path)) {
+    if (extname(req.path)) {
       return next();
     }
 
     // For all other GET requests, serve index.html to support client-side routing
-    res.sendFile(path.join(process.cwd(), 'client', 'index.html'));
+    res.sendFile(join(__dirname, 'client', 'index.html'));
   });
 
   const errorHandler = (err, req, res, next) => {

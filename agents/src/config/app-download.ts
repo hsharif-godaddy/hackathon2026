@@ -84,9 +84,6 @@ export const ALLOWED_CONFIG_FILES = [
   // Entry points
   'index.html',
 
-  // Build scripts
-  'bundle.js',
-
   // Environment & Git
   'env.example',
   '.env.example',

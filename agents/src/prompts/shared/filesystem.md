@@ -32,15 +32,15 @@ You work from the application root directory. Use **relative paths** for app fil
 
 ## Storage Decision Matrix
 
-| File Type            | Public Access? | Persisted? | Location                  | Example           |
-| -------------------- | -------------- | ---------- | ------------------------- | ----------------- |
-| User profile image   | Yes            | Yes        | `public/assets/profiles/` | `avatar.jpg`      |
-| Product photo        | Yes            | Yes        | `public/assets/products/` | `product-123.png` |
-| Generated PDF report | No             | Yes        | `/private/reports/`       | `report-456.pdf`  |
-| User document        | No             | Yes        | `/private/documents/`     | `invoice.pdf`     |
-| Application code     | N/A            | Yes        | `src/`                    | `component.tsx`   |
-| Temp processing file | No             | No         | `/tmp/`                   | `temp-upload.bin` |
-| Build artifacts      | No             | Yes        | `dist/`                   | `bundle.js`       |
+| File Type            | Public Access? | Persisted? | Location                  | Example             |
+| -------------------- | -------------- | ---------- | ------------------------- | ------------------- |
+| User profile image   | Yes            | Yes        | `public/assets/profiles/` | `avatar.jpg`        |
+| Product photo        | Yes            | Yes        | `public/assets/products/` | `product-123.png`   |
+| Generated PDF report | No             | Yes        | `/private/reports/`       | `report-456.pdf`    |
+| User document        | No             | Yes        | `/private/documents/`     | `invoice.pdf`       |
+| Application code     | N/A            | Yes        | `src/`                    | `component.tsx`     |
+| Temp processing file | No             | No         | `/tmp/`                   | `temp-upload.bin`   |
+| Build artifacts      | No             | Yes        | `dist/`                   | `server.bundle.cjs` |
 
 ## Best Practices
 

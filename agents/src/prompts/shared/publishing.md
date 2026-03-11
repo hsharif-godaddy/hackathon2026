@@ -11,12 +11,12 @@ When the user publishes:
 5. Publish container runs `node /app/dist/server.bundle.cjs` from `/app/dist`
 </publish_flow>
 
-The `build` script runs two steps: `vite build` (frontend into `dist/`) then `node bundle.js` (Express server into `dist/server.bundle.cjs`).
+The `build` script runs `vite build`, which builds the frontend into `dist/` and bundles the Express server into `dist/server.bundle.cjs`.
 
 <build_critical_files>
 These files control the build pipeline. Modifying them breaks publishing because the publish container expects exact output paths and script names:
-- `package.json` scripts: `build`, `build:vite`, `bundle`
-- `bundle.js` — esbuild config producing `server.bundle.cjs`
+- `package.json` scripts: `build`
+- `vite.config.ts` — Vite config including the server bundling plugin
 - `src/server/configure.js` — Express setup consumed by the bundle
 </build_critical_files>
 

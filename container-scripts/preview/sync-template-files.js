@@ -11,6 +11,7 @@
  * - If file exists and its MD5 matches a known hash, replace it with base template version
  * - If file exists but hash doesn't match, skip it (customer has modified the file)
  * - If force flag is set, always replace the file
+ * - Run migrations for targeted transforms on specific files
  *
  * Sync groups (e.g. cookieBanner for App.tsx + RootLayout.tsx) are applied atomically:
  * we only sync a group if every file in the group would be synced. That avoids partial
@@ -18,7 +19,7 @@
  * cookie banners.
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 
@@ -46,7 +47,7 @@ const SYNC_MANIFEST = [
     known_hashes: [
       '42ba9f4178f0125d150e0453b18aace0', // 0d42af30 - fix: various improvements to local development
       '2accfb4db2acca217a56610abbeff409', // 8c779b55 - feat: changes to support app publish
-      '4e602bf93117af87df4621edc156282c'  // Current version - adds express.static("client") middleware
+      '4e602bf93117af87df4621edc156282c'  // Before import.meta.url fix - uses express.static("client")
     ],
     force: false
   },
@@ -122,9 +123,80 @@ const SYNC_MANIFEST = [
       'a4186186a022994547055e21bc92ceaa', // 0d42af30 - before errorInterceptor removal
       'd18a56841b551364f6ec0c0cdeccaca2', // e9c5d478 - configurable host binding
       '4bec07f7c9c3412478c08afd333ece87', // 08a99145 - errorInterceptor removed (broken)
-      'd26b3f1349b07a524c7df4df29c55883'  // 4839907 - added watch.ignored
+      'd26b3f1349b07a524c7df4df29c55883', // 4839907 - added watch.ignored
+      '29ca0ea18a635f996d4716ad1d0f43b3'  // Before closeBundle plugin and chunk splitting
     ],
     force: false
+  },
+  {
+    file: 'src/components/ui/sonner.tsx',
+    description: 'Sonner toaster component',
+    known_hashes: [
+      '22e6ae1898a423aff378e0664323a9ae'  // Original shadcn template with next-themes
+    ],
+    force: false
+  }
+];
+
+/**
+ * Migrations run targeted transforms on specific files rather than hash-based
+ * whole-file replacement. Each migration has an `id` (for logging) and a `run`
+ * function that receives the customer app directory and the set of files that
+ * were synced (so migrations can gate on prerequisite syncs).
+ */
+const MIGRATIONS = [
+  {
+    id: 'remove-bundle-js-build-step',
+    description: 'Remove redundant bundle.js from build pipeline',
+    run(customerDir, syncedFiles) {
+      // Only safe to remove the old bundle step if both:
+      // 1. vite.config.ts was synced (contains the replacement serverBundlePlugin)
+      // 2. src/server/configure.js was synced (uses import.meta.url for __dirname)
+      // The old bundle.js patched express.static("client") → __dirname-based path at
+      // build time. The new configure.js resolves paths via import.meta.url instead,
+      // and serverBundlePlugin polyfills import.meta.url in CJS. Without both, removing
+      // bundle.js would break static file serving in production.
+      const required = ['vite.config.ts', 'src/server/configure.js'];
+      const missing = required.filter(f => !syncedFiles.has(f));
+      if (missing.length > 0) {
+        console.log(`  ⏭️  Skipping: ${missing.join(', ')} not synced (customer modified), removing bundle.js would break the build`);
+        return;
+      }
+      // 1. Delete bundle.js if present
+      const bundlePath = join(customerDir, 'bundle.js');
+      if (existsSync(bundlePath)) {
+        unlinkSync(bundlePath);
+        console.log('  Deleted bundle.js');
+      }
+
+      // 2. Patch package.json build script
+      const pkgPath = join(customerDir, 'package.json');
+      if (existsSync(pkgPath)) {
+        const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+        let changed = false;
+
+        if (pkg.scripts?.build) {
+          const updated = pkg.scripts.build.replace(/\s*&&\s*node\s+bundle\.js\s*/g, '').trim();
+          if (updated !== pkg.scripts.build) {
+            pkg.scripts.build = updated;
+            changed = true;
+          }
+        }
+        if (pkg.scripts?.bundle) {
+          delete pkg.scripts.bundle;
+          changed = true;
+        }
+        if (pkg.scripts?.['build:vite'] && pkg.scripts?.build === pkg.scripts['build:vite']) {
+          delete pkg.scripts['build:vite'];
+          changed = true;
+        }
+
+        if (changed) {
+          writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
+          console.log('  Patched package.json build scripts');
+        }
+      }
+    }
   }
 ];
 
@@ -189,6 +261,20 @@ function computeWouldSync(baseDir, customerDir) {
   return { wouldSync, baseContents };
 }
 
+function runMigrations(customerDir, syncedFiles) {
+  console.log('');
+  console.log('=== Running Migrations ===');
+
+  for (const migration of MIGRATIONS) {
+    console.log(`Migration: ${migration.id} — ${migration.description}`);
+    try {
+      migration.run(customerDir, syncedFiles);
+    } catch (error) {
+      console.error(`  ⚠️  Migration failed: ${error.message}`);
+    }
+  }
+}
+
 function sync(baseDir, customerDir) {
   console.log('=== Template File Sync ===');
   console.log(`Base template: ${baseDir}`);
@@ -197,6 +283,7 @@ function sync(baseDir, customerDir) {
 
   const { wouldSync, baseContents } = computeWouldSync(baseDir, customerDir);
 
+  const syncedFiles = new Set();
   let synced = 0;
   let skipped = 0;
   let created = 0;
@@ -237,6 +324,7 @@ function sync(baseDir, customerDir) {
       mkdirSync(dirname(customerPath), { recursive: true });
       writeFileSync(customerPath, baseContent, 'utf8');
       console.log(`  ✅ Created: ${file}`);
+      syncedFiles.add(file);
       created++;
       continue;
     }
@@ -249,6 +337,7 @@ function sync(baseDir, customerDir) {
       console.log(`  🔄 Force sync enabled, replacing...`);
       writeFileSync(customerPath, baseContent, 'utf8');
       console.log(`  ✅ Synced: ${file}`);
+      syncedFiles.add(file);
       synced++;
       continue;
     }
@@ -256,8 +345,12 @@ function sync(baseDir, customerDir) {
     console.log(`  🔄 Hash matches known version, replacing...`);
     writeFileSync(customerPath, baseContent, 'utf8');
     console.log(`  ✅ Synced: ${file}`);
+    syncedFiles.add(file);
     synced++;
   }
+
+  // Run migrations after hash-based sync
+  runMigrations(customerDir, syncedFiles);
 
   console.log('');
   console.log('=== Summary ===');
@@ -285,4 +378,3 @@ try {
   console.error('❌ Error:', error.message);
   process.exit(1);
 }
-

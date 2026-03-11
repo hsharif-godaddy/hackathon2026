@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import * as esbuild from "esbuild";
 import sourceMapperPlugin from "./source-mapper/src/index";
 import { devToolsPlugin } from "./dev-tools/src/vite-plugin";
 import { fullStoryPlugin } from "./fullstory-plugin";
@@ -16,6 +17,37 @@ function extractHostname(value: string): string {
 	} catch {
 		return value;
 	}
+}
+
+function serverBundlePlugin(): Plugin {
+	let built = false;
+	return {
+		name: "server-bundle",
+		apply: "build",
+		closeBundle: async () => {
+			if (built) return;
+			built = true;
+			console.log("Bundling server code with esbuild...");
+			await esbuild.build({
+				entryPoints: [path.resolve(__dirname, "dist", "app.js")],
+				bundle: true,
+				platform: "node",
+				target: "node22",
+				format: "cjs",
+				outfile: path.resolve(__dirname, "dist", "server.bundle.cjs"),
+				packages: "bundle",
+				sourcemap: true,
+				// import.meta.url is empty in CJS — provide a polyfill via banner/define
+				banner: {
+					js: 'var import_meta_url = require("url").pathToFileURL(__filename).href;',
+				},
+				define: {
+					"import.meta.url": "import_meta_url",
+				},
+			});
+			console.log("Server bundle created at dist/server.bundle.cjs");
+		},
+	};
 }
 
 const allowedHosts: string[] = [];
@@ -58,6 +90,7 @@ export default defineConfig(({ mode }) => ({
 		...(mode === "development"
 			? [devToolsPlugin() as Plugin, fullStoryPlugin(), errorInterceptorPlugin()]
 			: []),
+		serverBundlePlugin(),
 	],
 
 	resolve: {
@@ -87,9 +120,55 @@ export default defineConfig(({ mode }) => ({
 		},
 	},
 
+	preview: {
+		host: process.env.HOST || "0.0.0.0",
+		port: parseInt(process.env.PORT || "5173"),
+		strictPort: !!process.env.PORT,
+		allowedHosts,
+		cors: {
+			origin: corsOrigins,
+			credentials: true,
+			methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+			allowedHeaders: ["Content-Type", "Authorization", "Accept", "User-Agent"],
+		},
+	},
+
 	build: {
 		rollupOptions: {
-			// No external dependencies - bundle everything
+			output: {
+				manualChunks: {
+					"react-vendor": ["react", "react-dom"],
+					"radix-ui": [
+						"@radix-ui/react-accordion",
+						"@radix-ui/react-alert-dialog",
+						"@radix-ui/react-aspect-ratio",
+						"@radix-ui/react-avatar",
+						"@radix-ui/react-checkbox",
+						"@radix-ui/react-collapsible",
+						"@radix-ui/react-context-menu",
+						"@radix-ui/react-dialog",
+						"@radix-ui/react-dropdown-menu",
+						"@radix-ui/react-hover-card",
+						"@radix-ui/react-label",
+						"@radix-ui/react-menubar",
+						"@radix-ui/react-navigation-menu",
+						"@radix-ui/react-popover",
+						"@radix-ui/react-progress",
+						"@radix-ui/react-scroll-area",
+						"@radix-ui/react-select",
+						"@radix-ui/react-separator",
+						"@radix-ui/react-slider",
+						"@radix-ui/react-slot",
+						"@radix-ui/react-switch",
+						"@radix-ui/react-tabs",
+						"@radix-ui/react-toast",
+						"@radix-ui/react-toggle",
+						"@radix-ui/react-toggle-group",
+						"@radix-ui/react-tooltip",
+					],
+					query: ["@tanstack/react-query"],
+				},
+			},
 		},
 	},
 }));
