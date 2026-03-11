@@ -11,6 +11,11 @@
  * - If file exists and its MD5 matches a known hash, replace it with base template version
  * - If file exists but hash doesn't match, skip it (customer has modified the file)
  * - If force flag is set, always replace the file
+ *
+ * Sync groups (e.g. cookieBanner for App.tsx + RootLayout.tsx) are applied atomically:
+ * we only sync a group if every file in the group would be synced. That avoids partial
+ * updates (e.g. updating App.tsx but not RootLayout.tsx) which could result in duplicate
+ * cookie banners.
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
@@ -25,6 +30,9 @@ import { dirname, join } from 'node:path';
  * - description: Why this file needs syncing
  * - known_hashes: MD5 hashes of unmodified versions that are safe to replace
  * - force: If true, always replace (use sparingly, for files that should never be modified)
+ * - syncGroup: Optional. Entries with the same syncGroup are synced atomically: we only
+ *   sync a group if every file in the group would be synced. Prevents partial updates
+ *   (e.g. App.tsx + RootLayout.tsx for cookie banner: both or neither to avoid duplicate banners).
  *
  * To add a new hash:
  * 1. Find the commit with the old version: git log --oneline -- <file>
@@ -43,6 +51,16 @@ const SYNC_MANIFEST = [
     force: false
   },
   {
+    file: 'src/App.tsx',
+    description: 'App entry with CookieBanner and RootLayout wrapper',
+    known_hashes: [
+      '307d295de691b65ea9217a74ca9d02d6', // 0bd48df3b - before CookieBanner
+      '966395da41e36083d6bd9e08811ef3ea'  // intermediate - inline CookieBannerErrorBoundary (before extraction to own file)
+    ],
+    force: false,
+    syncGroup: 'cookieBanner'
+  },
+  {
     file: 'src/components/CookieBanner.tsx',
     description: 'cookie consent banner for C2 analytics',
     known_hashes: [
@@ -52,14 +70,24 @@ const SYNC_MANIFEST = [
     force: false
   },
   {
+    file: 'src/components/CookieBannerErrorBoundary.tsx',
+    description: 'Error boundary for CookieBanner component',
+    known_hashes: [],
+    force: true
+  },
+  {
     file: 'src/layouts/RootLayout.tsx',
-    description: 'Root layout with CookieBanner component',
+    description: 'Root layout',
     known_hashes: [
       'a4956fef6d7b07ada0017265268436ad', // Version without CookieBanner
       '3b60b06116874cd0632eb47ea5f96f80', // 8c484796 - Simplify Header and Footer
-      '278eb10635f8543359cfa77a47fb4122'  // 153b8e50 - Add dynamic context
+      '278eb10635f8543359cfa77a47fb4122', // 153b8e50 - Add dynamic context
+      '398cc701e5338594788187c0ac488712', // 0bd48df3b - FIX: Use ENV mode
+      '89379a72aadeed8ac76dee704aabfd91', // main - WITH CookieBanner (pre-PR)
+      '72c4eef20dcee8a90cd547b1a042ad70'  // This PR - CookieBanner removed
     ],
-    force: false
+    force: false,
+    syncGroup: 'cookieBanner'
   },
   {
     file: 'public/analytics.js',
@@ -104,33 +132,106 @@ function md5(content) {
   return createHash('md5').update(content).digest('hex');
 }
 
+/**
+ * Decide for each manifest entry whether we would sync it (without writing).
+ * Returns Map<index, boolean>. Also returns { baseContents: Map<index, string> } for use in second pass.
+ */
+function computeWouldSync(baseDir, customerDir) {
+  const wouldSync = new Map();
+  const baseContents = new Map();
+
+  for (let i = 0; i < SYNC_MANIFEST.length; i++) {
+    const entry = SYNC_MANIFEST[i];
+    const { file, known_hashes, force } = entry;
+    const basePath = join(baseDir, file);
+    const customerPath = join(customerDir, file);
+
+    if (!existsSync(basePath)) {
+      wouldSync.set(i, false);
+      continue;
+    }
+
+    const baseContent = readFileSync(basePath, 'utf8');
+    baseContents.set(i, baseContent);
+
+    if (force) {
+      wouldSync.set(i, true);
+      continue;
+    }
+
+    if (!existsSync(customerPath)) {
+      wouldSync.set(i, true);
+      continue;
+    }
+
+    const customerContent = readFileSync(customerPath, 'utf8');
+    const customerHash = md5(customerContent);
+    wouldSync.set(i, known_hashes.includes(customerHash));
+  }
+
+  // Apply sync groups: only sync a group if every file in the group would be synced
+  const groupToIndices = new Map();
+  for (let i = 0; i < SYNC_MANIFEST.length; i++) {
+    const group = SYNC_MANIFEST[i].syncGroup;
+    if (!group) continue;
+    if (!groupToIndices.has(group)) groupToIndices.set(group, []);
+    groupToIndices.get(group).push(i);
+  }
+  for (const indices of groupToIndices.values()) {
+    const allWouldSync = indices.every((idx) => wouldSync.get(idx));
+    if (!allWouldSync) {
+      for (const idx of indices) {
+        wouldSync.set(idx, false);
+      }
+    }
+  }
+
+  return { wouldSync, baseContents };
+}
+
 function sync(baseDir, customerDir) {
   console.log('=== Template File Sync ===');
   console.log(`Base template: ${baseDir}`);
   console.log(`Customer app:  ${customerDir}`);
   console.log('');
 
+  const { wouldSync, baseContents } = computeWouldSync(baseDir, customerDir);
+
   let synced = 0;
   let skipped = 0;
   let created = 0;
 
-  for (const entry of SYNC_MANIFEST) {
-    const { file, description, known_hashes, force } = entry;
+  for (let i = 0; i < SYNC_MANIFEST.length; i++) {
+    const entry = SYNC_MANIFEST[i];
+    const { file, force, syncGroup } = entry;
     const basePath = join(baseDir, file);
     const customerPath = join(customerDir, file);
 
     console.log(`Checking: ${file}`);
 
-    // Check if base template has the file
     if (!existsSync(basePath)) {
       console.log(`  ⚠️  Base template missing file, skipping`);
       skipped++;
       continue;
     }
 
-    const baseContent = readFileSync(basePath, 'utf8');
+    const baseContent = baseContents.get(i);
 
-    // Check if customer app has the file
+    if (!wouldSync.get(i)) {
+      if (existsSync(customerPath)) {
+        const customerContent = readFileSync(customerPath, 'utf8');
+        const customerHash = md5(customerContent);
+        console.log(`  Current hash: ${customerHash}`);
+      }
+      if (syncGroup) {
+        console.log(`  ⏭️  Skipping (sync group "${syncGroup}": sync all or none to avoid inconsistent state)`);
+      } else {
+        console.log(`  ⏭️  Hash doesn't match known versions, skipping (customer modified)`);
+      }
+      skipped++;
+      continue;
+    }
+
     if (!existsSync(customerPath)) {
       console.log(`  📄 File doesn't exist in customer app, creating...`);
       mkdirSync(dirname(customerPath), { recursive: true });
@@ -140,13 +241,10 @@ function sync(baseDir, customerDir) {
       continue;
     }
 
-    // File exists, check if we should replace it
     const customerContent = readFileSync(customerPath, 'utf8');
     const customerHash = md5(customerContent);
-
     console.log(`  Current hash: ${customerHash}`);
 
-    // Force sync if flag is set
     if (force) {
       console.log(`  🔄 Force sync enabled, replacing...`);
       writeFileSync(customerPath, baseContent, 'utf8');
@@ -155,18 +253,10 @@ function sync(baseDir, customerDir) {
       continue;
     }
 
-    // Check if hash matches any known hash
-    if (known_hashes.includes(customerHash)) {
-      console.log(`  🔄 Hash matches known version, replacing...`);
-      writeFileSync(customerPath, baseContent, 'utf8');
-      console.log(`  ✅ Synced: ${file}`);
-      synced++;
-      continue;
-    }
-
-    // Hash doesn't match - file was modified by customer
-    console.log(`  ⏭️  Hash doesn't match known versions, skipping (customer modified)`);
-    skipped++;
+    console.log(`  🔄 Hash matches known version, replacing...`);
+    writeFileSync(customerPath, baseContent, 'utf8');
+    console.log(`  ✅ Synced: ${file}`);
+    synced++;
   }
 
   console.log('');
