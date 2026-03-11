@@ -107,9 +107,9 @@ export function FeedbackForm({
       if (rating) {
         const ratingNumber = String(rating).charAt(0);
         const ratingEmojis: Record<string, string> = {
-          '1': ':crying_cat:',
-          '2': ':sob:',
-          '3': ':unamused:',
+          '1': ':alert_red: :alert_red: :alert_red:',
+          '2': ':alert_orange: :alert_orange:',
+          '3': ':alert_yellow:',
           '4': ':neutral_face:',
           '5': ':slightly_smiling_face:',
           '6': ':smile:',
