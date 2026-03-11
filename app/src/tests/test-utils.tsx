@@ -76,14 +76,14 @@ export function renderWithProviders(
  */
 export function renderHookWithProviders<Result, Props>(
   hook: (props: Props) => Result,
-  options?: RenderHookOptions<Props> & { queryClient?: QueryClient }
+  options?: RenderHookOptions<Props> & { queryClient?: QueryClient; locale?: string }
 ) {
-  const { queryClient, ...renderOptions } = options || {};
+  const { queryClient, locale, ...renderOptions } = options || {};
   const testQueryClient = queryClient ?? createTestQueryClient();
 
   return renderHook(hook, {
     wrapper: ({ children }) => (
-      <IntlProvider locale="en" messages={{}}>
+      <IntlProvider locale={locale ?? 'en'} messages={{}}>
         <QueryClientProvider client={testQueryClient}>
           {children}
         </QueryClientProvider>

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryClient } from '@tanstack/react-query';
 import { waitFor } from '@testing-library/react';
 
 import { renderHookWithProviders } from '@/tests/test-utils';
@@ -93,6 +94,56 @@ describe('useDomainSearch', () => {
     const fetchCall = mockAppFetch.mock.calls[0];
     const body = JSON.parse((fetchCall[1] as any).body);
     expect(body.maxResults).toBe(5);
+  });
+
+  it('should send locale as market in request body', async () => {
+    mockAppFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ domains: [], products: [] }),
+    } as Response);
+
+    renderHookWithProviders(
+      () => useDomainSearch({ query: 'mybrand', enabled: true }),
+      { locale: 'fr-FR' }
+    );
+
+    await waitFor(() => {
+      expect(mockAppFetch).toHaveBeenCalled();
+    });
+
+    const body = JSON.parse((mockAppFetch.mock.calls[0][1] as any).body);
+    expect(body.market).toBe('fr-FR');
+  });
+
+  it('should include locale in queryKey so cache differs per locale', async () => {
+    mockAppFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ domains: [{ fqdn: 'a.com' }], products: [] }),
+    } as Response);
+
+    const sharedClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    });
+
+    renderHookWithProviders(
+      () => useDomainSearch({ query: 'mybrand', enabled: true }),
+      { locale: 'en-US', queryClient: sharedClient }
+    );
+
+    await waitFor(() => {
+      expect(mockAppFetch).toHaveBeenCalledTimes(1);
+    });
+
+    mockAppFetch.mockClear();
+
+    renderHookWithProviders(
+      () => useDomainSearch({ query: 'mybrand', enabled: true }),
+      { locale: 'es-MX', queryClient: sharedClient }
+    );
+
+    await waitFor(() => {
+      expect(mockAppFetch).toHaveBeenCalledTimes(1);
+    });
   });
 });
 

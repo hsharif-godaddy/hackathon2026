@@ -1,3 +1,4 @@
+import { useIntl } from 'react-intl';
 import { useQuery } from '@tanstack/react-query';
 
 import { appFetch } from '@/lib/gasket-config';
@@ -47,8 +48,10 @@ export function useDomainSearch({
   maxResults = 10,
   enabled = true,
 }: UseDomainSearchOptions) {
+  const { locale } = useIntl();
+
   return useQuery({
-    queryKey: ['domainSearch', query, maxResults],
+    queryKey: ['domainSearch', query, maxResults, locale],
     queryFn: async (): Promise<DomainSearchRawResult> => {
       if (!query?.trim()) {
         return { domains: [], products: [] };
@@ -62,7 +65,7 @@ export function useDomainSearch({
       const response = await appFetch('/api/domains/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, maxResults }),
+        body: JSON.stringify({ query, maxResults, market: locale }),
       });
 
       if (!response.ok) {

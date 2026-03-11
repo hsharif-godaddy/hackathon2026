@@ -24,6 +24,7 @@ export const dynamic = 'force-dynamic';
  */
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 30;
+const LOCALE_RE = /^[a-z]{2}-[A-Z]{2}$/;
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
 function isRateLimited(customerId: string): boolean {
@@ -132,8 +133,9 @@ export const POST = withCustomerAuth(async (
       );
     }
 
-    // Detect market/locale from Gasket intl configuration
-    const market = await detectLocale();
+    // Prefer market from client (sourced from locale cookie), fall back to server detection
+    const clientMarket = typeof body.market === 'string' ? body.market.trim() : '';
+    const market = (clientMarket && LOCALE_RE.test(clientMarket)) ? clientMarket : await detectLocale();
     const domainServices = getDomainServices(market);
 
     logger.info('domains.search.start', {
