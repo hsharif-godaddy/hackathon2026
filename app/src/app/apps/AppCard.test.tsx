@@ -155,6 +155,17 @@ describe('AppCard', () => {
       });
     });
 
+    it('should show edit menu item', async () => {
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_common_edit')).toBeInTheDocument();
+      });
+    });
+
     it('should show preview menu item when site is running', async () => {
       const { user } = renderWithProviders(<AppCard site={mockSite} />);
 
@@ -348,6 +359,26 @@ describe('AppCard', () => {
         '_blank',
         'noopener,noreferrer'
       );
+    });
+
+    it('should have correct href for edit menu item', async () => {
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_common_edit')).toBeInTheDocument();
+      });
+
+      const expectedHref = `/develop/${mockSite.id}?siteId=${mockSite.id}`;
+      
+      const editText = screen.getByText('builder_common_edit');
+      const editItem = editText.closest('a') || editText.closest('[role="menuitem"]') || editText;
+      
+      await waitFor(() => {
+        expect(editItem).toHaveAttribute('href', expectedHref);
+      });
     });
 
     it('should navigate to settings when settings menu item is clicked', async () => {

@@ -216,6 +216,17 @@ export default function AppCard({ site }: { site: SiteInfo }) {
           icon={<MenuIcon />}
         />
         <MenuList stretch>
+          <MenuItem
+            {...menuItemProps()}
+            data-eid={generateClickEID('apps.app.menu_edit')}
+            href={`/develop/${site.id}?siteId=${site.id}`}
+            isLink={true}
+          >
+            <Box orientation="horizontal" gap="sm">
+              <EditIcon />
+              <text.span>{t('builder_common_edit')}</text.span>
+            </Box>
+          </MenuItem>
           {publishedUrl && (
             <MenuItem
               {...menuItemProps()}
