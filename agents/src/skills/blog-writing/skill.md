@@ -1,6 +1,7 @@
 ---
 name: blog-writing
 description: Create blog post content for sites with blog system installed
+whenToUse: User wants to write or create blog post content for an existing blog. Phrases like "write a blog post", "add blog posts", "create articles", "write blog content".
 ---
 
 # Blog Writing Skill

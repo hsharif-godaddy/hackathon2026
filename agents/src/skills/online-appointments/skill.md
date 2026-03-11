@@ -1,6 +1,7 @@
 ---
 name: online-appointments
 description: Add appointment/booking functionality - use when customer wants scheduling, booking, or appointments for services (consultations, meetings, sessions, haircuts, etc.)
+whenToUse: User wants appointment booking or scheduling for services. Phrases like "add booking", "appointment scheduling", "let customers book", "schedule consultations", "reservation system".
 dependencies:
   - date-fns
   - zod

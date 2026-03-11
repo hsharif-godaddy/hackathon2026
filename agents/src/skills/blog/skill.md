@@ -1,6 +1,7 @@
 ---
 name: blog
 description: Install and activate the blog system (routes, pages, components)
+whenToUse: User wants a blog, blog section, or blog feature on their site. Phrases like "add a blog", "create a blog", "set up a blog", "I want a blog feature".
 ---
 
 # Blog System Setup Skill

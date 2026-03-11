@@ -15,7 +15,7 @@ import { logger, log } from '../logging/index.js'
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { agents as featureAgents } from '../services/features.js'
-import { SkillLoaderTool } from '../tools/skill-loader-tool.js'
+import { SkillLoaderTool, buildSkillsPromptSection } from '../tools/skill-loader-tool.js'
 import { skillToolManager } from '../tools/skill-tool-manager.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 
@@ -124,19 +124,18 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
   // Get modular prompt paths using helper utility
   const paths = getModularPromptPaths(import.meta.url);
 
-  // Get available skills list
+  // Get available skills list with whenToUse guidance
   const skillLoader = new SkillLoaderTool();
   const skillsResult = await skillLoader.listSkills();
-  const skillsList = skillsResult.success && skillsResult.skills
-    ? skillsResult.skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')
-    : '(No skills available)';
+  const skillsSection = skillsResult.success && skillsResult.skills?.length
+    ? buildSkillsPromptSection(skillsResult.skills)
+    : '';
 
   // Load consolidated prompt sections
   // Order: Identity → Voice → Technical details
   promptBuilder
     .file(paths.getAgentFile('develop', 'core.md'))
     .file(paths.getSharedFile('communication.md'))
-    .text(`\n## Available Skills\n\n${skillsList}\n\n`)
     .file(paths.getAgentFile('develop', 'claude-behavior.md'))
     .file(paths.getSharedFile('filesystem.md'))
     .file(paths.getAgentFile('develop', 'font-theme.md')) // Font theme tool documentation
@@ -153,6 +152,11 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
 
   promptBuilder.file(paths.getSharedFile('publishing.md'));
   promptBuilder.file(paths.getSharedFile('security.md'));
+
+  // Skills section at end of prompt for emphasis — agent decides from this list directly
+  if (skillsSection) {
+    promptBuilder.text(`\n${skillsSection}\n`);
+  }
 
   // Template descriptions are now dynamically injected during conversation execution
   // via AILibContextManager.buildContextMessages() based on app context

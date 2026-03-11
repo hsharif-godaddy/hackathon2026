@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 
-import { SkillLoaderTool } from '../skill-loader-tool.js';
+import { SkillLoaderTool, buildSkillsPromptSection } from '../skill-loader-tool.js';
 
 // Mock the terminal and dev supervisor dependencies
 vi.mock('../terminal.js', () => ({
@@ -319,6 +319,89 @@ dependencies:
     it('should reject skills with dots', function dots() {
       expect(validate('skill.name')).toBe(false);
       expect(validate('.hidden')).toBe(false);
+    });
+  });
+
+  describe('#listSkills whenToUse', function listSkillsTests() {
+    let tool: SkillLoaderTool;
+    let tempDir: string;
+    let skillsDir: string;
+
+    beforeEach(async () => {
+      tool = new SkillLoaderTool();
+      tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'skill-test-'));
+      skillsDir = path.join(tempDir, 'skills');
+      await fs.mkdir(skillsDir, { recursive: true });
+      (tool as any).skillsDir = skillsDir;
+    });
+
+    afterEach(async () => {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    async function createSkillFile(skillName: string, content: string): Promise<void> {
+      const skillDir = path.join(skillsDir, skillName);
+      await fs.mkdir(skillDir, { recursive: true });
+      await fs.writeFile(path.join(skillDir, 'skill.md'), content);
+    }
+
+    it('should return whenToUse from frontmatter', async function returnsWhenToUse() {
+      await createSkillFile('test-skill', `---
+name: test-skill
+description: A test skill
+whenToUse: User wants to test things. Phrases like "run tests", "add tests".
+---
+# Test Skill
+`);
+
+      const result = await tool.listSkills();
+      expect(result.success).toBe(true);
+      expect(result.skills).toHaveLength(1);
+      expect(result.skills![0].whenToUse).toBe('User wants to test things. Phrases like "run tests", "add tests".');
+    });
+
+    it('should omit whenToUse when not in frontmatter', async function omitsWhenMissing() {
+      await createSkillFile('no-when', `---
+name: no-when
+description: Skill without whenToUse
+---
+# No When
+`);
+
+      const result = await tool.listSkills();
+      expect(result.success).toBe(true);
+      expect(result.skills![0].whenToUse).toBeUndefined();
+    });
+
+    it('should ignore non-string whenToUse values', async function ignoresNonString() {
+      await createSkillFile('bad-when', `---
+name: bad-when
+description: Skill with array whenToUse
+whenToUse:
+  - item1
+  - item2
+---
+# Bad When
+`);
+
+      const result = await tool.listSkills();
+      expect(result.success).toBe(true);
+      expect(result.skills![0].whenToUse).toBeUndefined();
+    });
+  });
+
+  describe('#buildSkillsPromptSection', function buildSectionTests() {
+    it('should format skills with whenToUse', function formatsWithWhen() {
+      const section = buildSkillsPromptSection([
+        { name: 'blog', description: 'Install blog system', whenToUse: 'User wants a blog.' },
+        { name: 'auth', description: 'Add authentication' },
+      ]);
+
+      expect(section).toContain('## Available Skills');
+      expect(section).toContain('- **blog**: Install blog system *When to use:* User wants a blog.');
+      expect(section).toContain('- **auth**: Add authentication');
+      // No "When to use" for auth since it has no whenToUse
+      expect(section).not.toContain('**auth**: Add authentication *When to use:*');
     });
   });
 });

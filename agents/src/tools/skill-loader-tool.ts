@@ -119,7 +119,27 @@ export interface InstallTemplatesResult {
 export interface SkillListItem {
   name: string;
   description: string;
+  whenToUse?: string;
   enablementId?: string;
+}
+
+/**
+ * Build the "Available Skills" prompt section from skill metadata.
+ * Returns a markdown string with preamble and skill list ready to inject into a system prompt.
+ */
+export function buildSkillsPromptSection(skills: SkillListItem[]): string {
+  const skillsList = skills
+    .map(s => {
+      const whenToUse = s.whenToUse ? ` *When to use:* ${s.whenToUse}` : '';
+      return `- **${s.name}**: ${s.description}${whenToUse}`;
+    })
+    .join('\n');
+
+  return `## Available Skills
+
+**IMPORTANT: Before implementing any feature, check this list for a matching skill.** Skills provide battle-tested templates, patterns, and specialized tools. If a skill matches the user's request, load it immediately with \`skill({ action: "load", skill: "name" })\` and follow its instructions.
+
+${skillsList}`;
 }
 
 /**
@@ -524,6 +544,7 @@ export class SkillLoaderTool {
         const skillName = entry.name;
         let name = skillName;
         let description = '';
+        let whenToUse: string | undefined;
         let enablementId: string | undefined;
 
         try {
@@ -531,9 +552,12 @@ export class SkillLoaderTool {
           const skillContent = await fs.readFile(skillFile, 'utf-8');
           const { data } = matter(skillContent);
 
-          // Extract name, description, and enablementId from YAML frontmatter
+          // Extract name, description, whenToUse, and enablementId from YAML frontmatter
           name = data.name || skillName;
           description = data.description || '';
+          if (typeof data.whenToUse === 'string' && data.whenToUse.trim()) {
+            whenToUse = data.whenToUse.trim();
+          }
           enablementId = data.enablementId;
 
           // If enablementId is provided, check if the feature is enabled
@@ -566,6 +590,9 @@ export class SkillLoaderTool {
         }
 
         const skillItem: SkillListItem = { name, description };
+        if (whenToUse) {
+          skillItem.whenToUse = whenToUse;
+        }
         if (enablementId) {
           skillItem.enablementId = enablementId;
         }

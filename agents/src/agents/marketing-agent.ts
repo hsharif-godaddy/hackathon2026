@@ -12,7 +12,7 @@ import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { Logger } from '../logging/index.js'
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 import { skills } from '../services/features.js'
-import { SkillLoaderTool } from '../tools/skill-loader-tool.js'
+import { SkillLoaderTool, buildSkillsPromptSection } from '../tools/skill-loader-tool.js'
 
 const logger = Logger.create({ service: 'marketing-agent' })
 
@@ -20,19 +20,23 @@ async function buildMarketingSystemPrompt(): Promise<string> {
   const promptBuilder = createPromptBuilder()
   const paths = getModularPromptPaths(import.meta.url)
 
-  // Get available skills list
+  // Get available skills list with whenToUse guidance
   const skillLoader = new SkillLoaderTool()
   const skillsResult = await skillLoader.listSkills()
-  const skillsList = skillsResult.success && skillsResult.skills
-    ? skillsResult.skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')
-    : '(No skills available)'
+  const skillsSection = skillsResult.success && skillsResult.skills?.length
+    ? buildSkillsPromptSection(skillsResult.skills)
+    : ''
 
   // Order: Identity → Voice → Technical details
   promptBuilder
     .file(paths.getAgentFile('marketing', 'core.md'))
     .file(paths.getSharedFile('communication.md'))
-    .text(`\n## Available Skills\n\n${skillsList}\n\n`)
     .file(paths.getSharedFile('security.md'))
+
+  // Skills section at end of prompt for emphasis
+  if (skillsSection) {
+    promptBuilder.text(`\n${skillsSection}\n`)
+  }
 
   return await promptBuilder.build()
 }

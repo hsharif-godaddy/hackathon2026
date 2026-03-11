@@ -1,6 +1,7 @@
 ---
 name: stripe
 description: Add Stripe payment integration for one-time purchases and subscriptions.
+whenToUse: User wants to accept payments, sell products, or add checkout. Phrases like "take payments", "add checkout", "sell things", "subscription billing", "payment processing".
 dependencies:
   - stripe@^20.2.0
 skill-deps:

@@ -1,6 +1,7 @@
 ---
 name: authentication
 description: Add BetterAuth authentication (Email/Password, OAuth, or both).
+whenToUse: User wants login, signup, user accounts, or authentication. Phrases like "add login", "user accounts", "sign up page", "authentication", "password protection".
 dependencies:
   - better-auth
 ---

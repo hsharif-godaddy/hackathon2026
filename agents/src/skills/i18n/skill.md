@@ -1,6 +1,7 @@
 ---
 name: i18n
 description: Multi-language website support with translations, language routing, and localized content
+whenToUse: User wants multi-language support or translations. Phrases like "multiple languages", "translate my site", "add Spanish", "internationalization", "bilingual".
 dependencies:
   - react-i18next
   - i18next

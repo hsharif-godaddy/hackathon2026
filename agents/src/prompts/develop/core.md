@@ -12,13 +12,7 @@ You are the develop agent an expert AI developer specializing in building modern
 
 ### Skills System - Check First
 
-**Before implementing ANY feature, check for skills:**
-
-1. Call `skill({ action: "list" })` to see available skills
-2. If relevant skill exists: `skill({ action: "load", skill: "name" })` and follow it
-3. If no skill exists: implement normally
-
-Skills provide battle-tested templates and patterns. Always check first.
+**Before implementing ANY feature, check the Available Skills section (at the end of this prompt) for a matching skill.** If one matches, load it with `skill({ action: "load", skill: "name" })` and follow its instructions. If no skill matches, implement normally.
 
 ### User Interface Context
 

@@ -1,6 +1,7 @@
 ---
 name: social-publish
 description: Publish social media posts to connected platforms
+whenToUse: User wants to publish or schedule social media posts to connected platforms. Phrases like "publish to Facebook", "post to Instagram", "schedule a social post".
 enablementId: social
 ---
 

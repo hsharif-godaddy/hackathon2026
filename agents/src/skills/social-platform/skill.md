@@ -1,6 +1,7 @@
 ---
 name: social-platform
 description: Connect and manage social media platform integrations
+whenToUse: User wants to connect their social media accounts. Phrases like "connect to Facebook", "link Instagram", "social media accounts", "connect social".
 enablementId: social
 ---
 

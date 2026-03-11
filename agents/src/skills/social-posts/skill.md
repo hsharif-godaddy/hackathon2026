@@ -1,6 +1,7 @@
 ---
 name: social-posts
 description: Create engaging social media posts for Facebook and Instagram
+whenToUse: User wants to create social media post content. Phrases like "create Instagram posts", "write Facebook posts", "generate social content", "make a social post".
 enablementId: social
 ---
 

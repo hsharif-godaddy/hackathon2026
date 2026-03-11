@@ -1,6 +1,7 @@
 ---
 name: media
 description: AI generation of logos, images, and videos. Only load when user explicitly says "generate", "create", or "design" - for stock photos use the media tool instead.
+whenToUse: User wants AI-generated images, logos, or videos (NOT stock photos). Phrases like "generate a logo", "create an image", "design a banner". Do NOT use for stock photo search — use the media tool instead.
 ---
 
 # Media Skill

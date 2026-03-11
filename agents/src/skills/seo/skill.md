@@ -1,6 +1,7 @@
 ---
 name: seo
 description: Intelligent SEO analysis and optimization for websites
+whenToUse: User wants to improve search engine rankings or SEO analysis. Phrases like "optimize SEO", "improve search rankings", "help with SEO", "check my SEO".
 ---
 
 # SEO Analysis & Optimization Skill
