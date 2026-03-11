@@ -16,6 +16,11 @@ on:
         required: false
         type: string
         default: ""
+      files_to_delete:
+        description: "Delete files: Comma-separated filenames (e.g., deployment.md,media_manager.md)"
+        required: false
+        type: string
+        default: ""
   workflow_call:
     inputs:
       environment:
@@ -27,12 +32,17 @@ on:
         required: false
         type: string
         default: ""
+      files_to_delete:
+        description: "Comma-separated filenames to delete"
+        required: false
+        type: string
+        default: ""
 
-run-name: "Update ${{ inputs.filenames || 'all files' }} from ${{ github.ref_name }} to ${{ inputs.environment }}"
+run-name: "[${{ inputs.environment }}] ${{ inputs.files_to_delete != '' && 'Delete' || 'Upload' }} ${{ inputs.files_to_delete || inputs.filenames || 'all files' }} by ${{ github.actor }}"
 
 jobs:
   upload-knowledge-base:
-    name: Upload Knowledge Base Documents
+    name: "[${{ inputs.environment }}] ${{ inputs.files_to_delete != '' && 'Delete' || 'Upload' }} Knowledge Base Document(s)"
     runs-on:
       labels:
         - airo-cicd-runners
@@ -139,6 +149,7 @@ jobs:
           echo "✅ SSO JWT token generated successfully"
 
       - name: Upload knowledge base files
+        if: ${{ inputs.files_to_delete == '' }}
         env:
           FILENAMES: ${{ inputs.filenames }}
           ENVIRONMENT: ${{ inputs.environment }}
@@ -240,4 +251,106 @@ jobs:
           else
             echo ""
             echo "✅ All knowledge base files uploaded successfully!"
+          fi
+
+      - name: Delete knowledge base files
+        if: ${{ inputs.files_to_delete != '' }}
+        env:
+          FILES_TO_DELETE: ${{ inputs.files_to_delete }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          echo "Starting knowledge base deletion..."
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Environment: $ENVIRONMENT"
+
+          # Set API URL and kbNodeId based on environment
+          if [ "$ENVIRONMENT" == "PROD" ]; then
+            API_URL="https://knowb.api.int.godaddy.com/v1/kbnodes"
+            KB_NODE_ID="/airo_info"
+            echo "Target: Production KB (/airo_info)"
+          else
+            API_URL="https://knowb.api.int.test-godaddy.com/v1/kbnodes"
+            KB_NODE_ID="/airo_info"
+            echo "Target: Test KB (/airo_info)"
+          fi
+
+          echo "Using API: $API_URL"
+
+          DELETE_COUNT=0
+          FAILED_COUNT=0
+
+          echo "Deleting specific files: $FILES_TO_DELETE"
+          IFS=',' read -ra FILE_ARRAY <<< "$FILES_TO_DELETE"
+          DELETE_PATHS=()
+          for fname in "${FILE_ARRAY[@]}"; do
+            fname=$(echo "$fname" | xargs)
+            if [ -z "$fname" ]; then
+              continue
+            fi
+            if [[ "$fname" == *"/"* ]] || [[ "$fname" == *".."* ]]; then
+              echo "❌ ERROR: Invalid filename '$fname' — must not contain '/' or '..'"
+              exit 1
+            fi
+            if [ -f "knowledge-base/$fname" ]; then
+              echo "❌ ERROR: '$fname' still exists in knowledge-base/ — remove it from the repo before deleting from KB"
+              exit 1
+            fi
+            DELETE_PATHS+=("$fname")
+          done
+
+          if [ ${#DELETE_PATHS[@]} -eq 0 ]; then
+            echo "❌ ERROR: No valid filenames provided"
+            exit 1
+          fi
+
+          for filename in "${DELETE_PATHS[@]}"; do
+            echo ""
+            echo "=================================================="
+            echo "Deleting: $filename"
+            echo "=================================================="
+
+            response=$(curl -s -w "\n%{http_code}" \
+              -X DELETE \
+              "${API_URL}${KB_NODE_ID}/${filename}" \
+              -H "Authorization: sso-jwt ${SSO_JWT}" \
+              -H "Accept: application/json")
+
+            http_code=$(echo "$response" | tail -n 1)
+            response_body=$(echo "$response" | head -n -1)
+
+            echo "Response status: $http_code"
+            echo "Response body: $response_body"
+
+            if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+              echo "✅ Successfully deleted: $filename"
+              DELETE_COUNT=$((DELETE_COUNT + 1))
+            else
+              echo "❌ Failed to delete: $filename (HTTP $http_code)"
+              FAILED_COUNT=$((FAILED_COUNT + 1))
+            fi
+            # Regardless of the response, continue to the next file
+          done
+
+          echo ""
+          echo "=================================================="
+          echo "Delete Summary"
+          echo "=================================================="
+          echo "Environment: $ENVIRONMENT"
+          echo "KB Node ID: $KB_NODE_ID"
+          echo "Successfully deleted: $DELETE_COUNT file(s)"
+          echo "Failed deletions: $FAILED_COUNT file(s)"
+
+          if [ $FAILED_COUNT -gt 0 ]; then
+            echo ""
+            echo "⚠️  Some deletions failed. Please check the logs above."
+            exit 1
+          fi
+
+          if [ $DELETE_COUNT -eq 0 ]; then
+            echo ""
+            echo "⚠️  No files were deleted. Check if files were removed from knowledge-base directory."
+            exit 1
+          else
+            echo ""
+            echo "✅ All knowledge base files (${FILES_TO_DELETE}) deleted successfully!"
           fi
