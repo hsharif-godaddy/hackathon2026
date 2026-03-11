@@ -253,7 +253,8 @@ func TestGrepSkipsBinaryFiles(t *testing.T) {
 	// Text file with searchable content
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "src", "main.go"), []byte("hello world\n"), 0o644))
 
-	// Binary file: contains null byte in first 512 bytes
+	// Binary file: uses .bin2 (not .bin) to bypass the extension check and
+	// exercise the null-byte sniff path instead.
 	bin := make([]byte, 100)
 	copy(bin, []byte("hello world"))
 	bin[50] = 0 // null byte
@@ -266,6 +267,22 @@ func TestGrepSkipsBinaryFiles(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "src/main.go")
 	assert.NotContains(t, out, "data.bin2", "binary file with null bytes should be skipped")
+}
+
+func TestGrepSkipsBlockedExtensions(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "logs"), 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.go"), []byte("findme\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "logs", "app.log"), []byte("findme\n"), 0o644))
+
+	ctx := tool.TestContext(dir)
+	g := NewSearch()
+
+	out, err := execGrep(ctx, t, g, map[string]any{"query": "findme"})
+	require.NoError(t, err)
+	assert.Contains(t, out, "main.go")
+	assert.NotContains(t, out, "app.log", ".log files should be skipped via BlockedExtensions")
 }
 
 func TestGrepMissingScope(t *testing.T) {

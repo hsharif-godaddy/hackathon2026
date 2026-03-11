@@ -48,21 +48,24 @@ var BlockedDirs = map[string]bool{
 	".parcel-cache": true,
 }
 
-// BlockedExtensions are file extensions for binary/log files that should not be read or written.
+// BlockedExtensions are file extensions for binary/log/media files that should
+// not be read, written, or searched. This is the single authoritative list used
+// by all tools (fileops, grep, etc.).
 var BlockedExtensions = map[string]bool{
-	".log":     true,
-	".zip":     true,
-	".tar":     true,
-	".gz":      true,
-	".rar":     true,
-	".7z":      true,
-	".db":      true,
-	".sqlite":  true,
-	".sqlite3": true,
-	".bin":     true,
-	".exe":     true,
-	".dll":     true,
-	".so":      true,
+	// Archives
+	".zip": true, ".tar": true, ".gz": true, ".rar": true, ".7z": true,
+	// Executables / shared libraries
+	".bin": true, ".exe": true, ".dll": true, ".so": true, ".dylib": true,
+	// Images
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".ico": true,
+	// Documents
+	".pdf": true,
+	// Fonts
+	".woff": true, ".woff2": true, ".ttf": true, ".eot": true,
+	// Databases
+	".db": true, ".sqlite": true, ".sqlite3": true,
+	// Logs
+	".log": true,
 }
 
 // CheckBlocked returns an error if the path matches a blocked pattern.

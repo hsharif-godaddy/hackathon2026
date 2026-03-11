@@ -17,15 +17,6 @@ import (
 
 const defaultMaxResults = 50
 
-// binaryExtensions are file extensions skipped during search.
-var binaryExtensions = map[string]bool{
-	".zip": true, ".tar": true, ".gz": true, ".rar": true, ".7z": true,
-	".bin": true, ".exe": true, ".dll": true, ".so": true, ".dylib": true,
-	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".ico": true,
-	".pdf": true, ".woff": true, ".woff2": true, ".ttf": true, ".eot": true,
-	".db": true, ".sqlite": true, ".sqlite3": true,
-}
-
 // Search implements the grepSearch tool — searches file contents.
 type Search struct{}
 
@@ -157,7 +148,8 @@ func (g *Search) searchDir(dir, appRoot string, opts grepInput, matcher func(str
 		if !matchesFileFilters(name, opts.IncludePatterns, opts.ExcludePatterns) {
 			continue
 		}
-		if binaryExtensions[filepath.Ext(name)] {
+		ext := filepath.Ext(name)
+		if tool.BlockedExtensions[ext] {
 			continue
 		}
 
