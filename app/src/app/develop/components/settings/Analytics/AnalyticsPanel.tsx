@@ -8,6 +8,8 @@ import RUM from '@/app/develop/components/settings/Analytics/RUM'
 import { usePublishForDomain } from '@/app/develop/components/settings/DomainPanel/usePublishForDomain'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import EmptyStateCard from '@/components/layout/EmptyStateCard'
+import { usePaywallModal } from '@/hooks/usePaywallModal'
+import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { useSiteStore } from '@/stores/useSiteStore'
 import { hasBeenPublished } from '@/utils/site'
 
@@ -46,20 +48,31 @@ export default function AnalyticsPanel() {
     return publishedFqdn || null
   }, [site])
 
-  // Publish hook for empty state
   const { handlePublish, isPublishDisabled, publishState } = usePublishForDomain(appId, site)
 
-  // Show empty state if site hasn't been published yet
+  const { checkAndShowPaywall, PaywallModal, isPolling, isPaywallLoading, isPublishLimitLoading } = usePaywallModal({
+    appId: appId ?? undefined,
+    source: 'publish',
+    itc: PAYWALL_ITC.PUBLISH,
+  })
+
+  const handlePublishWithPaywall = async () => {
+    await checkAndShowPaywall(async () => {
+      await handlePublish()
+    })
+  }
+
   if (!publishedUrl || !hasBeenPublished(site)) {
     return (
       <Box gap="lg" className="@container">
+        <PaywallModal />
         <EmptyStateCard
           icon={<GraphIcon width={48} height={48} />}
           title="Publish Your App to View Analytics"
           description="Analytics are only available for published websites. Please publish your app to view analytics data."
           ctaLabel={publishState.isPublishing ? "Publishing..." : "Publish Now"}
-          onCtaClick={handlePublish}
-          ctaDisabled={isPublishDisabled}
+          onCtaClick={handlePublishWithPaywall}
+          ctaDisabled={isPublishDisabled || isPolling || isPaywallLoading || isPublishLimitLoading}
         />
       </Box>
     )
