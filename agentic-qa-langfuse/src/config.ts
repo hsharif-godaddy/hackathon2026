@@ -32,6 +32,7 @@ export type Config = ReturnType<typeof load>;
 export const BATCH_SIZE = 50;
 export const DEFAULT_WORKERS = 10;
 export const ERROR_EVENT_PREFIX = 'agent_error_trace';
+export const MAX_VERTICAL_MESSAGES = 2;
 export const TRACES_ENVIRONMENT = 'default';
 
 export const ERROR_CATEGORIES = [
@@ -73,3 +74,25 @@ export const INTENT_CATEGORIES = [
 ] as const;
 
 export type IntentCategory = typeof INTENT_CATEGORIES[number];
+
+export const VERTICAL_CATEGORIES = [
+  'ecommerce_retail',
+  'photography_creative',
+  'tech_saas',
+  'pet_services',
+  'automotive',
+  'beauty_salon',
+  'legal_professional_services',
+  'health_wellness_fitness',
+  'wedding_events',
+  'travel_hospitality',
+  'education',
+  'construction_trades',
+  'restaurant_food',
+  'finance',
+  'real_estate',
+  'cleaning_services',
+  'other',
+] as const;
+
+export type VerticalCategory = typeof VERTICAL_CATEGORIES[number];

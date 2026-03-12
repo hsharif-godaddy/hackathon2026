@@ -37,6 +37,7 @@ on:
           - ""
           - "error"
           - "intent"
+          - "vertical"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

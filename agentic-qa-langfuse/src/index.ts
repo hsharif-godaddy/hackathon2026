@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util';
 
 import { DEFAULT_WORKERS, load } from './config.js';
-import { findEvaluators, run, runAll, runIntent } from './pipeline.js';
+import { findEvaluators, runAll } from './pipeline.js';
 
 // Strip standalone '--' that pnpm injects when forwarding script args
 const args = process.argv.slice(2).filter(a => a !== '--');
@@ -14,6 +14,8 @@ const { values } = parseArgs({
     workers: { type: 'string' },
     intent: { type: 'boolean', default: false },
     error: { type: 'boolean', default: false },
+    vertical: { type: 'boolean', default: false },
+    'runtime-errors': { type: 'boolean', default: false },
   },
   strict: false,
 });
@@ -27,6 +29,8 @@ if (!sessions?.length && !hours) {
   console.error('  Example: tsx src/index.ts --hours 24');
   console.error('  Example: tsx src/index.ts --intent --hours 24');
   console.error('  Example: tsx src/index.ts --error --hours 24');
+  console.error('  Example: tsx src/index.ts --vertical --hours 24');
+  console.error('  Example: tsx src/index.ts --runtime-errors --hours 24');
   process.exit(1);
 }
 
@@ -45,14 +49,11 @@ const workers = parsePositiveInt(values.workers as string | undefined, DEFAULT_W
 const parsedHours = hours ? parsePositiveInt(hours, 0, 'hours') : undefined;
 const options = { sessions, hours: parsedHours, workers };
 
-if (values.intent && values.error) {
-  // Both flags explicit -- same as runAll but lets user be explicit
-  await runAll(config, options, findEvaluators(['error', 'intent']));
-} else if (values.intent) {
-  await runIntent(config, options);
-} else if (values.error) {
-  await run(config, options);
-} else {
-  // No flag: run all evaluators (default for scheduled / PR runs)
-  await runAll(config, options);
-}
+const flags = [
+  values.error && 'error',
+  values.intent && 'intent',
+  values.vertical && 'vertical',
+  values['runtime-errors'] && 'runtime-errors',
+].filter(Boolean) as string[];
+
+await runAll(config, options, flags.length ? findEvaluators(flags) : undefined);

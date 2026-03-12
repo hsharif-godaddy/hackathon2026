@@ -31,13 +31,29 @@ interface ObservationsResponse {
   meta: { page: number; limit: number; totalItems: number; totalPages: number };
 }
 
+export interface LangfuseScore {
+  id: string;
+  name: string;
+  value: string | number;
+  traceId?: string;
+  sessionId?: string;
+  observationId?: string;
+  dataType: string;
+  comment?: string;
+}
+
+interface ScoresResponse {
+  data: LangfuseScore[];
+  meta: { page: number; limit: number; totalItems: number; totalPages: number };
+}
+
 export interface CreateScoreParams {
   traceId?: string;
   sessionId?: string;
   observationId?: string;
   name: string;
   value: string | number;
-  dataType: 'CATEGORICAL' | 'NUMERIC';
+  dataType: 'CATEGORICAL' | 'NUMERIC' | 'BOOLEAN';
   comment?: string;
   id?: string;
 }
@@ -71,6 +87,7 @@ export async function listTraces(
     sessionId?: string;
     fromTimestamp?: string;
     environment?: string;
+    orderBy?: string;
     page?: number;
     limit?: number;
   }
@@ -81,6 +98,7 @@ export async function listTraces(
   if (options.sessionId) params.set('sessionId', options.sessionId);
   if (options.fromTimestamp) params.set('fromTimestamp', options.fromTimestamp);
   if (options.environment) params.set('environment', options.environment);
+  if (options.orderBy) params.set('orderBy', options.orderBy);
 
   return request<TracesResponse>(creds, `/api/public/traces?${params}`);
 }
@@ -90,6 +108,8 @@ export async function listObservations(
   options: {
     traceId: string;
     type?: string;
+    name?: string;
+    fromStartTime?: string;
     page?: number;
     limit?: number;
   }
@@ -99,8 +119,36 @@ export async function listObservations(
   params.set('limit', String(options.limit ?? 100));
   params.set('traceId', options.traceId);
   if (options.type) params.set('type', options.type);
+  if (options.name) params.set('name', options.name);
+  if (options.fromStartTime) params.set('fromStartTime', options.fromStartTime);
 
   return request<ObservationsResponse>(creds, `/api/public/observations?${params}`);
+}
+
+export async function listScores(
+  creds: LangfuseCredentials,
+  options: { name?: string; scoreIds?: string[]; page?: number; limit?: number }
+): Promise<ScoresResponse> {
+  const params = new URLSearchParams();
+  params.set('page', String(options.page ?? 1));
+  params.set('limit', String(options.limit ?? 100));
+  if (options.name) params.set('name', options.name);
+  if (options.scoreIds?.length) {
+    for (const id of options.scoreIds) {
+      params.append('scoreIds', id);
+    }
+  }
+
+  return request<ScoresResponse>(creds, `/api/public/scores?${params}`);
+}
+
+export async function deleteScore(
+  creds: LangfuseCredentials,
+  scoreId: string
+): Promise<void> {
+  await request<unknown>(creds, `/api/public/scores/${encodeURIComponent(scoreId)}`, {
+    method: 'DELETE',
+  });
 }
 
 export async function createScore(

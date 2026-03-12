@@ -5,7 +5,9 @@ import {
   ERROR_CATEGORIES,
   ERROR_EVENT_PREFIX,
   INTENT_CATEGORIES,
+  MAX_VERTICAL_MESSAGES,
   TRACES_ENVIRONMENT,
+  VERTICAL_CATEGORIES,
 } from './config.js';
 import { print as printCost, reset as resetCost } from './cost-tracker.js';
 import { type EvalContext, type Evaluator } from './evaluator.js';
@@ -16,8 +18,12 @@ import {
   type LangfuseObservation,
   type LangfuseTrace,
   listObservations,
+  listScores,
   listTraces,
 } from './langfuse-client.js';
+import { isMeaningful } from './relevance-filter.js';
+import { PATTERN_NAMES, scan as scanForRuntimeError } from './runtime-error-patterns.js';
+import { classify as classifyVertical } from './vertical-classifier.js';
 
 export interface ErrorEvent {
   traceId: string;
@@ -46,14 +52,24 @@ export interface SessionData {
 }
 
 export interface IntentResult {
-  sessionId: string;
-  traceCount: number;
-  messageCount: number;
-  traceIds: string[];
+  traceId: string;
+  sessionId?: string;
+  message: string;
+  meaningful: boolean;
   primaryCategory: string;
   primaryConfidence: number;
   secondaryCategory: string | null;
   secondaryConfidence: number;
+  reasoning: string;
+}
+
+export interface VerticalResult {
+  sessionId: string;
+  traceCount: number;
+  messageCount: number;
+  traceIds: string[];
+  category: string;
+  confidence: number;
   reasoning: string;
 }
 
@@ -386,7 +402,7 @@ export function groupBySession(traces: LangfuseTrace[]): SessionGroupResult {
   return { sessions, skipped };
 }
 
-function extractInputText(input: unknown): string | null {
+export function extractInputText(input: unknown): string | null {
   if (input == null) return null;
   if (typeof input === 'string') return input.trim() || null;
   if (typeof input === 'object' && !Array.isArray(input)) {
@@ -408,10 +424,13 @@ export function extractSessionInputs(
   const result = new Map<string, SessionData>();
 
   for (const [sessionId, traces] of sessions) {
+    const sorted = [...traces].sort(function byTime(a, b) {
+      return a.timestamp.localeCompare(b.timestamp);
+    });
     const messages: string[] = [];
     const traceIds: string[] = [];
 
-    for (const trace of traces) {
+    for (const trace of sorted) {
       traceIds.push(trace.id);
       const text = extractInputText(trace.input);
       if (text) messages.push(text);
@@ -426,58 +445,260 @@ export function extractSessionInputs(
 export async function classifyAndScoreIntents(
   creds: LangfuseCredentials,
   config: Config,
-  sessionInputs: Map<string, SessionData>,
+  traces: LangfuseTrace[],
   workers: number
 ): Promise<IntentResult[]> {
-  const entries = [...sessionInputs.entries()];
+  return runWithConcurrency(traces, workers, async function classifyTrace(trace) {
+    const message = extractInputText(trace.input);
+    if (!message || !isMeaningful(message)) {
+      return {
+        traceId: trace.id,
+        sessionId: trace.sessionId,
+        message: message ?? '',
+        meaningful: false,
+        primaryCategory: 'other',
+        primaryConfidence: 0.0,
+        secondaryCategory: null,
+        secondaryConfidence: 0.0,
+        reasoning: 'Skipped: input not meaningful.',
+      };
+    }
 
-  return runWithConcurrency(entries, workers, async function classifySession(
-    [sessionId, data]
-  ) {
     try {
-      const classification = await classifyIntent(data.messages, config.llm);
+      const classification = await classifyIntent(message, config.llm);
 
       const scores: Promise<void>[] = [
         createScore(creds, {
-          sessionId,
+          traceId: trace.id,
           name: 'intent_primary_category',
           value: classification.primaryCategory,
           dataType: 'CATEGORICAL',
           comment: classification.reasoning,
-          id: `${sessionId}-intent_primary_category`,
+          id: `${trace.id}-intent_primary_category`,
         }),
         createScore(creds, {
-          sessionId,
+          traceId: trace.id,
           name: 'intent_primary_confidence',
           value: classification.primaryConfidence,
           dataType: 'NUMERIC',
           comment: classification.reasoning,
-          id: `${sessionId}-intent_primary_confidence`,
+          id: `${trace.id}-intent_primary_confidence`,
         }),
       ];
 
       if (classification.secondaryCategory) {
         scores.push(
           createScore(creds, {
-            sessionId,
+            traceId: trace.id,
             name: 'intent_secondary_category',
             value: classification.secondaryCategory,
             dataType: 'CATEGORICAL',
             comment: classification.reasoning,
-            id: `${sessionId}-intent_secondary_category`,
+            id: `${trace.id}-intent_secondary_category`,
           }),
           createScore(creds, {
-            sessionId,
+            traceId: trace.id,
             name: 'intent_secondary_confidence',
             value: classification.secondaryConfidence,
             dataType: 'NUMERIC',
             comment: classification.reasoning,
-            id: `${sessionId}-intent_secondary_confidence`,
+            id: `${trace.id}-intent_secondary_confidence`,
           }),
         );
       }
 
       await Promise.all(scores);
+
+      return {
+        traceId: trace.id,
+        sessionId: trace.sessionId,
+        message,
+        meaningful: true,
+        ...classification,
+      };
+    } catch (error) {
+      return {
+        traceId: trace.id,
+        sessionId: trace.sessionId,
+        message,
+        meaningful: true,
+        primaryCategory: 'other' as const,
+        primaryConfidence: 0.0,
+        secondaryCategory: null,
+        secondaryConfidence: 0.0,
+        reasoning: `Classification failed: ${String(error).slice(0, 200)}`,
+      };
+    }
+  });
+}
+
+export function formatIntentReport(results: IntentResult[], langfuseBaseUrl: string): string {
+  if (!results.length) return '  No traces to classify.';
+
+  const meaningful = results.filter(function keep(r) { return r.meaningful; });
+  const skipped = results.length - meaningful.length;
+  const withSecondary = meaningful.filter(function hasSecondary(r) { return r.secondaryCategory != null; }).length;
+  const failed = meaningful.filter(function isFailed(r) { return r.primaryConfidence === 0.0 && r.primaryCategory === 'other'; }).length;
+
+  const primaryCounts = new Map<string, number>();
+  const secondaryCounts = new Map<string, number>();
+  const byPrimary = new Map<string, IntentResult[]>();
+  for (const r of meaningful) {
+    primaryCounts.set(r.primaryCategory, (primaryCounts.get(r.primaryCategory) ?? 0) + 1);
+    const list = byPrimary.get(r.primaryCategory) ?? [];
+    list.push(r);
+    byPrimary.set(r.primaryCategory, list);
+    if (r.secondaryCategory) {
+      secondaryCounts.set(r.secondaryCategory, (secondaryCounts.get(r.secondaryCategory) ?? 0) + 1);
+    }
+  }
+  const lowConfidence = meaningful.filter(function low(r) { return r.primaryConfidence < 0.7; });
+
+  const sep = '='.repeat(72);
+  const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+
+  const lines: string[] = [];
+  lines.push(`\n${sep}`);
+  lines.push(`  INTENT CLASSIFICATION REPORT -- ${now}`);
+  lines.push(sep);
+  lines.push(`\n  Total traces:              ${results.length}`);
+  lines.push(`  Meaningful (classified):   ${meaningful.length}`);
+  lines.push(`  Skipped (not meaningful):  ${skipped}`);
+  lines.push(`  Traces with secondary:     ${withSecondary}`);
+  if (failed) lines.push(`  Classification failures:   ${failed}`);
+
+  lines.push('\n  Primary Intent Distribution:');
+  lines.push(`  ${'-'.repeat(55)}`);
+  for (const cat of INTENT_CATEGORIES) {
+    const count = primaryCounts.get(cat) ?? 0;
+    const pct = meaningful.length ? (count / meaningful.length) * 100 : 0;
+    const bar = '#'.repeat(Math.floor(pct / 2));
+    lines.push(`  ${cat.padEnd(25)} ${String(count).padStart(5)}  (${pct.toFixed(1).padStart(5)}%)  ${bar}`);
+  }
+  lines.push(`  ${'-'.repeat(55)}`);
+
+  if (withSecondary) {
+    lines.push('\n  Secondary Intent Distribution:');
+    lines.push(`  ${'-'.repeat(55)}`);
+    for (const cat of INTENT_CATEGORIES) {
+      const count = secondaryCounts.get(cat) ?? 0;
+      if (!count) continue;
+      const pct = (count / withSecondary) * 100;
+      const bar = '#'.repeat(Math.floor(pct / 2));
+      lines.push(`  ${cat.padEnd(25)} ${String(count).padStart(5)}  (${pct.toFixed(1).padStart(5)}%)  ${bar}`);
+    }
+    lines.push(`  ${'-'.repeat(55)}`);
+  }
+
+  for (const cat of INTENT_CATEGORIES) {
+    const tracesInCat = byPrimary.get(cat);
+    if (!tracesInCat?.length) continue;
+
+    lines.push(`\n  [${cat}] -- Sample traces:`);
+    for (const r of tracesInCat.slice(0, 3)) {
+      const secondary = r.secondaryCategory ? `, secondary=${r.secondaryCategory}` : '';
+      lines.push(`    Trace: ${r.traceId.slice(0, 40)}  (conf=${r.primaryConfidence.toFixed(2)}${secondary})`);
+      lines.push(`      Message: ${r.message.slice(0, 100)}`);
+      lines.push(`      Reasoning: ${r.reasoning.slice(0, 120)}`);
+      lines.push(`      Link: ${langfuseBaseUrl}/trace/${r.traceId}`);
+    }
+  }
+
+  if (lowConfidence.length) {
+    lines.push(`\n  Low-confidence primary classifications (${lowConfidence.length}):`);
+    for (const r of lowConfidence.slice(0, 10)) {
+      lines.push(`    [${r.primaryConfidence.toFixed(2)}] ${r.primaryCategory.padEnd(25)} trace=${r.traceId.slice(0, 30)}`);
+    }
+    if (lowConfidence.length > 10) {
+      lines.push(`    ... and ${lowConfidence.length - 10} more`);
+    }
+  }
+
+  lines.push(`\n${sep}`);
+  return lines.join('\n');
+}
+
+export const intentEvaluator: Evaluator = {
+  name: 'intent',
+  async run(ctx: EvalContext): Promise<string> {
+    const results = await classifyAndScoreIntents(ctx.creds, ctx.config, ctx.traces, ctx.workers);
+    return formatIntentReport(results, ctx.creds.baseUrl);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Vertical classification evaluator
+// ---------------------------------------------------------------------------
+
+export interface VerticalClassificationResult {
+  results: VerticalResult[];
+  skippedCount: number;
+}
+
+async function fetchAlreadyClassified(
+  creds: LangfuseCredentials,
+  sessionIds: string[],
+  scoreName: string
+): Promise<Set<string>> {
+  if (!sessionIds.length) return new Set();
+
+  const scoreIds = sessionIds.map(function buildId(id) { return `${id}-${scoreName}`; });
+  const classified = new Set<string>();
+  const pageSize = 100;
+
+  for (let i = 0; i < scoreIds.length; i += pageSize) {
+    const batch = scoreIds.slice(i, i + pageSize);
+    try {
+      const response = await listScores(creds, { scoreIds: batch, limit: pageSize });
+      for (const score of response.data) {
+        if (score.sessionId) classified.add(score.sessionId);
+      }
+    } catch {
+      // If the lookup fails, proceed without skipping (classify everything)
+    }
+  }
+
+  return classified;
+}
+
+export async function classifyAndScoreVerticals(
+  creds: LangfuseCredentials,
+  config: Config,
+  sessionInputs: Map<string, SessionData>,
+  workers: number
+): Promise<VerticalClassificationResult> {
+  const allIds = [...sessionInputs.keys()];
+  const alreadyClassified = await fetchAlreadyClassified(creds, allIds, 'vertical_category');
+  const pending = [...sessionInputs.entries()]
+    .filter(function notClassified([id]) { return !alreadyClassified.has(id); });
+
+  const results = await runWithConcurrency(pending, workers, async function classifySession(
+    [sessionId, data]
+  ) {
+    try {
+      const classification = await classifyVertical(
+        data.messages.slice(0, MAX_VERTICAL_MESSAGES),
+        config.llm
+      );
+
+      await Promise.all([
+        createScore(creds, {
+          sessionId,
+          name: 'vertical_category',
+          value: classification.category,
+          dataType: 'CATEGORICAL',
+          comment: classification.reasoning,
+          id: `${sessionId}-vertical_category`,
+        }),
+        createScore(creds, {
+          sessionId,
+          name: 'vertical_confidence',
+          value: classification.confidence,
+          dataType: 'NUMERIC',
+          comment: classification.reasoning,
+          id: `${sessionId}-vertical_confidence`,
+        }),
+      ]);
 
       return {
         sessionId,
@@ -492,81 +713,69 @@ export async function classifyAndScoreIntents(
         traceCount: data.traceIds.length,
         messageCount: data.messages.length,
         traceIds: data.traceIds,
-        primaryCategory: 'other' as const,
-        primaryConfidence: 0.0,
-        secondaryCategory: null,
-        secondaryConfidence: 0.0,
+        category: 'other' as const,
+        confidence: 0.0,
         reasoning: `Classification failed: ${String(error).slice(0, 200)}`,
       };
     }
   });
+
+  return { results, skippedCount: alreadyClassified.size };
 }
 
-export function formatIntentReport(results: IntentResult[], langfuseBaseUrl: string): string {
-  if (!results.length) return '  No sessions to classify.';
+export function formatVerticalReport(
+  { results, skippedCount }: VerticalClassificationResult,
+  langfuseBaseUrl: string
+): string {
+  if (!results.length && !skippedCount) return '  No sessions to classify.';
 
   const lines: string[] = [];
   const total = results.length;
   const totalTraces = results.reduce(function sum(acc, r) { return acc + r.traceCount; }, 0);
-  const sessionsWithSecondary = results.filter(function hasSecondary(r) { return r.secondaryCategory != null; }).length;
-  const failed = results.filter(function isFailed(r) { return r.primaryConfidence === 0.0 && r.primaryCategory === 'other'; }).length;
+  const failed = results.filter(function isFailed(r) { return r.confidence === 0.0 && r.category === 'other'; }).length;
 
-  const primaryCounts = new Map<string, number>();
-  const secondaryCounts = new Map<string, number>();
-  const byPrimary = new Map<string, IntentResult[]>();
+  const categoryCounts = new Map<string, number>();
+  const byCategory = new Map<string, VerticalResult[]>();
   for (const r of results) {
-    primaryCounts.set(r.primaryCategory, (primaryCounts.get(r.primaryCategory) ?? 0) + 1);
-    const list = byPrimary.get(r.primaryCategory) ?? [];
+    categoryCounts.set(r.category, (categoryCounts.get(r.category) ?? 0) + 1);
+    const list = byCategory.get(r.category) ?? [];
     list.push(r);
-    byPrimary.set(r.primaryCategory, list);
-    if (r.secondaryCategory) {
-      secondaryCounts.set(r.secondaryCategory, (secondaryCounts.get(r.secondaryCategory) ?? 0) + 1);
-    }
+    byCategory.set(r.category, list);
   }
-  const lowConfidence = results.filter(function low(r) { return r.primaryConfidence < 0.7; });
+  const lowConfidence = results.filter(function low(r) { return r.confidence < 0.7; });
 
   const sep = '='.repeat(72);
   const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
 
   lines.push(`\n${sep}`);
-  lines.push(`  INTENT CLASSIFICATION REPORT -- ${now}`);
+  lines.push(`  VERTICAL CLASSIFICATION REPORT -- ${now}`);
   lines.push(sep);
-  lines.push(`\n  Sessions classified:       ${total}`);
+  if (skippedCount) {
+    lines.push(`\n  Already classified:        ${skippedCount}  (skipped)`);
+    lines.push(`  Sessions classified:       ${total}`);
+  } else {
+    lines.push(`\n  Sessions classified:       ${total}`);
+  }
   lines.push(`  Total traces in sessions:  ${totalTraces}`);
-  lines.push(`  Sessions with secondary:   ${sessionsWithSecondary}`);
   if (failed) lines.push(`  Classification failures:   ${failed}`);
 
-  lines.push('\n  Primary Intent Distribution:');
+  lines.push('\n  Vertical Distribution:');
   lines.push(`  ${'-'.repeat(55)}`);
-  for (const cat of INTENT_CATEGORIES) {
-    const count = primaryCounts.get(cat) ?? 0;
+  for (const cat of VERTICAL_CATEGORIES) {
+    const count = categoryCounts.get(cat) ?? 0;
     const pct = total ? (count / total) * 100 : 0;
     const bar = '#'.repeat(Math.floor(pct / 2));
-    lines.push(`  ${cat.padEnd(25)} ${String(count).padStart(5)}  (${pct.toFixed(1).padStart(5)}%)  ${bar}`);
+    lines.push(`  ${cat.padEnd(30)} ${String(count).padStart(5)}  (${pct.toFixed(1).padStart(5)}%)  ${bar}`);
   }
   lines.push(`  ${'-'.repeat(55)}`);
 
-  if (sessionsWithSecondary) {
-    lines.push('\n  Secondary Intent Distribution:');
-    lines.push(`  ${'-'.repeat(55)}`);
-    for (const cat of INTENT_CATEGORIES) {
-      const count = secondaryCounts.get(cat) ?? 0;
-      if (!count) continue;
-      const pct = (count / sessionsWithSecondary) * 100;
-      const bar = '#'.repeat(Math.floor(pct / 2));
-      lines.push(`  ${cat.padEnd(25)} ${String(count).padStart(5)}  (${pct.toFixed(1).padStart(5)}%)  ${bar}`);
-    }
-    lines.push(`  ${'-'.repeat(55)}`);
-  }
-
-  for (const cat of INTENT_CATEGORIES) {
-    const sessionsInCat = byPrimary.get(cat);
+  for (const cat of VERTICAL_CATEGORIES) {
+    const sessionsInCat = byCategory.get(cat);
     if (!sessionsInCat?.length) continue;
 
     lines.push(`\n  [${cat}] -- Sample sessions:`);
     for (const r of sessionsInCat.slice(0, 3)) {
-      const secondary = r.secondaryCategory ? `, secondary=${r.secondaryCategory}` : '';
-      lines.push(`    Session: ${r.sessionId.slice(0, 40)}  (${r.messageCount} msgs, ${r.traceCount} traces, conf=${r.primaryConfidence.toFixed(2)}${secondary})`);
+      lines.push(`    Session: ${r.sessionId.slice(0, 40)}  (${r.messageCount} msgs, ${r.traceCount} traces, conf=${r.confidence.toFixed(2)})`);
       lines.push(`      Reasoning: ${r.reasoning.slice(0, 120)}`);
       if (r.traceIds.length) {
         lines.push(`      Link: ${langfuseBaseUrl}/trace/${r.traceIds[0]}`);
@@ -575,9 +784,9 @@ export function formatIntentReport(results: IntentResult[], langfuseBaseUrl: str
   }
 
   if (lowConfidence.length) {
-    lines.push(`\n  Low-confidence primary classifications (${lowConfidence.length}):`);
+    lines.push(`\n  Low-confidence classifications (${lowConfidence.length}):`);
     for (const r of lowConfidence.slice(0, 10)) {
-      lines.push(`    [${r.primaryConfidence.toFixed(2)}] ${r.primaryCategory.padEnd(25)} session=${r.sessionId.slice(0, 30)}`);
+      lines.push(`    [${r.confidence.toFixed(2)}] ${r.category.padEnd(30)} session=${r.sessionId.slice(0, 30)}`);
     }
     if (lowConfidence.length > 10) {
       lines.push(`    ... and ${lowConfidence.length - 10} more`);
@@ -588,13 +797,184 @@ export function formatIntentReport(results: IntentResult[], langfuseBaseUrl: str
   return lines.join('\n');
 }
 
-export const intentEvaluator: Evaluator = {
-  name: 'intent',
+export const verticalEvaluator: Evaluator = {
+  name: 'vertical',
   async run(ctx: EvalContext): Promise<string> {
     const { sessions } = groupBySession(ctx.traces);
     const sessionInputs = extractSessionInputs(sessions);
-    const results = await classifyAndScoreIntents(ctx.creds, ctx.config, sessionInputs, ctx.workers);
-    return formatIntentReport(results, ctx.creds.baseUrl);
+    return formatVerticalReport(
+      await classifyAndScoreVerticals(ctx.creds, ctx.config, sessionInputs, ctx.workers),
+      ctx.creds.baseUrl
+    );
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Runtime error session scanner evaluator
+// ---------------------------------------------------------------------------
+
+export interface RuntimeErrorSessionResult {
+  sessionId: string;
+  matchedTraceIds: string[];
+  matchCount: number;
+  patternHits: Map<string, number>;
+  totalTraces: number;
+}
+
+export interface RuntimeErrorScanResult {
+  results: RuntimeErrorSessionResult[];
+  skippedCount: number;
+  totalSessions: number;
+}
+
+function scanSession(sessionId: string, traces: LangfuseTrace[]): RuntimeErrorSessionResult {
+  const sorted = [...traces].sort(function byTime(a, b) {
+    return a.timestamp.localeCompare(b.timestamp);
+  });
+
+  const matchedTraceIds: string[] = [];
+  const patternHits = new Map<string, number>();
+
+  for (const trace of sorted) {
+    const text = extractInputText(trace.input);
+    if (!text) continue;
+
+    const { matched, pattern } = scanForRuntimeError(text);
+    if (matched && pattern) {
+      matchedTraceIds.push(trace.id);
+      patternHits.set(pattern, (patternHits.get(pattern) ?? 0) + 1);
+    }
+  }
+
+  return { sessionId, matchedTraceIds, matchCount: matchedTraceIds.length, patternHits, totalTraces: traces.length };
+}
+
+export async function scoreRuntimeErrors(
+  creds: LangfuseCredentials,
+  sessions: Map<string, LangfuseTrace[]>
+): Promise<RuntimeErrorScanResult> {
+  const allIds = [...sessions.keys()];
+  const alreadyClassified = await fetchAlreadyClassified(creds, allIds, 'runtime_error_detected');
+  const totalSessions = allIds.length;
+
+  const results: RuntimeErrorSessionResult[] = [];
+
+  for (const [sessionId, traces] of sessions) {
+    if (alreadyClassified.has(sessionId)) continue;
+
+    const result = scanSession(sessionId, traces);
+    results.push(result);
+
+    const scores: Promise<void>[] = [
+      createScore(creds, {
+        sessionId,
+        name: 'runtime_error_detected',
+        value: result.matchCount > 0 ? 1 : 0,
+        dataType: 'BOOLEAN',
+        comment: result.matchCount > 0
+          ? `${result.matchCount} prompt(s) matched runtime error patterns`
+          : 'No runtime error patterns detected',
+        id: `${sessionId}-runtime_error_detected`,
+      }),
+    ];
+
+    if (result.matchCount > 0) {
+      scores.push(
+        createScore(creds, {
+          sessionId,
+          name: 'runtime_error_prompt_count',
+          value: result.matchCount,
+          dataType: 'NUMERIC',
+          comment: `${result.matchCount} prompt(s) matched runtime error patterns`,
+          id: `${sessionId}-runtime_error_prompt_count`,
+        }),
+      );
+
+      for (const traceId of result.matchedTraceIds) {
+        scores.push(
+          createScore(creds, {
+            traceId,
+            name: 'runtime_error_match',
+            value: 1,
+            dataType: 'BOOLEAN',
+            id: `${traceId}-runtime_error_match`,
+          }),
+        );
+      }
+    }
+
+    await Promise.all(scores);
+  }
+
+  return { results, skippedCount: alreadyClassified.size, totalSessions };
+}
+
+export function formatRuntimeErrorReport(
+  { results, skippedCount, totalSessions }: RuntimeErrorScanResult,
+  langfuseBaseUrl: string
+): string {
+  if (!results.length && !skippedCount) return '  No sessions to scan.';
+
+  const flagged = results.filter(function hasErrors(r) { return r.matchCount > 0; });
+  const totalPromptMatches = flagged.reduce(function sum(acc, r) { return acc + r.matchCount; }, 0);
+
+  const patternTotals = new Map<string, number>();
+  for (const r of flagged) {
+    for (const [pattern, count] of r.patternHits) {
+      patternTotals.set(pattern, (patternTotals.get(pattern) ?? 0) + count);
+    }
+  }
+
+  const sep = '='.repeat(72);
+  const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+
+  const lines: string[] = [];
+  lines.push(`\n${sep}`);
+  lines.push(`  RUNTIME ERROR SESSION REPORT -- ${now}`);
+  lines.push(sep);
+  if (skippedCount) {
+    lines.push(`\n  Already classified:          ${skippedCount}  (skipped)`);
+  }
+  lines.push(`\n  Total sessions:              ${totalSessions}`);
+  lines.push(`  Sessions with runtime errors:  ${flagged.length}  (${totalSessions ? ((flagged.length / totalSessions) * 100).toFixed(1) : '0.0'}%)`);
+  lines.push(`  Total error-related prompts:   ${totalPromptMatches}`);
+
+  if (patternTotals.size) {
+    lines.push('\n  Pattern Match Distribution:');
+    lines.push(`  ${'-'.repeat(55)}`);
+    for (const name of PATTERN_NAMES) {
+      const count = patternTotals.get(name) ?? 0;
+      if (!count) continue;
+      const pct = totalPromptMatches ? (count / totalPromptMatches) * 100 : 0;
+      const bar = '#'.repeat(Math.floor(pct / 2));
+      lines.push(`  ${name.padEnd(25)} ${String(count).padStart(5)}  (${pct.toFixed(1).padStart(5)}%)  ${bar}`);
+    }
+    lines.push(`  ${'-'.repeat(55)}`);
+  }
+
+  if (flagged.length) {
+    const sorted = [...flagged].sort(function byCount(a, b) { return b.matchCount - a.matchCount; });
+    lines.push('\n  Top sessions by error prompt count:');
+    for (const r of sorted.slice(0, 10)) {
+      lines.push(`    session=${r.sessionId.slice(0, 30)}...  ${r.matchCount} error prompts  Link: ${langfuseBaseUrl}/sessions/${r.sessionId}`);
+    }
+    if (sorted.length > 10) {
+      lines.push(`    ... and ${sorted.length - 10} more`);
+    }
+  }
+
+  lines.push(`\n${sep}`);
+  return lines.join('\n');
+}
+
+export const runtimeErrorEvaluator: Evaluator = {
+  name: 'runtime-errors',
+  async run(ctx: EvalContext): Promise<string> {
+    const { sessions } = groupBySession(ctx.traces);
+    return formatRuntimeErrorReport(
+      await scoreRuntimeErrors(ctx.creds, sessions),
+      ctx.creds.baseUrl
+    );
   },
 };
 
@@ -602,7 +982,7 @@ export const intentEvaluator: Evaluator = {
 // Evaluator registry
 // ---------------------------------------------------------------------------
 
-export const EVALUATORS: Evaluator[] = [errorEvaluator, intentEvaluator];
+export const EVALUATORS: Evaluator[] = [errorEvaluator, intentEvaluator, verticalEvaluator, runtimeErrorEvaluator];
 
 export function findEvaluators(names: string[]): Evaluator[] {
   return names.map(function find(name) {
@@ -646,28 +1026,9 @@ export async function runAll(config: Config, options: PipelineOptions, evaluator
 
   const ctx: EvalContext = { creds, config, traces, workers: options.workers };
 
-  let reports: string[];
-  if (selected.length === 1) {
-    reports = [await selected[0].run(ctx)];
-  } else {
-    reports = await Promise.all(selected.map(function execute(evaluator) {
-      return evaluator.run(ctx);
-    }));
-  }
-
-  for (const report of reports) {
-    console.log(report);
+  for (const evaluator of selected) {
+    console.log(await evaluator.run(ctx));
   }
 
   printCost();
-}
-
-// Backward-compatible thin wrappers
-
-export async function run(config: Config, options: PipelineOptions): Promise<void> {
-  await runAll(config, options, [errorEvaluator]);
-}
-
-export async function runIntent(config: Config, options: PipelineOptions): Promise<void> {
-  await runAll(config, options, [intentEvaluator]);
 }

@@ -1,5 +1,6 @@
 import { INTENT_CATEGORIES, type IntentCategory, type LLMConfig } from './config.js';
 import { callOpenAI, parseJsonResponse } from './openai-client.js';
+import { sanitize } from './text-utils.js';
 
 export interface IntentClassification {
   primaryCategory: IntentCategory;
@@ -9,12 +10,11 @@ export interface IntentClassification {
   reasoning: string;
 }
 
-const MAX_MESSAGES = 20;
 const MAX_TOTAL_CHARS = 4000;
 
 const INTENT_PROMPT = `You are a senior product analyst specializing in AI-powered website builder platforms.
-You will receive a list of user messages from a single conversation session with an AI website builder (Airo Builder).
-Your task is to classify the PRIMARY and SECONDARY intents of this session.
+You will receive a single user message sent to an AI website builder (Airo Builder).
+Your task is to classify the PRIMARY and SECONDARY intents of this message.
 
 ## Categories
 
@@ -142,15 +142,15 @@ Signals: "domain", "DNS", "publish", "deploy", "hosting", "SSL", "HTTPS", "custo
 "nameserver", "CNAME", "A record", "go live", "launch", "connect domain".
 
 ### other
-The session intent does not clearly fit any of the above categories.
-Use this only when you are genuinely uncertain or the conversation is too generic to classify.
+The message intent does not clearly fit any of the above categories.
+Use this only when you are genuinely uncertain or the message is too generic to classify.
 
 ## Instructions
 
-1. Read ALL user messages to understand the full conversation context.
+1. Read the user message carefully to understand what they are requesting.
 2. Identify the PRIMARY intent -- the main goal the user is trying to achieve.
 3. Identify the SECONDARY intent -- a supporting or secondary goal, if one exists.
-   If the session has only one clear intent, set secondary_category to null.
+   If the message has only one clear intent, set secondary_category to null.
    The secondary intent MUST be different from the primary intent.
 4. Return your answer as a JSON object with exactly these fields:
    - "primary_category": one of CATEGORIES
@@ -161,46 +161,16 @@ Use this only when you are genuinely uncertain or the conversation is too generi
 
 Return ONLY the JSON object, no markdown fences, no extra text.
 
-## User Messages
+## User Message
 
-USER_MESSAGES`;
-
-// Matches Python's _UNSAFE_UNICODE_RE: Tags block, Supplementary Private Use Areas, BMP Private Use Area, BMP specials
-const UNSAFE_UNICODE_RE = /[\u{E0000}-\u{E007F}\u{F0000}-\u{FFFFF}\u{100000}-\u{10FFFF}\uE000-\uF8FF\uFFF0-\uFFFF]+/gu;
-
-function sanitize(text: string): string {
-  const cleaned = text.replace(UNSAFE_UNICODE_RE, '');
-  let result = '';
-  for (const ch of cleaned) {
-    const code = ch.codePointAt(0)!;
-    if (code >= 0xD800 && code <= 0xDFFF) continue;
-    result += ch;
-  }
-  return result;
-}
-
-function formatMessages(messages: string[]): string {
-  const truncated = messages.slice(0, MAX_MESSAGES);
-  const formatted: string[] = [];
-  let totalChars = 0;
-
-  for (let i = 0; i < truncated.length; i++) {
-    const remaining = MAX_TOTAL_CHARS - totalChars;
-    if (remaining <= 0) break;
-    const text = sanitize(truncated[i].slice(0, remaining));
-    formatted.push(`[Message ${i + 1}]: ${text}`);
-    totalChars += text.length;
-  }
-
-  return formatted.join('\n');
-}
+USER_MESSAGE`;
 
 const EMPTY_RESULT: IntentClassification = {
   primaryCategory: 'other',
   primaryConfidence: 1.0,
   secondaryCategory: null,
   secondaryConfidence: 0.0,
-  reasoning: 'Empty or missing user messages.',
+  reasoning: 'Empty or missing user message.',
 };
 
 async function callLLM(prompt: string, llm: LLMConfig): Promise<string> {
@@ -228,14 +198,14 @@ function validateCategory(value: unknown): IntentCategory | null {
 }
 
 export async function classify(
-  messages: string[],
+  message: string,
   llm: LLMConfig
 ): Promise<IntentClassification> {
-  if (!messages.length || messages.every(m => !m.trim())) return EMPTY_RESULT;
+  if (!message.trim()) return EMPTY_RESULT;
 
   const prompt = INTENT_PROMPT
     .replace('CATEGORIES', JSON.stringify([...INTENT_CATEGORIES]))
-    .replace('USER_MESSAGES', formatMessages(messages));
+    .replace('USER_MESSAGE', sanitize(message.slice(0, MAX_TOTAL_CHARS)));
 
   try {
     const raw = await callLLM(prompt, llm);
