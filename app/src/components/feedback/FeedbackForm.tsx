@@ -9,7 +9,7 @@ import TextInput from "@ux/text-input";
 import { useAuthContext } from "@/components/providers/AuthProvider";
 import { useTranslations } from "@/hooks/useTranslations";
 import { logger } from '@/lib/request-context';
-import type { SlackLink } from '@/lib/slack-webhook';
+import { formatSlackBlockMessage, type SlackBlockMessage, type SlackLink } from '@/lib/slack-webhook';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSitesStore } from '@/stores/useSitesStore';
 import type { FeedbackFormProps } from "./types";
@@ -173,6 +173,26 @@ export function FeedbackForm({
         links.push({ url: `https://console.airo-builder.godaddy.com/?appId=${currentAppId}`, text: 'Console' });
       }
 
+      const blockMessage: SlackBlockMessage = {
+        twoColumnSection: leftFields.length > 0 && rightFields.length > 0 ? {
+          leftFields,
+          rightFields,
+        } : undefined,
+        singleColumnSections: singleColumnSections.length > 0 ? singleColumnSections : undefined,
+        links: links.length > 0 ? links : undefined,
+      };
+
+      // In dev mode, log formatted payload to console instead of sending to Slack
+      if (isLocalhost()) {
+        const formattedPayload = formatSlackBlockMessage(blockMessage);
+        console.log('📧 [DEV MODE] Feedback Slack payload:', JSON.stringify(formattedPayload, null, 2));
+        logger.info('feedback.slack.dev_mode_logged', {
+          feedbackId: config.pk,
+          appId: currentAppId,
+        });
+        return;
+      }
+
       // Send Block Kit formatted message with two-column layout (no title)
       await fetch('/api/slack-webhook/feedback', {
         method: 'POST',
@@ -180,14 +200,7 @@ export function FeedbackForm({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          blockMessage: {
-            twoColumnSection: leftFields.length > 0 && rightFields.length > 0 ? {
-              leftFields,
-              rightFields,
-            } : undefined,
-            singleColumnSections: singleColumnSections.length > 0 ? singleColumnSections : undefined,
-            links: links.length > 0 ? links : undefined,
-          },
+          blockMessage,
         }),
       });
       logger.info('feedback.slack.sent', {

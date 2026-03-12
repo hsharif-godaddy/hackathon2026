@@ -7,6 +7,7 @@
 
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useSitesStore } from '@/stores/useSitesStore'
 import { useSiteStore } from '@/stores/useSiteStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
@@ -18,22 +19,9 @@ const SESSION_FEEDBACK_SHOWN_KEY = 'airo_session_feedback_shown'
 const SESSION_FEEDBACK_TRIGGER_THRESHOLD = 10 // Number of user prompts before showing feedback
 
 /**
- * Check if session feedback feature is enabled
- */
-function isSessionFeedbackEnabled(): boolean {
-  // For client-side code, Next.js requires NEXT_PUBLIC_ prefix
-  // In production, this should be controlled by Switchboard via a server-side check
-  return process.env.NEXT_PUBLIC_ENABLE_SESSION_FEEDBACK === 'true'
-}
-
-/**
  * Check if we should show the feedback widget
  */
-function shouldShowFeedbackWidget(): boolean {
-  if (!isSessionFeedbackEnabled()) {
-    return false
-  }
-
+function shouldShowFeedbackBanner(): boolean {
   // Check if already shown in this session
   const hasShown = sessionStorage.getItem(SESSION_FEEDBACK_SHOWN_KEY)
   if (hasShown === 'true') {
@@ -64,47 +52,19 @@ function markFeedbackShown(): void {
 }
 
 /**
- * Inject feedback widget into the active stream
+ * Show feedback banner by setting store state
  */
-function injectFeedbackWidget(appId: string, conversationId: string | undefined, promptCount: number): void {
-  const store = useStreamingConversationStore.getState()
+function showFeedbackBanner(promptCount: number): void {
+  const { setShowFeedbackBanner } = useDevelopPageStore.getState()
 
-  // Create a synthetic widgetRender tool call result for the feedback widget
-  const feedbackToolCall = {
-    id: `feedback_${Date.now()}`,
-    name: 'widgetRender',
-    input: {},
-    result: {
-      success: true,
-      widgetType: 'feedback',
-      widgetData: {
-        type: 'feedback',
-        conversationId,
-        appId
-      }
-    },
-    status: 'completed' as const
-  }
-
-  // Add the feedback widget as both a tool call AND a tool result segment
-  // The UI renders from segments, so we need both
-  store.addToolToStream(feedbackToolCall)
-  store.addToolResultSegment(feedbackToolCall)
-
+  // Set the banner visibility in the store
+  setShowFeedbackBanner(true)
   markFeedbackShown()
 
-  // Log feedback widget shown
-  logger.info('feedback.widget.shown', {
-    appId,
-    conversationId,
+  // Log feedback banner shown
+  logger.info('feedback.banner.shown', {
     promptCount,
   })
-
-  // Trigger scroll event for the chat to show newly injected widget
-  // Use setTimeout to ensure the widget is rendered before scrolling
-  setTimeout(() => {
-    window.dispatchEvent(new CustomEvent('widget-injected'))
-  }, 500)
 }
 
 export class CompleteHandler implements MessageHandler {
@@ -117,17 +77,13 @@ export class CompleteHandler implements MessageHandler {
     // Increment session prompt count and check if we should show feedback widget BEFORE finalizing
     incrementPromptCount()
 
-    const shouldShowWidget = shouldShowFeedbackWidget()
-    if (shouldShowWidget) {
-      // Try to get conversationId from the message data, fallback to cookie
-      const conversationId = (data.data?.conversationId as string | undefined) || undefined
-      const appId = context.currentAppId
-
+    const shouldShowBanner = shouldShowFeedbackBanner()
+    if (shouldShowBanner) {
       // Get current prompt count for logging
       const countStr = sessionStorage.getItem(SESSION_PROMPT_COUNT_KEY)
       const promptCount = countStr ? parseInt(countStr, 10) : 0
 
-      injectFeedbackWidget(appId, conversationId, promptCount)
+      showFeedbackBanner(promptCount)
     }
 
     // Send STREAM_COMPLETE event to machine

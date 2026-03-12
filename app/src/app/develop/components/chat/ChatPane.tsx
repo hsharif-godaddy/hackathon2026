@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/AssetTypes'
-import ChatBanners from '@/app/develop/components/chat/ChatBanners'
+import ChatBanners from '@/app/develop/components/chat/banners/ChatBanners'
 import { ChatContext } from '@/app/develop/components/chat/ChatContext'
 import ChatInput from '@/app/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'

@@ -53,7 +53,7 @@ export interface SlackBlockMessage {
 /**
  * Format message for Slack using Block Kit with divider
  */
-function formatSlackBlockMessage(data: SlackBlockMessage): Record<string, unknown> {
+export function formatSlackBlockMessage(data: SlackBlockMessage): Record<string, unknown> {
   const blocks: SlackBlock[] = [];
 
   // Title as bold markdown section (optional)

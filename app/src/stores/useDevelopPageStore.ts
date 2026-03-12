@@ -162,6 +162,9 @@ interface DevelopPageStore {
   // Feedback modal UI
   openFeedbackId: string | null
 
+  // Feedback banner UI
+  showFeedbackBanner: boolean
+
   // Tour UI
   showIntroTour: boolean
 
@@ -232,6 +235,9 @@ interface DevelopPageStore {
   // Feedback modal actions
   openFeedbackModal: (feedbackId: string) => void
   closeFeedbackModal: () => void
+
+  // Feedback banner actions
+  setShowFeedbackBanner: (show: boolean) => void
 
   // Tour actions
   setShowIntroTour: (show: boolean) => void
@@ -333,6 +339,9 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     // Feedback modal state
     openFeedbackId: null,
 
+    // Feedback banner state
+    showFeedbackBanner: false,
+
     // Tour state
     showIntroTour: false,
 
@@ -428,6 +437,11 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.openFeedbackId = null
       })
     },
+
+    // Feedback banner actions
+    setShowFeedbackBanner: (show: boolean) => set((state) => {
+      state.showFeedbackBanner = show
+    }),
 
     // Tour actions
     setShowIntroTour: (show: boolean) => set((state) => {

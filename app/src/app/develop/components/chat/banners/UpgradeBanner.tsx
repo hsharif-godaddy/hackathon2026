@@ -29,9 +29,10 @@ function markDismissedToday(): void {
 
 interface UpgradeBannerProps {
   appId: string | null
+  onDismiss?: () => void
 }
 
-export default function UpgradeBanner({ appId }: UpgradeBannerProps) {
+export default function UpgradeBanner({ appId, onDismiss }: UpgradeBannerProps) {
   const t = useTranslations()
   const [isDismissed, setIsDismissed] = useState(true)
   const [mounted, setMounted] = useState(false)
@@ -62,6 +63,7 @@ export default function UpgradeBanner({ appId }: UpgradeBannerProps) {
     logClickEvent('chat.upgradeBanner.close')()
     markDismissedToday()
     setIsDismissed(true)
+    onDismiss?.()
   }
 
   const handleUpgradeClick = (e: React.MouseEvent) => {

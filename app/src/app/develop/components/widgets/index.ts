@@ -10,14 +10,13 @@ import ColorPaletteGridWidget, { type ColorPaletteGridWidgetProps } from './Colo
 import ColorPaletteWidget, { type ColorPaletteWidgetProps } from './ColorPaletteWidget'
 import DomainAttachWidget, { type DomainAttachWidgetProps } from './DomainAttachWidget'
 import DomainPurchaseWidget from './DomainPurchaseWidget'
-import FeedbackWidget, { type FeedbackWidgetProps } from './FeedbackWidget'
 import FontPaletteWidget, { type FontPaletteWidgetProps } from './FontPaletteWidget'
 import FontThemeGridWidget, { type FontThemeGridWidgetProps } from './FontThemeGridWidget'
 
 /**
  * Widget component props union type
  */
-export type WidgetProps = ColorPaletteWidgetProps | ColorPaletteGridWidgetProps | FontPaletteWidgetProps | FontThemeGridWidgetProps | FeedbackWidgetProps | DomainPurchaseWidgetProps | DomainAttachWidgetProps;
+export type WidgetProps = ColorPaletteWidgetProps | ColorPaletteGridWidgetProps | FontPaletteWidgetProps | FontThemeGridWidgetProps | DomainPurchaseWidgetProps | DomainAttachWidgetProps;
 
 /**
  * Widget registry mapping widget types to components
@@ -27,7 +26,6 @@ export const widgetRegistry = {
   'color-palette-grid': ColorPaletteGridWidget,
   'domain-attach': DomainAttachWidget,
   'domain-purchase': DomainPurchaseWidget,
-  'feedback': FeedbackWidget,
   'font-theme-grid': FontThemeGridWidget,
 } as const
 
@@ -61,7 +59,6 @@ export {
   ColorPaletteWidget,
   DomainAttachWidget,
   DomainPurchaseWidget,
-  FeedbackWidget,
   FontPaletteWidget,
   FontThemeGridWidget
 }
@@ -71,7 +68,6 @@ export type {
   ColorPaletteWidgetProps,
   DomainAttachWidgetProps,
   DomainPurchaseWidgetProps,
-  FeedbackWidgetProps,
   FontPaletteWidgetProps,
   FontThemeGridWidgetProps
 }
