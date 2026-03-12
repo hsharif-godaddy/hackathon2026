@@ -15,7 +15,6 @@ WORKDIR /workspace
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY app/package.json ./app/
 COPY packages/shared/package.json ./packages/shared/
-COPY packages/ai-lib/package.json ./packages/ai-lib/
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
@@ -26,12 +25,9 @@ RUN --mount=type=secret,id=npmrc,target=/workspace/.npmrc \
     --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 
-# Copy shared and ai-lib sources and build them (app depends on both workspace packages)
+# Copy shared source and build it (app depends on @airo/shared)
 COPY packages/shared/ ./packages/shared/
 RUN pnpm --filter @airo/shared build
-
-COPY packages/ai-lib/ ./packages/ai-lib/
-RUN pnpm --filter @airo/ai-lib build
 
 # Copy app source code
 COPY app/ ./app/
