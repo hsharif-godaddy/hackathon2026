@@ -49,6 +49,8 @@ export interface RecoveryAck {
   receivedCount: number
   replayComplete: boolean
   ackEvent: 'recovery_ack' | 'catchup_ack'
+  /** Server-authoritative: true when no in-progress messages exist in the event channel */
+  streamCompleted?: boolean
 }
 
 /**

@@ -183,14 +183,14 @@ describe('ConnectionRecoveryManager', () => {
     })
 
     describe('persisted event filtering', () => {
-      it('filters out persisted events when history is included, preventing content overlap', async () => {
+      it('filters persisted events for completed messages during manual recovery', async () => {
         const persistedEvent: StreamingEvent = {
           id: 'evt-persisted',
           conversationId: 'conv-1',
           sequence: 6,
           type: 'chunk',
           content: 'already in history',
-          data: {},
+          data: { messageId: 'msg-completed' },
           timestamp: new Date(),
           agentName: 'test-agent',
           persisted: true
@@ -201,7 +201,7 @@ describe('ConnectionRecoveryManager', () => {
           sequence: 7,
           type: 'chunk',
           content: 'not yet in history',
-          data: {},
+          data: { messageId: 'msg-completed' },
           timestamp: new Date(),
           agentName: 'test-agent',
           persisted: false
@@ -213,7 +213,7 @@ describe('ConnectionRecoveryManager', () => {
             eventChannel: eventChannel as unknown as ConversationEventChannel,
             logger: mockLogger,
             historyProvider: {
-              loadHistory: vi.fn().mockResolvedValue({ messages: [{ id: 'msg-1', content: 'hi', sender: 'assistant' }], hasMore: false, nextCursor: null, total: 1 })
+              loadHistory: vi.fn().mockResolvedValue({ messages: [{ id: 'msg-completed', content: 'hi', sender: 'assistant' }], hasMore: false, nextCursor: null, total: 1 })
             } as any
           },
           config
@@ -223,7 +223,8 @@ describe('ConnectionRecoveryManager', () => {
 
         await managerWithHistory.handleManualRecovery(socket, 'socket-old', callbacks)
 
-        // Persisted event must NOT be replayed (its content is already in history)
+        // Manual recovery (page refresh): DB history provides the snapshot, persisted events
+        // for completed messages are filtered out, only non-persisted events are replayed
         const allVolatileEmits = (socket.volatile.emit as any).mock.calls
         const replayedContents = allVolatileEmits
           .filter((call: any[]) => call[0] === 'message' && call[1]?.type === 'chunk')
@@ -233,14 +234,68 @@ describe('ConnectionRecoveryManager', () => {
         expect(replayedContents).toContain('not yet in history')
       })
 
-      it('reports correct bufferedEventCount in recovery_status after filtering persisted events', async () => {
+      it('filters persisted events but replays non-persisted events for in-progress messages', async () => {
+        const persistedEvent: StreamingEvent = {
+          id: 'evt-persisted-active',
+          conversationId: 'conv-1',
+          sequence: 6,
+          type: 'chunk',
+          content: 'already in snapshot',
+          data: { messageId: 'msg-active' },
+          timestamp: new Date(),
+          agentName: 'test-agent',
+          persisted: true
+        }
+        const nonPersistedEvent: StreamingEvent = {
+          id: 'evt-live-active',
+          conversationId: 'conv-1',
+          sequence: 7,
+          type: 'chunk',
+          content: 'buffered after snapshot',
+          data: { messageId: 'msg-active' },
+          timestamp: new Date(),
+          agentName: 'test-agent',
+          persisted: false
+        }
+
+        // msg-active is in pendingMessageIds → in-progress
+        eventChannel.getMetadata.mockReturnValue({ pendingMessageIds: ['msg-active'] })
+
+        const managerWithHistory = new ConnectionRecoveryManager(
+          {
+            stateManager,
+            eventChannel: eventChannel as unknown as ConversationEventChannel,
+            logger: mockLogger,
+            historyProvider: {
+              loadHistory: vi.fn().mockResolvedValue({ messages: [{ id: 'msg-active', content: 'snapshot content', sender: 'assistant' }], hasMore: false, nextCursor: null, total: 1 })
+            } as any
+          },
+          config
+        )
+
+        eventChannel.getEventsSince.mockReturnValue([persistedEvent, nonPersistedEvent])
+
+        await managerWithHistory.handleManualRecovery(socket, 'socket-old', callbacks)
+
+        const allVolatileEmits = (socket.volatile.emit as any).mock.calls
+        const replayedContents = allVolatileEmits
+          .filter((call: any[]) => call[0] === 'message' && call[1]?.type === 'chunk')
+          .map((call: any[]) => call[1].content)
+
+        // Persisted event should NOT be replayed (content already in DB snapshot)
+        expect(replayedContents).not.toContain('already in snapshot')
+        // Non-persisted event SHOULD be replayed (buffered since last DB write)
+        expect(replayedContents).toContain('buffered after snapshot')
+      })
+
+      it('filters persisted events for completed messages, reports correct bufferedEventCount', async () => {
         const persistedEvent: StreamingEvent = {
           id: 'evt-p1',
           conversationId: 'conv-1',
           sequence: 6,
           type: 'chunk',
           content: 'persisted chunk',
-          data: {},
+          data: { messageId: 'msg-done' },
           timestamp: new Date(),
           agentName: 'test-agent',
           persisted: true
@@ -251,7 +306,7 @@ describe('ConnectionRecoveryManager', () => {
           sequence: 7,
           type: 'chunk',
           content: 'live chunk',
-          data: {},
+          data: { messageId: 'msg-done' },
           timestamp: new Date(),
           agentName: 'test-agent',
           persisted: false
@@ -263,7 +318,7 @@ describe('ConnectionRecoveryManager', () => {
             eventChannel: eventChannel as unknown as ConversationEventChannel,
             logger: mockLogger,
             historyProvider: {
-              loadHistory: vi.fn().mockResolvedValue({ messages: [], hasMore: false, nextCursor: null, total: 0 })
+              loadHistory: vi.fn().mockResolvedValue({ messages: [{ id: 'msg-done', content: 'done', sender: 'assistant' }], hasMore: false, nextCursor: null, total: 1 })
             } as any
           },
           config
@@ -273,7 +328,7 @@ describe('ConnectionRecoveryManager', () => {
 
         await managerWithHistory.handleManualRecovery(socket, 'socket-old', callbacks)
 
-        // recovery_status should report only the 1 un-persisted event
+        // Only the non-persisted event for a completed message should be replayed
         const recoveryStatusCall = (socket.emit as any).mock.calls.find(
           (call: any[]) => call[1]?.type === 'recovery_status' && call[1]?.data?.isRecovering === true
         )
@@ -282,7 +337,7 @@ describe('ConnectionRecoveryManager', () => {
         expect(recoveryStatusCall[1].data.hasBufferedEvents).toBe(true)
       })
 
-      it('reports eventsReplayed in replay_complete matching filtered count', async () => {
+      it('replay_complete eventsReplayed matches filtered count', async () => {
         const events: StreamingEvent[] = [
           {
             id: 'evt-p',
@@ -290,7 +345,7 @@ describe('ConnectionRecoveryManager', () => {
             sequence: 6,
             type: 'chunk',
             content: 'persisted',
-            data: {},
+            data: { messageId: 'msg-done' },
             timestamp: new Date(),
             agentName: 'test-agent',
             persisted: true
@@ -301,7 +356,7 @@ describe('ConnectionRecoveryManager', () => {
             sequence: 7,
             type: 'chunk',
             content: 'live',
-            data: {},
+            data: { messageId: 'msg-done' },
             timestamp: new Date(),
             agentName: 'test-agent',
             persisted: false
@@ -314,7 +369,7 @@ describe('ConnectionRecoveryManager', () => {
             eventChannel: eventChannel as unknown as ConversationEventChannel,
             logger: mockLogger,
             historyProvider: {
-              loadHistory: vi.fn().mockResolvedValue({ messages: [], hasMore: false, nextCursor: null, total: 0 })
+              loadHistory: vi.fn().mockResolvedValue({ messages: [{ id: 'msg-done', content: 'done', sender: 'assistant' }], hasMore: false, nextCursor: null, total: 1 })
             } as any
           },
           config
@@ -328,7 +383,7 @@ describe('ConnectionRecoveryManager', () => {
           (call: any[]) => call[1]?.type === 'replay_complete'
         )
         expect(replayCompleteCall).toBeDefined()
-        // Only 1 un-persisted event was replayed, not both
+        // Only 1 non-persisted event replayed (persisted event filtered for completed message)
         expect(replayCompleteCall[1].data.eventsReplayed).toBe(1)
       })
 

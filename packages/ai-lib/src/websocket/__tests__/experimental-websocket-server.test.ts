@@ -255,7 +255,8 @@ describe('WebSocketServer - Error Handling', () => {
       if (connectionHandler) {
         await connectionHandler(mockSocketAuto)
 
-        expect(getEventsSinceSpy).toHaveBeenCalledWith('auto-conv-id', 3)
+        // Manual recovery replays all events from -1 (page refresh loses client state)
+        expect(getEventsSinceSpy).toHaveBeenCalledWith('auto-conv-id', -1)
 
         const recoveryStartCall = mockSocketAuto.emit.mock.calls.find(call =>
           call[0] === 'message' &&
@@ -357,7 +358,8 @@ describe('WebSocketServer - Error Handling', () => {
       if (connectionHandler) {
         await connectionHandler(manualSocket)
 
-        expect(getEventsSinceSpy).toHaveBeenCalledWith('manual-conv-id', 7)
+        // Manual recovery replays all events from -1 (page refresh loses client state)
+        expect(getEventsSinceSpy).toHaveBeenCalledWith('manual-conv-id', -1)
 
         const recoveryStatus = manualSocket.emit.mock.calls.find(call =>
           call[0] === 'message' && call[1].type === 'recovery_status'
@@ -1133,7 +1135,8 @@ describe('WebSocketServer - Error Handling', () => {
       const eventChannel2 = (testServer2 as any).eventChannel
       const stateManager2 = (testServer2 as any).stateManager
       const getEventsSinceSpy = vi.spyOn(eventChannel2, 'getEventsSince').mockImplementation((_: string, lastSequence: number) => {
-        return lastSequence === 3 ? missedEvents : []
+        // Manual recovery (page refresh) replays all events from -1
+        return lastSequence === -1 ? missedEvents : []
       })
 
       // Set up disconnected connection state on new server
@@ -1143,8 +1146,9 @@ describe('WebSocketServer - Error Handling', () => {
       if (connectionHandler) {
         await connectionHandler(newMockSocket)
 
-        // Verify getEventsSince was called with correct parameters
-        expect(getEventsSinceSpy).toHaveBeenCalledWith('test-conv-id', 3)
+        // Manual recovery replays all events from the beginning (-1)
+        // because the client loses all state on page refresh
+        expect(getEventsSinceSpy).toHaveBeenCalledWith('test-conv-id', -1)
 
         // Verify recovery status was sent (uses regular emit)
         let emitCalls = newMockSocket.emit.mock.calls

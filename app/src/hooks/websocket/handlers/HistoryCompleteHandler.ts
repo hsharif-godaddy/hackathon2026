@@ -21,14 +21,14 @@ export class HistoryCompleteHandler implements MessageHandler {
 
     const isLoadMore = data.data?.isLoadMore === true
 
-    logger.info('websocket.history.complete', {
+    const store = useStreamingConversationStore.getState()
+
+    logger.debug('websocket.history.complete', {
       totalMessageCount: data.data?.messageCount,
       hasMore: data.data?.hasMore,
       nextCursor: data.data?.nextCursor,
-      isLoadMore
+      isLoadMore,
     })
-
-    const store = useStreamingConversationStore.getState()
 
     // Update pagination state
     const hasMore = typeof data.data?.hasMore === 'boolean' ? data.data.hasMore : false
@@ -54,12 +54,21 @@ export class HistoryCompleteHandler implements MessageHandler {
       const pendingAck = context.refs.pendingRecoveryAck?.current
       const recoveryComplete = pendingAck && pendingAck.replayComplete && pendingAck.expectedCount === 0
 
-      if (recoveryComplete) {
-        // Stream already completed on server - finalize and close it
-        // Machine is in streaming.receiving (set by HistoryMessageHandler)
+      // Use server-authoritative streamCompleted flag to decide whether to finalize.
+      // The DB may have stale metadata.inProgress (e.g. agent crashed without completing),
+      // but the server's event channel knows whether messages are truly in-progress.
+      // If streamCompleted is true OR isLoading is false (no in-progress detected), finalize.
+      // The !store.isLoading fallback covers the edge case where activeStream was set (e.g. from
+      // a history message with metadata.inProgress) but the server didn't report stream status —
+      // without it, the stream would never finalize if recovery completes with 0 buffered events.
+      const serverSaysCompleted = pendingAck?.streamCompleted === true
+      const shouldFinalize = recoveryComplete && (serverSaysCompleted || !store.isLoading)
+
+      if (shouldFinalize) {
         logger.debug('websocket.history.stream_already_complete', {
           messageId: store.activeStream.id,
-          conversationId: pendingAck.conversationId
+          conversationId: pendingAck!.conversationId,
+          serverSaysCompleted,
         })
 
         // Flush any buffered store updates before finalizing (text chunks, tool segments)
@@ -69,7 +78,7 @@ export class HistoryCompleteHandler implements MessageHandler {
         context.actions.finalizeStream({})
         context.machine.send({ type: 'STREAM_COMPLETE' })
       }
-      // If not recoveryComplete, stream is still active and will receive more events
+      // If not shouldFinalize, stream is still active and will receive more events
     }
 
     // Clear refs

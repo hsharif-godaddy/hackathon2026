@@ -143,6 +143,111 @@ describe('HistoryCompleteHandler', () => {
     expect(context.machine.send).toHaveBeenCalledWith({ type: 'STREAM_COMPLETE' })
   })
 
+  it('finalizes via serverSaysCompleted when isLoading is true', async () => {
+    const setHistoryLoadingComplete = vi.fn()
+    const setHistoryPagination = vi.fn()
+    const setHistoryLoadingMore = vi.fn()
+    const context = createMockMessageContext({
+      refs: {
+        ...createMockMessageContext().refs,
+        historyReceivedForRecovery: { current: false },
+        pendingRecoveryAck: {
+          current: {
+            conversationId: 'conv-123',
+            lastSequence: 42,
+            expectedCount: 0,
+            receivedCount: 0,
+            replayComplete: true,
+            ackEvent: 'recovery_ack',
+            streamCompleted: true,
+          },
+        },
+      },
+      machine: {
+        send: vi.fn(),
+        getSnapshot: vi.fn(() => ({
+          matches: vi.fn((pattern: any) => {
+            if (pattern?.stream?.streaming === 'receiving') return true
+            return false
+          }),
+        })),
+      } as any,
+    })
+
+    mockStore.getState.mockReturnValue({
+      activeStream: {
+        id: 'msg-1',
+        role: 'assistant',
+        content: 'content',
+        isComplete: false,
+      },
+      isLoading: true,
+      setHistoryLoadingComplete,
+      setHistoryPagination,
+      setHistoryLoadingMore,
+    })
+
+    const data: WebSocketMessage = {
+      type: 'history_complete',
+      content: '',
+      data: { messageCount: 3 },
+    }
+
+    await handler.handle(data, context)
+
+    // serverSaysCompleted=true should cause finalization even though isLoading=true
+    expect(context.actions.finalizeStream).toHaveBeenCalledWith({})
+    expect(context.machine.send).toHaveBeenCalledWith({ type: 'STREAM_COMPLETE' })
+  })
+
+  it('does not finalize when streamCompleted is false and isLoading is true', async () => {
+    const setHistoryLoadingComplete = vi.fn()
+    const setHistoryPagination = vi.fn()
+    const setHistoryLoadingMore = vi.fn()
+    const context = createMockMessageContext({
+      refs: {
+        ...createMockMessageContext().refs,
+        historyReceivedForRecovery: { current: false },
+        pendingRecoveryAck: {
+          current: {
+            conversationId: 'conv-123',
+            lastSequence: 42,
+            expectedCount: 0,
+            receivedCount: 0,
+            replayComplete: true,
+            ackEvent: 'recovery_ack',
+            streamCompleted: false,
+          },
+        },
+      },
+    })
+
+    mockStore.getState.mockReturnValue({
+      activeStream: {
+        id: 'msg-2',
+        role: 'assistant',
+        content: 'streaming',
+        isComplete: false,
+      },
+      isLoading: true,
+      setHistoryLoadingComplete,
+      setHistoryPagination,
+      setHistoryLoadingMore,
+    })
+
+    const data: WebSocketMessage = {
+      type: 'history_complete',
+      content: '',
+      data: { messageCount: 2 },
+    }
+
+    await handler.handle(data, context)
+
+    // Neither serverSaysCompleted nor !isLoading is true → should NOT finalize
+    expect(context.actions.finalizeStream).not.toHaveBeenCalled()
+    expect(context.machine.send).not.toHaveBeenCalled()
+  })
+
   it('does not send STREAM_COMPLETE for active streams (has buffered events)', async () => {
     const setHistoryLoadingComplete = vi.fn()
     const setHistoryPagination = vi.fn()

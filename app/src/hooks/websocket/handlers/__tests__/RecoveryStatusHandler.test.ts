@@ -163,6 +163,7 @@ describe('RecoveryStatusHandler', () => {
       receivedCount: 0,
       replayComplete: true,
       ackEvent: 'recovery_ack',
+      streamCompleted: false,
     })
     // Don't send ack immediately - wait for replay_complete
     // This prevents sending recovery_ack twice (once on recovery_status, once on replay_complete)

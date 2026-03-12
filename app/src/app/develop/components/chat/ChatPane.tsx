@@ -33,6 +33,7 @@ import {
   useBuildErrorContext,
   useCurrentAppId,
   useDevelopmentPlan,
+  useHistoryLoadingComplete,
   useInputValue,
   useIsActivelyStreaming,
   useIsLoading,
@@ -215,7 +216,9 @@ export default function ChatPane({
   }
 
   // Track processing state - use isLoading OR isStreaming to match original behavior
-  const isProcessing = isLoading || isStreaming
+  // Also disable input until history/recovery has loaded to prevent duplicate messages after refresh
+  const historyLoadingComplete = useHistoryLoadingComplete()
+  const isProcessing = isLoading || isStreaming || !historyLoadingComplete
 
   // Handle clearing AI edit context
   const handleClearAiEditContext = useCallback(() => {

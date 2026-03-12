@@ -95,13 +95,6 @@ export class HistoryMessageHandler implements MessageHandler {
         detectInProgress: !isLoadMore // Only detect in-progress for initial load
       })
 
-      logger.debug('websocket.history.batch_flushed', {
-        batchSize: batch.length,
-        totalMessages: store.messages.length,
-        mode,
-        isLoadMore
-      })
-
       // Check if an in-progress message was detected and activeStream was set
       // Send STREAM_STARTED to transition machine to streaming state (Tier 1 lifecycle)
       // Only for non-loadMore batches (in-progress detection is disabled for load-more)

@@ -9,12 +9,13 @@ import ChatPane from './ChatPane';
 
 // Mock child components
 vi.mock('@/app/develop/components/chat/ChatInput', () => ({
-  default: ({ onSendMessage, inputValue, onInputChange, isBudgetExceeded }: any) => (
-    <div data-testid="chat-input" data-budget-exceeded={isBudgetExceeded}>
+  default: ({ onSendMessage, inputValue, onInputChange, isBudgetExceeded, isDisabled }: any) => (
+    <div data-testid="chat-input" data-budget-exceeded={isBudgetExceeded} data-disabled={isDisabled}>
       <input
         value={inputValue}
         onChange={(e) => onInputChange(e.target.value)}
         placeholder="Type a message"
+        disabled={isDisabled}
       />
       <button onClick={onSendMessage}>Send</button>
     </div>
@@ -68,6 +69,7 @@ const mockStreamingStore = {
   developmentPlan: null,
   aiEditContext: null,
   buildErrorContext: null,
+  historyLoadingComplete: true,
   setInputValue: vi.fn(),
   setAiEditContext: vi.fn(),
   setBuildErrorContext: vi.fn(),
@@ -102,6 +104,7 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useSetAiEditContext: () => mockStreamingStore.setAiEditContext,
   useSetBuildErrorContext: () => mockStreamingStore.setBuildErrorContext,
   useSetCurrentAppId: () => mockStreamingStore.setCurrentAppId,
+  useHistoryLoadingComplete: () => mockStreamingStore.historyLoadingComplete,
 }));
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
@@ -176,6 +179,7 @@ describe('ChatPane', () => {
     mockStreamingStore.inputValue = '';
     mockStreamingStore.isLoading = false;
     mockStreamingStore.isActivelyStreaming = false;
+    mockStreamingStore.historyLoadingComplete = true;
 
     // Reset grants-related mocks
     mockSwitchboardData.data = false;
@@ -248,6 +252,26 @@ describe('ChatPane', () => {
     renderWithProviders(<ChatPane sendMessage={sendMessage} />);
 
     expect(screen.getByTestId('chat-input')).toBeInTheDocument();
+  });
+
+  describe('input disabled during recovery', () => {
+    it('should disable input when historyLoadingComplete is false', () => {
+      mockStreamingStore.historyLoadingComplete = false;
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+
+      const chatInput = screen.getByTestId('chat-input');
+      expect(chatInput).toHaveAttribute('data-disabled', 'true');
+    });
+
+    it('should enable input when historyLoadingComplete is true and not streaming', () => {
+      mockStreamingStore.historyLoadingComplete = true;
+      mockStreamingStore.isLoading = false;
+      mockStreamingStore.isActivelyStreaming = false;
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+
+      const chatInput = screen.getByTestId('chat-input');
+      expect(chatInput).toHaveAttribute('data-disabled', 'false');
+    });
   });
 
   describe('airo-error-fix event', () => {

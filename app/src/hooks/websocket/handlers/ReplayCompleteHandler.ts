@@ -59,6 +59,27 @@ export class ReplayCompleteHandler implements MessageHandler {
 
       // Force send ack - server is authoritative on replay completion
       context.helpers.maybeSendRecoveryAck(context.socket, true)
+
+      // Check if the stream should be finalized now that replay is complete.
+      // HistoryCompleteHandler may have already run but couldn't finalize because
+      // replayComplete was false at that time. Now that replay is done, re-evaluate.
+      const updatedPending = context.refs.pendingRecoveryAck.current
+      if (!updatedPending) {
+        // Ack was already sent and cleared — check if stream needs finalization
+        const store = useStreamingConversationStore.getState()
+        if (store.activeStream) {
+          const serverSaysCompleted = pending?.streamCompleted === true
+          if (serverSaysCompleted) {
+            logger.debug('websocket.replay_complete.finalizing_stream', {
+              messageId: store.activeStream.id,
+              conversationId: data.data.conversationId,
+            })
+            context.actions.flushToolDeltaBufferImmediate()
+            context.actions.finalizeStream({})
+            context.machine.send({ type: 'STREAM_COMPLETE' })
+          }
+        }
+      }
     }
   }
 }

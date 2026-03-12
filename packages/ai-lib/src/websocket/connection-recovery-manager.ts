@@ -527,15 +527,16 @@ export class ConnectionRecoveryManager {
       }
     } as WebSocketMessage)
 
-    // Stream history messages
+    // Stream history messages — clear stale inProgress metadata since stream is completed
     if (historyStreaming && fullHistory.length > 0) {
       let historySequence = -1000 // Use negative sequences for history to avoid collision
       for (const msg of fullHistory) {
+        const cleanedMsg = this.clearStaleInProgress(msg)
         socket.emit('message', {
           type: 'history_message',
           content: '',
           data: {
-            ...msg,
+            ...cleanedMsg,
             sequence: historySequence-- // Assign sequence for deduplication
           }
         } as WebSocketMessage)
@@ -555,6 +556,21 @@ export class ConnectionRecoveryManager {
     } as WebSocketMessage)
   }
 
+  /**
+   * Clear stale metadata.inProgress from a history message.
+   * Called when the server knows the stream is completed but the DB
+   * may still have inProgress: true from a crashed/stopped agent.
+   */
+  private clearStaleInProgress(msg: PersistedMessage): PersistedMessage {
+    if (msg.metadata?.inProgress) {
+      return {
+        ...msg,
+        metadata: { ...msg.metadata, inProgress: false }
+      }
+    }
+    return msg
+  }
+
   // ===== Private Recovery Flow =====
 
   /**
@@ -572,10 +588,16 @@ export class ConnectionRecoveryManager {
   ): Promise<void> {
     const preReplaySequence = context.lastDeliveredSequence
 
-    // Get events to replay
+    // Get events to replay.
+    // For manual/initial recovery (page refresh or reload after state expiry), the client
+    // has no in-memory state, so replay ALL buffered events from the beginning to fully
+    // rebuild in-progress messages. For conversation recovery (auto-reconnect/tab restore),
+    // the client may still have prior state and only needs events since the last delivered.
+    const clientHasNoState = context.mode === 'manual' || context.mode === 'initial'
+    const replayFromSequence = clientHasNoState ? -1 : context.lastDeliveredSequence
     const events = this.eventChannel.getEventsSince(
       context.conversationId,
-      context.lastDeliveredSequence
+      replayFromSequence
     )
     const replayMetadata = this.eventChannel.getMetadata(context.conversationId)
 
@@ -583,6 +605,11 @@ export class ConnectionRecoveryManager {
     let fullHistory: PersistedMessage[] = []
     let historyIncluded = false
     let paginationInfo = { hasMore: false, nextCursor: null as string | null, total: 0 }
+
+    // Track in-progress message IDs at outer scope so the event replay filter can use them.
+    // These messages have partial DB content in history; events keep the stream alive.
+    const pendingMessageIdsFromMetadata = replayMetadata?.pendingMessageIds ?? []
+    const inProgressMessageIds = new Set<string>(pendingMessageIdsFromMetadata)
 
     // Extract appId from stateData context
     const appId = stateData?.context?.appId
@@ -602,34 +629,10 @@ export class ConnectionRecoveryManager {
           ? { hasMore: false, nextCursor: null, total: rawMessages.length }
           : { hasMore: historyResult.hasMore, nextCursor: historyResult.nextCursor, total: historyResult.total ?? rawMessages.length }
 
-        // Use messages directly - they're already in the correct format.
-        // IMPORTANT: Derive in-progress message IDs from event metadata so we only
-        // strip content for messages that are actually pending in the buffer.
-        const pendingMessageIdsFromMetadata = replayMetadata?.pendingMessageIds ?? []
-        const inProgressMessageIds = new Set<string>(pendingMessageIdsFromMetadata)
-
-        fullHistory = rawMessages.map((msg: PersistedMessage) => {
-          // Strip content/segments for ANY message being rebuilt by buffered events
-          if (inProgressMessageIds.has(msg.id)) {
-            this.logger.debug('recovery.strip_in_progress_message_content', {
-              messageId: msg.id,
-              sender: msg.sender,
-              originalContentLength: msg.content?.length || 0,
-              bufferedEventCount: events.length,
-              totalInProgressMessages: inProgressMessageIds.size
-            })
-
-            // Return copy with empty content/segments
-            return {
-              ...msg,
-              content: '',
-              segments: [],
-              toolCalls: []  // Also strip tool calls to prevent duplication
-            }
-          }
-
-          return msg
-        })
+        // Pass all messages through as-is, including in-progress ones.
+        // The DB content from updateAgentTurn is the best snapshot we have.
+        // Buffered events (if any) will continue streaming on top of this content.
+        fullHistory = rawMessages
 
         historyIncluded = true
 
@@ -638,7 +641,10 @@ export class ConnectionRecoveryManager {
           appId,
           messageCount: fullHistory.length,
           willReplayEvents: events.length > 0,
-          strippedMessageCount: inProgressMessageIds.size,
+          replayEventCount: events.length,
+          replayFromSequence,
+          recoveryMode: context.mode,
+          inProgressMessageCount: inProgressMessageIds.size,
           pendingMetadataCount: pendingMessageIdsFromMetadata.length,
           hasMore: paginationInfo.hasMore,
           total: paginationInfo.total
@@ -659,33 +665,61 @@ export class ConnectionRecoveryManager {
       })
     }
 
-    // Check for buffer loss
-    const expectedNextSequence = context.lastDeliveredSequence + 1
-    const { lossDetected, lostEventCount } = this.getBufferLossInfo(
-      context.conversationId,
-      expectedNextSequence,
-      replayMetadata
-    )
+    // Check for buffer loss — only meaningful for conversation recovery where the client
+    // has prior state and expects a contiguous event sequence. For manual/initial recovery,
+    // the client rebuilds from DB history + replay, so "missing" events between the old
+    // lastDeliveredSequence and the buffer start are already covered by history.
+    let lossDetected = false
+    let lostEventCount = 0
+    if (!clientHasNoState || !historyIncluded) {
+      const expectedNextSequence = context.lastDeliveredSequence + 1
+      const lossInfo = this.getBufferLossInfo(
+        context.conversationId,
+        expectedNextSequence,
+        replayMetadata
+      )
+      lossDetected = lossInfo.lossDetected
+      lostEventCount = lossInfo.lostEventCount
 
-    if (lossDetected) {
-      this.logger.warn('recovery.buffer_loss_detected', {
-        socketId: context.newSocketId,
-        conversationId: context.conversationId,
-        lostEventCount
-      })
+      if (lossDetected) {
+        this.logger.warn('recovery.buffer_loss_detected', {
+          socketId: context.newSocketId,
+          conversationId: context.conversationId,
+          lostEventCount
+        })
+      }
     }
 
     const replayLastSequence = events.length > 0
       ? events[events.length - 1]!.sequence
       : preReplaySequence
 
-    // Filter out events already persisted to DB when history was included,
-    // since those events' content is already in the history messages.
-    // Without this, the client would append replay chunks to content
+    // Filter out persisted events for COMPLETED messages (their content is already
+    // in history). Without this, the client would append replay chunks to content
     // that's already populated from history, causing text duplication/stuttering.
+    //
+    // For IN-PROGRESS messages, only replay non-persisted (tail) events.
+    // History already includes their DB snapshot (from updateAgentTurn), so replaying
+    // persisted events would duplicate content. Only the non-persisted tail events
+    // (buffered since the last DB write) need to be appended.
     const eventsToReplay = historyIncluded
-      ? events.filter(e => !e.persisted)
+      ? events.filter(e => {
+          const messageId = e.data?.messageId as string | undefined
+          // For in-progress messages, only replay non-persisted events.
+          // DB snapshot content is already in fullHistory; replaying persisted
+          // events on top would duplicate text.
+          if (messageId && inProgressMessageIds.has(messageId)) return !e.persisted
+          // No messageId — can't determine which message owns this event, replay to be safe
+          if (!messageId) return true
+          // Filter out persisted events for completed messages
+          return !e.persisted
+        })
       : events
+
+    // The server's event channel is the authority on whether a stream is still active.
+    // If no messages are pending, the agent has completed (or crashed and was cleaned up).
+    // The DB may still have stale inProgress: true metadata, but that's not authoritative.
+    const streamCompleted = inProgressMessageIds.size === 0
 
     // Send recovery status - history will be streamed separately
     socket.emit('message', {
@@ -695,6 +729,7 @@ export class ConnectionRecoveryManager {
         isRecovering: true,
         hasBufferedEvents: eventsToReplay.length > 0,
         bufferedEventCount: eventsToReplay.length,
+        streamCompleted,
         conversationId: context.conversationId,
         agentName: stateData?.agentName ?? context.agentName,
         recoveryMode: context.mode,
@@ -711,11 +746,14 @@ export class ConnectionRecoveryManager {
     if (historyIncluded && fullHistory.length > 0) {
       let historySequence = -1000 // Use negative sequences for history to avoid collision
       for (const msg of fullHistory) {
+        // When stream is completed, clear stale inProgress metadata so the client
+        // doesn't falsely detect an active stream from crashed/stopped agent data
+        const cleanedMsg = streamCompleted ? this.clearStaleInProgress(msg) : msg
         socket.emit('message', {
           type: 'history_message',
           content: '',
           data: {
-            ...msg,
+            ...cleanedMsg,
             sequence: historySequence-- // Assign sequence for deduplication
           }
         } as WebSocketMessage)

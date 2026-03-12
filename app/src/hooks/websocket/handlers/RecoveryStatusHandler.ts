@@ -187,6 +187,7 @@ export class RecoveryStatusHandler implements MessageHandler {
         receivedCount: 0,
         replayComplete: expectedCount === 0,
         ackEvent: 'recovery_ack',
+        streamCompleted: data.data?.streamCompleted === true,
       }
 
       // Send RECOVERY_STATUS event to machine
@@ -307,6 +308,7 @@ export class RecoveryStatusHandler implements MessageHandler {
       receivedCount: 0,
       replayComplete: expectedCount === 0,
       ackEvent: 'recovery_ack',
+      streamCompleted: data.data?.streamCompleted === true,
     }
 
     // Reset history received flag for this recovery session
