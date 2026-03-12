@@ -35,6 +35,12 @@ import {
   type AiroSubscription,
   type AiroSystem,
   type AiroTokenBudgetResponse,
+  type AiroTransferAcceptResponse,
+  type AiroTransferCancelResponse,
+  type AiroTransferInitiateResponse,
+  type AiroTransferListParams,
+  type AiroTransferListResponse,
+  type AiroTransferMetadata,
   type AiroUnpublishAppResponse,
   type AiroUpdateAppPayload,
   type AiroUpdateAttributePayload,
@@ -1152,6 +1158,107 @@ export class AiroMgmtClient {
       `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/reload`,
       {},
       { logEvent: 'mgmt-airo.reload-images' }
+    );
+  }
+
+  /**
+   * Initiate a transfer for an app
+   *
+   * POST /api/airo/v1/apps/:appId/transfer/initiate
+   */
+  async initiateTransfer(
+    appId: string,
+    targetShopperId: string
+  ): Promise<AiroTransferInitiateResponse> {
+    return this.request<AiroTransferInitiateResponse>(
+      'POST',
+      `/api/airo/v1/apps/${appId}/transfer/initiate`,
+      { targetShopperId },
+      { logEvent: 'mgmt-airo.initiate-transfer' }
+    );
+  }
+
+  /**
+   * Get transfer metadata for an app (initiator view)
+   *
+   * GET /api/airo/v1/apps/:appId/transfer/metadata
+   */
+  async getTransferMetadata(
+    appId: string,
+    transferToken?: string
+  ): Promise<AiroTransferMetadata> {
+    const params = transferToken
+      ? `?transferToken=${encodeURIComponent(transferToken)}`
+      : '';
+    return this.request<AiroTransferMetadata>(
+      'GET',
+      `/api/airo/v1/apps/${appId}/transfer/metadata${params}`,
+      undefined,
+      { logEvent: 'mgmt-airo.get-transfer-metadata' }
+    );
+  }
+
+  /**
+   * Cancel a pending transfer for an app
+   *
+   * DELETE /api/airo/v1/apps/:appId/transfer
+   */
+  async cancelTransfer(appId: string): Promise<AiroTransferCancelResponse> {
+    return this.request<AiroTransferCancelResponse>(
+      'DELETE',
+      `/api/airo/v1/apps/${appId}/transfer`,
+      undefined,
+      { logEvent: 'mgmt-airo.cancel-transfer' }
+    );
+  }
+
+  /**
+   * Accept a transfer using a token
+   *
+   * POST /api/airo/v1/transfer/accept
+   */
+  async acceptTransfer(transferToken: string): Promise<AiroTransferAcceptResponse> {
+    return this.request<AiroTransferAcceptResponse>(
+      'POST',
+      '/api/airo/v1/transfer/accept',
+      { transferToken },
+      { logEvent: 'mgmt-airo.accept-transfer' }
+    );
+  }
+
+  /**
+   * Get transfer metadata by token (recipient view)
+   *
+   * GET /api/airo/v1/transfer/metadata?transferToken=xxx
+   */
+  async getTransferMetadataByToken(transferToken: string): Promise<AiroTransferMetadata> {
+    return this.request<AiroTransferMetadata>(
+      'GET',
+      `/api/airo/v1/transfer/metadata?transferToken=${encodeURIComponent(transferToken)}`,
+      undefined,
+      { logEvent: 'mgmt-airo.get-transfer-metadata-by-token' }
+    );
+  }
+
+  /**
+   * List transfers with optional filters
+   *
+   * GET /api/airo/v1/transfer
+   */
+  async listTransfers(params?: AiroTransferListParams): Promise<AiroTransferListResponse> {
+    const queryParams = new URLSearchParams();
+    if (params?.appId) queryParams.set('appId', params.appId);
+    if (params?.targetCustomerId) queryParams.set('targetCustomerId', params.targetCustomerId);
+    if (params?.status) queryParams.set('status', params.status);
+    if (params?.limit) queryParams.set('limit', params.limit.toString());
+    if (params?.offset) queryParams.set('offset', params.offset.toString());
+
+    const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    return this.request<AiroTransferListResponse>(
+      'GET',
+      `/api/airo/v1/transfer${queryString}`,
+      undefined,
+      { logEvent: 'mgmt-airo.list-transfers' }
     );
   }
 }

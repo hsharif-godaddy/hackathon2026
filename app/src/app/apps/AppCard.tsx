@@ -1,14 +1,16 @@
 import clsx from 'clsx';
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { FormattedMessage } from 'react-intl';
 import Box from '@ux/box'
 import Button from '@ux/button'
 import Card, { MediaCard } from '@ux/card'
+import CopyIcon from '@ux/icon/copy'
 import EditIcon from '@ux/icon/edit'
 import MenuIcon from '@ux/icon/menu'
 import PlusIcon from '@ux/icon/plus'
 import SettingsIcon from '@ux/icon/settings'
+import ShareIcon from '@ux/icon/share'
 import ShowIcon from '@ux/icon/show'
 import TrashIcon from '@ux/icon/trash'
 import UnlinkIcon from '@ux/icon/unlink'
@@ -20,6 +22,7 @@ import text from '@ux/text'
 import TextInput from '@ux/text-input'
 
 import AppThumbnail from '@/app/apps/AppThumbnail'
+import TransferInitiateDialog from '@/app/apps/components/TransferInitiateDialog'
 import UnpublishConfirmationModal from '@/components/layout/UnpublishConfirmationModal'
 import { useAppRename } from '@/hooks/useAppRename'
 import { useMenuClickPrevention } from '@/hooks/useMenuClickPrevention'
@@ -36,8 +39,13 @@ import { hasBeenPublished } from '@/utils/site'
 
 interface AlertState {
   siteId: string | null
-  type: 'delete' | null
+  type: 'delete' | 'cancel-transfer' | null
   message: string | React.ReactNode
+}
+
+interface ActiveTransfer {
+  transferToken: string
+  status: string
 }
 
 export default function AppCard({ site }: { site: SiteInfo }) {
@@ -48,6 +56,10 @@ export default function AppCard({ site }: { site: SiteInfo }) {
   const [alertState, setAlertState] = useState<AlertState>({ siteId: null, type: null, message: '' })
   const [publishedUrl, setPublishedUrl] = useState<string | null>(null)
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
+  const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false)
+  const [cancelTransferError, setCancelTransferError] = useState<string | null>(null)
+  const [activeTransfer, setActiveTransfer] = useState<ActiveTransfer | null>(null)
+  const [copied, setCopied] = useState(false)
   const [isUnpublishModalOpen, setIsUnpublishModalOpen] = useState(false)
   const [newName, setNewName] = useState(site.name || '')
   const [renameError, setRenameError] = useState<string | null>(null)
@@ -55,14 +67,36 @@ export default function AppCard({ site }: { site: SiteInfo }) {
   const { menuWrapperProps, menuItemProps, shouldPreventClick } = useMenuClickPrevention()
   const deleteSite = useSitesStore((state) => state.deleteSite)
   const fetchAllSites = useSitesStore((state) => state.fetchAllSites)
+  const refreshSites = useSitesStore((state) => state.refreshSites)
   const { mutate: renameApp, isPending: isRenamePending } = useAppRename()
   const { data: isUnpublishEnabled } = useSwitchboard('appbuilder-unpublish')
+  const { data: isTransferEnabled } = useSwitchboard('appbuilder-transfer-ownership')
   const unpublishMutation = useUnpublishApp()
 
-  useEffect(() => {
+  const fetchTransferStatus = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const response = await appFetch(`/api/apps/${site.id}/transfer`, { signal })
+      if (response.ok) {
+        const data = await response.json()
+        if (data.status === 'initiated' || data.status === 'processing') {
+          setActiveTransfer({ transferToken: data.transferToken, status: data.status })
+        } else {
+          setActiveTransfer(null)
+        }
+      } else {
+        setActiveTransfer(null)
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+    }
+  }, [site.id])
+
+  useEffect(function load() {
+    const controller = new AbortController()
+
     const fetchSiteDetails = async () => {
       try {
-        const response = await appFetch(`/api/sites/${site.id}`)
+        const response = await appFetch(`/api/sites/${site.id}`, { signal: controller.signal })
         if (response.ok) {
           const siteDetails = await response.json()
           if (siteDetails.published_url && hasBeenPublished(siteDetails)) {
@@ -70,6 +104,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
           }
         }
       } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return
         logger.error('site.details.fetch.failed', {
           siteId: site.id,
           error: error instanceof Error ? error.message : String(error)
@@ -78,7 +113,11 @@ export default function AppCard({ site }: { site: SiteInfo }) {
     }
 
     fetchSiteDetails()
-  }, [site.id])
+    if (isTransferEnabled) {
+      fetchTransferStatus(controller.signal)
+    }
+    return () => controller.abort()
+  }, [site.id, fetchTransferStatus, isTransferEnabled])
 
   const handleDeleteSite = async (siteId: string) => {
     setActionLoading(siteId)
@@ -97,11 +136,61 @@ export default function AppCard({ site }: { site: SiteInfo }) {
     }
   }
 
+  const handleCancelTransfer = async () => {
+    setActionLoading('cancel-transfer')
+    setCancelTransferError(null)
+    try {
+      const response = await appFetch(`/api/apps/${site.id}/transfer/cancel`, { method: 'POST' })
+      if (response.ok) {
+        setActiveTransfer(null)
+        setAlertState({ siteId: null, type: null, message: '' })
+        refreshSites()
+      } else {
+        const data = await response.json()
+        logger.error('transfer.cancel.ui.failed', { appId: site.id, error: data })
+        setAlertState({ siteId: null, type: null, message: '' })
+        setCancelTransferError(data.error || t('builder_transfer_error_cancel_failed', undefined, 'Failed to cancel transfer. Please try again.'))
+      }
+    } catch (error) {
+      logger.error('transfer.cancel.ui.error', {
+        appId: site.id,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      setAlertState({ siteId: null, type: null, message: '' })
+      setCancelTransferError(t('builder_transfer_error_cancel_failed', undefined, 'Failed to cancel transfer. Please try again.'))
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const [copyFailed, setCopyFailed] = useState(false)
+
+  const handleCopyToken = async () => {
+    if (!activeTransfer?.transferToken) return
+    try {
+      await navigator.clipboard.writeText(activeTransfer.transferToken)
+      setCopied(true)
+      setCopyFailed(false)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setCopyFailed(true)
+      setTimeout(() => setCopyFailed(false), 3000)
+    }
+  }
+
   const showDeleteAlert = (siteId: string, siteName: string) => {
     setAlertState({
       siteId,
       type: 'delete',
       message: <FormattedMessage id='builder_apps_alert_delete' values={{ siteName: siteName || t('builder_apps_alert_delete_untitled') }} />
+    })
+  }
+
+  const showCancelTransferAlert = () => {
+    setAlertState({
+      siteId: site.id,
+      type: 'cancel-transfer',
+      message: t('builder_transfer_cancel_confirm', { appName: site.name || t('builder_apps_alert_delete_untitled', undefined, 'Untitled') }, 'Cancel transfer for {appName}?')
     })
   }
 
@@ -137,19 +226,16 @@ export default function AppCard({ site }: { site: SiteInfo }) {
   const handleRename = () => {
     const trimmed = newName.trim()
 
-    // Validation: empty name
     if (!trimmed) {
       setRenameError(t('builder_apps_rename_error_empty'))
       return
     }
 
-    // Validation: length limits (reasonable UI constraint)
     if (trimmed.length > 100) {
       setRenameError(t('builder_apps_rename_error_too_long'))
       return
     }
 
-    // No change - close dialog
     if (trimmed === site.name) {
       closeRenameDialog()
       return
@@ -170,28 +256,28 @@ export default function AppCard({ site }: { site: SiteInfo }) {
     )
   }
 
-  // Inline alert component
-  const InlineAlert = ({ siteId, message, onConfirm, onCancel }: {
-    siteId: string
+  const InlineAlert = ({ message, onConfirm, onCancel, confirmLabel, isLoading: loading }: {
     message: string | React.ReactNode
     onConfirm: () => void
     onCancel: () => void
+    confirmLabel?: string
+    isLoading?: boolean
   }) => (
-    <div data-testid="delete-confirmation" onClick={(e) => e.stopPropagation()} className="absolute inset-0 bg-intents-ux-box-backgroundColor rounded-lg flex flex-col items-center justify-center p-2 z-10">
+    <div data-testid="inline-confirmation" onClick={(e) => e.stopPropagation()} className="absolute inset-0 bg-intents-ux-box-backgroundColor rounded-lg flex flex-col items-center justify-center p-2 z-10">
       <p className="mb-2 text-center">{message}</p>
       <Box orientation="horizontal" gap="sm">
         <Button
-          data-testid="delete-confirm-button"
+          data-testid="confirm-button"
           onClick={onConfirm}
-          disabled={actionLoading === siteId}
-          data-eid={generateClickEID('apps.app.delete_confirm')}
+          disabled={loading}
+          data-eid={generateClickEID('apps.app.confirm')}
           className="text-white px-2 py-1 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          text={actionLoading === siteId ? t('builder_common_deleting') : t('builder_common_delete')}
+          text={confirmLabel || t('builder_common_confirm')}
           design="critical"
           size="sm"
         />
         <Button
-          data-eid={generateClickEID('apps.app.delete_cancel')}
+          data-eid={generateClickEID('apps.app.cancel')}
           onClick={onCancel}
           text={t('builder_common_cancel')}
           design="secondary"
@@ -199,6 +285,49 @@ export default function AppCard({ site }: { site: SiteInfo }) {
         />
       </Box>
     </div>
+  )
+
+  const hasActiveTransfer = activeTransfer !== null
+
+  const transferMenuItems = hasActiveTransfer ? (
+    <>
+      <MenuItem
+        {...menuItemProps()}
+        data-eid={generateClickEID('apps.app.copy_transfer_code')}
+        data-testid="app-card-copy-code-button"
+        onClick={handleCopyToken}
+      >
+        <Box orientation="horizontal" gap="sm">
+          <CopyIcon />
+          <text.span>
+            {copied ? t('builder_transfer_token_copied', undefined, 'Copied!') : copyFailed ? t('builder_common_error', undefined, 'Error') : t('builder_transfer_copy_code', undefined, 'Copy Code')}
+          </text.span>
+        </Box>
+      </MenuItem>
+      <MenuItem
+        {...menuItemProps()}
+        data-eid={generateClickEID('apps.app.cancel_transfer')}
+        data-testid="app-card-cancel-transfer-button"
+        onClick={showCancelTransferAlert}
+      >
+        <Box orientation="horizontal" gap="sm">
+          <text.span emphasis="critical"><ShareIcon /></text.span>
+          <text.span emphasis="critical">{t('builder_transfer_cancel_menu_item', undefined, 'Cancel Transfer')}</text.span>
+        </Box>
+      </MenuItem>
+    </>
+  ) : (
+    <MenuItem
+      {...menuItemProps()}
+      data-eid={generateClickEID('apps.app.transfer')}
+      data-testid="app-card-transfer-button"
+      onClick={() => setIsTransferDialogOpen(true)}
+    >
+      <Box orientation="horizontal" gap="sm">
+        <ShareIcon />
+        <text.span>{t('builder_transfer_menu_item', undefined, 'Transfer')}</text.span>
+      </Box>
+    </MenuItem>
   )
 
   const cornerActions = (
@@ -290,6 +419,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
               <text.span>{t('builder_common_rename')}</text.span>
             </Box>
           </MenuItem>
+          {isTransferEnabled && transferMenuItems}
           <MenuSeparator />
           <MenuItem
             {...menuItemProps()}
@@ -310,6 +440,10 @@ export default function AppCard({ site }: { site: SiteInfo }) {
     </div>
   )
 
+  const transferTag = isTransferEnabled && hasActiveTransfer && (
+    <Tag emphasis="info">{t('builder_transfer_status_pending', undefined, 'Transfer Pending')}</Tag>
+  )
+
   const createdDate = (
     <text.span className="font-normal" emphasis="passive" size={-2}>
       <FormattedMessage
@@ -327,16 +461,14 @@ export default function AppCard({ site }: { site: SiteInfo }) {
     <Tag emphasis="critical">{t('builder_status_error')}</Tag>
   )
 
-  const statusTags = (publishedTag || errorTag) && (
+  const statusTags = (publishedTag || errorTag || transferTag) && (
     <Box data-partial="componentAiro" orientation="horizontal" gap="sm" wrap>
       {publishedTag}
       {errorTag}
+      {transferTag}
     </Box>
   )
   const title = (
-    // When there are no status tags, add padding-top to title element to maintain vertical
-    // alignment with cards that have status tags. Only needed on md screens and up where media
-    // and text show side-by-side.
     <div className={clsx("flex flex-col gap-1 w-full", !statusTags && "md:pt-3.5")}>
       {statusTags}
       <div className="flex flex-col w-full">
@@ -382,18 +514,46 @@ export default function AppCard({ site }: { site: SiteInfo }) {
         mediaBleed={false}
         mediaStart={true}
       >
-        {/* Inline Alert */}
-        {alertState.siteId === site.id && alertState.type && (
+        {/* Delete Inline Alert */}
+        {alertState.siteId === site.id && alertState.type === 'delete' && (
           <InlineAlert
-            siteId={site.id}
             message={alertState.message}
             onConfirm={() => handleDeleteSite(site.id)}
             onCancel={clearAlert}
+            confirmLabel={actionLoading === site.id ? t('builder_common_deleting') : t('builder_common_delete')}
+            isLoading={actionLoading === site.id}
           />
+        )}
+        {/* Cancel Transfer Inline Alert */}
+        {alertState.siteId === site.id && alertState.type === 'cancel-transfer' && (
+          <InlineAlert
+            message={alertState.message}
+            onConfirm={handleCancelTransfer}
+            onCancel={clearAlert}
+            confirmLabel={actionLoading === 'cancel-transfer' ? t('builder_transfer_cancelling', undefined, 'Cancelling...') : t('builder_transfer_cancel_confirm_button', undefined, 'Cancel Transfer')}
+            isLoading={actionLoading === 'cancel-transfer'}
+          />
+        )}
+        {cancelTransferError && (
+          <div className="px-3 pb-2">
+            <text.span size={-1} emphasis="critical">{cancelTransferError}</text.span>
+          </div>
         )}
       </MediaCard>
 
-      {/* Rename Modal - Outside MediaCard to prevent event bubbling */}
+      {/* Transfer Dialog */}
+      {isTransferEnabled && isTransferDialogOpen && (
+        <TransferInitiateDialog
+          appId={site.id}
+          appName={site.name || t('builder_apps_alert_delete_untitled')}
+          onClose={() => setIsTransferDialogOpen(false)}
+          onTransferCreated={(transferToken) => {
+            setActiveTransfer({ transferToken, status: 'initiated' })
+          }}
+        />
+      )}
+
+      {/* Rename Modal */}
       {isRenameDialogOpen && (
         <Modal
           title={t('builder_apps_rename_title')}

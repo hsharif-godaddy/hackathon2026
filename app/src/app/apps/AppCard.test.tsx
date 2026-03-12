@@ -4,6 +4,7 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { appFetch } from '@/lib/gasket-config';
 import { useSitesStore } from '@/stores/useSitesStore';
 import { createMockSite, mockInstrumentation, mockRouter } from '@/tests/mocks';
@@ -11,6 +12,10 @@ import { renderWithProviders } from '@/tests/test-utils';
 import AppCard, { AppCardEmptyState } from './AppCard';
 
 vi.mock('@/lib/gasket-config');
+
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: vi.fn(() => ({ data: true, isLoading: false, error: null })),
+}));
 
 const mockRouterInstance = mockRouter();
 vi.mock('next/navigation', () => ({
@@ -35,6 +40,7 @@ describe('AppCard', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
     mockWindowOpen.mockClear();
     mockRouterInstance.push.mockClear();
     useSitesStore.setState({
@@ -579,7 +585,10 @@ describe('AppCard', () => {
       renderWithProviders(<AppCard site={mockSite} />);
 
       await waitFor(() => {
-        expect(appFetch).toHaveBeenCalledWith(`/api/sites/${mockSite.id}`);
+        expect(appFetch).toHaveBeenCalledWith(
+          `/api/sites/${mockSite.id}`,
+          expect.objectContaining({ signal: expect.any(AbortSignal) })
+        );
       });
     });
 
@@ -603,6 +612,161 @@ describe('AppCard', () => {
       await waitFor(() => {
         expect(screen.getByTestId('app-thumbnail-loading')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('hides transfer UI when flag is disabled', () => {
+    it('should not show transfer menu item when flag is off', async function hideTransferItem() {
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'appbuilder-transfer-ownership') {
+          return { data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
+        }
+        return { data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
+      });
+
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_apps_menu_settings')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('Transfer')).not.toBeInTheDocument();
+    });
+
+    it('should not show transfer pending tag when flag is off', async function hidePendingTag() {
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'appbuilder-transfer-ownership') {
+          return { data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
+        }
+        return { data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
+      });
+
+      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+        if (typeof url === 'string' && url.includes('/transfer')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ transferToken: 'abc123', status: 'initiated' }),
+          } as Response;
+        }
+        return { ok: true, json: async () => mockSite } as Response;
+      });
+
+      renderWithProviders(<AppCard site={mockSite} />);
+
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalled();
+      });
+
+      expect(screen.queryByText('Transfer Pending')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('transfer menu states', () => {
+    it('should show transfer menu item when no active transfer', async function showTransferItem() {
+      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+        if (typeof url === 'string' && url.includes('/transfer')) {
+          return { ok: false, status: 404, json: async () => ({}) } as Response;
+        }
+        return { ok: true, json: async () => mockSite } as Response;
+      });
+
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalled();
+      });
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.getByText('Transfer')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('Copy Code')).not.toBeInTheDocument();
+      expect(screen.queryByText('Cancel Transfer')).not.toBeInTheDocument();
+    });
+
+    it('should show copy code and cancel transfer when active transfer exists', async function showCopyCancel() {
+      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+        if (typeof url === 'string' && url.includes('/transfer')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ transferToken: 'abc123', status: 'initiated' }),
+          } as Response;
+        }
+        return { ok: true, json: async () => mockSite } as Response;
+      });
+
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Transfer Pending')).toBeInTheDocument();
+      });
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.getByText('Copy Code')).toBeInTheDocument();
+        expect(screen.getByText('Cancel Transfer')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('Transfer')).not.toBeInTheDocument();
+    });
+
+    it('should show transfer pending tag when transfer is active', async function showPendingTag() {
+      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+        if (typeof url === 'string' && url.includes('/transfer')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ transferToken: 'abc123', status: 'initiated' }),
+          } as Response;
+        }
+        return { ok: true, json: async () => mockSite } as Response;
+      });
+
+      renderWithProviders(<AppCard site={mockSite} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Transfer Pending')).toBeInTheDocument();
+      });
+    });
+
+    it('should show cancel transfer confirmation when cancel is clicked', async function showCancelConfirm() {
+      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+        if (typeof url === 'string' && url.includes('/transfer')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ transferToken: 'abc123', status: 'initiated' }),
+          } as Response;
+        }
+        return { ok: true, json: async () => mockSite } as Response;
+      });
+
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Transfer Pending')).toBeInTheDocument();
+      });
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.getByText('Cancel Transfer')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Cancel Transfer'));
+
+      expect(screen.getByText(/Cancel transfer for/)).toBeInTheDocument();
     });
   });
 });

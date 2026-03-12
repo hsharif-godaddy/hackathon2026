@@ -793,3 +793,81 @@ export interface AiroReloadImagesResponse {
   startedAt?: string;
   failedAt?: string;
 }
+
+/**
+ * Transfer initiation response from mgmt-airo
+ */
+export interface AiroTransferInitiateResponse {
+  transferToken: string;
+  appId: string;
+  status: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+/**
+ * Transfer metadata response from mgmt-airo
+ */
+export interface AiroTransferMetadata {
+  appId: string;
+  transferToken: string;
+  status: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+/**
+ * Transfer accept response from mgmt-airo
+ */
+export interface AiroTransferAcceptResponse {
+  requestId: string;
+  status: string;
+  hostingTransferId: string | null;
+  message: string;
+  appId: string;
+}
+
+/**
+ * Transfer cancel response from mgmt-airo
+ */
+export interface AiroTransferCancelResponse {
+  status: string;
+  appId: string;
+  message: string;
+}
+
+/**
+ * Individual transfer record in list response
+ */
+export interface AiroTransferRecord {
+  id: string;
+  appId: string;
+  transferToken: string;
+  status: string;
+  sourceCustomerId: string;
+  targetCustomerId: string;
+  createdAt: string;
+  expiresAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Transfer list response from mgmt-airo
+ */
+export interface AiroTransferListResponse {
+  transfers: AiroTransferRecord[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/**
+ * Query parameters for listing transfers
+ */
+export interface AiroTransferListParams {
+  appId?: string;
+  targetCustomerId?: string;
+  status?: string;
+  limit?: number;
+  offset?: number;
+}

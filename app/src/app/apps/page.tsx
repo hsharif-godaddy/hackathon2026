@@ -7,10 +7,13 @@ import Spinner from '@ux/spinner'
 import Tag from '@ux/tag'
 
 import AppCard, { AppCardEmptyState } from '@/app/apps/AppCard'
+import AcceptTransferDialog from '@/app/apps/components/AcceptTransferDialog'
+import PendingTransfers from '@/app/apps/components/PendingTransfers'
 import { ProtectedRoute } from '@/components/auth'
 import { DevelopmentAdminSection } from '@/components/development'
 import AppInactivityAlert from '@/components/layout/AppInactivityAlert'
 import Header from '@/components/layout/Header'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { useSitesStore } from '@/stores/useSitesStore'
@@ -19,8 +22,9 @@ import { logImpressionEvent } from '@/utils/instrumentation'
 function SitesPageContent() {
   const t = useTranslations();
   const [adminActionLoading, setAdminActionLoading] = useState<string | null>(null)
+  const [isAcceptTransferOpen, setIsAcceptTransferOpen] = useState(false)
+  const { data: isTransferEnabled } = useSwitchboard('appbuilder-transfer-ownership')
 
-  // Use the sites store (automatically loads sites on first use)
   const sites = useSitesStore((state) => state.allSites)
   const isLoading = useSitesStore((state) => state.isLoadingAll)
   const error = useSitesStore((state) => state.error)
@@ -33,7 +37,6 @@ function SitesPageContent() {
 
   useEffect(() => {
     logImpressionEvent('apps.page.view')();
-    // Always refresh apps when the page loads to show newly created apps
     refreshSites();
   }, [refreshSites])
 
@@ -69,9 +72,14 @@ function SitesPageContent() {
 
   if (isLoading) {
     return (
-      <Box className="min-h-screen flex items-center justify-center" data-partial="accentAiro">
-        <Spinner />
-      </Box>
+      <>
+        <Box className="min-h-screen flex items-center justify-center" data-partial="accentAiro">
+          <Spinner />
+        </Box>
+        {isTransferEnabled && isAcceptTransferOpen && (
+          <AcceptTransferDialog onClose={() => setIsAcceptTransferOpen(false)} />
+        )}
+      </>
     )
   }
 
@@ -79,7 +87,6 @@ function SitesPageContent() {
     <div className="min-h-screen">
       <Header location='sites' />
 
-      {/* Development Admin Section */}
       <DevelopmentAdminSection
         totalItems={totalSites}
         runningItems={runningCount}
@@ -90,10 +97,9 @@ function SitesPageContent() {
         isDeleteAllLoading={adminActionLoading === 'delete-all'}
       />
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-2 sm:px-3 lg:px-4 pt-4 pb-8">
         <AppInactivityAlert />
-        <div className="mb-4" data-testid="apps-page-title">
+        <div className="mb-4 flex items-center justify-between" data-testid="apps-page-title">
           <Box orientation="horizontal" gap="md">
             {t('builder_apps_title')}
             <div>
@@ -102,7 +108,21 @@ function SitesPageContent() {
               </Tag>
             </div>
           </Box>
+          {isTransferEnabled && (
+            <Button
+              onClick={() => setIsAcceptTransferOpen(true)}
+              design="secondary"
+              size="sm"
+              text={t('builder_transfer_accept_button', undefined, 'Accept Transfer')}
+              data-testid="accept-transfer-button"
+              data-eid="apps.accept_transfer.click"
+            />
+          )}
         </div>
+
+        {isTransferEnabled && (
+          <PendingTransfers onAcceptTransfer={() => setIsAcceptTransferOpen(true)} />
+        )}
 
         {error && (
           <div className="mb-3 border rounded-lg p-2">
@@ -126,6 +146,10 @@ function SitesPageContent() {
           ))}
         </div>
       </main>
+
+      {isTransferEnabled && isAcceptTransferOpen && (
+        <AcceptTransferDialog onClose={() => setIsAcceptTransferOpen(false)} />
+      )}
     </div>
   )
 }
