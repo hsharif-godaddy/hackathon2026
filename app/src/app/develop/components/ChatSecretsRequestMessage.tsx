@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Button from '@ux/button'
 import LockIcon from '@ux/icon/locked'
 import DeleteIcon from '@ux/icon/x-thick'
@@ -61,6 +61,7 @@ export interface SecretsRequestPayload {
   mode: 'add' | 'update'
   allowMultiple?: boolean
   showSettingsLink?: boolean
+  autoSubmit?: boolean
   existingSecretNames?: string[]
 }
 
@@ -98,7 +99,7 @@ export default function ChatSecretsRequestMessage({
   const { sendMessage } = useWebSocketContext()
   const secretOperations = useSecretOperations()
 
-  const { title, description, secrets, mode, allowMultiple, showSettingsLink, existingSecretNames = [] } = payload
+  const { title, description, secrets, mode, allowMultiple, showSettingsLink, autoSubmit, existingSecretNames = [] } = payload
 
   // Initialize form rows from payload (with auto-generated values for 'auto:' defaultValues)
   const initialRows: SecretFormRow[] = secrets.length > 0
@@ -119,8 +120,54 @@ export default function ChatSecretsRequestMessage({
       }]
 
   const [formRows, setFormRows] = useState<SecretFormRow[]>(initialRows)
-  const [status, setStatus] = useState<'pending' | 'submitting' | 'success' | 'failed'>('pending')
+  // In chat history (non-interactive), auto-submitted secrets already succeeded — show final state
+  const [status, setStatus] = useState<'pending' | 'submitting' | 'success' | 'failed'>(
+    !isInteractive && autoSubmit ? 'success' : 'pending'
+  )
   const [error, setError] = useState<string | null>(null)
+  const autoSubmitTriggered = useRef(false)
+
+  // Auto-submit: when autoSubmit is true, save secrets without user interaction.
+  // Deps include isInteractive (false during streaming, true once streaming ends)
+  // and currentAppId (may be null initially). The ref guard prevents double-fires.
+  useEffect(() => {
+    if (!autoSubmit || !isInteractive || !currentAppId || autoSubmitTriggered.current) return
+    autoSubmitTriggered.current = true
+
+    const doAutoSubmit = async () => {
+      const additions = initialRows
+        .filter(r => r.name.trim() && r.value.trim())
+        .map(r => ({ name: r.name.trim(), value: r.value.trim() }))
+
+      if (additions.length === 0) {
+        setStatus('failed')
+        setError('No secrets to auto-generate — check defaultValue configuration')
+        return
+      }
+
+      setStatus('submitting')
+
+      try {
+        await secretOperations.mutateAsync({
+          appId: currentAppId,
+          variant: 'preview',
+          operations: { additions }
+        })
+
+        setStatus('success')
+
+        const savedNames = additions.map(s => s.name).join(', ')
+        const continueMessage = `Secrets added successfully: ${savedNames}. Please continue.`
+        queueMicrotask(() => { void sendMessage(continueMessage) })
+      } catch (err) {
+        setStatus('failed')
+        setError(err instanceof Error ? err.message : 'Failed to auto-save secrets')
+      }
+    }
+
+    void doAutoSubmit()
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally omit stable-per-render values (autoSubmit, initialRows, secretOperations, sendMessage) to prevent re-triggering
+  }, [isInteractive, currentAppId])
 
   /**
    * Sanitize secret name: uppercase, allowed characters only, max 128 chars
@@ -406,15 +453,7 @@ export default function ChatSecretsRequestMessage({
 
       // Notify agent in a microtask to avoid background-tab rAF throttling.
       const continueMessage = `Secrets ${actionWord} successfully: ${savedNames}. Please continue.`
-      if (typeof window === 'undefined') {
-        sendMessage(continueMessage)
-      } else if (typeof queueMicrotask === 'function') {
-        queueMicrotask(() => {
-          void sendMessage(continueMessage)
-        })
-      } else {
-        void Promise.resolve().then(() => sendMessage(continueMessage))
-      }
+      queueMicrotask(() => { void sendMessage(continueMessage) })
 
     } catch (err) {
       logger.error('secrets.chat_request.error', {
@@ -442,6 +481,39 @@ export default function ChatSecretsRequestMessage({
   // Determine if form should be interactive (only when it's in the latest assistant message and status is pending)
   const isFormDisabled = !isInteractive || status !== 'pending'
 
+  // Compact auto-submit UI — no form, just a status indicator
+  if (autoSubmit) {
+    return (
+      <div className="max-w-2xl mx-auto my-2">
+        <div className="rounded-lg border p-3 border-intents-ux-info-borderColor/50 bg-intents-ux-info-backgroundColor/50">
+          <div className="flex items-center gap-2">
+            <LockIcon className="w-4 h-4 text-foreground/60 flex-shrink-0" />
+            {status === 'submitting' && (
+              <span className="text-sm text-typography-mediumEmphasis">
+                Auto-generating secrets...
+              </span>
+            )}
+            {status === 'success' && (
+              <span className="text-sm text-intents-ux-success-textColor">
+                Secrets configured automatically
+              </span>
+            )}
+            {status === 'failed' && (
+              <span className="text-sm text-intents-ux-feedbackHighContrastCritical-feedbackColor">
+                Failed to auto-generate secrets{error ? `: ${error}` : ''}
+              </span>
+            )}
+            {status === 'pending' && (
+              <span className="text-sm text-typography-mediumEmphasis">
+                Preparing secrets...
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-2xl mx-auto my-2">
       <div className={`rounded-lg border p-3 ${
@@ -450,9 +522,8 @@ export default function ChatSecretsRequestMessage({
           : 'border-intents-ux-info-borderColor/50 bg-intents-ux-info-backgroundColor/50 opacity-60'
       }`}>
         {/* Header */}
-        <div className="flex items-start gap-2 mb-3">
-          <div className="text-2xl">🔑</div>
-          <div className="flex-1">
+        <div className="mb-3">
+          <div>
             <h3 className="text-base font-semibold text-typography-highEmphasis mb-0.5">
               {title}
             </h3>
@@ -569,7 +640,7 @@ export default function ChatSecretsRequestMessage({
         {/* Settings Link */}
         {showSettingsLink && (
           <p className="mt-3 text-xs text-typography-lowEmphasis">
-            💡 Or use <span className="font-medium">Secrets</span> in settings for full management.
+            Or use <span className="font-medium">Secrets</span> in settings for full management.
           </p>
         )}
 
@@ -606,27 +677,20 @@ export default function ChatSecretsRequestMessage({
           )}
 
           {status === 'submitting' && (
-            <div className="flex items-center gap-2 text-sm text-typography-mediumEmphasis">
-              <span className="animate-spin">⏳</span>
-              <span>Saving secrets...</span>
+            <div className="text-sm text-typography-mediumEmphasis">
+              Saving secrets...
             </div>
           )}
 
           {status === 'success' && (
-            <div className="flex items-center gap-1 text-sm text-intents-ux-success-textColor">
-              <span className="text-lg">✓</span>
-              <span className="font-medium">
-                {mode === 'update' ? 'Secret updated successfully' : 'Secrets saved successfully'}
-              </span>
+            <div className="text-sm text-intents-ux-success-textColor font-medium">
+              {mode === 'update' ? 'Secret updated successfully' : 'Secrets saved successfully'}
             </div>
           )}
 
           {status === 'failed' && (
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 text-sm text-intents-ux-feedbackHighContrastCritical-feedbackColor">
-                <span className="text-lg">✕</span>
-                <span className="font-medium">Failed</span>
-              </div>
+              <span className="text-sm text-intents-ux-feedbackHighContrastCritical-feedbackColor font-medium">Failed</span>
               <Button
                 design="secondary"
                 size="sm"

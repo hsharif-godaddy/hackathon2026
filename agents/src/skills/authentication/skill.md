@@ -1,7 +1,7 @@
 ---
 name: authentication
 description: Add BetterAuth authentication (Email/Password, OAuth, or both).
-whenToUse: User wants login, signup, user accounts, or authentication. Phrases like "add login", "user accounts", "sign up page", "authentication", "password protection".
+whenToUse: User wants login, signup, user accounts, authentication, or to restrict access to pages. Phrases like "add login", "user accounts", "sign up page", "authentication", "password protection", "password protect this site", "password protect a page", "require login", "restrict access", "lock down", "admin access", "members only", "private page", "secure this page".
 dependencies:
   - better-auth
 ---
@@ -53,6 +53,7 @@ requestSecrets({
     },
   ],
   mode: 'add',
+  autoSubmit: true,
 });
 ```
 

@@ -91,9 +91,10 @@ export async function createUnifiedAgentFactory(options?: {
     ...(developConfig.tools || {}),
     handoff: developHandoffTool
   }
-  // Stop execution after handoff, suggestedResponse, or logo generation tool is called
+  // Stop execution after handoff, suggestedResponse, logo generation, or secrets request tool is called
   // media__generate_logo: Agent stops to let user select from generated logos
-  developConfig.stopAfterTools = ['handoff', 'suggestedResponse', 'media__generate_logo']
+  // requestSecrets: Agent stops so secrets can be saved (auto or manual) before continuing
+  developConfig.stopAfterTools = ['handoff', 'suggestedResponse', 'media__generate_logo', 'requestSecrets']
 
   const marketingHandoffTool = createHandoffTool({
     sourceAgentId: 'marketing',

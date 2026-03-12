@@ -76,6 +76,7 @@ After the user saves secrets, they will send a message confirming completion.`,
     mode: z.enum(['add', 'update']).describe('"add" for new secrets, "update" for existing secrets'),
     allowMultiple: z.boolean().optional().default(false).describe('Allow user to add more secrets beyond the predefined list'),
     showSettingsLink: z.boolean().optional().default(true).describe('Show link to Settings → Secrets for full management'),
+    autoSubmit: z.boolean().optional().default(false).describe('Auto-save secrets with auto-generated defaults (auto:hex64 etc.) without showing the form. Use when all secrets have auto: defaultValues and no user input is needed.'),
     existingSecretNames: z.array(z.string()).optional().describe('List of existing secret names from app context. Used for validation - prevents duplicates in add mode, restricts choices in update mode.'),
   }),
 
@@ -89,7 +90,9 @@ After the user saves secrets, they will send a message confirming completion.`,
     return {
       success: true,
       secretsRequired: true,
-      message: 'Please fill in the secrets form and click Save. Let me know when you are done.',
+      message: input.autoSubmit
+        ? 'Secrets are being auto-generated. The user will confirm when ready.'
+        : 'Please fill in the secrets form and click Save. Let me know when you are done.',
       secretsRequest: {
         type: 'secrets_request',
         title: input.title,
@@ -98,6 +101,7 @@ After the user saves secrets, they will send a message confirming completion.`,
         mode: input.mode,
         allowMultiple: input.allowMultiple ?? false,
         showSettingsLink: input.showSettingsLink ?? true,
+        autoSubmit: input.autoSubmit ?? false,
         existingSecretNames: input.existingSecretNames ?? [],
       },
     };

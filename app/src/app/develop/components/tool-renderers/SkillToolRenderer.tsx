@@ -76,6 +76,42 @@ interface SkillInput {
 const SKILLS_PER_PAGE = 5
 
 /**
+ * Progress phases shown while a skill install is running.
+ * Each entry is [message, duration in ms before advancing].
+ */
+const INSTALL_PROGRESS_PHASES: [string, number][] = [
+  ['Installing templates', 2000],
+  ['Installing packages', 8000],
+  ['Configuring dependencies', 6000],
+  ['Finishing up', 0], // stays here until complete
+]
+
+/**
+ * Cycles through install progress phases while the tool is running.
+ */
+function useInstallProgress(isRunning: boolean): string {
+  const [phaseIndex, setPhaseIndex] = useState(0)
+
+  useEffect(() => {
+    if (!isRunning) {
+      setPhaseIndex(0)
+      return
+    }
+
+    const [, duration] = INSTALL_PROGRESS_PHASES[phaseIndex]
+    if (duration === 0) return // last phase, stay here
+
+    const timer = setTimeout(() => {
+      setPhaseIndex(i => Math.min(i + 1, INSTALL_PROGRESS_PHASES.length - 1))
+    }, duration)
+
+    return () => clearTimeout(timer)
+  }, [isRunning, phaseIndex])
+
+  return INSTALL_PROGRESS_PHASES[phaseIndex][0]
+}
+
+/**
  * Format skill name - capitalize each word and split on hyphens
  * Example: "blog-writing" -> "Blog Writing"
  */
@@ -352,12 +388,18 @@ export default function SkillToolRenderer({
   // Parse result
   let parsedResult: SkillResult | null = null
   let action = ''
+  let inputSkillName = ''
 
-  // Get action from input
+  // Get action and skill name from input
   if (input && typeof input === 'object') {
     const inputObj = input as Partial<SkillInput>
     action = inputObj.action || ''
+    inputSkillName = inputObj.skill || ''
   }
+
+  // Progress phases for install action
+  const isInstallRunning = action === 'install' && toolStatus === 'running'
+  const installProgress = useInstallProgress(isInstallRunning)
 
   if (result) {
     try {
@@ -375,7 +417,20 @@ export default function SkillToolRenderer({
   }
 
   // Generate display message and icon
-  const { message: displayMessage, icon } = getSkillMessage(action, parsedResult)
+  const { message: defaultMessage, icon } = getSkillMessage(action, parsedResult)
+
+  // Override display message with progress text while running
+  const skillLabel = formatSkillName(inputSkillName || 'skill')
+  let displayMessage = defaultMessage
+  if (toolStatus === 'running') {
+    if (action === 'install') {
+      displayMessage = `Installing ${skillLabel} — ${installProgress}`
+    } else if (action === 'list') {
+      displayMessage = 'Loading available skills...'
+    } else if (action === 'load') {
+      displayMessage = `Loading ${skillLabel}...`
+    }
+  }
 
   // Generate modal content
   let modalContentElement: React.JSX.Element | null = null
