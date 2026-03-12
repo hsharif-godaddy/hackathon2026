@@ -103,6 +103,9 @@ export default function SessionExpirationBanner() {
     });
     logClickEvent('chat.sessionExpirationBanner.close')();
 
+    // Reset so next re-show fires an impression
+    hasLoggedShownRef.current = false;
+
     setShowBanner(false);
     // Banner will reappear on next check (30s) if still in warning window
   };

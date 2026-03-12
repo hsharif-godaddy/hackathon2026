@@ -37,14 +37,15 @@ interface EventElementData {
   targets: string[];
 }
 
-interface EventImpressionsData {
-  schema: 'add_impressions';
-  data: {
-    impressions: {
-      element: EventElementProps;
-    }[];
-  };
+interface EventImpressionData {
+  schema: 'add_impression';
   targets: string[];
+  version: 'v2';
+  data: {
+    eid: string;
+    type: 'impression';
+    custom_properties: Record<string, boolean | string | number>;
+  };
 }
 
 export const parseEID = (eid: string) => {
@@ -149,34 +150,33 @@ export const logActionEvent = ({
 
 /**
  * Logs an impression event to CSP.
- * @param {EventProps} represent the event to track.
- * @returns {function} a function that logs the click event.
+ * @param eid - Event ID (e.g. 'chat.budgetExceeded.view').
+ * @param customProperties - Optional key-value props to attach to the impression (e.g. hasPublishedApp, hasCustomDomain).
+ * @returns Function that logs the impression when called.
  *
  * https://godaddy-corp.atlassian.net/wiki/spaces/CKPT/pages/3169656862/Impression+Events
  *
  * logImpressionEvent('foo.page.view')(); -> logs 'appbuilder.foo.page.view.impression'
+ * logImpressionEvent('chat.budgetExceeded.view', { hasPublishedApp: true, hasCustomDomain: false })();
  */
-export const logImpressionEvent = (eid: string): () => void => () => {
+export const logImpressionEvent = (eid: string, customProperties?: Record<string, boolean | string | number>): (() => void) => () => {
   const { product, section, widget } = parseEID(eid);
   if (!product || !section || !widget) {
     logger.warn('instrumentation.logImpressionEvent.failure', { message: 'logImpressionEvent is missing attributes' });
     return;
   }
   try {
-    const eventData: EventImpressionsData = {
-      schema: 'add_impressions',
+    const fullEid = `${DEFAULT_AREA}.${product}.${section}.${widget}.impression`;
+    const eventData: EventImpressionData = {
+      schema: 'add_impression',
+      targets: ['fullstory'],
+      version: 'v2',
       data: {
-        impressions: [{
-          element: {
-            area: DEFAULT_AREA,
-            product,
-            section,
-            widget
-          }
-        }]
-      },
-      targets: ['fullstory']
-    }
+        eid: fullEid,
+        type: 'impression',
+        custom_properties: customProperties ?? {}
+      }
+    };
     getExpDataLayer()?.push(eventData);
   } catch (e) {
     logger.error('instrumentation.logImpressionEvent.failure', { message: 'Failed to log impression event information', error: e, section, widget });

@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom';
 
+import { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
@@ -21,19 +22,36 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(() => ({ data: false })),
 }));
 
-const mockLogImpressionEvent = vi.fn(() => vi.fn());
-const mockLogClickEvent = vi.fn(() => vi.fn());
+const mockLogImpressionEvent = vi.fn((_eid: string) => vi.fn());
+const mockLogClickEvent = vi.fn((_eid: string) => vi.fn());
 
 vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: (eid: string) => mockLogImpressionEvent(eid),
   logClickEvent: (eid: string) => mockLogClickEvent(eid),
 }));
 
+let shouldRenderLinkInMock = false;
+
+vi.mock('react-intl', async () => {
+  const actual = await vi.importActual<typeof import('react-intl')>('react-intl');
+  return {
+    ...actual,
+    FormattedMessage: ({ id, values }: { id: string; values?: { link?: ReactNode } }) => {
+      // When shouldRenderLinkInMock is true, render the link for testing click handler
+      if (shouldRenderLinkInMock && values?.link) {
+        return values.link;
+      }
+      return id;
+    },
+  };
+});
+
 describe('UsageWarningBanner', function usageWarningBannerTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
     mockLogImpressionEvent.mockClear();
     mockLogClickEvent.mockClear();
+    shouldRenderLinkInMock = false;
   });
 
   describe('rendering', function renderingTests() {
@@ -199,6 +217,30 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
       await user.click(closeButton);
 
       expect(mockLogClickEvent).toHaveBeenCalledWith('chat.usageWarningBanner.close');
+    });
+
+    it('should log click event when link is clicked', async function logClickOnLink() {
+      const { useUsage } = await import('@/hooks/useUsage');
+      vi.mocked(useUsage).mockReturnValue({
+        isWarningBannerActive: true,
+        percentage: 92,
+        warningLevel: WarningLevel.WARNING,
+        isLoading: false,
+        isGrantsEnabled: false,
+      });
+
+      shouldRenderLinkInMock = true;
+
+      const { user, container } = renderWithProviders(<UsageWarningBanner appId="test-app" />);
+
+      await waitFor(function waitForBanner() {
+        expect(container.querySelector('.bg-intents-ux-feedbackWarning-feedbackColor')).toBeInTheDocument();
+      });
+
+      const link = screen.getByRole('link');
+      await user.click(link);
+
+      expect(mockLogClickEvent).toHaveBeenCalledWith('chat.usageWarningBanner.link');
     });
   });
 });

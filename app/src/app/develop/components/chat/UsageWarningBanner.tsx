@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
 
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -20,10 +20,13 @@ export default function UsageWarningBanner({ appId }: UsageWarningBannerProps) {
   const { data: purchaseEnabled } = useSwitchboard('appbuilder-usage-purchase')
   const { isWarningBannerActive } = useUsage({ appId, enabled: !!appId })
 
+  const hasLoggedImpressionRef = useRef(false)
+
   const shouldShowBanner = !isDismissed && isWarningBannerActive
   useEffect(() => {
-    if (shouldShowBanner) {
+    if (shouldShowBanner && !hasLoggedImpressionRef.current) {
       logImpressionEvent('chat.usageWarningBanner.view')()
+      hasLoggedImpressionRef.current = true
     }
   }, [shouldShowBanner])
 

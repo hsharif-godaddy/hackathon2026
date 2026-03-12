@@ -245,20 +245,14 @@ describe('instrumentation utilities', () => {
 
       expect(mockDataLayer).toHaveLength(1);
       expect(mockDataLayer[0]).toEqual({
-        schema: 'add_impressions',
-        data: {
-          impressions: [
-            {
-              element: {
-                area: 'appbuilder',
-                product: 'product',
-                section: 'section',
-                widget: 'widget',
-              },
-            },
-          ],
-        },
+        schema: 'add_impression',
         targets: ['fullstory'],
+        version: 'v2',
+        data: {
+          eid: 'appbuilder.product.section.widget.impression',
+          type: 'impression',
+          custom_properties: {},
+        },
       });
     });
 
@@ -266,7 +260,7 @@ describe('instrumentation utilities', () => {
       const logImpression = logImpressionEvent('my-product.my-section.my-widget');
       logImpression();
 
-      expect(mockDataLayer[0].data.impressions[0].element.product).toBe('my-product');
+      expect(mockDataLayer[0].data.eid).toBe('appbuilder.my-product.my-section.my-widget.impression');
     });
 
     it('should not push event for invalid EID', () => {
@@ -287,6 +281,21 @@ describe('instrumentation utilities', () => {
     it('should return a function', () => {
       const logImpression = logImpressionEvent('product.section.widget');
       expect(typeof logImpression).toBe('function');
+    });
+
+    it('should include custom_properties when provided', () => {
+      const logImpression = logImpressionEvent('chat.budgetExceeded.view', {
+        hasPublishedApp: true,
+        hasCustomDomain: false,
+      });
+      logImpression();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0].data.eid).toBe('appbuilder.chat.budgetExceeded.view.impression');
+      expect(mockDataLayer[0].data.custom_properties).toEqual({
+        hasPublishedApp: true,
+        hasCustomDomain: false,
+      });
     });
   });
 

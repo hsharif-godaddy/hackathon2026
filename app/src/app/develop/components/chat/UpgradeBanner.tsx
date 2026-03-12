@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
 
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility'
@@ -39,6 +39,8 @@ export default function UpgradeBanner({ appId }: UpgradeBannerProps) {
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(appId || undefined)
 
+  const hasLoggedImpressionRef = useRef(false)
+
   // Check localStorage only after client-side mount to prevent hydration mismatch
   useEffect(() => {
     setIsDismissed(isDismissedToday())
@@ -47,8 +49,9 @@ export default function UpgradeBanner({ appId }: UpgradeBannerProps) {
 
   const shouldShowBanner = mounted && !isFeatureLoading && !isPaywallLoading && featureEnabled && !isDismissed && showPaywall
   useEffect(() => {
-    if (shouldShowBanner) {
+    if (shouldShowBanner && !hasLoggedImpressionRef.current) {
       logImpressionEvent('chat.upgradeBanner.view')()
+      hasLoggedImpressionRef.current = true
     }
   }, [shouldShowBanner])
 

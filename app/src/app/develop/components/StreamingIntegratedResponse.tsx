@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useIntl } from 'react-intl'
 import Button from '@ux/button'
 import text from '@ux/text'
@@ -14,12 +14,14 @@ import { useCreditGrants } from '@/hooks/useCreditGrants'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { DomainStatus, DomainType } from '@/lib/control-plane/types'
 import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import type { ToolCall } from '@/stores/useStreamingConversationStore'
-import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
+import type { ChatMessage, StreamingMessage as StreamingMessageType, ToolCall } from '@/stores/useStreamingConversationStore'
 import { SubscriptionPlan } from '@/types/credits'
 import { getMonthlyPlanGrant, getPlanFromSubscription } from '@/utils/credits'
+import { logImpressionEvent } from '@/utils/instrumentation'
+import { hasBeenPublished } from '@/utils/site'
 
 interface StreamingIntegratedResponseProps {
   message: ChatMessage | StreamingMessageType
@@ -119,6 +121,20 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
 
   // Disable purchase buttons when grants enabled but entitlement not yet available
   const isPurchaseDisabled = isGrantsEnabled === true && !builderEntitlementId
+
+  // Use reactive selector from useDevelopPageStore for site data
+  const site = useDevelopPageStore((state) => state.site)
+  const hasPublishedApp = hasBeenPublished(site)
+  const hasCustomDomain = Boolean(
+    site?.domains?.some((d) => d.domainType !== DomainType.PREFIX && d.status === DomainStatus.ACTIVE)
+  )
+
+  const hasLoggedBudgetExceededImpressionRef = useRef(false)
+  useEffect(() => {
+    if (!message.budgetExceeded || hasLoggedBudgetExceededImpressionRef.current || site === null) return
+    hasLoggedBudgetExceededImpressionRef.current = true
+    logImpressionEvent('chat.budgetExceeded.view', { "has_published_app": hasPublishedApp, "has_custom_domain": hasCustomDomain })()
+  }, [message.budgetExceeded, hasPublishedApp, hasCustomDomain, site])
 
   // When grants enabled: use the plan-monthly grant's useBefore date
   // When grants disabled: use legacy "today at" / "tomorrow at" format
