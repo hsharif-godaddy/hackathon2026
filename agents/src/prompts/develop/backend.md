@@ -95,18 +95,18 @@ res.status(201).json(newUser[0]);
 
 ## Server Restarts
 
-**Rarely needed** - Vite HMR automatically reloads code changes.
+**Rarely needed** - Vite HMR automatically reloads code changes, and `vite-plugin-api-routes` automatically detects new API endpoint files and restarts the dev server.
 
 **ONLY restart when:**
 
 - Applying database schema migrations
 - Installing NEW backend dependencies (not frontend)
-- Modifying server configuration files
 - Server becomes unresponsive
 
 **DO NOT restart for:**
 
 - Code changes (Vite HMR handles this)
+- Creating new API endpoint files (the Vite plugin auto-detects and restarts)
 - Frontend dependency installations
 - Typical development work
 
