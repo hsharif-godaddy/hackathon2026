@@ -54,6 +54,15 @@ export const skillAITool: Tool = createTool(
       // Activate skill tools (pre-registered at startup, this enables activeTools filtering)
       const conversationId = context?.metadata?.conversationId as string | undefined;
 
+      // Run onLoad hook (always, regardless of tool registration outcome)
+      const appId = context?.metadata?.appId as string | undefined;
+      const app = appId ? appRepo.findById(appId) : undefined;
+      await skillToolManager.runHook(input.skill, 'onLoad', {
+        skillName: input.skill,
+        appPath: app?.path,
+        appId
+      });
+
       if (conversationId) {
         const toolResult = skillToolManager.registerSkill(input.skill, conversationId);
 
@@ -108,6 +117,13 @@ export const skillAITool: Tool = createTool(
         };
       }
 
+      // Run onUnload hook
+      const appId = context?.metadata?.appId as string | undefined;
+      await skillToolManager.runHook(input.skill, 'onUnload', {
+        skillName: input.skill,
+        appId
+      });
+
       return {
         success: true,
         skill: input.skill,
@@ -140,6 +156,13 @@ export const skillAITool: Tool = createTool(
       if (!result.success) {
         throw new Error(result.error || 'Failed to install skill templates');
       }
+
+      // Run onInstall hook
+      await skillToolManager.runHook(input.skill, 'onInstall', {
+        skillName: input.skill,
+        appPath: app.path,
+        appId
+      });
 
       // Build response with dependency info
       const response: Record<string, unknown> = {

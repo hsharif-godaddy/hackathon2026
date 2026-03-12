@@ -11,7 +11,7 @@
 
 import type { Tool } from 'ai';
 import { logger } from '../logging/index.js';
-import { ConversationSkillState, buildAllSkillTools, buildSkillToolName, type SkillToolRegistry } from '@airo/ai-lib';
+import { ConversationSkillState, buildAllSkillTools, buildSkillToolName, type SkillToolRegistry, type SkillHooks, type SkillHookContext } from '@airo/ai-lib';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -81,7 +81,7 @@ export class SkillToolManager {
         error: error instanceof Error ? error.message : String(error)
       });
       // Initialize with empty registry so we don't fail completely
-      this.toolRegistry = { tools: {}, skillToTools: new Map() };
+      this.toolRegistry = { tools: {}, skillToTools: new Map(), skillHooks: new Map() };
       this.initialized = true;
     }
   }
@@ -230,6 +230,33 @@ export class SkillToolManager {
       currentStep,
       INACTIVITY_THRESHOLD_STEPS
     );
+  }
+
+  /**
+   * Run a lifecycle hook for a skill if one is registered.
+   * Non-fatal: logs warnings on failure but never throws.
+   */
+  async runHook(
+    skillName: string,
+    event: keyof SkillHooks,
+    context: SkillHookContext
+  ): Promise<void> {
+    const hooks = this.toolRegistry?.skillHooks.get(skillName);
+    if (!hooks) return;
+
+    const handler = hooks[event];
+    if (!handler) return;
+
+    try {
+      await handler(context);
+      logger.info('skill.hook.success', { skillName, event });
+    } catch (error) {
+      logger.warn('skill.hook.failed', {
+        skillName,
+        event,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
 
   /**

@@ -25,11 +25,25 @@ export interface SkillToolDefinition {
   }
 }
 
+export interface SkillHookContext {
+  skillName: string
+  appPath?: string
+  appId?: string
+}
+
+export interface SkillHooks {
+  onLoad?: (context: SkillHookContext) => Promise<void> | void
+  onInstall?: (context: SkillHookContext) => Promise<void> | void
+  onUnload?: (context: SkillHookContext) => Promise<void> | void
+}
+
 export interface SkillToolRegistry {
   /** All pre-registered tools (prefixed names -> Tool instance) */
   tools: Record<string, Tool>
   /** Mapping of skill name to its tool names (unprefixed) */
   skillToTools: Map<string, string[]>
+  /** Mapping of skill name to its lifecycle hooks */
+  skillHooks: Map<string, SkillHooks>
 }
 
 /**
@@ -48,16 +62,21 @@ function isValidSkillName(skillName: string): boolean {
   return /^[a-zA-Z0-9_-]+$/.test(skillName)
 }
 
+interface SkillModuleExports {
+  tools: SkillToolDefinition[]
+  hooks?: SkillHooks
+}
+
 /**
- * Load tool definitions from a skill's tools/index.ts file
+ * Load tool definitions and hooks from a skill's tools/index.ts file
  */
 async function loadSkillToolDefinitions(
   skillsDir: string,
   skillName: string
-): Promise<SkillToolDefinition[]> {
+): Promise<SkillModuleExports> {
   // Validate skill name to prevent path traversal
   if (!isValidSkillName(skillName)) {
-    return []
+    return { tools: [] }
   }
 
   const toolsIndexPath = join(skillsDir, skillName, 'tools', 'index.ts')
@@ -72,15 +91,18 @@ async function loadSkillToolDefinitions(
     const tools: SkillToolDefinition[] = []
     for (const [key, value] of Object.entries(toolsModule)) {
       if (key === 'default') continue
+      if (key === 'hooks') continue
       if (isValidToolDefinition(value)) {
         tools.push(value as SkillToolDefinition)
       }
     }
 
-    return tools
+    const hooks = isValidHooks(toolsModule.hooks) ? toolsModule.hooks : undefined
+
+    return { tools, hooks }
   } catch {
     // Skill has no tools directory - this is normal for instruction-only skills
-    return []
+    return { tools: [] }
   }
 }
 
@@ -92,6 +114,15 @@ function isValidToolDefinition(def: unknown): def is SkillToolDefinition {
     typeof (def as any).description === 'string' &&
     typeof (def as any).parameters === 'object' &&
     typeof (def as any).execute === 'function'
+  )
+}
+
+function isValidHooks(hooks: unknown): hooks is SkillHooks {
+  if (typeof hooks !== 'object' || hooks === null) return false
+  const h = hooks as Record<string, unknown>
+  const validKeys = ['onLoad', 'onInstall', 'onUnload']
+  return Object.keys(h).some(
+    key => validKeys.includes(key) && typeof h[key] === 'function'
   )
 }
 
@@ -110,7 +141,8 @@ export function registerSkillTools(
 ): SkillToolRegistry {
   const result: SkillToolRegistry = registry || {
     tools: {},
-    skillToTools: new Map()
+    skillToTools: new Map(),
+    skillHooks: new Map()
   }
 
   if (toolDefs.length === 0) return result
@@ -163,7 +195,8 @@ export function registerSkillTools(
 export async function buildAllSkillTools(skillsDir: string): Promise<SkillToolRegistry> {
   let registry: SkillToolRegistry = {
     tools: {},
-    skillToTools: new Map()
+    skillToTools: new Map(),
+    skillHooks: new Map()
   }
 
   try {
@@ -174,11 +207,16 @@ export async function buildAllSkillTools(skillsDir: string): Promise<SkillToolRe
       .map(e => e.name)
 
     for (const skillName of skillDirs) {
-      const toolDefs = await loadSkillToolDefinitions(skillsDir, skillName)
-      if (toolDefs.length === 0) continue
+      const { tools: toolDefs, hooks } = await loadSkillToolDefinitions(skillsDir, skillName)
 
-      // Use shared registration logic
-      registry = registerSkillTools(skillName, toolDefs, registry)
+      if (toolDefs.length > 0) {
+        // Use shared registration logic
+        registry = registerSkillTools(skillName, toolDefs, registry)
+      }
+
+      if (hooks) {
+        registry.skillHooks.set(skillName, hooks)
+      }
     }
   } catch (error) {
     // If skills directory doesn't exist, return empty registry

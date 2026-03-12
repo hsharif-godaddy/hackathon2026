@@ -21,6 +21,12 @@ vi.mock('../../logging/index.js', () => ({
   }
 }));
 
+// Mock hook handlers for testing (hoisted so vi.mock factory can reference them)
+const { mockOnInstallHook, mockOnLoadHook } = vi.hoisted(() => ({
+  mockOnInstallHook: vi.fn(),
+  mockOnLoadHook: vi.fn()
+}));
+
 // Mock buildAllSkillTools from ai-lib
 vi.mock('@airo/ai-lib', async () => {
   const actual = await vi.importActual('@airo/ai-lib');
@@ -35,6 +41,9 @@ vi.mock('@airo/ai-lib', async () => {
       skillToTools: new Map([
         ['blog', ['createPost', 'listPosts']],
         ['database', ['query']]
+      ]),
+      skillHooks: new Map([
+        ['blog', { onInstall: mockOnInstallHook, onLoad: mockOnLoadHook }]
       ])
     })
   };
@@ -176,6 +185,43 @@ describe('SkillToolManager', () => {
       manager.registerSkill('database', 'conv-123');
       expect(manager.getActiveSkills('conv-123')).toContain('blog');
       expect(manager.getActiveSkills('conv-123')).toContain('database');
+    });
+  });
+
+  describe('runHook', () => {
+    beforeEach(() => {
+      mockOnInstallHook.mockReset();
+      mockOnLoadHook.mockReset();
+    });
+
+    it('should call registered hook for a skill', async () => {
+      await manager.runHook('blog', 'onInstall', { skillName: 'blog', appPath: '/tmp/app' });
+      expect(mockOnInstallHook).toHaveBeenCalledWith({ skillName: 'blog', appPath: '/tmp/app' });
+    });
+
+    it('should not throw for skills without hooks', async () => {
+      await expect(
+        manager.runHook('database', 'onInstall', { skillName: 'database' })
+      ).resolves.toBeUndefined();
+    });
+
+    it('should not throw for skills with no matching event', async () => {
+      await expect(
+        manager.runHook('blog', 'onUnload', { skillName: 'blog' })
+      ).resolves.toBeUndefined();
+    });
+
+    it('should not throw for unknown skills', async () => {
+      await expect(
+        manager.runHook('unknown', 'onLoad', { skillName: 'unknown' })
+      ).resolves.toBeUndefined();
+    });
+
+    it('should catch errors from hooks and not throw', async () => {
+      mockOnLoadHook.mockRejectedValue(new Error('hook failed'));
+      await expect(
+        manager.runHook('blog', 'onLoad', { skillName: 'blog' })
+      ).resolves.toBeUndefined();
     });
   });
 

@@ -319,44 +319,127 @@ function modifyAllowedHosts(serverObj: t.ObjectExpression): boolean {
   return true;
 }
 
+// =====================================================
+// Resolve Dedupe Helpers
+// =====================================================
+
+/** Packages that must be deduplicated to avoid dual-instance crashes */
+const DEDUPE_PACKAGES = ['react', 'react-dom'] as const;
+
+/**
+ * Create: dedupe: ["react", "react-dom"]
+ */
+export function createDedupeProperty(): t.ObjectProperty {
+  return t.objectProperty(
+    t.identifier('dedupe'),
+    t.arrayExpression(DEDUPE_PACKAGES.map((pkg) => t.stringLiteral(pkg)))
+  );
+}
+
+/**
+ * Ensure resolve.dedupe includes react and react-dom.
+ * Creates the dedupe array if missing, appends missing entries if partial.
+ * Returns true if modifications were made.
+ */
+function modifyDedupe(resolveObj: t.ObjectExpression): boolean {
+  const dedupeProp = findProperty(resolveObj.properties, 'dedupe');
+
+  if (!dedupeProp) {
+    resolveObj.properties.push(createDedupeProperty());
+    return true;
+  }
+
+  if (!t.isArrayExpression(dedupeProp.value)) {
+    // dedupe is not an array — replace it
+    dedupeProp.value = t.arrayExpression(DEDUPE_PACKAGES.map((pkg) => t.stringLiteral(pkg)));
+    return true;
+  }
+
+  const arr = dedupeProp.value;
+  const existing = new Set(
+    arr.elements
+      .filter((el): el is t.StringLiteral => t.isStringLiteral(el))
+      .map((el) => el.value)
+  );
+
+  let modified = false;
+  for (const pkg of DEDUPE_PACKAGES) {
+    if (!existing.has(pkg)) {
+      arr.elements.push(t.stringLiteral(pkg));
+      modified = true;
+    }
+  }
+  return modified;
+}
+
+/**
+ * Ensure the top-level resolve property exists and contains dedupe.
+ * Returns true if modifications were made.
+ */
+function modifyResolve(configObj: t.ObjectExpression): boolean {
+  const resolveProp = findProperty(configObj.properties, 'resolve');
+
+  if (!resolveProp) {
+    // No resolve property — add one with dedupe
+    configObj.properties.push(
+      t.objectProperty(
+        t.identifier('resolve'),
+        t.objectExpression([createDedupeProperty()])
+      )
+    );
+    return true;
+  }
+
+  if (!t.isObjectExpression(resolveProp.value)) {
+    logger.warn('vite-config.resolve-not-object', {
+      valueType: resolveProp.value.type,
+    });
+    return false;
+  }
+
+  return modifyDedupe(resolveProp.value);
+}
+
 /**
  * Modify an object expression to ensure:
  * - server.port uses process.env.PORT
  * - server.allowedHosts is true
+ * - resolve.dedupe includes react and react-dom
  *
- * Returns true if modifications were made, false if no changes needed or
- * modification was not possible (e.g., server is a variable/function call)
+ * Returns true if any modifications were made (either to server or resolve),
+ * and false if no changes were needed. Note that server-specific modifications
+ * may be skipped when server is not an object literal (e.g., a variable or
+ * function call), while other modifications (like resolve.dedupe) can still apply.
  */
 export function modifyConfigObject(
   objExpr: t.ObjectExpression,
   options?: ViteConfigModifyOptions
 ): boolean {
   const serverProp = findProperty(objExpr.properties, 'server');
+  let modified = false;
 
   if (!serverProp) {
     // No server property - add it with port and allowedHosts
     objExpr.properties.push(createServerProperty(options));
-    return true;
-  }
-
-  // Server property exists - check its value
-  if (!t.isObjectExpression(serverProp.value)) {
+    modified = true;
+  } else if (!t.isObjectExpression(serverProp.value)) {
     // Server value is not an object expression (might be a variable or function call)
     // We can't safely modify it, so log a warning and skip
     logger.warn('vite-config.server-not-object', {
       valueType: serverProp.value.type,
     });
-    return false;
+  } else {
+    const serverObj = serverProp.value;
+
+    // Handle port
+    modified = modifyPort(serverObj, options?.port) || modified;
+
+    // Handle allowedHosts
+    modified = modifyAllowedHosts(serverObj) || modified;
   }
 
-  const serverObj = serverProp.value;
-  let modified = false;
-
-  // Handle port
-  modified = modifyPort(serverObj, options?.port) || modified;
-
-  // Handle allowedHosts
-  modified = modifyAllowedHosts(serverObj) || modified;
+  // Handle resolve.dedupe
+  modified = modifyResolve(objExpr) || modified;
 
   return modified;
 }
@@ -470,6 +553,7 @@ export function processAndGenerateViteConfig(
  * Modify vite.config to ensure:
  * - server.port uses process.env.PORT
  * - server.allowedHosts is set to true
+ * - resolve.dedupe includes react and react-dom
  *
  * @param devSupervisor - Client to execute commands in container
  * @param containerPath - Path to app directory in container (e.g., /app)
@@ -477,10 +561,9 @@ export function processAndGenerateViteConfig(
  * @returns Result of the modification
  *
  * @remarks
- * Limitation: If the `server` property is set to a variable or function call
- * (e.g., `server: getServerConfig()` or `server: serverOptions`), this function
- * cannot safely modify it and will skip modification. In such cases, the app may
- * need manual configuration.
+ * Limitation: If `server` or `resolve` is set to a variable or function call
+ * (e.g., `server: getServerConfig()`), that specific section cannot be safely
+ * modified and will be skipped. Other sections may still be modified.
  */
 export async function modifyViteConfig(
   devSupervisor: DevSupervisorClient,

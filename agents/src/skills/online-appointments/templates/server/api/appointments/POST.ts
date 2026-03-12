@@ -12,7 +12,7 @@ import {
   isPastDate,
   isPastTimeSlot,
   AppointmentInputSchema,
-  config,
+  getConfig,
 } from '../../../lib/appointments';
 
 /**
@@ -43,6 +43,8 @@ import {
  */
 export default async function handler(req: Request, res: Response) {
   try {
+    // Ensure config is loaded before processing
+    const config = await getConfig();
 
     // Validate input with Zod
     const validation = AppointmentInputSchema.safeParse(req.body);

@@ -91,13 +91,16 @@ export default defineConfig({
         expect(result.code).toContain('parseInt(process.env.PORT');
       });
 
-      it('should not modify when both allowedHosts and port are already set correctly', () => {
+      it('should not modify when allowedHosts, port, and dedupe are already set correctly', () => {
         const input = `
 import { defineConfig } from 'vite';
 export default defineConfig({
   server: {
     allowedHosts: true,
     port: parseInt(process.env.PORT || "5173")
+  },
+  resolve: {
+    dedupe: ["react", "react-dom"]
   }
 });
 `;
@@ -234,6 +237,189 @@ export default defineConfig({
         expect(result.modified).toBe(true);
         expect(result.code).not.toContain("'all'");
       });
+    });
+  });
+
+  describe('Resolve Dedupe', () => {
+    it('should add resolve.dedupe when no resolve property exists', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  plugins: []
+});
+`;
+      const result = processAndGenerateViteConfig(input);
+
+      expect(result.modified).toBe(true);
+      expect(result.code).toContain('dedupe');
+      expect(result.code).toContain('"react"');
+      expect(result.code).toContain('"react-dom"');
+    });
+
+    it('should add dedupe when resolve exists with only alias', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  server: {
+    port: parseInt(process.env.PORT || "5173"),
+    allowedHosts: true
+  },
+  resolve: {
+    alias: {
+      "@": "/src"
+    }
+  }
+});
+`;
+      const result = processAndGenerateViteConfig(input);
+
+      expect(result.modified).toBe(true);
+      expect(result.code).toContain('dedupe');
+      expect(result.code).toContain('"react"');
+      expect(result.code).toContain('"react-dom"');
+      // alias should be preserved
+      expect(result.code).toContain('alias');
+    });
+
+    it('should append to existing dedupe array missing react/react-dom', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  server: {
+    port: parseInt(process.env.PORT || "5173"),
+    allowedHosts: true
+  },
+  resolve: {
+    dedupe: ["vue"]
+  }
+});
+`;
+      const result = processAndGenerateViteConfig(input);
+
+      expect(result.modified).toBe(true);
+      expect(result.code).toContain('"vue"');
+      expect(result.code).toContain('"react"');
+      expect(result.code).toContain('"react-dom"');
+    });
+
+    it('should be a no-op when dedupe already contains react and react-dom', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  server: {
+    port: parseInt(process.env.PORT || "5173"),
+    allowedHosts: true
+  },
+  resolve: {
+    dedupe: ["react", "react-dom"]
+  }
+});
+`;
+      const result = processAndGenerateViteConfig(input);
+
+      expect(result.modified).toBe(false);
+    });
+
+    it('should work with arrow function configs', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig(({ mode }) => ({
+  server: {
+    port: parseInt(process.env.PORT || "5173"),
+    allowedHosts: true
+  },
+  resolve: {
+    alias: { "@": "/src" }
+  }
+}));
+`;
+      const result = processAndGenerateViteConfig(input);
+
+      expect(result.modified).toBe(true);
+      expect(result.code).toContain('dedupe');
+      expect(result.code).toContain('"react"');
+      expect(result.code).toContain('"react-dom"');
+    });
+
+    it('should add dedupe alongside port and allowedHosts modifications', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  server: {
+    port: 3000
+  },
+  resolve: {
+    alias: { "@": "/src" }
+  }
+});
+`;
+      const result = processAndGenerateViteConfig(input);
+
+      expect(result.modified).toBe(true);
+      // All three modifications should be present
+      expect(result.code).toContain('parseInt(process.env.PORT');
+      expect(result.code).toContain('allowedHosts');
+      expect(result.code).toContain('dedupe');
+      expect(result.code).toContain('"react"');
+      expect(result.code).toContain('"react-dom"');
+    });
+
+    it('should replace non-array dedupe value', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  server: {
+    port: parseInt(process.env.PORT || "5173"),
+    allowedHosts: true
+  },
+  resolve: {
+    dedupe: "react"
+  }
+});
+`;
+      const result = processAndGenerateViteConfig(input);
+
+      expect(result.modified).toBe(true);
+      expect(result.code).toContain('"react"');
+      expect(result.code).toContain('"react-dom"');
+    });
+
+    it('should skip resolve modification when resolve is not an object', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  server: {
+    port: parseInt(process.env.PORT || "5173"),
+    allowedHosts: true
+  },
+  resolve: getResolveConfig()
+});
+`;
+      const result = processAndGenerateViteConfig(input);
+
+      expect(result.modified).toBe(false);
+      expect(result.code).toContain('getResolveConfig()');
+    });
+
+    it('should still add dedupe when server is not an object', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  server: serverOptions,
+  resolve: {
+    alias: { "@": "/src" }
+  }
+});
+`;
+      const result = processAndGenerateViteConfig(input);
+
+      expect(result.modified).toBe(true);
+      // server should be left untouched
+      expect(result.code).toContain('serverOptions');
+      // dedupe should still be added
+      expect(result.code).toContain('dedupe');
+      expect(result.code).toContain('"react"');
+      expect(result.code).toContain('"react-dom"');
     });
   });
 

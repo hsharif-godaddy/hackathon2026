@@ -94,6 +94,7 @@ export default defineConfig(({ mode }) => ({
 	],
 
 	resolve: {
+		dedupe: ["react", "react-dom"],
 		alias: {
 			nothing: "/src/fallbacks/missingModule.ts",
 			"@/api": path.resolve(__dirname, "./src/server/api"),

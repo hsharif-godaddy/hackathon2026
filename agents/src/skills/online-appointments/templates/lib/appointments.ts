@@ -43,7 +43,26 @@ async function loadConfig(): Promise<AppointmentsConfig> {
   }
 }
 
-export const config: AppointmentsConfig = await loadConfig();
+let _config: AppointmentsConfig | null = null;
+
+/**
+ * Get the appointments configuration.
+ * Loads and caches config on first call; returns cached value thereafter.
+ */
+export async function getConfig(): Promise<AppointmentsConfig> {
+  if (!_config) {
+    _config = await loadConfig();
+  }
+  return _config;
+}
+
+/**
+ * Synchronous config access for code that has already called getConfig().
+ * Falls back to defaults if config hasn't been loaded yet.
+ */
+export function getConfigSync(): AppointmentsConfig {
+  return _config ?? defaultConfig;
+}
 
 /**
  * Zod schemas for input validation
@@ -89,7 +108,7 @@ export interface BookingRequest {
  * Check if a given date is a working day
  */
 export function isWorkingDay(date: Date): boolean {
-  return config.workingDays.includes(date.getDay());
+  return getConfigSync().workingDays.includes(date.getDay());
 }
 
 /**
@@ -125,10 +144,11 @@ function slotFitsInBusinessHours(slotEnd: Date, dayEnd: Date, endTime: string): 
  * Generate all possible time slots for a given date
  */
 export function generateTimeSlots(date: Date): string[] {
+  const cfg = getConfigSync();
   const slots: string[] = [];
-  const start = config.businessHoursStart;
-  const end = config.businessHoursEnd;
-  const duration = config.duration;
+  const start = cfg.businessHoursStart;
+  const end = cfg.businessHoursEnd;
+  const duration = cfg.duration;
 
   const dayStart = parse(start, 'HH:mm', date);
   const dayEnd = parse(end, 'HH:mm', date);
@@ -208,7 +228,7 @@ export function getAvailableSlots(
 
     // For overlapping appointments (longer duration), check time range conflicts
     const slotStart = parseTimeSlot(time, date);
-    const slotEnd = addMinutes(slotStart, config.duration);
+    const slotEnd = addMinutes(slotStart, getConfigSync().duration);
 
     const hasConflict = existingAppointments.some((apt) => {
       if (apt.status === 'cancelled') return false;
@@ -233,7 +253,7 @@ export function getAvailableSlots(
  * Calculate end time based on start time and service duration
  */
 export function calculateEndTime(startTime: Date): Date {
-  return addMinutes(startTime, config.duration);
+  return addMinutes(startTime, getConfigSync().duration);
 }
 
 /**

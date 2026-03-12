@@ -3,7 +3,7 @@ import { startOfDay, endOfDay, parseISO, isValid } from 'date-fns';
 import { and, gte, lte, ne } from 'drizzle-orm';
 import { db } from '../../../db/client';
 import { appointment } from '../../../db/schema';
-import { getAvailableSlots } from '../../../../lib/appointments';
+import { getAvailableSlots, getConfig } from '../../../../lib/appointments';
 
 /**
  * GET /api/appointments/availability
@@ -25,6 +25,9 @@ import { getAvailableSlots } from '../../../../lib/appointments';
  */
 export default async function handler(req: Request, res: Response) {
   try {
+    // Ensure config is loaded before processing
+    await getConfig();
+
     const { date } = req.query;
 
     if (!date || typeof date !== 'string') {
