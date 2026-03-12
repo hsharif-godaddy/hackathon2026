@@ -131,7 +131,7 @@ todoList({ operation: 'mark_done', itemIds: ['item-789'] });
 
 ### Completing Work
 
-After completing any task, use `suggestedResponse` to guide next steps. Call `suggestedResponse` as the **last action** — do not write any text after calling it.
+After completing any task, use `suggestedResponse` to guide next steps.
 
 **For initial build (handoff from initial agent):**
 
