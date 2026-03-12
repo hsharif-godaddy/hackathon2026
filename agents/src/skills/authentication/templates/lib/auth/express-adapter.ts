@@ -46,12 +46,15 @@ export async function sendWebResponse(webResponse: Response, res: ExpressRespons
   // Set status
   res.status(webResponse.status);
 
-  // Copy headers
+  // Copy headers — handle Set-Cookie separately since Headers.forEach()
+  // joins multiple Set-Cookie values into one string, corrupting them.
+  // Use getSetCookie() to preserve each cookie as a distinct header.
+  const setCookieHeaders = webResponse.headers.getSetCookie();
+  if (setCookieHeaders.length > 0) {
+    res.setHeader('set-cookie', setCookieHeaders);
+  }
   webResponse.headers.forEach((value, key) => {
-    // Handle Set-Cookie specially
-    if (key.toLowerCase() === 'set-cookie') {
-      res.setHeader(key, value);
-    } else {
+    if (key.toLowerCase() !== 'set-cookie') {
       res.setHeader(key, value);
     }
   });

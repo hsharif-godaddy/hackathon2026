@@ -50,6 +50,19 @@ export const auth = betterAuth({
     }
   },
 
+  // In preview mode the site runs in an iframe embedded by the builder on a different
+  // origin, so cookies need SameSite=None + Secure + Partitioned (CHIPS) for cross-site
+  // access. In publish mode (standalone) we use the safer SameSite=Lax default.
+  ...(process.env.AIRO_PREVIEW === 'true' && {
+    advanced: {
+      defaultCookieAttributes: {
+        sameSite: 'none' as const,
+        secure: true,
+        partitioned: true,
+      },
+    },
+  }),
+
   // emailAndPassword: { enabled: true },
 
   // socialProviders: {

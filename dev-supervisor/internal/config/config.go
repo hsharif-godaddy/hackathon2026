@@ -168,6 +168,13 @@ func LoadConfig() *Config {
 		config.StartOnRequestEnabled = false
 	}
 
+	// Expose a generic AIRO_PREVIEW=true env var for child processes so customer
+	// code (e.g. BetterAuth cookie config) can detect preview mode without
+	// coupling to the Nomad-specific NOMAD_TASK_NAME variable.
+	if taskName == PreviewTaskName {
+		_ = os.Setenv("AIRO_PREVIEW", "true")
+	}
+
 	// Set the default setup script.
 	defaultSetupScript := ""
 	if taskName == PreviewTaskName {

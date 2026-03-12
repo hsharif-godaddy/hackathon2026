@@ -214,12 +214,27 @@ func (m *JWTMiddleware) handleShareToken(
 
 	if !valid {
 		// Invalid token - clear cookie if present and fall through to JWT
+		// Delete both partitioned and unpartitioned variants since Chrome treats
+		// them as separate entries (per CHIPS spec)
 		if source == "cookie" {
 			http.SetCookie(w, &http.Cookie{
-				Name:   "airo_share_token",
-				Value:  "",
-				Path:   "/",
-				MaxAge: -1, // Delete cookie
+				Name:     "airo_share_token",
+				Value:    "",
+				Path:     "/",
+				MaxAge:   -1, // Delete unpartitioned variant
+				HttpOnly: true,
+				Secure:   true,
+				SameSite: http.SameSiteNoneMode,
+			})
+			http.SetCookie(w, &http.Cookie{
+				Name:        "airo_share_token",
+				Value:       "",
+				Path:        "/",
+				MaxAge:      -1, // Delete partitioned variant
+				HttpOnly:    true,
+				Secure:      true,
+				SameSite:    http.SameSiteNoneMode,
+				Partitioned: true,
 			})
 		}
 		slog.Warn("share.validation.failed",
@@ -242,14 +257,30 @@ func (m *JWTMiddleware) handleShareToken(
 	// Valid token - set cookie on first access (query param)
 	if source == "query_param" {
 		expiresAt := m.config.ShareValidator.GetTokenExpiration(shareToken)
+
+		// Delete the old unpartitioned cookie to prevent conflicts.
+		// Chrome treats Partitioned and non-Partitioned cookies with the same name as
+		// separate entries. If both exist, r.Cookie() returns the older unpartitioned one
+		// first (per RFC 6265 ordering), which may hold a stale token.
 		http.SetCookie(w, &http.Cookie{
 			Name:     "airo_share_token",
-			Value:    shareToken,
+			Value:    "",
 			Path:     "/",
+			MaxAge:   -1, // Delete
 			HttpOnly: true,
 			Secure:   true,
-			SameSite: http.SameSiteLaxMode,
-			Expires:  expiresAt,
+			SameSite: http.SameSiteNoneMode,
+		})
+
+		http.SetCookie(w, &http.Cookie{
+			Name:        "airo_share_token",
+			Value:       shareToken,
+			Path:        "/",
+			HttpOnly:    true,
+			Secure:      true,
+			SameSite:    http.SameSiteNoneMode, // None required for cross-site iframe navigation
+			Partitioned: true,                  // CHIPS: works with third-party cookies disabled
+			Expires:     expiresAt,
 		})
 	}
 

@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"os"
 	"testing"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
@@ -53,6 +54,48 @@ func TestLoadConfig_SetupScript_PreviewTask(t *testing.T) {
 
 			if cfg.SetupScript != tt.wantSetupScript {
 				t.Errorf("SetupScript = %q, want %q", cfg.SetupScript, tt.wantSetupScript)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_AiroPreviewEnvVar(t *testing.T) {
+	tests := []struct {
+		name     string
+		taskName string
+		wantSet  bool
+	}{
+		{
+			name:     "set for preview task",
+			taskName: "preview",
+			wantSet:  true,
+		},
+		{
+			name:     "not set for publish task",
+			taskName: "publish",
+			wantSet:  false,
+		},
+		{
+			name:     "not set for empty task name",
+			taskName: "",
+			wantSet:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("NOMAD_TASK_NAME", tt.taskName)
+			// Clear AIRO_PREVIEW before each test so previous runs don't leak
+			t.Setenv("AIRO_PREVIEW", "")
+
+			config.LoadConfig()
+
+			got := os.Getenv("AIRO_PREVIEW")
+			if tt.wantSet && got != "true" {
+				t.Errorf("AIRO_PREVIEW = %q, want %q", got, "true")
+			}
+			if !tt.wantSet && got == "true" {
+				t.Errorf("AIRO_PREVIEW = %q, want empty or unset", got)
 			}
 		})
 	}

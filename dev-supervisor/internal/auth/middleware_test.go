@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -185,6 +186,211 @@ func TestAuthCookie_MaxAgeFallbackWhenNoExp(t *testing.T) {
 
 	if c.MaxAge != 43200 {
 		t.Errorf("expected fallback MaxAge 43200, got %d", c.MaxAge)
+	}
+}
+
+// --- Share token cookie tests ---
+
+// newShareValidator creates a ShareValidator backed by a stub HTTP server.
+// The server returns valid=true for the given token and appID.
+func newShareValidator(t *testing.T, token, appID string, expiresAt time.Time) *auth.ShareValidator {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Extract token from URL: /api/share/validate/{token}
+		expectedPath := "/api/share/validate/" + token
+		if r.URL.Path == expectedPath {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"valid":true,"appId":%q,"expiresAt":%d}`, appID, expiresAt.UnixMilli())
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"valid":false,"reason":"unknown token"}`)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	return auth.NewShareValidator(server.URL)
+}
+
+// newShareMiddleware creates a JWTMiddleware configured with share token validation.
+// The JWT validator always succeeds (for fallthrough tests).
+func newShareMiddleware(t *testing.T, siteID string, sv *auth.ShareValidator) http.Handler {
+	t.Helper()
+
+	mw := auth.NewJWTMiddleware(auth.JWTMiddlewareConfig{
+		Enabled: true,
+		Validator: &stubValidator{
+			result: auth.ValidationResult{Valid: true, Claims: &auth.JWTClaims{SiteID: siteID}},
+		},
+		ShareValidator: sv,
+		SiteID:         siteID,
+	})
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	return mw.Wrap(inner)
+}
+
+// findShareCookie returns the airo_share_token cookie from response, skipping deletion entries.
+func findShareCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
+	t.Helper()
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "airo_share_token" && c.MaxAge >= 0 && c.Value != "" {
+			return c
+		}
+	}
+	return nil
+}
+
+// findShareDeletionCookies returns all airo_share_token deletion cookies (empty value or MaxAge < 0).
+func findShareDeletionCookies(t *testing.T, rec *httptest.ResponseRecorder) []*http.Cookie {
+	t.Helper()
+	var cookies []*http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "airo_share_token" && (c.MaxAge < 0 || c.Value == "") {
+			cookies = append(cookies, c)
+		}
+	}
+	return cookies
+}
+
+func TestShareCookie_SetOnQueryParam(t *testing.T) {
+	siteID := "test-site"
+	sv := newShareValidator(t, "valid-share-token", siteID, time.Now().Add(1*time.Hour))
+	handler := newShareMiddleware(t, siteID, sv)
+
+	req := httptest.NewRequest(http.MethodGet, "/page?airoShareToken=valid-share-token", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	c := findShareCookie(t, rec)
+	if c == nil {
+		t.Fatal("airo_share_token cookie not set")
+	}
+
+	if !c.HttpOnly {
+		t.Error("expected HttpOnly to be true")
+	}
+	if !c.Secure {
+		t.Error("expected Secure to be true")
+	}
+	if c.SameSite != http.SameSiteNoneMode {
+		t.Errorf("expected SameSite=None, got %v", c.SameSite)
+	}
+	if !c.Partitioned {
+		t.Error("expected Partitioned to be true")
+	}
+
+	// Verify that a deletion cookie is also sent to clear old unpartitioned cookies
+	delCookies := findShareDeletionCookies(t, rec)
+	if len(delCookies) == 0 {
+		t.Fatal("airo_share_token deletion cookie not set (needed to clear old unpartitioned cookie)")
+	}
+	del := delCookies[0]
+	if del.Partitioned {
+		t.Error("deletion cookie must NOT be Partitioned (it targets the old unpartitioned cookie)")
+	}
+}
+
+func TestShareCookie_NotSetOnCookieAuth(t *testing.T) {
+	siteID := "test-site"
+	sv := newShareValidator(t, "valid-share-token", siteID, time.Now().Add(1*time.Hour))
+	handler := newShareMiddleware(t, siteID, sv)
+
+	// Auth via cookie (not query param) — should NOT set a new cookie
+	req := httptest.NewRequest(http.MethodGet, "/page", nil)
+	req.AddCookie(&http.Cookie{Name: "airo_share_token", Value: "valid-share-token"})
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	c := findShareCookie(t, rec)
+	if c != nil {
+		t.Error("airo_share_token cookie should NOT be set when auth comes from cookie")
+	}
+}
+
+func TestShareCookie_DeletionHasCorrectAttributes(t *testing.T) {
+	siteID := "test-site"
+	// Stub server returns valid=false for any token
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"valid":false,"reason":"expired"}`)
+	}))
+	t.Cleanup(server.Close)
+	sv := auth.NewShareValidator(server.URL)
+
+	mw := auth.NewJWTMiddleware(auth.JWTMiddlewareConfig{
+		Enabled: true,
+		Validator: &stubValidator{
+			result: auth.ValidationResult{Valid: true, Claims: &auth.JWTClaims{SiteID: siteID}},
+		},
+		ShareValidator: sv,
+		SiteID:         siteID,
+	})
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := mw.Wrap(inner)
+
+	// Send an invalid share token via cookie — should trigger deletion cookie then fall through to JWT
+	req := httptest.NewRequest(http.MethodGet, "/page", nil)
+	req.AddCookie(&http.Cookie{Name: "airo_share_token", Value: "invalid-token"})
+	req.Header.Set("Authorization", "Bearer test-jwt") // JWT fallback so request succeeds
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	delCookies := findShareDeletionCookies(t, rec)
+	if len(delCookies) < 2 {
+		t.Fatalf("expected 2 deletion cookies (unpartitioned + partitioned), got %d", len(delCookies))
+	}
+
+	// First deletion cookie: unpartitioned variant
+	unpart := delCookies[0]
+	if !unpart.HttpOnly {
+		t.Error("unpartitioned deletion cookie: expected HttpOnly to be true")
+	}
+	if !unpart.Secure {
+		t.Error("unpartitioned deletion cookie: expected Secure to be true")
+	}
+	if unpart.SameSite != http.SameSiteNoneMode {
+		t.Errorf("unpartitioned deletion cookie: expected SameSite=None, got %v", unpart.SameSite)
+	}
+	if unpart.Partitioned {
+		t.Error("unpartitioned deletion cookie: expected Partitioned to be false")
+	}
+
+	// Second deletion cookie: partitioned variant
+	part := delCookies[1]
+	if !part.HttpOnly {
+		t.Error("partitioned deletion cookie: expected HttpOnly to be true")
+	}
+	if !part.Secure {
+		t.Error("partitioned deletion cookie: expected Secure to be true")
+	}
+	if part.SameSite != http.SameSiteNoneMode {
+		t.Errorf("partitioned deletion cookie: expected SameSite=None, got %v", part.SameSite)
+	}
+	if !part.Partitioned {
+		t.Error("partitioned deletion cookie: expected Partitioned to be true")
 	}
 }
 
