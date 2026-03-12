@@ -6,6 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { waitFor } from '@testing-library/react';
 
 import { LegacyControlPlaneAdapter } from '../legacy-control-plane-adapter';
 import type { SiteInfo } from '../types';
@@ -115,12 +116,11 @@ describe('LegacyControlPlaneAdapter', () => {
     it('should create site and deploy successfully', async () => {
       // Setup mocks
       mockSiteService.createSite.mockResolvedValue(MOCK_SITE_DATA);
-      mockDeploymentAdapter.deploy.mockResolvedValue(MOCK_DEPLOYMENT_RESULT);
       mockSiteService.updateSite.mockResolvedValue({
         ...MOCK_SITE_DATA,
-        status: 'running',
-        ...MOCK_DEPLOYMENT_RESULT.urls
+        status: 'creating'
       });
+      mockDeploymentAdapter.deploy.mockResolvedValue(MOCK_DEPLOYMENT_RESULT);
 
       const result = await adapter.createSite({
         accountId: MOCK_ACCOUNT_ID,
@@ -138,6 +138,9 @@ describe('LegacyControlPlaneAdapter', () => {
         account_id: MOCK_ACCOUNT_ID,
         initial_prompt: MOCK_PROMPT
       });
+      expect(mockSiteService.updateSite).toHaveBeenCalledWith(MOCK_SITE_ID, {
+        status: 'creating'
+      });
 
       // Deployment happens in background (non-blocking), so we don't check it here
       // The test confirms the response is returned immediately with 'creating' status
@@ -150,10 +153,15 @@ describe('LegacyControlPlaneAdapter', () => {
         error: 'Deployment failed',
         status: 'failed'
       });
-      mockSiteService.updateSite.mockResolvedValue({
-        ...MOCK_SITE_DATA,
-        status: 'failed'
-      });
+      mockSiteService.updateSite
+        .mockResolvedValueOnce({
+          ...MOCK_SITE_DATA,
+          status: 'creating'
+        })
+        .mockResolvedValueOnce({
+          ...MOCK_SITE_DATA,
+          status: 'failed'
+        });
 
       const result = await adapter.createSite({
         accountId: MOCK_ACCOUNT_ID,
@@ -166,8 +174,10 @@ describe('LegacyControlPlaneAdapter', () => {
       expect(result.status).toBe('creating'); // Status is creating (deployment in progress)
 
       // Should update site with failed status
-      expect(mockSiteService.updateSite).toHaveBeenCalledWith(MOCK_SITE_ID, {
-        status: 'failed'
+      await waitFor(() => {
+        expect(mockSiteService.updateSite).toHaveBeenNthCalledWith(2, MOCK_SITE_ID, {
+          status: 'failed'
+        });
       });
     });
 
@@ -496,6 +506,19 @@ describe('LegacyControlPlaneAdapter', () => {
 
       expect(result.success).toBe(true);
       expect(result.message).toContain('already deployed');
+      expect(mockSiteService.updateSite).not.toHaveBeenCalled();
+    });
+
+    it('should return success if site is already creating', async () => {
+      mockSiteService.getSiteById.mockResolvedValue({
+        ...MOCK_SITE_DATA,
+        status: 'creating'
+      });
+
+      const result = await adapter.deploySite(MOCK_SITE_ID, MOCK_JWT);
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('already in progress');
       expect(mockSiteService.updateSite).not.toHaveBeenCalled();
     });
   });

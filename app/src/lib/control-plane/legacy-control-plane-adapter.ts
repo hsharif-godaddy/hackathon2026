@@ -42,6 +42,13 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
         initial_prompt: params.prompt
       });
 
+      // If this write fails, the site record remains in its default init state.
+      // Returning success in that case would allow a subsequent caller to trigger
+      // a second deploy, so keep this update on the critical path.
+      // Mark the site as creating before returning the job ID so follow-up polling
+      // and deploy requests see the in-progress state consistently.
+      await this.siteService.updateSite(site.id, { status: 'creating' });
+
       // Create "jobId" by prefixing the real appId (no storage needed!)
       const jobId = `${LegacyControlPlaneAdapter.JOB_ID_PREFIX}${site.id}`;
 

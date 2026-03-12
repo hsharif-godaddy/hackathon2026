@@ -149,8 +149,9 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
             return
           }
 
-          // Legacy: If already running/created, skip re-deploy
-          if (siteData.status === 'running' || siteData.status === 'created') {
+          // Legacy quick-create starts deployment in the background and returns a job ID.
+          // Treat "creating" as already in progress so we don't trigger a second deploy.
+          if (siteData.status === 'running' || siteData.status === 'created' || siteData.status === 'creating') {
             set((state) => {
               state.phase = 'polling'
               state.error = null
