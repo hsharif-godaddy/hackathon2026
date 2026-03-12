@@ -1116,6 +1116,19 @@ export class DevEnvironmentManager {
               if (process.platform === 'win32') {
                 await execa('rmdir', ['/s', '/q', basePath], { reject: false });
               } else {
+                if (process.platform === 'darwin') {
+                  // Strip macOS extended attributes (e.g. com.apple.provenance) and
+                  // ACLs (e.g. deny-delete from Docker bind mounts) that block removal
+                  const xattrResult = await execa('/usr/bin/xattr', ['-rc', basePath], { reject: false });
+                  const aclResult = await execa('chmod', ['-RN', basePath], { reject: false });
+                  if (xattrResult.exitCode !== 0 || aclResult.exitCode !== 0) {
+                    logger.debug('dev-environment.reconcile.macos_cleanup_partial', {
+                      appId,
+                      xattrExitCode: xattrResult.exitCode,
+                      aclExitCode: aclResult.exitCode,
+                    });
+                  }
+                }
                 await execa('chmod', ['-R', '755', basePath], { reject: false });
                 await execa('rm', ['-rf', basePath]);
               }
