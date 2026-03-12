@@ -56,7 +56,6 @@ interface FeatureConfig {
 
   // Agent enablement configuration
   enabledAgents: {
-    commerce: boolean
     social: boolean
   }
 
@@ -217,7 +216,6 @@ function parseEnvironmentFeatures(): FeatureConfig {
 
     // Agent enablement configuration
     enabledAgents: {
-      commerce: process.env.ENABLE_COMMERCE_AGENT === 'true',
       social: process.env.ENABLE_SOCIAL === 'true'
     },
 
@@ -325,7 +323,7 @@ export const auth = {
  */
 export const agents = {
   /** Check if a specific agent is enabled */
-  isEnabled: (agentId: 'commerce' | 'social'): boolean => {
+  isEnabled: (agentId: 'social'): boolean => {
     const features = getFeatures();
     return features.enabledAgents[agentId] ?? false;
   }

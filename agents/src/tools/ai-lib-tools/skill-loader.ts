@@ -165,11 +165,13 @@ export const skillAITool: Tool = createTool(
       });
 
       // Build response with dependency info
+      const skippedNote = result.filesSkipped ? `, ${result.filesSkipped} existing files skipped` : '';
       const response: Record<string, unknown> = {
         skill: result.skill,
         filesInstalled: result.filesInstalled,
         installedFiles: result.installedFiles,
-        message: `Skill '${result.skill}' installed successfully. ${result.filesInstalled} files copied to ${app.path}`
+        ...(result.filesSkipped && { filesSkipped: result.filesSkipped }),
+        message: `Skill '${result.skill}' installed successfully. ${result.filesInstalled} files copied to ${app.path}${skippedNote}`
       };
 
       // Include dependency info if available

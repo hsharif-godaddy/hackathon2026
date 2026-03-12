@@ -154,6 +154,11 @@ export interface PageInfo {
 
 export interface SimpleMoneyInput {
   currencyCode: string;
+  /**
+   * Integer value in minor currency units (e.g. 550 for $5.50 USD).
+   * GraphQL types this as Float to support values > 32-bit Int,
+   * but only accepts integer values — decimals are rejected.
+   */
   value: number;
 }
 

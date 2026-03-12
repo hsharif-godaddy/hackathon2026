@@ -13,7 +13,7 @@ export function deriveCheckoutUrl(apiBaseUrl: string): string {
     const apiUrl = new URL(apiBaseUrl);
     const newHostname = `checkout.commerce.${apiUrl.hostname}`;
     return `${apiUrl.protocol}//${newHostname}`;
-  } catch (error) {
+  } catch {
     throw new Error(
       `Failed to derive checkout URL from GODADDY_API_BASE_URL: ${apiBaseUrl}`,
     );
@@ -82,11 +82,23 @@ function getCommerceConfig() {
 
   const checkoutApiBaseUrl = deriveCheckoutUrl(apiBaseUrl!);
 
+  // Derive environment from API hostname (dev-* or test-* → "dev", otherwise "production")
+  let environment: "dev" | "production" = "production";
+  try {
+    const hostname = new URL(apiBaseUrl!).hostname;
+    if (hostname.startsWith("dev-") || hostname.startsWith("test-") || hostname.includes("dev-godaddy")) {
+      environment = "dev";
+    }
+  } catch {
+    // Fall back to production if URL parsing fails
+  }
+
   return {
     clientId: clientId!,
     clientSecret: clientSecret!,
     apiBaseUrl: apiBaseUrl!,
     checkoutApiBaseUrl,
+    environment,
   };
 }
 
@@ -145,15 +157,18 @@ interface GraphQLCheckoutResponse {
 function transformUrlsForCommerce(
   returnUrl: string,
   successUrl: string,
+  isDev: boolean,
 ): { returnUrl: string; successUrl: string } {
   let finalReturnUrl = returnUrl;
   let finalSuccessUrl = successUrl;
 
+  // Localhost URLs are rewritten to dev proxy in dev environments
   if (returnUrl.includes("localhost")) {
     finalReturnUrl = returnUrl
       .replace(/localhost/, "success.preview.dev-godaddy.com")
       .replace(/^https:\/\//, "http://");
-  } else if (returnUrl.startsWith("https://")) {
+  } else if (isDev && returnUrl.startsWith("https://")) {
+    // Commerce dev API requires HTTP — only downgrade in dev
     finalReturnUrl = returnUrl.replace(/^https:\/\//, "http://");
   }
 
@@ -161,14 +176,21 @@ function transformUrlsForCommerce(
     finalSuccessUrl = successUrl
       .replace(/localhost/, "success.preview.dev-godaddy.com")
       .replace(/^https:\/\//, "http://");
-  } else if (successUrl.startsWith("https://")) {
+  } else if (isDev && successUrl.startsWith("https://")) {
     finalSuccessUrl = successUrl.replace(/^https:\/\//, "http://");
   }
 
   return { returnUrl: finalReturnUrl, successUrl: finalSuccessUrl };
 }
 
+let cachedToken: { accessToken: string; expiresAt: number } | null = null;
+
 async function getAccessToken(): Promise<string> {
+  // Return cached token if still valid (with 60s buffer)
+  if (cachedToken && Date.now() < cachedToken.expiresAt - 60_000) {
+    return cachedToken.accessToken;
+  }
+
   const config = getCommerceConfigCached();
   const clientId = config.clientId;
   const clientSecret = config.clientSecret;
@@ -188,29 +210,29 @@ async function getAccessToken(): Promise<string> {
     scope: "commerce.product:read",
   });
 
-  try {
-    const response = await fetch(tokenUrl, {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": USER_AGENT,
-      },
-      body: params.toString(),
-    });
+  const response = await fetch(tokenUrl, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": USER_AGENT,
+    },
+    body: params.toString(),
+  });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `OAuth token request failed: ${response.status} - ${errorText}`,
-      );
-    }
-
-    const tokenData = (await response.json()) as OAuthTokenResponse;
-    return tokenData.access_token;
-  } catch (error) {
-    throw error;
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `OAuth token request failed: ${response.status} - ${errorText}`,
+    );
   }
+
+  const tokenData = (await response.json()) as OAuthTokenResponse;
+  cachedToken = {
+    accessToken: tokenData.access_token,
+    expiresAt: Date.now() + tokenData.expires_in * 1000,
+  };
+  return tokenData.access_token;
 }
 
 async function createCheckoutSession(
@@ -225,7 +247,7 @@ async function createCheckoutSession(
   }
 
   const baseInput = {
-    environment: "dev",
+    environment: config.environment,
     storeId: params.storeId,
     storeName: params.storeName ?? null,
     customerId: null,
@@ -267,39 +289,35 @@ async function createCheckoutSession(
     variables: { input },
   };
 
-  try {
-    const response = await fetch(checkoutApiBaseUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        "User-Agent": USER_AGENT,
-      },
-      body: JSON.stringify(graphqlQuery),
-    });
+  const response = await fetch(checkoutApiBaseUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      "User-Agent": USER_AGENT,
+    },
+    body: JSON.stringify(graphqlQuery),
+  });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `GraphQL request failed: ${response.status} - ${errorText}`,
-      );
-    }
-
-    const graphqlData = (await response.json()) as GraphQLCheckoutResponse;
-
-    if (graphqlData.errors?.length) {
-      const errorMessages = graphqlData.errors.map((e) => e.message).join(", ");
-      throw new Error(`GraphQL errors: ${errorMessages}`);
-    }
-
-    if (!graphqlData.data?.createCheckoutSession) {
-      throw new Error("No checkout session data returned from API");
-    }
-
-    return graphqlData.data.createCheckoutSession;
-  } catch (error) {
-    throw error;
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `GraphQL request failed: ${response.status} - ${errorText}`,
+    );
   }
+
+  const graphqlData = (await response.json()) as GraphQLCheckoutResponse;
+
+  if (graphqlData.errors?.length) {
+    const errorMessages = graphqlData.errors.map((e) => e.message).join(", ");
+    throw new Error(`GraphQL errors: ${errorMessages}`);
+  }
+
+  if (!graphqlData.data?.createCheckoutSession) {
+    throw new Error("No checkout session data returned from API");
+  }
+
+  return graphqlData.data.createCheckoutSession;
 }
 
 export default async function handler(req: Request, res: Response) {
@@ -339,8 +357,10 @@ export default async function handler(req: Request, res: Response) {
       return;
     }
 
+    const config = getCommerceConfigCached();
+    const isDev = config.environment === "dev";
     const { returnUrl: finalReturnUrl, successUrl: finalSuccessUrl } =
-      transformUrlsForCommerce(returnUrl, successUrl);
+      transformUrlsForCommerce(returnUrl, successUrl, isDev);
     const accessToken = await getAccessToken();
     const checkoutSession = await createCheckoutSession(accessToken, {
       storeId,

@@ -1,5 +1,4 @@
 // Export new AgentFactory-based agents
-export * from './commerce-agent.js';
 export * from './design-agent.js';
 export * from './develop-agent.js';
 export * from './example-agent.js';
@@ -7,12 +6,6 @@ export * from './marketing-agent.js';
 export * from './initial-agent.js';
 
 // Export agent factory creation functions
-
-export {
-  createCommerceAgent,
-  createCommerceAgentFactory,
-  CommerceAgent
-} from './commerce-agent.js';
 
 export {
   createDesignAgent,

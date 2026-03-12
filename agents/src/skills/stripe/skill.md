@@ -1,7 +1,7 @@
 ---
 name: stripe
 description: Add Stripe payment integration for one-time purchases and subscriptions.
-whenToUse: User wants to accept payments, sell products, or add checkout. Phrases like "take payments", "add checkout", "sell things", "subscription billing", "payment processing".
+whenToUse: User explicitly mentions Stripe for payments. Phrases like "add Stripe", "Stripe checkout", "Stripe payments", "Stripe subscription". Only use this skill when the user specifically asks for Stripe — for general e-commerce requests, use the commerce skill instead.
 dependencies:
   - stripe@^20.2.0
 skill-deps:

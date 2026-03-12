@@ -209,11 +209,26 @@ export class AuthService {
    * }
    * ```
    */
+  /**
+   * Parse the `sub` claim from a JWT access token payload without validation.
+   * The token has already been obtained from the OAuth flow — this is claim extraction, not validation.
+   */
+  private static parseSubClaim(accessToken: string): string | undefined {
+    try {
+      const parts = accessToken.split('.');
+      if (parts.length < 2 || !parts[1]) return undefined;
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
+      return typeof payload.sub === 'string' ? payload.sub : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   static async getAccessToken(params: {
     appId: string;
     provider?: string;
     redirectUri?: string;
-  }): Promise<{ accessToken: string; expiresAt: number }> {
+  }): Promise<{ accessToken: string; expiresAt: number; sub?: string }> {
     const config = getConfig();
     const { appId, provider = 'godaddy', redirectUri = config.redirectUri } = params;
     let scopeKey = OAuthScopes.sort().join(' ');
@@ -230,7 +245,7 @@ export class AuthService {
         const stored = TokenStore.findValid({ appId, provider });
         if (stored) {
           logger.info('auth-service.get-token.found', { appId, scopes: record.scopes });
-          return { accessToken: stored.accessToken, expiresAt: stored.expiresAt };
+          return { accessToken: stored.accessToken, expiresAt: stored.expiresAt, sub: this.parseSubClaim(stored.accessToken) };
         }
       } else {
         // Token expired, try to refresh
@@ -253,7 +268,7 @@ export class AuthService {
 
           if (refreshed) {
             logger.info('auth-service.get-token.refreshed', { appId });
-            return { accessToken: refreshed.accessToken, expiresAt: refreshed.expiresAt };
+            return { accessToken: refreshed.accessToken, expiresAt: refreshed.expiresAt, sub: this.parseSubClaim(refreshed.accessToken) };
           }
           // Refresh failed - fall through to new OAuth flow
         }
@@ -325,7 +340,7 @@ export class AuthService {
   static async exchangeCode(params: {
     code: string;
     state: string;
-  }): Promise<{ accessToken: string; expiresAt: number }> {
+  }): Promise<{ accessToken: string; expiresAt: number; sub?: string }> {
     const config = getConfig();
     const { code, state } = params;
 
@@ -454,7 +469,7 @@ export class AuthService {
         });
       }
 
-      return { accessToken: tokenData.access_token, expiresAt };
+      return { accessToken: tokenData.access_token, expiresAt, sub: this.parseSubClaim(tokenData.access_token) };
     } catch (err) {
       logger.error('auth-service.exchange-code.error', {
         error: err instanceof Error ? err.message : String(err),

@@ -32,15 +32,6 @@ export { cssColorAITool } from './css-color.js';
 export { cssSuggestAITool } from './css-suggest.js';
 export { suggestedResponseAITool } from './suggested-response.js';
 export { seoAnalyze } from './seo-analyze.js';
-export {
-  commerceStore,
-  commerceSearchSkuGroups,
-  commerceSetupIntegration,
-  commerceSkuGroup,
-  commerceSku,
-  commerceInventory,
-  commerceSkuGroupMedia,
-} from './commerce-tools.js';
 export { oauthConnect } from './oauth-tool.js';
 export { requestSecrets } from './secrets-tool.js';
 export { socialConnect } from './social-connect.js';
@@ -89,15 +80,6 @@ import { cssColorAITool } from './css-color.js';
 import { cssSuggestAITool } from './css-suggest.js';
 import { suggestedResponseAITool } from './suggested-response.js';
 import { seoAnalyze } from './seo-analyze.js';
-import {
-  commerceSetupIntegration,
-  commerceStore,
-  commerceSearchSkuGroups,
-  commerceSkuGroup,
-  commerceSku,
-  commerceInventory,
-  commerceSkuGroupMedia,
-} from './commerce-tools.js';
 import { oauthConnect } from './oauth-tool.js';
 import { requestSecrets } from './secrets-tool.js';
 import { socialConnect } from './social-connect.js';
@@ -153,17 +135,10 @@ export const allAILibTools: Record<string, Tool> = {
   seoAnalysis: seoAnalyze,
   oauthConnect: oauthConnect,
   requestSecrets: requestSecrets,
-  commerceSetupIntegration: commerceSetupIntegration,
-  commerceStore: commerceStore,
-  commerceSearchSkuGroups: commerceSearchSkuGroups,
-  commerceSkuGroup: commerceSkuGroup,
-  commerceSku: commerceSku,
-  commerceInventory: commerceInventory,
   socialConnect: socialConnect,
   socialPostCreate: socialPostCreateAITool,
   socialPostPublish: socialPostPublish,
   skill: skillAITool,
-  commerceSkuGroupMedia: commerceSkuGroupMedia,
   websiteScraper: websiteScraperAITool,
   publishClient: publishClientAITool,
   publishStatus: publishStatusAITool,
@@ -204,18 +179,6 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
 
   // Backend tools (empty - database operations removed)
   backend: {},
-
-  // Commerce tools
-  commerce: {
-    oauthConnect: oauthConnect,
-    setupIntegration: commerceSetupIntegration,
-    store: commerceStore,
-    searchSkuGroups: commerceSearchSkuGroups,
-    skuGroup: commerceSkuGroup,
-    sku: commerceSku,
-    inventory: commerceInventory,
-    skuGroupMedia: commerceSkuGroupMedia,
-  },
 
   // Media and content tools
   media: {
@@ -259,7 +222,6 @@ export const toolStats = {
   coreTools: Object.keys(toolGroups.core!).length,
   systemTools: Object.keys(toolGroups.system!).length,
   backendTools: Object.keys(toolGroups.backend!).length,
-  commerceTools: Object.keys(toolGroups.commerce!).length,
   mediaTools: Object.keys(toolGroups.media!).length,
   debugTools: Object.keys(toolGroups.debug!).length,
   planningTools: Object.keys(toolGroups.planning!).length,

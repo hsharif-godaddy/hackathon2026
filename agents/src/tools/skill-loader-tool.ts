@@ -99,6 +99,8 @@ export interface InstallTemplatesResult {
   filesInstalled?: number;
   /** List of installed file paths */
   installedFiles?: string[];
+  /** Number of files skipped because they already exist */
+  filesSkipped?: number;
   /** Dependencies installation results */
   dependenciesInstalled?: DependencyInstallResult[];
   /** Number of dependencies that failed to install */
@@ -404,20 +406,22 @@ export class SkillLoaderTool {
       }
 
       const installedFiles: string[] = [];
+      let filesSkipped = 0;
 
       // Copy each template file to destination
       for (const template of templates) {
         const destPath = this.getDestinationPath(skill, template.path, appPath);
 
         try {
-          // Handle overwrite: false (skip if file exists)
-          if (config.overwrite === false) {
+          // Skip existing files unless overwrite is explicitly requested
+          if (config.overwrite !== true) {
             try {
               await fs.access(destPath);
               this.logger.info('skill.install.skip_existing', {
                 skill,
                 path: destPath
               });
+              filesSkipped++;
               continue;
             } catch {
               // File doesn't exist, proceed with install
@@ -455,6 +459,7 @@ export class SkillLoaderTool {
       this.logger.info('skill.install.success', {
         skill,
         filesInstalled: installedFiles.length,
+        filesSkipped,
         dependenciesInstalled: dependencyResults.length,
         dependenciesFailed: failedDeps,
         skillDependenciesInstalled: installedSkillDeps.length
@@ -464,7 +469,8 @@ export class SkillLoaderTool {
         success: true,
         skill,
         filesInstalled: installedFiles.length,
-        installedFiles
+        installedFiles,
+        ...(filesSkipped > 0 && { filesSkipped }),
       };
 
       if (dependencyResults.length > 0) {

@@ -14,7 +14,6 @@ import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 import { logger, log } from '../logging/index.js'
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
-import { agents as featureAgents } from '../services/features.js'
 import { SkillLoaderTool, buildSkillsPromptSection } from '../tools/skill-loader-tool.js'
 import { skillToolManager } from '../tools/skill-tool-manager.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
@@ -145,11 +144,6 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     .file(paths.getAgentFile('develop', 'email.md'))
     .file(paths.getAgentFile('develop', 'secrets.md')) // Secrets management for API keys and credentials
 
-  // Conditionally load commerce rules if commerce agent is enabled
-  if (featureAgents.isEnabled('commerce')) {
-    promptBuilder.file(paths.getAgentFile('develop', 'commerce.md'))
-  }
-
   promptBuilder.file(paths.getSharedFile('publishing.md'));
   promptBuilder.file(paths.getSharedFile('security.md'));
 
@@ -259,6 +253,9 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       // Secrets management (for API keys, credentials)
       requestSecrets: allAILibTools.requestSecrets,
 
+      // OAuth (used by commerce skill for GoDaddy auth)
+      oauthConnect: allAILibTools.oauthConnect,
+
       domainPurchase: allAILibTools.domainPurchase,
       // Handoff and conversation control tools will be added by the factory when needed
     },
@@ -268,16 +265,12 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     afterToolExecution,
     logger: createAgentTelemetryLogger('develop'),
 
-    // Handoff configuration (conditionally include commerce agent based on feature flags)
+    // Handoff configuration
     handoffs: [
       {
         agentName: 'marketing',
         description: 'SEO optimization and marketing strategy for websites',
       },
-      ...(featureAgents.isEnabled('commerce') ? [{
-        agentName: 'commerce',
-        description: 'GoDaddy Commerce product catalog operations - fetch products for e-commerce listings',
-      }] : []),
     ],
 
     maxSteps: 100,

@@ -1,5 +1,13 @@
 import { v4 as uuid } from 'uuid';
+import type { z } from 'zod';
 import { Logger } from '../logging/index.js';
+import {
+  StoreSummarySchema,
+  OnboardingResponseSchema,
+  SkuGroupsResponseSchema,
+  OrdersResponseSchema,
+  GraphQLErrorSchema,
+} from './godaddy-commerce-schemas.js';
 import type {
   CommerceOnboardingApplicationResponse,
   MutationCreateSkuGroupInput,
@@ -40,6 +48,48 @@ import type {
 } from './godaddy-commerce-types.js';
 
 const logger = Logger.create({ service: 'godaddy-commerce' });
+
+const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 1000;
+
+export async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries: number = MAX_RETRIES,
+): Promise<Response> {
+  let lastResponse: Response | undefined;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    lastResponse = await fetch(url, options);
+
+    if (lastResponse.ok || !RETRYABLE_STATUS_CODES.has(lastResponse.status)) {
+      return lastResponse;
+    }
+
+    if (attempt < maxRetries - 1) {
+      const delay = BASE_DELAY_MS * Math.pow(2, attempt) * (0.5 + Math.random() * 0.5);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  return lastResponse!;
+}
+
+/**
+ * Validates an API response against a Zod schema.
+ * Throws a descriptive error on validation failure so malformed
+ * API responses are caught early rather than causing silent type mismatches.
+ */
+function parseResponse<T>(schema: z.ZodSchema<T>, data: unknown, context: string): T {
+  const result = schema.safeParse(data);
+  if (!result.success) {
+    const issues = result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ');
+    logger.warn('commerce.api.response.validation.failed', { context, issues });
+    throw new Error(`Commerce API response validation failed (${context}): ${issues}`);
+  }
+  return result.data;
+}
 
 // Re-export types for backward compatibility
 export type {
@@ -197,8 +247,8 @@ export class GoDaddyCommerce {
       throw new Error('Godaddy base url not set');
     }
 
-    const result = await fetch(
-      `${this.baseUrl}/v1/commerce/stores-summary?customerId=${args.customerId}`,
+    const result = await fetchWithRetry(
+      `${this.baseUrl}/v1/commerce/stores-summary?customerId=${encodeURIComponent(args.customerId)}`,
       {
         headers: {
           ...this.baseHeaders,
@@ -209,7 +259,7 @@ export class GoDaddyCommerce {
     );
     const data = await result.json();
 
-    return data;
+    return parseResponse(StoreSummarySchema, data, 'getStoreSummary');
   }
 
   public async onboardApplication(
@@ -257,7 +307,7 @@ export class GoDaddyCommerce {
       ],
     };
 
-    const result = await fetch(url, {
+    const result = await fetchWithRetry(url, {
       method: 'POST',
       headers: {
         ...this.baseHeaders,
@@ -275,7 +325,7 @@ export class GoDaddyCommerce {
       throw new Error(`Commerce onboarding API error (${result.status}): ${JSON.stringify(data)}`);
     }
 
-    return data;
+    return parseResponse(OnboardingResponseSchema, data, 'onboardApplication');
   }
 
   public async enableGoDaddyPaymentsApplication(args: { storeId: string }, accessToken: string) {
@@ -292,7 +342,7 @@ export class GoDaddyCommerce {
     }
     `;
 
-    const response = await fetch(graphqlUrl, {
+    const response = await fetchWithRetry(graphqlUrl, {
       method: 'POST',
       headers: {
         ...this.baseHeaders,
@@ -342,7 +392,7 @@ export class GoDaddyCommerce {
       url,
     });
 
-    const response = await fetch(url, {
+    const response = await fetchWithRetry(url, {
       method: 'PUT',
       headers: {
         ...this.baseHeaders,
@@ -374,8 +424,8 @@ export class GoDaddyCommerce {
     const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const query = `
-        query GetProducts($first: Int, $after: String) {
-          skuGroups(status: { eq: "ACTIVE" }, first: $first, after: $after) {
+        query GetProducts($first: Int, $after: String, $label: LabelFilter) {
+          skuGroups(status: { eq: "ACTIVE" }, first: $first, after: $after, label: $label) {
             edges {
               node {
                 id
@@ -393,14 +443,18 @@ export class GoDaddyCommerce {
                   min
                   max
                 }
-                skus (first: 2) {
+                skus (first: 50) {
                   edges {
                     node {
                       id
+                      label
+                      code
                       name
+                      status
                       prices {
                         edges {
                           node {
+                            id
                             value {
                               value
                               currencyCode
@@ -424,7 +478,7 @@ export class GoDaddyCommerce {
         }
       `;
 
-    const response = await fetch(graphqlUrl, {
+    const response = await fetchWithRetry(graphqlUrl, {
       method: 'POST',
       headers: {
         ...this.baseHeaders,
@@ -436,7 +490,7 @@ export class GoDaddyCommerce {
         variables: {
           first: args.first || 20,
           after: args.after,
-          label: args.query ? { contains: args.query } : null,
+          label: args.query ? { contains: args.query } : undefined,
         },
       }),
     });
@@ -451,17 +505,20 @@ export class GoDaddyCommerce {
 
     const data = await response.json();
 
-    // GraphQL returns { data, errors } structure
-    if (data.errors) {
+    // Check for GraphQL errors before parsing data
+    const gqlErrors = GraphQLErrorSchema.safeParse(data);
+    if (gqlErrors.success) {
       return {
         success: false,
-        error: data.errors.map((e: any) => e.message).join(', '),
+        error: gqlErrors.data.errors.map(e => e.message).join(', '),
       };
     }
 
+    const validated = parseResponse(SkuGroupsResponseSchema, data, 'getSkuGroups');
+
     return {
       success: true,
-      data: data.data,
+      data: validated.data as unknown as GraphQLGetSkuGroupsResponse,
     };
   }
 
@@ -528,7 +585,7 @@ export class GoDaddyCommerce {
       },
     };
 
-    const response = await fetch(graphqlUrl, {
+    const response = await fetchWithRetry(graphqlUrl, {
       method: 'POST',
       headers: {
         ...this.baseHeaders,
@@ -628,7 +685,7 @@ export class GoDaddyCommerce {
       }
     `;
 
-    const response = await fetch(graphqlUrl, {
+    const response = await fetchWithRetry(graphqlUrl, {
       method: 'POST',
       headers: {
         ...this.baseHeaders,
@@ -732,7 +789,7 @@ export class GoDaddyCommerce {
       }
     `;
 
-    const response = await fetch(graphqlUrl, {
+    const response = await fetchWithRetry(graphqlUrl, {
       method: 'POST',
       headers: {
         ...this.baseHeaders,
@@ -816,7 +873,7 @@ export class GoDaddyCommerce {
       }
     `;
 
-    const response = await fetch(graphqlUrl, {
+    const response = await fetchWithRetry(graphqlUrl, {
       method: 'POST',
       headers: {
         ...this.baseHeaders,
@@ -889,7 +946,7 @@ export class GoDaddyCommerce {
       }
     `;
 
-    const response = await fetch(graphqlUrl, {
+    const response = await fetchWithRetry(graphqlUrl, {
       method: 'POST',
       headers: {
         ...this.baseHeaders,
@@ -954,7 +1011,7 @@ export class GoDaddyCommerce {
       }
     `;
 
-    const response = await fetch(graphqlUrl, {
+    const response = await fetchWithRetry(graphqlUrl, {
       method: 'POST',
       headers: {
         ...this.baseHeaders,
@@ -1003,14 +1060,14 @@ export class GoDaddyCommerce {
   }
 
   public async getInventoryCounts(
-    args: { storeId: string; skuId?: string; locationId?: string; first?: number },
+    args: { storeId: string; skuId?: string; locationId?: string; first?: number; after?: string },
     accessToken: string
   ): Promise<GetInventoryCountsResponse> {
     const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const query = `
-      query GetInventoryCounts($skuId: SKUIdFilter, $locationId: LocationIdFilter, $first: Int) {
-        inventoryCounts(skuId: $skuId, locationId: $locationId, first: $first, type: { eq: "AVAILABLE" }) {
+      query GetInventoryCounts($skuId: SKUIdFilter, $locationId: LocationIdFilter, $first: Int, $after: String) {
+        inventoryCounts(skuId: $skuId, locationId: $locationId, first: $first, after: $after, type: { eq: "AVAILABLE" }) {
           edges {
             node {
               id
@@ -1040,7 +1097,7 @@ export class GoDaddyCommerce {
       }
     `;
 
-    const response = await fetch(graphqlUrl, {
+    const response = await fetchWithRetry(graphqlUrl, {
       method: 'POST',
       headers: {
         ...this.baseHeaders,
@@ -1053,6 +1110,7 @@ export class GoDaddyCommerce {
           skuId: args.skuId ? { eq: args.skuId } : undefined,
           locationId: args.locationId ? { eq: args.locationId } : undefined,
           first: args.first || 50,
+          after: args.after,
         },
       }),
     });
@@ -1121,7 +1179,7 @@ export class GoDaddyCommerce {
       }
     `;
 
-    const response = await fetch(graphqlUrl, {
+    const response = await fetchWithRetry(graphqlUrl, {
       method: 'POST',
       headers: {
         ...this.baseHeaders,
@@ -1205,7 +1263,7 @@ export class GoDaddyCommerce {
       }
     `;
 
-    const response = await fetch(graphqlUrl, {
+    const response = await fetchWithRetry(graphqlUrl, {
       method: 'POST',
       headers: {
         ...this.baseHeaders,
@@ -1262,14 +1320,14 @@ export class GoDaddyCommerce {
   }
 
   public async getLocations(
-    args: { storeId: string; first?: number; status?: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED' },
+    args: { storeId: string; first?: number; after?: string; status?: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED' },
     accessToken: string
   ): Promise<GetLocationsResponse> {
     const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const query = `
-      query GetLocations($first: Int, $status: LocationStatusFilter) {
-        locations(first: $first, status: $status) {
+      query GetLocations($first: Int, $after: String, $status: LocationStatusFilter) {
+        locations(first: $first, after: $after, status: $status) {
           edges {
             node {
               id
@@ -1297,7 +1355,7 @@ export class GoDaddyCommerce {
       }
     `;
 
-    const response = await fetch(graphqlUrl, {
+    const response = await fetchWithRetry(graphqlUrl, {
       method: 'POST',
       headers: {
         ...this.baseHeaders,
@@ -1308,6 +1366,7 @@ export class GoDaddyCommerce {
         query,
         variables: {
           first: args.first || 50,
+          after: args.after,
           status: args.status ? { eq: args.status } : { eq: 'ACTIVE' },
         },
       }),
@@ -1373,7 +1432,7 @@ export class GoDaddyCommerce {
       }
     `;
 
-    const response = await fetch(graphqlUrl, {
+    const response = await fetchWithRetry(graphqlUrl, {
       method: 'POST',
       headers: {
         ...this.baseHeaders,
@@ -1452,7 +1511,7 @@ export class GoDaddyCommerce {
       }
     `;
 
-    const response = await fetch(graphqlUrl, {
+    const response = await fetchWithRetry(graphqlUrl, {
       method: 'POST',
       headers: {
         ...this.baseHeaders,
@@ -1534,7 +1593,7 @@ export class GoDaddyCommerce {
       }
     `;
 
-    const response = await fetch(graphqlUrl, {
+    const response = await fetchWithRetry(graphqlUrl, {
       method: 'POST',
       headers: {
         ...this.baseHeaders,
@@ -1598,6 +1657,7 @@ export class GoDaddyCommerce {
       email?: string;
       name?: string;
       pageSize?: number;
+      pageToken?: string;
     },
     accessToken: string
   ): Promise<{ success: true; data: GetOrdersResponse } | { success: false; error: string }> {
@@ -1611,6 +1671,7 @@ export class GoDaddyCommerce {
     if (args.email) queryParams.append('email', args.email);
     if (args.name) queryParams.append('name', args.name);
     if (args.pageSize) queryParams.append('pageSize', args.pageSize.toString());
+    if (args.pageToken) queryParams.append('pageToken', args.pageToken);
 
     const url = `${this.baseUrl}/v1/commerce/stores/${args.storeId}/orders${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
 
@@ -1619,7 +1680,7 @@ export class GoDaddyCommerce {
       filters: Object.keys(args).filter(k => k !== 'storeId' && args[k as keyof typeof args]),
     });
 
-    const response = await fetch(url, {
+    const response = await fetchWithRetry(url, {
       method: 'GET',
       headers: {
         ...this.baseHeaders,
@@ -1650,7 +1711,7 @@ export class GoDaddyCommerce {
 
     return {
       success: true,
-      data,
+      data: parseResponse(OrdersResponseSchema, data, 'getOrders') as unknown as GetOrdersResponse,
     };
   }
 
@@ -1668,7 +1729,7 @@ export class GoDaddyCommerce {
       orderId: args.orderId,
     });
 
-    const response = await fetch(url, {
+    const response = await fetchWithRetry(url, {
       method: 'GET',
       headers: {
         ...this.baseHeaders,
