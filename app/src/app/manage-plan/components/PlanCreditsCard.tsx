@@ -8,9 +8,9 @@ import text from '@ux/text';
 
 import { useTranslations } from '@/hooks/useTranslations';
 import type { AiroSubscription } from '@/lib/mgmt-airo';
-import { isPaidPlanForGrants, PAYWALL_ITC } from '@/lib/paywall/shared';
-import { PAYWALL_TYPE, type PaywallType } from '@/lib/paywall/shared';
+import { isPaidPlanForGrants, PAYWALL_ITC, PAYWALL_TYPE, type PaywallType } from '@/lib/paywall/shared';
 import type { CreditGrant } from '@/types/credits';
+import { SubscriptionPlan } from '@/types/credits';
 import { formatFullCreditDate, getEffectiveCreditsSpent, getPlanDisplayLabelKey, getPlanFromSubscription } from '@/utils/credits';
 import { generateClickEID } from '@/utils/instrumentation';
 import ActiveTag from './ActiveTag';
@@ -26,9 +26,10 @@ interface PlanCreditsCardProps {
   autoRenewStatus?: { autoRenew: boolean; paidThroughDate?: string; subscriptionId?: string } | null;
   onDowngradeClick?: () => void;
   isGrantsEnabled: boolean;
+  isHigherPlansEnabled?: boolean;
 }
 
-const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, creditPacks, openPaywall, autoRenewStatus, onDowngradeClick, isGrantsEnabled }: PlanCreditsCardProps) => {
+const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, creditPacks, openPaywall, autoRenewStatus, onDowngradeClick, isGrantsEnabled, isHigherPlansEnabled = false }: PlanCreditsCardProps) => {
   const t = useTranslations();
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -107,29 +108,42 @@ const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, credi
           )}
           <CreditProgressBar spent={getEffectiveCreditsSpent(planGrant.creditsSpent, planGrant.creditsMax)} max={planGrant.creditsMax} />
           {(creditPacks.length > 0 || (!isFreePlan && creditPacks.length === 0)) && currentPlan && (
-            <Box orientation="horizontal" gap="md">
-              {isFreePlan && creditPacks.length > 0 && (
-                <Button
-                  design="primary"
-                  data-partial='componentAiro'
-                  data-eid={generateClickEID('manageplan.buttons.upgrade')}
-                  size="sm"
-                  text={t('builder_manageplan_upgrade')}
-                  onClick={() => openPaywall('manage_plan.upgrade', PAYWALL_TYPE.UPGRADE, PAYWALL_ITC.UPGRADE)}
-                  disabled={isButtonDisabled}
-                />
-              )}
-              {creditPacks.length > 0 && (
-                <Button
-                  design="secondary"
-                  data-partial='componentAiro'
-                  data-eid={generateClickEID('manageplan.buttons.buy_credits')}
-                  size="sm"
-                  text={t('builder_manageplan_buy_credits')}
-                  onClick={() => openPaywall('manage_plan.buy_credits', PAYWALL_TYPE.CREDITS, PAYWALL_ITC.CREDITS)}
-                  disabled={isButtonDisabled}
-                />
-              )}
+            <div className="flex flex-col sm:flex-row sm:justify-between gap-2">
+              <Box orientation="horizontal" gap="md">
+                {isFreePlan && !isHigherPlansEnabled && creditPacks.length > 0 && (
+                  <Button
+                    design="primary"
+                    data-partial='componentAiro'
+                    data-eid={generateClickEID('manageplan.buttons.upgrade')}
+                    size="sm"
+                    text={t('builder_manageplan_upgrade')}
+                    onClick={() => openPaywall('manage_plan.upgrade', PAYWALL_TYPE.UPGRADE, PAYWALL_ITC.UPGRADE)}
+                    disabled={isButtonDisabled}
+                  />
+                )}
+                {isHigherPlansEnabled && (
+                    <Button
+                        design="primary"
+                        data-partial='componentAiro'
+                        data-eid={generateClickEID('manageplan.buttons.upgrade_plan')}
+                        size="sm"
+                        text={currentPlan === SubscriptionPlan.Ultimate && !subscription.downgradedPlan ? t('builder_manageplan_downgrade') : t('builder_manageplan_upgrade')}
+                        onClick={() => openPaywall('manage_plan.upgrade_plan', PAYWALL_TYPE.UPGRADE, PAYWALL_ITC.UPGRADE)}
+                        disabled={isButtonDisabled}
+                    />
+                )}
+                { creditPacks.length > 0 && (
+                    <Button
+                        design="secondary"
+                        data-partial='componentAiro'
+                        data-eid={generateClickEID('manageplan.buttons.buy_credits')}
+                        size="sm"
+                        text={t('builder_manageplan_buy_credits')}
+                        onClick={() => openPaywall('manage_plan.buy_credits', PAYWALL_TYPE.CREDITS, PAYWALL_ITC.CREDITS)}
+                        disabled={isButtonDisabled}
+                    />
+                )}
+              </Box>
               {isPaidPlan && autoRenewStatus?.autoRenew === true && onDowngradeClick && (
                 <Button
                   className="items-center"
@@ -141,7 +155,7 @@ const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, credi
                   onClick={onDowngradeClick}
                 />
               )}
-            </Box>
+            </div>
           )}
         </>
       )}

@@ -3,7 +3,7 @@ import '@testing-library/jest-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 
-import { PaywallLoadingModal } from './PaywallLoadingModal'
+import { PaywallLoadingModal, PaywallLoadingModalVariant } from './PaywallLoadingModal'
 
 // Mock UX components
 vi.mock('@ux/modal', () => ({
@@ -69,5 +69,39 @@ describe('PaywallLoadingModal', function paywallLoadingModalTests() {
     render(<PaywallLoadingModal onClose={mockOnClose} />)
 
     expect(screen.getByTestId('spinner')).toHaveAttribute('data-size', 'lg')
+  })
+
+  describe('higher-plans variant', function higherPlansVariantTests() {
+    it('should render skeleton plan cards instead of spinner', function renderSkeletonCards() {
+      const mockOnClose = vi.fn()
+      render(<PaywallLoadingModal onClose={mockOnClose} variant={PaywallLoadingModalVariant.HigherPlans} />)
+
+      // Modal should be rendered
+      expect(screen.getByTestId('modal')).toBeInTheDocument()
+
+      // Spinner should NOT be visible
+      expect(screen.queryByTestId('spinner')).not.toBeInTheDocument()
+
+      // Should render 3 skeleton plan cards (check for animated elements)
+      const skeletonElements = document.querySelectorAll('.animate-pulse')
+      expect(skeletonElements.length).toBeGreaterThan(0)
+    })
+
+    it('should call onClose when close button is clicked', function closeHigherPlansModal() {
+      const mockOnClose = vi.fn()
+      render(<PaywallLoadingModal onClose={mockOnClose} variant={PaywallLoadingModalVariant.HigherPlans} />)
+
+      const closeButton = screen.getByRole('button', { name: /close/i })
+      closeButton.click()
+
+      expect(mockOnClose).toHaveBeenCalledTimes(1)
+    })
+
+    it('should be centered', function centeredHigherPlansModal() {
+      const mockOnClose = vi.fn()
+      render(<PaywallLoadingModal onClose={mockOnClose} variant={PaywallLoadingModalVariant.HigherPlans} />)
+
+      expect(screen.getByTestId('modal')).toHaveAttribute('data-centered', 'true')
+    })
   })
 })

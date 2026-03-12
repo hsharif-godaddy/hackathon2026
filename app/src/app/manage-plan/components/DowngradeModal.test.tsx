@@ -69,7 +69,7 @@ describe('DowngradeModal', function downgradeModalTests() {
     it('should render keep plan button', function renderKeepButton() {
       renderWithProviders(<DowngradeModal {...defaultProps} />);
 
-      expect(screen.getByRole('button', { name: 'builder_manageplan_downgrade_keep' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'builder_manageplan_downgrade_keep_plan' })).toBeInTheDocument();
     });
 
     it('should render confirm button', function renderConfirmButton() {
@@ -84,7 +84,7 @@ describe('DowngradeModal', function downgradeModalTests() {
       const onClose = vi.fn();
       renderWithProviders(<DowngradeModal {...defaultProps} onClose={onClose} />);
 
-      fireEvent.click(screen.getByRole('button', { name: 'builder_manageplan_downgrade_keep' }));
+      fireEvent.click(screen.getByRole('button', { name: 'builder_manageplan_downgrade_keep_plan' }));
 
       expect(onClose).toHaveBeenCalledTimes(1);
     });
@@ -110,7 +110,7 @@ describe('DowngradeModal', function downgradeModalTests() {
     it('should disable buttons when isLoading', function disablesButtons() {
       renderWithProviders(<DowngradeModal {...defaultProps} isLoading={true} />);
 
-      expect(screen.getByRole('button', { name: 'builder_manageplan_downgrade_keep' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'builder_manageplan_downgrade_keep_plan' })).toBeDisabled();
       expect(screen.getByRole('button', { name: 'builder_manageplan_downgrade_switching' })).toBeDisabled();
     });
   });
@@ -134,7 +134,7 @@ describe('DowngradeModal', function downgradeModalTests() {
     it('should have data-eid attributes on buttons', function hasDataEid() {
       renderWithProviders(<DowngradeModal {...defaultProps} />);
 
-      const keepButton = screen.getByRole('button', { name: 'builder_manageplan_downgrade_keep' });
+      const keepButton = screen.getByRole('button', { name: 'builder_manageplan_downgrade_keep_plan' });
       const confirmButton = screen.getByRole('button', { name: 'builder_manageplan_downgrade_confirm' });
 
       expect(keepButton).toHaveAttribute('data-eid');
@@ -144,7 +144,7 @@ describe('DowngradeModal', function downgradeModalTests() {
     it('should have data-partial attribute on buttons', function hasDataPartial() {
       renderWithProviders(<DowngradeModal {...defaultProps} />);
 
-      const keepButton = screen.getByRole('button', { name: 'builder_manageplan_downgrade_keep' });
+      const keepButton = screen.getByRole('button', { name: 'builder_manageplan_downgrade_keep_plan' });
       const confirmButton = screen.getByRole('button', { name: 'builder_manageplan_downgrade_confirm' });
 
       expect(keepButton).toHaveAttribute('data-partial', 'componentAiro');

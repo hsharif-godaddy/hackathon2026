@@ -10,7 +10,7 @@ import ChatPane from '@/app/develop/components/chat/ChatPane'
 import ChatPaneLoader, { ImageReloadLoaderPhase, ResumeLoaderPhase } from '@/app/develop/components/chat/ChatPaneLoader'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
 import { MediaSlotDialog } from '@/app/develop/components/media/MediaSlotDialog'
-import { DevelopCreditsModal, SinglePlanUpgradeContainer } from '@/app/develop/components/paywall'
+import { DevelopCreditsModal, UpgradeContainer, UpgradePollingModal } from '@/app/develop/components/paywall'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
@@ -41,8 +41,10 @@ import { useRumAppContext } from '@/hooks/useRumAppContext'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { useSyncResponsiveState } from '@/hooks/useSyncResponsiveState'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useIsUpgradePolling } from '@/hooks/useUpgradePurchase'
 import { agentFetch } from '@/lib/agent-fetch'
 import { shipAnalyticsLog } from '@/lib/logging'
+import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
 import { cn } from '@/lib/utils'
 import { appService } from '@/services/AppService'
@@ -131,10 +133,11 @@ function DevelopPageContent() {
   const isAssetManagerOpen = useDevelopPageStore((state) => state.isAssetManagerOpen);
   const setIsAssetManagerOpen = useDevelopPageStore((state) => state.setIsAssetManagerOpen);
   const showUpgradeModal = useDevelopPageStore((state) => state.showUpgradeModal);
+  const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal);
   const upgradeModalSource = useDevelopPageStore((state) => state.upgradeModalSource);
   const upgradeModalItc = useDevelopPageStore((state) => state.upgradeModalItc);
   const closeUpgradeModal = useDevelopPageStore((state) => state.closeUpgradeModal);
-  const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal);
+  const isUpgradePolling = useIsUpgradePolling();
   const publishLimitModalState = useDevelopPageStore((state) =>
     appId ? state.publishStates[appId] : undefined
   );
@@ -1161,13 +1164,13 @@ function DevelopPageContent() {
         <MediaSlotDialog />
         <Growl />
 
+        {isUpgradePolling && <UpgradePollingModal />}
+
         {showUpgradeModal && (
-          <SinglePlanUpgradeContainer
+          <UpgradeContainer
             source={upgradeModalSource ?? 'unknown'}
             itc={upgradeModalItc ?? undefined}
-            onSuccessClick={() => {
-              closeUpgradeModal()
-            }}
+            onSuccessClick={closeUpgradeModal}
             onClose={() => {
               const source = upgradeModalSource ?? 'unknown'
               closeUpgradeModal()
@@ -1199,7 +1202,7 @@ function DevelopPageContent() {
             }}
             onUpgrade={() => {
               setShowPublishLimitModal(appId, false)
-              openUpgradeModal('publish_limit')
+              openUpgradeModal('publish_limit.upgrade_plan', PAYWALL_ITC.UPGRADE)
               shipAnalyticsLog('publish.limit.modal.upgrade_clicked', {
                 appId,
                 plan: publishLimitData.plan,

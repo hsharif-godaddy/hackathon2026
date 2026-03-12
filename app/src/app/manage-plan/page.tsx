@@ -7,12 +7,12 @@ import Alert from '@ux/alert';
 import Button from '@ux/button';
 import text from '@ux/text';
 
-import { CreditsUpgradeContainer, GrantPollingModal, SinglePlanUpgradeContainer } from '@/app/develop/components/paywall';
+import { CreditsUpgradeContainer, GrantPollingModal, UpgradeContainer, UpgradePollingModal } from '@/app/develop/components/paywall';
 import {
   AddonCreditCard,
   AppsAndSitesCard,
   DowngradeModal,
-  DowngradeScheduledAlert,
+  FreeAutoRenewAlert,
   ManagePlanSkeleton,
   NewAccountZeroState,
   PageLayout,
@@ -27,6 +27,7 @@ import { useGasketData } from '@/hooks/useGasketData';
 import { useSubscriptionWithPolling } from '@/hooks/useSubscriptionWithPolling';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
+import { useIsUpgradePolling } from '@/hooks/useUpgradePurchase';
 import { ClientLogBuffer, shipAnalyticsLog } from '@/lib/logging';
 import { isPaidPlanForGrants, type PaywallType } from '@/lib/paywall/shared';
 import { useSites } from '@/stores/useSitesStore';
@@ -41,6 +42,7 @@ import {
 } from '@/utils/credits';
 import { getRootDomain } from '@/utils/getRootDomain';
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation';
+import DowngradeScheduledAlert from './components/DowngradeAlert';
 import PlanCreditsCard from './components/PlanCreditsCard';
 
 /**
@@ -90,7 +92,7 @@ function CreditsPaywallFallback({
   }, [source, subscriptionId]);
 
   return (
-    <SinglePlanUpgradeContainer
+    <UpgradeContainer
       source={source}
       itc={itc}
       onSuccessClick={onSuccessClick}
@@ -109,11 +111,14 @@ function ManagePlanContent() {
   const [paywallSource, setPaywallSource] = useState<string | null>(null);
   const [paywallType, setPaywallType] = useState<PaywallType>('upgrade');
   const [paywallItc, setPaywallItc] = useState<string | null>(null);
-  const [showDowngradeModal, setShowDowngradeModal] = useState(false);
-  const [isAlertDismissed, setIsAlertDismissed] = useState(false);
+  const [showSwitchToFreeModal, setShowSwitchToFreeModal] = useState(false);
+  const [isDowngradeAlertDismissed, setIsDowngradeAlertDismissed] = useState(false);
+  const [isFreeAutoRenewAlertDismissed, setIsFreeAutoRenewAlertDismissed] = useState(false);
   const { setAutoRenew } = useEcommSubscriptionAutoRenew();
   const isCreditPolling = useIsCreditPolling();
+  const isUpgradePolling = useIsUpgradePolling();
   const { data: isUnpublishEnabled } = useSwitchboard('appbuilder-unpublish');
+  const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans');
 
   const openPaywall = (source: string, type: PaywallType = 'upgrade', itc?: string) => {
     setPaywallSource(source);
@@ -216,17 +221,21 @@ function ManagePlanContent() {
   // Note: updatedAt changes when the subscription plan/tier changes (e.g., upgrade),
   // but NOT when only autoRenew is toggled in ecomm. So downgrades (autoRenew=false)
   // won't update updatedAt, allowing the banner to show correctly.
-  const RECENT_PLAN_CHANGE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+  const RECENT_PLAN_CHANGE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
   const subscriptionUpdatedAt = subscription?.updatedAt ? parseDate(subscription.updatedAt) : null;
   const isRecentPlanChange = subscriptionUpdatedAt !== null &&
     (Date.now() - subscriptionUpdatedAt.getTime()) < RECENT_PLAN_CHANGE_THRESHOLD_MS;
 
-  // Show alert when a downgrade is scheduled (autoRenew=false)
+  // Show FreeAutoRenewAlert when auto-renew is disabled (autoRenew=false)
   // but not for recent plan changes (upgrade from free to paid still syncing)
-  const isDowngradeScheduled = autoRenewStatus?.autoRenew === false;
-  const showDowngradeAlert = !isAlertDismissed && isPaidPlan && isDowngradeScheduled && !isRecentPlanChange;
+  const isAutoRenewDisabled = autoRenewStatus?.autoRenew === false;
+  const showFreeAutoRenewAlert = !isFreeAutoRenewAlertDismissed && isPaidPlan && isAutoRenewDisabled && !isRecentPlanChange;
 
-  // Track mutation error for page-level display
+  // Show DowngradeScheduledAlert when downgradedAt and downgradedPlan are present
+  // This indicates the user has scheduled a downgrade to a different plan
+  const hasScheduledDowngrade = subscription?.downgradedAt && subscription?.downgradedPlan;
+  const showDowngradeScheduledAlert = !isDowngradeAlertDismissed && hasScheduledDowngrade;
+
   const mutationError = setAutoRenew.error;
 
   return (
@@ -234,14 +243,15 @@ function ManagePlanContent() {
       {/* Polling overlay while waiting for new grant after credit purchase */}
       {isCreditPolling && <GrantPollingModal />}
 
+      {/* Polling overlay while waiting for plan change after upgrade purchase */}
+      {isUpgradePolling && <UpgradePollingModal />}
+
       {/* Upgrade Modal (for plan upgrades) */}
       {showPaywallModal && paywallType === 'upgrade' && (
-        <SinglePlanUpgradeContainer
+        <UpgradeContainer
           source={paywallSourceId}
           itc={paywallItc ?? undefined}
-          onSuccessClick={() => {
-            closePaywall();
-          }}
+          onSuccessClick={closePaywall}
           onClose={() => {
             closePaywall();
             shipAnalyticsLog(`${paywallSourceId}.dismissed`, {});
@@ -295,18 +305,19 @@ function ManagePlanContent() {
         />
       )}
 
-      {showDowngradeModal && builderEntitlementId && (
+      {showSwitchToFreeModal && builderEntitlementId && (
         <DowngradeModal
           planName={planDisplayLabel}
           planCreditsMax={planGrant?.creditsMax ?? 0}
-          onClose={() => setShowDowngradeModal(false)}
+          onClose={() => setShowSwitchToFreeModal(false)}
           onConfirm={() => {
             setAutoRenew.mutate(
               { builderEntitlementId, autoRenew: false },
               {
                 onSuccess: () => {
-                  setShowDowngradeModal(false);
-                  setIsAlertDismissed(false);
+                  setShowSwitchToFreeModal(false);
+                  setIsDowngradeAlertDismissed(false);
+                  setIsFreeAutoRenewAlertDismissed(false);
                   // Log cancellation success impression for grant tracking
                   logImpressionEvent('plan.cancellation.success')();
                   shipAnalyticsLog('plan.cancellation.success', {
@@ -346,17 +357,25 @@ function ManagePlanContent() {
             </Alert>
           </div>
         )}
-        {showDowngradeAlert && (
+        {showDowngradeScheduledAlert && (
           <DowngradeScheduledAlert
+            onKeepPlan={() => {
+              openPaywall('manage_plan.switch_to_current_plan', 'upgrade');
+            }}
+            onDismiss={() => setIsDowngradeAlertDismissed(true)}
+          />
+        )}
+        {showFreeAutoRenewAlert && !showDowngradeScheduledAlert && (
+          <FreeAutoRenewAlert
             renewalDate={parsedPaidThroughDate?.toISOString()}
             planName={planDisplayLabel}
             onCancelChanges={
-              isDowngradeScheduled && builderEntitlementId
+              isAutoRenewDisabled && builderEntitlementId
                 ? () => setAutoRenew.mutate({ builderEntitlementId, autoRenew: true })
                 : undefined
             }
             isLoading={setAutoRenew.isPending}
-            onDismiss={() => setIsAlertDismissed(true)}
+            onDismiss={() => setIsFreeAutoRenewAlertDismissed(true)}
           />
         )}
         <div className="flex flex-col gap-2">
@@ -404,8 +423,9 @@ function ManagePlanContent() {
                 creditPacks={creditPacks}
                 openPaywall={openPaywall}
                 autoRenewStatus={autoRenewStatus}
-                onDowngradeClick={() => setShowDowngradeModal(true)}
+                onDowngradeClick={() => setShowSwitchToFreeModal(true)}
                 isGrantsEnabled={isGrantsEnabled ?? true}
+                isHigherPlansEnabled={!!isHigherPlansEnabled}
               />
               {currentPlan && (
                 <AddonCreditCard

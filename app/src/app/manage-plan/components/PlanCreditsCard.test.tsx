@@ -502,6 +502,85 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
     });
   });
 
+  describe('button visibility with higher plans flag', function higherPlansButtonTests() {
+    it('should show Upgrade button for Starter plan when higher plans flag is on', function starterUpgradeWithFlag() {
+      renderWithProviders(
+        <PlanCreditsCard
+          subscription={createMockSubscription({ plan: SubscriptionPlan.Starter })}
+          planGrant={createMockPlanGrant()}
+          creditPacks={[]}
+          openPaywall={mockOpenPaywall}
+          isGrantsEnabled={true}
+          isHigherPlansEnabled={true}
+        />
+      );
+
+      expect(screen.getByText('builder_manageplan_upgrade')).toBeInTheDocument();
+    });
+
+    it('should show Upgrade button for Professional plan when higher plans flag is on', function professionalUpgradeWithFlag() {
+      renderWithProviders(
+        <PlanCreditsCard
+          subscription={createMockSubscription({ plan: SubscriptionPlan.Professional })}
+          planGrant={createMockPlanGrant()}
+          creditPacks={[]}
+          openPaywall={mockOpenPaywall}
+          isGrantsEnabled={true}
+          isHigherPlansEnabled={true}
+        />
+      );
+
+      expect(screen.getByText('builder_manageplan_upgrade')).toBeInTheDocument();
+    });
+
+    it('should NOT show Upgrade button for Ultimate plan when higher plans flag is on', function ultimateNoUpgrade() {
+      renderWithProviders(
+        <PlanCreditsCard
+          subscription={createMockSubscription({ plan: SubscriptionPlan.Ultimate })}
+          planGrant={createMockPlanGrant()}
+          creditPacks={[]}
+          openPaywall={mockOpenPaywall}
+          isGrantsEnabled={true}
+          isHigherPlansEnabled={true}
+        />
+      );
+
+      expect(screen.queryByText('builder_manageplan_upgrade')).not.toBeInTheDocument();
+    });
+
+    it('should NOT show higher plans Upgrade button when flag is off', function noUpgradeWhenFlagOff() {
+      renderWithProviders(
+        <PlanCreditsCard
+          subscription={createMockSubscription({ plan: SubscriptionPlan.Starter })}
+          planGrant={createMockPlanGrant()}
+          creditPacks={[]}
+          openPaywall={mockOpenPaywall}
+          isGrantsEnabled={true}
+          isHigherPlansEnabled={false}
+        />
+      );
+
+      expect(screen.queryByText('builder_manageplan_upgrade')).not.toBeInTheDocument();
+    });
+
+    it('should call openPaywall with upgrade_plan when higher plans Upgrade is clicked', async function clickHigherPlansUpgrade() {
+      const { user } = renderWithProviders(
+        <PlanCreditsCard
+          subscription={createMockSubscription({ plan: SubscriptionPlan.Starter })}
+          planGrant={createMockPlanGrant()}
+          creditPacks={[]}
+          openPaywall={mockOpenPaywall}
+          isGrantsEnabled={true}
+          isHigherPlansEnabled={true}
+        />
+      );
+
+      await user.click(screen.getByText('builder_manageplan_upgrade'));
+
+      expect(mockOpenPaywall).toHaveBeenCalledWith('manage_plan.upgrade_plan', 'upgrade', PAYWALL_ITC.UPGRADE);
+    });
+  });
+
   describe('free plan with credit packs message', function freeWithPacksMessageTests() {
     it('should show plan description message for free plan with credit packs', function showPlanDescription() {
       renderWithProviders(

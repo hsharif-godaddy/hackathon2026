@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
-import DowngradeScheduledAlert from './DowngradeScheduledAlert';
+import FreeAutoRenewAlert from './FreeAutoRenewAlert';
 
 vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string, values?: Record<string, unknown>) => {
@@ -15,7 +15,7 @@ vi.mock('@/hooks/useTranslations', () => ({
   },
 }));
 
-describe('DowngradeScheduledAlert', function downgradeScheduledAlertTests() {
+describe('FreeAutoRenewAlert', function FreeAutoRenewAlertTests() {
   const defaultProps = {
     renewalDate: '2027-01-29T07:00:00Z',
     planName: 'Starter',
@@ -27,13 +27,13 @@ describe('DowngradeScheduledAlert', function downgradeScheduledAlertTests() {
 
   describe('renders correctly', function renderTests() {
     it('should render the alert title', function renderTitle() {
-      renderWithProviders(<DowngradeScheduledAlert {...defaultProps} />);
+      renderWithProviders(<FreeAutoRenewAlert {...defaultProps} />);
 
-      expect(screen.getByText('builder_manageplan_downgrade_scheduled_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_manageplan_downgrade_plan_title')).toBeInTheDocument();
     });
 
     it('should render the alert message with formatted date', function renderMessage() {
-      renderWithProviders(<DowngradeScheduledAlert {...defaultProps} />);
+      renderWithProviders(<FreeAutoRenewAlert {...defaultProps} />);
 
       // The message should contain the translated key with values
       const messageElement = screen.getByText((content) =>
@@ -43,7 +43,7 @@ describe('DowngradeScheduledAlert', function downgradeScheduledAlertTests() {
     });
 
     it('should format the renewal date correctly', function formatDate() {
-      renderWithProviders(<DowngradeScheduledAlert {...defaultProps} />);
+      renderWithProviders(<FreeAutoRenewAlert {...defaultProps} />);
 
       // The formatted date should be present in the message values (assert on a locale-stable part)
       const messageElement = screen.getByText((content) =>
@@ -53,7 +53,7 @@ describe('DowngradeScheduledAlert', function downgradeScheduledAlertTests() {
     });
 
     it('should include planName in the message', function includePlanName() {
-      renderWithProviders(<DowngradeScheduledAlert {...defaultProps} planName="Premium" />);
+      renderWithProviders(<FreeAutoRenewAlert {...defaultProps} planName="Premium" />);
 
       const messageElement = screen.getByText((content) =>
         content.includes('Premium')
@@ -64,7 +64,7 @@ describe('DowngradeScheduledAlert', function downgradeScheduledAlertTests() {
 
   describe('cancel changes button', function cancelButtonTests() {
     it('should not render cancel button when onCancelChanges is not provided', function noCancelButton() {
-      renderWithProviders(<DowngradeScheduledAlert {...defaultProps} />);
+      renderWithProviders(<FreeAutoRenewAlert {...defaultProps} />);
 
       expect(screen.queryByText('builder_manageplan_downgrade_cancel_changes')).not.toBeInTheDocument();
     });
@@ -72,7 +72,7 @@ describe('DowngradeScheduledAlert', function downgradeScheduledAlertTests() {
     it('should render cancel button when onCancelChanges is provided', function showsCancelButton() {
       const onCancelChanges = vi.fn();
       renderWithProviders(
-        <DowngradeScheduledAlert {...defaultProps} onCancelChanges={onCancelChanges} />
+        <FreeAutoRenewAlert {...defaultProps} onCancelChanges={onCancelChanges} />
       );
 
       expect(screen.getByText('builder_manageplan_downgrade_cancel_changes')).toBeInTheDocument();
@@ -81,7 +81,7 @@ describe('DowngradeScheduledAlert', function downgradeScheduledAlertTests() {
     it('should call onCancelChanges when cancel button is clicked', function callsOnCancel() {
       const onCancelChanges = vi.fn();
       renderWithProviders(
-        <DowngradeScheduledAlert {...defaultProps} onCancelChanges={onCancelChanges} />
+        <FreeAutoRenewAlert {...defaultProps} onCancelChanges={onCancelChanges} />
       );
 
       fireEvent.click(screen.getByText('builder_manageplan_downgrade_cancel_changes'));
@@ -92,7 +92,7 @@ describe('DowngradeScheduledAlert', function downgradeScheduledAlertTests() {
     it('should show loading text when isLoading is true', function showsLoadingText() {
       const onCancelChanges = vi.fn();
       renderWithProviders(
-        <DowngradeScheduledAlert
+        <FreeAutoRenewAlert
           {...defaultProps}
           onCancelChanges={onCancelChanges}
           isLoading={true}
@@ -106,7 +106,7 @@ describe('DowngradeScheduledAlert', function downgradeScheduledAlertTests() {
     it('should disable cancel button when isLoading is true', function disablesButton() {
       const onCancelChanges = vi.fn();
       renderWithProviders(
-        <DowngradeScheduledAlert
+        <FreeAutoRenewAlert
           {...defaultProps}
           onCancelChanges={onCancelChanges}
           isLoading={true}
@@ -122,7 +122,7 @@ describe('DowngradeScheduledAlert', function downgradeScheduledAlertTests() {
     it('should call onDismiss when close button is clicked', function callsOnDismiss() {
       const onDismiss = vi.fn();
       const { container } = renderWithProviders(
-        <DowngradeScheduledAlert {...defaultProps} onDismiss={onDismiss} />
+        <FreeAutoRenewAlert {...defaultProps} onDismiss={onDismiss} />
       );
 
       // Find and click the close button (usually an X icon in the Alert)
@@ -139,7 +139,7 @@ describe('DowngradeScheduledAlert', function downgradeScheduledAlertTests() {
   describe('styling', function stylingTests() {
     it('should have margin bottom on wrapper', function hasMarginBottom() {
       const { container } = renderWithProviders(
-        <DowngradeScheduledAlert {...defaultProps} />
+        <FreeAutoRenewAlert {...defaultProps} />
       );
 
       const wrapper = container.firstChild;
@@ -151,7 +151,7 @@ describe('DowngradeScheduledAlert', function downgradeScheduledAlertTests() {
     it('should have correct data-eid on cancel button', function correctDataEid() {
       const onCancelChanges = vi.fn();
       renderWithProviders(
-        <DowngradeScheduledAlert {...defaultProps} onCancelChanges={onCancelChanges} />
+        <FreeAutoRenewAlert {...defaultProps} onCancelChanges={onCancelChanges} />
       );
 
       const button = screen.getByText('builder_manageplan_downgrade_cancel_changes').closest('button');
@@ -162,7 +162,7 @@ describe('DowngradeScheduledAlert', function downgradeScheduledAlertTests() {
     it('should have data-partial attribute on cancel button', function hasDataPartial() {
       const onCancelChanges = vi.fn();
       renderWithProviders(
-        <DowngradeScheduledAlert {...defaultProps} onCancelChanges={onCancelChanges} />
+        <FreeAutoRenewAlert {...defaultProps} onCancelChanges={onCancelChanges} />
       );
 
       const button = screen.getByText('builder_manageplan_downgrade_cancel_changes').closest('button');

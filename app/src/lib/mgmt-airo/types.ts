@@ -53,6 +53,8 @@ export interface AiroSubscription {
   plan?: SubscriptionPlan;
   /** When the subscription renews (new airo builder plans) */
   renewsAt?: string;
+  downgradedPlan?: SubscriptionPlan;
+  downgradedAt?: string;
   createdAt: string;
   updatedAt: string;
 }

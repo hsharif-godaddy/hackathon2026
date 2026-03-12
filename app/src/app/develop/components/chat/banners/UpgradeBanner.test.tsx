@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event';
 
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { renderWithProviders } from '@/tests/test-utils';
+import { SubscriptionPlan } from '@/types/credits';
 import UpgradeBanner from './UpgradeBanner';
 
 // Custom render with i18n messages for testing link interactions
@@ -41,6 +42,17 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(() => ({ data: true, isLoading: false })),
 }));
 
+vi.mock('@/hooks/useSubscription', () => ({
+  useSubscription: vi.fn(() => ({
+    data: null,
+    subscriptions: [],
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  })),
+}));
+
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: any) => selector({ openUpgradeModal: mockOpenUpgradeModal }),
 }));
@@ -49,12 +61,12 @@ vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
 }));
 
-const mockLogImpressionEvent = vi.fn(() => vi.fn());
-const mockLogClickEvent = vi.fn(() => vi.fn());
+const mockLogImpressionEvent = vi.fn((_eid: string) => vi.fn());
+const mockLogClickEvent = vi.fn((_eid: string) => vi.fn());
 
 vi.mock('@/utils/instrumentation', () => ({
-  logImpressionEvent: (eid: string) => mockLogImpressionEvent(eid),
-  logClickEvent: (eid: string) => mockLogClickEvent(eid),
+  logImpressionEvent: (eid: string) => mockLogImpressionEvent(eid) as unknown,
+  logClickEvent: (eid: string) => mockLogClickEvent(eid) as unknown,
 }));
 
 describe('UpgradeBanner', function upgradeBannerTests() {
@@ -80,9 +92,36 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       });
     });
 
-    it('should not render when user has Airo Plus', async function noRenderWithAiroPlus() {
+    it('should not render when user has Airo Plus and higher plans is disabled', async function noRenderWithAiroPlusLegacy() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      const { useSubscription } = await import('@/hooks/useSubscription');
+
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
+      // Mock both flags - feature enabled but higher plans disabled
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'appbuilder-airoplus-upgrade-banner') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-higher-plans') return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+      });
+      // Mock subscription with AiroPlus plan - should not show upgrade when higher plans disabled
+      vi.mocked(useSubscription).mockReturnValue({
+        data: {
+          id: 'sub-123',
+          productId: 'aab-v1',
+          customerId: 'cust-123',
+          plan: SubscriptionPlan.AiroPlus,
+          status: 'active',
+          isTrial: false,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+        },
+        subscriptions: [],
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      });
 
       const { container } = renderWithProviders(<UpgradeBanner appId="test-app" />);
 

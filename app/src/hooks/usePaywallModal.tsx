@@ -1,10 +1,11 @@
 import { JSX, useCallback, useState } from "react";
 import { useQueryClient } from '@tanstack/react-query';
 
-import { SinglePlanUpgradeContainer } from '@/app/develop/components/paywall'
+import { UpgradeContainer } from '@/app/develop/components/paywall'
 import PublishLimitModal from '@/components/layout/PublishLimitModal'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { shipAnalyticsLog } from '@/lib/logging'
+import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
 import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
 import { entitlementPollingService } from '@/services/EntitlementPollingService'
@@ -85,6 +86,7 @@ export function usePaywallModal({
   const { data: isAiroPlusPaywallEnabled } = useSwitchboard('appbuilder-airoplus-paywall')
   const { data: isPaywallEnabledInMarket } = useSwitchboard('appbuilder-airoplus-markets')
   const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants')
+  const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(appId)
   const site = useSiteStore((state) => (appId ? state.getSite(appId) : null))
 
@@ -251,7 +253,7 @@ export function usePaywallModal({
           onUpgrade={() => {
             setShowPublishLimitModal(false)
             setPublishLimitData(null)
-            setShowAiroPlusPaywall(true)
+            openUpgradeModal('publish_limit.upgrade_plan', PAYWALL_ITC.UPGRADE)
             shipAnalyticsLog('publish.limit.modal.upgrade_clicked', {
               appId,
               appName: site?.name,
@@ -265,7 +267,7 @@ export function usePaywallModal({
     if (!showAiroPlusPaywall) return null
 
     return (
-      <SinglePlanUpgradeContainer
+      <UpgradeContainer
         source={source}
         itc={itc}
         onErrorClick={async () => {
@@ -287,7 +289,7 @@ export function usePaywallModal({
         onSuccessClick={handlePurchaseSuccess}
       />
     )
-  }, [showAiroPlusPaywall, showPublishLimitModal, publishLimitData, appId, site?.name, source, itc, handlePurchaseSuccess])
+  }, [showAiroPlusPaywall, showPublishLimitModal, publishLimitData, appId, site?.name, source, itc, handlePurchaseSuccess, openUpgradeModal])
 
   return {
     checkAndShowPaywall,

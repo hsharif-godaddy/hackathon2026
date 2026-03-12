@@ -23,7 +23,7 @@ interface DowngradeModalProps {
 }
 
 /**
- * Modal for confirming downgrade from Starter to Free plan
+ * Modal for confirming downgrade from paid plan to Free plan
  */
 export default function DowngradeModal({
   planName,
@@ -132,7 +132,7 @@ export default function DowngradeModal({
             design="primary"
             data-partial="componentAiro"
             data-eid={generateClickEID('manageplan.buttons.downgrade_keep')}
-            text={t('builder_manageplan_downgrade_keep')}
+            text={t('builder_manageplan_downgrade_keep_plan', { currentPlan: planName })}
             onClick={onClose}
             disabled={isLoading}
           />

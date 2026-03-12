@@ -10,12 +10,14 @@ import text from '@ux/text';
 
 import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
+import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
-import { PAYWALL_ITC } from '@/lib/paywall/shared';
+import { canUpgradePlan, PAYWALL_ITC } from '@/lib/paywall/shared';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { getPlanFromSubscription } from '@/utils/credits';
 import { generateClickEID } from '@/utils/instrumentation';
 
 interface HeaderUpgradeButtonProps {
@@ -33,10 +35,15 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
 
   const { data: featureEnabled, isLoading: isFeatureLoading } = useSwitchboard('appbuilder-airoplus-upgrade-button');
   const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants');
+  const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans');
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(currentAppId || undefined);
+  const { data: subscription } = useSubscription();
+  const currentPlan = subscription ? getPlanFromSubscription(subscription) : undefined;
 
   // Only show on develop page, when feature enabled, and user doesn't have paid plan
-  if (!isDevelopPage || isFeatureLoading || isPaywallLoading || !featureEnabled || !showPaywall) return null;
+  // With higher plans enabled, also show for non-Ultimate paid users
+  if (!isDevelopPage || isFeatureLoading || isPaywallLoading || !featureEnabled ||
+      (!showPaywall && !canUpgradePlan(currentPlan, !!isHigherPlansEnabled))) return null;
 
   const handleUpgradeClick = () => {
     setOpen(false);

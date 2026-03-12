@@ -77,35 +77,25 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
     subscriptionId: isGrantsEnabled ? subscription?.id : undefined,
   })
 
-  // Log impression when popover opens
   useEffect(function logPopoverImpression() {
     if (open) {
       logImpressionEvent('usage_gauge.popover.view')()
     }
   }, [open])
 
-  // Translate the day key with time parameter (e.g., "today at {time}")
   const translatedResetTime = resetTimeData
     ? t(`builder_usage_limit_reset_${resetTimeData.dayKey}`, { time: resetTimeData.timeString })
     : null
 
   const { data: purchaseEnabled } = useSwitchboard('appbuilder-usage-purchase')
 
-  // Calculate plan info
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : SubscriptionPlan.None
-  const isFreePlan = currentPlan === SubscriptionPlan.Free || currentPlan === SubscriptionPlan.None
-  const builderEntitlementId = subscription?.builderEntitlementId
 
-  // Disable purchase buttons when grants enabled but entitlement not yet available
-  const isPurchaseDisabled = isGrantsEnabled === true && !builderEntitlementId
-
-  // Calculate percentage for gauge
   const totalCreditsSpent = grants?.reduce((sum, g) => sum + getEffectiveCreditsSpent(g.creditsSpent, g.creditsMax), 0) ?? 0
   const totalCreditsMax = grants?.reduce((sum, g) => sum + g.creditsMax, 0) ?? 0
   const grantsPercentage = totalCreditsMax > 0 ? (totalCreditsSpent / totalCreditsMax) * 100 : 0
   const percentage = isGrantsEnabled ? grantsPercentage : (data ? Math.min(data.percentage, 100) : 0)
 
-  // Event handlers
   const handleUpgradeClick = () => {
     openUpgradeModal('usage_gauge.upgrade', USAGE_GAUGE_ITC.UPGRADE)
     setOpen(false)
@@ -176,10 +166,8 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
         {isGrantsEnabled ? (
           <GrantsPopoverContent
             grants={grants}
-            isFreePlan={isFreePlan}
             onUpgradeClick={handleUpgradeClick}
             onBuyCreditsClick={handleBuyCreditsClick}
-            disabled={isPurchaseDisabled}
           />
         ) : (
           <LegacyPopoverContent

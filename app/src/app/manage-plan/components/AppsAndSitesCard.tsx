@@ -402,7 +402,6 @@ export default function AppsAndSitesCard({
                     values={{
                       planName,
                       limit: publishLimit,
-                      strong: (chunks) => <strong>{chunks}</strong>,
                       upgradeLink: (chunks) => (
                         <Button
                           design="inline"
@@ -412,6 +411,7 @@ export default function AppsAndSitesCard({
                           text={chunks.toString()}
                         />
                       ),
+                      strong: (chunks) => <strong>{chunks}</strong>
                     }}
                   />
                 ) : (

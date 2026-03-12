@@ -6,6 +6,7 @@ import { fireEvent, screen } from '@testing-library/react';
 import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
 import { renderWithProviders } from '@/tests/test-utils';
 import { SubscriptionPlan } from '@/types/credits';
+import PublishLimitModal from './PublishLimitModal';
 
 const mockPush = vi.fn();
 
@@ -18,7 +19,12 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@/hooks/useTranslations', () => ({
-  useTranslations: () => (key: string) => key,
+  useTranslations: () => (key: string, params?: Record<string, string>) => {
+    if (params) {
+      return `${key}:${JSON.stringify(params)}`;
+    }
+    return key;
+  },
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
@@ -56,7 +62,6 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: (flag: string) => mockUseSwitchboard(flag),
 }));
 
-// Mock @ux/modal
 vi.mock('@ux/modal', () => ({
   default: ({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) => (
     <div role="dialog" aria-label={title}>
@@ -67,8 +72,6 @@ vi.mock('@ux/modal', () => ({
   ),
 }));
 
-import PublishLimitModal from './PublishLimitModal';
-
 const createMockSite = (overrides: Partial<SiteInfo> = {}): SiteInfo => ({
   id: 'site-123',
   name: 'Test App',
@@ -78,6 +81,10 @@ const createMockSite = (overrides: Partial<SiteInfo> = {}): SiteInfo => ({
   updated_at: '2024-01-01T00:00:00Z',
   ...overrides,
 });
+
+vi.mock('@/utils/credits', () => ({
+  getPlanDisplayLabelKey: vi.fn((plan: string) => `builder_manageplan_plan_${plan}`),
+}));
 
 describe('PublishLimitModal', function publishLimitModalTests() {
   const defaultProps = {
@@ -266,7 +273,8 @@ describe('PublishLimitModal', function publishLimitModalTests() {
         <PublishLimitModal {...defaultProps} onUpgrade={vi.fn()} />
       );
 
-      expect(screen.getByText('builder_publish_limit_plan_info')).toBeInTheDocument();
+      // Translation mock returns key:params format
+      expect(screen.getByText(/builder_publish_limit_plan_info/)).toBeInTheDocument();
     });
 
     it('should show upgrade hint with My Apps link', function showsUpgradeHint() {
@@ -274,8 +282,6 @@ describe('PublishLimitModal', function publishLimitModalTests() {
         <PublishLimitModal {...defaultProps} onUpgrade={vi.fn()} />
       );
 
-      // The FormattedMessage with id builder_publish_limit_upgrade_hint should be rendered
-      // Since we mock translations, it will just show the key
       expect(screen.getByText('builder_publish_limit_upgrade_hint')).toBeInTheDocument();
     });
 

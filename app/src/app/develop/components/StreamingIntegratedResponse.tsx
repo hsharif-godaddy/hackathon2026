@@ -15,7 +15,7 @@ import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { DomainStatus, DomainType } from '@/lib/control-plane/types'
-import { PAYWALL_ITC } from '@/lib/paywall/shared'
+import { canUpgradePlan, PAYWALL_ITC } from '@/lib/paywall/shared'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import type { ChatMessage, StreamingMessage as StreamingMessageType, ToolCall } from '@/stores/useStreamingConversationStore'
 import { SubscriptionPlan } from '@/types/credits'
@@ -105,6 +105,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
   const openCreditsModal = useDevelopPageStore((state) => state.openCreditsModal)
   const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants')
+  const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans')
   const hasSegments = hasValidSegments(message)
   const isComplete = isStreamingMessage(message) ? message.isComplete : true
 
@@ -115,8 +116,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
   })
 
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : SubscriptionPlan.None
-  const isFreePlan = !isSubscriptionLoading && subscription !== undefined &&
-    (currentPlan === SubscriptionPlan.Free || currentPlan === SubscriptionPlan.None)
+  const isNotUltimatePlan = !isSubscriptionLoading && canUpgradePlan(currentPlan, isHigherPlansEnabled === true)
   const builderEntitlementId = subscription?.builderEntitlementId
 
   // Disable purchase buttons when grants enabled but entitlement not yet available
@@ -373,7 +373,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
             actions={isGrantsEnabled && (
               <div className="flex gap-2">
                 {/* When grants enabled: only show upgrade button if user is on free plan (not paid) */}
-                {isFreePlan && (
+                {isNotUltimatePlan && (
                   <Button
                     design="primary"
                     size="sm"
@@ -383,7 +383,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
                   />
                 )}
                 <Button
-                  design={isFreePlan ? 'secondary' : 'primary'}
+                  design={isNotUltimatePlan ? 'secondary' : 'primary'}
                   size="sm"
                   onClick={() => isGrantsEnabled
                     ? openCreditsModal('budget_exceeded.buy_credits', PAYWALL_ITC.CREDITS)

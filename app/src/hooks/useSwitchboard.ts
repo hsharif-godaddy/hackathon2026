@@ -24,6 +24,7 @@ const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'app-builder-app-on-demand-reload': true,
   'appbuilder-domain-purchase': true,
   'appbuilder-transfer-ownership': true,
+  'appbuilder-higher-plans': true,
 };
 
 /**

@@ -210,6 +210,54 @@ export const PLAN_PRIORITY: Record<SubscriptionPlan, number> = {
 };
 
 /**
+ * Check if a user can upgrade their plan
+ *
+ * When higher plans flag is enabled: shows upgrade for all non-Ultimate users (Free→Starter→Professional→Ultimate)
+ * When higher plans flag is disabled: shows upgrade only for Free/None users (legacy Starter upgrade flow)
+ *
+ * @param plan - Current subscription plan
+ * @param isHigherPlansEnabled - Whether appbuilder-higher-plans flag is enabled
+ * @returns True if user should see upgrade CTAs
+ */
+export function canUpgradePlan(
+  plan: SubscriptionPlan | undefined | null,
+  isHigherPlansEnabled: boolean
+): boolean {
+  if (plan == null) return true; // No plan = should show upgrade
+
+  if (isHigherPlansEnabled) {
+    // With higher plans: upgrade available for all non-Ultimate users
+    return plan !== SubscriptionPlan.Ultimate;
+  }
+
+  // Legacy: only Free/None users can upgrade to Starter
+  return plan === SubscriptionPlan.Free || plan === SubscriptionPlan.None;
+}
+
+/**
+ * Plans that require Professional tier or above
+ */
+export const PROFESSIONAL_AND_ABOVE_PLANS = [
+  SubscriptionPlan.Professional,
+  SubscriptionPlan.Ultimate,
+] as const;
+
+/**
+ * Check if a plan is Professional or above
+ *
+ * Used for features gated to Professional/Ultimate tiers (e.g., delegation, transfer).
+ *
+ * @param plan - Subscription plan to check
+ * @returns True if plan is Professional or Ultimate
+ */
+export function isProfessionalOrAbove(
+  plan: SubscriptionPlan | undefined | null
+): boolean {
+  if (plan == null) return false;
+  return (PROFESSIONAL_AND_ABOVE_PLANS as readonly SubscriptionPlan[]).includes(plan);
+}
+
+/**
  * Check if a project matches Airo Plus criteria
  *
  * @param node - Project node to check
@@ -223,4 +271,25 @@ export function isMatchingProject(node: ProjectEdge['node']): boolean {
     node.status === PROJECT_MATCH_CRITERIA.STATUS &&
     node.billing?.plan === PROJECT_MATCH_CRITERIA.PLAN
   );
+}
+
+/**
+ * Check if a plan change is an upgrade (new plan has higher tier than old plan)
+ *
+ * Uses PLAN_PRIORITY to compare: Ultimate > Professional > Starter > Free > AiroPlus > None
+ *
+ * @param oldPlan - Current/previous subscription plan
+ * @param newPlan - Target/new subscription plan
+ * @returns True if newPlan is a higher tier than oldPlan
+ */
+export function isPlanUpgrade(
+  oldPlan: SubscriptionPlan | string | undefined | null,
+  newPlan: SubscriptionPlan | string | undefined | null
+): boolean {
+  if (oldPlan == null || newPlan == null) return false;
+
+  const oldPriority = PLAN_PRIORITY[oldPlan as SubscriptionPlan] ?? 0;
+  const newPriority = PLAN_PRIORITY[newPlan as SubscriptionPlan] ?? 0;
+
+  return newPriority > oldPriority;
 }

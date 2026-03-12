@@ -33,6 +33,7 @@ export async function checkSwitchboardFlag(
       'appbuilder-domain-attach': true,
       'appbuilder-share-links': true,
       'appbuilder-transfer-ownership': true,
+      'appbuilder-higher-plans': true,
     };
 
     if (featureName in localOverrides) {

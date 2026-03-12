@@ -5,7 +5,7 @@ export { default as AppSiteRow } from './AppSiteRow';
 export { default as CreditGrantRow } from './CreditGrantRow';
 export { default as CreditProgressBar } from './CreditProgressBar';
 export { default as DowngradeModal } from './DowngradeModal';
-export { default as DowngradeScheduledAlert } from './DowngradeScheduledAlert';
+export { default as FreeAutoRenewAlert } from './FreeAutoRenewAlert';
 export { default as ManagePlanSkeleton } from './ManagePlanSkeleton';
 export { default as NewAccountZeroState } from './NewAccountZeroState';
 export { default as PageLayout } from './PageLayout';

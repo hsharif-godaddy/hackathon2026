@@ -7,30 +7,33 @@ import Button from '@ux/button'
 import text from '@ux/text'
 import TextLockup from '@ux/text-lockup'
 
+import { useSubscriptionWithPolling } from '@/hooks/useSubscriptionWithPolling'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { canUpgradePlan, isPaidPlanForGrants } from '@/lib/paywall/shared'
 import type { CreditGrant } from '@/types/credits'
-import { getCreditPackGrants, getEffectiveCreditsSpent, getMonthlyPlanGrant } from '@/utils/credits'
+import { getCreditPackGrants, getEffectiveCreditsSpent, getMonthlyPlanGrant, getPlanFromSubscription } from '@/utils/credits'
 import { getRootDomain } from '@/utils/getRootDomain'
 import { generateClickEID } from '@/utils/instrumentation'
 
 interface GrantsPopoverContentProps {
   grants: CreditGrant[] | undefined
-  isFreePlan: boolean
   onUpgradeClick: () => void
   onBuyCreditsClick: () => void
-  /** Disable purchase buttons (e.g., when builderEntitlementId not yet available) */
-  disabled?: boolean
 }
 
 export function GrantsPopoverContent({
   grants,
-  isFreePlan,
   onUpgradeClick,
   onBuyCreditsClick,
-  disabled = false,
 }: GrantsPopoverContentProps) {
   const t = useTranslations()
   const rootDomain = getRootDomain() || 'godaddy.com'
+  const { subscription, isPurchaseDisabled, isGrantsEnabled } = useSubscriptionWithPolling()
+  const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans')
+  const currentPlan = subscription ? getPlanFromSubscription(subscription) : undefined
+  const isFreePlan = !isPaidPlanForGrants(currentPlan, !!isGrantsEnabled)
+  const showUpgrade = canUpgradePlan(currentPlan, isHigherPlansEnabled === true)
 
   // Calculate grant-based data
   const planGrant = grants ? getMonthlyPlanGrant(grants) : undefined
@@ -143,7 +146,7 @@ export function GrantsPopoverContent({
       )}
 
       <Box orientation="vertical" gap="sm">
-        {isFreePlan && (
+        {showUpgrade && (
           <Button
             design="primary"
             size="sm"
@@ -152,17 +155,17 @@ export function GrantsPopoverContent({
             data-eid={generateClickEID('usage_gauge.popover.upgrade')}
             onClick={onUpgradeClick}
             text={t('builder_usage_gauge_upgrade_plan')}
-            disabled={disabled}
+            disabled={isPurchaseDisabled}
           />
         )}
         <Button
-          design={isFreePlan ? 'secondary' : 'primary'}
+          design={showUpgrade ? 'secondary' : 'primary'}
           size="sm"
           data-partial="componentAiro"
           data-eid={generateClickEID('usage_gauge.popover.buy_credits')}
           onClick={onBuyCreditsClick}
           text={t('builder_usage_gauge_buy_credits')}
-          disabled={disabled}
+          disabled={isPurchaseDisabled}
         />
       </Box>
 

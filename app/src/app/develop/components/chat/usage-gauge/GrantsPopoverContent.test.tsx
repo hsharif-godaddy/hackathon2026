@@ -6,12 +6,23 @@ import { screen } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
 import type { CreditGrant } from '@/types/credits';
-import { GrantType } from '@/types/credits';
+import { GrantType, SubscriptionPlan } from '@/types/credits';
 import { GrantsPopoverContent } from './GrantsPopoverContent';
 
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((eid: string) => `appbuilder.${eid}.click`),
 }));
+
+vi.mock('@/hooks/useSubscriptionWithPolling', () => ({
+  useSubscriptionWithPolling: vi.fn(),
+}));
+
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: vi.fn(),
+}));
+
+import { useSubscriptionWithPolling } from '@/hooks/useSubscriptionWithPolling';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 
 vi.mock('@ux/text-lockup', () => ({
   default: ({ eyebrow, title }: { eyebrow: string; title: ReactNode }) => (
@@ -39,14 +50,49 @@ const createMockGrant = (overrides: Partial<CreditGrant> = {}): CreditGrant => (
 
 const defaultProps = {
   grants: [createMockGrant()],
-  isFreePlan: true,
   onUpgradeClick: vi.fn(),
   onBuyCreditsClick: vi.fn(),
+};
+
+const mockSubscription = (plan: SubscriptionPlan = SubscriptionPlan.Free, entitlementId?: string) => {
+  vi.mocked(useSubscriptionWithPolling).mockReturnValue({
+    subscription: {
+      id: 'sub-123',
+      customerId: 'cust-123',
+      productId: 'prod-123',
+      status: 'active',
+      isTrial: false,
+      renewsAt: '2026-02-15T00:00:00Z',
+      createdAt: '2026-01-15T00:00:00Z',
+      updatedAt: '2026-01-15T00:00:00Z',
+      plan,
+      builderEntitlementId: entitlementId,
+    },
+    subscriptions: [],
+    isLoading: false,
+    isError: false,
+    builderEntitlementId: entitlementId,
+    isPurchaseDisabled: !entitlementId,
+    isGrantsEnabled: true,
+    entitlementPollingTimedOut: false,
+  });
+};
+
+const mockHigherPlansFlag = (enabled: boolean) => {
+  vi.mocked(useSwitchboard).mockReturnValue({
+    data: enabled,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  } as unknown as ReturnType<typeof useSwitchboard>);
 };
 
 describe('GrantsPopoverContent', function grantsPopoverContentTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
+    mockSubscription(SubscriptionPlan.Free, 'entitlement-123');
+    mockHigherPlansFlag(true);
   });
 
   describe('rendering', function renderingTests() {
@@ -100,32 +146,37 @@ describe('GrantsPopoverContent', function grantsPopoverContentTests() {
     });
 
     it('should render paid reset message for paid plans', function renderPaidResetInfo() {
-      renderWithProviders(
-        <GrantsPopoverContent
-          {...defaultProps}
-          isFreePlan={false}
-        />
-      );
+      mockSubscription(SubscriptionPlan.Starter, 'entitlement-123');
+
+      renderWithProviders(<GrantsPopoverContent {...defaultProps} />);
 
       expect(screen.getByText(/builder_usage_gauge_reset_paid/)).toBeInTheDocument();
     });
   });
 
   describe('free plan UI', function freePlanTests() {
-    it('should render upgrade button for free plan', function renderUpgradeButton() {
-      renderWithProviders(<GrantsPopoverContent {...defaultProps} isFreePlan={true} />);
+    it('should render upgrade button for free plan when higher plans flag is on', function renderUpgradeButton() {
+      mockSubscription(SubscriptionPlan.Free, 'entitlement-123');
+      mockHigherPlansFlag(true);
+
+      renderWithProviders(<GrantsPopoverContent {...defaultProps} />);
 
       expect(screen.getByText('builder_usage_gauge_upgrade_plan')).toBeInTheDocument();
     });
 
-    it('should render buy credits button as secondary for free plan', function renderBuyCreditsSecondary() {
-      renderWithProviders(<GrantsPopoverContent {...defaultProps} isFreePlan={true} />);
+    it('should render buy credits button as secondary for free plan when upgrade shown', function renderBuyCreditsSecondary() {
+      mockSubscription(SubscriptionPlan.Free, 'entitlement-123');
+      mockHigherPlansFlag(true);
+
+      renderWithProviders(<GrantsPopoverContent {...defaultProps} />);
 
       const buyCreditsButton = screen.getByText('builder_usage_gauge_buy_credits').closest('button');
       expect(buyCreditsButton).toHaveClass('ux-button-secondary');
     });
 
     it('should call onUpgradeClick when upgrade button is clicked', async function clickUpgrade() {
+      mockSubscription(SubscriptionPlan.Free, 'entitlement-123');
+      mockHigherPlansFlag(true);
       const onUpgradeClick = vi.fn();
       const { user } = renderWithProviders(
         <GrantsPopoverContent {...defaultProps} onUpgradeClick={onUpgradeClick} />
@@ -137,28 +188,63 @@ describe('GrantsPopoverContent', function grantsPopoverContentTests() {
     });
   });
 
-  describe('paid plan UI', function paidPlanTests() {
-    it('should not render upgrade button for paid plan', function noUpgradeButton() {
-      renderWithProviders(
-        <GrantsPopoverContent
-          {...defaultProps}
-          isFreePlan={false}
-        />
-      );
+  describe('Ultimate plan UI', function ultimatePlanTests() {
+    it('should not render upgrade button for Ultimate plan', function noUpgradeButton() {
+      mockSubscription(SubscriptionPlan.Ultimate, 'entitlement-123');
+      mockHigherPlansFlag(true);
+
+      renderWithProviders(<GrantsPopoverContent {...defaultProps} />);
 
       expect(screen.queryByText('builder_usage_gauge_upgrade_plan')).not.toBeInTheDocument();
     });
 
-    it('should render buy credits button as primary for paid plan', function renderBuyCreditsAsPrimary() {
-      renderWithProviders(
-        <GrantsPopoverContent
-          {...defaultProps}
-          isFreePlan={false}
-        />
-      );
+    it('should render buy credits button as primary for Ultimate plan', function renderBuyCreditsAsPrimary() {
+      mockSubscription(SubscriptionPlan.Ultimate, 'entitlement-123');
+      mockHigherPlansFlag(true);
+
+      renderWithProviders(<GrantsPopoverContent {...defaultProps} />);
 
       const buyCreditsButton = screen.getByText('builder_usage_gauge_buy_credits').closest('button');
       expect(buyCreditsButton).toHaveClass('ux-button-primary');
+    });
+  });
+
+  describe('higher plans upgrade UI', function higherPlansTests() {
+    it('should render upgrade button for Starter plan when higher plans flag is on', function starterUpgrade() {
+      mockSubscription(SubscriptionPlan.Starter, 'entitlement-123');
+      mockHigherPlansFlag(true);
+
+      renderWithProviders(<GrantsPopoverContent {...defaultProps} />);
+
+      expect(screen.getByText('builder_usage_gauge_upgrade_plan')).toBeInTheDocument();
+    });
+
+    it('should render upgrade button for Professional plan when higher plans flag is on', function professionalUpgrade() {
+      mockSubscription(SubscriptionPlan.Professional, 'entitlement-123');
+      mockHigherPlansFlag(true);
+
+      renderWithProviders(<GrantsPopoverContent {...defaultProps} />);
+
+      expect(screen.getByText('builder_usage_gauge_upgrade_plan')).toBeInTheDocument();
+    });
+
+    it('should not render upgrade button for Ultimate plan when higher plans flag is on', function ultimateNoUpgrade() {
+      mockSubscription(SubscriptionPlan.Ultimate, 'entitlement-123');
+      mockHigherPlansFlag(true);
+
+      renderWithProviders(<GrantsPopoverContent {...defaultProps} />);
+
+      expect(screen.queryByText('builder_usage_gauge_upgrade_plan')).not.toBeInTheDocument();
+    });
+
+    it('should render buy credits as secondary when upgrade is shown', function buyCreditsSecondaryWithUpgrade() {
+      mockSubscription(SubscriptionPlan.Starter, 'entitlement-123');
+      mockHigherPlansFlag(true);
+
+      renderWithProviders(<GrantsPopoverContent {...defaultProps} />);
+
+      const buyCreditsButton = screen.getByText('builder_usage_gauge_buy_credits').closest('button');
+      expect(buyCreditsButton).toHaveClass('ux-button-secondary');
     });
   });
 

@@ -35,6 +35,30 @@ vi.mock('@/hooks/useSubscription', () => ({
   })),
 }));
 
+vi.mock('@/hooks/useSubscriptionWithPolling', () => ({
+  useSubscriptionWithPolling: vi.fn(() => ({
+    subscription: {
+      id: 'sub-123',
+      customerId: 'cust-123',
+      productId: 'prod-123',
+      status: 'active',
+      isTrial: false,
+      renewsAt: '2026-02-15T00:00:00Z',
+      createdAt: '2026-01-15T00:00:00Z',
+      updatedAt: '2026-01-15T00:00:00Z',
+      plan: SubscriptionPlan.Free,
+      builderEntitlementId: 'entitlement-123',
+    },
+    subscriptions: [],
+    isLoading: false,
+    isError: false,
+    builderEntitlementId: 'entitlement-123',
+    isPurchaseDisabled: false,
+    isGrantsEnabled: true,
+    entitlementPollingTimedOut: false,
+  })),
+}));
+
 vi.mock('@/hooks/useCreditGrants', () => ({
   useCreditGrants: vi.fn(() => ({
     data: [
@@ -503,8 +527,22 @@ describe('UsageGauge', function usageGaugeTests() {
       expect(mockOpenCreditsModal).toHaveBeenCalledWith('usage_gauge.buy_credits', PAYWALL_ITC.CREDITS);
     });
 
-    it('should not render Upgrade Plan button for paid plan users', async function noUpgradeForPaidPlan() {
+    it('should not render Upgrade Plan button for paid plan users when higher plans is disabled', async function noUpgradeForPaidPlan() {
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
       const { useSubscription } = await import('@/hooks/useSubscription');
+      const { useSubscriptionWithPolling } = await import('@/hooks/useSubscriptionWithPolling');
+
+      // Mock appbuilder-higher-plans to false to test legacy behavior
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'app-builder-grants') {
+          return { data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
+        }
+        if (flag === 'appbuilder-higher-plans') {
+          return { data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
+        }
+        return { data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
+      });
+
       vi.mocked(useSubscription).mockReturnValue({
         data: {
           id: 'sub-123',
@@ -525,6 +563,28 @@ describe('UsageGauge', function usageGaugeTests() {
         refetch: vi.fn(),
       });
 
+      vi.mocked(useSubscriptionWithPolling).mockReturnValue({
+        subscription: {
+          id: 'sub-123',
+          customerId: 'cust-123',
+          productId: 'prod-123',
+          status: 'active',
+          isTrial: false,
+          renewsAt: '2026-02-15T00:00:00Z',
+          createdAt: '2026-01-15T00:00:00Z',
+          updatedAt: '2026-01-15T00:00:00Z',
+          plan: SubscriptionPlan.Starter,
+          builderEntitlementId: 'entitlement-123',
+        },
+        subscriptions: [],
+        isLoading: false,
+        isError: false,
+        builderEntitlementId: 'entitlement-123',
+        isPurchaseDisabled: false,
+        isGrantsEnabled: true,
+        entitlementPollingTimedOut: false,
+      });
+
       const { user, container } = renderWithProviders(<UsageGauge appId="test-app" />);
 
       await waitFor(function waitForButton() {
@@ -537,8 +597,79 @@ describe('UsageGauge', function usageGaugeTests() {
         expect(screen.getByText('builder_usage_gauge_buy_credits')).toBeInTheDocument();
       });
 
-      // Upgrade button should not be present for paid plans
+      // Upgrade button should not be present for paid plans when higher plans is disabled
       expect(screen.queryByText('builder_usage_gauge_upgrade_plan')).not.toBeInTheDocument();
+    });
+
+    it('should render Upgrade Plan button for paid plan users when higher plans is enabled', async function upgradeForPaidPlanWithHigherPlans() {
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      const { useSubscription } = await import('@/hooks/useSubscription');
+      const { useSubscriptionWithPolling } = await import('@/hooks/useSubscriptionWithPolling');
+
+      // Mock appbuilder-higher-plans to true
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'app-builder-grants') {
+          return { data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
+        }
+        if (flag === 'appbuilder-higher-plans') {
+          return { data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
+        }
+        return { data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
+      });
+
+      vi.mocked(useSubscription).mockReturnValue({
+        data: {
+          id: 'sub-123',
+          productId: 'aab-v1',
+          customerId: 'cust-123',
+          status: 'active',
+          isTrial: false,
+          entitlementId: 'ent-123',
+          builderEntitlementId: 'builder-ent-123',
+          plan: SubscriptionPlan.Starter,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+        },
+        subscriptions: [],
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      vi.mocked(useSubscriptionWithPolling).mockReturnValue({
+        subscription: {
+          id: 'sub-123',
+          customerId: 'cust-123',
+          productId: 'prod-123',
+          status: 'active',
+          isTrial: false,
+          renewsAt: '2026-02-15T00:00:00Z',
+          createdAt: '2026-01-15T00:00:00Z',
+          updatedAt: '2026-01-15T00:00:00Z',
+          plan: SubscriptionPlan.Starter,
+          builderEntitlementId: 'entitlement-123',
+        },
+        subscriptions: [],
+        isLoading: false,
+        isError: false,
+        builderEntitlementId: 'entitlement-123',
+        isPurchaseDisabled: false,
+        isGrantsEnabled: true,
+        entitlementPollingTimedOut: false,
+      });
+
+      const { user, container } = renderWithProviders(<UsageGauge appId="test-app" />);
+
+      await waitFor(function waitForButton() {
+        expect(container.querySelector('button')).toBeInTheDocument();
+      });
+
+      await user.hover(container.querySelector('button')!);
+
+      await waitFor(function waitForUpgradeButton() {
+        expect(screen.getByText('builder_usage_gauge_upgrade_plan')).toBeInTheDocument();
+      });
     });
 
     it('should render loading state when subscription is loading', async function loadingSubscription() {

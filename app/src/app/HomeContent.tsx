@@ -10,7 +10,7 @@ import HeroSection from '@/app/components/HeroSection'
 import InfraSection from '@/app/components/InfraSection'
 import StartSection from '@/app/components/StartSection'
 import { HeroSectionRef } from '@/app/components/types'
-import { SinglePlanUpgradeContainer } from '@/app/develop/components/paywall'
+import { UpgradeContainer } from '@/app/develop/components/paywall'
 import { MockLoginDialog } from '@/components/auth/MockLogin'
 import FAQSection from '@/components/layout/FAQSection'
 import FeaturesSection from '@/components/layout/Features'
@@ -380,7 +380,7 @@ function HomeContentInner({ serverFeatures }: HomeContentProps) {
       </div>
 
       {showUpgradeModal && (
-        <SinglePlanUpgradeContainer
+        <UpgradeContainer
           source={upgradeModalSource ?? 'unknown'}
           itc={upgradeModalItc ?? undefined}
           onSuccessClick={() => {

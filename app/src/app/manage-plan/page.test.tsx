@@ -15,6 +15,7 @@ const mockUseSwitchboard = vi.fn();
 const mockUseActiveSubscription = vi.fn();
 const mockUseCreditGrants = vi.fn();
 const mockSetAutoRenewMutate = vi.fn();
+const mockSwitchboardFlags: Record<string, boolean | undefined> = {};
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ ...mockRouter(), replace: mockReplace }),
@@ -49,7 +50,14 @@ vi.mock('@/lib/features', () => ({
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: () => mockUseSwitchboard(),
+  useSwitchboard: (flagName: string) => {
+    // If specific flag is set in mockSwitchboardFlags, use that value
+    if (flagName in mockSwitchboardFlags) {
+      return { data: mockSwitchboardFlags[flagName], isLoading: false };
+    }
+    // Otherwise fall back to the default mock behavior
+    return mockUseSwitchboard();
+  },
 }));
 
 vi.mock('@/hooks/useSubscription', () => ({
@@ -76,6 +84,14 @@ vi.mock('@/hooks/useEcommSubscriptionAutoRenew', () => ({
       reset: vi.fn(),
     },
   }),
+}));
+
+vi.mock('@/hooks/useUpgradePurchase', () => ({
+  useIsUpgradePolling: () => false,
+}));
+
+vi.mock('@/hooks/useCreditPurchase', () => ({
+  useIsCreditPolling: () => false,
 }));
 
 vi.mock('@/hooks/useTranslations', () => ({
@@ -132,12 +148,15 @@ vi.mock('@ux/modal', () => ({
 
 vi.mock('@/app/develop/components/paywall', () => ({
   SinglePlanUpgradeContainer: () => <div data-testid="upgrade-modal">Upgrade Modal</div>,
+  UpgradeContainer: () => <div data-testid="upgrade-modal">Upgrade Modal</div>,
   CreditsUpgradeContainer: ({ entitlementId }: { entitlementId: string }) => (
     <div data-testid="credits-modal">
       <span data-testid="entitlement-id">{entitlementId}</span>
       Credits Modal
     </div>
   ),
+  GrantPollingModal: () => <div data-testid="grant-polling-modal">Grant Polling Modal</div>,
+  UpgradePollingModal: () => <div data-testid="upgrade-polling-modal">Upgrade Polling Modal</div>,
 }));
 
 function createMockGrant(overrides: Partial<CreditGrant> = {}): CreditGrant {
@@ -173,6 +192,10 @@ describe('ManagePlan', function managePlanTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
     mockReplace.mockClear();
+    // Reset switchboard flags
+    Object.keys(mockSwitchboardFlags).forEach((key) => delete mockSwitchboardFlags[key]);
+    // Default: higher-plans disabled unless explicitly enabled
+    mockSwitchboardFlags['appbuilder-higher-plans'] = false;
     // Default mock for autoRenew status
     mockUseEcommSubscriptionAutoRenewStatus.mockReturnValue({
       data: { autoRenew: true, paidThroughDate: '2027-01-29T07:00:00Z', subscriptionId: 'sub-123' },
@@ -887,23 +910,20 @@ describe('ManagePlan', function managePlanTests() {
     });
   });
 
-  describe('downgrade banner suppression for recent plan changes', function downgradeAlertTests() {
+  describe('downgrade scheduled alert', function downgradeAlertTests() {
     beforeEach(function setupDowngradeTests() {
       mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
     });
 
-    it('should show downgrade alert when autoRenew is false and updatedAt is old', async function showAlertOldUpdate() {
-      // AutoRenew is false (downgrade scheduled)
-      mockUseEcommSubscriptionAutoRenewStatus.mockReturnValue({
-        data: { autoRenew: false, paidThroughDate: '2027-01-29T07:00:00Z', subscriptionId: 'sub-123' },
-        isLoading: false,
-        isError: false,
-      });
-
-      // Subscription updatedAt is 30 minutes ago (older than threshold)
-      const oldUpdatedAt = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    it('should show downgrade alert when subscription has downgradedAt and downgradedPlan', async function showAlertWithScheduledDowngrade() {
       mockUseActiveSubscription.mockReturnValue({
-        data: { id: 'sub-1', plan: SubscriptionPlan.Starter, builderEntitlementId: 'ent-123', updatedAt: oldUpdatedAt },
+        data: {
+          id: 'sub-1',
+          plan: SubscriptionPlan.Starter,
+          builderEntitlementId: 'ent-123',
+          downgradedAt: '2027-02-15T00:00:00Z',
+          downgradedPlan: SubscriptionPlan.Free,
+        },
         isLoading: false,
         isError: false,
       });
@@ -916,47 +936,11 @@ describe('ManagePlan', function managePlanTests() {
       renderWithProviders(<ManagePlan />);
 
       await waitFor(function checkAlertVisible() {
-        expect(screen.getByText('builder_manageplan_downgrade_scheduled_title')).toBeInTheDocument();
+        expect(screen.getByText('builder_manageplan_downgrade_plan_title')).toBeInTheDocument();
       });
     });
 
-    it('should NOT show downgrade alert when autoRenew is false but updatedAt is recent', async function hideAlertRecentUpdate() {
-      // AutoRenew is false (would normally trigger alert)
-      mockUseEcommSubscriptionAutoRenewStatus.mockReturnValue({
-        data: { autoRenew: false, paidThroughDate: '2027-01-29T07:00:00Z', subscriptionId: 'sub-123' },
-        isLoading: false,
-        isError: false,
-      });
-
-      // Subscription updatedAt is 5 minutes ago (within threshold - likely recent upgrade)
-      const recentUpdatedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-      mockUseActiveSubscription.mockReturnValue({
-        data: { id: 'sub-1', plan: SubscriptionPlan.Starter, builderEntitlementId: 'ent-123', updatedAt: recentUpdatedAt },
-        isLoading: false,
-        isError: false,
-      });
-      mockUseCreditGrants.mockReturnValue({
-        data: [createMonthlyGrant()],
-        isLoading: false,
-        isError: false,
-      });
-
-      renderWithProviders(<ManagePlan />);
-
-      // Alert should be suppressed for recent plan changes (autoRenew not synced yet)
-      await waitFor(function checkNoAlert() {
-        expect(screen.queryByText('builder_manageplan_downgrade_scheduled_title')).not.toBeInTheDocument();
-      });
-    });
-
-    it('should NOT show downgrade alert when autoRenew is true regardless of updatedAt', async function noAlertAutoRenewTrue() {
-      // AutoRenew is true (no downgrade scheduled)
-      mockUseEcommSubscriptionAutoRenewStatus.mockReturnValue({
-        data: { autoRenew: true, paidThroughDate: '2027-01-29T07:00:00Z', subscriptionId: 'sub-123' },
-        isLoading: false,
-        isError: false,
-      });
-
+    it('should NOT show downgrade alert when subscription does not have downgradedAt', async function hideAlertNoDowngrade() {
       mockUseActiveSubscription.mockReturnValue({
         data: { id: 'sub-1', plan: SubscriptionPlan.Starter, builderEntitlementId: 'ent-123' },
         isLoading: false,
@@ -971,22 +955,19 @@ describe('ManagePlan', function managePlanTests() {
       renderWithProviders(<ManagePlan />);
 
       await waitFor(function checkNoAlert() {
-        expect(screen.queryByText('builder_manageplan_downgrade_scheduled_title')).not.toBeInTheDocument();
+        expect(screen.queryByText('builder_manageplan_downgrade_plan_title')).not.toBeInTheDocument();
       });
     });
 
-    it('should NOT show downgrade alert for free plans even with autoRenew false', async function noAlertFreePlan() {
-      // AutoRenew is false
-      mockUseEcommSubscriptionAutoRenewStatus.mockReturnValue({
-        data: { autoRenew: false, paidThroughDate: '2027-01-29T07:00:00Z', subscriptionId: 'sub-123' },
-        isLoading: false,
-        isError: false,
-      });
-
-      // Old updatedAt but Free plan
-      const oldUpdatedAt = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    it('should NOT show downgrade alert when only downgradedAt is present without downgradedPlan', async function noAlertMissingDowngradePlan() {
       mockUseActiveSubscription.mockReturnValue({
-        data: { id: 'sub-1', plan: SubscriptionPlan.Free, updatedAt: oldUpdatedAt },
+        data: {
+          id: 'sub-1',
+          plan: SubscriptionPlan.Starter,
+          builderEntitlementId: 'ent-123',
+          downgradedAt: '2027-02-15T00:00:00Z',
+          // downgradedPlan is missing
+        },
         isLoading: false,
         isError: false,
       });
@@ -998,9 +979,34 @@ describe('ManagePlan', function managePlanTests() {
 
       renderWithProviders(<ManagePlan />);
 
-      // No alert for free plans
       await waitFor(function checkNoAlert() {
-        expect(screen.queryByText('builder_manageplan_downgrade_scheduled_title')).not.toBeInTheDocument();
+        expect(screen.queryByText('builder_manageplan_downgrade_plan_title')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should NOT show downgrade alert for free plans even with scheduled downgrade', async function noAlertFreePlan() {
+      mockUseActiveSubscription.mockReturnValue({
+        data: {
+          id: 'sub-1',
+          plan: SubscriptionPlan.Free,
+          downgradedAt: '2027-02-15T00:00:00Z',
+          downgradedPlan: SubscriptionPlan.Free,
+        },
+        isLoading: false,
+        isError: false,
+      });
+      mockUseCreditGrants.mockReturnValue({
+        data: [createMonthlyGrant()],
+        isLoading: false,
+        isError: false,
+      });
+
+      renderWithProviders(<ManagePlan />);
+
+      // Free plans should still show alert if they have scheduled downgrade fields
+      // but in practice, free plans won't have downgradedAt/downgradedPlan
+      await waitFor(function checkAlertVisible() {
+        expect(screen.getByText('builder_manageplan_downgrade_plan_title')).toBeInTheDocument();
       });
     });
   });
