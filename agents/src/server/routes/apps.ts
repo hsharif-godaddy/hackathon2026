@@ -15,7 +15,7 @@
 
 import { Router, Request, Response, IRouter } from 'express';
 import { existsSync, writeFileSync, createWriteStream, mkdirSync } from 'fs';
-import { join as pathJoin } from 'path';
+import { basename, dirname, join as pathJoin, normalize, sep } from 'path';
 
 import multer from 'multer';
 import { AppRepository } from '../../database/index.js';
@@ -45,6 +45,23 @@ const astStyleEditor = new ASTStyleEditor();
 const astTextEditor = new ASTTextEditor();
 
 const logger = Logger.create({ service: 'apps-routes' });
+
+// Local dev runs agents on the host and preview in Docker. When SCREENSHOT_DIR is
+// not set, store screenshots in the app's agent directory so they don't end up in
+// the preview app workspace/container path.
+function resolveScreenshotDir(appPath: string): string {
+  if (process.env.SCREENSHOT_DIR) {
+    return process.env.SCREENSHOT_DIR;
+  }
+
+  const normalizedAppPath = normalize(appPath);
+
+  if (basename(normalizedAppPath) === 'preview') {
+    return `${dirname(normalizedAppPath)}${sep}agent`;
+  }
+
+  return normalizedAppPath;
+}
 
 /**
  * GET /apps - List all apps (scoped to authenticated user's siteId)
@@ -1085,7 +1102,8 @@ router.post('/suggest-name', async (req: Request, res: Response) => {
 
 /**
  * GET /apps/:id/screenshot - Get app screenshot
- * Serves the screenshot.png file from the app directory or a 404 if not found
+ * Serves the screenshot.png file from SCREENSHOT_DIR when configured, otherwise
+ * from the local agent directory for preview workspaces or the app directory.
  */
 router.get('/:id/screenshot', (req: Request, res: Response) => {
   try {
@@ -1099,7 +1117,7 @@ router.get('/:id/screenshot', (req: Request, res: Response) => {
       return res.status(404).json({ error: 'App not found' });
     }
 
-    const screenshotDir = process.env.SCREENSHOT_DIR || app.path;
+    const screenshotDir = resolveScreenshotDir(app.path);
     const screenshotPath = pathJoin(screenshotDir, `${app.id}-screenshot.png`);
 
     if (existsSync(screenshotPath)) {
@@ -1117,7 +1135,8 @@ router.get('/:id/screenshot', (req: Request, res: Response) => {
 /**
  * POST /apps/:id/screenshot - Upload app screenshot
  * Accepts a PNG file and saves it with appId prefix
- * Uses SCREENSHOT_DIR environment variable if set, otherwise saves to app directory
+ * Uses SCREENSHOT_DIR environment variable if set, otherwise saves to the local
+ * agent directory for preview workspaces or the app directory.
  */
 const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
@@ -1146,8 +1165,10 @@ router.post('/:id/screenshot', upload.single('screenshot'), (req: Request, res: 
       return res.status(404).json({ error: 'App not found' });
     }
 
-    const screenshotDir = process.env.SCREENSHOT_DIR || app.path;
+    const screenshotDir = resolveScreenshotDir(app.path);
     const screenshotPath = pathJoin(screenshotDir, `${app.id}-screenshot.png`);
+
+    mkdirSync(screenshotDir, { recursive: true });
 
     // Write the file buffer to disk
     writeFileSync(screenshotPath, req.file.buffer);
