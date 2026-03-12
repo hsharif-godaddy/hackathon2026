@@ -243,6 +243,97 @@ describe('POST /api/domains/search', () => {
     });
   });
 
+  describe('exact match availability status filtering', () => {
+    it('should include exact match with AvailabilityStatus 1000', async () => {
+      mockFindExact.mockResolvedValue({
+        ExactMatchDomain: {
+          Fqdn: 'mybrand.com',
+          NameWithoutExtension: 'mybrand',
+          Tld: 'com',
+          AvailabilityStatus: 1000,
+          ProductId: 42,
+        },
+        Products: [],
+      });
+      mockFindSpins.mockResolvedValue({ RecommendedDomains: [], Products: [] });
+
+      const response = await POST(createRequest({ query: 'mybrand' }));
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.domains).toHaveLength(1);
+      expect(data.domains[0].fqdn).toBe('mybrand.com');
+      expect(data.domains[0].isExactMatch).toBe(true);
+    });
+
+    it('should exclude exact match with AvailabilityStatus 1001', async () => {
+      mockFindExact.mockResolvedValue({
+        ExactMatchDomain: {
+          Fqdn: 'mybrand.com',
+          NameWithoutExtension: 'mybrand',
+          Tld: 'com',
+          AvailabilityStatus: 1001,
+          ProductId: 42,
+        },
+        Products: [],
+      });
+      mockFindSpins.mockResolvedValue({ RecommendedDomains: [], Products: [] });
+
+      const response = await POST(createRequest({ query: 'mybrand' }));
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.domains).toHaveLength(0);
+    });
+
+    it('should exclude exact match with other non-1000 status codes', async () => {
+      mockFindExact.mockResolvedValue({
+        ExactMatchDomain: {
+          Fqdn: 'mybrand.com',
+          NameWithoutExtension: 'mybrand',
+          Tld: 'com',
+          AvailabilityStatus: 2000,
+          ProductId: 42,
+        },
+        Products: [],
+      });
+      mockFindSpins.mockResolvedValue({ RecommendedDomains: [], Products: [] });
+
+      const response = await POST(createRequest({ query: 'mybrand' }));
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.domains).toHaveLength(0);
+    });
+
+    it('should still return spins when exact match has status 1001', async () => {
+      mockFindExact.mockResolvedValue({
+        ExactMatchDomain: {
+          Fqdn: 'mybrand.com',
+          NameWithoutExtension: 'mybrand',
+          Tld: 'com',
+          AvailabilityStatus: 1001,
+          ProductId: 42,
+        },
+        Products: [],
+      });
+      mockFindSpins.mockResolvedValue({
+        RecommendedDomains: [
+          { Fqdn: 'mybrand.net', NameWithoutExtension: 'mybrand', Extension: 'net', ProductId: 43 },
+        ],
+        Products: [],
+      });
+
+      const response = await POST(createRequest({ query: 'mybrand' }));
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.domains).toHaveLength(1);
+      expect(data.domains[0].fqdn).toBe('mybrand.net');
+      expect(data.domains[0].isExactMatch).toBe(false);
+    });
+  });
+
   describe('error handling', () => {
     it('should return 502 when both searches fail', async () => {
       mockFindExact.mockRejectedValue(new Error('Exact failed'));

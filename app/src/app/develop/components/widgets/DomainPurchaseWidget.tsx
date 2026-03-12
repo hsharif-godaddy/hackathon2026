@@ -322,6 +322,7 @@ export default function DomainPurchaseWidget({
         <Modal
           onClose={handleBackFromCheckout}
           title={t('builder_domain_purchase_checkout_title', undefined, 'Complete Your Purchase')}
+          className="domain-purchase-checkout-modal"
         >
           <Box orientation="vertical" gap="md" className="p-4">
             {/* Checkout Error Alert */}

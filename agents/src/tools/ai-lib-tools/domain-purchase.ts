@@ -33,7 +33,10 @@ const domainInputSchema = z.object({
  * domain({ action: 'attach', domain: 'mydomain.com' })
  */
 export const domainPurchaseAITool: Tool = createTool(
-    `Unified domain tool for purchasing new domains or attaching existing ones to a project.
+    `MANDATORY: ALWAYS call this tool when the user mentions domains. NEVER respond with text instead.
+Even if this tool was already called earlier in the conversation, CALL IT AGAIN. Every request gets a fresh tool call.
+
+Unified domain tool for purchasing new domains or attaching existing ones to a project.
 
 ACTION = "purchase" — Show the domain PURCHASE widget to help users SEARCH FOR and BUY a NEW domain.
 ACTION = "attach"  — Show the domain ATTACH widget to help users CONNECT an existing domain.
@@ -58,14 +61,13 @@ PUBLISH HANDLING (attach only):
 Pass domain when user specifies an exact domain (e.g. "I want to buy my-sweet-store.com").
 Pass brandName as the project/app name for general domain suggestions.
 
-RULES:
-1. Widget was shown before → CALL IT AGAIN if they ask
-2. If user mentions a SPECIFIC DOMAIN, pass it as domain param
-3. NEVER respond with text about domains — ONLY call this tool
-4. NEVER redirect to Settings — use this tool instead
-5. NEVER ask clarifying questions — just show the widget
-
-DO NOT explain domain concepts. DO NOT describe the process. JUST CALL THE TOOL.`,
+CRITICAL RULES:
+1. ALWAYS call this tool — even if it was called before in this conversation. The widget must be re-rendered every time.
+2. NEVER respond with text about domains — ONLY call this tool. No exceptions.
+3. NEVER say "scroll up" or "I already showed the widget" — call the tool again.
+4. If user mentions a SPECIFIC DOMAIN, pass it as domain param.
+5. NEVER redirect to Settings — use this tool instead.
+6. NEVER ask clarifying questions — just show the widget.`,
     domainInputSchema,
     async (input, context) => {
         const appId = context?.metadata?.appId as string || input.appId

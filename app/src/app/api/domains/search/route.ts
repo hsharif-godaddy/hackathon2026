@@ -76,6 +76,7 @@ function getDomainServices(market: string): DomainServices {
     plid: '1',
     env,
     market,
+    isServerCall: true,
   });
 }
 
@@ -154,6 +155,7 @@ export const POST = withCustomerAuth(async (
       }),
     ]);
 
+
     const exactData = results[0].status === 'fulfilled' ? results[0].value : null;
     const spinsData = results[1].status === 'fulfilled' ? results[1].value : null;
 
@@ -175,7 +177,7 @@ export const POST = withCustomerAuth(async (
     }
 
     // Log raw API responses for debugging
-    logger.debug('domains.search.raw-response', {
+    logger.info('domains.search.raw-response', {
       hasExactData: !!exactData,
       hasSpinsData: !!spinsData,
       exactDataKeys: exactData ? Object.keys(exactData) : [],
@@ -204,7 +206,7 @@ export const POST = withCustomerAuth(async (
 
     // Process exact match - AvailabilityStatus 1000 = available (API uses AvailabilityStatus not AvailabilityCode)
     const exactAvailStatus = exactData?.ExactMatchDomain?.AvailabilityStatus;
-    if (exactAvailStatus === 1000 || exactAvailStatus === 1001) {
+    if (exactAvailStatus === 1000) {
       const exact = exactData.ExactMatchDomain;
       domains.push({
         fqdn: exact.Fqdn,

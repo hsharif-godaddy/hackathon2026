@@ -171,10 +171,10 @@
   }
 
   .bg-gradient {
-    background: linear-gradient(0deg, rgba(0, 0, 0, 0.60) 0%, rgba(0, 0, 0, 0.60) 100%), 
-    radial-gradient(87.19% 99.53% at 100% 66.1%, rgba(125, 90, 226, 0.90) 0%, rgba(129, 93, 233, 0.73) 30.77%, rgba(108, 71, 215, 0.00) 100%), 
-    radial-gradient(97.36% 95.15% at 9.95% 92.27%, #7558B7 0%, rgba(117, 88, 183, 0.93) 11.54%, rgba(117, 88, 183, 0.00) 100%), 
-    radial-gradient(96.02% 113.17% at 35.23% -8.21%, #271A48 0%, rgba(42, 29, 78, 0.96) 21.63%, rgba(114, 84, 201, 0.00) 100%), 
+    background: linear-gradient(0deg, rgba(0, 0, 0, 0.60) 0%, rgba(0, 0, 0, 0.60) 100%),
+    radial-gradient(87.19% 99.53% at 100% 66.1%, rgba(125, 90, 226, 0.90) 0%, rgba(129, 93, 233, 0.73) 30.77%, rgba(108, 71, 215, 0.00) 100%),
+    radial-gradient(97.36% 95.15% at 9.95% 92.27%, #7558B7 0%, rgba(117, 88, 183, 0.93) 11.54%, rgba(117, 88, 183, 0.00) 100%),
+    radial-gradient(96.02% 113.17% at 35.23% -8.21%, #271A48 0%, rgba(42, 29, 78, 0.96) 21.63%, rgba(114, 84, 201, 0.00) 100%),
     #271948;
   }
 
@@ -270,6 +270,11 @@
 
   /* Ensure Invite Friends modal backdrop appears above all page content */
   .ux-disrupt-backdrop[data-version]:has(.invite-friends-modal) {
+    z-index: 9999;
+  }
+
+  /* Ensure Domain Purchase checkout modal appears above chat tool renderers */
+  .ux-disrupt-backdrop[data-version]:has(.domain-purchase-checkout-modal) {
     z-index: 9999;
   }
 
