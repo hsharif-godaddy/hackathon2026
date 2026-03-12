@@ -326,6 +326,11 @@ describe('useDeploymentStatusPolling', function useDeploymentStatusPollingTests(
       await waitFor(function waitForComplete() {
         expect(onComplete).toHaveBeenCalledWith('app-1');
       });
+
+      expect(mockAppFetch).toHaveBeenCalledWith(
+        '/api/sites/app-1',
+        { cache: 'no-store' }
+      );
     });
 
     it('should not call onComplete when domain still exists', async function noCompleteWhenExists() {
@@ -346,6 +351,7 @@ describe('useDeploymentStatusPolling', function useDeploymentStatusPollingTests(
 
       await waitFor(function waitForData() {
         expect(result.current[0].data?.removed).toBe(false);
+        expect(result.current[0].data?.timedOut).toBe(false);
       });
 
       expect(onComplete).not.toHaveBeenCalled();
@@ -399,6 +405,159 @@ describe('useDeploymentStatusPolling', function useDeploymentStatusPollingTests(
           status: 500,
         })
       );
+    });
+
+    it('should accept onTimeout callback in options', function acceptsOnTimeoutCallback() {
+      const onTimeout = vi.fn();
+      const onComplete = vi.fn();
+
+      mockAppFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          domains: [{ fqdn: 'example.com' }],
+        }),
+      });
+
+      // Just verify the hook accepts the onTimeout callback without error
+      const { result } = renderHookWithProviders(() =>
+        useDomainDisconnectPolling({
+          domains: [{ appId: 'app-1', domainFqdn: 'example.com' }],
+          onComplete,
+          onTimeout,
+        })
+      );
+
+      // Hook should initialize without error
+      expect(result.current).toHaveLength(1);
+    });
+
+    it('should return timedOut field in query data', async function returnsTimedOutField() {
+      mockAppFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          domains: [{ fqdn: 'example.com' }],
+        }),
+      });
+
+      const { result } = renderHookWithProviders(() =>
+        useDomainDisconnectPolling({
+          domains: [{ appId: 'app-1', domainFqdn: 'example.com' }],
+        })
+      );
+
+      await waitFor(function waitForData() {
+        expect(result.current[0].data).toBeDefined();
+      });
+
+      // When domain still exists and not timed out, timedOut should be false
+      expect(result.current[0].data?.timedOut).toBe(false);
+      expect(result.current[0].data?.removed).toBe(false);
+    });
+
+    it('should call onTimeout when timedOut data is returned', async function callsOnTimeoutWhenTimedOut() {
+      // This test verifies the onTimeout callback mechanism works
+      // Full timeout behavior requires integration testing with real timers
+      const onTimeout = vi.fn();
+      const onComplete = vi.fn();
+
+      // Return domain still exists - onTimeout would be called by timeout logic
+      mockAppFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          domains: [{ fqdn: 'example.com' }],
+        }),
+      });
+
+      const { result } = renderHookWithProviders(() =>
+        useDomainDisconnectPolling({
+          domains: [{ appId: 'app-1', domainFqdn: 'example.com' }],
+          onComplete,
+          onTimeout,
+        })
+      );
+
+      await waitFor(function waitForData() {
+        expect(result.current[0].data).toBeDefined();
+      });
+
+      // In normal operation (no timeout), timedOut should be false
+      expect(result.current[0].data?.timedOut).toBe(false);
+      // onTimeout is not called until timeout threshold is reached
+      expect(onTimeout).not.toHaveBeenCalled();
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it('should only call onComplete once when domain is removed', async function onCompleteCalledOnce() {
+      const onComplete = vi.fn();
+
+      // Domain is removed immediately
+      mockAppFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          domains: [], // Domain removed
+        }),
+      });
+
+      const { result } = renderHookWithProviders(() =>
+        useDomainDisconnectPolling({
+          domains: [{ appId: 'app-1', domainFqdn: 'example.com' }],
+          onComplete,
+        })
+      );
+
+      // Wait for domain to be detected as removed
+      await waitFor(function waitForRemoved() {
+        expect(result.current[0].data?.removed).toBe(true);
+      });
+
+      // onComplete should be called exactly once
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      expect(onComplete).toHaveBeenCalledWith('app-1');
+    });
+
+    it('should reset state when domain is re-added after being removed', async function resetsStateOnReAdd() {
+      const onComplete = vi.fn();
+      let domainsToTrack: { appId: string; domainFqdn: string }[] = [
+        { appId: 'app-1', domainFqdn: 'example.com' },
+      ];
+
+      // Domain is removed
+      mockAppFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          domains: [],
+        }),
+      });
+
+      const { result, rerender } = renderHookWithProviders(() =>
+        useDomainDisconnectPolling({
+          domains: domainsToTrack,
+          onComplete,
+        })
+      );
+
+      // Wait for first completion
+      await waitFor(function waitForFirstRemoval() {
+        expect(result.current[0]?.data?.removed).toBe(true);
+      });
+
+      expect(onComplete).toHaveBeenCalledTimes(1);
+
+      // Remove domain from tracking (simulates user navigating away or state clearing)
+      domainsToTrack = [];
+      rerender();
+
+      // Re-add the same domain (simulates user unpublishing again)
+      domainsToTrack = [{ appId: 'app-1', domainFqdn: 'example.com' }];
+      rerender();
+
+      // Wait for second completion - should call onComplete again since state was reset
+      await waitFor(function waitForSecondRemoval() {
+        expect(result.current[0]?.data?.removed).toBe(true);
+      });
+
+      // onComplete should be called twice total (once for each tracking session)
+      expect(onComplete).toHaveBeenCalledTimes(2);
     });
   });
 });

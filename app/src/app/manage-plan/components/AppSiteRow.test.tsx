@@ -385,4 +385,48 @@ describe('AppSiteRow', function appSiteRowTests() {
       expect(button).toHaveAttribute('data-partial', 'componentAiro');
     });
   });
+
+  describe('error display', function errorDisplayTests() {
+    it('should render error message when error prop is provided', function rendersError() {
+      renderWithProviders(
+        <AppSiteRow {...defaultProps} error="Something went wrong" />
+      );
+
+      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    });
+
+    it('should not render error message when error prop is undefined', function noErrorWhenUndefined() {
+      renderWithProviders(
+        <AppSiteRow {...defaultProps} error={undefined} />
+      );
+
+      expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument();
+    });
+
+    it('should render error message alongside publish button', function errorWithPublishButton() {
+      renderWithProviders(
+        <AppSiteRow {...defaultProps} isPublished={false} error="Publish failed" />
+      );
+
+      expect(screen.getByText('Publish failed')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'builder_manageplan_apps_publish' })).toBeInTheDocument();
+    });
+
+    it('should render error message alongside unpublish button', function errorWithUnpublishButton() {
+      renderWithProviders(
+        <AppSiteRow {...defaultProps} isPublished={true} error="Unpublish failed" />
+      );
+
+      expect(screen.getByText('Unpublish failed')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'builder_manageplan_apps_unpublish' })).toBeInTheDocument();
+    });
+
+    it('should not disable button when error is displayed', function buttonEnabledWithError() {
+      renderWithProviders(
+        <AppSiteRow {...defaultProps} isPublished={false} error="Previous attempt failed" />
+      );
+
+      expect(screen.getByRole('button', { name: 'builder_manageplan_apps_publish' })).not.toBeDisabled();
+    });
+  });
 });

@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import Button from '@ux/button';
 import Tag from '@ux/tag';
 import text from '@ux/text';
@@ -20,6 +21,7 @@ interface AppSiteRowProps {
   isPaidPlan: boolean;
   isAtPublishLimit: boolean;
   canUpgrade: boolean;
+  error?: string;
   onPublishClick: (siteId: string) => void;
   onUnpublishClick: (site: SiteInfo) => void;
   onOpenPaywall?: (source: string, type?: PaywallType, itc?: string) => void;
@@ -40,6 +42,7 @@ export default function AppSiteRow({
   isPaidPlan,
   isAtPublishLimit,
   canUpgrade,
+  error,
   onPublishClick,
   onUnpublishClick,
   onOpenPaywall,
@@ -47,7 +50,7 @@ export default function AppSiteRow({
   const t = useTranslations();
 
   return (
-    <div className="flex items-center justify-between py-2 border-b border-border last:border-b-0">
+    <div className={clsx('flex items-center justify-between py-2 border-b border-border last:border-b-0', error && 'pb-4 md:pb-2')}>
       <div className="flex items-center gap-3 min-w-0">
         <AppThumbnail siteId={site.id} siteName={site.name} size="md" />
         <div className="flex flex-col min-w-0">
@@ -75,7 +78,7 @@ export default function AppSiteRow({
         </div>
       </div>
 
-      <div className="flex-shrink-0 ml-2">
+      <div className="relative flex flex-col items-end flex-shrink-0 ml-2">
         {isDisconnectingDomain ? (
           <Button
             design="secondary"
@@ -123,6 +126,16 @@ export default function AppSiteRow({
             onClick={() => onPublishClick(site.id)}
           />
         ) : null}
+        {error && (
+          <text.p
+            as="paragraph"
+            size={-2}
+            emphasis="critical"
+            className="absolute top-full right-0 mt-1 text-right whitespace-normal w-20 md:w-48"
+          >
+            {error}
+          </text.p>
+        )}
       </div>
     </div>
   );

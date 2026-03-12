@@ -11,7 +11,6 @@ interface UnpublishResponse {
   agentsSuccess?: boolean;
   domainJobId?: string;
   error?: string;
-  details?: string;
   retryable?: boolean;
 }
 

@@ -101,6 +101,25 @@ export default function AppsAndSitesCard({
 
   const [deploymentsToTrack, setDeploymentsToTrack] = useState<Map<string, string>>(new Map());
 
+  // Error state per app - stores error message to display below button
+  const [appErrors, setAppErrors] = useState<Map<string, string>>(new Map());
+
+  const clearAppError = useCallback((appId: string) => {
+    setAppErrors((prev) => {
+      const next = new Map(prev);
+      next.delete(appId);
+      return next;
+    });
+  }, []);
+
+  const setAppError = useCallback((appId: string, error: string) => {
+    setAppErrors((prev) => {
+      const next = new Map(prev);
+      next.set(appId, error);
+      return next;
+    });
+  }, []);
+
   const domainsToTrack = useMemo(
     () => Array.from(disconnectingDomainApps.entries()).map(([appId, domainFqdn]) => ({
       appId,
@@ -118,9 +137,19 @@ export default function AppsAndSitesCard({
     await fetchAllSites();
   }, [fetchAllSites]);
 
+  const handleDomainDisconnectTimeout = useCallback((appId: string) => {
+    setDisconnectingDomainApps((prev) => {
+      const next = new Map(prev);
+      next.delete(appId);
+      return next;
+    });
+    setAppError(appId, t('builder_unpublish_domain_disconnect_timeout'));
+  }, [setAppError, t]);
+
   useDomainDisconnectPolling({
     domains: domainsToTrack,
     onComplete: handleDomainDisconnectComplete,
+    onTimeout: handleDomainDisconnectTimeout,
   });
 
   const deploymentsToTrackArray = useMemo(
@@ -153,6 +182,8 @@ export default function AppsAndSitesCard({
   });
 
   const handleUnpublishClick = (site: SiteInfo) => {
+    // Clear any previous error when clicking the button
+    clearAppError(site.id);
     setSelectedApp(site);
     setShowUnpublishModal(true);
   };
@@ -172,19 +203,18 @@ export default function AppsAndSitesCard({
         domainFqdn: disconnectDomain && customDomain ? customDomain : undefined,
       },
       {
-        onSuccess: async (result) => {
+        onSuccess: (_result) => {
           setShowUnpublishModal(false);
           setSelectedApp(null);
 
-          if (disconnectDomain && customDomain && result.domainJobId) {
+          // Start polling for domain removal if disconnect was requested
+          if (disconnectDomain && customDomain) {
             setDisconnectingDomainApps((prev) => {
               const next = new Map(prev);
               next.set(appId, customDomain);
               return next;
             });
           }
-
-          await fetchAllSites();
         },
         onSettled: () => {
           setUnpublishingApps((prev) => {
@@ -200,7 +230,6 @@ export default function AppsAndSitesCard({
   const handleUnpublishRetry = () => {
     if (selectedApp) {
       const appId = selectedApp.id;
-      const customDomain = getCustomDomain(selectedApp);
 
       setUnpublishingApps((prev) => new Set(prev).add(appId));
 
@@ -208,11 +237,13 @@ export default function AppsAndSitesCard({
         {
           appId,
           disconnectDomain: false,
-          domainFqdn: customDomain ?? undefined,
         },
         {
-          onSettled: async () => {
-            await fetchAllSites();
+          onSuccess: () => {
+            setShowUnpublishModal(false);
+            setSelectedApp(null);
+          },
+          onSettled: () => {
             setUnpublishingApps((prev) => {
               const next = new Set(prev);
               next.delete(appId);
@@ -231,6 +262,8 @@ export default function AppsAndSitesCard({
   };
 
   const handlePublishClick = async (siteId: string) => {
+    // Clear any previous error when clicking the button
+    clearAppError(siteId);
     setPublishingApps((prev) => new Set(prev).add(siteId));
 
     try {
@@ -256,12 +289,14 @@ export default function AppsAndSitesCard({
           return next;
         });
       }
-    } catch {
+    } catch (error) {
       setPublishingApps((prev) => {
         const next = new Set(prev);
         next.delete(siteId);
         return next;
       });
+      const errorMessage = error instanceof Error && error.message?.trim() ? error.message : t('builder_common_error_generic');
+      setAppError(siteId, errorMessage);
     }
   };
 
@@ -407,6 +442,7 @@ export default function AppsAndSitesCard({
                   isPaidPlan={isPaidPlan}
                   isAtPublishLimit={isAtPublishLimit}
                   canUpgrade={canUpgradeForMorePublishes ?? false}
+                  error={appErrors.get(site.id)}
                   onPublishClick={handlePublishClick}
                   onUnpublishClick={handleUnpublishClick}
                   onOpenPaywall={onOpenPaywall}

@@ -116,7 +116,6 @@ export const POST = withCustomerAuth(async (
 
     // Step 1: Optionally disconnect custom domain first
     let domainJobId: string | undefined;
-    let domainDisconnectFailed = false;
     if (body.disconnectDomain && body.domainFqdn && isV2 && site.subscription_id && site.system_id) {
       // Find the domain by fqdn first
       const matchingDomain = site.domains?.find((d) => d.fqdn === body.domainFqdn);
@@ -185,12 +184,20 @@ export const POST = withCustomerAuth(async (
           domainJobId,
         });
       } catch (domainError) {
-        domainDisconnectFailed = true;
+        const errorMessage = domainError instanceof Error ? domainError.message : String(domainError);
         logger.error('unpublish.api.disconnect_domain.failed', {
           siteId,
           domainFqdn: body.domainFqdn,
-          error: domainError instanceof Error ? domainError.message : String(domainError),
+          error: errorMessage,
         });
+
+        return NextResponse.json(
+          {
+            error: 'Failed to disconnect domain',
+            retryable: true,
+          },
+          { status: 500 }
+        );
       }
     }
 
@@ -251,7 +258,6 @@ export const POST = withCustomerAuth(async (
       return NextResponse.json(
         {
           error: 'Failed to unpublish app',
-          details: agentsError.message,
           retryable: true,
         },
         { status: agentsError.status ?? 500 }
@@ -286,7 +292,6 @@ export const POST = withCustomerAuth(async (
           message: result.message,
           agentsSuccess,
           domainJobId,
-          domainDisconnectFailed,
         });
       } catch (cpError) {
         const status = (cpError as { status?: number })?.status;
@@ -299,7 +304,6 @@ export const POST = withCustomerAuth(async (
             message: 'App is already unpublished',
             agentsSuccess,
             domainJobId,
-            domainDisconnectFailed,
           });
         }
 
@@ -312,7 +316,6 @@ export const POST = withCustomerAuth(async (
         return NextResponse.json(
           {
             error: 'Failed to unpublish app in control plane',
-            details: cpError instanceof Error ? cpError.message : String(cpError),
             retryable: true,
             agentsSuccess,
           },
@@ -349,7 +352,6 @@ export const POST = withCustomerAuth(async (
     return NextResponse.json(
       {
         error: 'Failed to unpublish app',
-        details: error instanceof Error ? error.message : String(error),
         retryable: true,
       },
       { status }

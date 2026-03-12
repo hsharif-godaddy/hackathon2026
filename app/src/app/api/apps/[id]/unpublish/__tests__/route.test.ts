@@ -390,6 +390,7 @@ describe('unpublish POST', function unpublishTests() {
       });
 
       mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_V2_SITE);
+      mockAiroMgmtClient.modifyDomains.mockResolvedValue({ statusJobId: 'job-123' });
 
       const request = createMockRequest(MOCK_SITE_ID, {
         disconnectDomain: true,
@@ -412,7 +413,7 @@ describe('unpublish POST', function unpublishTests() {
       );
     });
 
-    it('should continue with unpublish when domain disconnect fails', async function domainDisconnectFails() {
+    it('should return error and not unpublish when domain disconnect fails', async function domainDisconnectFails() {
       mockAuthenticateCustomer.mockResolvedValue({
         isAuthenticated: true,
         user: MOCK_USER,
@@ -433,13 +434,15 @@ describe('unpublish POST', function unpublishTests() {
       });
       const data = await response.json();
 
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
-      expect(data.domainDisconnectFailed).toBe(true);
+      expect(response.status).toBe(500);
+      expect(data.error).toBe('Failed to disconnect domain');
+      expect(data.retryable).toBe(true);
       expect(mockLogger.error).toHaveBeenCalledWith(
         'unpublish.api.disconnect_domain.failed',
         expect.any(Object)
       );
+      // Should NOT have called unpublish
+      expect(mockAiroMgmtClient.unpublishApp).not.toHaveBeenCalled();
     });
 
     it('should reject domain disconnect if domain not found on site', async function domainNotFound() {
@@ -474,6 +477,7 @@ describe('unpublish POST', function unpublishTests() {
       });
 
       mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_V2_SITE_WITH_FQDN_TYPE);
+      mockAiroMgmtClient.modifyDomains.mockResolvedValue({ statusJobId: 'job-456' });
 
       const request = createMockRequest(MOCK_SITE_ID, {
         disconnectDomain: true,
