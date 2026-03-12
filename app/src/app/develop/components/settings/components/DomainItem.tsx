@@ -32,15 +32,10 @@ function getDomainUrl(domain: string): string {
   return `https://${domain}`;
 }
 
-function getDomainSpecificError(error: Error | null, domainName: string, t: ReturnType<typeof useTranslations>): string | null {
+function getDomainSpecificError(error: Error | null, domainName: string, _t: ReturnType<typeof useTranslations>): string | null {
   if (!error || !domainName) return null;
   if (error instanceof DomainMutationError) {
-    const specificError = error.details.domainSpecificError?.[domainName.trim().toLowerCase()];
-    if (specificError) return specificError;
-    if (error.details.code) {
-      return translateDomainApiError(error.details.code, t, error.details.message);
-    }
-    return error.details.message;
+    return error.details.domainSpecificError?.[domainName.trim().toLowerCase()] ?? null;
   }
   return null;
 }
@@ -286,11 +281,28 @@ export default function DomainItem({
       {!domainSpecificErrorMsg && domainErrorMessage && (
         <Box className="mt-2">
           <text.p className="ux-text ux-text-caption">
-            <span>{domainErrorMessage}&nbsp;
-              {t('builder_domain_disconnect_and_reconnect')}&nbsp;</span>
-            <Button className="ux-text ux-text-caption ux-text-link" design="inline" href={config.supportUrl} external>
-              {t('builder_common_contact_support')}
-            </Button>
+            {domainError?.error?.action === 'CONTACT_SUPPORT' ? (
+              <span>{domainErrorMessage}&nbsp;
+                <Button className="ux-text ux-text-caption ux-text-link" design="inline" href={config.supportUrl} external>
+                  {t('builder_common_contact_support')}
+                </Button>
+              </span>
+            ) : domainError?.error?.action === 'RETRY' ? (
+              <span>{domainErrorMessage}&nbsp;
+                {t('builder_domain_error_please_retry')}&nbsp;
+                {t('builder_domain_error_if_issue_persists')}&nbsp;
+                <Button className="ux-text ux-text-caption ux-text-link" design="inline" href={config.supportUrl} external>
+                  {t('builder_common_contact_support')}
+                </Button>
+              </span>
+            ) : (
+              <span>{domainErrorMessage}&nbsp;
+                {t('builder_domain_disconnect_and_reconnect')}&nbsp;
+                <Button className="ux-text ux-text-caption ux-text-link" design="inline" href={config.supportUrl} external>
+                  {t('builder_common_contact_support')}
+                </Button>
+              </span>
+            )}
           </text.p>
         </Box>
       )}

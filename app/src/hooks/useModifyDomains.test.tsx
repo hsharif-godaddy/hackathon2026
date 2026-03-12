@@ -144,7 +144,7 @@ describe('useModifyDomains', () => {
     expect(error.details.domainSpecificError!['other.io']).toBe('Conflict');
   });
 
-  it('should omit domainSpecificError for delete-only operations', async function deleteOnly() {
+  it('should key domainSpecificError by fqdn for delete operations', async function deleteKeyed() {
     vi.mocked(appFetch).mockResolvedValue({
       ok: false,
       status: 500,
@@ -167,7 +167,8 @@ describe('useModifyDomains', () => {
     });
 
     const error = result.current.error as DomainMutationError;
-    expect(error.details.domainSpecificError).toBeUndefined();
+    expect(error.details.domainSpecificError).toBeDefined();
+    expect(error.details.domainSpecificError!['old.example.com']).toBe('Internal failure');
     expect(error.details.message).toBe('Internal failure');
   });
 

@@ -106,6 +106,9 @@ export function useModifyDomains() {
         for (const d of payload.domainsToCreate ?? []) {
           domainSpecificError[d.fqdn.trim().toLowerCase()] = errorMessage;
         }
+        for (const d of payload.domainsToDelete ?? []) {
+          domainSpecificError[d.fqdn.trim().toLowerCase()] = errorMessage;
+        }
         logger.error('domain-operations.modify.failure', {
           message: errorMessage,
           code: errorData.code,
