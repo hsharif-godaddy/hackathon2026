@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-
+import { getEffectiveCreditsSpent } from '@/utils/credits';
 
 describe('FeedbackForm subscription info calculation', function subscriptionCalculationTests() {
-
   describe('multiple grants calculation', function multipleGrantsTests() {
     it('should calculate total spent with capping for multiple grants', function testMultipleGrants() {
       const grants = [
