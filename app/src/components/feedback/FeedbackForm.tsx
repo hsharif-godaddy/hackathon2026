@@ -12,6 +12,7 @@ import { logger } from '@/lib/request-context';
 import { formatSlackBlockMessage, type SlackBlockMessage, type SlackLink } from '@/lib/slack-webhook';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSitesStore } from '@/stores/useSitesStore';
+import { getEffectiveCreditsSpent } from '@/utils/credits';
 import type { FeedbackFormProps } from "./types";
 import { getBaseUrl, getFullStorySessionUrl, isLocalhost } from "./utils";
 
@@ -63,10 +64,12 @@ export function FeedbackForm({
               if (creditsResponse.ok) {
                 const creditsData = await creditsResponse.json();
                 if (creditsData.success && Array.isArray(creditsData.data)) {
-                  const totalCredits = creditsData.data.reduce((sum, grant) => sum + (grant.creditsMax || 0), 0);
-                  const totalSpent = creditsData.data.reduce((sum, grant) => sum + (grant.creditsSpent || 0), 0);
-                  const remaining = totalCredits - totalSpent;
-                  subscriptionInfo = `${planName} - ${remaining}/${totalCredits}`;
+                  const totalCreditsMax = creditsData.data.reduce((sum, grant) => sum + (grant.creditsMax || 0), 0);
+                  const totalCreditsSpent = creditsData.data.reduce(
+                    (sum, grant) => sum + getEffectiveCreditsSpent(grant.creditsSpent, grant.creditsMax),
+                    0
+                  );
+                  subscriptionInfo = `${planName} - ${totalCreditsSpent}/${totalCreditsMax}`;
                 }
               }
             }
