@@ -255,7 +255,7 @@ vi.mock('../config/dynamic-api', () => ({
 }));
 
 describe('useStreamingWebSocket', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     streamingStoreState = createStreamingStoreState()
     vi.clearAllMocks();
     mockSetIsLoadingAction.mockReset();
@@ -263,6 +263,10 @@ describe('useStreamingWebSocket', () => {
     sessionStorage.clear();
     mockSetWebSocketState.mockReset();
     mockSetError.mockReset();
+
+    const { clearController, getController } = await import('@/services/websocket/controllerRegistry')
+    getController()?.destroy()
+    clearController()
 
     // Mock fetch for JWT token
     global.fetch = vi.fn((url) => {

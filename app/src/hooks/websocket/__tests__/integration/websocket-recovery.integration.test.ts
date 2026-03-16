@@ -24,6 +24,7 @@ import type { SocketSimulator } from './test-utils/socket-simulator'
 // Module-level state for mocks (reset in beforeEach)
 // Following the pattern from useStreamingWebSocket.test.ts
 let storeState: StoreState
+let activeHookResult: { unmount: () => void } | null = null
 const mockSockets: SocketSimulator[] = []
 const getLatestMockSocket = () => mockSockets[mockSockets.length - 1]
 
@@ -164,9 +165,15 @@ vi.mock('@/services/websocket/storeUpdateBuffer', () => ({
 }))
 
 describe('WebSocket Recovery Integration', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers()
     vi.clearAllMocks()
+
+    // Reset controller registry singleton to prevent leaking state between tests.
+    // Only clear the registry — don't call destroy() as that triggers XState teardown
+    // which accesses store mocks that have been cleared above.
+    const { clearController } = await import('@/services/websocket/controllerRegistry')
+    clearController()
 
     // Reset mock sockets array
     mockSockets.length = 0
@@ -245,7 +252,16 @@ describe('WebSocket Recovery Integration', () => {
     })
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Unmount the hook while mocks are still valid so React cleanup effects
+    // (disconnect / scheduleControllerDestroy) run against a live environment.
+    activeHookResult?.unmount()
+    activeHookResult = null
+
+    // Clear the controller registry to cancel any deferred-destroy timers.
+    const { clearController } = await import('@/services/websocket/controllerRegistry')
+    clearController()
+
     vi.runOnlyPendingTimers()
     vi.useRealTimers()
     vi.clearAllMocks()
@@ -254,6 +270,7 @@ describe('WebSocket Recovery Integration', () => {
   async function setupConnectedHook() {
     const { useStreamingWebSocket } = await import('../../../useStreamingWebSocket')
     const hook = renderHookWithProviders(() => useStreamingWebSocket())
+    activeHookResult = hook
 
     // First, flush microtasks to let useEffect run
     await act(async () => {
