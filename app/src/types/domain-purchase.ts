@@ -46,6 +46,7 @@ export interface Domain {
   productId: number;
   isPremium: boolean;
   isExactMatch: boolean;
+  priceDisplay?: string;
   _raw?: Record<string, unknown>; // Original API response for cart payload
 }
 

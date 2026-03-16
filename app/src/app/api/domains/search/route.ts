@@ -216,6 +216,7 @@ export const POST = withCustomerAuth(async (
         productId: exact.ProductId,
         isPremium: exact.IsPremiumTier || exact.IsPremium || false,
         isExactMatch: true,
+        priceDisplay: exact.PriceDisplay,
         _raw: exact,
       });
     }
@@ -254,6 +255,7 @@ export const POST = withCustomerAuth(async (
           productId: spin.ProductId,
           isPremium: spin.IsPremiumTier || spin.IsPremium || false,
           isExactMatch: false,
+          priceDisplay: spin.PriceDisplay,
           _raw: spin,
         });
       }

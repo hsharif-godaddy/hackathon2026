@@ -538,6 +538,7 @@ function DomainRow({
 }: DomainRowProps) {
   const t = useTranslations();
   const price = product?.priceInfo;
+  const priceLabel = domain.priceDisplay || price?.currentPriceDisplay;
   const urlOverride = getRootDomain() || 'godaddy.com';
 
   const [rowBasketId, setRowBasketId] = useState<string | null>(() => crypto.randomUUID());
@@ -557,7 +558,7 @@ function DomainRow({
     domainFailedAvailCheck: t('builder_domain_purchase_unavailable', undefined, 'Unavailable'),
     successText: t('builder_domain_purchase_added', undefined, 'Added!'),
     renewalText: '',
-    buyButtonText: price?.currentPriceDisplay || t('builder_domain_purchase_button', undefined, 'Buy'),
+    buyButtonText: priceLabel || t('builder_domain_purchase_button', undefined, 'Buy'),
   };
 
   return (
@@ -579,7 +580,7 @@ function DomainRow({
             plid="1"
             basketId={rowBasketId || undefined}
             domain={domain._raw}
-            buttonText={price?.currentPriceDisplay || '--'}
+            buttonText={priceLabel || '--'}
             buttonDesign="primary"
             successCallback={handleSuccess}
             failureCallback={onAddToCartError}

@@ -208,6 +208,68 @@ describe('POST /api/domains/search', () => {
       expect(data.domains[1].fqdn).toBe('mybrand.org');
     });
 
+    it('should forward priceDisplay from exact match domain', async () => {
+      mockFindExact.mockResolvedValue({
+        ExactMatchDomain: {
+          Fqdn: 'mybrand.com',
+          NameWithoutExtension: 'mybrand',
+          Tld: 'com',
+          AvailabilityStatus: 1000,
+          ProductId: 42,
+          PriceDisplay: '$9.99/yr',
+        },
+        Products: [],
+      });
+      mockFindSpins.mockResolvedValue({ RecommendedDomains: [], Products: [] });
+
+      const response = await POST(createRequest({ query: 'mybrand' }));
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.domains[0].priceDisplay).toBe('$9.99/yr');
+    });
+
+    it('should forward priceDisplay from spin domains', async () => {
+      mockFindExact.mockResolvedValue(null);
+      mockFindSpins.mockResolvedValue({
+        RecommendedDomains: [
+          { Fqdn: 'mybrand.net', NameWithoutExtension: 'mybrand', Extension: 'net', ProductId: 43, PriceDisplay: '$4.99/yr' },
+          { Fqdn: 'mybrand.org', NameWithoutExtension: 'mybrand', Extension: 'org', ProductId: 44, PriceDisplay: '$11.99/yr' },
+        ],
+        Products: [],
+      });
+
+      const response = await POST(createRequest({ query: 'mybrand' }));
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.domains[0].priceDisplay).toBe('$4.99/yr');
+      expect(data.domains[1].priceDisplay).toBe('$11.99/yr');
+    });
+
+    it('should set priceDisplay to undefined when API omits PriceDisplay', async () => {
+      mockFindExact.mockResolvedValue({
+        ExactMatchDomain: {
+          Fqdn: 'mybrand.com',
+          AvailabilityStatus: 1000,
+          ProductId: 42,
+        },
+        Products: [],
+      });
+      mockFindSpins.mockResolvedValue({
+        RecommendedDomains: [
+          { Fqdn: 'mybrand.net', ProductId: 43 },
+        ],
+        Products: [],
+      });
+
+      const response = await POST(createRequest({ query: 'mybrand' }));
+      const data = await response.json();
+
+      expect(data.domains[0].priceDisplay).toBeUndefined();
+      expect(data.domains[1].priceDisplay).toBeUndefined();
+    });
+
     it('should not include duplicate domains', async () => {
       mockFindExact.mockResolvedValue({
         ExactMatchDomain: {
