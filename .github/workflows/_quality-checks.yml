@@ -236,4 +236,4 @@ jobs:
         run: pnpm exec turbo run build --filter="${{ inputs.pnpm-filter }}^..."
 
       - name: Run tests
-        run: pnpm --filter ${{ inputs.pnpm-filter }} test
+        run: pnpm exec turbo run test --filter="${{ inputs.pnpm-filter }}"

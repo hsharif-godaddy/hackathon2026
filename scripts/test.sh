@@ -39,4 +39,4 @@ if [ $# -gt 0 ]; then
 fi
 
 # Run tests across all packages
-exec pnpm -r test
+exec turbo run test

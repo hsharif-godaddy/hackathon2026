@@ -12,6 +12,16 @@
     },
     "lint": {
       "outputs": []
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "passThroughEnv": ["NODE_OPTIONS"]
+    },
+    "test:unit": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "passThroughEnv": ["NODE_OPTIONS"]
     }
   }
 }
