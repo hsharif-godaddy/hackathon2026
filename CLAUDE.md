@@ -39,14 +39,14 @@ if (options.token && options.repoUrl) {
 
 ## Services
 
-| Service              | Package        | Port | Notes                                         |
-| -------------------- | -------------- | ---- | --------------------------------------------- |
-| **agents/**          | `@airo/agents` | 4000 | Express API, AI agents, SQLite, WebSocket     |
-| **app/**             | `website`      | 3000 | Next.js BFF + builder UI, MySQL/Prisma        |
-| **dev-supervisor/**  | Go binary      | —    | PID1, process lifecycle, HTTP proxy, JWT auth |
-| **proxy/**           | `airo-proxy`   | —    | Getty Images API proxy                        |
-| **packages/shared/** | `@airo/shared`  | —    | Shared types and pure utilities (grants, context-attachment, social, websocket) |
-| **packages/ai-lib/** | `@airo/ai-lib` | —    | AI SDK wrapper, consumed by agents            |
+| Service              | Package        | Port | Notes                                                                           |
+| -------------------- | -------------- | ---- | ------------------------------------------------------------------------------- |
+| **agents/**          | `@airo/agents` | 4000 | Express API, AI agents, SQLite, WebSocket                                       |
+| **app/**             | `website`      | 3000 | Next.js BFF + builder UI, MySQL/Prisma                                          |
+| **dev-supervisor/**  | Go binary      | —    | PID1, process lifecycle, HTTP proxy, JWT auth                                   |
+| **proxy/**           | `airo-proxy`   | —    | Getty Images API proxy                                                          |
+| **packages/shared/** | `@airo/shared` | —    | Shared types and pure utilities (grants, context-attachment, social, websocket) |
+| **packages/ai-lib/** | `@airo/ai-lib` | —    | AI SDK wrapper, consumed by agents                                              |
 
 Additional: `app-templates/` (v8 template), `packages/design-extractor/` (PDF RAG), `setup/` (config utility), `e2e/` (E2E tests)
 
@@ -131,6 +131,10 @@ Use `./setup.sh` — don't create `.env` files manually.
 - Setup: `GETTING_STARTED.md`
 - Mock auth: `app/MOCK-AUTH-SETUP.md`
 
+## E2E Test Maintenance
+
+**When modifying UI components, always check if E2E tests reference affected `data-testid` attributes, selectors, or user flows.** E2E smoke tests live in `tests/smoke/` and run against the real app. If you add, rename, or remove a `data-testid`, change a component's DOM structure, or alter a user interaction flow (e.g., confirmation dialogs, navigation), update the corresponding E2E tests to match. Grep for the test ID in `tests/smoke/` to find affected specs.
+
 ## PR Checklist
 
 - [ ] `pnpm typecheck` passes
@@ -138,4 +142,5 @@ Use `./setup.sh` — don't create `.env` files manually.
 - [ ] `pnpm build` passes
 - [ ] Changes tested
 - [ ] Backward compatibility verified
+- [ ] **UI changes:** E2E tests in `tests/smoke/` updated if `data-testid` or user flows changed
 - [ ] **dev-supervisor only:** `make check` passes

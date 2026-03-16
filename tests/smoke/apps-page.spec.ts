@@ -188,15 +188,15 @@ test.describe('Apps Page & Navigation', () => {
     await page.getByTestId('app-card-delete-button').click();
 
     // Verify confirmation dialog
-    await expect(page.getByTestId('delete-confirmation')).toBeVisible();
+    await expect(page.getByTestId('inline-confirmation')).toBeVisible();
 
     // Delete and wait for response
     const deletePromise = page.waitForResponse('**/api/sites/*');
-    await page.getByTestId('delete-confirm-button').click();
+    await page.getByTestId('confirm-button').click();
     await deletePromise;
 
     // Verify deletion
-    await expect(page.getByTestId('delete-confirmation')).not.toBeVisible();
+    await expect(page.getByTestId('inline-confirmation')).not.toBeVisible();
     await expect(page.getByTestId('app-card-edit-button')).toHaveCount(countBefore - 1);
     console.log(`  ✓ App deleted - now ${countBefore - 1} apps remain`);
 
