@@ -3,7 +3,7 @@
  * Supports text files, images, PDFs, and Office documents
  */
 
-import { createLogger } from '@airo/ai-common'
+import { createLogger } from './logger.js'
 import { readFileSync } from 'fs'
 import { extname, basename } from 'path'
 

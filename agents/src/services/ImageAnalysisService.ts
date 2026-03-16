@@ -9,9 +9,10 @@ import {
   getModel,
   createFileInputFromBuffer,
   processFile,
+  llmMetadataContext,
   calculateCostEstimate,
+  type LitellmMetadata,
 } from "@airo/ai-lib";
-import { llmMetadataContext, type LitellmMetadata } from "@airo/ai-common";
 
 import { Logger } from "../logging/index.js";
 import { knowBDriver } from "../tools/ai-lib-tools/drivers/knowb-driver.js";

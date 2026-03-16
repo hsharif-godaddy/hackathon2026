@@ -38,5 +38,6 @@ jobs:
       package-name: agents
       pnpm-filter: "@airo/agents"
       working-directory: ./agents
+      build-dependencies: true
       skip-tests: true  # Agent tests currently have failures
     secrets: inherit

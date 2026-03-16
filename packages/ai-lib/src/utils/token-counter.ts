@@ -7,7 +7,7 @@
  */
 
 import { normalizeModelName, type ModelProvider } from './model-normalization.js'
-import { createLogger } from '@airo/ai-common'
+import { createLogger } from './logger.js'
 
 const logger = createLogger('token-counter')
 

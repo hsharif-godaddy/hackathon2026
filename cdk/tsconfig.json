@@ -26,8 +26,6 @@
   },
   "exclude": [
     "node_modules",
-    "cdk.out",
-    "lambda/gocode-spend-essp-exporter",
-    "lambda/qdrant-tls-bootstrap"
+    "cdk.out"
   ]
 }

@@ -27,9 +27,9 @@ const { mockOnInstallHook, mockOnLoadHook } = vi.hoisted(() => ({
   mockOnLoadHook: vi.fn()
 }));
 
-// Mock buildAllSkillTools from ai-skills
-vi.mock('@airo/ai-skills', async () => {
-  const actual = await vi.importActual('@airo/ai-skills');
+// Mock buildAllSkillTools from ai-lib
+vi.mock('@airo/ai-lib', async () => {
+  const actual = await vi.importActual('@airo/ai-lib');
   return {
     ...actual,
     buildAllSkillTools: vi.fn().mockResolvedValue({

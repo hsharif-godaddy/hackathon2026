@@ -30,6 +30,11 @@ on:
         required: false
         type: boolean
         default: false
+      build-dependencies:
+        description: "Build workspace dependencies before build/test (uses pnpm --filter ...^)"
+        required: false
+        type: boolean
+        default: false
       skip-tests:
         description: "Skip running tests"
         required: false
@@ -118,13 +123,6 @@ jobs:
           key: nextjs-${{ runner.os }}-${{ hashFiles(format('{0}/**/*.ts', inputs.working-directory), format('{0}/**/*.tsx', inputs.working-directory), format('{0}/next.config.*', inputs.working-directory), format('{0}/tailwind.config.*', inputs.working-directory), format('{0}/tsconfig*.json', inputs.working-directory), format('{0}/package.json', inputs.working-directory), 'pnpm-lock.yaml') }}
           restore-keys: nextjs-${{ runner.os }}-
 
-      - name: Cache Turborepo
-        uses: actions/cache@v5
-        with:
-          path: .turbo
-          key: turbo-${{ runner.os }}-${{ github.sha }}
-          restore-keys: turbo-${{ runner.os }}-
-
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
@@ -143,10 +141,15 @@ jobs:
           retention-days: 30
 
       - name: Run linting
-        run: pnpm exec turbo run lint --filter=${{ inputs.pnpm-filter }}
+        run: pnpm --filter ${{ inputs.pnpm-filter }} lint
 
-      - name: Build
-        run: pnpm exec turbo run build --filter=${{ inputs.pnpm-filter }}
+      - name: Build workspace dependencies
+        if: inputs.build-dependencies
+        # <pkg>^... = only dependencies of <pkg>, excluding <pkg> itself
+        run: pnpm --filter "${{ inputs.pnpm-filter }}^..." build
+
+      - name: Run build
+        run: pnpm --filter ${{ inputs.pnpm-filter }} build
 
   # Job 2: Tests (runs in parallel with lint-build)
   test:
@@ -217,13 +220,6 @@ jobs:
           key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: pnpm-store-${{ runner.os }}-
 
-      - name: Cache Turborepo
-        uses: actions/cache@v5
-        with:
-          path: .turbo
-          key: turbo-${{ runner.os }}-${{ github.sha }}
-          restore-keys: turbo-${{ runner.os }}-
-
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
@@ -233,7 +229,9 @@ jobs:
         run: npx prisma generate
 
       - name: Build workspace dependencies
-        run: pnpm exec turbo run build --filter="${{ inputs.pnpm-filter }}^..."
+        if: inputs.build-dependencies
+        # <pkg>^... = only dependencies of <pkg>, excluding <pkg> itself
+        run: pnpm --filter "${{ inputs.pnpm-filter }}^..." build
 
       - name: Run tests
-        run: pnpm exec turbo run test --filter="${{ inputs.pnpm-filter }}"
+        run: pnpm --filter ${{ inputs.pnpm-filter }} test

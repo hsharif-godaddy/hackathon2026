@@ -10,7 +10,7 @@ import { ConversationRepository } from '../../database/repositories/Conversation
 import { ConversationContextManager } from '../ConversationContextManager.js'
 import { AgentsMessagePersistence } from '../../server/conversation-persistence.js'
 import { getDatabase } from '../../database/connection.js'
-import type { ConversationContext } from '@airo/ai-transport'
+import type { ConversationContext } from '@airo/ai-lib'
 
 describe('Multi-Agent Conversation History Integration', () => {
   let conversationRepo: ConversationRepository

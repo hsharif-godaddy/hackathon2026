@@ -5,7 +5,7 @@
  * which can cause token resource exhaustion.
  */
 
-import { createLogger } from '@airo/ai-common'
+import { createLogger } from '../utils/logger.js'
 
 const logger = createLogger('duplicate-detection')
 

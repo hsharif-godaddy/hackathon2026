@@ -9,9 +9,6 @@ build/
 *.tsbuildinfo
 .docker-cache/
 
-# Turborepo
-.turbo/
-
 # Log directories (but not internal/logs/ source code)
 logs/
 !**/internal/logs/

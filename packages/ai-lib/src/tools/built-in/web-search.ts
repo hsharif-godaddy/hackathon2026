@@ -1,4 +1,4 @@
-import { createLogger } from '@airo/ai-common'
+import { createLogger } from '../../utils/logger.js'
 import { z } from 'zod'
 import { BaseTool } from '../base-tool.js'
 import type { AgentContext } from '../../core/types.js'

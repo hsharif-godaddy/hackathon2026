@@ -1,5 +1,6 @@
 import { grantSessionManager } from './grant-session-manager.js'
-import { logger, type LitellmMetadata } from '@airo/ai-common'
+import type { LitellmMetadata } from '../providers/unified-provider.js'
+import { logger } from '../utils/logger.js'
 import { LlmCallSource } from '@airo/shared/grants'
 
 /**

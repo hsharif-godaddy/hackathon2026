@@ -11,8 +11,8 @@
 import { z } from 'zod';
 import { logger } from '../../../logging/index.js';
 import { getClientActionService } from '../../../server/ai-lib-websocket-server.js';
-import { grantSessionManager } from '@airo/ai-grants';
-import type { SkillToolDefinition } from '@airo/ai-skills';
+import { grantSessionManager } from '@airo/ai-lib';
+import type { SkillToolDefinition } from '@airo/ai-lib';
 import { logoService } from '../../../services/LogoService.js';
 import { appRepository } from '../../../database/repositories/index.js';
 import { appPlanTool } from '../../../tools/app-plan-tool.js';

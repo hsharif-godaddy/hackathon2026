@@ -16,7 +16,7 @@
  * state manager backed by Redis, database, or other shared storage.
  */
 
-import { createLogger } from '@airo/ai-common'
+import { createLogger } from '../utils/logger.js'
 import type { HandoffStateManager } from './handoff-helpers.js'
 
 const logger = createLogger('handoff-state-manager')

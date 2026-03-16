@@ -21,7 +21,8 @@ import { createDuplicateResponseStopCondition } from './duplicate-detection.js'
 import { supportsEffort } from '../utils/model-normalization.js'
 import { buildHybridContent } from '../utils/image-content-builder.js'
 import type { ContentBlock, TextContentBlock, ImageContentBlock } from '../utils/image-content-builder.js'
-import { createLogger, serializeError, isBudgetExceededAPIError, BudgetExceededError, retryWithBackoff, type RetryContext } from '@airo/ai-common'
+import { createLogger } from '../utils/logger.js'
+import { serializeError, isBudgetExceededAPIError } from '../utils/errors.js'
 import { addCacheControlToMessages, addCacheControlToSystemPrompt, logCachingStats } from '../utils/prompt-caching.js'
 import { llmMetadataContext, type LitellmMetadata } from '../providers/unified-provider.js'
 import {
@@ -30,7 +31,9 @@ import {
   grantSessionManager,
   isGrantsExhausted,
   GrantErrorCode,
-} from '@airo/ai-grants'
+} from '../grants/index.js'
+import { BudgetExceededError } from '../utils/errors.js'
+import { retryWithBackoff, type RetryContext } from '../utils/retry-with-backoff.js'
 
 const logger = createLogger('agent-factory')
 
@@ -439,13 +442,7 @@ export class AgentWrapper {
               currentUserMessage = cachedMessages[cachedMessages.length - 1] || currentUserMessage
             } else {
               // Subsequent turns: cache only history (exclude current message)
-              // Disable system message caching here — the system prompt is already cached
-              // at the ToolLoopAgent level, so context messages with role 'system' in the
-              // messages array should not consume cache breakpoints.
-              allMessages = addCacheControlToMessages(allMessages, this.config.model, {
-                ...cachingStrategy,
-                cacheSystemPrompts: false
-              })
+              allMessages = addCacheControlToMessages(allMessages, this.config.model, cachingStrategy)
             }
           }
 
@@ -523,10 +520,7 @@ export class AgentWrapper {
           // Subsequent turns: cache all messages except the last user message (new input)
           const lastMessage = processedMessages[processedMessages.length - 1]!
           const messagesToCache = processedMessages.slice(0, -1)
-          const cachedMessages = addCacheControlToMessages(messagesToCache, this.config.model, {
-            ...cachingStrategy,
-            cacheSystemPrompts: false
-          })
+          const cachedMessages = addCacheControlToMessages(messagesToCache, this.config.model, cachingStrategy)
           processedMessages = [...cachedMessages, lastMessage]
         }
       } else {

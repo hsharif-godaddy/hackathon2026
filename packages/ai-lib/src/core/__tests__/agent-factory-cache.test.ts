@@ -390,7 +390,7 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
 
     await agentWrapper.streamGenerate('Second message', {
       messages: conversationMessages as ModelMessage[],
-      context: [
+      contextMessages: [
         {
           role: 'system',
           content: 'Injected system context'

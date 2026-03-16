@@ -13,7 +13,7 @@ import { Logger } from '../../../logging/index.js';
 import { getNomadAllocConfig } from '../../../utils/nomad-config.js';
 import { appRepository } from '../../../database/repositories/index.js';
 import { withCommerceAuth } from './auth.js';
-import type { SkillToolDefinition, SkillHooks } from '@airo/ai-skills';
+import type { SkillToolDefinition, SkillHooks } from '@airo/ai-lib';
 import { ensureViteResolveDedupe } from '../../../services/vite-dedupe.js';
 
 const logger = Logger.create({ service: 'commerce.skill' });

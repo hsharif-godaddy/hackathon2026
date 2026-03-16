@@ -62,10 +62,6 @@ vi.mock('@/utils/getServerRootDomain', () => ({
   getApiBaseUrl: vi.fn(() => 'https://content-inspirations.api.test'),
 }));
 
-vi.mock('@/lib/marketing/social-posts', () => ({
-  fetchSocialPostsFromAgents: vi.fn(() => Promise.resolve([])),
-}));
-
 /**
  * Helper to create mock NextRequest for testing
  * Note: This creates a request object for unit testing - no actual HTTP calls are made

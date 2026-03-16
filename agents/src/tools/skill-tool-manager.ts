@@ -11,7 +11,7 @@
 
 import type { Tool } from 'ai';
 import { logger } from '../logging/index.js';
-import { ConversationSkillState, buildAllSkillTools, buildSkillToolName, type SkillToolRegistry, type SkillHooks, type SkillHookContext } from '@airo/ai-skills';
+import { ConversationSkillState, buildAllSkillTools, buildSkillToolName, type SkillToolRegistry, type SkillHooks, type SkillHookContext } from '@airo/ai-lib';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';

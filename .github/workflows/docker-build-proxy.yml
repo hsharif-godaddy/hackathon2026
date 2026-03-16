@@ -6,6 +6,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - "proxy/**"
+      - "package.json"
       - "pnpm-workspace.yaml"
       - "pnpm-lock.yaml"
       - ".github/workflows/docker-build-proxy.yml"
@@ -13,6 +14,7 @@ on:
     branches: [main]
     paths:
       - "proxy/**"
+      - "package.json"
       - "pnpm-workspace.yaml"
       - "pnpm-lock.yaml"
       - ".github/workflows/docker-build-proxy.yml"

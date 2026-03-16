@@ -12,8 +12,7 @@
  * so the agent-factory grant advancement logic can retry with the next grant.
  */
 
-import { getS2SToken } from '@airo/ai-lib';
-import { BudgetExceededError } from '@airo/ai-common';
+import { getS2SToken, BudgetExceededError } from '@airo/ai-lib';
 import { logger } from '../logging/index.js';
 
 export interface LogoGenerateInput {

@@ -1,6 +1,6 @@
 import type { LanguageModel, Tool, ModelMessage } from 'ai'
 import type { z } from 'zod'
-import type { RetryOptions } from '@airo/ai-common'
+import type { RetryOptions } from '../utils/retry-with-backoff.js'
 
 // Re-export AI SDK types for convenience
 export type { ModelMessage, LanguageModel, Tool } from 'ai'

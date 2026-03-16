@@ -6,7 +6,7 @@
  * to reference results from earlier ones.
  */
 
-import { createLogger } from '@airo/ai-common'
+import { createLogger } from '../utils/logger.js'
 import type { Tool } from 'ai'
 import { z } from 'zod'
 import { createTool } from './index.js'

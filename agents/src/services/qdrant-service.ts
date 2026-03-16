@@ -1,7 +1,6 @@
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { logger } from '../logging/index.js';
-import { getEmbeddingModel, generateEmbeddings } from '@airo/ai-lib';
-import { llmMetadataContext } from '@airo/ai-common';
+import { getEmbeddingModel, generateEmbeddings, llmMetadataContext } from '@airo/ai-lib';
 
 export interface VectorSearchOptions {
   query: string;

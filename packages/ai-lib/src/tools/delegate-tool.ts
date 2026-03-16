@@ -6,7 +6,7 @@
  * This is NOT for switching the active agent - use handoff helpers for that.
  */
 
-import { createLogger } from '@airo/ai-common'
+import { createLogger } from '../utils/logger.js'
 import type { Tool } from 'ai'
 import { z } from 'zod'
 import { createTool } from './index.js'

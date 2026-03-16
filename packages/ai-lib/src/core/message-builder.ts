@@ -1,4 +1,4 @@
-import { createLogger } from '@airo/ai-common'
+import { createLogger } from '../utils/logger.js'
 import type { ModelMessage } from 'ai'
 import type { AgentContext, FileInputContext } from './types.js'
 import { buildHybridContent } from '../utils/image-content-builder.js'

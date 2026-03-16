@@ -39,14 +39,14 @@ if (options.token && options.repoUrl) {
 
 ## Services
 
-| Service              | Package        | Port | Notes                                                                           |
-| -------------------- | -------------- | ---- | ------------------------------------------------------------------------------- |
-| **agents/**          | `@airo/agents` | 4000 | Express API, AI agents, SQLite, WebSocket                                       |
-| **app/**             | `website`      | 3000 | Next.js BFF + builder UI, MySQL/Prisma                                          |
-| **dev-supervisor/**  | Go binary      | —    | PID1, process lifecycle, HTTP proxy, JWT auth                                   |
-| **proxy/**           | `airo-proxy`   | —    | Getty Images API proxy                                                          |
-| **packages/shared/** | `@airo/shared` | —    | Shared types and pure utilities (grants, context-attachment, social, websocket) |
-| **packages/ai-lib/** | `@airo/ai-lib` | —    | AI SDK wrapper, consumed by agents                                              |
+| Service              | Package        | Port | Notes                                         |
+| -------------------- | -------------- | ---- | --------------------------------------------- |
+| **agents/**          | `@airo/agents` | 4000 | Express API, AI agents, SQLite, WebSocket     |
+| **app/**             | `website`      | 3000 | Next.js BFF + builder UI, MySQL/Prisma        |
+| **dev-supervisor/**  | Go binary      | —    | PID1, process lifecycle, HTTP proxy, JWT auth |
+| **proxy/**           | `airo-proxy`   | —    | Getty Images API proxy                        |
+| **packages/shared/** | `@airo/shared`  | —    | Shared types and pure utilities (grants, context-attachment, social, websocket) |
+| **packages/ai-lib/** | `@airo/ai-lib` | —    | AI SDK wrapper, consumed by agents            |
 
 Additional: `app-templates/` (v8 template), `packages/design-extractor/` (PDF RAG), `setup/` (config utility), `e2e/` (E2E tests)
 
@@ -70,7 +70,7 @@ See service-specific CLAUDE.md files: [agents/](agents/CLAUDE.md), [app/](app/CL
 corepack enable                          # Enforces pnpm 10.17.0
 ./setup.sh                               # Automated setup (or: pnpm --filter airo-setup start)
 pnpm install && pnpm run dev             # agents:4000, app:3000
-pnpm typecheck / lint / test / build     # build/typecheck/lint use Turborepo (cached)
+pnpm typecheck / lint / test / build
 ```
 
 **Test filtering (Vitest, not Jest):**

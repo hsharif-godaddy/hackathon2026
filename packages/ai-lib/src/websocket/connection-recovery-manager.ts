@@ -9,7 +9,7 @@ import type {
 import type { ConversationEventChannel } from './conversation-event-channel.js'
 import type { ConnectionStateManager, ConnectionStateData } from './connection-state-manager.js'
 import { WebSocketSubscriber } from './subscribers/websocket-subscriber.js'
-import { createLogger } from '@airo/ai-common'
+import { createLogger } from '../utils/logger.js'
 
 /**
  * Default agent name used when no agent is specified

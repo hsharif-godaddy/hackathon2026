@@ -8,7 +8,7 @@
  */
 
 import type { ModelMessage, LanguageModel, SystemModelMessage } from 'ai'
-import { createLogger } from '@airo/ai-common'
+import { createLogger } from './logger.js'
 
 const logger = createLogger('prompt-caching')
 

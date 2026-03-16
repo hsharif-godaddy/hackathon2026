@@ -40,7 +40,7 @@ COPY --chown=node:node proxy/tsconfig.json ./
 COPY --chown=node:node proxy/setup-certs.sh ./
 
 # Build TypeScript
-RUN pnpm --filter airo-proxy run build
+RUN pnpm run build
 
 # Make setup script executable
 RUN chmod +x setup-certs.sh
@@ -65,14 +65,14 @@ COPY --chown=node:node ./proxy/package.json /workspace/proxy/
 # Install workspace dependencies with Artifactory authentication
 RUN --mount=type=secret,id=npm_token,uid=1001 \
   printf "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=%s\n//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:always-auth=true\nregistry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/\n" "$(cat /run/secrets/npm_token)" > ~/.npmrc && \
-  pnpm install --filter airo-proxy --frozen-lockfile && \
+  pnpm install --frozen-lockfile && \
   rm -f ~/.npmrc
 
 # Copy proxy source
 COPY --chown=node:node ./proxy /workspace/proxy
 
 # Build TypeScript
-RUN cd /workspace/proxy && pnpm --filter airo-proxy run build
+RUN cd /workspace/proxy && pnpm run build
 
 # Create SSL directory and generate self-signed certificate
 RUN mkdir -p /workspace/proxy/ssl && \
