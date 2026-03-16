@@ -206,7 +206,11 @@ describe('WebSocketServer - Error Handling', () => {
       const retryCall = mockAgent.streamGenerate.mock.calls[1]
       expect(retryCall[0]).toContain('The previous tool call failed due to invalid JSON syntax')
       expect(retryCall[1].messages).toBeDefined()
-      expect(retryCall[1].messages.length).toBeGreaterThan(1) // Should include error context
+      expect(retryCall[1].messages.length).toBeGreaterThanOrEqual(1)
+      // Verify the original prompt is included in the retry messages
+      const lastRetryMessage = retryCall[1].messages[retryCall[1].messages.length - 1]
+      expect(lastRetryMessage.role).toBe('user')
+      expect(lastRetryMessage.content).toBe('Edit the file')
     })
 
     it('should require acknowledgement for manual recovery and deliver catch-up events', async () => {

@@ -7,9 +7,10 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "tsx src/index.ts",
-    "test:all": "tsx src/index.ts --all",
-    "test:quality": "tsx src/index.ts --quality-only",
+    "test": "pnpm test:unit",
+    "test:e2e": "tsx src/index.ts",
+    "test:e2e:all": "tsx src/index.ts --all",
+    "test:e2e:quality": "tsx src/index.ts --quality-only",
     "test:unit": "node --import tsx/esm --test 'src/**/*.test.ts'",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'no linter configured'",

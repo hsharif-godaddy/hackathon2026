@@ -439,7 +439,13 @@ export class AgentWrapper {
               currentUserMessage = cachedMessages[cachedMessages.length - 1] || currentUserMessage
             } else {
               // Subsequent turns: cache only history (exclude current message)
-              allMessages = addCacheControlToMessages(allMessages, this.config.model, cachingStrategy)
+              // Disable system message caching here — the system prompt is already cached
+              // at the ToolLoopAgent level, so context messages with role 'system' in the
+              // messages array should not consume cache breakpoints.
+              allMessages = addCacheControlToMessages(allMessages, this.config.model, {
+                ...cachingStrategy,
+                cacheSystemPrompts: false
+              })
             }
           }
 
@@ -517,7 +523,10 @@ export class AgentWrapper {
           // Subsequent turns: cache all messages except the last user message (new input)
           const lastMessage = processedMessages[processedMessages.length - 1]!
           const messagesToCache = processedMessages.slice(0, -1)
-          const cachedMessages = addCacheControlToMessages(messagesToCache, this.config.model, cachingStrategy)
+          const cachedMessages = addCacheControlToMessages(messagesToCache, this.config.model, {
+            ...cachingStrategy,
+            cacheSystemPrompts: false
+          })
           processedMessages = [...cachedMessages, lastMessage]
         }
       } else {
