@@ -283,6 +283,19 @@
     z-index: 9999;
   }
 
+  /* Tooltip z-index override when upgrade modal is open - uses :has() to detect modal visibility */
+  body:has(#UpgradeLibraryPortal .ux-modal:not([hidden])) .tooltip[role="tooltip"] {
+    z-index: 9999 !important;
+  }
+
+  /* Ensure tooltip icons are inline with text in upgrade library portal */
+  #UpgradeLibraryPortal {
+    .tooltip-help-icon svg,
+    .PlanBox-featureItemTooltip svg {
+      display: inline;
+    }
+  }
+
   /* SSO login modal styling to account for iframe padding */
   .sso-login-modal.ux-modal {
     gap: 0 !important;
