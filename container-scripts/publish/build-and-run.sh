@@ -92,6 +92,8 @@ fi
 # Try to read custom serve command (handles missing file, empty file, invalid JSON, or missing field)
 CUSTOM_SERVE_CMD=$(jq -er '.runtime.serve.command // empty' .airo/config.json 2>/dev/null || echo "")
 
+load_customer_environment_variables
+
 if [[ -n "$CUSTOM_SERVE_CMD" ]]; then
     # Custom config path - use the serve command from .airo/config.json
     log "Using custom serve command from .airo/config.json: $CUSTOM_SERVE_CMD"

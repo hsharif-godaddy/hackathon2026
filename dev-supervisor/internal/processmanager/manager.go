@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/airo-ai-builder/dev-supervisor/internal/allocconfig"
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 	"github.com/airo-ai-builder/dev-supervisor/internal/health"
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
@@ -93,8 +94,12 @@ type ProcessManager struct {
 	deferredSetupRequest  *validation.ProcessStartRequest // Start request to use after deferred setup
 	deferredSetupExecuted atomic.Bool                     // True if deferred setup has been executed
 	deferredSetupMutex    sync.Mutex                      // Protects deferred setup execution (idempotency)
-	deferredSetupRunning  atomic.Bool                     // True while setup script is executing
-	deferredSetupError    atomic.Value                    // stores string; empty = no error
+
+	// allocLoader is optional; when nil, alloc config is loaded via allocconfig.Default().
+	// Set in tests to inject a loader (e.g. temp dir) so Restart overwrites env from latest config.
+	allocLoader          *allocconfig.Loader
+	deferredSetupRunning atomic.Bool  // True while setup script is executing
+	deferredSetupError   atomic.Value // stores string; empty = no error
 }
 
 // SetupStatus represents the current state of setup script configuration and execution.
@@ -175,6 +180,25 @@ func (pm *ProcessManager) startLocked(req validation.ProcessStartRequest) error 
 	enableLogging := pm.enableLogging
 	outputToStructuredLog := pm.outputToStructuredLog
 	pm.mu.Unlock() // UNLOCK pm.mu before blocking
+
+	// Merge customer env from NOMAD_ALLOC_DIR/config.json (via alloc config loader
+	// so we pick up config changes within the loader TTL and share singleflight).
+	allocLoader := pm.allocLoader
+	if allocLoader == nil {
+		allocLoader = allocconfig.Default()
+	}
+	allocConfig, _ := allocLoader.Load()
+	if allocConfig != nil && len(allocConfig.CustomerEnv) > 0 {
+		if req.Env == nil {
+			req.Env = make(map[string]string)
+		}
+		for k, v := range allocConfig.CustomerEnv {
+			if _, ok := req.Env[k]; !ok {
+				req.Env[k] = v
+			}
+		}
+		slog.Info("customer_env.loaded", "count", len(allocConfig.CustomerEnv))
+	}
 
 	// Blocking operations (no pm.mu, but lifecycleMu still held)
 	managedProcess, err := NewManagedProcess(req)
@@ -361,6 +385,21 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 		if err := pm.stopProcessForRestart(req, currentStatus, ports); err != nil {
 			return err
 		}
+	}
+
+	// Force fresh alloc config read so restarted process gets latest (ignore TTL cache)
+	allocLoader := pm.allocLoader
+	if allocLoader == nil {
+		allocLoader = allocconfig.Default()
+	}
+	allocLoader.InvalidateCache()
+	allocConfig, _ := allocLoader.Load()
+	if allocConfig != nil && len(allocConfig.CustomerEnv) > 0 {
+		if config.Env == nil {
+			config.Env = make(map[string]string)
+		}
+		maps.Copy(config.Env, allocConfig.CustomerEnv)
+		slog.Info("customer_env.loaded", "count", len(allocConfig.CustomerEnv))
 	}
 
 	// Create and start a completely new managed process with the same config

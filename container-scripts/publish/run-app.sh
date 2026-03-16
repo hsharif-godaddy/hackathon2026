@@ -86,6 +86,8 @@ log "Changed to app directory: $APP_DIR"
 if [[ -f "${APP_DIR}/dist/server.bundle.cjs" ]]; then
     log "Detected pre-built artifacts (server.bundle.cjs) - using fast path"
 
+    load_customer_environment_variables
+
     # Create .env file and start application
     create_env_file "${APP_DIR}/dist"
 

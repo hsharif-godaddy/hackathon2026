@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # Unified setup script for both first-start and restart scenarios.
 # This script runs setup logic only - process start is handled by dev-supervisor.
@@ -149,6 +149,9 @@ if [ ! -f "$CUSTOMER_APP_DIR/.git/config" ]; then
 
     log_step "=== FIRST-START SETUP COMPLETE ==="
 fi
+
+# Customer env (SYSTEM_MANAGED=false from config.json) is loaded by dev-supervisor from
+# NOMAD_ALLOC_DIR/config.json when starting the process, so no setup here is needed.
 
 log_step "=== Setup script finished successfully ==="
 exit 0

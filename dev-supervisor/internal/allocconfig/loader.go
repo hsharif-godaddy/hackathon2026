@@ -3,8 +3,10 @@ package allocconfig
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sync"
 	"time"
 
@@ -48,11 +50,16 @@ type DatabaseConfig struct {
 	Variant  string `json:"VARIANT"`
 }
 
+// validEnvKey matches allowed environment variable names (POSIX-style).
+var validEnvKey = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
+
 // Config represents the structure of /alloc/config.json
-// This file contains deployment-time secrets and configuration
+// This file contains deployment-time secrets and configuration.
+// CustomerEnv holds top-level keys that are Secret[string] with SYSTEM_MANAGED=false (reloaded with config).
 type Config struct {
 	Database       *Secret[DatabaseConfig] `json:"DATABASE"`
 	JWTRedirectURL *Secret[string]         `json:"JWT_REDIRECT_URL"`
+	CustomerEnv    map[string]string       `json:"-"` // Populated from other top-level entries; not from JSON tag
 }
 
 // Copy returns a deep copy of the Config
@@ -72,6 +79,11 @@ func (c *Config) Copy() *Config {
 	if c.JWTRedirectURL != nil {
 		jwtCopy := *c.JWTRedirectURL
 		configCopy.JWTRedirectURL = &jwtCopy
+	}
+
+	if len(c.CustomerEnv) > 0 {
+		configCopy.CustomerEnv = make(map[string]string, len(c.CustomerEnv))
+		maps.Copy(configCopy.CustomerEnv, c.CustomerEnv)
 	}
 
 	return configCopy
@@ -124,6 +136,17 @@ func NewLoaderWithTTL(path string, ttl time.Duration) *Loader {
 	}
 }
 
+// InvalidateCache clears the loader cache so the next Load() reads from disk.
+// Use when the caller needs to force a fresh read (e.g. process restart).
+func (l *Loader) InvalidateCache() {
+	if l.cacheTTL <= 0 {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.cachedConfig = nil
+}
+
 // Load reads and parses the config file with optional TTL caching
 // Returns error if file cannot be read or parsed
 // If caching is enabled (TTL > 0), returns cached value if still valid
@@ -151,20 +174,51 @@ func (l *Loader) Load() (*Config, error) {
 			return nil, fmt.Errorf("read config: %w", err)
 		}
 
-		var config Config
-		if err := json.Unmarshal(data, &config); err != nil {
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &raw); err != nil {
 			return nil, fmt.Errorf("parse config: %w", err)
+		}
+
+		config := &Config{}
+		for k, v := range raw {
+			switch k {
+			case "DATABASE":
+				var s Secret[DatabaseConfig]
+				if err := json.Unmarshal(v, &s); err != nil {
+					continue
+				}
+				config.Database = &s
+			case "JWT_REDIRECT_URL":
+				var s Secret[string]
+				if err := json.Unmarshal(v, &s); err != nil {
+					continue
+				}
+				config.JWTRedirectURL = &s
+			default:
+				if validEnvKey.MatchString(k) {
+					var s Secret[string]
+					if err := json.Unmarshal(v, &s); err != nil {
+						continue
+					}
+					if !s.SystemManaged {
+						if config.CustomerEnv == nil {
+							config.CustomerEnv = make(map[string]string)
+						}
+						config.CustomerEnv[k] = s.Value
+					}
+				}
+			}
 		}
 
 		// Update cache if TTL > 0
 		if l.cacheTTL > 0 {
 			l.mu.Lock()
-			l.cachedConfig = &config
+			l.cachedConfig = config
 			l.cacheExpiry = time.Now().Add(l.cacheTTL)
 			l.mu.Unlock()
 		}
 
-		return &config, nil
+		return config, nil
 	})
 
 	if err != nil {

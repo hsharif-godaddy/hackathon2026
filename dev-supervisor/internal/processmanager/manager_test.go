@@ -2,14 +2,17 @@
 package processmanager
 
 import (
+	"encoding/json"
 	"net"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/airo-ai-builder/dev-supervisor/internal/allocconfig"
 	"github.com/airo-ai-builder/dev-supervisor/internal/health"
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
@@ -244,6 +247,56 @@ func TestProcessManager_RestartProcess(t *testing.T) {
 	if err := pm.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1}); err != nil {
 		t.Logf("test cleanup: failed to stop process: %v", err)
 	}
+}
+
+// TestProcessManager_RestartLoadsLatestAllocConfig verifies that Restart() re-reads alloc config
+// (via InvalidateCache) and overwrites process env with latest CustomerEnv.
+func TestProcessManager_RestartLoadsLatestAllocConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.json")
+	envPath := filepath.Join(tmpDir, "env.out")
+
+	writeAllocConfig := func(value string) {
+		t.Helper()
+		cfg := map[string]any{
+			"RESTART_TEST_VAR": map[string]any{
+				"SYSTEM_MANAGED": false,
+				"VALUE":          value,
+			},
+		}
+		data, err := json.Marshal(cfg)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(configPath, data, 0600))
+	}
+
+	writeAllocConfig("first")
+	loader := allocconfig.NewLoaderWithTTL(configPath, 5*time.Second)
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+	pm.allocLoader = loader
+
+	req := validation.ProcessStartRequest{
+		Command:    "sh -c 'echo \"$RESTART_TEST_VAR\" > env.out && exec sleep 20'",
+		WorkingDir: tmpDir,
+	}
+	require.NoError(t, pm.Start(req))
+	time.Sleep(300 * time.Millisecond)
+	firstBytes, err := os.ReadFile(envPath)
+	require.NoError(t, err)
+	assert.Equal(t, "first\n", string(firstBytes), "initial process should see first value")
+
+	writeAllocConfig("second")
+	err = pm.Restart(ProcessRestartRequest{Graceful: true})
+	if err != nil && err.Error() != "failed to stop process for restart: signal: terminated" {
+		t.Errorf("Restart: %v", err)
+	}
+	time.Sleep(400 * time.Millisecond)
+	secondBytes, err := os.ReadFile(envPath)
+	require.NoError(t, err)
+	assert.Equal(t, "second\n", string(secondBytes), "restarted process should see latest alloc config value")
+
+	_ = pm.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
 }
 
 func TestProcessManager_ConfigureHealthCheck(t *testing.T) {

@@ -177,6 +177,74 @@ func TestLoader_Load(t *testing.T) {
 		}
 	})
 
+	t.Run("load config with CustomerEnv (SYSTEM_MANAGED=false)", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.json")
+		configData := map[string]any{
+			"ENV1": map[string]any{
+				"SYSTEM_MANAGED": false,
+				"VALUE":          "value1",
+			},
+			"ENV2": map[string]any{
+				"SYSTEM_MANAGED": false,
+				"VALUE":          "value2",
+			},
+			"SKIP_TRUE": map[string]any{
+				"SYSTEM_MANAGED": true,
+				"VALUE":          "system",
+			},
+			"_PRIVATE": map[string]any{
+				"SYSTEM_MANAGED": false,
+				"VALUE":          "allowed",
+			},
+		}
+		writeTestConfig(t, configPath, configData)
+		loader := NewLoader(configPath)
+		config, err := loader.Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if len(config.CustomerEnv) != 2 {
+			t.Errorf("CustomerEnv len = %d, want 2", len(config.CustomerEnv))
+		}
+		if config.CustomerEnv["ENV1"] != "value1" || config.CustomerEnv["ENV2"] != "value2" {
+			t.Errorf("CustomerEnv = %v", config.CustomerEnv)
+		}
+		if _, ok := config.CustomerEnv["_PRIVATE"]; ok {
+			t.Error("key starting with _ is invalid per validEnvKey, should not be in CustomerEnv")
+		}
+		if _, ok := config.CustomerEnv["SKIP_TRUE"]; ok {
+			t.Error("SYSTEM_MANAGED=true should not be in CustomerEnv")
+		}
+	})
+
+	t.Run("CustomerEnv excludes invalid key names", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.json")
+		configData := map[string]any{
+			"VALID_KEY": map[string]any{
+				"SYSTEM_MANAGED": false,
+				"VALUE":          "ok",
+			},
+			"123invalid": map[string]any{
+				"SYSTEM_MANAGED": false,
+				"VALUE":          "no",
+			},
+		}
+		writeTestConfig(t, configPath, configData)
+		loader := NewLoader(configPath)
+		config, err := loader.Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if config.CustomerEnv["VALID_KEY"] != "ok" {
+			t.Errorf("CustomerEnv[VALID_KEY] = %q, want ok", config.CustomerEnv["VALID_KEY"])
+		}
+		if _, ok := config.CustomerEnv["123invalid"]; ok {
+			t.Error("invalid key 123invalid should not be in CustomerEnv")
+		}
+	})
+
 	t.Run("missing file returns error", func(t *testing.T) {
 		loader := NewLoader("/nonexistent/config.json")
 		_, err := loader.Load()
@@ -429,6 +497,43 @@ func TestLoader_CacheExpiry(t *testing.T) {
 
 	if config.Database.Value.Name != "newdb" {
 		t.Errorf("cache expiry failed: got %q, want %q", config.Database.Value.Name, "newdb")
+	}
+}
+
+func TestLoader_InvalidateCache(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.json")
+
+	configData := map[string]any{
+		"DATABASE": map[string]any{
+			"SYSTEM_MANAGED": true,
+			"VALUE": map[string]any{
+				"NAME": "first",
+			},
+		},
+	}
+	writeTestConfig(t, configPath, configData)
+
+	loader := NewLoaderWithTTL(configPath, 1*time.Minute)
+
+	config1, err := loader.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if config1.Database.Value.Name != "first" {
+		t.Errorf("initial load: got %q, want first", config1.Database.Value.Name)
+	}
+
+	configData["DATABASE"].(map[string]any)["VALUE"].(map[string]any)["NAME"] = "second"
+	writeTestConfig(t, configPath, configData)
+
+	loader.InvalidateCache()
+	config2, err := loader.Load()
+	if err != nil {
+		t.Fatalf("Load() after InvalidateCache error = %v", err)
+	}
+	if config2.Database.Value.Name != "second" {
+		t.Errorf("after InvalidateCache: got %q, want second", config2.Database.Value.Name)
 	}
 }
 
