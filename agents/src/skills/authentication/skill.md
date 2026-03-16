@@ -71,8 +71,17 @@ requestSecrets({
       required: true,
       defaultValue: 'auto:hex64',
     },
-    { name: 'GOOGLE_CLIENT_ID', description: 'OAuth 2.0 Client ID', required: true },
-    { name: 'GOOGLE_CLIENT_SECRET', description: 'OAuth 2.0 Client Secret', required: true },
+    {
+      name: 'GOOGLE_CLIENT_ID',
+      description:
+        'OAuth 2.0 Client ID (no https://; e.g. 1234567890-abcdef.apps.googleusercontent.com)',
+      required: true,
+    },
+    {
+      name: 'GOOGLE_CLIENT_SECRET',
+      description: 'OAuth 2.0 Client Secret (typically starts with GOCSPX-)',
+      required: true,
+    },
   ],
   mode: 'add',
 });
