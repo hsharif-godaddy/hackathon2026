@@ -10,10 +10,10 @@
     "dev:agents": "pnpm --filter @airo/agents dev",
     "dev:app": "pnpm --filter website dev",
     "dev:setup": "pnpm --filter airo-setup dev",
-    "build": "pnpm --filter @airo/shared build && pnpm --filter @airo/ai-lib build && pnpm --filter @airo/agents build && pnpm --filter website build",
-    "build:all": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck",
-    "lint": "pnpm -r lint",
+    "build": "turbo run build --filter=@airo/shared --filter=@airo/ai-lib --filter=@airo/agents --filter=website",
+    "build:all": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
     "test": "./scripts/test.sh",
     "test:e2e": "playwright test",
     "prepare": "husky && husky install",
@@ -28,7 +28,8 @@
     "@playwright/test": "^1.56.1",
     "husky": "^8.0.0",
     "lint-staged": "^15.2.0",
-    "prettier": "^3.0.0"
+    "prettier": "^3.0.0",
+    "turbo": "^2.8.17"
   },
   "lint-staged": {
     "agents/**/*.{ts,tsx,js,jsx}": [

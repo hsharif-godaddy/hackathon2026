@@ -37,6 +37,5 @@ jobs:
       pnpm-filter: website
       working-directory: ./app
       run-prisma-generate: true
-      build-dependencies: true
       cache-next-build: true
     secrets: inherit
