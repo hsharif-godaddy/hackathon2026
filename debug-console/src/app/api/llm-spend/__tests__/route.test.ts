@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock withAuth to pass through the handler directly
 vi.mock('@/lib/api-auth', () => ({
-  withAuth: (handler: (req: Request) => Promise<Response>) => handler
+  withAuth: (handler: unknown) => handler
 }));
 
 describe('llm-spend route', () => {
@@ -34,7 +34,7 @@ describe('llm-spend route', () => {
 
   it('should return 400 when grantUserId is missing', async () => {
     const { GET } = await import('../route');
-    const response = await (GET as (req: Request) => Promise<Response>)(makeRequest({}));
+    const response = await (GET as unknown as (req: Request) => Promise<Response>)(makeRequest({}));
     expect(response.status).toBe(400);
     const body = await response.json();
     expect(body.error).toContain('grantUserId');
@@ -44,7 +44,7 @@ describe('llm-spend route', () => {
     delete process.env.AIRO_BUILDER_ES_ENDPOINT;
     delete process.env.AIRO_BUILDER_ES_API_KEY;
     const { GET } = await import('../route');
-    const response = await (GET as (req: Request) => Promise<Response>)(makeRequest({ grantUserId: 'airo-builder:grant:test123' }));
+    const response = await (GET as unknown as (req: Request) => Promise<Response>)(makeRequest({ grantUserId: 'airo-builder:grant:test123' }));
     expect(response.status).toBe(500);
     const body = await response.json();
     expect(body.error).toContain('credentials');
@@ -89,7 +89,7 @@ describe('llm-spend route', () => {
     });
 
     const { GET } = await import('../route');
-    const response = await (GET as (req: Request) => Promise<Response>)(makeRequest({ grantUserId: 'airo-builder:grant:test123', subscriptionId: 'sub123' }));
+    const response = await (GET as unknown as (req: Request) => Promise<Response>)(makeRequest({ grantUserId: 'airo-builder:grant:test123', subscriptionId: 'sub123' }));
     expect(response.status).toBe(200);
     const body = await response.json();
 
@@ -127,7 +127,7 @@ describe('llm-spend route', () => {
     });
 
     const { GET } = await import('../route');
-    const response = await (GET as (req: Request) => Promise<Response>)(makeRequest({ grantUserId: 'airo-builder:grant:test123' }));
+    const response = await (GET as unknown as (req: Request) => Promise<Response>)(makeRequest({ grantUserId: 'airo-builder:grant:test123' }));
     const body = await response.json();
 
     expect(body.grantBreakdowns[0].dailySpend[0].date).toBe('2026-03-05');
@@ -142,7 +142,7 @@ describe('llm-spend route', () => {
     });
 
     const { GET } = await import('../route');
-    const response = await (GET as (req: Request) => Promise<Response>)(makeRequest({ grantUserId: 'airo-builder:grant:test123' }));
+    const response = await (GET as unknown as (req: Request) => Promise<Response>)(makeRequest({ grantUserId: 'airo-builder:grant:test123' }));
     const body = await response.json();
 
     expect(body.totalSpend).toBe(0);
@@ -161,7 +161,7 @@ describe('llm-spend route', () => {
     });
 
     const { GET } = await import('../route');
-    const response = await (GET as (req: Request) => Promise<Response>)(makeRequest({ grantUserId: 'airo-builder:grant:test123' }));
+    const response = await (GET as unknown as (req: Request) => Promise<Response>)(makeRequest({ grantUserId: 'airo-builder:grant:test123' }));
     expect(response.status).toBe(503);
     const body = await response.json();
     expect(body.error).toContain('503');
@@ -171,7 +171,7 @@ describe('llm-spend route', () => {
     global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
 
     const { GET } = await import('../route');
-    const response = await (GET as (req: Request) => Promise<Response>)(makeRequest({ grantUserId: 'airo-builder:grant:test123' }));
+    const response = await (GET as unknown as (req: Request) => Promise<Response>)(makeRequest({ grantUserId: 'airo-builder:grant:test123' }));
     expect(response.status).toBe(500);
     const body = await response.json();
     expect(body.message).toContain('Network error');

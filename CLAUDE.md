@@ -70,7 +70,7 @@ See service-specific CLAUDE.md files: [agents/](agents/CLAUDE.md), [app/](app/CL
 corepack enable                          # Enforces pnpm 10.17.0
 ./setup.sh                               # Automated setup (or: pnpm --filter airo-setup start)
 pnpm install && pnpm run dev             # agents:4000, app:3000
-pnpm typecheck / lint / test / build
+pnpm typecheck / lint / test / build     # build/typecheck/lint use Turborepo (cached)
 ```
 
 **Test filtering (Vitest, not Jest):**

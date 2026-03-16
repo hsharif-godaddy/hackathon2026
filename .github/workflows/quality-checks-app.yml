@@ -10,6 +10,7 @@ on:
       - "package.json"
       - "pnpm-workspace.yaml"
       - "pnpm-lock.yaml"
+      - "turbo.json"
       - "scripts/license-check.sh"
       - ".github/workflows/quality-checks-app.yml"
       - ".github/workflows/_quality-checks.yml"
@@ -21,6 +22,7 @@ on:
       - "package.json"
       - "pnpm-workspace.yaml"
       - "pnpm-lock.yaml"
+      - "turbo.json"
       - "scripts/license-check.sh"
       - ".github/workflows/quality-checks-app.yml"
       - ".github/workflows/_quality-checks.yml"
@@ -37,6 +39,5 @@ jobs:
       pnpm-filter: website
       working-directory: ./app
       run-prisma-generate: true
-      build-dependencies: true
       cache-next-build: true
     secrets: inherit

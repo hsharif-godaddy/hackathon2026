@@ -11,6 +11,7 @@ on:
       - "package.json"
       - "pnpm-workspace.yaml"
       - "pnpm-lock.yaml"
+      - "turbo.json"
       - "scripts/license-check.sh"
       - ".github/workflows/quality-checks-agents.yml"
       - ".github/workflows/_quality-checks.yml"
@@ -23,6 +24,7 @@ on:
       - "package.json"
       - "pnpm-workspace.yaml"
       - "pnpm-lock.yaml"
+      - "turbo.json"
       - "scripts/license-check.sh"
       - ".github/workflows/quality-checks-agents.yml"
       - ".github/workflows/_quality-checks.yml"
@@ -38,6 +40,5 @@ jobs:
       package-name: agents
       pnpm-filter: "@airo/agents"
       working-directory: ./agents
-      build-dependencies: true
       skip-tests: true  # Agent tests currently have failures
     secrets: inherit
