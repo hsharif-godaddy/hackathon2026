@@ -1,4 +1,6 @@
-import { createTool, generateTextWithTracking, llmMetadataContext, type LitellmMetadata, type Tool, buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-lib'
+import { createTool, generateTextWithTracking, type Tool } from '@airo/ai-lib'
+import { llmMetadataContext, type LitellmMetadata } from '@airo/ai-common'
+import { buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-grants'
 import { z } from 'zod'
 
 import { generatePalette, updateCssColorPalette, type ColorPalette } from '../css-color-tool.js'

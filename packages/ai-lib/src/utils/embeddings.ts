@@ -3,7 +3,7 @@
  * Handles provider-specific implementations while maintaining a unified interface
  */
 
-import { createLogger } from './logger.js'
+import { createLogger } from '@airo/ai-common'
 import type { EmbeddingOptions, EmbeddingsResult } from '../core/types.js'
 import { llmMetadataContext, type LitellmMetadata } from '../providers/unified-provider.js'
 

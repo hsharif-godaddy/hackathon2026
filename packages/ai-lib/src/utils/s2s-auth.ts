@@ -18,7 +18,7 @@ interface TokenCache {
 // @ts-expect-error - gd-auth-client is a CommonJS module without TypeScript definitions
 import { IamTokenClient } from 'gd-auth-client'
 
-import { createLogger } from './logger.js'
+import { createLogger } from '@airo/ai-common'
 
 const logger = createLogger('s2s-auth')
 

@@ -13,7 +13,7 @@ vi.mock('ai', async importOriginal => {
   }
 })
 
-vi.mock('../../grants/index.js', () => ({
+vi.mock('@airo/ai-grants', () => ({
   grantSessionManager: {
     isFeatureEnabled: vi.fn(),
     hasGrants: vi.fn(),
@@ -66,7 +66,7 @@ describe('AgentWrapper - exhausted grants refresh', function exhaustedGrantsTest
 
   describe('#streamGenerate - exhausted grants', function streamTests() {
     it('proceeds with stream when refresh finds a usable credit pack', async function creditPackFound() {
-      const { grantSessionManager, isGrantsExhausted } = await import('../../grants/index.js')
+      const { grantSessionManager, isGrantsExhausted } = await import('@airo/ai-grants')
 
       vi.mocked(grantSessionManager.isFeatureEnabled).mockReturnValue(true)
       vi.mocked(grantSessionManager.hasGrants).mockReturnValue(true)
@@ -89,7 +89,7 @@ describe('AgentWrapper - exhausted grants refresh', function exhaustedGrantsTest
     })
 
     it('throws BudgetExceededError when refresh times out', async function refreshTimeout() {
-      const { grantSessionManager, isGrantsExhausted } = await import('../../grants/index.js')
+      const { grantSessionManager, isGrantsExhausted } = await import('@airo/ai-grants')
 
       vi.mocked(grantSessionManager.isFeatureEnabled).mockReturnValue(true)
       vi.mocked(grantSessionManager.hasGrants).mockReturnValue(true)
@@ -104,7 +104,7 @@ describe('AgentWrapper - exhausted grants refresh', function exhaustedGrantsTest
     })
 
     it('throws BudgetExceededError when refresh returns but no grant is usable', async function refreshStillExhausted() {
-      const { grantSessionManager, isGrantsExhausted } = await import('../../grants/index.js')
+      const { grantSessionManager, isGrantsExhausted } = await import('@airo/ai-grants')
 
       vi.mocked(grantSessionManager.isFeatureEnabled).mockReturnValue(true)
       vi.mocked(grantSessionManager.hasGrants).mockReturnValue(true)
@@ -120,7 +120,7 @@ describe('AgentWrapper - exhausted grants refresh', function exhaustedGrantsTest
     })
 
     it('skips exhausted-grants refresh when feature is disabled', async function featureDisabled() {
-      const { grantSessionManager, isGrantsExhausted } = await import('../../grants/index.js')
+      const { grantSessionManager, isGrantsExhausted } = await import('@airo/ai-grants')
 
       vi.mocked(grantSessionManager.isFeatureEnabled).mockReturnValue(false)
       vi.mocked(grantSessionManager.hasGrants).mockReturnValue(true)
@@ -135,7 +135,7 @@ describe('AgentWrapper - exhausted grants refresh', function exhaustedGrantsTest
     })
 
     it('normalizes raw APICallError budget error and triggers grant fallback', async function rawAPICallErrorBudget() {
-      const { grantSessionManager, isGrantsExhausted } = await import('../../grants/index.js')
+      const { grantSessionManager, isGrantsExhausted } = await import('@airo/ai-grants')
 
       // Pre-call: grants not exhausted, so stream is attempted
       vi.mocked(grantSessionManager.isFeatureEnabled).mockReturnValue(true)
@@ -173,7 +173,7 @@ describe('AgentWrapper - exhausted grants refresh', function exhaustedGrantsTest
     })
 
     it('throws raw APICallError budget error when grants feature is disabled', async function rawAPICallErrorNoGrants() {
-      const { grantSessionManager, isGrantsExhausted } = await import('../../grants/index.js')
+      const { grantSessionManager, isGrantsExhausted } = await import('@airo/ai-grants')
 
       vi.mocked(grantSessionManager.isFeatureEnabled).mockReturnValue(false)
       vi.mocked(grantSessionManager.hasGrants).mockReturnValue(false)

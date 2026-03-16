@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Server as HTTPServer } from 'http'
 import { WebSocketServer } from '../experimental-websocket-server.js'
 import { createNoOpPersistence } from '../noop-persistence.js'
-import type { ExperimentalAgentWrapper } from '../../core/agent-factory.js'
+import type { ExperimentalAgentWrapper } from '@airo/ai-lib'
 
 // Mock Socket.IO
 const mockSocket = {

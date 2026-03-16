@@ -1,4 +1,4 @@
-import { createLogger } from '../utils/logger.js'
+import { createLogger } from '@airo/ai-common'
 import type { AgentFactory, HandoffContext } from './agent-factory.js'
 import type { AgentContext } from './types.js'
 

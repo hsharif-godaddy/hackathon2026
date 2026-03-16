@@ -1,6 +1,6 @@
 import type { CreditGrant } from '@airo/shared/grants'
 import { GrantManager } from '@airo/shared/grants'
-import { logger } from '../utils/logger.js'
+import { logger } from '@airo/ai-common'
 
 /**
  * APM agent type (loose typing to avoid strict dependency)

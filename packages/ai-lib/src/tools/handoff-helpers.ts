@@ -8,7 +8,7 @@
  * This integrates with WebSocket server to switch which agent processes subsequent messages.
  */
 
-import { createLogger } from '../utils/logger.js'
+import { createLogger } from '@airo/ai-common'
 import type { Tool } from 'ai'
 import { z } from 'zod'
 import { createTool } from './index.js'

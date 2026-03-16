@@ -1,5 +1,5 @@
 import type { ConversationContext, PersistenceStreamingEvent } from './interfaces.js'
-import { createLogger } from '../utils/logger.js'
+import { createLogger } from '@airo/ai-common'
 
 /**
  * Connection lifecycle states

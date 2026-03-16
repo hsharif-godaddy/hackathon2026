@@ -1,4 +1,6 @@
-import { getModel, llmMetadataContext, type LitellmMetadata, buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-lib'
+import { getModel } from '@airo/ai-lib'
+import { llmMetadataContext, type LitellmMetadata } from '@airo/ai-common'
+import { buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-grants'
 import { generateText } from 'ai'
 
 import { Logger, log } from '../logging/index.js'

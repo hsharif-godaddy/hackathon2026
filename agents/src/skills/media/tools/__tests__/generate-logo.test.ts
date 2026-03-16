@@ -30,7 +30,7 @@ vi.mock('../../../../database/repositories/index.js', () => ({
 const mockGetCurrentUserId = vi.fn();
 const mockGetSubscriptionIdForSession = vi.fn();
 const mockGetSubscriptionState = vi.fn();
-vi.mock('@airo/ai-lib', async (importOriginal) => {
+vi.mock('@airo/ai-grants', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,

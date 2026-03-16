@@ -4,17 +4,16 @@
  */
 
 import { Server as HTTPServer } from 'node:http'
+import { calculateCostEstimate } from '@airo/ai-lib'
 import {
-  calculateCostEstimate,
   createWebSocketServer,
   type MessageProvider,
   type ContextProvider,
   type ConversationMessage,
   type HistoryProvider,
   type PersistedMessage,
-  grantSessionManager,
-  type GrantContextPayload,
-} from '@airo/ai-lib'
+} from '@airo/ai-transport'
+import { grantSessionManager, type GrantContextPayload } from '@airo/ai-grants'
 import { auth, AuthType, BYPASS_SITE_IDS } from '../services/features.js'
 import apm from 'elastic-apm-node'
 import { observe, updateActiveObservation } from '@langfuse/tracing'
