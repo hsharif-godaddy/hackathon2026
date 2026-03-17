@@ -1,8 +1,19 @@
 import { Router, Request, Response, IRouter } from 'express';
+import { Transform } from 'stream';
+import { pipeline } from 'stream/promises';
 import { AppRepository } from '../../database/index.js';
+import { formatCSVHeader, formatCSVRow } from '../../utils/csv-utils.js';
 import { MySQLUtils, isSystemTable } from '../../utils/mysql-utils.js';
 import { Logger, log } from '../../logging/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
+
+/**
+ * Sanitize a string for use in Content-Disposition filename.
+ * Strips characters that could cause header injection or parsing issues.
+ */
+function sanitizeFilename(name: string): string {
+  return name.replace(/[\r\n"\\]/g, '_');
+}
 
 const router: IRouter = Router();
 const appRepo = new AppRepository();
@@ -422,6 +433,137 @@ router.delete('/apps/:id/database/tables/:tableName/rows', async (req: Request, 
       error: 'Failed to delete row',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
+  }
+});
+
+/**
+ * GET /apps/:id/database/tables/:tableName/export - Export full table as CSV or JSON
+ */
+router.get('/apps/:id/database/tables/:tableName/export', async (req: Request, res: Response): Promise<void> => {
+  const { id, tableName } = req.params;
+  const format = (req.query.format as string)?.toLowerCase() || 'csv';
+
+  if (!id) {
+    res.status(400).json({ error: 'App ID is required' });
+    return;
+  }
+  if (!tableName) {
+    res.status(400).json({ error: 'Table name is required' });
+    return;
+  }
+  if (format !== 'csv' && format !== 'json') {
+    res.status(400).json({ error: 'Invalid format. Must be "csv" or "json"' });
+    return;
+  }
+
+  if (isSystemTable(tableName)) {
+    logger.warn('route.db.export.system_table_blocked', { appId: id, tableName });
+    res.status(403).json({ error: 'Access to system tables is not allowed' });
+    return;
+  }
+
+  const app = appRepo.findById(id);
+  if (!app) {
+    logger.warn('route.db.export.not_found', { appId: id });
+    res.status(404).json({ error: 'App not found' });
+    return;
+  }
+
+  let connection: Awaited<ReturnType<typeof mysqlUtils.streamTableData>>['connection'] | undefined;
+
+  function releaseConnection() {
+    if (connection) {
+      try { connection.release(); } catch { /* already released */ }
+      connection = undefined;
+    }
+  }
+
+  try {
+    const credentials = await mysqlUtils.loadCredentialsFromApp(app);
+
+    // Pre-flight: get schema before setting headers (can still return proper error)
+    const schema = await mysqlUtils.getTableSchema(credentials, tableName);
+    const columnNames = schema.map(col => col.name);
+
+    logger.info('route.db.export.begin', { appId: id, tableName, format, columnCount: columnNames.length });
+
+    const safeFilename = sanitizeFilename(tableName);
+
+    // Set response headers — after this point, no JSON error responses
+    if (format === 'csv') {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}.csv"`);
+    } else {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}.json"`);
+    }
+
+    const result = await mysqlUtils.streamTableData(credentials, tableName);
+    const stream = result.stream;
+    connection = result.connection;
+
+    // Build a Transform that formats each row object into the output format.
+    // Using pipeline() gives us automatic backpressure and cleanup.
+    let isFirstJsonRow = true;
+    const formatter = new Transform({
+      objectMode: true,
+      transform(row: Record<string, unknown>, _encoding, callback) {
+        if (format === 'csv') {
+          callback(null, formatCSVRow(row, columnNames) + '\n');
+        } else {
+          if (isFirstJsonRow) {
+            isFirstJsonRow = false;
+            callback(null, JSON.stringify(row));
+          } else {
+            callback(null, ',\n' + JSON.stringify(row));
+          }
+        }
+      },
+    });
+
+    // Write format preamble
+    if (format === 'csv') {
+      res.write('\uFEFF' + formatCSVHeader(columnNames) + '\n');
+    } else {
+      res.write('[\n');
+    }
+
+    // pipeline() handles backpressure, error propagation, and stream cleanup.
+    // If the client disconnects (res closes), pipeline destroys upstream streams.
+    try {
+      await pipeline(stream, formatter, res, { end: false });
+    } finally {
+      releaseConnection();
+    }
+
+    // Write format epilogue and finish
+    if (format === 'json') {
+      res.write('\n]');
+    }
+    logger.info('route.db.export.success', { appId: id, tableName, format });
+    res.end();
+  } catch (error) {
+    releaseConnection();
+
+    const contextLogger = id ? log.forApp(id) : logger;
+    log.error(contextLogger, 'route.db.export.error', error as Error, {
+      appId: id,
+      tableName,
+      format,
+      error: error instanceof Error ? error.message : String(error),
+    });
+
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Failed to export table data',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+      return;
+    }
+    // If headers already sent and pipeline errored (e.g. client disconnect), just end
+    if (!res.writableEnded) {
+      res.end();
+    }
   }
 });
 

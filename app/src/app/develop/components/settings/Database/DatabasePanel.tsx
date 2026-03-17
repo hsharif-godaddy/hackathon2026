@@ -4,12 +4,14 @@ import React, { useState } from 'react';
 import Box from '@ux/box';
 import Button from '@ux/button';
 import DatabaseIcon from '@ux/icon/database';
+import DownloadIcon from '@ux/icon/download';
 import EditIcon from '@ux/icon/edit';
+import { Menu, MenuButton, MenuItem, MenuList } from '@ux/menu';
 import Skeleton from '@ux/skeleton';
 import text from '@ux/text';
 
 import { TableDataBrowser } from '@/app/develop/components/settings/Database/TableDataBrowser';
-import { formatColumnName } from '@/app/develop/components/settings/Database/utils';
+import { formatColumnName, triggerTableExport } from '@/app/develop/components/settings/Database/utils';
 import { ChatTab } from '@/app/develop/components/types';
 import BigCard from '@/components/layout/BigCard';
 import EmptyStateCard from '@/components/layout/EmptyStateCard';
@@ -125,13 +127,31 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
                 {formatColumnName(table)}
               </text.p>
             </Box>
-            <Button
-              icon={<EditIcon />}
-              design="tertiary"
-              size="sm"
-              onClick={() => handleTableClick(table)}
-              text={t('builder_settings_database_common_edit_table')}
-            />
+            <Box orientation="horizontal" gap="sm" inlineAlignChildren="center">
+              <Menu id={`export-menu-${table}`} size="sm" closeOnSelect>
+                <MenuButton
+                  design="tertiary"
+                  size="sm"
+                  icon={<DownloadIcon />}
+                  aria-label={t('builder_common_export')}
+                />
+                <MenuList>
+                  <MenuItem onClick={() => triggerTableExport(appId, table, 'csv')}>
+                    {t('builder_settings_database_common_export_csv')}
+                  </MenuItem>
+                  <MenuItem onClick={() => triggerTableExport(appId, table, 'json')}>
+                    {t('builder_settings_database_common_export_json')}
+                  </MenuItem>
+                </MenuList>
+              </Menu>
+              <Button
+                icon={<EditIcon />}
+                design="tertiary"
+                size="sm"
+                onClick={() => handleTableClick(table)}
+                text={t('builder_settings_database_common_edit_table')}
+              />
+            </Box>
           </Box>
         ))}
       </Box>

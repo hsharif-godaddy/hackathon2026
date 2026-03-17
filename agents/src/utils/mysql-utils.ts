@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from 'fs';
+import { Readable } from 'stream';
 import { logger } from '../logging/index.js';
 import mysql from 'mysql2/promise';
 import { join } from 'path';
@@ -614,6 +615,38 @@ export class MySQLUtils {
    */
   escapeIdentifier(identifier: string): string {
     return `\`${identifier.replace(/`/g, '``')}\``;
+  }
+
+  /**
+   * Stream all rows from a table using mysql2's cursor-based streaming.
+   * Returns an object-mode Readable stream and the pool connection.
+   *
+   * The caller MUST release the connection when done (on stream end, error, or client disconnect).
+   * Recommended pattern: listen to stream 'close' event to release the connection.
+   */
+  async streamTableData(
+    credentials: DatabaseCredentials,
+    tableName: string,
+    highWaterMark: number = 500
+  ): Promise<{ stream: Readable; connection: mysql.PoolConnection }> {
+    const poolConnection = await this.createConnection(credentials);
+
+    try {
+      // mysql2/promise PoolConnection wraps a non-promise Connection internally.
+      // Streaming requires the non-promise connection's .query() which returns a Query
+      // object with a .stream() method. This is a stable mysql2 pattern but not part
+      // of the typed promise API, hence the cast.
+      const rawConnection = (poolConnection as any).connection;
+      const escapedTableName = this.escapeIdentifier(tableName);
+      const query = rawConnection.query(`SELECT * FROM ${escapedTableName}`); // nosemgrep: node-mysql-sqli — table name is an identifier escaped via escapeIdentifier() (backtick-wrapping), not user input in a parameter position
+      const stream = query.stream({ highWaterMark });
+
+      return { stream, connection: poolConnection };
+    } catch (error) {
+      // Release the connection if streaming setup fails to prevent pool leak
+      poolConnection.release();
+      throw error;
+    }
   }
 
   /**

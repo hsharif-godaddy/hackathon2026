@@ -5,10 +5,12 @@ import Box from '@ux/box';
 import Button from '@ux/button';
 import ArrowLeftIcon from '@ux/icon/arrow-left';
 import DatabaseIcon from '@ux/icon/database';
+import DownloadIcon from '@ux/icon/download';
 import EditIcon from '@ux/icon/edit';
 import PlusIcon from '@ux/icon/plus';
 import RefreshIcon from '@ux/icon/refresh';
 import TrashIcon from '@ux/icon/trash';
+import { Menu, MenuButton, MenuItem, MenuList } from '@ux/menu';
 import Pagination from '@ux/pagination';
 import Table, {
   Tbody,
@@ -30,7 +32,7 @@ import { AddRowDialog } from './AddRowDialog';
 import { DeleteRowModal } from './DeleteRowModal';
 import { EditRowDialog } from './EditRowDialog';
 import { TableDataBrowserSkeleton } from './TableDataBrowserSkeleton';
-import { formatColumnName } from './utils';
+import { formatColumnName, triggerTableExport } from './utils';
 
 interface TableDataBrowserProps {
   appId: string;
@@ -136,6 +138,10 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
     setCurrentPage(validPage);
   };
 
+  const handleExport = useCallback((format: 'csv' | 'json') => {
+    triggerTableExport(appId, tableName, format);
+  }, [appId, tableName]);
+
   const isDateColumn = (columnType: string): boolean => {
     const type = columnType.toLowerCase().trim();
     // Remove precision/length parameters (e.g., datetime(6) -> datetime)
@@ -239,6 +245,22 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
               size="sm"
               onClick={() => setIsAddDialogOpen(true)}
             />
+            <Menu id={`export-menu-${tableName}`} size="sm" closeOnSelect>
+              <MenuButton
+                design="secondary"
+                size="sm"
+                icon={<DownloadIcon />}
+                text={t('builder_common_export')}
+              />
+              <MenuList>
+                <MenuItem onClick={() => handleExport('csv')}>
+                  {t('builder_settings_database_common_export_csv')}
+                </MenuItem>
+                <MenuItem onClick={() => handleExport('json')}>
+                  {t('builder_settings_database_common_export_json')}
+                </MenuItem>
+              </MenuList>
+            </Menu>
             <Button
               text={t('builder_common_refresh')}
               icon={<RefreshIcon className={isRefetching ? 'animate-spin' : ''} />}

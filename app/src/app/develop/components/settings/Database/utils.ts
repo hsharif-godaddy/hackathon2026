@@ -58,6 +58,21 @@ export function formatColumnType(type: string): string {
 }
 
 /**
+ * Trigger a browser-native file download via a temporary <a> element.
+ * The server responds with Content-Disposition: attachment, so the browser
+ * streams directly to disk without buffering in memory.
+ */
+export function triggerTableExport(appId: string, tableName: string, format: 'csv' | 'json'): void {
+  const url = `/api/database/${appId}/tables/${encodeURIComponent(tableName)}/export?format=${format}`;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${tableName}.${format}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+/**
  * Get responsive grid classes based on column count
  * Determines optimal grid layout for forms based on number of fields
  *
