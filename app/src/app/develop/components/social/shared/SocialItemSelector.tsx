@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
+import Card from '@ux/card'
+import Radio from '@ux/radio'
 import text from '@ux/text'
 
 import { generateClickEID } from '@/utils/instrumentation'
@@ -23,7 +25,6 @@ interface SocialItemSelectorButton {
   onClick: (selectedId: string | null) => void
   disabled?: (selectedId: string | null) => boolean
   requiresSelection?: boolean,
-  size?: 'default' | 'md' | 'sm' | 'small'
   eid?: string
 }
 
@@ -62,51 +63,53 @@ export function SocialItemSelector({
       {title && <SocialSectionHeader Icon={Icon} title={title} />}
 
       {description && (
-        <text.p size={-2} className="text-muted-foreground" text={description} />
+        <text.p text={description} />
       )}
 
       {items.length === 0 && emptyMessage ? (
-        <div className="p-3 border border-border rounded bg-muted/50">
+        <Card space={{ block: 'md', inline: 'md' }}>
           <text.p size={-2} text={emptyMessage} />
-        </div>
+        </Card>
       ) : (
-        <div className="min-h-24 max-h-32 overflow-y-auto border border-border rounded-md p-1 space-y-0.5">
-          {items.map((item) => {
-            const isSelected = selectedId === item.id
+        <Card space={{ block: 'sm', inline: 'sm' }} className="rounded">
+          <div className="max-h-32 overflow-y-auto space-y-0.5">
+            {items.map((item) => {
+              const isSelected = selectedId === item.id
 
-            return (
-              <label
-                key={item.id}
-                className={`flex items-start gap-1.5 p-1.5 rounded cursor-pointer hover:bg-muted/50 transition-colors ${
-                  isSelected ? 'bg-primary/10 border border-primary' : 'border border-transparent'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="social-item"
-                  value={item.id}
-                  checked={isSelected}
-                  onChange={(e) => handleSelectionChange(e.target.value)}
-                  className="mt-0.5"
-                  disabled={item.isLoading}
-                />
-                <div className="flex-1 min-w-0">
-                  <SocialConnectionInfo
-                    name={item.name}
-                    pictureUrl={item.pictureUrl}
-                    details={item.subtitle}
-                    isLoading={item.isLoading}
-                    size="sm"
+              return (
+                <div
+                  key={item.id}
+                  className={`p-1.5 rounded-lg hover:bg-intents-ux-actionOptionHovered-backgroundColor transition-colors cursor-pointer ${
+                    isSelected ? 'bg-intents-ux-actionOptionChosen-backgroundColor' : 'bg-intents-ux-actionOption-backgroundColor'
+                  }`}
+                  onClick={() => !item.isLoading && handleSelectionChange(item.id)}
+                >
+                  <Radio
+                    id={`social-item-${item.id}`}
+                    name="social-item"
+                    value={item.id}
+                    checked={isSelected}
+                    onChange={() => handleSelectionChange(item.id)}
+                    disabled={item.isLoading}
+                    label={
+                      <SocialConnectionInfo
+                        name={item.name}
+                        pictureUrl={item.pictureUrl}
+                        details={item.subtitle}
+                        isLoading={item.isLoading}
+                        size="sm"
+                      />
+                    }
                   />
                 </div>
-              </label>
-            )
-          })}
-        </div>
+              )
+            })}
+          </div>
+        </Card>
       )}
 
       {buttons.length > 0 && (
-        <Box orientation="horizontal" gap="sm" inlineAlignChildren="end" className="pt-1">
+        <Box orientation="horizontal" gap="sm" blockAlignChildren="end" className="mt-5">
           {buttons.map((button, index) => {
             const isDisabled =
               (button.requiresSelection && !selectedId) ||
@@ -117,7 +120,6 @@ export function SocialItemSelector({
               <Button
                 key={index}
                 design={button.design}
-                size="sm"
                 onClick={() => button.onClick(selectedId)}
                 disabled={isDisabled}
                 text={button.text}

@@ -5,7 +5,6 @@ import { getErrorMessage } from '@/lib/errors'
 import type { PlatformConfig } from '@/lib/social-platforms'
 import type { EnrichedSocialConnection, SocialConnection } from '@/types/social'
 import { SocialAuthPrompt } from './SocialAuthPrompt'
-import { ContainerVariant } from './SocialConnectFlowContainer'
 import { FlowStateType, SocialConnectFlowState } from './SocialConnectFlowState'
 import { SocialConnectionSelector } from './SocialConnectionSelector'
 import { SocialConnectionWarning } from './SocialConnectionWarning'
@@ -103,11 +102,11 @@ interface GetRenderConfigParams {
   isRetryable: boolean
   authUrlError: Error | null
   isLoadingAuthUrl: boolean
+  onClose?: () => void
   t: ReturnType<typeof useTranslations>
 }
 
 interface RenderConfig {
-  variant?: ContainerVariant
   icon?: React.ComponentType<{ className?: string }> | null
   platformName?: string
   showHeader?: boolean
@@ -136,12 +135,12 @@ export function getRenderConfig({
   isRetryable,
   authUrlError,
   isLoadingAuthUrl,
+  onClose,
   t
 }: GetRenderConfigParams): RenderConfig {
   switch (renderState) {
     case RenderState.CheckingExistingConnections:
       return {
-        variant: undefined,
         icon: config.Icon,
         platformName: config.name,
         showHeader: true,
@@ -156,7 +155,6 @@ export function getRenderConfig({
       }
 
       return {
-        variant: ContainerVariant.Warning,
         showHeader: false,
         content: (
           <SocialConnectionWarning
@@ -164,6 +162,7 @@ export function getRenderConfig({
             Icon={config.Icon}
             connectionName={connectionName}
             onChangeConnection={handleChangeConnection}
+            onClose={onClose}
           />
         )
       }
@@ -188,10 +187,9 @@ export function getRenderConfig({
 
     case RenderState.AuthUrlError:
       return {
-        variant: ContainerVariant.Error,
         icon: config.Icon,
         platformName: config.name,
-        content: <SocialConnectFlowState type={FlowStateType.Error} errorMessage={t('builder_social_auth_url_error', { error: authUrlError ? getErrorMessage(authUrlError) : t('builder_code_error_unknown') })} onRetry={openPopup} />
+        content: <SocialConnectFlowState type={FlowStateType.Error} errorMessage={t('builder_social_auth_url_error', { error: authUrlError ? getErrorMessage(authUrlError) : t('builder_code_error_unknown') })} onRetry={openPopup} onClose={onClose} />
       }
 
     case RenderState.ValidatingPermissions:
@@ -231,18 +229,16 @@ export function getRenderConfig({
 
     case RenderState.Success:
       return {
-        variant: ContainerVariant.Success,
         icon: config.Icon,
         platformName: config.name,
-        content: <SocialConnectFlowState type={FlowStateType.Success} />
+        content: <SocialConnectFlowState type={FlowStateType.Success} onClose={onClose} />
       }
 
     case RenderState.Error:
       return {
-        variant: ContainerVariant.Error,
         icon: config.Icon,
         platformName: config.name,
-        content: <SocialConnectFlowState type={FlowStateType.Error} errorMessage={flowStateError || authPopupErrorMessage} onRetry={isRetryable ? openPopup : undefined} />
+        content: <SocialConnectFlowState type={FlowStateType.Error} errorMessage={flowStateError || authPopupErrorMessage} onRetry={isRetryable ? openPopup : undefined} onClose={onClose} />
       }
 
     case RenderState.OAuthPrompt:
@@ -251,9 +247,9 @@ export function getRenderConfig({
         platformName: config.name,
         content: (
           <>
-            {authStatus === AuthStatus.Success && <SocialConnectFlowState type={FlowStateType.Success} />}
-            {authStatus === AuthStatus.Error && <SocialConnectFlowState type={FlowStateType.Error} errorMessage={authPopupErrorMessage} onRetry={openPopup} />}
-            {authStatus === AuthStatus.Pending && <SocialAuthPrompt platformName={config.name} onConnect={openPopup} isLoading={isLoadingAuthUrl} />}
+            {authStatus === AuthStatus.Success && <SocialConnectFlowState type={FlowStateType.Success} onClose={onClose} />}
+            {authStatus === AuthStatus.Error && <SocialConnectFlowState type={FlowStateType.Error} errorMessage={authPopupErrorMessage} onRetry={openPopup} onClose={onClose} />}
+            {authStatus === AuthStatus.Pending && <SocialAuthPrompt platformName={config.name} onConnect={openPopup} isLoading={isLoadingAuthUrl} onClose={onClose} />}
           </>
         )
       }

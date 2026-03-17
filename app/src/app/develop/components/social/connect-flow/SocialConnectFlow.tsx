@@ -11,7 +11,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { generateClickEID } from '@/utils/instrumentation'
 import { getCurrentRenderState, getRenderConfig } from './social-connect-flow-render'
-import { ContainerVariant, SocialConnectFlowContainer } from './SocialConnectFlowContainer'
+import { SocialConnectFlowContainer } from './SocialConnectFlowContainer'
 
 interface SocialConnectFlowProps {
   platform: string
@@ -22,6 +22,7 @@ interface SocialConnectFlowProps {
   autoOpen?: boolean
   isActive: boolean
   onSuccess?: () => void
+  onClose: () => void
 }
 
 const SocialConnectFlow = memo(function SocialConnectFlow(props: SocialConnectFlowProps) {
@@ -77,12 +78,12 @@ const SocialConnectFlow = memo(function SocialConnectFlow(props: SocialConnectFl
     isRetryable: flowState.isRetryable,
     authUrlError,
     isLoadingAuthUrl,
+    onClose: props.onClose,
     t,
   })
 
   return (
     <SocialConnectFlowContainer
-      variant={renderConfig.variant}
       icon={renderConfig.icon}
       platformName={renderConfig.platformName}
       showHeader={renderConfig.showHeader}
@@ -97,22 +98,22 @@ const SocialConnectFlow = memo(function SocialConnectFlow(props: SocialConnectFl
     prevProps.initialStep === nextProps.initialStep &&
     prevProps.initialUserTokenId === nextProps.initialUserTokenId &&
     prevProps.autoOpen === nextProps.autoOpen &&
-    prevProps.isActive === nextProps.isActive
+    prevProps.isActive === nextProps.isActive &&
+    prevProps.onClose === nextProps.onClose
 })
 
 function SocialConnectFlowError(error: Error, reset: () => void, t: ReturnType<typeof useTranslations>) {
   return (
     <SocialConnectFlowContainer
-      variant={ContainerVariant.Error}
       icon={null}
       platformName={t('builder_social_platform')}
       showHeader={true}
     >
       <div className="space-y-2">
-        <text.p size={-2} className="text-intents-ux-error-textColor">
+        <text.p size={-2} emphasis="critical">
           {t('builder_social_error_unexpected')}
         </text.p>
-        <text.p size={-3} className="text-muted-foreground">
+        <text.p size={-3} emphasis="passive">
           {error.message}
         </text.p>
         <Button design="primary" size="sm" onClick={reset} text={t('builder_common_try_again')} data-eid={generateClickEID('social.connect.error_boundary_retry')} />

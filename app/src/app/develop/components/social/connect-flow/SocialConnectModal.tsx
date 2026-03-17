@@ -59,6 +59,7 @@ export function SocialConnectModal({
           autoOpen={false}
           isActive={true}
           onSuccess={onSuccess}
+          onClose={onClose}
         />
       </div>
     </Modal>

@@ -1,8 +1,11 @@
 'use client'
 
 import { memo } from 'react'
+import Box from '@ux/box'
 import Button from '@ux/button'
+import Spinner from '@ux/spinner'
 import text from '@ux/text'
+import TextLockup from '@ux/text-lockup'
 
 import { useTranslations } from '@/hooks/useTranslations'
 import { generateClickEID } from '@/utils/instrumentation'
@@ -18,40 +21,75 @@ interface SocialConnectFlowStateProps {
   message?: string
   errorMessage?: string
   onRetry?: () => void
+  onClose?: () => void
 }
 
 export const SocialConnectFlowState = memo(function SocialConnectFlowState({
   type,
   message,
   errorMessage,
-  onRetry
+  onRetry,
+  onClose
 }: SocialConnectFlowStateProps) {
   const t = useTranslations()
 
   if (type === FlowStateType.Loading) {
     return (
-      <div className="flex items-center gap-1.5">
-        <text.p size={-2} text={message || t('builder_common_loading')} />
-      </div>
+      <Box
+        elevation="card"
+        blockAlignChildren="center"
+        inlineAlignChildren="center"
+        blockPadding="lg"
+        inlinePadding="lg"
+        gap="sm"
+      >
+        <Spinner size="md" />
+        <text.p as="label" text={message || t('builder_common_loading')} />
+      </Box>
     )
   }
 
   if (type === FlowStateType.Success) {
     return (
-      <div className="flex items-center gap-1 text-intents-ux-feedbackHighContrastSuccess-feedbackColor">
-        <text.p size={-2} text={message || t('builder_social_connected_successfully')} />
-      </div>
+      <>
+        <Box elevation="card" blockPadding="md" inlinePadding="md">
+          <TextLockup emphasis="success" title={message || t('builder_social_connected_successfully')} size="sm" />
+        </Box>
+        <Box orientation="horizontal" blockAlignChildren="end" className="mt-5">
+          <Button
+            design="primary"
+            onClick={onClose}
+            text={t('builder_common_close')}
+            data-eid={generateClickEID('social.connect.done')}
+          />
+        </Box>
+      </>
     )
   }
 
   if (type === FlowStateType.Error) {
     return (
-      <div className="space-y-1">
-        <div className="flex items-center gap-1 text-intents-ux-error-textColor">
-          <text.p size={-2} text={errorMessage || t('builder_social_connection_failed')} />
-        </div>
-        {onRetry && <Button design="secondary" size="sm" onClick={onRetry} text={t('builder_common_try_again')} data-eid={generateClickEID('social.connect.retry')} />}
-      </div>
+      <>
+        <Box elevation="card" blockPadding="sm" inlinePadding="md">
+          <TextLockup emphasis="critical" title={errorMessage || t('builder_social_connection_failed')} size="sm" />
+        </Box>
+        <Box gap="sm" orientation="horizontal" blockAlignChildren="end" className="mt-5">
+          <Button
+            design="secondary"
+            onClick={onClose}
+            text={t('builder_common_cancel')}
+            data-eid={generateClickEID('social.connect.cancel')}
+          />
+          {onRetry &&
+            <Button
+              design="primary"
+              onClick={onRetry}
+              text={t('builder_common_try_again')}
+              data-eid={generateClickEID('social.connect.retry')}
+            />
+          }
+        </Box>
+      </>
     )
   }
 

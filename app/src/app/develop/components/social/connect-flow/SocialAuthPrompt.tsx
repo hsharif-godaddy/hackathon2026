@@ -13,22 +13,40 @@ interface SocialAuthPromptProps {
   platformName: string
   onConnect: () => void
   isLoading: boolean
+  onClose?: () => void
 }
 
 export const SocialAuthPrompt = memo(function SocialAuthPrompt({
   platformName,
   onConnect,
-  isLoading
+  isLoading,
+  onClose
 }: SocialAuthPromptProps) {
   const t = useTranslations()
   const platform = formatPlatformName(platformName)
 
   return (
     <Box orientation="vertical" gap="md">
-      <text.span as="paragraph" emphasis="info" size={-2} text={t('builder_social_auth_popup_instruction')} />
-      <text.span as="paragraph" emphasis="passive" size={-2} text={t('builder_social_auth_popup_fallback')} />
-      <Box orientation="horizontal" inlineAlignChildren="end">
-        <Button design="primary" size="sm" onClick={onConnect} disabled={isLoading} text={t('builder_social_connect_platform', { platformName: platform })} data-eid={generateClickEID('social.connect.auth_prompt')} />
+      <text.span as="paragraph" text={t('builder_social_auth_popup_instruction')} />
+      <text.span
+        as="paragraph"
+        emphasis="passive"
+        text={t('builder_social_auth_popup_fallback_button', { buttonLabel: t('builder_social_connect_platform', { platformName: platform })})}
+      />
+      <Box gap="sm" orientation="horizontal" blockAlignChildren="end" className="mt-5">
+        <Button
+          design="secondary"
+          onClick={onClose}
+          text={t('builder_common_cancel')}
+          data-eid={generateClickEID('social.connect.cancel')}
+        />
+        <Button
+          design="primary"
+          onClick={onConnect}
+          disabled={isLoading}
+          text={t('builder_social_connect_platform', { platformName: platform })}
+          data-eid={generateClickEID('social.connect.auth_prompt')}
+        />
       </Box>
     </Box>
   )

@@ -28,6 +28,7 @@ export interface SocialConnectFlowOrchestratorProps {
   autoOpen?: boolean
   isActive: boolean
   onSuccess?: () => void
+  onClose: () => void
 }
 
 export interface SocialConnectFlowHandlers {
@@ -75,6 +76,7 @@ export function useSocialConnectFlowOrchestrator({
   autoOpen = true,
   isActive,
   onSuccess,
+  onClose,
 }: SocialConnectFlowOrchestratorProps): SocialConnectFlowOrchestratorResult {
   const t = useTranslations()
 
@@ -237,8 +239,8 @@ export function useSocialConnectFlowOrchestrator({
   }, [flowState.userTokenId, flowState.pageTokens, platform, appId, createConnectionFlow, dispatch, t])
 
   const handleCancelSelection = useCallback(() => {
-    dispatch({ type: SocialFlowAction.Error, error: t('builder_social_error_cancelled_page_selection') })
-  }, [dispatch, t])
+    onClose()
+  }, [onClose])
 
   // Derived state
   const shouldShowExistingConnectionsLoader =

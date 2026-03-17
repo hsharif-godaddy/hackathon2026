@@ -6800,6 +6800,14 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
+  '@ux/component-utilities@2500.10.4':
+    resolution: {integrity: sha512-f+pVKcA1k1rSCiELMujNq5MPcpS6UD4z/C6tzMrImxM3Y/So92RtIjiV529lCyrtQwB2bQMcncPIZA1oSnLe9Q==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/component-utilities/-/@ux/component-utilities-2500.10.4.tgz}
+    engines: {node: '>= 18'}
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
   '@ux/component-utilities@2500.7.1':
     resolution: {integrity: sha512-dfRbMgUf+Ivtrytf99zcshm73x0f8lp2DS2xwNhZRoiX+uzr6lW1S5jNhIfjOl11/8Df3G9NTpOtstHzg/ev7g==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/component-utilities/-/@ux/component-utilities-2500.7.1.tgz}
     engines: {node: '>= 18'}
@@ -6818,6 +6826,14 @@ packages:
 
   '@ux/component-utilities@2500.9.1':
     resolution: {integrity: sha512-lwtMxO1mBBEqGAorNdtKacoAKu6Q8J3T/XrU4khNotOoUW7oAHAgzOuUiqgXUkmH57Ma0ATEZe//oBHQD6TDFA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/component-utilities/-/@ux/component-utilities-2500.9.1.tgz}
+    engines: {node: '>= 18'}
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
+  '@ux/corner-actions@2500.10.2':
+    resolution: {integrity: sha512-sh11dlAPhnYEv5x0ToxwOYCuubtxi22q8j4gBEjkujVTf/wtfzMxSTCzN7X35kK/2IdTOmA91+NZujJ5hsOitg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/corner-actions/-/@ux/corner-actions-2500.10.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -7132,6 +7148,14 @@ packages:
 
   '@ux/text-input@2500.7.2':
     resolution: {integrity: sha512-UIxwuo+8z0TOuYIkMNI+LNv3T+ztceGE1W1EI9cdpEVK+AJ39OnaTReGPoKsbreBkTWC+p+ssM0hZesGPibfYg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-input/-/@ux/text-input-2500.7.2.tgz}
+    engines: {node: '>= 18'}
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
+  '@ux/text-lockup@2500.10.2':
+    resolution: {integrity: sha512-deCzVX9LkmCZeeuW4TUJaT9c/YH0oiar8wnnnzI6Mi7H4EVsvKwiiaCVnmm2lbCBHzdZe8yNd3pXobyzOU9HqA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-lockup/-/@ux/text-lockup-2500.10.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -7849,6 +7873,11 @@ packages:
 
   breakdancer@4.2.1:
     resolution: {integrity: sha512-YdN8GYIJpNIBYLIYq/iBSiSLLIsOrfehQC5f+ZYib7BevxaAx4qNGAjWYkszDj6H3/OzDxdDBqAwENwrgcsqLA==}
+    peerDependencies:
+      react: 19.1.0
+
+  breakdancer@4.2.3:
+    resolution: {integrity: sha512-hwlvupVT1MDJIAa+7EDyejqycsxa2x41vC0TaF/KbVX1DDufGBZLjcZY4FjhyBJ7tOFw3hf6/CesSav2WACZZQ==}
     peerDependencies:
       react: 19.1.0
 
@@ -21108,12 +21137,12 @@ snapshots:
   '@ux/card@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/component-utilities': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/corner-actions': 2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.10.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/corner-actions': 2500.10.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/tag': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text-lockup': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text-lockup': 2500.10.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -21169,6 +21198,16 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
+  '@ux/component-utilities@2500.10.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      breakdancer: 4.2.3(react@19.1.0)
+      diagnostics: 2.0.2
+      fn.name: 1.1.0
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+      safe-stable-stringify: 2.5.0
+
   '@ux/component-utilities@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       breakdancer: 4.2.0(react@19.1.0)
@@ -21198,6 +21237,15 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
       safe-stable-stringify: 2.5.0
+
+  '@ux/corner-actions@2500.10.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
 
   '@ux/corner-actions@2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
@@ -21640,6 +21688,17 @@ snapshots:
       '@ux/label': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text-entry': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
+  '@ux/text-lockup@2500.10.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -22557,6 +22616,11 @@ snapshots:
       react: 19.1.0
 
   breakdancer@4.2.1(react@19.1.0):
+    dependencies:
+      propget: 1.1.0
+      react: 19.1.0
+
+  breakdancer@4.2.3(react@19.1.0):
     dependencies:
       propget: 1.1.0
       react: 19.1.0

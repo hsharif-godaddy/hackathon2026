@@ -4,14 +4,7 @@ import clsx from 'clsx'
 import { memo, ReactNode } from 'react'
 
 import { useTranslations } from '@/hooks/useTranslations'
-import { IconWithName } from '../shared/IconWithName'
-
-export enum ContainerVariant {
-  Info = 'info',
-  Warning = 'warning',
-  Error = 'error',
-  Success = 'success'
-}
+import { SocialSectionHeader } from '../shared/SocialSectionHeader'
 
 export enum MaxWidth {
   Sm = 'sm',
@@ -24,31 +17,11 @@ export enum MaxWidth {
 }
 
 interface SocialConnectFlowContainerProps {
-  variant?: ContainerVariant
   icon?: React.ComponentType<{ className?: string }> | null
   platformName?: string
   showHeader?: boolean
   maxWidth?: MaxWidth
   children: ReactNode
-}
-
-const variantStyles: Record<ContainerVariant, { border: string; bg: string }> = {
-  [ContainerVariant.Info]: {
-    border: 'border-intents-ux-info-borderColor',
-    bg: 'bg-intents-ux-info-backgroundColor'
-  },
-  [ContainerVariant.Warning]: {
-    border: 'border-intents-ux-warning-borderColor',
-    bg: 'bg-intents-ux-warning-backgroundColor'
-  },
-  [ContainerVariant.Error]: {
-    border: 'border-intents-ux-error-borderColor',
-    bg: 'bg-intents-ux-error-backgroundColor'
-  },
-  [ContainerVariant.Success]: {
-    border: 'border-intents-ux-feedbackHighContrastSuccess-borderColor',
-    bg: 'bg-intents-ux-feedbackHighContrastSuccess-backgroundColor'
-  }
 }
 
 const maxWidthClasses: Record<MaxWidth, string> = {
@@ -62,26 +35,23 @@ const maxWidthClasses: Record<MaxWidth, string> = {
 }
 
 export const SocialConnectFlowContainer = memo(function SocialConnectFlowContainer({
-  variant = ContainerVariant.Info,
   icon: Icon,
   platformName,
   showHeader = true,
   maxWidth = MaxWidth.Xl2,
   children
 }: SocialConnectFlowContainerProps) {
-  const styles = variantStyles[variant]
   const t = useTranslations()
 
   return (
-    <div className={clsx(maxWidthClasses[maxWidth], 'mx-auto my-2')}>
-      <div className={clsx('rounded-md border p-2', styles.border, styles.bg)}>
-        {showHeader && platformName && Icon && (
-          <div className="mb-1.5">
-            <IconWithName Icon={Icon} name={t('builder_social_connect_link_platform', { platformName })} />
-          </div>
-        )}
-        {children}
-      </div>
+    <div className={clsx(maxWidthClasses[maxWidth], 'mx-auto')}>
+      {showHeader && (
+        <SocialSectionHeader
+          Icon={Icon}
+          title={platformName ? t('builder_social_connect_link_platform', { platformName }) : undefined}
+        />
+      )}
+      {children}
     </div>
   )
 })

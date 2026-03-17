@@ -27,8 +27,6 @@ export const SocialConnectionInfo = memo(function SocialConnectionInfo({
 }: SocialConnectionInfoProps) {
   const t = useTranslations()
   const imageSize = size === 'sm' ? 'w-5 h-5' : 'w-6 h-6'
-  const nameSize = size === 'sm' ? -1 : 0
-  const detailsSize = size === 'sm' ? -2 : -1
 
   if (isLoading) {
     return (
@@ -51,12 +49,24 @@ export const SocialConnectionInfo = memo(function SocialConnectionInfo({
           className={`${imageSize} rounded-full object-cover flex-shrink-0`}
         />
       )}
-      <Box orientation="vertical" gap="sm">
-        {name && <text.span as="paragraph" size={nameSize} text={name} className="truncate" />}
-        {details && (
-          <text.span as="paragraph" size={detailsSize} text={details} className="truncate" emphasis={ "passive" } />
-        )}
-      </Box>
+      {name && (
+        <Box orientation="vertical" className="gap-0.5">
+          <text.label
+            as="label"
+            size={size === 'md' ? 0 : -1}
+            className="truncate"
+            text={name}
+          />
+          {details &&
+            <text.p
+              emphasis="passive"
+              size={size === 'md' ? -1 : -2}
+              className="truncate"
+              text={details}
+            />
+          }
+        </Box>
+      )}
     </Box>
   )
 })

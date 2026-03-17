@@ -20,6 +20,8 @@ import { formatPlatformName } from '@/utils/social/format'
 
 type ConnectStatus = 'pending' | 'connected' | 'error'
 
+const noop = () => {}
+
 function SocialConnectToolRenderer({
   toolStatus,
   toolId,
@@ -206,6 +208,7 @@ function SocialConnectToolRenderer({
           autoOpen={isLastAssistantMessage}
           isActive={Boolean(isLastAssistantMessage)}
           onSuccess={handleConnectSuccess}
+          onClose={noop}
         />
       )
     }

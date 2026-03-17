@@ -65,7 +65,6 @@ export const SocialConnectionSelector = memo(function SocialConnectionSelector({
           design: 'secondary',
           onClick: onConnectNew,
           disabled: () => connectionsLoadingMetadata.size > 0,
-          size: 'small',
           eid: 'social.connect.connect_new'
         },
         {
@@ -74,7 +73,6 @@ export const SocialConnectionSelector = memo(function SocialConnectionSelector({
           onClick: handleUseExisting,
           requiresSelection: true,
           disabled: () => isLoading || connectionsLoadingMetadata.size > 0,
-          size: 'small',
           eid: 'social.connect.link_existing'
         }
       ]}

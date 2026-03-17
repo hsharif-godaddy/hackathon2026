@@ -30,8 +30,8 @@ vi.mock('@/utils/social', () => ({
 
 
 vi.mock('@/app/develop/components/social/connect-flow/SocialConnectFlow', () => ({
-  default: ({ isActive }: { isActive: boolean }) => (
-    <div data-testid="social-connect-flow" data-active={isActive}>
+  default: ({ isActive, onClose }: { isActive: boolean; onClose: () => void }) => (
+    <div data-testid="social-connect-flow" data-active={isActive} data-has-onclose={typeof onClose === 'function'}>
       Social Connect Flow
     </div>
   )
@@ -140,6 +140,26 @@ describe('SocialConnectToolRenderer', () => {
       const flow = screen.getByTestId('social-connect-flow')
       expect(flow).toBeInTheDocument()
       expect(flow).toHaveAttribute('data-active', 'true')
+    })
+
+    it('passes onClose to the connect flow', () => {
+      const result = {
+        action: 'connect',
+        platform: 'facebook',
+        appId: 'test-app-id',
+        state: 'test-state'
+      }
+
+      renderWithProviders(
+        <SocialConnectToolRenderer
+          {...baseProps}
+          result={result}
+          isLastAssistantMessage={true}
+        />
+      )
+
+      const flow = screen.getByTestId('social-connect-flow')
+      expect(flow).toHaveAttribute('data-has-onclose', 'true')
     })
 
     it('shows status message instead of flow when loaded from history', () => {

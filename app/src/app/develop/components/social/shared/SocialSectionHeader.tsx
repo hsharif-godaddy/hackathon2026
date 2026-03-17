@@ -1,5 +1,6 @@
 'use client'
 
+import clsx from 'clsx'
 import { memo } from 'react'
 
 import { IconWithName } from './IconWithName'
@@ -18,7 +19,7 @@ export const SocialSectionHeader = memo(function SocialSectionHeader({
   if (!title || !Icon) return null
 
   return (
-    <div className={className}>
+    <div className={clsx('mb-2', className)}>
       <IconWithName Icon={Icon} name={title} />
     </div>
   )
