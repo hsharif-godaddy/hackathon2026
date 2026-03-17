@@ -4,8 +4,10 @@
 *.dll
 *.so
 *.dylib
-dev-supervisor
-airo-supervisor
+
+# Build output (Makefile builds to dist/)
+/dist/
+/dev-supervisor
 
 # Test binary, built with `go test -c`
 *.test

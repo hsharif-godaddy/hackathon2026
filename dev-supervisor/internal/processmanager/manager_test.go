@@ -19,6 +19,21 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
+// testScriptDir is the absolute path to pre-created executable test scripts in testdata.
+// Using checked-in scripts avoids the ETXTBSY race (https://go.dev/issue/22315) where
+// writing a script at test time can leak a write FD into a concurrent fork+exec's child.
+// Resolved to absolute because RunSetupScriptInternal sets cmd.Dir = "/".
+var testScriptDir string
+
+func TestMain(m *testing.M) {
+	abs, err := filepath.Abs("testdata/scripts")
+	if err != nil {
+		panic("failed to resolve testdata/scripts: " + err.Error())
+	}
+	testScriptDir = abs
+	os.Exit(m.Run())
+}
+
 // mockConn implements net.Conn for testing
 type mockConn struct {
 	net.Conn
@@ -1029,10 +1044,9 @@ func TestProcessManager_GetSetupStatus(t *testing.T) {
 	t.Run("executed_success", func(t *testing.T) {
 		pm := NewProcessManager(logMgr, pid1Mgr)
 
-		tmpScript := t.TempDir() + "/test-setup.sh"
-		require.NoError(t, os.WriteFile(tmpScript, []byte("#!/bin/sh\nexit 0\n"), 0755))
-
-		pm.SetDeferredSetup(tmpScript, 10*time.Second, validation.ProcessStartRequest{})
+		pm.SetDeferredSetup(
+			filepath.Join(testScriptDir, "success-quiet.sh"), 10*time.Second, validation.ProcessStartRequest{},
+		)
 		require.NoError(t, pm.ExecuteDeferredSetup())
 
 		status := pm.GetSetupStatus()
@@ -1047,10 +1061,9 @@ func TestProcessManager_GetSetupStatus(t *testing.T) {
 	t.Run("executed_failure", func(t *testing.T) {
 		pm := NewProcessManager(logMgr, pid1Mgr)
 
-		tmpScript := t.TempDir() + "/test-setup-fail.sh"
-		require.NoError(t, os.WriteFile(tmpScript, []byte("#!/bin/sh\nexit 1\n"), 0755))
-
-		pm.SetDeferredSetup(tmpScript, 10*time.Second, validation.ProcessStartRequest{})
+		pm.SetDeferredSetup(
+			filepath.Join(testScriptDir, "fail-quiet.sh"), 10*time.Second, validation.ProcessStartRequest{},
+		)
 		_ = pm.ExecuteDeferredSetup() // Expected to fail
 
 		status := pm.GetSetupStatus()
@@ -1083,15 +1096,9 @@ func TestProcessManager_ExecuteDeferredSetup_Idempotency(t *testing.T) {
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
-	// Create a test script that succeeds
-	tmpScript := t.TempDir() + "/test-setup.sh"
-	scriptContent := `#!/bin/sh
-echo "Setup executed"
-exit 0
-`
-	require.NoError(t, os.WriteFile(tmpScript, []byte(scriptContent), 0755), "should write test script")
-
-	pm.SetDeferredSetup(tmpScript, 10*time.Second, validation.ProcessStartRequest{})
+	pm.SetDeferredSetup(
+		filepath.Join(testScriptDir, "success.sh"), 10*time.Second, validation.ProcessStartRequest{},
+	)
 
 	// Execute first time
 	err := pm.ExecuteDeferredSetup()
@@ -1110,16 +1117,9 @@ func TestProcessManager_ExecuteDeferredSetup_Concurrent(t *testing.T) {
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
-	// Create a test script that succeeds
-	tmpScript := t.TempDir() + "/test-setup.sh"
-	scriptContent := `#!/bin/sh
-sleep 0.1
-echo "Setup executed"
-exit 0
-`
-	require.NoError(t, os.WriteFile(tmpScript, []byte(scriptContent), 0755), "should write test script")
-
-	pm.SetDeferredSetup(tmpScript, 10*time.Second, validation.ProcessStartRequest{})
+	pm.SetDeferredSetup(
+		filepath.Join(testScriptDir, "success-sleep.sh"), 10*time.Second, validation.ProcessStartRequest{},
+	)
 
 	// Execute concurrently from multiple goroutines
 	const numGoroutines = 10
@@ -1150,15 +1150,9 @@ func TestProcessManager_ExecuteDeferredSetup_ScriptFailure(t *testing.T) {
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
-	// Create a test script that fails
-	tmpScript := t.TempDir() + "/test-setup-fail.sh"
-	scriptContent := `#!/bin/sh
-echo "Setup failed"
-exit 1
-`
-	require.NoError(t, os.WriteFile(tmpScript, []byte(scriptContent), 0755), "should write test script")
-
-	pm.SetDeferredSetup(tmpScript, 10*time.Second, validation.ProcessStartRequest{})
+	pm.SetDeferredSetup(
+		filepath.Join(testScriptDir, "fail.sh"), 10*time.Second, validation.ProcessStartRequest{},
+	)
 
 	// Execute
 	err := pm.ExecuteDeferredSetup()
@@ -1174,21 +1168,13 @@ func TestProcessManager_ExecuteDeferredSetup_StartRequestSaved(t *testing.T) {
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
-	// Create a test script that succeeds
-	tmpScript := t.TempDir() + "/test-setup.sh"
-	scriptContent := `#!/bin/sh
-echo "Setup executed"
-exit 0
-`
-	require.NoError(t, os.WriteFile(tmpScript, []byte(scriptContent), 0755), "should write test script")
-
 	startReq := validation.ProcessStartRequest{
 		Command:    "npm start",
 		WorkingDir: "/app",
 		Env:        map[string]string{"NODE_ENV": "production"},
 	}
 
-	pm.SetDeferredSetup(tmpScript, 10*time.Second, startReq)
+	pm.SetDeferredSetup(filepath.Join(testScriptDir, "success.sh"), 10*time.Second, startReq)
 
 	// Verify start request not yet saved
 	assert.Nil(t, pm.GetStartRequest(), "start request should not be saved yet")
@@ -1210,20 +1196,12 @@ func TestProcessManager_Restart_FallbackToStart_WithDeferredSetup(t *testing.T) 
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
-	// Create a setup script that succeeds
-	tmpScript := t.TempDir() + "/test-setup.sh"
-	scriptContent := `#!/bin/sh
-echo "Setup executed"
-exit 0
-`
-	require.NoError(t, os.WriteFile(tmpScript, []byte(scriptContent), 0755))
-
 	// Configure deferred setup with a real command
 	startReq := validation.ProcessStartRequest{
 		Command:    "exec sleep 30",
 		WorkingDir: "/tmp",
 	}
-	pm.SetDeferredSetup(tmpScript, 10*time.Second, startReq)
+	pm.SetDeferredSetup(filepath.Join(testScriptDir, "success.sh"), 10*time.Second, startReq)
 
 	// Restart should succeed by running deferred setup then starting
 	err := pm.Restart(ProcessRestartRequest{Graceful: true})
@@ -1269,19 +1247,11 @@ func TestProcessManager_Restart_FallbackToStart_DeferredSetupFails(t *testing.T)
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
-	// Create a setup script that fails
-	tmpScript := t.TempDir() + "/test-setup.sh"
-	scriptContent := `#!/bin/sh
-echo "Setup failed" >&2
-exit 1
-`
-	require.NoError(t, os.WriteFile(tmpScript, []byte(scriptContent), 0755))
-
 	startReq := validation.ProcessStartRequest{
 		Command:    "exec sleep 30",
 		WorkingDir: "/tmp",
 	}
-	pm.SetDeferredSetup(tmpScript, 10*time.Second, startReq)
+	pm.SetDeferredSetup(filepath.Join(testScriptDir, "fail.sh"), 10*time.Second, startReq)
 
 	// Restart should fail because deferred setup fails
 	err := pm.Restart(ProcessRestartRequest{Graceful: true})

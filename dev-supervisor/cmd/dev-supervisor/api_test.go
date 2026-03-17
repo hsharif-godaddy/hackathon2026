@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -21,22 +22,19 @@ const (
 	invalidRequestErr = "invalid_request"
 )
 
-// writeTestScript writes an executable script file using explicit Sync+Close
-// to avoid "text file busy" race on Linux where the kernel may still hold a
-// write reference after os.WriteFile returns.
-func writeTestScript(t *testing.T, path, content string) {
-	t.Helper()
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+// testScriptDir is the absolute path to pre-created executable test scripts in testdata.
+// Using checked-in scripts avoids the ETXTBSY race (https://go.dev/issue/22315) where
+// writing a script at test time can leak a write FD into a concurrent fork+exec's child.
+// Resolved to absolute because RunSetupScriptInternal sets cmd.Dir = "/".
+var testScriptDir string
+
+func TestMain(m *testing.M) {
+	abs, err := filepath.Abs("testdata/scripts")
 	if err != nil {
-		t.Fatalf("Failed to create test script %s: %v", path, err)
+		panic("failed to resolve testdata/scripts: " + err.Error())
 	}
-	defer f.Close()
-	if _, err := f.WriteString(content); err != nil {
-		t.Fatalf("Failed to write test script %s: %v", path, err)
-	}
-	if err := f.Sync(); err != nil {
-		t.Fatalf("Failed to sync test script %s: %v", path, err)
-	}
+	testScriptDir = abs
+	os.Exit(m.Run())
 }
 
 // Test helper function to marshal JSON with error handling
@@ -1224,12 +1222,10 @@ func TestHandleSetupStatus_DeferredExecuted(t *testing.T) {
 
 	server := NewServer()
 
-	tmpDir := t.TempDir()
-	scriptPath := tmpDir + "/test-setup.sh"
-	writeTestScript(t, scriptPath, "#!/bin/sh\necho 'Setup complete'\nexit 0\n")
-
-	// Configure and execute deferred setup
-	server.procMgr.SetDeferredSetup(scriptPath, 10*time.Second, validation.ProcessStartRequest{})
+	// Use pre-created script from TestMain to avoid ETXTBSY race.
+	server.procMgr.SetDeferredSetup(
+		filepath.Join(testScriptDir, "success.sh"), 10*time.Second, validation.ProcessStartRequest{},
+	)
 	if err := server.procMgr.ExecuteDeferredSetup(); err != nil {
 		t.Fatalf("Failed to execute deferred setup: %v", err)
 	}
@@ -1270,11 +1266,10 @@ func TestHandleProcessStart_DeferredSetupFailure(t *testing.T) {
 
 	server := NewServer()
 
-	tmpDir := t.TempDir()
-	scriptPath := tmpDir + "/fail-setup.sh"
-	writeTestScript(t, scriptPath, "#!/bin/sh\nexit 1\n")
-
-	server.procMgr.SetDeferredSetup(scriptPath, 10*time.Second, validation.ProcessStartRequest{})
+	// Use pre-created script from TestMain to avoid ETXTBSY race.
+	server.procMgr.SetDeferredSetup(
+		filepath.Join(testScriptDir, "fail.sh"), 10*time.Second, validation.ProcessStartRequest{},
+	)
 
 	body := `{"command":"npm start","working_dir":"/app"}`
 	req := httptest.NewRequest(http.MethodPost, "/process/start", strings.NewReader(body))

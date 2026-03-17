@@ -109,6 +109,13 @@ fmt-fix:
 		echo "goimports not found, skipping import formatting"; \
 		echo "Install with: go install golang.org/x/tools/cmd/goimports@latest"; \
 	fi
+	@echo "Running golines (if available)..."
+	@if command -v golines >/dev/null 2>&1; then \
+		golines -w --max-len=120 .; \
+	else \
+		echo "golines not found, skipping line length formatting"; \
+		echo "Install with: go install github.com/segmentio/golines@latest"; \
+	fi
 	@echo "Formatting complete!"
 
 ## Run go vet
