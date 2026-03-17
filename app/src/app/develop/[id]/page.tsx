@@ -991,7 +991,7 @@ function DevelopPageContent() {
         {/* Mobile Layout */}
         {isMobile && (
           <div className="relative h-full w-full overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 bottom-8 pb-1 flex flex-col">
+            <div className="absolute top-0 left-0 right-0 bottom-8 flex flex-col">
               {init.ui.showChatLoader ? (
                 <ChatPaneLoader
                   phase={init.ui.chatLoaderPhase}

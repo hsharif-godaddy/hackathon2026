@@ -28,7 +28,7 @@ export default function OptionInput({
   const canSubmit = value.trim().length > 0
 
   return (
-    <div className="flex items-center gap-1 px-1.5 py-0.5 bg-intents-ux-boxLowContrast-backgroundColor rounded-lg">
+    <div className="flex items-center gap-1 px-1.5 py-0.5 bg-intents-ux-box-backgroundColor rounded-lg">
       <div className="flex-shrink-0" aria-hidden="true">
         <div className="size-2 rounded-full border-2 border-intents-ux-boxHighContrast-borderColor flex items-center justify-center">
           {isSelected && (

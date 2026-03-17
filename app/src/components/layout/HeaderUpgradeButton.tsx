@@ -71,7 +71,7 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
           icon={<DiamondIcon className="!size-2.5" />}
           text={t('builder_upgrade_button')}
           aria-label={isBelowSmBreakpoint ? t('builder_upgrade_button') : undefined}
-          className="!rounded-lg !leading-none !pt-0 !pb-0 !pl-0.5 !pr-0.5 md:!px-1 md:!py-[6px]"
+          className="!rounded-lg !pt-0 !pb-0 !pl-0.5 !pr-0.5 md:!px-1 md:!py-[6px]"
         />
       </PopoverTrigger>
       <PopoverContent

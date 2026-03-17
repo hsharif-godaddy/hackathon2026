@@ -140,7 +140,9 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                 showLabelWhenActive={false}
               />
 
-              <DeviceSelector disabled={viewMode === ViewMode.CODE} />
+              <span className="hidden lg:block">
+                <DeviceSelector disabled={viewMode === ViewMode.CODE} />
+              </span>
 
               <DomainMenu />
 

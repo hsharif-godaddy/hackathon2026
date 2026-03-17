@@ -205,7 +205,7 @@ describe('OptionInput', () => {
     const { container } = renderWithProviders(<OptionInput {...mockProps} />)
 
     const wrapper = container.querySelector('.flex.items-center.gap-1')
-    expect(wrapper).toHaveClass('bg-intents-ux-boxLowContrast-backgroundColor')
+    expect(wrapper).toHaveClass('bg-intents-ux-box-backgroundColor')
     expect(wrapper).toHaveClass('rounded-lg')
   })
 

@@ -79,7 +79,7 @@ export default function ColorPaletteWidget({ name, palette, className = '', isSe
     })
     window.dispatchEvent(event)
   }
-  
+
   /**
    * Check if two colors are similar
    */
@@ -92,7 +92,7 @@ export default function ColorPaletteWidget({ name, palette, className = '', isSe
     const [r2, g2, b2] = parse(c2)
     return Math.abs(r1 - r2) + Math.abs(g1 - g2) + Math.abs(b1 - b2) < threshold
   }
-  
+
   const renderColorCircle = (color: string) => (
     <div
       className="size-4 rounded-full -ml-1"
