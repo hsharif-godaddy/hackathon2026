@@ -224,7 +224,8 @@ describe('agent-token', function packageTests() {
         canPublish: false,
         canPurchaseDomain: false,
         authType: 'basic',
-        isE2S: false
+        isE2S: false,
+        useTestBudget: false
       });
     });
 
@@ -481,7 +482,7 @@ describe('agent-token', function packageTests() {
           expiresInSeconds
         });
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false },
+          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false },
           expiresInSeconds
         );
         expect(mockJWTService.getToken).not.toHaveBeenCalled();
@@ -508,7 +509,8 @@ describe('agent-token', function packageTests() {
           canPublish: false,
           canPurchaseDomain: false,
           authType: 'basic',
-          isE2S: false
+          isE2S: false,
+          useTestBudget: false
         });
         expect(mockJWTService.createToken).not.toHaveBeenCalled();
       });
@@ -597,7 +599,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBe(expiresInSeconds);
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false },
+          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false },
           expiresInSeconds
         );
       });
@@ -622,7 +624,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBe(300);
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false },
+          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false },
           300
         );
       });
@@ -698,6 +700,129 @@ describe('agent-token', function packageTests() {
       });
     });
 
+    describe('useTestBudget switchboard flag', function testBudgetTests() {
+      it('should pass useTestBudget: true when switchboard flag is enabled', async function testBudgetEnabled() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
+        // Enable the test-budget flag
+        mockCheckSwitchboardFlag.mockImplementation((flag: string) => {
+          if (flag === 'appbuilder-test-budget') return Promise.resolve(true);
+          return Promise.resolve(false);
+        });
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith({
+          siteId: MOCK_SITE_ID,
+          canDownload: false,
+          canPublish: false,
+          canPurchaseDomain: false,
+          authType: 'basic',
+          isE2S: false,
+          useTestBudget: true
+        });
+      });
+
+      it('should pass useTestBudget: false when switchboard flag check rejects (fail closed)', async function testBudgetRejectFailsClosed() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
+        // Simulate switchboard flag check failure
+        mockCheckSwitchboardFlag.mockImplementation((flag: string) => {
+          if (flag === 'appbuilder-test-budget') return Promise.reject(new Error('Switchboard unavailable'));
+          return Promise.resolve(false);
+        });
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        // Should fail closed to false
+        expect(mockJWTService.getToken).toHaveBeenCalledWith({
+          siteId: MOCK_SITE_ID,
+          canDownload: false,
+          canPublish: false,
+          canPurchaseDomain: false,
+          authType: 'basic',
+          isE2S: false,
+          useTestBudget: false
+        });
+      });
+    });
+
+    describe('auth type handling', function authTypeTests() {
+      it('should set isE2S: true for e2s auth type', async function e2sAuthType() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: {
+            ...MOCK_USER,
+            authType: 'e2s',
+            isE2S: true
+          },
+          jwt: 'user-jwt-token'
+        });
+
+        mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith({
+          siteId: MOCK_SITE_ID,
+          canDownload: false,
+          canPublish: false,
+          canPurchaseDomain: false,
+          authType: 'e2s',
+          isE2S: true,
+          useTestBudget: false
+        });
+      });
+
+      it('should set isE2S: false for s2s (delegate) auth type - regression test for bug fix', async function s2sAuthType() {
+        // This is a regression test for the bug where S2S sessions were incorrectly
+        // treated as E2S sessions due to `isE2S = authType === 'e2s' || authType === 's2s'`
+        // The fix changed it to `isE2S = authType === 'e2s'` only
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: {
+            ...MOCK_USER,
+            authType: 's2s',
+            isE2S: false  // S2S should NOT be treated as E2S
+          },
+          jwt: 'user-jwt-token'
+        });
+
+        mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        // S2S (delegate) sessions should NOT have isE2S: true
+        expect(mockJWTService.getToken).toHaveBeenCalledWith({
+          siteId: MOCK_SITE_ID,
+          canDownload: false,
+          canPublish: false,
+          canPurchaseDomain: false,
+          authType: 's2s',
+          isE2S: false,  // This is the key assertion - S2S is NOT E2S
+          useTestBudget: false
+        });
+      });
+    });
+
     describe('V2 control plane mode', function v2Tests() {
       beforeEach(function setupV2() {
         mockIsV2ControlPlaneEnabled.mockReturnValue(true);
@@ -730,7 +855,8 @@ describe('agent-token', function packageTests() {
           canPublish: false,
           canPurchaseDomain: false,
           authType: 'basic',
-          isE2S: false
+          isE2S: false,
+          useTestBudget: false
         });
       });
 
@@ -831,7 +957,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBe(expiresInSeconds);
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false },
+          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false },
           expiresInSeconds
         );
         expect(mockJWTService.getToken).not.toHaveBeenCalled();

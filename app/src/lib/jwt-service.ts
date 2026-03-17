@@ -7,6 +7,7 @@
 
 import { createSign } from 'node:crypto';
 
+import type { AuthType } from '@airo/shared/auth';
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
 
 import { getJWTConfig, getJWTConstants, JWTClaims } from './jwt-config';
@@ -17,8 +18,9 @@ export interface CreateTokenOptions {
   canDownload: boolean;
   canPublish: boolean;
   canPurchaseDomain?: boolean;
-  authType?: 'basic' | 'e2s' | 's2s';
+  authType?: AuthType;
   isE2S: boolean; // Backward compatibility
+  useTestBudget?: boolean; // Bypass grants and use test-accounts budget
 }
 
 export interface TokenResult {
@@ -164,7 +166,8 @@ export class JWTService {
       canPublish: options.canPublish,
       canPurchaseDomain: options.canPurchaseDomain ?? false,
       authType: options.authType || 'basic',
-      isE2S: options.isE2S
+      isE2S: options.isE2S,
+      useTestBudget: options.useTestBudget ?? false
     };
 
     const headerBase64 = Buffer.from(JSON.stringify(header)).toString('base64url');
@@ -226,7 +229,7 @@ export class JWTService {
    */
   private getCacheKey(options: CreateTokenOptions): string {
     const authType = options.authType || 'basic';
-    return `${options.siteId}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}`;
+    return `${options.siteId}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}`;
   }
 
   /**

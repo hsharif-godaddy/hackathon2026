@@ -6,6 +6,8 @@
 import { createRequire } from 'module';
 import { createPublicKey, type JsonWebKey } from 'node:crypto';
 import https from 'node:https';
+import type { AuthType } from '@airo/shared/auth';
+
 import { getJWTAgentConfig, validateJWTAgentConfig } from './jwks-config.js';
 import { auth, getFeatures } from '../services/features.js';
 import { logger } from '../logging/index.js';
@@ -105,10 +107,12 @@ export interface JWTClaims {
 
   // Custom claims
   siteId: string;          // Site ID
-  canDownload?: boolean;   // Permission to download app files (optional for backward compatibility)
-  canPublish?: boolean;    // Permission to publish app (optional for backward compatibility)
-  canPurchaseDomain?: boolean; // Permission to purchase and attach custom domains (optional for backward compatibility)
-  isE2S?: boolean; // true if auth type is 'e2s' (employee-to-shopper), optional for backward compatibility
+  canDownload?: boolean;   // Permission to download app files
+  canPublish?: boolean;    // Permission to publish app
+  canPurchaseDomain?: boolean; // Permission to purchase and attach custom domains
+  authType?: AuthType; // Authentication type: basic (normal), e2s (care/employee impersonation), s2s (shopper delegation)
+  isE2S?: boolean; // DEPRECATED: Use authType === 'e2s' instead. Only true for e2s (care), NOT s2s (delegation)
+  useTestBudget?: boolean; // When true, bypass grants and use test-accounts budget (switchboard: appbuilder-test-budget)
 }
 
 export interface ValidationResult {

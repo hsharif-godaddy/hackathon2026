@@ -101,10 +101,9 @@ export {
   setAPM,
   LlmCallSource,
   GrantErrorCode,
-  SpecialSubscriptionId,
 } from './grants/build-metadata.js'
 export type { ExecutionContext, ExecutionContextMetadata } from './grants/build-metadata.js'
 export { GrantManager, GrantUnusableReason } from './grants/index.js'
-export { GrantSessionManager, grantSessionManager } from './grants/index.js'
+export { GrantSessionManager, grantSessionManager, BudgetOverride } from './grants/index.js'
 export type { CreditGrant, GrantContextPayload } from './grants/index.js'
 export { GrantType, GrantFinalState } from './grants/index.js'

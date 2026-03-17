@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import type { AuthType } from '@airo/shared/auth';
 
 import { AccountAdapterFactory } from '@/lib/account-adapters/AccountAdapterFactory';
 import {
@@ -60,8 +61,8 @@ export interface CustomerUser {
   accountId?: string; // May not exist for new customers
   exp?: number;
   iat?: number;
-  authType?: 'basic' | 'e2s' | 's2s'; // Authentication type: basic (normal), e2s (employee impersonation), s2s (shopper delegation)
-  isE2S?: boolean; // Backward compatibility: true if authType is 'e2s' or 's2s'
+  authType?: AuthType; // Authentication type: basic (normal), e2s (employee impersonation), s2s (shopper delegation)
+  isE2S?: boolean; // DEPRECATED: Use authType === 'e2s' instead. Only true for e2s (care), NOT s2s (delegation)
 }
 
 export interface CustomerAuthContext {
@@ -193,7 +194,7 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       exp: result.payload.exp,
       iat: result.payload.iat,
       authType,
-      isE2S: authType === 'e2s' || authType === 's2s' // Backward compatibility: true for any delegation
+      isE2S: authType === 'e2s' // Only true for e2s (care), NOT s2s (delegation) - s2s uses customer grants
     };
 
     return {

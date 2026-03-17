@@ -3,6 +3,15 @@ import { GrantManager } from '@airo/shared/grants'
 import { logger } from '../utils/logger.js'
 
 /**
+ * Special subscription IDs for non-standard billing
+ * These bypass grants and use dedicated budgets
+ */
+export enum BudgetOverride {
+  CareAgent = 'airo-builder:care-agent',
+  TestAccounts = 'airo-builder:test-accounts',
+}
+
+/**
  * APM agent type (loose typing to avoid strict dependency)
  */
 type APMAgent = {

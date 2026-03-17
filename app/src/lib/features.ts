@@ -2,7 +2,8 @@
  * Centralized feature configuration system
  * This module handles all environment variable parsing and feature flags
  */
-import { SUPPORTED_AUTH_TYPES } from '@/lib/auth-types';
+import { SUPPORTED_AUTH_TYPES } from '@airo/shared/auth';
+
 import { logger } from '@/lib/request-context';
 import { decodeJWT } from '@/lib/utils/jwt-utils';
 

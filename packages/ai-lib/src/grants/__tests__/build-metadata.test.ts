@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 
-import { buildLitellmMetadataFromContext, isGrantsExhausted, LlmCallSource, GrantErrorCode, SpecialSubscriptionId } from '../build-metadata.js'
+import { buildLitellmMetadataFromContext, isGrantsExhausted, LlmCallSource, GrantErrorCode } from '../build-metadata.js'
+import { BudgetOverride } from '../grant-session-manager.js'
 import { grantSessionManager } from '../grant-session-manager.js'
 import { GrantType, type CreditGrant } from '@airo/shared/grants'
 
@@ -245,7 +246,7 @@ describe('build-metadata', function tests() {
         metadata: {
           appId: 'app-1',
           customerId: 'customer-123',
-          subscriptionId: SpecialSubscriptionId.CareAgent,
+          subscriptionId: BudgetOverride.CareAgent,
         },
       }
 
@@ -254,8 +255,98 @@ describe('build-metadata', function tests() {
       })
 
       expect(result).toBeDefined()
-      expect(result?.user).toBe(SpecialSubscriptionId.CareAgent)
+      expect(result?.user).toBe(BudgetOverride.CareAgent)
       expect(result?.tags).toContain('appId:app-1')
+    })
+  })
+
+  describe('Test accounts bypass (switchboard flag)', function testAccountsTests() {
+    it('should bypass grants for test accounts sessions', function bypass() {
+      // Even with grants enabled, test accounts should use its own identifier
+      grantSessionManager.setGrants('test-accounts-session', [createGrant()], true)
+
+      const context = {
+        socketId: 'test-accounts-session',
+        metadata: {
+          appId: 'app-1',
+          customerId: 'customer-123',
+          subscriptionId: BudgetOverride.TestAccounts,
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, {
+        source: LlmCallSource.UserChat,
+      })
+
+      expect(result).toBeDefined()
+      expect(result?.user).toBe(BudgetOverride.TestAccounts)
+      expect(result?.tags).toContain('appId:app-1')
+    })
+  })
+
+  describe('Budget override via explicit subscriptionId (correct pattern)', function explicitOverrideTests() {
+    it('should use CareAgent budget when subscriptionId is explicitly set (E2S-triggered task)', function e2sTriggered() {
+      // E2S-triggered background task: subscriptionId is set to CareAgent by the trigger point
+      const context = {
+        // No socketId - background task
+        metadata: {
+          appId: 'app-e2s-triggered',
+          subscriptionId: BudgetOverride.CareAgent, // Explicitly set by trigger
+          customerId: 'customer-123',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, {
+        source: LlmCallSource.ServiceSummarization,
+      })
+
+      expect(result).toBeDefined()
+      expect(result?.user).toBe(BudgetOverride.CareAgent)
+    })
+
+    it('should use TestAccounts budget when subscriptionId is explicitly set (test-budget-triggered task)', function testBudgetTriggered() {
+      // Test-budget-triggered background task: subscriptionId is set by the trigger point
+      const context = {
+        metadata: {
+          appId: 'app-test-triggered',
+          subscriptionId: BudgetOverride.TestAccounts, // Explicitly set by trigger
+          customerId: 'customer-123',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, {
+        source: LlmCallSource.ServiceSummarization,
+      })
+
+      expect(result).toBeDefined()
+      expect(result?.user).toBe(BudgetOverride.TestAccounts)
+    })
+
+    it('should use customer grants regardless of other sessions', function noRaceCondition() {
+      // Set up customer grants
+      grantSessionManager.setGrants('customer-session', [
+        createGrant({
+          subscriptionId: 'sub-customer-race',
+          llmBudgetUserId: 'airo-builder:grant:customer-grant',
+        }),
+      ], true)
+
+      // Customer-triggered background task: subscriptionId is customer's (NOT a BudgetOverride value)
+      const context = {
+        metadata: {
+          appId: 'app-race',
+          subscriptionId: 'sub-customer-race', // Customer's subscription
+          customerId: 'customer-123',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, {
+        source: LlmCallSource.ServiceSummarization,
+      })
+
+      // Should use customer grants based on explicit subscriptionId
+      expect(result).toBeDefined()
+      expect(result?.user).toBe('airo-builder:grant:customer-grant')
     })
   })
 

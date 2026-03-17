@@ -1,4 +1,5 @@
 import type { LLMMessage } from '../ConversationHistoryLoader.js';
+import type { BudgetOverride } from '@airo/ai-lib';
 
 /**
  * Context for summarization operations
@@ -8,6 +9,8 @@ export interface SummarizationContext {
   appId: string;
   /** Session ID (optional, for Langfuse tracking) */
   sessionId?: string;
+  /** Budget override from triggering session (E2S care or test-accounts) */
+  budgetOverride?: BudgetOverride;
   /**
    * New/unsummarized messages to process.
    * Used for incremental fallbacks when caching isn't available.

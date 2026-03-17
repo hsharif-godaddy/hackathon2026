@@ -21,3 +21,7 @@ export type { AgentsAppContext, AgentsAppChatMessage } from './websocket/index.j
 // Social
 export { CONNECT_REQUEST_FROM_PUBLISH } from './social/index.js'
 export type { ValidationDetails, PostImageData } from './social/index.js'
+
+// Auth
+export { SUPPORTED_AUTH_TYPES, isEmployeeAuthType } from './auth/index.js'
+export type { SupportedAuthType, AuthType } from './auth/index.js'

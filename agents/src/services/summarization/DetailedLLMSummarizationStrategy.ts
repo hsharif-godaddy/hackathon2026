@@ -208,6 +208,9 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
           endId: messageRange.endId,
         },
         originalTokenCount: batch.tokenCount,
+        // Preserve billing context from original context
+        budgetOverride: context.budgetOverride,
+        sessionId: context.sessionId,
       };
 
       const batchResult = await this.summarizeSingleBatch(
@@ -352,14 +355,18 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
     // Look up app info for grant-aware billing
     // Background summarization may not have socketId, but can use subscriptionId for grant lookup
     const app = DetailedLLMSummarizationStrategy.appRepo.findById(appId);
-    const subscriptionId = app?.subscriptionId;
     const customerId = app?.customerId;
+
+    // If budget override is set from triggering session, use it directly
+    // This ensures E2S/test-budget sessions use the correct budget for background tasks
+    const subscriptionId = context.budgetOverride ?? app?.subscriptionId;
 
     logger.info('summarization.detailed_llm.app_lookup', {
       appId,
       hasApp: !!app,
       subscriptionId,
       customerId,
+      budgetOverride: context.budgetOverride,
     });
 
     // Build execution context for grant-aware metadata

@@ -150,8 +150,11 @@ export class LLMSummarizationStrategy implements SummarizationStrategy {
     // Look up app info for grant-aware billing
     // Background summarization may not have socketId, but can use subscriptionId for grant lookup
     const app = LLMSummarizationStrategy.appRepo.findById(appId);
-    const subscriptionId = app?.subscriptionId;
     const customerId = app?.customerId;
+
+    // If budget override is set from triggering session, use it directly
+    // This ensures E2S/test-budget sessions use the correct budget for background tasks
+    const subscriptionId = context.budgetOverride ?? app?.subscriptionId;
 
     // Build execution context for grant-aware metadata
     // Include subscriptionId so buildLitellmMetadataFromContext can use subscription-based grant lookup

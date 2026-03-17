@@ -26,17 +26,34 @@
     "./social": {
       "types": "./dist/social/index.d.ts",
       "import": "./dist/social/index.js"
+    },
+    "./auth": {
+      "types": "./dist/auth/index.d.ts",
+      "import": "./dist/auth/index.js"
     }
   },
   "typesVersions": {
     "*": {
-      "grants": ["dist/grants/index.d.ts"],
-      "context-attachment": ["dist/context-attachment/index.d.ts"],
-      "websocket": ["dist/websocket/index.d.ts"],
-      "social": ["dist/social/index.d.ts"]
+      "grants": [
+        "dist/grants/index.d.ts"
+      ],
+      "context-attachment": [
+        "dist/context-attachment/index.d.ts"
+      ],
+      "websocket": [
+        "dist/websocket/index.d.ts"
+      ],
+      "social": [
+        "dist/social/index.d.ts"
+      ],
+      "auth": [
+        "dist/auth/index.d.ts"
+      ]
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit"

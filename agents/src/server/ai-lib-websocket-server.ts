@@ -14,8 +14,10 @@ import {
   type PersistedMessage,
   grantSessionManager,
   type GrantContextPayload,
+  BudgetOverride,
 } from '@airo/ai-lib'
 import { auth, AuthType, BYPASS_SITE_IDS } from '../services/features.js'
+import { isEmployeeAuthType, type AuthType as TokenAuthType } from '@airo/shared/auth'
 import apm from 'elastic-apm-node'
 import { observe, updateActiveObservation } from '@langfuse/tracing'
 import type { Socket, Server as SocketIOServer } from 'socket.io'
@@ -377,7 +379,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
   }
 
   let backgroundSummarizer: {
-    checkAndSummarize(appId: string, triggerTokenCount?: number): Promise<void>
+    checkAndSummarize(appId: string, triggerTokenCount?: number, budgetOverride?: BudgetOverride): Promise<void>
     getMaxPromptTokens(): number
   } | null = null
 
@@ -461,29 +463,45 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           if (appId) {
             const app = appRepo.findById(appId)
             if (app) {
-              // Get socket to check for E2S auth (care session)
+              // Get socket to check for auth type and test budget flag
               const socketId = (context as any).socketId as string | undefined
               const socket = socketId && ioInstance ? ioInstance.sockets.sockets.get(socketId) : null
-              const agentContext = socket?.handshake?.auth?.agentContext as { isE2S?: boolean } | undefined
-              const isE2S = agentContext?.isE2S === true
-              logger.info('context.e2s_auth.check', {
+              const agentContext = socket?.handshake?.auth?.agentContext as {
+                isE2S?: boolean
+                authType?: TokenAuthType
+                useTestBudget?: boolean
+              } | undefined
+              // Use authType to distinguish employee sessions (e2s, e2s2s, etc.) from delegate (s2s)
+              const isEmployeeSession = isEmployeeAuthType(agentContext?.authType)
+              const useTestBudget = agentContext?.useTestBudget === true
+              logger.info('context.auth.check', {
                 appId,
                 socketId: socketId || 'missing',
                 hasIoInstance: !!ioInstance,
                 socketFound: !!socket,
                 hasHandshakeAuth: !!socket?.handshake?.auth,
                 authKeys: socket?.handshake?.auth ? Object.keys(socket.handshake.auth) : [],
-                isE2S,
+                authType: agentContext?.authType,
+                isEmployeeSession,
+                useTestBudget,
                 agentContext
               })
 
-              if (isE2S) {
-                // E2S (care) session: use "care" as subscriptionId for cost tracking
-                agentsAppContext.metadata.subscriptionId = 'airo-builder:care-agent'
-                logger.info('context.e2s_subscription', {
+              if (isEmployeeSession) {
+                // Employee session (e2s, e2s2s, etc.): use care-agent budget (takes precedence over test budget flag)
+                agentsAppContext.metadata.subscriptionId = BudgetOverride.CareAgent
+                logger.info('context.care_agent_subscription', {
                   appId,
-                  isE2S: true,
-                  subscriptionId: 'airo-builder:care-agent'
+                  authType: agentContext?.authType,
+                  subscriptionId: BudgetOverride.CareAgent
+                })
+              } else if (useTestBudget) {
+                // Test budget flag enabled: use test-accounts budget
+                agentsAppContext.metadata.subscriptionId = BudgetOverride.TestAccounts
+                logger.info('context.test_accounts_subscription', {
+                  appId,
+                  useTestBudget: true,
+                  subscriptionId: BudgetOverride.TestAccounts
                 })
               } else {
                 // Regular auth: use the app's subscriptionId
@@ -1058,6 +1076,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         modelName: string
         conversationId?: string
         appId?: string
+        subscriptionId?: string
         context?: Record<string, unknown>
       }) => {
         // Only track if we have appId
@@ -1130,6 +1149,13 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             const maxPromptTokens = backgroundSummarizer.getMaxPromptTokens()
 
             if (usage.inputTokens > maxPromptTokens) {
+              // Extract budget override from metadata if present (E2S or test-accounts session)
+              const subscriptionId = metadata.subscriptionId
+              // Check if subscriptionId is a budget override value
+              const budgetOverride = (subscriptionId === BudgetOverride.CareAgent || subscriptionId === BudgetOverride.TestAccounts)
+                ? subscriptionId as BudgetOverride
+                : undefined
+
               logger.info('summarization.background.trigger.token_usage_exceeded', {
                 appId: metadata.appId,
                 conversationId: metadata.conversationId,
@@ -1141,9 +1167,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 totalTokens: usage.totalTokens,
                 maxPromptTokens,
                 contextWindowUtilization: contextUtilization,
-                cacheHitRate: cacheMetrics.cacheHitRate
+                cacheHitRate: cacheMetrics.cacheHitRate,
+                budgetOverride,
               })
-              void backgroundSummarizer.checkAndSummarize(metadata.appId, usage.inputTokens)
+              void backgroundSummarizer.checkAndSummarize(metadata.appId, usage.inputTokens, budgetOverride)
             }
           }
         } catch (error) {
@@ -1889,6 +1916,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         canPublish: boolean;
         canPurchaseDomain: boolean;
         isE2S: boolean;
+        authType?: TokenAuthType;
+        useTestBudget?: boolean;
         exp: number;
         iat: number;
       };
@@ -1913,6 +1942,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         canPublish: validationResult.claims?.canPublish ?? false,
         canPurchaseDomain: validationResult.claims?.canPurchaseDomain ?? false,
         isE2S: validationResult.claims?.isE2S ?? false,
+        authType: validationResult.claims?.authType ?? 'basic',
+        useTestBudget: validationResult.claims?.useTestBudget ?? false,
         exp: validationResult.claims?.exp || 0,
         iat: validationResult.claims?.iat || 0
       };
@@ -1970,6 +2001,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             canPublish: refreshResult.claims?.canPublish ?? false,
             canPurchaseDomain: refreshResult.claims?.canPurchaseDomain ?? false,
             isE2S: refreshResult.claims?.isE2S ?? false,
+            authType: refreshResult.claims?.authType ?? 'basic',
+            useTestBudget: refreshResult.claims?.useTestBudget ?? false,
             exp: refreshResult.claims?.exp || 0,
             iat: refreshResult.claims?.iat || 0
           };

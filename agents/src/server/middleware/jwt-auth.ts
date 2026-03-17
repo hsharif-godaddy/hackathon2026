@@ -4,6 +4,8 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
+import type { AuthType as TokenAuthType } from '@airo/shared/auth';
+
 import { getJWTValidator } from '../../lib/jwt-validator.js';
 import { validateJWTAgentConfig } from '../../lib/jwks-config.js';
 import { auth, AuthType } from '../../services/features.js';
@@ -14,7 +16,9 @@ export interface AgentContext {
   canDownload: boolean;    // Permission to download app files
   canPublish: boolean;     // Permission to publish app
   canPurchaseDomain?: boolean; // Permission to purchase and attach custom domains
-  isE2S: boolean; // true if auth type is 'e2s' (employee-to-shopper)
+  isE2S: boolean; // deprecated: use authType === 'e2s' instead. Only true for e2s (care), NOT s2s (delegation)
+  authType?: TokenAuthType; // Authentication type
+  useTestBudget?: boolean; // Bypass grants and use test-accounts budget
   exp: number;
   iat: number;
 }
@@ -171,6 +175,8 @@ export class JWTAuthMiddleware {
           canPublish: claims.canPublish ?? false,
           canPurchaseDomain: claims.canPurchaseDomain ?? false,
           isE2S: claims.isE2S ?? false,
+          authType: claims.authType ?? 'basic',
+          useTestBudget: claims.useTestBudget ?? false,
           exp: claims.exp,
           iat: claims.iat
         };

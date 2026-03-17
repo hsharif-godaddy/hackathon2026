@@ -1,4 +1,5 @@
-import { SUPPORTED_AUTH_TYPES } from '@/lib/auth-types';
+import { SUPPORTED_AUTH_TYPES } from '@airo/shared/auth';
+
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import { SHOPPER_AUTH_FAILURE_MESSAGE } from './customer-auth';
 import { auth } from './features';

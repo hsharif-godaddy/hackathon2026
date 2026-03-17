@@ -71,6 +71,7 @@ interface ProcessedContext extends Record<string, unknown> {
 type MetadataRecord = Record<string, unknown> & {
   appId?: string
   conversationId?: string
+  subscriptionId?: string
 }
 
 /**
@@ -161,6 +162,7 @@ export interface WebSocketConfig {
     modelName: string
     conversationId?: string
     appId?: string
+    subscriptionId?: string
     context?: Record<string, unknown>
   }) => void | Promise<void>
 
@@ -3135,6 +3137,7 @@ Please try again with corrected formatting.`
           try {
             const processedContext = context as ProcessedContext
             const contextAppId = processedContext?.appId || (processedContext?.metadata as MetadataRecord)?.appId
+            const contextSubscriptionId = (processedContext?.metadata as MetadataRecord)?.subscriptionId
             await this.config.onTokenUsage(
               {
                 inputTokens: usage.inputTokens || 0,
@@ -3147,7 +3150,8 @@ Please try again with corrected formatting.`
                 agentName,
                 modelName,
                 ...(conversationAfterStream?.conversationId && { conversationId: conversationAfterStream.conversationId }),
-                ...(contextAppId && { appId: contextAppId })
+                ...(contextAppId && { appId: contextAppId }),
+                ...(contextSubscriptionId ? { subscriptionId: contextSubscriptionId } : {})
               }
             )
           } catch (error) {

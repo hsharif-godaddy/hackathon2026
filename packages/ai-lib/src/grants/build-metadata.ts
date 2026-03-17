@@ -1,4 +1,4 @@
-import { grantSessionManager } from './grant-session-manager.js'
+import { grantSessionManager, BudgetOverride } from './grant-session-manager.js'
 import type { LitellmMetadata } from '../providers/unified-provider.js'
 import { logger } from '../utils/logger.js'
 import { LlmCallSource } from '@airo/shared/grants'
@@ -31,6 +31,11 @@ export interface ExecutionContext {
 export interface ExecutionContextMetadata {
   appId?: string
   customerId?: string
+  /**
+   * Subscription ID for LLM billing.
+   * Usually the customer's subscription ID, but can also hold BudgetOverride values
+   * (care-agent, test-accounts) for special billing scenarios.
+   */
   subscriptionId?: string
   sessionId?: string
   agentId?: string
@@ -43,13 +48,6 @@ export interface ExecutionContextMetadata {
 
   /** Whether app has unbuilt rebuild pages */
   hasUnbuiltRebuildPages?: boolean
-}
-
-/**
- * Special subscription IDs for non-standard billing
- */
-export enum SpecialSubscriptionId {
-  CareAgent = 'airo-builder:care-agent',
 }
 
 // Re-export enums from shared
@@ -108,9 +106,20 @@ export function buildLitellmMetadataFromContext(
   if (options?.agentId) tags.push(`agent:${options.agentId}`)
 
   // E2S (care) sessions bypass grants entirely
-  if (subscriptionId === SpecialSubscriptionId.CareAgent) {
-    return { user: SpecialSubscriptionId.CareAgent, tags }
+  // This is set explicitly by the session that triggered the LLM call
+  if (subscriptionId === BudgetOverride.CareAgent) {
+    return { user: BudgetOverride.CareAgent, tags }
   }
+
+  // Test accounts (switchboard flag) bypass grants entirely
+  // This is set explicitly by the session that triggered the LLM call
+  if (subscriptionId === BudgetOverride.TestAccounts) {
+    return { user: BudgetOverride.TestAccounts, tags }
+  }
+
+  // Budget billing is determined entirely by the explicit subscriptionId in context.
+  // The triggering code (WebSocket server for sessions, trigger point for background tasks)
+  // sets subscriptionId to the appropriate BudgetOverride value when needed.
 
   // Use session-managed grants if available (websocket context)
   if (socketId && grantSessionManager.isFeatureEnabled(socketId)) {

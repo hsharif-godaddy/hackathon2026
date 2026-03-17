@@ -11,6 +11,17 @@ import {
   isOpenAIMessage,
   getMessageContent,
 } from '../ConversationHistoryLoader.js';
+import type { BudgetOverride } from '@airo/ai-lib';
+
+/**
+ * Pending job data for debounced summarization
+ */
+interface PendingJob {
+  timeout: NodeJS.Timeout;
+  triggerTokenCount?: number;
+  /** Budget override from the triggering session (E2S or test-accounts) */
+  budgetOverride?: BudgetOverride;
+}
 
 export type BackgroundSummarizerConversationRepo = Omit<
   Pick<
@@ -75,7 +86,7 @@ export class BackgroundSummarizer {
   private summaryRepo: BackgroundSummarizerSummaryRepo;
   private strategy: SummarizationStrategy;
   private config: BackgroundSummarizerConfig;
-  private pendingJobs: Map<string, NodeJS.Timeout> = new Map();
+  private pendingJobs: Map<string, PendingJob> = new Map();
   private processingJobs: Set<string> = new Set();
 
   constructor(
@@ -102,32 +113,53 @@ export class BackgroundSummarizer {
   /**
    * Check if summarization should be triggered for an app
    * Called after LLM usage is reported to check last-call token count
-   * 
+   *
    * @param appId - ID of the app
+   * @param triggerTokenCount - Optional token count that triggered the check
+   * @param budgetOverride - Optional budget override from triggering session (E2S or test-accounts)
    */
-  async checkAndSummarize(appId: string, triggerTokenCount?: number): Promise<void> {
+  async checkAndSummarize(appId: string, triggerTokenCount?: number, budgetOverride?: BudgetOverride): Promise<void> {
     // Debounce: cancel existing job for this app
     const existingJob = this.pendingJobs.get(appId);
     if (existingJob) {
-      clearTimeout(existingJob);
+      clearTimeout(existingJob.timeout);
     }
 
+    // Preserve existing budget override if the incoming one is undefined.
+    // This prevents a race condition where an E2S session triggers summarization,
+    // then a regular session triggers within the debounce window and clears the override.
+    const effectiveBudgetOverride = budgetOverride ?? existingJob?.budgetOverride;
+
     // Schedule new job with debounce
-    const job = setTimeout(async () => {
+    // Capture the budget override from the triggering session
+    const timeout = setTimeout(async () => {
+      const job = this.pendingJobs.get(appId);
+      // Guard against race condition: only process if this timeout is still the active one.
+      // If checkAndSummarize was called again, a new timeout was scheduled and stored,
+      // so this stale timeout should not delete/process the newer job.
+      if (!job || job.timeout !== timeout) {
+        return;
+      }
       this.pendingJobs.delete(appId);
-      await this.processSummarization(appId, triggerTokenCount);
+      await this.processSummarization(appId, job.triggerTokenCount, job.budgetOverride);
     }, this.config.debounceMs);
 
-    this.pendingJobs.set(appId, job);
+    this.pendingJobs.set(appId, {
+      timeout,
+      triggerTokenCount,
+      budgetOverride: effectiveBudgetOverride,
+    });
   }
 
   /**
    * Process summarization for an app
    * Summarizes all conversations for the app (not filtered by agent)
-   * 
+   *
    * @param appId - ID of the app
+   * @param triggerTokenCount - Optional token count that triggered the check
+   * @param budgetOverride - Optional budget override from triggering session (E2S or test-accounts)
    */
-  private async processSummarization(appId: string, triggerTokenCount?: number): Promise<void> {
+  private async processSummarization(appId: string, triggerTokenCount?: number, budgetOverride?: BudgetOverride): Promise<void> {
     // Prevent duplicate processing
     if (this.processingJobs.has(appId)) {
       logger.debug('summarization.background.skip_duplicate', { appId });
@@ -494,6 +526,7 @@ export class BackgroundSummarizer {
         originalTokenCount: cumulativeOriginalTokenCount,
         incrementalTokenCount: summarizableTokenCount,
         disableFullRegeneration: this.config.disableFullRegeneration,
+        budgetOverride,
       };
 
       // Only add operationLog if it has content

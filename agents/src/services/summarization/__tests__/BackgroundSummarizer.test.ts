@@ -4,6 +4,7 @@ import type { ConversationRepository } from '../../../database/repositories/Conv
 import type { SummaryRepository } from '../../../database/repositories/SummaryRepository.js';
 import type { SummarizationStrategy } from '../SummarizationStrategy.js';
 import type { DatabaseMessage } from '../../ConversationHistoryLoader.js';
+import { BudgetOverride } from '@airo/ai-lib';
 
 // Mock dependencies
 vi.mock('../../../logging/index.js', () => ({
@@ -866,6 +867,202 @@ describe('BackgroundSummarizer', () => {
       // Should exit early without calling message loading
       expect(conversationRepo.getMessagesBatch).not.toHaveBeenCalled();
       expect(strategy.summarize).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Budget Override Propagation', () => {
+    it('should forward BudgetOverride.CareAgent to processSummarization', async () => {
+      const mockConversations = [
+        { id: 'conv1', appId: 'app-123', agentId: 'initial', title: 'Conv 1' }
+      ];
+      const mockMessages: DatabaseMessage[] = [
+        {
+          id: 'msg1',
+          conversationId: 'conv1',
+          sender: 'user',
+          content: 'Hello',
+          createdAt: new Date('2024-01-01T10:00:00Z')
+        },
+        {
+          id: 'msg2',
+          conversationId: 'conv1',
+          sender: 'agent',
+          content: 'Hi there!',
+          createdAt: new Date('2024-01-01T10:01:00Z')
+        }
+      ];
+
+      vi.mocked(summaryRepo.findLatestForApp).mockResolvedValue(null);
+      vi.mocked(conversationRepo.getByAppId).mockResolvedValue(mockConversations);
+      vi.mocked(conversationRepo.getMessagesBatch).mockResolvedValue(mockMessages);
+
+      // Mock high token count to trigger summarization
+      const { countTokens } = await import('../../../utils/token-counter.js');
+      vi.mocked(countTokens).mockResolvedValue({ tokenCount: 1200 });
+
+      // Call with CareAgent budget override
+      await summarizer.checkAndSummarize('app-123', undefined, BudgetOverride.CareAgent);
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      // Verify budgetOverride was passed to strategy
+      expect(strategy.summarize).toHaveBeenCalled();
+      const contextArg = vi.mocked(strategy.summarize).mock.calls[0][0];
+      expect(contextArg.budgetOverride).toBe(BudgetOverride.CareAgent);
+    });
+
+    it('should forward BudgetOverride.TestAccounts to processSummarization', async () => {
+      const mockConversations = [
+        { id: 'conv1', appId: 'app-123', agentId: 'initial', title: 'Conv 1' }
+      ];
+      const mockMessages: DatabaseMessage[] = [
+        {
+          id: 'msg1',
+          conversationId: 'conv1',
+          sender: 'user',
+          content: 'Hello',
+          createdAt: new Date('2024-01-01T10:00:00Z')
+        },
+        {
+          id: 'msg2',
+          conversationId: 'conv1',
+          sender: 'agent',
+          content: 'Hi there!',
+          createdAt: new Date('2024-01-01T10:01:00Z')
+        }
+      ];
+
+      vi.mocked(summaryRepo.findLatestForApp).mockResolvedValue(null);
+      vi.mocked(conversationRepo.getByAppId).mockResolvedValue(mockConversations);
+      vi.mocked(conversationRepo.getMessagesBatch).mockResolvedValue(mockMessages);
+
+      // Mock high token count to trigger summarization
+      const { countTokens } = await import('../../../utils/token-counter.js');
+      vi.mocked(countTokens).mockResolvedValue({ tokenCount: 1200 });
+
+      // Call with TestAccounts budget override
+      await summarizer.checkAndSummarize('app-123', undefined, BudgetOverride.TestAccounts);
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      // Verify budgetOverride was passed to strategy
+      expect(strategy.summarize).toHaveBeenCalled();
+      const contextArg = vi.mocked(strategy.summarize).mock.calls[0][0];
+      expect(contextArg.budgetOverride).toBe(BudgetOverride.TestAccounts);
+    });
+
+    it('should preserve existing budgetOverride when second call has undefined override', async () => {
+      // This tests the race condition fix: if E2S session triggers summarization,
+      // then regular session triggers within debounce window with undefined override,
+      // the care-agent override should be preserved
+
+      const mockConversations = [
+        { id: 'conv1', appId: 'app-123', agentId: 'initial', title: 'Conv 1' }
+      ];
+      const mockMessages: DatabaseMessage[] = [
+        {
+          id: 'msg1',
+          conversationId: 'conv1',
+          sender: 'user',
+          content: 'Hello',
+          createdAt: new Date('2024-01-01T10:00:00Z')
+        },
+        {
+          id: 'msg2',
+          conversationId: 'conv1',
+          sender: 'agent',
+          content: 'Hi there!',
+          createdAt: new Date('2024-01-01T10:01:00Z')
+        }
+      ];
+
+      vi.mocked(summaryRepo.findLatestForApp).mockResolvedValue(null);
+      vi.mocked(conversationRepo.getByAppId).mockResolvedValue(mockConversations);
+      vi.mocked(conversationRepo.getMessagesBatch).mockResolvedValue(mockMessages);
+
+      // Mock high token count to trigger summarization
+      const { countTokens } = await import('../../../utils/token-counter.js');
+      vi.mocked(countTokens).mockResolvedValue({ tokenCount: 1200 });
+
+      // Create summarizer with longer debounce for this test
+      const debounceSummarizer = new BackgroundSummarizer(
+        conversationRepo,
+        summaryRepo,
+        strategy,
+        {
+          maxPromptTokens: 1000,
+          debounceMs: 50,  // Longer debounce to allow second call
+          keepRecentTurns: 0
+        }
+      );
+
+      // First call: E2S session with CareAgent override
+      await debounceSummarizer.checkAndSummarize('app-123', undefined, BudgetOverride.CareAgent);
+
+      // Second call within debounce window: regular session with undefined override
+      await debounceSummarizer.checkAndSummarize('app-123', undefined, undefined);
+
+      // Wait for debounce to complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // The CareAgent override should be preserved (not cleared by the second call)
+      expect(strategy.summarize).toHaveBeenCalled();
+      const contextArg = vi.mocked(strategy.summarize).mock.calls[0][0];
+      expect(contextArg.budgetOverride).toBe(BudgetOverride.CareAgent);
+    });
+
+    it('should allow new budgetOverride to replace existing one when explicitly provided', async () => {
+      const mockConversations = [
+        { id: 'conv1', appId: 'app-123', agentId: 'initial', title: 'Conv 1' }
+      ];
+      const mockMessages: DatabaseMessage[] = [
+        {
+          id: 'msg1',
+          conversationId: 'conv1',
+          sender: 'user',
+          content: 'Hello',
+          createdAt: new Date('2024-01-01T10:00:00Z')
+        },
+        {
+          id: 'msg2',
+          conversationId: 'conv1',
+          sender: 'agent',
+          content: 'Hi there!',
+          createdAt: new Date('2024-01-01T10:01:00Z')
+        }
+      ];
+
+      vi.mocked(summaryRepo.findLatestForApp).mockResolvedValue(null);
+      vi.mocked(conversationRepo.getByAppId).mockResolvedValue(mockConversations);
+      vi.mocked(conversationRepo.getMessagesBatch).mockResolvedValue(mockMessages);
+
+      // Mock high token count to trigger summarization
+      const { countTokens } = await import('../../../utils/token-counter.js');
+      vi.mocked(countTokens).mockResolvedValue({ tokenCount: 1200 });
+
+      // Create summarizer with longer debounce for this test
+      const debounceSummarizer = new BackgroundSummarizer(
+        conversationRepo,
+        summaryRepo,
+        strategy,
+        {
+          maxPromptTokens: 1000,
+          debounceMs: 50,
+          keepRecentTurns: 0
+        }
+      );
+
+      // First call: CareAgent override
+      await debounceSummarizer.checkAndSummarize('app-123', undefined, BudgetOverride.CareAgent);
+
+      // Second call: TestAccounts override (explicitly provided, should replace)
+      await debounceSummarizer.checkAndSummarize('app-123', undefined, BudgetOverride.TestAccounts);
+
+      // Wait for debounce to complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // The TestAccounts override should have replaced CareAgent
+      expect(strategy.summarize).toHaveBeenCalled();
+      const contextArg = vi.mocked(strategy.summarize).mock.calls[0][0];
+      expect(contextArg.budgetOverride).toBe(BudgetOverride.TestAccounts);
     });
   });
 });

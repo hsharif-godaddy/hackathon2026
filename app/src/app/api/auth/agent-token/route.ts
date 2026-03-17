@@ -143,15 +143,22 @@ function resolvePaywallResult(
 }
 
 /**
- * Extract switchboard flag from a settled promise result (fail closed)
+ * Extract boolean switchboard flag from a settled promise result (fail closed)
+ *
+ * @param result - Promise result from checkSwitchboardFlag
+ * @param logEvent - Log event name for failures (e.g., 'agent-token.domain-purchase-flag-check-failed')
+ * @param siteId - Site ID for logging
+ * @param customerId - Customer ID for logging
+ * @returns Flag value, or false on rejection (fail closed)
  */
-function resolveSwitchboardResult(
+function resolveBooleanFlag(
   result: PromiseSettledResult<boolean>,
+  logEvent: string,
   siteId: string,
   customerId: string
 ): boolean {
   if (result.status === 'rejected') {
-    logger.warn('agent-token.domain-purchase-flag-check-failed', {
+    logger.warn(logEvent, {
       siteId,
       customerId,
       error: result.reason instanceof Error ? result.reason.message : String(result.reason),
@@ -200,26 +207,29 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     let canDownload = false;
     let canPublish = false;
     let canPurchaseDomain = false;
+    let useTestBudget = false;
 
     if (siteValidationCacheHit) {
       // Cache hit: skip site validation, run paywall + switchboard in parallel
       const parallelStart = Date.now();
-      const [paywallResult, switchboardResult] = await Promise.allSettled([
+      const [paywallResult, domainPurchaseResult, testBudgetResult] = await Promise.allSettled([
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
           body.siteId,
           PaywallAction.Publish
         ),
         checkSwitchboardFlag('appbuilder-domain-purchase', authContext.jwt || '', request.headers),
+        checkSwitchboardFlag('appbuilder-test-budget', authContext.jwt || '', request.headers),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
       ({ canDownload, canPublish } = resolvePaywallResult(paywallResult, body.siteId, user.customerId));
-      canPurchaseDomain = resolveSwitchboardResult(switchboardResult, body.siteId, user.customerId);
+      canPurchaseDomain = resolveBooleanFlag(domainPurchaseResult, 'agent-token.domain-purchase-flag-check-failed', body.siteId, user.customerId);
+      useTestBudget = resolveBooleanFlag(testBudgetResult, 'agent-token.test-budget-flag-check-failed', body.siteId, user.customerId);
     } else {
       // Cache miss: run site validation, paywall, and switchboard all in parallel
       const parallelStart = Date.now();
-      const [siteResult, paywallResult, switchboardResult] = await Promise.allSettled([
+      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult] = await Promise.allSettled([
         validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct),
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
@@ -227,6 +237,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
           PaywallAction.Publish
         ),
         checkSwitchboardFlag('appbuilder-domain-purchase', authContext.jwt || '', request.headers),
+        checkSwitchboardFlag('appbuilder-test-budget', authContext.jwt || '', request.headers),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
@@ -240,7 +251,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       }
 
       ({ canDownload, canPublish } = resolvePaywallResult(paywallResult, body.siteId, user.customerId));
-      canPurchaseDomain = resolveSwitchboardResult(switchboardResult, body.siteId, user.customerId);
+      canPurchaseDomain = resolveBooleanFlag(domainPurchaseResult, 'agent-token.domain-purchase-flag-check-failed', body.siteId, user.customerId);
+      useTestBudget = resolveBooleanFlag(testBudgetResult, 'agent-token.test-budget-flag-check-failed', body.siteId, user.customerId);
     }
 
     timing.siteAccessMs = Date.now() - siteAccessStart;
@@ -258,7 +270,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       canPublish,
       canPurchaseDomain,
       authType: user.authType || 'basic',
-      isE2S: user.isE2S ?? false
+      isE2S: user.isE2S ?? false,
+      useTestBudget
     };
 
     const result = body.expiresInSeconds

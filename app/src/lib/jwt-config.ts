@@ -3,6 +3,8 @@
  * Centralized configuration for JWT authentication
  */
 
+import type { AuthType } from '@airo/shared/auth';
+
 export interface JWTConfig {
   secretName: string;
   awsRegion: string;
@@ -20,8 +22,9 @@ export interface JWTClaims {
   canDownload: boolean;    // Permission to download app files
   canPublish: boolean;     // Permission to publish app
   canPurchaseDomain: boolean; // Permission to purchase and attach custom domains
-  authType?: 'basic' | 'e2s' | 's2s'; // Authentication type: basic (normal), e2s (employee impersonation), s2s (shopper delegation)
-  isE2S: boolean; // Backward compatibility: true if authType is 'e2s' or 's2s'
+  authType?: AuthType; // Authentication type: basic (normal), e2s (care/employee impersonation), s2s (shopper delegation)
+  isE2S: boolean; // DEPRECATED: Use authType === 'e2s' instead. Only true for e2s (care), NOT s2s (delegation)
+  useTestBudget?: boolean; // When true, bypass grants and use test-accounts budget (switchboard: appbuilder-test-budget)
 }
 
 /**
