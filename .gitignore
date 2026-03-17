@@ -2,6 +2,7 @@
 
 # Dependencies
 node_modules
+cdk/package-lock.json
 
 # Build outputs
 dist/

@@ -112,7 +112,9 @@
       "@ux/text": "2500.7.1",
       "@ux/text-input": "2500.7.2",
       "@ux/toggle-button": "2500.7.1",
-      "@ux/tooltip": "2500.7.2"
+      "@ux/tooltip": "2500.7.2",
+      "basic-ftp": ">=5.2.0",
+      "fast-xml-parser": ">=5.3.5"
     },
     "onlyBuiltDependencies": [
       "better-sqlite3"

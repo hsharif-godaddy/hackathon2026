@@ -36,5 +36,8 @@
   },
   "dependencies": {
     "node-fetch": "^2.7.0"
+  },
+  "overrides": {
+    "fast-xml-parser": ">=5.3.5"
   }
 }
