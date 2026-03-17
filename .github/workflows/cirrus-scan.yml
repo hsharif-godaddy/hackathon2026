@@ -9,17 +9,34 @@ on:
     # decided to run it once a month on the 7th day at 2:00 AM
     - cron: "0 2 7 * *"
   workflow_dispatch:
+    inputs:
+      env_to_scan:
+        description: "Environment to scan"
+        required: true
+        default: "both"
+        type: choice
+        options:
+          - "both"
+          - "dev-private"
+          - "prod"
 
 env:
   AWS_DEFAULT_REGION: us-west-2
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   cirrus-scan-dev-private:
-    # Doc says, it should not be executed in production accounts,
-    # and it is sufficient to run this scan in at least one account per project
-    # so we are running it in dev-private account
+    # This job is used to scan the dev-private environment, including both Fuzz Testing and Vulnerability Scans
     name: CirrusScan dev-private
-
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event.inputs.env_to_scan == 'both' ||
+        github.event.inputs.env_to_scan == 'dev-private' ||
+        github.event.inputs.env_to_scan == '' ||
+        github.event.inputs.env_to_scan == null)
     runs-on:
       labels:
         - airo-cicd-runners
@@ -27,9 +44,33 @@ jobs:
 
     steps:
       - name: Request CirrusScan Scans
-        uses: gdcorp-actions/cirrusscan-request-scan@v5
+        uses: gdcorp-actions/cirrusscan-request-scan@v7
         with:
           requester_arn: arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy
           github_commit: ${{ github.sha }}
           github_repository: ${{ github.repository }}
           github_token: ${{ github.token }}
+
+  cirrus-scan-prod:
+    # This job is used to scan the prod environment, only Vulnerability Scans
+    name: CirrusScan prod
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event.inputs.env_to_scan == 'both' ||
+        github.event.inputs.env_to_scan == 'prod' ||
+        github.event.inputs.env_to_scan == '' ||
+        github.event.inputs.env_to_scan == null)
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+
+    steps:
+      - name: Request CirrusScan Scans
+        uses: gdcorp-actions/cirrusscan-request-scan@v7
+        with:
+          requester_arn: arn:aws:iam::644094189644:role/GD-AWS-USA-GD-AiroBuilde-Prod-Deploy
+          github_commit: ${{ github.sha }}
+          github_repository: ${{ github.repository }}
+          github_token: ${{ github.token }}
+          types: "vulnerability"
