@@ -453,8 +453,8 @@ describe('ManagePlan', function managePlanTests() {
 
       renderWithProviders(<ManagePlan />);
 
-      // Empty state title from CreditPacksCard
-      expect(screen.getByText('builder_manageplan_creditpacks_empty_title')).toBeInTheDocument();
+      // Section title from CreditPacksCard
+      expect(screen.getByText('builder_manageplan_addons_title')).toBeInTheDocument();
     });
   });
 
@@ -643,8 +643,8 @@ describe('ManagePlan', function managePlanTests() {
 
         renderWithProviders(<ManagePlan />);
 
-        // AddonCreditCard empty state should be visible for AiroPlus when grants is ON
-        expect(screen.getByText('builder_manageplan_creditpacks_empty_title')).toBeInTheDocument();
+        // AddonCreditCard section title should be visible for AiroPlus when grants is ON
+        expect(screen.getByText('builder_manageplan_addons_title')).toBeInTheDocument();
       });
 
       it('should show upgrade button for AiroPlus plan with credit packs (treated like Free)', function airoPlusShowUpgrade() {
@@ -721,7 +721,6 @@ describe('ManagePlan', function managePlanTests() {
         renderWithProviders(<ManagePlan />);
 
         // AddonCreditCard should not be visible for legacy AiroPlus
-        expect(screen.queryByText('builder_manageplan_creditpacks_empty_title')).not.toBeInTheDocument();
         expect(screen.queryByText('builder_manageplan_addons_title')).not.toBeInTheDocument();
       });
 
@@ -984,7 +983,7 @@ describe('ManagePlan', function managePlanTests() {
       });
     });
 
-    it('should NOT show downgrade alert for free plans even with scheduled downgrade', async function noAlertFreePlan() {
+    it('should show downgrade alert for free plans with scheduled downgrade fields', async function showAlertFreePlanWithDowngradeData() {
       mockUseActiveSubscription.mockReturnValue({
         data: {
           id: 'sub-1',
@@ -1003,8 +1002,8 @@ describe('ManagePlan', function managePlanTests() {
 
       renderWithProviders(<ManagePlan />);
 
-      // Free plans should still show alert if they have scheduled downgrade fields
-      // but in practice, free plans won't have downgradedAt/downgradedPlan
+      // Alert shows when subscription has downgradedAt/downgradedPlan fields,
+      // regardless of current plan (in practice, free plans rarely have these)
       await waitFor(function checkAlertVisible() {
         expect(screen.getByText('builder_manageplan_downgrade_plan_title')).toBeInTheDocument();
       });

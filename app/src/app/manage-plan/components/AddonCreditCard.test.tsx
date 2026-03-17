@@ -138,7 +138,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
   });
 
   describe('zero state: no plan and no credits (Free plan, zero packs)', function zeroPlanZeroPacksTests() {
-    it('should render empty state title', function renderEmptyTitle() {
+    it('should render section title', function renderSectionTitle() {
       renderWithProviders(
         <CreditPacksCard
           creditPacks={[]}
@@ -148,7 +148,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
         />
       );
 
-      expect(screen.getByText('builder_manageplan_creditpacks_empty_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_manageplan_addons_title')).toBeInTheDocument();
     });
 
     it('should render plan-specific description', function renderPlanDescription() {
@@ -238,6 +238,36 @@ describe('CreditPacksCard', function creditPacksCardTests() {
       expect(screen.getByText('builder_manageplan_upgrade').closest('button')).toBeDisabled();
       expect(screen.getByText('builder_manageplan_buy_credits').closest('button')).toBeDisabled();
     });
+
+    it('should toggle content visibility when collapse button is clicked', function toggleZeroStateContent() {
+      renderWithProviders(
+        <CreditPacksCard
+          creditPacks={[]}
+          subscriptionPlan={SubscriptionPlan.Free}
+          onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
+        />
+      );
+
+      // Content should be visible by default (expanded)
+      expect(screen.getByText('builder_manageplan_creditpacks_empty_plan_description')).toBeInTheDocument();
+      expect(screen.getByText('builder_manageplan_upgrade')).toBeInTheDocument();
+
+      // Click collapse button
+      collapseCard();
+
+      // Content should be hidden
+      expect(screen.queryByText('builder_manageplan_creditpacks_empty_plan_description')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_manageplan_upgrade')).not.toBeInTheDocument();
+
+      // Click expand button to show content again
+      const expandButton = screen.getByRole('button', { name: /Expand/i });
+      fireEvent.click(expandButton);
+
+      // Content should be visible again
+      expect(screen.getByText('builder_manageplan_creditpacks_empty_plan_description')).toBeInTheDocument();
+      expect(screen.getByText('builder_manageplan_upgrade')).toBeInTheDocument();
+    });
   });
 
   describe('zero state: None plan with zero packs', function zeroNonePlanTests() {
@@ -267,7 +297,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
         />
       );
 
-      expect(screen.getByText('builder_manageplan_creditpacks_empty_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_manageplan_addons_title')).toBeInTheDocument();
       // Should show generic description, not plan-specific
       expect(screen.getByText('builder_manageplan_creditpacks_empty_description')).toBeInTheDocument();
     });
@@ -311,7 +341,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
         />
       );
 
-      expect(screen.getByText('builder_manageplan_creditpacks_empty_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_manageplan_addons_title')).toBeInTheDocument();
       // AiroPlus is now treated as non-paid plan, so shows plan-specific description
       expect(screen.getByText('builder_manageplan_creditpacks_empty_plan_description')).toBeInTheDocument();
     });

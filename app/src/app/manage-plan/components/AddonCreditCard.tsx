@@ -47,45 +47,61 @@ export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeG
   if (hasNoPlanAndNoCredits || creditPacks.length === 0) {
     return (
       <div className="flex flex-col md:col-span-2 bg-intents-ux-box-backgroundColor rounded-xl border border-border p-2 sm:p-4">
-        <div className="flex flex-col md:flex-row items-center">
-          <div className="flex-1">
-            <text.strong as="title" size={0} className="block mb-2" text={t('builder_manageplan_creditpacks_empty_title')} />
-            <text.p as="paragraph" className="mb-4" text={hasNoPlanAndNoCredits ? t('builder_manageplan_creditpacks_empty_plan_description') : t('builder_manageplan_creditpacks_empty_description')} />
-            { hasNoPlanAndNoCredits ? (
-                <Box orientation="horizontal" gap="md">
-                    <Button
-                      design="primary"
-                      data-partial='componentAiro'
-                      data-eid={generateClickEID('manageplan.buttons.upgrade')}
-                      size="sm"
-                      text={t('builder_manageplan_upgrade')}
-                      onClick={() => onOpenPaywall('manage_plan.upgrade', 'upgrade', PAYWALL_ITC.UPGRADE)}
-                      disabled={isButtonDisabled}
-                    />
-                    <Button
-                      design="secondary"
-                      data-partial='componentAiro'
-                      data-eid={generateClickEID('manageplan.buttons.buy_credits')}
-                      size="sm"
-                      text={t('builder_manageplan_buy_credits')}
-                      onClick={() => onOpenPaywall('manage_plan.buy_credits', PAYWALL_TYPE.CREDITS, PAYWALL_ITC.CREDITS)}
-                      disabled={isButtonDisabled}
-                    />
-                </Box>
-            ) : (
-                <Button
-                  design="secondary"
-                  data-partial='componentAiro'
-                  data-eid={generateClickEID('manageplan.buttons.buy_credits')}
-                  size="sm"
-                  text={t('builder_manageplan_buy_credits')}
-                  onClick={() => onOpenPaywall('manage_plan.buy_credits', PAYWALL_TYPE.CREDITS, PAYWALL_ITC.CREDITS)}
-                  disabled={isButtonDisabled}
-                />
-            )}
-          </div>
-          {hasNoPlanAndNoCredits ? <RidingArrow /> : <SiteBuild />}
+        <div className="flex items-center gap-2 w-full">
+          <button
+            type="button"
+            className="flex-shrink-0 cursor-pointer"
+            onClick={() => setIsExpanded(!isExpanded)}
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? t('builder_common_collapse') : t('builder_common_expand')}
+          >
+            {isExpanded ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
+          </button>
+          <text.strong as="title" size={0} className="block" text={t('builder_manageplan_addons_title')} />
         </div>
+
+        {isExpanded && (
+          <div className="flex flex-row items-center gap-4 mt-2 md:mt-0">
+            <div className="flex flex-col items-start gap-2 flex-1">
+              <text.p as="paragraph" text={hasNoPlanAndNoCredits ? t('builder_manageplan_creditpacks_empty_plan_description') : t('builder_manageplan_creditpacks_empty_description')} />
+              { hasNoPlanAndNoCredits ? (
+                  <Box orientation="horizontal" gap="md">
+                      <Button
+                        design="primary"
+                        data-partial='componentAiro'
+                        data-eid={generateClickEID('manageplan.buttons.upgrade')}
+                        size="sm"
+                        text={t('builder_manageplan_upgrade')}
+                        onClick={() => onOpenPaywall('manage_plan.upgrade', 'upgrade', PAYWALL_ITC.UPGRADE)}
+                        disabled={isButtonDisabled}
+                      />
+                      <Button
+                        design="secondary"
+                        data-partial='componentAiro'
+                        data-eid={generateClickEID('manageplan.buttons.buy_credits')}
+                        size="sm"
+                        text={t('builder_manageplan_buy_credits')}
+                        onClick={() => onOpenPaywall('manage_plan.buy_credits', PAYWALL_TYPE.CREDITS, PAYWALL_ITC.CREDITS)}
+                        disabled={isButtonDisabled}
+                      />
+                  </Box>
+              ) : (
+                  <Button
+                    design="secondary"
+                    data-partial='componentAiro'
+                    data-eid={generateClickEID('manageplan.buttons.buy_credits')}
+                    size="sm"
+                    text={t('builder_manageplan_buy_credits')}
+                    onClick={() => onOpenPaywall('manage_plan.buy_credits', PAYWALL_TYPE.CREDITS, PAYWALL_ITC.CREDITS)}
+                    disabled={isButtonDisabled}
+                  />
+              )}
+            </div>
+            <div className="hidden md:block w-24 flex-shrink-0 [&>svg]:w-full [&>svg]:h-auto">
+              {hasNoPlanAndNoCredits ? <RidingArrow /> : <SiteBuild />}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -98,7 +114,7 @@ export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeG
           className="flex-shrink-0 cursor-pointer"
           onClick={() => setIsExpanded(!isExpanded)}
           aria-expanded={isExpanded}
-          aria-label={isExpanded ? 'Collapse' : 'Expand'}
+          aria-label={isExpanded ? t('builder_common_collapse') : t('builder_common_expand')}
         >
           {isExpanded ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
         </button>

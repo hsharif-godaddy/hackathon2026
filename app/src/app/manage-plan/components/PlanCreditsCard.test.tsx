@@ -157,6 +157,41 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
 
       expect(container.firstChild).toBeNull();
     });
+
+    it('should render credits info tooltip', function renderCreditsTooltip() {
+      renderWithProviders(
+        <PlanCreditsCard
+          subscription={createMockSubscription()}
+          planGrant={createMockPlanGrant()}
+          creditPacks={[]}
+          openPaywall={mockOpenPaywall}
+          isGrantsEnabled={true}
+        />
+      );
+
+      // InfoTooltip renders a button with aria-label for accessibility
+      const tooltipTrigger = screen.getByRole('button', { name: 'builder_common_more_info' });
+      expect(tooltipTrigger).toBeInTheDocument();
+    });
+
+    it('should render responsive ActiveTag (hidden on mobile, visible on desktop)', function renderResponsiveActiveTag() {
+      const planGrant = createMockPlanGrant({ id: 'active-grant' });
+
+      const { container } = renderWithProviders(
+        <PlanCreditsCard
+          subscription={createMockSubscription()}
+          planGrant={planGrant}
+          activeGrantId="active-grant"
+          creditPacks={[]}
+          openPaywall={mockOpenPaywall}
+          isGrantsEnabled={true}
+        />
+      );
+
+      // Should have two ActiveTag instances - one for mobile (sm:hidden) and one for desktop (hidden sm:inline)
+      const activeTagSpans = container.querySelectorAll('span.hidden, span.sm\\:hidden');
+      expect(activeTagSpans.length).toBeGreaterThanOrEqual(1);
+    });
   });
 
   describe('plan badge display', function planBadgeTests() {
@@ -203,6 +238,82 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
     });
   });
 
+  describe('plan features section', function planFeaturesTests() {
+    it('should render plan features label', function renderPlanFeaturesLabel() {
+      renderWithProviders(
+        <PlanCreditsCard
+          subscription={createMockSubscription({ plan: SubscriptionPlan.Starter })}
+          planGrant={createMockPlanGrant({ creditsMax: 150 })}
+          creditPacks={[]}
+          openPaywall={mockOpenPaywall}
+          isGrantsEnabled={true}
+        />
+      );
+
+      expect(screen.getByText('builder_manageplan_plan_features')).toBeInTheDocument();
+    });
+
+    it('should render credits per month with correct count', function renderCreditsPerMonth() {
+      renderWithProviders(
+        <PlanCreditsCard
+          subscription={createMockSubscription({ plan: SubscriptionPlan.Starter })}
+          planGrant={createMockPlanGrant({ creditsMax: 150 })}
+          creditPacks={[]}
+          openPaywall={mockOpenPaywall}
+          isGrantsEnabled={true}
+        />
+      );
+
+      // Translation mock returns key with params: "builder_manageplan_plan_credits_per_month:{"count":150}"
+      expect(screen.getByText(/builder_manageplan_plan_credits_per_month/)).toBeInTheDocument();
+    });
+
+    it('should render publish limit for Starter plan', function renderPublishLimitStarter() {
+      renderWithProviders(
+        <PlanCreditsCard
+          subscription={createMockSubscription({ plan: SubscriptionPlan.Starter })}
+          planGrant={createMockPlanGrant()}
+          creditPacks={[]}
+          openPaywall={mockOpenPaywall}
+          isGrantsEnabled={true}
+        />
+      );
+
+      // Translation mock returns key with params: "builder_manageplan_plan_publish_limit:{"count":N}"
+      expect(screen.getByText(/builder_manageplan_plan_publish_limit/)).toBeInTheDocument();
+    });
+
+    it('should render publish limit for Professional plan', function renderProfessionalPublishLimit() {
+      renderWithProviders(
+        <PlanCreditsCard
+          subscription={createMockSubscription({ plan: SubscriptionPlan.Professional })}
+          planGrant={createMockPlanGrant()}
+          creditPacks={[]}
+          openPaywall={mockOpenPaywall}
+          isGrantsEnabled={true}
+        />
+      );
+
+      // Professional plan has a publish limit of 3
+      expect(screen.getByText(/builder_manageplan_plan_publish_limit/)).toBeInTheDocument();
+    });
+
+    it('should not render publish limit for Free plan (limit is 0)', function renderFreeNoPublishLimit() {
+      renderWithProviders(
+        <PlanCreditsCard
+          subscription={createMockSubscription({ plan: SubscriptionPlan.Free })}
+          planGrant={createMockPlanGrant()}
+          creditPacks={[]}
+          openPaywall={mockOpenPaywall}
+          isGrantsEnabled={true}
+        />
+      );
+
+      // Free plan has publish limit of 0, so publish limit row is not shown
+      expect(screen.queryByText(/builder_manageplan_plan_publish_limit/)).not.toBeInTheDocument();
+    });
+  });
+
   describe('active tag display', function activeTagTests() {
     it('should show active tag when grant is active', function showActiveTag() {
       const planGrant = createMockPlanGrant({ id: 'active-grant' });
@@ -218,7 +329,9 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
         />
       );
 
-      expect(screen.getByText('builder_manageplan_active')).toBeInTheDocument();
+      // Two ActiveTags are rendered (mobile and desktop responsive versions)
+      const activeTags = screen.getAllByText('builder_manageplan_active');
+      expect(activeTags.length).toBe(2);
     });
 
     it('should not show active tag when grant is not active', function noActiveTag() {
@@ -546,6 +659,21 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
       );
 
       expect(screen.queryByText('builder_manageplan_upgrade')).not.toBeInTheDocument();
+    });
+
+    it('should show Downgrade button for Ultimate plan when higher plans flag is on', function ultimateShowsDowngrade() {
+      renderWithProviders(
+        <PlanCreditsCard
+          subscription={createMockSubscription({ plan: SubscriptionPlan.Ultimate })}
+          planGrant={createMockPlanGrant()}
+          creditPacks={[]}
+          openPaywall={mockOpenPaywall}
+          isGrantsEnabled={true}
+          isHigherPlansEnabled={true}
+        />
+      );
+
+      expect(screen.getByText('builder_manageplan_downgrade')).toBeInTheDocument();
     });
 
     it('should NOT show higher plans Upgrade button when flag is off', function noUpgradeWhenFlagOff() {

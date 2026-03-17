@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import CloudUploadIcon from '@ux/icon/cloud-upload'
@@ -8,14 +8,13 @@ import DatabaseIcon from '@ux/icon/database'
 import DesktopIcon from '@ux/icon/desktop'
 import DomainIcon from '@ux/icon/domain'
 import DownloadIcon from '@ux/icon/download'
-import InformationIcon from '@ux/icon/information'
 import ServerIcon from '@ux/icon/server'
 import Skeleton from '@ux/skeleton'
 import text from '@ux/text'
-import Tooltip from '@ux/tooltip'
 
 import PageSection from '@/components/layout/PageSection'
 import { useAuthContext } from '@/components/providers/AuthProvider'
+import { InfoTooltip } from '@/components/ui/InfoTooltip'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -26,32 +25,6 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 
 // Session-scoped storage key for pending upgrade action
 const PENDING_UPGRADE_KEY = 'airo-pending-pricing-upgrade'
-
-function InfoTooltip({ content }: { content: string }) {
-  const [show, setShow] = useState(false)
-  const anchorRef = useRef(null)
-
-  const tooltip = (
-    <Tooltip anchorRef={anchorRef}>
-      <div style={{ maxWidth: '30ch' }}>{content}</div>
-    </Tooltip>
-  )
-
-  return (
-    <>
-      <span
-        ref={anchorRef}
-        onMouseEnter={() => setShow(true)}
-        onMouseLeave={() => setShow(false)}
-        aria-haspopup={show}
-        className="cursor-help inline-flex items-center"
-      >
-        <InformationIcon className="size-2" />
-      </span>
-      {show && tooltip}
-    </>
-  )
-}
 
 export default function PricingSection() {
   const t = useTranslations();

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { CircleStackIcon, CloudArrowUpIcon } from '@heroicons/react/24/outline';
 import Box from '@ux/box';
 import Button from '@ux/button';
 import ChevronDownIcon from '@ux/icon/chevron-down';
@@ -6,9 +7,11 @@ import ChevronUpIcon from '@ux/icon/chevron-up';
 import Tag from '@ux/tag';
 import text from '@ux/text';
 
+import { InfoTooltip } from '@/components/ui/InfoTooltip';
 import { useTranslations } from '@/hooks/useTranslations';
 import type { AiroSubscription } from '@/lib/mgmt-airo';
 import { isPaidPlanForGrants, PAYWALL_ITC, PAYWALL_TYPE, type PaywallType } from '@/lib/paywall/shared';
+import { getPublishLimit } from '@/lib/publish-limit';
 import type { CreditGrant } from '@/types/credits';
 import { SubscriptionPlan } from '@/types/credits';
 import { formatFullCreditDate, getEffectiveCreditsSpent, getPlanDisplayLabelKey, getPlanFromSubscription } from '@/utils/credits';
@@ -38,6 +41,7 @@ const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, credi
   }
 
   const currentPlan = getPlanFromSubscription(subscription);
+  const publishLimit = getPublishLimit(currentPlan);
   // Disable buttons when grants enabled but entitlement not yet available (async subscription)
   const isButtonDisabled = isGrantsEnabled && !subscription.builderEntitlementId;
   const planLabelKey = getPlanDisplayLabelKey(currentPlan);
@@ -47,16 +51,16 @@ const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, credi
   const hasCreditsNoPlan = creditPacks.length > 0 && isFreePlan;
   const isActive = activeGrantId === planGrant.id;
 
-  // Calculate reset date from monthly grant useBefore or subscription renewsAt
-  const resetDate = planGrant
-  ? formatFullCreditDate(planGrant.useBefore, locale)
-  : subscription.renewsAt
-    ? formatFullCreditDate(subscription.renewsAt, locale)
-    : null;
+  // Calculate reset date from monthly grant useBefore (with validation)
+  const useBeforeDate = planGrant.useBefore ? new Date(planGrant.useBefore) : null;
+  const isValidUseBeforeDate = useBeforeDate && !isNaN(useBeforeDate.getTime());
+  const resetDate = isValidUseBeforeDate ? formatFullCreditDate(planGrant.useBefore, locale) : null;
 
-  // Calculate reset time from monthly grant created time
-  const resetTime = planGrant
-    ? new Date(planGrant.createdAt).toLocaleTimeString(locale, {
+  // Calculate reset time from monthly grant created time (with validation)
+  const createdAtDate = planGrant.createdAt ? new Date(planGrant.createdAt) : null;
+  const isValidCreatedAtDate = createdAtDate && !isNaN(createdAtDate.getTime());
+  const resetTime = isValidCreatedAtDate
+    ? createdAtDate.toLocaleTimeString(locale, {
         hour: 'numeric',
         minute: '2-digit',
         timeZoneName: 'short',
@@ -72,15 +76,16 @@ const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, credi
             className="flex-shrink-0 cursor-pointer"
             onClick={() => setIsExpanded(!isExpanded)}
             aria-expanded={isExpanded}
-            aria-label={isExpanded ? 'Collapse' : 'Expand'}
+            aria-label={isExpanded ? t('builder_common_collapse') : t('builder_common_expand')}
           >
             {isExpanded ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
           </button>
           <text.strong as="title" size={0} className="block flex-shrink-0" text={t('builder_manageplan_plan_title')} />
-          {isActive && <ActiveTag tooltipText={t('builder_manageplan_using_monthly')} />}
+          {isActive && <span className="hidden sm:inline"><ActiveTag tooltipText={t('builder_manageplan_using_monthly')} /></span>}
         </div>
         {/* Row 2 on mobile, same row on desktop: Plan tag */}
-        <div className="flex items-center gap-2 sm:ml-auto">
+        <div className="flex justify-between md:justify-end md:items-center sm:flex-1 gap-2 sm:ml-auto">
+          {isActive && <span className="sm:hidden"><ActiveTag tooltipText={t('builder_manageplan_using_monthly')} /></span>}
           {isFreePlan ? (
             <Tag emphasis="passive">
               {planDisplayLabel}
@@ -95,18 +100,43 @@ const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, credi
 
       {isExpanded && (
         <>
-          {resetDate && resetTime && (
-            <text.p as="paragraph">
-              {t('builder_manageplan_reset_info', {
-                date: resetDate,
-                time: resetTime,
-              })}
-            </text.p>
-          )}
-          {hasCreditsNoPlan && (
-            <text.p as="label" text={t('builder_manageplan_creditpacks_empty_plan_description')} />
-          )}
-          <CreditProgressBar spent={getEffectiveCreditsSpent(planGrant.creditsSpent, planGrant.creditsMax)} max={planGrant.creditsMax} />
+          <div className="flex flex-col gap-1">
+            <text.strong as="label" text={t('builder_manageplan_plan_features')} />
+            <div className="flex items-center gap-1">
+              <CircleStackIcon className="w-2.5 h-2.5 text-intents-ux-passive-foregroundColor flex-shrink-0" />
+              <div className="flex items-center gap-0.5">
+                <text.p as="paragraph" size={-1}>
+                  {t('builder_manageplan_plan_credits_per_month', { count: planGrant.creditsMax })}
+                </text.p>
+                <InfoTooltip content={t('builder_manageplan_plan_credits_tooltip')} />
+              </div>
+            </div>
+            {publishLimit !== null && publishLimit > 0 && (
+              <div className="flex items-center gap-1">
+                <CloudArrowUpIcon className="w-2.5 h-2.5 text-intents-ux-passive-foregroundColor flex-shrink-0" />
+                <text.p as="paragraph" size={-1}>
+                  {t('builder_manageplan_plan_publish_limit', { count: publishLimit })}
+                </text.p>
+              </div>
+            )}
+          </div>
+
+          {/* Plan Usage Section */}
+          <div className="flex flex-col gap-1 mt-2">
+            <text.strong as="label" text={t('builder_manageplan_plan_usage')} />
+            {resetDate && resetTime && (
+              <text.p as="paragraph">
+                {t('builder_manageplan_reset_info', {
+                  date: resetDate,
+                  time: resetTime,
+                })}
+              </text.p>
+            )}
+            {hasCreditsNoPlan && (
+              <text.p as="label" text={t('builder_manageplan_creditpacks_empty_plan_description')} />
+            )}
+            <CreditProgressBar spent={getEffectiveCreditsSpent(planGrant.creditsSpent, planGrant.creditsMax)} max={planGrant.creditsMax} />
+          </div>
           {(creditPacks.length > 0 || (!isFreePlan && creditPacks.length === 0)) && currentPlan && (
             <div className="flex flex-col sm:flex-row sm:justify-between gap-2">
               <Box orientation="horizontal" gap="md">
