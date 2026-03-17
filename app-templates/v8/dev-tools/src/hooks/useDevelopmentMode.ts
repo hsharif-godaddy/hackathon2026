@@ -308,10 +308,17 @@ export function useDevelopmentMode() {
     return null
   }
 
-  // Handle element hover
-  const handleMouseOver = useCallback((e: MouseEvent) => {
-    // Don't highlight during text editing or when not in select mode
-    if (!state.isSelectMode || state.isInlineEditing) return
+  /**
+   * Check if event should be handled in select mode
+   * Returns the target element if valid, null otherwise
+   */
+  const shouldHandleEvent = useCallback((e: Event): HTMLElement | null => {
+    // Don't handle during text editing or when not in select mode
+    if (!state.isSelectMode || state.isInlineEditing) return null
+
+    // Guard against non-Element targets (Document, Text nodes, etc.)
+    // Prevents TypeError when calling .id, .closest(), .hasAttribute()
+    if (!(e.target instanceof Element)) return null
 
     const target = e.target as HTMLElement
 
@@ -320,27 +327,56 @@ export function useDevelopmentMode() {
         target.closest('#dev-mode-overlay') ||
         target.closest('[data-dev-tools]') ||
         target.hasAttribute('data-dev-tools')) {
-      return
+      return null
     }
+
+    return target
+  }, [state.isSelectMode, state.isInlineEditing])
+
+  // Handle element hover
+  const handleMouseOver = useCallback((e: MouseEvent) => {
+    const target = shouldHandleEvent(e)
+    if (!target) return
 
     setState(prev => ({ ...prev, hoveredElement: target }))
     highlightElement(target, 'hover')
-  }, [state.isSelectMode, state.isInlineEditing, highlightElement])
+  }, [shouldHandleEvent, highlightElement])
+
+  // Handle keydown to prevent keyboard navigation/activation
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    const target = shouldHandleEvent(e)
+    if (!target) return
+
+    // Only block Space/Enter on elements that would normally be activated by these keys
+    // This prevents breaking custom widgets (video players, scroll containers, etc.)
+    if (e.key === 'Enter' || e.key === ' ') {
+      const tagName = target.tagName.toLowerCase()
+      const isInteractive = tagName === 'a' ||
+                           tagName === 'button' ||
+                           target.getAttribute('role') === 'button' ||
+                           target.getAttribute('role') === 'link'
+
+      if (isInteractive) {
+        e.preventDefault()
+        // Allow propagation - we only want to prevent default browser behavior
+      }
+    }
+  }, [shouldHandleEvent])
+
+  // Handle mousedown to prevent default actions before click
+  const handleMouseDown = useCallback((e: MouseEvent) => {
+    const target = shouldHandleEvent(e)
+    if (!target) return
+
+    // Only preventDefault to block browser defaults (navigation, focus changes)
+    // Allow propagation so existing mousedown handlers (drag-and-drop, canvas, etc.) still work
+    e.preventDefault()
+  }, [shouldHandleEvent])
 
   // Handle element click
   const handleClick = useCallback((e: MouseEvent) => {
-    // Don't handle clicks during text editing or when not in select mode
-    if (!state.isSelectMode || state.isInlineEditing) return
-
-    const target = e.target as HTMLElement
-
-    // Ignore dev tools elements
-    if (target.id === 'dev-mode-overlay' ||
-        target.closest('#dev-mode-overlay') ||
-        target.closest('[data-dev-tools]') ||
-        target.hasAttribute('data-dev-tools')) {
-      return
-    }
+    const target = shouldHandleEvent(e)
+    if (!target) return
 
     e.preventDefault()
     e.stopPropagation()
@@ -365,7 +401,7 @@ export function useDevelopmentMode() {
         data: elementInfo
       }, '*')
     }
-  }, [state.isSelectMode, state.isInlineEditing, highlightElement, createElementInfo, calculateEditorPosition])
+  }, [shouldHandleEvent, highlightElement, createElementInfo, calculateEditorPosition])
 
   // Handle mouse leave
   const handleMouseLeave = useCallback(() => {
@@ -403,12 +439,6 @@ export function useDevelopmentMode() {
 
   // Setup event listeners
   useEffect(() => {
-    // Always clean up existing listeners first
-    document.removeEventListener('mouseover', handleMouseOver)
-    document.removeEventListener('click', handleClick)
-    document.removeEventListener('mouseleave', handleMouseLeave)
-    window.removeEventListener('scroll', handleScroll)
-
     // Keep highlighting the selected element even when not in select mode
     // BUT NOT when inline editing is active (to avoid double boundary)
     if (state.selectedElement && !state.isSelectMode && !state.isInlineEditing) {
@@ -425,14 +455,19 @@ export function useDevelopmentMode() {
 
     // Only add interactive event listeners when actively in select mode
     if (state.isSelectMode) {
+      // Use capture phase to intercept events before they reach target elements
+      document.addEventListener('keydown', handleKeyDown, true)
       document.addEventListener('mouseover', handleMouseOver)
-      document.addEventListener('click', handleClick)
+      document.addEventListener('mousedown', handleMouseDown, true)
+      document.addEventListener('click', handleClick, true)
       document.addEventListener('mouseleave', handleMouseLeave)
       window.addEventListener('scroll', handleScroll)
 
       return () => {
+        document.removeEventListener('keydown', handleKeyDown, true)
         document.removeEventListener('mouseover', handleMouseOver)
-        document.removeEventListener('click', handleClick)
+        document.removeEventListener('mousedown', handleMouseDown, true)
+        document.removeEventListener('click', handleClick, true)
         document.removeEventListener('mouseleave', handleMouseLeave)
         window.removeEventListener('scroll', handleScroll)
       }
@@ -442,7 +477,7 @@ export function useDevelopmentMode() {
     if (!state.selectedElement) {
       clearHighlight()
     }
-  }, [state.isSelectMode, state.selectedElement, clearHighlight, handleMouseOver, handleClick, handleMouseLeave, handleScroll, highlightElement])
+  }, [state.isSelectMode, state.selectedElement, clearHighlight, handleKeyDown, handleMouseOver, handleMouseDown, handleClick, handleMouseLeave, handleScroll, highlightElement])
 
   // Public API for direct control (non-iframe usage)
   const enableDevelopmentMode = useCallback(() => {
