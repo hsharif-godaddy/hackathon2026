@@ -11,10 +11,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./grants": {
-      "types": "./dist/grants/index.d.ts",
-      "import": "./dist/grants/index.js"
-    },
     "./react": {
       "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.js"
@@ -25,13 +21,6 @@
     "README.md",
     "CHANGELOG.md"
   ],
-  "typesVersions": {
-    "*": {
-      "grants": [
-        "dist/grants/index.d.ts"
-      ]
-    }
-  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -73,23 +62,18 @@
     "@ai-sdk/openai": "^3.0.37",
     "@ai-sdk/openai-compatible": "^2.0.31",
     "@ai-sdk/provider": "^3.0.8",
+    "@airo/ai-common": "workspace:*",
+    "@airo/ai-grants": "workspace:*",
     "@airo/shared": "workspace:*",
     "@aws-sdk/client-bedrock-runtime": "^3.890.0",
     "@aws-sdk/client-sts": "3.679.0",
     "@aws-sdk/credential-providers": "^3.888.0",
-    "@godaddy/agent-observability-events": "^1.4.0",
-    "@godaddy/agent-otel-sdk": "^1.0.1",
     "@langfuse/tracing": "^4.5.1",
-    "@opentelemetry/api": "^1.9.0",
-    "@signals/otel-sdk": "^0.1.1",
-    "@types/ws": "^8.18.1",
     "ai": "^6.0.105",
     "ai-tokenizer": "^1.0.6",
     "dotenv": "^16.4.7",
     "gd-auth-client": "^2.1.1",
     "openai": "^5.22.0",
-    "socket.io": "^4.8.3",
-    "ws": "^8.18.3",
     "zod": "^3.25.76"
   },
   "peerDependencies": {

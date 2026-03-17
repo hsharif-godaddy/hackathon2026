@@ -14,7 +14,7 @@
  *
  * @example
  * ```typescript
- * import { createWebSocketServer, createNoOpPersistence } from '@airo/ai-lib'
+ * import { createWebSocketServer, createNoOpPersistence } from '@airo/ai-transport'
  *
  * const wsServer = createWebSocketServer(httpServer, {
  *   agents,

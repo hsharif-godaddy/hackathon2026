@@ -631,7 +631,7 @@ vi.mock('../../../../database/repositories/AppRepository', () => ({
   },
 }));
 
-vi.mock('@airo/ai-lib/grants', () => ({
+vi.mock('@airo/ai-grants', () => ({
   grantSessionManager: {
     getCurrentUserId: vi.fn().mockReturnValue('budget-user-111'),
     getSubscriptionState: vi.fn().mockReturnValue({
@@ -713,7 +713,7 @@ Replace the MCP-proxied implementation with direct LogoService call:
 ```typescript
 import { logoService } from '../../../services/LogoService';
 import { appRepository } from '../../../database/repositories/AppRepository';
-import { grantSessionManager } from '@airo/ai-lib/grants';
+import { grantSessionManager } from '@airo/ai-grants';
 
 // In the generateLogoTool definition:
 execute: async (input, context) => {

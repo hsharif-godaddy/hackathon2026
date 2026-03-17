@@ -21,8 +21,7 @@ import { createDuplicateResponseStopCondition } from './duplicate-detection.js'
 import { supportsEffort } from '../utils/model-normalization.js'
 import { buildHybridContent } from '../utils/image-content-builder.js'
 import type { ContentBlock, TextContentBlock, ImageContentBlock } from '../utils/image-content-builder.js'
-import { createLogger } from '../utils/logger.js'
-import { serializeError, isBudgetExceededAPIError } from '../utils/errors.js'
+import { createLogger, serializeError, isBudgetExceededAPIError, BudgetExceededError, retryWithBackoff, type RetryContext } from '@airo/ai-common'
 import { addCacheControlToMessages, addCacheControlToSystemPrompt, logCachingStats } from '../utils/prompt-caching.js'
 import { llmMetadataContext, type LitellmMetadata } from '../providers/unified-provider.js'
 import {
@@ -31,9 +30,7 @@ import {
   grantSessionManager,
   isGrantsExhausted,
   GrantErrorCode,
-} from '../grants/index.js'
-import { BudgetExceededError } from '../utils/errors.js'
-import { retryWithBackoff, type RetryContext } from '../utils/retry-with-backoff.js'
+} from '@airo/ai-grants'
 
 const logger = createLogger('agent-factory')
 

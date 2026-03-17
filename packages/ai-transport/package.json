@@ -1,0 +1,46 @@
+{
+  "name": "@airo/ai-transport",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@airo/ai-common": "workspace:*",
+    "@airo/ai-lib": "workspace:*",
+    "@godaddy/agent-observability-events": "^1.4.0",
+    "@godaddy/agent-otel-sdk": "^1.0.1",
+    "@opentelemetry/api": "^1.9.0",
+    "@signals/otel-sdk": "^0.1.1",
+    "ai": "^6.0.105",
+    "socket.io": "^4.8.3",
+    "ws": "^8.18.3",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.12",
+    "@types/ws": "^8.18.1",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "eslint-config-prettier": "^9.0.0",
+    "typescript": "5.9.2",
+    "vitest": "3.2.4"
+  }
+}

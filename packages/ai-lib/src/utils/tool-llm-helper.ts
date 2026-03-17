@@ -6,7 +6,7 @@
  */
 
 import { generateText, type LanguageModel } from 'ai'
-import { createLogger } from './logger.js'
+import { createLogger } from '@airo/ai-common'
 
 const logger = createLogger('tool-llm-helper')
 

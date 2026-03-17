@@ -2,7 +2,9 @@ import { basename } from 'node:path';
 
 import { propagateAttributes } from '@langfuse/tracing';
 import { generateText, type LanguageModel } from 'ai';
-import { logCachingStats, llmMetadataContext, type LitellmMetadata, buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-lib';
+import { logCachingStats } from '@airo/ai-lib';
+import { llmMetadataContext, type LitellmMetadata } from '@airo/ai-common';
+import { buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-grants';
 import { getAgentModelWithName } from '../../utils/model-selection.js';
 import { countTokens } from '../../utils/token-counter.js';
 import { logger } from '../../logging/index.js';

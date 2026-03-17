@@ -2,7 +2,8 @@ import { basename } from 'node:path';
 
 import { propagateAttributes } from '@langfuse/tracing';
 import { generateText } from 'ai';
-import { llmMetadataContext, type LitellmMetadata, buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-lib';
+import { llmMetadataContext, type LitellmMetadata } from '@airo/ai-common';
+import { buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-grants';
 import type { LLMMessage } from '../ConversationHistoryLoader.js';
 import { isOpenAIMessage, isAIToolMessage, getMessageContent } from '../ConversationHistoryLoader.js';
 import { getAgentModelWithName } from '../../utils/model-selection.js';

@@ -1,4 +1,6 @@
-import { createTool, generateTextWithTracking, llmMetadataContext, type LitellmMetadata, type Tool, createPromptBuilder, buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-lib'
+import { createTool, generateTextWithTracking, type Tool, createPromptBuilder } from '@airo/ai-lib'
+import { llmMetadataContext, type LitellmMetadata } from '@airo/ai-common'
+import { buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-grants'
 import path from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'

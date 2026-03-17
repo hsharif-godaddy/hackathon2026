@@ -5,8 +5,7 @@
  * automatic environment variable validation, and proxy support.
  */
 
-import { AsyncLocalStorage } from 'node:async_hooks'
-import { createLogger } from '../utils/logger.js'
+import { createLogger, containsBudgetExceededPattern, llmMetadataContext, type LitellmMetadata } from '@airo/ai-common'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock'
 import type { LanguageModel } from 'ai'
@@ -21,8 +20,7 @@ import {
   getFullModelName as getFullModelNameFromNormalization
 } from '../utils/model-normalization.js'
 import { getS2SProviderConfig, isS2SAuthEnabled, getDefaultAnthropicProxyEndpoint, refreshS2SToken, getS2SToken, type S2SAuthConfig } from '../utils/s2s-auth.js'
-import { grantSessionManager } from '../grants/grant-session-manager.js'
-import { containsBudgetExceededPattern } from '../utils/errors.js'
+import { grantSessionManager } from '@airo/ai-grants'
 
 /**
  * Claude models that can be routed through OpenAI proxy
@@ -271,25 +269,9 @@ export async function createOpenAIClient(config?: ProviderConfig): Promise<any> 
   }
 }
 
-/**
- * LiteLLM metadata structure for cost tracking and attribution
- */
-export interface LitellmMetadata {
-  user?: string       // subscriptionId for budget tracking
-  tags?: string[]     // customerId and appId for tagging/filtering
-  /** Internal fields for grant fallback - NOT sent to GoCode */
-  _internal?: {
-    socketId?: string
-    customerId?: string
-  }
-}
-
-/**
- * AsyncLocalStorage context for per-request LLM metadata
- * Each LLM request can have isolated metadata for accurate cost tracking and attribution
- * This prevents cross-tenant metadata leakage in concurrent request scenarios
- */
-export const llmMetadataContext = new AsyncLocalStorage<LitellmMetadata>()
+// LitellmMetadata and llmMetadataContext are now in @airo/ai-common
+// Re-exported here for backwards compatibility
+export { llmMetadataContext, type LitellmMetadata } from '@airo/ai-common'
 
 /**
  * Resolve the current grant userId for an LLM request.

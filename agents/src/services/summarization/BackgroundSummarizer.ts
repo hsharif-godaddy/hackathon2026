@@ -11,7 +11,7 @@ import {
   isOpenAIMessage,
   getMessageContent,
 } from '../ConversationHistoryLoader.js';
-import type { BudgetOverride } from '@airo/ai-lib';
+import type { BudgetOverride } from '@airo/ai-grants';
 
 /**
  * Pending job data for debounced summarization

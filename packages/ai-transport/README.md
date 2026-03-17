@@ -117,7 +117,8 @@ httpServer.listen(3000);
 ```typescript
 import { createServer } from "http";
 import { getModel } from "@airo/ai-lib";
-import { createAgentFactory, createWebSocketServer } from "@airo/ai-lib";
+import { createAgentFactory } from "@airo/ai-lib";
+import { createWebSocketServer } from "@airo/ai-transport";
 
 const agentFactory = createAgentFactory();
 

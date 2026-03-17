@@ -4,7 +4,7 @@ import type { ConversationRepository } from '../../../database/repositories/Conv
 import type { SummaryRepository } from '../../../database/repositories/SummaryRepository.js';
 import type { SummarizationStrategy } from '../SummarizationStrategy.js';
 import type { DatabaseMessage } from '../../ConversationHistoryLoader.js';
-import { BudgetOverride } from '@airo/ai-lib';
+import { BudgetOverride } from '@airo/ai-grants';
 
 // Mock dependencies
 vi.mock('../../../logging/index.js', () => ({

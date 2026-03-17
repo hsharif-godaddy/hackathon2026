@@ -3,7 +3,7 @@
  * Base types come from @airo/shared/websocket
  */
 
-import type { ChatMessage } from '@airo/ai-lib'
+import type { ChatMessage } from '@airo/ai-transport'
 import type { AgentsAppContext as BaseAgentsAppContext } from '@airo/shared/websocket'
 import type { ClientActionService } from '../services/ClientActionService.js'
 

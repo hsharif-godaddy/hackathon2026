@@ -9,7 +9,7 @@ import type {
   ConversationPersistenceWithCleanup,
   PersistenceStreamingEvent,
   ConversationContext
-} from '@airo/ai-lib'
+} from '@airo/ai-transport'
 import { calculateCostEstimate } from '@airo/ai-lib'
 import { emitConversationStart } from '@godaddy/agent-otel-sdk'
 import { conversationRepository, appRepository } from '../database/repositories/index.js'

@@ -12,9 +12,13 @@ const mockLogger = vi.hoisted(() => ({
   child: vi.fn()
 }))
 
-vi.mock('../logger.js', () => ({
-  createLogger: () => mockLogger
-}))
+vi.mock('@airo/ai-common', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@airo/ai-common')>()
+  return {
+    ...actual,
+    createLogger: () => mockLogger
+  }
+})
 
 import {
   addCacheControlToMessages,

@@ -398,7 +398,7 @@ const result = await runner.runStreamingLoopWithCallbacks(
 For real-time applications:
 
 ```typescript
-import { createWebSocketServer } from '@airo/ai-lib'
+import { createWebSocketServer } from '@airo/ai-transport'
 
 const wsServer = createWebSocketServer({
   port: 8080,

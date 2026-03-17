@@ -204,7 +204,7 @@ In a WebSocket application, you would typically:
 4. Check current agent before processing messages
 
 ```typescript
-import { createWebSocketServer } from '@airo/ai-lib'
+import { createWebSocketServer } from '@airo/ai-transport'
 
 const stateManager = createInMemoryHandoffStateManager({
   defaultAgentId: 'coordinator'

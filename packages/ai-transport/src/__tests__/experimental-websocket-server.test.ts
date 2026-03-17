@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Server as HTTPServer } from 'http'
 import { WebSocketServer } from '../experimental-websocket-server.js'
 import { createNoOpPersistence } from '../noop-persistence.js'
-import type { ExperimentalAgentWrapper } from '../../core/agent-factory.js'
+import type { AgentWrapper } from '@airo/ai-lib'
 
 // Mock Socket.IO
 const mockSocket = {
@@ -29,7 +29,7 @@ vi.mock('socket.io', () => ({
 }))
 
 // Mock agent
-const mockAgent: ExperimentalAgentWrapper = {
+const mockAgent: AgentWrapper = {
   getName: () => 'test-agent',
   streamGenerate: vi.fn()
 } as any
@@ -205,7 +205,8 @@ describe('WebSocketServer - Error Handling', () => {
       // Verify retry was attempted with proper error context
       const retryCall = mockAgent.streamGenerate.mock.calls[1]
       expect(retryCall[0]).toContain('The previous tool call failed due to invalid JSON syntax')
-      expect(retryCall[1].messages).toBeDefined()
+      expect(retryCall[1].messages).toHaveLength(1)
+      expect(retryCall[1].messages[0]).toEqual({ role: 'user', content: 'Edit the file' })
     })
 
     it('should require acknowledgement for manual recovery and deliver catch-up events', async () => {

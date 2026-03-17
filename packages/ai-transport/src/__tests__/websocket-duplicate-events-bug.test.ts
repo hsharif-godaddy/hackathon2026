@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Server as HTTPServer } from 'http'
 import { WebSocketServer } from '../experimental-websocket-server.js'
 import { createNoOpPersistence } from '../noop-persistence.js'
-import type { ExperimentalAgentWrapper } from '../../core/agent-factory.js'
+import type { AgentWrapper } from '@airo/ai-lib'
 
 /**
  * Test to reproduce the duplicate events bug that occurs with multiple disconnect/reconnect cycles.
@@ -26,7 +26,7 @@ vi.mock('socket.io', () => ({
 }))
 
 // Mock agent
-const mockAgent: ExperimentalAgentWrapper = {
+const mockAgent: AgentWrapper = {
   getName: () => 'test-agent',
   streamGenerate: vi.fn()
 } as any

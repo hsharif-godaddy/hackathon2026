@@ -7,6 +7,10 @@ on:
     paths:
       - "agents/**"
       - "packages/ai-lib/**"
+      - "packages/ai-common/**"
+      - "packages/ai-grants/**"
+      - "packages/ai-transport/**"
+      - "packages/ai-skills/**"
       - "packages/shared/**"
       - "package.json"
       - "pnpm-workspace.yaml"
@@ -20,6 +24,10 @@ on:
     paths:
       - "agents/**"
       - "packages/ai-lib/**"
+      - "packages/ai-common/**"
+      - "packages/ai-grants/**"
+      - "packages/ai-transport/**"
+      - "packages/ai-skills/**"
       - "packages/shared/**"
       - "package.json"
       - "pnpm-workspace.yaml"
@@ -40,5 +48,5 @@ jobs:
       package-name: agents
       pnpm-filter: "@airo/agents"
       working-directory: ./agents
-      skip-tests: true  # Agent tests currently have failures
+      skip-tests: true # Agent tests currently have failures
     secrets: inherit
