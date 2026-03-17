@@ -47,7 +47,8 @@ describe('AgentWrapper - Cache Point Preservation', () => {
     const config: AgentConfig = {
       name: 'test-agent',
       model: mockModel as any,
-      system: 'Test system prompt'
+      system: 'Test system prompt',
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
     }
 
     agentWrapper = new AgentWrapper(config)
@@ -300,7 +301,8 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
       name: 'test-agent',
       model: mockModel as any,
       system: 'Test system prompt',
-      enablePromptCaching: true
+      enablePromptCaching: true,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
     }
 
     agentWrapper = new AgentWrapper(config)
@@ -452,7 +454,8 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
       name: 'test-agent',
       model: mockModel as any,
       system: 'Test system prompt',
-      enablePromptCaching: false
+      enablePromptCaching: false,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
     }
 
     const nonCachedAgent = new AgentWrapper(config)
@@ -929,5 +932,133 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
     const imageBlock = contentBlocks.find((block: any) => block.type === 'image')
     expect(imageBlock).toBeDefined()
     expect(imageBlock.image).toContain('data:image/png;base64,')
+  })
+})
+
+describe('AgentWrapper - advanceCacheBreakpoint via prepareStep', () => {
+  let mockAgent: { generate: ReturnType<typeof vi.fn>; stream: ReturnType<typeof vi.fn> }
+  let lastSettings: any
+  let MockToolLoopAgent: any
+
+  beforeEach(async () => {
+    mockAgent = { generate: vi.fn(), stream: vi.fn() }
+
+    const aiModule = await import('ai')
+    MockToolLoopAgent = aiModule.ToolLoopAgent as any
+    MockToolLoopAgent.mockImplementation((settings: any) => {
+      lastSettings = settings
+      return mockAgent
+    })
+
+    const mockModel = {
+      provider: 'anthropic',
+      modelId: 'claude-3-5-sonnet-20241022',
+      doGenerate: vi.fn(),
+      doStream: vi.fn()
+    }
+
+    const config: AgentConfig = {
+      name: 'test-agent',
+      model: mockModel as any,
+      system: 'Test system prompt',
+      enablePromptCaching: true,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    }
+
+    new AgentWrapper(config)
+  })
+
+  it('should not advance breakpoint on step 0', async () => {
+    const messages = [
+      { role: 'user', content: 'Hello' },
+      { role: 'assistant', content: 'Hi there' }
+    ]
+
+    const result = await lastSettings.prepareStep({ stepNumber: 0, steps: [], model: 'test', messages })
+    // Step 0 breakpoints are set by prepareCall, not prepareStep
+    expect(result?.messages).toBeUndefined()
+  })
+
+  it('should place breakpoint on last message at step 1+', async () => {
+    const messages = [
+      { role: 'user', content: 'Hello' },
+      { role: 'assistant', content: 'Hi there' },
+      { role: 'user', content: 'Do something' }
+    ]
+
+    const result = await lastSettings.prepareStep({ stepNumber: 1, steps: [], model: 'test', messages })
+    expect(result.messages).toBeDefined()
+
+    const lastMsg = result.messages[result.messages.length - 1] as any
+    expect(lastMsg.providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' })
+    expect(lastMsg.providerOptions?.bedrock?.cachePoint).toBe('ephemeral')
+  })
+
+  it('should preserve user message breakpoints (e.g. conversation summary)', async () => {
+    const messages = [
+      {
+        role: 'user',
+        content: '[CONVERSATION SUMMARY]',
+        providerOptions: {
+          anthropic: { cacheControl: { type: 'ephemeral' } },
+          bedrock: { cachePoint: 'ephemeral' }
+        }
+      },
+      { role: 'assistant', content: 'Response' },
+      { role: 'user', content: 'Next question' }
+    ]
+
+    const result = await lastSettings.prepareStep({ stepNumber: 1, steps: [], model: 'test', messages })
+
+    // Summary breakpoint preserved (user message, not removed)
+    const summaryMsg = result.messages[0] as any
+    expect(summaryMsg.providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' })
+
+    // Last message gets new breakpoint
+    const lastMsg = result.messages[result.messages.length - 1] as any
+    expect(lastMsg.providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' })
+  })
+
+  it('should remove old advancing breakpoint from assistant messages', async () => {
+    const messages = [
+      { role: 'user', content: 'Hello' },
+      {
+        role: 'assistant',
+        content: 'Previous response',
+        providerOptions: {
+          anthropic: { cacheControl: { type: 'ephemeral' } },
+          bedrock: { cachePoint: 'ephemeral' }
+        }
+      },
+      { role: 'user', content: 'New message' },
+      { role: 'assistant', content: 'New response' }
+    ]
+
+    const result = await lastSettings.prepareStep({ stepNumber: 2, steps: [], model: 'test', messages })
+
+    // Old assistant breakpoint removed
+    const oldAssistant = result.messages[1] as any
+    expect(oldAssistant.providerOptions?.anthropic?.cacheControl).toBeUndefined()
+
+    // New last message gets breakpoint
+    const lastMsg = result.messages[result.messages.length - 1] as any
+    expect(lastMsg.providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' })
+  })
+
+  it('should skip if last message already has a breakpoint', async () => {
+    const messages = [
+      { role: 'user', content: 'Hello' },
+      {
+        role: 'user',
+        content: 'Already cached',
+        providerOptions: {
+          anthropic: { cacheControl: { type: 'ephemeral' } }
+        }
+      }
+    ]
+
+    const result = await lastSettings.prepareStep({ stepNumber: 1, steps: [], model: 'test', messages })
+    // advanceCacheBreakpoint returns null when last message already has breakpoint
+    expect(result?.messages).toBeUndefined()
   })
 })

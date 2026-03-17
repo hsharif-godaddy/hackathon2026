@@ -759,7 +759,6 @@ export class ConversationHistoryLoader {
           role: 'user',
           content: `[OPERATION LOG - Cumulative record of all work done]\n${latestSummary.operationLog}`,
           metadata: { isOperationLog: true },
-          cachePoint: { type: 'ephemeral' },
         });
       }
 
@@ -978,7 +977,13 @@ export class ConversationHistoryLoader {
         }
         const systemMessage: SystemModelMessage = {
           role: 'system',
-          content: msg.content
+          content: msg.content,
+          ...(msg.cachePoint ? {
+            providerOptions: {
+              anthropic: { cacheControl: { type: msg.cachePoint.type } },
+              bedrock: { cachePoint: msg.cachePoint.type }
+            }
+          } : {})
         };
         formattedMessages.push(systemMessage);
         continue;
@@ -1030,7 +1035,13 @@ export class ConversationHistoryLoader {
           
           const assistantMessage: AssistantModelMessage = {
             role: 'assistant',
-            content: contentParts
+            content: contentParts,
+            ...(msg.cachePoint ? {
+              providerOptions: {
+                anthropic: { cacheControl: { type: msg.cachePoint.type } },
+                bedrock: { cachePoint: msg.cachePoint.type }
+              }
+            } : {})
           };
           formattedMessages.push(assistantMessage);
           continue;
@@ -1040,7 +1051,13 @@ export class ConversationHistoryLoader {
         const content = (msg.content && msg.content.trim()) ? msg.content : ' ';
         const assistantMessage: AssistantModelMessage = {
           role: 'assistant',
-          content
+          content,
+          ...(msg.cachePoint ? {
+            providerOptions: {
+              anthropic: { cacheControl: { type: msg.cachePoint.type } },
+              bedrock: { cachePoint: msg.cachePoint.type }
+            }
+          } : {})
         };
         formattedMessages.push(assistantMessage);
         continue;
@@ -1054,7 +1071,13 @@ export class ConversationHistoryLoader {
         }
         const userMessage: UserModelMessage = {
           role: 'user',
-          content: msg.content
+          content: msg.content,
+          ...(msg.cachePoint ? {
+            providerOptions: {
+              anthropic: { cacheControl: { type: msg.cachePoint.type } },
+              bedrock: { cachePoint: msg.cachePoint.type }
+            }
+          } : {})
         };
         formattedMessages.push(userMessage);
         continue;

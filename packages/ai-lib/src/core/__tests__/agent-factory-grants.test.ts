@@ -41,6 +41,7 @@ describe('AgentWrapper - exhausted grants refresh', function exhaustedGrantsTest
     name: 'test-agent',
     model: 'test-model' as any,
     system: 'You are a helpful assistant',
+    logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
   }
 
   const makeValidStream = () => ({

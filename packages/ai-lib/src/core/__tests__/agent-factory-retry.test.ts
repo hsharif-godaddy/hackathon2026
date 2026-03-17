@@ -65,7 +65,8 @@ describe('AgentWrapper integration with ToolLoopAgent settings', () => {
       maxSteps: 5,
       retryConfig: {
         maxAttempts: 4
-      }
+      },
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
     }
 
     agentWrapper = new AgentWrapper(config)

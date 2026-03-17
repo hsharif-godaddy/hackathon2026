@@ -307,9 +307,9 @@ export class AgentWrapper {
       maxRetries,
       // Enable OpenTelemetry telemetry for Elastic APM and Langfuse integration
       experimental_telemetry: { isEnabled: true, functionId: `agent-${config.name}` },
-      ...(telemetryHooks.prepareStep ? { prepareStep: telemetryHooks.prepareStep } : {}),
-      ...(telemetryHooks.onStepFinish ? { onStepFinish: telemetryHooks.onStepFinish } : {}),
-      ...(telemetryHooks.onFinish ? { onFinish: telemetryHooks.onFinish } : {}),
+      prepareStep: telemetryHooks.prepareStep,
+      onStepFinish: telemetryHooks.onStepFinish,
+      onFinish: telemetryHooks.onFinish,
       prepareCall: async ({ options, ...callParameters }) => {
         const callOptions = (options as AgentCallOptions | undefined) || {}
 
@@ -446,10 +446,14 @@ export class AgentWrapper {
               allMessages = cachedMessages.slice(0, -1)
               currentUserMessage = cachedMessages[cachedMessages.length - 1] || currentUserMessage
             } else {
-              // Subsequent turns: cache only history (exclude current message)
-              // Disable system message caching here — the system prompt is already cached
-              // at the ToolLoopAgent level, so context messages with role 'system' in the
-              // messages array should not consume cache breakpoints.
+              // Subsequent turns: cache only history, not the current user message.
+              // cacheSystemPrompts: false — don't place a breakpoint on system-role
+              // messages in the array (e.g. template description). The main system prompt
+              // is already cached via addCacheControlToSystemPrompt at construction time
+              // and occupies 1 of Anthropic's 4 breakpoint slots at the API level.
+              //
+              // Budget: 1 (system prompt) + N (pre-existing on messages) + 1 (last history
+              // message placed here) must stay ≤ 4. Currently N=1 (conversation summary).
               allMessages = addCacheControlToMessages(allMessages, this.config.model, {
                 ...cachingStrategy,
                 cacheSystemPrompts: false
@@ -770,15 +774,89 @@ export class AgentWrapper {
     return false
   }
 
-  private createTelemetryHooks(agentLogger?: AgentConfig['logger']): {
-    prepareStep?: PrepareStepFunction
-    onStepFinish?: ToolLoopAgentOnStepFinishCallback<Record<string, any>>
-    onFinish?: ToolLoopAgentOnFinishCallback
-  } {
-    if (!agentLogger) {
-      return {}
+  /**
+   * Move the cache breakpoint to the last message so each step's new content
+   * is included in the cached prefix. Removes the previous advancing
+   * breakpoint from assistant/tool messages while preserving pre-existing
+   * breakpoints on user messages (e.g. conversation summary).
+   *
+   * INVARIANT: Pre-existing breakpoints must only appear on user-role messages.
+   * Any breakpoint on an assistant or tool message is assumed to be from a prior
+   * advancing step and will be removed.
+   */
+  private advanceCacheBreakpoint(messages: ModelMessage[]): ModelMessage[] | null {
+    const lastIndex = messages.length - 1
+    if (lastIndex < 0) return null
+
+    // Check if the last message already has a cache breakpoint
+    const lastMsg = messages[lastIndex] as any
+    if (lastMsg.providerOptions?.anthropic?.cacheControl) {
+      return null // Already has breakpoint, nothing to do
     }
 
+    // Build updated messages: remove old advancing breakpoint, add new one on last message.
+    // We only remove breakpoints that were placed by addCacheControlToMessages (on non-summary
+    // messages). Pre-existing breakpoints (e.g. conversation summary with cachePoint) are
+    // kept — they provide a stable intermediate cache layer.
+    const updated = messages.map((msg, index) => {
+      const msgAny = msg as any
+      const hasBreakpoint = msgAny.providerOptions?.anthropic?.cacheControl
+
+      if (index === lastIndex && !hasBreakpoint) {
+        // Add breakpoint to the new last message
+        return {
+          ...msg,
+          providerOptions: {
+            ...(msgAny.providerOptions || {}),
+            bedrock: {
+              ...(msgAny.providerOptions?.bedrock || {}),
+              cachePoint: 'ephemeral'
+            },
+            anthropic: {
+              ...(msgAny.providerOptions?.anthropic || {}),
+              cacheControl: { type: 'ephemeral' }
+            }
+          }
+        } as ModelMessage
+      }
+
+      // Remove the previous advancing breakpoint from assistant/tool messages.
+      // User-role breakpoints are preserved — these come from the conversation
+      // summary or (on first-turn) from addCacheControlToMessages tagging the
+      // user question. On first-turn the arithmetic is still safe:
+      //   system(1) + summary(1) + first-user(1) + advancing(1) = 4 slots.
+      // On subsequent turns addCacheControlToMessages tags the last history
+      // message (not a user question), so the user-role set stays at {summary}.
+      if (hasBreakpoint && msgAny.role !== 'user') {
+        const { cacheControl, ...restAnthropicOptions } = msgAny.providerOptions.anthropic
+        const { cachePoint, ...restBedrockOptions } = msgAny.providerOptions.bedrock || {}
+        // Build new providerOptions from scratch — only include providers with remaining keys
+        const { anthropic: _a, bedrock: _b, ...otherProviderOptions } = msgAny.providerOptions || {}
+        const newProviderOptions: Record<string, any> = { ...otherProviderOptions }
+        if (Object.keys(restAnthropicOptions).length > 0) {
+          newProviderOptions.anthropic = restAnthropicOptions
+        }
+        if (Object.keys(restBedrockOptions).length > 0) {
+          newProviderOptions.bedrock = restBedrockOptions
+        }
+        const { providerOptions: _dropped, ...msgWithoutProvider } = msgAny
+        return {
+          ...msgWithoutProvider,
+          ...(Object.keys(newProviderOptions).length > 0 ? { providerOptions: newProviderOptions } : {})
+        } as ModelMessage
+      }
+
+      return msg
+    })
+
+    return updated
+  }
+
+  private createTelemetryHooks(agentLogger: AgentConfig['logger']): {
+    prepareStep: PrepareStepFunction
+    onStepFinish: ToolLoopAgentOnStepFinishCallback<Record<string, any>>
+    onFinish: ToolLoopAgentOnFinishCallback
+  } {
     const agentName = this.config.name
 
     const safeLog = (level: 'info' | 'warn' | 'error', event: string, data: unknown, failureEvent: string) => {
@@ -799,6 +877,9 @@ export class AgentWrapper {
         messageCount: messages.length
       }, 'agent.step.begin.log_failed')
 
+      // Build the result object, accumulating optional fields
+      const result: Record<string, unknown> = {}
+
       // Build activeTools from cached base names + current active skills.
       // Base names are stable (computed in prepareCall). Active skills may grow
       // mid-run as the agent loads new skills, which is intentional — the cache
@@ -807,18 +888,25 @@ export class AgentWrapper {
       // unnecessary cache invalidation.
       if (this.currentBaseToolNames && this.skillToolProvider && this.currentConversationId) {
         const activeSkillTools = this.skillToolProvider.getActiveToolNames(this.currentConversationId)
-        return {
-          // Type cast needed: AI SDK expects keyof TOOLS but we have runtime string arrays
-          // from baseToolNames and activeSkillTools that match tool keys at runtime
-          activeTools: [...this.currentBaseToolNames, ...activeSkillTools] as any
-        }
+        // Type cast needed: AI SDK expects keyof TOOLS but we have runtime string arrays
+        // from baseToolNames and activeSkillTools that match tool keys at runtime
+        result.activeTools = [...this.currentBaseToolNames, ...activeSkillTools] as any
       } else if (this.currentBaseToolNames) {
-        return {
-          activeTools: this.currentBaseToolNames as any
+        result.activeTools = this.currentBaseToolNames as any
+      }
+
+      // Advance the cache breakpoint on steps 1+ so newly added messages
+      // (tool results, assistant responses) are included in the cached prefix.
+      // Step 0 breakpoints are placed by prepareCall; here we move the
+      // "last history message" breakpoint forward as the conversation grows.
+      if (stepNumber > 0 && this.config.enablePromptCaching && messages.length > 0) {
+        const updatedMessages = this.advanceCacheBreakpoint(messages)
+        if (updatedMessages) {
+          result.messages = updatedMessages
         }
       }
 
-      return undefined
+      return Object.keys(result).length > 0 ? result : undefined
     }
 
     const onStepFinish: ToolLoopAgentOnStepFinishCallback<Record<string, any>> = async stepResult => {

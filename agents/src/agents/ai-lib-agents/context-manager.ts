@@ -61,6 +61,11 @@ export class AILibContextManager {
      * @param context - Enhanced agent context
      * @param agentPreferences - Optional agent-specific context preferences to override defaults
      * @returns Object with static system prompt and context messages
+     *
+     * NOTE: The conversation summary injected here does NOT include the operation log.
+     * The operation log is injected separately by ConversationHistoryLoader as a dedicated
+     * message in the conversation history. Both components must be used together for complete
+     * context reconstruction after summarization.
      */
     async buildContextMessages(
         baseSystemPrompt: string,
@@ -116,7 +121,6 @@ export class AILibContextManager {
         // Check agent preferences for template description inclusion
         const includeTemplate = agentPreferences?.includeTemplateDescription !== false // Default true if not specified
         const templateDescription = includeTemplate ? await this.getTemplateDescription(context) : null
-        const templateCached = false
         if (templateDescription) {
             // Template content logging if enabled
             if (contextLogging.templateContent) {
@@ -133,7 +137,6 @@ export class AILibContextManager {
         }
 
         const memorySummary = await this.loadConversationSummary(context)
-        let memoryCached = false
         if (memorySummary) {
             const memoryContent = this.formatMemorySummary(memorySummary)
             // SECURITY: Memory is injected as USER message, not system message
@@ -142,17 +145,14 @@ export class AILibContextManager {
             conversationContextMessages.push({
                 role: 'user',
                 content: memoryContent,
-                insertionOrder: 'before_history',
-                cachePoint: { type: 'ephemeral' }
+                insertionOrder: 'before_history'
             })
-            memoryCached = true
         }
 
         // Add app context as user message (project structure info)
         // NOTE: Must be 'user' role because Anthropic requires all system messages to be
         // contiguous at the start. Memory (user) comes before this, so this must also be user.
         const appContextMessages = contextMessages.filter(msg => msg.type === 'app_context')
-        const appContextCached = false
         if (appContextMessages.length > 0) {
             conversationContextMessages.push({
                 role: 'user',
@@ -200,7 +200,6 @@ export class AILibContextManager {
 
     private async loadConversationSummary(context: EnhancedAgentContext): Promise<{
         text: string
-        operationLog?: string
         tokenCount: number
         originalTokenCount: number
     } | null> {
@@ -239,21 +238,13 @@ export class AILibContextManager {
 
         return {
             text: latestSummary.summaryText,
-            operationLog: latestSummary.operationLog,
             tokenCount: latestSummary.summaryTokenCount,
             originalTokenCount: latestSummary.originalTokenCount
         }
     }
 
-    private formatMemorySummary(summary: {
-        text: string
-        operationLog?: string
-    }): string {
-        const sections: string[] = ['# Memory', summary.text]
-        if (summary.operationLog) {
-            sections.push('## Operation Log', summary.operationLog)
-        }
-        return sections.join('\n\n')
+    private formatMemorySummary(summary: { text: string }): string {
+        return ['# Memory', summary.text].join('\n\n')
     }
 
     /**

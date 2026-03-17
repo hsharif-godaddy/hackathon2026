@@ -48,9 +48,11 @@ describe('AILibContextManager', () => {
     )
 
     expect(memoryMessage).toBeDefined()
-    expect(memoryMessage?.cachePoint?.type).toBe('ephemeral')
+    expect(memoryMessage?.cachePoint).toBeUndefined()
     expect(memoryMessage?.content).toContain('# Summary')
-    expect(memoryMessage?.content).toContain('## Operation Log')
+    // Operation log is NOT included here — it's injected separately by
+    // ConversationHistoryLoader to avoid duplicating content in the prompt
+    expect(memoryMessage?.content).not.toContain('## Operation Log')
 
     // Verify it's NOT a system message
     const systemMemoryMessage = result.contextMessages.find(

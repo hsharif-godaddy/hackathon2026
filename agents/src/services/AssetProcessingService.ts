@@ -6,6 +6,7 @@ import { createAgentFactory, getModel, createFileInput, processFile } from '@air
 import sharp from 'sharp';
 
 import { Logger } from '../logging/index.js';
+import { createAgentTelemetryLogger } from '../utils/agent-logger.js';
 import type { AssetInfo, AssetManifest } from '../types/rebuild.js';
 
 const logger = Logger.create({ service: 'asset-processing-service' });
@@ -382,10 +383,10 @@ Respond ONLY with valid JSON in this exact format:
   "usageContext": "context here"
 }`,
           model,
-          visionEnabled: true,
           maxSteps: 1,
           temperature: 0.3,
-          maxOutputTokens: 400
+          maxOutputTokens: 400,
+          logger: createAgentTelemetryLogger('image-analyst')
         }
       });
 

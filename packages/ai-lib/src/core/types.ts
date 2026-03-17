@@ -120,8 +120,8 @@ export interface AgentConfig {
     /** Timeout between stream chunks in ms (streaming only) — detects stalled streams */
     chunkMs?: number
   }
-  /** Unified structured logger (preferred over callbacks) */
-  logger?: {
+  /** Structured logger for telemetry, step tracking, and cache management */
+  logger: {
     info: (event: string, data: unknown) => void
     warn: (event: string, data: unknown) => void
     error: (event: string, data: unknown) => void

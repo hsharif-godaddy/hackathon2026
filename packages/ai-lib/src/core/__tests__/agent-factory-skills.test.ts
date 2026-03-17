@@ -73,7 +73,8 @@ describe('AgentWrapper skill cleanup and activeTools stability', () => {
         baseTool: { execute: vi.fn() } as any,
         skill__foo__doStuff: { execute: vi.fn() } as any,
         skill__bar__doOther: { execute: vi.fn() } as any
-      }
+      },
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
     }
 
     new AgentWrapper(config, skillProvider)
@@ -202,7 +203,8 @@ describe('AgentWrapper skill cleanup and activeTools stability', () => {
         baseTool: { execute: vi.fn() } as any,
         skill__foo__doStuff: { execute: vi.fn() } as any,
         skill__bar__doOther: { execute: vi.fn() } as any
-      }
+      },
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
     }
 
     new AgentWrapper(config, skillProvider)

@@ -14,6 +14,7 @@ import {
 import { llmMetadataContext, type LitellmMetadata } from "@airo/ai-common";
 
 import { Logger } from "../logging/index.js";
+import { createAgentTelemetryLogger } from "../utils/agent-logger.js";
 import { knowBDriver } from "../tools/ai-lib-tools/drivers/knowb-driver.js";
 
 /**
@@ -301,10 +302,10 @@ Respond ONLY with valid JSON in this exact format:
   "usageContext": "context here"
 }`,
           model,
-          visionEnabled: true,
           maxSteps: 1,
           temperature: 0.3,
           maxOutputTokens: 400,
+          logger: createAgentTelemetryLogger('image-analyst'),
         },
       });
 

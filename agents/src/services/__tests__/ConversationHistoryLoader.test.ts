@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ConversationHistoryLoader } from '../ConversationHistoryLoader.js';
+import { ConversationHistoryLoader, type LLMMessage } from '../ConversationHistoryLoader.js';
 import { ConversationRepository } from '../../database/repositories/ConversationRepository.js';
 import conversationFixture from './fixtures/conversation-messages.json';
 
@@ -374,7 +374,8 @@ describe('ConversationHistoryLoader', () => {
       );
       expect(summaryMessage).toBeDefined();
       expect(summaryMessage?.content).toContain('# Summary');
-      // SECURITY: Must have cache control for cost savings
+      // Conversation summary retains cache breakpoint — it's the last stable message
+      // before history and subsumes all prior context for prefix-based caching
       expect((summaryMessage as any)?.cachePoint?.type).toBe('ephemeral');
 
       // Find operation log message - MUST be user role
@@ -385,8 +386,9 @@ describe('ConversationHistoryLoader', () => {
       );
       expect(operationLogMessage).toBeDefined();
       expect(operationLogMessage?.content).toContain('Edited file A');
-      // SECURITY: Must have cache control for cost savings
-      expect((operationLogMessage as any)?.cachePoint?.type).toBe('ephemeral');
+      // Operation log does NOT have its own cache breakpoint — it's covered by the
+      // conversation summary breakpoint that follows it (prefix-based caching)
+      expect((operationLogMessage as any)?.cachePoint).toBeUndefined();
     });
 
     it('should fall back to loading all messages when summary reference is stale', async () => {
@@ -963,6 +965,74 @@ describe('ConversationHistoryLoader', () => {
       // Verify tool result is preserved
       const toolMsg = result.find(msg => msg.role === 'tool') as any;
       expect(toolMsg.content[0].toolCallId).toBe('call_valid');
+    });
+  });
+
+  describe('formatMessagesForAISDK - cachePoint to providerOptions conversion', () => {
+    it('should convert cachePoint on user messages to providerOptions', () => {
+      const llmMessages: LLMMessage[] = [
+        {
+          role: 'user',
+          content: '[CONVERSATION SUMMARY]\n# Summary text',
+          cachePoint: { type: 'ephemeral' }
+        }
+      ];
+
+      const result = loader.formatMessagesForAISDK(llmMessages, 'test-app', 'test-agent');
+
+      expect(result).toHaveLength(1);
+      const msg = result[0] as any;
+      expect(msg.role).toBe('user');
+      expect(msg.providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' });
+      expect(msg.providerOptions?.bedrock?.cachePoint).toBe('ephemeral');
+    });
+
+    it('should not add providerOptions when cachePoint is absent', () => {
+      const llmMessages: LLMMessage[] = [
+        { role: 'user', content: 'Hello' }
+      ];
+
+      const result = loader.formatMessagesForAISDK(llmMessages, 'test-app', 'test-agent');
+
+      expect(result).toHaveLength(1);
+      const msg = result[0] as any;
+      expect(msg.providerOptions).toBeUndefined();
+    });
+
+    it('should convert cachePoint on system messages to providerOptions', () => {
+      const llmMessages: LLMMessage[] = [
+        {
+          role: 'system',
+          content: 'You are a helpful assistant',
+          cachePoint: { type: 'ephemeral' }
+        }
+      ];
+
+      const result = loader.formatMessagesForAISDK(llmMessages, 'test-app', 'test-agent');
+
+      expect(result).toHaveLength(1);
+      const msg = result[0] as any;
+      expect(msg.role).toBe('system');
+      expect(msg.providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' });
+      expect(msg.providerOptions?.bedrock?.cachePoint).toBe('ephemeral');
+    });
+
+    it('should convert cachePoint on assistant messages to providerOptions', () => {
+      const llmMessages: LLMMessage[] = [
+        {
+          role: 'assistant',
+          content: 'Here is my response',
+          cachePoint: { type: 'ephemeral' }
+        }
+      ];
+
+      const result = loader.formatMessagesForAISDK(llmMessages, 'test-app', 'test-agent');
+
+      expect(result).toHaveLength(1);
+      const msg = result[0] as any;
+      expect(msg.role).toBe('assistant');
+      expect(msg.providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' });
+      expect(msg.providerOptions?.bedrock?.cachePoint).toBe('ephemeral');
     });
   });
 });
