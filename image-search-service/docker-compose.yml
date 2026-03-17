@@ -1,29 +1,14 @@
 # Docker Compose for local development
 # Provides Qdrant vector database for the image-search-service
 #
+# For plain (non-TLS) local dev, use the shared Qdrant from the repo root:
+#   docker compose up qdrant  (from repo root)
+#
 # To use with TLS (matches deployed environment):
 #   ./scripts/gen-tls-certs.sh
 #   docker compose --profile tls up
-#
-# To use without TLS (simple local dev):
-#   docker compose up
 
 services:
-  qdrant:
-    image: qdrant/qdrant:v1.16
-    ports:
-      - "6333:6333" # HTTP API
-      - "6334:6334" # gRPC API
-    volumes:
-      - qdrant_data:/qdrant/storage
-    environment:
-      - QDRANT__SERVICE__GRPC_PORT=6334
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:6333/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
   qdrant-tls:
     image: qdrant/qdrant:v1.16
     profiles: ["tls"]
@@ -53,5 +38,4 @@ services:
       retries: 3
 
 volumes:
-  qdrant_data:
   qdrant_tls_data:
