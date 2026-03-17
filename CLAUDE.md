@@ -79,7 +79,7 @@ pnpm typecheck / lint / test / build     # build/typecheck/lint use Turborepo (c
 pnpm --filter @airo/agents test:unit "pattern"      # By file path
 pnpm --filter @airo/agents test:unit -t "test name"  # By test name
 pnpm --filter website test "pattern"                  # App package
-# NEVER: pnpm test at root — causes OOM
+# pnpm test at root runs all packages via Turborepo (excludes @airo/agents)
 ```
 
 **ESSP / Elasticsearch logs:**
