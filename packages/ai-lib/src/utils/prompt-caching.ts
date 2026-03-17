@@ -111,7 +111,30 @@ export function addCacheControlToMessages(
   const cacheControl = config.providerOptions.anthropic?.cacheControl ||
                        { type: 'ephemeral' as const }
 
-  // Identify breakpoint positions (maximum of maxBreakpoints)
+  // Count existing cache breakpoints already set on messages (e.g., from
+  // ConversationHistoryLoader summaries or context attachments). These count
+  // toward Anthropic's hard limit of 4 breakpoints per request. The system
+  // prompt breakpoint (set via addCacheControlToSystemPrompt) also counts as 1.
+  const existingBreakpoints = messages.filter(msg => {
+    const providerOptions = (msg as any).providerOptions
+    return !!(providerOptions?.bedrock?.cachePoint || providerOptions?.anthropic?.cacheControl)
+  }).length
+
+  // Reserve 1 for the system prompt breakpoint set via addCacheControlToSystemPrompt
+  const ANTHROPIC_MAX_BREAKPOINTS = 4
+  const systemPromptBreakpoints = config.cacheSystemPrompts ? 1 : 0
+  const remainingSlots = ANTHROPIC_MAX_BREAKPOINTS - existingBreakpoints - systemPromptBreakpoints
+
+  if (remainingSlots <= 0) {
+    logger.debug('prompt_caching.skip.breakpoint_limit', {
+      existingBreakpoints,
+      systemPromptBreakpoints,
+      maxAllowed: ANTHROPIC_MAX_BREAKPOINTS
+    })
+    return messages
+  }
+
+  // Identify breakpoint positions (limited by remaining slots)
   const breakpoints: number[] = []
 
   // Breakpoint 1: System prompt (if enabled and exists)
@@ -140,8 +163,9 @@ export function addCacheControlToMessages(
     breakpoints.push(lastMessageIndex)
   }
 
-  // Enforce maxBreakpoints limit (Anthropic allows 4, we default to 2)
-  const finalBreakpoints = breakpoints.slice(0, config.maxBreakpoints)
+  // Enforce remaining slots (respect both configured maxBreakpoints and Anthropic's limit)
+  const maxNewBreakpoints = Math.min(config.maxBreakpoints, remainingSlots)
+  const finalBreakpoints = breakpoints.slice(0, maxNewBreakpoints)
 
   // Apply cache control to messages at breakpoints
   const enhancedMessages = messages.map((msg, index) => {
@@ -237,15 +261,17 @@ export function estimateCachingSavings(
   // Cost without caching
   const costWithoutCaching = (totalInputTokens / 1_000_000) * INPUT_PRICE
 
-  // Cost with caching
-  const uncachedTokens = totalInputTokens - cachedInputTokens
+  // Cost with caching — uncached tokens exclude both cache reads and writes
+  const uncachedTokens = Math.max(0, totalInputTokens - cachedInputTokens - cacheWriteTokens)
   const costWithCaching =
     (uncachedTokens / 1_000_000) * INPUT_PRICE +
     (cachedInputTokens / 1_000_000) * CACHED_INPUT_PRICE +
     (cacheWriteTokens / 1_000_000) * CACHE_WRITE_PRICE
 
   const savings = costWithoutCaching - costWithCaching
-  const savingsPercentage = (savings / costWithoutCaching) * 100
+  const savingsPercentage = costWithoutCaching > 0
+    ? (savings / costWithoutCaching) * 100
+    : 0
 
   return {
     costWithoutCaching,
@@ -374,40 +400,47 @@ export function addCacheControlToSystemPrompt(
 /**
  * Log caching statistics for monitoring
  *
- * IMPORTANT: Anthropic's usage metrics:
- * - inputTokens: New tokens sent in this request (not cached)
- * - cachedInputTokens: Tokens read from cache (cache_read_input_tokens)
- * - Total input = inputTokens + cachedInputTokens
+ * IMPORTANT: Anthropic's usage metrics (AI SDK v6 field names):
+ * - inputTokens: Total input tokens (includes cached)
+ * - inputTokenDetails.cacheReadTokens: Tokens read from cache (cache hit)
+ * - inputTokenDetails.cacheWriteTokens: Tokens written to cache (cache miss)
+ * - inputTokenDetails.noCacheTokens: Tokens after last breakpoint (never cached)
  *
- * These are separate, not overlapping!
+ * Also accepts deprecated cachedInputTokens for backward compatibility.
  */
 export function logCachingStats(usage: {
   inputTokens: number
   outputTokens: number
   totalTokens: number
-  cachedInputTokens?: number
+  cachedInputTokens?: number | undefined
+  inputTokenDetails?: {
+    cacheReadTokens?: number | undefined
+    cacheWriteTokens?: number | undefined
+    noCacheTokens?: number | undefined
+  }
 }): void {
-  if (!usage.cachedInputTokens || usage.cachedInputTokens === 0) {
+  const cacheReadTokens = usage.inputTokenDetails?.cacheReadTokens ?? usage.cachedInputTokens ?? 0
+  const cacheWriteTokens = usage.inputTokenDetails?.cacheWriteTokens ?? 0
+
+  if (cacheReadTokens === 0 && cacheWriteTokens === 0) {
     return
   }
 
-  // Total actual input = new tokens + cached tokens
-  const totalInputTokens = usage.inputTokens + usage.cachedInputTokens
+  const totalInputTokens = usage.inputTokens
+  const cacheHitRate = totalInputTokens > 0
+    ? (cacheReadTokens / totalInputTokens) * 100
+    : 0
 
-  // Cache hit rate = cached / total
-  const cacheHitRate = (usage.cachedInputTokens / totalInputTokens) * 100
-
-  // Savings: cost if we paid full price for cached tokens
-  // cachedInputTokens cost $0.30/M vs $3.00/M
   const savings = estimateCachingSavings(
-    totalInputTokens, // Total tokens we're processing
-    usage.cachedInputTokens, // Tokens served from cache
-    0 // Assume cache was already written
+    totalInputTokens,
+    cacheReadTokens,
+    cacheWriteTokens
   )
 
   logger.info('prompt_caching.stats', {
-    newInputTokens: usage.inputTokens,
-    cachedInputTokens: usage.cachedInputTokens,
+    noCacheTokens: usage.inputTokenDetails?.noCacheTokens ?? Math.max(0, totalInputTokens - cacheReadTokens - cacheWriteTokens),
+    cacheReadTokens,
+    cacheWriteTokens,
     totalInputTokens,
     cacheHitRate: `${cacheHitRate.toFixed(1)}%`,
     estimatedSavings: `$${savings.savings.toFixed(4)}`,

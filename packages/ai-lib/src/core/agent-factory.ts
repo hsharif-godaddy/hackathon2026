@@ -244,6 +244,9 @@ export class AgentWrapper {
   private skillToolProvider?: GlobalAgentConfig['skillToolProvider']
   private currentConversationId: string | undefined
   private currentStepNumber: number = 0
+  // Base tool names (excludes all skill tools) — computed once in prepareCall.
+  // Used by prepareStep to build the activeTools list without recomputing each step.
+  private currentBaseToolNames: string[] | undefined
 
   constructor(config: AgentConfig, skillToolProvider?: GlobalAgentConfig['skillToolProvider']) {
     this.config = config
@@ -427,6 +430,11 @@ export class AgentWrapper {
             const cachingStrategy = typeof this.config.enablePromptCaching === 'object'
               ? this.config.enablePromptCaching
               : {}
+            // Only reserve a system prompt breakpoint slot when a system prompt
+            // was actually set (addCacheControlToSystemPrompt places the breakpoint
+            // on ToolLoopAgent instructions, not in the messages array).
+            const hasSystemPrompt = !!this.config.system
+            const effectiveCachingStrategy = { ...cachingStrategy, cacheSystemPrompts: hasSystemPrompt }
 
             if (this.isFirstTurn(conversationNormalized)) {
               // First turn (no prior conversation): cache context + current user message
@@ -435,7 +443,7 @@ export class AgentWrapper {
               const cachedMessages = addCacheControlToMessages(
                 messagesToCache,
                 this.config.model,
-                cachingStrategy
+                effectiveCachingStrategy
               )
               // Replace allMessages with cached versions (context + user message minus the last one)
               allMessages = cachedMessages.slice(0, -1)
@@ -468,6 +476,41 @@ export class AgentWrapper {
         // activeTools filtering controls visibility)
         const executionContext = callOptions.executionContext as Record<string, any> | undefined
         this.currentConversationId = executionContext?.metadata?.conversationId as string | undefined
+
+        // Compute base tool names once per run (everything except skill tools).
+        // Skill cleanup also runs here — not per-step — so tools are never removed
+        // mid-run. This keeps the tool definitions array stable between steps when
+        // no new skills activate, preventing unnecessary Anthropic cache invalidation
+        // (any change to tools busts all cache levels). New skills activated mid-run
+        // ARE picked up in prepareStep via getActiveToolNames.
+        this.currentBaseToolNames = undefined
+        if (this.skillToolProvider) {
+          try {
+            const skillToolNames = new Set(this.skillToolProvider.getSkillToolNames())
+            const allToolNames = Object.keys(this.config.tools || {})
+            this.currentBaseToolNames = allToolNames.filter(name => !skillToolNames.has(name))
+
+            // Run cleanup once at the start of the run (not per-step) to avoid
+            // removing tools mid-run which would invalidate the Anthropic cache
+            if (this.currentConversationId) {
+              const deactivated = this.skillToolProvider.cleanupInactiveSkills(
+                this.currentConversationId,
+                this.currentStepNumber
+              )
+              if (deactivated.length > 0) {
+                logger.info('agent.skills.auto_unloaded', {
+                  agentName: this.config.name,
+                  conversationId: this.currentConversationId,
+                  skills: deactivated
+                })
+              }
+            }
+          } catch (error) {
+            logger.error('agent.prepareCall.activeTools_snapshot_failed', {
+              error: error instanceof Error ? error.message : String(error)
+            })
+          }
+        }
 
         return preparedCall
       }
@@ -512,6 +555,8 @@ export class AgentWrapper {
       const cachingStrategy = typeof this.config.enablePromptCaching === 'object'
         ? this.config.enablePromptCaching
         : {}
+      const hasSystemPrompt = !!this.config.system
+      const effectiveCachingStrategy = { ...cachingStrategy, cacheSystemPrompts: hasSystemPrompt }
 
       // Only exclude last message from caching if it's a user message (new input)
       // If it's an assistant message, it's part of history and should be cached
@@ -521,7 +566,7 @@ export class AgentWrapper {
       if (lastMessageIsUser && processedMessages.length > 1) {
         if (this.isFirstTurn(processedMessages)) {
           // First turn: cache everything including the last user message
-          processedMessages = addCacheControlToMessages(processedMessages, this.config.model, cachingStrategy)
+          processedMessages = addCacheControlToMessages(processedMessages, this.config.model, effectiveCachingStrategy)
         } else {
           // Subsequent turns: cache all messages except the last user message (new input)
           const lastMessage = processedMessages[processedMessages.length - 1]!
@@ -534,7 +579,7 @@ export class AgentWrapper {
         }
       } else {
         // Last message is assistant (or only one message), cache everything
-        processedMessages = addCacheControlToMessages(processedMessages, this.config.model, cachingStrategy)
+        processedMessages = addCacheControlToMessages(processedMessages, this.config.model, effectiveCachingStrategy)
       }
     }
 
@@ -757,47 +802,22 @@ export class AgentWrapper {
         messageCount: messages.length
       }, 'agent.step.begin.log_failed')
 
-      // Get conversationId stored during prepareCall
-      const conversationId = this.currentConversationId
-
-      if (conversationId && this.skillToolProvider) {
-        try {
-          // Cleanup inactive skills (10 step threshold)
-          const deactivated = this.skillToolProvider.cleanupInactiveSkills(
-            conversationId,
-            stepNumber
-          )
-
-          if (deactivated.length > 0) {
-            safeLog('info', 'agent.skills.auto_unloaded', {
-              agentName,
-              conversationId,
-              skills: deactivated,
-              stepNumber
-            }, 'agent.skills.auto_unloaded.log_failed')
-          }
-
-          // Get active tool names for this conversation
-          const activeSkillTools = this.skillToolProvider.getActiveToolNames(conversationId)
-
-          // Filter out skill tools from base tools using the provider's registry
-          // Skill tools should only appear in activeTools when the skill is active
-          const skillToolNames = new Set(this.skillToolProvider.getSkillToolNames())
-          const allToolNames = Object.keys(this.config.tools || {})
-          const baseToolNames = allToolNames.filter(name => !skillToolNames.has(name))
-
-          return {
-            // Type cast needed: AI SDK expects keyof TOOLS but we have runtime string arrays
-            // from baseToolNames and activeSkillTools that match tool keys at runtime
-            activeTools: [...baseToolNames, ...activeSkillTools] as any
-          }
-        } catch (error) {
-          safeLog('error', 'agent.skills.prepareStep_failed', {
-            agentName,
-            conversationId,
-            stepNumber,
-            error: error instanceof Error ? error.message : String(error)
-          }, 'agent.skills.prepareStep_failed.log_failed')
+      // Build activeTools from cached base names + current active skills.
+      // Base names are stable (computed in prepareCall). Active skills may grow
+      // mid-run as the agent loads new skills, which is intentional — the cache
+      // miss on that step is the cost of making new tools available. Cleanup
+      // only runs in prepareCall, so tools are never removed mid-run, avoiding
+      // unnecessary cache invalidation.
+      if (this.currentBaseToolNames && this.skillToolProvider && this.currentConversationId) {
+        const activeSkillTools = this.skillToolProvider.getActiveToolNames(this.currentConversationId)
+        return {
+          // Type cast needed: AI SDK expects keyof TOOLS but we have runtime string arrays
+          // from baseToolNames and activeSkillTools that match tool keys at runtime
+          activeTools: [...this.currentBaseToolNames, ...activeSkillTools] as any
+        }
+      } else if (this.currentBaseToolNames) {
+        return {
+          activeTools: this.currentBaseToolNames as any
         }
       }
 
@@ -818,7 +838,9 @@ export class AgentWrapper {
                 inputTokens: usage.inputTokens,
                 outputTokens: usage.outputTokens,
                 totalTokens: usage.totalTokens,
-                ...(usage.cachedInputTokens ? { cachedInputTokens: usage.cachedInputTokens } : {})
+                ...(usage.cachedInputTokens ? { cachedInputTokens: usage.cachedInputTokens } : {}),
+                ...(usage.inputTokenDetails?.cacheReadTokens ? { cacheReadTokens: usage.inputTokenDetails.cacheReadTokens } : {}),
+                ...(usage.inputTokenDetails?.cacheWriteTokens ? { cacheWriteTokens: usage.inputTokenDetails.cacheWriteTokens } : {})
               }
             : {})
         },
@@ -828,15 +850,16 @@ export class AgentWrapper {
       // Log caching statistics if available
       // Check for !== undefined rather than truthiness to capture pure cache hits (inputTokens = 0)
       // and tool-only steps (outputTokens = 0)
-      if (usage?.cachedInputTokens !== undefined &&
-          usage.inputTokens !== undefined &&
+      if (usage?.inputTokens !== undefined &&
           usage.outputTokens !== undefined &&
-          usage.totalTokens !== undefined) {
+          usage.totalTokens !== undefined &&
+          (usage.cachedInputTokens !== undefined || usage.inputTokenDetails?.cacheReadTokens !== undefined || usage.inputTokenDetails?.cacheWriteTokens !== undefined)) {
         logCachingStats({
           inputTokens: usage.inputTokens,
           outputTokens: usage.outputTokens,
           totalTokens: usage.totalTokens,
-          cachedInputTokens: usage.cachedInputTokens
+          cachedInputTokens: usage.cachedInputTokens,
+          inputTokenDetails: usage.inputTokenDetails
         })
       }
 

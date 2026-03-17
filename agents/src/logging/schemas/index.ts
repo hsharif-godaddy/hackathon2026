@@ -98,7 +98,7 @@ function sanitizeSensitiveData(obj: Record<string, any>): Record<string, any> {
     'promptTokens', 'completionTokens', 'totalTokens', 'tokens',
     'tokenCount', 'tokenUsage', 'tokenType', 'inputTokens', 'outputTokens',
     'originalTokenCount', 'summaryTokenCount', 'maxTokensPerBatch', 'maxPromptTokens',
-    'cacheReadTokens', 'cacheWriteTokens', 'batchTokenCount', 'batchTokens',
+    'cacheReadTokens', 'cacheWriteTokens', 'noCacheTokens', 'totalInputTokens', 'batchTokenCount', 'batchTokens',
     'totalSummaryTokens', 'originalTokens', 'summaryTokens', 'reasoningTokens',
     'cachedInputTokens', 'freshInputTokens', 'unsummarizedTokenCount', 'projectedPromptTokens',
     'thresholdTokenCount', 'contextWindowUtilization', 'cacheHitRate',
