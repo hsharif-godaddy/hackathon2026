@@ -179,6 +179,8 @@ export interface FileUploadProcessData extends AppEventData {
   uploadId: string;
   fileCount: number;
   totalSize: number;
+  mimeTypes?: string[];
+  imageCount?: number;
 }
 
 export interface FileUploadValidationData extends AppEventData {

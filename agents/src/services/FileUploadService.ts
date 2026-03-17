@@ -271,7 +271,9 @@ export class FileUploadService {
   async processUpload(appId: string, files: Express.Multer.File[]): Promise<UploadResult> {
     fileUploadEvents.processStart(logger, {
       appId,
-      fileCount: files.length
+      fileCount: files.length,
+      mimeTypes: [...new Set(files.map(f => f.mimetype))],
+      imageCount: files.filter(f => f.mimetype.startsWith('image/')).length
     })
 
     this.validateUpload(files)
@@ -374,7 +376,9 @@ export class FileUploadService {
       appId,
       uploadId,
       fileCount: uploadedFiles.length,
-      totalSize: uploadedFiles.reduce((sum, f) => sum + f.size, 0)
+      totalSize: uploadedFiles.reduce((sum, f) => sum + f.size, 0),
+      mimeTypes: [...new Set(uploadedFiles.map(f => f.mimeType).filter((t): t is string => t !== null && t !== ''))],
+      imageCount: uploadedFiles.filter(f => f.mimeType?.startsWith('image/')).length
     })
 
     // Reset extension-based resolution tracking so new uploads get a fresh start

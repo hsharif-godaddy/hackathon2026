@@ -183,10 +183,13 @@ router.post('/upload', uploadRateLimiter,
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
 
+    const uploadedFiles = req.files as Express.Multer.File[] | undefined
     logger.error('file-upload.request.failed', {
       message: 'File upload failed',
       error: errorMessage,
-      stack: error instanceof Error ? error.stack : undefined
+      stack: error instanceof Error ? error.stack : undefined,
+      mimeTypes: uploadedFiles?.length ? [...new Set(uploadedFiles.map(f => f.mimetype))] : undefined,
+      imageCount: uploadedFiles?.length ? uploadedFiles.filter(f => f.mimetype.startsWith('image/')).length : undefined
     })
 
     if (isClientError(error)) {

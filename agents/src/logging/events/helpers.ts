@@ -1083,7 +1083,7 @@ export const conversationTokenLimitEvents = {
  * File Upload logging helpers
  */
 export const fileUploadEvents = {
-  processStart: (logger: ILogger, data: Pick<FileUploadProcessData, 'appId' | 'fileCount'>) => {
+  processStart: (logger: ILogger, data: Pick<FileUploadProcessData, 'appId' | 'fileCount' | 'mimeTypes' | 'imageCount'>) => {
     logger.info(AppEvents.fileUpload.process.start, {
       ...data,
       uploadId: '',
