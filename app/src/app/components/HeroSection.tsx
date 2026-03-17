@@ -354,6 +354,14 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                     setError(null)
                   }
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    if (displayText.trim() && !isLoading && !isTyping && !isOverLimit) {
+                      handleStartBuilding()
+                    }
+                  }
+                }}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => {
                   setIsFocused(false)

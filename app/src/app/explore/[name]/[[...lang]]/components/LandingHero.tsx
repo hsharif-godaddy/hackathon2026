@@ -318,6 +318,14 @@ const LandingHero = forwardRef<LandingHeroRef, LandingHeroProps>(({
                     setError(null)
                   }
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    if (displayText.trim() && !isLoading && !isTyping && displayText.length < MAX_PROMPT_LENGTH) {
+                      handleStartBuilding()
+                    }
+                  }
+                }}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => {
                   setIsFocused(false)
