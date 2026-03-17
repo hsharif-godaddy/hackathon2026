@@ -362,8 +362,8 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
 
     it('should show disabled Publish button for Ultimate user at publish limit', function ultimateAtLimit() {
       const mockOpenPaywall = vi.fn();
-      // Ultimate plan has limit of 10 - create 10 published + 1 unpublished
-      const publishedSites = Array.from({ length: 10 }, (_, i) =>
+      // Ultimate plan has limit of 50 - create 50 published + 1 unpublished
+      const publishedSites = Array.from({ length: 50 }, (_, i) =>
         createMockSite({ id: `published-${i}`, name: `Published App ${i}`, variants: ['preview', 'publish'] })
       );
       const unpublishedSite = createMockSite({ id: 'unpublished-1', name: 'Unpublished App', variants: ['preview'] });

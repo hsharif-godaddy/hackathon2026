@@ -19,8 +19,8 @@ export const PLAN_PUBLISH_LIMITS: Record<SubscriptionPlan, number | null> = {
   [SubscriptionPlan.None]: 0,
   [SubscriptionPlan.Free]: 0,
   [SubscriptionPlan.Starter]: 1,
-  [SubscriptionPlan.Professional]: 3,
-  [SubscriptionPlan.Ultimate]: 10,
+  [SubscriptionPlan.Professional]: 10,
+  [SubscriptionPlan.Ultimate]: 50,
   [SubscriptionPlan.AiroPlus]: 9,
 };
 

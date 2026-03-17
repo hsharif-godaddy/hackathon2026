@@ -609,56 +609,7 @@ describe('checkPaywallEligibility', () => {
       });
     });
 
-    describe('Professional plan (limit: 3 apps)', () => {
-      it('should allow publish when under limit (2 published)', async () => {
-        mockProvider.checkSwitchboardFlags.mockResolvedValue({
-          paywall: true,
-          markets: true,
-          grants: true,
-          bypassPublishLimit: false,
-        });
-        mockProvider.getAccountSubscription.mockResolvedValue({
-          id: 'sub-professional',
-          plan: SubscriptionPlan.Professional,
-          status: 'active',
-        });
-        mockProvider.getPublishedApps.mockResolvedValue({
-          count: 2,
-          publishedAppIds: ['app-1', 'app-2'],
-        });
-
-        const result = await checkPaywallEligibility(mockProvider, 'app-new', PaywallAction.Publish);
-
-        expect(result.hasAccess).toBe(true);
-      });
-
-      it('should deny publish when at limit (3 published)', async () => {
-        mockProvider.checkSwitchboardFlags.mockResolvedValue({
-          paywall: true,
-          markets: true,
-          grants: true,
-          bypassPublishLimit: false,
-        });
-        mockProvider.getAccountSubscription.mockResolvedValue({
-          id: 'sub-professional',
-          plan: SubscriptionPlan.Professional,
-          status: 'active',
-        });
-        mockProvider.getPublishedApps.mockResolvedValue({
-          count: 3,
-          publishedAppIds: ['app-1', 'app-2', 'app-3'],
-        });
-
-        const result = await checkPaywallEligibility(mockProvider, 'app-new', PaywallAction.Publish);
-
-        expect(result.hasAccess).toBe(false);
-        expect(result.reason).toBe(PaywallDenialReason.PublishLimitReached);
-        expect(result.details.publishLimit).toBe(3);
-        expect(result.details.publishedCount).toBe(3);
-      });
-    });
-
-    describe('Ultimate plan (limit: 10 apps)', () => {
+    describe('Professional plan (limit: 10 apps)', () => {
       it('should allow publish when under limit (9 published)', async () => {
         mockProvider.checkSwitchboardFlags.mockResolvedValue({
           paywall: true,
@@ -667,8 +618,8 @@ describe('checkPaywallEligibility', () => {
           bypassPublishLimit: false,
         });
         mockProvider.getAccountSubscription.mockResolvedValue({
-          id: 'sub-ultimate',
-          plan: SubscriptionPlan.Ultimate,
+          id: 'sub-professional',
+          plan: SubscriptionPlan.Professional,
           status: 'active',
         });
         mockProvider.getPublishedApps.mockResolvedValue({
@@ -689,8 +640,8 @@ describe('checkPaywallEligibility', () => {
           bypassPublishLimit: false,
         });
         mockProvider.getAccountSubscription.mockResolvedValue({
-          id: 'sub-ultimate',
-          plan: SubscriptionPlan.Ultimate,
+          id: 'sub-professional',
+          plan: SubscriptionPlan.Professional,
           status: 'active',
         });
         mockProvider.getPublishedApps.mockResolvedValue({
@@ -704,6 +655,55 @@ describe('checkPaywallEligibility', () => {
         expect(result.reason).toBe(PaywallDenialReason.PublishLimitReached);
         expect(result.details.publishLimit).toBe(10);
         expect(result.details.publishedCount).toBe(10);
+      });
+    });
+
+    describe('Ultimate plan (limit: 50 apps)', () => {
+      it('should allow publish when under limit (49 published)', async () => {
+        mockProvider.checkSwitchboardFlags.mockResolvedValue({
+          paywall: true,
+          markets: true,
+          grants: true,
+          bypassPublishLimit: false,
+        });
+        mockProvider.getAccountSubscription.mockResolvedValue({
+          id: 'sub-ultimate',
+          plan: SubscriptionPlan.Ultimate,
+          status: 'active',
+        });
+        mockProvider.getPublishedApps.mockResolvedValue({
+          count: 49,
+          publishedAppIds: Array.from({ length: 49 }, (_, i) => `app-${i}`),
+        });
+
+        const result = await checkPaywallEligibility(mockProvider, 'app-new', PaywallAction.Publish);
+
+        expect(result.hasAccess).toBe(true);
+      });
+
+      it('should deny publish when at limit (50 published)', async () => {
+        mockProvider.checkSwitchboardFlags.mockResolvedValue({
+          paywall: true,
+          markets: true,
+          grants: true,
+          bypassPublishLimit: false,
+        });
+        mockProvider.getAccountSubscription.mockResolvedValue({
+          id: 'sub-ultimate',
+          plan: SubscriptionPlan.Ultimate,
+          status: 'active',
+        });
+        mockProvider.getPublishedApps.mockResolvedValue({
+          count: 50,
+          publishedAppIds: Array.from({ length: 50 }, (_, i) => `app-${i}`),
+        });
+
+        const result = await checkPaywallEligibility(mockProvider, 'app-new', PaywallAction.Publish);
+
+        expect(result.hasAccess).toBe(false);
+        expect(result.reason).toBe(PaywallDenialReason.PublishLimitReached);
+        expect(result.details.publishLimit).toBe(50);
+        expect(result.details.publishedCount).toBe(50);
       });
     });
 

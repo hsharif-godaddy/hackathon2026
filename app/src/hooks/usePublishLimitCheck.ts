@@ -41,8 +41,8 @@ interface UsePublishLimitCheckResult extends PublishLimitResult {
  * - New users are limited by plan:
  *   - Free = 0 apps (show paywall)
  *   - Starter = 1 app
- *   - Professional = 3 apps
- *   - Ultimate = 10 apps
+ *   - Professional = 10 apps
+ *   - Ultimate = 50 apps
  *
  * When app-builder-bypass-publish-limit is enabled, all limits are bypassed.
  *

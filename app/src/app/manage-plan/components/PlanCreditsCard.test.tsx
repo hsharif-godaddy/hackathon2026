@@ -294,7 +294,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
         />
       );
 
-      // Professional plan has a publish limit of 3
+      // Professional plan has a publish limit of 10
       expect(screen.getByText(/builder_manageplan_plan_publish_limit/)).toBeInTheDocument();
     });
 

@@ -15,8 +15,8 @@ describe('publish-limit', () => {
       expect(PLAN_PUBLISH_LIMITS[SubscriptionPlan.None]).toBe(0);
       expect(PLAN_PUBLISH_LIMITS[SubscriptionPlan.Free]).toBe(0);
       expect(PLAN_PUBLISH_LIMITS[SubscriptionPlan.Starter]).toBe(1);
-      expect(PLAN_PUBLISH_LIMITS[SubscriptionPlan.Professional]).toBe(3);
-      expect(PLAN_PUBLISH_LIMITS[SubscriptionPlan.Ultimate]).toBe(10);
+      expect(PLAN_PUBLISH_LIMITS[SubscriptionPlan.Professional]).toBe(10);
+      expect(PLAN_PUBLISH_LIMITS[SubscriptionPlan.Ultimate]).toBe(50);
       expect(PLAN_PUBLISH_LIMITS[SubscriptionPlan.AiroPlus]).toBe(9);
     });
 
@@ -33,8 +33,8 @@ describe('publish-limit', () => {
       expect(getPublishLimit(SubscriptionPlan.None)).toBe(0);
       expect(getPublishLimit(SubscriptionPlan.Free)).toBe(0);
       expect(getPublishLimit(SubscriptionPlan.Starter)).toBe(1);
-      expect(getPublishLimit(SubscriptionPlan.Professional)).toBe(3);
-      expect(getPublishLimit(SubscriptionPlan.Ultimate)).toBe(10);
+      expect(getPublishLimit(SubscriptionPlan.Professional)).toBe(10);
+      expect(getPublishLimit(SubscriptionPlan.Ultimate)).toBe(50);
       expect(getPublishLimit(SubscriptionPlan.AiroPlus)).toBe(9);
     });
 
@@ -260,53 +260,23 @@ describe('publish-limit', () => {
       });
     });
 
-    describe('Professional plan (limit: 3)', () => {
+    describe('Professional plan (limit: 10)', () => {
       it('should allow when under limit', () => {
         expect(canPublishWithPlan(SubscriptionPlan.Professional, 0)).toBe(true);
-        expect(canPublishWithPlan(SubscriptionPlan.Professional, 1)).toBe(true);
-        expect(canPublishWithPlan(SubscriptionPlan.Professional, 2)).toBe(true);
-      });
-
-      it('should deny when at limit (3 published)', () => {
-        expect(canPublishWithPlan(SubscriptionPlan.Professional, 3)).toBe(false);
-      });
-
-      it('should allow re-publishing existing app even at limit', () => {
-        expect(canPublishWithPlan(
-          SubscriptionPlan.Professional,
-          3,
-          'app-3',
-          ['app-1', 'app-2', 'app-3']
-        )).toBe(true);
-      });
-
-      it('should deny new app when at limit', () => {
-        expect(canPublishWithPlan(
-          SubscriptionPlan.Professional,
-          3,
-          'app-new',
-          ['app-1', 'app-2', 'app-3']
-        )).toBe(false);
-      });
-    });
-
-    describe('Ultimate plan (limit: 10)', () => {
-      it('should allow when under limit', () => {
-        expect(canPublishWithPlan(SubscriptionPlan.Ultimate, 0)).toBe(true);
-        expect(canPublishWithPlan(SubscriptionPlan.Ultimate, 5)).toBe(true);
-        expect(canPublishWithPlan(SubscriptionPlan.Ultimate, 9)).toBe(true);
+        expect(canPublishWithPlan(SubscriptionPlan.Professional, 5)).toBe(true);
+        expect(canPublishWithPlan(SubscriptionPlan.Professional, 9)).toBe(true);
       });
 
       it('should deny when at limit (10 published)', () => {
-        expect(canPublishWithPlan(SubscriptionPlan.Ultimate, 10)).toBe(false);
+        expect(canPublishWithPlan(SubscriptionPlan.Professional, 10)).toBe(false);
       });
 
       it('should allow re-publishing existing app even at limit', () => {
         const publishedAppIds = Array.from({ length: 10 }, (_, i) => `app-${i}`);
         expect(canPublishWithPlan(
-          SubscriptionPlan.Ultimate,
+          SubscriptionPlan.Professional,
           10,
-          'app-5', // Re-publish existing
+          'app-5',
           publishedAppIds
         )).toBe(true);
       });
@@ -314,8 +284,40 @@ describe('publish-limit', () => {
       it('should deny new app when at limit', () => {
         const publishedAppIds = Array.from({ length: 10 }, (_, i) => `app-${i}`);
         expect(canPublishWithPlan(
-          SubscriptionPlan.Ultimate,
+          SubscriptionPlan.Professional,
           10,
+          'app-new',
+          publishedAppIds
+        )).toBe(false);
+      });
+    });
+
+    describe('Ultimate plan (limit: 50)', () => {
+      it('should allow when under limit', () => {
+        expect(canPublishWithPlan(SubscriptionPlan.Ultimate, 0)).toBe(true);
+        expect(canPublishWithPlan(SubscriptionPlan.Ultimate, 25)).toBe(true);
+        expect(canPublishWithPlan(SubscriptionPlan.Ultimate, 49)).toBe(true);
+      });
+
+      it('should deny when at limit (50 published)', () => {
+        expect(canPublishWithPlan(SubscriptionPlan.Ultimate, 50)).toBe(false);
+      });
+
+      it('should allow re-publishing existing app even at limit', () => {
+        const publishedAppIds = Array.from({ length: 50 }, (_, i) => `app-${i}`);
+        expect(canPublishWithPlan(
+          SubscriptionPlan.Ultimate,
+          50,
+          'app-25', // Re-publish existing
+          publishedAppIds
+        )).toBe(true);
+      });
+
+      it('should deny new app when at limit', () => {
+        const publishedAppIds = Array.from({ length: 50 }, (_, i) => `app-${i}`);
+        expect(canPublishWithPlan(
+          SubscriptionPlan.Ultimate,
+          50,
           'app-new',
           publishedAppIds
         )).toBe(false);
