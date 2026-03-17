@@ -11,9 +11,9 @@
 #
 # Or browse: https://gcr.katana.int.gdcorp.tools/
 #
-# Current base image: debian:bookworm-slim
-#   - Deprecation: 2026-06-10
-#   - EOL: 2026-09-08
+# Current base image: debian:trixie-slim
+#   - Deprecation: 2028-08-09
+#   - EOL: 2028-11-07
 #
 # When updating, ensure the new base is glibc-compatible (Debian/Ubuntu),
 # as the Qdrant binary has glibc dependencies (libunwind, libstdc++, etc.)
@@ -27,7 +27,7 @@ FROM qdrant/qdrant:v1.13.2 AS qdrant-source
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime - GoDaddy golden Debian image
 # -----------------------------------------------------------------------------
-FROM 764525110978.dkr.ecr.us-west-2.amazonaws.com/debian:bookworm-slim
+FROM 764525110978.dkr.ecr.us-west-2.amazonaws.com/debian:trixie-slim
 
 # Switch to root for package installation (GCI base image runs as non-root)
 USER root

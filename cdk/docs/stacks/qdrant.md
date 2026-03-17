@@ -320,7 +320,7 @@ Qdrant stores vectors in memory. If running out of memory:
 
 Base image uses GoDaddy-approved golden container:
 
-- Registry: `764525110978.dkr.ecr.us-west-2.amazonaws.com/debian:bookworm-slim`
+- Registry: `764525110978.dkr.ecr.us-west-2.amazonaws.com/debian:trixie-slim`
 - Check GCI metadata for deprecation dates:
   ```bash
   aws s3 cp s3://gd-goldenami-prod-ecr-repolist/gci-metadata.json - | \
