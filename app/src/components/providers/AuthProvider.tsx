@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
+import { createContext, ReactNode, useContext, useEffect, useRef, useState } from 'react';
 
 import LoadingComponent from '@/components/auth/LoadingComponent';
 import { useAuth } from '@/hooks/useAuth'
@@ -20,8 +20,16 @@ function AuthProviderComponent(props: any) {
 function InnerAuthProvider({ children }: { children: ReactNode }) {
   const authData = useAuth();
   const { isLoading } = authData;
+  const hasInitiallyLoaded = useRef(false);
 
-  if (isLoading) {
+  if (!isLoading) {
+    hasInitiallyLoaded.current = true;
+  }
+
+  // Only gate rendering on the initial auth check.
+  // After initial auth completes, keep children mounted during heartbeat revalidations
+  // to prevent tearing down websocket connections, form state, etc.
+  if (isLoading && !hasInitiallyLoaded.current) {
     return <LoadingComponent />
   }
 

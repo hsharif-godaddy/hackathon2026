@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AuthIdpType, AuthRealmType, AuthRequired, AuthRiskType } from '@godaddy/gasket-auth';
 
 import { useAuthContext } from '@/components/providers/AuthProvider';
@@ -29,6 +29,7 @@ export default function ProtectedRoute({
   const t = useTranslations();
   // State to track if component has hydrated and mock login dialog
   const [isClient, setIsClient] = useState(false);
+  const hasInitiallyRendered = useRef(false);
 
   unauthorizedMessage = unauthorizedMessage || t('builder_auth_protected_message');
 
@@ -46,6 +47,17 @@ export default function ProtectedRoute({
     setIsClient(true);
   }, []);
 
+  // Track when initial loading completes
+  if (!configLoading && isClient && !authLoading) {
+    hasInitiallyRendered.current = true;
+  }
+
+  // Only gate rendering on initial load. After initial auth completes, keep children
+  // mounted during heartbeat revalidations to prevent tearing down websocket connections.
+  if (!hasInitiallyRendered.current && (configLoading || !isClient || authLoading)) {
+    return <LoadingComponent />;
+  }
+
   // Configure auth parameters based on access level
   const authParams = {
     realm: realm || 'idp' as AuthRealmType,
@@ -55,11 +67,6 @@ export default function ProtectedRoute({
     allowHeartbeat: true,
     use12HourExpiration: true
   };
-
-  // Show loading state while config is loading or during hydration
-  if (configLoading || !isClient || authLoading) {
-    return <LoadingComponent />;
-  }
 
   // Handle different authentication modes
   if (isAuthDisabled) {
