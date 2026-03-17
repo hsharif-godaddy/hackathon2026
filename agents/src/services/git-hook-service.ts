@@ -101,16 +101,15 @@ export class GitHookService {
   /**
    * Handle message start: ALWAYS check git state and ensure we're on correct branch
    * Called at the start of EVERY message for an app
-   * 
+   *
    * CRITICAL: This ensures that if a previous squash merge failed (due to crash, error, etc.),
    * we recover before processing the new request.
-   * 
+   *
    * Workflow:
    * 1. Check current branch (if not main, recovery needed)
    * 2. If recovery needed:
-   *    - Commit any uncommitted changes with recovery marker
-   *    - Get diff from main to generate commit message
-   *    - Squash merge to main with generated/fallback message
+   *    - reset --hard to restore working tree from last commit
+   *    - Squash merge to main using git plumbing (getTreeHash/commitTree/updateRef)
    * 3. Create new feature branch for this message
    */
   async handleMessageStart(
@@ -133,7 +132,7 @@ export class GitHookService {
       }
 
       const gitUtils = new GitUtils(devSupervisor);
-      
+
       // Check if this is a git repository
       const isRepo = await gitUtils.isGitRepository(app.path);
       if (!isRepo) {
@@ -144,7 +143,7 @@ export class GitHookService {
       // Check current branch
       const currentBranch = await gitUtils.getCurrentBranch(app.path);
       const trackedBranch = this.appBranches.get(appId);
-      
+
       logger.info('git_hook.message_start.branch_check', {
         appId,
         socketId,
@@ -156,7 +155,7 @@ export class GitHookService {
       if (currentBranch !== 'main') {
         // Check if this is our expected feature branch
         const isExpectedBranch = trackedBranch && currentBranch === trackedBranch.branchName;
-        
+
         if (!isExpectedBranch) {
           // CRITICAL: We're on an unexpected branch - perform recovery
           logger.warn('git_hook.message_start.recovery_needed', {
@@ -165,9 +164,9 @@ export class GitHookService {
             expectedBranch: trackedBranch?.branchName || 'none',
             reason: 'Not on main and not on expected feature branch'
           });
-          
+
           await this.performRecovery(appId, app.path, gitUtils, currentBranch);
-          
+
           // Clear any stale tracking after recovery
           this.appBranches.delete(appId);
         } else {
@@ -176,13 +175,13 @@ export class GitHookService {
             appId,
             branchName: currentBranch
           });
-          
+
           // Update user prompt if provided
           if (userPrompt && trackedBranch && !trackedBranch.userPrompt) {
             trackedBranch.userPrompt = userPrompt;
             this.appBranches.set(appId, trackedBranch);
           }
-          
+
           return; // Continue on existing branch
         }
       }
@@ -190,10 +189,10 @@ export class GitHookService {
       // At this point we're on main (either we started here or recovery got us here)
       // Create new feature branch
       const branchName = this.generateBranchName(appId);
-      
+
       try {
         await gitUtils.createBranch(app.path, branchName);
-        
+
         // Track this branch for the app (with both conversationId and socketId)
         this.appBranches.set(appId, {
           appId,
@@ -203,7 +202,7 @@ export class GitHookService {
           userPrompt,
           createdAt: new Date()
         });
-        
+
         logger.info('git_hook.feature_branch.created', {
           appId,
           conversationId,
@@ -220,7 +219,17 @@ export class GitHookService {
   }
 
   /**
-   * Perform git recovery when starting on non-main branch
+   * Perform git recovery when starting on non-main branch.
+   *
+   * Uses reset --hard to restore the working tree from the last commit rather
+   * than trusting uncommitted state — after a Nomad reschedule the ephemeral
+   * disk is wiped so uncommitted files may be empty/missing while .git survives
+   * on a bind mount. handleToolCallComplete commits after every tool call, so
+   * committed state has all completed work.
+   *
+   * Uses git plumbing (getTreeHash/commitTree/updateRef) to squash-merge to
+   * main, avoiding the transient file reverts that porcelain merge --squash
+   * causes.
    */
   private async performRecovery(
     appId: string,
@@ -234,18 +243,11 @@ export class GitHookService {
     });
 
     try {
-      // Step 1: Commit any uncommitted changes
-      const hasUncommitted = await gitUtils.hasUncommittedChanges(appPath);
-      if (hasUncommitted) {
-        const timestamp = this.generateTimestamp();
-        await gitUtils.addFiles(appPath, ['.']);
-        await gitUtils.commit(appPath, `${timestamp}-recovery-uncommitted`);
-        
-        logger.info('git_hook.recovery.uncommitted_committed', {
-          appId,
-          currentBranch
-        });
-      }
+      // Step 1: Restore working tree from last commit.
+      // Never trust uncommitted state during recovery — it could be a wiped
+      // filesystem (ephemeral disk lost on reschedule) or stale partial work
+      // from a crashed tool call.
+      await gitUtils.reset(appPath, { mode: 'hard' });
 
       // Step 2: Squash merge to main using plumbing (avoids transient file reverts)
       const recoveryMessage = 'Recovery from interrupted session';
@@ -279,9 +281,15 @@ export class GitHookService {
 
     } catch (error) {
       this.logGitError(appId, 'performRecovery', error as Error);
-      
+
       // If recovery fails completely, try to at least get back to main
       try {
+        // Reset to clear any merge/index corruption before switching
+        try {
+          await gitUtils.reset(appPath, { mode: 'hard' });
+        } catch (resetError) {
+          this.logGitError(appId, 'recoveryFallbackReset', resetError as Error);
+        }
         await gitUtils.switchBranch(appPath, 'main');
       } catch (switchError) {
         this.logGitError(appId, 'recoveryFallback', switchError as Error);
@@ -291,7 +299,7 @@ export class GitHookService {
 
   /**
    * Handle message completion: Final commit and squash merge to main
-   * 
+   *
    * Workflow:
    * 1. Check for any uncommitted changes
    * 2. Commit with "{timestamp}-end-of-session-{reason}" if needed
@@ -299,7 +307,7 @@ export class GitHookService {
    * 4. Checkout main and squash merge feature branch
    * 5. Clean up old branches if count > 50 (non-blocking, runs in background)
    * 6. Clean up tracking
-   * 
+   *
    * Note: Branch cleanup and git gc run asynchronously and don't block the workflow
    */
   async handleConnectionEnd(
@@ -349,7 +357,7 @@ export class GitHookService {
 
       // Get current branch (should be feature branch)
       const currentBranch = await gitUtils.getCurrentBranch(app.path);
-      
+
       logger.info('git_hook.connection_end.start', {
         appId,
         conversationId: conversationId || branchInfo.conversationId,
@@ -375,11 +383,11 @@ export class GitHookService {
       if (hasChanges) {
         const timestamp = this.generateTimestamp();
         const commitMessage = `${timestamp}-end-of-session-${reason}`;
-        
+
         try {
           await gitUtils.addFiles(app.path, ['.']);
           await gitUtils.commit(app.path, commitMessage);
-          
+
           logger.info('git_hook.connection_end.final_commit', {
             appId,
             socketId,
@@ -399,65 +407,26 @@ export class GitHookService {
         squashMessage = squashMessage.substring(0, 69) + '...';
       }
 
-      // Step 3: Squash merge to main using git plumbing (avoids changing working directory)
-      //
-      // Instead of `git checkout main && git merge --squash feature && git commit`, we use
-      // plumbing commands to create the squash commit directly. This avoids a transient state
-      // where `git checkout main` reverts files on disk before `merge --squash` restores them,
-      // which can cause Vite's module graph to cache stale content.
-      //
-      // This is safe because the feature branch always forks from the current main tip
-      // (created in handleMessageStart), and no other process modifies main during the message.
-      // So the feature branch's tree IS the correct merged result — no conflict resolution needed.
+      // Step 3: Squash merge to main
       try {
-        // Compare trees to detect if there are actual changes
-        const featureTree = await gitUtils.getTreeHash(app.path, 'HEAD');
-        const mainTree = await gitUtils.getTreeHash(app.path, 'main');
-
-        if (featureTree === mainTree) {
-          // No file changes — just switch back to main without creating an empty commit
-          logger.info('git_hook.connection_end.no_changes', {
-            appId,
-            socketId,
-            featureBranch: currentBranch,
-            reason
-          });
-          await gitUtils.switchBranch(app.path, 'main');
-          this.appBranches.delete(appId);
-          return null;
-        }
-
-        // Get main's current commit to use as parent
-        const mainCommit = await gitUtils.resolveCommitHash(app.path, 'main');
-
-        // Create the squash commit: feature branch's tree on top of main
-        const commitResult = await gitUtils.commitTree(
-          app.path,
-          featureTree,
-          squashMessage,
-          { parentHash: mainCommit }
-        );
-
-        if (!commitResult.success) {
-          throw new Error(`Failed to create squash commit: ${commitResult.stderr}`);
-        }
-
-        const commitHash = commitResult.stdout.trim();
-
-        // Advance main to the new commit (no working directory changes)
-        // Uses compare-and-swap: only succeeds if main still points to mainCommit
-        await gitUtils.updateRef(app.path, 'refs/heads/main', commitHash, mainCommit);
-
-        // Switch to main — this is a no-op for the working directory since
-        // main's tree now matches the feature branch's tree (our current files)
         await gitUtils.switchBranch(app.path, 'main');
+        await gitUtils.squashMerge(app.path, currentBranch, squashMessage);
 
         logger.info('git_hook.connection_end.squash_merged', {
           appId,
           socketId,
           featureBranch: currentBranch,
-          commitHash: commitHash.substring(0, 7),
           squashMessage,
+          reason
+        });
+
+        // Get the commit hash we just created
+        const commits = await gitUtils.getCommitHistory(app.path, 1);
+        const commitHash = commits[0]?.hash || null;
+
+        logger.info('git_hook.connection_end.commit_hash', {
+          appId,
+          commitHash: commitHash ? commitHash.substring(0, 7) : 'unknown',
           reason
         });
 
@@ -570,4 +539,3 @@ export class GitHookService {
     }
   }
 }
-
