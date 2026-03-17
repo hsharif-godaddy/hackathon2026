@@ -83,6 +83,74 @@ func (s *Server) handleSetupStatus(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
+// autoStartProcessAfterSetup is a best-effort start of the preview process so
+// it's ready when the user's message triggers a preview render. The HTTP proxy
+// does the same on first iframe request (proxy/http/autostart.go).
+// Failures are logged but intentionally not surfaced to callers — the agent's
+// git operations (the reason for calling /setup/execute) don't require the
+// preview process to be running.
+func (s *Server) autoStartProcessAfterSetup() {
+	processStatus := s.procMgr.GetStatus()
+	if processStatus.State != processmanager.ProcessStateStopped {
+		return
+	}
+
+	startReq := s.procMgr.GetStartRequest()
+	if startReq == nil {
+		return
+	}
+
+	if err := s.procMgr.Start(*startReq); err != nil {
+		// Benign races: another caller started the process between our check and Start()
+		if errors.Is(err, processmanager.ErrAlreadyStarting) ||
+			errors.Is(err, processmanager.ErrAlreadyRunning) {
+			return
+		}
+		slog.Warn("setup.execute.process_start_failed", "error", err)
+	}
+}
+
+func (s *Server) handleSetupExecute(w http.ResponseWriter, _ *http.Request) {
+	// Pre-flight: check current state to determine response status
+	status := s.procMgr.GetSetupStatus()
+
+	if !status.SetupConfigured {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(SetupExecuteResponse{Status: "not_configured"}); err != nil {
+			slog.Error("failed to encode setup execute response", "error", err)
+		}
+		return
+	}
+
+	if status.SetupExecuted {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(SetupExecuteResponse{Status: "already_executed"}); err != nil {
+			slog.Error("failed to encode setup execute response", "error", err)
+		}
+		return
+	}
+
+	if err := s.procMgr.ExecuteDeferredSetup(); err != nil {
+		errMsg := err.Error()
+		slog.Error("setup.execute.failed", "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		if err := json.NewEncoder(w).Encode(SetupExecuteResponse{Status: "error", Error: &errMsg}); err != nil {
+			slog.Error("failed to encode setup execute response", "error", err)
+		}
+		return
+	}
+
+	// Start process from saved request if not already running
+	// (mirrors HTTP proxy autostart behavior on first iframe request)
+	s.autoStartProcessAfterSetup()
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(SetupExecuteResponse{Status: "executed"}); err != nil {
+		slog.Error("failed to encode setup execute response", "error", err)
+	}
+}
+
 func (s *Server) handleProcessStart(w http.ResponseWriter, r *http.Request) {
 	var req validation.ProcessStartRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

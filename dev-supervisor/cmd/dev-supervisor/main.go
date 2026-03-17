@@ -123,6 +123,11 @@ type ErrorResponse struct {
 	Message string `json:"message"`
 }
 
+type SetupExecuteResponse struct {
+	Status string  `json:"status"` // "executed", "already_executed", "not_configured", "error"
+	Error  *string `json:"error,omitempty"`
+}
+
 func NewServer() *Server {
 	logMgr := logs.NewManager(10000)
 	pid1Mgr := process.NewPID1Manager()
@@ -191,8 +196,10 @@ func (s *Server) setupRoutes() {
 	proxyRouter.HandleFunc("/status", s.handleProxyStatus).Methods("GET")
 	proxyRouter.HandleFunc("/config", s.handleProxyConfig).Methods("GET")
 
-	// Setup status endpoint
-	s.router.HandleFunc("/setup/status", s.handleSetupStatus).Methods("GET")
+	// Setup endpoints
+	setupRouter := s.router.PathPrefix("/setup").Subrouter()
+	setupRouter.HandleFunc("/status", s.handleSetupStatus).Methods("GET")
+	setupRouter.HandleFunc("/execute", s.handleSetupExecute).Methods("POST")
 
 	// Publish endpoints (V4 unified job architecture)
 	s.router.HandleFunc("/publish", s.handlePublish).Methods("POST")

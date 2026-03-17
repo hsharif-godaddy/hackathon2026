@@ -303,6 +303,14 @@ export interface SetupStatus {
 }
 
 /**
+ * Response from /setup/execute endpoint
+ */
+export interface SetupExecuteResponse {
+  /** Status of the setup execution attempt. Failures throw (HTTP 500) rather than resolving. */
+  status: 'executed' | 'already_executed' | 'not_configured';
+}
+
+/**
  * Client for communicating with dev-supervisor over Unix domain socket or TCP
  */
 export class DevSupervisorClient {
@@ -762,6 +770,31 @@ export class DevSupervisorClient {
       return response;
     } catch (error) {
       this.logger.error('dev_supervisor.setup_status.failure', {
+        error: getErrorMessage(error)
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Trigger deferred setup execution (runs nomad_setup.sh).
+   * Idempotent: returns 'already_executed' if setup already ran.
+   * If setup is not configured, resolves with status 'not_configured' (HTTP 200)
+   * — callers must inspect the status field, not just check for thrown errors.
+   * Best-effort side effect: starts the preview process if stopped.
+   * Process start failures do not affect the response status.
+   * Setup failures throw (HTTP 500) rather than resolving.
+   */
+  async executeSetup(): Promise<SetupExecuteResponse> {
+    this.logger.info('dev_supervisor.setup_execute.begin');
+    try {
+      const response = await this.makeRequest('POST', '/setup/execute');
+      this.logger.info('dev_supervisor.setup_execute.success', {
+        status: response.status
+      });
+      return response;
+    } catch (error) {
+      this.logger.error('dev_supervisor.setup_execute.failure', {
         error: getErrorMessage(error)
       });
       throw error;

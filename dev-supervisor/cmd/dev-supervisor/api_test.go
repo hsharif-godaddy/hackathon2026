@@ -1334,3 +1334,158 @@ func TestHandleLogsWithFilters(t *testing.T) {
 		t.Errorf("Expected 2 logs from test1, got %d", len(response.Logs))
 	}
 }
+
+func TestHandleSetupExecute_NotConfigured(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer()
+
+	req := httptest.NewRequest(http.MethodPost, "/setup/execute", nil)
+	w := httptest.NewRecorder()
+
+	server.handleSetupExecute(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status code 200, got %d", w.Code)
+	}
+
+	var response SetupExecuteResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.Status != "not_configured" {
+		t.Errorf("Expected status 'not_configured', got %q", response.Status)
+	}
+}
+
+func TestHandleSetupExecute_Success(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer()
+
+	tmpDir := t.TempDir()
+	scriptPath := tmpDir + "/test-setup.sh"
+	writeTestScript(t, scriptPath, "#!/bin/sh\necho 'Setup complete'\nexit 0\n")
+
+	server.procMgr.SetDeferredSetup(scriptPath, 10*time.Second, validation.ProcessStartRequest{
+		Command:    "sleep 30",
+		WorkingDir: tmpDir,
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/setup/execute", nil)
+	w := httptest.NewRecorder()
+
+	server.handleSetupExecute(w, req)
+
+	// Ensure the sleep process is killed even if the test fails early
+	t.Cleanup(func() {
+		_ = server.procMgr.Stop(processmanager.ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
+	})
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status code 200, got %d", w.Code)
+	}
+
+	var response SetupExecuteResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.Status != "executed" {
+		t.Errorf("Expected status 'executed', got %q", response.Status)
+	}
+
+	// Verify setup is now marked as executed
+	setupStatus := server.procMgr.GetSetupStatus()
+	if !setupStatus.SetupExecuted {
+		t.Error("Expected setup_executed to be true after execution")
+	}
+
+	// Verify process was auto-started after setup (sleep 30 keeps it alive)
+	// Poll briefly — Start() is synchronous but the state transition to
+	// running happens asynchronously in the managed process goroutine.
+	var processState processmanager.ProcessState
+	for range 20 {
+		processState = server.procMgr.GetStatus().State
+		if processState == processmanager.ProcessStateRunning {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if processState != processmanager.ProcessStateRunning && processState != processmanager.ProcessStateStarting {
+		t.Errorf("Expected process state 'running' or 'starting' after auto-start, got %q", processState)
+	}
+}
+
+func TestHandleSetupExecute_AlreadyExecuted(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer()
+
+	tmpDir := t.TempDir()
+	scriptPath := tmpDir + "/test-setup.sh"
+	writeTestScript(t, scriptPath, "#!/bin/sh\necho 'Setup complete'\nexit 0\n")
+
+	server.procMgr.SetDeferredSetup(scriptPath, 10*time.Second, validation.ProcessStartRequest{})
+	if err := server.procMgr.ExecuteDeferredSetup(); err != nil {
+		t.Fatalf("Failed to execute deferred setup: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/setup/execute", nil)
+	w := httptest.NewRecorder()
+
+	server.handleSetupExecute(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status code 200, got %d", w.Code)
+	}
+
+	var response SetupExecuteResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.Status != "already_executed" {
+		t.Errorf("Expected status 'already_executed', got %q", response.Status)
+	}
+}
+
+func TestHandleSetupExecute_Failure(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer()
+
+	tmpDir := t.TempDir()
+	scriptPath := tmpDir + "/test-setup.sh"
+	writeTestScript(t, scriptPath, "#!/bin/sh\necho 'Setup failed' >&2\nexit 1\n")
+
+	server.procMgr.SetDeferredSetup(scriptPath, 10*time.Second, validation.ProcessStartRequest{})
+
+	req := httptest.NewRequest(http.MethodPost, "/setup/execute", nil)
+	w := httptest.NewRecorder()
+
+	server.handleSetupExecute(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status code 500, got %d", w.Code)
+	}
+
+	var response SetupExecuteResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.Status != "error" {
+		t.Errorf("Expected status 'error', got %q", response.Status)
+	}
+	if response.Error == nil {
+		t.Error("Expected error message to be present")
+	}
+
+	// Verify setup is NOT marked as executed after failure
+	setupStatus := server.procMgr.GetSetupStatus()
+	if setupStatus.SetupExecuted {
+		t.Error("Expected setup_executed to remain false after failure")
+	}
+}
