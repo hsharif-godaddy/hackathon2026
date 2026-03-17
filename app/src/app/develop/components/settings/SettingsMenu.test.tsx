@@ -46,6 +46,7 @@ vi.mock('@/utils/instrumentation', () => ({
 describe('SettingsMenu', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockChatTabs.activeChatTab = ChatTab.SETTINGS;
     mockChatTabs.activeSettingsSection = SettingsSection.PROJECT;
     mockDevelopStore.isMobile = false;
     mockDevelopStore.openFeedbackModal.mockReset();

@@ -46,12 +46,12 @@ export function useChatTabs() {
   // Get tab state from store
   const activeChatTab = useDevelopPageStore((state) => state.activeChatTab)
   const activeSettingsSection = useDevelopPageStore((state) => state.activeSettingsSection)
+  const chatTabsInitializedForPathname = useDevelopPageStore((state) => state.chatTabsInitializedForPathname)
   const setActiveChatTabStore = useDevelopPageStore((state) => state.setActiveChatTab)
   const setActiveSettingsSectionStore = useDevelopPageStore((state) => state.setActiveSettingsSection)
+  const markChatTabsInitialized = useDevelopPageStore((state) => state.markChatTabsInitialized)
 
-  // Track if we've initialized from URL and last pathname
-  const initializedRef = useRef(false)
-  const lastPathnameRef = useRef(pathname)
+  // Track URL sync state
   const skipNextSyncRef = useRef(false)
   const pendingUrlSyncRef = useRef<string | null>(null)
   const firstSyncRef = useRef(true)
@@ -60,15 +60,9 @@ export function useChatTabs() {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    // Re-initialize if pathname changed (navigated to different app)
-    const pathnameChanged = lastPathnameRef.current !== pathname
-    if (pathnameChanged) {
-      initializedRef.current = false
-      lastPathnameRef.current = pathname
-      firstSyncRef.current = true
-    }
-
-    if (initializedRef.current) return
+    // Check if we've already initialized for this pathname
+    const isInitialized = chatTabsInitializedForPathname === pathname
+    if (isInitialized) return
 
     const params = new URLSearchParams(window.location.search)
     const urlTab = parseChatTab(params.get('tab'))
@@ -111,12 +105,16 @@ export function useChatTabs() {
       setActiveSettingsSectionStore(urlSection)
     }
 
-    initializedRef.current = true
-  }, [pathname, activeChatTab, activeSettingsSection, setActiveChatTabStore, setActiveSettingsSectionStore])
+    // Mark as initialized for this pathname
+    markChatTabsInitialized(pathname)
+    firstSyncRef.current = true
+  }, [pathname, activeChatTab, activeSettingsSection, chatTabsInitializedForPathname, setActiveChatTabStore, setActiveSettingsSectionStore, markChatTabsInitialized])
 
   // Sync store changes to URL (but don't trigger navigation)
   useEffect(() => {
-    if (typeof window === 'undefined' || !initializedRef.current) return
+    if (typeof window === 'undefined' || chatTabsInitializedForPathname !== pathname) {
+      return
+    }
     if (skipNextSyncRef.current) {
       skipNextSyncRef.current = false
       if (pendingUrlSyncRef.current) {
@@ -167,7 +165,7 @@ export function useChatTabs() {
     if (urlChanged) {
       window.history.pushState(null, '', newUrl)
     }
-  }, [activeChatTab, activeSettingsSection, pathname])
+  }, [activeChatTab, activeSettingsSection, pathname, chatTabsInitializedForPathname])
 
   // Handle browser back/forward with stable callback
   const handlePopState = useCallback(() => {
@@ -199,12 +197,8 @@ export function useChatTabs() {
   const setActiveSettingsSection = useCallback(
     (section: SettingsSection) => {
       setActiveSettingsSectionStore(section)
-      // Also ensure we're on the settings tab
-      if (activeChatTab !== ChatTab.SETTINGS) {
-        setActiveChatTabStore(ChatTab.SETTINGS)
-      }
     },
-    [setActiveSettingsSectionStore, setActiveChatTabStore, activeChatTab]
+    [setActiveSettingsSectionStore]
   )
 
   return {

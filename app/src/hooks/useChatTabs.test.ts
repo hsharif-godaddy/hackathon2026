@@ -20,6 +20,7 @@ describe('useChatTabs', () => {
     useDevelopPageStore.setState({
       activeChatTab: ChatTab.CHAT,
       activeSettingsSection: SettingsSection.DOMAIN,
+      chatTabsInitializedForPathname: null,
     });
     vi.clearAllMocks();
   });

@@ -26,7 +26,7 @@ vi.mock('@ux/text', () => ({
 }));
 
 vi.mock('@/hooks/useTranslations', () => ({
-  useTranslations: () => (key: string, _params: any, fallback: string) => fallback || key,
+  useTranslations: () => (key: string) => key,
 }));
 
 vi.mock('@/lib/logging', () => ({
@@ -78,7 +78,7 @@ describe('UPPModal', () => {
 
   it('should show loading spinner initially', () => {
     renderWithProviders(<UPPModal {...defaultProps} />);
-    expect(screen.getByText('Loading purchase options...')).toBeInTheDocument();
+    expect(screen.getByText('builder_domain_purchase_loading')).toBeInTheDocument();
   });
 
   describe('postMessage handling', () => {

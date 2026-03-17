@@ -105,7 +105,7 @@ export default function FontThemeModal({
                   onClick={onClose}
                   icon={<XThickIcon className="h-3 w-3" />}
                   design="control"
-                  aria-label={t('builder_common_close', undefined, 'Close')}
+                  aria-label={t('builder_common_close')}
                   size="sm"
                 />
               </div>

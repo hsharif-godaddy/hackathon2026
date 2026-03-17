@@ -41,14 +41,14 @@ function shouldRenderMessage(message: ChatMessage | StreamingMessageType): boole
 
 // Helper function to get message styling classes (matching Message.tsx)
 function getMessageClasses(message: ChatMessage | StreamingMessageType): string {
-  const baseClasses = 'rounded-md'
+  const baseClasses = 'rounded-lg'
 
   // Don't hide messages - we'll show ThinkingIndicator when there's no content
   // (Previously hid messages with no content, but now we show indicator instead)
 
   switch (message.role) {
     case 'user':
-      return clsx(baseClasses, 'bg-intents-ux-boxLowContrast-backgroundColor px-2 py-1.5 border rounded-br-none ml-4 my-0.5')
+      return clsx(baseClasses, 'bg-intents-ux-boxLowContrast-backgroundColor px-2 py-1.5 border ml-4 my-0.5')
 
     case 'assistant':
       return clsx(baseClasses, 'max-w-full p-0')
@@ -92,7 +92,7 @@ function FullMessageModal({ content, isOpen, onClose }: { content: string; isOpe
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-center justify-center backdrop-blur-sm"
       onClick={onClose}
     >
       <div

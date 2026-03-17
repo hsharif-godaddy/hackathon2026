@@ -84,7 +84,7 @@ export function VideoGenerationSection({ siteId }: VideoGenerationSectionProps) 
     }
   }
 
-  const description = t('builder_video_generating_description', undefined, 'Generate a 12 second vertical video clip to share in your social media based on what you built. Each generation will cost up to 30 credits.')
+  const description = t('builder_video_generating_description')
 
   return (
     <BigCard>
@@ -92,7 +92,7 @@ export function VideoGenerationSection({ siteId }: VideoGenerationSectionProps) 
       <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
           <text.h3 as="title" size={2}>
-            {t('builder_video_marketing_title', undefined, 'Marketing Video')}
+            {t('builder_video_marketing_title')}
           </text.h3>
           <text.p>
             {description}

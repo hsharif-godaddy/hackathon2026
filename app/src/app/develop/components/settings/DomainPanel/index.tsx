@@ -54,7 +54,7 @@ export default function DomainPanel() {
   if (!isSiteLoading && !isPublished && !isPaywallLoading && showPaywall && (isDomainAttachEnabled || isProjectDomainEnabled)) {
     return (
       <Box
-        className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-6"
+        className="bg-intents-ux-box-backgroundColor rounded-lg p-6"
         orientation="horizontal"
         gap="lg"
         inlineAlignChildren="start"
@@ -75,7 +75,7 @@ export default function DomainPanel() {
             />
           </div>
         </Box>
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0 hidden md:block">
           <RidingArrow />
         </div>
       </Box>

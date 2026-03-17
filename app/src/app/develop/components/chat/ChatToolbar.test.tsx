@@ -3,7 +3,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 
-import { ChatTab, SettingsSection, ViewMode } from '@/app/develop/components/types';
+import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/develop/components/types';
 import { renderWithProviders } from '@/tests/test-utils';
 import ChatToolbar from './ChatToolbar';
 
@@ -11,12 +11,24 @@ const mockRouter = { push: vi.fn() };
 const mockParams = { id: 'app-123' };
 const mockDevelopStore = {
   isMobile: false,
+  mobileMode: MobileMode.TOOLS, // MobileMode.TOOLS
+  viewMode: ViewMode.PREVIEW, // ViewMode.PREVIEW
+  isSelectMode: false,
   isVersionHistoryOpen: false,
   isAssetManagerOpen: false,
+  hasUnsavedChanges: false,
+  site: null,
+  app: null,
+  deploymentInProgressId: null,
   setIsAssetManagerOpen: vi.fn(),
+  toggleSelectMode: vi.fn(),
+  handleViewModeChange: vi.fn(),
+  handleMobileModeChange: vi.fn(),
+  getPublishState: vi.fn(() => ({
+    deploymentInProgressId: null,
+    isPollingActive: false,
+  })),
   publishStates: { 'app-123': { isPublishing: false } } as Record<string, { isPublishing: boolean }>,
-  viewMode: ViewMode.PREVIEW,
-  isSelectMode: false,
 };
 const mockChatTabs = {
   activeChatTab: ChatTab.CHAT,
@@ -31,6 +43,7 @@ const mockGitStore = {
 vi.mock('next/navigation', () => ({
   useRouter: () => mockRouter,
   useParams: () => mockParams,
+  usePathname: () => '/develop/app-123',
 }));
 vi.mock('@/app/develop/components/utils', () => ({
   useAppIdFromParams: () => 'app-123',
@@ -60,8 +73,12 @@ vi.mock('@/utils/instrumentation', () => ({
 vi.mock('@/app/develop/components/chat/AssetManagerModal', () => ({
   default: () => <div data-testid="asset-manager-modal">AssetManagerModal</div>,
 }));
-vi.mock('@/app/develop/components/settings/SettingsMenu', () => ({
-  default: () => <div data-testid="settings-menu">SettingsMenu</div>,
+vi.mock('@/components/providers/AuthProvider', () => ({
+  useAuthContext: () => ({
+    isAuthenticated: true,
+    isAuthDisabled: false,
+    isLoading: false,
+  }),
 }));
 
 describe('ChatToolbar', () => {
@@ -74,8 +91,12 @@ describe('ChatToolbar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDevelopStore.isMobile = false;
+    mockDevelopStore.mobileMode = MobileMode.TOOLS;
+    mockDevelopStore.viewMode = ViewMode.PREVIEW;
+    mockDevelopStore.isSelectMode = false;
     mockDevelopStore.isVersionHistoryOpen = false;
     mockDevelopStore.isAssetManagerOpen = false;
+    mockDevelopStore.hasUnsavedChanges = false;
     mockDevelopStore.publishStates = { 'app-123': { isPublishing: false } };
     mockDevelopStore.viewMode = ViewMode.PREVIEW;
     mockDevelopStore.isSelectMode = false;
@@ -99,7 +120,7 @@ describe('ChatToolbar', () => {
   it('should render history button', () => {
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.getByText('builder_chat_toolbar_button_history')).toBeInTheDocument();
+    expect(screen.getByLabelText('builder_chat_toolbar_button_history')).toBeInTheDocument();
   });
 
   it('should render settings button on desktop', () => {
@@ -107,15 +128,16 @@ describe('ChatToolbar', () => {
 
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.getByText('builder_chat_toolbar_button_settings')).toBeInTheDocument();
+    expect(screen.getByLabelText('builder_settings_title')).toBeInTheDocument();
   });
 
-  it('should render preview button on mobile', () => {
+  it('should render view button on mobile preview mode', () => {
     mockDevelopStore.isMobile = true;
+    mockDevelopStore.mobileMode = MobileMode.PREVIEW;
 
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.getByText('builder_chat_toolbar_button_preview')).toBeInTheDocument();
+    expect(screen.getByLabelText('builder_chat_toolbar_button_view')).toBeInTheDocument();
   });
 
   it('should not render preview button on desktop', () => {
@@ -129,30 +151,25 @@ describe('ChatToolbar', () => {
   it('should mark chat button as active when chat tab selected', () => {
     mockChatTabs.activeChatTab = ChatTab.CHAT;
 
-    const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
+    renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    const chatButtons = container.querySelectorAll('button');
-    const chatButton = Array.from(chatButtons).find(btn => btn.textContent?.includes('builder_chat_toolbar_button_chat'));
-    // Active state is shown via background color classes
-    expect(chatButton).toHaveClass('bg-intents-ux-boxHighContrast-backgroundColor');
+    const chatButton = screen.getByLabelText('builder_chat_toolbar_button_chat');
+    expect(chatButton).toHaveAttribute('aria-checked', 'true');
   });
 
   it('should mark history button as active when history tab selected', () => {
     mockChatTabs.activeChatTab = ChatTab.HISTORY;
 
-    const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
+    renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    const buttons = container.querySelectorAll('button');
-    const historyButton = Array.from(buttons).find(btn => btn.textContent?.includes('builder_chat_toolbar_button_history'));
-    // Active state is shown via background color classes
-    expect(historyButton).toHaveClass('bg-intents-ux-boxHighContrast-backgroundColor');
+    const historyButton = screen.getByLabelText('builder_chat_toolbar_button_history');
+    expect(historyButton).toHaveAttribute('aria-checked', 'true');
   });
 
   it('should disable history button when processing', () => {
-    const { container } = renderWithProviders(<ChatToolbar {...defaultProps} isProcessing={true} />);
+    renderWithProviders(<ChatToolbar {...defaultProps} isProcessing={true} />);
 
-    const buttons = container.querySelectorAll('button');
-    const historyButton = Array.from(buttons).find(btn => btn.textContent?.includes('builder_chat_toolbar_button_history'));
+    const historyButton = screen.getByLabelText('builder_chat_toolbar_button_history');
     expect(historyButton).toBeDisabled();
   });
 
@@ -169,20 +186,18 @@ describe('ChatToolbar', () => {
   it('should disable history button when selecting commit', () => {
     mockGitStore.isSelectingCommit = true;
 
-    const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
+    renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    const buttons = container.querySelectorAll('button');
-    const historyButton = Array.from(buttons).find(btn => btn.textContent?.includes('builder_chat_toolbar_button_history'));
+    const historyButton = screen.getByLabelText('builder_chat_toolbar_button_history');
     expect(historyButton).toBeDisabled();
   });
 
   it('should disable history button when publishing', () => {
     mockDevelopStore.publishStates['app-123'].isPublishing = true;
 
-    const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
+    renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    const buttons = container.querySelectorAll('button');
-    const historyButton = Array.from(buttons).find(btn => btn.textContent?.includes('builder_chat_toolbar_button_history'));
+    const historyButton = screen.getByLabelText('builder_chat_toolbar_button_history');
     expect(historyButton).toBeDisabled();
   });
 
@@ -191,15 +206,16 @@ describe('ChatToolbar', () => {
 
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.getByTestId('settings-menu')).toBeInTheDocument();
+    expect(screen.getByLabelText('builder_settings_title')).toBeInTheDocument();
   });
 
-  it('should not render settings button on mobile', () => {
+  it('should not render settings button on mobile preview mode', () => {
     mockDevelopStore.isMobile = true;
+    mockDevelopStore.mobileMode = MobileMode.PREVIEW;
 
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.queryByText('builder_chat_toolbar_button_settings')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('builder_settings_title')).not.toBeInTheDocument();
   });
 
   it('should have correct data-eid attributes', () => {
@@ -215,13 +231,4 @@ describe('ChatToolbar', () => {
     expect(settingsButton).toBeInTheDocument();
   });
 
-  it('should disable settings button when version history is open', () => {
-    mockDevelopStore.isVersionHistoryOpen = true;
-
-    const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
-    const buttons = container.querySelectorAll('button');
-    const settingsButton = Array.from(buttons).find(btn => btn.textContent?.includes('builder_chat_toolbar_button_settings'));
-
-    expect(settingsButton).toBeDisabled();
-  });
 });

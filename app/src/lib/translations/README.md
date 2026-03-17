@@ -280,23 +280,6 @@ export default function Greeting({ name }) {
 // Translation string: "Hello, {name}! Welcome back."
 ```
 
-**With default message fallback:**
-
-```typescript
-'use client';
-import { useTranslations } from '@/hooks/useTranslations';
-
-export default function Header() {
-  const t = useTranslations();
-
-  return (
-    <span>{t('builder_beta', undefined, 'beta')}</span>
-  );
-}
-
-// If translation key is missing, displays "beta"
-```
-
 ### Pluralization
 
 Use ICU MessageFormat syntax in your translation strings for pluralization:

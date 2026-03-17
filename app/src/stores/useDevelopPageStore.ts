@@ -3,7 +3,7 @@ import { devtools } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 
 import { DEFAULT_MOBILE_DEVICE, DEFAULT_TABLET_DEVICE } from '@/app/develop/components/preview/devicePresets'
-import { ChatTab, PreviewViewMode, SettingsSection, ViewMode } from '@/app/develop/components/types'
+import { ChatTab, MobileMode, PreviewViewMode, SettingsSection, ViewMode } from '@/app/develop/components/types'
 import { fetchFeatureFlag } from '@/hooks/useSwitchboard'
 import { logger } from '@/lib/request-context'
 import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
@@ -138,6 +138,7 @@ const createDefaultPublishState = () => {
 interface DevelopPageStore {
   // UI states
   viewMode: ViewMode
+  mobileMode: MobileMode
   previewViewMode: PreviewViewMode
   selectedDeviceId: string
   isSelectMode: boolean
@@ -150,6 +151,7 @@ interface DevelopPageStore {
   // Tab state (stored in memory, synced to URL)
   activeChatTab: ChatTab
   activeSettingsSection: SettingsSection
+  chatTabsInitializedForPathname: string | null
 
   // UI loading indicators
   isRestarting: boolean
@@ -216,6 +218,7 @@ interface DevelopPageStore {
 
   // UI setters
   setViewMode: (mode: ViewMode) => void
+  setMobileMode: (mode: MobileMode) => void
   setPreviewViewMode: (mode: PreviewViewMode) => void
   setSelectedDeviceId: (deviceId: string) => void
   setIsSelectMode: (selectMode: boolean) => void
@@ -231,6 +234,7 @@ interface DevelopPageStore {
   // Tab setters
   setActiveChatTab: (tab: ChatTab) => void
   setActiveSettingsSection: (section: SettingsSection) => void
+  markChatTabsInitialized: (pathname: string) => void
 
   // Feedback modal actions
   openFeedbackModal: (feedbackId: string) => void
@@ -241,7 +245,7 @@ interface DevelopPageStore {
 
   // Tour actions
   setShowIntroTour: (show: boolean) => void
-  checkAndTriggerIntroTour: (appId: string) => void
+  checkAndTriggerIntroTour: () => void
 
   // Asset Manager actions
   setIsAssetManagerOpen: (open: boolean) => void
@@ -311,6 +315,7 @@ interface DevelopPageStore {
   toggleChatPaneCollapse: () => void
   toggleVersionHistory: () => void
   handleViewModeChange: (newMode: ViewMode, hasUnsavedChanges: boolean) => void
+  handleMobileModeChange: (newMode: MobileMode) => void
   initializeMobileDetection: () => () => void
 }
 
@@ -319,6 +324,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     immer((set, get) => ({
     // Initial UI state
     viewMode: ViewMode.PREVIEW,
+    mobileMode: MobileMode.TOOLS,
     previewViewMode: PreviewViewMode.DESKTOP,
     selectedDeviceId: 'full',
     isSelectMode: false,
@@ -335,6 +341,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     // Tab state (initialized from URL in useChatTabs)
     activeChatTab: ChatTab.CHAT,
     activeSettingsSection: SettingsSection.DOMAIN,
+    chatTabsInitializedForPathname: null,
 
     // Feedback modal state
     openFeedbackId: null,
@@ -371,6 +378,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     // UI setters
     setViewMode: (mode) => set((state) => { state.viewMode = mode }),
+    setMobileMode: (mode) => set((state) => { state.mobileMode = mode }),
     setPreviewViewMode: (mode) => set((state) => {
       state.previewViewMode = mode
       // Set default device when switching modes
@@ -402,6 +410,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     // Tab setters
     setActiveChatTab: (tab) => set((state) => { state.activeChatTab = tab }),
     setActiveSettingsSection: (section) => set((state) => { state.activeSettingsSection = section }),
+    markChatTabsInitialized: (pathname) => set((state) => { state.chatTabsInitializedForPathname = pathname }),
 
     // Feedback modal actions
     openFeedbackModal: (feedbackId: string) => {
@@ -451,8 +460,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     /**
      * Check if intro tour should be shown for this app and trigger it if appropriate
      * Tour is shown only once for the first site creation
-     *
-     * @param appId - The app ID to check
      */
     checkAndTriggerIntroTour: () => {
       // Check global localStorage to see if user has EVER seen the tour (safety check)
@@ -758,6 +765,10 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       }
 
       set((state) => { state.viewMode = newMode })
+    },
+
+    handleMobileModeChange: (newMode: MobileMode) => {
+      set((state) => { state.mobileMode = newMode })
     },
 
     initializeMobileDetection: () => {
