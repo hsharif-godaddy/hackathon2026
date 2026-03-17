@@ -17,12 +17,12 @@ import type {
   SystemModelMessage
 } from 'ai'
 import type { GlobalAgentConfig, AgentContext, ProcessedFile, AgentConfig } from './types.js'
+import type { PipelineContextMessage, ContextPipeline } from './context-pipeline.js'
+import { createDefaultPipeline } from './context-normalization.js'
 import { createDuplicateResponseStopCondition } from './duplicate-detection.js'
 import { supportsEffort } from '../utils/model-normalization.js'
-import { buildHybridContent } from '../utils/image-content-builder.js'
-import type { ContentBlock, TextContentBlock, ImageContentBlock } from '../utils/image-content-builder.js'
 import { createLogger, serializeError, isBudgetExceededAPIError, BudgetExceededError, retryWithBackoff, type RetryContext } from '@airo/ai-common'
-import { addCacheControlToMessages, addCacheControlToSystemPrompt, logCachingStats } from '../utils/prompt-caching.js'
+import { addCacheControlToSystemPrompt, logCachingStats } from '../utils/prompt-caching.js'
 import { llmMetadataContext, type LitellmMetadata } from '../providers/unified-provider.js'
 import {
   buildLitellmMetadataFromContext,
@@ -186,11 +186,7 @@ export interface HandoffHistoryEntry {
  */
 type AgentCallOptions = {
   executionContext?: Record<string, unknown> | undefined
-  contextMessages?: Array<{
-    role: 'user' | 'assistant' | 'system'
-    content: string | unknown
-    cachePoint?: { type: 'default' | 'ephemeral' }
-  }>
+  contextMessages?: PipelineContextMessage[]
   conversationMessages?: ModelMessage[]
   files?: ProcessedFile[]
   basePrompt?: string
@@ -244,10 +240,13 @@ export class AgentWrapper {
   // Base tool names (excludes all skill tools) — computed once in prepareCall.
   // Used by prepareStep to build the activeTools list without recomputing each step.
   private currentBaseToolNames: string[] | undefined
+  private turnCount: number = 0
+  private pipeline: ContextPipeline
 
   constructor(config: AgentConfig, skillToolProvider?: GlobalAgentConfig['skillToolProvider']) {
     this.config = config
     this.skillToolProvider = skillToolProvider
+    this.pipeline = config.contextPipeline ?? createDefaultPipeline()
 
     // Build stopWhen conditions
     const stopWhen = []
@@ -313,168 +312,36 @@ export class AgentWrapper {
       prepareCall: async ({ options, ...callParameters }) => {
         const callOptions = (options as AgentCallOptions | undefined) || {}
 
-        const { prompt: incomingPrompt, messages: incomingMessages, ...rest } = callParameters
+        const { prompt: incomingPrompt, ...rest } = callParameters
 
         const promptText = typeof incomingPrompt === 'string' ? incomingPrompt : undefined
-        const promptMessageList = Array.isArray(incomingPrompt) ? incomingPrompt : undefined
         const basePrompt = callOptions.basePrompt ?? promptText ?? ''
-        const trimmedBasePrompt = basePrompt.trim()
 
-        // Unified path: normalize conversationMessages (empty array if not provided)
         const conversationMessages = callOptions.conversationMessages || []
 
         const preparedCall = { ...rest } as typeof callParameters
 
-        // Normalize context messages (system prompts, etc.)
-        const contextNormalized: ModelMessage[] = []
-        if (callOptions.contextMessages && callOptions.contextMessages.length > 0) {
-          for (const msg of callOptions.contextMessages) {
-            const normalizedContent = this.normalizeContentForMessage(msg.content)
-            const msgWithMetadata = msg as MessageWithCachePoint
+        this.turnCount++
 
-            // Preserve existing providerOptions and merge in cache hints
-            const existingProviderOptions: ProviderOptions = msgWithMetadata.providerOptions || {}
-            const providerOptions: ProviderOptions = { ...existingProviderOptions }
-
-            // Convert cachePoint from stored messages to providerOptions format
-            // (preserves cache metadata even if current agent has caching disabled)
-            if (msg.cachePoint) {
-              // Populate both Bedrock and Anthropic formats for cross-provider compatibility
-              providerOptions.bedrock = {
-                ...(existingProviderOptions.bedrock || {}),
-                cachePoint: msg.cachePoint.type
-              }
-              providerOptions.anthropic = {
-                ...(existingProviderOptions.anthropic || {}),
-                cacheControl: { type: msg.cachePoint.type }
-              }
-            }
-            contextNormalized.push({
-              role: msg.role,
-              content: normalizedContent,
-              ...(Object.keys(providerOptions).length > 0 ? { providerOptions } : {})
-            } as ModelMessage)
-          }
-        }
-
-        // Normalize conversation messages to preserve cachePoint metadata
-        const conversationNormalized: ModelMessage[] = []
-        for (const msg of conversationMessages) {
-          // Check if this message has cachePoint metadata (ConversationMessage type)
-          const msgWithCache = msg as MessageWithCachePoint
-          // Convert cachePoint from stored messages to providerOptions format
-          // (preserves cache metadata even if current agent has caching disabled)
-          if (msgWithCache.cachePoint) {
-            // Preserve existing providerOptions and merge in cache hints
-            const existingProviderOptions: ProviderOptions = msgWithCache.providerOptions || {}
-            const providerOptions: ProviderOptions = {
-              ...existingProviderOptions,
-              bedrock: {
-                ...(existingProviderOptions.bedrock || {}),
-                cachePoint: msgWithCache.cachePoint.type
-              },
-              anthropic: {
-                ...(existingProviderOptions.anthropic || {}),
-                cacheControl: { type: msgWithCache.cachePoint.type }
-              }
-            }
-            // Create normalized message without cachePoint property
-            const { cachePoint, ...messageWithoutCache } = msgWithCache
-            conversationNormalized.push({
-              ...messageWithoutCache,
-              providerOptions
-            })
-          } else {
-            // No cachePoint, pass through as-is
-            conversationNormalized.push(msg)
-          }
-        }
-
-        let allMessages: ModelMessage[] = [
-          ...contextNormalized,
-          ...conversationNormalized
-        ]
-
-        // Determine if we should use fallback messages (legacy path for direct ToolLoopAgent calls)
-        // This takes precedence over the normal message building flow
-        const shouldUseFallback = (
-          (incomingMessages && incomingMessages.length > 0) ||
-          (promptMessageList && promptMessageList.length > 0)
-        )
-
-        // If using fallback, apply caching to fallback messages and skip normal message building
-        if (shouldUseFallback) {
-          if (incomingMessages && incomingMessages.length > 0) {
-            preparedCall.messages = this.processFallbackMessages(incomingMessages, callOptions.files)
-          } else if (promptMessageList && promptMessageList.length > 0) {
-            preparedCall.messages = this.processFallbackMessages(promptMessageList as ModelMessage[], callOptions.files)
-          }
-        } else {
-          // Normal path: build current user message and apply caching
-
-          // Build the current user message (with files if present)
-          let currentUserMessage: ModelMessage | null = null
-          if (callOptions.files && callOptions.files.length > 0) {
-            currentUserMessage = buildHybridContent(basePrompt, callOptions.files)
-          } else if (trimmedBasePrompt.length > 0) {
-            currentUserMessage = { role: 'user', content: trimmedBasePrompt }
-          }
-
-          // Apply prompt caching strategy
-          // - On first turn (no conversation history): mark the current user message so it's cached
-          // - On subsequent turns: mark only conversation history, not the current message
-          if (this.config.enablePromptCaching && currentUserMessage) {
-            const cachingStrategy = typeof this.config.enablePromptCaching === 'object'
-              ? this.config.enablePromptCaching
-              : {}
-            // Only reserve a system prompt breakpoint slot when a system prompt
-            // was actually set (addCacheControlToSystemPrompt places the breakpoint
-            // on ToolLoopAgent instructions, not in the messages array).
-            const hasSystemPrompt = !!this.config.system
-            const effectiveCachingStrategy = { ...cachingStrategy, cacheSystemPrompts: hasSystemPrompt }
-
-            if (this.isFirstTurn(conversationNormalized)) {
-              // First turn (no prior conversation): cache context + current user message
-              // This ensures request #1 caches the first user input, even with context present
-              const messagesToCache = [...allMessages, currentUserMessage]
-              const cachedMessages = addCacheControlToMessages(
-                messagesToCache,
-                this.config.model,
-                effectiveCachingStrategy
-              )
-              // Replace allMessages with cached versions (context + user message minus the last one)
-              allMessages = cachedMessages.slice(0, -1)
-              currentUserMessage = cachedMessages[cachedMessages.length - 1] || currentUserMessage
-            } else {
-              // Subsequent turns: cache only history, not the current user message.
-              // cacheSystemPrompts: false — don't place a breakpoint on system-role
-              // messages in the array (e.g. template description). The main system prompt
-              // is already cached via addCacheControlToSystemPrompt at construction time
-              // and occupies 1 of Anthropic's 4 breakpoint slots at the API level.
-              //
-              // Budget: 1 (system prompt) + N (pre-existing on messages) + 1 (last history
-              // message placed here) must stay ≤ 4. Currently N=1 (conversation summary).
-              allMessages = addCacheControlToMessages(allMessages, this.config.model, {
-                ...cachingStrategy,
-                cacheSystemPrompts: false
-              })
-            }
-          }
-
-          // Add current user message to allMessages
-          if (currentUserMessage) {
-            allMessages.push(currentUserMessage)
-          }
-
-          preparedCall.messages = allMessages
-        }
+        const transformed = await this.pipeline.transformContext({
+          userMessage: basePrompt,
+          ...(callOptions.files ? { files: callOptions.files } : {}),
+          contextMessages: callOptions.contextMessages ?? [],
+          conversationMessages: conversationMessages,
+          executionContext: callOptions.executionContext ?? {},
+          turnIndex: this.turnCount - 1,
+        })
+        preparedCall.messages = this.pipeline.convertToLlm({
+          ...transformed,
+          model: this.config.model,
+          enablePromptCaching: this.config.enablePromptCaching ?? false,
+          hasSystemPrompt: !!this.config.system,
+        })
 
         if (callOptions.executionContext) {
           ;(preparedCall as typeof preparedCall & { experimental_context?: unknown }).experimental_context = callOptions.executionContext
         }
 
-        // Store conversationId for prepareStep to use (skill tools are pre-registered,
-        // activeTools filtering controls visibility)
         const executionContext = callOptions.executionContext as Record<string, any> | undefined
         this.currentConversationId = executionContext?.metadata?.conversationId as string | undefined
 
@@ -523,101 +390,6 @@ export class AgentWrapper {
    */
   getName(): string {
     return this.config.name
-  }
-
-  /**
-   * Detect if this is the first turn of a conversation.
-   * First turn = no assistant messages in history (only user/system messages)
-   *
-   * This is used to determine caching strategy:
-   * - First turn: cache system + user message
-   * - Subsequent: cache only history, not current message
-   */
-  private isFirstTurn(messages: ModelMessage[]): boolean {
-    return !messages.some(msg => msg.role === 'assistant')
-  }
-
-  /**
-   * Apply caching and file handling to fallback messages (legacy API path).
-   * Handles both incomingMessages and promptMessageList paths identically.
-   *
-   * @param fallbackMessages - Messages from legacy API
-   * @param files - Optional files to merge into last user message
-   * @returns Processed messages with caching applied and files merged
-   */
-  private processFallbackMessages(
-    fallbackMessages: ModelMessage[],
-    files?: ProcessedFile[]
-  ): ModelMessage[] {
-    let processedMessages = fallbackMessages
-
-    // Apply caching if enabled
-    if (this.config.enablePromptCaching && processedMessages.length > 0) {
-      const cachingStrategy = typeof this.config.enablePromptCaching === 'object'
-        ? this.config.enablePromptCaching
-        : {}
-      const hasSystemPrompt = !!this.config.system
-      const effectiveCachingStrategy = { ...cachingStrategy, cacheSystemPrompts: hasSystemPrompt }
-
-      // Only exclude last message from caching if it's a user message (new input)
-      // If it's an assistant message, it's part of history and should be cached
-      const lastMessage = processedMessages[processedMessages.length - 1]
-      const lastMessageIsUser = lastMessage?.role === 'user'
-
-      if (lastMessageIsUser && processedMessages.length > 1) {
-        if (this.isFirstTurn(processedMessages)) {
-          // First turn: cache everything including the last user message
-          processedMessages = addCacheControlToMessages(processedMessages, this.config.model, effectiveCachingStrategy)
-        } else {
-          // Subsequent turns: cache all messages except the last user message (new input)
-          const lastMessage = processedMessages[processedMessages.length - 1]!
-          const messagesToCache = processedMessages.slice(0, -1)
-          const cachedMessages = addCacheControlToMessages(messagesToCache, this.config.model, {
-            ...cachingStrategy,
-            cacheSystemPrompts: false
-          })
-          processedMessages = [...cachedMessages, lastMessage]
-        }
-      } else {
-        // Last message is assistant (or only one message), cache everything
-        processedMessages = addCacheControlToMessages(processedMessages, this.config.model, effectiveCachingStrategy)
-      }
-    }
-
-    // Merge files into last user message if files are present
-    if (files && files.length > 0) {
-      // Find last user message (backwards iteration)
-      let lastUserIndex = -1
-      for (let i = processedMessages.length - 1; i >= 0; i--) {
-        if (processedMessages[i]?.role === 'user') {
-          lastUserIndex = i
-          break
-        }
-      }
-      if (lastUserIndex >= 0) {
-        const lastUserMsg = processedMessages[lastUserIndex]
-        if (lastUserMsg) {
-          const textContent = typeof lastUserMsg.content === 'string'
-            ? lastUserMsg.content
-            : ''
-          const hybridMessage = buildHybridContent(textContent, files)
-          // Safe to cast: we found this by searching for role === 'user', and hybridMessage.content matches user message content
-          processedMessages[lastUserIndex] = {
-            ...lastUserMsg,
-            content: hybridMessage.content
-          } as ModelMessage
-        }
-      } else {
-        // No user message found - files will be dropped
-        logger.warn('agent.prepareCall.files_dropped', {
-          fileCount: files.length,
-          messageCount: processedMessages.length,
-          reason: 'no_user_message'
-        })
-      }
-    }
-
-    return processedMessages
   }
 
   /**
@@ -709,69 +481,6 @@ export class AgentWrapper {
         return toolCallResult
       }
     })
-  }
-
-  private normalizeContentForMessage(content: unknown): string | ContentBlock[] {
-    if (typeof content === 'string') {
-      return content
-    }
-
-    if (Array.isArray(content)) {
-      if (content.every(block => this.isSupportedContentBlock(block))) {
-        return content as ContentBlock[]
-      }
-
-      return content
-        .map(block => {
-          if (typeof block === 'string') {
-            return block
-          }
-          if (block === null || block === undefined) {
-            return ''
-          }
-          try {
-            return JSON.stringify(block)
-          } catch {
-            return String(block)
-          }
-        })
-        .join('\n')
-    }
-
-    if (content === null || content === undefined) {
-      return ''
-    }
-
-    if (typeof content === 'object') {
-      try {
-        return JSON.stringify(content)
-      } catch (error) {
-        logger.warn('agent.message.normalize_failure', {
-          error,
-          contentType: typeof content,
-          contentPreview: String(content).slice(0, 100)
-        })
-        return String(content)
-      }
-    }
-
-    return String(content)
-  }
-
-  private isSupportedContentBlock(block: unknown): block is ContentBlock {
-    if (!block || typeof block !== 'object' || !('type' in block)) {
-      return false
-    }
-
-    if ((block as TextContentBlock).type === 'text') {
-      return typeof (block as TextContentBlock).text === 'string'
-    }
-
-    if ((block as ImageContentBlock).type === 'image') {
-      return typeof (block as ImageContentBlock).mediaType === 'string' && typeof (block as ImageContentBlock).image === 'string'
-    }
-
-    return false
   }
 
   /**
@@ -1016,6 +725,8 @@ export class AgentWrapper {
    */
   async generate(prompt: string, options?: {
     messages?: Array<{ role: 'user' | 'assistant', content: string }>
+    /** Custom context messages to be injected before previous conversation messages */
+    context?: PipelineContextMessage[]
     files?: ProcessedFile[]
     executionContext?: Record<string, unknown>
   }): Promise<{
@@ -1032,6 +743,9 @@ export class AgentWrapper {
     }
     if (options?.executionContext) {
       callOptions.executionContext = options.executionContext
+    }
+    if (options?.context && options.context.length > 0) {
+      callOptions.contextMessages = options.context
     }
     if (options?.messages && options.messages.length > 0) {
       callOptions.conversationMessages = options.messages
@@ -1088,7 +802,7 @@ export class AgentWrapper {
     /** Previous conversation messages in AI SDK v6 ModelMessage format */
     messages?: ModelMessage[]
     /** Custom context messages to be injected before previous conversation messages */
-    context?: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'default' | 'ephemeral' } }>
+    context?: PipelineContextMessage[]
     /** Execution context for tools (appId, userId, etc.) */
     executionContext?: Record<string, unknown>
     /** Files to include in the request (for vision/document analysis) */
@@ -1115,7 +829,7 @@ export class AgentWrapper {
    */
   private async _executeStreamGenerate(prompt: string, options?: {
     messages?: ModelMessage[]
-    context?: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'default' | 'ephemeral' } }>
+    context?: PipelineContextMessage[]
     files?: ProcessedFile[]
     executionContext?: Record<string, unknown>
   }): Promise<{
@@ -1143,7 +857,7 @@ export class AgentWrapper {
     prompt: string,
     options: {
       messages?: ModelMessage[]
-      context?: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'default' | 'ephemeral' } }>
+      context?: PipelineContextMessage[]
       files?: ProcessedFile[]
       executionContext?: Record<string, unknown>
     } | undefined,
@@ -1670,7 +1384,7 @@ export class AgentFactory {
 
       // Execute the task on the target agent with only the provided context
       const streamOptions: {
-        context?: { role: 'user' | 'assistant'; content: string; cachePoint?: { type: 'default' | 'ephemeral' } }[]
+        context?: PipelineContextMessage[]
       } = {}
 
       if (handoffContext.context) {

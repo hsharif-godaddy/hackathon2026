@@ -1,6 +1,23 @@
 // Core exports
 export * from './core/types.js'
 export * from './core/agent-factory.js'
+export type {
+  ContextPipeline,
+  TransformContextInput,
+  TransformContextOutput,
+  ConvertToLlmInput,
+  PipelineContextMessage,
+  PipelineExecutionContext,
+  CachePointMetadata,
+} from './core/context-pipeline.js'
+export {
+  defaultConvertToLlm,
+  createDefaultPipeline,
+  normalizeContextMessages,
+  normalizeConversationMessages,
+  applyPromptCaching,
+  buildUserMessage,
+} from './core/context-normalization.js'
 
 // Provider exports
 export * from './providers/unified-provider.js'

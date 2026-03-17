@@ -2,7 +2,7 @@ import type { ModelMessage } from 'ai'
 import { APICallError, RetryError } from 'ai'
 import { Server as SocketIOServer } from 'socket.io'
 import { Server as HTTPServer } from 'http'
-import type { AgentFactory, AgentWrapper } from '@airo/ai-lib'
+import type { AgentFactory, AgentWrapper, PipelineContextMessage } from '@airo/ai-lib'
 import { createAgentFactory } from '@airo/ai-lib'
 import { calculateCostEstimate, formatCostEstimate, getCacheHitRate, type TokenUsage } from '@airo/ai-lib'
 import { classifyError, BudgetExceededError, isBudgetExceededAPIError, createLogger } from '@airo/ai-common'
@@ -2562,12 +2562,12 @@ export class WebSocketServer {
     context: Record<string, unknown> | undefined
   ): Promise<{
     messages: ModelMessage[]
-    contextMessages: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'ephemeral' } }>
+    contextMessages: PipelineContextMessage[]
   }> {
     const messages: ModelMessage[] = []
-    const contextMessages: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'ephemeral' } }> = []
-    const beforeHistoryMessages: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'ephemeral' } }> = []
-    const afterHistoryMessages: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'ephemeral' } }> = []
+    const contextMessages: PipelineContextMessage[] = []
+    const beforeHistoryMessages: PipelineContextMessage[] = []
+    const afterHistoryMessages: PipelineContextMessage[] = []
 
     // Load context messages if provider is configured
     if (this.config.contextProvider) {

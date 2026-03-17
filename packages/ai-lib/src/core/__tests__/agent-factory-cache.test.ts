@@ -4,7 +4,20 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { AgentWrapper } from '../agent-factory.js'
-import type { AgentConfig, ModelMessage } from '../types.js'
+import type { AgentConfig, ModelMessage, ProcessedFile } from '../types.js'
+import type { ContextPipeline } from '../context-pipeline.js'
+import { defaultConvertToLlm, buildUserMessage } from '../context-normalization.js'
+
+// Create a mock pipeline that uses the real defaultConvertToLlm
+// so that prompt caching, cachePoint conversion, etc. are tested end-to-end
+const createMockPipeline = (): ContextPipeline => ({
+  transformContext: async (input) => ({
+    contextMessages: input.contextMessages,
+    conversationMessages: input.conversationMessages,
+    userMessage: buildUserMessage(input.userMessage, input.files),
+  }),
+  convertToLlm: (input) => defaultConvertToLlm(input),
+})
 
 vi.mock('ai', async importOriginal => {
   const actual = await importOriginal<typeof import('ai')>()
@@ -48,6 +61,7 @@ describe('AgentWrapper - Cache Point Preservation', () => {
       name: 'test-agent',
       model: mockModel as any,
       system: 'Test system prompt',
+      contextPipeline: createMockPipeline(),
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
     }
 
@@ -302,6 +316,7 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
       model: mockModel as any,
       system: 'Test system prompt',
       enablePromptCaching: true,
+      contextPipeline: createMockPipeline(),
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
     }
 
@@ -367,7 +382,7 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
     expect(newUserMessage.providerOptions?.anthropic?.cacheControl).toBeUndefined()
   })
 
-  it('should not auto-cache system context messages when system prompt caching is enabled', async () => {
+  it('should cache last history message but not system context on subsequent turns', async () => {
     const conversationMessages: any[] = [
       {
         role: 'user',
@@ -412,7 +427,10 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
 
     expect(injectedSystem).toBeDefined()
     expect(lastHistoryMessage).toBeDefined()
+    // Subsequent turns: system messages should NOT consume cache breakpoints
+    // (system prompt is already cached at ToolLoopAgent level)
     expect(injectedSystem.providerOptions?.anthropic?.cacheControl).toBeUndefined()
+    // Last history message should get a cache breakpoint
     expect(lastHistoryMessage.providerOptions?.anthropic?.cacheControl).toBeDefined()
   })
 
@@ -455,6 +473,7 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
       model: mockModel as any,
       system: 'Test system prompt',
       enablePromptCaching: false,
+      contextPipeline: createMockPipeline(),
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
     }
 
@@ -497,7 +516,7 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
     expect(messagesWithCache).toHaveLength(0)
   })
 
-  it('should apply caching to fallback messages (incomingMessages path)', async () => {
+  it('should apply caching to conversation messages via pipeline', async () => {
     mockAgent.stream.mockResolvedValue({
       textStream: (async function* () {
         yield 'test response'
@@ -509,30 +528,28 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
       toolResults: Promise.resolve([])
     })
 
-    // Simulate direct ToolLoopAgent.stream call with incomingMessages
-    const incomingMessages = [
+    // Conversation history with multiple exchanges
+    const conversationMessages: any[] = [
       { role: 'user', content: 'Message 1' },
       { role: 'assistant', content: 'Response 1' },
-      { role: 'user', content: 'Message 2' }
     ]
 
-    const callArgs = {
-      prompt: 'test',
-      messages: incomingMessages,
-      options: {}
-    }
+    await agentWrapper.streamGenerate('Message 2', {
+      messages: conversationMessages as ModelMessage[]
+    })
 
+    const callArgs = mockAgent.stream.mock.calls[0][0]
     const prepared = await lastSettings.prepareCall(callArgs)
 
     expect(prepared.messages).toBeDefined()
     expect(prepared.messages.length).toBe(3)
 
-    // Second message (last before new message) should have cache control
+    // Second message (last history message) should have cache control
     const secondMessage = prepared.messages[1]
     expect(secondMessage.providerOptions?.anthropic?.cacheControl).toBeDefined()
     expect(secondMessage.providerOptions.anthropic.cacheControl.type).toBe('ephemeral')
 
-    // Last message should NOT have cache control (assumed to be new message)
+    // Last message (new user message) should NOT have cache control
     const lastMessage = prepared.messages[2]
     expect(lastMessage.providerOptions?.anthropic?.cacheControl).toBeUndefined()
   })
@@ -658,7 +675,7 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
     expect(firstUserMessage.providerOptions.anthropic.cacheControl.type).toBe('ephemeral')
   })
 
-  it('should cache assistant messages at end of fallback history', async () => {
+  it('should cache last history message when history ends with assistant', async () => {
     mockAgent.stream.mockResolvedValue({
       textStream: (async function* () {
         yield 'test response'
@@ -670,26 +687,25 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
       toolResults: Promise.resolve([])
     })
 
-    // Fallback messages ending with assistant message (common when replaying transcript)
-    const incomingMessages = [
+    // Conversation history ending with assistant message
+    const conversationMessages: any[] = [
       { role: 'user', content: 'User 1' },
       { role: 'assistant', content: 'Assistant 1' },
       { role: 'user', content: 'User 2' },
       { role: 'assistant', content: 'Assistant 2' }
     ]
 
-    const callArgs = {
-      prompt: 'test',
-      messages: incomingMessages,
-      options: {}
-    }
+    await agentWrapper.streamGenerate('User 3', {
+      messages: conversationMessages as ModelMessage[]
+    })
 
+    const callArgs = mockAgent.stream.mock.calls[0][0]
     const prepared = await lastSettings.prepareCall(callArgs)
 
     expect(prepared.messages).toBeDefined()
-    expect(prepared.messages.length).toBe(4)
+    expect(prepared.messages.length).toBe(5) // 4 history + 1 new user message
 
-    // Last assistant message should have cache control (it's history, not new input)
+    // Last assistant message (last in history) should have cache control
     const lastAssistantMessage = prepared.messages[3]
     expect(lastAssistantMessage.role).toBe('assistant')
     expect(lastAssistantMessage.content).toBe('Assistant 2')
@@ -697,7 +713,7 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
     expect(lastAssistantMessage.providerOptions.anthropic.cacheControl.type).toBe('ephemeral')
   })
 
-  it('should cache single assistant message in fallback path (common short history)', async () => {
+  it('should cache single assistant message in short history', async () => {
     mockAgent.stream.mockResolvedValue({
       textStream: (async function* () {
         yield 'test response'
@@ -709,19 +725,16 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
       toolResults: Promise.resolve([])
     })
 
-    // Common pattern: assistant reply + new user message
-    // After slicing off user message, we have just 1 assistant message to cache
-    const incomingMessages = [
+    // Short history: just one assistant response
+    const conversationMessages: any[] = [
       { role: 'assistant', content: 'Previous assistant response' },
-      { role: 'user', content: 'New user input' }
     ]
 
-    const callArgs = {
-      prompt: 'test',
-      messages: incomingMessages,
-      options: {}
-    }
+    await agentWrapper.streamGenerate('New user input', {
+      messages: conversationMessages as ModelMessage[]
+    })
 
+    const callArgs = mockAgent.stream.mock.calls[0][0]
     const prepared = await lastSettings.prepareCall(callArgs)
 
     expect(prepared.messages).toBeDefined()
@@ -740,7 +753,7 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
     expect(userMessage.providerOptions?.anthropic?.cacheControl).toBeUndefined()
   })
 
-  it('should cache first user message in fallback path with context present', async () => {
+  it('should cache first user message with context present (first turn)', async () => {
     mockAgent.stream.mockResolvedValue({
       textStream: (async function* () {
         yield 'test response'
@@ -752,18 +765,16 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
       toolResults: Promise.resolve([])
     })
 
-    // First turn via fallback path: context + first user message (no assistant messages)
-    const incomingMessages = [
-      { role: 'system', content: 'System context' },
-      { role: 'user', content: 'First user message' }
+    // First turn with context but no conversation history
+    const contextMessages = [
+      { role: 'system' as const, content: 'System context' }
     ]
 
-    const callArgs = {
-      prompt: 'test',
-      messages: incomingMessages,
-      options: {}
-    }
+    await agentWrapper.streamGenerate('First user message', {
+      context: contextMessages
+    })
 
+    const callArgs = mockAgent.stream.mock.calls[0][0]
     const prepared = await lastSettings.prepareCall(callArgs)
 
     expect(prepared.messages).toBeDefined()
@@ -782,7 +793,7 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
     expect(userMessage.providerOptions.anthropic.cacheControl.type).toBe('ephemeral')
   })
 
-  it('should preserve existing cache metadata in fallback path (legacy callers)', async () => {
+  it('should preserve existing cache metadata on conversation messages', async () => {
     mockAgent.stream.mockResolvedValue({
       textStream: (async function* () {
         yield 'test response'
@@ -794,20 +805,8 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
       toolResults: Promise.resolve([])
     })
 
-    // Legacy caller sends messages with existing cache metadata
-    const incomingMessages = [
-      {
-        role: 'system',
-        content: 'System with existing cache',
-        providerOptions: {
-          anthropic: {
-            cacheControl: { type: 'ephemeral' as const }
-          },
-          bedrock: {
-            cachePoint: 'ephemeral' as const
-          }
-        }
-      },
+    // Conversation messages with existing providerOptions cache metadata
+    const conversationMessages: any[] = [
       {
         role: 'user',
         content: 'Previous user message',
@@ -824,37 +823,43 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
         role: 'assistant',
         content: 'Previous response'
       },
+    ]
+
+    // Context message with existing cache metadata
+    const contextMessages = [
       {
-        role: 'user',
-        content: 'New user message'
+        role: 'system' as const,
+        content: 'System with existing cache',
+        cachePoint: { type: 'ephemeral' as const }
       }
     ]
 
-    const callArgs = {
-      prompt: 'test',
-      messages: incomingMessages,
-      options: {}
-    }
+    await agentWrapper.streamGenerate('New user message', {
+      messages: conversationMessages as ModelMessage[],
+      context: contextMessages
+    })
 
+    const callArgs = mockAgent.stream.mock.calls[0][0]
     const prepared = await lastSettings.prepareCall(callArgs)
 
     expect(prepared.messages).toBeDefined()
-    expect(prepared.messages.length).toBe(4)
+    expect(prepared.messages.length).toBe(4) // 1 context + 2 history + 1 new user
 
-    // Messages that already had cache metadata should preserve it
+    // Context message should have cache metadata from cachePoint conversion
     const systemMessage = prepared.messages[0]
     expect(systemMessage.role).toBe('system')
     expect(systemMessage.content).toBe('System with existing cache')
     expect(systemMessage.providerOptions?.anthropic?.cacheControl).toBeDefined()
     expect(systemMessage.providerOptions.anthropic.cacheControl.type).toBe('ephemeral')
 
+    // First user message should preserve existing cache metadata
     const firstUserMessage = prepared.messages[1]
     expect(firstUserMessage.role).toBe('user')
     expect(firstUserMessage.content).toBe('Previous user message')
     expect(firstUserMessage.providerOptions?.anthropic?.cacheControl).toBeDefined()
     expect(firstUserMessage.providerOptions.anthropic.cacheControl.type).toBe('ephemeral')
 
-    // Assistant message should now have cache metadata (it's the last history message)
+    // Assistant message should have cache metadata (last history message)
     const assistantMessage = prepared.messages[2]
     expect(assistantMessage.role).toBe('assistant')
     expect(assistantMessage.content).toBe('Previous response')
@@ -867,7 +872,7 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
     expect(newUserMessage.providerOptions?.anthropic?.cacheControl).toBeUndefined()
   })
 
-  it('should merge files into last user message in fallback path', async () => {
+  it('should merge files into user message via pipeline', async () => {
     mockAgent.stream.mockResolvedValue({
       textStream: (async function* () {
         yield 'test response'
@@ -896,32 +901,23 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
       }
     }
 
-    // Legacy caller sends messages array with files
-    const incomingMessages = [
-      {
-        role: 'system',
-        content: 'System prompt'
-      },
-      {
-        role: 'user',
-        content: 'Analyze this image'
-      }
+    // Context message + file attachment via streamGenerate
+    const contextMessages = [
+      { role: 'system' as const, content: 'System prompt' }
     ]
 
-    const callArgs = {
-      prompt: 'test',
-      messages: incomingMessages,
-      options: {
-        files: [mockFile]
-      }
-    }
+    await agentWrapper.streamGenerate('Analyze this image', {
+      context: contextMessages,
+      files: [mockFile]
+    })
 
+    const callArgs = mockAgent.stream.mock.calls[0][0]
     const prepared = await lastSettings.prepareCall(callArgs)
 
     expect(prepared.messages).toBeDefined()
-    expect(prepared.messages.length).toBe(2)
+    expect(prepared.messages.length).toBe(2) // 1 context + 1 user with file
 
-    // Last user message should have hybrid content (text + image)
+    // User message should have hybrid content (text + image)
     const userMessage = prepared.messages[1]
     expect(userMessage.role).toBe('user')
     expect(Array.isArray(userMessage.content)).toBe(true)

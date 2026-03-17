@@ -1,11 +1,23 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { AgentWrapper } from '../agent-factory.js'
 import type { AgentConfig } from '../types.js'
+import type { ContextPipeline } from '../context-pipeline.js'
+import { defaultConvertToLlm } from '../context-normalization.js'
 import {
   createMockConversationMessages,
   createMockContextMessages,
   createMockFiles
 } from '../../utils/__tests__/test-helpers.js'
+
+// Create a simple mock pipeline that uses the real defaultConvertToLlm
+const createMockPipeline = (): ContextPipeline => ({
+  transformContext: async (input) => ({
+    contextMessages: input.contextMessages,
+    conversationMessages: input.conversationMessages,
+    userMessage: { role: 'user' as const, content: input.userMessage },
+  }),
+  convertToLlm: (input) => defaultConvertToLlm(input),
+})
 
 const getMessageContent = (message: { content?: unknown }): string | undefined => {
   if (!message.content) {
@@ -66,6 +78,7 @@ describe('AgentWrapper integration with ToolLoopAgent settings', () => {
       retryConfig: {
         maxAttempts: 4
       },
+      contextPipeline: createMockPipeline(),
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
     }
 
@@ -192,7 +205,8 @@ describe('AgentWrapper integration with ToolLoopAgent settings', () => {
       name: 'logger-agent',
       model: 'test-model' as any,
       tools: {},
-      logger: { info, error, warn }
+      logger: { info, error, warn },
+      contextPipeline: createMockPipeline(),
     }
 
     new AgentWrapper(configWithLogger)

@@ -23,6 +23,7 @@ import {
 } from '../index.js'
 import type { EnhancedAgentContext } from './types.js'
 import { skillToolManager } from '../../tools/skill-tool-manager.js'
+import { AgentContextPipeline } from './agent-context-pipeline.js'
 
 /**
  * Agent metadata for discovery and management
@@ -101,6 +102,12 @@ export async function createUnifiedAgentFactory(options?: {
   }
   // Stop execution after handoff tool is called
   marketingConfig.stopAfterTools = ['handoff']
+
+  // Create shared pipeline for context assembly
+  const contextPipeline = new AgentContextPipeline()
+  developConfig.contextPipeline = contextPipeline
+  marketingConfig.contextPipeline = contextPipeline
+  initialConfig.contextPipeline = contextPipeline
 
   // Build agent definitions conditionally
   const agentDefinitions: Record<string, AgentConfig> = {

@@ -1,6 +1,7 @@
 import type { LanguageModel, Tool, ModelMessage } from 'ai'
 import type { z } from 'zod'
 import type { RetryOptions } from '@airo/ai-common'
+import type { ContextPipeline } from './context-pipeline.js'
 
 // Re-export AI SDK types for convenience
 export type { ModelMessage, LanguageModel, Tool } from 'ai'
@@ -135,6 +136,8 @@ export interface AgentConfig {
     /** Maximum cache breakpoints to use (Anthropic limit: 4, default: 2) */
     maxBreakpoints?: number
   }
+  /** Context pipeline for message transformation (two-stage: transformContext → convertToLlm). When omitted, a default pipeline using defaultConvertToLlm is used. */
+  contextPipeline?: ContextPipeline
 }
 
 /**

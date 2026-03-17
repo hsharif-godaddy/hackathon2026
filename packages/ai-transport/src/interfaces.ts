@@ -147,7 +147,7 @@ export interface ServerConfigData {
  */
 export interface ContextMessage {
   /** Message role - restricted for context messages */
-  role: 'user' | 'assistant' | 'system'
+  role: 'user' | 'system'
   /** Message content */
   content: string
   /** Optional cache point for cost optimization */

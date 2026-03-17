@@ -23,7 +23,7 @@ import type { Socket, Server as SocketIOServer } from 'socket.io'
 
 // Define ContextMessage interface locally (extends ConversationMessage with required insertionOrder)
 interface ContextMessage {
-  role: 'user' | 'assistant' | 'system'
+  role: 'user' | 'system'
   content: string
   /** Optional cache point for cost optimization */
   cachePoint?: { type: 'ephemeral' }
