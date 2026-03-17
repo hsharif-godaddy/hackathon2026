@@ -714,6 +714,13 @@ NEXT_PUBLIC_USE_MOCK_LOGIN=${config.authConfig.authType === "mock" ? "true" : "f
 `;
 		}
 
+		// V2 Control Plane via local-control-plane service
+		envContent += `
+# V2 Control Plane (local-control-plane service)
+USE_V2_CONTROL_PLANE=true
+MGMT_AIRO_BASE_URL=http://localhost:4100
+`;
+
 		return envContent;
 	}
 

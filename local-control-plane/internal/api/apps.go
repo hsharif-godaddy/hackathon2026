@@ -1,0 +1,670 @@
+package api
+
+import (
+	"bytes"
+	"crypto/tls"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/airo-ai-builder/local-control-plane/internal/docker"
+	"github.com/airo-ai-builder/local-control-plane/internal/setup"
+	"github.com/airo-ai-builder/local-control-plane/internal/store"
+	"github.com/gorilla/mux"
+)
+
+const (
+	previewReadyTimeout      = 45 * time.Second
+	previewReadyPollInterval = 500 * time.Millisecond
+)
+
+var previewReadyHTTPClient = &http.Client{
+	Timeout: 2 * time.Second,
+	Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{
+			// InsecureSkipVerify is required because preview/publish containers use
+			// locally-generated self-signed certificates that cannot be system-verified.
+			InsecureSkipVerify: true, //nolint:gosec // nosemgrep: problem-based-packs.insecure-transport.go-stdlib.bypass-tls-verification.bypass-tls-verification
+			MinVersion:         tls.VersionTLS12,
+		},
+	},
+}
+
+func appToResponse(app *store.App) map[string]any {
+	resp := map[string]any{
+		"id":              app.ID,
+		"subscriptionId":  app.SubscriptionID,
+		"systemId":        app.SystemID,
+		"status":          app.Status,
+		"variables":       app.Variables,
+		"variants":        app.Variants,
+		"appTemplateName": "default",
+		"createdAt":       app.CreatedAt,
+		"updatedAt":       app.UpdatedAt,
+		"cellId":          "local-dev",
+		"compositionId":   "ai-builder",
+		"system": map[string]any{
+			"ownerProduct": "AiroAppBuilder",
+			"productId":    store.DefaultProductID,
+		},
+	}
+
+	urls := map[string]string{
+		"agent":   "http://localhost:4000",
+		"backend": "http://localhost:4000",
+	}
+	if app.PreviewPort > 0 {
+		urls["preview"] = fmt.Sprintf("https://localhost:%d", app.PreviewPort)
+	}
+	if app.PublishPort > 0 {
+		urls["publish"] = fmt.Sprintf("https://localhost:%d", app.PublishPort)
+	}
+	resp["urls"] = urls
+
+	if app.SupervisorPort > 0 {
+		resp["socketPath"] = fmt.Sprintf("tcp://localhost:%d", app.SupervisorPort)
+	}
+	if app.PublishSupervisorPort > 0 {
+		resp["publishSupervisorPath"] = fmt.Sprintf("tcp://localhost:%d", app.PublishSupervisorPort)
+	}
+
+	return resp
+}
+
+func (s *Server) ListApps(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	apps, err := s.DB.ListApps(vars["subId"], vars["sysId"])
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	result := make([]map[string]any, 0, len(apps))
+	for _, app := range apps {
+		result = append(result, appToResponse(app))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"apps": result})
+}
+
+func (s *Server) GetAllApps(w http.ResponseWriter, r *http.Request) {
+	apps, err := s.DB.ListAllApps()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	result := make([]map[string]any, 0, len(apps))
+	for _, app := range apps {
+		result = append(result, appToResponse(app))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"apps": result})
+}
+
+func (s *Server) GetApp(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	app, err := s.DB.GetApp(vars["appId"])
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if app == nil {
+		writeError(w, http.StatusNotFound, "app not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, appToResponse(app))
+}
+
+func (s *Server) CreateApp(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	var body struct {
+		AppTemplateName string         `json:"appTemplateName"`
+		Variants        []string       `json:"variants"`
+		Variables       map[string]any `json:"variables"`
+		Datacenter      string         `json:"datacenter"`
+	}
+
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	app, err := s.DB.CreateApp(vars["subId"], vars["sysId"], body.Variables, body.Variants)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	job, err := s.DB.CreateJob(app.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	slog.Info("app.created", "app_id", app.ID, "job_id", job.ID)
+
+	// Provision asynchronously so the HTTP response returns immediately.
+	// The client polls the job endpoint to check readiness.
+	go func() {
+		if err := s.DB.UpdateJobStatus(job.ID, "running", ""); err != nil {
+			slog.Error("job.status_update.failed", "job_id", job.ID, "error", err)
+		}
+		if err := s.provisionApp(app); err != nil {
+			slog.Error("app.provision.failed", "app_id", app.ID, "error", err)
+			if err := s.DB.UpdateJobStatus(job.ID, "failed", err.Error()); err != nil {
+				slog.Error("job.status_update.failed", "job_id", job.ID, "error", err)
+			}
+			return
+		}
+		if err := s.DB.UpdateJobStatus(job.ID, "completed", ""); err != nil {
+			slog.Error("job.status_update.failed", "job_id", job.ID, "error", err)
+		}
+	}()
+
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"statusJobId": job.ID,
+	})
+}
+
+func (s *Server) Signup(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Datacenter    string `json:"datacenter"`
+		IsTrial       bool   `json:"isTrial"`
+		ProductID     string `json:"productId"`
+		InitialPrompt string `json:"initialPrompt"`
+		AppConfigs    []struct {
+			TemplateName string         `json:"templateName"`
+			Variants     []string       `json:"variants"`
+			Variables    map[string]any `json:"variables"`
+		} `json:"appConfigs"`
+	}
+
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Use first app config or default
+	var variables map[string]any
+	var variants []string
+	if len(body.AppConfigs) > 0 {
+		variables = body.AppConfigs[0].Variables
+		variants = body.AppConfigs[0].Variants
+	}
+	if variables == nil {
+		variables = map[string]any{}
+	}
+	if body.InitialPrompt != "" {
+		variables["initialPrompt"] = body.InitialPrompt
+	}
+
+	app, err := s.DB.CreateApp(store.DefaultSubscriptionID, store.DefaultSystemID, variables, variants)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	job, err := s.DB.CreateJob(app.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	slog.Info("signup.complete", "app_id", app.ID, "job_id", job.ID)
+
+	go func() {
+		if err := s.DB.UpdateJobStatus(job.ID, "running", ""); err != nil {
+			slog.Error("job.status_update.failed", "job_id", job.ID, "error", err)
+		}
+		if err := s.provisionApp(app); err != nil {
+			slog.Error("app.provision.failed", "app_id", app.ID, "error", err)
+			if err := s.DB.UpdateJobStatus(job.ID, "failed", err.Error()); err != nil {
+				slog.Error("job.status_update.failed", "job_id", job.ID, "error", err)
+			}
+			return
+		}
+		if err := s.DB.UpdateJobStatus(job.ID, "completed", ""); err != nil {
+			slog.Error("job.status_update.failed", "job_id", job.ID, "error", err)
+		}
+	}()
+
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"statusJobId": job.ID,
+	})
+}
+
+func (s *Server) UpdateApp(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	var body struct {
+		Status    string         `json:"status"`
+		Variables map[string]any `json:"variables"`
+	}
+
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	var statusPtr *string
+	if body.Status != "" {
+		statusPtr = &body.Status
+	}
+
+	app, err := s.DB.UpdateApp(vars["appId"], statusPtr, body.Variables, nil)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, http.StatusNotFound, err.Error())
+		} else {
+			writeError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, appToResponse(app))
+}
+
+func (s *Server) DeleteApp(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	appID := vars["appId"]
+
+	app, err := s.DB.GetApp(appID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if app == nil {
+		writeError(w, http.StatusNotFound, "app not found")
+		return
+	}
+
+	// Tear down Docker containers
+	if err := s.DockerManager.Down(appID); err != nil {
+		slog.Warn("docker.down.failed", "app_id", appID, "error", err)
+	}
+
+	// Drop MySQL database and user
+	if err := docker.DropDatabase(appID); err != nil {
+		slog.Warn("mysql.drop.failed", "app_id", appID, "error", err)
+	}
+
+	// Clean up app filesystem
+	baseDir := s.TemplateSetup.GetBasePath(appID)
+	if err := os.RemoveAll(baseDir); err != nil {
+		slog.Warn("app.delete.cleanup_failed", "app_id", appID, "error", err)
+	}
+
+	if err := s.DB.DeleteApp(appID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	slog.Info("app.deleted", "app_id", appID)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"message": "deleted",
+	})
+}
+
+func (s *Server) DeployApp(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	appID := vars["appId"]
+
+	app, err := s.DB.GetApp(appID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if app == nil {
+		writeError(w, http.StatusNotFound, "app not found")
+		return
+	}
+
+	// Restart Docker containers
+	if err := s.DockerManager.Restart(appID); err != nil {
+		slog.Warn("docker.restart.failed", "app_id", appID, "error", err)
+	}
+
+	slog.Info("app.deployed", "app_id", appID)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"message": "deployment triggered",
+		"appId":   appID,
+	})
+}
+
+func (s *Server) PublishApp(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	appID := vars["appId"]
+
+	var body struct {
+		GitHash string `json:"gitHash"`
+	}
+	if err := readJSON(r, &body); err != nil || body.GitHash == "" {
+		body.GitHash = "local"
+	}
+
+	app, err := s.DB.GetApp(appID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if app == nil {
+		writeError(w, http.StatusNotFound, "app not found")
+		return
+	}
+
+	slog.Info("app.published", "app_id", appID, "git_hash", body.GitHash)
+
+	job, err := s.DB.CreateJob(appID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := s.DB.UpdateJobStatus(job.ID, "running", ""); err != nil {
+		slog.Error("job.status_update.failed", "job_id", job.ID, "error", err)
+	}
+
+	dep, err := s.DB.CreateDeployment(appID, job.ID, body.GitHash)
+	deploymentID := fmt.Sprintf("deploy-%s", appID)
+	if err != nil {
+		slog.Error("deployment.create.failed", "app_id", appID, "error", err)
+	} else if dep != nil {
+		deploymentID = dep.ID
+	}
+
+	go s.completePublish(app, job.ID, dep)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"statusJobId":    job.ID,
+		"deploymentId":   deploymentID,
+		"status":         "PENDING",
+		"message":        "publish triggered",
+		"subscriptionId": vars["subId"],
+		"systemId":       vars["sysId"],
+		"appId":          appID,
+		"gitHash":        body.GitHash,
+	})
+}
+
+func (s *Server) completePublish(app *store.App, jobID string, dep *store.Deployment) {
+	if err := waitForPublishReady(app.PublishPort); err != nil {
+		slog.Error("app.publish.wait_failed", "app_id", app.ID, "job_id", jobID, "error", err)
+		if dep != nil {
+			if updateErr := s.DB.UpdateDeploymentStatus(dep.ID, "failed"); updateErr != nil {
+				slog.Error("deployment.status_update.failed", "deployment_id", dep.ID, "error", updateErr)
+			}
+		}
+		if updateErr := s.DB.UpdateJobStatus(jobID, "failed", err.Error()); updateErr != nil {
+			slog.Error("job.status_update.failed", "job_id", jobID, "error", updateErr)
+		}
+		return
+	}
+
+	updatedApp, err := s.DB.GetApp(app.ID)
+	if err != nil {
+		slog.Error("app.publish.reload_failed", "app_id", app.ID, "error", err)
+		if dep != nil {
+			if updateErr := s.DB.UpdateDeploymentStatus(dep.ID, "failed"); updateErr != nil {
+				slog.Error("deployment.status_update.failed", "deployment_id", dep.ID, "error", updateErr)
+			}
+		}
+		if updateErr := s.DB.UpdateJobStatus(jobID, "failed", err.Error()); updateErr != nil {
+			slog.Error("job.status_update.failed", "job_id", jobID, "error", updateErr)
+		}
+		return
+	}
+
+	if updatedApp == nil {
+		err = fmt.Errorf("app not found during publish completion")
+		slog.Error("app.publish.reload_failed", "app_id", app.ID, "error", err)
+		if dep != nil {
+			if updateErr := s.DB.UpdateDeploymentStatus(dep.ID, "failed"); updateErr != nil {
+				slog.Error("deployment.status_update.failed", "deployment_id", dep.ID, "error", updateErr)
+			}
+		}
+		if updateErr := s.DB.UpdateJobStatus(jobID, "failed", err.Error()); updateErr != nil {
+			slog.Error("job.status_update.failed", "job_id", jobID, "error", updateErr)
+		}
+		return
+	}
+
+	hasPublish := false
+	for _, variant := range updatedApp.Variants {
+		if variant == "publish" {
+			hasPublish = true
+			break
+		}
+	}
+
+	if !hasPublish {
+		newVariants := append(updatedApp.Variants, "publish")
+		if _, err := s.DB.UpdateApp(app.ID, nil, nil, newVariants); err != nil {
+			slog.Error("app.update_variants.failed", "app_id", app.ID, "error", err)
+			if dep != nil {
+				if updateErr := s.DB.UpdateDeploymentStatus(dep.ID, "failed"); updateErr != nil {
+					slog.Error("deployment.status_update.failed", "deployment_id", dep.ID, "error", updateErr)
+				}
+			}
+			if updateErr := s.DB.UpdateJobStatus(jobID, "failed", err.Error()); updateErr != nil {
+				slog.Error("job.status_update.failed", "job_id", jobID, "error", updateErr)
+			}
+			return
+		}
+	}
+
+	if dep != nil {
+		if err := s.DB.UpdateDeploymentStatus(dep.ID, "deployed"); err != nil {
+			slog.Error("deployment.status_update.failed", "deployment_id", dep.ID, "error", err)
+		}
+	}
+
+	if err := s.DB.UpdateJobStatus(jobID, "completed", ""); err != nil {
+		slog.Error("job.status_update.failed", "job_id", jobID, "error", err)
+	}
+}
+
+func (s *Server) UnpublishApp(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	appID := vars["appId"]
+
+	app, err := s.DB.GetApp(appID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if app == nil {
+		writeError(w, http.StatusNotFound, "app not found")
+		return
+	}
+
+	// Remove "publish" from variants
+	filtered := make([]string, 0, len(app.Variants))
+	found := false
+	for _, v := range app.Variants {
+		if v == "publish" {
+			found = true
+			continue
+		}
+		filtered = append(filtered, v)
+	}
+
+	if !found {
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error":   "no_publish_variant",
+			"message": "App does not have an active publish variant",
+		})
+		return
+	}
+
+	if _, err := s.DB.UpdateApp(appID, nil, nil, filtered); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	slog.Info("app.unpublished", "app_id", appID)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"message":        "App unpublished",
+		"appId":          appID,
+		"subscriptionId": vars["subId"],
+		"systemId":       vars["sysId"],
+	})
+}
+
+// provisionApp sets up the workspace, ports, and Docker containers for a new app.
+func (s *Server) provisionApp(app *store.App) error {
+	previewPort, publishPort, supervisorPort, publishSupervisorPort, err := s.DockerManager.AllocatePorts()
+	if err != nil {
+		return fmt.Errorf("allocate ports: %w", err)
+	}
+
+	if err := s.DB.UpdateAppPorts(app.ID, previewPort, publishPort, supervisorPort, publishSupervisorPort); err != nil {
+		return fmt.Errorf("update ports: %w", err)
+	}
+
+	app.PreviewPort = previewPort
+	app.PublishPort = publishPort
+	app.SupervisorPort = supervisorPort
+	app.PublishSupervisorPort = publishSupervisorPort
+
+	dbName, dbUser, dbPassword, err := docker.ProvisionDatabase(app.ID)
+	if err != nil {
+		slog.Warn("mysql.provision.failed", "app_id", app.ID, "error", err)
+	}
+
+	dbCreds := &setup.DBCredentials{
+		Name:     dbName,
+		Username: dbUser,
+		Password: dbPassword,
+	}
+	if err := s.TemplateSetup.Provision(app.ID, previewPort, publishPort, supervisorPort, dbCreds); err != nil {
+		return fmt.Errorf("template setup: %w", err)
+	}
+
+	s.registerWithAgent(app)
+
+	if err := s.DockerManager.Up(app); err != nil {
+		return fmt.Errorf("docker up: %w", err)
+	}
+
+	if err := waitForPreviewReady(app.PreviewPort); err != nil {
+		return fmt.Errorf("wait for preview ready: %w", err)
+	}
+
+	activeStatus := "active"
+	if _, err := s.DB.UpdateApp(app.ID, &activeStatus, nil, nil); err != nil {
+		return fmt.Errorf("set app active: %w", err)
+	}
+
+	return nil
+}
+
+func waitForPreviewReady(previewPort int) error {
+	return waitForHTTPSReady(previewPort, "preview")
+}
+
+func waitForPublishReady(publishPort int) error {
+	return waitForHTTPSReady(publishPort, "publish")
+}
+
+func waitForHTTPSReady(port int, variant string) error {
+	if port <= 0 {
+		return fmt.Errorf("%s port not allocated", variant)
+	}
+
+	healthURL := fmt.Sprintf("https://localhost:%d/airo/health", port)
+	deadline := time.Now().Add(previewReadyTimeout)
+	var lastErr error
+
+	for time.Now().Before(deadline) {
+		resp, err := previewReadyHTTPClient.Get(healthURL)
+		if err == nil {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+				return nil
+			}
+			lastErr = fmt.Errorf("unexpected status %d", resp.StatusCode)
+		} else {
+			lastErr = err
+		}
+
+		time.Sleep(previewReadyPollInterval)
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("%s health check timed out", variant)
+	}
+
+	return fmt.Errorf("%s at %s not ready: %w", variant, healthURL, lastErr)
+}
+
+func (s *Server) registerWithAgent(app *store.App) {
+	agentsURL := os.Getenv("AGENTS_BASE_URL")
+	if agentsURL == "" {
+		agentsURL = "http://localhost:4000"
+	}
+
+	payload := map[string]any{
+		"siteId":     app.ID,
+		"name":       fmt.Sprintf("App %s", app.ID),
+		"appPath":    s.TemplateSetup.GetBasePath(app.ID) + "/preview",
+		"port":       app.PreviewPort,
+		"previewUrl": fmt.Sprintf("https://localhost:%d", app.PreviewPort),
+	}
+
+	if app.SupervisorPort > 0 {
+		payload["socketPath"] = fmt.Sprintf("tcp://localhost:%d", app.SupervisorPort)
+	}
+	if app.PublishSupervisorPort > 0 {
+		payload["publishSupervisorPath"] = fmt.Sprintf("tcp://localhost:%d", app.PublishSupervisorPort)
+	}
+
+	body, _ := json.Marshal(payload)
+
+	req, err := http.NewRequest("POST", agentsURL+"/apps/register", bytes.NewReader(body))
+	if err != nil {
+		slog.Warn("agent.register.failed", "app_id", app.ID, "error", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	if s.JWT != nil {
+		token, err := s.JWT.Mint(app.ID)
+		if err != nil {
+			slog.Error("agent.register.jwt_mint_failed", "app_id", app.ID, "error", err)
+			return
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		slog.Warn("agent.register.failed", "app_id", app.ID, "error", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 401 {
+		slog.Error("agent.register.auth_failed", "app_id", app.ID,
+			"hint", "JWT rejected by agent. Verify JWKS_URL in agents/.env serves the matching public key.")
+		return
+	}
+
+	if resp.StatusCode >= 300 {
+		slog.Warn("agent.register.unexpected_status", "app_id", app.ID, "status", resp.StatusCode)
+		return
+	}
+
+	slog.Info("agent.register.success", "app_id", app.ID)
+}
