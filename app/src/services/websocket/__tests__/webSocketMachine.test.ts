@@ -374,6 +374,84 @@ describe('webSocketMachine', () => {
     })
   })
 
+  describe('reconnecting accepts Socket.IO auto-reconnect events', () => {
+    it('should handle CONNECTION_ESTABLISHED while in reconnecting.retrying', async () => {
+      const harness = new StateMachineTestHarness(webSocketMachine)
+
+      harness.simulateConnect('app-123')
+      harness.simulateConnectionEstablished('socket-456')
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
+
+      harness.simulateDisconnect('transport close')
+      harness.assertState((s) =>
+        s.matches({ transport: { reconnecting: 'retrying' } })
+      )
+
+      // Socket.IO auto-reconnects before RETRY_DELAY expires
+      harness.simulateConnectionEstablished('socket-789')
+      harness.assertState((s) =>
+        s.matches({ transport: 'authenticating' })
+      )
+      harness.assertContext((ctx) => ctx.socketId === 'socket-789')
+
+      harness.destroy()
+    })
+
+    it('should handle AUTH_SUCCESS while in reconnecting.retrying', async () => {
+      const harness = new StateMachineTestHarness(webSocketMachine)
+
+      harness.simulateConnect('app-123')
+      harness.simulateConnectionEstablished('socket-456')
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
+
+      harness.simulateDisconnect('transport close')
+      harness.assertState((s) =>
+        s.matches({ transport: { reconnecting: 'retrying' } })
+      )
+
+      // Socket.IO auto-reconnects and auth completes before RETRY_DELAY
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-789' })
+      harness.assertState((s) =>
+        s.matches({ transport: { connected: 'idle' } })
+      )
+      harness.assertContext((ctx) => ctx.socketId === 'socket-789')
+      harness.assertContext((ctx) => ctx.retryCount === 0)
+
+      harness.destroy()
+    })
+
+    it('should handle CONNECTION_ESTABLISHED at higher retry counts', async () => {
+      const harness = new StateMachineTestHarness(webSocketMachine)
+
+      harness.simulateConnect('app-123')
+      harness.simulateConnectionEstablished('socket-456')
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
+
+      // Cycle through a few retries to increase the delay
+      for (let i = 0; i < 3; i++) {
+        harness.simulateDisconnect('transport close')
+        const delay = Math.min(500 * Math.pow(2, i + 1), MAX_RETRY_DELAY_MS)
+        await vi.advanceTimersByTimeAsync(delay)
+        harness.simulateConnectionEstablished(`socket-retry-${i}`)
+        harness.actor.send({ type: 'AUTH_SUCCESS', socketId: `socket-retry-${i}` })
+      }
+
+      // Now disconnect again — retry delay is 4000ms
+      harness.simulateDisconnect('transport close')
+      harness.assertState((s) =>
+        s.matches({ transport: { reconnecting: 'retrying' } })
+      )
+
+      // Socket.IO reconnects at 2-5s, which may beat the 4s+ machine delay
+      harness.simulateConnectionEstablished('socket-final')
+      harness.assertState((s) =>
+        s.matches({ transport: 'authenticating' })
+      )
+
+      harness.destroy()
+    })
+  })
+
   describe('parallel states', () => {
     it('should handle disconnect during streaming', async () => {
       const harness = new StateMachineTestHarness(webSocketMachine)

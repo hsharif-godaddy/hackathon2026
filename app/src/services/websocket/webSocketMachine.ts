@@ -459,6 +459,17 @@ export const webSocketMachine = setup({
           initial: 'retrying',
           entry: 'logReconnecting',
 
+          on: {
+            CONNECTION_ESTABLISHED: {
+              target: '#webSocket.transport.authenticating',
+              actions: ['setSocketId'],
+            },
+            AUTH_SUCCESS: {
+              target: '#webSocket.transport.connected',
+              actions: ['setSocketId', 'resetRetry', 'logConnectionEstablished'],
+            },
+          },
+
           states: {
             retrying: {
               entry: ['incrementRetry'],
