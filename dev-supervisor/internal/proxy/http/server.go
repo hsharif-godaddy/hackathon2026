@@ -138,13 +138,31 @@ func (p *HTTPProxy) Start() error {
 		appDir = "/app" // Default app directory in container
 	}
 
+	// Persistent assets directory (CephFS mount in production, host dir in local dev)
+	persistentDir := os.Getenv("PERSISTENT_ASSETS_DIR")
+	if persistentDir == "" {
+		persistentDir = "/airo-persistent-assets"
+	}
+
 	// Define media search paths for all handlers - single source of truth
 	// Search order for uploaded media files:
-	// 1. {appDir}/public/media/ - Preview mode (uploads stored here by agents)
-	// 2. {appDir}/dist/media/ - Publish mode SPA (Vite copies public/* to dist/*)
-	// 3. {appDir}/dist/client/media/ - Publish mode SSR (Vite copies public/* to dist/client/*)
+	// 1. {persistentDir}/public/media/  - New: persistent media uploads (CephFS mount)
+	// 2. {persistentDir}/public/images/ - New: persistent generated images (CephFS mount)
+	// 3. {appDir}/public/media/         - Existing: workspace media (agents upload here today)
+	// 4. {appDir}/public/images/        - New: workspace images (image-editor/DALL-E write here today,
+	//                                     but were not previously searchable via /airo-assets/uploads/)
+	// 5. {appDir}/dist/media/           - Existing: publish mode SPA (Vite copies public/* to dist/*)
+	// 6. {appDir}/dist/client/media/    - Existing: publish mode SSR (Vite copies public/* to dist/client/*)
+	//
+	// Note: Path 4 is a behavior change — files in public/images/ will now be discoverable
+	// via the uploaded media handler. This is intentional: image generation tools already write
+	// to public/images/ and return /images/ URLs. Adding it here enables the migration to
+	// /airo-assets/uploads/ URLs without breaking existing apps during the transition.
 	mediaSearchPaths := []string{
+		filepath.Join(persistentDir, "public", "media"),
+		filepath.Join(persistentDir, "public", "images"),
 		filepath.Join(appDir, "public", "media"),
+		filepath.Join(appDir, "public", "images"),
 		filepath.Join(appDir, "dist", "media"),
 		filepath.Join(appDir, "dist", "client", "media"),
 	}
