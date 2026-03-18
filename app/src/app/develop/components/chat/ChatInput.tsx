@@ -119,9 +119,9 @@ export default function ChatInput({
   }
 
   return (
-    <div className="px-2 sm:px-3 md:px-0 mt-1 mt-auto pb-1">
+    <div className="px-2 sm:px-3 md:px-0 mt-1 mt-auto">
       <div id="tour-chat-input" className="relative">
-        <div className="flex flex-col p-1.5 mb-px bg-intents-ux-box-backgroundColor shadow-md rounded-lg focus-within:ring-1 focus-within:ring-ai-light">
+        <div className="flex flex-col pt-1.5 pr-1.5 pb-1 pl-1 mb-px border border-intents-ux-boxHighContrast-borderColor rounded-lg focus-within:ring-1">
           {/* AI Edit Context - shows screenshot (works for both Edit with AI and Replace Image) */}
           {aiEditContext && aiEditContext.screenshot && (
             <div className="mb-1">

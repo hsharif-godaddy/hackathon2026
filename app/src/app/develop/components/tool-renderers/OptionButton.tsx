@@ -29,7 +29,7 @@ export default function OptionButton({
         delay: animationDelay,
         ease: [0.4, 0, 0.2, 1]
       }}
-      className="group flex items-center gap-1 px-1.5 py-0.5 m-0 rounded-lg bg-intents-ux-box-backgroundColor transition-colors border-2 border-border hover:border-intents-ux-boxHighContrast-borderColor hover:cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-left"
+      className="group flex items-center gap-1 px-1.5 py-0.5 m-0 rounded-lg bg-intents-ux-boxLowContrast-backgroundColor transition-colors border-2 border-border hover:border-intents-ux-boxHighContrast-borderColor hover:cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-left"
     >
       {isSelectable && (
         <div className="flex-shrink-0" aria-hidden="true">

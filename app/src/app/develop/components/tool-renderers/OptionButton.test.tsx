@@ -146,7 +146,7 @@ describe('OptionButton', () => {
     expect(button).toHaveClass('items-center')
     expect(button).toHaveClass('gap-1')
     expect(button).toHaveClass('rounded-lg')
-    expect(button).toHaveClass('bg-intents-ux-box-backgroundColor')
+    expect(button).toHaveClass('bg-intents-ux-boxLowContrast-backgroundColor')
   })
 
   it('should apply hover styles', () => {
