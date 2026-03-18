@@ -21,11 +21,7 @@ var testedEnvVars = []string{
 	"LLM_MODEL",
 	"LLM_MAX_TOKENS",
 	"AUTH_TYPE",
-	"JWKS_URL",
-	"JWT_ISSUER",
-	"JWT_AUDIENCE",
 	"SSO_HOST",
-	"INGEST_API_KEY",
 	"SEARCH_TOP_N",
 	"SEARCH_PREFETCH_LIMIT",
 	"SEARCH_PREFETCH_THRESHOLD",
@@ -63,7 +59,7 @@ func saveEnvVars(vars []string) func() {
 	}
 }
 
-func TestLoadConfig_Defaults(t *testing.T) {
+func TestLoadConfig_Defaults_NoAuth(t *testing.T) {
 	restore := saveEnvVars(testedEnvVars)
 	defer restore()
 
@@ -71,7 +67,12 @@ func TestLoadConfig_Defaults(t *testing.T) {
 		_ = os.Unsetenv(key)
 	}
 
-	cfg := LoadConfig()
+	_ = os.Setenv("AUTH_TYPE", "none")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if cfg.Port != 8081 {
 		t.Errorf("expected default port 8081, got %d", cfg.Port)
@@ -106,13 +107,21 @@ func TestLoadConfig_FromEnv(t *testing.T) {
 	restore := saveEnvVars(testedEnvVars)
 	defer restore()
 
+	for _, key := range testedEnvVars {
+		_ = os.Unsetenv(key)
+	}
+
 	_ = os.Setenv("PORT", "9090")
 	_ = os.Setenv("LOG_LEVEL", "debug")
 	_ = os.Setenv("QDRANT_HOST", "qdrant.example.com")
 	_ = os.Setenv("SEARCH_TOP_N", "10")
 	_ = os.Setenv("RATE_LIMIT_ENABLED", "true")
+	_ = os.Setenv("AUTH_TYPE", "none")
 
-	cfg := LoadConfig()
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if cfg.Port != 9090 {
 		t.Errorf("expected port 9090, got %d", cfg.Port)
@@ -128,5 +137,41 @@ func TestLoadConfig_FromEnv(t *testing.T) {
 	}
 	if !cfg.RateLimitEnabled {
 		t.Errorf("expected rate limiting enabled")
+	}
+}
+
+func TestLoadConfig_JWTWithoutSSOHost_Fails(t *testing.T) {
+	restore := saveEnvVars(testedEnvVars)
+	defer restore()
+
+	for _, key := range testedEnvVars {
+		_ = os.Unsetenv(key)
+	}
+
+	_ = os.Setenv("AUTH_TYPE", "jwt")
+
+	_, err := LoadConfig()
+	if err == nil {
+		t.Fatal("expected error when AUTH_TYPE=jwt and SSO_HOST is unset, got nil")
+	}
+}
+
+func TestLoadConfig_JWTWithSSOHost_Succeeds(t *testing.T) {
+	restore := saveEnvVars(testedEnvVars)
+	defer restore()
+
+	for _, key := range testedEnvVars {
+		_ = os.Unsetenv(key)
+	}
+
+	_ = os.Setenv("AUTH_TYPE", "jwt")
+	_ = os.Setenv("SSO_HOST", "sso.godaddy.com")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.SSOHost != "sso.godaddy.com" {
+		t.Errorf("expected SSOHost sso.godaddy.com, got %s", cfg.SSOHost)
 	}
 }

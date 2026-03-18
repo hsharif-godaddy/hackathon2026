@@ -2,7 +2,7 @@ package ingest
 
 import (
 	"crypto/sha256"
-	"fmt"
+	"encoding/hex"
 	"strings"
 	"time"
 
@@ -75,42 +75,28 @@ func splitByHeaders(content string) []section {
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
-		if strings.HasPrefix(trimmed, "### ") {
+		switch {
+		case strings.HasPrefix(trimmed, "### "):
 			flushSection()
-			header := strings.TrimPrefix(trimmed, "### ")
-			header = strings.TrimSpace(header)
-			if currentH2 != "" {
-				currentPath = currentH2 + " > " + header
-			} else if currentH1 != "" {
-				currentPath = currentH1 + " > " + header
-			} else {
-				currentPath = header
-			}
+			header := strings.TrimSpace(strings.TrimPrefix(trimmed, "### "))
+			currentPath = buildSectionPath(currentH1, currentH2, header)
 			currentLevel = 3
 			currentLines = append(currentLines, line)
-		} else if strings.HasPrefix(trimmed, "## ") {
+		case strings.HasPrefix(trimmed, "## "):
 			flushSection()
-			header := strings.TrimPrefix(trimmed, "## ")
-			header = strings.TrimSpace(header)
-			if currentH1 != "" {
-				currentH2 = currentH1 + " > " + header
-				currentPath = currentH2
-			} else {
-				currentH2 = header
-				currentPath = header
-			}
+			header := strings.TrimSpace(strings.TrimPrefix(trimmed, "## "))
+			currentH2 = buildSectionPath(currentH1, "", header)
+			currentPath = currentH2
 			currentLevel = 2
 			currentLines = append(currentLines, line)
-		} else if strings.HasPrefix(trimmed, "# ") {
+		case strings.HasPrefix(trimmed, "# "):
 			flushSection()
-			header := strings.TrimPrefix(trimmed, "# ")
-			header = strings.TrimSpace(header)
-			currentH1 = header
+			currentH1 = strings.TrimSpace(strings.TrimPrefix(trimmed, "# "))
 			currentH2 = ""
-			currentPath = header
+			currentPath = currentH1
 			currentLevel = 1
 			currentLines = append(currentLines, line)
-		} else {
+		default:
 			currentLines = append(currentLines, line)
 		}
 	}
@@ -142,8 +128,19 @@ func mergeSections(sections []section, minChars int) []section {
 	return merged
 }
 
+// buildSectionPath returns "parent > header" using the closest ancestor header.
+func buildSectionPath(h1, h2, header string) string {
+	if h2 != "" {
+		return h2 + " > " + header
+	}
+	if h1 != "" {
+		return h1 + " > " + header
+	}
+	return header
+}
+
 // sha256Hex returns the SHA-256 hex digest of s.
 func sha256Hex(s string) string {
 	h := sha256.Sum256([]byte(s))
-	return fmt.Sprintf("%x", h)
+	return hex.EncodeToString(h[:])
 }

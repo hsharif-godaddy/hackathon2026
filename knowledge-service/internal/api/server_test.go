@@ -7,7 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/airo-ai-builder/knowledge-service/internal/auth"
+	goauth "github.com/gdcorp-partners/airo-app-builder/packages/go-auth"
+
 	"github.com/airo-ai-builder/knowledge-service/internal/config"
 	"github.com/airo-ai-builder/knowledge-service/pkg/models"
 )
@@ -51,12 +52,12 @@ func TestHandleSearch_EmptyQuery(t *testing.T) {
 	}
 	s := &Server{
 		config:         cfg,
-		authMiddleware: auth.NewMiddleware("none", "", "", "", ""),
+		authMiddleware: goauth.NewMiddleware("none", ""),
 	}
 	s.setupRoutes()
 
 	body := `{"query":""}`
-	req := httptest.NewRequest("POST", "/api/v1/search", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/search", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -69,20 +70,18 @@ func TestHandleSearch_EmptyQuery(t *testing.T) {
 
 func TestHandleIngest_EmptyDocuments(t *testing.T) {
 	cfg := &config.Config{
-		AuthType:     "none",
-		IngestAPIKey: "test-key",
-		Version:      "test",
+		AuthType: "none",
+		Version:  "test",
 	}
 	s := &Server{
 		config:         cfg,
-		authMiddleware: auth.NewMiddleware("none", "", "", "", ""),
+		authMiddleware: goauth.NewMiddleware("none", ""),
 	}
 	s.setupRoutes()
 
 	body := `{"documents":[]}`
-	req := httptest.NewRequest("POST", "/api/v1/ingest", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/ingest", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Key", "test-key")
 	w := httptest.NewRecorder()
 
 	s.router.ServeHTTP(w, req)
@@ -99,11 +98,11 @@ func TestHandleSearch_InvalidJSON(t *testing.T) {
 	}
 	s := &Server{
 		config:         cfg,
-		authMiddleware: auth.NewMiddleware("none", "", "", "", ""),
+		authMiddleware: goauth.NewMiddleware("none", ""),
 	}
 	s.setupRoutes()
 
-	req := httptest.NewRequest("POST", "/api/v1/search", strings.NewReader("not json"))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/search", strings.NewReader("not json"))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -115,11 +114,11 @@ func TestHandleSearch_InvalidJSON(t *testing.T) {
 }
 
 func TestLoggingMiddleware(t *testing.T) {
-	handler := loggingMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := loggingMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 

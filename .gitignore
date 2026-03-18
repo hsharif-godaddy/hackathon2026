@@ -4,6 +4,9 @@
 node_modules
 cdk/package-lock.json
 
+# Local clone of gdcorp-golang/auth (needed for Go replace directives)
+/auth
+
 # Build outputs
 dist/
 build/

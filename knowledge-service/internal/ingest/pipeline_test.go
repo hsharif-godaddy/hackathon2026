@@ -30,6 +30,7 @@ POST /api/v1/resources - Create a new resource.`
 		sparse := Tokenize(chunk.Content)
 		if sparse == nil {
 			t.Errorf("chunk %d: expected non-nil sparse vector", chunk.ChunkIndex)
+			continue
 		}
 		if len(sparse.Indices) == 0 {
 			t.Errorf("chunk %d: expected non-empty sparse indices", chunk.ChunkIndex)

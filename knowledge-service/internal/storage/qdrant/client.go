@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"github.com/qdrant/go-client/qdrant"
@@ -78,7 +79,7 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 		return nil
 	}
 
-	dim := uint64(c.cfg.EmbeddingDimension)
+	dim := uint64(c.cfg.EmbeddingDimension) //nolint:gosec // G115: bounded by config defaults (positive int)
 
 	err = c.client.CreateCollection(ctx, &qdrant.CreateCollection{
 		CollectionName: c.collection,
@@ -103,8 +104,8 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 			AlwaysRam: qdrant.PtrOf(true),
 		}),
 		OptimizersConfig: &qdrant.OptimizersConfigDiff{
-			IndexingThreshold:  qdrant.PtrOf(uint64(1000)),
-			FlushIntervalSec:   qdrant.PtrOf(uint64(5)),
+			IndexingThreshold: qdrant.PtrOf(uint64(1000)),
+			FlushIntervalSec:  qdrant.PtrOf(uint64(5)),
 		},
 	})
 	if err != nil {
@@ -161,13 +162,14 @@ type HybridSearchParams struct {
 // followed by Qdrant formula reranking that boosts introductory chunks (chunkIndex == 0).
 //
 // When SearchFormulaBoost > 0 (default 0.05), the pipeline is:
-//   dense + sparse → [RRF prefetch] → formula(score + boost*(chunkIndex==0))
+//
+//	dense + sparse → [RRF prefetch] → formula(score + boost*(chunkIndex==0))
 //
 // This rewards overview/introduction chunks that are broadly representative,
 // helping reduce false positives where a deep implementation chunk scores high
 // purely because it shares keywords with the query.
 func (c *Client) HybridSearch(ctx context.Context, params HybridSearchParams) ([]*qdrant.ScoredPoint, error) {
-	prefetchLimit := uint64(c.cfg.SearchPrefetchLimit)
+	prefetchLimit := uint64(c.cfg.SearchPrefetchLimit) //nolint:gosec // G115: bounded by config defaults (positive int)
 	prefetchThreshold := c.cfg.SearchPrefetchThreshold
 	fusionThreshold := c.cfg.SearchFusionThreshold
 	formulaBoost := c.cfg.SearchFormulaBoost
@@ -432,7 +434,7 @@ func (c *Client) buildSearchFilter(docNames, tags []string) *qdrant.Filter {
 
 // chunkToPayload converts a Chunk to a Qdrant payload map.
 func chunkToPayload(chunk *models.Chunk) map[string]*qdrant.Value {
-	tagsInterface := make([]interface{}, len(chunk.Tags))
+	tagsInterface := make([]any, len(chunk.Tags))
 	for i, t := range chunk.Tags {
 		tagsInterface[i] = t
 	}
@@ -492,7 +494,7 @@ func extractPointID(id *qdrant.PointId) string {
 	case *qdrant.PointId_Uuid:
 		return v.Uuid
 	case *qdrant.PointId_Num:
-		return fmt.Sprintf("%d", v.Num)
+		return strconv.FormatUint(v.Num, 10)
 	default:
 		return ""
 	}

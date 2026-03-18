@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"strconv"
 )
@@ -30,12 +31,8 @@ type Config struct {
 	LLMMaxTokens int
 
 	// Auth
-	AuthType    string
-	JWKSURL     string
-	JWTIssuer   string
-	JWTAudience string
-	SSOHost     string
-	IngestAPIKey string
+	AuthType string
+	SSOHost  string
 
 	// Search defaults
 	SearchTopN              int
@@ -45,7 +42,7 @@ type Config struct {
 	SearchFormulaBoost      float32
 
 	// Ingest
-	IngestBatchSize   int
+	IngestBatchSize    int
 	IngestMinChunkSize int
 
 	// HTTP Server timeouts
@@ -59,9 +56,9 @@ type Config struct {
 }
 
 // LoadConfig loads configuration from environment variables, applying sensible defaults
-// for any values not explicitly set.
-func LoadConfig() *Config {
-	return &Config{
+// for any values not explicitly set. Returns an error if auth configuration is invalid.
+func LoadConfig() (*Config, error) {
+	cfg := &Config{
 		// Service
 		Port:     getEnvInt("PORT", 8081),
 		LogLevel: getEnvString("LOG_LEVEL", "info"),
@@ -85,12 +82,8 @@ func LoadConfig() *Config {
 		LLMMaxTokens: getEnvInt("LLM_MAX_TOKENS", 100),
 
 		// Auth
-		AuthType:    getEnvString("AUTH_TYPE", "jwt"),
-		JWKSURL:     getEnvString("JWKS_URL", ""),
-		JWTIssuer:   getEnvString("JWT_ISSUER", ""),
-		JWTAudience: getEnvString("JWT_AUDIENCE", ""),
-		SSOHost:     getEnvString("SSO_HOST", ""),
-		IngestAPIKey: getEnvString("INGEST_API_KEY", ""),
+		AuthType: getEnvString("AUTH_TYPE", "jwt"),
+		SSOHost:  getEnvString("SSO_HOST", ""),
 
 		// Search defaults
 		SearchTopN:              getEnvInt("SEARCH_TOP_N", 5),
@@ -112,6 +105,12 @@ func LoadConfig() *Config {
 		RateLimitEnabled: getEnvBool("RATE_LIMIT_ENABLED", false),
 		RateLimitRPS:     getEnvInt("RATE_LIMIT_RPS", 50),
 	}
+
+	if cfg.AuthType == "jwt" && cfg.SSOHost == "" {
+		return nil, errors.New("SSO_HOST must be set when AUTH_TYPE=jwt")
+	}
+
+	return cfg, nil
 }
 
 func getEnvString(key, defaultValue string) string {

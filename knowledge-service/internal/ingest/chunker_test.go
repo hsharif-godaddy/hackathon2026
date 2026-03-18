@@ -141,7 +141,7 @@ func TestSha256Hex(t *testing.T) {
 	}
 
 	// Deterministic
-	if sha256Hex("hello") != sha256Hex("hello") {
+	if sha256Hex("hello") != hash {
 		t.Error("expected deterministic hash")
 	}
 

@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"time"
 
+	goauth "github.com/gdcorp-partners/airo-app-builder/packages/go-auth"
 	"github.com/gorilla/mux"
 
 	"github.com/airo-ai-builder/image-search-service/internal/analysis"
-	"github.com/airo-ai-builder/image-search-service/internal/auth"
 	"github.com/airo-ai-builder/image-search-service/internal/config"
 	"github.com/airo-ai-builder/image-search-service/internal/embeddings"
 	"github.com/airo-ai-builder/image-search-service/internal/getty"
@@ -38,7 +38,7 @@ type Server struct {
 	orchestrator *search.Orchestrator
 
 	// Auth
-	authMiddleware *auth.Middleware
+	authMiddleware *goauth.Middleware
 }
 
 // NewServer creates a new HTTP API server with the provided configuration.
@@ -49,8 +49,8 @@ func NewServer(cfg *config.Config, version string) *Server {
 		version: version,
 	}
 
-	// Initialize auth middleware with dual auth support (airo-app + JOMAX)
-	s.authMiddleware = auth.NewMiddleware(cfg.AuthType, cfg.JWKSURL, "airo-app", "agents-service", cfg.SSOHost)
+	// Initialize auth middleware
+	s.authMiddleware = goauth.NewMiddleware(cfg.AuthType, cfg.SSOHost)
 
 	// Apply logging middleware to all routes
 	s.router.Use(loggingMiddleware)

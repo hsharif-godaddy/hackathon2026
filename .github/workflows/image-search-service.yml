@@ -6,10 +6,12 @@ on:
       - main
     paths:
       - "image-search-service/**"
+      - "packages/go-auth/**"
       - ".github/workflows/image-search-service.yml"
   pull_request:
     paths:
       - "image-search-service/**"
+      - "packages/go-auth/**"
       - ".github/workflows/image-search-service.yml"
 
 jobs:
@@ -19,9 +21,31 @@ jobs:
       labels:
         - airo-cicd-runners
         - self-hosted
+    env:
+      GOPRIVATE: github.com/gdcorp-golang/*
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+
+      - name: Assume CI/CD AWS role
+        run: |
+          export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
+            $(aws sts assume-role \
+              --role-arn arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy \
+              --role-session-name GHASession \
+              --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
+              --output text))
+          echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
+          echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> $GITHUB_ENV
+
+      - name: Get GHEC-SA token for gdcorp-golang/auth
+        uses: gdcorp-actions/get-ghec-sa-tokens@e1012cc92874c6363b29ed6930b7b48badd66440
+        with:
+          repositories: gdcorp-golang/auth
+
+      - name: Configure Git for private modules
+        run: git config --global url."https://x-access-token:${{ env.GHECSA_GDCORP_GOLANG_AUTH }}@github.com/gdcorp-golang/".insteadOf "https://github.com/gdcorp-golang/"
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -55,9 +79,31 @@ jobs:
       labels:
         - airo-cicd-runners
         - self-hosted
+    env:
+      GOPRIVATE: github.com/gdcorp-golang/*
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+
+      - name: Assume CI/CD AWS role
+        run: |
+          export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
+            $(aws sts assume-role \
+              --role-arn arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy \
+              --role-session-name GHASession \
+              --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
+              --output text))
+          echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
+          echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> $GITHUB_ENV
+
+      - name: Get GHEC-SA token for gdcorp-golang/auth
+        uses: gdcorp-actions/get-ghec-sa-tokens@e1012cc92874c6363b29ed6930b7b48badd66440
+        with:
+          repositories: gdcorp-golang/auth
+
+      - name: Configure Git for private modules
+        run: git config --global url."https://x-access-token:${{ env.GHECSA_GDCORP_GOLANG_AUTH }}@github.com/gdcorp-golang/".insteadOf "https://github.com/gdcorp-golang/"
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -77,6 +123,10 @@ jobs:
         working-directory: image-search-service
         run: go test -v -race ./...
 
+      - name: Run go-auth package tests
+        working-directory: packages/go-auth
+        run: go test -v -race ./...
+
   build:
     name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on:
@@ -84,6 +134,8 @@ jobs:
         - airo-cicd-runners
         - self-hosted
     needs: [lint, test]
+    env:
+      GOPRIVATE: github.com/gdcorp-golang/*
     strategy:
       matrix:
         goos: [linux]
@@ -91,6 +143,26 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+
+      - name: Assume CI/CD AWS role
+        run: |
+          export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
+            $(aws sts assume-role \
+              --role-arn arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy \
+              --role-session-name GHASession \
+              --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
+              --output text))
+          echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
+          echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> $GITHUB_ENV
+
+      - name: Get GHEC-SA token for gdcorp-golang/auth
+        uses: gdcorp-actions/get-ghec-sa-tokens@e1012cc92874c6363b29ed6930b7b48badd66440
+        with:
+          repositories: gdcorp-golang/auth
+
+      - name: Configure Git for private modules
+        run: git config --global url."https://x-access-token:${{ env.GHECSA_GDCORP_GOLANG_AUTH }}@github.com/gdcorp-golang/".insteadOf "https://github.com/gdcorp-golang/"
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -110,9 +182,3 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           go build -ldflags="-w -s" -o dist/image-search-service ./cmd/server
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: image-search-service-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: image-search-service/dist/

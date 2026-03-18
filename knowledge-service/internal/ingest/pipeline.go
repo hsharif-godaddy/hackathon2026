@@ -15,19 +15,19 @@ import (
 
 // Pipeline orchestrates the full document ingestion flow.
 type Pipeline struct {
-	embeddings  *embeddings.Client
-	contextual  *ContextualRetriever
-	qdrant      *qdrantStorage.Client
-	cfg         *config.Config
+	embeddings *embeddings.Client
+	contextual *ContextualRetriever
+	qdrant     *qdrantStorage.Client
+	cfg        *config.Config
 }
 
 // NewPipeline creates a new ingestion pipeline.
 func NewPipeline(cfg *config.Config, emb *embeddings.Client, llmClient *llm.Client, qd *qdrantStorage.Client) *Pipeline {
 	return &Pipeline{
-		embeddings:  emb,
-		contextual:  NewContextualRetriever(llmClient),
-		qdrant:      qd,
-		cfg:         cfg,
+		embeddings: emb,
+		contextual: NewContextualRetriever(llmClient),
+		qdrant:     qd,
+		cfg:        cfg,
 	}
 }
 
@@ -108,25 +108,7 @@ func (p *Pipeline) IngestDocument(ctx context.Context, doc models.IngestDocument
 	}
 
 	// 7. Stale cleanup — delete points not in new chunk set
-	newHashes := make(map[string]bool)
-	for _, chunk := range chunks {
-		newHashes[chunk.ContentHash] = true
-	}
-
-	var staleIDs []string
-	for pointID, contentHash := range existingPoints {
-		if !newHashes[contentHash] {
-			staleIDs = append(staleIDs, pointID)
-		}
-	}
-
-	if len(staleIDs) > 0 {
-		if err := p.qdrant.DeletePoints(ctx, staleIDs); err != nil {
-			slog.Warn("ingest.cleanup.failed", "docName", doc.Name, "error", err)
-		} else {
-			result.ChunksDeleted = len(staleIDs)
-		}
-	}
+	result.ChunksDeleted = p.cleanupStalePoints(ctx, doc.Name, chunks, existingPoints)
 
 	slog.Info("ingest.document.complete",
 		"docName", doc.Name,
@@ -151,7 +133,7 @@ func (p *Pipeline) IngestDocuments(ctx context.Context, docs []models.IngestDocu
 		if err != nil {
 			resp.Results = append(resp.Results, models.IngestResult{
 				DocName: doc.Name,
-				Status:  fmt.Sprintf("error: %s", err.Error()),
+				Status:  "error: " + err.Error(),
 			})
 			continue
 		}
@@ -160,4 +142,31 @@ func (p *Pipeline) IngestDocuments(ctx context.Context, docs []models.IngestDocu
 
 	resp.TotalDurationMs = time.Since(start).Milliseconds()
 	return resp, nil
+}
+
+// cleanupStalePoints deletes points whose content hashes are no longer present in the
+// new chunk set. Returns the number of points deleted.
+func (p *Pipeline) cleanupStalePoints(ctx context.Context, docName string, chunks []*models.Chunk, existingPoints map[string]string) int {
+	newHashes := make(map[string]bool, len(chunks))
+	for _, chunk := range chunks {
+		newHashes[chunk.ContentHash] = true
+	}
+
+	var staleIDs []string
+	for pointID, contentHash := range existingPoints {
+		if !newHashes[contentHash] {
+			staleIDs = append(staleIDs, pointID)
+		}
+	}
+
+	if len(staleIDs) == 0 {
+		return 0
+	}
+
+	if err := p.qdrant.DeletePoints(ctx, staleIDs); err != nil {
+		slog.Warn("ingest.cleanup.failed", "docName", docName, "error", err)
+		return 0
+	}
+
+	return len(staleIDs)
 }

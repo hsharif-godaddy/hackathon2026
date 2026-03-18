@@ -30,17 +30,16 @@ func (s *Server) setupRoutes() {
 	api := s.router.PathPrefix("/api/v1").Subrouter()
 
 	// Public routes (no auth)
-	api.HandleFunc("/health", s.handleHealth).Methods("GET")
-	api.HandleFunc("/stats", s.handleStats).Methods("GET")
+	api.HandleFunc("/health", s.handleHealth).Methods(http.MethodGet)
+	api.HandleFunc("/stats", s.handleStats).Methods(http.MethodGet)
 
 	// JWT-protected routes (search)
 	searchRoutes := api.PathPrefix("").Subrouter()
 	searchRoutes.Use(s.authMiddleware.Authenticate)
-	searchRoutes.HandleFunc("/search", s.handleSearch).Methods("POST")
+	searchRoutes.HandleFunc("/search", s.handleSearch).Methods(http.MethodPost)
 
-	// API-key-protected routes (ingest)
-	// TODO: Replace API key auth with GoDaddy IAM JWT auth using an IAM role allowlist.
+	// JWT-protected routes (ingest) — requires an AWS IAM token (service-to-service only)
 	ingestRoutes := api.PathPrefix("").Subrouter()
-	ingestRoutes.Use(s.authMiddleware.AuthenticateAPIKey(s.config.IngestAPIKey))
-	ingestRoutes.HandleFunc("/ingest", s.handleIngest).Methods("POST")
+	ingestRoutes.Use(s.authMiddleware.AuthenticateWithKind("awsiam"))
+	ingestRoutes.HandleFunc("/ingest", s.handleIngest).Methods(http.MethodPost)
 }

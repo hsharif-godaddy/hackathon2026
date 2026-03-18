@@ -92,6 +92,10 @@ linters:
       # The maximal average package complexity.
       package-average: 10.0
 
+    gomoddirectives:
+      # Allow local replace for shared go-auth module (monorepo pattern)
+      replace-local: true
+
     depguard:
       rules:
         "deprecated":

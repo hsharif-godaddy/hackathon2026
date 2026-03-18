@@ -49,4 +49,10 @@ Thumbs.db
 tmp/
 temp/
 .gocache/
-server
+/server
+
+# Test files and keys (local only)
+.test-keys/
+get-iam-token.py
+TESTING-IAM-JWT.md
+QUICKSTART.md

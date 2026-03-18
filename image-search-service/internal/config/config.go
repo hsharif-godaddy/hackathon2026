@@ -67,7 +67,6 @@ type Config struct {
 
 	// Auth
 	AuthType string
-	JWKSURL  string
 }
 
 // LoadConfig loads configuration from environment variables, applying sensible defaults
@@ -131,7 +130,6 @@ func LoadConfig() *Config {
 
 		// Auth
 		AuthType: getEnvString("AUTH_TYPE", "jwt"),
-		JWKSURL:  getEnvString("JWKS_URL", "https://airo-builder.test-godaddy.com/.well-known/jwks.json"),
 	}
 }
 

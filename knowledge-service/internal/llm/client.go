@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/openai/openai-go/v3"
@@ -55,7 +56,7 @@ func (c *Client) GenerateContext(ctx context.Context, docName, chunkContent stri
 	}
 
 	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("empty LLM response")
+		return "", errors.New("empty LLM response")
 	}
 
 	return resp.Choices[0].Message.Content, nil

@@ -58,7 +58,7 @@ func (s *Searcher) Search(ctx context.Context, req models.SearchRequest) (*model
 	results, err := s.qdrant.HybridSearch(ctx, qdrantStorage.HybridSearchParams{
 		DenseVector:    denseVector,
 		SparseVector:   sparseVector,
-		Limit:          uint64(topN),
+		Limit:          uint64(topN), //nolint:gosec // G115: topN is bounds-checked above (1..50)
 		DocNamesFilter: req.Filters.DocNames,
 		TagsFilter:     req.Filters.Tags,
 	})

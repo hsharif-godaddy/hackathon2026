@@ -3,7 +3,7 @@ package ingest
 import (
 	"context"
 	"crypto/sha256"
-	"fmt"
+	"encoding/hex"
 	"log/slog"
 
 	"github.com/airo-ai-builder/knowledge-service/internal/llm"
@@ -39,7 +39,7 @@ func (cr *ContextualRetriever) EnrichChunk(ctx context.Context, chunk *models.Ch
 
 	chunk.ContextualContent = prefix + "\n" + chunk.Content
 	h := sha256.Sum256([]byte(chunk.ContextualContent))
-	chunk.ContextualHash = fmt.Sprintf("%x", h)
+	chunk.ContextualHash = hex.EncodeToString(h[:])
 
 	return true, nil
 }

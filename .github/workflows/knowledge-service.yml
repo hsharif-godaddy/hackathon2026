@@ -1,0 +1,184 @@
+name: knowledge-service CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "knowledge-service/**"
+      - "packages/go-auth/**"
+      - ".github/workflows/knowledge-service.yml"
+  pull_request:
+    paths:
+      - "knowledge-service/**"
+      - "packages/go-auth/**"
+      - ".github/workflows/knowledge-service.yml"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    env:
+      GOPRIVATE: github.com/gdcorp-golang/*
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Assume CI/CD AWS role
+        run: |
+          export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
+            $(aws sts assume-role \
+              --role-arn arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy \
+              --role-session-name GHASession \
+              --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
+              --output text))
+          echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
+          echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> $GITHUB_ENV
+
+      - name: Get GHEC-SA token for gdcorp-golang/auth
+        uses: gdcorp-actions/get-ghec-sa-tokens@e1012cc92874c6363b29ed6930b7b48badd66440
+        with:
+          repositories: gdcorp-golang/auth
+
+      - name: Configure Git for private modules
+        run: git config --global url."https://x-access-token:${{ env.GHECSA_GDCORP_GOLANG_AUTH }}@github.com/gdcorp-golang/".insteadOf "https://github.com/gdcorp-golang/"
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache-dependency-path: knowledge-service/go.sum
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.8.0
+          working-directory: knowledge-service
+          args: --timeout=5m
+
+      - name: Run go vet
+        working-directory: knowledge-service
+        run: go vet ./...
+
+      - name: Run go fmt check
+        working-directory: knowledge-service
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "The following files are not properly formatted:"
+            gofmt -s -l .
+            exit 1
+          fi
+
+  test:
+    name: Test
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    env:
+      GOPRIVATE: github.com/gdcorp-golang/*
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Assume CI/CD AWS role
+        run: |
+          export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
+            $(aws sts assume-role \
+              --role-arn arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy \
+              --role-session-name GHASession \
+              --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
+              --output text))
+          echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
+          echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> $GITHUB_ENV
+
+      - name: Get GHEC-SA token for gdcorp-golang/auth
+        uses: gdcorp-actions/get-ghec-sa-tokens@e1012cc92874c6363b29ed6930b7b48badd66440
+        with:
+          repositories: gdcorp-golang/auth
+
+      - name: Configure Git for private modules
+        run: git config --global url."https://x-access-token:${{ env.GHECSA_GDCORP_GOLANG_AUTH }}@github.com/gdcorp-golang/".insteadOf "https://github.com/gdcorp-golang/"
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache-dependency-path: knowledge-service/go.sum
+
+      - name: Download dependencies
+        working-directory: knowledge-service
+        run: go mod download
+
+      - name: Verify dependencies
+        working-directory: knowledge-service
+        run: go mod verify
+
+      - name: Run tests
+        working-directory: knowledge-service
+        run: go test -v -race ./...
+
+      - name: Run go-auth package tests
+        working-directory: packages/go-auth
+        run: go test -v -race ./...
+
+  build:
+    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    needs: [lint, test]
+    env:
+      GOPRIVATE: github.com/gdcorp-golang/*
+    strategy:
+      matrix:
+        goos: [linux]
+        goarch: [amd64, arm64]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Assume CI/CD AWS role
+        run: |
+          export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
+            $(aws sts assume-role \
+              --role-arn arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy \
+              --role-session-name GHASession \
+              --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
+              --output text))
+          echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
+          echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> $GITHUB_ENV
+
+      - name: Get GHEC-SA token for gdcorp-golang/auth
+        uses: gdcorp-actions/get-ghec-sa-tokens@e1012cc92874c6363b29ed6930b7b48badd66440
+        with:
+          repositories: gdcorp-golang/auth
+
+      - name: Configure Git for private modules
+        run: git config --global url."https://x-access-token:${{ env.GHECSA_GDCORP_GOLANG_AUTH }}@github.com/gdcorp-golang/".insteadOf "https://github.com/gdcorp-golang/"
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache-dependency-path: knowledge-service/go.sum
+
+      - name: Download dependencies
+        working-directory: knowledge-service
+        run: go mod download
+
+      - name: Build binary
+        working-directory: knowledge-service
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          go build -ldflags="-w -s" -o dist/knowledge-service ./cmd/server

@@ -1,0 +1,218 @@
+name: Knowledge Service - Ingest Documentation
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - "TEST"
+          - "PROD"
+        default: "TEST"
+      documents:
+        description: "Comma-separated document IDs or empty to ingest all"
+        required: false
+        type: string
+        default: ""
+  workflow_call:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: string
+      documents:
+        description: "Comma-separated document IDs or empty to ingest all"
+        required: false
+        type: string
+        default: ""
+
+run-name: "Ingest ${{ inputs.documents || 'all documents' }} to ${{ inputs.environment }}"
+
+jobs:
+  ingest-documents:
+    name: Ingest Documents to Knowledge Service
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Get Artifactory Token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@f748a0599171a192a2668afee8d0497f7c1069df # v4.5.6
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+
+      - name: Setup Artifactory Creds
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "ARTIFACTORY_TOKEN=${OIDC_TOKEN}" >> $GITHUB_ENV
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Configure pip for Artifactory
+        run: |
+          mkdir -p ~/.pip
+          cat > ~/.pip/pip.conf << EOF
+          [global]
+          index-url = https://artifactory:${ARTIFACTORY_TOKEN}@gdartifactory1.jfrog.io/artifactory/api/pypi/python-virt/simple
+          trusted-host = gdartifactory1.jfrog.io
+          EOF
+
+      - name: Install gd-auth
+        run: pip3 install gd-auth
+
+      - name: Generate IAM JWT and ingest documents
+        env:
+          AWS_REGION: us-west-2
+          ENVIRONMENT: ${{ inputs.environment }}
+          DOCUMENTS: ${{ inputs.documents }}
+        run: |
+          echo "Starting knowledge service document ingestion..."
+          echo "Environment: $ENVIRONMENT"
+
+          # Determine AWS account ID, IAM role, and API URL based on environment
+          if [ "$ENVIRONMENT" = "PROD" ]; then
+            AWS_ACCOUNT_ID="644094189644"
+            IAM_ROLE="GD-AWS-USA-GD-AiroBuilde-Prod-Deploy"
+            API_URL="https://knowledge.api.int.godaddy.com"
+            SSO_HOST="sso.godaddy.com"
+            echo "Using PROD environment"
+          else
+            AWS_ACCOUNT_ID="694282668781"
+            IAM_ROLE="GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy"
+            API_URL="https://knowledge.api.int.test-godaddy.com"
+            SSO_HOST="sso.test-godaddy.com"
+            echo "Using TEST environment"
+          fi
+
+          # Assume IAM role
+          export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" $(aws sts assume-role \
+            --role-arn arn:aws:iam::${AWS_ACCOUNT_ID}:role/${IAM_ROLE} \
+            --role-session-name knowledge-ingest-${GITHUB_RUN_ID} \
+            --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" --output text))
+
+          # Generate IAM JWT using gd-auth
+          echo "Generating IAM JWT token..."
+          cat > generate_iam_token.py << 'PYTHON_EOF'
+          from gd_auth.client import AwsIamAuthTokenClient
+          import os
+
+          sso_host = os.environ.get('SSO_HOST', 'sso.test-godaddy.com')
+          client = AwsIamAuthTokenClient(
+              sso_host,
+              refresh_min=45,
+              primary_region='us-west-2',
+              secondary_region='us-west-2'
+          )
+          print(client.token)
+          PYTHON_EOF
+
+          IAM_TOKEN=$(SSO_HOST=$SSO_HOST python3 generate_iam_token.py 2>/dev/null)
+          echo "::add-mask::$IAM_TOKEN"
+          echo "✅ IAM JWT token generated successfully"
+
+          # Ingest documents
+          INGEST_COUNT=0
+          FAILED_COUNT=0
+
+          # Build document list
+          if [ -n "$DOCUMENTS" ]; then
+            echo "Ingesting specific documents: $DOCUMENTS"
+            IFS=',' read -ra DOC_ARRAY <<< "$DOCUMENTS"
+            DOCS_TO_INGEST=("${DOC_ARRAY[@]}")
+          else
+            echo "Ingesting all markdown files from knowledge-base/"
+            DOCS_TO_INGEST=(knowledge-base/*.md)
+          fi
+
+          # Ingest each document
+          for doc in "${DOCS_TO_INGEST[@]}"; do
+            if [ -n "$DOCUMENTS" ]; then
+              # Specific document ID provided
+              doc_file="knowledge-base/${doc}"
+            else
+              # Full path from glob
+              doc_file="$doc"
+            fi
+
+            if [ ! -f "$doc_file" ]; then
+              echo "⚠️  Document not found: $doc_file"
+              FAILED_COUNT=$((FAILED_COUNT + 1))
+              continue
+            fi
+
+            doc_id=$(basename "$doc_file" .md)
+            echo ""
+            echo "=================================================="
+            echo "Ingesting: $doc_id"
+            echo "=================================================="
+
+            # Read document content
+            doc_content=$(cat "$doc_file")
+
+            # Create JSON payload
+            payload=$(jq -n \
+              --arg id "$doc_id" \
+              --arg content "$doc_content" \
+              '{documents: [{id: $id, content: $content, metadata: {source: "github-actions", filename: $id}}]}')
+
+            # Ingest via API
+            response=$(curl -s -w "\n%{http_code}" \
+              -X POST \
+              "${API_URL}/api/v1/ingest" \
+              -H "Authorization: Bearer ${IAM_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$payload")
+
+            http_code=$(echo "$response" | tail -n 1)
+            response_body=$(echo "$response" | head -n -1)
+
+            echo "Response status: $http_code"
+            echo "Response body: $response_body"
+
+            if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+              echo "✅ Successfully ingested: $doc_id"
+              INGEST_COUNT=$((INGEST_COUNT + 1))
+            else
+              echo "❌ Failed to ingest: $doc_id (HTTP $http_code)"
+              FAILED_COUNT=$((FAILED_COUNT + 1))
+            fi
+          done
+
+          echo ""
+          echo "=================================================="
+          echo "Ingestion Summary"
+          echo "=================================================="
+          echo "Environment: $ENVIRONMENT"
+          echo "API URL: $API_URL"
+          echo "Successfully ingested: $INGEST_COUNT document(s)"
+          echo "Failed ingestions: $FAILED_COUNT document(s)"
+
+          if [ $FAILED_COUNT -gt 0 ]; then
+            echo ""
+            echo "⚠️  Some ingestions failed. Please check the logs above."
+            exit 1
+          fi
+
+          if [ $INGEST_COUNT -eq 0 ]; then
+            echo ""
+            echo "⚠️  No documents were ingested. Check if files exist in knowledge-base directory."
+            exit 1
+          else
+            echo ""
+            echo "✅ All documents ingested successfully!"
+          fi

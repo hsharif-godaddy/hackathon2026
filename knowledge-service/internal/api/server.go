@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
+	goauth "github.com/gdcorp-partners/airo-app-builder/packages/go-auth"
 	"github.com/gorilla/mux"
 
-	"github.com/airo-ai-builder/knowledge-service/internal/auth"
 	"github.com/airo-ai-builder/knowledge-service/internal/config"
 	"github.com/airo-ai-builder/knowledge-service/internal/embeddings"
 	"github.com/airo-ai-builder/knowledge-service/internal/ingest"
@@ -29,7 +30,7 @@ type Server struct {
 	llmClient      *llm.Client
 	searcher       *search.Searcher
 	pipeline       *ingest.Pipeline
-	authMiddleware *auth.Middleware
+	authMiddleware *goauth.Middleware
 	rateLimiter    *ratelimit.Limiter
 }
 
@@ -69,13 +70,7 @@ func (s *Server) Initialize(ctx context.Context) error {
 	s.pipeline = ingest.NewPipeline(s.config, s.embeddings, s.llmClient, s.qdrant)
 
 	// Auth middleware
-	s.authMiddleware = auth.NewMiddleware(
-		s.config.AuthType,
-		s.config.JWKSURL,
-		s.config.JWTIssuer,
-		s.config.JWTAudience,
-		s.config.SSOHost,
-	)
+	s.authMiddleware = goauth.NewMiddleware(s.config.AuthType, s.config.SSOHost)
 
 	// Rate limiter
 	if s.config.RateLimitEnabled {
@@ -91,7 +86,7 @@ func (s *Server) Initialize(ctx context.Context) error {
 
 // Start begins serving HTTP requests.
 func (s *Server) Start() error {
-	addr := fmt.Sprintf(":%d", s.config.Port)
+	addr := ":" + strconv.Itoa(s.config.Port)
 	s.httpServer = &http.Server{
 		Addr:         addr,
 		Handler:      s.router,
