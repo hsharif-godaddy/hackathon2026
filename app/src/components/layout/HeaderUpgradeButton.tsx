@@ -1,5 +1,5 @@
 'use client';
-
+import clsx from 'clsx';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import Button from '@ux/button';
@@ -13,7 +13,7 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
-import { canUpgradePlan, PAYWALL_ITC } from '@/lib/paywall/shared';
+import { canUpgradePlan, isPaidPlanForGrants, PAYWALL_ITC } from '@/lib/paywall/shared';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { getPlanFromSubscription } from '@/utils/credits';
@@ -53,12 +53,19 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
     });
   };
 
-  // When grants feature is enabled, use new paid-plan benefit text
-  const benefits = [
-    t('builder_upgrade_benefit_code'),
-    isGrantsEnabled ? t('builder_upgrade_benefit_credits') : t('builder_upgrade_benefit_payments'),
-    t('builder_upgrade_benefit_publish'),
-  ];
+  const isOnPaidPlan = isPaidPlanForGrants(currentPlan, !!isGrantsEnabled);
+
+  const benefits = isOnPaidPlan
+    ? [
+        t('builder_upgrade_benefit_code'),
+        t('builder_upgrade_paid_plan_benefit_apps'),
+        t('builder_upgrade_paid_plan_benefit_credits'),
+      ]
+    : [
+        t('builder_upgrade_benefit_code'),
+        isGrantsEnabled ? t('builder_upgrade_benefit_credits') : t('builder_upgrade_benefit_payments'),
+        t('builder_upgrade_benefit_publish'),
+      ];
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -76,11 +83,19 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
       </PopoverTrigger>
       <PopoverContent
         align='end'
-        className='w-[300px] p-3'
+        className={clsx(
+          'p-3',
+          isOnPaidPlan ? 'w-[375px]' : 'w-[300px]'
+        )}
       >
         <div className='flex flex-col'>
           <text.h4 as='title' className='mb-1'>
-            { isGrantsEnabled ?  t('builder_upgrade_plans_popover_title') : t('builder_upgrade_popover_title') }
+            { isOnPaidPlan
+              ? t('builder_upgrade_paid_plan_title')
+              : isGrantsEnabled
+                ? t('builder_upgrade_plans_popover_title')
+                : t('builder_upgrade_popover_title')
+            }
           </text.h4>
           <ul className='flex flex-col gap-1 mb-3'>
             {benefits.map((benefit, index) => (
