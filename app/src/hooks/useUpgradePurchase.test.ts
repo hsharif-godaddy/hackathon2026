@@ -42,7 +42,7 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
 
       const { result } = renderHookWithProviders(() => useUpgradePurchase());
 
-      let pollResult: { planAfterPurchase: string | undefined; updated: boolean } | undefined;
+      let pollResult: { planAfterPurchase: string | undefined; updated: boolean; grantUpdated: boolean } | undefined;
 
       await act(async () => {
         pollResult = await result.current.handlePurchaseSuccess(
@@ -51,7 +51,9 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
           undefined,
           true,
           'test-source',
-          'test-product'
+          'test-product',
+          undefined,
+          undefined
         );
       });
 
@@ -64,7 +66,7 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
 
       const { result } = renderHookWithProviders(() => useUpgradePurchase());
 
-      let pollResult: { planAfterPurchase: string | undefined; updated: boolean } | undefined;
+      let pollResult: { planAfterPurchase: string | undefined; updated: boolean; grantUpdated: boolean } | undefined;
 
       await act(async () => {
         pollResult = await result.current.handlePurchaseSuccess(
@@ -73,7 +75,9 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
           undefined,
           false,
           'test-source',
-          'test-product'
+          'test-product',
+          undefined,
+          undefined
         );
       });
 
@@ -86,7 +90,7 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
 
       const { result } = renderHookWithProviders(() => useUpgradePurchase());
 
-      let pollResult: { planAfterPurchase: string | undefined; updated: boolean } | undefined;
+      let pollResult: { planAfterPurchase: string | undefined; updated: boolean; grantUpdated: boolean } | undefined;
 
       await act(async () => {
         pollResult = await result.current.handlePurchaseSuccess(
@@ -95,7 +99,9 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
           undefined,
           true,
           'test-source',
-          'test-product'
+          'test-product',
+          undefined,
+          undefined
         );
       });
 
@@ -108,7 +114,7 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
 
       const { result } = renderHookWithProviders(() => useUpgradePurchase());
 
-      let pollResult: { planAfterPurchase: string | undefined; updated: boolean } | undefined;
+      let pollResult: { planAfterPurchase: string | undefined; updated: boolean; grantUpdated: boolean } | undefined;
 
       await act(async () => {
         pollResult = await result.current.handlePurchaseSuccess(
@@ -117,12 +123,15 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
           undefined,
           true,
           'test-source',
-          'test-product'
+          'test-product',
+          undefined,
+          undefined
         );
       });
 
       expect(pollResult?.updated).toBe(false);
       expect(pollResult?.planAfterPurchase).toBeUndefined();
+      expect(pollResult?.grantUpdated).toBe(false);
     });
 
     it('checks correct condition for upgrade without prior downgrade', async function upgradeConditionNoPriorDowngrade() {
@@ -142,7 +151,9 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
           undefined, // no prior downgrade
           true,
           'test-source',
-          'test-product'
+          'test-product',
+          undefined,
+          undefined
         );
       });
 
@@ -175,7 +186,9 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
           'starter', // prior downgrade to starter was scheduled
           true,
           'test-source',
-          'test-product'
+          'test-product',
+          undefined,
+          undefined
         );
       });
 
@@ -207,7 +220,9 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
           undefined,
           false, // downgrade
           'test-source',
-          'test-product'
+          'test-product',
+          undefined,
+          undefined
         );
       });
 
@@ -248,7 +263,9 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
           undefined,
           true,
           'test-source',
-          'test-product'
+          'test-product',
+          undefined,
+          undefined
         );
       });
 
@@ -263,6 +280,146 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
 
       await waitFor(() => {
         expect(result.current.isPolling).toBe(false);
+      });
+    });
+
+    it('polls for grant changes after successful upgrade when grant ID provided', async function grantPollingOnUpgrade() {
+      // First call for subscription, second call for grants
+      vi.mocked(waitForQueryUpdate)
+        .mockResolvedValueOnce(true) // subscription poll succeeds
+        .mockResolvedValueOnce(true); // grant poll succeeds
+
+      const { result } = renderHookWithProviders(() => useUpgradePurchase());
+
+      let pollResult: { planAfterPurchase: string | undefined; updated: boolean; grantUpdated: boolean } | undefined;
+
+      await act(async () => {
+        pollResult = await result.current.handlePurchaseSuccess(
+          'professional',
+          'ultimate',
+          undefined,
+          true,
+          'test-source',
+          'test-product',
+          'sub-123',
+          'initial-grant-id'
+        );
+      });
+
+      expect(pollResult?.updated).toBe(true);
+      expect(pollResult?.grantUpdated).toBe(true);
+      expect(logger.info).toHaveBeenCalledWith('plan.upgrade.grant-polling-start', {
+        subscriptionId: 'sub-123',
+        initialPlanMonthlyGrantId: 'initial-grant-id',
+      });
+    });
+
+    it('skips grant polling when subscription polling fails', async function noGrantPollingOnSubscriptionTimeout() {
+      vi.mocked(waitForQueryUpdate).mockResolvedValue(false); // subscription poll times out
+
+      const { result } = renderHookWithProviders(() => useUpgradePurchase());
+
+      let pollResult: { planAfterPurchase: string | undefined; updated: boolean; grantUpdated: boolean } | undefined;
+
+      await act(async () => {
+        pollResult = await result.current.handlePurchaseSuccess(
+          'professional',
+          'ultimate',
+          undefined,
+          true,
+          'test-source',
+          'test-product',
+          'sub-123',
+          'initial-grant-id'
+        );
+      });
+
+      expect(pollResult?.updated).toBe(false);
+      expect(pollResult?.grantUpdated).toBe(false);
+      // Should not have called grant polling since subscription polling failed
+      expect(logger.info).not.toHaveBeenCalledWith('plan.upgrade.grant-polling-start', expect.any(Object));
+    });
+
+    it('logs warning and skips grant polling when initial grant ID is undefined (cold cache)', async function coldCacheSkipsGrantPolling() {
+      vi.mocked(waitForQueryUpdate).mockResolvedValue(true); // subscription poll succeeds
+
+      const { result } = renderHookWithProviders(() => useUpgradePurchase());
+
+      let pollResult: { planAfterPurchase: string | undefined; updated: boolean; grantUpdated: boolean } | undefined;
+
+      await act(async () => {
+        pollResult = await result.current.handlePurchaseSuccess(
+          'professional',
+          'ultimate',
+          undefined,
+          true,
+          'test-source',
+          'test-product',
+          'sub-123',
+          undefined // initial grant ID is undefined (cold cache)
+        );
+      });
+
+      expect(pollResult?.updated).toBe(true);
+      expect(pollResult?.grantUpdated).toBe(false);
+      // Should log warning about skipped grant polling
+      expect(logger.warn).toHaveBeenCalledWith('plan.upgrade.grant-polling-skipped', {
+        subscriptionId: 'sub-123',
+        reason: 'initial_grant_not_found',
+      });
+      // Should not have attempted grant polling
+      expect(logger.info).not.toHaveBeenCalledWith('plan.upgrade.grant-polling-start', expect.any(Object));
+    });
+
+    it('skips grant polling for downgrades', async function noGrantPollingOnDowngrade() {
+      vi.mocked(waitForQueryUpdate).mockResolvedValue(true);
+
+      const { result } = renderHookWithProviders(() => useUpgradePurchase());
+
+      await act(async () => {
+        await result.current.handlePurchaseSuccess(
+          'ultimate',
+          'professional',
+          undefined,
+          false, // downgrade
+          'test-source',
+          'test-product',
+          'sub-123',
+          'initial-grant-id'
+        );
+      });
+
+      // Should not have called grant polling for downgrades
+      expect(logger.info).not.toHaveBeenCalledWith('plan.upgrade.grant-polling-start', expect.any(Object));
+    });
+
+    it('handles grant polling timeout', async function grantPollingTimeout() {
+      vi.mocked(waitForQueryUpdate)
+        .mockResolvedValueOnce(true) // subscription poll succeeds
+        .mockResolvedValueOnce(false); // grant poll times out
+
+      const { result } = renderHookWithProviders(() => useUpgradePurchase());
+
+      let pollResult: { planAfterPurchase: string | undefined; updated: boolean; grantUpdated: boolean } | undefined;
+
+      await act(async () => {
+        pollResult = await result.current.handlePurchaseSuccess(
+          'professional',
+          'ultimate',
+          undefined,
+          true,
+          'test-source',
+          'test-product',
+          'sub-123',
+          'initial-grant-id'
+        );
+      });
+
+      expect(pollResult?.updated).toBe(true);
+      expect(pollResult?.grantUpdated).toBe(false);
+      expect(logger.warn).toHaveBeenCalledWith('plan.upgrade.grant-polling-timeout', {
+        subscriptionId: 'sub-123',
+        initialPlanMonthlyGrantId: 'initial-grant-id',
       });
     });
   });

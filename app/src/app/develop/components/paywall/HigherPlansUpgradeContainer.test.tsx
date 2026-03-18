@@ -44,6 +44,7 @@ vi.mock('@/hooks/useSwitchboard', () => ({
 vi.mock('@/hooks/useSubscription', () => ({
   useSubscription: vi.fn(() => ({
     data: {
+      id: 'test-subscription-123',
       builderEntitlementId: 'test-entitlement-123',
       plan: SubscriptionPlan.Professional,
     },
@@ -51,6 +52,7 @@ vi.mock('@/hooks/useSubscription', () => ({
     isError: false,
   })),
 }));
+
 
 vi.mock('@/hooks/useUpgradePurchase', () => ({
   useUpgradePurchase: () => ({
@@ -152,16 +154,32 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
   beforeEach(function setup() {
     vi.clearAllMocks();
     vi.mocked(useSubscription).mockReturnValue({
-      data: { builderEntitlementId: 'test-entitlement-123', plan: SubscriptionPlan.Professional },
+      data: { id: 'test-subscription-123', builderEntitlementId: 'test-entitlement-123', plan: SubscriptionPlan.Professional },
       isLoading: false,
       isError: false,
     } as ReturnType<typeof useSubscription>);
-    mockHandlePurchaseSuccess.mockResolvedValue({ planAfterPurchase: 'ultimate', updated: true });
-    mockGetQueryData.mockReturnValue({
-      active: {
-        plan: 'professional',
-        downgradedPlan: undefined,
-      },
+    mockHandlePurchaseSuccess.mockResolvedValue({ planAfterPurchase: 'ultimate', updated: true, grantUpdated: true });
+    // Mock getQueryData to return different data based on query key
+    mockGetQueryData.mockImplementation((queryKey: unknown[]) => {
+      if (queryKey[0] === 'subscriptions') {
+        return {
+          active: {
+            plan: 'professional',
+            downgradedPlan: undefined,
+          },
+        };
+      }
+      if (queryKey[0] === 'credit-grants') {
+        return [
+          {
+            id: 'initial-plan-monthly-grant-id',
+            type: 'plan-monthly',
+            isAvailable: true,
+            subscriptionId: 'test-subscription-123',
+          },
+        ];
+      }
+      return undefined;
     });
   });
 
@@ -230,7 +248,9 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
       undefined,
       true, // isUpgrade
       'test-source',
-      expect.any(String)
+      expect.any(String),
+      'test-subscription-123', // subscriptionId for grant polling
+      'initial-plan-monthly-grant-id' // initialPlanMonthlyGrantId for grant polling
     );
   });
 
@@ -250,7 +270,9 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
       undefined,
       false, // isUpgrade = false for downgrade
       'test-source',
-      expect.any(String)
+      expect.any(String),
+      undefined, // no subscriptionId for downgrades (no grant polling)
+      undefined // no initialPlanMonthlyGrantId for downgrades
     );
   });
 
@@ -397,12 +419,62 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
     expect(screen.getByTestId('override-itc')).toHaveTextContent('');
   });
 
+  it('passes undefined for initialPlanMonthlyGrantId when grants cache is empty', async function coldCachePassesUndefined() {
+    mockGetQueryData.mockImplementation((queryKey: unknown[]) => {
+      if (queryKey[0] === 'subscriptions') {
+        return {
+          active: {
+            plan: 'professional',
+            downgradedPlan: undefined,
+          },
+        };
+      }
+      // credit-grants cache is empty/undefined
+      return undefined;
+    });
+
+    renderWithProviders(
+      <HigherPlansUpgradeContainer
+        onClose={mockOnClose}
+        source="test-source"
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('upgrade-button'));
+
+    expect(mockHandlePurchaseSuccess).toHaveBeenCalledWith(
+      'professional',
+      SubscriptionPlan.Ultimate,
+      undefined,
+      true,
+      'test-source',
+      expect.any(String),
+      'test-subscription-123',
+      undefined // initialPlanMonthlyGrantId should be undefined when cache is cold
+    );
+  });
+
   it('includes downgradedPlan from cached data when re-upgrading', async function includesDowngradedPlan() {
-    mockGetQueryData.mockReturnValue({
-      active: {
-        plan: 'professional',
-        downgradedPlan: 'starter', // user had previously scheduled downgrade to starter
-      },
+    mockGetQueryData.mockImplementation((queryKey: unknown[]) => {
+      if (queryKey[0] === 'subscriptions') {
+        return {
+          active: {
+            plan: 'professional',
+            downgradedPlan: 'starter', // user had previously scheduled downgrade to starter
+          },
+        };
+      }
+      if (queryKey[0] === 'credit-grants') {
+        return [
+          {
+            id: 'initial-plan-monthly-grant-id',
+            type: 'plan-monthly',
+            isAvailable: true,
+            subscriptionId: 'test-subscription-123',
+          },
+        ];
+      }
+      return undefined;
     });
 
     renderWithProviders(
@@ -420,7 +492,9 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
       'starter', // downgradedPlan passed
       true,
       'test-source',
-      expect.any(String)
+      expect.any(String),
+      'test-subscription-123', // subscriptionId for grant polling
+      'initial-plan-monthly-grant-id' // initialPlanMonthlyGrantId for grant polling
     );
   });
 });

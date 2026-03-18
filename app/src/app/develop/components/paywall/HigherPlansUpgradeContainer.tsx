@@ -12,7 +12,8 @@ import { useUpgradePurchase } from '@/hooks/useUpgradePurchase'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { AiroSubscription } from '@/lib/mgmt-airo/types';
 import { isPlanUpgrade } from '@/lib/paywall/shared'
-import { SubscriptionPlan } from '@/types/credits';
+import type { CreditGrant } from '@/types/credits';
+import { GrantType, SubscriptionPlan } from '@/types/credits';
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { ComponentLoader } from './cdsLoader'
 import { UPGRADE_DEPS, UPGRADE_PRODUCT_IDS } from './constants'
@@ -49,6 +50,7 @@ const HigherPlansUpgradeContainer = ({
     : UPGRADE_PRODUCT_IDS.AIRO_PLUS
 
   const entitlementId = isGrantsEnabled ? subscription?.builderEntitlementId : undefined
+  const subscriptionId = subscription?.id
 
   const handleSuccess = useCallback(({ planType }: { planType?: SubscriptionPlan }) => {
     const cachedData = queryClient.getQueryData<{ active?: AiroSubscription }>(['subscriptions'])
@@ -64,9 +66,28 @@ const HigherPlansUpgradeContainer = ({
     // - Downgrade: scheduled for term end, poll until downgradedAt/downgradedPlan are set
     const isUpgrade = isPlanUpgrade(planBeforePurchase, planAfterPurchase)
 
+    // Capture the current plan-monthly grant ID at the moment of purchase
+    let initialPlanMonthlyGrantId: string | undefined
+    if (isUpgrade && isGrantsEnabled && subscriptionId) {
+      const cachedGrants = queryClient.getQueryData<CreditGrant[]>(['credit-grants', subscriptionId, true])
+      const planMonthlyGrant = cachedGrants?.find(
+        (g) => g.type === GrantType.PlanMonthly && g.isAvailable
+      )
+      initialPlanMonthlyGrantId = planMonthlyGrant?.id
+    }
+
     // Fire and forget - don't await. The polling modal will show via useIsUpgradePolling()
     // and the mutation's onSettled will handle query invalidation.
-    handlePurchaseSuccess(planBeforePurchase, planAfterPurchase, downgradedPlan, isUpgrade, source, productId).then(({ planAfterPurchase: polledPlan, updated }) => {
+    handlePurchaseSuccess(
+      planBeforePurchase,
+      planAfterPurchase,
+      downgradedPlan,
+      isUpgrade,
+      source,
+      productId,
+      isUpgrade ? subscriptionId : undefined,
+      initialPlanMonthlyGrantId
+    ).then(({ planAfterPurchase: polledPlan, updated, grantUpdated }) => {
       const changeType = isUpgrade ? 'upgrade' : 'downgrade'
 
       if (updated && polledPlan) {
@@ -76,6 +97,7 @@ const HigherPlansUpgradeContainer = ({
           productId,
           fromPlan: planBeforePurchase,
           toPlan: polledPlan,
+          grantUpdated,
         })
       }
 
@@ -88,7 +110,7 @@ const HigherPlansUpgradeContainer = ({
         })
       }
     })
-  }, [source, productId, queryClient, handlePurchaseSuccess])
+  }, [source, productId, queryClient, handlePurchaseSuccess, subscriptionId, isGrantsEnabled])
 
   const handleError = useCallback((error: Error) => {
     shipAnalyticsLog('paywall.cds.load.error', {

@@ -3,6 +3,8 @@ import { useIsMutating, useMutation, useQueryClient } from '@tanstack/react-quer
 import { getErrorMessage } from '@/lib/errors'
 import { waitForQueryUpdate } from '@/lib/query-utils'
 import { logger } from '@/lib/request-context'
+import type { CreditGrant } from '@/types/credits'
+import { GrantType } from '@/types/credits'
 
 const PLAN_CHANGE_MUTATION_KEY = ['plan-change-polling'] as const
 
@@ -21,11 +23,14 @@ interface PlanChangeParams {
   isUpgrade: boolean
   source: string | undefined
   productId: string
+  subscriptionId: string | undefined
+  initialPlanMonthlyGrantId: string | undefined
 }
 
 interface PlanChangeResult {
   planAfterPurchase: string | undefined
   updated: boolean
+  grantUpdated: boolean
 }
 
 export function useIsUpgradePolling(): boolean {
@@ -39,7 +44,9 @@ interface UseUpgradePurchaseResult {
     downgradedPlan: string | undefined,
     isUpgrade: boolean,
     source: string | undefined,
-    productId: string
+    productId: string,
+    subscriptionId: string | undefined,
+    initialPlanMonthlyGrantId: string | undefined
   ) => Promise<PlanChangeResult>
   isPolling: boolean
 }
@@ -56,6 +63,8 @@ export function useUpgradePurchase(): UseUpgradePurchaseResult {
       isUpgrade,
       source,
       productId,
+      subscriptionId,
+      initialPlanMonthlyGrantId,
     }: PlanChangeParams): Promise<PlanChangeResult> => {
       const changeType = isUpgrade ? 'upgrade' : 'downgrade'
       logger.info(`plan.${changeType}.polling-start`, {
@@ -63,6 +72,7 @@ export function useUpgradePurchase(): UseUpgradePurchaseResult {
         planAfterPurchase,
         source,
         productId,
+        ...(isUpgrade && { subscriptionId, initialPlanMonthlyGrantId }),
       })
 
       const updated = await waitForQueryUpdate<SubscriptionData>(
@@ -99,7 +109,47 @@ export function useUpgradePurchase(): UseUpgradePurchaseResult {
         })
       }
 
-      return { planAfterPurchase: finalPlan, updated }
+      // For upgrades: poll for the new plan-monthly grant after subscription is updated
+      // A new grant is created on the backend when upgrading, so we wait for it to appear
+      let grantUpdated = false
+      if (isUpgrade && updated && subscriptionId) {
+        if (!initialPlanMonthlyGrantId) {
+          // Grant cache was cold or no plan-monthly grant found at purchase time
+          logger.warn('plan.upgrade.grant-polling-skipped', {
+            subscriptionId,
+            reason: 'initial_grant_not_found',
+          })
+        } else {
+          logger.info('plan.upgrade.grant-polling-start', {
+            subscriptionId,
+            initialPlanMonthlyGrantId,
+          })
+
+          grantUpdated = await waitForQueryUpdate<CreditGrant[]>(
+            queryClient,
+            ['credit-grants', subscriptionId, true],
+            (grants) => {
+              if (!grants || !Array.isArray(grants)) return false
+
+              const currentPlanMonthlyGrant = grants.find(
+                (g) => g.type === GrantType.PlanMonthly && g.isAvailable
+              )
+
+              return !!currentPlanMonthlyGrant && currentPlanMonthlyGrant.id !== initialPlanMonthlyGrantId
+            },
+            { maxAttempts: 15, intervalMs: 2000 }
+          )
+
+          if (!grantUpdated) {
+            logger.warn('plan.upgrade.grant-polling-timeout', {
+              subscriptionId,
+              initialPlanMonthlyGrantId,
+            })
+          }
+        }
+      }
+
+      return { planAfterPurchase: finalPlan, updated, grantUpdated }
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] })
@@ -124,7 +174,9 @@ export function useUpgradePurchase(): UseUpgradePurchaseResult {
     downgradedPlan: string | undefined,
     isUpgrade: boolean,
     source: string | undefined,
-    productId: string
+    productId: string,
+    subscriptionId: string | undefined,
+    initialPlanMonthlyGrantId: string | undefined
   ): Promise<PlanChangeResult> => {
     try {
       return await mutation.mutateAsync({
@@ -134,9 +186,11 @@ export function useUpgradePurchase(): UseUpgradePurchaseResult {
         isUpgrade,
         source,
         productId,
+        subscriptionId,
+        initialPlanMonthlyGrantId,
       })
     } catch {
-      return { planAfterPurchase: undefined, updated: false }
+      return { planAfterPurchase: undefined, updated: false, grantUpdated: false }
     }
   }
 
