@@ -7,7 +7,7 @@ import { renderWithProviders } from '@/tests/test-utils';
 import DomainPurchaseToolRenderer from '../DomainPurchaseToolRenderer';
 
 vi.mock('@/hooks/useTranslations', () => ({
-  useTranslations: () => (key: string) => key,
+  useTranslations: () => (key: string, _params: any, fallback: string) => fallback || key,
 }));
 
 vi.mock('@/app/develop/components/widgets/DomainPurchaseWidget', () => ({
@@ -47,7 +47,7 @@ describe('DomainPurchaseToolRenderer', () => {
       />
     );
 
-    expect(screen.getByTestId('tool-header')).toHaveTextContent('builder_tools_domain_purchase');
+    expect(screen.getByTestId('tool-header')).toHaveTextContent('Domain Purchase');
   });
 
   it('should not render widget when tool is still running', () => {
@@ -93,7 +93,7 @@ describe('DomainPurchaseToolRenderer', () => {
     );
 
     expect(screen.queryByTestId('domain-purchase-widget')).not.toBeInTheDocument();
-    expect(screen.getByText('builder_domain_purchase_title')).toBeInTheDocument();
+    expect(screen.getByText('Purchase a new domain')).toBeInTheDocument();
   });
 
   it('should extract brandName from input when widgetData is missing', () => {

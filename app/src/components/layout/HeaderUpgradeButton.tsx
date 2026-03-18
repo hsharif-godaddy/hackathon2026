@@ -1,4 +1,5 @@
 'use client';
+
 import clsx from 'clsx';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
@@ -69,17 +70,17 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          design='tertiary'
-          size='sm'
-          data-partial='componentAiro'
-          data-eid={generateClickEID('develop.header.upgrade')}
-          icon={<DiamondIcon className="!size-2.5" />}
-          text={t('builder_upgrade_button')}
-          aria-label={isBelowSmBreakpoint ? t('builder_upgrade_button') : undefined}
-          className="!rounded-lg !leading-none !pt-0 !pb-0 !pl-0.5 !pr-0.5 md:!px-1 md:!py-[6px]"
-        />
+      <PopoverTrigger
+        className={clsx(
+          'inline-flex items-center gap-1 text-sm font-medium rounded-md px-1 sm:px-2 text-intents-ux-boxHighContrast-foregroundColor active:bg-ai-light transition-all hover:cursor-pointer',
+          isBelowSmBreakpoint ? 'h-[39.33px]' : 'h-[37.56px]', // since we need a custom button matching the height of uxcore buttons
+          open ? 'bg-ai-light hover:bg-ring-ai' : 'hover:bg-ai-dark-transparent'
+        )}
+        data-eid={generateClickEID(`${location}.header.upgrade`)}
+        aria-label={isBelowSmBreakpoint ? t('builder_upgrade_button') : undefined}
+      >
+        <DiamondIcon className='size-2.5' />
+        {!isBelowSmBreakpoint && t('builder_upgrade_button')}
       </PopoverTrigger>
       <PopoverContent
         align='end'

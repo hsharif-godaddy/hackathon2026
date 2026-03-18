@@ -142,7 +142,7 @@ export default function UPPModal({
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-intents-ux-box-backgroundColor">
             <Spinner size="lg" />
             <text.p className="mt-2 text-intents-ux-text-secondary">
-              {t('builder_domain_purchase_loading')}
+              {t('builder_domain_purchase_loading', undefined, 'Loading purchase options...')}
             </text.p>
           </div>
         )}

@@ -309,9 +309,9 @@ export default function PublishStatusAlert() {
           <Alert
             emphasis='info'
             onClose={handleDismiss}
-            title={t('builder_publish_fixing_title')}
+            title={t('builder_publish_fixing_title', undefined, 'Airo is fixing the issue...')}
           >
-            {t('builder_publish_fixing_message')}
+            {t('builder_publish_fixing_message', undefined, 'Airo is analyzing and fixing the build failure. Follow the progress in the chat.')}
           </Alert>
         </div>
       );

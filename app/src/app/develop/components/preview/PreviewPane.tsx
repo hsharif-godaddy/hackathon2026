@@ -10,6 +10,7 @@ import Button from '@ux/button'
 import { getDevicePreset } from '@/app/develop/components/preview/devicePresets'
 import PreviewCode from '@/app/develop/components/preview/PreviewCode'
 import PreviewError from '@/app/develop/components/preview/PreviewError'
+import PreviewHeader from '@/app/develop/components/preview/PreviewHeader'
 import Tips from '@/app/develop/components/tips/Tips'
 import { PreviewViewMode, ViewMode } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
@@ -519,9 +520,9 @@ export default function PreviewPane({
   // Success state - show the preview
   if (previewUrl && serverState?.isReady) {
     return (
-      <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
+      <div className="h-full flex flex-col">
         {isViewingHistoricalCommit && !isPublishing && (
-          <div className="mb-2">
+          <div className="mx-1 my-1 md:mx-2 md:my-0">
             <Alert
               emphasis="info"
               actions={
@@ -541,9 +542,26 @@ export default function PreviewPane({
           </div>
         )}
 
-        <div className="inset-0 relative h-full">
-          <div className="flex flex-col items-center justify-center h-full bg-intents-ux-boxLowContrast-backgroundColor rounded-lg md:rounded-b-none">
-            <div className="flex flex-col h-full w-full bg-intents-ux-boxLowContrast-backgroundColor relative rounded-lg md:rounded-b-none">
+        <div className={clsx(
+          "inset-0 relative h-full", {
+            "p-2": !isMobile
+          }
+        )}>
+          <div className={clsx(
+            "flex flex-col items-center justify-center h-full bg-intents-ux-boxLowContrast-backgroundColor", {
+              "rounded-lg border": !isMobile
+            }
+          )}>
+            <div
+              className={clsx(
+                "flex flex-col h-full w-full bg-intents-ux-boxLowContrast-backgroundColor relative", {
+                  "rounded-lg p-1.5": !isMobile,
+                  "p-0": isMobile
+                }
+              )}
+            >
+              <PreviewHeader onPreviewRefresh={onPreviewRefresh} isMobile={isMobile} />
+
               {/* 3D Flip Card Container */}
               <div className="relative w-full h-full overflow-hidden" style={{ transformStyle: 'preserve-3d' }}>
                 <motion.div
@@ -556,7 +574,7 @@ export default function PreviewPane({
                 >
                   {/* Front Face - Preview (iframe) */}
                   <div
-                    className="absolute inset-0 w-full h-full flex items-center justify-center pb-1 md:pb-0 px-1 md:px-0"
+                    className="absolute inset-0 w-full h-full flex items-center justify-center pb-1 md:pb-0 px-2 md:px-0"
                     style={{
                       backfaceVisibility: 'hidden',
                       WebkitBackfaceVisibility: 'hidden'
@@ -566,6 +584,7 @@ export default function PreviewPane({
                       className={clsx(
                         "relative transition-all duration-300 ease-in-out", {
                           "w-full h-full": isFullSize || isMobile,
+                          "border shadow-lg": !isFullSize && !isMobile,
                           "my-auto": !isFullSize && !isMobile
                         }
                       )}
@@ -580,7 +599,7 @@ export default function PreviewPane({
                         id="preview-iframe"
                         data-testid="preview-iframe"
                         src={previewUrl}
-                        className="w-full h-full border rounded-lg md:rounded-b-none"
+                        className="w-full h-full border rounded-md"
                         onError={handleIframeError}
                         onLoad={handleIframeLoad}
                         sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"

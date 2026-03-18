@@ -39,8 +39,12 @@ export default function DomainToolRenderer({
   const isAttach = action === 'attach'
   const isSuccess = resultObj.success === true
   const icon = isAttach ? <LinkIcon className="w-2 h-2" /> : <CartIcon className="w-2 h-2" />
-  const displayName = isAttach ? t('builder_tools_domain_attach') : t('builder_tools_domain_purchase')
-  const summaryText = isAttach ? t('builder_domain_attach_title') : t('builder_domain_purchase_title')
+  const displayName = isAttach
+    ? t('builder_tools_domain_attach', undefined, 'Domain Attach')
+    : t('builder_tools_domain_purchase', undefined, 'Domain Purchase')
+  const summaryText = isAttach
+    ? t('builder_domain_attach_title', undefined, 'Connect a domain')
+    : t('builder_domain_purchase_title', undefined, 'Purchase a new domain')
 
   return (
     <div>

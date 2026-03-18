@@ -221,7 +221,7 @@ export default function DomainPurchaseWidget({
 
     // Show error alert in the modal
     setCheckoutError(
-      error.message || t('builder_domain_purchase_checkout_error')
+      error.message || t('builder_domain_purchase_checkout_error', undefined, 'Unable to complete purchase. Please try again.')
     );
   }
 
@@ -321,7 +321,7 @@ export default function DomainPurchaseWidget({
       {showCheckout && basketId && (
         <Modal
           onClose={handleBackFromCheckout}
-          title={t('builder_domain_purchase_checkout_title')}
+          title={t('builder_domain_purchase_checkout_title', undefined, 'Complete Your Purchase')}
           className="domain-purchase-checkout-modal"
         >
           <Box orientation="vertical" gap="md" className="p-4">
@@ -367,14 +367,14 @@ export default function DomainPurchaseWidget({
             design="inline"
             size="sm"
             icon={<ChevronLeftIcon />}
-            text={t('builder_domain_purchase_go_back')}
+            text={t('builder_domain_purchase_go_back', undefined, 'Go back')}
             onClick={handleGoBack}
           />
         )}
 
         {/* Header */}
         <text.strong size={0}>
-          {t('builder_domain_purchase_title')}
+          {t('builder_domain_purchase_title', undefined, 'Purchase a new domain')}
         </text.strong>
 
         {/* Search input and button - API runs only on Search click or Enter */}
@@ -390,7 +390,7 @@ export default function DomainPurchaseWidget({
             <TextInput
               id="domain-purchase-search"
               label={null}
-              placeholder={t('builder_domain_purchase_search_placeholder')}
+              placeholder={t('builder_domain_purchase_search_placeholder', undefined, 'Search for a domain')}
               value={searchInput}
               onChange={(value: string) => setSearchInput(value)}
               visualSize="sm"
@@ -400,7 +400,7 @@ export default function DomainPurchaseWidget({
               type="submit"
               design="primary"
               size="sm"
-              text={t('builder_domain_purchase_search_button')}
+              text={t('builder_domain_purchase_search_button', undefined, 'Search')}
               disabled={searchInput.trim().length < 2 || isSearching}
             />
           </form>
@@ -423,7 +423,7 @@ export default function DomainPurchaseWidget({
         {/* No Brand Name State */}
         {needsBrandName && (
           <text.p size={-1} className="text-intents-ux-text-secondary">
-            {t('builder_domain_purchase_no_brand')}
+            {t('builder_domain_purchase_no_brand', undefined, 'Unable to search for domains. Please name your project first.')}
           </text.p>
         )}
 
@@ -445,14 +445,14 @@ export default function DomainPurchaseWidget({
         {/* Search Error */}
         {searchError && (
           <text.p className="text-intents-ux-text-destructive">
-            {t('builder_domain_purchase_error_search')}
+            {t('builder_domain_purchase_error_search', undefined, 'Failed to search domains. Please try again.')}
           </text.p>
         )}
 
         {/* Empty State */}
         {isEmpty && (
           <text.p size={-1} className="text-intents-ux-text-secondary">
-            {t('builder_domain_purchase_no_results')}
+            {t('builder_domain_purchase_no_results', undefined, 'No available domains found.')}
           </text.p>
         )}
 
@@ -485,10 +485,10 @@ export default function DomainPurchaseWidget({
             gap="sm"
           >
             <text.strong size={-1} className="text-intents-ux-success-textColor">
-              {t('builder_domain_purchase_success_title')}
+              {t('builder_domain_purchase_success_title', undefined, 'Purchase Complete!')}
             </text.strong>
             <text.span size={-1} className="text-intents-ux-success-textColor">
-              {t('builder_domain_purchase_success_message', { domain: selectedDomain.fqdn })}
+              {t('builder_domain_purchase_success_message', { domain: selectedDomain.fqdn }, `You now own ${selectedDomain.fqdn}.`)}
             </text.span>
           </Box>
         )}
@@ -501,10 +501,10 @@ export default function DomainPurchaseWidget({
             gap="sm"
           >
             <text.strong size={-1} className="text-intents-ux-error-textColor">
-              {t('builder_domain_purchase_error_title')}
+              {t('builder_domain_purchase_error_title', undefined, 'Purchase Failed')}
             </text.strong>
             <text.span size={-1} className="text-intents-ux-error-textColor">
-              {t('builder_domain_purchase_error_message')}
+              {t('builder_domain_purchase_error_message', undefined, 'Something went wrong. Please try again.')}
             </text.span>
           </Box>
         )}
@@ -554,11 +554,11 @@ function DomainRow({
 
   // Language object required by AddToCartButton
   const addToCartLanguage = {
-    verifyingAvailability: t('builder_domain_purchase_verifying'),
-    domainFailedAvailCheck: t('builder_domain_purchase_unavailable'),
-    successText: t('builder_domain_purchase_added'),
+    verifyingAvailability: t('builder_domain_purchase_verifying', undefined, 'Verifying...'),
+    domainFailedAvailCheck: t('builder_domain_purchase_unavailable', undefined, 'Unavailable'),
+    successText: t('builder_domain_purchase_added', undefined, 'Added!'),
     renewalText: '',
-    buyButtonText: priceLabel || t('builder_domain_purchase_button'),
+    buyButtonText: priceLabel || t('builder_domain_purchase_button', undefined, 'Buy'),
   };
 
   return (

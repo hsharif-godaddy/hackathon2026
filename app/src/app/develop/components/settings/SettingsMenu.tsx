@@ -1,39 +1,30 @@
 'use client';
 
-import { forwardRef, useImperativeHandle, useState } from 'react';
+import clsx from 'clsx';
+import { useState } from 'react';
 import Button from '@ux/button';
 import SettingsIcon from '@ux/icon/settings';
 
-import { ButtonGroup } from '@/app/develop/components/ButtonGroup';
 import { useSettingsNavItems } from '@/app/develop/components/settings/useSettingsNavItems';
 import { ChatTab, SettingsSection } from '@/app/develop/components/types';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useTranslations } from '@/hooks/useTranslations';
 import {
   Popover,
-  PopoverAnchor,
   PopoverContent,
+  PopoverTrigger,
 } from "@/lib/shadcn/popover";
 import { generateClickEID } from '@/utils/instrumentation';
 
-export interface SettingsMenuRef {
-  openPopover: () => void;
-}
-
-const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
+export default function SettingsMenu() {
   const t = useTranslations();
 
   const [open, setOpen] = useState(false);
 
-  const { activeChatTab, activeSettingsSection, setActiveSettingsSection, setActiveChatTab } = useChatTabs();
-
-  useImperativeHandle(ref, () => ({
-    openPopover: () => setOpen(true),
-  }));
+  const { activeChatTab, activeSettingsSection, setActiveSettingsSection } = useChatTabs();
 
   const handleNavigate = (id: SettingsSection) => {
     setActiveSettingsSection(id);
-    setActiveChatTab(ChatTab.SETTINGS);
     setOpen(false);
   };
 
@@ -45,16 +36,22 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverAnchor>
-        <ButtonGroup.Item
-          value={ChatTab.SETTINGS}
-          icon={<SettingsIcon className="size-2.5" />}
-          label={t('builder_settings_title')}
-          onClick={() => setOpen(!open)}
+      <PopoverTrigger asChild>
+        <button
+          className={clsx(
+            "flex gap-0 items-center relative border rounded-xl px-1 py-0.5 leading-none transition-opacity duration-700 ml-auto",
+            {
+              "bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor shadow-md border-intents-ux-boxHighContrast-borderColor": open,
+              "hover:cursor-pointer": true,
+            }
+          )}
           data-eid={generateClickEID('develop.chat_toolbar.settings')}
-        />
-      </PopoverAnchor>
-      <PopoverContent align="end" className="p-1">
+          aria-label={t('builder_settings_title')}
+        >
+          <SettingsIcon />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[220px] p-1">
         <div className="flex flex-col gap-0.5">
           {items.map((item) => (
             <Button
@@ -81,8 +78,4 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
       </PopoverContent>
     </Popover>
   );
-});
-
-SettingsMenu.displayName = 'SettingsMenu';
-
-export default SettingsMenu;
+}

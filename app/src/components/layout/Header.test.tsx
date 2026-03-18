@@ -34,10 +34,8 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
       })),
       activeChatTab: 'chat',
       activeSettingsSection: 'domain',
-      chatTabsInitializedForPathname: null,
       setActiveChatTab: vi.fn(),
       setActiveSettingsSection: vi.fn(),
-      markChatTabsInitialized: vi.fn(),
     };
     return selector ? selector(state) : false;
   },
@@ -60,7 +58,7 @@ describe('Header', () => {
   it('should render beta tag', () => {
     renderWithProviders(<Header />);
 
-    expect(screen.getByText('builder_beta')).toBeInTheDocument();
+    expect(screen.getByText('beta')).toBeInTheDocument();
   });
 
   it('should apply homepage styling when location is homepage', () => {

@@ -122,7 +122,7 @@ export default function SessionExpirationBanner() {
         className="underline !cursor-pointer !normal-case font-semibold"
         onClick={handleExtendSession}
       >
-        {t('builder_auth_session_extend_link')}
+        {t('auth_session_extend_link', undefined, 'Extend session')}
       </button>
     </ChatBanner>
   );

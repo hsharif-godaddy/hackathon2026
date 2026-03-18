@@ -133,7 +133,11 @@ export default function UnpublishConfirmationModal({
               design="primary"
               data-partial="componentAiro"
               data-eid={generateClickEID('unpublish.buttons.confirm')}
-              text={isLoading ? t('builder_unpublish_processing') : t('builder_unpublish_confirm')}
+              text={
+                isLoading
+                  ? t('builder_unpublish_processing')
+                  : t('builder_unpublish_confirm', undefined, 'Unpublish')
+              }
               onClick={handleConfirm}
               disabled={isLoading}
             />

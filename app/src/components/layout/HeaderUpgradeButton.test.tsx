@@ -187,7 +187,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       });
     });
 
-    it('should show text on mobile', async function showTextOnMobile() {
+    it('should not show text on mobile', async function noTextOnMobile() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
       const { useBreakpoints } = await import('@/hooks/useBreakpoints');
@@ -202,9 +202,11 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
 
       renderWithProviders(<HeaderUpgradeButton location="test" />);
 
-      await waitFor(function waitForText() {
-        expect(screen.getByText('builder_upgrade_button')).toBeInTheDocument();
+      await waitFor(function waitForButton() {
+        expect(screen.getByRole('button')).toBeInTheDocument();
       });
+
+      expect(screen.queryByText('builder_upgrade_button')).not.toBeInTheDocument();
     });
   });
 

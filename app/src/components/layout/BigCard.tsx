@@ -21,7 +21,7 @@ export default function BigCard({ children, title, description, status, button, 
   return (
     <Box
       gap="lg"
-      className={cn("bg-intents-ux-box-backgroundColor rounded-lg p-3 @md:p-4 @lg:p-5", className)}
+      className={cn("bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-3 @md:p-4 @lg:p-5", className)}
     >
       <div
         className="flex flex-col @md:flex-row justify-between items-center @md:items-start gap-1 @md:gap-3"

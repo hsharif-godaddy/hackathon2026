@@ -9,14 +9,13 @@ import AppNotFound from '@/app/develop/components/AppNotFound'
 import ChatPane from '@/app/develop/components/chat/ChatPane'
 import ChatPaneLoader, { ImageReloadLoaderPhase, ResumeLoaderPhase } from '@/app/develop/components/chat/ChatPaneLoader'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
-import DevelopHeader from '@/app/develop/components/layout/Header'
 import { MediaSlotDialog } from '@/app/develop/components/media/MediaSlotDialog'
 import { DevelopCreditsModal, UpgradeContainer, UpgradePollingModal } from '@/app/develop/components/paywall'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
 import { AppIntroTour } from '@/app/develop/components/tour/AppIntroTour'
-import { ChatTab, MobileMode } from '@/app/develop/components/types'
+import { ChatTab } from '@/app/develop/components/types'
 import { extractNewPageRoute, handlePreviewRefresh, navigatePreviewToRoute, requestPreviewScreenshot, useAppIdFromParams } from '@/app/develop/components/utils'
 import VersionHistory from '@/app/develop/components/VersionHistory'
 import { clearExpiredWidgetStates } from '@/app/develop/components/widgets'
@@ -24,6 +23,7 @@ import { useInitialization } from '@/app/develop/hooks/useInitialization'
 import { ProtectedRoute } from '@/components/auth'
 import { Feedback } from '@/components/feedback/Feedback'
 import { FEEDBACK_ID } from '@/components/feedback/utils'
+import Header from '@/components/layout/Header'
 import PostPublishGoLiveModal from '@/components/layout/PostPublishGoLiveModal'
 import PublishLimitModal from '@/components/layout/PublishLimitModal'
 import PublishStatusAlert from '@/components/layout/PublishStatusAlert'
@@ -117,7 +117,6 @@ function DevelopPageContent() {
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges)
   const isChatPaneCollapsed = useDevelopPageStore((state) => state.isChatPaneCollapsed)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
-  const mobileMode = useDevelopPageStore((state) => state.mobileMode)
   const { activeChatTab } = useChatTabs()
   const isPreviewVisible = useDevelopPageStore((state) => state.isPreviewVisible)
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
@@ -159,6 +158,8 @@ function DevelopPageContent() {
   const [selectedElement, setSelectedElement] = useState<unknown>(null)
   // Optimistic mobile tab state for instant transitions
   const [optimisticMobileTab, setOptimisticMobileTab] = useState<ChatTab>(activeChatTab)
+  // Track preview updates for mobile notification
+  const [hasPreviewUpdate, setHasPreviewUpdate] = useState(false)
   // Track when an error fix request is in progress to show the fixing overlay
   const [isFixingError, setIsFixingError] = useState(false)
   const isFixingErrorRef = useRef(false)
@@ -168,6 +169,41 @@ function DevelopPageContent() {
   useEffect(() => {
     setOptimisticMobileTab(activeChatTab)
   }, [activeChatTab])
+
+  // Track when streaming completes to show preview update indicator
+  const prevIsStreamingRef = useRef(isStreaming)
+  const prevMessagesCountRef = useRef(messages.length)
+  useEffect(() => {
+    const wasStreaming = prevIsStreamingRef.current
+    const prevMessagesCount = prevMessagesCountRef.current
+    prevIsStreamingRef.current = isStreaming
+    prevMessagesCountRef.current = messages.length
+
+    // When streaming stops, check if any files were edited in the new messages
+    if (wasStreaming && !isStreaming && isMobile && messages.length > prevMessagesCount) {
+      // Only check messages added during this stream
+      const newMessages = messages.slice(prevMessagesCount)
+      const hadFileEdits = newMessages.some(msg =>
+        msg.role === 'assistant' &&
+        msg.toolCalls?.some(
+          toolCall => toolCall.name === 'fileEdit' &&
+                      toolCall.status === 'completed' &&
+                      !toolCall.error
+        )
+      )
+
+      if (hadFileEdits) {
+        setHasPreviewUpdate(true)
+      }
+    }
+  }, [isStreaming, isMobile, messages])
+
+  // Clear preview update indicator when user navigates to preview
+  useEffect(() => {
+    if (optimisticMobileTab === ChatTab.PREVIEW) {
+      setHasPreviewUpdate(false)
+    }
+  }, [optimisticMobileTab])
 
   // Store last known iframe state for restoration
   const lastIframeState = useRef<{
@@ -824,14 +860,14 @@ function DevelopPageContent() {
 
     // Trigger tour when we have at least one message and no active stream
     if (messages.length > 0 && !activeStream) {
-      checkAndTriggerIntroTour()
+      checkAndTriggerIntroTour(appId)
     }
   }, [appId, init.isReady, messages.length, activeStream, checkAndTriggerIntroTour])
 
   if (init.siteNotFound) {
     return (
       <div className="h-screen flex flex-col">
-        <DevelopHeader onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })} />
+        <Header location="develop" />
         <AppNotFound />
       </div>
     )
@@ -848,6 +884,7 @@ function DevelopPageContent() {
   return (
     <WebSocketProvider sendMessage={sendMessage} loadMoreHistory={loadMoreHistory}>
       <div
+        // Switch from fixed to absolute to support PresentationCentral delegation/browser deprecation banners
         className={cn("absolute inset-0 flex flex-col overflow-hidden bg-develop-bg", {
           "ios-fixed-container": isMobile
         })}
@@ -857,14 +894,14 @@ function DevelopPageContent() {
         } : undefined}
         onDragEnter={handleDragEnter}
       >
-        <DevelopHeader onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })} />
+        <Header location="develop" />
 
         {/* Desktop Layout */}
         {!isMobile && (
           <div className="relative h-full w-full overflow-hidden">
             {/* Sidebar (Chat, History, Settings menu) */}
             <motion.div
-              className="absolute top-0 left-0 bottom-0"
+              className="absolute top-2 left-2 bottom-2"
               animate={{
                 x: isChatPaneCollapsed ? -(chatPaneWidth + 16) : 0,
                 width: chatPaneWidth
@@ -928,14 +965,14 @@ function DevelopPageContent() {
                 minLeftWidth={300}
                 minRightWidth={Math.max(600, typeof window !== 'undefined' ? window.innerWidth * 0.5 : 600)}
                 style={{
-                  left: `${chatPaneWidth + 10}px`
+                  left: `${chatPaneWidth + 15}px`
                 }}
               />
             )}
 
             {/* Content (Preview, Settings, Code) */}
             <motion.div
-              className="absolute top-0 right-0 bottom-0 flex flex-col"
+              className="absolute top-2 right-2 bottom-2 flex flex-col"
               animate={{
                 left: isChatPaneCollapsed ? 8 : chatPaneWidth + 16
               }}
@@ -991,7 +1028,7 @@ function DevelopPageContent() {
         {/* Mobile Layout */}
         {isMobile && (
           <div className="relative h-full w-full overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 bottom-8 pb-1 flex flex-col">
+            <div className="absolute top-0 left-0 right-0 bottom-8 flex flex-col">
               {init.ui.showChatLoader ? (
                 <ChatPaneLoader
                   phase={init.ui.chatLoaderPhase}
@@ -1039,8 +1076,8 @@ function DevelopPageContent() {
                     <div
                       className="absolute inset-0 flex flex-col transition-opacity duration-150"
                       style={{
-                        opacity: mobileMode === MobileMode.PREVIEW ? 1 : 0,
-                        pointerEvents: mobileMode === MobileMode.PREVIEW ? 'auto' : 'none',
+                        opacity: optimisticMobileTab === ChatTab.PREVIEW ? 1 : 0,
+                        pointerEvents: optimisticMobileTab === ChatTab.PREVIEW ? 'auto' : 'none',
                         willChange: 'opacity'
                       }}
                     >
@@ -1063,8 +1100,8 @@ function DevelopPageContent() {
                     <div
                       className="absolute inset-0 flex flex-col overflow-hidden transition-opacity duration-150"
                       style={{
-                        opacity: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.CHAT ? 1 : 0,
-                        pointerEvents: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.CHAT ? 'auto' : 'none',
+                        opacity: optimisticMobileTab === ChatTab.CHAT ? 1 : 0,
+                        pointerEvents: optimisticMobileTab === ChatTab.CHAT ? 'auto' : 'none',
                         willChange: 'opacity'
                       }}
                     >
@@ -1078,8 +1115,8 @@ function DevelopPageContent() {
                     <div
                       className="absolute inset-0 flex flex-col overflow-y-auto transition-opacity duration-150"
                       style={{
-                        opacity: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.HISTORY ? 1 : 0,
-                        pointerEvents: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.HISTORY ? 'auto' : 'none',
+                        opacity: optimisticMobileTab === ChatTab.HISTORY ? 1 : 0,
+                        pointerEvents: optimisticMobileTab === ChatTab.HISTORY ? 'auto' : 'none',
                         willChange: 'opacity'
                       }}
                     >
@@ -1090,8 +1127,8 @@ function DevelopPageContent() {
                     <div
                       className="absolute inset-0 flex flex-col transition-opacity duration-150"
                       style={{
-                        opacity: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.SETTINGS ? 1 : 0,
-                        pointerEvents: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.SETTINGS ? 'auto' : 'none',
+                        opacity: optimisticMobileTab === ChatTab.SETTINGS ? 1 : 0,
+                        pointerEvents: optimisticMobileTab === ChatTab.SETTINGS ? 'auto' : 'none',
                         willChange: 'opacity'
                       }}
                     >
@@ -1106,7 +1143,7 @@ function DevelopPageContent() {
               isProcessing={isProcessing}
               onBeforeTabChange={setOptimisticMobileTab}
               optimisticActiveTab={optimisticMobileTab}
-              onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+              hasPreviewUpdate={hasPreviewUpdate}
             />
           </div>
         )}

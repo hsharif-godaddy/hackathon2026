@@ -32,7 +32,7 @@ import { useIsLoading, useStreamingState } from '@/stores/useStreamingConversati
 import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
 
-export default function AppPublish({ location = 'develop' }: { location?: string }) {
+export default function AppPublish({ location }: { location?: string }) {
   const intl = useIntl();
   const t = useTranslations();
   const { isBelowSmBreakpoint } = useBreakpoints();
@@ -398,10 +398,9 @@ export default function AppPublish({ location = 'develop' }: { location?: string
             data-partial='componentAiro'
             data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
             disabled={isButtonDisabled}
-            icon={isBelowSmBreakpoint ? <CloudUploadIcon className="!size-2.5" /> : undefined}
+            icon={<CloudUploadIcon />}
             text={isBelowSmBreakpoint ? undefined : getPublishButtonText()}
             aria-label={isBelowSmBreakpoint ? getPublishButtonText() : undefined}
-            className="!rounded-lg !leading-none !pt-0 !pb-0 !pl-1.5 !pr-1.5 md:!p-1"
           />
         </PopoverTrigger>
         <PopoverContent align='end' className='w-[400px] p-3'>

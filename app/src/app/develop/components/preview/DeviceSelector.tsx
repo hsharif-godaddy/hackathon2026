@@ -21,9 +21,10 @@ import { generateClickEID } from '@/utils/instrumentation'
 
 interface DeviceSelectorProps {
   disabled?: boolean
+  separator?: boolean
 }
 
-export default function DeviceSelector({ disabled = false }: DeviceSelectorProps) {
+export default function DeviceSelector({ disabled = false, separator = false }: DeviceSelectorProps) {
   const [open, setOpen] = useState(false)
   const t = useTranslations()
 
@@ -34,7 +35,7 @@ export default function DeviceSelector({ disabled = false }: DeviceSelectorProps
 
   // Translate "Full size" for the 'full' device, use device.name for others
   function getDeviceDisplayName(device: DevicePreset): string {
-    return device.id === 'full' ? t('builder_device_full_size') : device.name
+    return device.id === 'full' ? t('builder_device_full_size', undefined, 'Full size') : device.name
   }
 
   function handleDeviceSelect(device: DevicePreset) {
@@ -52,12 +53,12 @@ export default function DeviceSelector({ disabled = false }: DeviceSelectorProps
 
   function getIcon() {
     if (previewViewMode === PreviewViewMode.MOBILE) {
-      return <MobilePhoneIcon className="size-2.5" />
+      return <MobilePhoneIcon />
     }
     if (previewViewMode === PreviewViewMode.TABLET) {
-      return <TabletIcon className="size-2.5" />
+      return <TabletIcon />
     }
-    return <DesktopIcon className="size-2.5" />
+    return <DesktopIcon />
   }
 
   // Group devices by category for display
@@ -72,6 +73,7 @@ export default function DeviceSelector({ disabled = false }: DeviceSelectorProps
           icon={getIcon()}
           label={t('builder_preview_button_device')}
           showLabelWhenActive={false}
+          separator={separator}
           disabled={disabled}
           dataEid={generateClickEID('develop.preview.device_selector')}
         />

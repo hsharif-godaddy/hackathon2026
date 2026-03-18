@@ -287,9 +287,11 @@ export default function AskQuestionToolRenderer({
                             value={isCurrent ? otherValue : ''}
                             isSelected={isCurrent && selectedValue === OTHER_VALUE}
                             disabled={isProcessing}
-                            placeholder={t('builder_tools_askquestion_other_placeholder')}
-                            ariaLabel={t('builder_tools_askquestion_other_aria_label')}
-                            submitLabel={isLastQuestion ? t('builder_common_submit') : t('builder_common_next')}
+                            placeholder={t('builder_tools_askquestion_other_placeholder', undefined, 'Other...')}
+                            ariaLabel={t('builder_tools_askquestion_other_aria_label', undefined, 'Other answer')}
+                            submitLabel={isLastQuestion
+                              ? t('builder_common_submit', undefined, 'Submit')
+                              : t('builder_common_next', undefined, 'Next')}
                             onChange={handleOtherChange}
                             onFocus={handleOtherFocus}
                             onSubmit={handleOtherSubmit}

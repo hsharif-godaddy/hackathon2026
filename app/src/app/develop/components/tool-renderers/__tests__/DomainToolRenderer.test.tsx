@@ -7,7 +7,7 @@ import { renderWithProviders } from '@/tests/test-utils';
 import DomainToolRenderer from '../DomainToolRenderer';
 
 vi.mock('@/hooks/useTranslations', () => ({
-  useTranslations: () => (key: string) => key,
+  useTranslations: () => (key: string, _params: any, fallback: string) => fallback || key,
 }));
 
 vi.mock('@/app/develop/components/widgets/DomainPurchaseWidget', () => ({
@@ -56,7 +56,7 @@ describe('DomainToolRenderer', () => {
         />
       );
 
-      expect(screen.getByTestId('tool-header')).toHaveTextContent('builder_tools_domain_purchase');
+      expect(screen.getByTestId('tool-header')).toHaveTextContent('Domain Purchase');
     });
 
     it('should not render widget when tool is still running', () => {
@@ -102,7 +102,7 @@ describe('DomainToolRenderer', () => {
       );
 
       expect(screen.queryByTestId('domain-purchase-widget')).not.toBeInTheDocument();
-      expect(screen.getByText('builder_domain_purchase_title')).toBeInTheDocument();
+      expect(screen.getByText('Purchase a new domain')).toBeInTheDocument();
     });
   });
 
@@ -118,7 +118,7 @@ describe('DomainToolRenderer', () => {
         />
       );
 
-      expect(screen.getByTestId('tool-header')).toHaveTextContent('builder_tools_domain_attach');
+      expect(screen.getByTestId('tool-header')).toHaveTextContent('Domain Attach');
     });
 
     it('should render attach widget when completed and is last message', () => {
@@ -150,7 +150,7 @@ describe('DomainToolRenderer', () => {
       );
 
       expect(screen.queryByTestId('domain-attach-widget')).not.toBeInTheDocument();
-      expect(screen.getByText('builder_domain_attach_title')).toBeInTheDocument();
+      expect(screen.getByText('Connect a domain')).toBeInTheDocument();
     });
 
     it('should infer attach from widgetData type when action is missing', () => {
@@ -179,7 +179,7 @@ describe('DomainToolRenderer', () => {
       );
 
       expect(screen.queryByTestId('domain-attach-widget')).not.toBeInTheDocument();
-      expect(screen.queryByText('builder_domain_attach_title')).not.toBeInTheDocument();
+      expect(screen.queryByText('Connect a domain')).not.toBeInTheDocument();
     });
   });
 
@@ -196,7 +196,7 @@ describe('DomainToolRenderer', () => {
       );
 
       expect(screen.queryByTestId('domain-purchase-widget')).not.toBeInTheDocument();
-      expect(screen.queryByText('builder_domain_purchase_title')).not.toBeInTheDocument();
+      expect(screen.queryByText('Purchase a new domain')).not.toBeInTheDocument();
     });
 
     it('should not render any widget when result is null', () => {

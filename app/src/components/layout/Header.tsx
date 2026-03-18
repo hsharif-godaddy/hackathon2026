@@ -64,7 +64,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown',
                 <AiroLogo className="relative" design="dark" />
               </div>
             </Link>
-            <Tag emphasis="highlight" highcontrast>{t('builder_beta')}</Tag>
+            <Tag emphasis="highlight" highcontrast>{t('builder_beta', undefined, 'beta')}</Tag>
           </div>
           <Box orientation="horizontal" className={isBelowSmBreakpoint ? 'gap-1 ml-2' : 'gap-2'}>
             {actions && actions}

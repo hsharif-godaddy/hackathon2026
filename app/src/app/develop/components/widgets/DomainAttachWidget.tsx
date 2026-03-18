@@ -520,25 +520,25 @@ export default function DomainAttachWidget({
         gap="md"
       >
         <text.h4>
-          {t('builder_domain_attach_confirm_title')}
+          {t('builder_domain_attach_confirm_title', undefined, 'Attach Domain')}
         </text.h4>
 
         <text.p size={0}>
-          {t('builder_domain_attach_confirm_message', { domain: matchedOwnedDomain })}
+          {t('builder_domain_attach_confirm_message', { domain: matchedOwnedDomain }, `Are you sure you want to attach ${matchedOwnedDomain}?`)}
         </text.p>
 
         <Box orientation="horizontal" gap="sm">
           <Button
             design="primary"
             size="md"
-            text={t('builder_domain_attach_confirm_attach')}
+            text={t('builder_domain_attach_confirm_attach', undefined, 'Attach Domain')}
             onClick={handleConfirmOwnedDomainAttach}
             disabled={modifyDomainsMutation.isPending}
           />
           <Button
             design="secondary"
             size="md"
-            text={t('builder_common_cancel')}
+            text={t('builder_domain_attach_confirm_cancel', undefined, 'Cancel')}
             onClick={handleCancelOwnedDomainAttach}
             disabled={modifyDomainsMutation.isPending}
           />
@@ -548,7 +548,7 @@ export default function DomainAttachWidget({
           <Box orientation="horizontal" gap="sm" inlineAlignChildren="center">
             <Spinner size="sm" />
             <text.span size={-1} className="text-intents-ux-text-secondary">
-              {t('builder_domain_attach_connecting')}
+              {t('builder_domain_attach_connecting', undefined, 'Connecting domain...')}
             </text.span>
           </Box>
         )}
@@ -566,13 +566,13 @@ export default function DomainAttachWidget({
     >
       {/* Widget description */}
       <text.span size={-1} className="text-intents-ux-text-secondary">
-        {t('builder_domain_attach_description')}
+        {t('builder_domain_attach_description', undefined, 'Connect a domain you already own or add an external domain to your project.')}
       </text.span>
 
       {/* Section 1: Your GoDaddy Domains */}
       <Box className="rounded-md bg-intents-ux-boxLowContrast-backgroundColor p-3" orientation="vertical" gap="sm">
         <text.h4>
-          {t('builder_domain_attach_godaddy_title')}
+          {t('builder_domain_attach_godaddy_title', undefined, 'Your GoDaddy Domains')}
         </text.h4>
 
         {isLoading && (
@@ -605,7 +605,7 @@ export default function DomainAttachWidget({
                 design="primary"
                 size="sm"
                 onClick={handleOpenPurchase}
-                text={t('builder_domain_purchase_button')}
+                text={t('builder_domain_purchase_button', undefined, 'Purchase a new domain')}
               >
                 <CartIcon className="w-4 h-4 mr-1" />
               </Button>
@@ -676,7 +676,7 @@ export default function DomainAttachWidget({
         {/* Recently purchased domain tag */}
         {purchasedDomain && (
           <Tag emphasis="success">
-            {t('builder_domain_purchase_recently', { domain: purchasedDomain })}
+            {t('builder_domain_purchase_recently', { domain: purchasedDomain }, `Recently purchased: ${purchasedDomain}`)}
           </Tag>
         )}
       </Box>
@@ -684,7 +684,7 @@ export default function DomainAttachWidget({
       {/* Section 2: Connect External Domain */}
       <Box className="rounded-md bg-intents-ux-boxLowContrast-backgroundColor p-3" orientation="vertical" gap="sm">
         <text.h4>
-          {t('builder_domain_attach_external_title')}
+          {t('builder_domain_attach_external_title', undefined, 'Connect an External Domain')}
         </text.h4>
 
         {!showCustomDomainConfirmation && (
@@ -774,13 +774,13 @@ export default function DomainAttachWidget({
       {isDomainPurchaseEnabled && hasGoDaddyDomains && (
         <Box orientation="horizontal" gap="sm" inlineAlignChildren="center" className="pt-2 border-t border-intents-ux-boxLowContrast-borderColor">
           <text.span size={-2} className="text-intents-ux-text-secondary">
-            {t('builder_domain_purchase_cta')}
+            {t('builder_domain_purchase_cta', undefined, "Need a new domain?")}
           </text.span>
           <Button
             design="tertiary"
             size="sm"
             onClick={handleOpenPurchase}
-            text={t('builder_domain_purchase_button')}
+            text={t('builder_domain_purchase_button', undefined, 'Purchase')}
           >
             <CartIcon className="w-4 h-4 mr-1" />
           </Button>

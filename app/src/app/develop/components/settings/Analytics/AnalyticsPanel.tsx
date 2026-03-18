@@ -9,7 +9,6 @@ import { usePublishForDomain } from '@/app/develop/components/settings/DomainPan
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import EmptyStateCard from '@/components/layout/EmptyStateCard'
 import { usePaywallModal } from '@/hooks/usePaywallModal'
-import { useTranslations } from '@/hooks/useTranslations'
 import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { useSiteStore } from '@/stores/useSiteStore'
 import { hasBeenPublished } from '@/utils/site'
@@ -24,7 +23,6 @@ import { hasBeenPublished } from '@/utils/site'
  * @returns Analytics panel component
  */
 export default function AnalyticsPanel() {
-  const t = useTranslations()
   const appId = useAppIdFromParams()
   const site = useSiteStore((state) => appId ? state.getSite(appId) : null)
 
@@ -70,9 +68,9 @@ export default function AnalyticsPanel() {
         <PaywallModal />
         <EmptyStateCard
           icon={<GraphIcon width={48} height={48} />}
-          title={t('builder_analytics_empty_title')}
-          description={t('builder_analytics_empty_desc')}
-          ctaLabel={publishState.isPublishing ? t('builder_common_publishing') : t('builder_domain_publish_now')}
+          title="Publish Your App to View Analytics"
+          description="Analytics are only available for published websites. Please publish your app to view analytics data."
+          ctaLabel={publishState.isPublishing ? "Publishing..." : "Publish Now"}
           onCtaClick={handlePublishWithPaywall}
           ctaDisabled={isPublishDisabled || isPolling || isPaywallLoading || isPublishLimitLoading}
         />
