@@ -225,6 +225,100 @@ const MEMORY_HIGH_USAGE_THRESHOLD_BYTES = (
 )
 
 /**
+ * Unified cleanup for message finalization across all termination paths.
+ * Handles memory tracking cleanup, APM transaction end, and logging.
+ * Called from onMessageComplete, onError, and onDisconnection.
+ */
+function finalizeMessage(
+  socketId: string,
+  reason: 'complete' | 'error' | 'aborted',
+  meta?: { appId?: string; agentId?: string; steps?: number; duration?: number; error?: Error }
+): void {
+  // 1. Clean up memory tracking (fixes leak: was missing from onError/onDisconnection)
+  const startTracking = requestMemoryTracking.get(socketId)
+  if (startTracking) {
+    const endMemory = process.memoryUsage()
+    const heapDelta = endMemory.heapUsed - startTracking.heapUsed
+    const rssDelta = endMemory.rss - startTracking.rss
+    const requestDuration = Date.now() - startTracking.timestamp
+
+    logger.info('memory.request.complete', {
+      appId: meta?.appId,
+      socketId,
+      agentId: meta?.agentId,
+      reason,
+      heapUsedBytes: endMemory.heapUsed,
+      heapTotalBytes: endMemory.heapTotal,
+      rssBytes: endMemory.rss,
+      heapDeltaBytes: heapDelta,
+      rssDeltaBytes: rssDelta,
+      requestDurationMs: requestDuration,
+      steps: meta?.steps,
+    })
+
+    if (heapDelta > MEMORY_HIGH_USAGE_THRESHOLD_BYTES) {
+      logger.warn('memory.request.high_usage', {
+        appId: meta?.appId,
+        socketId,
+        agentId: meta?.agentId,
+        heapDeltaBytes: heapDelta,
+        heapUsedBytes: endMemory.heapUsed,
+        thresholdBytes: MEMORY_HIGH_USAGE_THRESHOLD_BYTES,
+        steps: meta?.steps,
+      })
+    }
+
+    requestMemoryTracking.delete(socketId)
+  } else {
+    logger.debug('memory.request.tracking_missing', {
+      appId: meta?.appId,
+      socketId,
+      reason: `No start tracking data found (finalize reason: ${reason})`,
+    })
+  }
+
+  // 2. End APM message transaction with appropriate status
+  const messageTransactionKey = `${socketId}:message`
+  const messageTransaction = activeWebSocketTransactions.get(messageTransactionKey)
+  if (messageTransaction) {
+    if (meta?.steps !== undefined) messageTransaction.setLabel('steps', meta.steps)
+    if (meta?.agentId) messageTransaction.setLabel('agent_id', meta.agentId)
+    // Preserve original APM event label values for dashboard compatibility
+    const eventLabel = reason === 'complete' ? 'message_complete' : reason === 'error' ? 'error' : 'disconnection'
+    messageTransaction.setLabel('event', eventLabel)
+
+    if (typeof meta?.duration === 'number') {
+      messageTransaction.setLabel('duration_ms', meta.duration)
+    }
+
+    if (reason === 'error' && meta?.error) {
+      messageTransaction.setLabel('error_message', meta.error.message)
+      messageTransaction.setLabel('error_type', meta.error.name || 'Error')
+      messageTransaction.result = 'error'
+      messageTransaction.setOutcome('failure')
+      apm.captureError(meta.error, {
+        custom: { socketId, transactionType: 'websocket-message' }
+      })
+    } else if (reason === 'aborted') {
+      messageTransaction.result = 'aborted'
+      messageTransaction.setOutcome('unknown')
+    } else {
+      messageTransaction.result = 'success'
+      messageTransaction.setOutcome('success')
+    }
+
+    messageTransaction.end()
+    activeWebSocketTransactions.delete(messageTransactionKey)
+
+    logger.debug(`apm.websocket.message.transaction.${reason}`, {
+      socketId,
+      appId: meta?.appId,
+      transactionName: messageTransaction.name,
+    })
+  }
+}
+
+/**
  * Get or create ClientActionService for a socket
  */
 function getOrCreateClientActionService(
@@ -1481,108 +1575,25 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const typedContext = context as AgentsAppContext;
         const appId = typedContext?.metadata?.appId;
 
-        // Track memory at request end and calculate delta
-        const endMemory = process.memoryUsage();
-        const startTracking = requestMemoryTracking.get(socketId);
-
-        if (startTracking) {
-          const heapDelta = endMemory.heapUsed - startTracking.heapUsed;
-          const rssDelta = endMemory.rss - startTracking.rss;
-          const requestDuration = Date.now() - startTracking.timestamp;
-
-          // Log memory metrics for every request (raw bytes for log aggregation)
-          logger.info('memory.request.complete', {
-            appId,
-            socketId,
-            agentId,
-            heapUsedBytes: endMemory.heapUsed,
-            heapTotalBytes: endMemory.heapTotal,
-            rssBytes: endMemory.rss,
-            heapDeltaBytes: heapDelta,
-            rssDeltaBytes: rssDelta,
-            requestDurationMs: requestDuration,
-            steps,
-          });
-
-          // Warn on high memory usage (threshold configurable via MEMORY_HIGH_USAGE_THRESHOLD_MB)
-          if (heapDelta > MEMORY_HIGH_USAGE_THRESHOLD_BYTES) {
-            logger.warn('memory.request.high_usage', {
-              appId,
-              socketId,
-              agentId,
-              heapDeltaBytes: heapDelta,
-              heapUsedBytes: endMemory.heapUsed,
-              thresholdBytes: MEMORY_HIGH_USAGE_THRESHOLD_BYTES,
-              steps,
-              message: 'High memory usage detected for this request',
-            });
-          }
-
-          // Clean up tracking data
-          requestMemoryTracking.delete(socketId);
-        } else {
-          logger.debug('memory.request.tracking_missing', {
-            appId,
-            socketId,
-            reason: 'No start tracking data found - request may have started before tracking was enabled',
-          });
-        }
-
         logger.info('websocket.message.completed', {
-          message: 'WebSocket message completed',
           socketId,
           steps,
           duration,
           agentId
         });
 
-        // Log site context if available (for audit purposes)
-        const siteId = appId;
-
-        if (!siteId) {
-          logger.warn('websocket.message.completion.no_siteid', {
-            message: 'No siteId found in context.metadata.appId for completion logging',
-            hasContext: !!context,
-            contextKeys: context ? Object.keys(context) : []
-          });
-          return; // Skip completion logging if no siteId
-        }
-        const contextLogger = log.forApp(siteId);
-        contextLogger.info('websocket.request.site_completed', {
-          message: 'WebSocket request completed for site'
-        });
-
-        // Git operations now happen in beforeMessageComplete
-        // This callback is used for post-completion tasks like APM transaction cleanup
-
-        // End APM transaction for message processing
-        const messageTransactionKey = `${socketId}:message`
-        const messageTransaction = activeWebSocketTransactions.get(messageTransactionKey)
-        if (messageTransaction) {
-          messageTransaction.setLabel('steps', steps)
-          messageTransaction.setLabel('agent_id', agentId)
-          messageTransaction.setLabel('event', 'message_complete')
-
-          // Add duration if available as a number
-          if (typeof duration === 'number') {
-            messageTransaction.setLabel('duration_ms', duration)
-          }
-
-          messageTransaction.result = 'success'
-          messageTransaction.setOutcome('success')
-          messageTransaction.end()
-
-          activeWebSocketTransactions.delete(messageTransactionKey)
-
-          logger.debug('apm.websocket.message.transaction.ended', {
+        if (appId) {
+          const contextLogger = log.forApp(appId);
+          contextLogger.info('websocket.request.site_completed', {});
+        } else {
+          logger.debug('websocket.message.completion.no_appid', {
             socketId,
-            siteId,
-            agentId,
-            steps,
-            duration,
-            transactionName: messageTransaction.name
-          })
+            hasContext: !!context,
+          });
         }
+
+        // Unified cleanup: memory tracking, APM transaction
+        finalizeMessage(socketId, 'complete', { appId, agentId, steps, ...(typeof duration === 'number' && { duration }) });
       },
 
       onDisconnection: async (socketId: string) => {
@@ -1667,20 +1678,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           })
         }
 
-        // Also clean up any orphaned message transaction
-        const messageTransactionKey = `${socketId}:message`
-        const messageTransaction = activeWebSocketTransactions.get(messageTransactionKey)
-        if (messageTransaction) {
-          messageTransaction.result = 'aborted'
-          messageTransaction.setOutcome('unknown')
-          messageTransaction.end()
-          activeWebSocketTransactions.delete(messageTransactionKey)
-
-          logger.debug('apm.websocket.message.transaction.aborted', {
-            socketId,
-            reason: 'Connection closed before message completion'
-          })
-        }
+        // Unified cleanup: memory tracking + orphaned message transaction
+        finalizeMessage(socketId, 'aborted', { appId: appId ?? undefined });
       },
 
       onAgentChanged: async (conversationId: string, oldAgentName: string, newAgentName: string, appId?: string) => {
@@ -1760,34 +1759,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           }
         }
 
-        // Mark APM transactions as failed
-        const messageTransactionKey = `${socketId}:message`
-        const messageTransaction = activeWebSocketTransactions.get(messageTransactionKey)
-        if (messageTransaction) {
-          messageTransaction.setLabel('error_message', error.message)
-          messageTransaction.setLabel('error_type', error.name || 'Error')
-          messageTransaction.setLabel('event', 'error')
-          messageTransaction.result = 'error'
-          messageTransaction.setOutcome('failure')
-
-          // Capture the error in APM
-          apm.captureError(error, {
-            custom: {
-              socketId,
-              messagePreview: message ? message.substring(0, 100) : undefined,
-              transactionType: 'websocket-message'
-            }
-          })
-
-          messageTransaction.end()
-          activeWebSocketTransactions.delete(messageTransactionKey)
-
-          logger.debug('apm.websocket.message.transaction.failed', {
-            socketId,
-            error: error.message,
-            transactionName: messageTransaction.name
-          })
-        }
+        // Unified cleanup: memory tracking + APM message transaction
+        finalizeMessage(socketId, 'error', { appId, error });
 
         // Also mark connection transaction if it exists
         const connectionTransaction = activeWebSocketTransactions.get(socketId)

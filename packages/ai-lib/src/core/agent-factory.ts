@@ -807,6 +807,8 @@ export class AgentWrapper {
     executionContext?: Record<string, unknown>
     /** Files to include in the request (for vision/document analysis) */
     files?: ProcessedFile[]
+    /** AbortSignal to cancel the stream (propagated to AI SDK) */
+    abortSignal?: AbortSignal
   }): Promise<{
     textStream: AsyncIterable<string>
   baseStream?: unknown
@@ -832,6 +834,7 @@ export class AgentWrapper {
     context?: PipelineContextMessage[]
     files?: ProcessedFile[]
     executionContext?: Record<string, unknown>
+    abortSignal?: AbortSignal
   }): Promise<{
     textStream: AsyncIterable<string>
     baseStream?: unknown
@@ -860,6 +863,7 @@ export class AgentWrapper {
       context?: PipelineContextMessage[]
       files?: ProcessedFile[]
       executionContext?: Record<string, unknown>
+      abortSignal?: AbortSignal
     } | undefined,
     socketId: string | undefined,
     retryCount: number
@@ -974,6 +978,7 @@ export class AgentWrapper {
         prompt,
         options: callOptions,
         ...(this.config.timeout && { timeout: this.config.timeout }),
+        ...(options?.abortSignal && { abortSignal: options.abortSignal }),
       }
       streamResult = await retryWithBackoff(
         () => litellmMetadata
@@ -1052,6 +1057,8 @@ export class AgentWrapper {
                 socketId,
                 retryCount: nextRetryCount,
               })
+              // Don't retry if already aborted
+              if (options?.abortSignal?.aborted) throw options.abortSignal.reason instanceof Error ? options.abortSignal.reason : new Error('Aborted')
               // Retry with the new grant
               return this._executeStreamWithGrantFallback(prompt, options, socketId, nextRetryCount)
             }
@@ -1083,6 +1090,8 @@ export class AgentWrapper {
           retryCount: retryCount + 1,
         })
 
+        // Don't retry if already aborted
+        if (options?.abortSignal?.aborted) throw options.abortSignal.reason instanceof Error ? options.abortSignal.reason : new Error('Aborted')
         // Retry with next grant
         return this._executeStreamWithGrantFallback(prompt, options, socketId, retryCount + 1)
       }

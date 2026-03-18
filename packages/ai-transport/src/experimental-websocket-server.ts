@@ -2856,6 +2856,9 @@ export class WebSocketServer {
 
     try {
       // Run agent.streamGenerate within the invocation context
+      // Get abort signal from state manager for stream cancellation
+      const abortSignal = this.stateManager.getAbortController(socket.id)?.signal
+
       streamResult = await otelContext.with(invocation.context, async () => {
         return await agent.streamGenerate(originalPrompt, {
           // Add context messages with cache points intact
@@ -2865,7 +2868,9 @@ export class WebSocketServer {
           // Pass execution context for tools
           ...(context && { executionContext: context }),
           // Pass screenshots as files for vision processing
-          ...(processedFiles && processedFiles.length > 0 && { files: processedFiles })
+          ...(processedFiles && processedFiles.length > 0 && { files: processedFiles }),
+          // Pass abort signal for stream cancellation
+          ...(abortSignal && { abortSignal }),
         })
       })
 
