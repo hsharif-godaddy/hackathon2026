@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import HigherPlansUpgradeContainer from './HigherPlansUpgradeContainer'
@@ -17,19 +17,15 @@ interface UpgradeContainerProps {
 
 export default function UpgradeContainer(props: UpgradeContainerProps) {
   const { onSuccessClick } = props
-  // Internal version counter to force CDS remount and clear cached plan data after purchase
-  const [version, setVersion] = useState(0)
   const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans')
 
   const handleSuccessClick = useCallback(() => {
-    setVersion((v) => v + 1)
     onSuccessClick?.()
   }, [onSuccessClick])
 
   if (isHigherPlansEnabled) {
     return (
       <HigherPlansUpgradeContainer
-        key={`upgrade-${version}`}
         {...props}
         onSuccessClick={handleSuccessClick}
       />
@@ -38,7 +34,6 @@ export default function UpgradeContainer(props: UpgradeContainerProps) {
 
   return (
     <SinglePlanUpgradeContainer
-      key={`upgrade-${version}`}
       {...props}
       onSuccessClick={handleSuccessClick}
     />

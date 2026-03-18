@@ -42,14 +42,14 @@ vi.mock('@/hooks/useSwitchboard', () => ({
 }));
 
 vi.mock('@/hooks/useSubscription', () => ({
-  useSubscription: () => ({
+  useSubscription: vi.fn(() => ({
     data: {
       builderEntitlementId: 'test-entitlement-123',
       plan: SubscriptionPlan.Professional,
     },
     isLoading: false,
     isError: false,
-  }),
+  })),
 }));
 
 vi.mock('@/hooks/useUpgradePurchase', () => ({
@@ -83,6 +83,7 @@ vi.mock('./cdsLoader', () => ({
     locale: string;
     source: string;
     currentPlan?: string;
+    overrideItc?: string;
     onClose: () => void;
     upgradeCallback: (params: { planType?: SubscriptionPlan }) => void;
     upgradeDowngradeCallback: (params: { planType?: SubscriptionPlan }) => void;
@@ -99,6 +100,7 @@ vi.mock('./cdsLoader', () => ({
         <span data-testid="locale">{props.locale}</span>
         <span data-testid="source">{props.source}</span>
         <span data-testid="current-plan">{props.currentPlan ?? ''}</span>
+        <span data-testid="override-itc">{props.overrideItc ?? ''}</span>
         <button data-testid="close-button" onClick={props.onClose}>Close</button>
         <button
           data-testid="upgrade-button"
@@ -142,12 +144,18 @@ vi.mock('./PaywallLoadingModal', () => ({
   },
 }));
 
+import { useSubscription } from '@/hooks/useSubscription';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { logImpressionEvent } from '@/utils/instrumentation';
 
 describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
+    vi.mocked(useSubscription).mockReturnValue({
+      data: { builderEntitlementId: 'test-entitlement-123', plan: SubscriptionPlan.Professional },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useSubscription>);
     mockHandlePurchaseSuccess.mockResolvedValue({ planAfterPurchase: 'ultimate', updated: true });
     mockGetQueryData.mockReturnValue({
       active: {
@@ -291,7 +299,7 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
     expect(mockOnError).toHaveBeenCalledWith(expect.any(Error));
   });
 
-  it('passes current plan to ComponentLoader', function passesCurrentPlan() {
+  it('passes current plan to ComponentLoader when no downgradedPlan exists', function passesCurrentPlan() {
     renderWithProviders(
       <HigherPlansUpgradeContainer
         onClose={mockOnClose}
@@ -300,6 +308,70 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
     );
 
     expect(screen.getByTestId('current-plan')).toHaveTextContent('professional');
+  });
+
+  it('passes downgradedPlan as currentPlan when it exists', async function passesDowngradedPlanAsCurrentPlan() {
+    const { useSubscription } = await import('@/hooks/useSubscription');
+    vi.mocked(useSubscription).mockReturnValue({
+      data: {
+        builderEntitlementId: 'test-entitlement-123',
+        plan: SubscriptionPlan.Professional,
+        downgradedPlan: SubscriptionPlan.Starter,
+      },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useSubscription>);
+
+    renderWithProviders(
+      <HigherPlansUpgradeContainer
+        onClose={mockOnClose}
+        source="test-source"
+      />
+    );
+
+    expect(screen.getByTestId('current-plan')).toHaveTextContent('starter');
+  });
+
+  it('prefers downgradedPlan over plan for currentPlan prop', async function prefersDowngradedPlan() {
+    const { useSubscription } = await import('@/hooks/useSubscription');
+    vi.mocked(useSubscription).mockReturnValue({
+      data: {
+        builderEntitlementId: 'test-entitlement-123',
+        plan: SubscriptionPlan.Ultimate,
+        downgradedPlan: SubscriptionPlan.Starter,
+      },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useSubscription>);
+
+    renderWithProviders(
+      <HigherPlansUpgradeContainer
+        onClose={mockOnClose}
+        source="test-source"
+      />
+    );
+
+    // Should use downgradedPlan (starter) not plan (ultimate)
+    expect(screen.getByTestId('current-plan')).toHaveTextContent('starter');
+  });
+
+  it('handles undefined subscription gracefully', async function handlesUndefinedSubscription() {
+    const { useSubscription } = await import('@/hooks/useSubscription');
+    vi.mocked(useSubscription).mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+    } as ReturnType<typeof useSubscription>);
+
+    renderWithProviders(
+      <HigherPlansUpgradeContainer
+        onClose={mockOnClose}
+        source="test-source"
+      />
+    );
+
+    // Should not crash and currentPlan should be empty when subscription is undefined
+    expect(screen.getByTestId('current-plan')).toHaveTextContent('');
   });
 
   it('passes ITC override when provided', function passesItc() {
@@ -311,8 +383,18 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
       />
     );
 
-    // ITC is passed to ComponentLoader but we'd need to update the mock to expose it
-    expect(screen.getByTestId('higher-plans-modal')).toBeInTheDocument();
+    expect(screen.getByTestId('override-itc')).toHaveTextContent('test-itc-code');
+  });
+
+  it('passes empty ITC when not provided', function passesEmptyItc() {
+    renderWithProviders(
+      <HigherPlansUpgradeContainer
+        onClose={mockOnClose}
+        source="test-source"
+      />
+    );
+
+    expect(screen.getByTestId('override-itc')).toHaveTextContent('');
   });
 
   it('includes downgradedPlan from cached data when re-upgrading', async function includesDowngradedPlan() {

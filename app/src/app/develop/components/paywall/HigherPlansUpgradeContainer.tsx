@@ -132,7 +132,8 @@ const HigherPlansUpgradeContainer = ({
         errorCallback={onErrorClick}
         onError={handleError}
         LoadingComponent={<PaywallLoadingModal onClose={onClose} variant={PaywallLoadingModalVariant.HigherPlans} />}
-        currentPlan={subscription?.plan}
+        // used for breaking cache between conversions
+        currentPlan={subscription?.downgradedPlan ?? subscription?.plan}
       />
     </ErrorBoundary>
   )
