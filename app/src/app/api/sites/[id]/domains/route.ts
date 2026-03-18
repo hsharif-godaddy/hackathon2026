@@ -81,7 +81,7 @@ export const POST = withCustomerAuth(async (
 
     // Parse request body
     const body = await request.json();
-    const { domainsToCreate = [], domainsToDelete = [], createCdn = false, isWildcardDomain = false } = body;
+    const { domainsToCreate = [], domainsToDelete = [], createCdn = false } = body;
 
     // Validate at least one operation is requested
     if (domainsToCreate.length === 0 && domainsToDelete.length === 0) {
@@ -118,7 +118,7 @@ export const POST = withCustomerAuth(async (
       domainsToCreateCount: domainsToCreate.length,
       domainsToDeleteCount: domainsToDelete.length,
       createCdn,
-      isWildcardDomain,
+      isWildcardDomain: true,
     });
 
     // Create mgmt-airo client and trigger domain modification
@@ -132,7 +132,7 @@ export const POST = withCustomerAuth(async (
         domainsToCreate,
         domainsToDelete,
         createCdn,
-        isWildcardDomain,
+        isWildcardDomain: true,
       },
     );
 

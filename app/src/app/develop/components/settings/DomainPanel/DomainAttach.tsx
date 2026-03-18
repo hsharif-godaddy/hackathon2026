@@ -62,7 +62,6 @@ export default function DomainAttach() {
   const [showAddConfirmation, setShowAddConfirmation] = useState(false);
   const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const { data: isWildcardDomain } = useSwitchboard('appbuilder-www-wildcard');
   const { data: isDCVEnabled } = useSwitchboard('appbuilder-domain-dcv');
 
   const site = useSiteStore((state) => {
@@ -230,7 +229,7 @@ export default function DomainAttach() {
         payload: {
           domainsToCreate: [{ fqdn: domainName, primary: false }],
           createCdn: true,
-          isWildcardDomain,
+          isWildcardDomain: true,
         },
       });
       shipAnalyticsLog('domain.custom.connect.success', {
