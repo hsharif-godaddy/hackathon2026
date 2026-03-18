@@ -34,8 +34,9 @@ export default function GrepSearchToolRenderer({
 
   if (result && typeof result === 'string') {
     // Extract query from input
-    if (input && typeof input === 'object' && 'query' in input) {
-      query = String(input.query)
+    if (input && typeof input === 'object') {
+      if ('pattern' in input) query = String(input.pattern)
+      else if ('query' in input) query = String(input.query)
     }
 
     // Parse result string to extract counts

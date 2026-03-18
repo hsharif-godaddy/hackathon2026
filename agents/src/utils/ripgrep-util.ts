@@ -1,6 +1,12 @@
+import * as nodePath from 'node:path';
 import type { DevSupervisorClient } from '../services/DevSupervisorClient.js';
 import { logger } from '../logging/index.js';
 import { toolCodeSearchEvents } from '../logging/events/index.js';
+
+export interface RipgrepContextLine {
+  line: number
+  text: string
+}
 
 export interface RipgrepMatch {
   path: string
@@ -9,6 +15,8 @@ export interface RipgrepMatch {
   text: string
   matchStart: number
   matchEnd: number
+  contextBefore: RipgrepContextLine[]
+  contextAfter: RipgrepContextLine[]
 }
 
 export interface RipgrepResult {
@@ -22,13 +30,23 @@ export interface RipgrepOptions {
   caseSensitive?: boolean
   regex?: boolean
   maxResults?: number
-  contextLines?: number
-  filePattern?: string
+  contextLines?: number    // -C symmetric
+  afterContext?: number     // -A
+  beforeContext?: number    // -B
+  filePattern?: string      // --glob
+  fileType?: string         // --type
+  wholeWord?: boolean       // --word-regexp
+  multiline?: boolean       // --multiline --multiline-dotall
+  offset?: number           // skip first N matches in parseOutput
 }
 
 /**
- * Utility for executing ripgrep searches via dev-supervisor
- * Provides shared functionality for code search operations
+ * Utility for executing ripgrep searches via dev-supervisor.
+ *
+ * The `directory` parameter is a path relative to the container's working
+ * directory (e.g. '.' for the project root, 'src/pages' for a subdirectory,
+ * or 'src/pages/index.tsx' for a single file). Dev-supervisor's default
+ * working directory is the app root inside the container.
  */
 export class RipgrepUtil {
   private static readonly MAX_MATCHES_PER_FILE = 10
@@ -59,7 +77,6 @@ export class RipgrepUtil {
     try {
       const result = await supervisor.exec({
         command,
-        working_dir: directory,
         timeout: 30,
         capture_output: true
       })
@@ -84,7 +101,8 @@ export class RipgrepUtil {
         directory,
         query,
         maxResults,
-        fileBlockChecker
+        fileBlockChecker,
+        options.offset
       )
     } catch (error) {
       toolCodeSearchEvents.spawnError(logger, error as Error, {
@@ -103,7 +121,7 @@ export class RipgrepUtil {
   /**
    * Build ripgrep command string
    */
-  private static buildCommand(
+  static buildCommand(
     query: string,
     directory: string,
     options: RipgrepOptions
@@ -114,7 +132,15 @@ export class RipgrepUtil {
     args.push('--max-filesize', '1M')
     args.push('--no-heading')
 
-    if (options.contextLines && options.contextLines > 0) {
+    // Asymmetric context (-A/-B) takes precedence over symmetric (-C)
+    if (options.afterContext != null || options.beforeContext != null) {
+      if (options.afterContext != null && options.afterContext > 0) {
+        args.push('-A', String(options.afterContext))
+      }
+      if (options.beforeContext != null && options.beforeContext > 0) {
+        args.push('-B', String(options.beforeContext))
+      }
+    } else if (options.contextLines != null && options.contextLines > 0) {
       args.push('--context', String(options.contextLines))
     }
 
@@ -126,43 +152,121 @@ export class RipgrepUtil {
       args.push('--fixed-strings')
     }
 
+    if (options.wholeWord) {
+      args.push('--word-regexp')
+    }
+
+    if (options.multiline) {
+      args.push('--multiline', '--multiline-dotall')
+    }
+
     if (options.filePattern) {
       args.push('--glob', this.escapeShellArg(options.filePattern))
     }
 
-    args.push('--', this.escapeShellArg(query), directory)
+    if (options.fileType) {
+      args.push('--type', this.escapeShellArg(options.fileType))
+    }
+
+    args.push('--', this.escapeShellArg(query), this.escapeShellArg(directory))
 
     return args.join(' ')
   }
 
   /**
-   * Parse ripgrep JSON output
+   * Derive a project-relative file path from a ripgrep output path.
+   * Ripgrep prefixes matches with the search directory (e.g. './src/foo.ts'
+   * when searching '.', or 'src/pages/index.tsx' for a single-file target).
+   * We strip the directory prefix and normalize to get clean relative paths.
    */
-  private static parseOutput(
+  private static toRelativePath(matchPath: string, directory: string): string {
+    // Ripgrep runs from the container's app root, so all output paths are
+    // relative to the app root regardless of the search target. Strip the
+    // './' prefix ripgrep adds when directory is '.'; otherwise return as-is.
+    if (directory === '.') {
+      return matchPath.startsWith('./') ? matchPath.slice(2) : matchPath
+    }
+    return matchPath
+  }
+
+  /**
+   * Parse ripgrep JSON output.
+   *
+   * Ripgrep with --json emits events in order:
+   *   begin → (context | match)* → end   per file
+   * Context events before a match become contextBefore; after become contextAfter.
+   */
+  static parseOutput(
     stdout: string,
     directory: string,
     query: string,
     maxResults: number,
-    fileBlockChecker?: (path: string) => boolean
+    fileBlockChecker?: (path: string) => boolean,
+    offset?: number
   ): RipgrepResult {
     const matches: RipgrepMatch[] = []
     const lines = stdout.split('\n').filter(Boolean)
+    let skipped = 0
+    const skipCount = offset || 0
+    let pendingContext: RipgrepContextLine[] = []
+    let truncated = false
 
     for (const line of lines) {
       if (matches.length >= maxResults) {
+        truncated = true
         break
       }
 
       try {
         const result = JSON.parse(line)
 
-        if (result.type === 'match') {
+        if (result.type === 'context') {
+          const data = result.data
+          const ctxLine: RipgrepContextLine = {
+            line: data.line_number,
+            text: data.lines.text.trimEnd()
+          }
+          // Context lines after a match (same file, line > match line) → contextAfter.
+          // Everything else accumulates in pendingContext → contextBefore of next match.
+          const lastMatch = matches[matches.length - 1]
+          const ctxFilePath = this.toRelativePath(data.path.text, directory)
+          if (lastMatch
+            && ctxFilePath === lastMatch.path
+            && data.line_number > lastMatch.line) {
+            lastMatch.contextAfter.push(ctxLine)
+          } else {
+            pendingContext.push(ctxLine)
+          }
+        } else if (result.type === 'match') {
           const data = result.data
           const submatch = data.submatches[0]
-          const filePath = data.path.text.replace(directory + '/', '')
+          const filePath = this.toRelativePath(data.path.text, directory)
 
           if (fileBlockChecker && !fileBlockChecker(filePath)) {
+            pendingContext = []
             continue
+          }
+
+          if (skipped < skipCount) {
+            skipped++
+            pendingContext = []
+            continue
+          }
+
+          // When context overlaps between matches, pendingContext is empty
+          // and the lines are in the previous match's contextAfter. Move
+          // lines closer to this match into contextBefore.
+          const lastMatch = matches[matches.length - 1]
+          let contextBefore = pendingContext
+          if (contextBefore.length === 0 && lastMatch && lastMatch.contextAfter.length > 0
+            && lastMatch.path === filePath) {
+            const matchLine = data.line_number
+            const splitIdx = lastMatch.contextAfter.findIndex(
+              c => (matchLine - c.line) <= (c.line - lastMatch.line)
+            )
+            if (splitIdx >= 0) {
+              contextBefore = lastMatch.contextAfter.splice(splitIdx)
+            }
           }
 
           matches.push({
@@ -171,8 +275,11 @@ export class RipgrepUtil {
             column: submatch.start + 1,
             text: data.lines.text.trimEnd(),
             matchStart: submatch.start,
-            matchEnd: submatch.end
+            matchEnd: submatch.end,
+            contextBefore,
+            contextAfter: []
           })
+          pendingContext = []
         }
       } catch (error) {
         toolCodeSearchEvents.parseError(logger, {
@@ -186,7 +293,7 @@ export class RipgrepUtil {
     return {
       matches,
       totalMatches: matches.length,
-      truncated: matches.length >= maxResults
+      truncated
     }
   }
 
@@ -213,4 +320,3 @@ export class RipgrepUtil {
     }
   }
 }
-

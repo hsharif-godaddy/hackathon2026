@@ -3,7 +3,7 @@
  */
 
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
-import { relative, resolve } from 'node:path';
+import { relative, resolve, sep } from 'node:path';
 
 import { Logger } from '../logging/index.js';
 
@@ -53,6 +53,25 @@ export function deriveAssetsDir(appPath: string): string | null {
 }
 
 /**
+ * Check whether filePath is safely within appPath (no traversal, no escaping symlinks).
+ * Allows symlinks to the known assets directory for bind mount compatibility.
+ */
+export function isPathSafe(filePath: string, appPath: string): boolean {
+  try {
+    const resolved = resolve(filePath);
+    const rel = relative(appPath, resolved);
+    if (rel === '..' || rel.startsWith(`..${sep}`)) {
+      return false;
+    }
+    const assetsDir = deriveAssetsDir(appPath);
+    validateNoEscapingSymlinks(resolved, appPath, assetsDir ? [assetsDir] : []);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Validate that no symlinks in the path chain point outside the allowed directories.
  * The basePath is always allowed. Additional trusted directories (e.g. the assets
  * directory for the public/assets symlink) can be passed via allowedPaths.
@@ -84,9 +103,12 @@ export function validateNoEscapingSymlinks(
           const realPath = realpathSync(currentPath);
 
           const rel = relative(resolvedBase, realPath);
-          if (rel.startsWith('..')) {
+          if (rel === '..' || rel.startsWith(`..${sep}`)) {
             const isAllowed = resolvedAllowed.some(
-              allowed => !relative(allowed, realPath).startsWith('..')
+              allowed => {
+                const allowedRel = relative(allowed, realPath);
+                return allowedRel !== '..' && !allowedRel.startsWith(`..${sep}`);
+              }
             );
             if (!isAllowed) {
               throw new Error(

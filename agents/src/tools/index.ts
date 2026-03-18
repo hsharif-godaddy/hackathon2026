@@ -3,7 +3,6 @@ export { TerminalTool } from './terminal.js';
 export { FileEditTool } from './file-edit.js';
 export { GitTool } from './git-tool.js';
 export { ReadFileTool } from './read-file.js';
-export { GrepTool } from './grep-tool.js';
 export { MySQLTool } from './mysql-tool.js';
 // MediaSearchTool kept as internal implementation for MediaSlotTool
 // Do not export - agents should use MediaSlotTool via media AI tool
@@ -49,12 +48,6 @@ export type {
   ReadFileOptions,
   ReadFileResult
 } from './read-file.js';
-export type {
-  GrepOptions,
-  GrepResult,
-  Match
-} from './grep-tool.js';
-
 export type {
   MediaSearchOptions,
   MediaSearchResult,
