@@ -8,7 +8,7 @@ vi.mock('../../utils/token-counter.js', () => ({
   countTokens: vi.fn().mockImplementation((text: string) => {
     // Simulate ~4 chars per token for deterministic testing
     const tokenCount = Math.ceil(text.length / 4);
-    return Promise.resolve({ tokenCount, provider: 'anthropic', normalizedModelName: 'claude-sonnet-4-6' });
+    return Promise.resolve({ tokenCount, provider: 'anthropic', normalizedModelName: 'claude-sonnet-4-5' });
   })
 }));
 
