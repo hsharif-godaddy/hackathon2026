@@ -165,11 +165,34 @@ export async function checkPaywallEligibility(
       result.details.subscriptionId = accountSubscription.id;
 
       // When grants flag is enabled, check publish limits for paid plans (only for publish action)
+      // flags.grants defaults to true on fetch failure (fail-closed), so limits are always enforced
+      // unless grants is explicitly disabled
       if (action === PaywallAction.Publish && flags.grants && !flags.bypassPublishLimit) {
 
         // Check publish limit for the plan
         // Legacy AiroPlus users show as Starter plan and have entitlementId (airo plus).
-        const publishedApps = await provider.getPublishedApps();
+        let publishedApps;
+        try {
+          publishedApps = await provider.getPublishedApps();
+        } catch (error) {
+          logger.error('paywall.eligibility.published-apps.check-failed', {
+            appId,
+            subscriptionId: accountSubscription.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          // Fail closed - deny access if we can't verify publish count
+          return {
+            hasAccess: false,
+            reason: 'Unable to verify publish limit',
+            details: {
+              hasSubscription: true,
+              subscriptionId: accountSubscription.id,
+              hasEntitlements: false,
+              hasMatchingProject: false,
+            },
+          };
+        }
+
         const isLegacyAiroPlus = accountSubscription.plan === SubscriptionPlan.Starter &&
           !!accountSubscription.entitlementId;
         const effectivePlan = isLegacyAiroPlus

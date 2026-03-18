@@ -864,6 +864,77 @@ describe('checkPaywallEligibility', () => {
     });
   });
 
+  describe('getPublishedApps error handling (fail-closed)', () => {
+    beforeEach(() => {
+      mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
+      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+    });
+
+    it('should fail closed with specific message when getPublishedApps throws an error', async () => {
+      mockProvider.checkSwitchboardFlags.mockResolvedValue({
+        paywall: true,
+        markets: true,
+        grants: true,
+        bypassPublishLimit: false,
+      });
+      mockProvider.getAccountSubscription.mockResolvedValue({
+        id: 'sub-starter',
+        plan: SubscriptionPlan.Starter,
+        status: 'active',
+      });
+      mockProvider.getPublishedApps.mockRejectedValue(new Error('Failed to fetch published apps: 500'));
+
+      const result = await checkPaywallEligibility(mockProvider, 'app-new', PaywallAction.Publish);
+
+      expect(result.hasAccess).toBe(false);
+      expect(result.reason).toBe('Unable to verify publish limit');
+      expect(result.details.hasSubscription).toBe(true);
+      expect(result.details.subscriptionId).toBe('sub-starter');
+    });
+
+    it('should fail closed with specific message when getPublishedApps throws a network error', async () => {
+      mockProvider.checkSwitchboardFlags.mockResolvedValue({
+        paywall: true,
+        markets: true,
+        grants: true,
+        bypassPublishLimit: false,
+      });
+      mockProvider.getAccountSubscription.mockResolvedValue({
+        id: 'sub-professional',
+        plan: SubscriptionPlan.Professional,
+        status: 'active',
+      });
+      mockProvider.getPublishedApps.mockRejectedValue(new Error('Network timeout'));
+
+      const result = await checkPaywallEligibility(mockProvider, 'app-new', PaywallAction.Publish);
+
+      expect(result.hasAccess).toBe(false);
+      expect(result.reason).toBe('Unable to verify publish limit');
+      expect(result.details.hasSubscription).toBe(true);
+    });
+
+    it('should not affect download action when getPublishedApps would fail', async () => {
+      mockProvider.checkSwitchboardFlags.mockResolvedValue({
+        paywall: true,
+        markets: true,
+        grants: true,
+        bypassPublishLimit: false,
+      });
+      mockProvider.getAccountSubscription.mockResolvedValue({
+        id: 'sub-starter',
+        plan: SubscriptionPlan.Starter,
+        status: 'active',
+      });
+      // getPublishedApps would throw, but shouldn't be called for download
+      mockProvider.getPublishedApps.mockRejectedValue(new Error('API error'));
+
+      const result = await checkPaywallEligibility(mockProvider, 'app-1', PaywallAction.Download);
+
+      expect(result.hasAccess).toBe(true);
+      expect(mockProvider.getPublishedApps).not.toHaveBeenCalled();
+    });
+  });
+
   describe('PaywallAction.Download (bypasses publish limits)', () => {
     beforeEach(() => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');

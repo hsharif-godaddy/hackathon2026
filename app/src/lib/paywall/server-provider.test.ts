@@ -31,6 +31,7 @@ const mockGetSubscriptions = vi.fn();
 const mockGetEntitlements = vi.fn();
 const mockGetSystems = vi.fn();
 const mockGetAppsForSystem = vi.fn();
+const mockGetAllAppsForCustomer = vi.fn();
 
 vi.mock('@/lib/mgmt-airo', () => ({
   AiroMgmtClient: vi.fn().mockImplementation(() => ({
@@ -38,6 +39,7 @@ vi.mock('@/lib/mgmt-airo', () => ({
     getEntitlements: mockGetEntitlements,
     getSystems: mockGetSystems,
     getAppsForSystem: mockGetAppsForSystem,
+    getAllAppsForCustomer: mockGetAllAppsForCustomer,
   })),
   AIRO_OWNER_PRODUCTS: {
     AIRO_APP_BUILDER: 'AiroAppBuilder',
@@ -205,8 +207,9 @@ describe('ServerPaywallProvider', () => {
       expect(result).toEqual({ paywall: false, markets: false, grants: false, bypassPublishLimit: false });
     });
 
-    it('should handle grants/bypass flag fetch failures gracefully (defaults to false)', async () => {
+    it('should handle grants/bypass flag fetch failures with fail-closed defaults', async () => {
       // grants and bypass use .catch(() => null) so failures are handled gracefully
+      // Network failures return true for grants (enforce limits) and false for bypass (no bypass)
       global.fetch = vi.fn()
         .mockResolvedValueOnce({
           ok: true,
@@ -222,11 +225,11 @@ describe('ServerPaywallProvider', () => {
       const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);
       const result = await provider.checkSwitchboardFlags('godaddy.com');
 
-      // Should still succeed with grants/bypass defaulting to false
+      // Should still succeed with fail-closed defaults: grants=true (enforce limits), bypass=false
       expect(result.paywall).toBe(true);
       expect(result.markets).toBe(true);
-      expect(result.grants).toBe(false);
-      expect(result.bypassPublishLimit).toBe(false);
+      expect(result.grants).toBe(true); // fail-closed: assume grants enabled
+      expect(result.bypassPublishLimit).toBe(false); // fail-closed: assume bypass disabled
     });
   });
 
@@ -453,6 +456,50 @@ describe('ServerPaywallProvider', () => {
         expect(result?.id).toBe('sub-1');
         expect(result?.plan).toBe(SubscriptionPlan.AiroPlus);
       });
+    });
+  });
+
+  describe('getPublishedApps', () => {
+    it('should return published apps when API call succeeds', async () => {
+      mockGetAllAppsForCustomer.mockResolvedValue([
+        { id: 'app-1', variantsWithLifecycle: [{ variant: 'publish', status: 'active' }] },
+        { id: 'app-2', variantsWithLifecycle: [{ variant: 'preview', status: 'active' }] },
+        { id: 'app-3', variantsWithLifecycle: [{ variant: 'publish', status: 'active' }] },
+      ]);
+
+      const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);
+      const result = await provider.getPublishedApps();
+
+      expect(result.count).toBe(2);
+      expect(result.publishedAppIds).toEqual(['app-1', 'app-3']);
+    });
+
+    it('should throw error when API call fails (fail-closed)', async () => {
+      mockGetAllAppsForCustomer.mockRejectedValue(new Error('API error'));
+
+      const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);
+
+      await expect(provider.getPublishedApps()).rejects.toThrow('API error');
+    });
+
+    it('should throw error on network failure (fail-closed)', async () => {
+      mockGetAllAppsForCustomer.mockRejectedValue(new Error('Network timeout'));
+
+      const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);
+
+      await expect(provider.getPublishedApps()).rejects.toThrow('Network timeout');
+    });
+
+    it('should return empty list when no apps have publish variant', async () => {
+      mockGetAllAppsForCustomer.mockResolvedValue([
+        { id: 'app-1', variantsWithLifecycle: [{ variant: 'preview', status: 'active' }] },
+      ]);
+
+      const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);
+      const result = await provider.getPublishedApps();
+
+      expect(result.count).toBe(0);
+      expect(result.publishedAppIds).toEqual([]);
     });
   });
 });

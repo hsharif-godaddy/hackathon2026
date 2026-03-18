@@ -20,10 +20,12 @@ export interface SwitchboardFlagsResult {
   paywall: boolean;
   /** Whether paywall is enabled in the current market */
   markets: boolean;
-  /** Whether app-builder-grants flag is enabled (new plan-based limits) */
-  grants?: boolean;
-  /** Whether app-builder-bypass-publish-limit flag is enabled allowing unlimited publishing*/
-  bypassPublishLimit?: boolean;
+  /** Whether app-builder-grants flag is enabled (new plan-based limits).
+   * Defaults to true on fetch failure for fail-closed behavior. */
+  grants: boolean;
+  /** Whether app-builder-bypass-publish-limit flag is enabled allowing unlimited publishing.
+   * Defaults to false on fetch failure for fail-closed behavior. */
+  bypassPublishLimit: boolean;
 }
 
 /**

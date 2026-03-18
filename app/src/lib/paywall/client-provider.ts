@@ -92,8 +92,6 @@ export class ClientPaywallProvider implements PaywallDataProvider {
     // Parse flag responses with error handling
     let paywallFlag: boolean;
     let marketsFlag: boolean;
-    let grantsFlag = false;
-    let bypassFlag = false;
 
     try {
       const paywallData = await paywallResponse.json();
@@ -122,29 +120,33 @@ export class ClientPaywallProvider implements PaywallDataProvider {
     }
 
     // Parse grants and bypass flags (optional, don't fail if unavailable)
+    let grantsFlagResult = true; // fail-closed: assume grants enabled
+    let bypassFlagResult = false; // fail-closed: assume bypass disabled
+
     if (grantsResponse?.ok) {
       try {
         const grantsData = await grantsResponse.json();
-        grantsFlag = grantsData.setting ?? false;
+        grantsFlagResult = grantsData.setting ?? false;
       } catch {
-        // Ignore parse errors for optional flags
+        // Parse error - keep as true (fail-closed for publish limits)
+        logger.warn('paywall.client-provider.grants-flag-parse.failure');
       }
     }
 
     if (bypassResponse?.ok) {
       try {
         const bypassData = await bypassResponse.json();
-        bypassFlag = bypassData.setting ?? false;
+        bypassFlagResult = bypassData.setting ?? false;
       } catch {
-        // Ignore parse errors for optional flags
+        // Parse error - leave as undefined (default to not bypassing)
       }
     }
 
     return {
       paywall: paywallFlag,
       markets: marketsFlag,
-      grants: grantsFlag,
-      bypassPublishLimit: bypassFlag,
+      grants: grantsFlagResult,
+      bypassPublishLimit: bypassFlagResult,
     };
   }
 
@@ -152,8 +154,11 @@ export class ClientPaywallProvider implements PaywallDataProvider {
    * Get account-level subscription (app-agnostic)
    *
    * Calls /api/subscriptions to get the user's subscription.
+   * Returns undefined only when user genuinely has no subscription (404).
+   * Throws on server errors to ensure fail-closed behavior.
    *
-   * @returns Promise with account subscription data
+   * @returns Promise with account subscription data, or undefined if no subscription exists
+   * @throws Error on server errors (5xx) to ensure fail-closed behavior
    */
   async getAccountSubscription(): Promise<AccountSubscription | undefined> {
     const response = await appFetch('/api/subscriptions', {
@@ -161,7 +166,14 @@ export class ClientPaywallProvider implements PaywallDataProvider {
     });
 
     if (!response.ok) {
-      return undefined;
+      if (response.status === 404) {
+        return undefined;
+      }
+
+      logger.error('paywall.client-provider.subscription.fetch-failed', {
+        status: response.status,
+      });
+      throw new Error(`Failed to fetch subscription: ${response.status}`);
     }
 
     const data = await response.json();
@@ -254,35 +266,30 @@ export class ClientPaywallProvider implements PaywallDataProvider {
    * Get published apps data
    *
    * Calls /api/sites and filters for apps with active 'publish' variant.
+   * Throws on error to ensure fail-closed behavior for publish limit checks.
    *
    * @returns Promise with published apps count, IDs, and app info for UI display
+   * @throws Error if unable to fetch published apps (fail-closed for security)
    */
   async getPublishedApps(): Promise<PublishedAppsData> {
-    try {
-      const response = await appFetch('/api/sites', {
-        credentials: 'include',
+    const response = await appFetch('/api/sites', {
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      logger.error('paywall.client-provider.published-apps.fetch-failed', {
+        status: response.status,
       });
-
-      if (!response.ok) {
-        logger.warn('paywall.client-provider.published-apps.fetch-failed', {
-          status: response.status,
-        });
-        return { count: 0, publishedAppIds: [] };
-      }
-
-      const sites: SiteInfo[] = await response.json();
-      const publishedApps = filterPublishedApps(sites);
-
-      return {
-        count: publishedApps.length,
-        publishedAppIds: publishedApps.map(app => app.id),
-        apps: publishedApps,
-      };
-    } catch (error) {
-      logger.warn('paywall.client-provider.published-apps.error', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return { count: 0, publishedAppIds: [] };
+      throw new Error(`Failed to fetch published apps: ${response.status}`);
     }
+
+    const sites: SiteInfo[] = await response.json();
+    const publishedApps = filterPublishedApps(sites);
+
+    return {
+      count: publishedApps.length,
+      publishedAppIds: publishedApps.map(app => app.id),
+      apps: publishedApps,
+    };
   }
 }

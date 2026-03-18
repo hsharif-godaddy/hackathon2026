@@ -104,11 +104,12 @@ export class ServerPaywallProvider implements PaywallDataProvider {
       );
     }
 
-    // Parse flag responses
     let paywallFlag: boolean;
     let marketsFlag: boolean;
-    let grantsFlag = false;
-    let bypassFlag = false;
+    // Default to true (grants enabled) for fail-closed behavior
+    // If we can't verify grants status, assume it's enabled and enforce publish limits
+    let grantsFlagResult = true; // fail-closed: assume grants enabled
+    let bypassFlagResult = false; // fail-closed: assume bypass disabled
 
     try {
       const paywallData = await paywallResponse.json();
@@ -140,26 +141,27 @@ export class ServerPaywallProvider implements PaywallDataProvider {
     if (grantsResponse?.ok) {
       try {
         const grantsData = await grantsResponse.json();
-        grantsFlag = grantsData.setting ?? false;
+        grantsFlagResult = grantsData.setting ?? false;
       } catch {
-        // Ignore parse errors for optional flags
+        // Parse error - keep as true (fail-closed for publish limits)
+        logger.warn('paywall.server-provider.grants-flag-parse.failure');
       }
     }
 
     if (bypassResponse?.ok) {
       try {
         const bypassData = await bypassResponse.json();
-        bypassFlag = bypassData.setting ?? false;
+        bypassFlagResult = bypassData.setting ?? false;
       } catch {
-        // Ignore parse errors for optional flags
+        // Parse error - leave as undefined (default to not bypassing)
       }
     }
 
     return {
       paywall: paywallFlag,
       markets: marketsFlag,
-      grants: grantsFlag,
-      bypassPublishLimit: bypassFlag,
+      grants: grantsFlagResult,
+      bypassPublishLimit: bypassFlagResult,
     };
   }
 
@@ -383,8 +385,10 @@ export class ServerPaywallProvider implements PaywallDataProvider {
    * Get published apps data
    *
    * Uses AiroMgmtClient to get all apps and filters for apps with active 'publish' variant.
+   * Throws on error to ensure fail-closed behavior for publish limit checks.
    *
    * @returns Promise with published apps count and IDs
+   * @throws Error if unable to fetch published apps (fail-closed for security)
    */
   async getPublishedApps(): Promise<PublishedAppsData> {
     try {
@@ -399,11 +403,11 @@ export class ServerPaywallProvider implements PaywallDataProvider {
         publishedAppIds: publishedApps.map(app => app.id),
       };
     } catch (error) {
-      logger.warn('paywall.server-provider.published-apps-error', {
+      logger.error('paywall.server-provider.published-apps.fetch-failed', {
         customerId: this.customerId,
         error: error instanceof Error ? error.message : String(error),
       });
-      return { count: 0, publishedAppIds: [] };
+      throw error;
     }
   }
 }
