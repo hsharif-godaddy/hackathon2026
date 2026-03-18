@@ -20,11 +20,18 @@ vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: vi.fn(() => vi.fn()),
 }));
 
+let capturedFormattedMessageValues: Record<string, unknown> | null = null;
+
 vi.mock('react-intl', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-intl')>();
   return {
     ...actual,
-    FormattedMessage: ({ id }: { id: string }) => <span>{id}</span>,
+    FormattedMessage: ({ id, values }: { id: string; values?: Record<string, unknown> }) => {
+      if (id === 'builder_manageplan_downgrade_to_plan_message' && values) {
+        capturedFormattedMessageValues = values;
+      }
+      return <span data-testid={`formatted-message-${id}`}>{id}</span>;
+    },
   };
 });
 
@@ -35,6 +42,7 @@ const mockSubscription = {
   status: 'active',
   isTrial: false,
   plan: 'professional',
+  renewsAt: '2027-02-15T07:00:00Z',
   downgradedAt: '2027-01-29T07:00:00Z',
   downgradedPlan: 'starter',
   createdAt: '2024-01-01T00:00:00Z',
@@ -52,6 +60,7 @@ vi.mock('@/hooks/useSubscription', () => ({
 describe('DowngradeAlert', function downgradeAlertTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
+    capturedFormattedMessageValues = null;
   });
 
   describe('renders correctly', function renderTests() {
@@ -150,6 +159,38 @@ describe('DowngradeAlert', function downgradeAlertTests() {
         content.includes('builder_manageplan_downgrade_keep_plan')
       ).closest('button');
       expect(button).toHaveAttribute('data-partial', 'componentAiro');
+    });
+  });
+
+  describe('formatted date', function formattedDateTests() {
+    it('should use renewsAt date for the formatted date, not downgradedAt', function usesRenewsAtDate() {
+      renderWithProviders(<DowngradeAlert />);
+
+      // renewsAt is '2027-02-15T07:00:00Z', downgradedAt is '2027-01-29T07:00:00Z'
+      // The formatted date should be based on renewsAt, not downgradedAt
+      expect(capturedFormattedMessageValues).not.toBeNull();
+      expect(capturedFormattedMessageValues?.formattedDate).toBeDefined();
+
+      // Compute expected date using same formatting logic as component (locale-independent)
+      const dateFormatOptions: Intl.DateTimeFormatOptions = {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      };
+      const expectedDate = new Date(mockSubscription.renewsAt).toLocaleDateString(undefined, dateFormatOptions);
+      const unexpectedDate = new Date(mockSubscription.downgradedAt).toLocaleDateString(undefined, dateFormatOptions);
+
+      const formattedDate = capturedFormattedMessageValues?.formattedDate as string;
+      expect(formattedDate).toBe(expectedDate);
+      expect(formattedDate).not.toBe(unexpectedDate);
+    });
+
+    it('should pass current and downgraded plan names to FormattedMessage', function passesCorrectPlanNames() {
+      renderWithProviders(<DowngradeAlert />);
+
+      expect(capturedFormattedMessageValues).not.toBeNull();
+      expect(capturedFormattedMessageValues?.currentPlanName).toBeDefined();
+      expect(capturedFormattedMessageValues?.downgradedPlanName).toBeDefined();
     });
   });
 });

@@ -33,6 +33,7 @@ export default function DowngradeScheduledAlert({
   const t = useTranslations();
   const { data: subscription } = useSubscription();
 
+  const renewsAt = subscription?.renewsAt;
   const downgradedAt = subscription?.downgradedAt;
   const downgradedPlan = subscription?.downgradedPlan;
 
@@ -40,7 +41,7 @@ export default function DowngradeScheduledAlert({
   const planLabelKey = currentPlan ? getPlanDisplayLabelKey(currentPlan) : null;
   const currentPlanName = planLabelKey ? t(planLabelKey) : '';
 
-  const hasScheduledDowngrade = !!(downgradedAt && downgradedPlan);
+  const hasScheduledDowngrade = !!(downgradedAt && downgradedPlan && renewsAt);
 
   useEffect(() => {
     if (hasScheduledDowngrade) {
@@ -52,8 +53,7 @@ export default function DowngradeScheduledAlert({
     return null;
   }
 
-  // Format the date for display
-  const formattedDate = new Date(downgradedAt).toLocaleDateString(undefined, {
+  const formattedDate = new Date(renewsAt).toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'long',
     day: 'numeric',

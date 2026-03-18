@@ -914,12 +914,13 @@ describe('ManagePlan', function managePlanTests() {
       mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
     });
 
-    it('should show downgrade alert when subscription has downgradedAt and downgradedPlan', async function showAlertWithScheduledDowngrade() {
+    it('should show downgrade alert when subscription has downgradedAt, downgradedPlan, and renewsAt', async function showAlertWithScheduledDowngrade() {
       mockUseActiveSubscription.mockReturnValue({
         data: {
           id: 'sub-1',
           plan: SubscriptionPlan.Starter,
           builderEntitlementId: 'ent-123',
+          renewsAt: '2027-03-01T00:00:00Z',
           downgradedAt: '2027-02-15T00:00:00Z',
           downgradedPlan: SubscriptionPlan.Free,
         },
@@ -988,6 +989,7 @@ describe('ManagePlan', function managePlanTests() {
         data: {
           id: 'sub-1',
           plan: SubscriptionPlan.Free,
+          renewsAt: '2027-03-01T00:00:00Z',
           downgradedAt: '2027-02-15T00:00:00Z',
           downgradedPlan: SubscriptionPlan.Free,
         },
@@ -1002,10 +1004,36 @@ describe('ManagePlan', function managePlanTests() {
 
       renderWithProviders(<ManagePlan />);
 
-      // Alert shows when subscription has downgradedAt/downgradedPlan fields,
+      // Alert shows when subscription has downgradedAt/downgradedPlan/renewsAt fields,
       // regardless of current plan (in practice, free plans rarely have these)
       await waitFor(function checkAlertVisible() {
         expect(screen.getByText('builder_manageplan_downgrade_plan_title')).toBeInTheDocument();
+      });
+    });
+
+    it('should NOT show downgrade alert when renewsAt is missing', async function noAlertMissingRenewsAt() {
+      mockUseActiveSubscription.mockReturnValue({
+        data: {
+          id: 'sub-1',
+          plan: SubscriptionPlan.Starter,
+          builderEntitlementId: 'ent-123',
+          downgradedAt: '2027-02-15T00:00:00Z',
+          downgradedPlan: SubscriptionPlan.Free,
+          // renewsAt is missing - alert should not show to prevent Invalid Date crash
+        },
+        isLoading: false,
+        isError: false,
+      });
+      mockUseCreditGrants.mockReturnValue({
+        data: [createMonthlyGrant()],
+        isLoading: false,
+        isError: false,
+      });
+
+      renderWithProviders(<ManagePlan />);
+
+      await waitFor(function checkNoAlert() {
+        expect(screen.queryByText('builder_manageplan_downgrade_plan_title')).not.toBeInTheDocument();
       });
     });
   });
