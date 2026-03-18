@@ -114,6 +114,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@airo/eslint-config": "workspace:*",
     "@opentelemetry/sdk-trace-node": "^2.5.0",
     "@types/archiver": "^6.0.2",
     "@types/babel__generator": "^7.6.8",

@@ -9,6 +9,8 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
     "extract": "tsx src/extract.ts",
     "generate-styles": "tsx src/generate-style.ts"
   },
@@ -19,8 +21,13 @@
     "pdfjs-dist": "^5.4.149"
   },
   "devDependencies": {
+    "@airo/eslint-config": "workspace:*",
     "@types/node": "^22.18.12",
     "@types/pdf-parse": "^1.1.4",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^8.54.0",
+    "eslint-config-prettier": "^9.0.0",
     "tsx": "^4.7.0",
     "typescript": "^5.3.0"
   },

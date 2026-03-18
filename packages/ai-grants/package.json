@@ -26,6 +26,7 @@
     "@airo/shared": "workspace:*"
   },
   "devDependencies": {
+    "@airo/eslint-config": "workspace:*",
     "@types/node": "^22.18.12",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
