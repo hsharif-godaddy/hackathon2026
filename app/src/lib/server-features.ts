@@ -13,6 +13,7 @@ import 'server-only'
 
 export interface ServerFeatureFlags {
   showPricingSection: boolean
+  showHighTierPlans: boolean
   // Add more server-side feature flags here
 }
 
@@ -23,6 +24,7 @@ export interface ServerFeatureFlags {
 export function getServerFeatureFlags(): ServerFeatureFlags {
   return {
     showPricingSection: process.env.SHOW_PRICING_SECTION === 'true',
+    showHighTierPlans: process.env.SHOW_HIGH_TIER_PLANS === 'true',
     // Add more flags here as needed
   }
 }

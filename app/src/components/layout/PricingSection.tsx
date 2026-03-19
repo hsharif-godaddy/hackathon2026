@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect } from 'react'
+import { FormattedMessage } from 'react-intl'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import CloudUploadIcon from '@ux/icon/cloud-upload'
@@ -9,73 +10,83 @@ import DesktopIcon from '@ux/icon/desktop'
 import DomainIcon from '@ux/icon/domain'
 import DownloadIcon from '@ux/icon/download'
 import ServerIcon from '@ux/icon/server'
-import Skeleton from '@ux/skeleton'
+import UserIcon from '@ux/icon/user'
 import text from '@ux/text'
 
 import PageSection from '@/components/layout/PageSection'
+import PlanPriceDisplay from '@/components/layout/PlanPriceDisplay'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { InfoTooltip } from '@/components/ui/InfoTooltip'
+import { usePricingOffers } from '@/hooks/usePricingOffers'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useTranslations } from '@/hooks/useTranslations'
 import { shipAnalyticsLog } from '@/lib/logging'
-import { formatOfferPrice } from '@/lib/pricing'
+import { PLAN_PUBLISH_LIMITS } from '@/lib/publish-limit'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { SubscriptionPlan } from '@/types/credits'
+import { generateClickEID } from '@/utils/instrumentation'
 
 // Session-scoped storage key for pending upgrade action
 const PENDING_UPGRADE_KEY = 'airo-pending-pricing-upgrade'
 
-export default function PricingSection() {
+interface PricingSectionProps {
+  showHighTierPlans?: boolean
+}
+
+interface PlanFeature {
+  icon: React.ComponentType<{ className?: string }>
+  titleKey: string
+  titleParams?: Record<string, string | number>
+  tooltipKey?: string
+}
+
+const FREE_FEATURES: PlanFeature[] = [
+  { icon: DatabaseIcon, titleKey: 'builder_pricing_item_credits', titleParams: { count: 50 }, tooltipKey: 'builder_pricing_item_credits_tooltip' },
+  { icon: DesktopIcon, titleKey: 'builder_pricing_free_item_creation' },
+]
+
+const STARTER_FEATURES: PlanFeature[] = [
+  { icon: DatabaseIcon, titleKey: 'builder_pricing_item_credits', titleParams: { count: 150 }, tooltipKey: 'builder_pricing_item_credits_tooltip' },
+  { icon: CloudUploadIcon, titleKey: 'builder_pricing_item_published', titleParams: { count: PLAN_PUBLISH_LIMITS[SubscriptionPlan.Starter] ?? 0 } },
+  { icon: DesktopIcon, titleKey: 'builder_pricing_starter_item_creation' },
+  { icon: ServerIcon, titleKey: 'builder_pricing_starter_item_hosting', tooltipKey: 'builder_pricing_starter_item_hosting_tooltip' },
+  { icon: DomainIcon, titleKey: 'builder_pricing_starter_item_domain', tooltipKey: 'builder_pricing_item_domain_tooltip' },
+  { icon: DownloadIcon, titleKey: 'builder_pricing_starter_item_download', tooltipKey: 'builder_pricing_item_download_tooltip' },
+]
+
+const PROFESSIONAL_FEATURES: PlanFeature[] = [
+  { icon: DatabaseIcon, titleKey: 'builder_pricing_item_credits', titleParams: { count: 300 }, tooltipKey: 'builder_pricing_item_credits_tooltip' },
+  { icon: CloudUploadIcon, titleKey: 'builder_pricing_item_published', titleParams: { count: PLAN_PUBLISH_LIMITS[SubscriptionPlan.Professional] ?? 0 } },
+  { icon: DesktopIcon, titleKey: 'builder_pricing_unlimited_creation' },
+  { icon: ServerIcon, titleKey: 'builder_pricing_starter_item_hosting', tooltipKey: 'builder_pricing_starter_item_hosting_tooltip' },
+  { icon: DomainIcon, titleKey: 'builder_pricing_starter_item_domain', tooltipKey: 'builder_pricing_item_domain_tooltip' },
+  { icon: DownloadIcon, titleKey: 'builder_pricing_starter_item_download', tooltipKey: 'builder_pricing_item_download_tooltip' },
+  { icon: UserIcon, titleKey: 'builder_pricing_item_shared_access' },
+]
+
+const ULTIMATE_FEATURES: PlanFeature[] = [
+  { icon: DatabaseIcon, titleKey: 'builder_pricing_item_credits', titleParams: { count: 750 }, tooltipKey: 'builder_pricing_item_credits_tooltip' },
+  { icon: CloudUploadIcon, titleKey: 'builder_pricing_item_published', titleParams: { count: PLAN_PUBLISH_LIMITS[SubscriptionPlan.Ultimate] ?? 0 } },
+  { icon: DesktopIcon, titleKey: 'builder_pricing_unlimited_creation' },
+  { icon: ServerIcon, titleKey: 'builder_pricing_starter_item_hosting', tooltipKey: 'builder_pricing_starter_item_hosting_tooltip' },
+  { icon: DomainIcon, titleKey: 'builder_pricing_starter_item_domain', tooltipKey: 'builder_pricing_item_domain_tooltip' },
+  { icon: DownloadIcon, titleKey: 'builder_pricing_starter_item_download', tooltipKey: 'builder_pricing_item_download_tooltip' },
+  { icon: UserIcon, titleKey: 'builder_pricing_item_shared_access' },
+  // TODO: uncomment when git hosting feature is added
+  // { icon: CodeIcon, titleKey: 'builder_pricing_item_git_hosting', tooltipKey: 'builder_pricing_item_git_hosting_tooltip' },
+]
+
+export default function PricingSection({ showHighTierPlans = false }: PricingSectionProps) {
   const t = useTranslations();
-  const [pricingData, setPricingData] = useState(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const { data: pricingData, isLoading } = usePricingOffers()
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
 
   const { isAuthenticated, isAuthDisabled, isLoading: authIsLoading } = useAuthContext()
   const { signIn } = useSsoSignIn()
   // Disabled by default - only refetch when restoring pending upgrade to avoid unnecessary API calls
   const { refetch: refetchSubscription } = useSubscription({ enabled: false })
-
-  useEffect(() => {
-    async function fetchPricing() {
-      try {
-        setIsLoading(true)
-        const response = await fetch('/api/pricing/offers')
-
-        if (!response.ok) {
-          shipAnalyticsLog('pricing_section.fetch.http_error', {
-            status: response.status,
-            statusText: response.statusText
-          })
-          return
-        }
-
-        const result = await response.json()
-
-        if (!result.success) {
-          shipAnalyticsLog('pricing_section.fetch.api_error', {
-            error: result.error,
-            message: result.message
-          })
-          return
-        }
-
-        if (result.data?.newOffers?.offers?.[0]) {
-          const offer = result.data.newOffers.offers[0]
-          setPricingData(offer)
-        }
-      } catch (error) {
-        shipAnalyticsLog('pricing_section.fetch.exception', {
-          error: error instanceof Error ? error.message : String(error)
-        })
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    fetchPricing()
-  }, [])
 
   useEffect(() => {
     if (authIsLoading || !isAuthenticated) return
@@ -99,8 +110,6 @@ export default function PricingSection() {
   }, [authIsLoading, isAuthenticated, refetchSubscription, openUpgradeModal])
 
   const handleUpgradeClick = useCallback(() => {
-    shipAnalyticsLog('pricing_section.upgrade_button.clicked', {})
-
     if (!isAuthDisabled && !isAuthenticated) {
       try {
         sessionStorage.setItem(PENDING_UPGRADE_KEY, 'true')
@@ -119,76 +128,173 @@ export default function PricingSection() {
 
   const handleStartBuildingClick = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
-    shipAnalyticsLog('pricing_section.start_building_button.clicked', {})
   }
 
-  const PricingItem = ({ icon, title, tooltip }: { icon: React.ReactNode, title: string, tooltip?: string }) => {
+  const PricingItem = ({ icon, feature }: { icon: React.ReactNode, feature: PlanFeature }) => {
+    const tooltipContent = feature.tooltipKey ? t(feature.tooltipKey) : undefined
+
     return (
       <Box orientation="horizontal" gap="sm" inlineAlignChildren="center">
         {icon}
-        <text.p size={0}>{title}</text.p>
-        {tooltip && <InfoTooltip content={tooltip} />}
+        <text.p size={0}>
+          <FormattedMessage
+            id={feature.titleKey}
+            values={{
+              ...feature.titleParams,
+              tooltip: tooltipContent ? <InfoTooltip content={tooltipContent} /> : null
+            }}
+          />
+        </text.p>
       </Box>
     )
   }
 
+  const renderFeatures = (features: PlanFeature[]) => {
+    return features.map((feature, index) => (
+      <PricingItem
+        key={index}
+        icon={<feature.icon className="size-2" />}
+        feature={feature}
+      />
+    ))
+  }
+
+  const renderFeaturesWithSeparators = (features: PlanFeature[]) => {
+    return features.map((feature, index) => (
+      <React.Fragment key={index}>
+        {index > 0 && <hr className="border-intents-ux-box-borderColor my-1.5" />}
+        <PricingItem
+          icon={<feature.icon className="size-2" />}
+          feature={feature}
+        />
+      </React.Fragment>
+    ))
+  }
+
+  const paidCardStyles = "flex flex-col h-full bg-intents-ux-boxLowContrast-backgroundColor border border-intents-ux-box-borderColor rounded-2xl text-intents-ux-boxLowContrast-foregroundColor overflow-hidden"
+
   return (
     <PageSection data-testid="pricing-section" id="pricing-section">
-      <div className="flex flex-row flex-wrap justify-center items-center gap-4 md:gap-0 w-full max-w-screen-lg mx-auto">
-        <div className="flex flex-col shrink-0 w-full md:max-w-1/2 p-4 lg:p-6 md:pr-12 md:mr-1 lg:pr-24 lg:mr-2 border border-intents-ux-box-borderColor rounded-2xl" data-partial="inverted">
-          <text.h3 as="heading" size={0} className="mb-1">{t('builder_pricing_free_title')}</text.h3>
-          <text.p size={1}>{t('builder_pricing_free_desc')}</text.p>
-          <Button
-            design="primary"
-            text={t('builder_pricing_free_cta')}
-            onClick={handleStartBuildingClick}
-            className="!my-3"
-          />
-          <PricingItem icon={<DesktopIcon className="size-2" />} title={t('builder_pricing_free_item_creation')} />
-          <hr className="border-intents-ux-box-borderColor my-1.5" />
-          <PricingItem icon={<DatabaseIcon className="size-2" />} title={t('builder_pricing_item_credits', { count: 50 })} />
-        </div>
+      {showHighTierPlans ? (
+        <div className="w-full max-w-[1700px] mx-auto px-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 xl:gap-2 items-stretch">
 
-        <div className="flex flex-col shrink-0 w-full md:max-w-1/2 md:-ml-10 lg:-ml-20 p-4 md:p-66 bg-intents-ux-box-backgroundColor border border-intents-ux-box-borderColor rounded-2xl text-intents-ux-box-foregroundColor shadow-md">
-          <text.h3 as="heading" size={2} className="mb-1">{t('builder_pricing_starter_title')}</text.h3>
-          <text.p size={1}>{t('builder_pricing_starter_desc')}</text.p>
-          {isLoading ? (
-            <div className="my-3">
-              <Skeleton size="md" width="150px" height="28px" />
+            {/* Free Plan */}
+            <div
+              className="flex flex-col h-auto md:h-full xl:h-auto xl:self-center border border-intents-ux-box-borderColor rounded-2xl overflow-hidden"
+              data-partial="inverted"
+            >
+              <div className="p-5 lg:p-6">
+                <text.h3 as="heading" size={1} className="mb-2">{t('builder_pricing_free_title')}</text.h3>
+                <text.p size={0} className="mb-4">{t('builder_pricing_free_desc')}</text.p>
+                <Button
+                  design="primary"
+                  text={t('builder_pricing_free_cta')}
+                  onClick={handleStartBuildingClick}
+                  className="!mb-6"
+                />
+                <div className="space-y-3">
+                  {renderFeatures(FREE_FEATURES)}
+                </div>
+              </div>
             </div>
-          ) : pricingData?.price?.numeric?.listing?.perTerm?.discounted != null &&
-             pricingData?.currency &&
-             pricingData?.marketId ? (
-            <text.p size={3} className="mt-3">
-              {t('builder_pricing_yearly', {
-                price: formatOfferPrice(
-                  pricingData.price.numeric.listing.perTerm.discounted,
-                  pricingData.currency,
-                  pricingData.marketId
-                )
-              })}
-            </text.p>
-          ) : null}
-          <Button
-            design="primary"
-            text={t('builder_pricing_starter_cta')}
-            onClick={handleUpgradeClick}
-            disabled={authIsLoading}
-            className="!my-4"
-          />
-          <PricingItem icon={<DesktopIcon className="size-2" />} title={t('builder_pricing_starter_item_creation')} />
-          <hr className="border-intents-ux-box-borderColor my-1.5" />
-          <PricingItem icon={<DatabaseIcon className="size-2" />} title={t('builder_pricing_item_credits', { count: 150 })} />
-          <hr className="border-intents-ux-box-borderColor my-1.5" />
-          <PricingItem icon={<ServerIcon className="size-2" />} title={t('builder_pricing_starter_item_hosting')} tooltip={t('builder_pricing_starter_item_hosting_tooltip')} />
-          <hr className="border-intents-ux-box-borderColor my-1.5" />
-          <PricingItem icon={<CloudUploadIcon className="size-2" />} title={t('builder_pricing_starter_item_published')} />
-          <hr className="border-intents-ux-box-borderColor my-1.5" />
-          <PricingItem icon={<DomainIcon className="size-2" />} title={t('builder_pricing_starter_item_domain')} />
-          <hr className="border-intents-ux-box-borderColor my-1.5" />
-          <PricingItem icon={<DownloadIcon className="size-2" />} title={t('builder_pricing_starter_item_download')} />
+
+            {/* Starter Plan */}
+            <div className={paidCardStyles}>
+              <div className="p-5 lg:p-6 flex flex-col h-full">
+                <text.h3 as="heading" size={1} className="mb-2">{t('builder_pricing_starter_title')}</text.h3>
+                <text.p size={0} className="mb-2" text={t('builder_pricing_starter_desc')} />
+                <PlanPriceDisplay planOffer={pricingData?.[SubscriptionPlan.Starter] ?? null} isLoading={isLoading} />
+                <Button
+                  design="primary"
+                  text={t('builder_pricing_starter_cta')}
+                  onClick={handleUpgradeClick}
+                  data-eid={generateClickEID('pricing_section.upgrade_button.starter')}
+                  disabled={authIsLoading}
+                  className="!mb-6"
+                />
+                <div className="space-y-3">
+                  {renderFeatures(STARTER_FEATURES)}
+                </div>
+              </div>
+            </div>
+
+            {/* Professional Plan - RECOMMENDED */}
+            <div className={`${paidCardStyles} border-2 border-ring-ai relative overflow-visible shadow-[0_0_18px_rgba(139,92,246,0.8)]`}>
+              <text.span
+                as="paragraph"
+                className="absolute -top-3 left-1/2 -translate-x-1/2 bg-ring-ai text-intents-ux-boxHighContrast-foregroundColor font-semibold px-4 py-1.5 rounded-full whitespace-nowrap shadow-lg z-10"
+                text={t('builder_pricing_recommended')}
+              />
+              <div className="p-5 lg:p-6 flex flex-col h-full">
+                <text.h3 as="heading" size={1} className="mb-2" text={t('builder_pricing_professional_title')} />
+                <text.p size={0} className="mb-2" text={t('builder_pricing_professional_desc')} />
+                <PlanPriceDisplay planOffer={pricingData?.[SubscriptionPlan.Professional] ?? null} isLoading={isLoading} />
+                <Button
+                  design="primary"
+                  text={t('builder_pricing_free_cta')}
+                  onClick={handleUpgradeClick}
+                  data-eid={generateClickEID('pricing_section.upgrade_button.professional')}
+                  className="!mb-6"
+                />
+                <div className="space-y-3">
+                  {renderFeatures(PROFESSIONAL_FEATURES)}
+                </div>
+              </div>
+            </div>
+
+            {/* Ultimate Plan */}
+            <div className={paidCardStyles}>
+              <div className="p-5 lg:p-6 flex flex-col h-full">
+                <text.h3 as="heading" size={1} className="mb-2" text={t('builder_pricing_ultimate_title')} />
+                <text.p size={0} className="mb-2" text={t('builder_pricing_ultimate_desc')} />
+                <PlanPriceDisplay planOffer={pricingData?.[SubscriptionPlan.Ultimate] ?? null} isLoading={isLoading} />
+                <Button
+                  design="primary"
+                  text={t('builder_pricing_free_cta')}
+                  data-eid={generateClickEID('pricing_section.upgrade_button.ultimate')}
+                  onClick={handleUpgradeClick}
+                  className="!mb-6"
+                />
+                <div className="space-y-3">
+                  {renderFeatures(ULTIMATE_FEATURES)}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : (
+        // Original 2-tier layout (Free + Starter)
+        <div className="flex flex-row flex-wrap justify-center items-center gap-4 md:gap-0 w-full max-w-screen-lg mx-auto">
+          {/* Free Plan */}
+          <div className="flex flex-col shrink-0 w-full md:max-w-1/2 p-4 lg:p-6 md:pr-12 md:mr-1 lg:pr-24 lg:mr-2 border border-intents-ux-box-borderColor rounded-2xl" data-partial="inverted">
+            <text.h3 as="heading" size={0} className="mb-1">{t('builder_pricing_free_title')}</text.h3>
+            <text.p size={1}>{t('builder_pricing_free_desc')}</text.p>
+            <Button
+              design="primary"
+              text={t('builder_pricing_free_cta')}
+              onClick={handleStartBuildingClick}
+              className="!my-3"
+            />
+            {renderFeaturesWithSeparators(FREE_FEATURES)}
+          </div>
+
+          {/* Starter Plan */}
+          <div className="flex flex-col shrink-0 w-full md:max-w-1/2 md:-ml-10 lg:-ml-20 p-4 md:p-6 bg-intents-ux-box-backgroundColor border border-intents-ux-box-borderColor rounded-2xl text-intents-ux-box-foregroundColor shadow-md">
+            <text.h3 as="heading" size={2} className="mb-1">{t('builder_pricing_starter_title')}</text.h3>
+            <text.p size={1}>{t('builder_pricing_starter_desc')}</text.p>
+            <PlanPriceDisplay planOffer={pricingData?.[SubscriptionPlan.Starter] ?? null} isLoading={isLoading} />
+            <Button
+              design="primary"
+              text={t('builder_pricing_starter_cta')}
+              onClick={handleUpgradeClick}
+              disabled={authIsLoading}
+              className="!my-4"
+            />
+            {renderFeaturesWithSeparators(STARTER_FEATURES)}
+          </div>
+        </div>
+      )}
     </PageSection>
   )
 }

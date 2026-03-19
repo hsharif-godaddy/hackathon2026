@@ -5,6 +5,7 @@ import { act, screen, waitFor } from '@testing-library/react'
 
 import { mockAuthContext, mockParams, mockRouter, mockSearchParams } from '@/tests/mocks'
 import { renderWithProviders } from '@/tests/test-utils'
+import { SubscriptionPlan } from '@/types/credits'
 import PricingSection from './PricingSection'
 
 const PENDING_UPGRADE_KEY = 'airo-pending-pricing-upgrade'
@@ -29,6 +30,23 @@ vi.mock('@/hooks/useTranslations', () => ({
   },
 }))
 
+vi.mock('react-intl', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-intl')>()
+  return {
+    ...actual,
+    FormattedMessage: ({ id, values }: { id: string; values?: Record<string, unknown> }) => {
+      let text = id
+      if (values?.count !== undefined) text = `${id}_${values.count}`
+      return (
+        <span data-testid={`formatted-message-${id}`}>
+          {text}
+          {values?.tooltip}
+        </span>
+      )
+    },
+  }
+})
+
 vi.mock('@/hooks/useSsoSignIn', () => ({
   useSsoSignIn: () => ({ signIn: mockSignIn }),
 }))
@@ -37,6 +55,72 @@ vi.mock('@/hooks/useSubscription', () => ({
   useSubscription: (options?: { enabled?: boolean }) => ({
     data: options?.enabled !== false ? { id: 'sub-123', builderEntitlementId: 'ent-456' } : undefined,
     refetch: mockRefetchSubscription,
+  }),
+}))
+
+const mockPricingData = {
+  [SubscriptionPlan.Starter]: {
+    id: 'starter',
+    currency: 'USD',
+    marketId: 'en-US',
+    term: { count: 1, unit: 'YEAR' },
+    price: {
+      formatted: {
+        listing: {
+          perMonth: {
+            full: '$12.99',
+            discounted: '$9.99',
+            renewal: '$12.99',
+            renewalDiscounted: null,
+          },
+        },
+      },
+    },
+  },
+  [SubscriptionPlan.Professional]: {
+    id: 'professional',
+    currency: 'USD',
+    marketId: 'en-US',
+    term: { count: 1, unit: 'YEAR' },
+    price: {
+      formatted: {
+        listing: {
+          perMonth: {
+            full: '$29.99',
+            discounted: '$24.99',
+            renewal: '$29.99',
+            renewalDiscounted: null,
+          },
+        },
+      },
+    },
+  },
+  [SubscriptionPlan.Ultimate]: {
+    id: 'ultimate',
+    currency: 'USD',
+    marketId: 'en-US',
+    term: { count: 1, unit: 'YEAR' },
+    price: {
+      formatted: {
+        listing: {
+          perMonth: {
+            full: '$119.99',
+            discounted: '$99.99',
+            renewal: '$119.99',
+            renewalDiscounted: null,
+          },
+        },
+      },
+    },
+  },
+}
+
+vi.mock('@/hooks/usePricingOffers', () => ({
+  usePricingOffers: () => ({
+    data: mockPricingData,
+    isLoading: false,
+    isError: false,
+    error: null,
   }),
 }))
 
@@ -53,15 +137,29 @@ vi.mock('@/lib/request-context', () => ({
   },
 }))
 
-vi.mock('@/lib/pricing', () => ({
-  formatOfferPrice: vi.fn(() => '$99.99'),
-}))
-
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: (state: { openUpgradeModal: typeof mockOpenUpgradeModal }) => unknown) => {
     const state = { openUpgradeModal: mockOpenUpgradeModal }
     return selector(state)
   },
+}))
+
+vi.mock('@/utils/instrumentation', () => ({
+  generateClickEID: (id: string) => `eid-${id}`,
+}))
+
+vi.mock('@/components/ui/InfoTooltip', () => ({
+  InfoTooltip: ({ content }: { content: string }) => (
+    <span data-testid="info-tooltip">{content}</span>
+  ),
+}))
+
+vi.mock('@/components/layout/PlanPriceDisplay', () => ({
+  default: ({ planOffer, isLoading }: { planOffer: unknown; isLoading: boolean }) => (
+    <div data-testid="plan-price-display">
+      {isLoading ? 'Loading...' : planOffer ? 'Price displayed' : 'No price'}
+    </div>
+  ),
 }))
 
 // Default to unauthenticated state
@@ -77,28 +175,6 @@ describe('PricingSection', () => {
     sessionStorage.clear()
     authContextOverrides = { isAuthenticated: false, isAuthDisabled: false, isLoading: false }
 
-    // Mock fetch for pricing data
-    global.fetch = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            success: true,
-            data: {
-              newOffers: {
-                offers: [
-                  {
-                    price: { numeric: { listing: { perTerm: { discounted: 99.99 } } } },
-                    currency: 'USD',
-                    marketId: 'en-US',
-                  },
-                ],
-              },
-            },
-          }),
-      } as Response)
-    )
-
     // Mock scrollIntoView
     Element.prototype.scrollIntoView = vi.fn()
     window.scrollTo = vi.fn()
@@ -108,8 +184,8 @@ describe('PricingSection', () => {
     vi.restoreAllMocks()
   })
 
-  describe('rendering', () => {
-    it('should render the pricing section with both plans', async () => {
+  describe('2-tier layout (default)', () => {
+    it('should render the pricing section with Free and Starter plans', async () => {
       renderWithProviders(<PricingSection />)
 
       expect(screen.getByText('builder_pricing_free_title')).toBeInTheDocument()
@@ -135,6 +211,46 @@ describe('PricingSection', () => {
 
       const starterButton = screen.getByText('builder_pricing_starter_cta').closest('button')
       expect(starterButton).toBeDisabled()
+    })
+
+    it('should not show Professional and Ultimate plans', async () => {
+      renderWithProviders(<PricingSection />)
+
+      expect(screen.queryByText('builder_pricing_professional_title')).not.toBeInTheDocument()
+      expect(screen.queryByText('builder_pricing_ultimate_title')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('4-tier layout (showHighTierPlans=true)', () => {
+    it('should render all four plans', async () => {
+      renderWithProviders(<PricingSection showHighTierPlans={true} />)
+
+      expect(screen.getByText('builder_pricing_free_title')).toBeInTheDocument()
+      expect(screen.getByText('builder_pricing_starter_title')).toBeInTheDocument()
+      expect(screen.getByText('builder_pricing_professional_title')).toBeInTheDocument()
+      expect(screen.getByText('builder_pricing_ultimate_title')).toBeInTheDocument()
+    })
+
+    it('should render Recommended badge on Professional plan', async () => {
+      renderWithProviders(<PricingSection showHighTierPlans={true} />)
+
+      expect(screen.getByText('builder_pricing_recommended')).toBeInTheDocument()
+    })
+
+    it('should render PlanPriceDisplay for each paid plan', async () => {
+      renderWithProviders(<PricingSection showHighTierPlans={true} />)
+
+      const priceDisplays = screen.getAllByTestId('plan-price-display')
+      // Starter, Professional, Ultimate = 3 price displays
+      expect(priceDisplays).toHaveLength(3)
+    })
+
+    it('should render features with FormattedMessage', async () => {
+      renderWithProviders(<PricingSection showHighTierPlans={true} />)
+
+      // Check for credit features using FormattedMessage (one per plan = 4 total)
+      const creditFeatures = screen.getAllByTestId('formatted-message-builder_pricing_item_credits')
+      expect(creditFeatures).toHaveLength(4) // Free, Starter, Professional, Ultimate
     })
   })
 
@@ -314,6 +430,38 @@ describe('PricingSection', () => {
       await user.click(freeButton)
 
       expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' })
+    })
+  })
+
+  describe('4-tier layout CTA clicks', () => {
+    beforeEach(() => {
+      authContextOverrides = { isAuthenticated: true, isAuthDisabled: false, isLoading: false }
+    })
+
+    it('should call openUpgradeModal when clicking Professional CTA', async () => {
+      const { user } = renderWithProviders(<PricingSection showHighTierPlans={true} />)
+
+      // Professional and Ultimate both use 'builder_pricing_free_cta' as their button text
+      // We need to find the one in the Professional card
+      const professionalCard = screen.getByText('builder_pricing_professional_title').closest('div')
+      const ctaButton = professionalCard?.querySelector('button')
+
+      if (ctaButton) {
+        await user.click(ctaButton)
+        expect(mockOpenUpgradeModal).toHaveBeenCalledWith('pricing_section.upgrade', 'slp_airo_ai_builder')
+      }
+    })
+
+    it('should call openUpgradeModal when clicking Ultimate CTA', async () => {
+      const { user } = renderWithProviders(<PricingSection showHighTierPlans={true} />)
+
+      const ultimateCard = screen.getByText('builder_pricing_ultimate_title').closest('div')
+      const ctaButton = ultimateCard?.querySelector('button')
+
+      if (ctaButton) {
+        await user.click(ctaButton)
+        expect(mockOpenUpgradeModal).toHaveBeenCalledWith('pricing_section.upgrade', 'slp_airo_ai_builder')
+      }
     })
   })
 })

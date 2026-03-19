@@ -362,7 +362,7 @@ function HomeContentInner({ serverFeatures }: HomeContentProps) {
             ]}
           />
 
-          {serverFeatures.showPricingSection && <PricingSection />}
+          {serverFeatures.showPricingSection && <PricingSection showHighTierPlans={serverFeatures.showHighTierPlans} />}
 
           <FAQSection />
 

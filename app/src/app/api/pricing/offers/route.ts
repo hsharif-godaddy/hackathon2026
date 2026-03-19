@@ -8,11 +8,23 @@ export const dynamic = 'force-dynamic';
 
 const PRICING_QUERY = `
   query {
-    newOffers(
+    airoYearlyMonthly: newOffers(
       offerGroup: {
         items: [
           {
             plan: "starter"
+            term: { termType: "YEAR", numberOfTerms: 1 }
+            includeTaxes: false
+            tags: ["airo-builder"]
+          },
+          {
+            plan: "professional"
+            term: { termType: "YEAR", numberOfTerms: 1 }
+            includeTaxes: false
+            tags: ["airo-builder"]
+          },
+          {
+            plan: "ultimate"
             term: { termType: "YEAR", numberOfTerms: 1 }
             includeTaxes: false
             tags: ["airo-builder"]
@@ -31,9 +43,9 @@ const PRICING_QUERY = `
           unit
         }
         price {
-          numeric {
+          formatted {
             listing {
-              perTerm {
+              perMonth {
                 full
                 discounted
                 renewal
@@ -109,9 +121,9 @@ export const GET = withApmRoute(async (request: NextRequest) => {
     }
 
     logger.info('pricing.offers.fetch.success', {
-      offerCount: data.data?.newOffers?.offers?.length || 0,
-      marketId: data.data?.newOffers?.offers?.[0]?.marketId,
-      currency: data.data?.newOffers?.offers?.[0]?.currency,
+      offerCount: data.data?.airoYearlyMonthly?.offers?.length || 0,
+      marketId: data.data?.airoYearlyMonthly?.offers?.[0]?.marketId,
+      currency: data.data?.airoYearlyMonthly?.offers?.[0]?.currency,
     });
 
     return NextResponse.json({
