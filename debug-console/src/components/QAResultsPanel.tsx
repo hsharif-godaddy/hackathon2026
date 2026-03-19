@@ -108,7 +108,7 @@ function computeLangfuseStats(
     completionTokens += t.completionTokens || 0;
     totalCost += t.totalCost || 0;
     const model = t.metadata?.attributes?.['ai.model.id'];
-    if (typeof model === 'string') {modelSet.add(model);}
+    if (typeof model === 'string') modelSet.add(model);
   }
   const langfuseUrl = config?.baseUrl && config?.projectId
     ? `${config.baseUrl}/project/${config.projectId}/users/${appId}`
@@ -124,13 +124,13 @@ function computeLangfuseStats(
 function extractAppId(finalPageUrl?: string, urls?: string[]): string | null {
   if (finalPageUrl) {
     const match = finalPageUrl.match(/\/develop\/([a-z0-9]+)(?:\?|$)/);
-    if (match) {return match[1];}
+    if (match) return match[1];
   }
-  if (!urls) {return null;}
+  if (!urls) return null;
   for (const url of urls) {
-    if (url.includes('type=job')) {continue;}
+    if (url.includes('type=job')) continue;
     const match = url.match(/\/develop\/([a-z0-9]+)(?:\?|$)/);
-    if (match) {return match[1];}
+    if (match) return match[1];
   }
   return null;
 }
@@ -142,7 +142,7 @@ function formatDate(ts: string): string {
 }
 
 function formatDuration(minutes: number): string {
-  if (minutes < 1) {return `${Math.round(minutes * 60)}s`;}
+  if (minutes < 1) return `${Math.round(minutes * 60)}s`;
   return `${minutes.toFixed(1)}m`;
 }
 
@@ -170,7 +170,7 @@ interface ScreenshotGalleryProps {
 }
 
 function ScreenshotGallery({ screenshots, onSelect }: ScreenshotGalleryProps) {
-  if (!screenshots?.length) {return null;}
+  if (!screenshots?.length) return null;
 
   return (
     <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
@@ -242,16 +242,16 @@ function InfoStat({ label, value, color, suffix }: { label: string; value: strin
 }
 
 function scoreColor(score: number): string {
-  if (score >= 90) {return '#16a34a';}
-  if (score >= 70) {return '#ca8a04';}
-  if (score >= 50) {return '#ea580c';}
+  if (score >= 90) return '#16a34a';
+  if (score >= 70) return '#ca8a04';
+  if (score >= 50) return '#ea580c';
   return '#dc2626';
 }
 
 function gradeColor(grade: string): string {
-  if (grade === 'A' || grade === 'A+') {return '#16a34a';}
-  if (grade === 'B' || grade === 'B+') {return '#2563eb';}
-  if (grade === 'C' || grade === 'C+') {return '#ca8a04';}
+  if (grade === 'A' || grade === 'A+') return '#16a34a';
+  if (grade === 'B' || grade === 'B+') return '#2563eb';
+  if (grade === 'C' || grade === 'C+') return '#ca8a04';
   return '#dc2626';
 }
 
@@ -273,7 +273,7 @@ function ActionTimeline({ actions }: { actions: ActionStep[] }) {
   const grouped: Array<{ type: string; steps: ActionStep[]; startIdx: number }> = [];
   for (const action of actions) {
     const last = grouped[grouped.length - 1];
-    if (last?.type === action.type && !action.reasoning && !action.action) {
+    if (last && last.type === action.type && !action.reasoning && !action.action) {
       last.steps.push(action);
     } else {
       grouped.push({ type: action.type, steps: [action], startIdx: grouped.length });

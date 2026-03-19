@@ -62,7 +62,7 @@ export class ChatMessageBuilder {
    * Transform asset URLs to include https protocol
    */
   private transformAssets(assets: Asset[] | undefined): Asset[] {
-    if (!assets || assets.length === 0) {return []}
+    if (!assets || assets.length === 0) return []
 
     return assets.map(asset => ({
       ...asset,

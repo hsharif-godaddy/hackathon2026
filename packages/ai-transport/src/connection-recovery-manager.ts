@@ -215,7 +215,7 @@ export class ConnectionRecoveryManager {
     const socketId = socket.id
     const stateData = this.stateManager.getStateData(previousSocketId)
 
-    if (stateData?.state !== 'disconnected') {
+    if (!stateData || stateData.state !== 'disconnected') {
       this.logger.warn('recovery.manual.no_stream_data', {
         socketId,
         previousSocketId
@@ -708,9 +708,9 @@ export class ConnectionRecoveryManager {
           // For in-progress messages, only replay non-persisted events.
           // DB snapshot content is already in fullHistory; replaying persisted
           // events on top would duplicate text.
-          if (messageId && inProgressMessageIds.has(messageId)) {return !e.persisted}
+          if (messageId && inProgressMessageIds.has(messageId)) return !e.persisted
           // No messageId — can't determine which message owns this event, replay to be safe
-          if (!messageId) {return true}
+          if (!messageId) return true
           // Filter out persisted events for completed messages
           return !e.persisted
         })

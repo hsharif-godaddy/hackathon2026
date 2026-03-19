@@ -14,7 +14,7 @@ export const GET = withAuth<{ subscriptionId: string }>(async function getSubscr
     const { subscriptionId } = await context.params;
 
     const invalid = validateId(subscriptionId, 'subscriptionId', SUBSCRIPTION_ID_RE);
-    if (invalid) {return invalid;}
+    if (invalid) return invalid;
 
     try {
         return NextResponse.json(await mgmtControlPlaneAdapter.getSubscription(subscriptionId));

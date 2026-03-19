@@ -80,8 +80,8 @@ export default function AppPublish({ location }: { location?: string }) {
       : null
   );
   const lastPublishedCommitHash = useMemo(() => {
-    if (storeLastPublishedCommitHash) {return storeLastPublishedCommitHash;}
-    if (typeof window === 'undefined' || !currentAppId) {return null;}
+    if (storeLastPublishedCommitHash) return storeLastPublishedCommitHash;
+    if (typeof window === 'undefined' || !currentAppId) return null;
     return localStorage.getItem(`airo-last-published-commit-${currentAppId}`);
   }, [storeLastPublishedCommitHash, currentAppId]);
 
@@ -132,7 +132,7 @@ export default function AppPublish({ location }: { location?: string }) {
     mostRecentDeployment?.status === DeploymentStatus.DEPLOYED;
 
   useEffect(() => {
-    if (!queryEnabled || !currentAppId) {return;}
+    if (!queryEnabled || !currentAppId) return;
 
     // If no deployment exists yet, ensure publishing state is cleared
     if (!mostRecentDeployment) {
@@ -244,7 +244,7 @@ export default function AppPublish({ location }: { location?: string }) {
   // 2. If lastPublishedCommitHash matches any commit in history, use that index
   // 3. If no match found, all commits are unpublished
   const unpublishedCount = useMemo(() => {
-    if (!memoizedGitCommits.length) {return 0;}
+    if (!memoizedGitCommits.length) return 0;
 
     // Production: use deployment record
     if (lastDeployedCommit?.gitHash) {

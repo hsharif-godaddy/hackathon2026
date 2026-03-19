@@ -133,7 +133,7 @@ router.post(
 
       // Get dev-supervisor for the app
       const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor?.isAvailable()) {
+      if (!devSupervisor || !devSupervisor.isAvailable()) {
         res.status(503).json({
           error: 'App container is not available',
           message: 'The app container must be running to configure git remote'

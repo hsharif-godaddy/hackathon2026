@@ -24,7 +24,7 @@ interface DeleteRowModalProps {
 export function DeleteRowModal({ isOpen, onClose, onConfirm, isDeleting, error }: DeleteRowModalProps) {
   const t = useTranslations();
 
-  if (!isOpen) {return null;}
+  if (!isOpen) return null;
 
   return (
     <Modal

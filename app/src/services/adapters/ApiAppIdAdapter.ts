@@ -21,7 +21,7 @@ export class ApiAppIdAdapter implements IAppIdAdapter {
    * @returns The resolved app ID to use for API calls
    */
   async resolveAppId(id: string, operation: string): Promise<string> {
-    if (!id) {return id}
+    if (!id) return id
     
     try {
       // Use centralized site store to prevent duplicate requests

@@ -79,7 +79,7 @@ export default function PendingTransfers({ onAcceptTransfer }: PendingTransfersP
         setIncomingError(true)
       }
     } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {return}
+      if (error instanceof DOMException && error.name === 'AbortError') return
       logger.error('transfer.fetch.error', {
         error: error instanceof Error ? error.message : String(error)
       })
@@ -135,8 +135,8 @@ export default function PendingTransfers({ onAcceptTransfer }: PendingTransfersP
   }
 
   function copyButtonText(transfer: TransferRecord) {
-    if (copiedId === transfer.id) {return t('builder_transfer_token_copied', undefined, 'Copied!')}
-    if (copyFailedId === transfer.id) {return t('builder_common_error', undefined, 'Error')}
+    if (copiedId === transfer.id) return t('builder_transfer_token_copied', undefined, 'Copied!')
+    if (copyFailedId === transfer.id) return t('builder_common_error', undefined, 'Error')
     return t('builder_transfer_copy_code', undefined, 'Copy Code')
   }
 

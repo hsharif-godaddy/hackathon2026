@@ -63,7 +63,7 @@ export default function ColorPaletteModal({
     }
   }, [isOpen])
 
-  if (typeof document === 'undefined') {return null}
+  if (typeof document === 'undefined') return null
 
   // Determine which palette to display
   const displayPalette = palettes

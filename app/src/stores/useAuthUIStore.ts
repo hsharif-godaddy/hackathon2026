@@ -94,7 +94,7 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
   // SSO Modal Actions
   openSsoLogin: () => {
     // Guard against multiple opens
-    if (get().isSsoLoginOpen) {return;}
+    if (get().isSsoLoginOpen) return;
     set({ isSsoLoginOpen: true, isSsoLoading: true });
   },
   closeSsoLogin: () => set({ isSsoLoginOpen: false }),

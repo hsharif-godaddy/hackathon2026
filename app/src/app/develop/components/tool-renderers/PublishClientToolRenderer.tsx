@@ -21,7 +21,7 @@ interface PublishClientInput {
  * Prioritizes the full 40-character hash from archive path over short hash
  */
 function extractCommitHash(result: string | Record<string, unknown> | undefined, input: PublishClientInput): string | undefined {
-  if (!result) {return input?.commitHash}
+  if (!result) return input?.commitHash
 
   // If result is a string, parse it
   if (typeof result === 'string') {
@@ -65,8 +65,8 @@ export default function PublishClientToolRenderer({
 
   // Format duration
   const formatDuration = (ms?: number) => {
-    if (!ms) {return ''}
-    if (ms < 1000) {return `${ms}ms`}
+    if (!ms) return ''
+    if (ms < 1000) return `${ms}ms`
     return `${(ms / 1000).toFixed(1)}s`
   }
 

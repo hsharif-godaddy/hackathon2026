@@ -124,7 +124,7 @@ export const GET = withAuth(async (request) => {
 
       // Normalize date
       let dateStr = String(s.date);
-      if (dateStr.includes('T')) {dateStr = dateStr.split('T')[0];}
+      if (dateStr.includes('T')) dateStr = dateStr.split('T')[0];
 
       if (!grantMap.has(userId)) {
         grantMap.set(userId, { spend: 0, tokens: 0, requests: 0, promptTokens: 0, completionTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, days: [] });
@@ -160,7 +160,7 @@ export const GET = withAuth(async (request) => {
     // Build per-grant breakdowns ordered by the requested grantUserIds list
     const grantBreakdowns = grantUserIds.map(uid => {
       const g = grantMap.get(uid);
-      if (!g) {return { grantUserId: uid, totalSpend: 0, totalTokens: 0, totalRequests: 0, totalPromptTokens: 0, totalCompletionTokens: 0, totalCacheReadTokens: 0, totalCacheWriteTokens: 0, dailySpend: [] };}
+      if (!g) return { grantUserId: uid, totalSpend: 0, totalTokens: 0, totalRequests: 0, totalPromptTokens: 0, totalCompletionTokens: 0, totalCacheReadTokens: 0, totalCacheWriteTokens: 0, dailySpend: [] };
       return {
         grantUserId: uid,
         totalSpend: g.spend,

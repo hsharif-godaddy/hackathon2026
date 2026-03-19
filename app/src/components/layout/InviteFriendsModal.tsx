@@ -30,7 +30,7 @@ export default function InviteFriendsModal({
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
-    if (!referralLink) {return;}
+    if (!referralLink) return;
 
     try {
       await navigator.clipboard.writeText(referralLink);
@@ -44,7 +44,7 @@ export default function InviteFriendsModal({
     }
   };
 
-  if (!isOpen) {return null;}
+  if (!isOpen) return null;
 
   return (
     <Modal

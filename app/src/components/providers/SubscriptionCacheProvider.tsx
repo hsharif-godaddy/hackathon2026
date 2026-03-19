@@ -11,7 +11,7 @@ import { logger } from '@/lib/request-context'
  * This matches the approach used by other production components
  */
 const getAuthTokenFromCookie = (): string | null => {
-  if (typeof document === 'undefined') {return null;}
+  if (typeof document === 'undefined') return null;
 
   const cookies = document.cookie.split(';');
   for (const cookie of cookies) {

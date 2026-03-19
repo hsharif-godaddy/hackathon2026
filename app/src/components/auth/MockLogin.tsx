@@ -22,7 +22,7 @@ export function MockLoginDialog({
 }: MockLoginDialogProps) {
   const { login, isLoading } = useMockAuth()
 
-  if (!isOpen) {return null}
+  if (!isOpen) return null
 
   const handleLogin = async () => {
     await login()

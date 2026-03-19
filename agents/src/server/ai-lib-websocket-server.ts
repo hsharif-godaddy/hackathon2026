@@ -281,8 +281,8 @@ function finalizeMessage(
   const messageTransactionKey = `${socketId}:message`
   const messageTransaction = activeWebSocketTransactions.get(messageTransactionKey)
   if (messageTransaction) {
-    if (meta?.steps !== undefined) {messageTransaction.setLabel('steps', meta.steps)}
-    if (meta?.agentId) {messageTransaction.setLabel('agent_id', meta.agentId)}
+    if (meta?.steps !== undefined) messageTransaction.setLabel('steps', meta.steps)
+    if (meta?.agentId) messageTransaction.setLabel('agent_id', meta.agentId)
     // Preserve original APM event label values for dashboard compatibility
     const eventLabel = reason === 'complete' ? 'message_complete' : reason === 'error' ? 'error' : 'disconnection'
     messageTransaction.setLabel('event', eventLabel)
@@ -1808,7 +1808,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       if (!socket && subscriptionId) {
         const alternativeSockets = grantSessionManager.getSocketsForSubscription(subscriptionId)
         for (const altSocketId of alternativeSockets) {
-          if (altSocketId === sessionId) {continue} // Skip the original
+          if (altSocketId === sessionId) continue // Skip the original
           const altSocket = ioInstance?.sockets.sockets.get(altSocketId)
           if (altSocket) {
             logger.info('websocket.grant_context.refresh_using_alternative', {
@@ -2104,7 +2104,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         let token = null;
 
         // First try Socket.IO auth object (this should work for WebSocket transport)
-        if (socket.handshake.auth?.token) {
+        if (socket.handshake.auth && socket.handshake.auth.token) {
           token = socket.handshake.auth.token;
           logger.info('websocket.auth.token_source', { message: 'JWT token found in handshake.auth.token' }, { tags: ['security'] });
         }
@@ -2191,7 +2191,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         return;
       }
 
-      if (!socket.handshake.auth?.pendingAuth) {return;}
+      if (!socket.handshake.auth?.pendingAuth) return;
 
       // Auth timeout — disconnect if not authenticated within AUTH_TIMEOUT_MS
       const authTimeout = setTimeout(() => {

@@ -17,7 +17,7 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: (feature: string) => {
-    if (feature === 'appbuilder-image-manager') {return { data: true };}
+    if (feature === 'appbuilder-image-manager') return { data: true };
     return { data: false };
   },
 }));

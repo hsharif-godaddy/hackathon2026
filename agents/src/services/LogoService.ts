@@ -49,8 +49,8 @@ function getLogoApiBaseUrl(): string {
     return process.env.LOGO_API_URL;
   }
   const apiUrl = process.env.GODADDY_API_BASE_URL || '';
-  if (apiUrl.includes('dev-godaddy.com')) {return 'https://logo-agent.mvci.api.dev-godaddy.com';}
-  if (apiUrl.includes('test-godaddy.com')) {return 'https://logo-agent.mvci.api.test-godaddy.com';}
+  if (apiUrl.includes('dev-godaddy.com')) return 'https://logo-agent.mvci.api.dev-godaddy.com';
+  if (apiUrl.includes('test-godaddy.com')) return 'https://logo-agent.mvci.api.test-godaddy.com';
   return 'https://logo-agent.mvci.api.godaddy.com';
 }
 

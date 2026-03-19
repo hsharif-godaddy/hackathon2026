@@ -24,9 +24,9 @@ function getFilename(path: string): string {
  * Trailing newlines are ignored so "line1\nline2\n" counts as 2 lines.
  */
 function countLines(text: string): number {
-  if (!text) {return 0}
+  if (!text) return 0
   const trimmed = text.replace(/\n+$/, '')
-  if (!trimmed) {return 1}
+  if (!trimmed) return 1
   return trimmed.split('\n').length
 }
 

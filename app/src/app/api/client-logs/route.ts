@@ -89,7 +89,7 @@ function isValidLevel(level: unknown): level is LogLevel {
  * @returns Sanitized string
  */
 function sanitize(str: unknown, maxLength: number = 1000): string {
-  if (typeof str !== 'string') {return '';}
+  if (typeof str !== 'string') return '';
 
   return str
     .slice(0, maxLength)
@@ -104,13 +104,13 @@ function sanitize(str: unknown, maxLength: number = 1000): string {
  * @returns Sanitized log or null if invalid
  */
 function sanitizeLog(log: unknown): ClientLogPayload | null {
-  if (!log || typeof log !== 'object') {return null;}
+  if (!log || typeof log !== 'object') return null;
 
   const rawLog = log as Record<string, unknown>;
 
   // Validate required fields
-  if (!isValidLevel(rawLog.level)) {return null;}
-  if (typeof rawLog.event !== 'string' || rawLog.event.length === 0) {return null;}
+  if (!isValidLevel(rawLog.level)) return null;
+  if (typeof rawLog.event !== 'string' || rawLog.event.length === 0) return null;
 
   const sanitized: ClientLogPayload = {
     level: rawLog.level,

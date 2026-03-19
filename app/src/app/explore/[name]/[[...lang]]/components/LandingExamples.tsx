@@ -25,7 +25,7 @@ export default function LandingExamples({ examples, onExampleClick, slug }: Land
   }, [examples])
 
   useEffect(() => {
-    if (displayedExamples.length === 0) {return}
+    if (displayedExamples.length === 0) return
 
     const indices = Array.from({ length: displayedExamples.length }, (_, i) => i)
     const shuffled = [...indices].sort(() => Math.random() - 0.5)

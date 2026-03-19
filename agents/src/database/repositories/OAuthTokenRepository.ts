@@ -53,7 +53,7 @@ export class OAuthTokenRepository {
         `);
 
         const row = stmt.get(appId, provider) as OAuthTokenRow | undefined;
-        if (!row) {return null;}
+        if (!row) return null;
 
         return {
             id: row.id,

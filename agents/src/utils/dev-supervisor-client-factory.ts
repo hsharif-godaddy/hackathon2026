@@ -107,7 +107,7 @@ export class DevSupervisorClientFactory {
   static isAvailableForApp(appId: string): boolean {
     try {
       const app = this.getAppRepository().findById(appId);
-      if (!app?.socketPath) {
+      if (!app || !app.socketPath) {
         return false;
       }
       return isDevSupervisorAvailable(app.socketPath);

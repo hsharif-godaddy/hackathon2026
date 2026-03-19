@@ -162,7 +162,7 @@ export class DockerContainerManager {
 	 */
 	async initialize(): Promise<void> {
 		// If already initialized, return immediately
-		if (this.initialized) {return;}
+		if (this.initialized) return;
 
 		// If initialization is in progress, wait for it
 		if (DockerContainerManager.initializationPromise) {
@@ -1141,7 +1141,7 @@ export class DockerContainerManager {
 		const runningRecords = this.devDb.getRunningProcesses();
 		const record = runningRecords.find(r => r.appId === appId && r.status === 'running');
 
-		if (!record) {return null;}
+		if (!record) return null;
 
 		const sanitizedId = this.sanitizeAppId(record.appId);
 		const useTcp = shouldUseTcpMode();

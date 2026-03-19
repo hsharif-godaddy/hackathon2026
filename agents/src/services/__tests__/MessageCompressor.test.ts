@@ -12,7 +12,7 @@ class TestCompressionStrategy implements CompressionStrategy {
   }
 
   compress(context: CompressionContext): LLMMessage | null {
-    if (!context.message.content) {return null;}
+    if (!context.message.content) return null;
     
     return {
       ...context.message,

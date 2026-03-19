@@ -271,16 +271,16 @@ export class ConnectionStateManager {
       return false
     }
 
-    if (updates.abortController !== undefined) {data.abortController = updates.abortController}
-    if (updates.lastDeliveredSequence !== undefined) {data.lastDeliveredSequence = updates.lastDeliveredSequence}
-    if (updates.recoveryTimeoutId !== undefined) {data.recoveryTimeoutId = updates.recoveryTimeoutId}
-    if (updates.setupTimeoutId !== undefined) {data.setupTimeoutId = updates.setupTimeoutId}
-    if (updates.streamingEvents !== undefined) {data.streamingEvents = updates.streamingEvents}
-    if (updates.pendingSegments !== undefined) {data.pendingSegments = updates.pendingSegments}
-    if (updates.pendingToolCalls !== undefined) {data.pendingToolCalls = updates.pendingToolCalls}
-    if (updates.accumulatedContent !== undefined) {data.accumulatedContent = updates.accumulatedContent}
-    if (updates.agentName !== undefined) {data.agentName = updates.agentName}
-    if (updates.context !== undefined) {data.context = updates.context}
+    if (updates.abortController !== undefined) data.abortController = updates.abortController
+    if (updates.lastDeliveredSequence !== undefined) data.lastDeliveredSequence = updates.lastDeliveredSequence
+    if (updates.recoveryTimeoutId !== undefined) data.recoveryTimeoutId = updates.recoveryTimeoutId
+    if (updates.setupTimeoutId !== undefined) data.setupTimeoutId = updates.setupTimeoutId
+    if (updates.streamingEvents !== undefined) data.streamingEvents = updates.streamingEvents
+    if (updates.pendingSegments !== undefined) data.pendingSegments = updates.pendingSegments
+    if (updates.pendingToolCalls !== undefined) data.pendingToolCalls = updates.pendingToolCalls
+    if (updates.accumulatedContent !== undefined) data.accumulatedContent = updates.accumulatedContent
+    if (updates.agentName !== undefined) data.agentName = updates.agentName
+    if (updates.context !== undefined) data.context = updates.context
 
     return true
   }
@@ -607,7 +607,7 @@ export class ConnectionStateManager {
   addStreamingEvent(socketId: string, event: PersistenceStreamingEvent): boolean {
     const effectiveId = this.getEffectiveSocketId(socketId)
     const data = this.connections.get(effectiveId)
-    if (!data) {return false}
+    if (!data) return false
 
     data.streamingEvents.push(event)
     return true

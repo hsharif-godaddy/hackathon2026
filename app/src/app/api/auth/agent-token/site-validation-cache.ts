@@ -26,7 +26,7 @@ export function setSiteValidationCache(customerId: string, siteId: string, ownin
   // Evict oldest entries if cache is too large
   if (cache.size >= SITE_VALIDATION_CACHE_MAX_SIZE) {
     const firstKey = cache.keys().next().value;
-    if (firstKey) {cache.delete(firstKey);}
+    if (firstKey) cache.delete(firstKey);
   }
   cache.set(cacheKey, { timestamp: Date.now() });
 }

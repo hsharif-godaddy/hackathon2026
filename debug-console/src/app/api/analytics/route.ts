@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 const MAX_DATE_RANGE_DAYS = 31;
 
 function validateDateRange(start?: string, end?: string): string | null {
-  if (!start || !end) {return null;}
+  if (!start || !end) return null;
   const startDate = new Date(start);
   const endDate = new Date(end);
   if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
@@ -17,8 +17,8 @@ function validateDateRange(start?: string, end?: string): string | null {
   }
   const diffMs = endDate.getTime() - startDate.getTime();
   const diffDays = diffMs / (1000 * 60 * 60 * 24);
-  if (diffDays < 0) {return 'End date must be after start date';}
-  if (diffDays > MAX_DATE_RANGE_DAYS) {return `Date range cannot exceed ${MAX_DATE_RANGE_DAYS} days`;}
+  if (diffDays < 0) return 'End date must be after start date';
+  if (diffDays > MAX_DATE_RANGE_DAYS) return `Date range cannot exceed ${MAX_DATE_RANGE_DAYS} days`;
   return null;
 }
 

@@ -71,15 +71,15 @@ export function useRumAppContext(options: RumAppContextOptions) {
   const { appId, customerId } = options;
 
   useEffect(() => {
-    if (!appId && !customerId) {return;}
+    if (!appId && !customerId) return;
 
     const apm = getApmAgent();
-    if (!apm) {return;}
+    if (!apm) return;
 
     // Build labels object with available values
     const labels: Record<string, string> = {};
-    if (appId) {labels.appId = appId;}
-    if (customerId) {labels.customerId = customerId;}
+    if (appId) labels.appId = appId;
+    if (customerId) labels.customerId = customerId;
 
     // Add labels to all subsequent transactions
     // addLabels() merges with existing labels, replacing values for duplicate keys
@@ -106,7 +106,7 @@ export function useRumAppContext(options: RumAppContextOptions) {
  */
 export function addRumLabels(labels: Record<string, string | number | boolean>) {
   const apm = getApmAgent();
-  if (!apm) {return;}
+  if (!apm) return;
 
   apm.addLabels(labels);
 }
@@ -133,7 +133,7 @@ export function addRumLabels(labels: Record<string, string | number | boolean>) 
  */
 export function startRumTransaction(name: string, type: string): ApmTransaction | null {
   const apm = getApmAgent();
-  if (!apm) {return null;}
+  if (!apm) return null;
 
   return apm.startTransaction(name, type);
 }

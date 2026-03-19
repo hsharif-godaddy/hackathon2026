@@ -71,7 +71,7 @@ router.get('/', (req: Request, res: Response) => {
     const authReq = req as AuthenticatedRequest;
 
     // Ensure authentication context exists
-    if (!authReq.agentContext?.siteId) {
+    if (!authReq.agentContext || !authReq.agentContext.siteId) {
       return res.status(401).json({
         error: 'Authentication required',
         requiresAuth: true,
@@ -798,12 +798,12 @@ router.post('/:id/text/edit', async (req: Request, res: Response) => {
     }
 
     // Validate devContext - required for AST-based editing
-    if (!devContext?.fileName || !devContext.componentName || !devContext.lineNumber) {
+    if (!devContext || !devContext.fileName || !devContext.componentName || !devContext.lineNumber) {
       contextLogger.warn('route.apps.text-edit.devcontext.invalid', {
         hasDevContext: !!devContext,
-        hasFileName: !!(devContext?.fileName),
-        hasComponentName: !!(devContext?.componentName),
-        hasLineNumber: !!(devContext?.lineNumber),
+        hasFileName: !!(devContext && devContext.fileName),
+        hasComponentName: !!(devContext && devContext.componentName),
+        hasLineNumber: !!(devContext && devContext.lineNumber),
         devContext,
       });
       return res.status(400).json({
@@ -893,10 +893,10 @@ router.post('/:id/styles/edit', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Selector, property, and value are required' });
     }
 
-    if (!elementInfo?.devContext) {
+    if (!elementInfo || !elementInfo.devContext) {
       contextLogger.warn('route.apps.style-edit.elementinfo.invalid', {
         hasElementInfo: !!elementInfo,
-        hasDevContext: !!(elementInfo?.devContext),
+        hasDevContext: !!(elementInfo && elementInfo.devContext),
       });
       return res.status(400).json({ error: 'Element info with dev context is required' });
     }
@@ -912,7 +912,7 @@ router.post('/:id/styles/edit', async (req: Request, res: Response) => {
       property: property || 'MISSING',
       value: value !== undefined ? value : 'UNDEFINED',
       hasElementInfo: !!elementInfo,
-      hasDevContext: !!(elementInfo?.devContext),
+      hasDevContext: !!(elementInfo && elementInfo.devContext),
       devContext: elementInfo?.devContext,
     });
 
@@ -975,18 +975,18 @@ router.post('/:id/images/replace', async (req: Request, res: Response) => {
 
     const contextLogger = log.forApp(id);
 
-    if (!elementInfo?.devContext) {
+    if (!elementInfo || !elementInfo.devContext) {
       contextLogger.warn('route.apps.image-replace.validation.failed', {
         hasElementInfo: !!elementInfo,
-        hasDevContext: !!(elementInfo?.devContext),
+        hasDevContext: !!(elementInfo && elementInfo.devContext),
       });
       return res.status(400).json({ error: 'Element info with dev context is required' });
     }
 
-    if (!imageInfo?.type) {
+    if (!imageInfo || !imageInfo.type) {
       contextLogger.warn('route.apps.image-replace.imageinfo.invalid', {
         hasImageInfo: !!imageInfo,
-        hasType: !!(imageInfo?.type),
+        hasType: !!(imageInfo && imageInfo.type),
       });
       return res.status(400).json({ error: 'Image info with type is required' });
     }
@@ -1066,7 +1066,7 @@ router.post('/suggest-name', async (req: Request, res: Response) => {
 
     // Strip /agent command from first line if present
     const firstLine = prompt.split('\n')[0]?.trim();
-    if (firstLine?.match(/^\/agent\s+\w+$/i)) {
+    if (firstLine && firstLine.match(/^\/agent\s+\w+$/i)) {
       const lines = prompt.split('\n');
       prompt = lines.slice(1).join('\n').trimStart();
     }

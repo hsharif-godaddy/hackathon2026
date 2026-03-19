@@ -127,7 +127,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
       }
 
       // Prevent multiple concurrent deployment attempts
-      if (phase === 'deploying') {return}
+      if (phase === 'deploying') return
 
       try {
         
@@ -240,7 +240,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
       const { pollingInterval } = get()
 
       // Don't start if already polling
-      if (pollingInterval) {return}
+      if (pollingInterval) return
 
       set((state) => {
         state.isPolling = true
@@ -276,7 +276,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
     _pollSiteStatus: async () => {
       const { siteId, phase } = get()
 
-      if (!siteId || phase !== 'polling') {return}
+      if (!siteId || phase !== 'polling') return
 
       try {
 
@@ -440,7 +440,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
 
             if (updatedSite?.name) {
               set((state) => {
-                if (state.site?.id === appId) {
+                if (state.site && state.site.id === appId) {
                   state.site.name = updatedSite.name
                 }
               })

@@ -37,7 +37,7 @@ export default function MetricsTrendsPanel({
     const [error, setError] = useState<string | null>(null);
     const [metricNames, setMetricNames] = useState<string[]>(initialMetricNames || []);
     const [fromTimestamp, setFromTimestamp] = useState(() => {
-        if (initialFromTimestamp) {return initialFromTimestamp;}
+        if (initialFromTimestamp) return initialFromTimestamp;
         const date = new Date();
         date.setDate(date.getDate() - 1);
         return date.toISOString();
@@ -110,7 +110,6 @@ export default function MetricsTrendsPanel({
                         const errorText = await response.text();
                         errorMessage = errorText || errorMessage;
                     } catch (_textError) {
-                        // Intentionally empty — fall through to throw with original errorMessage
                     }
                 }
                 throw new Error(errorMessage);

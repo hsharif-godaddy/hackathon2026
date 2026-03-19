@@ -232,8 +232,8 @@ export function isBudgetExceededAPIError(error: unknown): error is APICallError 
  * @returns A string error message
  */
 export function getErrorMessage(error: unknown | undefined): string {
-  if (!error) {return 'Unknown error';}
-  if (typeof error === 'string') {return error;}
-  if (error instanceof Error) {return error.message;}
+  if (!error) return 'Unknown error';
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return error.message;
   return String(error);
 }

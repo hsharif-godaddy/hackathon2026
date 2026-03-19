@@ -91,7 +91,7 @@ export default function FontThemeToolRenderer({
 
   // Load Google Fonts when fonts are applied (named function for React DevTools profiling)
   useEffect(function loadGoogleFonts() {
-    if ((!headerFontName && !bodyFontName) || !toolStatus || toolStatus !== 'completed') {return}
+    if ((!headerFontName && !bodyFontName) || !toolStatus || toolStatus !== 'completed') return
 
     const linkId = 'font-theme-renderer-font'
     let link = document.getElementById(linkId) as HTMLLinkElement
@@ -125,7 +125,7 @@ export default function FontThemeToolRenderer({
       fontFamilies.push(`${encodedName}:wght@${weightsStr}`)
     })
 
-    if (fontFamilies.length === 0) {return}
+    if (fontFamilies.length === 0) return
 
     const fontUrl = `https://fonts.googleapis.com/css2?family=${fontFamilies.join('&family=')}&display=swap`
 

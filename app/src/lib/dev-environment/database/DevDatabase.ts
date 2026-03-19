@@ -109,7 +109,7 @@ export class DevDatabase {
    */
   updateDevAppStatus(appId: string, status: DevAppInfo['status']): boolean {
     const app = this.devApps.get(appId);
-    if (!app) {return false;}
+    if (!app) return false;
     
     app.status = status;
     app.updatedAt = new Date();
@@ -123,7 +123,7 @@ export class DevDatabase {
    */
   deleteDevApp(appId: string): boolean {
     const app = this.devApps.get(appId);
-    if (!app) {return false;}
+    if (!app) return false;
 
     this.devApps.delete(appId);
     this.portAllocations.delete(app.port);

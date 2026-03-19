@@ -322,8 +322,8 @@ export class DockerComposeManager {
 		try {
 			const flags: string[] = [];
 
-			if (options.follow) {flags.push('--follow');}
-			if (options.tail) {flags.push(`--tail ${options.tail}`);}
+			if (options.follow) flags.push('--follow');
+			if (options.tail) flags.push(`--tail ${options.tail}`);
 
 			const service = options.service || '';
 			const command = `logs ${flags.join(' ')} ${service}`.trim();

@@ -299,13 +299,13 @@ export interface StreamingConversationState {
 const generateId = () => `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
 const parseDateValue = (value: unknown, fallback: Date | number = Date.now()): Date => {
-  if (!value) {return new Date(fallback)}
+  if (!value) return new Date(fallback)
   const date = new Date(value as string | number | Date)
   return Number.isNaN(date.getTime()) ? new Date(fallback) : date
 }
 
 const normalizeToolCall = (toolCall?: AgentToolCallPayload): ToolCall | undefined => {
-  if (!toolCall) {return undefined}
+  if (!toolCall) return undefined
 
   return {
     id: toolCall.id ?? generateId(),
@@ -325,7 +325,7 @@ const normalizeSegments = (
   segments: AgentSegmentPayload[] | undefined,
   fallbackDate: Date
 ): StreamSegment[] => {
-  if (!Array.isArray(segments)) {return []}
+  if (!Array.isArray(segments)) return []
 
   return segments.map((segment) => {
     const normalizedToolCall = normalizeToolCall(segment.toolCall ?? segment.tool_call)
@@ -341,7 +341,7 @@ const normalizeSegments = (
 }
 
 const normalizeToolCalls = (toolCalls: AgentToolCallPayload[] | undefined): ToolCall[] => {
-  if (!Array.isArray(toolCalls)) {return []}
+  if (!Array.isArray(toolCalls)) return []
 
   return toolCalls
     .map((toolCall) => normalizeToolCall(toolCall))
@@ -354,7 +354,7 @@ const normalizeToolCalls = (toolCalls: AgentToolCallPayload[] | undefined): Tool
 export const normalizeConversationMessages = (
   rawMessages: AgentConversationMessagePayload[] | undefined
 ): ChatMessage[] => {
-  if (!Array.isArray(rawMessages)) {return []}
+  if (!Array.isArray(rawMessages)) return []
 
   return rawMessages.map((msg) => {
     const role = msg.sender === 'user' || msg.role === 'user' ? 'user' : 'assistant'
@@ -476,7 +476,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   appendToStream: (content: string) => {
     const { activeStream } = get()
-    if (!activeStream) {return}
+    if (!activeStream) return
 
     const updatedStream = {
       ...activeStream,
@@ -488,7 +488,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   updateStreamContent: (content: string) => {
     const { activeStream } = get()
-    if (!activeStream) {return}
+    if (!activeStream) return
 
     set({
       activeStream: {
@@ -500,7 +500,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   appendTextSegment: (content: string) => {
     const { activeStream } = get()
-    if (!activeStream) {return}
+    if (!activeStream) return
 
     const segment: StreamSegment = {
       id: generateId(),
@@ -521,7 +521,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   addToolToStream: (toolCall: ToolCall) => {
     const { activeStream } = get()
-    if (!activeStream) {return}
+    if (!activeStream) return
 
     const updatedStream = {
       ...activeStream,
@@ -533,7 +533,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   addToolStartSegment: (toolCall: ToolCall) => {
     const { activeStream } = get()
-    if (!activeStream) {return}
+    if (!activeStream) return
 
     logger.debug('streaming-store.tool.start', {
       toolId: toolCall.id,
@@ -587,7 +587,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   addToolCallSegment: (toolCall: ToolCall) => {
     const { activeStream } = get()
-    if (!activeStream) {return}
+    if (!activeStream) return
 
     // Find and update the existing tool_start segment with the input and name
     const updatedSegments = activeStream.segments.map(segment => {
@@ -706,7 +706,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   markMaxStepsReached: () => {
     const { activeStream } = get()
-    if (!activeStream) {return}
+    if (!activeStream) return
 
     const updatedStream = {
       ...activeStream,
@@ -741,7 +741,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   markBudgetExceeded: () => {
     const { activeStream } = get();
-    if (!activeStream) {return;}
+    if (!activeStream) return;
 
     const updatedStream = {
       ...activeStream,
@@ -753,7 +753,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   updateToolInStream: (toolId: string, updates: Partial<ToolCall>) => {
     const { activeStream } = get()
-    if (!activeStream) {return}
+    if (!activeStream) return
 
     const updatedStream = {
       ...activeStream,
@@ -767,7 +767,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   updateToolDelta: (toolId: string, toolName: string, delta: string) => {
     const { activeStream } = get()
-    if (!activeStream) {return}
+    if (!activeStream) return
 
     // Check if tool exists in toolCalls array
     const existingTool = activeStream.toolCalls.find(tc => tc.id === toolId)
@@ -848,7 +848,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   finalizeStream: (metadata?: any) => {
     const { activeStream } = get()
-    if (!activeStream) {return}
+    if (!activeStream) return
 
     // Mark any tools still in 'running' state as 'incomplete'
     // This happens when the LLM hits maxOutputTokens mid-tool-call,
@@ -1352,7 +1352,7 @@ export const useMarkBudgetExceeded = () => useStreamingConversationStore(state =
 
 // Derived selector: check if the most recent message or active stream has budgetExceeded
 const hasBudgetExceededSelector = (state: StreamingConversationState) => {
-  if (state.activeStream?.budgetExceeded) {return true}
+  if (state.activeStream?.budgetExceeded) return true
   const lastMessage = state.messages[state.messages.length - 1]
   return lastMessage?.budgetExceeded === true
 }

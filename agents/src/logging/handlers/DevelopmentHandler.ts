@@ -245,11 +245,11 @@ export class DevelopmentHandler implements LogHandler {
     
     // Basic info
     lines.push(`  ${this.yellow('Setup Error Details:')}`);
-    if (obj.command) {lines.push(`    Command: ${this.cyan(obj.command)}`);}
-    if (obj.exitCode !== undefined) {lines.push(`    Exit Code: ${this.red(String(obj.exitCode))}`);}
+    if (obj.command) lines.push(`    Command: ${this.cyan(obj.command)}`);
+    if (obj.exitCode !== undefined) lines.push(`    Exit Code: ${this.red(String(obj.exitCode))}`);
     
     // Show stdout if present
-    if (obj.stdout?.trim()) {
+    if (obj.stdout && obj.stdout.trim()) {
       lines.push(`    ${this.blue('stdout:')}`);
       const stdout = obj.stdout.trim();
       stdout.split('\n').forEach((line: string) => {
@@ -258,7 +258,7 @@ export class DevelopmentHandler implements LogHandler {
     }
     
     // Show stderr if present
-    if (obj.stderr?.trim()) {
+    if (obj.stderr && obj.stderr.trim()) {
       lines.push(`    ${this.red('stderr:')}`);
       const stderr = obj.stderr.trim();
       stderr.split('\n').forEach((line: string) => {
@@ -295,14 +295,14 @@ export class DevelopmentHandler implements LogHandler {
 
   private isSimpleObject(obj: any): boolean {
     const keys = Object.keys(obj);
-    if (keys.length > 4) {return false;}
+    if (keys.length > 4) return false;
     
     // Check if all values are simple (strings, numbers, booleans, small arrays)
     return keys.every(key => {
       const value = obj[key];
-      if (typeof value === 'string') {return value.length < 50;}
-      if (typeof value === 'number' || typeof value === 'boolean') {return true;}
-      if (Array.isArray(value)) {return value.length < 3 && value.every(item => typeof item === 'string' && item.length < 20);}
+      if (typeof value === 'string') return value.length < 50;
+      if (typeof value === 'number' || typeof value === 'boolean') return true;
+      if (Array.isArray(value)) return value.length < 3 && value.every(item => typeof item === 'string' && item.length < 20);
       return false;
     });
   }
@@ -480,7 +480,7 @@ export class DevelopmentHandler implements LogHandler {
     
     for (const line of stackLines) {
       const trimmedLine = line.trim();
-      if (!trimmedLine) {continue;}
+      if (!trimmedLine) continue;
       
       // Skip empty lines and generic frames
       if (trimmedLine.includes('node:internal') || 
@@ -788,8 +788,8 @@ export class DevelopmentHandler implements LogHandler {
     
     // Capabilities
     const caps: string[] = [];
-    if (hasTools) {caps.push('tools');}
-    if (streaming) {caps.push('stream');}
+    if (hasTools) caps.push('tools');
+    if (streaming) caps.push('stream');
     if (caps.length > 0) {
       parts.push(this.yellow(`[${caps.join('+')}]`));
     }
@@ -832,7 +832,7 @@ export class DevelopmentHandler implements LogHandler {
     }
     
     // Usage tokens (if not redacted)
-    if (usage?.totalTokens && usage.totalTokens !== '[REDACTED]') {
+    if (usage && usage.totalTokens && usage.totalTokens !== '[REDACTED]') {
       parts.push(this.yellow(`${usage.totalTokens}tok`));
     }
     
@@ -922,9 +922,9 @@ export class DevelopmentHandler implements LogHandler {
       
       // Add key options compactly
       const optParts: string[] = [];
-      if (options.directoriesOnly) {optParts.push('dirs-only');}
-      if (options.maxDepth && options.maxDepth !== 1) {optParts.push(`depth:${options.maxDepth}`);}
-      if (options.showHidden) {optParts.push('hidden');}
+      if (options.directoriesOnly) optParts.push('dirs-only');
+      if (options.maxDepth && options.maxDepth !== 1) optParts.push(`depth:${options.maxDepth}`);
+      if (options.showHidden) optParts.push('hidden');
       if (options.ignorePatterns && options.ignorePatterns.length > 0) {
         optParts.push(`ignore:${options.ignorePatterns.length}`);
       }
@@ -939,11 +939,11 @@ export class DevelopmentHandler implements LogHandler {
       
       if (resultStats) {
         const statParts: string[] = [];
-        if (resultStats.totalEntries) {statParts.push(`${resultStats.totalEntries}items`);}
-        if (resultStats.directoryCount) {statParts.push(`${resultStats.directoryCount}dirs`);}
-        if (resultStats.fileCount) {statParts.push(`${resultStats.fileCount}files`);}
-        if (resultStats.truncated) {statParts.push(this.yellow('truncated'));}
-        if (resultStats.errorCount > 0) {statParts.push(this.red(`${resultStats.errorCount}errors`));}
+        if (resultStats.totalEntries) statParts.push(`${resultStats.totalEntries}items`);
+        if (resultStats.directoryCount) statParts.push(`${resultStats.directoryCount}dirs`);
+        if (resultStats.fileCount) statParts.push(`${resultStats.fileCount}files`);
+        if (resultStats.truncated) statParts.push(this.yellow('truncated'));
+        if (resultStats.errorCount > 0) statParts.push(this.red(`${resultStats.errorCount}errors`));
         
         if (statParts.length > 0) {
           parts.push(`[${statParts.join(' ')}]`);
@@ -967,9 +967,9 @@ export class DevelopmentHandler implements LogHandler {
     
     // Extract operation type from event name
     let operation = 'UNKNOWN';
-    if (event.event.includes('.begin')) {operation = 'START';}
-    else if (event.event.includes('.success')) {operation = 'SUCCESS';}
-    else if (event.event.includes('.failure') || event.event.includes('.error')) {operation = 'ERROR';}
+    if (event.event.includes('.begin')) operation = 'START';
+    else if (event.event.includes('.success')) operation = 'SUCCESS';
+    else if (event.event.includes('.failure') || event.event.includes('.error')) operation = 'ERROR';
     
     // Simplify tool name
     const displayName = toolName
@@ -1013,7 +1013,7 @@ export class DevelopmentHandler implements LogHandler {
 
     // Convert bytes to MiB
     const toMiB = (bytes: number | undefined): string => {
-      if (bytes === undefined) {return '?';}
+      if (bytes === undefined) return '?';
       return (bytes / 1024 / 1024).toFixed(1);
     };
 
@@ -1108,10 +1108,10 @@ export class DevelopmentHandler implements LogHandler {
   }
 
   private getStatusColor(statusCode: number): (text: string) => string {
-    if (statusCode >= 200 && statusCode < 300) {return this.green.bind(this);}
-    if (statusCode >= 300 && statusCode < 400) {return this.yellow.bind(this);}
-    if (statusCode >= 400 && statusCode < 500) {return this.red.bind(this);}
-    if (statusCode >= 500) {return this.red.bind(this);}
+    if (statusCode >= 200 && statusCode < 300) return this.green.bind(this);
+    if (statusCode >= 300 && statusCode < 400) return this.yellow.bind(this);
+    if (statusCode >= 400 && statusCode < 500) return this.red.bind(this);
+    if (statusCode >= 500) return this.red.bind(this);
     return this.gray.bind(this);
   }
 

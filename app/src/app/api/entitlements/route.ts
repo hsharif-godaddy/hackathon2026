@@ -43,7 +43,7 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
     // Call getEntitlements method from mgmt-airo client
     const subscription = await client.getEntitlements(subscriptionId);
 
-    if (!subscription?.id) {
+    if (!subscription || !subscription.id) {
       logger.warn('entitlements.api.not-found', {
         subscriptionId
       });

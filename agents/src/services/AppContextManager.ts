@@ -508,9 +508,9 @@ ${compactListing}${truncated ? '\n... (truncated for brevity)' : ''}`;
     // Basic project info
     if (packageInfo.name || packageInfo.version || packageInfo.description) {
       const basicInfo = [];
-      if (packageInfo.name) {basicInfo.push(`Name: ${packageInfo.name}`);}
-      if (packageInfo.version) {basicInfo.push(`Version: ${packageInfo.version}`);}
-      if (packageInfo.description) {basicInfo.push(`Description: ${packageInfo.description}`);}
+      if (packageInfo.name) basicInfo.push(`Name: ${packageInfo.name}`);
+      if (packageInfo.version) basicInfo.push(`Version: ${packageInfo.version}`);
+      if (packageInfo.description) basicInfo.push(`Description: ${packageInfo.description}`);
       sections.push(`Project: ${basicInfo.join(', ')}`);
     }
 

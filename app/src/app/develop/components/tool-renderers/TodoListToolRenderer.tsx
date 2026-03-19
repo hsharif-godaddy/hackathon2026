@@ -23,30 +23,25 @@ function getOperationMessage(operation: string, result: any, t: (key: string, va
       return `${t('builder_common_todo_show_list')}: ${result?.list?.name || t('builder_common_todo_show_list')}`
     case 'select_list':
       return `${t('builder_common_todo_select_list')} ${result?.list?.name || 'Unknown'}`
-    case 'list_all': {
+    case 'list_all':
       const count = result?.lists?.length || 0
       return t('builder_common_todo_list_all', { count })
-    }
     case 'delete_list':
       return t('builder_common_todo_delete_list')
-    case 'add_items': {
+    case 'add_items':
       const addedCount = result?.items?.length || 0
       return t('builder_common_todo_add_items', { addedCount })
-    }
-    case 'update_items': {
+    case 'update_items':
       const updatedCount = result?.items?.length || 0
       return t('builder_common_todo_update_items', { updatedCount })
-    }
     case 'delete_items':
       return t('builder_common_todo_delete_items')
-    case 'mark_done': {
+    case 'mark_done':
       const doneCount = result?.items?.length || result?.item ? 1 : 0
       return t('builder_common_todo_mark_done', { doneCount })
-    }
-    case 'mark_undone': {
+    case 'mark_undone':
       const undoneCount = result?.items?.length || result?.item ? 1 : 0
       return t('builder_common_todo_mark_undone', { undoneCount })
-    }
     default:
       return `${t('builder_common_todo_default')}: ${operation}`
   }
@@ -87,7 +82,7 @@ function CircularCheckbox({ checked }: { checked: boolean }) {
  * Render todo list as HTML
  */
 function renderTodoListHTML(list: any, t: (key: string) => string): React.JSX.Element {
-  if (!list) {return <div>{t('builder_common_todo_no_list')}</div>}
+  if (!list) return <div>{t('builder_common_todo_no_list')}</div>
 
   const items = list.items || []
   const total = items.length

@@ -71,8 +71,8 @@ export default function AppSelector({ location }: { location?: string }) {
     const aIsRunning = a.status === 'running';
     const bIsRunning = b.status === 'running';
 
-    if (aIsRunning && !bIsRunning) {return -1;}
-    if (!aIsRunning && bIsRunning) {return 1;}
+    if (aIsRunning && !bIsRunning) return -1;
+    if (!aIsRunning && bIsRunning) return 1;
 
     // Second priority: updated_at (most recent first)
     const dateA = new Date(a.updated_at).getTime();

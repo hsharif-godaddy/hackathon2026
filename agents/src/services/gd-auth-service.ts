@@ -98,7 +98,7 @@ class GdAuthService {
   extractTokenFromRequest(req: { headers?: { authorization?: string } }): string | null {
     const authHeader = req.headers?.authorization;
 
-    if (!authHeader) {return null;}
+    if (!authHeader) return null;
 
     // Support "Bearer <token>" or "jomax-jwt <token>"
     if (authHeader.startsWith('Bearer ')) {

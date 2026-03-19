@@ -241,7 +241,7 @@ export function insertClientError(err: {
 const BATCH_SIZE = 5000;
 
 export async function flushPendingDocs() {
-  if (pendingDocs.length === 0) {return 0;}
+  if (pendingDocs.length === 0) return 0;
   const count = pendingDocs.length;
 
   for (let i = 0; i < pendingDocs.length; i += BATCH_SIZE) {
@@ -257,9 +257,9 @@ export async function flushPendingDocs() {
 
 function buildDateFilter(startDate?: string, endDate?: string) {
   const range: Record<string, string> = {};
-  if (startDate) {range.gte = startDate;}
-  if (endDate) {range.lte = endDate;}
-  if (Object.keys(range).length === 0) {return null;}
+  if (startDate) range.gte = startDate;
+  if (endDate) range.lte = endDate;
+  if (Object.keys(range).length === 0) return null;
   return { range: { timestamp: range } };
 }
 
@@ -1087,7 +1087,7 @@ async function scrollAllDocs(index: string, query: Record<string, unknown>, maxD
 
   while (response.hits.hits.length > 0 && allDocs.length < maxDocs) {
     const scrollResponse = await writeClient.scroll({ scroll_id: scrollId, scroll: '1m' });
-    if (scrollResponse.hits.hits.length === 0) {break;}
+    if (scrollResponse.hits.hits.length === 0) break;
     allDocs.push(...scrollResponse.hits.hits.map(h => h._source as Record<string, unknown>));
     scrollId = scrollResponse._scroll_id;
   }
@@ -1304,9 +1304,8 @@ async function getAllAppBucketsComposite(
 ): Promise<Array<{ key: { app_id: string }; doc_count: number; [k: string]: unknown }>> {
   const allBuckets: Array<{ key: { app_id: string }; doc_count: number; [k: string]: unknown }> = [];
   let afterKey: { app_id: string } | undefined;
-  let hasMore = true;
 
-  while (hasMore) {
+  while (true) {
     const body: Record<string, unknown> = {
       query,
       aggs: {
@@ -1324,13 +1323,11 @@ async function getAllAppBucketsComposite(
     const result = await writeClient.search({ index, size: 0, body });
     const agg = result.aggregations?.apps as { buckets: Array<{ key: { app_id: string }; doc_count: number; [k: string]: unknown }>; after_key?: { app_id: string } };
 
-    if (!agg?.buckets?.length) {
-      hasMore = false;
-    } else {
-      allBuckets.push(...agg.buckets);
-      hasMore = !!agg.after_key;
-      afterKey = agg.after_key;
-    }
+    if (!agg?.buckets?.length) break;
+    allBuckets.push(...agg.buckets);
+
+    if (!agg.after_key) break;
+    afterKey = agg.after_key;
   }
 
   return allBuckets;
@@ -1343,9 +1340,8 @@ async function getAppCountsComposite(
 ): Promise<Map<string, number>> {
   const counts = new Map<string, number>();
   let afterKey: { app_id: string } | undefined;
-  let hasMore = true;
 
-  while (hasMore) {
+  while (true) {
     const body: Record<string, unknown> = {
       ...(query ? { query } : {}),
       aggs: {
@@ -1362,15 +1358,13 @@ async function getAppCountsComposite(
     const result = await writeClient.search({ index, size: 0, body });
     const agg = result.aggregations?.apps as { buckets: Array<{ key: { app_id: string }; doc_count: number }>; after_key?: { app_id: string } };
 
-    if (!agg?.buckets?.length) {
-      hasMore = false;
-    } else {
-      for (const b of agg.buckets) {
-        counts.set(b.key.app_id, b.doc_count);
-      }
-      hasMore = !!agg.after_key;
-      afterKey = agg.after_key;
+    if (!agg?.buckets?.length) break;
+    for (const b of agg.buckets) {
+      counts.set(b.key.app_id, b.doc_count);
     }
+
+    if (!agg.after_key) break;
+    afterKey = agg.after_key;
   }
 
   return counts;
@@ -1586,8 +1580,8 @@ export async function getAppErrors(appId: string, fromTimestamp?: string) {
     if (errorMap.has(key)) {
       const existing = errorMap.get(key)!;
       existing.count++;
-      if (timestamp < existing.firstSeen) {existing.firstSeen = timestamp;}
-      if (timestamp > existing.lastSeen) {existing.lastSeen = timestamp;}
+      if (timestamp < existing.firstSeen) existing.firstSeen = timestamp;
+      if (timestamp > existing.lastSeen) existing.lastSeen = timestamp;
     } else {
       errorMap.set(key, {
         timestamp,
@@ -1609,8 +1603,8 @@ export async function getAppErrors(appId: string, fromTimestamp?: string) {
     if (errorMap.has(key)) {
       const existing = errorMap.get(key)!;
       existing.count++;
-      if (timestamp < existing.firstSeen) {existing.firstSeen = timestamp;}
-      if (timestamp > existing.lastSeen) {existing.lastSeen = timestamp;}
+      if (timestamp < existing.firstSeen) existing.firstSeen = timestamp;
+      if (timestamp > existing.lastSeen) existing.lastSeen = timestamp;
     } else {
       errorMap.set(key, {
         timestamp,

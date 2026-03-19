@@ -65,7 +65,7 @@ export default function DomainAttach() {
   const { data: isDCVEnabled } = useSwitchboard('appbuilder-domain-dcv');
 
   const site = useSiteStore((state) => {
-    if (!currentAppId) {return null;}
+    if (!currentAppId) return null;
     return state.getSite(currentAppId);
   });
 
@@ -104,7 +104,7 @@ export default function DomainAttach() {
     includeCdn: true,
     refetchInterval: (data) => {
       const hasPendingDomain = data?.domains?.some(d => {
-        if (d.domainType === 'prefix') {return false;}
+        if (d.domainType === 'prefix') return false;
 
         return (
           d.status === DomainStatus.PENDING ||
@@ -127,7 +127,7 @@ export default function DomainAttach() {
   } = useCustomerDomainAttach(appDetails, domains, isDCVEnabled);
 
   const pendingDomain = useMemo(() => {
-    if (!appDetails?.domains) {return null;}
+    if (!appDetails?.domains) return null;
 
     // First, check for customer domain that requires manual DNS setup
     // This covers: external nameservers OR attach API failed
@@ -138,10 +138,10 @@ export default function DomainAttach() {
     // Then check for custom domains (not customer-owned)
     const pending = appDetails.domains.find((d) => {
       // Exclude prefix/project domains
-      if (d.domainType === 'prefix') {return false;}
+      if (d.domainType === 'prefix') return false;
 
       // Exclude customer domains (including subdomains of customer domains)
-      if (isCustomerDomain(d.fqdn, domains)) {return false;}
+      if (isCustomerDomain(d.fqdn, domains)) return false;
 
       // Check for pending status
       return (
@@ -220,7 +220,7 @@ export default function DomainAttach() {
    * Handle connecting a domain to the application
    */
   async function handleConnectDomain(domainName: string) {
-    if (!currentAppId) {return;}
+    if (!currentAppId) return;
 
     try {
       setCustomDomain(null);
@@ -255,7 +255,7 @@ export default function DomainAttach() {
    * Handle disconnecting a domain from the application
    */
   async function handleDisconnectDomain(domainName: string) {
-    if (!currentAppId) {return;}
+    if (!currentAppId) return;
 
     try {
       await modifyDomainsMutation.mutateAsync({
@@ -287,7 +287,7 @@ export default function DomainAttach() {
    * Handle adding custom domain from text input
    */
   async function handleAddCustomDomain() {
-    if (!customDomain || !currentAppId) {return;}
+    if (!customDomain || !currentAppId) return;
 
     // Validate and sanitize the domain
     const validation = validateDomain(customDomain);
@@ -361,7 +361,7 @@ export default function DomainAttach() {
   const getCustomDomainStatus = () => {
     const connectedDomains = appDetails?.domains?.filter(d => d.domainType !== 'prefix') || [];
 
-    if (connectedDomains.length === 0) {return undefined;}
+    if (connectedDomains.length === 0) return undefined;
 
     const hasPending = connectedDomains.some(d =>
       d.status === DomainStatus.PENDING || d.cdnStatus === CdnStatus.PENDING
@@ -371,8 +371,8 @@ export default function DomainAttach() {
       d.status === DomainStatus.ACTIVE
     );
 
-    if (hasPending) {return Status.PENDING;}
-    if (hasActive) {return Status.READY;}
+    if (hasPending) return Status.PENDING;
+    if (hasActive) return Status.READY;
     return undefined;
   };
 

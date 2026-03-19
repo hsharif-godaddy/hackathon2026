@@ -56,7 +56,7 @@ export default function FontThemeGridWidget({ themes, className = '' }: FontThem
   const hasThemes = safeThemes.length > 0
 
   useEffect(function loadGoogleFonts() {
-    if (!hasThemes) {return}
+    if (!hasThemes) return
 
     const fontMap = new Map<string, Set<string>>()
 
@@ -85,7 +85,7 @@ export default function FontThemeGridWidget({ themes, className = '' }: FontThem
       newFontFamilies.push(`${fontName}:wght@${weightsStr}`)
     })
 
-    if (newFontFamilies.length === 0) {return}
+    if (newFontFamilies.length === 0) return
 
     const linkId = 'font-theme-widget-fonts'
 
@@ -151,7 +151,7 @@ export default function FontThemeGridWidget({ themes, className = '' }: FontThem
   }
 
   function handleApply() {
-    if (!selectedTheme || isProcessing || !sendUserMessage) {return}
+    if (!selectedTheme || isProcessing || !sendUserMessage) return
 
     sendUserMessage(
       t('builder_font_theme_apply_message', { themeName: selectedTheme.name }, `Apply font theme: {themeName}`),
@@ -161,7 +161,7 @@ export default function FontThemeGridWidget({ themes, className = '' }: FontThem
   }
 
   function handleMoreOptions() {
-    if (isProcessing || !sendUserMessage) {return}
+    if (isProcessing || !sendUserMessage) return
     sendUserMessage(
       t('builder_font_theme_more_options_message', undefined, 'Show me more font options'),
       { isActionRequest: true }
@@ -179,7 +179,7 @@ export default function FontThemeGridWidget({ themes, className = '' }: FontThem
           const { headerFont, bodyFont } = normalizeFontTheme(theme)
           const isSelected = selectedTheme?.id === theme.id
 
-          if (!headerFont || !bodyFont) {return null}
+          if (!headerFont || !bodyFont) return null
 
           const headerWeight = headerFont.weights[headerFont.weights.length - 1] || '700'
           const bodyWeight = bodyFont.weights[0] || '400'

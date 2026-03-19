@@ -107,8 +107,8 @@ function createHandlers(config: LoggingEnvironmentConfig): LogHandler[] {
   switch (config.format) {
     case 'json': {
       const productionOptions: { output?: NodeJS.WriteStream; errorOutput?: NodeJS.WriteStream } = {};
-      if (config.outputStream) {productionOptions.output = config.outputStream;}
-      if (config.errorStream) {productionOptions.errorOutput = config.errorStream;}
+      if (config.outputStream) productionOptions.output = config.outputStream;
+      if (config.errorStream) productionOptions.errorOutput = config.errorStream;
       handlers.push(new ProductionHandler(productionOptions));
       break;
     }
@@ -121,10 +121,10 @@ function createHandlers(config: LoggingEnvironmentConfig): LogHandler[] {
         showDuration?: boolean;
         colorize?: boolean
       } = {};
-      if (config.expandThreshold !== undefined) {devOptions.expandThreshold = config.expandThreshold;}
-      if (config.showTimestamps !== undefined) {devOptions.showTimestamps = config.showTimestamps;}
-      if (config.showDuration !== undefined) {devOptions.showDuration = config.showDuration;}
-      if (config.colorize !== undefined) {devOptions.colorize = config.colorize;}
+      if (config.expandThreshold !== undefined) devOptions.expandThreshold = config.expandThreshold;
+      if (config.showTimestamps !== undefined) devOptions.showTimestamps = config.showTimestamps;
+      if (config.showDuration !== undefined) devOptions.showDuration = config.showDuration;
+      if (config.colorize !== undefined) devOptions.colorize = config.colorize;
       handlers.push(new DevelopmentHandler(devOptions));
       break;
     }
@@ -133,12 +133,12 @@ function createHandlers(config: LoggingEnvironmentConfig): LogHandler[] {
       // Auto-detect based on environment
       if (process.env.NODE_ENV === 'production') {
         const prodOptions: { output?: NodeJS.WriteStream; errorOutput?: NodeJS.WriteStream } = {};
-        if (config.outputStream) {prodOptions.output = config.outputStream;}
-        if (config.errorStream) {prodOptions.errorOutput = config.errorStream;}
+        if (config.outputStream) prodOptions.output = config.outputStream;
+        if (config.errorStream) prodOptions.errorOutput = config.errorStream;
         handlers.push(new ProductionHandler(prodOptions));
       } else if (process.env.NODE_ENV === 'test') {
         const testOptions: { maxEvents?: number } = {};
-        if (config.maxEvents !== undefined) {testOptions.maxEvents = config.maxEvents;}
+        if (config.maxEvents !== undefined) testOptions.maxEvents = config.maxEvents;
         handlers.push(new TestHandler(testOptions));
       } else {
         const devOptions: {
@@ -147,10 +147,10 @@ function createHandlers(config: LoggingEnvironmentConfig): LogHandler[] {
           showDuration?: boolean;
           colorize?: boolean
         } = {};
-        if (config.expandThreshold !== undefined) {devOptions.expandThreshold = config.expandThreshold;}
-        if (config.showTimestamps !== undefined) {devOptions.showTimestamps = config.showTimestamps;}
-        if (config.showDuration !== undefined) {devOptions.showDuration = config.showDuration;}
-        if (config.colorize !== undefined) {devOptions.colorize = config.colorize;}
+        if (config.expandThreshold !== undefined) devOptions.expandThreshold = config.expandThreshold;
+        if (config.showTimestamps !== undefined) devOptions.showTimestamps = config.showTimestamps;
+        if (config.showDuration !== undefined) devOptions.showDuration = config.showDuration;
+        if (config.colorize !== undefined) devOptions.colorize = config.colorize;
         handlers.push(new DevelopmentHandler(devOptions));
       }
   }

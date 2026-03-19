@@ -71,11 +71,11 @@ export class MemoryTool {
   private readonly appRepository = new AppRepository();
 
   private mapValueType(value: unknown): 'string' | 'number' | 'boolean' | 'object' | 'array' | 'null' {
-    if (value === null) {return 'null';}
-    if (Array.isArray(value)) {return 'array';}
+    if (value === null) return 'null';
+    if (Array.isArray(value)) return 'array';
     const jsType = typeof value;
-    if (jsType === 'object') {return 'object';}
-    if (jsType === 'string' || jsType === 'number' || jsType === 'boolean') {return jsType;}
+    if (jsType === 'object') return 'object';
+    if (jsType === 'string' || jsType === 'number' || jsType === 'boolean') return jsType;
     return 'string'; // fallback for bigint, symbol, etc.
   }
 

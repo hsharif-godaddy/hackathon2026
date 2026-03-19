@@ -7,7 +7,7 @@ import PageSection from '@/components/layout/PageSection'
 import lookup from '@/data/landing-pages/lookup.json'
 
 export default function ExploreFooter() {
-  if (!lookup.pages.length) {return null}
+  if (!lookup.pages.length) return null
 
   return (
     <PageSection>

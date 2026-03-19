@@ -67,9 +67,9 @@ function formatFullTimestamp(timestamp: string): string {
 }
 
 function safeRender(value: unknown): string {
-  if (value == null) {return '-';}
-  if (typeof value === 'string') {return value;}
-  if (typeof value === 'number' || typeof value === 'boolean') {return String(value);}
+  if (value == null) return '-';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (typeof value === 'object') {
     try {
       return JSON.stringify(value);
@@ -383,19 +383,19 @@ function DataField({ fieldKey, value, depth }: { fieldKey: string; value: unknow
   const isComplex = isObject || isArray;
 
   const formatValue = (val: unknown): string => {
-    if (val === null) {return 'null';}
-    if (val === undefined) {return 'undefined';}
-    if (typeof val === 'boolean') {return val ? 'true' : 'false';}
-    if (typeof val === 'number') {return String(val);}
-    if (typeof val === 'string') {return val;}
+    if (val === null) return 'null';
+    if (val === undefined) return 'undefined';
+    if (typeof val === 'boolean') return val ? 'true' : 'false';
+    if (typeof val === 'number') return String(val);
+    if (typeof val === 'string') return val;
     return JSON.stringify(val);
   };
 
   const getValueColor = (val: unknown): string => {
-    if (val === null || val === undefined) {return '#9ca3af';}
-    if (typeof val === 'boolean') {return '#8b5cf6';}
-    if (typeof val === 'number') {return '#059669';}
-    if (typeof val === 'string') {return '#1f2937';}
+    if (val === null || val === undefined) return '#9ca3af';
+    if (typeof val === 'boolean') return '#8b5cf6';
+    if (typeof val === 'number') return '#059669';
+    if (typeof val === 'string') return '#1f2937';
     return '#6b7280';
   };
 

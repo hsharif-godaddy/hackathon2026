@@ -30,7 +30,7 @@ export default function UsageWarningBanner({ appId }: UsageWarningBannerProps) {
     }
   }, [shouldShowBanner])
 
-  if (!shouldShowBanner) {return null}
+  if (!shouldShowBanner) return null
 
   const handleClose = () => {
     logClickEvent('chat.usageWarningBanner.close')()

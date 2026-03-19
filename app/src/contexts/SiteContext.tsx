@@ -18,7 +18,7 @@ import { sitePollingService } from '@/services/SitePollingService'
  * Get JWT token from browser cookies for API authentication
  */
 const getAuthTokenFromCookie = (): string | null => {
-  if (typeof document === 'undefined') {return null;}
+  if (typeof document === 'undefined') return null;
 
   const cookies = document.cookie.split(';');
   for (const cookie of cookies) {
@@ -145,7 +145,7 @@ export function SiteProvider({ children, initialSiteId }: SiteProviderProps) {
 
   // Wait for site to be ready
   const waitForSite = useCallback(async (timeoutMs = 300000): Promise<boolean> => {
-    if (!siteId) {return false}
+    if (!siteId) return false
 
     try {
       const maxAttempts = Math.ceil(timeoutMs / 10000) // Convert to attempts (10s intervals)

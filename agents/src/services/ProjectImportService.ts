@@ -263,15 +263,15 @@ export class ProjectImportService {
           validation.errors
         );
         await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
-        if (sourceType === 'zip') {await this.cleanupZipFile(params.zipPath!);}
+        if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
         return;
       }
 
       // Update job with project info
       const updateParams: UpdateImportJobParams = { extractedPath: containerProjectPath };
-      if (validation.packageManager) {updateParams.detectedPackageManager = validation.packageManager;}
-      if (validation.hasBuildScript !== undefined) {updateParams.hasBuildScript = validation.hasBuildScript;}
-      if (validation.hasDevScript !== undefined) {updateParams.hasDevScript = validation.hasDevScript;}
+      if (validation.packageManager) updateParams.detectedPackageManager = validation.packageManager;
+      if (validation.hasBuildScript !== undefined) updateParams.hasBuildScript = validation.hasBuildScript;
+      if (validation.hasDevScript !== undefined) updateParams.hasDevScript = validation.hasDevScript;
       if (validation.warnings && validation.warnings.length > 0) {
         updateParams.validationErrors = validation.warnings;
       }
@@ -324,7 +324,7 @@ export class ProjectImportService {
           ImportJobStatus.COPYING
         );
         await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
-        if (sourceType === 'zip') {await this.cleanupZipFile(params.zipPath!);}
+        if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
         return;
       }
 
@@ -425,7 +425,7 @@ export class ProjectImportService {
           }]
         );
         await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
-        if (sourceType === 'zip') {await this.cleanupZipFile(params.zipPath!);}
+        if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
         return;
       }
 
@@ -451,7 +451,7 @@ export class ProjectImportService {
             }]
           );
           await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
-          if (sourceType === 'zip') {await this.cleanupZipFile(params.zipPath!);}
+          if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
           return;
         }
       }
@@ -505,7 +505,7 @@ export class ProjectImportService {
           }]
         );
         await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
-        if (sourceType === 'zip') {await this.cleanupZipFile(params.zipPath!);}
+        if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
         return;
       }
 
@@ -529,7 +529,7 @@ export class ProjectImportService {
       this.logger.info('project-import.complete', { jobId, appId });
 
       // Cleanup agent-side zip file (container files already cleaned before commit)
-      if (sourceType === 'zip') {await this.cleanupZipFile(params.zipPath!);}
+      if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
 
     } catch (error) {
       this.logger.error('project-import.failed', {
@@ -554,7 +554,7 @@ export class ProjectImportService {
       } catch {
         // Ignore cleanup errors
       }
-      if (sourceType === 'zip' && params.zipPath) {await this.cleanupZipFile(params.zipPath);}
+      if (sourceType === 'zip' && params.zipPath) await this.cleanupZipFile(params.zipPath);
     }
   }
 
@@ -1048,8 +1048,8 @@ export class ProjectImportService {
   ): Promise<void> {
     try {
       const paths: string[] = [];
-      if (zipPath) {paths.push(zipPath);}
-      if (extractPath) {paths.push(extractPath);}
+      if (zipPath) paths.push(zipPath);
+      if (extractPath) paths.push(extractPath);
 
       if (paths.length > 0) {
         await devSupervisor.exec({
@@ -1086,7 +1086,7 @@ export class ProjectImportService {
 
       if (!addResult.success) {
         const result: { success: boolean; error?: string } = { success: false };
-        if (addResult.error) {result.error = addResult.error;}
+        if (addResult.error) result.error = addResult.error;
         return result;
       }
 
@@ -1097,7 +1097,7 @@ export class ProjectImportService {
       });
 
       const result: { success: boolean; error?: string } = { success: commitResult.success };
-      if (commitResult.error) {result.error = commitResult.error;}
+      if (commitResult.error) result.error = commitResult.error;
       return result;
     } catch (error) {
       return {

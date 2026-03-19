@@ -25,7 +25,7 @@ import { generateClickEID } from '@/utils/instrumentation';
 import DomainConnectConfirmation from './DomainConnectConfirmation';
 
 function getDomainUrl(domain: string): string {
-  if (!domain) {return '';}
+  if (!domain) return '';
   if (domain.startsWith('http://') || domain.startsWith('https://')) {
     return domain;
   }
@@ -33,7 +33,7 @@ function getDomainUrl(domain: string): string {
 }
 
 function getDomainSpecificError(error: Error | null, domainName: string, _t: ReturnType<typeof useTranslations>): string | null {
-  if (!error || !domainName) {return null;}
+  if (!error || !domainName) return null;
   if (error instanceof DomainMutationError) {
     return error.details.domainSpecificError?.[domainName.trim().toLowerCase()] ?? null;
   }
@@ -44,11 +44,11 @@ function getDomainSpecificError(error: Error | null, domainName: string, _t: Ret
  * Get translated status label based on domain connection status
  */
 function getStatusLabel(appDomain: AppDomain | undefined, t: ReturnType<typeof useTranslations>): string {
-  if (!appDomain) {return t('builder_domain_status_not_connected');}
-  if (appDomain.status === DomainStatus.ACTIVE) {return t('builder_domain_status_active');}
-  if (appDomain.status === DomainStatus.PENDING || !appDomain.status) {return t('builder_domain_status_pending');}
-  if (appDomain.status === DomainStatus.FAILED || appDomain.status === DomainStatus.ERROR) {return t('builder_domain_status_error');}
-  if (appDomain.status === DomainStatus.DELETING) {return t('builder_domain_status_deleting');}
+  if (!appDomain) return t('builder_domain_status_not_connected');
+  if (appDomain.status === DomainStatus.ACTIVE) return t('builder_domain_status_active');
+  if (appDomain.status === DomainStatus.PENDING || !appDomain.status) return t('builder_domain_status_pending');
+  if (appDomain.status === DomainStatus.FAILED || appDomain.status === DomainStatus.ERROR) return t('builder_domain_status_error');
+  if (appDomain.status === DomainStatus.DELETING) return t('builder_domain_status_deleting');
   return appDomain.status;
 }
 

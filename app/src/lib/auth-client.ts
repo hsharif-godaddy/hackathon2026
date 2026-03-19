@@ -55,7 +55,7 @@ export class AuthClient {
   }
 
   private getTokenFromCookie(): string | null {
-    if (typeof document === 'undefined') {return null;}
+    if (typeof document === 'undefined') return null;
     
     const cookies = document.cookie.split(';');
     for (const cookie of cookies) {

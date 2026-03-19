@@ -436,7 +436,7 @@ export class AILibContextManager {
             let strippedToolCallCount = 0
             for (let i = 0; i < messages.length; i++) {
                 const msg = messages[i]
-                if (msg?.role !== 'assistant') {continue}
+                if (!msg || msg.role !== 'assistant') continue
                 
                 const content = (msg as AssistantModelMessage).content
                 if (Array.isArray(content)) {
@@ -473,7 +473,7 @@ export class AILibContextManager {
 
             // Filter out assistant messages with empty content arrays (can happen after stripping orphaned tool calls)
             messages = messages.filter(msg => {
-                if (msg.role !== 'assistant') {return true}
+                if (msg.role !== 'assistant') return true
                 const content = (msg as AssistantModelMessage).content
                 if (Array.isArray(content) && content.length === 0) {
                     logger.warn('context.conversation_history.skipping_empty_assistant_message', {
@@ -503,7 +503,7 @@ export class AILibContextManager {
 
             // Filter out orphaned tool results
             const validMessages = messages.filter(msg => {
-                if (msg.role !== 'tool') {return true}
+                if (msg.role !== 'tool') return true
                 const content = (msg as ToolModelMessage).content
                 if (Array.isArray(content) && content[0]) {
                     const firstPart = content[0]
@@ -603,9 +603,9 @@ export class AILibContextManager {
             try {
                 const renderContext: { appId?: string; appPath?: string; conversationId?: string } = {}
                 
-                if (context.metadata?.appId) {renderContext.appId = context.metadata.appId as string}
-                if (context.metadata?.appPath) {renderContext.appPath = context.metadata.appPath as string}
-                if (context.conversation?.conversationId) {renderContext.conversationId = context.conversation.conversationId}
+                if (context.metadata?.appId) renderContext.appId = context.metadata.appId as string
+                if (context.metadata?.appPath) renderContext.appPath = context.metadata.appPath as string
+                if (context.conversation?.conversationId) renderContext.conversationId = context.conversation.conversationId
                 
                 const rendered = await contextAttachmentRegistry.render(
                     attachment,

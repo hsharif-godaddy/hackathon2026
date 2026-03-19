@@ -34,7 +34,7 @@ const queue: QueueEntry[] = []
 // ---------------------------------------------------------------------------
 
 function flushStoreUpdateBuffer(): void {
-  if (queue.length === 0) {return}
+  if (queue.length === 0) return
 
   const entries = queue.splice(0)
 

@@ -9,7 +9,7 @@ const AIRO_SUBDOMAINS = ['.airoapp.ai', '.test-airoapp.ai', '.dev-airoapp.ai'];
  * Used to determine if features like "Custom Domain" buttons should be shown.
  */
 export function isAiroSubdomain(url: string): boolean {
-  if (!url) {return false;}
+  if (!url) return false;
   try {
     const { hostname } = new URL(url);
     return AIRO_SUBDOMAINS.some(suffix => hostname.endsWith(suffix));
@@ -33,7 +33,7 @@ export function resolveSiteFqdn(site: {
   const customDomain = site?.domains?.find(d => d.domainType !== 'prefix');
   const prefixDomain = site?.domains?.find(d => d.domainType === 'prefix');
   const raw = customDomain?.fqdn || prefixDomain?.fqdn || site?.published_url || '';
-  if (!raw) {return '';}
+  if (!raw) return '';
   return raw.startsWith('http://') || raw.startsWith('https://') ? raw : `https://${raw}`;
 }
 
@@ -77,7 +77,7 @@ export interface DomainValidationResult {
  * sanitizeDomainInput('example.com') // 'example.com'
  */
 export function sanitizeDomainInput(input: string): string {
-  if (!input) {return '';}
+  if (!input) return '';
 
   let cleaned = input.trim();
 
@@ -176,7 +176,7 @@ export function parseDomain(domain: string): ParsedDomain | null {
  * validateDomain('http://example.com') // { isValid: true, parsed: {...} }
  */
 export function validateDomain(domain: string): DomainValidationResult {
-  if (!domain?.trim()) {
+  if (!domain || !domain.trim()) {
     return {
       isValid: false,
       error: 'Domain is required',
@@ -224,14 +224,14 @@ export function findCustomerDomain<T extends { domain?: string; name?: string; i
   customerDomains: T[]
 ): T | null {
   const parsed = parseDomain(domainToCheck);
-  if (!parsed) {return null;}
+  if (!parsed) return null;
 
   const exactMatch = customerDomains.find((customerDomain) => {
     const customerDomainName = customerDomain.domain || customerDomain.name || customerDomain.internationalDisplayName;
     return customerDomainName === parsed.fqdn;
   });
 
-  if (exactMatch) {return exactMatch;}
+  if (exactMatch) return exactMatch;
 
   if (parsed.isSubdomain) {
     const rootMatch = customerDomains.find((customerDomain) => {

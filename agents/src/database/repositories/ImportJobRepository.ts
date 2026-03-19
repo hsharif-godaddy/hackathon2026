@@ -97,22 +97,22 @@ export class ImportJobRepository {
       updatedAt: new Date(row.updated_at),
     };
 
-    if (row.zip_file_name) {job.zipFileName = row.zip_file_name;}
-    if (row.zip_file_size) {job.zipFileSize = row.zip_file_size;}
-    if (row.git_url) {job.gitUrl = row.git_url;}
-    if (row.git_branch) {job.gitBranch = row.git_branch;}
-    if (row.git_commit_hash) {job.gitCommitHash = row.git_commit_hash;}
-    if (row.extracted_path) {job.extractedPath = row.extracted_path;}
-    if (row.detected_package_manager) {job.detectedPackageManager = row.detected_package_manager as 'npm' | 'yarn' | 'pnpm';}
-    if (row.has_build_script !== null) {job.hasBuildScript = row.has_build_script === 1;}
-    if (row.has_dev_script !== null) {job.hasDevScript = row.has_dev_script === 1;}
-    if (row.validation_errors) {job.validationErrors = row.validation_errors;}
-    if (row.install_output) {job.installOutput = row.install_output;}
-    if (row.build_output) {job.buildOutput = row.build_output;}
-    if (row.error_message) {job.errorMessage = row.error_message;}
-    if (row.error_stage) {job.errorStage = row.error_stage;}
-    if (row.started_at) {job.startedAt = new Date(row.started_at);}
-    if (row.completed_at) {job.completedAt = new Date(row.completed_at);}
+    if (row.zip_file_name) job.zipFileName = row.zip_file_name;
+    if (row.zip_file_size) job.zipFileSize = row.zip_file_size;
+    if (row.git_url) job.gitUrl = row.git_url;
+    if (row.git_branch) job.gitBranch = row.git_branch;
+    if (row.git_commit_hash) job.gitCommitHash = row.git_commit_hash;
+    if (row.extracted_path) job.extractedPath = row.extracted_path;
+    if (row.detected_package_manager) job.detectedPackageManager = row.detected_package_manager as 'npm' | 'yarn' | 'pnpm';
+    if (row.has_build_script !== null) job.hasBuildScript = row.has_build_script === 1;
+    if (row.has_dev_script !== null) job.hasDevScript = row.has_dev_script === 1;
+    if (row.validation_errors) job.validationErrors = row.validation_errors;
+    if (row.install_output) job.installOutput = row.install_output;
+    if (row.build_output) job.buildOutput = row.build_output;
+    if (row.error_message) job.errorMessage = row.error_message;
+    if (row.error_stage) job.errorStage = row.error_stage;
+    if (row.started_at) job.startedAt = new Date(row.started_at);
+    if (row.completed_at) job.completedAt = new Date(row.completed_at);
 
     return job;
   }
@@ -303,10 +303,10 @@ export class ImportJobRepository {
       const values: unknown[] = [];
 
       for (const [key, value] of Object.entries(params)) {
-        if (value === undefined) {continue;}
+        if (value === undefined) continue;
 
         const mapping = ImportJobRepository.FIELD_MAP[key as keyof UpdateImportJobParams];
-        if (!mapping) {continue;}
+        if (!mapping) continue;
 
         updates.push(`${mapping.column} = ?`);
         values.push(mapping.transform ? mapping.transform(value) : value);

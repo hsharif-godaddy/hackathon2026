@@ -36,15 +36,15 @@ export class ASTTextEditor extends ASTEditorBase {
    * @returns Occurrence index (0-based) or null
    */
   private extractOccurrenceIndex(preciseSelector?: string): number | null {
-    if (!preciseSelector) {return null;}
+    if (!preciseSelector) return null;
 
     // Extract the last nth-child value from the selector
     // e.g., "div:nth-child(3) > p:nth-child(2)" -> 2
     const matches = preciseSelector.match(/:nth-child\((\d+)\)/g);
-    if (!matches || matches.length === 0) {return null;}
+    if (!matches || matches.length === 0) return null;
 
     const lastMatch = matches[matches.length - 1];
-    if (!lastMatch) {return null;}
+    if (!lastMatch) return null;
 
     const index = parseInt(lastMatch.match(/\d+/)?.[0] || '0', 10);
 

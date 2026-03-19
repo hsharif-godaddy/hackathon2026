@@ -359,8 +359,8 @@ Last updated: ${entry.updatedAt}
    * @returns Type string
    */
   private getValueType(value: any): MemoryEntry['type'] {
-    if (value === null) {return 'null';}
-    if (Array.isArray(value)) {return 'array';}
+    if (value === null) return 'null';
+    if (Array.isArray(value)) return 'array';
     return typeof value as MemoryEntry['type'];
   }
 

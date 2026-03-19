@@ -53,8 +53,8 @@ export function AnalyticsChart({ data }: AnalyticsChartProps) {
    * @returns Formatted string with K/M suffix if applicable
    */
   const formatValue = (val: number): string => {
-    if (val >= 1000000) {return `${(val / 1000000).toFixed(1)}M`}
-    if (val >= 1000) {return `${(val / 1000).toFixed(1)}K`}
+    if (val >= 1000000) return `${(val / 1000000).toFixed(1)}M`
+    if (val >= 1000) return `${(val / 1000).toFixed(1)}K`
     return Math.round(val).toString()
   }
 

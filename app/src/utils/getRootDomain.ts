@@ -36,7 +36,7 @@ function extractRootDomain(hostname: string): string | null {
  * ```
  */
 export function getRootDomain(): string | null {
-  if (typeof window === 'undefined') {return null;}
+  if (typeof window === 'undefined') return null;
 
   return extractRootDomain(window.location.hostname);
 }

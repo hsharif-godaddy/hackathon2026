@@ -123,7 +123,7 @@ function socialConnectFlowReducer(state: FlowState, action: FlowAction): FlowSta
         error: undefined
       }
 
-    case SocialFlowAction.PermissionsInvalid: {
+    case SocialFlowAction.PermissionsInvalid:
       const scopesList = action.missingScopes.length > 0
         ? `Missing permissions: ${action.missingScopes.join(', ')}`
         : 'This connection is missing required permissions.'
@@ -135,9 +135,8 @@ function socialConnectFlowReducer(state: FlowState, action: FlowAction): FlowSta
         previousStep: FlowStep.ValidatingPermissions,
         isRetryable: false
       }
-    }
 
-    case SocialFlowAction.PermissionsError: {
+    case SocialFlowAction.PermissionsError:
       const shouldRetryPermissions = state.retryCount < state.maxRetries && action.isRetryable !== false
 
       if (shouldRetryPermissions) {
@@ -163,7 +162,6 @@ function socialConnectFlowReducer(state: FlowState, action: FlowAction): FlowSta
         isRetryable: false,
         pendingRetry: undefined
       }
-    }
 
     case SocialFlowAction.PagesLoaded:
       return {
@@ -220,7 +218,7 @@ function socialConnectFlowReducer(state: FlowState, action: FlowAction): FlowSta
         isRetryable: action.isRetryable ?? false
       }
 
-    case SocialFlowAction.Retry: {
+    case SocialFlowAction.Retry:
       if (!state.isRetryable || state.retryCount >= state.maxRetries) {
         return state
       }
@@ -233,7 +231,6 @@ function socialConnectFlowReducer(state: FlowState, action: FlowAction): FlowSta
         retryCount: state.retryCount + 1,
         pendingRetry: undefined
       }
-    }
 
     case SocialFlowAction.ExecutePendingRetry:
       if (!state.pendingRetry) {

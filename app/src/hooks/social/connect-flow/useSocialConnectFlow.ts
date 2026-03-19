@@ -59,7 +59,7 @@ export function useSocialConnectFlow({
   )
 
   const linkedConnection = useMemo(() => {
-    if (!currentConnectionDetails) {return undefined}
+    if (!currentConnectionDetails) return undefined
     // Try to find in enriched array first
     const enriched = enrichedConnections.find(c => c.socialId === currentConnectionDetails.socialId)
     return enriched || currentConnectionDetails

@@ -24,7 +24,7 @@ export function useAppImageUrl(relativeOrAbsoluteUrl: string | null | undefined)
   const previewUrl = serverState?.url
 
   return useMemo(() => {
-    if (!relativeOrAbsoluteUrl) {return null}
+    if (!relativeOrAbsoluteUrl) return null
 
     // If URL is already absolute, return as-is
     if (!relativeOrAbsoluteUrl.startsWith('/')) {

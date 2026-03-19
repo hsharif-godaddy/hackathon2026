@@ -77,7 +77,7 @@ export default function ChatAttachmentMenu({
     const validationError = validate(files, t);
     if (validationError) {
       onUploadError?.(validationError);
-      if (fileInputRef.current) {fileInputRef.current.value = '';}
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 

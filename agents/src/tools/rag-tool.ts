@@ -78,15 +78,15 @@ export class RagTool {
       ...(data.graphicElements || [])
     ];
 
-    if (data.typography.guidance) {parts.push(data.typography.guidance);}
-    if (data.colors.guidance) {parts.push(data.colors.guidance);}
-    if (data.layoutPrinciples) {parts.push(...data.layoutPrinciples);}
+    if (data.typography.guidance) parts.push(data.typography.guidance);
+    if (data.colors.guidance) parts.push(data.colors.guidance);
+    if (data.layoutPrinciples) parts.push(...data.layoutPrinciples);
 
     return parts.filter(p => p && typeof p === 'string').join(' ');
   }
 
   async initialize(dataPath?: string): Promise<void> {
-    if (this.initialized) {return;}
+    if (this.initialized) return;
 
     try {
       const projectRoot = resolve(process.cwd(), '..');

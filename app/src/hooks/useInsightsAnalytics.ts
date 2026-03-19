@@ -311,7 +311,7 @@ export function useInsightsAnalytics({
     const refreshInterval = setInterval(async () => {
       const currentCache = sessionCacheMap.get(cacheKey)
       // Only refresh if this is still the active period
-      if (currentCache?.publishedUrl === publishedUrl &&
+      if (currentCache && currentCache.publishedUrl === publishedUrl &&
           currentCache.appId === appId && currentCache.days === days) {
         logger.debug('analytics.refresh.start', { publishedUrl, days, operation: 'refresh' })
         setIsRefreshing(true)

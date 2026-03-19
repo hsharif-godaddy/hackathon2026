@@ -92,7 +92,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 
   // Detect Safari browser
   const isSafari = useMemo(() => {
-    if (typeof window === 'undefined') {return false}
+    if (typeof window === 'undefined') return false
     return /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
   }, [])
 
@@ -199,14 +199,14 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   }, [isFocused, displayText, isSafari, placeholders])
 
   const typeText = useCallback(async (targetText: string) => {
-    if (isLoading) {return}
+    if (isLoading) return
 
     // Validate and clamp to byte limit
     const validated = validateAndClampPrompt(targetText)
     const validatedText = validated.text
 
     // Prevent animation if text is already the same
-    if (displayText === validatedText) {return}
+    if (displayText === validatedText) return
 
     // Skip animation on Safari for better performance
     if (isSafari) {
@@ -223,14 +223,14 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
     // First, clear existing text with backspace effect
     const currentText = displayText
     for (let i = currentText.length; i >= 0; i--) {
-      if (animationQueueRef.current[0] !== validatedText) {return} // Animation was interrupted
+      if (animationQueueRef.current[0] !== validatedText) return // Animation was interrupted
       setDisplayText(currentText.slice(0, i))
       await new Promise(resolve => setTimeout(resolve, typingSpeed))
     }
 
     // Then type the new text
     for (let i = 0; i <= validatedText.length; i++) {
-      if (animationQueueRef.current[0] !== validatedText) {return} // Animation was interrupted
+      if (animationQueueRef.current[0] !== validatedText) return // Animation was interrupted
       const newText = validatedText.slice(0, i)
       setDisplayText(newText)
       // Only update parent state at the end to reduce re-renders
@@ -345,7 +345,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                   // Block input during typing animation or speech recognition to prevent
                   // conflicts between manual typing, animated text, and voice transcript.
                   // Users can stop listening to edit the transcript.
-                  if (isTyping || isListening) {return}
+                  if (isTyping || isListening) return
                   isUserTypingRef.current = true
                   setDisplayText(e.target.value)
                   debouncedSetPromptText(e.target.value)

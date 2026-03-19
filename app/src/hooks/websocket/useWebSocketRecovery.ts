@@ -74,8 +74,8 @@ export function useWebSocketRecovery(): UseWebSocketRecoveryReturn {
    */
   const maybeSendRecoveryAck = useCallback((socket: Socket | null, force = false) => {
     const pending = pendingRecoveryAckRef.current
-    if (!pending || !socket) {return}
-    if (!pending.replayComplete) {return}
+    if (!pending || !socket) return
+    if (!pending.replayComplete) return
 
     // Only check counts if not forced - when server says replay is complete, trust it
     if (!force && pending.expectedCount > 0 && pending.receivedCount < pending.expectedCount) {
@@ -103,7 +103,7 @@ export function useWebSocketRecovery(): UseWebSocketRecoveryReturn {
   const trackReplayEventReceipt = useCallback(
     (socket: Socket | null, eventType: string) => {
       const pending = pendingRecoveryAckRef.current;
-      if (!pending || !socket) {return;}
+      if (!pending || !socket) return;
 
       // Skip recovery control messages - they don't count toward replay
       if (RECOVERY_CONTROL_MESSAGE_TYPES.includes(eventType as typeof RECOVERY_CONTROL_MESSAGE_TYPES[number])) {

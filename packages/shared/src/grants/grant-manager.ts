@@ -30,12 +30,12 @@ export class GrantManager {
     // Use == null to match both null and undefined (API omits finalState when null)
     const notInFinalState = grant.finalState == null
 
-    if (grant.creditsSpent == null || grant.creditsMax == null) {return false}
+    if (grant.creditsSpent == null || grant.creditsMax == null) return false
 
     const creditsSpent = Number(grant.creditsSpent)
     const creditsMax = Number(grant.creditsMax)
 
-    if (isNaN(creditsSpent) || isNaN(creditsMax)) {return false}
+    if (isNaN(creditsSpent) || isNaN(creditsMax)) return false
 
     // Budget exceeded check: creditsSpent >= creditsMax means grant is exhausted
     const hasRemainingCredits = creditsSpent < creditsMax
@@ -52,16 +52,16 @@ export class GrantManager {
    * Get reason why a grant is unusable (for logging/debugging)
    */
   static getUnusableReason(grant: CreditGrant): GrantUnusableReason | null {
-    if (!grant.isAvailable) {return GrantUnusableReason.NotAvailable}
+    if (!grant.isAvailable) return GrantUnusableReason.NotAvailable
     // Check for consumed state (finalState may be undefined or null when not set)
-    if (grant.finalState === GrantFinalState.Consumed) {return GrantUnusableReason.Consumed}
-    if (grant.finalState === GrantFinalState.Expired) {return GrantUnusableReason.Expired}
+    if (grant.finalState === GrantFinalState.Consumed) return GrantUnusableReason.Consumed
+    if (grant.finalState === GrantFinalState.Expired) return GrantUnusableReason.Expired
     // Treat null/undefined/NaN credits as exhausted (invalid data = unusable)
-    if (grant.creditsSpent == null || grant.creditsMax == null) {return GrantUnusableReason.Exhausted}
+    if (grant.creditsSpent == null || grant.creditsMax == null) return GrantUnusableReason.Exhausted
     const spent = Number(grant.creditsSpent)
     const max = Number(grant.creditsMax)
-    if (isNaN(spent) || isNaN(max) || spent >= max) {return GrantUnusableReason.Exhausted}
-    if (new Date(grant.useBefore) <= new Date()) {return GrantUnusableReason.Expired}
+    if (isNaN(spent) || isNaN(max) || spent >= max) return GrantUnusableReason.Exhausted
+    if (new Date(grant.useBefore) <= new Date()) return GrantUnusableReason.Expired
     return null
   }
 

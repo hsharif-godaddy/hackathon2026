@@ -31,7 +31,7 @@ export function useAutoSkipSelectionEffect({
       return
     }
 
-    if (hasDispatchedRef.current) {return}
+    if (hasDispatchedRef.current) return
 
     const hasNoExistingConnections =
       !isSelectExistingLoading &&

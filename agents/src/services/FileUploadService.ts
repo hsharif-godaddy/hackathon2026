@@ -451,7 +451,7 @@ export class FileUploadService {
         const files: UploadedFile[] = []
         const dirFiles = readdirSync(uploadDir)
         for (const file of dirFiles) {
-          if (file === 'metadata.json') {continue}
+          if (file === 'metadata.json') continue
           const filePath = this.pathBuilder.join(appId, uploadId, file)
           const stats = existsSync(filePath) ? statSync(filePath) : null
           

@@ -15,8 +15,8 @@ const mockDevelopStore = {
 };
 
 const mockUseSwitchboard = vi.hoisted(() => vi.fn((feature: string) => {
-  if (feature === 'appbuilder-image-manager') {return { data: true };}
-  if (feature === 'appbuilder-chat-gauge') {return { data: true };}
+  if (feature === 'appbuilder-image-manager') return { data: true };
+  if (feature === 'appbuilder-chat-gauge') return { data: true };
   return { data: false };
 }));
 
@@ -76,8 +76,8 @@ describe('ChatInput', () => {
     mockDevelopStore.isAssetManagerOpen = false;
     mockSpeechRecognition.isListening = false;
     mockUseSwitchboard.mockImplementation((feature: string) => {
-      if (feature === 'appbuilder-image-manager') {return { data: true };}
-      if (feature === 'appbuilder-chat-gauge') {return { data: true };}
+      if (feature === 'appbuilder-image-manager') return { data: true };
+      if (feature === 'appbuilder-chat-gauge') return { data: true };
       return { data: false };
     });
   });
@@ -339,8 +339,8 @@ describe('ChatInput', () => {
   describe('UsageGauge feature flag', () => {
     it('should render UsageGauge when feature flag is enabled', () => {
       mockUseSwitchboard.mockImplementation((feature: string) => {
-        if (feature === 'appbuilder-image-manager') {return { data: true };}
-        if (feature === 'appbuilder-chat-gauge') {return { data: true };}
+        if (feature === 'appbuilder-image-manager') return { data: true };
+        if (feature === 'appbuilder-chat-gauge') return { data: true };
         return { data: false };
       });
 
@@ -351,8 +351,8 @@ describe('ChatInput', () => {
 
     it('should not render UsageGauge when feature flag is disabled', () => {
       mockUseSwitchboard.mockImplementation((feature: string) => {
-        if (feature === 'appbuilder-image-manager') {return { data: true };}
-        if (feature === 'appbuilder-chat-gauge') {return { data: false };}
+        if (feature === 'appbuilder-image-manager') return { data: true };
+        if (feature === 'appbuilder-chat-gauge') return { data: false };
         return { data: false };
       });
 

@@ -81,7 +81,7 @@ export default function TransferInitiateDialog({
   }
 
   const handleCopy = async () => {
-    if (!transferToken) {return}
+    if (!transferToken) return
     try {
       await navigator.clipboard.writeText(transferToken)
       setCopied(true)

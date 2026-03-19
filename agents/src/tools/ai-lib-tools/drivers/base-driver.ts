@@ -61,7 +61,7 @@ export abstract class BaseDriver {
    * Parse and clean base URL by stripping path components
    */
   private parseBaseUrl(baseUrl: string): string {
-    if (!baseUrl) {return '';}
+    if (!baseUrl) return '';
 
     try {
       const urlObj = new URL(baseUrl);

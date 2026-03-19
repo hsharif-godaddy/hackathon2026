@@ -32,7 +32,7 @@ interface UseGrantContextOptions {
  * Sorted by id to ensure consistent hash regardless of array order
  */
 function computeGrantHash(grants: CreditGrant[] | undefined): string {
-  if (!grants?.length) {return 'empty'}
+  if (!grants?.length) return 'empty'
   return [...grants]
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((g) => `${g.id}:${g.creditsSpent}:${g.finalState}:${g.isAvailable}`)
@@ -80,10 +80,10 @@ export function useGrantContext({
   // Send grants to agent
   const sendGrantContext = useCallback(
     function send(force = false) {
-      if (!controller || !isConnected) {return}
+      if (!controller || !isConnected) return
 
       // Wait for both flag and grants to finish loading before proceeding
-      if (isFlagLoading || isGrantsLoading) {return}
+      if (isFlagLoading || isGrantsLoading) return
 
       // Skip emission entirely when feature is disabled to avoid unnecessary traffic
       if (!grantsEnabled) {
@@ -150,7 +150,7 @@ export function useGrantContext({
   useEffect(
     function handleRefreshRequest() {
       // Skip when feature is disabled - no grants to refresh
-      if (!grantsEnabled || !controller) {return}
+      if (!grantsEnabled || !controller) return
 
       return controller.onGrantRefreshRequested(function onRefresh() {
         logger.info('websocket.grant_context.refresh_requested')
@@ -174,7 +174,7 @@ export function useGrantContext({
   useEffect(
     function handleVisibilityChange() {
       // Skip when feature is disabled - no grants to sync
-      if (!grantsEnabled || !controller || !isConnected) {return}
+      if (!grantsEnabled || !controller || !isConnected) return
 
       function onVisibilityChange() {
         if (document.visibilityState === 'visible') {
@@ -209,7 +209,7 @@ export function useGrantContext({
       prevIsStreamingRef.current = isStreaming
 
       // Skip when feature is disabled - no grants to refresh
-      if (!grantsEnabled) {return}
+      if (!grantsEnabled) return
 
       // Detect transition from streaming to not streaming (completion)
       if (prevIsStreaming === true && isStreaming === false) {
@@ -269,7 +269,7 @@ export function useGrantContext({
       }
 
       // Skip if we're still loading
-      if (isGrantsLoading || isFlagLoading) {return}
+      if (isGrantsLoading || isFlagLoading) return
 
       // If we have grants, stop retrying and reset timer
       if (grants && grants.length > 0) {
@@ -301,7 +301,7 @@ export function useGrantContext({
       }
 
       // Only create interval if one isn't already running
-      if (emptyGrantsIntervalRef.current) {return}
+      if (emptyGrantsIntervalRef.current) return
 
       // Set up interval to refetch
       emptyGrantsIntervalRef.current = setInterval(() => {

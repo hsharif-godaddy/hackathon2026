@@ -43,7 +43,7 @@ export const PLATFORM_LIMITS: Record<SocialPlatform.INSTAGRAM | SocialPlatform.F
  */
 export function parseTimeToDate(dateObj: Date, timeString: string): void {
     const timeMatch = timeString.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i)
-    if (!timeMatch) {return}
+    if (!timeMatch) return
 
     let hours = parseInt(timeMatch[1], 10)
     const minutes = parseInt(timeMatch[2], 10)

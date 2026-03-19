@@ -41,7 +41,7 @@ export function EditRowDialog({
 
   // Extract primary key from row
   const primaryKey = useMemo(() => {
-    if (!row) {return {};}
+    if (!row) return {};
 
     const pk: Record<string, any> = {};
     schema.forEach(col => {
@@ -176,7 +176,7 @@ export function EditRowDialog({
    */
   const parseEnumValues = (type: string): string[] | null => {
     const match = type.match(/^enum\((.*)\)$/i);
-    if (!match) {return null;}
+    if (!match) return null;
 
     // Parse the enum values, handling escaped quotes
     const valuesString = match[1];
@@ -301,7 +301,7 @@ export function EditRowDialog({
     );
   };
 
-  if (!row || !isOpen) {return null;}
+  if (!row || !isOpen) return null;
 
   const editableColumns = schema.filter(col => !isAutoManagedTimestamp(col));
 

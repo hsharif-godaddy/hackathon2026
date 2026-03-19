@@ -102,7 +102,7 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
    * Save the previewed theme by sending message to chat
    */
   function handleSave() {
-    if (!previewedPalette || isProcessing || !sendUserMessage) {return}
+    if (!previewedPalette || isProcessing || !sendUserMessage) return
 
     sendUserMessage(`${t('builder_tools_css_color_scheme_use_color')} ${previewedPalette.name}`, { isActionRequest: true })
     setPreviewedPalette(null)
@@ -112,7 +112,7 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
    * Handle "More options" button click
    */
   function handleMoreOptions() {
-    if (isProcessing || !sendUserMessage) {return}
+    if (isProcessing || !sendUserMessage) return
 
     sendUserMessage(t('builder_tools_css_color_scheme_more_options'), { isActionRequest: true })
   }

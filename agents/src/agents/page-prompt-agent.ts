@@ -723,7 +723,7 @@ Create a striking, attention-grabbing design.
    * Get size category for an image based on dimensions
    */
   private getSizeCategory(dimensions?: { width: number; height: number }): string {
-    if (!dimensions) {return 'unknown-size'}
+    if (!dimensions) return 'unknown-size'
 
     const maxDim = Math.max(dimensions.width, dimensions.height)
     const minDim = Math.min(dimensions.width, dimensions.height)
@@ -732,17 +732,17 @@ Create a striking, attention-grabbing design.
     const aspectRatio = dimensions.width / dimensions.height
     const isLogoLike = minDim >= 50 && minDim <= 400 && aspectRatio >= 0.5 && aspectRatio <= 3
 
-    if (maxDim < 50) {return 'tiny-icon'}
-    if (maxDim < 100) {return 'small-icon'}
+    if (maxDim < 50) return 'tiny-icon'
+    if (maxDim < 100) return 'small-icon'
     if (maxDim < 300) {
-      if (isLogoLike && minDim >= 80) {return 'logo-suitable'}
+      if (isLogoLike && minDim >= 80) return 'logo-suitable'
       return 'small'
     }
     if (maxDim < 600) {
-      if (isLogoLike) {return 'logo-suitable'}
+      if (isLogoLike) return 'logo-suitable'
       return 'medium'
     }
-    if (maxDim < 1000) {return 'large'}
+    if (maxDim < 1000) return 'large'
     return 'hero-suitable'
   }
 
@@ -797,31 +797,31 @@ Create a striking, attention-grabbing design.
     if (heroImages.length > 0) {
       output.push('\n**Hero/Banner Images (800px+):**')
       heroImages.slice(0, 5).forEach(item => output.push(`  - ${item}`))
-      if (heroImages.length > 5) {output.push(`  ... and ${heroImages.length - 5} more`)}
+      if (heroImages.length > 5) output.push(`  ... and ${heroImages.length - 5} more`)
     }
 
     if (logoImages.length > 0) {
       output.push('\n**Logo Candidates (100-400px, good proportions):**')
       logoImages.slice(0, 5).forEach(item => output.push(`  - ${item}`))
-      if (logoImages.length > 5) {output.push(`  ... and ${logoImages.length - 5} more`)}
+      if (logoImages.length > 5) output.push(`  ... and ${logoImages.length - 5} more`)
     }
 
     if (featureImages.length > 0) {
       output.push('\n**Feature Images (300-800px):**')
       featureImages.slice(0, 5).forEach(item => output.push(`  - ${item}`))
-      if (featureImages.length > 5) {output.push(`  ... and ${featureImages.length - 5} more`)}
+      if (featureImages.length > 5) output.push(`  ... and ${featureImages.length - 5} more`)
     }
 
     if (smallImages.length > 0) {
       output.push('\n**Small Images/Icons (<300px):**')
       smallImages.slice(0, 5).forEach(item => output.push(`  - ${item}`))
-      if (smallImages.length > 5) {output.push(`  ... and ${smallImages.length - 5} more`)}
+      if (smallImages.length > 5) output.push(`  ... and ${smallImages.length - 5} more`)
     }
 
     if (unknownImages.length > 0) {
       output.push('\n**Unknown Size:**')
       unknownImages.slice(0, 3).forEach(item => output.push(`  - ${item}`))
-      if (unknownImages.length > 3) {output.push(`  ... and ${unknownImages.length - 3} more`)}
+      if (unknownImages.length > 3) output.push(`  ... and ${unknownImages.length - 3} more`)
     }
 
     return output.join('\n')

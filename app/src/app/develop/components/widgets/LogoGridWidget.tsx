@@ -113,7 +113,7 @@ export default function LogoGridWidget({ logos, className = '' }: LogoGridWidget
    * Save the selected logo by sending message to chat
    */
   function handleSave() {
-    if (!selectedLogo || isProcessing || !sendUserMessage) {return}
+    if (!selectedLogo || isProcessing || !sendUserMessage) return
 
     // Send action to use the selected logo
     const logoIndex = logos.findIndex(l => l.id === selectedLogo.id) + 1
@@ -125,7 +125,7 @@ export default function LogoGridWidget({ logos, className = '' }: LogoGridWidget
    * Handle "More options" button click
    */
   function handleMoreOptions() {
-    if (isProcessing || !sendUserMessage) {return}
+    if (isProcessing || !sendUserMessage) return
 
     sendUserMessage('Generate more logo options', { isActionRequest: true })
   }

@@ -116,7 +116,7 @@ function HomeContentInner({ serverFeatures }: HomeContentProps) {
     // Remove placeholder example URLs from the prompt
     promptToUse = promptToUse.replace(/https?:\/\/example\.com\s*/gi, '').trim()
 
-    if (!promptToUse || isRedirecting || isLoading) {return}
+    if (!promptToUse || isRedirecting || isLoading) return
 
     // Validate byte limit before sending (defense-in-depth on client)
     const validated = validateAndClampPrompt(promptToUse)
@@ -260,7 +260,7 @@ function HomeContentInner({ serverFeatures }: HomeContentProps) {
 
   // Restore prompt from localStorage after login and clear it
   useEffect(() => {
-    if (!isAuthenticated || authIsLoading) {return}
+    if (!isAuthenticated || authIsLoading) return
 
     const savedPrompt = localStorage.getItem('airo-pending-prompt')
 

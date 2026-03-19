@@ -37,7 +37,7 @@ export function resetDevToolsCheck() {
  * in-memory cache loads the truncated (or empty) version.
  */
 export async function truncateDevToolsDb(): Promise<void> {
-  if (devToolsDbChecked) {return}
+  if (devToolsDbChecked) return
 
   const dbPath = path.join(process.cwd(), '.devtools', 'generations.json')
 
@@ -46,7 +46,7 @@ export async function truncateDevToolsDb(): Promise<void> {
     fileSize = (await stat(dbPath)).size
   } catch (error: unknown) {
     devToolsDbChecked = true
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {return}
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
 
     logger.warn('devtools.db.stat.failed', {
       error: error instanceof Error ? error.message : String(error)

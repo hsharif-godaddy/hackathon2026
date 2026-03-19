@@ -65,7 +65,7 @@ export function SelectFeaturesStep({ appId, onConfirm, onCancel }: SelectFeature
                           warningLevel === WarningLevel.EXCEEDED;
 
   const getUsageMessage = () => {
-    if (isLoading) {return null;}
+    if (isLoading) return null;
 
     if (percentage >= 100) {
       return t('builder_golive_token_exceeded_warning');

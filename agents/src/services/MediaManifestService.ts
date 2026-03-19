@@ -578,7 +578,7 @@ export class MediaManifestService {
   ): Promise<string | undefined> {
     try {
       const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor?.isAvailable()) {
+      if (!devSupervisor || !devSupervisor.isAvailable()) {
         logger.debug('media_manifest.git_commit.no_supervisor', { appId });
         return undefined;
       }

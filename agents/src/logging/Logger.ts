@@ -322,7 +322,7 @@ export function generateRequestId(): string {
  */
 export function toPinoLogger(airoLogger: Logger) {
   function normalize(...args: any[]): [string, any] {
-    if (typeof args[0] === 'string') {return [args[0], args[1]];}
+    if (typeof args[0] === 'string') return [args[0], args[1]];
     return [typeof args[1] === 'string' ? args[1] : 'log', args[0]];
   }
 

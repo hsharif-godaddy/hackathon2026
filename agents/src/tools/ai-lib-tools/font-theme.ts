@@ -90,10 +90,10 @@ function detectFontCategory(fontName: string): FontCategory {
     'righteous', 'rubik mono', 'special elite'
   ]
   
-  if (monospaceFonts.some(mono => fontLower.includes(mono))) {return 'monospace'}
-  if (cursiveFonts.some(cursive => fontLower.includes(cursive))) {return 'cursive'}
-  if (fantasyFonts.some(fantasy => fontLower.includes(fantasy))) {return 'fantasy'}
-  if (serifFonts.some(serif => fontLower.includes(serif))) {return 'serif'}
+  if (monospaceFonts.some(mono => fontLower.includes(mono))) return 'monospace'
+  if (cursiveFonts.some(cursive => fontLower.includes(cursive))) return 'cursive'
+  if (fantasyFonts.some(fantasy => fontLower.includes(fantasy))) return 'fantasy'
+  if (serifFonts.some(serif => fontLower.includes(serif))) return 'serif'
   
   return 'sans-serif'
 }
@@ -157,8 +157,8 @@ Return ONLY the JSON object with the fonts array containing headerFont and bodyF
     toolName: 'fontTheme'
   }
 
-  if (appId) {contextData.appId = appId}
-  if (sessionId) {contextData.conversationId = sessionId}
+  if (appId) contextData.appId = appId
+  if (sessionId) contextData.conversationId = sessionId
 
   // Build execution context for grant-aware metadata
   const executionContext: ExecutionContext | undefined = (appId || sessionId || socketId) ? {
@@ -174,7 +174,7 @@ Return ONLY the JSON object with the fonts array containing headerFont and bodyF
 
   // Additional tags to always include (tool-specific and custom)
   const additionalTags = ['source:tool-llm', 'source:font-theme']
-  if (customTags?.length) {additionalTags.push(...customTags)}
+  if (customTags?.length) additionalTags.push(...customTags)
 
   // Build metadata using the grants-aware helper
   let metadata: LitellmMetadata | null = null
@@ -201,8 +201,8 @@ Return ONLY the JSON object with the fonts array containing headerFont and bodyF
       userIdentifier = app?.subscriptionId || app?.customerId
     }
     const baseTags = ['source:tool-llm', 'source:font-theme']
-    if (agentId) {baseTags.push(`agent:${agentId}`)}
-    if (customTags?.length) {baseTags.push(...customTags)}
+    if (agentId) baseTags.push(`agent:${agentId}`)
+    if (customTags?.length) baseTags.push(...customTags)
     const mergedTags = [...new Set([...(existingMetadata?.tags || []), ...baseTags])]
     metadata = {
       ...(userIdentifier && { user: userIdentifier }),
@@ -240,7 +240,7 @@ Return ONLY the JSON object with the fonts array containing headerFont and bodyF
     const validFonts: LLMFontPairing[] = []
 
     for (const font of parsed.fonts) {
-      if (!font.id || !font.name) {continue}
+      if (!font.id || !font.name) continue
 
       // Check for new headerFont/bodyFont format
       if (font.headerFont?.name && font.bodyFont?.name) {
@@ -494,7 +494,7 @@ export async function updateCssFontVariables(
     const bodyRuleRegex = /body \{([^}]*)\}/
     const bodyMatch = cssContent.match(bodyRuleRegex)
 
-    if (bodyMatch?.[1] !== undefined) {
+    if (bodyMatch && bodyMatch[1] !== undefined) {
       const bodyContent = bodyMatch[1]
 
       if (/font-family:/.test(bodyContent)) {
@@ -844,7 +844,7 @@ MODE SELECTION GUIDE:
             content = textPart && 'text' in textPart ? textPart.text : ''
           }
           const match = content.match(/Apply font theme:\s*(.+?)$/i)
-          if (match?.[1]) {
+          if (match && match[1]) {
             extractedThemeName = match[1].trim()
             logger.info('fontTheme.apply.extracted_from_message', {
               originalMessage: content,

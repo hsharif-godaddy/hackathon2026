@@ -118,7 +118,7 @@ export default function PublishStatusAlert() {
   }, [currentAppId, deploymentsRefetch, publishMutation, clearPublishStatus, setIsPublishing, setPublishError]);
 
   const handleDismiss = useCallback(() => {
-    if (!currentAppId) {return;}
+    if (!currentAppId) return;
 
     logger.info('publish-alert.dismissed', {
       message: 'User dismissed publish status alert',
@@ -130,7 +130,7 @@ export default function PublishStatusAlert() {
   }, [currentAppId, clearPublishStatus]);
 
   const handleFixBuildError = useCallback(() => {
-    if (!currentAppId || !buildErrorDetails) {return;}
+    if (!currentAppId || !buildErrorDetails) return;
 
     logger.info('publish-alert.fix-build-error', {
       message: 'User clicked fix build error',
@@ -168,7 +168,7 @@ export default function PublishStatusAlert() {
   // Fallback: if isFixingBuildError is set but isProcessing never becomes true
   // (e.g. sendMessage silently fails), reset after a short window
   useEffect(() => {
-    if (!isFixingBuildError || isProcessing) {return;}
+    if (!isFixingBuildError || isProcessing) return;
     const timeout = setTimeout(() => {
       if (!prevIsProcessingRef.current) {
         setIsFixingBuildError(false);
@@ -178,7 +178,7 @@ export default function PublishStatusAlert() {
   }, [isFixingBuildError, isProcessing]);
 
   const handleViewSettings = useCallback(() => {
-    if (!currentAppId) {return;}
+    if (!currentAppId) return;
 
     logger.info('publish-alert.view-settings', {
       message: 'User clicked view domain settings from publish success alert',

@@ -26,9 +26,8 @@ async function customerOwnsEntitlement(
   entitlementId: string
 ): Promise<boolean> {
   let after: string | undefined;
-  let hasNextPage = true;
 
-  while (hasNextPage) {
+  while (true) {
     const projectsResponse = await ventureService.getCustomerProjects(customerId, after);
     const edges = projectsResponse?.projects?.edges ?? [];
 
@@ -38,8 +37,12 @@ async function customerOwnsEntitlement(
     }
 
     const pageInfo = projectsResponse?.projects?.pageInfo;
-    hasNextPage = !!(pageInfo?.hasNextPage && pageInfo?.endCursor);
-    after = pageInfo?.endCursor;
+    if (pageInfo?.hasNextPage && pageInfo?.endCursor) {
+      after = pageInfo.endCursor;
+      continue;
+    }
+
+    break;
   }
 
   return false;
@@ -92,7 +95,7 @@ export const PUT = withCustomerAuth(async (request: NextRequest, authContext: Cu
     });
 
     const subscription = await client.getEntitlements(subscriptionId);
-    if (!subscription?.id) {
+    if (!subscription || !subscription.id) {
       logger.warn('entitlements.api.update.subscription-not-found', {
         subscriptionId
       });
@@ -131,7 +134,7 @@ export const PUT = withCustomerAuth(async (request: NextRequest, authContext: Cu
     const updatedSubscription = await client.updateEntitlement(subscriptionId, { entitlementId });
 
     // Validate subscription response
-    if (!updatedSubscription?.id) {
+    if (!updatedSubscription || !updatedSubscription.id) {
       logger.warn('entitlements.api.update.failed', {
         subscriptionId,
         entitlementId,

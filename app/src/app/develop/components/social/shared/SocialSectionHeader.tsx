@@ -16,7 +16,7 @@ export const SocialSectionHeader = memo(function SocialSectionHeader({
   title,
   className
 }: SocialSectionHeaderProps) {
-  if (!title || !Icon) {return null}
+  if (!title || !Icon) return null
 
   return (
     <div className={clsx('mb-2', className)}>

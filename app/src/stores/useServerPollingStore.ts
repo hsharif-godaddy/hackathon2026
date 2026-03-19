@@ -162,7 +162,7 @@ export const useServerPollingStore = create<ServerPollingStore>()(
     stopPollingForServer: (appId: string) => {
       const pollingState = get().servers.get(appId)
 
-      if (!pollingState) {return}
+      if (!pollingState) return
 
       // Clear any pending timeout
       if (pollingState.timeoutId) {
@@ -204,7 +204,7 @@ export const useServerPollingStore = create<ServerPollingStore>()(
     _pollServer: async (appId: string) => {
       const pollingState = get().servers.get(appId)
 
-      if (!pollingState?.isPolling) {
+      if (!pollingState || !pollingState.isPolling) {
         logger.debug('server-polling.already-stopped', { message: 'Polling stopped', appId })
         return
       }
@@ -321,7 +321,7 @@ export const useServerPollingStore = create<ServerPollingStore>()(
     _scheduleNextPoll: (appId: string) => {
       const pollingState = get().servers.get(appId)
 
-      if (!pollingState?.isPolling) {return}
+      if (!pollingState || !pollingState.isPolling) return
 
       const nextInterval = get()._calculateNextInterval(pollingState.pollCount)
 

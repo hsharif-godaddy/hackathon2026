@@ -12,7 +12,7 @@ import { logger } from '@/lib/request-context';
  */
 export default function FrameBuster() {
   useEffect(() => {
-    if (typeof window === 'undefined') {return;}
+    if (typeof window === 'undefined') return;
 
     try {
       if (window.self !== window.top) {

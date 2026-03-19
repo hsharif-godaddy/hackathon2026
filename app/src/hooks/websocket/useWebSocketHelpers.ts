@@ -28,7 +28,7 @@ function getConversationIdCookieName(appId: string): string {
  * Get conversationId from per-app browser cookie
  */
 export function getConversationIdFromCookie(appId: string | null): string | null {
-  if (typeof document === 'undefined' || !appId) {return null}
+  if (typeof document === 'undefined' || !appId) return null
 
   const cookieName = getConversationIdCookieName(appId)
   const cookies = document.cookie.split(';')
@@ -48,7 +48,7 @@ export function getConversationIdFromCookie(appId: string | null): string | null
  * Set conversationId in per-app browser cookie
  */
 export function setConversationIdCookie(appId: string, conversationId: string): void {
-  if (typeof document === 'undefined') {return}
+  if (typeof document === 'undefined') return
 
   const cookieName = getConversationIdCookieName(appId)
   // 7-day expiration for tab-closure recovery
@@ -59,7 +59,7 @@ export function setConversationIdCookie(appId: string, conversationId: string): 
  * Delete conversationId cookie from browser
  */
 export function clearConversationIdCookie(appId: string | null): void {
-  if (typeof document === 'undefined' || !appId) {return}
+  if (typeof document === 'undefined' || !appId) return
 
   const cookieName = getConversationIdCookieName(appId)
   // Delete cookie by setting it with past expiration date
@@ -71,7 +71,7 @@ export function clearConversationIdCookie(appId: string | null): void {
  * Standalone version for use outside React
  */
 export function clearStoredSocketIdForApp(appId: string | null): void {
-  if (!appId) {return}
+  if (!appId) return
   const key = `socket_id_${appId}`
   const existingValue = sessionStorage.getItem(key)
   sessionStorage.removeItem(key)

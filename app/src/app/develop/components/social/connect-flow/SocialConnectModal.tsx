@@ -44,7 +44,7 @@ export function SocialConnectModal({
   const platformName = PLATFORM_TRANSFORMS.toDisplayName(platform)
   const title = t('builder_social_connecting_platform', { platformName })
 
-  if (!isOpen) {return null}
+  if (!isOpen) return null
 
   return (
     <Modal title={title} onClose={onClose}>

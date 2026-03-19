@@ -25,11 +25,11 @@ describe('useBreakpoints', function useBreakpointsTests() {
 
   it('should return correct values for mobile width (< 640px)', function mobile() {
     mockUseMediaQuery.mockImplementation((query) => {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) {return true;} // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) {return false;} // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) {return false;} // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) {return false;} // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) {return false;} // isXlBreakpoint
+      if (query.maxWidth === XS_BREAKPOINT_MAX) return true; // isBelowSmBreakpoint
+      if (query.minWidth === SM_BREAKPOINT) return false; // isSmBreakpoint
+      if (query.minWidth === MD_BREAKPOINT) return false; // isMdBreakpoint
+      if (query.minWidth === LG_BREAKPOINT) return false; // isLgBreakpoint
+      if (query.minWidth === XL_BREAKPOINT) return false; // isXlBreakpoint
       return false;
     });
 
@@ -44,11 +44,11 @@ describe('useBreakpoints', function useBreakpointsTests() {
 
   it('should return correct values for sm breakpoint (640px)', function sm640() {
     mockUseMediaQuery.mockImplementation((query) => {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) {return false;} // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) {return true;} // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) {return false;} // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) {return false;} // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) {return false;} // isXlBreakpoint
+      if (query.maxWidth === XS_BREAKPOINT_MAX) return false; // isBelowSmBreakpoint
+      if (query.minWidth === SM_BREAKPOINT) return true; // isSmBreakpoint
+      if (query.minWidth === MD_BREAKPOINT) return false; // isMdBreakpoint
+      if (query.minWidth === LG_BREAKPOINT) return false; // isLgBreakpoint
+      if (query.minWidth === XL_BREAKPOINT) return false; // isXlBreakpoint
       return false;
     });
 
@@ -63,11 +63,11 @@ describe('useBreakpoints', function useBreakpointsTests() {
 
   it('should return correct values for md breakpoint (768px)', function md768() {
     mockUseMediaQuery.mockImplementation((query) => {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) {return false;} // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) {return true;} // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) {return true;} // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) {return false;} // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) {return false;} // isXlBreakpoint
+      if (query.maxWidth === XS_BREAKPOINT_MAX) return false; // isBelowSmBreakpoint
+      if (query.minWidth === SM_BREAKPOINT) return true; // isSmBreakpoint
+      if (query.minWidth === MD_BREAKPOINT) return true; // isMdBreakpoint
+      if (query.minWidth === LG_BREAKPOINT) return false; // isLgBreakpoint
+      if (query.minWidth === XL_BREAKPOINT) return false; // isXlBreakpoint
       return false;
     });
 
@@ -82,11 +82,11 @@ describe('useBreakpoints', function useBreakpointsTests() {
 
   it('should return correct values for lg breakpoint (1024px)', function lg1024() {
     mockUseMediaQuery.mockImplementation((query) => {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) {return false;} // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) {return true;} // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) {return true;} // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) {return true;} // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) {return false;} // isXlBreakpoint
+      if (query.maxWidth === XS_BREAKPOINT_MAX) return false; // isBelowSmBreakpoint
+      if (query.minWidth === SM_BREAKPOINT) return true; // isSmBreakpoint
+      if (query.minWidth === MD_BREAKPOINT) return true; // isMdBreakpoint
+      if (query.minWidth === LG_BREAKPOINT) return true; // isLgBreakpoint
+      if (query.minWidth === XL_BREAKPOINT) return false; // isXlBreakpoint
       return false;
     });
 
@@ -101,11 +101,11 @@ describe('useBreakpoints', function useBreakpointsTests() {
 
   it('should return correct values at 639px (just below sm)', function belowSm639() {
     mockUseMediaQuery.mockImplementation((query) => {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) {return true;} // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) {return false;} // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) {return false;} // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) {return false;} // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) {return false;} // isXlBreakpoint
+      if (query.maxWidth === XS_BREAKPOINT_MAX) return true; // isBelowSmBreakpoint
+      if (query.minWidth === SM_BREAKPOINT) return false; // isSmBreakpoint
+      if (query.minWidth === MD_BREAKPOINT) return false; // isMdBreakpoint
+      if (query.minWidth === LG_BREAKPOINT) return false; // isLgBreakpoint
+      if (query.minWidth === XL_BREAKPOINT) return false; // isXlBreakpoint
       return false;
     });
 
@@ -120,11 +120,11 @@ describe('useBreakpoints', function useBreakpointsTests() {
 
   it('should return correct values at 767px (just below md)', function belowMd767() {
     mockUseMediaQuery.mockImplementation((query) => {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) {return false;} // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) {return true;} // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) {return false;} // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) {return false;} // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) {return false;} // isXlBreakpoint
+      if (query.maxWidth === XS_BREAKPOINT_MAX) return false; // isBelowSmBreakpoint
+      if (query.minWidth === SM_BREAKPOINT) return true; // isSmBreakpoint
+      if (query.minWidth === MD_BREAKPOINT) return false; // isMdBreakpoint
+      if (query.minWidth === LG_BREAKPOINT) return false; // isLgBreakpoint
+      if (query.minWidth === XL_BREAKPOINT) return false; // isXlBreakpoint
       return false;
     });
 
@@ -139,11 +139,11 @@ describe('useBreakpoints', function useBreakpointsTests() {
 
   it('should return correct values at 1023px (just below lg)', function belowLg1023() {
     mockUseMediaQuery.mockImplementation((query) => {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) {return false;} // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) {return true;} // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) {return true;} // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) {return false;} // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) {return false;} // isXlBreakpoint
+      if (query.maxWidth === XS_BREAKPOINT_MAX) return false; // isBelowSmBreakpoint
+      if (query.minWidth === SM_BREAKPOINT) return true; // isSmBreakpoint
+      if (query.minWidth === MD_BREAKPOINT) return true; // isMdBreakpoint
+      if (query.minWidth === LG_BREAKPOINT) return false; // isLgBreakpoint
+      if (query.minWidth === XL_BREAKPOINT) return false; // isXlBreakpoint
       return false;
     });
 
@@ -158,11 +158,11 @@ describe('useBreakpoints', function useBreakpointsTests() {
 
   it('should return correct values for xl breakpoint (1280px)', function xl1280() {
     mockUseMediaQuery.mockImplementation((query) => {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) {return false;} // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) {return true;} // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) {return true;} // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) {return true;} // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) {return true;} // isXlBreakpoint
+      if (query.maxWidth === XS_BREAKPOINT_MAX) return false; // isBelowSmBreakpoint
+      if (query.minWidth === SM_BREAKPOINT) return true; // isSmBreakpoint
+      if (query.minWidth === MD_BREAKPOINT) return true; // isMdBreakpoint
+      if (query.minWidth === LG_BREAKPOINT) return true; // isLgBreakpoint
+      if (query.minWidth === XL_BREAKPOINT) return true; // isXlBreakpoint
       return false;
     });
 
@@ -177,11 +177,11 @@ describe('useBreakpoints', function useBreakpointsTests() {
 
   it('should return correct values at 1279px (just below xl)', function belowXl1279() {
     mockUseMediaQuery.mockImplementation((query) => {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) {return false;} // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) {return true;} // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) {return true;} // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) {return true;} // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) {return false;} // isXlBreakpoint
+      if (query.maxWidth === XS_BREAKPOINT_MAX) return false; // isBelowSmBreakpoint
+      if (query.minWidth === SM_BREAKPOINT) return true; // isSmBreakpoint
+      if (query.minWidth === MD_BREAKPOINT) return true; // isMdBreakpoint
+      if (query.minWidth === LG_BREAKPOINT) return true; // isLgBreakpoint
+      if (query.minWidth === XL_BREAKPOINT) return false; // isXlBreakpoint
       return false;
     });
 
@@ -196,11 +196,11 @@ describe('useBreakpoints', function useBreakpointsTests() {
 
   it('should return object with all breakpoint boolean properties', function returnType() {
     mockUseMediaQuery.mockImplementation((query) => {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) {return false;} // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) {return false;} // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) {return false;} // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) {return false;} // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) {return false;} // isXlBreakpoint
+      if (query.maxWidth === XS_BREAKPOINT_MAX) return false; // isBelowSmBreakpoint
+      if (query.minWidth === SM_BREAKPOINT) return false; // isSmBreakpoint
+      if (query.minWidth === MD_BREAKPOINT) return false; // isMdBreakpoint
+      if (query.minWidth === LG_BREAKPOINT) return false; // isLgBreakpoint
+      if (query.minWidth === XL_BREAKPOINT) return false; // isXlBreakpoint
       return false;
     });
 

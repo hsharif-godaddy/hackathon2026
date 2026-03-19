@@ -108,7 +108,7 @@ export default function MediaGroupRenderer({
   // Helper to ensure URLs have proper protocol
   // Handles http/https URLs, protocol-relative URLs, and other URI schemes
   const ensureHttps = (url: string): string => {
-    if (!url) {return url}
+    if (!url) return url
     // Already has a URI scheme (http:, https:, data:, blob:, etc.)
     if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(url)) {
       return url

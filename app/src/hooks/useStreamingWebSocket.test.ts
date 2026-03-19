@@ -78,7 +78,7 @@ const createMockSocket = () => {
       return socket.on(event, onceWrapper)
     }),
     off: vi.fn((event, handler) => {
-      if (!handlers[event]) {return socket}
+      if (!handlers[event]) return socket
       if (handler) {
         handlers[event] = handlers[event]!.filter((h) => h !== handler)
       } else {

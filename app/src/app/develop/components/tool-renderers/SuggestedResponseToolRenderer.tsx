@@ -39,14 +39,14 @@ export default function SuggestedResponseToolRenderer({
   const output = resultObj?.output || resultObj
   const widgetData = output?.widgetData as SuggestedResponseData | undefined
   const rebuildWidget = {widget: output?.rebuildWidget}
-  const showRebuildWidget = rebuildWidget?.widget && rebuildWidget.widget.widgetData.availablePages.length > 0;
+  const showRebuildWidget = rebuildWidget && rebuildWidget.widget && rebuildWidget.widget.widgetData.availablePages.length > 0;
 
-  if (!widgetData?.question || !widgetData.suggestions) {
+  if (!widgetData || !widgetData.question || !widgetData.suggestions) {
     return null
   }
 
   function handleSuggestionClick(suggestion: Suggestion) {
-    if (isProcessing || !sendUserMessage) {return;}
+    if (isProcessing || !sendUserMessage) return;
 
     sendUserMessage(suggestion.text, { isActionRequest: true });
   }

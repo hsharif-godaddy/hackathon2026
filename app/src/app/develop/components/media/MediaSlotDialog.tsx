@@ -122,13 +122,13 @@ export function MediaSlotDialog() {
 
   // Touch handlers for swipe gestures
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (!isCarouselMode) {return}
+    if (!isCarouselMode) return
     touchStartX.current = e.touches[0].clientX
     touchStartY.current = e.touches[0].clientY
   }, [isCarouselMode])
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    if (!isCarouselMode || touchStartX.current === null || touchStartY.current === null) {return}
+    if (!isCarouselMode || touchStartX.current === null || touchStartY.current === null) return
 
     const touchEndX = e.changedTouches[0].clientX
     const touchEndY = e.changedTouches[0].clientY
@@ -149,7 +149,7 @@ export function MediaSlotDialog() {
 
   // Handle Escape and arrow keys
   useEffect(() => {
-    if (!isOpen) {return}
+    if (!isOpen) return
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -170,7 +170,7 @@ export function MediaSlotDialog() {
   }, [isOpen, closeDialog, isCarouselMode, goToPreviousSlot, goToNextSlot])
 
   const handleSwapImage = useCallback(async () => {
-    if (!slot || !appId || !activeSlotName || selectedImageIndex === 0) {return}
+    if (!slot || !appId || !activeSlotName || selectedImageIndex === 0) return
 
     const allImages = [slot.currentUrl, ...slot.alternatives]
     const selectedUrl = allImages[selectedImageIndex]
@@ -251,7 +251,7 @@ export function MediaSlotDialog() {
   const handleFileSelect = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0]
-      if (!file) {return}
+      if (!file) return
 
       if (!appId || !activeSlotName) {
         setUploadError(t('builder_mediaslot_error_missing'))
@@ -349,7 +349,7 @@ export function MediaSlotDialog() {
 
   const handleSelectFromUploads = useCallback(
     async (file: { filename: string; signedUrl?: string }) => {
-      if (!appId || !activeSlotName) {return}
+      if (!appId || !activeSlotName) return
 
       setIsUploading(true)
       setUploadError(null)
@@ -619,7 +619,7 @@ export function MediaSlotDialog() {
                     type="button"
                     onClick={() => {
                       setAlternativesOpen(!alternativesOpen)
-                      if (!alternativesOpen) {setUploadsOpen(false)}
+                      if (!alternativesOpen) setUploadsOpen(false)
                     }}
                     className="w-full flex items-center py-1 justify-between hover:cursor-pointer"
                   >
@@ -672,7 +672,7 @@ export function MediaSlotDialog() {
                     type="button"
                     onClick={() => {
                       setUploadsOpen(!uploadsOpen)
-                      if (!uploadsOpen) {setAlternativesOpen(false)}
+                      if (!uploadsOpen) setAlternativesOpen(false)
                     }}
                     className="w-full flex items-center justify-between py-1 hover:cursor-pointer"
                   >

@@ -75,7 +75,7 @@ export default function SsoLogin() {
   // Determine consuming port on client-side only using lazy initializer to avoid SSR hydration issues
   // Only pass non-standard ports (not 80, 443, or 3000) to SsoDeck for proper origin validation
   const [consumingPort] = useState(() => {
-    if (typeof window === 'undefined') {return '';}
+    if (typeof window === 'undefined') return '';
     const port = window.location.port;
     return (port && port !== '80' && port !== '443' && port !== '3000') ? port : '';
   });
@@ -320,7 +320,7 @@ export default function SsoLogin() {
               {...(consumingPort && { consumingPort })}
               pageToLoad={pageToLoad}
               pageToLoadParams={(() => {
-                if (!currentOrigin) {return {};}
+                if (!currentOrigin) return {};
 
                 // Build full redirect URL including path from store (captured by AuthBoundary)
                 // This ensures SSO redirects back to the specific page (e.g., /develop/abc123)

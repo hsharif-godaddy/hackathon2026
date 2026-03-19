@@ -24,7 +24,7 @@ const FILE_OPERATION_TOOLS = new Set([
  * Returns array of paths to handle batch operations
  */
 function extractFilePaths(toolName: string, input: any): string[] {
-  if (!input) {return []}
+  if (!input) return []
 
   // Handle batch operations (fileEdit legacy tool with operations array)
   if (toolName === 'fileEdit' && Array.isArray(input.operations)) {
@@ -45,13 +45,13 @@ function extractFilePaths(toolName: string, input: any): string[] {
 function getOperationType(toolName: string, input?: any): FileOperationType | null {
   if (toolName === 'str_replace_based_edit_tool' || toolName === 'textEditor') {
     const command = input?.command
-    if (command === 'view') {return null}  // view doesn't modify files
-    if (command === 'create') {return 'create'}
+    if (command === 'view') return null  // view doesn't modify files
+    if (command === 'create') return 'create'
     return 'modify'  // str_replace, insert
   }
-  if (toolName === 'fileEdit') {return 'modify'}
-  if (toolName === 'write_file' || toolName === 'create_file') {return 'create'}
-  if (toolName === 'delete_file') {return 'delete'}
+  if (toolName === 'fileEdit') return 'modify'
+  if (toolName === 'write_file' || toolName === 'create_file') return 'create'
+  if (toolName === 'delete_file') return 'delete'
   return null
 }
 
@@ -68,10 +68,10 @@ export class FileOperationHandler implements MessageHandler {
    */
   async handle(data: WebSocketMessage): Promise<void> {
     const tool = data.data?.tool as any
-    if (!tool) {return}
+    if (!tool) return
 
     const toolName = tool.name
-    if (!FILE_OPERATION_TOOLS.has(toolName)) {return}
+    if (!FILE_OPERATION_TOOLS.has(toolName)) return
 
     logger.info('file-operation-handler.tool-detected', {
       toolName,
@@ -91,7 +91,7 @@ export class FileOperationHandler implements MessageHandler {
     }
 
     const operationType = getOperationType(toolName, tool.input)
-    if (!operationType) {return}
+    if (!operationType) return
 
     const { markFileStreaming, markFileComplete, clearFileChange } = useCodeSyncStore.getState()
 

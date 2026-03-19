@@ -44,7 +44,7 @@ function formatResult(
   let currentFile = ''
   let count = 0
   for (const m of matches) {
-    if (headLimit > 0 && count >= headLimit) {break}
+    if (headLimit > 0 && count >= headLimit) break
     if (m.path !== currentFile) {
       currentFile = m.path
       lines.push(`\n${m.path}`)

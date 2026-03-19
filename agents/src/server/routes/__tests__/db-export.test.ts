@@ -7,7 +7,7 @@ import request from 'supertest';
 vi.mock('../../../database/index.js', () => ({
   AppRepository: vi.fn().mockImplementation(() => ({
     findById: vi.fn((id: string) => {
-      if (id === 'missing-app') {return null;}
+      if (id === 'missing-app') return null;
       return { id, path: '/tmp/test' };
     }),
   })),

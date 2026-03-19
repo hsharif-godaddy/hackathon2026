@@ -504,7 +504,7 @@ export class SecretsScannerTool {
       }
 
       const trimmedContent = result.stdout.trim();
-      if (!trimmedContent?.startsWith('{')) {
+      if (!trimmedContent || !trimmedContent.startsWith('{')) {
         return [];
       }
 
@@ -651,9 +651,9 @@ export class SecretsScannerTool {
    */
   private mapSemgrepSeverityToSeverity(semgrepSeverity: string): 'critical' | 'high' | 'medium' | 'low' {
     const lower = semgrepSeverity.toLowerCase();
-    if (lower === 'error' || lower === 'critical') {return 'critical';}
-    if (lower === 'warning' || lower === 'high') {return 'high';}
-    if (lower === 'info' || lower === 'medium') {return 'medium';}
+    if (lower === 'error' || lower === 'critical') return 'critical';
+    if (lower === 'warning' || lower === 'high') return 'high';
+    if (lower === 'info' || lower === 'medium') return 'medium';
     return 'low';
   }
 
@@ -728,10 +728,10 @@ export class SecretsScannerTool {
     }
 
     lines.push(`Found ${result.summary.total} secret${result.summary.total === 1 ? '' : 's'}:`);
-    if (result.summary.critical > 0) {lines.push(`  🔴 Critical: ${result.summary.critical}`);}
-    if (result.summary.high > 0) {lines.push(`  🟠 High: ${result.summary.high}`);}
-    if (result.summary.medium > 0) {lines.push(`  🟡 Medium: ${result.summary.medium}`);}
-    if (result.summary.low > 0) {lines.push(`  🟢 Low: ${result.summary.low}`);}
+    if (result.summary.critical > 0) lines.push(`  🔴 Critical: ${result.summary.critical}`);
+    if (result.summary.high > 0) lines.push(`  🟠 High: ${result.summary.high}`);
+    if (result.summary.medium > 0) lines.push(`  🟡 Medium: ${result.summary.medium}`);
+    if (result.summary.low > 0) lines.push(`  🟢 Low: ${result.summary.low}`);
     lines.push('');
 
     // Group findings by file

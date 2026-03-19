@@ -58,7 +58,7 @@ export function useChatTabs() {
 
   // Initialize from URL on first mount (for deep linking) or pathname change
   useEffect(() => {
-    if (typeof window === 'undefined') {return}
+    if (typeof window === 'undefined') return
 
     // Re-initialize if pathname changed (navigated to different app)
     const pathnameChanged = lastPathnameRef.current !== pathname
@@ -68,7 +68,7 @@ export function useChatTabs() {
       firstSyncRef.current = true
     }
 
-    if (initializedRef.current) {return}
+    if (initializedRef.current) return
 
     const params = new URLSearchParams(window.location.search)
     const urlTab = parseChatTab(params.get('tab'))
@@ -116,7 +116,7 @@ export function useChatTabs() {
 
   // Sync store changes to URL (but don't trigger navigation)
   useEffect(() => {
-    if (typeof window === 'undefined' || !initializedRef.current) {return}
+    if (typeof window === 'undefined' || !initializedRef.current) return
     if (skipNextSyncRef.current) {
       skipNextSyncRef.current = false
       if (pendingUrlSyncRef.current) {
@@ -182,7 +182,7 @@ export function useChatTabs() {
   }, [setActiveChatTabStore, setActiveSettingsSectionStore])
 
   useEffect(() => {
-    if (typeof window === 'undefined') {return}
+    if (typeof window === 'undefined') return
 
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)

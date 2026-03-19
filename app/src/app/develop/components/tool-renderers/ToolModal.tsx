@@ -46,7 +46,7 @@ export default function ToolModal({
     }
   }, [isOpen])
 
-  if (typeof document === 'undefined') {return null}
+  if (typeof document === 'undefined') return null
 
   return createPortal(
     <AnimatePresence>

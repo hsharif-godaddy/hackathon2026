@@ -163,7 +163,7 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
  * This prevents the agent from outputting text after showing visual widget options
  */
 function shouldStopAfterSuggestMode(result: unknown): boolean {
-  if (!result || typeof result !== 'object') {return false}
+  if (!result || typeof result !== 'object') return false
 
   const stepResult = result as any
 
@@ -173,7 +173,7 @@ function shouldStopAfterSuggestMode(result: unknown): boolean {
   }
 
   const lastStep = stepResult.steps[stepResult.steps.length - 1]
-  if (!lastStep.content || !Array.isArray(lastStep.content)) {return false}
+  if (!lastStep.content || !Array.isArray(lastStep.content)) return false
 
   // Check if any tool call in this step is colorScheme or fontTheme with mode='suggest'
   for (const item of lastStep.content) {
@@ -181,7 +181,7 @@ function shouldStopAfterSuggestMode(result: unknown): boolean {
       (item.toolName === 'colorScheme' || item.toolName === 'fontTheme')) {
       // Check if the args have mode: 'suggest'
       const args = item.input as any
-      if (args?.mode === 'suggest') {
+      if (args && args.mode === 'suggest') {
         logger.info('develop_agent.stop.suggest_mode', {
           toolName: item.toolName,
           toolCallId: item.toolCallId,
@@ -363,8 +363,8 @@ export class DevelopAgent {
     stateManager?: SessionStateManager
   }) {
     this.appPath = options?.appPath || process.cwd()
-    if (options?.sessionId) {this.sessionId = options.sessionId}
-    if (options?.stateManager) {this.stateManager = options.stateManager}
+    if (options?.sessionId) this.sessionId = options.sessionId
+    if (options?.stateManager) this.stateManager = options.stateManager
     this.factory = null as any
   }
 
@@ -384,8 +384,8 @@ export class DevelopAgent {
       stateManager?: SessionStateManager
     } = { appPath: this.appPath }
 
-    if (this.sessionId) {factoryOptions.sessionId = this.sessionId}
-    if (this.stateManager) {factoryOptions.stateManager = this.stateManager}
+    if (this.sessionId) factoryOptions.sessionId = this.sessionId
+    if (this.stateManager) factoryOptions.stateManager = this.stateManager
 
     this.factory = await createDevelopAgentFactory(factoryOptions)
     logger.info('develop_agent.initialization.complete', {

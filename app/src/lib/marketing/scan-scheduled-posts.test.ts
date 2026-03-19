@@ -22,7 +22,7 @@ vi.mock('gray-matter', () => ({
   default: vi.fn((content: string) => {
     // Simple frontmatter parser for testing
     const match = content.match(/^---\n([\s\S]*?)\n---/);
-    if (!match) {return { data: {}, content };}
+    if (!match) return { data: {}, content };
 
     const frontmatter = match[1];
     const data: any = {};

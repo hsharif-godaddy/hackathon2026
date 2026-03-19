@@ -92,7 +92,7 @@ export function useEcommSubscriptionAutoRenew() {
       queryClient.setQueryData(
         ['ecomm-subscription-status', variables.builderEntitlementId],
         (oldData: { autoRenew: boolean; paidThroughDate?: string; subscriptionId?: string } | undefined) => {
-          if (!oldData) {return oldData;}
+          if (!oldData) return oldData;
           return {
             ...oldData,
             autoRenew: variables.autoRenew,

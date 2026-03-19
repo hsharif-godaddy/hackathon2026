@@ -239,7 +239,7 @@ export default function SecurityResults({ results }: { results: { security?: Tes
    * Get all vulnerability IDs for select all functionality
    */
   const getAllVulnerabilityIds = (): string[] => {
-    if (!securityReport?.vulnerabilities) {return [];}
+    if (!securityReport?.vulnerabilities) return [];
     return securityReport.vulnerabilities.map(
       (_, index) => `vulnerability-${index}`,
     );

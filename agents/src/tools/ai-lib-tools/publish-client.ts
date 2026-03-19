@@ -26,7 +26,7 @@ interface SiteDomain {
 }
 
 function hasCustomDomain(domains?: SiteDomain[]): boolean {
-  if (!domains || !Array.isArray(domains)) {return false}
+  if (!domains || !Array.isArray(domains)) return false
   return domains.some(d => d.domainType !== 'prefix' && d.status === 'active')
 }
 

@@ -79,7 +79,7 @@ export class ConversationSkillState {
    */
   getActiveToolNames(conversationId: string): string[] {
     const convSkills = this.activeSkills.get(conversationId)
-    if (!convSkills) {return []}
+    if (!convSkills) return []
 
     const toolNames: string[] = []
     for (const skillName of convSkills.keys()) {
@@ -101,7 +101,7 @@ export class ConversationSkillState {
     inactivityThreshold: number
   ): string[] {
     const convSkills = this.activeSkills.get(conversationId)
-    if (!convSkills) {return []}
+    if (!convSkills) return []
 
     const deactivated: string[] = []
     for (const [skillName, state] of convSkills) {

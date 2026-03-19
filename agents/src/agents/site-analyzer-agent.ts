@@ -174,7 +174,7 @@ export class SiteAnalyzerAgent {
 
     try {
       const jsonMatch = result.content?.match(/```json\s*([\s\S]*?)\s*```/)
-      if (jsonMatch?.[1]) {
+      if (jsonMatch && jsonMatch[1]) {
         const parsed = JSON.parse(jsonMatch[1])
 
         return {

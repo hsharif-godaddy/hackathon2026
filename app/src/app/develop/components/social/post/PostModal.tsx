@@ -144,8 +144,8 @@ export const PostModal = memo(({
   }, [])
 
   const handleScheduleChange = useCallback((update: { date?: string[]; time?: string }) => {
-    if (update.date) {scheduling.setDate(update.date)}
-    if (update.time) {scheduling.setTime(update.time)}
+    if (update.date) scheduling.setDate(update.date)
+    if (update.time) scheduling.setTime(update.time)
   }, [scheduling])
 
   const [isPublishing, setIsPublishing] = useState(false)
@@ -165,8 +165,8 @@ export const PostModal = memo(({
       // Format platform names with "and" for 2 platforms
       const formatPlatformsList = (platforms: PublishablePlatform[]) => {
         const names = platforms.map(p => formatPlatformName(p))
-        if (names.length === 1) {return names[0]}
-        if (names.length === 2) {return `${names[0]} and ${names[1]}`}
+        if (names.length === 1) return names[0]
+        if (names.length === 2) return `${names[0]} and ${names[1]}`
         return names.slice(0, -1).join(', ') + `, and ${names[names.length - 1]}`
       }
 

@@ -47,8 +47,8 @@ export function translateDockerPath(path: string): string {
  * - Production: CEPH_STORAGE_DIR is set → assets at {ceph}/preview/assets
  */
 export function deriveAssetsDir(appPath: string): string | null {
-  if (appPath.endsWith('/preview')) {return appPath.replace(/\/preview$/, '/assets');}
-  if (process.env.CEPH_STORAGE_DIR) {return `${process.env.CEPH_STORAGE_DIR}/preview/assets`;}
+  if (appPath.endsWith('/preview')) return appPath.replace(/\/preview$/, '/assets');
+  if (process.env.CEPH_STORAGE_DIR) return `${process.env.CEPH_STORAGE_DIR}/preview/assets`;
   return null;
 }
 

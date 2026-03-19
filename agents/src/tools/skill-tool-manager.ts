@@ -242,10 +242,10 @@ export class SkillToolManager {
     context: SkillHookContext
   ): Promise<void> {
     const hooks = this.toolRegistry?.skillHooks.get(skillName);
-    if (!hooks) {return;}
+    if (!hooks) return;
 
     const handler = hooks[event];
-    if (!handler) {return;}
+    if (!handler) return;
 
     try {
       await handler(context);

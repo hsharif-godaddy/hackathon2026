@@ -21,7 +21,7 @@ export interface UseAppHibernationReturn {
 
 function checkHibernated(appDetails: AppDetailsResponse | null | undefined): boolean {
   const variants = appDetails?.variantsWithLifecycle as SiteVariant[] | undefined;
-  if (!variants?.length) {return false;}
+  if (!variants?.length) return false;
 
   const preview = variants.find(v => v.variant === 'preview');
   return preview?.lifecycle?.lifecycleState === LifecycleState.PAUSED &&
@@ -30,7 +30,7 @@ function checkHibernated(appDetails: AppDetailsResponse | null | undefined): boo
 
 function checkRunning(appDetails: AppDetailsResponse | null | undefined): boolean {
   const variants = appDetails?.variantsWithLifecycle as SiteVariant[] | undefined;
-  if (!variants?.length) {return false;}
+  if (!variants?.length) return false;
 
   const preview = variants.find(v => v.variant === 'preview');
   return preview?.lifecycle?.lifecycleState === LifecycleState.RUNNING;
@@ -91,7 +91,7 @@ export function useAppHibernation(
 
   const mutation = useMutation({
     mutationFn: () => {
-      if (!appId) {throw new Error('No app ID');}
+      if (!appId) throw new Error('No app ID');
       return resumeApp(appId);
     },
     retry: 2,
@@ -138,8 +138,8 @@ export function useAppHibernation(
 
   // Resume is complete only when lifecycle is RUNNING AND server is healthy
   useEffect(() => {
-    if (!mutation.isSuccess || !isRunning || !isServerReady || !appId) {return;}
-    if (hasHandledCompletionRef.current) {return;}
+    if (!mutation.isSuccess || !isRunning || !isServerReady || !appId) return;
+    if (hasHandledCompletionRef.current) return;
 
     hasHandledCompletionRef.current = true;
 
@@ -157,8 +157,8 @@ export function useAppHibernation(
 
   // Auto-resume once
   useEffect(() => {
-    if (!isHibernated || !autoResume || !appId) {return;}
-    if (hasAutoResumedRef.current || mutation.isPending) {return;}
+    if (!isHibernated || !autoResume || !appId) return;
+    if (hasAutoResumedRef.current || mutation.isPending) return;
 
     hasAutoResumedRef.current = true;
     mutation.mutate();

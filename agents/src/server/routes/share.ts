@@ -17,7 +17,7 @@ const logger = Logger.create({ service: 'share-routes' });
 function getPreviewBaseUrl(appId: string): string | null {
   const app = appRepository.findById(appId);
   const previewUrl = app?.previewUrl;
-  if (!previewUrl) {return null;}
+  if (!previewUrl) return null;
 
   return previewUrl.startsWith('http://') || previewUrl.startsWith('https://')
     ? previewUrl

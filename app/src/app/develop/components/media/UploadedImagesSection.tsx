@@ -98,7 +98,7 @@ export function UploadedImagesSection({
   // When a thumbnail fails to load (e.g. expired signed URL returning 404),
   // refetch the file list once to get fresh signed URLs.
   const handleImageError = useCallback(() => {
-    if (hasRefetchedForErrorRef.current) {return;}
+    if (hasRefetchedForErrorRef.current) return;
     hasRefetchedForErrorRef.current = true;
 
     logger.info("uploaded_images_section.signed_url_expired", {

@@ -31,7 +31,7 @@ export const SocialConnectionSelector = memo(function SocialConnectionSelector({
   const [isLoading, setIsLoading] = useState(false)
 
   const handleUseExisting = async (selectedId: string | null) => {
-    if (!selectedId) {return}
+    if (!selectedId) return
 
     setIsLoading(true)
     try {

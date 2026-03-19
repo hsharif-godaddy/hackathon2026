@@ -137,7 +137,7 @@ export class BackgroundSummarizer {
       // Guard against race condition: only process if this timeout is still the active one.
       // If checkAndSummarize was called again, a new timeout was scheduled and stored,
       // so this stale timeout should not delete/process the newer job.
-      if (job?.timeout !== timeout) {
+      if (!job || job.timeout !== timeout) {
         return;
       }
       this.pendingJobs.delete(appId);
@@ -352,7 +352,7 @@ export class BackgroundSummarizer {
 
         for (let i = allMessages.length - 1; i >= 0 && turnCount < recentTurnsToKeep; i--) {
           const msg = allMessages[i];
-          if (!msg) {continue;}
+          if (!msg) continue;
 
           // Count user and assistant messages as turns
           if (msg.sender === 'user' || msg.sender === 'agent') {

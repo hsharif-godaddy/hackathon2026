@@ -319,7 +319,7 @@ export async function appFetch(
       if (contentType?.includes('application/json')) {
         const data = await response.clone().json();
         // Only redirect for the specific shopper ID authorization error message
-        if (data.message?.includes(SHOPPER_AUTH_FAILURE_MESSAGE)) {
+        if (data.message && data.message.includes(SHOPPER_AUTH_FAILURE_MESSAGE)) {
           // Only redirect on client-side
           if (typeof window !== 'undefined') {
             window.location.href = '/coming-soon';

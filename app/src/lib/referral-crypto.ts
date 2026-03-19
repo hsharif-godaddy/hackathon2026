@@ -55,7 +55,7 @@ function getSecretKey(): string {
  * @returns Base62 encoded string
  */
 function toBase62(num: bigint): string {
-  if (num === 0n) {return '0';}
+  if (num === 0n) return '0';
 
   let result = '';
   const base = BigInt(BASE62_CHARS.length);
@@ -80,7 +80,7 @@ function fromBase62(str: string): bigint {
 
   for (const char of str) {
     const index = BASE62_CHARS.indexOf(char);
-    if (index === -1) {throw new Error('Invalid base62 character');}
+    if (index === -1) throw new Error('Invalid base62 character');
     result = result * base + BigInt(index);
   }
 

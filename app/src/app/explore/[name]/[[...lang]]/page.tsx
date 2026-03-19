@@ -24,7 +24,7 @@ async function loadPage(filePath: string): Promise<LandingPageData> {
 }
 
 function resolveRouteKey(name: string, lang?: string[]): string {
-  if (lang?.length) {return `${name}/${lang[0]}`}
+  if (lang?.length) return `${name}/${lang[0]}`
   return name
 }
 
@@ -54,10 +54,10 @@ export async function generateMetadata(
   { params }: { params: Promise<PageParams> }
 ): Promise<Metadata> {
   const { name, lang } = await params
-  if (lang && lang.length > 1) {return {}}
+  if (lang && lang.length > 1) return {}
 
   const route = lookup.routes[resolveRouteKey(name, lang)]
-  if (!route) {return {}}
+  if (!route) return {}
 
   const [data, baseUrl] = await Promise.all([loadPage(route.file), resolveBaseUrl()])
 

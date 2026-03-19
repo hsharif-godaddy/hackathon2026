@@ -27,8 +27,8 @@ export interface SecretDefinition {
  * Supported: auto:hex64, auto:hex32, auto:uuid
  */
 function generateAutoValue(defaultValue: string | undefined): string {
-  if (!defaultValue) {return ''}
-  if (!defaultValue.startsWith('auto:')) {return defaultValue}
+  if (!defaultValue) return ''
+  if (!defaultValue.startsWith('auto:')) return defaultValue
 
   const type = defaultValue.slice(5) // Remove 'auto:' prefix
 
@@ -131,7 +131,7 @@ export default function ChatSecretsRequestMessage({
   // Deps include isInteractive (false during streaming, true once streaming ends)
   // and currentAppId (may be null initially). The ref guard prevents double-fires.
   useEffect(() => {
-    if (!autoSubmit || !isInteractive || !currentAppId || autoSubmitTriggered.current) {return}
+    if (!autoSubmit || !isInteractive || !currentAppId || autoSubmitTriggered.current) return
     autoSubmitTriggered.current = true
 
     const doAutoSubmit = async () => {
@@ -184,11 +184,11 @@ export default function ChatSecretsRequestMessage({
    * Validate secret name format
    */
   const isValidSecretName = (name: string): boolean => {
-    if (!name || name.length < 2 || name.length > 128) {return false}
+    if (!name || name.length < 2 || name.length > 128) return false
     // Must start with A-Z or _
-    if (!/^[A-Z_]/.test(name)) {return false}
+    if (!/^[A-Z_]/.test(name)) return false
     // Only allowed characters: A-Z, 0-9, /, _, +, =, ., @, -
-    if (!/^[A-Z0-9/_+=.@-]+$/.test(name)) {return false}
+    if (!/^[A-Z0-9/_+=.@-]+$/.test(name)) return false
     return true
   }
 
@@ -201,7 +201,7 @@ export default function ChatSecretsRequestMessage({
       const existsInApp = existingSecretNames.some(
         existing => existing.toUpperCase() === name.toUpperCase()
       )
-      if (existsInApp) {return false}
+      if (existsInApp) return false
     }
 
     // Check against other form rows (excluding current row)
@@ -303,8 +303,8 @@ export default function ChatSecretsRequestMessage({
    * Get text color for name field based on state
    */
   const getNameFieldColor = (row: SecretFormRow): string => {
-    if (isNameFieldDisabled(row)) {return 'gray'}
-    if (getNameValidationError(row)) {return 'red'}
+    if (isNameFieldDisabled(row)) return 'gray'
+    if (getNameValidationError(row)) return 'red'
     return 'black'
   }
 
@@ -362,7 +362,7 @@ export default function ChatSecretsRequestMessage({
       const value = r.value.trim()
 
       // Empty row is okay (will be filtered out on submit)
-      if (!name && !value) {return true}
+      if (!name && !value) return true
 
       // For existing/locked names, just check value is present
       if (r.isExisting || (r.required && !r.isUserAdded)) {
@@ -377,7 +377,7 @@ export default function ChatSecretsRequestMessage({
     const hasAtLeastOneValid = formRows.some(r => {
       const name = r.name.trim()
       const value = r.value.trim()
-      if (!name || !value) {return false}
+      if (!name || !value) return false
       // For existing/locked names, just check value is present
       if (r.isExisting || (r.required && !r.isUserAdded)) {
         return true
@@ -410,12 +410,12 @@ export default function ChatSecretsRequestMessage({
       // Separate additions vs updates based on isExisting flag, with full validation
       const additions = formRows
         .filter(r => {
-          if (r.isExisting) {return false}
+          if (r.isExisting) return false
           const name = r.name.trim()
           const value = r.value.trim()
-          if (!name || !value) {return false}
+          if (!name || !value) return false
           // For locked required secrets, skip name format validation
-          if (r.required && !r.isUserAdded) {return true}
+          if (r.required && !r.isUserAdded) return true
           return isValidSecretName(name) && isSecretNameUnique(name, r.id) && isValueValid(value)
         })
         .map(r => ({ name: r.name.trim(), value: r.value.trim() }))
@@ -473,8 +473,8 @@ export default function ChatSecretsRequestMessage({
 
   // Determine if we can remove a row (can't remove required secrets or if only one row left)
   const canRemoveRow = (row: SecretFormRow) => {
-    if (row.required) {return false}
-    if (formRows.length <= 1) {return false}
+    if (row.required) return false
+    if (formRows.length <= 1) return false
     return true
   }
 

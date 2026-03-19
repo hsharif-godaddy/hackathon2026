@@ -52,7 +52,7 @@ export default function SocialPostCreateToolRenderer({
 
   // Initialize posts from result when it arrives
   useEffect(() => {
-    if (initializedRef.current || toolStatus !== 'completed' || !result || typeof result !== 'object') {return}
+    if (initializedRef.current || toolStatus !== 'completed' || !result || typeof result !== 'object') return
 
     const resultObj = result as any
     let postsFromResult: SocialPostData[] = []

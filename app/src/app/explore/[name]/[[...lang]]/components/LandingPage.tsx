@@ -81,7 +81,7 @@ function LandingPageContent({ data }: LandingPageProps) {
     let promptToUse = (typeof overridePrompt === 'string' ? overridePrompt : promptTextRef.current).trim()
     promptToUse = promptToUse.replace(/https?:\/\/example\.com\s*/gi, '').trim()
 
-    if (!promptToUse || isRedirecting || isLoading) {return}
+    if (!promptToUse || isRedirecting || isLoading) return
     if (authIsLoading) {
       logger.debug('landing.auth.loading', 'Auth state still loading, waiting before proceeding')
       return
@@ -174,7 +174,7 @@ function LandingPageContent({ data }: LandingPageProps) {
   }, [router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, authIsLoading, signIn, savePromptForRetry, t, slug])
 
   useEffect(function restorePromptAfterLogin() {
-    if (!isAuthenticated || authIsLoading) {return}
+    if (!isAuthenticated || authIsLoading) return
     const savedPrompt = localStorage.getItem('airo-pending-prompt')
     if (savedPrompt && !promptText) {
       logger.info('landing.prompt.restore', { message: 'Restoring saved prompt after login' })

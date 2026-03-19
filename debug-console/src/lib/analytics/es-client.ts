@@ -164,7 +164,7 @@ interface BulkDoc {
 }
 
 export async function bulkIndex(docs: BulkDoc[]) {
-  if (docs.length === 0) {return;}
+  if (docs.length === 0) return;
 
   const body = docs.flatMap(({ index, id, doc }) => [
     { index: { _index: index, _id: id } },

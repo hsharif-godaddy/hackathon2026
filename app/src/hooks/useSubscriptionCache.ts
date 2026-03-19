@@ -27,7 +27,7 @@ export function useSubscriptionCache(jwt: string | null) {
   
   // Background refresh every 5 minutes
   useEffect(() => {
-    if (!jwt) {return}
+    if (!jwt) return
     
     logger.debug('subscription-cache.hook.setup-refresh-timer')
     

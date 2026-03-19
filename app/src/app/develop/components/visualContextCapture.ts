@@ -56,7 +56,7 @@ export interface VisualContext {
 export async function captureVisualContext(): Promise<VisualContext | null> {
   const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
 
-  if (!iframe?.contentWindow) {
+  if (!iframe || !iframe.contentWindow) {
     return createFallbackContext()
   }
 

@@ -34,7 +34,7 @@ export default function FileReferenceModal({
 
   // Load files from backend
   const loadFiles = useCallback(async () => {
-    if (!appId || isLoadingRef.current) {return;}
+    if (!appId || isLoadingRef.current) return;
 
     isLoadingRef.current = true;
     setIsLoading(true);

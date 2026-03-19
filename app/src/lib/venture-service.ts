@@ -178,7 +178,7 @@ export class VentureService {
                     'ventures'
                 );
 
-                if (attribute?.value?.image_manager_venture_id) {
+                if (attribute && attribute.value?.image_manager_venture_id) {
                     logger.info('venture.getOrCreate.found', {
                         message: 'Found existing venture in mgmt-airo attributes',
                         customerId,

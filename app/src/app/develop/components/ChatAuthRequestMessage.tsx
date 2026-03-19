@@ -51,12 +51,12 @@ export default function ChatAuthRequestMessage({
      */
     useEffect(() => {
         const socket = getSharedSocket()
-        if (!socket) {return}
+        if (!socket) return
 
         const handleOAuthResult = (data: any) => {
             // Check if this OAuth result matches our state
-            if (data.state !== state) {return}
-            if (data.appId !== currentAppId) {return}
+            if (data.state !== state) return
+            if (data.appId !== currentAppId) return
 
             if (data.success) {
                 logger.info('oauth.auth_request.completed', {

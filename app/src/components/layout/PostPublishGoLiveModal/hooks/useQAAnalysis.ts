@@ -74,7 +74,7 @@ function qaAnalysisReducer(state: QAAnalysisState, action: QAAnalysisAction): QA
       };
 
     case 'UPDATE_FIXED_ISSUES':
-      if (!state.analysisResults) {return state;}
+      if (!state.analysisResults) return state;
 
       return {
         ...state,

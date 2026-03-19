@@ -731,19 +731,19 @@ export class WebSocketServer {
       // Extract appId from auth for history loading
       // Same logic as connection-recovery-manager.ts extractAppId()
       const extractAppId = (authData: unknown): string | undefined => {
-        if (!authData || typeof authData !== 'object') {return undefined}
+        if (!authData || typeof authData !== 'object') return undefined
         const authRecord = authData as Record<string, unknown>
 
         // Try direct appId first (most common)
-        if (typeof authRecord.appId === 'string') {return authRecord.appId}
+        if (typeof authRecord.appId === 'string') return authRecord.appId
 
         // Try agentContext.appId (JWT auth)
         const agentContext = authRecord.agentContext as Record<string, unknown> | undefined
-        if (agentContext && typeof agentContext.appId === 'string') {return agentContext.appId}
+        if (agentContext && typeof agentContext.appId === 'string') return agentContext.appId
 
         // Try decoded.appId (JWT auth fallback)
         const decoded = authRecord.decoded as Record<string, unknown> | undefined
-        if (decoded && typeof decoded.appId === 'string') {return decoded.appId}
+        if (decoded && typeof decoded.appId === 'string') return decoded.appId
 
         return undefined
       }
@@ -1269,10 +1269,10 @@ export class WebSocketServer {
           toolName,
           toolCallId: toolId
         }
-        if (toolInput !== undefined) {params.toolInput = toolInput}
-        if (conversationId !== undefined) {params.conversationId = conversationId}
-        if (appId !== undefined) {params.appId = appId}
-        if (context !== undefined) {params.context = context}
+        if (toolInput !== undefined) params.toolInput = toolInput
+        if (conversationId !== undefined) params.conversationId = conversationId
+        if (appId !== undefined) params.appId = appId
+        if (context !== undefined) params.context = context
 
         const result = await this.config.onToolStart(params)
 
@@ -1328,12 +1328,12 @@ export class WebSocketServer {
           toolCallId: toolId,
           success
         }
-        if (observabilitySpan?.spanId !== undefined) {params.spanId = observabilitySpan.spanId}
-        if (observabilitySpan?.startTime !== undefined) {params.startTime = observabilitySpan.startTime}
-        if (toolResponse !== undefined) {params.toolResponse = toolResponse}
-        if (conversationId !== undefined) {params.conversationId = conversationId}
-        if (appId !== undefined) {params.appId = appId}
-        if (context !== undefined) {params.context = context}
+        if (observabilitySpan?.spanId !== undefined) params.spanId = observabilitySpan.spanId
+        if (observabilitySpan?.startTime !== undefined) params.startTime = observabilitySpan.startTime
+        if (toolResponse !== undefined) params.toolResponse = toolResponse
+        if (conversationId !== undefined) params.conversationId = conversationId
+        if (appId !== undefined) params.appId = appId
+        if (context !== undefined) params.context = context
 
         await this.config.onToolEnd(params)
       } catch (hookError) {
@@ -1729,7 +1729,7 @@ export class WebSocketServer {
    * Check if an error is network-related
    */
   private isNetworkError(error: unknown): boolean {
-    if (!error) {return false}
+    if (!error) return false
 
     const errorMessage = error instanceof Error ? error.message : ''
     const errorName = error instanceof Error ? error.name : ''
@@ -1772,7 +1772,7 @@ export class WebSocketServer {
    * Safely cleanup a stream reader
    */
   private async safeCleanupReader(reader: ReadableStreamDefaultReader | null): Promise<void> {
-    if (!reader) {return}
+    if (!reader) return
 
     try {
       // Cancel the reader if it's still active
@@ -1849,7 +1849,7 @@ export class WebSocketServer {
       // 1.5. Strip /agent marker from message if present
       if (data.message && typeof data.message === 'string') {
         const firstLine = data.message.split('\n')[0]?.trim()
-        if (firstLine?.match(/^\/agent\s+\w+$/i)) {
+        if (firstLine && firstLine.match(/^\/agent\s+\w+$/i)) {
           // Remove first line and any leading newline
           const lines = data.message.split('\n')
           data.message = lines.slice(1).join('\n').trimStart()
@@ -2245,7 +2245,7 @@ export class WebSocketServer {
     // Always evaluate router first so brand new apps can start with the Initial agent
     const routedAgent = this.config.agentRouter ? this.config.agentRouter(socketId, data) : undefined
 
-    if (this.config.stateManager?.getCurrentAgent) {
+    if (this.config.stateManager && this.config.stateManager.getCurrentAgent) {
       const currentAgent = this.config.stateManager.getCurrentAgent(socketId)
       if (currentAgent) {
         const currentAppId = extractAppIdFromMessageContext(data.context)
@@ -2430,10 +2430,10 @@ export class WebSocketServer {
     data: ChatMessage,
     processedContext: Record<string, unknown>
   ): Promise<void> {
-    if (!this.config.messageProvider || data.conversationHistory) {return}
+    if (!this.config.messageProvider || data.conversationHistory) return
 
     const conversation = this.getConversation(socketId)
-    if (!conversation) {return}
+    if (!conversation) return
 
     try {
       const conversationHistory = await this.config.messageProvider.loadMessages(
@@ -2454,7 +2454,7 @@ export class WebSocketServer {
     socketId: string,
     currentAgentName: string
   ): { newAgentName: string; handoffPrompt: string } | null {
-    if (!this.config.stateManager?.getCurrentAgent) {
+    if (!this.config.stateManager || !this.config.stateManager.getCurrentAgent) {
       return null
     }
 
@@ -2635,7 +2635,7 @@ export class WebSocketServer {
     // 4. Strip leading tool messages that appear before any assistant message
     // This prevents orphaned tool results from being placed at the start of conversation
     // which can happen when context messages are prepended to history
-    while (messages.length > 0 && messages[0]?.role === 'tool') {
+    while (messages.length > 0 && messages[0] && messages[0].role === 'tool') {
       const removedMessage = messages.shift()
       if (removedMessage) {
         this.logger.warn('Stripped leading tool message without preceding assistant message', {
@@ -2717,10 +2717,10 @@ export class WebSocketServer {
         try {
           // Convert data URL to ProcessedFile
           const dataUrl = screenshots[i]
-          if (!dataUrl) {continue}
+          if (!dataUrl) continue
 
           const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/)
-          if (matches?.[1] && matches[2]) {
+          if (matches && matches[1] && matches[2]) {
             const mimeType: string = matches[1]
             const base64Content: string = matches[2]
             const size = Math.ceil((base64Content.length * 3) / 4)
@@ -2787,9 +2787,9 @@ export class WebSocketServer {
           model: modelName,
           provider: providerName
         }
-        if (conversationId !== undefined) {params.conversationId = conversationId}
-        if (appId !== undefined) {params.appId = appId}
-        if (context !== undefined) {params.context = context}
+        if (conversationId !== undefined) params.conversationId = conversationId
+        if (appId !== undefined) params.appId = appId
+        if (context !== undefined) params.context = context
 
         // Build input messages array for observability tracking
         const inputMessages: Array<{ role: string; content: string }> = []
@@ -3174,17 +3174,17 @@ Please try again with corrected formatting.`
             provider: providerName,
             success: true
           }
-          if (llmSpanInfo?.spanId !== undefined) {llmEndParams.spanId = llmSpanInfo.spanId}
-          if (conversationId !== undefined) {llmEndParams.conversationId = conversationId}
-          if (appId !== undefined) {llmEndParams.appId = appId}
-          if (context !== undefined) {llmEndParams.context = context}
-          if (finalResult.finishReason !== undefined) {llmEndParams.finishReason = finalResult.finishReason}
+          if (llmSpanInfo?.spanId !== undefined) llmEndParams.spanId = llmSpanInfo.spanId
+          if (conversationId !== undefined) llmEndParams.conversationId = conversationId
+          if (appId !== undefined) llmEndParams.appId = appId
+          if (context !== undefined) llmEndParams.context = context
+          if (finalResult.finishReason !== undefined) llmEndParams.finishReason = finalResult.finishReason
           if (usageToTrack) {
             const usageObj: NonNullable<typeof llmEndParams.usage> = {}
-            if (usageToTrack.inputTokens !== undefined) {usageObj.inputTokens = usageToTrack.inputTokens}
-            if (usageToTrack.outputTokens !== undefined) {usageObj.outputTokens = usageToTrack.outputTokens}
-            if (usageToTrack.totalTokens !== undefined) {usageObj.totalTokens = usageToTrack.totalTokens}
-            if (usageToTrack.cachedInputTokensRead !== undefined) {usageObj.cachedTokens = usageToTrack.cachedInputTokensRead}
+            if (usageToTrack.inputTokens !== undefined) usageObj.inputTokens = usageToTrack.inputTokens
+            if (usageToTrack.outputTokens !== undefined) usageObj.outputTokens = usageToTrack.outputTokens
+            if (usageToTrack.totalTokens !== undefined) usageObj.totalTokens = usageToTrack.totalTokens
+            if (usageToTrack.cachedInputTokensRead !== undefined) usageObj.cachedTokens = usageToTrack.cachedInputTokensRead
             llmEndParams.usage = usageObj
           }
 

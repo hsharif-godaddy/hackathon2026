@@ -40,7 +40,7 @@ const mockGetDisplayMedia = vi.fn();
 // Mock FileReferenceModal
 vi.mock('@/app/develop/components/chat/FileReferenceModal', () => ({
   default: ({ isOpen, onClose, onFilesSelected }: any) => {
-    if (!isOpen) {return null;}
+    if (!isOpen) return null;
     return (
       <div data-testid="file-reference-modal">
         <button onClick={() => onFilesSelected(['test.txt'])}>Select Files</button>

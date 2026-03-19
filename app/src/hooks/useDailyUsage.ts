@@ -18,7 +18,7 @@ export interface FormattedResetTime {
 }
 
 export function formatResetTime(resetTime: string | null): FormattedResetTime | null {
-  if (!resetTime) {return null}
+  if (!resetTime) return null
   const resetDate = new Date(resetTime)
   const now = new Date()
 
@@ -40,12 +40,12 @@ function getToastShownKey(): string {
 }
 
 function hasToastBeenShown(): boolean {
-  if (typeof window === 'undefined') {return true}
+  if (typeof window === 'undefined') return true
   return localStorage.getItem(getToastShownKey()) === 'true'
 }
 
 function markToastShown(): void {
-  if (typeof window === 'undefined') {return}
+  if (typeof window === 'undefined') return
   localStorage.setItem(getToastShownKey(), 'true')
 }
 
@@ -91,7 +91,7 @@ export function useDailyUsage(options: UseDailyUsageOptions) {
 
   // listen for usage-refresh events (fired when messages complete)
   useEffect(() => {
-    if (!appId || !subscriptionId) {return}
+    if (!appId || !subscriptionId) return
 
     const handleRefresh = () => {
       queryClient.invalidateQueries({ queryKey: ['token-budget', subscriptionId] })
@@ -106,14 +106,14 @@ export function useDailyUsage(options: UseDailyUsageOptions) {
 
   // show toast when crossing 90% threshold (once per day, per-customer)
   useEffect(() => {
-    if (!query.data) {return}
+    if (!query.data) return
 
     const { percentage } = query.data
     const prevPercentage = prevPercentageRef.current
     prevPercentageRef.current = percentage
 
     // skip first load
-    if (prevPercentage === null) {return}
+    if (prevPercentage === null) return
 
     // check if crossed 90% threshold
     if (prevPercentage < TOAST_THRESHOLD && percentage >= TOAST_THRESHOLD) {
@@ -127,11 +127,11 @@ export function useDailyUsage(options: UseDailyUsageOptions) {
   }, [query.data])
 
   const warningLevel = useMemo<WarningLevel>(() => {
-    if (!query.data) {return WarningLevel.NONE}
+    if (!query.data) return WarningLevel.NONE
     const { percentage } = query.data
-    if (percentage >= 100) {return WarningLevel.EXCEEDED}
-    if (percentage >= CRITICAL_THRESHOLD) {return WarningLevel.WARNING}
-    if (percentage >= WARNING_THRESHOLD) {return WarningLevel.CAUTION}
+    if (percentage >= 100) return WarningLevel.EXCEEDED
+    if (percentage >= CRITICAL_THRESHOLD) return WarningLevel.WARNING
+    if (percentage >= WARNING_THRESHOLD) return WarningLevel.CAUTION
     return WarningLevel.NONE
   }, [query.data])
 
@@ -141,7 +141,7 @@ export function useDailyUsage(options: UseDailyUsageOptions) {
 
   // Whether the usage warning banner should be active (>= 90% but not exceeded)
   const isWarningBannerActive = useMemo(() => {
-    if (!query.data) {return false}
+    if (!query.data) return false
     return query.data.percentage >= TOAST_THRESHOLD && warningLevel !== WarningLevel.EXCEEDED
   }, [query.data, warningLevel])
 

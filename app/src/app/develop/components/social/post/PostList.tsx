@@ -82,14 +82,14 @@ const PostListItem = memo(({ post, onClick }: PostListItemProps) => {
   const Icon = (isPublished || isScheduled) ? EyeIcon : EditIcon
 
   const getStatusEmphasis = () => {
-    if (isPublished) {return 'success'}
-    if (isScheduled) {return 'info'}
+    if (isPublished) return 'success'
+    if (isScheduled) return 'info'
     return 'passive'
   }
 
   const getStatusText = () => {
-    if (isPublished) {return t('builder_social_post_status_published')}
-    if (isScheduled) {return t('builder_social_post_status_scheduled')}
+    if (isPublished) return t('builder_social_post_status_published')
+    if (isScheduled) return t('builder_social_post_status_scheduled')
     return t('builder_social_post_status_draft')
   }
 

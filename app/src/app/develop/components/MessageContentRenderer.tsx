@@ -42,7 +42,7 @@ function MessageContentRenderer({ blocks, isActiveStream = false, isLastAssistan
     if (block.type === 'tool' && block.toolCall) {
       const cached = toolCallArraysCacheRef.current.get(block.toolCall.id)
       // Only create new array if toolCall reference changed or doesn't exist
-      if (cached?.[0] !== block.toolCall) {
+      if (!cached || cached[0] !== block.toolCall) {
         toolCallArraysCacheRef.current.set(block.toolCall.id, [block.toolCall])
       }
     }

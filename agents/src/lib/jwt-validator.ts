@@ -194,7 +194,7 @@ export class JWTValidator {
    */
   private getKeyIdFromToken(token: string): string {
     const decoded = jwt.decode(token, { complete: true });
-    if (!decoded?.header?.kid) {
+    if (!decoded || !decoded.header || !decoded.header.kid) {
       throw new Error('JWT token missing kid in header');
     }
     return decoded.header.kid;
@@ -301,7 +301,7 @@ export class JWTValidator {
    */
   extractTokenFromRequest(req: { headers?: { authorization?: string } }): string | null {
     const authHeader = req.headers?.authorization;
-    if (authHeader?.startsWith('Bearer ')) {
+    if (authHeader && authHeader.startsWith('Bearer ')) {
       return authHeader.substring(7);
     }
     return null;
@@ -313,13 +313,13 @@ export class JWTValidator {
   private sanitizeErrorMessage(error: unknown): string {
     if (error && typeof error === 'object') {
       const err = error as { name?: string; message?: string };
-      if (err.name === 'TokenExpiredError') {return 'Token expired';}
-      if (err.name === 'JsonWebTokenError') {return 'Invalid token format';}
-      if (err.name === 'NotBeforeError') {return 'Token not active yet';}
-      if (err.message?.includes('signature')) {return 'Invalid token signature';}
-      if (err.message?.includes('malformed')) {return 'Invalid token format';}
-      if (err.message?.includes('audience')) {return 'Invalid token audience';}
-      if (err.message?.includes('issuer')) {return 'Invalid token issuer';}
+      if (err.name === 'TokenExpiredError') return 'Token expired';
+      if (err.name === 'JsonWebTokenError') return 'Invalid token format';
+      if (err.name === 'NotBeforeError') return 'Token not active yet';
+      if (err.message?.includes('signature')) return 'Invalid token signature';
+      if (err.message?.includes('malformed')) return 'Invalid token format';
+      if (err.message?.includes('audience')) return 'Invalid token audience';
+      if (err.message?.includes('issuer')) return 'Invalid token issuer';
 
       // Return the actual error message for debugging
       return err.message || `${err.name || 'Unknown error'}: No message available`;

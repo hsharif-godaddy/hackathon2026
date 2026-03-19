@@ -90,8 +90,8 @@ async function loadSkillToolDefinitions(
 
     const tools: SkillToolDefinition[] = []
     for (const [key, value] of Object.entries(toolsModule)) {
-      if (key === 'default') {continue}
-      if (key === 'hooks') {continue}
+      if (key === 'default') continue
+      if (key === 'hooks') continue
       if (isValidToolDefinition(value)) {
         tools.push(value as SkillToolDefinition)
       }
@@ -118,7 +118,7 @@ function isValidToolDefinition(def: unknown): def is SkillToolDefinition {
 }
 
 function isValidHooks(hooks: unknown): hooks is SkillHooks {
-  if (typeof hooks !== 'object' || hooks === null) {return false}
+  if (typeof hooks !== 'object' || hooks === null) return false
   const h = hooks as Record<string, unknown>
   const validKeys = ['onLoad', 'onInstall', 'onUnload']
   return Object.keys(h).some(
@@ -145,7 +145,7 @@ export function registerSkillTools(
     skillHooks: new Map()
   }
 
-  if (toolDefs.length === 0) {return result}
+  if (toolDefs.length === 0) return result
 
   const toolNames: string[] = []
 

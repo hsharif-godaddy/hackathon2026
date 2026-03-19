@@ -69,7 +69,7 @@ export class TokenStore {
         const repo = new OAuthTokenRepository();
         const record = repo.findOne(key.appId, key.provider);
 
-        if (!record) {return null;}
+        if (!record) return null;
 
         if (record.expiresAt - Date.now() <= 60_000) {
             logger.info('token-store.find-valid.expired', {
@@ -207,7 +207,7 @@ export class TokenStore {
         const repo = new OAuthTokenRepository();
         const record = repo.findOne(key.appId, key.provider);
 
-        if (!record?.refreshTokenEncrypted) {
+        if (!record || !record.refreshTokenEncrypted) {
             return null;
         }
 

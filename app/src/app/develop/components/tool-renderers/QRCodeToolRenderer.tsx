@@ -59,7 +59,7 @@ export default function QRCodeToolRenderer({
 
   // Format page name: Home for /, capitalize first letter for others
   const formatPageName = (path: string) => {
-    if (path === '/') {return t('builder_qr_code_page_home')}
+    if (path === '/') return t('builder_qr_code_page_home')
     const cleanPath = path.replace(/^\//, '').replace(/\//g, ' / ')
     return cleanPath.split(' ').map(word =>
       word.charAt(0).toUpperCase() + word.slice(1)
@@ -69,7 +69,7 @@ export default function QRCodeToolRenderer({
   const pageName = parsedResult?.targetPage ? formatPageName(parsedResult.targetPage) : t('builder_qr_code_page_home')
 
   const handleDownload = () => {
-    if (!parsedResult?.base64) {return}
+    if (!parsedResult?.base64) return
 
     // Create a link and trigger download
     const link = document.createElement('a')

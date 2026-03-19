@@ -58,7 +58,7 @@ export class NameSuggestionService {
         const existingMetadata = llmMetadataContext.getStore();
         const userIdentifier = existingMetadata?.user || 'airo-builder:name-suggestion';
         const baseTags = ['source:tool-llm', 'source:name-suggestion']
-        if (agentId) {baseTags.push(`agent:${agentId}`)}
+        if (agentId) baseTags.push(`agent:${agentId}`)
         const mergedTags = [...new Set([...(existingMetadata?.tags || []), ...baseTags])]
         metadata = {
           ...(userIdentifier && { user: userIdentifier }),

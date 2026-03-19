@@ -57,8 +57,8 @@ export default function DefaultToolRenderer({
   const hasDetails = Boolean(result || error || (input && Object.keys(input).length > 0))
 
   const formatDuration = (ms?: number) => {
-    if (!ms) {return ''}
-    if (ms < 1000) {return `${ms}ms`}
+    if (!ms) return ''
+    if (ms < 1000) return `${ms}ms`
     return `${(ms / 1000).toFixed(1)}s`
   }
 

@@ -34,7 +34,7 @@ export function usePublishedApps(options: { enabled?: boolean } = {}): UsePublis
   const { sites, isLoading, error, refreshSites } = useSites({ enabled });
 
   const publishedApps = useMemo(() => {
-    if (!enabled) {return [];}
+    if (!enabled) return [];
     return filterPublishedApps(sites);
   }, [sites, enabled]);
 

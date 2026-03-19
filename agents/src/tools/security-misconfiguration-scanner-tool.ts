@@ -249,9 +249,9 @@ export class SecurityMisconfigurationScannerTool {
         throw new Error(`Semgrep execution failed: ${result.stderr || 'Unknown error'}`);
       }
 
-      if (!result.stdout) {return [];}
+      if (!result.stdout) return [];
       const trimmed = result.stdout.trim();
-      if (!trimmed.startsWith('{')) {return [];}
+      if (!trimmed.startsWith('{')) return [];
 
       let data: SemgrepOutput;
       try {
@@ -336,22 +336,22 @@ export class SecurityMisconfigurationScannerTool {
 
   private mapSemgrepRuleToCategory(ruleId: string): MisconfigurationCategory {
     const lower = ruleId.toLowerCase();
-    if (lower.includes('cors')) {return 'cors';}
-    if (lower.includes('http-url') || lower.includes('http')) {return 'https';}
-    if (lower.includes('tls') || lower.includes('rejectunauthorized')) {return 'tls';}
-    if (lower.includes('helmet') || lower.includes('csp') || lower.includes('hsts') || lower.includes('x-frame')) {return 'security-headers';}
-    if (lower.includes('rate')) {return 'missing-rate-limit';}
-    if (lower.includes('admin')) {return 'admin-route';}
+    if (lower.includes('cors')) return 'cors';
+    if (lower.includes('http-url') || lower.includes('http')) return 'https';
+    if (lower.includes('tls') || lower.includes('rejectunauthorized')) return 'tls';
+    if (lower.includes('helmet') || lower.includes('csp') || lower.includes('hsts') || lower.includes('x-frame')) return 'security-headers';
+    if (lower.includes('rate')) return 'missing-rate-limit';
+    if (lower.includes('admin')) return 'admin-route';
     return 'unprotected-endpoint';
   }
 
   private mapSemgrepSeverityToSeverity(semgrepSeverity: string): MisconfigurationSeverity {
     const lower = String(semgrepSeverity).toLowerCase();
     // Preserve distinction between critical and high findings
-    if (lower === 'critical') {return 'critical';}
-    if (lower === 'error' || lower === 'high') {return 'high';}
-    if (lower === 'warning' || lower === 'medium') {return 'medium';}
-    if (lower === 'low') {return 'low';}
+    if (lower === 'critical') return 'critical';
+    if (lower === 'error' || lower === 'high') return 'high';
+    if (lower === 'warning' || lower === 'medium') return 'medium';
+    if (lower === 'low') return 'low';
     return 'info';
   }
 
@@ -401,7 +401,7 @@ export class SecurityMisconfigurationScannerTool {
       }
 
       const trimmed = (result.stdout || '').trim();
-      if (!trimmed.startsWith('{')) {return [];}
+      if (!trimmed.startsWith('{')) return [];
 
       let parsed: StaticAuditOutput;
       try {
@@ -701,7 +701,7 @@ main();
     for (const f of findings) {
       const routeKey = f.route ? `${f.route.method}:${f.route.path}` : '';
       const key = `${f.category}:${f.file}:${f.line}:${f.column}:${routeKey}:${f.ruleId || ''}`;
-      if (!m.has(key)) {m.set(key, f);}
+      if (!m.has(key)) m.set(key, f);
     }
     return Array.from(m.values());
   }
@@ -745,11 +745,11 @@ main();
     }
 
     lines.push(`Found ${summary.total} issue${summary.total === 1 ? '' : 's'}:`);
-    if (summary.critical) {lines.push(`  🔴 Critical: ${summary.critical}`);}
-    if (summary.high) {lines.push(`  🟠 High: ${summary.high}`);}
-    if (summary.medium) {lines.push(`  🟡 Medium: ${summary.medium}`);}
-    if (summary.low) {lines.push(`  🟢 Low: ${summary.low}`);}
-    if (summary.info) {lines.push(`  🔵 Info: ${summary.info}`);}
+    if (summary.critical) lines.push(`  🔴 Critical: ${summary.critical}`);
+    if (summary.high) lines.push(`  🟠 High: ${summary.high}`);
+    if (summary.medium) lines.push(`  🟡 Medium: ${summary.medium}`);
+    if (summary.low) lines.push(`  🟢 Low: ${summary.low}`);
+    if (summary.info) lines.push(`  🔵 Info: ${summary.info}`);
     lines.push('');
 
     // Group by file for readability

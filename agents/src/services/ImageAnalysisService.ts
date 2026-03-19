@@ -503,7 +503,7 @@ ${JSON.stringify(analysis, null, 2)}
         for (const result of searchResult.results) {
           // Extract gettyId from the result text
           const idMatch = result.text.match(/gettyId:(\S+)/);
-          if (idMatch?.[1]) {
+          if (idMatch && idMatch[1]) {
             scoreMap.set(idMatch[1], result.score);
           }
         }
@@ -524,9 +524,9 @@ ${JSON.stringify(analysis, null, 2)}
 
       // Sort by relevance score (highest first), nulls last
       scored.sort((a, b) => {
-        if (a.relevanceScore === null && b.relevanceScore === null) {return 0;}
-        if (a.relevanceScore === null) {return 1;}
-        if (b.relevanceScore === null) {return -1;}
+        if (a.relevanceScore === null && b.relevanceScore === null) return 0;
+        if (a.relevanceScore === null) return 1;
+        if (b.relevanceScore === null) return -1;
         return b.relevanceScore - a.relevanceScore;
       });
 

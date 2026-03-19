@@ -37,7 +37,7 @@ export function translateDomainApiError(
 ): string {
   if (code) {
     const domainKey = DOMAIN_API_ERROR_KEYS[code];
-    if (domainKey) {return t(domainKey);}
+    if (domainKey) return t(domainKey);
   }
   return translateApiError(code, t, fallback);
 }

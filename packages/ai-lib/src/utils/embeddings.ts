@@ -100,7 +100,7 @@ function analyzeModel(model: any): EmbeddingModel {
     }
     
     // Additional bedrock detection for AI SDK models
-    if (model._settings?.modelId) {
+    if (model._settings && model._settings.modelId) {
       if (model._settings.modelId.includes('amazon.titan-embed') ||
           model._settings.modelId.includes('cohere.embed')) {
         return {

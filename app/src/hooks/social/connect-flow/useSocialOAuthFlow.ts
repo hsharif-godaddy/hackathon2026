@@ -16,8 +16,8 @@ export function getPlatformPages(
   facebookPages: FacebookPage[],
   googleLocations: GoogleLocation[]
 ): FacebookPage[] | GoogleLocation[] {
-  if (provider === SocialPlatform.GOOGLE) {return googleLocations}
-  if (provider !== SocialPlatform.FACEBOOK) {return []}
+  if (provider === SocialPlatform.GOOGLE) return googleLocations
+  if (provider !== SocialPlatform.FACEBOOK) return []
 
   return platform === SocialPlatform.INSTAGRAM
     ? facebookPages.filter(p => Boolean(p.instagram_business_account?.id?.trim()))

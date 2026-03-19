@@ -53,7 +53,7 @@ export default function ColorPaletteWidget({ name, palette, className = '', isSe
    * Handle click on palette - send preview message to iframe
    */
   function handleClick() {
-    if (!name) {return}
+    if (!name) return
 
     // Use complete palette for preview (matches updateCssColors exactly)
     const paletteData = {

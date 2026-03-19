@@ -58,7 +58,7 @@ const ALLOWED_COOKIES = [
 ];
 
 function filterCookies(cookieHeader: string): string {
-  if (!cookieHeader) {return '';}
+  if (!cookieHeader) return '';
 
   const cookies = cookieHeader.split(';').map(c => c.trim());
   const filtered = cookies.filter(cookie => {

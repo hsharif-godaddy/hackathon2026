@@ -19,7 +19,7 @@ const SUBSCRIPTION_ID_PREFIX = 'airo-build:sid:'
  * ```
  */
 export const formatSubscriptionId = (subscriptionId?: string | null): string | undefined => {
-  if (!subscriptionId) {return undefined}
+  if (!subscriptionId) return undefined
   return `${SUBSCRIPTION_ID_PREFIX}${subscriptionId}`
 }
 

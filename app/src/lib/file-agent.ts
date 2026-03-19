@@ -25,7 +25,7 @@ const CACHE_BUFFER_MS = 30_000
 
 function getCachedToken(appId: string): string | null {
   const cached = tokenCache.get(appId)
-  if (!cached) {return null}
+  if (!cached) return null
   if (Date.now() >= cached.expiresAt - CACHE_BUFFER_MS) {
     tokenCache.delete(appId)
     return null
@@ -35,7 +35,7 @@ function getCachedToken(appId: string): string | null {
 
 async function fetchToken(appId: string): Promise<string> {
   const cached = getCachedToken(appId)
-  if (cached) {return cached}
+  if (cached) return cached
 
   const response = await appFetch('/api/auth/agent-token', {
     method: 'POST',

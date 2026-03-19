@@ -59,7 +59,7 @@ export class NetworkQualityMonitor {
   attachToSocket(socket: Socket, appId: string): void {
     this.appId = appId
     const engine = (socket as any).io?.engine
-    if (!engine) {return}
+    if (!engine) return
 
     this.detachFromSocket(socket)
 
@@ -70,7 +70,7 @@ export class NetworkQualityMonitor {
     }
 
     this.onPong = () => {
-      if (this.pingSentAt === null) {return}
+      if (this.pingSentAt === null) return
       const latencyMs = Date.now() - this.pingSentAt
       this.pingSentAt = null
 
@@ -93,8 +93,8 @@ export class NetworkQualityMonitor {
    */
   detachFromSocket(_socket: Socket): void {
     if (this.attachedEngine) {
-      if (this.onPing) {this.attachedEngine.off('ping', this.onPing)}
-      if (this.onPong) {this.attachedEngine.off('pong', this.onPong)}
+      if (this.onPing) this.attachedEngine.off('ping', this.onPing)
+      if (this.onPong) this.attachedEngine.off('pong', this.onPong)
     }
     this.onPing = null
     this.onPong = null
@@ -129,7 +129,7 @@ export class NetworkQualityMonitor {
    * When phases are available, include full breakdown in the warning payload.
    */
   markConnectEstablished(socketId: string): void {
-    if (this.connectStartedAt === null) {return}
+    if (this.connectStartedAt === null) return
     const durationMs = Date.now() - this.connectStartedAt
     this.connectStartedAt = null
 
@@ -196,7 +196,7 @@ export class NetworkQualityMonitor {
    * Warns at every multiple of RETRY_COUNT_WARN_THRESHOLD (3, 6, 9, ...) to avoid spam.
    */
   logRetryCount(retryCount: number, socketId: string): void {
-    if (retryCount < RETRY_COUNT_WARN_THRESHOLD) {return}
+    if (retryCount < RETRY_COUNT_WARN_THRESHOLD) return
 
     // Only warn at threshold crossings (multiples of threshold)
     const currentBucket = Math.floor(retryCount / RETRY_COUNT_WARN_THRESHOLD)
@@ -218,8 +218,8 @@ export class NetworkQualityMonitor {
    */
   destroy(): void {
     if (this.attachedEngine) {
-      if (this.onPing) {this.attachedEngine.off('ping', this.onPing)}
-      if (this.onPong) {this.attachedEngine.off('pong', this.onPong)}
+      if (this.onPing) this.attachedEngine.off('ping', this.onPing)
+      if (this.onPong) this.attachedEngine.off('pong', this.onPong)
     }
     this.onPing = null
     this.onPong = null

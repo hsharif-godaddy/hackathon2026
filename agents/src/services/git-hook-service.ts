@@ -154,7 +154,7 @@ export class GitHookService {
       // If not on main, perform recovery
       if (currentBranch !== 'main') {
         // Check if this is our expected feature branch
-        const isExpectedBranch = currentBranch === trackedBranch?.branchName;
+        const isExpectedBranch = trackedBranch && currentBranch === trackedBranch.branchName;
 
         if (!isExpectedBranch) {
           // CRITICAL: We're on an unexpected branch - perform recovery

@@ -152,8 +152,8 @@ describe('PublishLimitModal', function publishLimitModalTests() {
   describe('isHigherPlansEnabled flag OFF', function higherPlansDisabledTests() {
     beforeEach(function setup() {
       mockUseSwitchboard.mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-higher-plans') {return { data: false, isLoading: false };}
-        if (flag === 'appbuilder-unpublish') {return { data: true, isLoading: false };}
+        if (flag === 'appbuilder-higher-plans') return { data: false, isLoading: false };
+        if (flag === 'appbuilder-unpublish') return { data: true, isLoading: false };
         return { data: false, isLoading: false };
       });
     });
@@ -193,8 +193,8 @@ describe('PublishLimitModal', function publishLimitModalTests() {
   describe('isHigherPlansEnabled flag ON', function higherPlansEnabledTests() {
     beforeEach(function setup() {
       mockUseSwitchboard.mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-higher-plans') {return { data: true, isLoading: false };}
-        if (flag === 'appbuilder-unpublish') {return { data: true, isLoading: false };}
+        if (flag === 'appbuilder-higher-plans') return { data: true, isLoading: false };
+        if (flag === 'appbuilder-unpublish') return { data: true, isLoading: false };
         return { data: false, isLoading: false };
       });
     });
@@ -313,7 +313,7 @@ describe('PublishLimitModal', function publishLimitModalTests() {
   describe('different plan types', function planTypeTests() {
     beforeEach(function setup() {
       mockUseSwitchboard.mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-higher-plans') {return { data: true, isLoading: false };}
+        if (flag === 'appbuilder-higher-plans') return { data: true, isLoading: false };
         return { data: false, isLoading: false };
       });
     });
@@ -374,7 +374,7 @@ describe('PublishLimitModal', function publishLimitModalTests() {
   describe('data attributes', function dataAttributeTests() {
     beforeEach(function setup() {
       mockUseSwitchboard.mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-higher-plans') {return { data: true, isLoading: false };}
+        if (flag === 'appbuilder-higher-plans') return { data: true, isLoading: false };
         return { data: false, isLoading: false };
       });
     });

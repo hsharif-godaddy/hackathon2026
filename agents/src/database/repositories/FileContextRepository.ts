@@ -23,7 +23,7 @@ export class FileContextRepository {
     `);
     
     const row = stmt.get(appPath, filePath) as any;
-    if (!row) {return null;}
+    if (!row) return null;
 
     return {
       id: row.id,

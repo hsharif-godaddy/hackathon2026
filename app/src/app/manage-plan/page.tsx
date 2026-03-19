@@ -49,7 +49,7 @@ import PlanCreditsCard from './components/PlanCreditsCard';
  * Safely parse a date string, returning null if invalid
  */
 function parseDate(dateString?: string): Date | null {
-  if (!dateString) {return null;}
+  if (!dateString) return null;
   const date = new Date(dateString);
   if (isNaN(date.getTime())) {
     console.warn('Invalid date string received:', dateString);

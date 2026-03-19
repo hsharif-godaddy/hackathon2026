@@ -105,9 +105,9 @@ export const GET = withCustomerAuth(
       const headers = new Headers();
       const contentType = response.headers.get("Content-Type");
       const contentDisposition = response.headers.get("Content-Disposition");
-      if (contentType) {headers.set("Content-Type", contentType);}
+      if (contentType) headers.set("Content-Type", contentType);
       if (contentDisposition)
-        {headers.set("Content-Disposition", contentDisposition);}
+        headers.set("Content-Disposition", contentDisposition);
 
       return new NextResponse(response.body, {
         status: 200,

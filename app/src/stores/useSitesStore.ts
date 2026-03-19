@@ -92,7 +92,7 @@ export const useSitesStore = create<SitesStore>()(
       const { isLoadingAll } = get()
 
       // Prevent duplicate requests
-      if (isLoadingAll) {return}
+      if (isLoadingAll) return
 
       set((state) => {
         state.isLoadingAll = true

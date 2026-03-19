@@ -130,7 +130,7 @@ export function validateSocialPost(
  * @returns True if post exceeds character limit, false otherwise
  */
 export function isPostOverLimit(post: Partial<SocialPostData>): boolean {
-  if (!post.platform) {return false}
+  if (!post.platform) return false
 
   const limits = getPlatformLimits(post.platform as SocialPostData['platform'])
   const charCount = getCharacterCount(post)

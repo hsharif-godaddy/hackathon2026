@@ -263,7 +263,7 @@ export class MediaSearchTool {
    * Determine whether to route through image search service
    */
   private shouldUseService(useService?: boolean): boolean {
-    if (useService !== undefined) {return useService;}
+    if (useService !== undefined) return useService;
     return process.env.IMAGE_SEARCH_USE_SERVICE === 'true';
   }
 
@@ -286,7 +286,7 @@ export class MediaSearchTool {
     }
   ): MediaDriverSearchOptions {
     const toArray = (v: string | string[] | undefined): string[] | undefined => {
-      if (!v) {return undefined;}
+      if (!v) return undefined;
       return Array.isArray(v) ? v : [v];
     };
 
@@ -477,11 +477,11 @@ export class MediaSearchTool {
           prompt: prompts[index] || '',
           success: result.success,
         };
-        if (result.url) {combined.url = result.url;}
-        if (result.urls) {combined.urls = result.urls;}
-        if (result.error) {combined.error = result.error;}
-        if (result.gettyId) {combined.gettyId = result.gettyId;}
-        if (result.gettyIds) {combined.gettyIds = result.gettyIds;}
+        if (result.url) combined.url = result.url;
+        if (result.urls) combined.urls = result.urls;
+        if (result.error) combined.error = result.error;
+        if (result.gettyId) combined.gettyId = result.gettyId;
+        if (result.gettyIds) combined.gettyIds = result.gettyIds;
         return combined;
       });
 

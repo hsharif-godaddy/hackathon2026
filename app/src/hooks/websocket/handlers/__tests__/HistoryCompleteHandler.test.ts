@@ -167,7 +167,7 @@ describe('HistoryCompleteHandler', () => {
         send: vi.fn(),
         getSnapshot: vi.fn(() => ({
           matches: vi.fn((pattern: any) => {
-            if (pattern?.stream?.streaming === 'receiving') {return true}
+            if (pattern?.stream?.streaming === 'receiving') return true
             return false
           }),
         })),

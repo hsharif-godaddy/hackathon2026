@@ -97,8 +97,8 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
         }))
         .sort((a, b) => {
           // System-managed secrets first (true comes before false)
-          if (a.systemManaged && !b.systemManaged) {return -1;}
-          if (!a.systemManaged && b.systemManaged) {return 1;}
+          if (a.systemManaged && !b.systemManaged) return -1;
+          if (!a.systemManaged && b.systemManaged) return 1;
           // Within each group, maintain alphabetical order by name
           return a.name.localeCompare(b.name);
         });
@@ -173,7 +173,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
   };
 
   const calculateRows = (value: string | undefined): number => {
-    if (!value) {return 1;}
+    if (!value) return 1;
     const lineCount = value.split('\n').length;
     return Math.min(Math.max(lineCount, 1), 6);
   };
@@ -192,13 +192,13 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
   };
 
   const isValidSecretName = (name: string): boolean => {
-    if (!name || name.length < 2 || name.length > 128) {return false;}
+    if (!name || name.length < 2 || name.length > 128) return false;
 
     // Must start with A-Z or _
-    if (!/^[A-Z_]/.test(name)) {return false;}
+    if (!/^[A-Z_]/.test(name)) return false;
 
     // Only allowed characters: A-Z, 0-9, /, _, +, =, ., @, -
-    if (!/^[A-Z0-9/_+=.@-]+$/.test(name)) {return false;}
+    if (!/^[A-Z0-9/_+=.@-]+$/.test(name)) return false;
 
     return true;
   };
@@ -206,13 +206,13 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
   const isSecretNameUnique = (name: string, currentIndex: number): boolean => {
     // Check against existing secrets
     const existsInFormSecrets = formSecrets.some((s) => s.name === name);
-    if (existsInFormSecrets) {return false;}
+    if (existsInFormSecrets) return false;
 
     // Check against other new secrets (excluding current index)
     const existsInNewSecrets = newSecrets.some(
       (s, i) => i !== currentIndex && s.name === name
     );
-    if (existsInNewSecrets) {return false;}
+    if (existsInNewSecrets) return false;
 
     return true;
   };

@@ -38,7 +38,7 @@ export function VideoGenerationSection({ siteId }: VideoGenerationSectionProps) 
   const videoUrl = launchVideoResult?.type === 'success' ? launchVideoResult.url : null
 
   const handleRegenerate = async () => {
-    if (isGeneratingVideo) {return}
+    if (isGeneratingVideo) return
 
     setRegenerateError(null)
     try {
@@ -56,7 +56,7 @@ export function VideoGenerationSection({ siteId }: VideoGenerationSectionProps) 
   }
 
   const handleDownload = async () => {
-    if (isDownloading) {return}
+    if (isDownloading) return
 
     setIsDownloading(true)
     setDownloadError(null)

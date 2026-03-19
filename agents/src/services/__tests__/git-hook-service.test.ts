@@ -92,8 +92,8 @@ describe('GitHookService', () => {
       squashMerge: vi.fn().mockResolvedValue(undefined),
       getCurrentCommit: vi.fn().mockResolvedValue('mock-commit-hash'),
       getTreeHash: vi.fn().mockImplementation((_path: string, ref: string) => {
-        if (ref === 'HEAD') {return Promise.resolve(featureTree);}
-        if (ref === 'main') {return Promise.resolve(mainTree);}
+        if (ref === 'HEAD') return Promise.resolve(featureTree);
+        if (ref === 'main') return Promise.resolve(mainTree);
         return Promise.resolve('unknown-tree');
       }),
       resolveCommitHash: vi.fn().mockResolvedValue('main-commit-hash'),

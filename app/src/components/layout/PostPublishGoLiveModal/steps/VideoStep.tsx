@@ -44,13 +44,13 @@ export function VideoStep({
   const { isMdBreakpoint } = useBreakpoints();
 
   const handleDownloadVideo = async () => {
-    if (!launchVideoUrl || isDownloading) {return;}
+    if (!launchVideoUrl || isDownloading) return;
 
     setIsDownloading(true);
     setDownloadError(null);
     try {
       const response = await fetch(launchVideoUrl);
-      if (!response.ok) {throw new Error('Failed to fetch video');}
+      if (!response.ok) throw new Error('Failed to fetch video');
 
       const blob = await response.blob();
       const blobUrl = URL.createObjectURL(blob);

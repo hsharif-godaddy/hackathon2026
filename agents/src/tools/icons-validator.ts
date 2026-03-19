@@ -48,7 +48,7 @@ function extractLucideIcons(code: string): Array<{icon: string, line: number}> {
 
   lines.forEach((line, index) => {
     const match = line.match(lucideImportPattern);
-    if (match?.[1]) {
+    if (match && match[1]) {
       const iconList = match[1];
       const lineNumber = index + 1;
 

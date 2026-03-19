@@ -116,7 +116,7 @@ export function validateAppOwnership(req: Request, res: Response, next: NextFunc
     const authReq = req as AuthenticatedRequest;
 
     // Ensure authentication context exists
-    if (!authReq.agentContext?.siteId) {
+    if (!authReq.agentContext || !authReq.agentContext.siteId) {
       logger.warn('route.middleware.ownership.no-context', {
         path: req.path,
         method: req.method,
@@ -162,7 +162,7 @@ export function validateAppOwnershipFromBody(fieldName: string = 'appId') {
       const authReq = req as AuthenticatedRequest;
 
       // Ensure authentication context exists
-      if (!authReq.agentContext?.siteId) {
+      if (!authReq.agentContext || !authReq.agentContext.siteId) {
         logger.warn('route.middleware.ownership.no-context', {
           path: req.path,
           method: req.method,
@@ -211,7 +211,7 @@ export function validateAppOwnershipFromQuery(fieldName: string = 'appId') {
       const authReq = req as AuthenticatedRequest;
 
       // Ensure authentication context exists
-      if (!authReq.agentContext?.siteId) {
+      if (!authReq.agentContext || !authReq.agentContext.siteId) {
         logger.warn('route.middleware.ownership.no-context', {
           path: req.path,
           method: req.method,
@@ -283,7 +283,7 @@ export function validateConversationOwnership(paramName: string = 'id') {
       const authReq = req as ConversationRequest;
 
       // Ensure authentication context exists
-      if (!authReq.agentContext?.siteId) {
+      if (!authReq.agentContext || !authReq.agentContext.siteId) {
         logger.warn('route.middleware.conversation.no-context', {
           path: req.path,
           method: req.method,

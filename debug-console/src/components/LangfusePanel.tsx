@@ -11,8 +11,8 @@ let cachedLangfuseConfig: LangfuseConfig | null = null;
 let configFetchPromise: Promise<LangfuseConfig | null> | null = null;
 
 async function getLangfuseConfig(): Promise<LangfuseConfig | null> {
-  if (cachedLangfuseConfig) {return cachedLangfuseConfig;}
-  if (configFetchPromise) {return configFetchPromise;}
+  if (cachedLangfuseConfig) return cachedLangfuseConfig;
+  if (configFetchPromise) return configFetchPromise;
 
   configFetchPromise = fetch('/api/langfuse/config')
     .then(res => res.ok ? res.json() : null)
@@ -212,7 +212,7 @@ function formatDate(dateStr: string): string {
 }
 
 function formatNumber(n: number): string {
-  if (n >= 1000) {return (n / 1000).toFixed(1) + 'k';}
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
   return n.toString();
 }
 
@@ -221,11 +221,11 @@ function formatMs(ms: number): string {
 }
 
 function getMessageContent(content: Message['content']): string | null {
-  if (!content) {return null;}
-  if (typeof content === 'string') {return content;}
+  if (!content) return null;
+  if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
     const textPart = content.find(p => p.type === 'text' && p.text);
-    if (textPart?.text) {return textPart.text;}
+    if (textPart && textPart.text) return textPart.text;
   }
   return null;
 }
@@ -313,10 +313,10 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
             try {
               const parsed = JSON.parse(cachedTokensRaw);
               const val = parsed.intValue ?? parsed;
-              if (typeof val === 'number') {cacheReadInputTokens = (cacheReadInputTokens || 0) + val;}
+              if (typeof val === 'number') cacheReadInputTokens = (cacheReadInputTokens || 0) + val;
             } catch {
               const num = parseInt(cachedTokensRaw, 10);
-              if (!isNaN(num)) {cacheReadInputTokens = (cacheReadInputTokens || 0) + num;}
+              if (!isNaN(num)) cacheReadInputTokens = (cacheReadInputTokens || 0) + num;
             }
           }
         }
@@ -345,7 +345,7 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
       for (const gen of generationObservations) {
         const genAttrs = gen.metadata?.attributes;
         const metaStr = genAttrs?.['ai.response.providerMetadata'];
-        if (typeof metaStr !== 'string') {continue;}
+        if (typeof metaStr !== 'string') continue;
         try {
           const parsed = JSON.parse(metaStr);
           // After `parsed.anthropic || parsed`, top-level keys are camelCase per @ai-sdk/anthropic
@@ -355,7 +355,7 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
           const write =
             (meta.cacheCreationInputTokens as number | null) ??
             (rawUsage?.cache_creation_input_tokens as number | undefined);
-          if (typeof write === 'number' && write > 0) {cacheWriteInputTokens = (cacheWriteInputTokens || 0) + write;}
+          if (typeof write === 'number' && write > 0) cacheWriteInputTokens = (cacheWriteInputTokens || 0) + write;
           // Only use providerMetadata reads as fallback when this observation didn't emit
           // the AI SDK attribute — otherwise we'd double-count with the loop above.
           const hasAiSdkRead = !!genAttrs?.['ai.usage.cachedInputTokens'];
@@ -363,7 +363,7 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
             const read =
               (meta.cacheReadInputTokens as number | null) ??
               (rawUsage?.cache_read_input_tokens as number | undefined);
-            if (typeof read === 'number' && read > 0) {cacheReadInputTokens = (cacheReadInputTokens || 0) + read;}
+            if (typeof read === 'number' && read > 0) cacheReadInputTokens = (cacheReadInputTokens || 0) + read;
           }
         } catch { /* ignore parse errors */ }
       }
@@ -553,7 +553,7 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
           let outputPreview: string | undefined;
           if (gen.output && typeof gen.output === 'object' && 'content' in gen.output) {
             const content = (gen.output as { content?: string }).content;
-            if (typeof content === 'string') {outputPreview = content.substring(0, 200);}
+            if (typeof content === 'string') outputPreview = content.substring(0, 200);
           } else if (typeof gen.output === 'string') {
             outputPreview = gen.output.substring(0, 200);
           }
@@ -699,7 +699,7 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
           let stepText = '';
           if (gen.output && typeof gen.output === 'object' && 'content' in gen.output) {
             const content = (gen.output as { content?: string }).content;
-            if (typeof content === 'string') {stepText = content;}
+            if (typeof content === 'string') stepText = content;
           } else if (typeof gen.output === 'string') {
             stepText = gen.output;
           }
@@ -717,7 +717,7 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
             }
             for (const tc of parsedCalls) {
               const tcName = tc.toolName || tc.name;
-              if (!tcName) {continue;}
+              if (!tcName) continue;
               const tcArgs = (tc.input || tc.args) ? JSON.stringify(tc.input || tc.args, null, 2) : undefined;
               const tcId = tc.toolCallId;
 
@@ -729,12 +729,12 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
 
               // Track which TOOL observations have already been claimed by a prior tool call in this step
               const matchedToolObs = toolTypeObservations.find(tObs => {
-                if (matchedToolObsIds.has(tObs.id)) {return false;}
+                if (matchedToolObsIds.has(tObs.id)) return false;
                 // Strategy 1: Match by toolCallId (most precise, works across parents)
                 const obsToolCallId = tObs.metadata?.attributes?.['ai.toolCall.id'] as string | undefined;
-                if (tcId && obsToolCallId && obsToolCallId === tcId) {return true;}
+                if (tcId && obsToolCallId && obsToolCallId === tcId) return true;
                 // Strategy 2: Match by parentObservationId + name
-                if (tObs.parentObservationId === gen.id && tObs.name === tcName) {return true;}
+                if (tObs.parentObservationId === gen.id && tObs.name === tcName) return true;
                 // Strategy 3: Fallback - name + time window (between this gen start and next gen start)
                 // Applies when tool has no parent, or parent doesn't match any agent generation
                 // (e.g., parented to a SPAN wrapper rather than the GENERATION directly)
@@ -744,7 +744,7 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
                 }
                 return false;
               });
-              if (matchedToolObs) {matchedToolObsIds.add(matchedToolObs.id);}
+              if (matchedToolObs) matchedToolObsIds.add(matchedToolObs.id);
 
               const toolDur = matchedToolObs?.startTime && matchedToolObs?.endTime
                 ? new Date(matchedToolObs.endTime).getTime() - new Date(matchedToolObs.startTime).getTime()
@@ -765,7 +765,7 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
 
           // Also pick up TOOL observations parented to this generation but not already matched
           for (const tObs of toolTypeObservations) {
-            if (matchedToolObsIds.has(tObs.id)) {continue;}
+            if (matchedToolObsIds.has(tObs.id)) continue;
             if (tObs.parentObservationId === gen.id) {
               matchedToolObsIds.add(tObs.id);
               const toolDur = tObs.startTime && tObs.endTime
@@ -849,7 +849,7 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
   const deduped: ConversationItem[] = [];
   for (const item of items) {
     const last = deduped[deduped.length - 1];
-    if (last?.type === item.type && last.content === item.content && !item.tools?.length) {continue;}
+    if (last && last.type === item.type && last.content === item.content && !item.tools?.length) continue;
     deduped.push(item);
   }
 
@@ -900,7 +900,7 @@ function InfoTip({ text }: { text: string }) {
 }
 
 function TokenBadge({ label, value, color, suffix }: { label: string; value?: number; color: string; suffix?: string }) {
-  if (!value) {return null;}
+  if (!value) return null;
   return (
     <span style={{ fontSize: '0.7rem', fontWeight: 600, color, backgroundColor: `${color}18`, padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
       {label}: {formatNumber(value)}{suffix ? ` ${suffix}` : ''}
@@ -909,7 +909,7 @@ function TokenBadge({ label, value, color, suffix }: { label: string; value?: nu
 }
 
 function CostBadge({ value }: { value?: number }) {
-  if (!value) {return null;}
+  if (!value) return null;
   return (
     <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#059669', backgroundColor: '#d1fae518', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
       ${value.toFixed(4)}
@@ -920,7 +920,7 @@ function CostBadge({ value }: { value?: number }) {
 function ToolsSection({ tools, item, expanded: initialExpanded = false }: { tools: ToolCallInfo[]; item: ConversationItem; expanded?: boolean }) {
   const [expanded, setExpanded] = useState(initialExpanded);
 
-  if (!tools || tools.length === 0) {return null;}
+  if (!tools || tools.length === 0) return null;
 
   return (
     <div style={{ marginTop: '0.5rem', borderTop: '1px dashed #d1fae5', paddingTop: '0.5rem' }}>
@@ -938,7 +938,7 @@ function ToolsSection({ tools, item, expanded: initialExpanded = false }: { tool
             // Find matching TOOL observation for this tool call
             // Match by toolCallId first (handles duplicate tool names), then fall back to name
             const toolObs = item.toolObservations?.find(obs => {
-              if (obs.type !== 'TOOL') {return false;}
+              if (obs.type !== 'TOOL') return false;
               // If both have toolCallId, match by ID (most reliable)
               if (tool.toolCallId && obs.metadata?.attributes?.['ai.toolCall.id']) {
                 return obs.metadata.attributes['ai.toolCall.id'] === tool.toolCallId;
@@ -1049,51 +1049,51 @@ function getToolResultSummary(tc: AgentStep['toolCalls'][number]): string {
 
   if (name === 'readFile' || name === 'readDir') {
     const filePath = argsObj?.filePath || argsObj?.path;
-    if (filePath) {return String(filePath).split('/').pop() || filePath;}
+    if (filePath) return String(filePath).split('/').pop() || filePath;
   }
   if (name === 'str_replace_based_edit_tool' || name === 'textEditor' || name === 'fileEdit' || name === 'writeFile' || name === 'createFile') {
     const filePath = argsObj?.filePath || argsObj?.path || argsObj?.file_path;
-    if (filePath) {return String(filePath).split('/').pop() || filePath;}
+    if (filePath) return String(filePath).split('/').pop() || filePath;
   }
   if (name === 'setProjectName') {
     const projectName = argsObj?.name || argsObj?.projectName;
-    if (projectName) {return `"${projectName}"`;}
+    if (projectName) return `"${projectName}"`;
   }
   if (name === 'todoList') {
     const items = argsObj?.items;
-    if (Array.isArray(items)) {return `${items.length} items`;}
+    if (Array.isArray(items)) return `${items.length} items`;
     const op = argsObj?.operation;
-    if (op) {return op;}
+    if (op) return op;
   }
   if (name === 'handoff') {
     const target = argsObj?.targetAgent || argsObj?.agent;
-    if (target) {return String(target);}
+    if (target) return String(target);
   }
   if (name === 'fontTheme') {
     const theme = argsObj?.theme || argsObj?.name;
-    if (theme) {return String(theme);}
+    if (theme) return String(theme);
   }
   if (name === 'colorScheme') {
     const scheme = argsObj?.scheme || argsObj?.name;
-    if (scheme) {return String(scheme);}
+    if (scheme) return String(scheme);
   }
   if (name === 'suggestedResponse' || name === 'suggestedResponses') {
     const suggestions = argsObj?.suggestions || argsObj?.responses;
-    if (Array.isArray(suggestions)) {return `${suggestions.length} suggestions`;}
+    if (Array.isArray(suggestions)) return `${suggestions.length} suggestions`;
   }
   if (name === 'grepSearch' || name === 'searchFiles') {
     const query = argsObj?.query || argsObj?.pattern;
-    if (query) {return `"${String(query).substring(0, 40)}"`;}
+    if (query) return `"${String(query).substring(0, 40)}"`;
   }
   if (name === 'terminalCommand' || name === 'runTerminalCommand') {
     const cmd = argsObj?.command;
-    if (cmd) {return String(cmd).substring(0, 50);}
+    if (cmd) return String(cmd).substring(0, 50);
   }
 
   // Default: compact result preview
   if (resultObj != null) {
     const str = typeof resultObj === 'string' ? resultObj : JSON.stringify(resultObj);
-    if (str.length <= 100) {return str;}
+    if (str.length <= 100) return str;
     return str.substring(0, 100) + '...';
   }
   return '';
@@ -1107,8 +1107,8 @@ function StepByStepContent({ steps }: { steps: AgentStep[] }) {
   const toggleTool = (key: string) => {
     setExpandedTools(prev => {
       const next = new Set(prev);
-      if (next.has(key)) {next.delete(key);}
-      else {next.add(key);}
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
@@ -1250,8 +1250,8 @@ function StepByStepContent({ steps }: { steps: AgentStep[] }) {
                 <div
                   onClick={() => setExpandedStepTools(prev => {
                     const next = new Set(prev);
-                    if (next.has(stepIdx)) {next.delete(stepIdx);}
-                    else {next.add(stepIdx);}
+                    if (next.has(stepIdx)) next.delete(stepIdx);
+                    else next.add(stepIdx);
                     return next;
                   })}
                   style={{
@@ -1349,8 +1349,8 @@ function FormattedContent({ content }: { content: string }) {
   const toggleResult = (idx: number) => {
     setExpandedResults(prev => {
       const next = new Set(prev);
-      if (next.has(idx)) {next.delete(idx);}
-      else {next.add(idx);}
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
       return next;
     });
   };
@@ -1627,9 +1627,9 @@ function AssistantMessage({ item, langfuseBaseUrl }: { item: ConversationItem; l
           {/* Observation errors - when agentSteps present, only show non-TOOL errors (TOOL errors are inline) */}
           {(() => {
             const errors = item.observationErrors;
-            if (!errors || errors.length === 0) {return null;}
+            if (!errors || errors.length === 0) return null;
             const filtered = item.agentSteps ? errors.filter(e => e.obsType !== 'TOOL') : errors;
-            if (filtered.length === 0) {return null;}
+            if (filtered.length === 0) return null;
             return (
               <div style={{ marginTop: '0.2rem', borderTop: '1px solid #e5e7eb', paddingTop: '0.2rem' }}>
                 <span style={{ fontWeight: 600, color: '#dc2626' }}>Errors:</span>
@@ -1848,8 +1848,8 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
         existingSession.traceCount = existingSession.traces.length;
-        if (new Date(s.firstTrace) < new Date(existingSession.firstTrace)) {existingSession.firstTrace = s.firstTrace;}
-        if (new Date(s.lastTrace) > new Date(existingSession.lastTrace)) {existingSession.lastTrace = s.lastTrace;}
+        if (new Date(s.firstTrace) < new Date(existingSession.firstTrace)) existingSession.firstTrace = s.firstTrace;
+        if (new Date(s.lastTrace) > new Date(existingSession.lastTrace)) existingSession.lastTrace = s.lastTrace;
       } else {
         sessionMap.set(s.sessionId, s);
       }
@@ -1865,7 +1865,7 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
   const loadAllAbortRef = useRef<AbortController | null>(null);
 
   const fetchAllPages = useCallback(async () => {
-    if (!globalAppId || loadingMoreRef.current) {return;}
+    if (!globalAppId || loadingMoreRef.current) return;
 
     const abortController = new AbortController();
     loadAllAbortRef.current = abortController;
@@ -1877,13 +1877,13 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
     try {
       let nextPage = currentPage + 1;
       while (nextPage <= totalPages) {
-        if (abortController.signal.aborted) {break;}
+        if (abortController.signal.aborted) break;
         setLoadAllProgress({ loaded: nextPage - currentPage, total: totalPages - currentPage });
         const lfResponse = await fetch(
           `/api/langfuse/sessions/${encodeURIComponent(globalAppId)}?page=${nextPage}`,
           { signal: abortController.signal }
         );
-        if (!lfResponse?.ok) {throw new Error(`Failed to fetch page ${nextPage}: ${lfResponse?.status}`);}
+        if (!lfResponse?.ok) throw new Error(`Failed to fetch page ${nextPage}: ${lfResponse?.status}`);
         const data: SessionsResponse = await lfResponse.json();
 
         const totalPagesValue = data.pagination?.totalPages || 1;
@@ -1918,9 +1918,9 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
   }, []);
 
   const fetchPage = useCallback(async function fetchPageData(pageToFetch: number, options?: { forceRefresh?: boolean; isLoadMore?: boolean }) {
-    if (!globalAppId) {return;}
+    if (!globalAppId) return;
     const { forceRefresh = false, isLoadMore = false } = options || {};
-    if (loadingMoreRef.current && !forceRefresh) {return;}
+    if (loadingMoreRef.current && !forceRefresh) return;
 
     if (isLoadMore) {
       setLoadingMore(true);
@@ -1933,7 +1933,7 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
 
     try {
       const lfResponse = await fetch(`/api/langfuse/sessions/${encodeURIComponent(globalAppId)}?page=${pageToFetch}`);
-      if (!lfResponse?.ok) {throw new Error(`Failed to fetch: ${lfResponse?.status}`);}
+      if (!lfResponse?.ok) throw new Error(`Failed to fetch: ${lfResponse?.status}`);
       const data: SessionsResponse = await lfResponse.json();
 
       const totalPagesValue = data.pagination?.totalPages || 1;
@@ -1945,7 +1945,7 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch sessions');
     } finally {
-      if (!isLoadMore) {setLoading(false);}
+      if (!isLoadMore) setLoading(false);
       setLoadingMore(false);
       loadingMoreRef.current = false;
     }
@@ -1973,7 +1973,7 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
   }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (loading || sessions.length === 0 || !globalAppId) {return;}
+    if (loading || sessions.length === 0 || !globalAppId) return;
 
     let earliestTimestamp: string | undefined;
     for (const session of sessions) {
@@ -1982,18 +1982,18 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
       }
     }
 
-    if (!earliestTimestamp) {return;}
+    if (!earliestTimestamp) return;
 
     fetch(`/api/analytics/${encodeURIComponent(globalAppId)}/errors?fromTimestamp=${encodeURIComponent(earliestTimestamp)}`)
       .then(res => res.ok ? res.json() : null)
-      .then(data => { if (data) {setEsErrors(data);} })
+      .then(data => { if (data) setEsErrors(data); })
       .catch(() => {});
   }, [globalAppId, loading, sessions]);
 
   useEffect(() => {
     getLangfuseConfig().then(config => {
-      if (config?.baseUrl) {setLangfuseBaseUrl(config.baseUrl);}
-      if (config?.projectId) {setLangfuseProjectId(config.projectId);}
+      if (config?.baseUrl) setLangfuseBaseUrl(config.baseUrl);
+      if (config?.projectId) setLangfuseProjectId(config.projectId);
     });
   }, []);
 
@@ -2026,7 +2026,7 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
             const cachedRaw = obs.metadata?.attributes?.['ai.usage.cachedInputTokens'];
             if (cachedRaw) {
               const num = typeof cachedRaw === 'number' ? cachedRaw : parseInt(String(cachedRaw), 10);
-              if (!isNaN(num)) {cachedInputTokens += num;}
+              if (!isNaN(num)) cachedInputTokens += num;
             }
           }
         }
@@ -2254,7 +2254,7 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
                           `Recent conversations are usually most relevant — ` +
                           `older traces may not reflect the current user experience.`
                         );
-                        if (confirmed) {fetchAllPages();}
+                        if (confirmed) fetchAllPages();
                       }}
                       disabled={loadingMore}
                       style={{

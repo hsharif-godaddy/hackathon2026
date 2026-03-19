@@ -58,7 +58,7 @@ function getApmAgent(): ApmAgent | null {
   const apm = window.__apmInstance;
 
   // Check if APM exists and is active
-  if (!apm?.isActive?.()) {
+  if (!apm || !apm.isActive || !apm.isActive()) {
     return null;
   }
 
@@ -188,7 +188,7 @@ export function usePageTiming(
     }
 
     // Only attempt initialization once (check ref as backup)
-    if (initAttemptedRef.current) {return;}
+    if (initAttemptedRef.current) return;
     initAttemptedRef.current = true;
 
     const initTransaction = () => {
@@ -307,7 +307,7 @@ export function usePagePhases(pageName: string) {
 
   const startPhase = (phaseName: string, labels?: Record<string, string | number | boolean>) => {
     const apm = getApmAgent();
-    if (!apm) {return;}
+    if (!apm) return;
 
     // Track phase start time
     activePhases.current.set(phaseName, {
@@ -331,13 +331,13 @@ export function usePagePhases(pageName: string) {
 
   const endPhase = (phaseName: string) => {
     const phase = activePhases.current.get(phaseName);
-    if (!phase) {return;}
+    if (!phase) return;
 
     const duration = Date.now() - phase.startTime;
     activePhases.current.delete(phaseName);
 
     const apm = getApmAgent();
-    if (!apm) {return;}
+    if (!apm) return;
 
     const transaction = apm.getCurrentTransaction();
     if (transaction) {

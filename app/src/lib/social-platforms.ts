@@ -170,8 +170,8 @@ export function getDetailedPlatformStatuses<T extends SocialConnection = SocialC
     const sortedConnections = [...platformConnections].sort((a, b) => {
       const aLinked = linkedConnectionIds.has(a.socialId)
       const bLinked = linkedConnectionIds.has(b.socialId)
-      if (aLinked && !bLinked) {return -1}
-      if (!aLinked && bLinked) {return 1}
+      if (aLinked && !bLinked) return -1
+      if (!aLinked && bLinked) return 1
       return 0
     })
 

@@ -22,7 +22,7 @@ interface StreamingMessageProps {
 
 // Helper function to determine if message should be rendered
 function shouldRenderMessage(message: ChatMessage | StreamingMessageType): boolean {
-  if (message.role === 'user') {return true}
+  if (message.role === 'user') return true
 
   // Assistant messages - only render if they have meaningful content
   const hasContent = Boolean(
@@ -88,7 +88,7 @@ function FullMessageModal({ content, isOpen, onClose }: { content: string; isOpe
     }
   }, [isOpen])
 
-  if (!isOpen) {return null}
+  if (!isOpen) return null
 
   return (
     <div

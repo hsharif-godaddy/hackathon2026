@@ -515,9 +515,9 @@ export class DevSupervisorClient {
   async getLogs(options: LogOptions = {}): Promise<LogEntry[]> {
     try {
       const params = new URLSearchParams();
-      if (options.source) {params.set('source', options.source);}
-      if (options.lines) {params.set('lines', options.lines.toString());}
-      if (options.since) {params.set('since', options.since);}
+      if (options.source) params.set('source', options.source);
+      if (options.lines) params.set('lines', options.lines.toString());
+      if (options.since) params.set('since', options.since);
 
       const url = `/logs${params.toString() ? '?' + params.toString() : ''}`;
       const response = await this.makeRequest('GET', url);

@@ -135,7 +135,7 @@ export default function PreviewPane({
 
   // Derive selected commit object from hash
   const selectedCommit = useMemo(() => {
-    if (!selectedCommitHash || !commits.length) {return null}
+    if (!selectedCommitHash || !commits.length) return null
     return commits.find(c => c.hash === selectedCommitHash) ?? null
   }, [selectedCommitHash, commits]);
 
@@ -188,7 +188,7 @@ export default function PreviewPane({
     const previous = previousViewModeRef.current
     const current = viewMode
 
-    if (previous === current) {return}
+    if (previous === current) return
 
     // Skip animation on mobile for better performance and UX
     if (isMobile) {
@@ -235,7 +235,7 @@ export default function PreviewPane({
   // Server polling lifecycle - PreviewPane owns its server state
   // The store prevents duplicate polling if multiple components try to poll the same appId
   useEffect(() => {
-    if (!appId) {return}
+    if (!appId) return
 
     startPollingForServer(appId)
 
@@ -249,7 +249,7 @@ export default function PreviewPane({
 
   // Request screenshot capture from iframe if no screenshot exists
   const requestScreenshotIfMissing = useCallback(async () => {
-    if (!appId || screenshotRequestedRef.current === appId) {return}
+    if (!appId || screenshotRequestedRef.current === appId) return
 
     try {
       const apiUrl = await buildDynamicApiUrl('screenshot', appId)
@@ -286,7 +286,7 @@ export default function PreviewPane({
         const savedUrl = pendingStateRestore.url ? new URL(pendingStateRestore.url) : null
 
         // Only restore if URLs match (same pathname and search params)
-        if (currentUrl.pathname === savedUrl?.pathname && currentUrl.search === savedUrl.search) {
+        if (savedUrl && currentUrl.pathname === savedUrl.pathname && currentUrl.search === savedUrl.search) {
           // Set waiting state and start fallback timer
           setIsWaitingForIframeReady(true)
 
@@ -311,14 +311,14 @@ export default function PreviewPane({
 
   // Attempt to restore iframe state (scroll position, etc.)
   const attemptStateRestoration = useCallback(() => {
-    if (!pendingStateRestore?.scrollPosition || !iframeRef.current) {return}
+    if (!pendingStateRestore?.scrollPosition || !iframeRef.current) return
 
     // Double-check URL match before restoration
     try {
       const currentUrl = new URL(iframeRef.current.src)
       const savedUrl = pendingStateRestore.url ? new URL(pendingStateRestore.url) : null
 
-      if (currentUrl.pathname !== savedUrl?.pathname || currentUrl.search !== savedUrl.search) {
+      if (!savedUrl || currentUrl.pathname !== savedUrl.pathname || currentUrl.search !== savedUrl.search) {
         logger.debug('preview-pane.state-restore.abort', { message: 'URL mismatch during restoration, aborting' })
         setPendingStateRestore(null)
         setIsWaitingForIframeReady(false)
@@ -374,7 +374,6 @@ export default function PreviewPane({
         // Debounce refreshes to avoid too many reloads
         refreshTimerRef.current = setTimeout(() => {
           if (iframeRef.current) {
-            // eslint-disable-next-line no-self-assign -- triggers iframe reload
             iframeRef.current.src = iframeRef.current.src
 
             // If we have state to restore, do it after iframe loads
@@ -419,7 +418,7 @@ export default function PreviewPane({
   }
 
   function handleRestoreConfirm() {
-    if (!selectedCommit) {return}
+    if (!selectedCommit) return
 
     restoreMutation.mutate(
       { appId, commitHash: selectedCommit.hash },

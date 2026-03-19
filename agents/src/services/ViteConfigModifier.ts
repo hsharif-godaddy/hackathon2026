@@ -95,7 +95,7 @@ async function writeFileToContainer(
  * Check if an object property has a specific key
  */
 export function hasPropertyKey(prop: t.ObjectProperty | t.ObjectMethod | t.SpreadElement, key: string): boolean {
-  if (t.isSpreadElement(prop)) {return false;}
+  if (t.isSpreadElement(prop)) return false;
   if (t.isObjectMethod(prop)) {
     return t.isIdentifier(prop.key) && prop.key.name === key;
   }
@@ -208,7 +208,7 @@ export function isEnvPortExpression(node: t.Expression | t.PatternLike): boolean
     const callee = node.callee;
     if (t.isIdentifier(callee) && (callee.name === 'parseInt' || callee.name === 'Number')) {
       const arg = node.arguments[0];
-      if (!arg) {return false;}
+      if (!arg) return false;
 
       // parseInt(process.env.PORT)
       if (t.isMemberExpression(arg) && isProcessEnvPort(arg)) {

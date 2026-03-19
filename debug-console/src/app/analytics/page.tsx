@@ -331,7 +331,7 @@ function formatDateInput(date: Date): string {
 const MAX_DATE_RANGE_DAYS = 31;
 
 function isDateRangeValid(start: string, end: string): boolean {
-  if (!start || !end) {return false;}
+  if (!start || !end) return false;
   const startDate = new Date(start);
   const endDate = new Date(end);
   const diffMs = endDate.getTime() - startDate.getTime();
@@ -340,13 +340,13 @@ function isDateRangeValid(start: string, end: string): boolean {
 }
 
 function getDateRangeError(start: string, end: string): string | null {
-  if (!start || !end) {return null;}
+  if (!start || !end) return null;
   const startDate = new Date(start);
   const endDate = new Date(end);
   const diffMs = endDate.getTime() - startDate.getTime();
   const diffDays = diffMs / (1000 * 60 * 60 * 24);
-  if (diffDays < 0) {return 'End date must be after start date';}
-  if (diffDays > MAX_DATE_RANGE_DAYS) {return `Date range cannot exceed ${MAX_DATE_RANGE_DAYS} days`;}
+  if (diffDays < 0) return 'End date must be after start date';
+  if (diffDays > MAX_DATE_RANGE_DAYS) return `Date range cannot exceed ${MAX_DATE_RANGE_DAYS} days`;
   return null;
 }
 
@@ -460,12 +460,12 @@ function AnalyticsContent() {
           fetch('/api/analytics?action=last-24h-publish'),
           fetch('/api/analytics?action=last-24h-client-errors')
         ]);
-        if (last24hRes.ok) {setLast24hStats(await last24hRes.json());}
-        if (last24hWsRes.ok) {setLast24hWsErrors(await last24hWsRes.json());}
-        if (last24hBudgetRes.ok) {setLast24hBudgetErrors(await last24hBudgetRes.json());}
-        if (last24hSumRes.ok) {setLast24hSummarizations(await last24hSumRes.json());}
-        if (last24hPubRes.ok) {setLast24hPublish(await last24hPubRes.json());}
-        if (last24hClientErrRes.ok) {setLast24hClientErrors(await last24hClientErrRes.json());}
+        if (last24hRes.ok) setLast24hStats(await last24hRes.json());
+        if (last24hWsRes.ok) setLast24hWsErrors(await last24hWsRes.json());
+        if (last24hBudgetRes.ok) setLast24hBudgetErrors(await last24hBudgetRes.json());
+        if (last24hSumRes.ok) setLast24hSummarizations(await last24hSumRes.json());
+        if (last24hPubRes.ok) setLast24hPublish(await last24hPubRes.json());
+        if (last24hClientErrRes.ok) setLast24hClientErrors(await last24hClientErrRes.json());
         // Clear day-based hourly data
         setHourlyData(null);
         setHourlyWsErrorData(null);
@@ -494,7 +494,7 @@ function AnalyticsContent() {
   }, [datePreset, customStart, customEnd]);
 
   useEffect(() => {
-    if (!chartsExpanded) {return;}
+    if (!chartsExpanded) return;
     fetchData();
   }, [chartsExpanded, fetchData]);
 
@@ -504,11 +504,11 @@ function AnalyticsContent() {
 
     fetch('/api/analytics?action=scheduler-status', { signal: abortController.signal })
       .then(function parseSchedulerResponse(res) { return res.ok ? res.json() : null; })
-      .then(function updateSchedulerStatus(data) { if (data && isMounted) {setSchedulerStatus(data);} })
+      .then(function updateSchedulerStatus(data) { if (data && isMounted) setSchedulerStatus(data); })
       .catch(function handleSchedulerError() {});
 
     const interval = setInterval(async function refreshStatus() {
-      if (!isMounted) {return;}
+      if (!isMounted) return;
       try {
         const res = await fetch('/api/analytics?action=scheduler-status');
         if (res.ok && isMounted) {
@@ -616,7 +616,7 @@ function AnalyticsContent() {
   }
 
   function formatTimestamp(dateStr: string) {
-    if (!dateStr) {return '-';}
+    if (!dateStr) return '-';
     const d = new Date(dateStr);
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
@@ -627,7 +627,7 @@ function AnalyticsContent() {
 
 
   function formatShortDay(dateStr: string) {
-    if (!dateStr) {return '';}
+    if (!dateStr) return '';
     const d = new Date(dateStr);
     return `${d.getMonth() + 1}/${d.getDate()}`;
   }

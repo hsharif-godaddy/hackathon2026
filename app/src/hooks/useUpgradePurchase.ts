@@ -129,7 +129,7 @@ export function useUpgradePurchase(): UseUpgradePurchaseResult {
             queryClient,
             ['credit-grants', subscriptionId, true],
             (grants) => {
-              if (!grants || !Array.isArray(grants)) {return false}
+              if (!grants || !Array.isArray(grants)) return false
 
               const currentPlanMonthlyGrant = grants.find(
                 (g) => g.type === GrantType.PlanMonthly && g.isAvailable

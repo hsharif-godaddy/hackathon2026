@@ -14,7 +14,7 @@ export const GET = withAuth<{ appId: string }>(async function getAppDetails(
     const { appId } = await context.params;
 
     const invalid = validateId(appId, 'appId', APP_ID_RE);
-    if (invalid) {return invalid;}
+    if (invalid) return invalid;
 
     try {
         return NextResponse.json(await mgmtControlPlaneAdapter.getAppDetails(appId));

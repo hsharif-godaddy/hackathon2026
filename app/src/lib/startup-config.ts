@@ -9,7 +9,7 @@ import { logger } from '@/lib/request-context';
 let hasInitialized = false;
 
 export function logStartupConfiguration() {
-  if (hasInitialized) {return;}
+  if (hasInitialized) return;
   hasInitialized = true;
 
   logger.info('startup.config.begin', {

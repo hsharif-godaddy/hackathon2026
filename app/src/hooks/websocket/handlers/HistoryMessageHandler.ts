@@ -57,12 +57,12 @@ export class HistoryMessageHandler implements MessageHandler {
    * Made public so HistoryCompleteHandler can call it
    */
   flushBatch(context: LifecycleHandlerContext): void {
-    if (!context.refs.historyBatch?.current) {
+    if (!context.refs.historyBatch || !context.refs.historyBatch.current) {
       return
     }
 
     const batch = context.refs.historyBatch.current
-    if (batch.length === 0) {return}
+    if (batch.length === 0) return
 
     const store = useStreamingConversationStore.getState()
 

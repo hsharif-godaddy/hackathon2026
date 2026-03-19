@@ -46,13 +46,13 @@ export function hasSuccessfulToolCall(toolName: string) {
       const matchingCall = step.content.find(
         item => item.type === 'tool-call' && item.toolName === toolName
       )
-      if (!matchingCall) {continue}
+      if (!matchingCall) continue
 
       // Only stop if the tool call produced a successful result
       const hasResult = step.content.some(
         item => item.type === 'tool-result' && item.toolCallId === matchingCall.toolCallId
       )
-      if (hasResult) {return true}
+      if (hasResult) return true
     }
     return false
   }
@@ -495,7 +495,7 @@ export class AgentWrapper {
    */
   private advanceCacheBreakpoint(messages: ModelMessage[]): ModelMessage[] | null {
     const lastIndex = messages.length - 1
-    if (lastIndex < 0) {return null}
+    if (lastIndex < 0) return null
 
     // Check if the last message already has a cache breakpoint
     const lastMsg = messages[lastIndex] as any
@@ -959,9 +959,9 @@ export class AgentWrapper {
 
       // Wrap stream call with Langfuse attribute propagation
       const attributes: { userId?: string; sessionId?: string; metadata?: Record<string, string> } = {}
-      if (userId) {attributes.userId = userId}
-      if (sessionId) {attributes.sessionId = sessionId}
-      if (customerId) {attributes.metadata = { customerId }}
+      if (userId) attributes.userId = userId
+      if (sessionId) attributes.sessionId = sessionId
+      if (customerId) attributes.metadata = { customerId }
 
       // Extract and set LiteLLM metadata for cost tracking
       const litellmMetadata = extractLitellmMetadata(options?.executionContext, this.config.id)
@@ -1005,7 +1005,7 @@ export class AgentWrapper {
       let normalizedError = error
       if (isBudgetExceededAPIError(error) && !BudgetExceededError.isInstance(error)) {
         normalizedError = new BudgetExceededError(error.message, error.statusCode ?? 400, error.responseBody)
-        if (error.stack) {normalizedError.stack = error.stack}
+        if (error.stack) normalizedError.stack = error.stack
       }
       if (BudgetExceededError.isInstance(normalizedError)) {
         // Check if grants feature is active for this session
@@ -1058,7 +1058,7 @@ export class AgentWrapper {
                 retryCount: nextRetryCount,
               })
               // Don't retry if already aborted
-              if (options?.abortSignal?.aborted) {throw options.abortSignal.reason instanceof Error ? options.abortSignal.reason : new Error('Aborted')}
+              if (options?.abortSignal?.aborted) throw options.abortSignal.reason instanceof Error ? options.abortSignal.reason : new Error('Aborted')
               // Retry with the new grant
               return this._executeStreamWithGrantFallback(prompt, options, socketId, nextRetryCount)
             }
@@ -1091,7 +1091,7 @@ export class AgentWrapper {
         })
 
         // Don't retry if already aborted
-        if (options?.abortSignal?.aborted) {throw options.abortSignal.reason instanceof Error ? options.abortSignal.reason : new Error('Aborted')}
+        if (options?.abortSignal?.aborted) throw options.abortSignal.reason instanceof Error ? options.abortSignal.reason : new Error('Aborted')
         // Retry with next grant
         return this._executeStreamWithGrantFallback(prompt, options, socketId, retryCount + 1)
       }

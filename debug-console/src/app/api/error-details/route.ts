@@ -45,7 +45,7 @@ export const GET = withAuth(async (request) => {
 
     for (const sourceId of sourceIds) {
       const sourceConfig = sources.find((s) => s.id === sourceId);
-      if (!sourceConfig?.apiKey) {continue;}
+      if (!sourceConfig || !sourceConfig.apiKey) continue;
 
       const { fieldMapping } = sourceConfig;
 

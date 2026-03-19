@@ -29,8 +29,8 @@ interface SecurityResultsStepProps {
 }
 
 function getSeverityEmphasis(severity: 'critical' | 'high' | 'moderate' | 'low'): 'critical' | 'warning' | 'info' {
-  if (severity === 'critical' || severity === 'high') {return 'critical';}
-  if (severity === 'moderate') {return 'warning';}
+  if (severity === 'critical' || severity === 'high') return 'critical';
+  if (severity === 'moderate') return 'warning';
   return 'info';
 }
 

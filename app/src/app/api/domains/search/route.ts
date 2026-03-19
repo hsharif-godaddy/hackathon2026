@@ -47,8 +47,8 @@ function getDomainServicesEnv(): 'dev' | 'test' | 'prod' {
   const environmentName = process.env.ENVIRONMENT_NAME || 'production';
 
   // Map ENVIRONMENT_NAME to DomainServices env
-  if (environmentName === 'production') {return 'prod';}
-  if (environmentName === 'test') {return 'test';}
+  if (environmentName === 'production') return 'prod';
+  if (environmentName === 'test') return 'test';
   if (environmentName === 'development' ||
     environmentName === 'pre-development' ||
     environmentName.startsWith('dev-')) {

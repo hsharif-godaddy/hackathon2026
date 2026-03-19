@@ -252,7 +252,7 @@ export class RebuildOrchestrationService {
 
       const homePage = multiPageResult.pages.find(p => p.success && this.isHomepage(p.url, state.rootPath));
 
-      if (homePage?.sanitizedContent) {
+      if (homePage && homePage.sanitizedContent) {
         const analyzer = new SiteAnalyzerAgent();
         await analyzer.initialize();
 
@@ -702,12 +702,12 @@ export class RebuildOrchestrationService {
    */
   private extractTitle(content: string): string {
     const h1Match = content.match(/<h1[^>]*>(.*?)<\/h1>/i);
-    if (h1Match?.[1]) {
+    if (h1Match && h1Match[1]) {
       return h1Match[1].replace(/<[^>]+>/g, '').trim();
     }
 
     const titleMatch = content.match(/<title[^>]*>(.*?)<\/title>/i);
-    if (titleMatch?.[1]) {
+    if (titleMatch && titleMatch[1]) {
       return titleMatch[1].trim();
     }
 

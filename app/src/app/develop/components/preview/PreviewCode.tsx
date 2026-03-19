@@ -156,7 +156,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   // Note: This should only run after the initialization state machine has verified the app is ready.
   // The loadingPhase guard prevents loading before the app is ready, which would cause errors.
   const loadFiles = useCallback(async () => {
-    if (!effectiveAppId) {return}
+    if (!effectiveAppId) return
 
     // Guard: Don't attempt to load files until page initialization is complete
     // This prevents race conditions when retry button is clicked before app is ready
@@ -170,7 +170,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     }
 
     // Prevent duplicate simultaneous loads
-    if (isLoadingRef.current) {return}
+    if (isLoadingRef.current) return
     isLoadingRef.current = true
 
     // Clear any pending retry
@@ -292,7 +292,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     const pathParts = filePath.split('/').filter(Boolean)
 
     const removeRecursive = (items: FileItem[], parts: string[], depth: number): FileItem[] => {
-      if (depth >= parts.length) {return items}
+      if (depth >= parts.length) return items
 
       const part = parts[depth]
       const isLastPart = depth === parts.length - 1
@@ -445,7 +445,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   useEffect(() => {
     // Get current file changes from store
     const fileChanges = useCodeSyncStore.getState().fileChanges
-    if (fileChanges.size === 0) {return}
+    if (fileChanges.size === 0) return
 
     logger.info('code-editor.file-changes.detected', {
       changeCount: fileChanges.size,
@@ -547,10 +547,10 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   // Get file status for visual indicators
   const getFileStatus = useCallback((path: string): FileStatus => {
     const change = getFileChange(path)
-    if (!change) {return 'normal'}
-    if (change.streaming) {return 'streaming'}
-    if (change.operation === 'delete') {return 'deleted'}
-    if (change.operation === 'create' || change.operation === 'modify') {return 'modified'}
+    if (!change) return 'normal'
+    if (change.streaming) return 'streaming'
+    if (change.operation === 'delete') return 'deleted'
+    if (change.operation === 'create' || change.operation === 'modify') return 'modified'
     return 'normal'
   }, [getFileChange])
 
@@ -696,7 +696,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   }, [activeFile, openFiles])
 
   const handleEditorChange = useCallback((value: string | undefined) => {
-    if (!activeFile || !value) {return}
+    if (!activeFile || !value) return
 
     setOpenFiles(prev =>
       prev.map(f =>
@@ -709,10 +709,10 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
 
   const handleSaveFile = useCallback(async (filePath?: string) => {
     const pathToSave = filePath || activeFile
-    if (!pathToSave) {return}
+    if (!pathToSave) return
 
     const fileToSave = openFiles.find(f => f.path === pathToSave)
-    if (!fileToSave?.isDirty) {return}
+    if (!fileToSave || !fileToSave.isDirty) return
 
     setSaving(pathToSave)
 
@@ -903,7 +903,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                 <Button
                   onClick={() => {
                     openFiles.forEach(file => {
-                      if (file.isDirty) {handleSaveFile(file.path)}
+                      if (file.isDirty) handleSaveFile(file.path)
                     })
                   }}
                   icon={<DownloadIcon />}
@@ -915,7 +915,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
               )}
 
               {/* Markdown preview toggle - show for .md files */}
-              {currentFile?.language === 'markdown' && (
+              {currentFile && currentFile.language === 'markdown' && (
                 <button
                   onClick={() => setShowMarkdownPreview(!showMarkdownPreview)}
                   className={clsx(

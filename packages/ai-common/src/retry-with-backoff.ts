@@ -74,7 +74,7 @@ function isObject(val: unknown): val is Record<string, unknown> {
  * Returns delay in milliseconds, or undefined if no usable header found.
  */
 function parseRetryAfterMs(headers: Record<string, string> | undefined): number | undefined {
-  if (!headers) {return undefined}
+  if (!headers) return undefined
 
   // Standard retry-after header (case-insensitive lookup)
   const retryAfter = headers['retry-after'] ?? headers['Retry-After']
@@ -100,12 +100,12 @@ function parseRetryAfterMs(headers: Record<string, string> | undefined): number 
   if (resetValue) {
     // Duration format: "1s", "30s", "1m", etc.
     const durationMatch = resetValue.match(/^(\d+(?:\.\d+)?)(s|ms|m)$/)
-    if (durationMatch?.[1] && durationMatch[2]) {
+    if (durationMatch && durationMatch[1] && durationMatch[2]) {
       const value = parseFloat(durationMatch[1])
       const unit = durationMatch[2]
-      if (unit === 'ms') {return value}
-      if (unit === 's') {return value * 1000}
-      if (unit === 'm') {return value * 60_000}
+      if (unit === 'ms') return value
+      if (unit === 's') return value * 1000
+      if (unit === 'm') return value * 60_000
     }
     // Try as ISO timestamp
     const date = Date.parse(resetValue)
@@ -231,13 +231,13 @@ function computeDelay(retryOrdinal: number, opts: Required<RetryOptions>, retryA
     const clamped = Math.min(retryAfterMs, opts.maxDelayMs)
     // Add small jitter (10%) even on server-suggested delays to avoid thundering herd
     // when multiple clients get the same retry-after value
-    if (!opts.jitter) {return Math.round(clamped)}
+    if (!opts.jitter) return Math.round(clamped)
     const jitter = Math.floor(clamped * 0.1 * Math.random())
     return Math.round(clamped + jitter)
   }
   // Fallback: exponential backoff with full jitter
   const raw = Math.min(opts.maxDelayMs, opts.baseDelayMs * Math.pow(opts.factor, retryOrdinal - 1))
-  if (!opts.jitter) {return raw}
+  if (!opts.jitter) return raw
   return Math.floor(Math.random() * raw) // full jitter
 }
 

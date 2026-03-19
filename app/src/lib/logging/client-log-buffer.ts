@@ -116,8 +116,8 @@ export class ClientLogBuffer {
    * @param config - Optional configuration override
    */
   static init(config?: Partial<ClientLogBufferConfig>): void {
-    if (!isBrowser()) {return;}
-    if (ClientLogBuffer.initialized) {return;}
+    if (!isBrowser()) return;
+    if (ClientLogBuffer.initialized) return;
 
     const instance = ClientLogBuffer.getInstance(config);
     instance.setupEventListeners();
@@ -151,7 +151,7 @@ export class ClientLogBuffer {
    * @param log - Log entry to buffer
    */
   static add(log: Record<string, unknown>): void {
-    if (!isBrowser()) {return;}
+    if (!isBrowser()) return;
 
     // Auto-initialize if not already done (backwards compatibility)
     if (!ClientLogBuffer.initialized) {
@@ -168,8 +168,8 @@ export class ClientLogBuffer {
    * @returns Promise that resolves when flush completes
    */
   static async flush(): Promise<void> {
-    if (!isBrowser()) {return;}
-    if (!ClientLogBuffer.instance) {return;}
+    if (!isBrowser()) return;
+    if (!ClientLogBuffer.instance) return;
 
     return ClientLogBuffer.instance.flushLogs();
   }
@@ -181,7 +181,7 @@ export class ClientLogBuffer {
    * @returns Session identifier string
    */
   static getSessionId(): string {
-    if (!isBrowser()) {return '';}
+    if (!isBrowser()) return '';
     return ClientLogBuffer.getInstance().getOrCreateSessionId();
   }
 
@@ -191,7 +191,7 @@ export class ClientLogBuffer {
    * @returns Number of buffered logs
    */
   static getBufferSize(): number {
-    if (!ClientLogBuffer.instance) {return 0;}
+    if (!ClientLogBuffer.instance) return 0;
     return ClientLogBuffer.instance.buffer.length;
   }
 
@@ -208,7 +208,7 @@ export class ClientLogBuffer {
    * Setup visibility and unload event listeners
    */
   private setupEventListeners(): void {
-    if (!isBrowser()) {return;}
+    if (!isBrowser()) return;
 
     // Flush on page visibility change
     document.addEventListener('visibilitychange', () => {
@@ -240,7 +240,7 @@ export class ClientLogBuffer {
    * @returns Session identifier string
    */
   private getOrCreateSessionId(): string {
-    if (this.sessionId) {return this.sessionId;}
+    if (this.sessionId) return this.sessionId;
 
     try {
       const existing = sessionStorage.getItem('log_session_id');
@@ -309,7 +309,7 @@ export class ClientLogBuffer {
    * Schedule retry with exponential backoff
    */
   private scheduleRetry(): void {
-    if (this.failedCount >= this.config.maxFailures) {return;}
+    if (this.failedCount >= this.config.maxFailures) return;
 
     const delay = this.calculateBackoff();
 
@@ -324,9 +324,9 @@ export class ClientLogBuffer {
    * @returns Promise that resolves when flush completes
    */
   async flushLogs(): Promise<void> {
-    if (this.buffer.length === 0) {return;}
-    if (this.isShipping) {return;}
-    if (this.failedCount >= this.config.maxFailures) {return;}
+    if (this.buffer.length === 0) return;
+    if (this.isShipping) return;
+    if (this.failedCount >= this.config.maxFailures) return;
 
     this.isShipping = true;
     const batch = this.buffer.splice(0, this.config.maxBuffer);

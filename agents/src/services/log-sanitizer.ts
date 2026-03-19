@@ -166,7 +166,7 @@ export class LogSanitizer {
    */
   private isAllowedLevel(level: string | undefined): boolean {
     // If no level, default to allowing (treat as info)
-    if (!level) {return true;}
+    if (!level) return true;
 
     const normalizedLevel = level.toLowerCase();
     return this.options.allowedLevels.includes(normalizedLevel);
@@ -176,7 +176,7 @@ export class LogSanitizer {
    * Try to parse a message as JSON
    */
   tryParseJson(message: string): ParsedJsonLog | null {
-    if (!message?.trim().startsWith('{')) {
+    if (!message || !message.trim().startsWith('{')) {
       return null;
     }
 
@@ -241,7 +241,7 @@ export class LogSanitizer {
    * Redact secrets from a message
    */
   redactSecrets(message: string): string {
-    if (!message) {return '';}
+    if (!message) return '';
 
     let result = message;
 
@@ -262,7 +262,7 @@ export class LogSanitizer {
    * Sanitize error messages by removing internal details
    */
   sanitizeErrorMessages(message: string): string {
-    if (!message) {return '';}
+    if (!message) return '';
 
     let result = message;
 
@@ -345,12 +345,12 @@ export class LogSanitizer {
    * Normalize log level to standard format
    */
   private normalizeLevel(level: string | undefined): 'info' | 'warn' | 'error' {
-    if (!level) {return 'info';}
+    if (!level) return 'info';
 
     const normalized = level.toLowerCase();
 
-    if (normalized === 'warn' || normalized === 'warning') {return 'warn';}
-    if (normalized === 'error' || normalized === 'err') {return 'error';}
+    if (normalized === 'warn' || normalized === 'warning') return 'warn';
+    if (normalized === 'error' || normalized === 'err') return 'error';
 
     return 'info';
   }
@@ -359,7 +359,7 @@ export class LogSanitizer {
    * Normalize source to standard format
    */
   private normalizeSource(source: string): 'stdout' | 'stderr' {
-    if (source === 'stderr') {return 'stderr';}
+    if (source === 'stderr') return 'stderr';
     return 'stdout';
   }
 }

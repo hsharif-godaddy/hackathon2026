@@ -60,7 +60,7 @@ const loadGoLiveStatusAsync = async (appId: string): Promise<{ hasGoneLive: bool
 
 // Helper to save go-live status to .airo/live.json via API
 const saveGoLiveStatus = async (appId: string) => {
-  if (typeof window === 'undefined') {return;}
+  if (typeof window === 'undefined') return;
 
   try {
     const { agentFetch } = await import('@/lib/agent-fetch');
@@ -697,7 +697,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     // Coordinated actions
     restartApp: async (appId: string, appStoreRestartApp: (appId: string) => Promise<void>) => {
-      if (get().isRestarting) {return}
+      if (get().isRestarting) return
 
       set((state) => { state.isRestarting = true })
 
@@ -754,7 +754,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         const confirmed = window.confirm(
           'You have unsaved changes in the code editor. Switching to preview will keep your changes, but they won\'t be reflected in the preview until saved. Continue?'
         )
-        if (!confirmed) {return}
+        if (!confirmed) return
       }
 
       set((state) => { state.viewMode = newMode })

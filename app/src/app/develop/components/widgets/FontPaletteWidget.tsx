@@ -36,7 +36,7 @@ export default function FontPaletteWidget({ name, fonts, className = '' }: FontP
   const hasFonts = safeFonts.length > 0
 
   useEffect(function loadGoogleFonts() {
-    if (!hasFonts) {return}
+    if (!hasFonts) return
 
     const fontFamilies = safeFonts
       .filter(font => font?.name)
@@ -47,7 +47,7 @@ export default function FontPaletteWidget({ name, fonts, className = '' }: FontP
       })
       .join('&family=')
 
-    if (!fontFamilies) {return}
+    if (!fontFamilies) return
 
     const linkId = 'widget-google-fonts'
     let link = document.getElementById(linkId) as HTMLLinkElement

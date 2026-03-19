@@ -711,7 +711,7 @@ describe('agent-token', function packageTests() {
         mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
         // Enable the test-budget flag
         mockCheckSwitchboardFlag.mockImplementation((flag: string) => {
-          if (flag === 'appbuilder-test-budget') {return Promise.resolve(true);}
+          if (flag === 'appbuilder-test-budget') return Promise.resolve(true);
           return Promise.resolve(false);
         });
 
@@ -740,7 +740,7 @@ describe('agent-token', function packageTests() {
         mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
         // Simulate switchboard flag check failure
         mockCheckSwitchboardFlag.mockImplementation((flag: string) => {
-          if (flag === 'appbuilder-test-budget') {return Promise.reject(new Error('Switchboard unavailable'));}
+          if (flag === 'appbuilder-test-budget') return Promise.reject(new Error('Switchboard unavailable'));
           return Promise.resolve(false);
         });
 

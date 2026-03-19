@@ -82,8 +82,8 @@ const RATING_EMOJIS: Record<string, string> = {
 };
 
 const formatFieldName = (key: string): string => {
-  if (key === 'rate-overal-experience') {return 'Rating';}
-  if (key === 'improvemets-free-text') {return 'Comment';} // expected typo, from the DB, don't fix it
+  if (key === 'rate-overal-experience') return 'Rating';
+  if (key === 'improvemets-free-text') return 'Comment'; // expected typo, from the DB, don't fix it
   // Convert kebab-case to Title Case
   return key
     .split('-')

@@ -143,7 +143,7 @@ export class SummaryRepository {
     `);
     const row = stmt.get(startId, endId) as any;
 
-    if (!row) {return null;}
+    if (!row) return null;
 
     const summary: ConversationSummary = {
       id: row.id,
@@ -185,7 +185,7 @@ export class SummaryRepository {
     `);
     const row = stmt.get(appId) as any;
 
-    if (!row) {return null;}
+    if (!row) return null;
 
     const summary: ConversationSummary = {
       id: row.id,

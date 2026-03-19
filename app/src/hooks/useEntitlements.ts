@@ -13,7 +13,7 @@ export const ENTITLEMENTS_STALE_TIME = 30000;
 
 async function fetchEntitlements(subscriptionId: string): Promise<string | null> {
   const response = await appFetch(`/api/entitlements?subscriptionId=${encodeURIComponent(subscriptionId)}`, { credentials: 'include' });
-  if (!response.ok) {return null;}
+  if (!response.ok) return null;
   const data = await response.json();
   return data?.data?.subscription?.entitlementId ?? null;
 }

@@ -384,9 +384,9 @@ router.get(
         updatedAt: job.updatedAt.toISOString(),
       };
 
-      if (errors && errors.length > 0) {response.validationErrors = errors;}
-      if (warnings && warnings.length > 0) {response.warnings = warnings;}
-      if (job.errorStage) {response.errorStage = job.errorStage;}
+      if (errors && errors.length > 0) response.validationErrors = errors;
+      if (warnings && warnings.length > 0) response.warnings = warnings;
+      if (job.errorStage) response.errorStage = job.errorStage;
 
       return res.json(response);
     } catch (error) {

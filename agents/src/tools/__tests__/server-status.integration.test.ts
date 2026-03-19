@@ -172,7 +172,7 @@ export default function Home() {
   }, 30000);
   
   afterAll(async () => {
-    if (skipTests) {return;}
+    if (skipTests) return;
 
     // Clean up processes using helper
     await cleanupProcess(devServerProcess, 3000);
@@ -211,11 +211,11 @@ export default function Home() {
   }, 15000);
 
   beforeEach(() => {
-    if (skipTests) {return;}
+    if (skipTests) return;
   });
 
   afterEach(async () => {
-    if (skipTests) {return;}
+    if (skipTests) return;
 
     // Stop any running dev server between tests
     await cleanupProcess(devServerProcess, 2000);
@@ -233,14 +233,14 @@ export default function Home() {
     });
     
     it('should have dev-supervisor running', () => {
-      if (skipTests) {return;}
+      if (skipTests) return;
       
       expect(existsSync(socketPath)).toBe(true);
       expect(devSupervisorProcess).toBeTruthy();
     });
 
     it('should have test app created in repository', () => {
-      if (skipTests) {return;}
+      if (skipTests) return;
       
       const app = appRepo.findById(appId);
       expect(app).toBeTruthy();
@@ -249,7 +249,7 @@ export default function Home() {
     });
 
     it('should be able to communicate with dev-supervisor', async () => {
-      if (skipTests) {return;}
+      if (skipTests) return;
       
       const devSupervisor = new DevSupervisorClient(socketPath);
       const info = await devSupervisor.getInfo();
@@ -260,7 +260,7 @@ export default function Home() {
 
   describe('Server Status - No Dev Server Running', () => {
     it('should report server status correctly', async () => {
-      if (skipTests) {return;}
+      if (skipTests) return;
       
       const context: AgentExecutionContext = {
         metadata: { appId }
@@ -276,7 +276,7 @@ export default function Home() {
     });
 
     it('should handle invalid app ID gracefully', async () => {
-      if (skipTests) {return;}
+      if (skipTests) return;
       
       const context: AgentExecutionContext = {
         metadata: { appId: 'nonexistent-app-id' }
@@ -287,7 +287,7 @@ export default function Home() {
     });
 
     it('should handle missing app ID in context', async () => {
-      if (skipTests) {return;}
+      if (skipTests) return;
       
       const context: AgentExecutionContext = {
         metadata: {}
@@ -300,7 +300,7 @@ export default function Home() {
 
   describe('Server Status - With Dev Server Running', () => {
     beforeEach(async () => {
-      if (skipTests) {return;}
+      if (skipTests) return;
       
       // Start a mock dev server process through dev-supervisor
       const devSupervisor = new DevSupervisorClient(socketPath);
@@ -323,7 +323,7 @@ export default function Home() {
     });
 
     it('should report running status when dev server is active', async () => {
-      if (skipTests) {return;}
+      if (skipTests) return;
       
       const context: AgentExecutionContext = {
         metadata: { appId }
@@ -339,7 +339,7 @@ export default function Home() {
     });
 
     it('should provide meaningful status information', async () => {
-      if (skipTests) {return;}
+      if (skipTests) return;
       
       const context: AgentExecutionContext = {
         metadata: { appId }
@@ -358,7 +358,7 @@ export default function Home() {
 
   describe('Server Status - Error Conditions', () => {
     it('should handle dev-supervisor communication errors', async () => {
-      if (skipTests) {return;}
+      if (skipTests) return;
       
       // Create an app with invalid socket path using direct database insert
       const badAppId = `bad-app-${Date.now()}`;
@@ -396,7 +396,7 @@ export default function Home() {
     });
 
     it('should handle apps without socket path', async () => {
-      if (skipTests) {return;}
+      if (skipTests) return;
       
       // Create an app without socket path using direct database insert
       const noSocketAppId = `no-socket-app-${Date.now()}`;
@@ -434,7 +434,7 @@ export default function Home() {
 
   describe('Server Status - Performance', () => {
     it('should complete status check in reasonable time', async () => {
-      if (skipTests) {return;}
+      if (skipTests) return;
       
       const context: AgentExecutionContext = {
         metadata: { appId }
@@ -451,7 +451,7 @@ export default function Home() {
     });
 
     it('should handle multiple concurrent status checks', async () => {
-      if (skipTests) {return;}
+      if (skipTests) return;
       
       const context: AgentExecutionContext = {
         metadata: { appId }
@@ -474,7 +474,7 @@ export default function Home() {
 
   describe('Integration with Dev Environment', () => {
     it('should work with real app structure', async () => {
-      if (skipTests) {return;}
+      if (skipTests) return;
       
       // Verify the test app has proper structure
       const app = appRepo.findById(appId);
@@ -493,7 +493,7 @@ export default function Home() {
     });
 
     it('should provide consistent results across multiple calls', async () => {
-      if (skipTests) {return;}
+      if (skipTests) return;
       
       const context: AgentExecutionContext = {
         metadata: { appId }

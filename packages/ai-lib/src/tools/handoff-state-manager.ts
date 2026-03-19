@@ -373,7 +373,7 @@ export class SessionStateManager implements HandoffStateManager {
    */
   getSessionMetadata(sessionId: string): { appId?: string } | undefined {
     const session = this.sessions.get(sessionId)
-    if (!session) {return undefined}
+    if (!session) return undefined
 
     // Only include appId if it's defined
     if (session.appId) {

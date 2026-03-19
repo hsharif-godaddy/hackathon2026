@@ -52,7 +52,7 @@ export default function DevelopmentAdminSection({
   }
 
   const showStopAllAlert = () => {
-    if (runningItems === 0) {return}
+    if (runningItems === 0) return
 
     setAlert({
       type: 'stop-all',
@@ -61,7 +61,7 @@ export default function DevelopmentAdminSection({
   }
 
   const showDeleteAllAlert = () => {
-    if (totalItems === 0) {return}
+    if (totalItems === 0) return
 
     setAlert({
       type: 'delete-all',

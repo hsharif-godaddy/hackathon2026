@@ -21,12 +21,12 @@ function formatStackTrace(stack: string): string {
   for (const line of lines) {
     const trimmed = line.trim()
     // Skip empty lines
-    if (!trimmed) {continue}
+    if (!trimmed) continue
 
     // Extract file location (file:line:column) from stack trace
     // Support multiple formats: Chrome (file:line:col), Firefox functionName@file:line:col, and without parentheses
     const locationMatch = trimmed.match(/(?:[@(]|at\s+)([^)@\s]+):(\d+):(\d+)/)
-    if (locationMatch?.[1]) {
+    if (locationMatch && locationMatch[1]) {
       const file = locationMatch[1]
       const lineNum = locationMatch[2]
       const colNum = locationMatch[3]

@@ -188,7 +188,7 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
 
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
-      if (!batch) {continue;}
+      if (!batch) continue;
       
       const batchStartTime = Date.now();
       
@@ -296,7 +296,7 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
 
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i];
-      if (!msg) {continue;}
+      if (!msg) continue;
 
       const msgText = this.serializeMessage(msg);
       const msgTokens = (await countTokens(msgText, modelName)).tokenCount;
@@ -439,8 +439,8 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
     }
 
     const attributes: { userId: string; sessionId?: string; metadata?: Record<string, string> } = { userId: appId };
-    if (sessionId) {attributes.sessionId = sessionId;}
-    if (customerId) {attributes.metadata = { customerId };}
+    if (sessionId) attributes.sessionId = sessionId;
+    if (customerId) attributes.metadata = { customerId };
 
     // Extract generateText call to avoid duplication
     const generateTextWithAttributes = async () =>

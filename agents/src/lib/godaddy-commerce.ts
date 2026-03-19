@@ -1663,15 +1663,15 @@ export class GoDaddyCommerce {
   ): Promise<{ success: true; data: GetOrdersResponse } | { success: false; error: string }> {
     const queryParams = new URLSearchParams();
 
-    if (args.status) {queryParams.append('status', args.status);}
-    if (args.paymentStatus) {queryParams.append('paymentStatus', args.paymentStatus);}
-    if (args.fulfillmentStatus) {queryParams.append('fulfillmentStatus', args.fulfillmentStatus);}
-    if (args.processedAtStart) {queryParams.append('processedAtStart', args.processedAtStart);}
-    if (args.processedAtEnd) {queryParams.append('processedAtEnd', args.processedAtEnd);}
-    if (args.email) {queryParams.append('email', args.email);}
-    if (args.name) {queryParams.append('name', args.name);}
-    if (args.pageSize) {queryParams.append('pageSize', args.pageSize.toString());}
-    if (args.pageToken) {queryParams.append('pageToken', args.pageToken);}
+    if (args.status) queryParams.append('status', args.status);
+    if (args.paymentStatus) queryParams.append('paymentStatus', args.paymentStatus);
+    if (args.fulfillmentStatus) queryParams.append('fulfillmentStatus', args.fulfillmentStatus);
+    if (args.processedAtStart) queryParams.append('processedAtStart', args.processedAtStart);
+    if (args.processedAtEnd) queryParams.append('processedAtEnd', args.processedAtEnd);
+    if (args.email) queryParams.append('email', args.email);
+    if (args.name) queryParams.append('name', args.name);
+    if (args.pageSize) queryParams.append('pageSize', args.pageSize.toString());
+    if (args.pageToken) queryParams.append('pageToken', args.pageToken);
 
     const url = `${this.baseUrl}/v1/commerce/stores/${args.storeId}/orders${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
 

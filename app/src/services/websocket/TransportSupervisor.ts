@@ -188,7 +188,7 @@ export class TransportSupervisor extends EventEmitter {
    * Used by grant synchronization to send grants without exposing raw socket
    */
   emitGrantContext(payload: { grants: unknown[]; featureEnabled: boolean; timestamp: number }): boolean {
-    if (!this.socket?.connected) {return false}
+    if (!this.socket?.connected) return false
     this.socket.emit('grant_context', payload)
     return true
   }
@@ -426,8 +426,8 @@ export class TransportSupervisor extends EventEmitter {
 
   private maybeSendRecoveryAck(socket: Socket | null, force = false): void {
     const pending = this.deps.refs.pendingRecoveryAck.current
-    if (!pending || !socket) {return}
-    if (!pending.replayComplete) {return}
+    if (!pending || !socket) return
+    if (!pending.replayComplete) return
 
     if (!force && pending.expectedCount > 0 && pending.receivedCount < pending.expectedCount) {
       return
@@ -456,7 +456,7 @@ export class TransportSupervisor extends EventEmitter {
 
   private trackReplayEventReceipt(socket: Socket | null, eventType: string): void {
     const pending = this.deps.refs.pendingRecoveryAck.current;
-    if (!pending || !socket) {return;}
+    if (!pending || !socket) return;
 
     // Skip recovery control messages - they don't count toward replay
     if (RECOVERY_CONTROL_MESSAGE_TYPES.includes(eventType as typeof RECOVERY_CONTROL_MESSAGE_TYPES[number])) {

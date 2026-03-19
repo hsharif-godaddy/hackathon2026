@@ -52,7 +52,7 @@ export class ViewLogsTool {
       // Use the factory to get proper connection path (handles TCP vs Unix socket)
       const appInfo = DevSupervisorClientFactory.getAppInfo(appId);
       
-      if (!appInfo?.socketPath) {
+      if (!appInfo || !appInfo.socketPath) {
         this.logger.warn('dev_logs.init.failure', {
           appId,
           error: 'App not found or connection path not configured'
@@ -82,9 +82,9 @@ export class ViewLogsTool {
       appId,
     };
     
-    if (options.source) {beginData.source = options.source;}
-    if (options.lines) {beginData.lines = options.lines;}
-    if (options.since) {beginData.since = options.since;}
+    if (options.source) beginData.source = options.source;
+    if (options.lines) beginData.lines = options.lines;
+    if (options.since) beginData.since = options.since;
     
     toolLogReaderEvents.readBegin(this.logger, beginData);
 
@@ -145,8 +145,8 @@ export class ViewLogsTool {
       };
       
       // Only add optional parameters if they have values
-      if (options.source) {readOptions.source = options.source;}
-      if (options.since) {readOptions.since = options.since;}
+      if (options.source) readOptions.source = options.source;
+      if (options.since) readOptions.since = options.since;
 
       const result = await this.logClient.readLogs(readOptions);
 
@@ -182,8 +182,8 @@ export class ViewLogsTool {
       };
       
       // Only add defined values to resultStats
-      if (options.source) {successData.resultStats.sourceFilter = options.source;}
-      if (options.since) {successData.resultStats.sinceFilter = options.since;}
+      if (options.source) successData.resultStats.sourceFilter = options.source;
+      if (options.since) successData.resultStats.sinceFilter = options.since;
       
       toolLogReaderEvents.readSuccess(this.logger, successData);
 

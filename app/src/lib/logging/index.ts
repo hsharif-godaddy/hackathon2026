@@ -52,7 +52,7 @@ export type { ClientLogBufferConfig } from './client-log-buffer';
  * ```
  */
 export function shipAnalyticsLog(event: string, data: Record<string, unknown>): void {
-  if (typeof window === 'undefined') {return;}
+  if (typeof window === 'undefined') return;
 
   // Use batching infrastructure for efficiency and cluster protection
   ClientLogBuffer.add({

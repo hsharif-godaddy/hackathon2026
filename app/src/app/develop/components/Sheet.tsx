@@ -20,7 +20,7 @@ export function Sheet({
   title,
 }: SheetProps) {
   return (
-    <ShadcnSheet open={isOpen} onOpenChange={(open) => { if (!open) {onClose()} }}>
+    <ShadcnSheet open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
       <SheetContent
         side="left"
         className="w-full !max-w-[425px] overflow-y-auto"

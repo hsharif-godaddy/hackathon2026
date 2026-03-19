@@ -213,8 +213,8 @@ export class LLMSummarizationStrategy implements SummarizationStrategy {
     }
 
     const attributes: { userId: string; sessionId?: string; metadata?: Record<string, string> } = { userId: appId };
-    if (context.sessionId) {attributes.sessionId = context.sessionId;}
-    if (customerId) {attributes.metadata = { customerId };}
+    if (context.sessionId) attributes.sessionId = context.sessionId;
+    if (customerId) attributes.metadata = { customerId };
 
     // Extract generateText call to avoid duplication
     const generateTextWithAttributes = async () =>
@@ -377,7 +377,7 @@ Merge new info. Remove completed items from Pending.`;
     cacheReadInputTokens?: number | undefined;
     cachedTokens?: number | undefined;
   }): number | undefined {
-    if (!usage) {return undefined;}
+    if (!usage) return undefined;
     const cachedInputTokens =
       usage.cachedInputTokens ??
       usage.cacheReadInputTokens ??

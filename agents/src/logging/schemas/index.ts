@@ -38,15 +38,15 @@ export function validateLogEvent(event: LogEvent): LogEvent {
  * Convert Error object to LogError format
  */
 export function errorToLogError(error: Error | any): import('./base.js').LogError | undefined {
-  if (!error) {return undefined;}
+  if (!error) return undefined;
 
   if (error instanceof Error) {
     const result: import('./base.js').LogError = {
       name: error.name,
       message: error.message
     };
-    if (error.stack) {result.stack = error.stack;}
-    if ((error as any).code) {result.code = (error as any).code;}
+    if (error.stack) result.stack = error.stack;
+    if ((error as any).code) result.code = (error as any).code;
     return result;
   }
 
@@ -55,8 +55,8 @@ export function errorToLogError(error: Error | any): import('./base.js').LogErro
       name: error.name || 'Error',
       message: error.message
     };
-    if (error.stack) {result.stack = error.stack;}
-    if (error.code) {result.code = error.code;}
+    if (error.stack) result.stack = error.stack;
+    if (error.code) result.code = error.code;
     return result;
   }
 

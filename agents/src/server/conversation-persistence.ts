@@ -803,7 +803,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
 
     // Get the tracked conversation for this socket
     const activeConversation = this.activeConversations.get(socketId);
-    if (activeConversation?.context.appId) {
+    if (activeConversation && activeConversation.context.appId) {
       await this.checkAndCommitChanges(activeConversation.context.appId, 'websocket_disconnection');
     }
 

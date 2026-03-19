@@ -70,7 +70,7 @@ export default function FontThemeModal({
     }
   }, [isOpen])
 
-  if (typeof document === 'undefined') {return null}
+  if (typeof document === 'undefined') return null
 
   const modalContent = (
     <AnimatePresence>

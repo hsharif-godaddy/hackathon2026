@@ -82,7 +82,7 @@ export function createSocketSimulator(): SocketSimulator {
     }),
 
     off: vi.fn((event: string, handler?: (...args: unknown[]) => void) => {
-      if (!handlers.has(event)) {return socket}
+      if (!handlers.has(event)) return socket
       if (handler) {
         const list = handlers.get(event) ?? []
         handlers.set(

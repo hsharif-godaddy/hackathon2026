@@ -66,7 +66,7 @@ export class SharedMySQLService {
 	 * @throws {Error} If shared MySQL instance is not healthy or accessible after health check
 	 */
 	async initialize(): Promise<void> {
-		if (this.initialized) {return;}
+		if (this.initialized) return;
 
 		// Verify MySQL is accessible and healthy
 		const healthy = await this.healthCheck();

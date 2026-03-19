@@ -228,13 +228,13 @@ export default function ImageSearchPanel() {
   };
 
   const activeArrayCount = Object.entries(filters).reduce((sum, [, val]) => {
-    if (Array.isArray(val)) {return sum + val.length;}
+    if (Array.isArray(val)) return sum + val.length;
     return sum;
   }, 0);
   const hasActiveFilters = activeArrayCount > 0 || !!filters.minimumSize || !!filters.sortOrder || !!filters.color;
 
   const handleSearch = async () => {
-    if (!query.trim()) {return;}
+    if (!query.trim()) return;
 
     setLoading(true);
     setError(null);
@@ -288,8 +288,8 @@ export default function ImageSearchPanel() {
   };
 
   const filteredResults = results.filter((r) => {
-    if (filterMode === 'cached') {return r.fromCache;}
-    if (filterMode === 'live') {return !r.fromCache;}
+    if (filterMode === 'cached') return r.fromCache;
+    if (filterMode === 'live') return !r.fromCache;
     return true;
   });
 

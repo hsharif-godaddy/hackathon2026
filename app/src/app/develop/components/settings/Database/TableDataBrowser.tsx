@@ -80,7 +80,7 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
   }, []);
 
   const confirmDeleteRow = useCallback(async () => {
-    if (!deleteRow) {return;}
+    if (!deleteRow) return;
 
     try {
       setDeleteError(null);
@@ -160,9 +160,9 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
   };
 
   const renderCellValue = (value: any, columnType?: string) => {
-    if (value === null) {return <div className="text-muted-foreground italic pr-1">null</div>;}
-    if (typeof value === 'boolean') {return value ? 'true' : 'false';}
-    if (typeof value === 'object') {return JSON.stringify(value);}
+    if (value === null) return <div className="text-muted-foreground italic pr-1">null</div>;
+    if (typeof value === 'boolean') return value ? 'true' : 'false';
+    if (typeof value === 'object') return JSON.stringify(value);
 
     // Format date/datetime/timestamp columns
     if (columnType && isDateColumn(columnType)) {
@@ -177,9 +177,9 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
   };
 
   const getCellValueString = (value: any, columnType?: string): string => {
-    if (value === null) {return 'null';}
-    if (typeof value === 'boolean') {return value ? 'true' : 'false';}
-    if (typeof value === 'object') {return JSON.stringify(value);}
+    if (value === null) return 'null';
+    if (typeof value === 'boolean') return value ? 'true' : 'false';
+    if (typeof value === 'object') return JSON.stringify(value);
 
     // Format date/datetime/timestamp columns
     if (columnType && isDateColumn(columnType)) {
@@ -219,7 +219,7 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
   }
 
   const getDescription = () => {
-    if (data.length === 0) {return undefined;}
+    if (data.length === 0) return undefined;
     return `Showing ${((pagination.page - 1) * pagination.limit) + 1}-${Math.min(pagination.page * pagination.limit, pagination.total)} of ${pagination.total} ${pagination.total === 1 ? 'row' : 'rows'}`;
   };
 

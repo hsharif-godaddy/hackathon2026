@@ -201,10 +201,10 @@ export const authUtils = {
    * @returns Detected auth type or 'basic' as fallback
    */
   detectAuthTypeFromToken: (token: string): string => {
-    if (!token) {return 'basic';}
+    if (!token) return 'basic';
 
     const payload = decodeJWT(token);
-    if (!payload) {return 'basic';}
+    if (!payload) return 'basic';
 
     // Check for auth field first (gd-auth sets this)
     if (payload.auth) {

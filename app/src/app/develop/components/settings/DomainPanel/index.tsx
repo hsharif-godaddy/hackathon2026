@@ -26,12 +26,12 @@ export default function DomainPanel() {
 
   const currentAppId = useAppIdFromParams();
   const site = useSiteStore((state) => {
-    if (!currentAppId) {return null;}
+    if (!currentAppId) return null;
     return state.getSite(currentAppId);
   });
 
   const isSiteLoading = useSiteStore((state) => {
-    if (!currentAppId) {return false;}
+    if (!currentAppId) return false;
     return state.loading[currentAppId] ?? false;
   });
 

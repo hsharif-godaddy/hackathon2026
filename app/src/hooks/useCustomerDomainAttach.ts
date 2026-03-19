@@ -39,11 +39,11 @@ export function useCustomerDomainAttach(
    * Finds the first customer domain that hasn't reached fully active state.
    */
   const pendingCustomerDomain = useMemo(() => {
-    if (!appDetails?.domains) {return null;}
+    if (!appDetails?.domains) return null;
 
     return appDetails.domains.find((d) => {
       // Only check customer domains
-      if (!isCustomerDomain(d.fqdn, customerDomains)) {return false;}
+      if (!isCustomerDomain(d.fqdn, customerDomains)) return false;
 
       // Check if domain is not yet fully active
       const isFullyActive = d.status === DomainStatus.ACTIVE && d.cdnStatus === CdnStatus.ACTIVE;
@@ -53,7 +53,7 @@ export function useCustomerDomainAttach(
 
   // Find the customer domain data (including nameservers) for the pending domain
   const pendingDomainCustomerData = useMemo(() => {
-    if (!pendingCustomerDomain) {return null;}
+    if (!pendingCustomerDomain) return null;
     return findCustomerDomain(pendingCustomerDomain.fqdn, customerDomains);
   }, [pendingCustomerDomain, customerDomains]);
 
@@ -62,7 +62,7 @@ export function useCustomerDomainAttach(
    * If true, auto-attach will be skipped and user must configure DNS manually
    */
   const pendingDomainHasExternalNameservers = useMemo(() => {
-    if (!pendingDomainCustomerData) {return false;}
+    if (!pendingDomainCustomerData) return false;
     return hasExternalNameservers(
       pendingDomainCustomerData.hasInternalNameservers,
       pendingDomainCustomerData.nameservers
@@ -85,10 +85,10 @@ export function useCustomerDomainAttach(
       hasInternalNameservers: pendingDomainCustomerData?.hasInternalNameservers,
     });
 
-    if (!pendingCustomerDomain) {return false;}
-    if (!pendingCustomerDomain.anycastIp) {return false;}
-    if (isDCVEnabled && !pendingCustomerDomain.certificateValidationCname) {return false;}
-    if (attachMutation.isPending) {return false;}
+    if (!pendingCustomerDomain) return false;
+    if (!pendingCustomerDomain.anycastIp) return false;
+    if (isDCVEnabled && !pendingCustomerDomain.certificateValidationCname) return false;
+    if (attachMutation.isPending) return false;
 
     // Skip auto-attach for domains with external nameservers
     if (pendingDomainHasExternalNameservers) {
@@ -111,7 +111,7 @@ export function useCustomerDomainAttach(
    * If it fails after all retries, we don't attempt again.
    */
   useEffect(() => {
-    if (!isReadyForAttach || !pendingCustomerDomain) {return;}
+    if (!isReadyForAttach || !pendingCustomerDomain) return;
 
     const domainName = pendingCustomerDomain.fqdn;
     const anycastIp = pendingCustomerDomain.anycastIp!;
@@ -150,7 +150,7 @@ export function useCustomerDomainAttach(
    * when domain becomes fully active clean up tracking
    */
   useEffect(() => {
-    if (!pendingCustomerDomain) {return;}
+    if (!pendingCustomerDomain) return;
 
     const isFullyActive =
       pendingCustomerDomain.status === DomainStatus.ACTIVE &&

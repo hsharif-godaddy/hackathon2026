@@ -445,7 +445,7 @@ export class DirectoryListingTool {
       lines.push(`truncated (${this.MAX_ENTRIES}+ items)`);
     }
 
-    if (lines.length > 1) {lines.push('');}
+    if (lines.length > 1) lines.push('');
 
     // Build a hierarchical structure for proper tree rendering
     const treeStructure = this.buildTreeStructure(result.entries);
@@ -475,7 +475,7 @@ export class DirectoryListingTool {
 
     // Sort entries by path to ensure parents are processed before children
     const sortedEntries = entries.sort((a, b) => {
-      if (a.depth !== b.depth) {return a.depth - b.depth;}
+      if (a.depth !== b.depth) return a.depth - b.depth;
       return a.path.localeCompare(b.path);
     });
 
@@ -513,7 +513,7 @@ export class DirectoryListingTool {
    */
   private sortTreeNodes(node: TreeNode): void {
     node.children.sort((a, b) => {
-      if (a.isDirectory !== b.isDirectory) {return a.isDirectory ? -1 : 1;}
+      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
       return a.name.localeCompare(b.name);
     });
 

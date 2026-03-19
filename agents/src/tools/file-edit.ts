@@ -667,10 +667,10 @@ export class FileEditTool {
     const deleted = operations.filter(r => r.success && r.mode === 'delete').length;
 
     const parts: string[] = [];
-    if (created > 0) {parts.push(`Create ${created} file${created > 1 ? 's' : ''}`);}
-    if (edited > 0) {parts.push(`Update ${edited} file${edited > 1 ? 's' : ''}`);}
-    if (rewritten > 0) {parts.push(`Rewrite ${rewritten} file${rewritten > 1 ? 's' : ''}`);}
-    if (deleted > 0) {parts.push(`Delete ${deleted} file${deleted > 1 ? 's' : ''}`);}
+    if (created > 0) parts.push(`Create ${created} file${created > 1 ? 's' : ''}`);
+    if (edited > 0) parts.push(`Update ${edited} file${edited > 1 ? 's' : ''}`);
+    if (rewritten > 0) parts.push(`Rewrite ${rewritten} file${rewritten > 1 ? 's' : ''}`);
+    if (deleted > 0) parts.push(`Delete ${deleted} file${deleted > 1 ? 's' : ''}`);
 
     if (parts.length === 0) {
       return 'Update files';
@@ -1483,10 +1483,10 @@ export class FileEditTool {
       const deleted = batchResult.results.filter(r => r.success && r.mode === 'delete').length;
 
       const parts: string[] = [];
-      if (created > 0) {parts.push(`created ${created} file${created > 1 ? 's' : ''}`);}
-      if (edited > 0) {parts.push(`modified ${edited} file${edited > 1 ? 's' : ''}`);}
-      if (rewritten > 0) {parts.push(`rewrote ${rewritten} file${rewritten > 1 ? 's' : ''}`);}
-      if (deleted > 0) {parts.push(`deleted ${deleted} file${deleted > 1 ? 's' : ''}`);}
+      if (created > 0) parts.push(`created ${created} file${created > 1 ? 's' : ''}`);
+      if (edited > 0) parts.push(`modified ${edited} file${edited > 1 ? 's' : ''}`);
+      if (rewritten > 0) parts.push(`rewrote ${rewritten} file${rewritten > 1 ? 's' : ''}`);
+      if (deleted > 0) parts.push(`deleted ${deleted} file${deleted > 1 ? 's' : ''}`);
 
       return `Batch operation: ${parts.join(', ')}`;
     }
@@ -1655,9 +1655,9 @@ export function resolveFilePath(appPath: string, relativePath: string): string {
 function compareByUploadDate(a: string, b: string): number {
   const bTime = new Date(b).getTime();
   const aTime = new Date(a).getTime();
-  if (isNaN(bTime) && isNaN(aTime)) {return 0;}
-  if (isNaN(bTime)) {return -1;}
-  if (isNaN(aTime)) {return 1;}
+  if (isNaN(bTime) && isNaN(aTime)) return 0;
+  if (isNaN(bTime)) return -1;
+  if (isNaN(aTime)) return 1;
   return bTime - aTime;
 }
 
@@ -1669,15 +1669,15 @@ function scoreNameSimilarity(requested: string, candidate: string): number {
   const reqBase = requested.substring(0, requested.lastIndexOf('.')).toLowerCase();
   const candBase = candidate.substring(0, candidate.lastIndexOf('.')).toLowerCase();
 
-  if (reqBase === candBase) {return 100;}
-  if (candBase.includes(reqBase) || reqBase.includes(candBase)) {return 50;}
+  if (reqBase === candBase) return 100;
+  if (candBase.includes(reqBase) || reqBase.includes(candBase)) return 50;
 
   let common = 0;
   const shorter = reqBase.length < candBase.length ? reqBase : candBase;
   const longer = reqBase.length < candBase.length ? candBase : reqBase;
   for (let i = 0; i < shorter.length; i++) {
-    if (shorter[i] === longer[i]) {common++;}
-    else {break;}
+    if (shorter[i] === longer[i]) common++;
+    else break;
   }
   return common;
 }

@@ -20,7 +20,7 @@ export const GET = withAuth<{ appId: string }>(async function getImageStatus(
         validateId(appId, 'appId', APP_ID_RE) ??
         (subscriptionId ? validateId(subscriptionId, 'subscriptionId', APP_ID_RE) : null) ??
         (systemId ? validateId(systemId, 'systemId', APP_ID_RE) : null);
-    if (invalid) {return invalid;}
+    if (invalid) return invalid;
 
     try {
         return NextResponse.json(await mgmtControlPlaneAdapter.getImageStatus(appId, { subscriptionId, systemId, tryCount }));

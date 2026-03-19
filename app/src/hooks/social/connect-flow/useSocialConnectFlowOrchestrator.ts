@@ -118,11 +118,11 @@ export function useSocialConnectFlowOrchestrator({
   const linkMutation = useLinkConnection()
 
   const shouldProceedToOAuth = useMemo(() => {
-    if (flowState.forceNewConnection) {return true}
-    if (flowState.step === FlowStep.Auth) {return true}
-    if (flowState.step === FlowStep.ValidatingPermissions) {return true}
-    if (isSelectExistingLoading) {return false}
-    if (flowState.showSelectExisting) {return false}
+    if (flowState.forceNewConnection) return true
+    if (flowState.step === FlowStep.Auth) return true
+    if (flowState.step === FlowStep.ValidatingPermissions) return true
+    if (isSelectExistingLoading) return false
+    if (flowState.showSelectExisting) return false
     return !currentAssociation && platformConnections.length === 0
   }, [flowState.forceNewConnection, flowState.step, flowState.showSelectExisting, isSelectExistingLoading, currentAssociation, platformConnections])
 

@@ -1247,11 +1247,11 @@ export class AiroMgmtClient {
    */
   async listTransfers(params?: AiroTransferListParams): Promise<AiroTransferListResponse> {
     const queryParams = new URLSearchParams();
-    if (params?.appId) {queryParams.set('appId', params.appId);}
-    if (params?.targetCustomerId) {queryParams.set('targetCustomerId', params.targetCustomerId);}
-    if (params?.status) {queryParams.set('status', params.status);}
-    if (params?.limit) {queryParams.set('limit', params.limit.toString());}
-    if (params?.offset) {queryParams.set('offset', params.offset.toString());}
+    if (params?.appId) queryParams.set('appId', params.appId);
+    if (params?.targetCustomerId) queryParams.set('targetCustomerId', params.targetCustomerId);
+    if (params?.status) queryParams.set('status', params.status);
+    if (params?.limit) queryParams.set('limit', params.limit.toString());
+    if (params?.offset) queryParams.set('offset', params.offset.toString());
 
     const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
     return this.request<AiroTransferListResponse>(

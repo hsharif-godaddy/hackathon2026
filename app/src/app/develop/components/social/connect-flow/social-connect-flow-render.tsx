@@ -69,13 +69,13 @@ export function getCurrentRenderState({
 
   // Handle SelectExisting step - check UI conditions
   if (flowStep === FlowStep.SelectExisting) {
-    if (shouldShowExistingConnectionsLoader) {return RenderState.CheckingExistingConnections}
-    if (hasCurrentConnection) {return RenderState.AlreadyConnected}
-    if (shouldShowConnectionSelector) {return RenderState.SelectingExistingConnection}
+    if (shouldShowExistingConnectionsLoader) return RenderState.CheckingExistingConnections
+    if (hasCurrentConnection) return RenderState.AlreadyConnected
+    if (shouldShowConnectionSelector) return RenderState.SelectingExistingConnection
   }
 
   // Auth-related states
-  if (authUrlError) {return RenderState.AuthUrlError}
+  if (authUrlError) return RenderState.AuthUrlError
 
   return RenderState.OAuthPrompt
 }

@@ -43,7 +43,7 @@ export function extractTokenFromRequest(request: any): string | null {
 export function decodeTokenPayload(token: string): { cid?: string; shopperId?: string; auth?: string } | null {
   try {
     const parts = token.split('.');
-    if (parts.length !== 3) {return null;}
+    if (parts.length !== 3) return null;
 
     const payload = parts[1];
     const decoded = Buffer.from(payload, 'base64url').toString('utf8');
@@ -154,9 +154,9 @@ export class GdAuthService {
         message: error.message
       };
 
-      if (error.ssoCode) {errorData.ssoCode = error.ssoCode;}
-      if (error.code) {errorData.code = error.code;}
-      if (error.status) {errorData.status = error.status;}
+      if (error.ssoCode) errorData.ssoCode = error.ssoCode;
+      if (error.code) errorData.code = error.code;
+      if (error.status) errorData.status = error.status;
 
       logger.error('gd-auth.authenticate.error', {
         message: 'Authentication failed',

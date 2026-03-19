@@ -223,20 +223,20 @@ export class MediaSlotTool {
 
       // Store search filters (convert arrays to comma-separated strings for manifest)
       const toCommaSeparated = (v: string | string[] | undefined): string | undefined => {
-        if (!v) {return undefined;}
+        if (!v) return undefined;
         return Array.isArray(v) ? v.join(',') : v;
       };
 
-      if (orientations) {slotEntry.orientations = toCommaSeparated(orientations);}
-      if (compositions) {slotEntry.compositions = toCommaSeparated(compositions);}
-      if (moods) {slotEntry.moods = moods.join(',');}
-      if (graphicalStyles) {slotEntry.graphicalStyles = graphicalStyles.join(',');}
-      if (sortOrder) {slotEntry.sortOrder = sortOrder;}
-      if (color) {slotEntry.color = color;}
-      if (advancedFilters?.numberOfPeople) {slotEntry.numberOfPeople = advancedFilters.numberOfPeople.join(',');}
-      if (advancedFilters?.ethnicity) {slotEntry.ethnicity = advancedFilters.ethnicity.join(',');}
-      if (advancedFilters?.ageOfPeople) {slotEntry.ageOfPeople = advancedFilters.ageOfPeople.join(',');}
-      if (advancedFilters?.minimumSize) {slotEntry.minimumSize = advancedFilters.minimumSize;}
+      if (orientations) slotEntry.orientations = toCommaSeparated(orientations);
+      if (compositions) slotEntry.compositions = toCommaSeparated(compositions);
+      if (moods) slotEntry.moods = moods.join(',');
+      if (graphicalStyles) slotEntry.graphicalStyles = graphicalStyles.join(',');
+      if (sortOrder) slotEntry.sortOrder = sortOrder;
+      if (color) slotEntry.color = color;
+      if (advancedFilters?.numberOfPeople) slotEntry.numberOfPeople = advancedFilters.numberOfPeople.join(',');
+      if (advancedFilters?.ethnicity) slotEntry.ethnicity = advancedFilters.ethnicity.join(',');
+      if (advancedFilters?.ageOfPeople) slotEntry.ageOfPeople = advancedFilters.ageOfPeople.join(',');
+      if (advancedFilters?.minimumSize) slotEntry.minimumSize = advancedFilters.minimumSize;
 
       // Update the manifest using the centralized service
       // Skip git commit here since AI selections are auto-committed in batches

@@ -456,11 +456,11 @@ Respond ONLY with valid JSON in this exact format:
   private inferUsageContext(altText: string): string {
     const lower = altText.toLowerCase();
 
-    if (lower.includes('hero') || lower.includes('banner')) {return 'hero';}
-    if (lower.includes('icon') || lower.includes('logo')) {return 'icon';}
-    if (lower.includes('background')) {return 'background';}
-    if (lower.includes('product') || lower.includes('item')) {return 'product';}
-    if (lower.includes('team') || lower.includes('person') || lower.includes('profile')) {return 'profile';}
+    if (lower.includes('hero') || lower.includes('banner')) return 'hero';
+    if (lower.includes('icon') || lower.includes('logo')) return 'icon';
+    if (lower.includes('background')) return 'background';
+    if (lower.includes('product') || lower.includes('item')) return 'product';
+    if (lower.includes('team') || lower.includes('person') || lower.includes('profile')) return 'profile';
 
     return 'general';
   }
@@ -496,10 +496,10 @@ Respond ONLY with valid JSON in this exact format:
       if (buffer[0] === 0xFF && buffer[1] === 0xD8) {
         let offset = 2;
         while (offset < buffer.length - 10) {
-          if (buffer[offset] !== 0xFF) {break;}
+          if (buffer[offset] !== 0xFF) break;
           
           const marker = buffer[offset + 1];
-          if (marker === undefined) {break;}
+          if (marker === undefined) break;
           
           const size = buffer.readUInt16BE(offset + 2);
           
@@ -715,7 +715,7 @@ Respond ONLY with valid JSON in this exact format:
       const urlObj = new URL(url);
       const pathname = urlObj.pathname;
       const match = pathname.match(/\.(jpg|jpeg|png|gif|webp|svg|woff|woff2|ttf|otf|ico)$/i);
-      return match?.[1] ? `.${match[1].toLowerCase()}` : null;
+      return match && match[1] ? `.${match[1].toLowerCase()}` : null;
     } catch {
       return null;
     }
@@ -927,13 +927,13 @@ Respond ONLY with valid JSON in this exact format:
     const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
     let match;
     while ((match = imgRegex.exec(html)) !== null) {
-      if (match[1]) {urls.add(match[1]);}
+      if (match[1]) urls.add(match[1]);
     }
 
     // Extract from CSS background-image
     const bgRegex = /background-image:\s*url\(["']?([^"')]+)["']?\)/gi;
     while ((match = bgRegex.exec(html)) !== null) {
-      if (match[1]) {urls.add(match[1]);}
+      if (match[1]) urls.add(match[1]);
     }
 
     // Extract from picture/source srcset

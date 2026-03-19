@@ -23,8 +23,8 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string, params?: Record<string, unknown>) => {
-    if (params?.count !== undefined) {return `${key}_${params.count}`}
-    if (params?.price !== undefined) {return `${key}_${params.price}`}
+    if (params?.count !== undefined) return `${key}_${params.count}`
+    if (params?.price !== undefined) return `${key}_${params.price}`
     return key
   },
 }))
