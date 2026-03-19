@@ -7,6 +7,7 @@
 export { AiroMgmtClient } from './client';
 export type {
   AiroApiError,
+  AiroApiErrorV2,
   AiroApp,
   AiroAppDetails,
   AiroAttribute,

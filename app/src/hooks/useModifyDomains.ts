@@ -99,9 +99,10 @@ export function useModifyDomains() {
         const errorData = await response.json().catch(() => ({}));
         const details = errorData.details;
         const errorMessage =
-          (typeof details === 'object' ? details?.message : details) ||
+          (typeof details === 'object' ? (details?.message ?? details?.error?.message) : details) ||
           errorData.error ||
           `Failed to modify domains: ${response.status}`;
+          
         const domainSpecificError: Record<string, string> = {};
         for (const d of payload.domainsToCreate ?? []) {
           domainSpecificError[d.fqdn.trim().toLowerCase()] = errorMessage;

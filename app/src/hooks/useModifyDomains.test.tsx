@@ -177,7 +177,7 @@ describe('useModifyDomains', () => {
       ok: false,
       status: 502,
       json: async () => { throw new Error('not JSON'); },
-    } as Response);
+    } as unknown as Response);
 
     const { result } = renderHook(() => useModifyDomains(), {
       wrapper: createWrapper(),
@@ -222,5 +222,38 @@ describe('useModifyDomains', () => {
 
     const error = result.current.error as DomainMutationError;
     expect(error.details.message).toBe('Plain text error');
+  });
+
+  it('should extract message and code from AiroApiErrorV2 details', async function airoApiErrorV2Details() {
+    vi.mocked(appFetch).mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        details: {
+          error: {
+            code: 'DOMAIN_NOT_UNIQUE',
+            message: 'Domain already in use',
+          },
+        },
+      }),
+    } as Response);
+
+    const { result } = renderHook(() => useModifyDomains(), {
+      wrapper: createWrapper(),
+    });
+
+    result.current.mutate({
+      siteId: 'app-123',
+      payload: {
+        domainsToCreate: [{ fqdn: 'taken.example.com' }],
+      },
+    });
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+    });
+
+    const error = result.current.error as DomainMutationError;
+    expect(error.details.message).toBe('Domain already in use');
   });
 });

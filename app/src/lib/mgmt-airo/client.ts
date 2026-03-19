@@ -4,6 +4,7 @@ import { logger } from '@/lib/request-context';
 import { extractCustomerId as extractCustomerIdFromJWT } from '@/lib/utils/jwt-utils';
 import {
   type AiroApiError,
+  type AiroApiErrorV2,
   type AiroApp,
   type AiroAppDetails,
   type AiroAttribute,
@@ -96,6 +97,24 @@ export class AiroMgmtClient {
     this.timeoutMs = config.timeoutMs ?? 10000; // 10 second default timeout
   }
 
+  private normalizeErrorBody(errorText: string): AiroApiError | AiroApiErrorV2 | string {
+    try {
+      const parsed = JSON.parse(errorText) as unknown;
+      return this.isAiroApiErrorV2(parsed) || this.isAiroApiError(parsed) ? parsed : errorText;
+    } catch {
+      return errorText;
+    }
+  }
+
+  private isAiroApiError(value: unknown): value is AiroApiError {
+    return typeof (value as { message?: unknown } | null)?.message === 'string';
+  }
+
+  private isAiroApiErrorV2(value: unknown): value is AiroApiErrorV2 {
+    return typeof (value as { error?: { code?: unknown; message?: unknown } } | null)?.error?.code === 'string'
+      && typeof (value as { error?: { code?: unknown; message?: unknown } } | null)?.error?.message === 'string';
+  }
+
   /**
    * Make an authenticated HTTP request with retry logic
    */
@@ -155,12 +174,7 @@ export class AiroMgmtClient {
 
           // Try to get error body
           const errorText = await response.text();
-          let errorBody: AiroApiError | string = errorText;
-          try {
-            errorBody = JSON.parse(errorText);
-          } catch {
-            // Keep as string if not JSON
-          }
+          const errorBody = this.normalizeErrorBody(errorText);
 
           // Log auth failures at warn level — 401/403 are expected for unauthenticated/unsubscribed users
           const logLevel = response.status === 401 || response.status === 403 ? 'warn' : 'error';

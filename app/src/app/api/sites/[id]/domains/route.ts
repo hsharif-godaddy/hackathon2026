@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-plane';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
-import { type AiroApiError, AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
+import { type AiroApiError, type AiroApiErrorV2, AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 import { ApiErrorCode } from '@/utils/api-errors';
 import { DomainApiErrorCode } from '@/utils/domain-validation';
@@ -153,7 +153,7 @@ export const POST = withCustomerAuth(async (
       errorBody: error instanceof AiroHttpError ? JSON.stringify(error) : undefined,
     });
 
-    let errorMessage: string | AiroApiError = 'Unknown error';
+    let errorMessage: string | AiroApiError | AiroApiErrorV2 = 'Unknown error';
 
     if (error instanceof AiroHttpError) {
       errorMessage = error.body;

@@ -537,14 +537,27 @@ export interface AiroApiError {
 }
 
 /**
+ * Standardized error response contract from mgmt-airo API
+ */
+export interface AiroApiErrorV2 {
+  error: {
+    code: string;
+    message: string;
+    correlationId?: string;
+    timestamp?: string;
+    details?: Record<string, unknown>;
+  };
+}
+
+/**
  * HTTP error class with status code
  */
 export class AiroHttpError extends Error {
   status: number;
   statusText: string;
-  body: AiroApiError | string;
+  body: AiroApiError | AiroApiErrorV2 | string;
 
-  constructor(status: number, statusText: string, body: AiroApiError | string) {
+  constructor(status: number, statusText: string, body: AiroApiError | AiroApiErrorV2 | string) {
     const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
     super(`API request failed: ${status} ${statusText} - ${bodyStr}`);
     this.name = 'AiroHttpError';
