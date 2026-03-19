@@ -781,6 +781,7 @@ export class WebsiteScraperDriver extends BaseDriver {
     else if (url.startsWith('blob:')) reason = 'blob URL';
     
     // Skip javascript: URLs
+    // eslint-disable-next-line no-script-url
     else if (url.startsWith('javascript:')) reason = 'javascript URL';
     
     // Skip template placeholders (common in SSR/CSR frameworks)

@@ -18,6 +18,7 @@ describe('sanitizeSVG', () => {
       const input = '<svg><a href="javascript:alert(1)"><circle cx="50" cy="50" r="40"/></a></svg>';
       const result = sanitizeSVG(input);
 
+      // eslint-disable-next-line no-script-url
       expect(result.sanitized).not.toContain('javascript:');
       expect(result.hadDangerousContent).toBe(true);
       expect(result.detectedThreats).toContain('javascript-url');
@@ -289,6 +290,7 @@ describe('sanitizeSVG', () => {
 
       expect(result.sanitized).not.toContain('alert');
       expect(result.sanitized).not.toContain('script');
+      // eslint-disable-next-line no-script-url
       expect(result.sanitized).not.toContain('javascript:');
       expect(result.sanitized).not.toContain('onload');
       expect(result.sanitized).not.toContain('onclick');

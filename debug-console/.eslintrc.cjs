@@ -1,0 +1,7 @@
+module.exports = {
+  extends: ["@airo/eslint-config", "next/core-web-vitals"],
+  rules: {
+    "react-hooks/exhaustive-deps": "off",
+  },
+  ignorePatterns: ["node_modules/**", "dist/**", ".next/**"],
+};
