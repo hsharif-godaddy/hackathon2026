@@ -67,6 +67,7 @@ export default function DomainAttachWidget({
   // Feature flag check
   const { data: isDomainAttachEnabled, isLoading: isLoadingFlag } = useSwitchboard('appbuilder-domain-attach');
   const { data: isDomainPurchaseEnabled } = useSwitchboard('appbuilder-domain-purchase');
+  const { data: isDCVEnabled } = useSwitchboard('appbuilder-domain-dcv');
 
   // Custom domain input state
   const [customDomain, setCustomDomain] = useState<string | null>(null);
@@ -135,12 +136,21 @@ export default function DomainAttachWidget({
   });
 
   // Handle customer domain attachment with automatic DNS configuration
-  useCustomerDomainAttach(appDetails, domains);
+  const {
+    pendingCustomerDomain: pendingCustomerDomainForAttach,
+    requiresManualDnsSetup,
+  } = useCustomerDomainAttach(appDetails, domains, isDCVEnabled ?? true);
 
-  // Find CUSTOM domains that are pending (not prefix, not customer-owned)
   const pendingDomain = useMemo(() => {
     if (!appDetails?.domains) return null;
 
+    // First, check for customer domain that requires manual DNS setup
+    // This covers: external nameservers OR attach API failed
+    if (requiresManualDnsSetup && pendingCustomerDomainForAttach) {
+      return pendingCustomerDomainForAttach.fqdn;
+    }
+
+    // Then check for custom domains (not customer-owned)
     const pending = appDetails.domains.find((d) => {
       if (d.domainType === 'prefix') return false;
       if (isCustomerDomain(d.fqdn, domains)) return false;
@@ -153,7 +163,7 @@ export default function DomainAttachWidget({
     });
 
     return pending ? pending.fqdn : null;
-  }, [appDetails, domains]);
+  }, [appDetails, domains, requiresManualDnsSetup, pendingCustomerDomainForAttach]);
 
   const pendingDomainDetails = pendingDomain
     ? appDetails?.domains?.find((d) => d.fqdn === pendingDomain)
@@ -291,6 +301,7 @@ export default function DomainAttachWidget({
         payload: {
           domainsToCreate: [{ fqdn: domainName, primary: false }],
           createCdn: true,
+          isWildcardDomain: true,
         },
       });
       shipAnalyticsLog('domain.attach.widget.connect.success', {
