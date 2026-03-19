@@ -35,7 +35,8 @@ export const INDICES = {
   SUMMARIZATIONS: `${INDEX_PREFIX}summarizations`,
   TOOL_FAILURES: `${INDEX_PREFIX}tool_failures`,
   PUBLISH_EVENTS: `${INDEX_PREFIX}publish_events`,
-  CLIENT_ERRORS: `${INDEX_PREFIX}client_errors`
+  CLIENT_ERRORS: `${INDEX_PREFIX}client_errors`,
+  CREDIT_PACKS: `${INDEX_PREFIX}credit_packs`
 } as const;
 
 // Index mappings
@@ -142,11 +143,35 @@ const MAPPINGS = {
       conversation_id: { type: 'keyword' },
       extra_data: { type: 'object', enabled: false }
     }
+  },
+  [INDICES.CREDIT_PACKS]: {
+    properties: {
+      es_id: { type: 'keyword' },
+      timestamp: { type: 'date' },
+      app_id: { type: 'keyword' },
+      subscription_id: { type: 'keyword' },
+      status: { type: 'keyword' },
+      credits_max: { type: 'integer' },
+      use_before: { type: 'date' },
+      next_credit_allowed_after: { type: 'date' },
+      added_by_shopper_id: { type: 'keyword' },
+      added_by_cid: { type: 'keyword' },
+      added_by_email: { type: 'keyword' },
+      llm_budget_user_id: { type: 'keyword' },
+      // Used by lock documents; requires an ILM policy with a delete phase
+      // keyed on this field to auto-clean stale locks
+      expire_at: { type: 'date' }
+    }
   }
 };
 
-export async function initIndices() {
-  for (const [indexName, mapping] of Object.entries(MAPPINGS)) {
+export async function initIndices(indicesToInit: string[] = Object.values(INDICES)) {
+  for (const indexName of indicesToInit) {
+    const mapping = MAPPINGS[indexName as keyof typeof MAPPINGS];
+    if (!mapping) {
+      console.warn(`No mapping defined for index: ${indexName}, skipping initialization.`);
+      continue;
+    }
     const exists = await writeClient.indices.exists({ index: indexName });
     if (!exists) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -183,4 +208,3 @@ export async function bulkIndex(docs: BulkDoc[]) {
 
   return result;
 }
-

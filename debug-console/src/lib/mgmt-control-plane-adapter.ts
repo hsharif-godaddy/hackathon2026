@@ -207,8 +207,11 @@ export class MgmtControlPlaneAdapter {
         return response.json() as Promise<T>;
     }
 
-    getAppDetails(appId: string): Promise<MgmtAppDetails> {
-        return this.request(`/api/airo/v1/apps/${encodeURIComponent(appId)}?includeResources=true`);
+    getAppDetails(appId: string, opts?: { includeResources?: boolean }): Promise<MgmtAppDetails> {
+        const includeResources = opts?.includeResources ?? true;
+        let path = `/api/airo/v1/apps/${encodeURIComponent(appId)}`;
+        path += includeResources ? '?includeResources=true' : '';
+        return this.request(path);
     }
 
     getImageStatus(appId: string, opts?: { subscriptionId?: string; systemId?: string; tryCount?: number }): Promise<MgmtImageStatus> {
@@ -232,6 +235,14 @@ export class MgmtControlPlaneAdapter {
         return this.request(
             `/api/airo/v1/subscriptions/${encodeURIComponent(opts.subscriptionId)}/systems/${encodeURIComponent(opts.systemId)}/apps/${encodeURIComponent(appId)}/domain-error?fqdn=${encodeURIComponent(fqdn)}`
         );
+    }
+
+    addCreditGrant(subscriptionId: string, grant: { type: string; creditsMax: number; useBefore: string }): Promise<{grant: MgmtGrant}> {
+        return this.request(`/api/airo/v1/subscriptions/${encodeURIComponent(subscriptionId)}/credits/grants`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(grant),
+        });
     }
 
     reloadApp(appId: string, opts?: { subscriptionId?: string; systemId?: string }): Promise<MgmtReloadResponse> {

@@ -44,6 +44,7 @@ interface AuthPayload {
 interface GdAuthInstance {
     authenticate(host: string, token: string, options: number): Promise<{
         auth: string;
+        accountName: string;
         shopperId: string;
         cid: string;
         exp: number;
@@ -105,7 +106,7 @@ export class GdAuthService {
             return {
                 valid: true,
                 payload: {
-                    shopperId: isE2S && jwt.e2s ? jwt.e2s.shopperId : jwt.shopperId,
+                    shopperId: (isE2S && jwt.e2s ? jwt.e2s.shopperId : jwt.shopperId) ?? jwt.accountName,
                     cid: isE2S && jwt.e2s ? jwt.e2s.cid : jwt.cid,
                     exp: jwt.exp,
                     iat: jwt.iat,

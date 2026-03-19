@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
+import { formatTimestamp } from '@/lib/date-utils';
 import type { MgmtAppDetails, MgmtDomainError, MgmtImageStatus, MgmtSubscription, MgmtSubscriptionGrants, MgmtVariantWithLifecycle } from '@/lib/mgmt-control-plane-adapter';
 
 interface Props {
@@ -66,17 +67,10 @@ function camelToLabel(key: string): string {
 
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/;
 
-function formatLocal(iso: string): string {
-    return new Date(iso).toLocaleString('en-US', {
-        month: 'short', day: '2-digit', year: 'numeric',
-        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-    });
-}
-
 function Timestamp({ iso, style }: { iso: string; style?: React.CSSProperties }) {
     return (
         <span title={iso} style={{ cursor: 'default', ...style }}>
-            {formatLocal(iso)}
+            {formatTimestamp(iso)}
         </span>
     );
 }
@@ -616,7 +610,10 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
                     <span style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{app.systemId}</span>
                 </Field>
                 <Field label="Subscription ID">
-                    <span style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{app.subscriptionId}</span>
+                    <a
+                        href={`/apps/${encodeURIComponent(app.id)}/subscriptions/${encodeURIComponent(app.subscriptionId)}/add-credit-pack`}
+                        style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}
+                    >{app.subscriptionId}</a>
                 </Field>
                 <Field label="Updated">
                     <Timestamp iso={app.updatedAt} style={{ fontSize: '0.8rem' }} />
