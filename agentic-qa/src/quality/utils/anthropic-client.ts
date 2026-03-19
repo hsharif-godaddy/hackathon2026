@@ -39,10 +39,12 @@ export interface AnthropicClientOptions {
   baseUrl?: string;
   maxTokens?: number;
   timeoutMs?: number;
+  authType?: 'api-key' | 'bearer';
 }
 
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
-const DEFAULT_BASE_URL = 'https://api.anthropic.com';
+const DEFAULT_BASE_URL = process.env['ANTHROPIC_BASE_URL'] || 'https://api.anthropic.com';
+const DEFAULT_AUTH_TYPE = (process.env['ANTHROPIC_AUTH_TYPE'] === 'bearer' ? 'bearer' : 'api-key') as 'api-key' | 'bearer';
 const DEFAULT_MAX_TOKENS = 4096;
 const DEFAULT_TIMEOUT_MS = 60_000;
 
@@ -50,6 +52,13 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && (
     error.name === 'TimeoutError' || error.name === 'AbortError'
   );
+}
+
+function buildAuthHeaders(apiKey: string, authType: 'api-key' | 'bearer'): Record<string, string> {
+  if (authType === 'bearer') {
+    return { 'Authorization': `Bearer ${apiKey}` };
+  }
+  return { 'x-api-key': apiKey };
 }
 
 /**
@@ -65,6 +74,7 @@ export async function callAnthropic(
     baseUrl = DEFAULT_BASE_URL,
     maxTokens = DEFAULT_MAX_TOKENS,
     timeoutMs = DEFAULT_TIMEOUT_MS,
+    authType = DEFAULT_AUTH_TYPE,
   } = options;
 
   let response: Response;
@@ -73,7 +83,7 @@ export async function callAnthropic(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
+        ...buildAuthHeaders(apiKey, authType),
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
@@ -124,6 +134,7 @@ export async function callAnthropicVision(
     baseUrl = DEFAULT_BASE_URL,
     maxTokens = DEFAULT_MAX_TOKENS,
     timeoutMs = DEFAULT_TIMEOUT_MS,
+    authType = DEFAULT_AUTH_TYPE,
   } = options;
 
   // Read and encode the image
@@ -163,7 +174,7 @@ export async function callAnthropicVision(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
+        ...buildAuthHeaders(apiKey, authType),
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({

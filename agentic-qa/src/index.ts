@@ -45,7 +45,7 @@ function parseArgs(): { options: CLIOptions; scenarioPath?: string } {
   const options: CLIOptions = {
     all: false,
     headed: false,
-    model: 'anthropic/claude-sonnet-4-5-20250929',
+    model: 'gpt-5',
     verbose: false,
     output: DEFAULT_REPORTS_DIR,
     scenarios: DEFAULT_SCENARIOS_DIR,
@@ -139,7 +139,8 @@ Usage:
 Options:
   --all, -a             Run all scenarios in the scenarios directory
   --headed, -h          Run with visible browser (not headless)
-  --model, -m <name>    AI model to use (default: anthropic/claude-sonnet-4-5-20250929)
+  --model, -m <name>    AI model to use (default: gpt-5)
+                        Use bare name (gpt-5) or provider-qualified (openai/gpt-5)
   --verbose, -v         Enable verbose logging
   --output, -o <dir>    Output directory for reports (default: ./reports)
   --scenarios, -s <dir> Scenarios directory (default: ./scenarios)

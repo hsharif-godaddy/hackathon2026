@@ -32,22 +32,22 @@ export async function runScenario(
   let qualityStatus: 'success' | 'failed' | 'skipped' = 'skipped';
   let qualityErrorMsg: string | undefined;
 
-  // Configure Stagehand with the model
-  // GoDaddy proxy expects just the model name without provider prefix
-  const defaultModel = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4';
+  const defaultModel = process.env.OPENAI_MODEL || 'gpt-5';
   const modelName = options.model || defaultModel;
+  const normalizedModelName = modelName.includes('/') ? modelName : `openai/${modelName}`;
 
-  console.log(`Using model: ${modelName}`);
+  console.log(`Using model: ${normalizedModelName}`);
   console.log(`Base URL: ${process.env.OPENAI_BASE_URL || 'default OpenAI'}`);
 
-  // Use model config object for custom endpoint
+  // CaaS proxy is OpenAI-compatible for all models (including Claude),
+  // so always use the openai provider with OPENAI_BASE_URL
   const modelConfig = process.env.OPENAI_BASE_URL
     ? {
-        modelName: modelName, // Just the model name, no prefix
+        modelName: normalizedModelName,
         apiKey: process.env.OPENAI_API_KEY,
         baseURL: process.env.OPENAI_BASE_URL,
       }
-    : `openai/${modelName}`;
+    : normalizedModelName;
 
   // CI environments need additional Chrome args
   const isCI = process.env.CI === 'true';
@@ -124,8 +124,8 @@ export async function runScenario(
       await deleteOldestSitesIfOverLimit(stagehand, 100);
     }
 
-    // Create agent
     const agent = stagehand.agent({
+      model: modelConfig,
       systemPrompt: scenario.systemPrompt || `You are a QA tester for Airo Builder.
 Your goal is to complete the test scenario by interacting with the web application.
 Be patient with loading times - site creation can take up to 5 minutes.
@@ -209,6 +209,7 @@ Always verify the final state matches the expected outcome.`,
 
         try {
           const chatAgent = stagehand.agent({
+            model: modelConfig,
             systemPrompt: scenario.systemPrompt || 'You are a QA tester. Send the chat message and verify the result.',
           });
 
