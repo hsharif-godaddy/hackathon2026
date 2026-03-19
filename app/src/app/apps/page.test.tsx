@@ -27,7 +27,11 @@ vi.mock('@/components/layout/AppInactivityAlert', () => ({
 }));
 
 vi.mock('@/app/apps/components/PendingTransfers', () => ({
-  default: () => <div data-testid="pending-transfers">PendingTransfers</div>,
+  default: ({ onAcceptTransfer }: { onAcceptTransfer?: () => void }) => (
+    <div data-testid="pending-transfers">
+      <button data-testid="incoming-accept-button" onClick={onAcceptTransfer}>Accept</button>
+    </div>
+  ),
 }));
 
 vi.mock('@/app/apps/components/AcceptTransferDialog', () => ({
@@ -236,22 +240,16 @@ describe('Sites Page', () => {
   });
 
   describe('renders transfer UI', () => {
-    it('should show accept transfer button', () => {
-      renderWithProviders(<Sites />);
-
-      expect(screen.getByTestId('accept-transfer-button')).toBeInTheDocument();
-    });
-
     it('should render pending transfers section', () => {
       renderWithProviders(<Sites />);
 
       expect(screen.getByTestId('pending-transfers')).toBeInTheDocument();
     });
 
-    it('should open accept transfer dialog when button is clicked', async function openDialog() {
+    it('should open accept transfer dialog via pending transfer action', async function openDialog() {
       const { user } = renderWithProviders(<Sites />);
 
-      await user.click(screen.getByTestId('accept-transfer-button'));
+      await user.click(screen.getByTestId('incoming-accept-button'));
 
       await waitFor(() => {
         expect(screen.getByTestId('accept-transfer-dialog')).toBeInTheDocument();
@@ -261,7 +259,7 @@ describe('Sites Page', () => {
     it('should close accept transfer dialog when dismissed', async function closeDialog() {
       const { user } = renderWithProviders(<Sites />);
 
-      await user.click(screen.getByTestId('accept-transfer-button'));
+      await user.click(screen.getByTestId('incoming-accept-button'));
 
       await waitFor(() => {
         expect(screen.getByTestId('accept-transfer-dialog')).toBeInTheDocument();
@@ -273,17 +271,23 @@ describe('Sites Page', () => {
         expect(screen.queryByTestId('accept-transfer-dialog')).not.toBeInTheDocument();
       });
     });
+
+    it('should keep dialog open when loading starts mid-operation', async function dialogSurvivesLoading() {
+      const { user } = renderWithProviders(<Sites />);
+
+      await user.click(screen.getByTestId('incoming-accept-button'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('accept-transfer-dialog')).toBeInTheDocument();
+      });
+
+      useSitesStore.setState({ isLoadingAll: true });
+
+      expect(screen.getByTestId('accept-transfer-dialog')).toBeInTheDocument();
+    });
   });
 
   describe('hides transfer UI when flag is disabled', () => {
-    it('should not show accept transfer button when flag is off', () => {
-      vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
-
-      renderWithProviders(<Sites />);
-
-      expect(screen.queryByTestId('accept-transfer-button')).not.toBeInTheDocument();
-    });
-
     it('should not show pending transfers when flag is off', () => {
       vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
 

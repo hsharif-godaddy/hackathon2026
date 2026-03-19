@@ -70,16 +70,11 @@ function SitesPageContent() {
     }
   }
 
-  if (isLoading) {
+  if (isLoading && !isAcceptTransferOpen) {
     return (
-      <>
-        <Box className="min-h-screen flex items-center justify-center" data-partial="accentAiro">
-          <Spinner />
-        </Box>
-        {isTransferEnabled && isAcceptTransferOpen && (
-          <AcceptTransferDialog onClose={() => setIsAcceptTransferOpen(false)} />
-        )}
-      </>
+      <Box className="min-h-screen flex items-center justify-center" data-partial="accentAiro">
+        <Spinner />
+      </Box>
     )
   }
 
@@ -108,16 +103,6 @@ function SitesPageContent() {
               </Tag>
             </div>
           </Box>
-          {isTransferEnabled && (
-            <Button
-              onClick={() => setIsAcceptTransferOpen(true)}
-              design="secondary"
-              size="sm"
-              text={t('builder_transfer_accept_button', undefined, 'Accept Transfer')}
-              data-testid="accept-transfer-button"
-              data-eid="apps.accept_transfer.click"
-            />
-          )}
         </div>
 
         {isTransferEnabled && (
