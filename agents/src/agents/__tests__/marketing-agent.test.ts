@@ -16,9 +16,10 @@ vi.mock('@airo/ai-lib', async () => {
     ...actual,
     createPromptBuilder: () => ({
       file: vi.fn().mockReturnThis(),
-      build: vi.fn().mockResolvedValue(`# Marketing Manager
+      text: vi.fn().mockReturnThis(),
+      build: vi.fn().mockResolvedValue(`# Airo Marketer
 
-You are an expert Marketing Manager focused on SEO and search engine optimization.
+You are an expert Airo Marketer focused on SEO and search engine optimization.
 
 ## Workflow
 - You receive handoff from develop agent
@@ -36,7 +37,7 @@ describe('marketing-agent', function marketingAgentTests() {
     it('should create agent configuration with correct properties', async function create() {
       const config = await createMarketingAgent();
 
-      expect(config.name).toBe('Marketing Manager');
+      expect(config.name).toBe('Airo Marketer');
       expect(config).toHaveProperty('system');
       expect(config).toHaveProperty('model');
       expect(config).toHaveProperty('modelName');
@@ -51,12 +52,13 @@ describe('marketing-agent', function marketingAgentTests() {
 
       expect(config.tools).toHaveProperty('seoAnalysis');
       expect(config.tools).toHaveProperty('readFile');
-      expect(config.tools).toHaveProperty('fileEdit');
+      expect(config.tools).toHaveProperty('str_replace_based_edit_tool');
       expect(config.tools).toHaveProperty('todoList');
       expect(config.tools).toHaveProperty('directoryListing');
       expect(config.tools).toHaveProperty('grepSearch');
       expect(config.tools).toHaveProperty('media');
       expect(config.tools).toHaveProperty('suggestedResponse');
+      expect(config.tools).toHaveProperty('skill');
     });
 
     it('should configure handoff to develop agent', async function handoffs() {
@@ -150,7 +152,7 @@ describe('marketing-agent', function marketingAgentTests() {
       await agent.initialize();
       const name = agent.getName();
 
-      expect(name).toBe('Marketing Manager');
+      expect(name).toBe('Airo Marketer');
     });
 
     it('should have streamGenerate method', async function streamGenerate() {
@@ -208,7 +210,7 @@ describe('marketing-agent', function marketingAgentTests() {
       const config = await createMarketingAgent();
       const systemPrompt = config.system;
 
-      expect(systemPrompt).toContain('Marketing Manager');
+      expect(systemPrompt).toContain('Airo Marketer');
     });
 
     it('should reference SEO analysis capabilities', async function seoCapabilities() {
@@ -245,11 +247,11 @@ describe('marketing-agent', function marketingAgentTests() {
   });
 
   describe('#tools', function toolsTests() {
-    it('should have exactly 8 tools configured', async function toolCount() {
+    it('should have exactly 9 tools configured', async function toolCount() {
       const config = await createMarketingAgent();
       const toolNames = Object.keys(config.tools);
 
-      expect(toolNames).toHaveLength(8);
+      expect(toolNames).toHaveLength(9);
     });
 
     it('should include seoAnalysis tool', async function seoTool() {
@@ -279,7 +281,7 @@ describe('marketing-agent', function marketingAgentTests() {
 
       // Should be able to read files and create reports
       expect(config.tools).toHaveProperty('readFile');
-      expect(config.tools).toHaveProperty('fileEdit');
+      expect(config.tools).toHaveProperty('str_replace_based_edit_tool');
       expect(config.tools).toHaveProperty('directoryListing');
       expect(config.tools).toHaveProperty('grepSearch');
     });

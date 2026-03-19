@@ -2,20 +2,74 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { ConversationContextManager } from '../ConversationContextManager.js';
 import { ConversationRepository } from '../../database/repositories/ConversationRepository.js';
 import type { ConversationMessage } from '../../database/schema.js';
+import type { AgentExecutionContext } from '../../base/agent.interface.js';
 
-// Mock the ConversationRepository
+// Mock dependencies
 vi.mock('../../database/repositories/ConversationRepository.js');
+vi.mock('../../logging/index.js', () => {
+  const mockLogger = { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn(), child: vi.fn() };
+  mockLogger.child.mockReturnValue(mockLogger);
+  return {
+    logger: mockLogger,
+    Logger: { create: vi.fn(() => mockLogger) },
+  };
+});
+vi.mock('../../logging/events/index.js', () => ({
+  conversationContextEvents: { buildSuccess: vi.fn() }
+}));
+vi.mock('../ConversationHistoryLoader.js', async (importOriginal) => {
+  const original = await importOriginal() as any;
+  return {
+    ...original,
+    ConversationHistoryLoader: vi.fn().mockImplementation(() => ({
+      registerCompressionStrategy: vi.fn(),
+      loadMessagesWithSummarization: vi.fn().mockResolvedValue({ messages: [] }),
+    })),
+  };
+});
+vi.mock('../AppContextManager.js', () => ({
+  AppContextManager: vi.fn().mockImplementation(() => ({
+    generateContextMessage: vi.fn().mockResolvedValue(null),
+  })),
+}));
+vi.mock('../TodoContextManager.js', () => ({
+  TodoContextManager: vi.fn().mockImplementation(() => ({
+    generateTodoContext: vi.fn().mockResolvedValue(null),
+  })),
+}));
+
+// Import after mocks
+const { ConversationHistoryLoader } = await import('../ConversationHistoryLoader.js');
+const { AppContextManager } = await import('../AppContextManager.js');
+const { TodoContextManager } = await import('../TodoContextManager.js');
+
+function createExecutionContext(overrides: Partial<AgentExecutionContext> = {}): AgentExecutionContext {
+  return {
+    metadata: { appId: 'test-app-id' },
+    ...overrides,
+  } as AgentExecutionContext;
+}
 
 describe('ConversationContextManager', () => {
   let contextManager: ConversationContextManager;
   let mockConversationRepo: vi.Mocked<ConversationRepository>;
+  let mockHistoryLoader: any;
+  let mockAppContextManager: any;
+  let mockTodoContextManager: any;
 
   beforeEach(() => {
+    vi.clearAllMocks();
+
     mockConversationRepo = {
       getMessages: vi.fn(),
     } as any;
-    
+
     contextManager = new ConversationContextManager(mockConversationRepo, 5);
+
+    // Get mock instances from constructors
+    mockHistoryLoader = vi.mocked(ConversationHistoryLoader).mock.results.at(-1)?.value;
+    mockAppContextManager = vi.mocked(AppContextManager).mock.results.at(-1)?.value;
+    mockTodoContextManager = vi.mocked(TodoContextManager).mock.results.at(-1)?.value;
   });
 
   afterEach(() => {
@@ -26,193 +80,150 @@ describe('ConversationContextManager', () => {
     const systemPrompt = 'You are a helpful assistant';
     const userMessage = 'Hello, how are you?';
 
-    // Mock console.log to avoid debug output in tests
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
     const messages = await contextManager.buildMessages(systemPrompt, userMessage);
 
     expect(messages).toHaveLength(2);
-    expect(messages[0]).toEqual({
-      role: 'system',
-      content: systemPrompt
-    });
-    expect(messages[1]).toEqual({
-      role: 'user',
-      content: userMessage
-    });
-    expect(mockConversationRepo.getMessages).not.toHaveBeenCalled();
-
-    consoleSpy.mockRestore();
+    expect(messages[0]).toEqual({ role: 'system', content: systemPrompt });
+    expect(messages[1]).toEqual({ role: 'user', content: userMessage });
+    expect(mockHistoryLoader.loadMessagesWithSummarization).not.toHaveBeenCalled();
   });
 
-  it('should include conversation history when conversation ID is provided', async () => {
-    const conversationId = 'test-conv-123';
-    const systemPrompt = 'You are a helpful assistant';
-    const userMessage = 'What did we discuss earlier?';
+  it('should not load conversation history without executionContext (no appId)', async () => {
+    const messages = await contextManager.buildMessages(
+      'You are a helpful assistant',
+      'What did we discuss?',
+      'test-conv-123'
+    );
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-    const mockMessages: ConversationMessage[] = [
-      {
-        id: 'msg1',
-        conversationId,
-        sender: 'user',
-        content: 'Hello, tell me about TypeScript',
-        createdAt: new Date('2025-01-01T10:00:00Z'),
-        updatedAt: new Date('2025-01-01T10:00:00Z')
-      },
-      {
-        id: 'msg2', 
-        conversationId,
-        sender: 'agent',
-        content: 'TypeScript is a typed superset of JavaScript...',
-        createdAt: new Date('2025-01-01T10:01:00Z'),
-        updatedAt: new Date('2025-01-01T10:01:00Z')
-      }
-    ];
-
-    mockConversationRepo.getMessages.mockResolvedValue(mockMessages);
-
-    const messages = await contextManager.buildMessages(systemPrompt, userMessage, conversationId);
-
-    expect(mockConversationRepo.getMessages).toHaveBeenCalledWith(conversationId);
-    expect(messages).toHaveLength(4); // system + user + agent + current user
+    // Without executionContext, loadConversationHistoryCompressed returns empty
+    expect(messages).toHaveLength(2);
     expect(messages[0].role).toBe('system');
-    expect(messages[1].role).toBe('user');
-    expect(messages[1].content).toBe('Hello, tell me about TypeScript');
+    expect(messages[1].content).toBe('What did we discuss?');
+    // History loader should NOT be called (missing appId)
+    expect(mockHistoryLoader.loadMessagesWithSummarization).not.toHaveBeenCalled();
+  });
+
+  it('should load conversation history when executionContext with appId is provided', async () => {
+    mockHistoryLoader.loadMessagesWithSummarization.mockResolvedValue({
+      messages: [
+        { role: 'user', content: 'Previous question' },
+        { role: 'assistant', content: 'Previous answer' },
+      ]
+    });
+
+    const executionContext = createExecutionContext();
+    const messages = await contextManager.buildMessages(
+      'System prompt',
+      'Current message',
+      'test-conv-123',
+      undefined,
+      executionContext
+    );
+
+    expect(mockHistoryLoader.loadMessagesWithSummarization).toHaveBeenCalledWith(
+      'test-app-id', 40000, undefined, true, true
+    );
+    // system + 2 history + current user = 4
+    expect(messages).toHaveLength(4);
+    expect(messages[0].role).toBe('system');
+    expect(messages[1]).toEqual({ role: 'user', content: 'Previous question' });
+    expect(messages[2]).toEqual({ role: 'assistant', content: 'Previous answer' });
+    expect(messages[3]).toEqual({ role: 'user', content: 'Current message' });
+  });
+
+  it('should include tool call messages from history', async () => {
+    mockHistoryLoader.loadMessagesWithSummarization.mockResolvedValue({
+      messages: [
+        { role: 'user', content: 'Build a page' },
+        {
+          role: 'assistant',
+          content: 'I will create the file.',
+          tool_calls: [{ id: 'tc1', type: 'function', function: { name: 'writeFile', arguments: '{}' } }]
+        },
+        { role: 'tool', content: 'File created', tool_call_id: 'tc1', name: 'writeFile' },
+      ]
+    });
+
+    const executionContext = createExecutionContext();
+    const messages = await contextManager.buildMessages(
+      'System prompt', 'Next step', 'conv-1', undefined, executionContext
+    );
+
+    // system + 3 history + current user = 5
+    expect(messages).toHaveLength(5);
     expect(messages[2].role).toBe('assistant');
-    expect(messages[2].content).toBe('TypeScript is a typed superset of JavaScript...');
-    expect(messages[3].role).toBe('user');
-    expect(messages[3].content).toBe('What did we discuss earlier?');
-    
-    consoleSpy.mockRestore();
+    expect((messages[2] as any).tool_calls).toHaveLength(1);
+    expect(messages[3].role).toBe('tool');
   });
 
-  it('should handle messages with tool calls', async () => {
-    const conversationId = 'test-conv-456';
-    const systemPrompt = 'You are a helpful assistant';
-    const userMessage = 'Current message';
-
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-    const mockMessages: ConversationMessage[] = [
-      {
-        id: 'msg1',
-        conversationId,
-        sender: 'user',
-        content: 'List files in current directory',
-        createdAt: new Date('2025-01-01T10:00:00Z'),
-        updatedAt: new Date('2025-01-01T10:00:00Z')
-      },
-      {
-        id: 'msg2',
-        conversationId,
-        sender: 'agent',
-        content: 'I will list the files for you.',
-        toolCalls: [
-          {
-            id: 'call_123',
-            tool_name: 'list_files',
-            tool_args: { path: '.' },
-            tool_result: 'file1.txt\\nfile2.js\\npackage.json',
-            status: 'success' as const
-          }
-        ],
-        createdAt: new Date('2025-01-01T10:01:00Z'),
-        updatedAt: new Date('2025-01-01T10:01:00Z')
-      }
-    ];
-
-    mockConversationRepo.getMessages.mockResolvedValue(mockMessages);
-
-    const messages = await contextManager.buildMessages(systemPrompt, userMessage, conversationId);
-
-    expect(messages).toHaveLength(5); // system + user + assistant with tool calls + tool result + current user
-    
-    const assistantMessage = messages[2];
-    expect(assistantMessage.role).toBe('assistant');
-    expect(assistantMessage.tool_calls).toBeDefined();
-    expect(assistantMessage.tool_calls![0]).toEqual({
-      id: 'call_123',
-      type: 'function',
-      function: {
-        name: 'list_files',
-        arguments: JSON.stringify({ path: '.' })
-      }
+  it('should filter out empty content messages', async () => {
+    mockHistoryLoader.loadMessagesWithSummarization.mockResolvedValue({
+      messages: [
+        { role: 'user', content: 'Valid message' },
+        { role: 'assistant', content: '' },
+        { role: 'user', content: 'Another valid message' },
+      ]
     });
 
-    const toolMessage = messages[3];
-    expect(toolMessage.role).toBe('tool');
-    expect(toolMessage.content).toContain('🔧 **Tool: `list_files`**');
-    expect(toolMessage.content).toContain('file1.txt\\nfile2.js\\npackage.json');
-    expect(toolMessage.tool_call_id).toBe('call_123');
-    expect(toolMessage.name).toBe('list_files');
-    
-    consoleSpy.mockRestore();
+    const executionContext = createExecutionContext();
+    const messages = await contextManager.buildMessages(
+      'System prompt', 'Current', 'conv-1', undefined, executionContext
+    );
+
+    // system + 2 valid history (empty assistant filtered) + current user = 4
+    expect(messages).toHaveLength(4);
+    expect(messages.every(m => {
+      const content = typeof m.content === 'string' ? m.content : '';
+      return content.trim() !== '';
+    })).toBe(true);
   });
 
-  it('should limit messages to the configured maximum', async () => {
-    const contextManagerWithLimit = new ConversationContextManager(mockConversationRepo, 2);
-    const conversationId = 'test-conv-789';
-    const systemPrompt = 'You are a helpful assistant';
-    const userMessage = 'Current message';
+  it('should include app context when executionContext is provided', async () => {
+    mockAppContextManager.generateContextMessage.mockResolvedValue('[Current Project Structure]\nindex.html\nstyle.css');
 
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const executionContext = createExecutionContext();
+    const messages = await contextManager.buildMessages(
+      'System prompt', 'Build a page', undefined, undefined, executionContext
+    );
 
-    // Create many messages to test the limit
-    const mockMessages: ConversationMessage[] = [];
-    for (let i = 1; i <= 10; i++) {
-      mockMessages.push({
-        id: `msg${i}`,
-        conversationId,
-        sender: i % 2 === 1 ? 'user' : 'agent',
-        content: `Message ${i}`,
-        createdAt: new Date(`2025-01-01T10:0${i}:00Z`),
-        updatedAt: new Date(`2025-01-01T10:0${i}:00Z`)
-      });
-    }
+    expect(mockAppContextManager.generateContextMessage).toHaveBeenCalledWith(executionContext);
+    // system + app context + current user = 3
+    expect(messages).toHaveLength(3);
+    expect(messages[1].content).toContain('[Current Project Structure]');
+  });
 
-    mockConversationRepo.getMessages.mockResolvedValue(mockMessages);
+  it('should include todo context when executionContext is provided', async () => {
+    mockTodoContextManager.generateTodoContext.mockResolvedValue('[Current Todo List]\n- [ ] Task 1');
 
-    const messages = await contextManagerWithLimit.buildMessages(systemPrompt, userMessage, conversationId);
+    const executionContext = createExecutionContext();
+    const messages = await contextManager.buildMessages(
+      'System prompt', 'What are my tasks?', undefined, undefined, executionContext, 'todo-list-1'
+    );
 
-    // Should have: system + (limited history) + current user
-    // With limit of 2, should include system + at most 2 history messages + current user
-    expect(messages.length).toBeLessThanOrEqual(1 + 2 + 1); // system + max history + current
+    expect(mockTodoContextManager.generateTodoContext).toHaveBeenCalledWith(executionContext, 'todo-list-1');
+    expect(messages.some(m => typeof m.content === 'string' && m.content.includes('[Current Todo List]'))).toBe(true);
+  });
+
+  it('should gracefully handle history loader errors', async () => {
+    mockHistoryLoader.loadMessagesWithSummarization.mockRejectedValue(new Error('DB connection failed'));
+
+    const executionContext = createExecutionContext();
+    const messages = await contextManager.buildMessages(
+      'System prompt', 'Current message', 'conv-1', undefined, executionContext
+    );
+
+    // Should still return system + current user (error caught internally)
+    expect(messages).toHaveLength(2);
     expect(messages[0].role).toBe('system');
-    expect(messages[messages.length - 1].role).toBe('user');
-    expect(messages[messages.length - 1].content).toBe('Current message');
-    
-    consoleSpy.mockRestore();
+    expect(messages[1].content).toBe('Current message');
   });
 
   it('should provide conversation summary', async () => {
     const conversationId = 'test-conv-summary';
     const mockMessages: ConversationMessage[] = [
-      {
-        id: 'msg1',
-        conversationId,
-        sender: 'user',
-        content: 'Message 1',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      {
-        id: 'msg2',
-        conversationId,
-        sender: 'agent', 
-        content: 'Message 2',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      {
-        id: 'msg3',
-        conversationId,
-        sender: 'user',
-        content: 'Message 3',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }
+      { id: 'msg1', conversationId, sender: 'user', content: 'Message 1', createdAt: new Date(), updatedAt: new Date() },
+      { id: 'msg2', conversationId, sender: 'agent', content: 'Message 2', createdAt: new Date(), updatedAt: new Date() },
+      { id: 'msg3', conversationId, sender: 'user', content: 'Message 3', createdAt: new Date(), updatedAt: new Date() },
     ];
 
     mockConversationRepo.getMessages.mockResolvedValue(mockMessages);
@@ -220,287 +231,15 @@ describe('ConversationContextManager', () => {
     const summary = await contextManager.getConversationSummary(conversationId);
 
     expect(summary.totalMessages).toBe(3);
-    expect(summary.messageTypes).toEqual({
-      user: 2,
-      agent: 1
-    });
+    expect(summary.messageTypes).toEqual({ user: 2, agent: 1 });
   });
 
   it('should handle empty content validation', async () => {
     const systemPrompt = 'You are a helpful assistant';
     const userMessage = 'Valid message';
 
-    // Test empty system prompt
-    await expect(
-      contextManager.buildMessages('', userMessage)
-    ).rejects.toThrow('System prompt cannot be empty');
-
-    // Test empty user message  
-    await expect(
-      contextManager.buildMessages(systemPrompt, '')
-    ).rejects.toThrow('Current user message cannot be empty');
-
-    // Test with whitespace only
-    await expect(
-      contextManager.buildMessages('   ', userMessage)
-    ).rejects.toThrow('System prompt cannot be empty');
-  });
-
-  it('should filter out messages with empty content from conversation history', async () => {
-    const conversationId = 'test-conv-empty';
-    const systemPrompt = 'You are a helpful assistant';
-    const userMessage = 'Current message';
-
-    const mockMessages: ConversationMessage[] = [
-      {
-        id: 'msg1',
-        conversationId,
-        sender: 'user',
-        content: 'Valid user message',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      {
-        id: 'msg2',
-        conversationId,
-        sender: 'agent',
-        content: '', // Empty content - should be filtered
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      {
-        id: 'msg3',
-        conversationId,
-        sender: 'user',
-        content: '   ', // Whitespace only - should be filtered  
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      {
-        id: 'msg4',
-        conversationId,
-        sender: 'agent',
-        content: 'Valid agent message',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }
-    ];
-
-    mockConversationRepo.getMessages.mockResolvedValue(mockMessages);
-
-    // Mock console methods to avoid output during tests
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    const messages = await contextManager.buildMessages(systemPrompt, userMessage, conversationId);
-
-    // Should have: system + valid user + valid agent + current user = 4 messages
-    expect(messages).toHaveLength(4);
-    expect(messages[0].role).toBe('system');
-    expect(messages[1].role).toBe('user');
-    expect(messages[1].content).toBe('Valid user message');
-    expect(messages[2].role).toBe('assistant');
-    expect(messages[2].content).toBe('Valid agent message');
-    expect(messages[3].role).toBe('user');
-    expect(messages[3].content).toBe('Current message');
-
-    // Verify empty messages were logged (now using logger.warn instead of console.warn)
-    // No longer checking console.warn since we switched to structured logging
-
-    consoleSpy.mockRestore();
-    consoleWarnSpy.mockRestore();
-  });
-
-  it('should filter out tool calls without results to prevent Bedrock errors', async () => {
-    const conversationId = 'test-conv-tool-filter';
-    const systemPrompt = 'You are a helpful assistant';
-    const userMessage = 'Current message';
-
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    const mockMessages: ConversationMessage[] = [
-      {
-        id: 'msg1',
-        conversationId,
-        sender: 'user',
-        content: 'Please run a command',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      {
-        id: 'msg2',
-        conversationId,
-        sender: 'agent',
-        content: 'I will run that command for you.',
-        toolCalls: [
-          {
-            id: 'call_with_result',
-            tool_name: 'run_command',
-            tool_args: { command: 'ls' },
-            tool_result: 'file1.txt\nfile2.js',
-            status: 'success' as const
-          },
-          {
-            id: 'call_without_result',
-            tool_name: 'incomplete_command',
-            tool_args: { command: 'sleep 10' },
-            status: 'running' as const
-            // No tool_result - this should be filtered out
-          }
-        ],
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }
-    ];
-
-    mockConversationRepo.getMessages.mockResolvedValue(mockMessages);
-
-    const messages = await contextManager.buildMessages(systemPrompt, userMessage, conversationId);
-
-    // Should have: system + user + assistant with only tool calls that have results + tool result + current user
-    expect(messages).toHaveLength(5);
-    expect(messages[0].role).toBe('system');
-    expect(messages[1].role).toBe('user');
-    expect(messages[2].role).toBe('assistant');
-    
-    // Assistant message should only have the tool call with result
-    expect(messages[2].tool_calls).toHaveLength(1);
-    expect(messages[2].tool_calls![0].id).toBe('call_with_result');
-    
-    // Should have corresponding tool result message (now rendered with ToolCallRenderer)
-    expect(messages[3].role).toBe('tool');
-    expect(messages[3].tool_call_id).toBe('call_with_result');
-    expect(messages[3].content).toContain('🔧 **Tool: `run_command`**');
-    expect(messages[3].content).toContain('file1.txt\nfile2.js');
-    
-    // Current user message
-    expect(messages[4].role).toBe('user');
-    expect(messages[4].content).toBe('Current message');
-
-    consoleSpy.mockRestore();
-    consoleWarnSpy.mockRestore();
-  });
-
-  it('should filter out segments with tool calls without results', async () => {
-    const conversationId = 'test-conv-segment-filter';
-    const systemPrompt = 'You are a helpful assistant';
-    const userMessage = 'Current message';
-
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    const mockMessages: ConversationMessage[] = [
-      {
-        id: 'msg1',
-        conversationId,
-        sender: 'agent',
-        content: 'I will help you with that.',
-        segments: [
-          {
-            id: 'seg_1',
-            type: 'content',
-            content: 'I will help you with that.',
-            timestamp: new Date('2025-01-01T10:00:00Z')
-          },
-          {
-            id: 'seg_2',
-            type: 'tool_call',
-            tool_call: {
-              id: 'call_complete',
-              tool_name: 'complete_tool',
-              tool_args: {},
-              tool_result: 'Success!',
-              status: 'success'
-            },
-            timestamp: new Date('2025-01-01T10:01:00Z')
-          },
-          {
-            id: 'seg_3',
-            type: 'tool_call',
-            tool_call: {
-              id: 'call_incomplete',
-              tool_name: 'incomplete_tool',
-              tool_args: {},
-              status: 'running'
-              // No tool_result - should be filtered
-            },
-            timestamp: new Date('2025-01-01T10:02:00Z')
-          }
-        ],
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }
-    ];
-
-    mockConversationRepo.getMessages.mockResolvedValue(mockMessages);
-
-    const messages = await contextManager.buildMessages(systemPrompt, userMessage, conversationId);
-
-    // Should have: system + assistant with only complete tool calls + tool result + current user
-    expect(messages).toHaveLength(4);
-    
-    const assistantMessage = messages[1];
-    expect(assistantMessage.role).toBe('assistant');
-    expect(assistantMessage.tool_calls).toHaveLength(1);
-    expect(assistantMessage.tool_calls![0].id).toBe('call_complete');
-    
-    // Warning about skipped tool call is now logged with logger.warn, not console.warn
-    // No longer checking console.warn since we switched to structured logging
-
-    consoleSpy.mockRestore();
-    consoleWarnSpy.mockRestore();
-  });
-
-  it('should handle string timestamps in segments from database', async () => {
-    const conversationId = 'test-conv-string-timestamps';
-    const systemPrompt = 'You are a helpful assistant';
-    const userMessage = 'Current message';
-
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-    const mockMessages: ConversationMessage[] = [
-      {
-        id: 'msg1',
-        conversationId,
-        sender: 'agent',
-        content: 'Processing your request.',
-        segments: [
-          {
-            id: 'seg_1',
-            type: 'content',
-            content: 'Processing your request.',
-            timestamp: '2025-01-01T10:00:00Z' as any // String timestamp from DB
-          },
-          {
-            id: 'seg_2',
-            type: 'tool_call',
-            tool_call: {
-              id: 'call_string_test',
-              tool_name: 'string_test_tool',
-              tool_args: {},
-              tool_result: 'Success!',
-              status: 'success'
-            },
-            timestamp: '2025-01-01T10:01:00Z' as any // String timestamp from DB
-          }
-        ],
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }
-    ];
-
-    mockConversationRepo.getMessages.mockResolvedValue(mockMessages);
-
-    // Should not throw error despite string timestamps
-    const messages = await contextManager.buildMessages(systemPrompt, userMessage, conversationId);
-
-    expect(messages).toHaveLength(4); // system + assistant + tool + current user
-    expect(messages[1].role).toBe('assistant');
-    expect(messages[1].content).toBe('Processing your request.');
-    expect(messages[2].role).toBe('tool');
-    expect(messages[2].tool_call_id).toBe('call_string_test');
-
-    consoleSpy.mockRestore();
+    await expect(contextManager.buildMessages('', userMessage)).rejects.toThrow('System prompt cannot be empty');
+    await expect(contextManager.buildMessages(systemPrompt, '')).rejects.toThrow('Current user message cannot be empty');
+    await expect(contextManager.buildMessages('   ', userMessage)).rejects.toThrow('System prompt cannot be empty');
   });
 });

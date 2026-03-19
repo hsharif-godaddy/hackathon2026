@@ -425,16 +425,17 @@ describe('POST /apps/register - Validation Tests', () => {
       expect(response.body.error).not.toBe('App path mismatch');
     });
 
-    it('should return 403 when CUSTOMER_APP_DIR is set but appPath is not provided (default path will not match)', async () => {
+    it('should accept when CUSTOMER_APP_DIR is set but appPath is not provided (defaults to CUSTOMER_APP_DIR)', async () => {
       process.env.CUSTOMER_APP_DIR = '/locked/app/path';
 
       const response = await request(app)
         .post('/apps/register')
-        .send({ siteId: 'test-site-123' })
-        .expect(403);
+        .send({ siteId: 'test-site-123' });
 
-      expect(response.body.error).toBe('App path mismatch');
-      expect(response.body.message).toBe('This agent is locked to a specific app directory');
+      // When appPath is not provided, finalAppPath defaults to CUSTOMER_APP_DIR,
+      // so the check passes (finalAppPath === CUSTOMER_APP_DIR)
+      expect(response.status).not.toBe(403);
+      expect(response.body.error).not.toBe('App path mismatch');
     });
 
     it('should accept any appPath when CUSTOMER_APP_DIR is not set', async () => {

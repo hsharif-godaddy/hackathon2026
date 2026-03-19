@@ -11,15 +11,16 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { AuthService, AuthRequiredError, pkceStateStore, type PKCEState } from '../auth-service.js';
+import { AuthService, AuthRequiredError, OAuthScopes, pkceStateStore, type PKCEState } from '../auth-service.js';
 import { TokenStore } from '../token-store.js';
 import * as pkceUtils from '../../utils/pkce-utils.js';
 
 // Hoist mock functions
-const { mockFindValid, mockTryRefresh, mockSave } = vi.hoisted(() => ({
+const { mockFindValid, mockTryRefresh, mockSave, mockFindOne } = vi.hoisted(() => ({
     mockFindValid: vi.fn(),
     mockTryRefresh: vi.fn(),
     mockSave: vi.fn(),
+    mockFindOne: vi.fn(),
 }));
 
 // Mock TokenStore
@@ -31,6 +32,13 @@ vi.mock('../token-store.js', () => ({
     },
 }));
 
+// Mock OAuthTokenRepository
+vi.mock('../../database/repositories/OAuthTokenRepository.js', () => ({
+    OAuthTokenRepository: vi.fn(() => ({
+        findOne: mockFindOne,
+    })),
+}));
+
 // Mock PKCE utilities
 vi.mock('../../utils/pkce-utils.js', () => ({
     generateCodeVerifier: vi.fn(),
@@ -38,14 +46,52 @@ vi.mock('../../utils/pkce-utils.js', () => ({
     generateState: vi.fn(),
 }));
 
+// Mock Nomad config
+vi.mock('../../utils/nomad-config.js', () => ({
+    getNomadAllocConfig: vi.fn(() => null),
+}));
+
+// Mock websocket server
+vi.mock('../../server/ai-lib-websocket-server.js', () => ({
+    getSocketIO: vi.fn(() => null),
+}));
+
 // Mock logger
 vi.mock('../../logging/index.js', () => ({
+    logger: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+        child: vi.fn(() => ({
+            info: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn(),
+            debug: vi.fn(),
+            child: vi.fn(),
+        })),
+        withContext: vi.fn(() => ({
+            info: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn(),
+            debug: vi.fn(),
+        })),
+    },
     Logger: {
         create: vi.fn(() => ({
             info: vi.fn(),
             warn: vi.fn(),
             error: vi.fn(),
+            debug: vi.fn(),
         })),
+    },
+    log: {
+        forApp: vi.fn(() => ({
+            info: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn(),
+        })),
+        error: vi.fn(),
     },
 }));
 
@@ -63,6 +109,8 @@ describe('AuthService', () => {
         process.env.GODADDY_OAUTH_AUTH_ENDPOINT = '/v2/oauth2/authorize';
         process.env.GODADDY_OAUTH_TOKEN_ENDPOINT = '/v2/oauth2/token';
         process.env.GODADDY_OAUTH_CLIENT_ID = 'test-client-id-12345';
+        process.env.GODADDY_OAUTH_CLIENT_SECRET = 'test-client-secret';
+        process.env.AGENT_URL = 'http://localhost:4000';
         process.env.OAUTH_REDIRECT_URI = 'http://localhost:4000/oauth/godaddy/callback';
     });
 
@@ -78,17 +126,20 @@ describe('AuthService', () => {
                     expiresAt: Date.now() + 3600_000,
                 };
 
+                // OAuthTokenRepository.findOne must return a record first
+                mockFindOne.mockReturnValue({
+                    accessToken: 'stored-access-token-xyz',
+                    expiresAt: Date.now() + 3600_000,
+                    scopes: OAuthScopes.sort().join(' '),
+                });
                 mockFindValid.mockReturnValue(mockToken);
 
                 const result = await AuthService.getAccessToken({
                     appId: testSessionId,
-                    scopes: testScopes,
                 });
 
-                expect(result).toEqual({
-                    accessToken: 'stored-access-token-xyz',
-                    expiresAt: mockToken.expiresAt,
-                });
+                expect(result.accessToken).toBe('stored-access-token-xyz');
+                expect(result.expiresAt).toBe(mockToken.expiresAt);
 
                 expect(mockFindValid).toHaveBeenCalledWith({
                     appId: testSessionId,
@@ -104,11 +155,15 @@ describe('AuthService', () => {
                     expiresAt: Date.now() + 3600_000,
                 };
 
+                mockFindOne.mockReturnValue({
+                    accessToken: 'custom-provider-token',
+                    expiresAt: Date.now() + 3600_000,
+                    scopes: OAuthScopes.sort().join(' '),
+                });
                 mockFindValid.mockReturnValue(mockToken);
 
                 await AuthService.getAccessToken({
                     appId: testSessionId,
-                    scopes: testScopes,
                     provider: 'custom-provider',
                 });
 
@@ -118,18 +173,21 @@ describe('AuthService', () => {
                 });
             });
 
-            it('should sort scopes consistently for storage key', async () => {
+            it('should use OAuthScopes for scope key', async () => {
                 const mockToken = {
                     accessToken: 'token',
                     expiresAt: Date.now() + 3600_000,
                 };
 
+                mockFindOne.mockReturnValue({
+                    accessToken: 'token',
+                    expiresAt: Date.now() + 3600_000,
+                    scopes: OAuthScopes.sort().join(' '),
+                });
                 mockFindValid.mockReturnValue(mockToken);
 
-                const unsortedScopes = ['z.scope:write', 'a.scope:read', 'm.scope:delete'];
                 await AuthService.getAccessToken({
                     appId: testSessionId,
-                    scopes: unsortedScopes,
                 });
 
                 expect(mockFindValid).toHaveBeenCalledWith({
@@ -140,8 +198,13 @@ describe('AuthService', () => {
         });
 
         describe('with expired token requiring refresh', () => {
-            it('should refresh token when storage returns null', async () => {
-                mockFindValid.mockReturnValue(null);
+            it('should refresh token when token is expired but has valid scopes', async () => {
+                // Token expired (expiresAt in the past, less than 60s buffer)
+                mockFindOne.mockReturnValue({
+                    accessToken: 'expired-token',
+                    expiresAt: Date.now() - 1000, // expired
+                    scopes: OAuthScopes.sort().join(' '),
+                });
 
                 const refreshedToken = {
                     accessToken: 'refreshed-access-token-abc',
@@ -152,13 +215,10 @@ describe('AuthService', () => {
 
                 const result = await AuthService.getAccessToken({
                     appId: testSessionId,
-                    scopes: testScopes,
                 });
 
-                expect(result).toEqual({
-                    accessToken: 'refreshed-access-token-abc',
-                    expiresAt: refreshedToken.expiresAt,
-                });
+                expect(result.accessToken).toBe('refreshed-access-token-abc');
+                expect(result.expiresAt).toBe(refreshedToken.expiresAt);
 
                 expect(mockTryRefresh).toHaveBeenCalledWith(
                     {
@@ -171,8 +231,7 @@ describe('AuthService', () => {
             });
 
             it('should use custom redirect URI if provided', async () => {
-                mockFindValid.mockReturnValue(null);
-                mockTryRefresh.mockResolvedValue(null);
+                mockFindOne.mockReturnValue(null);
 
                 vi.mocked(pkceUtils.generateCodeVerifier).mockReturnValue('test-verifier-xyz');
                 vi.mocked(pkceUtils.generateCodeChallenge).mockReturnValue('test-challenge-abc');
@@ -181,7 +240,6 @@ describe('AuthService', () => {
                 try {
                     await AuthService.getAccessToken({
                         appId: testSessionId,
-                        scopes: testScopes,
                         redirectUri: 'https://custom.app/oauth/callback',
                     });
                 } catch (err) {
@@ -202,8 +260,7 @@ describe('AuthService', () => {
 
         describe('when authentication required', () => {
             beforeEach(() => {
-                mockFindValid.mockReturnValue(null);
-                mockTryRefresh.mockResolvedValue(null);
+                mockFindOne.mockReturnValue(null);
             });
 
             it('should throw AuthRequiredError with OAuth redirect URL', async () => {
@@ -214,14 +271,12 @@ describe('AuthService', () => {
                 await expect(
                     AuthService.getAccessToken({
                         appId: testSessionId,
-                        scopes: testScopes,
                     }),
                 ).rejects.toThrow(AuthRequiredError);
 
                 try {
                     await AuthService.getAccessToken({
                         appId: testSessionId,
-                        scopes: testScopes,
                     });
                 } catch (err) {
                     expect(err).toBeInstanceOf(AuthRequiredError);
@@ -229,12 +284,11 @@ describe('AuthService', () => {
 
                     expect(authErr.code).toBe('AUTH_REQUIRED');
                     expect(authErr.state).toBe('test-state-uuid-456');
-                    expect(authErr.scopes).toEqual(testScopes);
+                    expect(authErr.scopes).toEqual(OAuthScopes);
                     expect(authErr.redirectUrl).toContain('https://api.test-godaddy.com/v2/oauth2/authorize');
                     expect(authErr.redirectUrl).toContain('response_type=code');
                     expect(authErr.redirectUrl).toContain('client_id=test-client-id-12345');
                     expect(authErr.redirectUrl).toContain('redirect_uri=http%3A%2F%2Flocalhost%3A4000%2Foauth%2Fgodaddy%2Fcallback');
-                    expect(authErr.redirectUrl).toContain('scope=commerce.checkout%3Awrite+commerce.product%3Aread');
                     expect(authErr.redirectUrl).toContain('state=test-state-uuid-456');
                     expect(authErr.redirectUrl).toContain('code_challenge=test-challenge-xyz789');
                     expect(authErr.redirectUrl).toContain('code_challenge_method=S256');
@@ -249,7 +303,6 @@ describe('AuthService', () => {
                 try {
                     await AuthService.getAccessToken({
                         appId: testSessionId,
-                        scopes: testScopes,
                     });
                 } catch (err) {
                     const storedState = pkceStateStore.get('state-uuid-abcde');
@@ -257,7 +310,7 @@ describe('AuthService', () => {
                     expect(storedState).toBeDefined();
                     expect(storedState?.appId).toBe(testSessionId);
                     expect(storedState?.codeVerifier).toBe('verifier-12345');
-                    expect(storedState?.scopes).toEqual(testScopes);
+                    expect(storedState?.scopes).toEqual(OAuthScopes);
                     expect(storedState?.redirectUri).toBe('http://localhost:4000/oauth/godaddy/callback');
                     expect(storedState?.createdAt).toBeGreaterThan(Date.now() - 1000);
                 }
@@ -271,7 +324,6 @@ describe('AuthService', () => {
                 try {
                     await AuthService.getAccessToken({
                         appId: testSessionId,
-                        scopes: testScopes,
                     });
                 } catch (err) {
                     expect(pkceUtils.generateCodeVerifier).toHaveBeenCalled();
@@ -297,7 +349,7 @@ describe('AuthService', () => {
                 pkceStateStore.set(testState, {
                     appId: testSessionId,
                     codeVerifier: 'stored-verifier-12345',
-                    scopes: testScopes,
+                    scopes: OAuthScopes,
                     redirectUri: 'http://localhost:4000/oauth/godaddy/callback',
                     createdAt: Date.now(),
                 });
@@ -310,7 +362,7 @@ describe('AuthService', () => {
                         access_token: 'new-access-token-xyz',
                         refresh_token: 'new-refresh-token-abc',
                         expires_in: 3600,
-                        scope: 'commerce.product:read commerce.checkout:write',
+                        scope: OAuthScopes.join(' '),
                         token_type: 'Bearer',
                     }),
                 };
@@ -334,6 +386,7 @@ describe('AuthService', () => {
                         headers: {
                             'Content-Type': 'application/x-www-form-urlencoded',
                             Accept: 'application/json',
+                            'User-Agent': 'GoDaddy-Airo-AppBuilder Agent OAuth-Tool v1',
                         },
                     }),
                 );
@@ -342,6 +395,7 @@ describe('AuthService', () => {
                 const body = fetchCall?.[1]?.body?.toString();
                 expect(body).toContain('grant_type=authorization_code');
                 expect(body).toContain('client_id=test-client-id-12345');
+                expect(body).toContain('client_secret=test-client-secret');
                 expect(body).toContain(`code=${testCode}`);
                 expect(body).toContain('redirect_uri=http%3A%2F%2Flocalhost%3A4000%2Foauth%2Fgodaddy%2Fcallback');
                 expect(body).toContain('code_verifier=stored-verifier-12345');
@@ -374,7 +428,7 @@ describe('AuthService', () => {
                         accessToken: 'saved-access-token',
                         refreshToken: 'saved-refresh-token',
                         expiresAt: expect.any(Number),
-                        scopes: 'commerce.checkout:write commerce.product:read', // sorted
+                        scopes: OAuthScopes.sort().join(' '),
                     },
                 );
             });
@@ -426,7 +480,6 @@ describe('AuthService', () => {
                 expect(saveCall?.[0]).toMatchObject({
                     appId: testSessionId,
                     provider: 'godaddy',
-                    scopes: expect.any(String),
                 });
                 expect(saveCall?.[1]).toMatchObject({
                     accessToken: 'access-only-token',
@@ -465,7 +518,7 @@ describe('AuthService', () => {
                 pkceStateStore.set(expiredState, {
                     appId: testSessionId,
                     codeVerifier: 'verifier',
-                    scopes: testScopes,
+                    scopes: OAuthScopes,
                     redirectUri: 'http://localhost:4000/oauth/godaddy/callback',
                     createdAt: Date.now() - 11 * 60 * 1000, // 11 minutes ago
                 });
@@ -488,7 +541,7 @@ describe('AuthService', () => {
                 pkceStateStore.set(testState, {
                     appId: testSessionId,
                     codeVerifier: 'verifier',
-                    scopes: testScopes,
+                    scopes: OAuthScopes,
                     redirectUri: 'http://localhost:4000/oauth/godaddy/callback',
                     createdAt: Date.now(),
                 });

@@ -1,16 +1,21 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import express from 'express';
-import { readFile, writeFile, mkdir, rmdir } from 'fs/promises';
+import { readFile, writeFile, mkdir, rm } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { appsRouter } from '../apps.js';
 import { AppRepository } from '../../../database/index.js';
 
-// Create test Express app
+// Create test Express app with fake auth context using a bypass siteId
 const createTestApp = () => {
   const app = express();
   app.use(express.json());
+  // Inject agentContext so validateAppOwnership passes
+  app.use((req: any, _res: any, next: any) => {
+    req.agentContext = { siteId: 'local-dev-site' };
+    next();
+  });
   app.use('/apps', appsRouter);
   return app;
 };
@@ -51,15 +56,16 @@ export default function HomePage() {
 
     await writeFile(join(testAppPath, 'src', 'frontend', 'pages', 'index.page.tsx'), sampleComponent);
 
-    // Create test app in database
-    const testApp = appRepo.create({
+    // Create test app in database using registerOrUpdateApp
+    const result = await appRepo.registerOrUpdateApp({
+      siteId: 'local-dev-site',
       name: 'Test App',
-      template: 'v3',
+      appPath: testAppPath,
       initialPrompt: 'Test app for styles editing'
     });
-    
-    testAppId = testApp.id;
-    
+
+    testAppId = result.app.id;
+
     // Update app path to our test directory
     appRepo.update(testAppId, { path: testAppPath });
   });
@@ -68,7 +74,7 @@ export default function HomePage() {
     // Cleanup test app
     if (testAppId) {
       try {
-        appRepo.delete(testAppId);
+        await appRepo.delete(testAppId);
       } catch (error) {
         console.warn('Failed to delete test app:', error);
       }
@@ -77,7 +83,7 @@ export default function HomePage() {
     // Cleanup test directory
     if (testAppPath && existsSync(testAppPath)) {
       try {
-        await rmdir(testAppPath, { recursive: true });
+        await rm(testAppPath, { recursive: true });
       } catch (error) {
         console.warn('Failed to cleanup test directory:', error);
       }
@@ -142,9 +148,14 @@ export default function HomePage() {
 
     it('should return error for missing app ID', async () => {
       const response = await request(app)
-        .post('/apps/missing-id/styles/edit')
-        .send({})
-        .expect(404); // Will be 404 because ID doesn't exist
+        .post('/apps/missingid0/styles/edit')
+        .send({
+          selector: 'p',
+          property: 'color',
+          value: 'red',
+          elementInfo: { devContext: {} }
+        })
+        .expect(404);
 
       expect(response.body.error).toBe('App not found');
     });
@@ -167,7 +178,7 @@ export default function HomePage() {
         .post(`/apps/${testAppId}/styles/edit`)
         .send({
           selector: 'p',
-          property: 'color', 
+          property: 'color',
           value: 'red'
         })
         .expect(400);

@@ -1,5 +1,13 @@
 import { createDesignAgent, createDesignAgentFactory, DesignAgent } from '../design-agent.js';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// Mock model selection to avoid API key requirement in CI
+vi.mock('../../utils/model-selection.js', () => ({
+  getAgentModelWithName: vi.fn().mockResolvedValue({
+    model: { generate: vi.fn(), streamGenerate: vi.fn() },
+    modelName: 'claude-sonnet-4-5-20250929'
+  })
+}));
 
 describe('design-agent', function designAgentTests() {
   describe('#createDesignAgent', function createTests() {

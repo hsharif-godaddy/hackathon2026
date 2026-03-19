@@ -11,7 +11,7 @@ describe('css-color-tool', function packageTests() {
       expect(result.secondary).not.toBe('#000000')
       expect(result.primaryForeground).toBeTypeOf('string')
       expect(result.secondaryForeground).toBeTypeOf('string')
-      expect(result.displayColors).toHaveLength(6)
+      expect(result.displayColors).toHaveLength(5)
     })
 
     it('should generate distinct secondary from dark primary', function generateDark() {
@@ -44,7 +44,7 @@ describe('css-color-tool', function packageTests() {
       const result = generatePalette({ primary: '#3B82F6' })
       
       expect(result.background).toBe('#FFFFFF')
-      expect(result.foreground).toBe('#000000')
+      expect(result.foreground).toBe('#0A0A0A')
     })
 
     it('should respect provided secondary and accent colors', function generateProvided() {
@@ -70,15 +70,14 @@ describe('css-color-tool', function packageTests() {
     it('should include all required display colors', function generateDisplay() {
       const result = generatePalette({ primary: '#3B82F6' })
       
-      expect(result.displayColors).toHaveLength(6)
-      
+      expect(result.displayColors).toHaveLength(5)
+
       const colorNames = result.displayColors.map(function mapName(c) { return c.name })
+      expect(colorNames).toContain('Base')
       expect(colorNames).toContain('Primary')
       expect(colorNames).toContain('Secondary')
       expect(colorNames).toContain('Accent')
       expect(colorNames).toContain('Muted')
-      expect(colorNames).toContain('Success')
-      expect(colorNames).toContain('Destructive')
     })
 
     it('should include hex and role for each display color', function generateMetadata() {

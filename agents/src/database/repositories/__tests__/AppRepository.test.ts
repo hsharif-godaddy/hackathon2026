@@ -1,86 +1,31 @@
 /**
  * AppRepository Test Suite
- * 
+ *
  * Comprehensive tests for the AppRepository class covering:
  * - Database operations (CRUD)
- * - App creation workflow with template copying
- * - Development server lifecycle management
- * - Process recovery and cleanup
- * - Adapter pattern integration
+ * - App registration workflow
  * - Git repository initialization
+ * - Adapter pattern integration
  * - Error handling and edge cases
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { AppRepository } from '../AppRepository.js';
-import { nanoid } from 'nanoid';
-import { existsSync, mkdirSync, rmSync } from 'fs';
+import { existsSync, rmSync } from 'fs';
 import path from 'path';
-import type { App, CreateAppRequest } from '../../schema.js';
+import type { App, UpdateAppRequest } from '../../schema.js';
 
 // Mock all external dependencies
-vi.mock('nanoid');
 vi.mock('fs');
-vi.mock('child_process');
 vi.mock('path');
-vi.mock('net');
 vi.mock('../../connection.js');
 vi.mock('../../../utils/git.js');
-vi.mock('../../../utils/port-manager.js');
-vi.mock('../../../adapters/index.js');
-vi.mock('../../../services/name-suggestion.js');
-vi.mock('../../../services/TemplateCopyService.js');
+vi.mock('../../../utils/dev-supervisor-client-factory.js');
 vi.mock('../../../logging/index.js');
 vi.mock('../../../utils/error.js');
 
 // Mock the logging events
 vi.mock('../../../logging/events/index.js', () => ({
-  appRepositoryEvents: {
-    initBegin: vi.fn(),
-    initSuccess: vi.fn(),
-    initFailure: vi.fn(),
-  },
-  appProcessEvents: {
-    recoverBegin: vi.fn(),
-    recoverSuccess: vi.fn(),
-  },
-  appCreationEvents: {
-    begin: vi.fn(),
-    success: vi.fn(),
-    failure: vi.fn(),
-  },
-  appNameEvents: {
-    suggestSuccess: vi.fn(),
-    suggestFailure: vi.fn(),
-  },
-  appTemplateEvents: {
-    resolveSuccess: vi.fn(),
-    copyBegin: vi.fn(),
-    copySuccess: vi.fn(),
-    copyFailure: vi.fn(),
-  },
-  appDirectoryEvents: {
-    createSuccess: vi.fn(),
-    createFailure: vi.fn(),
-    cleanupSuccess: vi.fn(),
-  },
-  appSetupEvents: {
-    initBegin: vi.fn(),
-    initSuccess: vi.fn(),
-    initFailure: vi.fn(),
-    initProgress: vi.fn(),
-  },
-  appServerEvents: {
-    startBegin: vi.fn(),
-    startSuccess: vi.fn(),
-    startFailure: vi.fn(),
-  },
-  appLifecycleEvents: {
-    ready: vi.fn(),
-  },
-  appProcessManagementEvents: {
-    killSuccess: vi.fn(),
-  },
   appCleanupEvents: {
     directorySuccess: vi.fn(),
   },
@@ -90,8 +35,6 @@ describe('AppRepository', () => {
   let appRepository: AppRepository;
   let mockDb: any;
   let mockGitUtils: any;
-  let mockPortManager: any;
-  let mockDeploymentAdapter: any;
   let mockLogger: any;
 
   // Test data
@@ -104,21 +47,21 @@ describe('AppRepository', () => {
     initialPrompt: 'Create a test app',
     templateVersion: 'v8',
     status: 'created',
+    initialBuildComplete: false,
     createdAt: new Date('2024-01-01T10:00:00Z'),
     updatedAt: new Date('2024-01-01T10:00:00Z'),
-  };
-
-  const mockCreateRequest: CreateAppRequest = {
-    name: 'Test App',
-    initialPrompt: 'Create a test app',
   };
 
   beforeEach(async () => {
     // Reset all mocks
     vi.clearAllMocks();
 
-    // Mock nanoid
-    vi.mocked(nanoid).mockReturnValue(mockAppId);
+    // Clear env vars that might affect tests
+    delete process.env.SITE_ID;
+    delete process.env.CUSTOMER_APP_DIR;
+    delete process.env.APPS_BASE_DIR;
+    delete process.env.DOC_APPS;
+    delete process.env.NOMAD_ALLOC_DIR;
 
     // Mock database
     mockDb = {
@@ -132,22 +75,27 @@ describe('AppRepository', () => {
       all: vi.fn(),
     };
 
-    // Set up default mock returns to prevent unhandled rejections in background processes
+    // Set up default mock returns
     mockStatement.get.mockImplementation((id?: any) => {
-      // For specific IDs used in tests, return the appropriate mock data
       if (id === mockAppId || id === 'test-app-123') {
         return {
           id: mockAppId,
           name: 'Test App',
           path: '/tmp/apps/test-app-123',
           port: 3000,
-          initial_prompt: 'Test',
+          socket_path: null,
+          publish_supervisor_path: null,
+          preview_url: null,
+          initial_prompt: 'Create a test app',
+          template_version: 'v8',
+          subscription_id: null,
+          customer_id: null,
           status: 'created',
+          initial_build_complete: 0,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
       }
-      // For any other calls, return null to simulate "not found"
       return null;
     });
     mockStatement.all.mockReturnValue([]);
@@ -168,54 +116,11 @@ describe('AppRepository', () => {
     };
     vi.mocked(GitUtils).mockImplementation(() => mockGitUtils);
 
-    // Mock PortManager
-    const { PortManager } = await import('../../../utils/port-manager.js');
-    mockPortManager = {
-      getNextAvailablePort: vi.fn().mockResolvedValue(3000),
-    };
-    vi.mocked(PortManager).mockImplementation(() => mockPortManager);
-
-    // Template version extraction is now handled by TemplateCopyService
-
-    // Mock adapter
-    const { getAppAdapter, isDockerMode } = await import('../../../adapters/index.js');
-    mockDeploymentAdapter = {
-      startApp: vi.fn().mockResolvedValue(undefined),
-      stopApp: vi.fn().mockResolvedValue(true),
-      removeApp: vi.fn().mockResolvedValue(undefined),
-      getRunningServers: vi.fn().mockResolvedValue([]),
-      getCapabilities: vi.fn().mockReturnValue([]),
-    };
-    vi.mocked(getAppAdapter).mockResolvedValue(mockDeploymentAdapter);
-    vi.mocked(isDockerMode).mockReturnValue(false);
-
-    // Mock name suggestion service
-    const { getNameSuggestionService } = await import('../../../services/name-suggestion.js');
-    const mockNameSuggestionService = {
-      suggestName: vi.fn().mockResolvedValue('Better Test App'),
-    };
-    vi.mocked(getNameSuggestionService).mockReturnValue(mockNameSuggestionService);
-
-    // Mock TemplateCopyService
-    const { TemplateCopyService } = await import('../../../services/TemplateCopyService.js');
-    const mockTemplateCopyService = {
-      copyTemplate: vi.fn().mockResolvedValue({
-        templateVersion: 'v8',
-        templatePath: '/mock/template/path',
-        success: true
-      }),
-      getTemplateInfo: vi.fn().mockReturnValue({
-        templatePath: '/mock/template/path',
-        templateVersion: 'v8',
-        exists: true
-      }),
-      validateTemplateStructure: vi.fn().mockReturnValue({
-        valid: true,
-        errors: []
-      })
-    };
-    vi.mocked(TemplateCopyService).mockImplementation(() => mockTemplateCopyService as any);
-
+    // Mock DevSupervisorClientFactory
+    const { DevSupervisorClientFactory } = await import('../../../utils/dev-supervisor-client-factory.js');
+    vi.mocked(DevSupervisorClientFactory).createForApp = vi.fn().mockReturnValue(null);
+    vi.mocked(DevSupervisorClientFactory).getAppInfo = vi.fn().mockReturnValue(null);
+    vi.mocked(DevSupervisorClientFactory).isAvailableForApp = vi.fn().mockReturnValue(false);
 
     // Mock logger
     const { Logger } = await import('../../../logging/index.js');
@@ -230,13 +135,12 @@ describe('AppRepository', () => {
 
     // Mock error utility
     const { getErrorMessage } = await import('../../../utils/error.js');
-    vi.mocked(getErrorMessage).mockImplementation((error: any) => 
+    vi.mocked(getErrorMessage).mockImplementation((error: any) =>
       error instanceof Error ? error.message : String(error)
     );
 
     // Mock filesystem functions with default success behavior
     vi.mocked(existsSync).mockReturnValue(true);
-    vi.mocked(mkdirSync).mockReturnValue(undefined);
     vi.mocked(rmSync).mockReturnValue(undefined);
 
     // Mock path functions
@@ -245,19 +149,6 @@ describe('AppRepository', () => {
     vi.mocked(path.dirname).mockReturnValue('/parent');
     vi.mocked(path.isAbsolute).mockReturnValue(false);
     vi.mocked(path.relative).mockReturnValue('relative/path');
-
-    // Mock net module
-    const net = await import('net');
-    const mockServer = {
-      listen: vi.fn().mockImplementation((port, callback) => {
-        setTimeout(callback, 10); // Port is free by default
-      }),
-      close: vi.fn().mockImplementation((callback) => {
-        setTimeout(callback, 10);
-      }),
-      on: vi.fn(),
-    };
-    vi.mocked(net.createServer).mockReturnValue(mockServer as any);
 
     // Create a new repository instance for each test
     appRepository = new AppRepository();
@@ -268,62 +159,18 @@ describe('AppRepository', () => {
   });
 
   describe('Initialization', () => {
-    it('should initialize successfully in local mode', async () => {
+    it('should initialize successfully', async () => {
       await appRepository.initialize();
-
+      expect(mockLogger.info).toHaveBeenCalledWith('app.repository.init', expect.any(Object));
     });
 
-    it('should initialize successfully in Docker mode', async () => {
-      const { isDockerMode } = await import('../../../adapters/index.js');
-      vi.mocked(isDockerMode).mockReturnValue(true);
-
+    it('should not fail when initialized twice', async () => {
       await appRepository.initialize();
-
-    });
-
-    it('should not initialize twice', async () => {
-      mockDb.prepare.mockReturnValue({
-        all: vi.fn().mockReturnValue([]),
-      });
-
-      await appRepository.initialize();
-      await appRepository.initialize(); // Second call
-
-      // Should only call recoverOrphanedProcesses once
-    });
-
-    it('should handle initialization errors', async () => {
-      const { getAppAdapter } = await import('../../../adapters/index.js');
-      vi.mocked(getAppAdapter).mockRejectedValue(new Error('Adapter initialization failed'));
-
-      await expect(appRepository.initialize()).rejects.toThrow('Adapter initialization failed');
-    });
-  });
-
-  describe('Process Recovery', () => {
-    it('should recover valid running processes', async () => {
-      await appRepository.initialize();
-
-    });
-
-    it('should clean up dead processes', async () => {
-      await appRepository.initialize();
-
+      await appRepository.initialize(); // Second call should not throw
     });
   });
 
   describe('CRUD Operations', () => {
-    beforeEach(async () => {
-      // Initialize the repository for CRUD tests
-      const mockStatement = {
-        all: vi.fn().mockReturnValue([]),
-        get: vi.fn(),
-        run: vi.fn(),
-      };
-      mockDb.prepare.mockReturnValue(mockStatement);
-      await appRepository.initialize();
-    });
-
     describe('findById', () => {
       it('should return app when found', () => {
         const mockStatement = {
@@ -332,9 +179,15 @@ describe('AppRepository', () => {
             name: mockApp.name,
             path: mockApp.path,
             port: mockApp.port,
+            socket_path: null,
+            publish_supervisor_path: null,
+            preview_url: null,
             initial_prompt: mockApp.initialPrompt,
             template_version: mockApp.templateVersion,
+            subscription_id: null,
+            customer_id: null,
             status: mockApp.status,
+            initial_build_complete: 0,
             created_at: mockApp.createdAt.toISOString(),
             updated_at: mockApp.updatedAt.toISOString(),
           }),
@@ -343,10 +196,15 @@ describe('AppRepository', () => {
 
         const result = appRepository.findById(mockAppId);
 
-        // The actual findById method doesn't return templateVersion field
-        expect(result).toEqual({
-          ...mockApp,
-          templateVersion: undefined,
+        expect(result).toMatchObject({
+          id: mockApp.id,
+          name: mockApp.name,
+          path: mockApp.path,
+          port: mockApp.port,
+          initialPrompt: mockApp.initialPrompt,
+          templateVersion: mockApp.templateVersion,
+          status: mockApp.status,
+          initialBuildComplete: false,
         });
         expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('SELECT'));
         expect(mockStatement.get).toHaveBeenCalledWith(mockAppId);
@@ -372,8 +230,15 @@ describe('AppRepository', () => {
             name: 'App 1',
             path: '/tmp/app1',
             port: 3000,
+            socket_path: null,
+            publish_supervisor_path: null,
+            preview_url: null,
             initial_prompt: 'Test',
+            template_version: null,
+            subscription_id: null,
+            customer_id: null,
             status: 'created',
+            initial_build_complete: 0,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           },
@@ -382,8 +247,15 @@ describe('AppRepository', () => {
             name: 'App 2',
             path: '/tmp/app2',
             port: 3001,
+            socket_path: null,
+            publish_supervisor_path: null,
+            preview_url: null,
             initial_prompt: null,
+            template_version: null,
+            subscription_id: null,
+            customer_id: null,
             status: 'creating',
+            initial_build_complete: 0,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           },
@@ -419,7 +291,6 @@ describe('AppRepository', () => {
         const existingApp = { ...mockApp };
         const updatedData = { name: 'Updated App Name' };
 
-        // Mock findById to return existing app first, then updated app
         const mockGetStatement = {
           get: vi.fn()
             .mockReturnValueOnce({
@@ -427,8 +298,15 @@ describe('AppRepository', () => {
               name: existingApp.name,
               path: existingApp.path,
               port: existingApp.port,
+              socket_path: null,
+              publish_supervisor_path: null,
+              preview_url: null,
               initial_prompt: existingApp.initialPrompt,
+              template_version: existingApp.templateVersion,
+              subscription_id: null,
+              customer_id: null,
               status: existingApp.status,
+              initial_build_complete: 0,
               created_at: existingApp.createdAt.toISOString(),
               updated_at: existingApp.updatedAt.toISOString(),
             })
@@ -437,8 +315,15 @@ describe('AppRepository', () => {
               name: updatedData.name,
               path: existingApp.path,
               port: existingApp.port,
+              socket_path: null,
+              publish_supervisor_path: null,
+              preview_url: null,
               initial_prompt: existingApp.initialPrompt,
+              template_version: existingApp.templateVersion,
+              subscription_id: null,
+              customer_id: null,
               status: existingApp.status,
+              initial_build_complete: 0,
               created_at: existingApp.createdAt.toISOString(),
               updated_at: new Date().toISOString(),
             }),
@@ -482,9 +367,15 @@ describe('AppRepository', () => {
             name: mockApp.name,
             path: mockApp.path,
             port: mockApp.port,
+            socket_path: null,
+            publish_supervisor_path: null,
+            preview_url: null,
             initial_prompt: mockApp.initialPrompt,
             template_version: mockApp.templateVersion,
+            subscription_id: null,
+            customer_id: null,
             status: mockApp.status,
+            initial_build_complete: 0,
             created_at: mockApp.createdAt.toISOString(),
             updated_at: mockApp.updatedAt.toISOString(),
           }),
@@ -493,11 +384,9 @@ describe('AppRepository', () => {
 
         const result = appRepository.update(mockAppId, {});
 
-        // The actual findById method doesn't return templateVersion field
-        expect(result).toEqual({
-          ...mockApp,
-          templateVersion: undefined,
-        });
+        expect(result).not.toBeNull();
+        expect(result!.id).toBe(mockAppId);
+        expect(result!.name).toBe(mockApp.name);
       });
     });
 
@@ -510,8 +399,15 @@ describe('AppRepository', () => {
               name: mockApp.name,
               path: mockApp.path,
               port: mockApp.port,
+              socket_path: null,
+              publish_supervisor_path: null,
+              preview_url: null,
               initial_prompt: mockApp.initialPrompt,
+              template_version: null,
+              subscription_id: null,
+              customer_id: null,
               status: 'creating',
+              initial_build_complete: 0,
               created_at: mockApp.createdAt.toISOString(),
               updated_at: mockApp.updatedAt.toISOString(),
             })
@@ -520,8 +416,15 @@ describe('AppRepository', () => {
               name: mockApp.name,
               path: mockApp.path,
               port: mockApp.port,
+              socket_path: null,
+              publish_supervisor_path: null,
+              preview_url: null,
               initial_prompt: mockApp.initialPrompt,
+              template_version: null,
+              subscription_id: null,
+              customer_id: null,
               status: 'created',
+              initial_build_complete: 0,
               created_at: mockApp.createdAt.toISOString(),
               updated_at: new Date().toISOString(),
             }),
@@ -563,348 +466,322 @@ describe('AppRepository', () => {
     });
   });
 
-  describe('App Creation Workflow', () => {
-    beforeEach(async () => {
-      // Setup for app creation tests - use suggested name by default
-      const mockStatement = {
-        all: vi.fn().mockReturnValue([]),
-        get: vi.fn().mockReturnValue({
-          id: mockAppId,
-          name: 'Better Test App', // Use suggested name by default
-          path: '/tmp/apps/test-app-123',
-          port: 3000,
-          initial_prompt: 'Create a test app',
-          template_version: 'v3',
-          status: 'creating',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }),
-        run: vi.fn(),
+  describe('App Registration Workflow', () => {
+    it('should register a new app successfully', async () => {
+      // First call to findById returns null (app doesn't exist yet)
+      // Second call returns the newly created app
+      const mockGetStatement = {
+        get: vi.fn()
+          .mockReturnValueOnce(null) // findById during registerOrUpdateApp - not found
+          .mockReturnValueOnce({ // findById after INSERT
+            id: 'my-site',
+            name: 'App my-site',
+            path: '/tmp/airo-app-builder/my-site/preview',
+            port: 3000,
+            socket_path: null,
+            publish_supervisor_path: null,
+            preview_url: null,
+            initial_prompt: null,
+            template_version: null,
+            subscription_id: null,
+            customer_id: null,
+            status: 'created',
+            initial_build_complete: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }),
       };
-      mockDb.prepare.mockReturnValue(mockStatement);
 
-      // Mock successful filesystem operations
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(mkdirSync).mockReturnValue(undefined);
-      
-      // Template copying is now handled by TemplateCopyService
-
-      await appRepository.initialize();
-    });
-
-    it('should create app successfully with all steps', async () => {
-      // Mock environment
-      process.env.APP_TEMPLATE_DIR = 'app-templates/v3';
-      process.env.APPS_BASE_DIR = '/tmp/apps';
-
-      // Mock port checking
-      const net = await import('net');
-      const mockServer = {
-        listen: vi.fn().mockImplementation((port, callback) => {
-          setTimeout(callback, 10); // Port is free
-        }),
-        close: vi.fn().mockImplementation((callback) => {
-          setTimeout(callback, 10);
-        }),
-        on: vi.fn(),
+      const mockInsertStatement = {
+        run: vi.fn().mockReturnValue({ changes: 1 }),
       };
-      vi.mocked(net.createServer).mockReturnValue(mockServer as any);
 
-      // Mock spawn for setup processes
-      const { spawn } = await import('child_process');
-      const mockChild = {
-        stdout: { on: vi.fn() },
-        stderr: { on: vi.fn() },
-        on: vi.fn().mockImplementation((event, callback) => {
-          if (event === 'close') {
-            setTimeout(() => callback(0), 10); // Success
-          }
-        }),
-        kill: vi.fn(),
-        unref: vi.fn(),
-        pid: 12345,
-      };
-      vi.mocked(spawn).mockReturnValue(mockChild as any);
-
-      const result = await appRepository.create(mockCreateRequest);
-
-      expect(result.id).toBe(mockAppId);
-      expect(result.name).toBe('Better Test App'); // Name suggestion worked
-      expect(result.status).toBe('creating'); // Initial status
-      expect(vi.mocked(mkdirSync)).toHaveBeenCalledWith('/tmp/apps/test-app-123', { recursive: true });
-    });
-
-    it('should handle template directory not found', async () => {
-      // Mock TemplateCopyService to throw TEMPLATE_NOT_FOUND error
-      const { TemplateCopyService } = await import('../../../services/TemplateCopyService.js');
-      const mockTemplateCopyService = {
-        copyTemplate: vi.fn().mockRejectedValue(Object.assign(
-          new Error('Template directory not found: /path/to/nonexistent-template'), 
-          { code: 'TEMPLATE_NOT_FOUND', templatePath: '/path/to/nonexistent-template' }
-        )),
-        getTemplateInfo: vi.fn(),
-        validateTemplateStructure: vi.fn()
-      };
-      vi.mocked(TemplateCopyService).mockImplementation(() => mockTemplateCopyService as any);
-
-      // Create a new AppRepository instance to use the updated mock
-      const testAppRepository = new AppRepository();
-      await testAppRepository.initialize();
-
-      await expect(testAppRepository.create(mockCreateRequest)).rejects.toThrow(/Template directory not found/);
-    });
-
-    it('should handle port already in use', async () => {
-
-      await expect(appRepository.create(mockCreateRequest)).rejects.toThrow(/Port .* is already in use/);
-    });
-
-    it('should handle filesystem errors during directory creation', async () => {
-      vi.mocked(mkdirSync).mockImplementation(() => {
-        throw new Error('Permission denied');
+      mockDb.prepare.mockImplementation((sql: string) => {
+        if (sql.includes('INSERT')) {
+          return mockInsertStatement;
+        }
+        return mockGetStatement;
       });
 
-      await expect(appRepository.create(mockCreateRequest)).rejects.toThrow(/Failed to create app directory/);
+      const result = await appRepository.registerOrUpdateApp({
+        siteId: 'my-site',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.created).toBe(true);
+      expect(result.app.id).toBe('my-site');
+      expect(mockInsertStatement.run).toHaveBeenCalled();
     });
 
-    it('should use original name when name suggestion fails', async () => {
-      const { getNameSuggestionService } = await import('../../../services/name-suggestion.js');
-      const mockNameSuggestionService = {
-        suggestName: vi.fn().mockRejectedValue(new Error('Name suggestion failed')),
+    it('should update an existing app', async () => {
+      const existingRow = {
+        id: 'my-site',
+        name: 'Old Name',
+        path: '/tmp/apps/my-site',
+        port: 3000,
+        socket_path: null,
+        publish_supervisor_path: null,
+        preview_url: null,
+        initial_prompt: null,
+        template_version: null,
+        subscription_id: null,
+        customer_id: null,
+        status: 'created',
+        initial_build_complete: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       };
-      vi.mocked(getNameSuggestionService).mockReturnValue(mockNameSuggestionService);
 
-      // Update the database mock to return the original name
-      const mockStatement = {
-        all: vi.fn().mockReturnValue([]),
+      const updatedRow = {
+        ...existingRow,
+        name: 'New Name',
+      };
+
+      const mockGetStatement = {
+        get: vi.fn()
+          .mockReturnValueOnce(existingRow) // findById - exists
+          .mockReturnValueOnce(updatedRow), // findById after UPDATE
+      };
+
+      const mockUpdateStatement = {
+        run: vi.fn(),
+      };
+
+      mockDb.prepare.mockImplementation((sql: string) => {
+        if (sql.includes('UPDATE')) {
+          return mockUpdateStatement;
+        }
+        return mockGetStatement;
+      });
+
+      const result = await appRepository.registerOrUpdateApp({
+        siteId: 'my-site',
+        name: 'New Name',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.created).toBe(false);
+      expect(result.app.name).toBe('New Name');
+    });
+
+    it('should return existing app when no updates needed', async () => {
+      const existingRow = {
+        id: 'my-site',
+        name: 'Existing App',
+        path: '/tmp/apps/my-site',
+        port: 3000,
+        socket_path: null,
+        publish_supervisor_path: null,
+        preview_url: null,
+        initial_prompt: null,
+        template_version: null,
+        subscription_id: null,
+        customer_id: null,
+        status: 'created',
+        initial_build_complete: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const mockGetStatement = {
+        get: vi.fn().mockReturnValue(existingRow),
+      };
+
+      mockDb.prepare.mockReturnValue(mockGetStatement);
+
+      const result = await appRepository.registerOrUpdateApp({
+        siteId: 'my-site',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.created).toBe(false);
+      expect(result.message).toBe('App already registered');
+    });
+
+    it('should throw on site ID mismatch when SITE_ID env is set', async () => {
+      process.env.SITE_ID = 'locked-site';
+
+      await expect(appRepository.registerOrUpdateApp({
+        siteId: 'different-site',
+      })).rejects.toThrow('Site ID mismatch');
+    });
+
+    it('should throw on app path mismatch when CUSTOMER_APP_DIR env is set', async () => {
+      process.env.CUSTOMER_APP_DIR = '/locked/path';
+
+      // findById returns null so it tries to create
+      const mockGetStatement = {
+        get: vi.fn().mockReturnValue(null),
+      };
+      mockDb.prepare.mockReturnValue(mockGetStatement);
+
+      await expect(appRepository.registerOrUpdateApp({
+        siteId: 'my-site',
+        appPath: '/different/path',
+      })).rejects.toThrow('App path mismatch');
+    });
+
+    it('should use CUSTOMER_APP_DIR when set', async () => {
+      process.env.CUSTOMER_APP_DIR = '/production/app/dir';
+
+      const mockGetStatement = {
+        get: vi.fn()
+          .mockReturnValueOnce(null) // not found
+          .mockReturnValueOnce({ // after insert
+            id: 'my-site',
+            name: 'App my-site',
+            path: '/production/app/dir',
+            port: 3000,
+            socket_path: null,
+            publish_supervisor_path: null,
+            preview_url: null,
+            initial_prompt: null,
+            template_version: null,
+            subscription_id: null,
+            customer_id: null,
+            status: 'created',
+            initial_build_complete: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }),
+      };
+
+      const mockInsertStatement = {
+        run: vi.fn().mockReturnValue({ changes: 1 }),
+      };
+
+      mockDb.prepare.mockImplementation((sql: string) => {
+        if (sql.includes('INSERT')) {
+          return mockInsertStatement;
+        }
+        return mockGetStatement;
+      });
+
+      const result = await appRepository.registerOrUpdateApp({
+        siteId: 'my-site',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.app.path).toBe('/production/app/dir');
+      expect(mockInsertStatement.run).toHaveBeenCalled();
+      // Verify the path argument (3rd positional) is the CUSTOMER_APP_DIR
+      const callArgs = mockInsertStatement.run.mock.calls[0];
+      expect(callArgs[0]).toBe('my-site');
+      expect(callArgs[2]).toBe('/production/app/dir');
+    });
+
+    it('should not overwrite immutable subscription_id', async () => {
+      const existingRow = {
+        id: 'my-site',
+        name: 'Existing App',
+        path: '/tmp/apps/my-site',
+        port: 3000,
+        socket_path: null,
+        publish_supervisor_path: null,
+        preview_url: null,
+        initial_prompt: null,
+        template_version: null,
+        subscription_id: 'existing-sub',
+        customer_id: null,
+        status: 'created',
+        initial_build_complete: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const mockGetStatement = {
+        get: vi.fn().mockReturnValue(existingRow),
+      };
+
+      mockDb.prepare.mockReturnValue(mockGetStatement);
+
+      await appRepository.registerOrUpdateApp({
+        siteId: 'my-site',
+        subscriptionId: 'new-sub',
+      });
+
+      // Should log a warning about rejecting the change
+      expect(mockLogger.warn).toHaveBeenCalledWith('app.register.subscription_id_change_rejected', expect.any(Object));
+    });
+  });
+
+  describe('Git Repository Initialization', () => {
+    it('should initialize git repo via initGitRepo', async () => {
+      const mockGetStatement = {
         get: vi.fn().mockReturnValue({
           id: mockAppId,
-          name: 'Test App', // Original name should be used
+          name: 'Test App',
           path: '/tmp/apps/test-app-123',
           port: 3000,
-          initial_prompt: 'Create a test app',
-          template_version: 'v3',
-          status: 'creating',
+          socket_path: null,
+          publish_supervisor_path: null,
+          preview_url: null,
+          initial_prompt: 'Test',
+          template_version: null,
+          subscription_id: null,
+          customer_id: null,
+          status: 'created',
+          initial_build_complete: 0,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }),
-        run: vi.fn(),
       };
-      mockDb.prepare.mockReturnValue(mockStatement);
+      mockDb.prepare.mockReturnValue(mockGetStatement);
 
-      // Mock successful creation with original name
-      const net = await import('net');
-      const mockServer = {
-        listen: vi.fn().mockImplementation((port, callback) => {
-          setTimeout(callback, 10);
-        }),
-        close: vi.fn().mockImplementation((callback) => {
-          setTimeout(callback, 10);
-        }),
-        on: vi.fn(),
-      };
-      vi.mocked(net.createServer).mockReturnValue(mockServer as any);
+      await appRepository.initGitRepo(mockAppId);
 
-      const { spawn } = await import('child_process');
-      const mockChild = {
-        stdout: { on: vi.fn() },
-        stderr: { on: vi.fn() },
-        on: vi.fn().mockImplementation((event, callback) => {
-          if (event === 'close') {
-            setTimeout(() => callback(0), 10);
-          }
-        }),
-        kill: vi.fn(),
-        unref: vi.fn(),
-        pid: 12345,
-      };
-      vi.mocked(spawn).mockReturnValue(mockChild as any);
-
-      const result = await appRepository.create(mockCreateRequest);
-
-      expect(result.name).toBe('Test App'); // Original name used
+      expect(mockGitUtils.initRepository).toHaveBeenCalledWith('/tmp/apps/test-app-123');
+      expect(mockGitUtils.configureUser).toHaveBeenCalled();
+      expect(mockGitUtils.createInitialCommit).toHaveBeenCalled();
     });
 
-    it('should validate template files after copying', async () => {
-      // Mock TemplateCopyService to throw VALIDATION_FAILED error
-      const { TemplateCopyService } = await import('../../../services/TemplateCopyService.js');
-      const mockTemplateCopyService = {
-        copyTemplate: vi.fn().mockRejectedValue(Object.assign(
-          new Error('Template validation failed: Template package.json was not copied to /tmp/apps/test-app-123/package.json'), 
-          { 
-            code: 'VALIDATION_FAILED', 
-            validationDetails: ['Template package.json was not copied to /tmp/apps/test-app-123/package.json']
-          }
-        )),
-        getTemplateInfo: vi.fn(),
-        validateTemplateStructure: vi.fn()
+    it('should handle app not found for initGitRepo', async () => {
+      const mockGetStatement = {
+        get: vi.fn().mockReturnValue(null),
       };
-      vi.mocked(TemplateCopyService).mockImplementation(() => mockTemplateCopyService as any);
+      mockDb.prepare.mockReturnValue(mockGetStatement);
 
-      // Create a new AppRepository instance to use the updated mock
-      const testAppRepository = new AppRepository();
-      await testAppRepository.initialize();
+      await appRepository.initGitRepo('nonexistent');
 
-      await expect(testAppRepository.create(mockCreateRequest)).rejects.toThrow(/Template package\.json was not copied/);
+      expect(mockGitUtils.initRepository).not.toHaveBeenCalled();
+      expect(mockLogger.warn).toHaveBeenCalledWith('app.git.init.failed', expect.objectContaining({
+        appId: 'nonexistent',
+      }));
+    });
+
+    it('should handle git init failure gracefully', async () => {
+      const mockGetStatement = {
+        get: vi.fn().mockReturnValue({
+          id: mockAppId,
+          name: 'Test App',
+          path: '/tmp/apps/test-app-123',
+          port: 3000,
+          socket_path: null,
+          publish_supervisor_path: null,
+          preview_url: null,
+          initial_prompt: 'Test',
+          template_version: null,
+          subscription_id: null,
+          customer_id: null,
+          status: 'created',
+          initial_build_complete: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }),
+      };
+      mockDb.prepare.mockReturnValue(mockGetStatement);
+
+      mockGitUtils.initRepository.mockResolvedValue({ success: false, stderr: 'git not found' });
+
+      // Should not throw
+      await appRepository.initGitRepo(mockAppId);
+
+      expect(mockLogger.warn).toHaveBeenCalledWith('app.git.init.failed', expect.any(Object));
     });
   });
 
   describe('Development Server Management', () => {
-    beforeEach(async () => {
-      const mockStatement = {
-        all: vi.fn().mockReturnValue([]),
-        get: vi.fn().mockReturnValue({ id: mockAppId }),
-        run: vi.fn(),
-      };
-      mockDb.prepare.mockReturnValue(mockStatement);
-      await appRepository.initialize();
-    });
-
-    describe('getRunningServers', () => {
-      it('should return running servers in local mode', async () => {
-        const mockRunningProcess = {
-          app_id: mockAppId,
-          port: 3000,
-        };
-
-        const mockStatement = {
-          all: vi.fn().mockReturnValue([mockRunningProcess]),
-          get: vi.fn().mockReturnValue({
-            id: mockAppId,
-            name: 'Test App',
-            path: '/tmp/apps/test-app-123',
-            port: 3000,
-            initial_prompt: 'Test',
-            status: 'created',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }),
-        };
-        mockDb.prepare.mockReturnValue(mockStatement);
-
-        // Mock v3 template detection
-        vi.mocked(existsSync).mockImplementation((filePath) => {
-          if (typeof filePath === 'string' && filePath.includes('frontend')) {
-            return true; // v3 template
-          }
-          return true;
-        });
-
-        const result = await appRepository.getRunningServers();
-
-        expect(result).toHaveLength(1);
-        expect(result[0]).toEqual({
-          appId: mockAppId,
-          port: 3000,
-          url: 'http://localhost:3000',
-          isV3: true,
-          backendPort: 4000, // port + 1000 = 3000 + 1000 = 4000
-        });
-      });
-
-      it('should return running servers in Docker mode', async () => {
-        const { isDockerMode } = await import('../../../adapters/index.js');
-        vi.mocked(isDockerMode).mockReturnValue(true);
-
-        mockDeploymentAdapter.getRunningServers.mockResolvedValue([
-          {
-            appId: mockAppId,
-            port: 3000,
-            url: 'http://localhost:3000',
-          },
-        ]);
-
-        const result = await appRepository.getRunningServers();
-
-        expect(result).toHaveLength(1);
-        expect(result[0].appId).toBe(mockAppId);
-        expect(mockDeploymentAdapter.getRunningServers).toHaveBeenCalled();
-      });
-
-      it('should handle Docker adapter errors gracefully', async () => {
-        const { isDockerMode } = await import('../../../adapters/index.js');
-        vi.mocked(isDockerMode).mockReturnValue(true);
-
-        mockDeploymentAdapter.getRunningServers.mockRejectedValue(new Error('Docker error'));
-
-        const result = await appRepository.getRunningServers();
-
-        expect(result).toEqual([]);
-      });
-    });
-
-    describe('stopServer', () => {
-      it('should stop local server successfully', async () => {
-        const result = await appRepository.stopServer(mockAppId);
-
-        expect(result).toBe(true);
-      });
-
-      it('should stop Docker server successfully', async () => {
-        const { isDockerMode } = await import('../../../adapters/index.js');
-        vi.mocked(isDockerMode).mockReturnValue(true);
-
-        mockDeploymentAdapter.stopApp.mockResolvedValue(true);
-
-        const result = await appRepository.stopServer(mockAppId);
-
-        expect(result).toBe(true);
-        expect(mockDeploymentAdapter.stopApp).toHaveBeenCalledWith(mockAppId);
-      });
-
-      it('should return false when no process found', async () => {
-        
-        const result = await appRepository.stopServer('nonexistent-app');
-
-        expect(result).toBe(false);
-      });
-    });
-
     describe('restartServer', () => {
-      it('should restart server successfully', async () => {
-        // Mock app exists
-        const mockGetStatement = {
-          get: vi.fn().mockReturnValue({
-            id: mockAppId,
-            name: 'Test App',
-            path: '/tmp/apps/test-app-123',
-            port: 3000,
-            initial_prompt: 'Test',
-            status: 'created',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }),
-        };
-
-        const mockUpdateStatement = {
-          run: vi.fn(),
-        };
-
-        mockDb.prepare.mockImplementation((sql: string) => {
-          if (sql.includes('SELECT')) {
-            return mockGetStatement;
-          }
-          return mockUpdateStatement;
-        });
-
-        // Mock successful port check (port becomes free)
-        const net = await import('net');
-        const mockServer = {
-          listen: vi.fn().mockImplementation((port, callback) => {
-            setTimeout(callback, 10); // Port is free
-          }),
-          close: vi.fn().mockImplementation((callback) => {
-            setTimeout(callback, 10);
-          }),
-          on: vi.fn(),
-        };
-        vi.mocked(net.createServer).mockReturnValue(mockServer as any);
-
-        const result = await appRepository.restartServer(mockAppId);
-
-        expect(result).toBe(true);
-      });
-
       it('should return false when app does not exist', async () => {
         const mockStatement = {
           get: vi.fn().mockReturnValue(null),
@@ -915,88 +792,113 @@ describe('AppRepository', () => {
 
         expect(result).toBe(false);
       });
-    });
-  });
 
-  describe('Process Management', () => {
-    beforeEach(async () => {
-      const mockStatement = {
-        all: vi.fn().mockReturnValue([]),
-        get: vi.fn().mockReturnValue({ id: mockAppId }),
-        run: vi.fn(),
-      };
-      mockDb.prepare.mockReturnValue(mockStatement);
-      await appRepository.initialize();
-    });
+      it('should return false when no dev supervisor available in local mode', async () => {
+        const mockGetStatement = {
+          get: vi.fn().mockReturnValue({
+            id: mockAppId,
+            name: 'Test App',
+            path: '/tmp/apps/test-app-123',
+            port: 3000,
+            socket_path: null,
+            publish_supervisor_path: null,
+            preview_url: null,
+            initial_prompt: 'Test',
+            template_version: null,
+            subscription_id: null,
+            customer_id: null,
+            status: 'created',
+            initial_build_complete: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }),
+        };
+        mockDb.prepare.mockReturnValue(mockGetStatement);
 
-    describe('forceCleanupOrphans', () => {
-      it('should cleanup orphaned processes in local mode', async () => {
-        const result = await appRepository.forceCleanupOrphans();
+        const result = await appRepository.restartServer(mockAppId);
 
-        expect(result).toBe(0); // Stub implementation returns 0
+        expect(result).toBe(false);
+        expect(mockLogger.warn).toHaveBeenCalledWith('app.server.restart.no_supervisor', expect.any(Object));
       });
 
-      it('should cleanup orphaned processes in Docker mode', async () => {
-        const { isDockerMode } = await import('../../../adapters/index.js');
-        vi.mocked(isDockerMode).mockReturnValue(true);
+      it('should use dev supervisor when available', async () => {
+        const mockGetStatement = {
+          get: vi.fn().mockReturnValue({
+            id: mockAppId,
+            name: 'Test App',
+            path: '/tmp/apps/test-app-123',
+            port: 3000,
+            socket_path: null,
+            publish_supervisor_path: null,
+            preview_url: null,
+            initial_prompt: 'Test',
+            template_version: null,
+            subscription_id: null,
+            customer_id: null,
+            status: 'created',
+            initial_build_complete: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }),
+        };
+        mockDb.prepare.mockReturnValue(mockGetStatement);
 
-        mockDeploymentAdapter.cleanupOrphans = vi.fn().mockResolvedValue({
-          message: 'Cleaned up 2 containers',
-          cleaned: 2,
-        });
+        const mockDevSupervisor = {
+          exec: vi.fn().mockResolvedValue({ exit_code: 0 }),
+        };
 
-        const result = await appRepository.forceCleanupOrphans();
+        const { DevSupervisorClientFactory } = await import('../../../utils/dev-supervisor-client-factory.js');
+        vi.mocked(DevSupervisorClientFactory).createForApp = vi.fn().mockReturnValue(mockDevSupervisor);
+        vi.mocked(DevSupervisorClientFactory).getAppInfo = vi.fn().mockReturnValue({ socketPath: '/tmp/sock' });
 
-        expect(result).toBe(2);
-        expect(mockDeploymentAdapter.cleanupOrphans).toHaveBeenCalled();
-      });
-    });
-
-    describe('forceCleanupApp', () => {
-      it('should cleanup processes for specific app', async () => {
-        const result = await appRepository.forceCleanupApp(mockAppId);
+        const result = await appRepository.restartServer(mockAppId);
 
         expect(result).toBe(true);
-      });
-
-      it('should return true when no processes found', async () => {
-
-        const result = await appRepository.forceCleanupApp('nonexistent-app');
-
-        expect(result).toBe(true);
+        expect(mockDevSupervisor.exec).toHaveBeenCalled();
       });
     });
   });
 
   describe('Delete Operations', () => {
-    beforeEach(async () => {
-      const mockStatement = {
-        all: vi.fn().mockReturnValue([]),
+    it('should delete app and cleanup resources', async () => {
+      const mockGetStatement = {
         get: vi.fn().mockReturnValue({
           id: mockAppId,
           name: 'Test App',
           path: '/tmp/apps/test-app-123',
           port: 3000,
+          socket_path: null,
+          publish_supervisor_path: null,
+          preview_url: null,
           initial_prompt: 'Test',
+          template_version: null,
+          subscription_id: null,
+          customer_id: null,
           status: 'created',
+          initial_build_complete: 0,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }),
+      };
+
+      const mockDeleteStatement = {
         run: vi.fn().mockReturnValue({ changes: 1 }),
       };
-      mockDb.prepare.mockReturnValue(mockStatement);
-      await appRepository.initialize();
-    });
 
-    it('should delete app and cleanup resources', async () => {
+      mockDb.prepare.mockImplementation((sql: string) => {
+        if (sql.includes('DELETE')) {
+          return mockDeleteStatement;
+        }
+        return mockGetStatement;
+      });
+
       const result = await appRepository.delete(mockAppId);
 
       expect(result).toBe(true);
-      expect(vi.mocked(rmSync)).toHaveBeenCalledWith('/tmp/apps/test-app-123', { 
-        recursive: true, 
-        force: true 
+      expect(vi.mocked(rmSync)).toHaveBeenCalledWith('/tmp/apps/test-app-123', {
+        recursive: true,
+        force: true,
       });
-      expect(mockDeploymentAdapter.removeApp).toHaveBeenCalledWith(mockAppId);
     });
 
     it('should return false when app does not exist', async () => {
@@ -1015,6 +917,37 @@ describe('AppRepository', () => {
         throw new Error('Permission denied');
       });
 
+      const mockGetStatement = {
+        get: vi.fn().mockReturnValue({
+          id: mockAppId,
+          name: 'Test App',
+          path: '/tmp/apps/test-app-123',
+          port: 3000,
+          socket_path: null,
+          publish_supervisor_path: null,
+          preview_url: null,
+          initial_prompt: 'Test',
+          template_version: null,
+          subscription_id: null,
+          customer_id: null,
+          status: 'created',
+          initial_build_complete: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }),
+      };
+
+      const mockDeleteStatement = {
+        run: vi.fn().mockReturnValue({ changes: 1 }),
+      };
+
+      mockDb.prepare.mockImplementation((sql: string) => {
+        if (sql.includes('DELETE')) {
+          return mockDeleteStatement;
+        }
+        return mockGetStatement;
+      });
+
       const result = await appRepository.delete(mockAppId);
 
       expect(result).toBe(true); // Should still succeed despite cleanup error
@@ -1022,83 +955,152 @@ describe('AppRepository', () => {
   });
 
   describe('Adapter Integration', () => {
-    beforeEach(async () => {
-      const mockStatement = {
-        all: vi.fn().mockReturnValue([]),
-        get: vi.fn().mockReturnValue({ id: mockAppId }),
-        run: vi.fn(),
-      };
-      mockDb.prepare.mockReturnValue(mockStatement);
-      await appRepository.initialize();
-    });
-
-    it('should provide adapter information', () => {
+    it('should provide adapter information in local mode', () => {
       const info = appRepository.getAdapterInfo();
 
       expect(info).toEqual({
         type: 'Local',
         isInitialized: true,
-        capabilities: [],
+        capabilities: null,
         environmentVariable: 'unset (defaults to Local)',
       });
     });
 
-    it('should report Docker mode correctly', async () => {
-      const { isDockerMode } = await import('../../../adapters/index.js');
-      vi.mocked(isDockerMode).mockReturnValue(true);
+    it('should report Docker mode when DOC_APPS is set', () => {
+      process.env.DOC_APPS = 'true';
 
-      const isDock = appRepository.isDockerMode();
-      expect(isDock).toBe(true);
+      // Need a new instance to pick up the env var in methods
+      const dockerRepo = new AppRepository();
+      const info = dockerRepo.getAdapterInfo();
+
+      expect(info.type).toBe('Docker');
+      expect(info.environmentVariable).toBe('true');
+    });
+
+    it('should report Docker mode correctly via isDockerModePublic', () => {
+      expect(appRepository.isDockerModePublic()).toBe(false);
+
+      process.env.DOC_APPS = 'true';
+      expect(appRepository.isDockerModePublic()).toBe(true);
     });
 
     describe('Adapter Methods', () => {
-      it('should get app status via adapter in Docker mode', async () => {
-        const { isDockerMode } = await import('../../../adapters/index.js');
-        vi.mocked(isDockerMode).mockReturnValue(true);
-
-        mockDeploymentAdapter.getAppStatus = vi.fn().mockResolvedValue({
-          status: 'running',
-          message: 'Container is healthy',
-        });
-
+      it('should get app status in local mode (no adapter)', async () => {
         const result = await appRepository.getAppStatus(mockAppId);
 
-        expect(result.status).toBe('running');
-        expect(mockDeploymentAdapter.getAppStatus).toHaveBeenCalledWith(mockAppId);
+        expect(result.status).toBe('created');
+        expect(result.message).toBe('App exists in database');
       });
 
-      it('should get app status in local mode', async () => {
-        const result = await appRepository.getAppStatus(mockAppId);
-
-        expect(result.status).toBe('created'); // Stub implementation returns 'created'
-      });
-
-      it('should get app logs via adapter', async () => {
-        mockDeploymentAdapter.getAppLogs = vi.fn().mockResolvedValue(['log line 1', 'log line 2']);
-
-        const result = await appRepository.getAppLogs(mockAppId);
-
-        expect(result).toEqual(['log line 1', 'log line 2']);
-        expect(mockDeploymentAdapter.getAppLogs).toHaveBeenCalledWith(mockAppId);
-      });
-
-      it('should rebuild app container via adapter', async () => {
-        mockDeploymentAdapter.rebuildApp = vi.fn().mockResolvedValue(true);
-
-        const result = await appRepository.rebuildAppContainer(mockAppId);
-
-        expect(result).toBe(true);
-        expect(mockDeploymentAdapter.rebuildApp).toHaveBeenCalledWith(mockAppId);
-      });
-
-      it('should throw error when adapter method not supported', async () => {
-        const { isDockerMode } = await import('../../../adapters/index.js');
-        vi.mocked(isDockerMode).mockReturnValue(false); // Local mode
-
+      it('should throw when getting logs in local mode (no adapter)', async () => {
         await expect(appRepository.getAppLogs(mockAppId)).rejects.toThrow(
           'Log retrieval not supported in current deployment mode'
         );
       });
+
+      it('should throw when rebuilding container in local mode (no adapter)', async () => {
+        await expect(appRepository.rebuildAppContainer(mockAppId)).rejects.toThrow(
+          'Container rebuilding not supported in current deployment mode'
+        );
+      });
+    });
+  });
+
+  describe('markInitialBuildComplete', () => {
+    it('should mark initial build as complete', () => {
+      const mockGetStatement = {
+        get: vi.fn()
+          .mockReturnValueOnce({
+            id: mockAppId,
+            name: 'Test App',
+            path: '/tmp/apps/test-app-123',
+            port: 3000,
+            socket_path: null,
+            publish_supervisor_path: null,
+            preview_url: null,
+            initial_prompt: 'Test',
+            template_version: null,
+            subscription_id: null,
+            customer_id: null,
+            status: 'created',
+            initial_build_complete: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .mockReturnValueOnce({
+            id: mockAppId,
+            name: 'Test App',
+            path: '/tmp/apps/test-app-123',
+            port: 3000,
+            socket_path: null,
+            publish_supervisor_path: null,
+            preview_url: null,
+            initial_prompt: 'Test',
+            template_version: null,
+            subscription_id: null,
+            customer_id: null,
+            status: 'created',
+            initial_build_complete: 1,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }),
+      };
+
+      const mockUpdateStatement = {
+        run: vi.fn(),
+      };
+
+      mockDb.prepare.mockImplementation((sql: string) => {
+        if (sql.includes('UPDATE')) {
+          return mockUpdateStatement;
+        }
+        return mockGetStatement;
+      });
+
+      const result = appRepository.markInitialBuildComplete(mockAppId);
+
+      expect(result).not.toBeNull();
+      expect(result!.initialBuildComplete).toBe(true);
+      expect(mockUpdateStatement.run).toHaveBeenCalled();
+    });
+
+    it('should return existing app if already marked complete', () => {
+      const mockGetStatement = {
+        get: vi.fn().mockReturnValue({
+          id: mockAppId,
+          name: 'Test App',
+          path: '/tmp/apps/test-app-123',
+          port: 3000,
+          socket_path: null,
+          publish_supervisor_path: null,
+          preview_url: null,
+          initial_prompt: 'Test',
+          template_version: null,
+          subscription_id: null,
+          customer_id: null,
+          status: 'created',
+          initial_build_complete: 1,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }),
+      };
+      mockDb.prepare.mockReturnValue(mockGetStatement);
+
+      const result = appRepository.markInitialBuildComplete(mockAppId);
+
+      expect(result).not.toBeNull();
+      expect(result!.initialBuildComplete).toBe(true);
+    });
+
+    it('should return null when app not found', () => {
+      const mockGetStatement = {
+        get: vi.fn().mockReturnValue(null),
+      };
+      mockDb.prepare.mockReturnValue(mockGetStatement);
+
+      const result = appRepository.markInitialBuildComplete('nonexistent');
+
+      expect(result).toBeNull();
     });
   });
 
@@ -1110,37 +1112,6 @@ describe('AppRepository', () => {
       });
 
       expect(() => new AppRepository()).toThrow('Database connection failed');
-    });
-
-    it('should handle template validation errors', async () => {
-      // Setup for creation
-      const mockStatement = {
-        all: vi.fn().mockReturnValue([]),
-        get: vi.fn().mockReturnValue({ id: mockAppId }),
-        run: vi.fn(),
-      };
-      mockDb.prepare.mockReturnValue(mockStatement);
-
-      // Mock TemplateCopyService to throw VALIDATION_FAILED error
-      const { TemplateCopyService } = await import('../../../services/TemplateCopyService.js');
-      const mockTemplateCopyService = {
-        copyTemplate: vi.fn().mockRejectedValue(Object.assign(
-          new Error('Template validation failed: Template src directory was not copied to /tmp/apps/test-app-123/src'), 
-          { 
-            code: 'VALIDATION_FAILED', 
-            validationDetails: ['Template src directory was not copied to /tmp/apps/test-app-123/src']
-          }
-        )),
-        getTemplateInfo: vi.fn(),
-        validateTemplateStructure: vi.fn()
-      };
-      vi.mocked(TemplateCopyService).mockImplementation(() => mockTemplateCopyService as any);
-
-      // Create a new AppRepository instance to use the updated mock
-      const testAppRepository = new AppRepository();
-      await testAppRepository.initialize();
-
-      await expect(testAppRepository.create(mockCreateRequest)).rejects.toThrow(/Template src directory was not copied/);
     });
   });
 });

@@ -3,10 +3,15 @@ import request from 'supertest';
 import express from 'express';
 import { appsRouter } from '../apps.js';
 
-// Create test Express app
+// Create test Express app with fake auth context using a bypass siteId
 const createTestApp = () => {
   const app = express();
   app.use(express.json());
+  // Inject agentContext so auth checks pass
+  app.use((req: any, _res: any, next: any) => {
+    req.agentContext = { siteId: 'local-dev-site' };
+    next();
+  });
   app.use('/apps', appsRouter);
   return app;
 };
@@ -69,16 +74,10 @@ describe('Apps Routes Basic Tests', () => {
   });
 
   it('should test route structure', async () => {
-    // Add a debug test to see what routes are actually available
-    console.log('Testing styles/edit endpoint structure...');
-    
     const response = await request(app)
       .post('/apps/test-id/styles/edit')
       .send({});
 
-    console.log('Response status:', response.status);
-    console.log('Response body:', response.body);
-    
     // Should be 400 (bad request) or 404 (not found), but not 404 due to missing route
     expect([400, 404]).toContain(response.status);
   });

@@ -69,7 +69,7 @@ import { ALLOWED_DIRECTORIES, ALLOWED_CONFIG_FILES } from "../../config/app-down
  * 4. writeTree() - create tree object
  * 5. commitTree(treeHash, message) - create orphan commit
  * 6. push(remoteName, refspec, options, forcePush) - force push
- * 7. reset({ hard: true }) - restore to clean state
+ * 7. reset({ mode: 'hard', target: 'HEAD' }) - restore to clean state
  */
 function setupSuccessfulPushMocks(overrides?: {
   pushResult?: { success: boolean; stdout: string; stderr: string };
@@ -189,10 +189,10 @@ describe("GitTool - Filtered Push with Allowlist", () => {
         }
       );
 
-      // Verify reset was called with hard: true for cleanup
+      // Verify reset was called with mode: 'hard' and target: 'HEAD' for cleanup
       expect(mockReset).toHaveBeenCalledWith(
         "/tmp/apps/test-app/app",
-        { hard: true }
+        { mode: 'hard', target: 'HEAD' }
       );
     });
 

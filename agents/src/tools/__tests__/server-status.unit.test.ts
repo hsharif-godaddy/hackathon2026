@@ -1,48 +1,31 @@
 /**
  * Server Status Unit Tests
- * 
+ *
  * These tests focus on the server status logic without requiring a full dev environment.
  * They help identify specific issues with the server status implementation.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ServerManagementTool } from '../server-management-tool.js';
-import { AppRepository } from '../../database/index.js';
-import { DevSupervisorClient } from '../../services/DevSupervisorClient.js';
-import { existsSync } from 'fs';
+import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 
 // Mock the dependencies
-vi.mock('../../database/index.js');
-vi.mock('../../services/DevSupervisorClient.js');
-vi.mock('fs', () => ({
-  existsSync: vi.fn()
-}));
+vi.mock('../../utils/dev-supervisor-client-factory.js');
 
 describe('Server Status Unit Tests', () => {
   let serverTool: ServerManagementTool;
-  let mockAppRepo: any;
   let mockDevSupervisor: any;
-  let mockExistsSync: any;
 
   beforeEach(() => {
     // Reset all mocks
     vi.clearAllMocks();
-    
-    // Mock AppRepository
-    mockAppRepo = {
-      findById: vi.fn()
-    };
-    vi.mocked(AppRepository).mockImplementation(() => mockAppRepo);
-    
-    // Mock DevSupervisorClient
+
+    // Mock DevSupervisorClient instance
     mockDevSupervisor = {
-      exec: vi.fn()
+      getProcessStatus: vi.fn(),
+      restartProcess: vi.fn()
     };
-    vi.mocked(DevSupervisorClient).mockImplementation(() => mockDevSupervisor);
-    
-    // Mock fs.existsSync
-    mockExistsSync = vi.mocked(existsSync);
-    
+
     serverTool = new ServerManagementTool();
   });
 
@@ -52,32 +35,30 @@ describe('Server Status Unit Tests', () => {
 
   describe('checkServerStatus', () => {
     it('should return not_found when app does not exist', async () => {
-      mockAppRepo.findById.mockReturnValue(null);
-      
+      vi.mocked(DevSupervisorClientFactory.getAppInfo).mockReturnValue(null);
+
       const result = await serverTool.checkServerStatus('nonexistent-app');
-      
+
       expect(result).toEqual({
         success: false,
         appId: 'nonexistent-app',
         status: 'not_found',
         error: 'App with ID nonexistent-app not found'
       });
-      
-      expect(mockAppRepo.findById).toHaveBeenCalledWith('nonexistent-app');
+
+      expect(DevSupervisorClientFactory.getAppInfo).toHaveBeenCalledWith('nonexistent-app');
     });
 
-    it('should return stopped when app has no socket path', async () => {
-      const mockApp = {
-        id: 'test-app',
-        name: 'Test App',
-        path: '/tmp/test-app',
-        // No socketPath
-      };
-      
-      mockAppRepo.findById.mockReturnValue(mockApp);
-      
+    it('should return stopped when dev supervisor is not available', async () => {
+      vi.mocked(DevSupervisorClientFactory.getAppInfo).mockReturnValue({
+        socketPath: '/tmp/test.sock',
+        port: 3000,
+        path: '/tmp/test-app'
+      });
+      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(null);
+
       const result = await serverTool.checkServerStatus('test-app');
-      
+
       expect(result).toEqual({
         success: true,
         appId: 'test-app',
@@ -86,115 +67,63 @@ describe('Server Status Unit Tests', () => {
       });
     });
 
-    it('should return stopped when socket path does not exist', async () => {
-      const mockApp = {
-        id: 'test-app',
-        name: 'Test App',
-        path: '/tmp/test-app',
-        socketPath: '/tmp/test.sock'
-      };
-      
-      mockAppRepo.findById.mockReturnValue(mockApp);
-      mockExistsSync.mockReturnValue(false);
-      
-      const result = await serverTool.checkServerStatus('test-app');
-      
-      expect(result).toEqual({
-        success: true,
-        appId: 'test-app',
-        status: 'stopped',
-        message: 'Dev supervisor not available for this app'
+    it('should return running when dev process is running', async () => {
+      vi.mocked(DevSupervisorClientFactory.getAppInfo).mockReturnValue({
+        socketPath: '/tmp/test.sock',
+        port: 3000,
+        path: '/tmp/test-app'
       });
-      
-      expect(mockExistsSync).toHaveBeenCalledWith('/tmp/test.sock');
-    });
+      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mockDevSupervisor);
 
-    it('should return running when dev process is detected', async () => {
-      const mockApp = {
-        id: 'test-app',
-        name: 'Test App',
-        path: '/tmp/test-app',
-        socketPath: '/tmp/test.sock'
-      };
-      
-      mockAppRepo.findById.mockReturnValue(mockApp);
-      mockExistsSync.mockReturnValue(true);
-      
-      // Mock successful exec that finds a dev process
-      mockDevSupervisor.exec.mockResolvedValue({
-        exit_code: 0,
-        stdout: 'user 1234 npm run dev\nuser 5678 next dev',
-        stderr: '',
-        execution_time: 100,
-        success: true,
-        command: 'ps aux | grep -E "(npm run dev|next dev|vite)" | grep -v grep || echo "NO_DEV_PROCESS"'
+      mockDevSupervisor.getProcessStatus.mockResolvedValue({
+        state: 'running',
+        pid: 1234
       });
-      
+
       const result = await serverTool.checkServerStatus('test-app');
-      
+
       expect(result).toEqual({
         success: true,
         appId: 'test-app',
         status: 'running',
-        message: 'Dev server process detected'
-      });
-      
-      expect(mockDevSupervisor.exec).toHaveBeenCalledWith({
-        command: 'ps aux | grep -E "(npm run dev|next dev|vite)" | grep -v grep || echo "NO_DEV_PROCESS"',
-        working_dir: '/tmp/test-app',
-        timeout: 5,
-        capture_output: true
+        message: 'Process state: running (PID: 1234)'
       });
     });
 
-    it('should return stopped when no dev process is found', async () => {
-      const mockApp = {
-        id: 'test-app',
-        name: 'Test App',
-        path: '/tmp/test-app',
-        socketPath: '/tmp/test.sock'
-      };
-      
-      mockAppRepo.findById.mockReturnValue(mockApp);
-      mockExistsSync.mockReturnValue(true);
-      
-      // Mock exec that finds no dev process
-      mockDevSupervisor.exec.mockResolvedValue({
-        exit_code: 0,
-        stdout: 'NO_DEV_PROCESS',
-        stderr: '',
-        execution_time: 100,
-        success: true,
-        command: 'ps aux | grep -E "(npm run dev|next dev|vite)" | grep -v grep || echo "NO_DEV_PROCESS"'
+    it('should return stopped when process is stopped', async () => {
+      vi.mocked(DevSupervisorClientFactory.getAppInfo).mockReturnValue({
+        socketPath: '/tmp/test.sock',
+        port: 3000,
+        path: '/tmp/test-app'
       });
-      
+      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mockDevSupervisor);
+
+      mockDevSupervisor.getProcessStatus.mockResolvedValue({
+        state: 'stopped'
+      });
+
       const result = await serverTool.checkServerStatus('test-app');
-      
+
       expect(result).toEqual({
         success: true,
         appId: 'test-app',
         status: 'stopped',
-        message: 'No dev server process found'
+        message: 'Process state: stopped'
       });
     });
 
     it('should return error when dev supervisor communication fails', async () => {
-      const mockApp = {
-        id: 'test-app',
-        name: 'Test App',
-        path: '/tmp/test-app',
-        socketPath: '/tmp/test.sock'
-      };
-      
-      mockAppRepo.findById.mockReturnValue(mockApp);
-      mockExistsSync.mockReturnValue(true);
-      
-      // Mock exec that throws an error
-      const mockError = new Error('Connection refused');
-      mockDevSupervisor.exec.mockRejectedValue(mockError);
-      
+      vi.mocked(DevSupervisorClientFactory.getAppInfo).mockReturnValue({
+        socketPath: '/tmp/test.sock',
+        port: 3000,
+        path: '/tmp/test-app'
+      });
+      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mockDevSupervisor);
+
+      mockDevSupervisor.getProcessStatus.mockRejectedValue(new Error('Connection refused'));
+
       const result = await serverTool.checkServerStatus('test-app');
-      
+
       expect(result).toEqual({
         success: true,
         appId: 'test-app',
@@ -204,121 +133,89 @@ describe('Server Status Unit Tests', () => {
       });
     });
 
-    it('should handle non-zero exit codes from process check', async () => {
-      const mockApp = {
-        id: 'test-app',
-        name: 'Test App',
-        path: '/tmp/test-app',
-        socketPath: '/tmp/test.sock'
-      };
-      
-      mockAppRepo.findById.mockReturnValue(mockApp);
-      mockExistsSync.mockReturnValue(true);
-      
-      // Mock exec with non-zero exit code
-      mockDevSupervisor.exec.mockResolvedValue({
-        exit_code: 1,
-        stdout: '',
-        stderr: 'Command failed',
-        execution_time: 100,
-        success: false,
-        command: 'ps aux | grep -E "(npm run dev|next dev|vite)" | grep -v grep || echo "NO_DEV_PROCESS"'
+    it('should return error status when process is in error state', async () => {
+      vi.mocked(DevSupervisorClientFactory.getAppInfo).mockReturnValue({
+        socketPath: '/tmp/test.sock',
+        port: 3000,
+        path: '/tmp/test-app'
       });
-      
+      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mockDevSupervisor);
+
+      mockDevSupervisor.getProcessStatus.mockResolvedValue({
+        state: 'error'
+      });
+
       const result = await serverTool.checkServerStatus('test-app');
-      
+
       expect(result).toEqual({
         success: true,
         appId: 'test-app',
-        status: 'stopped',
-        message: 'No dev server process found'
+        status: 'error',
+        message: 'Process state: error'
       });
     });
 
-    it('should detect various dev server commands', async () => {
-      const mockApp = {
-        id: 'test-app',
-        name: 'Test App',
-        path: '/tmp/test-app',
-        socketPath: '/tmp/test.sock'
-      };
-      
-      mockAppRepo.findById.mockReturnValue(mockApp);
-      mockExistsSync.mockReturnValue(true);
-      
-      // Test different dev server outputs
-      const testCases = [
-        'user 1234 npm run dev',
-        'user 5678 next dev',
-        'user 9012 vite --host',
-        'user 3456 node_modules/.bin/next dev'
-      ];
-      
-      for (const stdout of testCases) {
-        mockDevSupervisor.exec.mockResolvedValue({
-          exit_code: 0,
-          stdout,
-          stderr: '',
-          execution_time: 100,
-          success: true,
-          command: 'ps aux | grep -E "(npm run dev|next dev|vite)" | grep -v grep || echo "NO_DEV_PROCESS"'
-        });
-        
-        const result = await serverTool.checkServerStatus('test-app');
-        
-        expect(result.status).toBe('running');
-        expect(result.message).toBe('Dev server process detected');
-      }
+    it('should treat starting state as running', async () => {
+      vi.mocked(DevSupervisorClientFactory.getAppInfo).mockReturnValue({
+        socketPath: '/tmp/test.sock',
+        port: 3000,
+        path: '/tmp/test-app'
+      });
+      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mockDevSupervisor);
+
+      mockDevSupervisor.getProcessStatus.mockResolvedValue({
+        state: 'starting',
+        pid: 5678
+      });
+
+      const result = await serverTool.checkServerStatus('test-app');
+
+      expect(result.status).toBe('running');
+      expect(result.message).toContain('starting');
+    });
+
+    it('should treat stopping state as running', async () => {
+      vi.mocked(DevSupervisorClientFactory.getAppInfo).mockReturnValue({
+        socketPath: '/tmp/test.sock',
+        port: 3000,
+        path: '/tmp/test-app'
+      });
+      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mockDevSupervisor);
+
+      mockDevSupervisor.getProcessStatus.mockResolvedValue({
+        state: 'stopping',
+        pid: 9012
+      });
+
+      const result = await serverTool.checkServerStatus('test-app');
+
+      expect(result.status).toBe('running');
+      expect(result.message).toContain('stopping');
     });
   });
 
   describe('Edge Cases', () => {
     it('should handle undefined app properties gracefully', async () => {
-      const mockApp = {
-        id: 'test-app',
-        // Missing other properties
-      };
-      
-      mockAppRepo.findById.mockReturnValue(mockApp);
-      
+      vi.mocked(DevSupervisorClientFactory.getAppInfo).mockReturnValue({
+        socketPath: '',
+        port: 0,
+        path: ''
+      });
+      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(null);
+
       const result = await serverTool.checkServerStatus('test-app');
-      
+
       expect(result.success).toBe(true);
       expect(result.appId).toBe('test-app');
       expect(result.status).toBe('stopped');
     });
 
-    it('should handle empty stdout from process check', async () => {
-      const mockApp = {
-        id: 'test-app',
-        name: 'Test App',
-        path: '/tmp/test-app',
-        socketPath: '/tmp/test.sock'
-      };
-      
-      mockAppRepo.findById.mockReturnValue(mockApp);
-      mockExistsSync.mockReturnValue(true);
-      
-      mockDevSupervisor.exec.mockResolvedValue({
-        exit_code: 0,
-        stdout: '',
-        stderr: '',
-        execution_time: 100,
-        success: true,
-        command: 'ps aux | grep -E "(npm run dev|next dev|vite)" | grep -v grep || echo "NO_DEV_PROCESS"'
-      });
-      
-      const result = await serverTool.checkServerStatus('test-app');
-      
-      expect(result.status).toBe('stopped');
-    });
-
     it('should handle very long app IDs', async () => {
       const longAppId = 'a'.repeat(1000);
-      mockAppRepo.findById.mockReturnValue(null);
-      
+      vi.mocked(DevSupervisorClientFactory.getAppInfo).mockReturnValue(null);
+
       const result = await serverTool.checkServerStatus(longAppId);
-      
+
       expect(result.success).toBe(false);
       expect(result.appId).toBe(longAppId);
       expect(result.status).toBe('not_found');

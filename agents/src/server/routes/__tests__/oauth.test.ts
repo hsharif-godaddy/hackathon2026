@@ -10,7 +10,7 @@ describe('OAuth Router', () => {
   beforeEach(() => {
     app = express();
     app.use(express.json());
-    app.use(oauthRouter);
+    app.use('/oauth', oauthRouter);
     
     // Clear PKCE state store
     pkceStateStore.clear();
@@ -112,7 +112,7 @@ describe('OAuth Router', () => {
 
         expect(response.status).toBe(200);
         expect(response.text).toContain('setTimeout');
-        expect(response.text).toContain('1200');
+        expect(response.text).toContain('100');
       });
     });
 

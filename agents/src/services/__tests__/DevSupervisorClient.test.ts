@@ -28,27 +28,19 @@ describe('DevSupervisorClient', () => {
     it('should use provided socket path', () => {
       const testPath = '/custom/path.sock';
       const testClient = new DevSupervisorClient(testPath);
-      expect(testClient['socketPath']).toBe(testPath);
+      expect(testClient['connectionPath']).toBe(testPath);
     });
 
-    it('should use environment variable if no path provided', () => {
-      const originalEnv = process.env.DEV_SUPERVISOR_SOCKET_PATH;
-      process.env.DEV_SUPERVISOR_SOCKET_PATH = '/env/path.sock';
-      
-      const testClient = new DevSupervisorClient();
-      expect(testClient['socketPath']).toBe('/env/path.sock');
-      
-      process.env.DEV_SUPERVISOR_SOCKET_PATH = originalEnv;
+    it('should throw if no path provided', () => {
+      expect(() => new (DevSupervisorClient as any)()).toThrow(
+        'DevSupervisorClient requires an explicit connection path'
+      );
     });
 
-    it('should use default path if no environment variable', () => {
-      const originalEnv = process.env.DEV_SUPERVISOR_SOCKET_PATH;
-      delete process.env.DEV_SUPERVISOR_SOCKET_PATH;
-      
-      const testClient = new DevSupervisorClient();
-      expect(testClient['socketPath']).toBe('/tmp/dev-supervisor.sock');
-      
-      process.env.DEV_SUPERVISOR_SOCKET_PATH = originalEnv;
+    it('should throw if empty path provided', () => {
+      expect(() => new DevSupervisorClient('')).toThrow(
+        'DevSupervisorClient requires an explicit connection path'
+      );
     });
   });
 
@@ -343,15 +335,10 @@ describe('utility functions', () => {
       expect(fs.existsSync).toHaveBeenCalledWith('/test/path');
     });
 
-    it('should use environment variable if no path provided', () => {
-      const originalEnv = process.env.DEV_SUPERVISOR_SOCKET_PATH;
-      process.env.DEV_SUPERVISOR_SOCKET_PATH = '/env/test.sock';
-      
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      expect(isDevSupervisorAvailable()).toBe(true);
-      expect(fs.existsSync).toHaveBeenCalledWith('/env/test.sock');
-      
-      process.env.DEV_SUPERVISOR_SOCKET_PATH = originalEnv;
+    it('should throw if no path provided', () => {
+      expect(() => (isDevSupervisorAvailable as any)()).toThrow(
+        'isDevSupervisorAvailable requires an explicit connection path'
+      );
     });
   });
 

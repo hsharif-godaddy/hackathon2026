@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 
 describe('css-suggest', function packageTests() {
   describe('#cssSuggestAITool', function suggestTests() {
-    it('should format palettes with foreground colors', async function formatForegrounds() {
+    it('should format palettes with theme and palette data', async function formatPalettes() {
       const result = await cssSuggestAITool.execute({
         palettes: [
           { name: 'Test Blue', primary: '#3B82F6' },
@@ -13,11 +13,13 @@ describe('css-suggest', function packageTests() {
 
       expect(result.success).toBe(true)
       expect(result.palettes).toHaveLength(2)
-      
+
       const firstPalette = result.palettes[0]
-      expect(firstPalette.colors).toBeInstanceOf(Array)
-      expect(firstPalette.colors[0]).toHaveProperty('foreground')
-      expect(firstPalette.colors[0].foreground).toBeTypeOf('string')
+      expect(firstPalette).toHaveProperty('name')
+      expect(firstPalette).toHaveProperty('theme')
+      expect(firstPalette).toHaveProperty('palette')
+      expect(firstPalette.palette).toHaveProperty('primary')
+      expect(firstPalette.palette).toHaveProperty('primaryForeground')
     })
 
     it('should generate multiple palettes', async function generateMultiple() {
@@ -47,7 +49,7 @@ describe('css-suggest', function packageTests() {
       expect(result.widget.widgetData.palettes).toBeInstanceOf(Array)
     })
 
-    it('should format each palette with name and colors', async function formatStructure() {
+    it('should format each palette with name and palette object', async function formatStructure() {
       const result = await cssSuggestAITool.execute({
         palettes: [
           { name: 'Test Blue', primary: '#3B82F6' }
@@ -56,22 +58,34 @@ describe('css-suggest', function packageTests() {
 
       const palette = result.palettes[0]
       expect(palette.name).toBe('Test Blue')
-      expect(palette.colors).toBeInstanceOf(Array)
-      expect(palette.colors).toHaveLength(6)
+      expect(palette.palette).toBeTypeOf('object')
+      expect(palette.palette).toHaveProperty('primary')
+      expect(palette.palette).toHaveProperty('secondary')
+      expect(palette.palette).toHaveProperty('accent')
+      expect(palette.palette).toHaveProperty('background')
+      expect(palette.palette).toHaveProperty('foreground')
+      expect(palette.palette).toHaveProperty('muted')
     })
 
-    it('should include all color properties', async function includeProperties() {
+    it('should include all palette color properties', async function includeProperties() {
       const result = await cssSuggestAITool.execute({
         palettes: [
           { name: 'Test', primary: '#3B82F6' }
         ]
       }, {})
 
-      const color = result.palettes[0].colors[0]
-      expect(color).toHaveProperty('name')
-      expect(color).toHaveProperty('hex')
-      expect(color).toHaveProperty('role')
-      expect(color).toHaveProperty('foreground')
+      const palette = result.palettes[0].palette
+      expect(palette).toHaveProperty('primary')
+      expect(palette).toHaveProperty('primaryForeground')
+      expect(palette).toHaveProperty('secondary')
+      expect(palette).toHaveProperty('secondaryForeground')
+      expect(palette).toHaveProperty('accent')
+      expect(palette).toHaveProperty('accentForeground')
+      expect(palette).toHaveProperty('background')
+      expect(palette).toHaveProperty('foreground')
+      expect(palette).toHaveProperty('muted')
+      expect(palette).toHaveProperty('mutedForeground')
+      expect(palette).toHaveProperty('border')
     })
 
     it('should handle dark primary colors', async function handleDark() {
@@ -83,15 +97,15 @@ describe('css-suggest', function packageTests() {
 
       expect(result.success).toBe(true)
       const palette = result.palettes[0]
-      expect(palette.colors[0].hex).toBe('#1a1a1a')
-      expect(palette.colors[0].foreground).toBeTypeOf('string')
+      expect(palette.palette.primary).toBe('#1a1a1a')
+      expect(palette.palette.primaryForeground).toBeTypeOf('string')
     })
 
     it('should respect provided secondary and accent', async function respectProvided() {
       const result = await cssSuggestAITool.execute({
         palettes: [
-          { 
-            name: 'Custom', 
+          {
+            name: 'Custom',
             primary: '#3B82F6',
             secondary: '#10B981',
             accent: '#F59E0B'
@@ -99,11 +113,10 @@ describe('css-suggest', function packageTests() {
         ]
       }, {})
 
-      const palette = result.palettes[0]
-      expect(palette.colors[0].hex).toBe('#3B82F6')
-      expect(palette.colors[1].hex).toBe('#10B981')
-      expect(palette.colors[2].hex).toBe('#F59E0B')
+      const palette = result.palettes[0].palette
+      expect(palette.primary).toBe('#3B82F6')
+      expect(palette.secondary).toBe('#10B981')
+      expect(palette.accent).toBe('#F59E0B')
     })
   })
 })
-

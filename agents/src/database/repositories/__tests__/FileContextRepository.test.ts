@@ -380,6 +380,8 @@ describe('FileContextRepository', () => {
 
   describe('Query Performance', () => {
     it('should use proper indexes for app-based queries', () => {
+      mockStatement.all.mockReturnValue([]);
+
       repository.findByAppPath(testAppPath);
 
       // Verify the query includes the indexed fields
@@ -389,6 +391,8 @@ describe('FileContextRepository', () => {
     });
 
     it('should use proper indexes for time-based queries', () => {
+      mockStatement.run.mockReturnValue({ changes: 0 });
+
       repository.deleteOlderThan(testAppPath, Date.now());
 
       // Verify the query includes the indexed fields
@@ -398,6 +402,8 @@ describe('FileContextRepository', () => {
     });
 
     it('should order results by priority fields', () => {
+      mockStatement.all.mockReturnValue([]);
+
       repository.findByAppPath(testAppPath);
 
       expect(mockDb.prepare).toHaveBeenCalledWith(

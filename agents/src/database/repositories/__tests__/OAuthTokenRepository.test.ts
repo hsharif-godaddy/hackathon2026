@@ -116,10 +116,10 @@ describe('OAuthTokenRepository', () => {
     });
 
     describe('findOne', () => {
-        it('should return token when found by session, provider, and scopes', () => {
+        it('should return token when found by session and provider', () => {
             mockStatement.get.mockReturnValue(mockDbRow);
 
-            const result = repository.findOne(testAppId, testProvider, testScopes);
+            const result = repository.findOne(testAppId, testProvider);
 
             expect(result).toEqual(expectedToken);
             expect(mockDb.prepare).toHaveBeenCalledWith(
@@ -128,20 +128,18 @@ describe('OAuthTokenRepository', () => {
             expect(mockStatement.get).toHaveBeenCalledWith(
                 testAppId,
                 testProvider,
-                testScopes,
             );
         });
 
         it('should return null when token not found', () => {
             mockStatement.get.mockReturnValue(undefined);
 
-            const result = repository.findOne(testAppId, testProvider, 'unknown.scope');
+            const result = repository.findOne(testAppId, testProvider);
 
             expect(result).toBeNull();
             expect(mockStatement.get).toHaveBeenCalledWith(
                 testAppId,
                 testProvider,
-                'unknown.scope',
             );
         });
 
@@ -154,7 +152,7 @@ describe('OAuthTokenRepository', () => {
             };
             mockStatement.get.mockReturnValue(rowWithoutRefresh);
 
-            const result = repository.findOne(testAppId, testProvider, testScopes);
+            const result = repository.findOne(testAppId, testProvider);
 
             expect(result?.refreshTokenEncrypted).toBeUndefined();
             expect(result?.refreshTokenIv).toBeUndefined();
@@ -261,8 +259,8 @@ describe('OAuthTokenRepository', () => {
     });
 
     describe('delete', () => {
-        it('should delete token by session, provider, and scopes', () => {
-            repository.delete(testAppId, testProvider, testScopes);
+        it('should delete token by session and provider', () => {
+            repository.delete(testAppId, testProvider);
 
             expect(mockDb.prepare).toHaveBeenCalledWith(
                 expect.stringContaining('DELETE FROM oauth_tokens'),
@@ -270,13 +268,12 @@ describe('OAuthTokenRepository', () => {
             expect(mockStatement.run).toHaveBeenCalledWith(
                 testAppId,
                 testProvider,
-                testScopes,
             );
         });
 
         it('should not throw error when deleting non-existent token', () => {
             expect(() => {
-                repository.delete('nonexistent', 'provider', 'scope');
+                repository.delete('nonexistent', 'provider');
             }).not.toThrow();
         });
     });
@@ -476,10 +473,10 @@ describe('OAuthTokenRepository', () => {
         it('should handle empty session ID', () => {
             mockStatement.get.mockReturnValue(undefined);
 
-            const result = repository.findOne('', testProvider, testScopes);
+            const result = repository.findOne('', testProvider);
 
             expect(result).toBeNull();
-            expect(mockStatement.get).toHaveBeenCalledWith('', testProvider, testScopes);
+            expect(mockStatement.get).toHaveBeenCalledWith('', testProvider);
         });
     });
 });

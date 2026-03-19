@@ -35,6 +35,24 @@ vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
   }
 }));
 
+// Mock app-ownership middleware to pass through (tests set up their own auth context)
+vi.mock('../middleware/app-ownership.js', () => ({
+  validateAppOwnership: vi.fn((_req: any, _res: any, next: any) => next()),
+  validateAppOwnershipFromBody: vi.fn(() => (_req: any, _res: any, next: any) => next()),
+  validateAppOwnershipFromQuery: vi.fn(() => (_req: any, _res: any, next: any) => next())
+}));
+
+// Mock the publish strategies
+vi.mock('./publish/strategies/index.js', () => ({
+  getPublishStrategy: vi.fn(),
+  BuildError: class BuildError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'BuildError';
+    }
+  }
+}));
+
 vi.mock('../../logging/index.js', () => ({
   log: {
     forApp: vi.fn(() => ({
@@ -43,6 +61,14 @@ vi.mock('../../logging/index.js', () => ({
       error: vi.fn()
     })),
     error: vi.fn()
+  },
+  Logger: {
+    create: vi.fn(() => ({
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn()
+    }))
   }
 }));
 
@@ -130,11 +156,11 @@ describe('Publish Route Authorization', () => {
       const response = await request(app)
         .post('/apps/test-app-id/publish')
         .send({})
-        .expect(403);
+        .expect(401);
 
       expect(response.body).toEqual({
-        error: 'Publish not allowed',
-        details: 'Airo Plus subscription required to publish apps'
+        error: 'Authentication required',
+        details: 'Request must be authenticated before checking permissions'
       });
     });
 

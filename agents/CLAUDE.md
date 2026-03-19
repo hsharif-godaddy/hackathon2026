@@ -153,4 +153,4 @@ pnpm --filter @airo/agents test:integration
 
 Authorization tests: `src/server/middleware/__tests__/app-ownership.test.ts`, `src/server/routes/__tests__/authorization-security.integration.test.ts`.
 
-Note: Agent tests are currently skipped in CI due to failures (`skip-tests: true` in workflow).
+Note: Unit tests exclude `*.integration.test.ts` files (which need real services). Integration tests run separately via `test:integration`.

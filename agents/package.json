@@ -16,7 +16,7 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "start": "node --env-file=.env dist/server/app.js",
-    "test": "NODE_OPTIONS='--max-old-space-size=512' vitest run",
+    "test": "NODE_OPTIONS='--max-old-space-size=512' vitest run --exclude='**/*.integration.test.ts'",
     "test:unit": "NODE_OPTIONS='--max-old-space-size=512' vitest run --exclude='**/*.integration.test.ts'",
     "test:integration": "NODE_OPTIONS='--max-old-space-size=512' vitest run 'src/**/*.integration.test.ts'",
     "test:watch": "NODE_OPTIONS='--max-old-space-size=512' vitest --watch",

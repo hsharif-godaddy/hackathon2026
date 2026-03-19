@@ -81,19 +81,22 @@ describe('Logger', () => {
     expect(events[0].event).toBe('app.started');
   });
 
-  it('should handle performance timing', () => {
+  it('should handle performance timing', async () => {
     const logger = Logger.create();
-    
+
     const timer = log.timer(logger, 'operation.completed');
     // Simulate some work
-    setTimeout(() => {
-      timer.end({ result: 'success' });
-      
-      const events = testHandler.getEvents();
-      expect(events).toHaveLength(1);
-      expect(events[0].event).toBe('operation.completed');
-      expect(events[0].duration).toBeGreaterThan(0);
-    }, 10);
+    await new Promise<void>((resolve) => {
+      setTimeout(() => {
+        timer.end({ result: 'success' });
+
+        const events = testHandler.getEvents();
+        expect(events).toHaveLength(1);
+        expect(events[0].event).toBe('operation.completed');
+        expect(events[0].duration).toBeGreaterThan(0);
+        resolve();
+      }, 10);
+    });
   });
 
   it('should handle errors properly', () => {
@@ -105,8 +108,8 @@ describe('Logger', () => {
     const events = testHandler.getEvents();
     expect(events).toHaveLength(1);
     expect(events[0].level).toBe('error');
-    expect(events[0].data?.error?.name).toBe('Error');
-    expect(events[0].data?.error?.message).toBe('Test error');
+    expect(events[0].error?.name).toBe('Error');
+    expect(events[0].error?.message).toBe('Test error');
   });
 
   it('should provide test assertions', () => {

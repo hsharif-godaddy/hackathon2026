@@ -199,7 +199,7 @@ describe('GitOpsService', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Provide both token and repoUrl');
+      expect(result.error).toContain('Both repoUrl and token must be provided together, or neither');
       expect(result.errorCode).toBe('INTERNAL_ERROR');
     });
 
@@ -210,7 +210,7 @@ describe('GitOpsService', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Provide both token and repoUrl');
+      expect(result.error).toContain('Both repoUrl and token must be provided together, or neither');
       expect(result.errorCode).toBe('INTERNAL_ERROR');
     });
 

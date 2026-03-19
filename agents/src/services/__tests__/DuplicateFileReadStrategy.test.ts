@@ -92,7 +92,7 @@ describe('DuplicateFileReadStrategy', () => {
     expect(Array.isArray(compressedMessage.content) && compressedMessage.content[0]?.type === 'tool-result').toBe(true);
     const output = compressedMessage.content[0]?.output;
     const compressedResult = output && typeof output === 'object' && 'type' in output && output.type === 'text' && 'value' in output ? output.value : '';
-    expect(compressedResult).toContain('[Duplicate file read removed');
+    expect(compressedResult).toContain('[Repeated file read removed');
     expect(compressedResult).toContain('/app/src/index.ts');
     const finalMessage = result.messages[4] as ToolModelMessage;
     const finalOutput = finalMessage.content[0]?.output;
@@ -163,7 +163,7 @@ describe('DuplicateFileReadStrategy', () => {
     const compressed1 = result.messages[1] as ToolModelMessage;
     const output1 = compressed1.content[0]?.output;
     const compressedResult1 = output1 && typeof output1 === 'object' && 'type' in output1 && output1.type === 'text' && 'value' in output1 ? output1.value : '';
-    expect(compressedResult1).toContain('[Duplicate file read removed');
+    expect(compressedResult1).toContain('[Repeated file read removed');
     const file2Message = result.messages[3] as ToolModelMessage;
     const file2Output = file2Message.content[0]?.output;
     expect(file2Output && typeof file2Output === 'object' && 'type' in file2Output && file2Output.type === 'text' && 'value' in file2Output ? file2Output.value : '').toBe('file2 content');
@@ -236,11 +236,11 @@ describe('DuplicateFileReadStrategy', () => {
     const compressed1st = result.messages[1] as ToolModelMessage;
     const output1st = compressed1st.content[0]?.output;
     const compressedResult1st = output1st && typeof output1st === 'object' && 'type' in output1st && output1st.type === 'text' && 'value' in output1st ? output1st.value : '';
-    expect(compressedResult1st).toContain('[Duplicate file read removed');
+    expect(compressedResult1st).toContain('[Repeated file read removed');
     const compressed2nd = result.messages[3] as ToolModelMessage;
     const output2nd = compressed2nd.content[0]?.output;
     const compressedResult2nd = output2nd && typeof output2nd === 'object' && 'type' in output2nd && output2nd.type === 'text' && 'value' in output2nd ? output2nd.value : '';
-    expect(compressedResult2nd).toContain('[Duplicate file read removed');
+    expect(compressedResult2nd).toContain('[Repeated file read removed');
     const final3rd = result.messages[5] as ToolModelMessage;
     const final3rdOutput = final3rd.content[0]?.output;
     expect(final3rdOutput && typeof final3rdOutput === 'object' && 'type' in final3rdOutput && final3rdOutput.type === 'text' && 'value' in final3rdOutput ? final3rdOutput.value : '').toBe('content v3');
@@ -292,7 +292,7 @@ describe('DuplicateFileReadStrategy', () => {
     const compressedPath = result.messages[1] as ToolModelMessage;
     const outputPath = compressedPath.content[0]?.output;
     const compressedResultPath = outputPath && typeof outputPath === 'object' && 'type' in outputPath && outputPath.type === 'text' && 'value' in outputPath ? outputPath.value : '';
-    expect(compressedResultPath).toContain('[Duplicate file read removed');
+    expect(compressedResultPath).toContain('[Repeated file read removed');
     const finalPath = result.messages[3] as ToolModelMessage;
     const finalPathOutput = finalPath.content[0]?.output;
     expect(finalPathOutput && typeof finalPathOutput === 'object' && 'type' in finalPathOutput && finalPathOutput.type === 'text' && 'value' in finalPathOutput ? finalPathOutput.value : '').toBe('content v2');

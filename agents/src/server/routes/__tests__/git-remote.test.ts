@@ -30,10 +30,22 @@ vi.mock('../../middleware/app-ownership.js', () => ({
   validateAppOwnership: vi.fn((_req, _res, next) => next()),
 }));
 
+vi.mock('../../middleware/git-import-validation.js', () => ({
+  validateGitSync: vi.fn((_req, _res, next) => next()),
+}));
+
+vi.mock('../../../tools/git-tool.js', () => ({
+  GitTool: vi.fn(),
+}));
+
+vi.mock('../../../utils/error.js', () => ({
+  getErrorMessage: vi.fn((err: unknown) => err instanceof Error ? err.message : String(err)),
+}));
+
 vi.mock('../../../services/GitOpsService.js', () => ({
   gitOpsService: {
-    startPull: vi.fn(),
-    startPush: vi.fn(),
+    startPull: vi.fn().mockResolvedValue({ success: true, jobId: 'mock-job-id', status: 'pending' }),
+    startPush: vi.fn().mockResolvedValue({ success: true, jobId: 'mock-job-id', status: 'pending' }),
     getJobStatus: vi.fn(),
   },
 }));

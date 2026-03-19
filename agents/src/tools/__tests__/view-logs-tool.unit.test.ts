@@ -1,6 +1,6 @@
 /**
  * ViewLogsTool Unit Tests
- * 
+ *
  * These tests focus on the ViewLogsTool logic without requiring a full dev environment.
  * They help identify specific issues with the high-level log tool implementation.
  */
@@ -8,21 +8,20 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ViewLogsTool } from '../view-logs-tool.js';
 import { DevSupervisorLogClient } from '../dev-supervisor-log-client.js';
-import { AppRepository } from '../../database/repositories/AppRepository.js';
+import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 
 // Mock the dependencies
 vi.mock('../dev-supervisor-log-client.js');
-vi.mock('../../database/repositories/AppRepository.js');
+vi.mock('../../utils/dev-supervisor-client-factory.js');
 
 describe('ViewLogsTool Unit Tests', () => {
   let viewLogsTool: ViewLogsTool;
   let mockLogClient: any;
-  let mockAppRepository: any;
 
   beforeEach(() => {
     // Reset all mocks
     vi.clearAllMocks();
-    
+
     // Mock DevSupervisorLogClient
     mockLogClient = {
       isAvailable: vi.fn(),
@@ -31,13 +30,14 @@ describe('ViewLogsTool Unit Tests', () => {
       formatLogSummary: vi.fn()
     };
     vi.mocked(DevSupervisorLogClient).mockImplementation(() => mockLogClient);
-    
-    // Mock AppRepository
-    mockAppRepository = {
-      findById: vi.fn()
-    };
-    vi.mocked(AppRepository).mockImplementation(() => mockAppRepository);
-    
+
+    // Mock DevSupervisorClientFactory.getAppInfo to return app info with socketPath
+    vi.mocked(DevSupervisorClientFactory.getAppInfo).mockReturnValue({
+      socketPath: '/tmp/dev-supervisor-test-app/dev-supervisor.sock',
+      port: 0,
+      path: '/tmp/test-app'
+    });
+
     viewLogsTool = new ViewLogsTool();
   });
 
@@ -51,24 +51,26 @@ describe('ViewLogsTool Unit Tests', () => {
     });
 
     it('should initialize with app context', async () => {
-      mockAppRepository.findById.mockReturnValue({
-        id: 'test-app',
-        socketPath: '/tmp/dev-supervisor-test-app/dev-supervisor.sock'
-      });
       mockLogClient.isAvailable.mockReturnValue(true);
-      
+      mockLogClient.readLogs.mockResolvedValue({
+        success: true,
+        logs: [],
+        totalEntries: 0,
+        formatted: 'No logs'
+      });
+
       const result = await viewLogsTool.readLogs('test-app');
-      
-      expect(mockAppRepository.findById).toHaveBeenCalledWith('test-app');
+
+      expect(DevSupervisorClientFactory.getAppInfo).toHaveBeenCalledWith('test-app');
       expect(DevSupervisorLogClient).toHaveBeenCalledWith('/tmp/dev-supervisor-test-app/dev-supervisor.sock');
       expect(mockLogClient.isAvailable).toHaveBeenCalled();
     });
 
     it('should handle missing socket path', async () => {
-      mockAppRepository.findById.mockReturnValue(null);
-      
+      vi.mocked(DevSupervisorClientFactory.getAppInfo).mockReturnValue(null);
+
       const result = await viewLogsTool.readLogs('test-app');
-      
+
       expect(result.success).toBe(false);
       expect(result.error).toContain('Dev-supervisor not available');
       expect(result.output).toContain('Development logs not available');
@@ -77,10 +79,6 @@ describe('ViewLogsTool Unit Tests', () => {
 
   describe('Basic Log Reading', () => {
     beforeEach(() => {
-      mockAppRepository.findById.mockReturnValue({
-        id: 'test-app',
-        socketPath: '/tmp/dev-supervisor-test-app/dev-supervisor.sock'
-      });
       mockLogClient.isAvailable.mockReturnValue(true);
     });
 
@@ -140,10 +138,6 @@ describe('ViewLogsTool Unit Tests', () => {
 
   describe('Options Handling', () => {
     beforeEach(() => {
-      mockAppRepository.findById.mockReturnValue({
-        id: 'test-app',
-        socketPath: '/tmp/dev-supervisor-test-app/dev-supervisor.sock'
-      });
       mockLogClient.isAvailable.mockReturnValue(true);
       mockLogClient.readLogs.mockResolvedValue({
         success: true,
@@ -195,10 +189,6 @@ describe('ViewLogsTool Unit Tests', () => {
 
   describe('Log Summary', () => {
     beforeEach(() => {
-      mockAppRepository.findById.mockReturnValue({
-        id: 'test-app',
-        socketPath: '/tmp/dev-supervisor-test-app/dev-supervisor.sock'
-      });
       mockLogClient.isAvailable.mockReturnValue(true);
     });
 
@@ -252,7 +242,7 @@ describe('ViewLogsTool Unit Tests', () => {
 
   describe('Error Handling', () => {
     it('should handle initialization errors', async () => {
-      vi.mocked(DevSupervisorLogClient).mockImplementation(() => {
+      vi.mocked(DevSupervisorClientFactory.getAppInfo).mockImplementation(() => {
         throw new Error('Initialization failed');
       });
 
@@ -286,10 +276,6 @@ describe('ViewLogsTool Unit Tests', () => {
 
   describe('Edge Cases', () => {
     beforeEach(() => {
-      mockAppRepository.findById.mockReturnValue({
-        id: 'test-app',
-        socketPath: '/tmp/dev-supervisor-test-app/dev-supervisor.sock'
-      });
       mockLogClient.isAvailable.mockReturnValue(true);
       mockLogClient.readLogs.mockResolvedValue({
         success: true,
@@ -336,10 +322,11 @@ describe('ViewLogsTool Unit Tests', () => {
   });
 
   describe('Environment Integration', () => {
-    it('should use socket path from database', async () => {
-      mockAppRepository.findById.mockReturnValue({
-        id: 'test-app',
-        socketPath: '/tmp/dev-supervisor-test-app/dev-supervisor.sock'
+    it('should use socket path from factory', async () => {
+      vi.mocked(DevSupervisorClientFactory.getAppInfo).mockReturnValue({
+        socketPath: '/tmp/dev-supervisor-test-app/dev-supervisor.sock',
+        port: 0,
+        path: '/tmp/test-app'
       });
       mockLogClient.isAvailable.mockReturnValue(true);
       mockLogClient.readLogs.mockResolvedValue({
@@ -354,10 +341,11 @@ describe('ViewLogsTool Unit Tests', () => {
       expect(DevSupervisorLogClient).toHaveBeenCalledWith('/tmp/dev-supervisor-test-app/dev-supervisor.sock');
     });
 
-    it('should use custom socket path from database', async () => {
-      mockAppRepository.findById.mockReturnValue({
-        id: 'test-app',
-        socketPath: '/custom/path/socket.sock'
+    it('should use custom socket path from factory', async () => {
+      vi.mocked(DevSupervisorClientFactory.getAppInfo).mockReturnValue({
+        socketPath: '/custom/path/socket.sock',
+        port: 0,
+        path: '/tmp/test-app'
       });
       mockLogClient.isAvailable.mockReturnValue(true);
       mockLogClient.readLogs.mockResolvedValue({
@@ -373,8 +361,12 @@ describe('ViewLogsTool Unit Tests', () => {
     });
 
     it('should handle empty socket path', async () => {
-      process.env.DEV_SUPERVISOR_SOCKET_PATH = '';
-      
+      vi.mocked(DevSupervisorClientFactory.getAppInfo).mockReturnValue({
+        socketPath: '',
+        port: 0,
+        path: ''
+      });
+
       const result = await viewLogsTool.readLogs('test-app');
 
       expect(result.success).toBe(false);
@@ -384,10 +376,6 @@ describe('ViewLogsTool Unit Tests', () => {
 
   describe('Performance and Logging', () => {
     beforeEach(() => {
-      mockAppRepository.findById.mockReturnValue({
-        id: 'test-app',
-        socketPath: '/tmp/dev-supervisor-test-app/dev-supervisor.sock'
-      });
       mockLogClient.isAvailable.mockReturnValue(true);
       mockLogClient.readLogs.mockResolvedValue({
         success: true,
@@ -399,12 +387,12 @@ describe('ViewLogsTool Unit Tests', () => {
 
     it('should complete operations in reasonable time', async () => {
       const startTime = Date.now();
-      
+
       await viewLogsTool.readLogs('test-app');
-      
+
       const endTime = Date.now();
       const duration = endTime - startTime;
-      
+
       expect(duration).toBeLessThan(1000); // Should complete quickly in unit tests
     });
 

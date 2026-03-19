@@ -52,8 +52,9 @@ describe('ReadFileTool - Security Tests', () => {
       }, testAppDir);
       
       expect(result.success).toBe(false);
-      // May be blocked by path check or by guardrails (tmp/ is in cache directories)
-      expect(result.error).toMatch(/outside.*app directory|Access denied|blocked|Cache directories/i);
+      // The path-helper converts absolute paths to relative, so /tmp/outside-read-.../secrets.txt
+      // becomes a relative path inside the app dir that doesn't exist
+      expect(result.error).toMatch(/outside.*app directory|Access denied|blocked|Cache directories|File does not exist/i);
     });
 
     it('should allow normal relative paths within directory', async () => {

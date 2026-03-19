@@ -165,7 +165,7 @@ describe("ImageAnalysisService", () => {
 
       expect(knowBDriver.upload).toHaveBeenCalledWith(
         expect.objectContaining({
-          kbNodeId: "/airo_media",
+          kbNodeId: "/airo_media_v2",
           resourceId: "getty-123",
         })
       );
@@ -281,7 +281,7 @@ describe("ImageAnalysisService", () => {
 
       vi.mocked(knowBDriver.upload).mockResolvedValue({ success: true });
 
-      // Mock the analyzeImage method to return different analyses for each image
+      // Mock the analyzeImageInternal method to return different analyses for each image
       const mockAnalysis1: CachedAnalysis = {
         gettyId: "getty-1",
         analysis: {
@@ -304,9 +304,9 @@ describe("ImageAnalysisService", () => {
         urls: { preview: "https://example.com/2.jpg" },
         analyzedAt: "2026-01-26T12:00:00Z",
       };
-      vi.spyOn(service, "analyzeImage")
-        .mockResolvedValueOnce(mockAnalysis1)
-        .mockResolvedValueOnce(mockAnalysis2);
+      vi.spyOn(service as any, "analyzeImageInternal")
+        .mockResolvedValueOnce({ analysis: mockAnalysis1 })
+        .mockResolvedValueOnce({ analysis: mockAnalysis2 });
 
       const images: GettyImage[] = [
         { id: "getty-1", urls: { preview: "https://example.com/1.jpg" } },
@@ -324,19 +324,24 @@ describe("ImageAnalysisService", () => {
     });
 
     it("should return empty images array when no images pass threshold", async () => {
-      vi.mocked(knowBDriver.search).mockResolvedValue({
-        success: true,
-        results: [
-          { kbNodeId: "/airo_media", text: "gettyId:getty-1 ...", score: 0.2 },
-        ],
-      });
+      vi.mocked(knowBDriver.search)
+        .mockResolvedValueOnce({ success: false }) // Cache miss for getty-1
+        .mockResolvedValueOnce({
+          // Relevance scoring
+          success: true,
+          results: [
+            { kbNodeId: "/airo_media_v2", text: "gettyId:getty-1 ...", score: 0.2 },
+          ],
+        });
 
-      vi.spyOn(service, "analyzeImage").mockResolvedValue({
-        gettyId: "getty-1",
-        analysis: { description: "Test", composition: "centered", usageContext: "hero" },
-        getty: {},
-        urls: { preview: "https://example.com/1.jpg" },
-        analyzedAt: "2026-01-26T12:00:00Z",
+      vi.spyOn(service as any, "analyzeImageInternal").mockResolvedValue({
+        analysis: {
+          gettyId: "getty-1",
+          analysis: { description: "Test", composition: "centered", usageContext: "hero" },
+          getty: {},
+          urls: { preview: "https://example.com/1.jpg" },
+          analyzedAt: "2026-01-26T12:00:00Z",
+        },
       });
 
       const images: GettyImage[] = [
