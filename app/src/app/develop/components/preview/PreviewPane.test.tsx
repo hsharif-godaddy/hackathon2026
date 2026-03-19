@@ -48,6 +48,7 @@ const mockDevelopPageStore = {
   viewMode: ViewMode.PREVIEW,
   setPreviewViewMode: vi.fn(),
   publishStates: { 'test-app-123': { isPublishing: false } } as Record<string, { isPublishing: boolean }>,
+  isVersionHistoryOpen: false,
 };
 
 const mockGitStore = {
@@ -111,6 +112,7 @@ describe('PreviewPane', () => {
     mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: true, url: 'http://localhost:3000' }));
     mockGitHistoryData = { commits: [] };
     mockGitStore.getSelectedCommitHash = vi.fn(() => null);
+    mockDevelopPageStore.isVersionHistoryOpen = false;
   });
 
   it('should render without crashing', () => {
@@ -233,9 +235,10 @@ describe('PreviewPane', () => {
     const latestHash = 'latest-commit-hash';
     const oldHash = 'old-commit-hash';
 
-    it('should show restore banner when viewing historical commit and not publishing', async () => {
+    it('should show restore banner when viewing historical commit with history tab open', async () => {
       mockGitHistoryData = { commits: [{ hash: latestHash }, { hash: oldHash }] };
       mockGitStore.getSelectedCommitHash = vi.fn(() => oldHash);
+      mockDevelopPageStore.isVersionHistoryOpen = true;
 
       renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
 
@@ -245,9 +248,24 @@ describe('PreviewPane', () => {
       });
     });
 
+    it('should hide restore banner when selectedCommitHash is stale and history tab is closed', async () => {
+      mockGitHistoryData = { commits: [{ hash: latestHash }, { hash: oldHash }] };
+      mockGitStore.getSelectedCommitHash = vi.fn(() => oldHash);
+      mockDevelopPageStore.isVersionHistoryOpen = false;
+
+      renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+      await waitFor(() => {
+        expect(document.querySelector('iframe')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('builder_preview_git_text')).not.toBeInTheDocument();
+    });
+
     it('should hide restore banner when viewing historical commit but publishing', async () => {
       mockGitHistoryData = { commits: [{ hash: latestHash }, { hash: oldHash }] };
       mockGitStore.getSelectedCommitHash = vi.fn(() => oldHash);
+      mockDevelopPageStore.isVersionHistoryOpen = true;
       mockDevelopPageStore.publishStates['test-app-123'].isPublishing = true;
 
       renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);

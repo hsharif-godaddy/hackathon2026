@@ -151,7 +151,9 @@ export default function PreviewPane({
   const previewUrl = serverState?.isReady ? serverState.url : null
 
   const latestCommit = commits.length > 0 ? commits[0] : null
-  const isViewingHistoricalCommit = selectedCommit && latestCommit && selectedCommit.hash !== latestCommit.hash
+  const isVersionHistoryOpen = useDevelopPageStore((state) => state.isVersionHistoryOpen)
+
+  const isViewingHistoricalCommit = selectedCommit && latestCommit && selectedCommit.hash !== latestCommit.hash && isVersionHistoryOpen
 
   // Iframe state
   const [iframeError, setIframeError] = useState(false)
