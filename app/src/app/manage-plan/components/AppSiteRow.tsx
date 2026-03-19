@@ -7,7 +7,7 @@ import AppThumbnail from '@/app/apps/AppThumbnail';
 import { useTranslations } from '@/hooks/useTranslations';
 import { PAYWALL_ITC, type PaywallType } from '@/lib/paywall/shared';
 import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
-import { generateClickEID } from '@/utils/instrumentation';
+import { generateClickEID, logClickEvent } from '@/utils/instrumentation';
 
 interface AppSiteRowProps {
   disabled: boolean;
@@ -25,6 +25,7 @@ interface AppSiteRowProps {
   onPublishClick: (siteId: string) => void;
   onUnpublishClick: (site: SiteInfo) => void;
   onOpenPaywall?: (source: string, type?: PaywallType, itc?: string) => void;
+  onRowClick?: (siteId: string) => void;
 }
 
 /**
@@ -46,11 +47,32 @@ export default function AppSiteRow({
   onPublishClick,
   onUnpublishClick,
   onOpenPaywall,
+  onRowClick,
 }: AppSiteRowProps) {
   const t = useTranslations();
 
   return (
-    <div className={clsx('flex items-center justify-between py-2 border-b border-border last:border-b-0', error && 'pb-4 md:pb-2')}>
+    <div
+      role={onRowClick ? 'button' : undefined}
+      tabIndex={onRowClick ? 0 : undefined}
+      onClick={onRowClick ? () => {
+        logClickEvent('manageplan.apps.row_click')();
+        onRowClick(site.id);
+      } : undefined}
+      onKeyDown={onRowClick ? (e) => {
+        if (e.currentTarget !== e.target) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          logClickEvent('manageplan.apps.row_click')();
+          onRowClick(site.id);
+        }
+      } : undefined}
+      className={clsx(
+        'flex items-center justify-between py-2 px-2 border-b border-border last:border-b-0',
+        onRowClick && 'cursor-pointer rounded-sm transition-colors hover:bg-intents-ux-boxLowContrast-backgroundColor',
+        error && 'pb-4 md:pb-2'
+      )}
+    >
       <div className="flex items-center gap-3 min-w-0">
         <AppThumbnail siteId={site.id} siteName={site.name} size="md" />
         <div className="flex flex-col min-w-0">
@@ -71,6 +93,7 @@ export default function AppSiteRow({
               rel="noopener noreferrer"
               data-partial="componentAiro"
               className="text-sm text-link hover:underline hover:text-ai-light truncate block"
+              onClick={(e) => e.stopPropagation()}
             >
               {publishedUrl.replace(/^https?:\/\//, '')}
             </a>
@@ -78,7 +101,7 @@ export default function AppSiteRow({
         </div>
       </div>
 
-      <div className="relative flex flex-col items-end flex-shrink-0 ml-2">
+      <div className="relative flex flex-col items-end flex-shrink-0 ml-2" onClick={(e) => e.stopPropagation()}>
         {isDisconnectingDomain ? (
           <Button
             design="secondary"

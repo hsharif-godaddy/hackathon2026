@@ -105,6 +105,15 @@ vi.mock('@ux/radio', () => ({
   ),
 }));
 
+vi.mock('@/lib/publish-limit', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/publish-limit')>('@/lib/publish-limit');
+  return {
+    ...actual,
+    getPublishLimit: vi.fn(actual.getPublishLimit),
+  };
+});
+
+import { getPublishLimit } from '@/lib/publish-limit';
 import { SubscriptionPlan } from '@/types/credits';
 import AppsAndSitesCard from './AppsAndSitesCard';
 
@@ -128,7 +137,7 @@ function collapseCard() {
 
 describe('AppsAndSitesCard', function appsAndSitesCardTests() {
   beforeEach(function setup() {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
     // Mock fetch for site details (used when opening unpublish modal)
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -362,15 +371,14 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
 
     it('should show disabled Publish button for Ultimate user at publish limit', function ultimateAtLimit() {
       const mockOpenPaywall = vi.fn();
-      // Ultimate plan has limit of 50 - create 50 published + 1 unpublished
-      const publishedSites = Array.from({ length: 50 }, (_, i) =>
-        createMockSite({ id: `published-${i}`, name: `Published App ${i}`, variants: ['preview', 'publish'] })
-      );
+      vi.mocked(getPublishLimit).mockReturnValue(1);
+
+      const publishedSite = createMockSite({ id: 'published-1', name: 'Published App', variants: ['preview', 'publish'] });
       const unpublishedSite = createMockSite({ id: 'unpublished-1', name: 'Unpublished App', variants: ['preview'] });
 
       renderWithProviders(
         <AppsAndSitesCard
-          sites={[...publishedSites, unpublishedSite]}
+          sites={[publishedSite, unpublishedSite]}
           subscriptionPlan={SubscriptionPlan.Ultimate}
           onOpenPaywall={mockOpenPaywall}
         />
@@ -387,16 +395,14 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
 
     it('should treat legacy AiroPlus users correctly with entitlementId', function legacyAiroPlusLimit() {
       const mockOpenPaywall = vi.fn();
-      // Legacy AiroPlus = Starter plan + entitlementId, limit of 9
-      // Create 9 published + 1 unpublished
-      const publishedSites = Array.from({ length: 9 }, (_, i) =>
-        createMockSite({ id: `published-${i}`, name: `Published App ${i}`, variants: ['preview', 'publish'] })
-      );
+      vi.mocked(getPublishLimit).mockReturnValue(1);
+
+      const publishedSite = createMockSite({ id: 'published-1', name: 'Published App', variants: ['preview', 'publish'] });
       const unpublishedSite = createMockSite({ id: 'unpublished-1', name: 'Unpublished App', variants: ['preview'] });
 
       renderWithProviders(
         <AppsAndSitesCard
-          sites={[...publishedSites, unpublishedSite]}
+          sites={[publishedSite, unpublishedSite]}
           subscriptionPlan={SubscriptionPlan.Starter}
           entitlementId="legacy-airo-plus-entitlement"
           onOpenPaywall={mockOpenPaywall}
@@ -493,6 +499,17 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
 
       const link = screen.getByRole('link', { name: 'custom.example.com' });
       expect(link).toHaveAttribute('href', 'https://custom.example.com');
+    });
+  });
+
+  describe('row click navigation', function rowClickTests() {
+    it('should navigate to develop page when row is clicked', function navigatesToDevelop() {
+      const site = createMockSite({ id: 'site-456', name: 'My App', variants: ['preview'] });
+      renderWithProviders(<AppsAndSitesCard sites={[site]} />);
+
+      fireEvent.click(screen.getByText('My App'));
+
+      expect(mockPush).toHaveBeenCalledWith('/develop/site-456');
     });
   });
 

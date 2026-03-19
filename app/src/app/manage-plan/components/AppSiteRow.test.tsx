@@ -12,6 +12,7 @@ vi.mock('@/hooks/useTranslations', () => ({
 
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((event: string) => `appbuilder.${event}.click`),
+  logClickEvent: vi.fn(() => vi.fn()),
 }));
 
 import AppSiteRow from './AppSiteRow';
@@ -383,6 +384,121 @@ describe('AppSiteRow', function appSiteRowTests() {
 
       const button = screen.getByRole('button', { name: 'builder_manageplan_apps_publish' });
       expect(button).toHaveAttribute('data-partial', 'componentAiro');
+    });
+  });
+
+  describe('row click navigation', function rowClickTests() {
+    it('should call onRowClick with site id when row is clicked', function callsOnRowClick() {
+      const onRowClick = vi.fn();
+      renderWithProviders(
+        <AppSiteRow {...defaultProps} onRowClick={onRowClick} />
+      );
+
+      fireEvent.click(screen.getByText('Test App'));
+
+      expect(onRowClick).toHaveBeenCalledWith('site-123');
+    });
+
+    it('should not call onRowClick when published URL link is clicked', function linkDoesNotTriggerRowClick() {
+      const onRowClick = vi.fn();
+      renderWithProviders(
+        <AppSiteRow
+          {...defaultProps}
+          isPublished={true}
+          publishedUrl="https://example.com"
+          onRowClick={onRowClick}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('link'));
+
+      expect(onRowClick).not.toHaveBeenCalled();
+    });
+
+    it('should not call onRowClick when action button is clicked', function buttonDoesNotTriggerRowClick() {
+      const onRowClick = vi.fn();
+      const onPublishClick = vi.fn();
+      renderWithProviders(
+        <AppSiteRow
+          {...defaultProps}
+          isPublished={false}
+          onRowClick={onRowClick}
+          onPublishClick={onPublishClick}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'builder_manageplan_apps_publish' }));
+
+      expect(onPublishClick).toHaveBeenCalledWith('site-123');
+      expect(onRowClick).not.toHaveBeenCalled();
+    });
+
+    it('should call onRowClick when Enter is pressed on the row', function enterActivatesRow() {
+      const onRowClick = vi.fn();
+      renderWithProviders(
+        <AppSiteRow {...defaultProps} onRowClick={onRowClick} />
+      );
+
+      fireEvent.keyDown(screen.getByRole('button', { name: /Test App/i }), { key: 'Enter' });
+
+      expect(onRowClick).toHaveBeenCalledWith('site-123');
+    });
+
+    it('should call onRowClick when Space is pressed on the row', function spaceActivatesRow() {
+      const onRowClick = vi.fn();
+      renderWithProviders(
+        <AppSiteRow {...defaultProps} onRowClick={onRowClick} />
+      );
+
+      const row = screen.getByRole('button', { name: /Test App/i });
+      const event = new KeyboardEvent('keydown', { key: ' ', bubbles: true });
+      const preventDefaultSpy = vi.spyOn(event, 'preventDefault');
+
+      row.dispatchEvent(event);
+
+      expect(onRowClick).toHaveBeenCalledWith('site-123');
+      expect(preventDefaultSpy).toHaveBeenCalled();
+    });
+
+    it('should not call onRowClick when Enter is pressed on a nested button', function enterOnNestedButton() {
+      const onRowClick = vi.fn();
+      const onPublishClick = vi.fn();
+      renderWithProviders(
+        <AppSiteRow
+          {...defaultProps}
+          isPublished={false}
+          onRowClick={onRowClick}
+          onPublishClick={onPublishClick}
+        />
+      );
+
+      fireEvent.keyDown(screen.getByRole('button', { name: 'builder_manageplan_apps_publish' }), { key: 'Enter' });
+
+      expect(onRowClick).not.toHaveBeenCalled();
+    });
+
+    it('should not call onRowClick when Enter is pressed on the published URL link', function enterOnLink() {
+      const onRowClick = vi.fn();
+      renderWithProviders(
+        <AppSiteRow
+          {...defaultProps}
+          isPublished={true}
+          publishedUrl="https://example.com"
+          onRowClick={onRowClick}
+        />
+      );
+
+      fireEvent.keyDown(screen.getByRole('link'), { key: 'Enter' });
+
+      expect(onRowClick).not.toHaveBeenCalled();
+    });
+
+    it('should not render role="button" when onRowClick is not provided', function noRoleWithoutCallback() {
+      const { container } = renderWithProviders(
+        <AppSiteRow {...defaultProps} onRowClick={undefined} />
+      );
+
+      expect(container.querySelector('[role="button"]')).not.toBeInTheDocument();
     });
   });
 

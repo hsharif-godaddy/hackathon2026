@@ -446,6 +446,7 @@ export default function AppsAndSitesCard({
                   onPublishClick={handlePublishClick}
                   onUnpublishClick={handleUnpublishClick}
                   onOpenPaywall={onOpenPaywall}
+                  onRowClick={(siteId) => router.push(`/develop/${siteId}`)}
                 />
               )}
             </div>
