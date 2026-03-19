@@ -83,19 +83,26 @@ export default class AiroErrorBoundary extends Component<Props, State> {
         <div
           data-airo-dev-tools
           style={{
-            minHeight: '100vh',
+            height: '100vh',
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
             backgroundColor: '#ffffff',
+            padding: '2rem 1rem',
+            boxSizing: 'border-box',
           }}
         >
           <div
             style={{
               maxWidth: '28rem',
-              margin: '0 auto',
+              width: '100%',
               textAlign: 'center',
-              padding: '0 1rem',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              maxHeight: '100%',
+              overflow: 'hidden',
             }}
           >
             <h1
@@ -104,21 +111,31 @@ export default class AiroErrorBoundary extends Component<Props, State> {
                 fontWeight: 'bold',
                 color: '#dc2626',
                 marginBottom: '1rem',
+                flexShrink: 0,
               }}
             >
               Something went wrong
             </h1>
-            <p
+            <pre
               style={{
                 color: '#6b7280',
                 marginBottom: '1.5rem',
-                maxHeight: '400px',
-                overflowY: 'scroll',
+                backgroundColor: '#f3f4f6',
+                padding: '1rem',
+                borderRadius: '0.375rem',
+                fontSize: '0.875rem',
+                whiteSpace: 'pre-wrap',
+                textAlign: 'left',
+                maxWidth: '100%',
+                overflowY: 'auto',
+                minHeight: 0,
+                flexShrink: 1,
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
               }}
             >
               {error.message}
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
+            </pre>
+            <div style={{ display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
               <button
                 onClick={this.handleAskAiroToFix}
                 style={{

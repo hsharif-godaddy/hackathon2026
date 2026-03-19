@@ -42,12 +42,13 @@ function renderErrorOverlay(rawError: any) {
   // Create container
   const container = document.createElement('div');
   container.style.cssText = `
-    min-height: 100vh;
+    height: 100vh;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     background-color: #ffffff;
-    padding: 1rem;
+    padding: 2rem 1rem;
     box-sizing: border-box;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   `;
@@ -56,8 +57,13 @@ function renderErrorOverlay(rawError: any) {
   const innerWrapper = document.createElement('div');
   innerWrapper.style.cssText = `
     max-width: 56rem;
-    margin: 0 auto;
+    width: 100%;
     text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-height: 100%;
+    overflow: hidden;
   `;
 
   // Create heading
@@ -67,6 +73,7 @@ function renderErrorOverlay(rawError: any) {
     font-weight: bold;
     color: #dc2626;
     margin-bottom: 1rem;
+    flex-shrink: 0;
   `;
   heading.textContent = 'Something went wrong';
 
@@ -82,8 +89,9 @@ function renderErrorOverlay(rawError: any) {
     white-space: pre-wrap;
     text-align: left;
     max-width: 100%;
-    max-height: 400px;
     overflow-y: auto;
+    min-height: 0;
+    flex-shrink: 1;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
   `;
   // Use textContent for safe text rendering - automatically escapes HTML
@@ -95,6 +103,7 @@ function renderErrorOverlay(rawError: any) {
     display: flex;
     justify-content: center;
     margin-top: 0.5rem;
+    flex-shrink: 0;
   `;
 
   // Create button
