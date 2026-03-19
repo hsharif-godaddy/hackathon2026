@@ -80,6 +80,7 @@ export interface StreamingMessage {
   isComplete: boolean
   maxStepsReached?: boolean        // True when agent hit max steps limit
   outputTokenLimitReached?: boolean // True when LLM hit maxOutputTokens (text truncation or incomplete tools)
+  connectionLost?: boolean         // True when stream was aborted due to disconnect timeout
   upstreamError?: boolean           // True if an error from upstream service, if any
   budgetExceeded?: boolean         // True if user exceeded their usage budget
   error?: string                   // Error message
@@ -110,6 +111,7 @@ export interface ChatMessage {
   timestamp: Date
   maxStepsReached?: boolean        // True when agent hit max steps limit
   outputTokenLimitReached?: boolean // True when LLM hit maxOutputTokens (text truncation or incomplete tools)
+  connectionLost?: boolean         // True when stream was aborted due to disconnect timeout
   upstreamError?: boolean          // True if an error from upstream service, if any
   budgetExceeded?: boolean         // True if user exceeded their usage budget
   error?: string                   // Error message
@@ -884,12 +886,21 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
     // Detect output token limit: LLM hit maxOutputTokens (text truncation or incomplete tools)
     const outputTokenLimitReached = metadata?.finishReason === 'length'
+    // Detect connection lost: stream aborted due to disconnect grace period timeout
+    const connectionLost = metadata?.finishReason === 'aborted'
 
     if (outputTokenLimitReached) {
       logger.warn('streaming-store.stream.finalize.output_limit', {
         messageId: activeStream.id,
         finishReason: metadata?.finishReason,
         incompleteToolCount: runningToolIds.length
+      })
+    }
+
+    if (connectionLost) {
+      logger.warn('streaming-store.stream.finalize.connection_lost', {
+        messageId: activeStream.id,
+        finishReason: metadata?.finishReason,
       })
     }
 
@@ -914,6 +925,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       timestamp: new Date(),
       maxStepsReached: activeStream.maxStepsReached,
       outputTokenLimitReached: outputTokenLimitReached || undefined,
+      connectionLost: connectionLost || undefined,
       upstreamError: activeStream.upstreamError,
       budgetExceeded: activeStream.budgetExceeded,
       ...(activeStream.error && { error: activeStream.error }),

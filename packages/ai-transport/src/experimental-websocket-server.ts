@@ -239,10 +239,10 @@ export interface WebSocketConfig {
   /** Event channel buffer size per conversation (default: 1000) */
   eventBufferSize?: number
 
-  /** Event channel TTL in ms (default: STREAM_RECOVERY_WINDOW = 10 minutes) */
+  /** Event channel TTL in ms (default: STREAM_RECOVERY_WINDOW = 2 minutes) */
   eventBufferTTL?: number
 
-  /** Stream recovery window in ms (default: 10 minutes) - time to allow reconnection before aborting stream */
+  /** Stream recovery window in ms (default: 2 minutes) - time to allow reconnection before aborting stream */
   streamRecoveryWindow?: number
 
   /** ACK timeout in ms (default: 30 seconds) - time to wait for client acknowledgment after replay */
@@ -293,7 +293,7 @@ export class WebSocketServer {
   private eventChannel: ConversationEventChannel
 
   /**
-   * Recovery window for connection state recovery (default: 10 minutes)
+   * Recovery window for connection state recovery (default: 2 minutes)
    * During this time, streams continue and events are buffered
    * Configurable via WebSocketConfig.streamRecoveryWindow
    */
@@ -334,7 +334,7 @@ export class WebSocketServer {
     this.config = config
 
     // Initialize configurable timeouts with defaults
-    this.STREAM_RECOVERY_WINDOW = config.streamRecoveryWindow ?? 10 * 60 * 1000 // 10 minutes
+    this.STREAM_RECOVERY_WINDOW = config.streamRecoveryWindow ?? 2 * 60 * 1000 // 2 minutes
     this.ACK_TIMEOUT_MS = config.ackTimeout ?? 30_000 // 30 seconds
 
     // Validate configuration
@@ -402,6 +402,10 @@ export class WebSocketServer {
       },
       // Default buffer size for large payloads (e.g., screenshots)
       maxHttpBufferSize: 50 * 1024 * 1024, // 50MB default
+      // Increase ping timeout to tolerate brief network blips (mobile backgrounding,
+      // WiFi switching) without triggering disconnect → grace period → abort.
+      // With pingInterval=25s (default), total tolerance is ~70s before disconnect fires.
+      pingTimeout: 45_000,
       // NOTE: connectionStateRecovery is intentionally disabled.
       // Our custom recovery protocol (manual/conversation/initial modes) handles all
       // reconnection scenarios. The built-in CSR replays packets during socket construction
@@ -582,11 +586,9 @@ export class WebSocketServer {
           const timeoutId = setTimeout(() => {
             this.logger.warn('Recovery window expired, aborting stream', { socketId })
             stateData.abortController?.abort()
-
-            // Clean up conversation (handles persistence and state cleanup)
-            this.cleanupConversation(socketId).catch((error) => {
-              this.logger.error('Error cleaning up conversation after recovery timeout', error)
-            })
+            // Don't call cleanupConversation here — it races with completeConversation
+            // in handleChatMessageInternal. completeConversation persists the message
+            // first, then handleChatMessageInternal cleans up state after.
           }, this.STREAM_RECOVERY_WINDOW)
 
           // Transition to disconnected state
@@ -731,19 +733,19 @@ export class WebSocketServer {
       // Extract appId from auth for history loading
       // Same logic as connection-recovery-manager.ts extractAppId()
       const extractAppId = (authData: unknown): string | undefined => {
-        if (!authData || typeof authData !== 'object') return undefined
+        if (!authData || typeof authData !== 'object') {return undefined}
         const authRecord = authData as Record<string, unknown>
 
         // Try direct appId first (most common)
-        if (typeof authRecord.appId === 'string') return authRecord.appId
+        if (typeof authRecord.appId === 'string') {return authRecord.appId}
 
         // Try agentContext.appId (JWT auth)
         const agentContext = authRecord.agentContext as Record<string, unknown> | undefined
-        if (agentContext && typeof agentContext.appId === 'string') return agentContext.appId
+        if (agentContext && typeof agentContext.appId === 'string') {return agentContext.appId}
 
         // Try decoded.appId (JWT auth fallback)
         const decoded = authRecord.decoded as Record<string, unknown> | undefined
-        if (decoded && typeof decoded.appId === 'string') return decoded.appId
+        if (decoded && typeof decoded.appId === 'string') {return decoded.appId}
 
         return undefined
       }
@@ -892,31 +894,6 @@ export class WebSocketServer {
       }
     } as WebSocketMessage)
 
-    // Handle explicit stream cancellation (user clicked cancel button)
-    socket.on('cancel', () => {
-      this.logger.info('Stream explicitly cancelled by user', { socketId })
-
-      // Cancel any active or disconnected stream via state manager
-      const controller = this.stateManager.getAbortController(socketId)
-      const cancelStateData = this.stateManager.getStateData(socketId)
-
-      if (controller) {
-        controller.abort()
-
-        // Clear any pending recovery timeout
-        if (cancelStateData?.recoveryTimeoutId) {
-          clearTimeout(cancelStateData.recoveryTimeoutId)
-        }
-
-        // Clean up conversation (handles persistence and state cleanup)
-        this.cleanupConversation(socketId).catch(err => {
-          this.logger.error('websocket.cancel.cleanup_failed', {
-            socketId,
-            error: err instanceof Error ? err.message : String(err)
-          })
-        })
-      }
-    })
   }
 
   /**
@@ -1269,10 +1246,10 @@ export class WebSocketServer {
           toolName,
           toolCallId: toolId
         }
-        if (toolInput !== undefined) params.toolInput = toolInput
-        if (conversationId !== undefined) params.conversationId = conversationId
-        if (appId !== undefined) params.appId = appId
-        if (context !== undefined) params.context = context
+        if (toolInput !== undefined) {params.toolInput = toolInput}
+        if (conversationId !== undefined) {params.conversationId = conversationId}
+        if (appId !== undefined) {params.appId = appId}
+        if (context !== undefined) {params.context = context}
 
         const result = await this.config.onToolStart(params)
 
@@ -1328,12 +1305,12 @@ export class WebSocketServer {
           toolCallId: toolId,
           success
         }
-        if (observabilitySpan?.spanId !== undefined) params.spanId = observabilitySpan.spanId
-        if (observabilitySpan?.startTime !== undefined) params.startTime = observabilitySpan.startTime
-        if (toolResponse !== undefined) params.toolResponse = toolResponse
-        if (conversationId !== undefined) params.conversationId = conversationId
-        if (appId !== undefined) params.appId = appId
-        if (context !== undefined) params.context = context
+        if (observabilitySpan?.spanId !== undefined) {params.spanId = observabilitySpan.spanId}
+        if (observabilitySpan?.startTime !== undefined) {params.startTime = observabilitySpan.startTime}
+        if (toolResponse !== undefined) {params.toolResponse = toolResponse}
+        if (conversationId !== undefined) {params.conversationId = conversationId}
+        if (appId !== undefined) {params.appId = appId}
+        if (context !== undefined) {params.context = context}
 
         await this.config.onToolEnd(params)
       } catch (hookError) {
@@ -1729,7 +1706,7 @@ export class WebSocketServer {
    * Check if an error is network-related
    */
   private isNetworkError(error: unknown): boolean {
-    if (!error) return false
+    if (!error) {return false}
 
     const errorMessage = error instanceof Error ? error.message : ''
     const errorName = error instanceof Error ? error.name : ''
@@ -1772,7 +1749,7 @@ export class WebSocketServer {
    * Safely cleanup a stream reader
    */
   private async safeCleanupReader(reader: ReadableStreamDefaultReader | null): Promise<void> {
-    if (!reader) return
+    if (!reader) {return}
 
     try {
       // Cancel the reader if it's still active
@@ -1849,7 +1826,7 @@ export class WebSocketServer {
       // 1.5. Strip /agent marker from message if present
       if (data.message && typeof data.message === 'string') {
         const firstLine = data.message.split('\n')[0]?.trim()
-        if (firstLine && firstLine.match(/^\/agent\s+\w+$/i)) {
+        if (firstLine?.match(/^\/agent\s+\w+$/i)) {
           // Remove first line and any leading newline
           const lines = data.message.split('\n')
           data.message = lines.slice(1).join('\n').trimStart()
@@ -1926,7 +1903,11 @@ export class WebSocketServer {
       await this.config.onMessageStart?.(socketId, data.message, agentName, processedContext)
 
       // 6. Create abort controller and register with state manager
+      // Capture signal locally so abort checks remain valid even if
+      // cleanupConversation removes the state manager entry before
+      // the stream's async abort handlers finish executing.
       const controller = new AbortController()
+      const abortSignal = controller.signal
       this.stateManager.updateConnection(socketId, { abortController: controller })
 
       // Clear pending setup if socket disconnected during setup but stream is now starting
@@ -1943,9 +1924,8 @@ export class WebSocketServer {
           const newTimeoutId = setTimeout(() => {
             this.logger.warn('Recovery window expired after early disconnect', { socketId })
             controller.abort()
-            this.cleanupConversation(socketId).catch((error) => {
-              this.logger.error('Error cleaning up conversation after recovery timeout', error)
-            })
+            // Don't call cleanupConversation here — same race as the primary timeout.
+            // handleChatMessageInternal cleans up after completeConversation finishes.
           }, this.STREAM_RECOVERY_WINDOW)
 
           this.stateManager.updateConnection(socketId, {
@@ -2004,6 +1984,15 @@ export class WebSocketServer {
         // Stream agent response (tools execute here, including handoff)
         // Never emit completion during the loop - we'll handle it after
         await this.streamAgentResponse(socket, agent, iterationData, processedContext, agentName, startTime, false)
+
+        // If stream was aborted (e.g., disconnect timeout), skip further processing.
+        // Break out of the handoff loop — completeConversation below handles both
+        // abort and normal paths (persistence, complete event, hooks).
+        // Uses locally captured signal — immune to cleanupConversation removing state.
+        if (abortSignal.aborted) {
+          this.logger.info('stream.aborted.skip_completion', { socketId, agentName })
+          break
+        }
 
         // Check for auto-continuation FIRST (takes precedence - allows skill tools to load before handoff)
         // Get updated context from conversation state (includes flags set by afterToolExecution hook)
@@ -2091,7 +2080,23 @@ export class WebSocketServer {
       }
 
       // 8. Complete the conversation (after all handoffs complete)
-      await this.completeConversation(socketId, agentName, startTime, processedContext)
+      // Always runs — handles both normal and abort paths:
+      //   - Persistence finalization (message saved with inProgress: false)
+      //   - Pre-completion hooks (git commits)
+      //   - Complete event publication (with finishReason if aborted)
+      const finishReason = abortSignal.aborted ? 'aborted' : undefined
+      await this.completeConversation(socketId, agentName, startTime, processedContext, finishReason)
+
+      // Clean up state after abort — the disconnect timeout handler defers cleanup
+      // to here so it doesn't race with completeConversation above.
+      if (abortSignal.aborted) {
+        await this.cleanupConversation(socketId).catch((error) => {
+          this.logger.error('websocket.abort.cleanup_failed', {
+            socketId,
+            error: error instanceof Error ? error.message : String(error)
+          })
+        })
+      }
 
     } catch (error: unknown) {
       // Extract error details for UI
@@ -2245,7 +2250,7 @@ export class WebSocketServer {
     // Always evaluate router first so brand new apps can start with the Initial agent
     const routedAgent = this.config.agentRouter ? this.config.agentRouter(socketId, data) : undefined
 
-    if (this.config.stateManager && this.config.stateManager.getCurrentAgent) {
+    if (this.config.stateManager?.getCurrentAgent) {
       const currentAgent = this.config.stateManager.getCurrentAgent(socketId)
       if (currentAgent) {
         const currentAppId = extractAppIdFromMessageContext(data.context)
@@ -2430,10 +2435,10 @@ export class WebSocketServer {
     data: ChatMessage,
     processedContext: Record<string, unknown>
   ): Promise<void> {
-    if (!this.config.messageProvider || data.conversationHistory) return
+    if (!this.config.messageProvider || data.conversationHistory) {return}
 
     const conversation = this.getConversation(socketId)
-    if (!conversation) return
+    if (!conversation) {return}
 
     try {
       const conversationHistory = await this.config.messageProvider.loadMessages(
@@ -2454,7 +2459,7 @@ export class WebSocketServer {
     socketId: string,
     currentAgentName: string
   ): { newAgentName: string; handoffPrompt: string } | null {
-    if (!this.config.stateManager || !this.config.stateManager.getCurrentAgent) {
+    if (!this.config.stateManager?.getCurrentAgent) {
       return null
     }
 
@@ -2483,7 +2488,8 @@ export class WebSocketServer {
     socketId: string,
     agentName: string,
     startTime: number,
-    processedContext: Record<string, unknown>
+    processedContext: Record<string, unknown>,
+    finishReason?: string
   ): Promise<void> {
     const duration = `${Date.now() - startTime}ms`
 
@@ -2521,7 +2527,7 @@ export class WebSocketServer {
       await this.config.messagePersistence.completeConversation(
         conversation.conversationId,
         conversation.streamingEvents,
-        { agentName, duration },
+        { agentName, duration, ...(finishReason && { finishReason }) },
         conversation.context
       )
 
@@ -2542,7 +2548,8 @@ export class WebSocketServer {
       agentId: agentName,
       duration,
       commitHash, // null if no commit, hash string if commit was created
-      messageId: handoffConversation?.context?.agentMessageId  // NEW: Include message ID for pending message tracking
+      messageId: handoffConversation?.context?.agentMessageId,
+      ...(finishReason && { finishReason }),
     }, agentName)
 
     // Call completion handler
@@ -2635,7 +2642,7 @@ export class WebSocketServer {
     // 4. Strip leading tool messages that appear before any assistant message
     // This prevents orphaned tool results from being placed at the start of conversation
     // which can happen when context messages are prepended to history
-    while (messages.length > 0 && messages[0] && messages[0].role === 'tool') {
+    while (messages.length > 0 && messages[0]?.role === 'tool') {
       const removedMessage = messages.shift()
       if (removedMessage) {
         this.logger.warn('Stripped leading tool message without preceding assistant message', {
@@ -2717,10 +2724,10 @@ export class WebSocketServer {
         try {
           // Convert data URL to ProcessedFile
           const dataUrl = screenshots[i]
-          if (!dataUrl) continue
+          if (!dataUrl) {continue}
 
           const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/)
-          if (matches && matches[1] && matches[2]) {
+          if (matches?.[1] && matches[2]) {
             const mimeType: string = matches[1]
             const base64Content: string = matches[2]
             const size = Math.ceil((base64Content.length * 3) / 4)
@@ -2787,9 +2794,9 @@ export class WebSocketServer {
           model: modelName,
           provider: providerName
         }
-        if (conversationId !== undefined) params.conversationId = conversationId
-        if (appId !== undefined) params.appId = appId
-        if (context !== undefined) params.context = context
+        if (conversationId !== undefined) {params.conversationId = conversationId}
+        if (appId !== undefined) {params.appId = appId}
+        if (context !== undefined) {params.context = context}
 
         // Build input messages array for observability tracking
         const inputMessages: Array<{ role: string; content: string }> = []
@@ -2854,11 +2861,13 @@ export class WebSocketServer {
       })
     )
 
+    // Get abort signal from state manager for stream cancellation.
+    // Captured outside try so it's accessible in both try and catch blocks —
+    // immune to cleanupConversation removing the state manager entry during async abort.
+    const abortSignal = this.stateManager.getAbortController(socket.id)?.signal
+
     try {
       // Run agent.streamGenerate within the invocation context
-      // Get abort signal from state manager for stream cancellation
-      const abortSignal = this.stateManager.getAbortController(socket.id)?.signal
-
       streamResult = await otelContext.with(invocation.context, async () => {
         return await agent.streamGenerate(originalPrompt, {
           // Add context messages with cache points intact
@@ -3174,17 +3183,17 @@ Please try again with corrected formatting.`
             provider: providerName,
             success: true
           }
-          if (llmSpanInfo?.spanId !== undefined) llmEndParams.spanId = llmSpanInfo.spanId
-          if (conversationId !== undefined) llmEndParams.conversationId = conversationId
-          if (appId !== undefined) llmEndParams.appId = appId
-          if (context !== undefined) llmEndParams.context = context
-          if (finalResult.finishReason !== undefined) llmEndParams.finishReason = finalResult.finishReason
+          if (llmSpanInfo?.spanId !== undefined) {llmEndParams.spanId = llmSpanInfo.spanId}
+          if (conversationId !== undefined) {llmEndParams.conversationId = conversationId}
+          if (appId !== undefined) {llmEndParams.appId = appId}
+          if (context !== undefined) {llmEndParams.context = context}
+          if (finalResult.finishReason !== undefined) {llmEndParams.finishReason = finalResult.finishReason}
           if (usageToTrack) {
             const usageObj: NonNullable<typeof llmEndParams.usage> = {}
-            if (usageToTrack.inputTokens !== undefined) usageObj.inputTokens = usageToTrack.inputTokens
-            if (usageToTrack.outputTokens !== undefined) usageObj.outputTokens = usageToTrack.outputTokens
-            if (usageToTrack.totalTokens !== undefined) usageObj.totalTokens = usageToTrack.totalTokens
-            if (usageToTrack.cachedInputTokensRead !== undefined) usageObj.cachedTokens = usageToTrack.cachedInputTokensRead
+            if (usageToTrack.inputTokens !== undefined) {usageObj.inputTokens = usageToTrack.inputTokens}
+            if (usageToTrack.outputTokens !== undefined) {usageObj.outputTokens = usageToTrack.outputTokens}
+            if (usageToTrack.totalTokens !== undefined) {usageObj.totalTokens = usageToTrack.totalTokens}
+            if (usageToTrack.cachedInputTokensRead !== undefined) {usageObj.cachedTokens = usageToTrack.cachedInputTokensRead}
             llmEndParams.usage = usageObj
           }
 
@@ -3272,6 +3281,25 @@ Please try again with corrected formatting.`
       })
     } catch (postStreamError: unknown) {
       invocation.end({ error: postStreamError instanceof Error ? postStreamError : String(postStreamError), success: false })
+
+      // Check abort signal directly — avoids false positives from analyzeStreamError's
+      // broad substring matching (e.g., "Transaction aborted" would misclassify).
+      // Uses the signal captured at the top of the try block — immune to
+      // cleanupConversation removing the state manager entry during async abort.
+      if (abortSignal?.aborted) {
+        this.logger.info('stream.aborted', {
+          socketId: socket.id,
+          agentName,
+          step: currentStep,
+        })
+
+        // Don't publish complete:aborted here — the handoff loop abort check
+        // in handleChatMessageInternal always publishes it after streamAgentResponse
+        // returns (covering both throw and clean-return paths). Publishing here
+        // would create a duplicate with inconsistent totalSteps.
+        return // Don't rethrow — abort is a clean termination, not an error
+      }
+
       throw postStreamError
     }
 

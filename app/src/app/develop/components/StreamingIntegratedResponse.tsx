@@ -350,6 +350,15 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
           />
         )}
 
+        {/* Connection lost notification */}
+        {message.connectionLost && (
+          <StreamingAlertMessage
+            type="Warning"
+            title="Connection lost"
+            message="Your connection was interrupted and the response may be incomplete. Try sending a follow-up message to continue."
+          />
+        )}
+
         {/* Budget exceeded error notification */}
         {message.budgetExceeded && (
           <StreamingAlertMessage

@@ -33,7 +33,8 @@ function shouldRenderMessage(message: ChatMessage | StreamingMessageType): boole
     message.upstreamError || // Show error messages
     message.budgetExceeded || // Show budget exceeded message
     message.maxStepsReached || // Show max steps warnings
-    message.outputTokenLimitReached // Show output token limit warnings
+    message.outputTokenLimitReached || // Show output token limit warnings
+    message.connectionLost // Show connection lost warning
   )
 
   return hasContent

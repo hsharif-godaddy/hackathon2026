@@ -406,6 +406,38 @@ describe('useStreamingConversationStore', function packageTests() {
       const assistantMsg = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
       expect(assistantMsg?.outputTokenLimitReached).toBe(true);
     });
+
+    it('should set connectionLost when finishReason is aborted', function connectionLost() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Build a todo app');
+      });
+
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream({ finishReason: 'aborted' });
+      });
+
+      const assistantMsg = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
+      expect(assistantMsg?.connectionLost).toBe(true);
+    });
+
+    it('should not set connectionLost when finishReason is not aborted', function noConnectionLost() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Build a todo app');
+      });
+
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream({ finishReason: 'stop' });
+      });
+
+      const assistantMsg = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
+      expect(assistantMsg?.connectionLost).toBeUndefined();
+    });
   });
 
   describe('#addToolStartSegment', function addToolStartSegmentTests() {

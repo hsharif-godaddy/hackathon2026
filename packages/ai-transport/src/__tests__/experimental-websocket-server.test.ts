@@ -2220,3 +2220,348 @@ describe('connect-then-auth support', () => {
     server.close()
   })
 })
+
+describe('WebSocketServer - Abort Signal Handling', () => {
+  let httpServer: HTTPServer
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    httpServer = new HTTPServer()
+  })
+
+  /**
+   * Factory for a stream mock that blocks until abort, then throws AbortError.
+   * Simulates abort during stream consumption (inside the inner try/catch)
+   * rather than during streamGenerate itself (which would hit the outer catch).
+   */
+  function createAbortableStreamMock() {
+    return (_prompt: string, options: any) => {
+      return Promise.resolve({
+        baseStream: {
+          getReader: () => ({
+            read: () => new Promise((_, reject) => {
+              options?.abortSignal?.addEventListener('abort', () => {
+                const error = new Error('The operation was aborted')
+                error.name = 'AbortError'
+                reject(error)
+              })
+            }),
+            cancel: vi.fn(),
+            releaseLock: vi.fn()
+          }),
+          cancel: vi.fn()
+        },
+        // eslint-disable-next-line require-yield
+        textStream: (async function* () {
+          await new Promise((_, reject) => {
+            options?.abortSignal?.addEventListener('abort', () => {
+              const error = new Error('The operation was aborted')
+              error.name = 'AbortError'
+              reject(error)
+            })
+          })
+        })(),
+        getFinalResult: vi.fn().mockResolvedValue({
+          usage: { inputTokens: 10, outputTokens: 5 },
+          toolCalls: [],
+          finishReason: 'stop'
+        })
+      })
+    }
+  }
+
+  it('should publish complete with finishReason aborted and messageId on mid-stream abort', async () => {
+    const mockPersistence = createMockPersistence({
+      startConversation: vi.fn().mockResolvedValue('conv-123'),
+      startAgentTurn: vi.fn().mockResolvedValue('agent-msg-123')
+    })
+
+    mockAgent.streamGenerate = vi.fn().mockImplementation(createAbortableStreamMock())
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: mockPersistence
+    })
+
+    const stateManager = (server as any).stateManager
+
+    const messagePromise = messageHandler({
+      message: 'Test message',
+      agentId: 'test-agent',
+      context: { metadata: { appId: 'test-app' } }
+    })
+
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    const controller = stateManager.getAbortController(mockSocket.id)
+    expect(controller).not.toBeNull()
+    controller!.abort()
+
+    await messagePromise
+
+    const completeEvents = mockSocket.emit.mock.calls.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'complete'
+    )
+
+    // Exactly one complete:aborted — the loop check publishes it, not the catch block
+    expect(completeEvents).toHaveLength(1)
+    expect(completeEvents[0][1].data.finishReason).toBe('aborted')
+    expect(completeEvents[0][1].data.messageId).toBe('agent-msg-123')
+
+    server.close()
+  })
+
+  it('should not emit duplicate complete events on normal (non-aborted) completion', async () => {
+    const mockPersistence = createMockPersistence({
+      startConversation: vi.fn().mockResolvedValue('conv-race'),
+      startAgentTurn: vi.fn().mockResolvedValue('msg-race')
+    })
+
+    const mockStreamResult = {
+      baseStream: null,
+      textStream: (async function* () {
+        yield 'Done'
+      })(),
+      getFinalResult: vi.fn().mockResolvedValue({
+        usage: { inputTokens: 10, outputTokens: 5 },
+        toolCalls: [],
+        finishReason: 'stop'
+      })
+    }
+
+    mockAgent.streamGenerate = vi.fn().mockResolvedValue(mockStreamResult)
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: mockPersistence
+    })
+
+    await messageHandler({
+      message: 'Quick test',
+      agentId: 'test-agent',
+      context: { metadata: { appId: 'test-app' } }
+    })
+
+    const completeEvents = mockSocket.emit.mock.calls.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'complete'
+    )
+
+    // Exactly one complete (from completeConversation), no abort-path duplicate
+    expect(completeEvents).toHaveLength(1)
+    expect(completeEvents[0][1].data.finishReason).toBeUndefined()
+
+    server.close()
+  })
+
+  it('should publish complete:aborted when stream finishes cleanly after abort (no throw)', async () => {
+    const mockPersistence = createMockPersistence({
+      startConversation: vi.fn().mockResolvedValue('conv-clean-abort'),
+      startAgentTurn: vi.fn().mockResolvedValue('msg-clean-abort')
+    })
+
+    // Stream returns cleanly after abort — simulates AI SDK honoring the signal
+    // at a yield point and returning rather than throwing AbortError.
+    let resolveStream: (() => void) | null = null
+    mockAgent.streamGenerate = vi.fn().mockImplementation((_prompt: string) => {
+      return Promise.resolve({
+        baseStream: null,
+        textStream: (async function* () {
+          yield 'partial'
+          await new Promise<void>(resolve => { resolveStream = resolve })
+          yield 'done'
+        })(),
+        getFinalResult: vi.fn().mockResolvedValue({
+          usage: { inputTokens: 10, outputTokens: 5 },
+          toolCalls: [],
+          finishReason: 'stop'
+        })
+      })
+    })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: mockPersistence
+    })
+
+    const stateManager = (server as any).stateManager
+
+    const messagePromise = messageHandler({
+      message: 'Test message',
+      agentId: 'test-agent',
+      context: { metadata: { appId: 'test-app' } }
+    })
+
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    // Abort, then let the stream finish cleanly (no throw)
+    const controller = stateManager.getAbortController(mockSocket.id)
+    controller!.abort()
+    resolveStream!()
+
+    await messagePromise
+
+    const completeEvents = mockSocket.emit.mock.calls.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'complete'
+    )
+
+    // Exactly one — clean return has no catch block publish, only the loop check
+    expect(completeEvents).toHaveLength(1)
+    expect(completeEvents[0][1].data.finishReason).toBe('aborted')
+    expect(completeEvents[0][1].data.messageId).toBe('msg-clean-abort')
+
+    server.close()
+  })
+
+  it('should publish complete:aborted when stream returns immediately on abort signal', async () => {
+    const mockPersistence = createMockPersistence({
+      startConversation: vi.fn().mockResolvedValue('conv-return'),
+      startAgentTurn: vi.fn().mockResolvedValue('msg-return')
+    })
+
+    // Stream that checks signal and returns without yielding or throwing —
+    // the most minimal clean-return case.
+    mockAgent.streamGenerate = vi.fn().mockImplementation((_prompt: string, options: any) => {
+      return Promise.resolve({
+        baseStream: null,
+        // eslint-disable-next-line require-yield
+        textStream: (async function* () {
+          // Block until abort, then return cleanly (no throw)
+          await new Promise<void>(resolve => {
+            options?.abortSignal?.addEventListener('abort', () => resolve())
+          })
+          // Generator returns — no yield, no throw
+        })(),
+        getFinalResult: vi.fn().mockResolvedValue({
+          usage: { inputTokens: 0, outputTokens: 0 },
+          toolCalls: [],
+          finishReason: 'stop'
+        })
+      })
+    })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: mockPersistence
+    })
+
+    const stateManager = (server as any).stateManager
+
+    const messagePromise = messageHandler({
+      message: 'Test message',
+      agentId: 'test-agent',
+      context: { metadata: { appId: 'test-app' } }
+    })
+
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    stateManager.getAbortController(mockSocket.id)!.abort()
+
+    await messagePromise
+
+    const completeEvents = mockSocket.emit.mock.calls.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'complete'
+    )
+
+    // Must have exactly one complete:aborted — no natural completion should fire
+    expect(completeEvents).toHaveLength(1)
+    expect(completeEvents[0][1].data.finishReason).toBe('aborted')
+    expect(completeEvents[0][1].data.messageId).toBe('msg-return')
+
+    server.close()
+  })
+
+  it('should swallow publish failure during abort without rethrowing', async () => {
+    const mockPersistence = createMockPersistence({
+      startConversation: vi.fn().mockResolvedValue('conv-fail'),
+      startAgentTurn: vi.fn().mockResolvedValue('msg-fail')
+    })
+
+    mockAgent.streamGenerate = vi.fn().mockImplementation(createAbortableStreamMock())
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: mockPersistence
+    })
+
+    const stateManager = (server as any).stateManager
+
+    // Only reject for 'complete' type — let other events through
+    const originalPublish = (server as any).publishToEventChannel.bind(server)
+    const publishSpy = vi.spyOn(server as any, 'publishToEventChannel')
+      .mockImplementation(async (socketId: string, type: string, ...rest: any[]) => {
+        if (type === 'complete') {
+          throw new Error('Channel destroyed')
+        }
+        return originalPublish(socketId, type, ...rest)
+      })
+
+    const messagePromise = messageHandler({
+      message: 'Test message',
+      agentId: 'test-agent',
+      context: { metadata: { appId: 'test-app' } }
+    })
+
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    stateManager.getAbortController(mockSocket.id)!.abort()
+
+    await expect(messagePromise).resolves.toBeUndefined()
+
+    const completePublishCall = publishSpy.mock.calls.find(
+      (call: any[]) => call[1] === 'complete'
+    )
+    expect(completePublishCall).toBeDefined()
+
+    publishSpy.mockRestore()
+    server.close()
+  })
+
+  it('should detect abort even after cleanupConversation removes state manager entry', async () => {
+    const mockPersistence = createMockPersistence({
+      startConversation: vi.fn().mockResolvedValue('conv-race'),
+      startAgentTurn: vi.fn().mockResolvedValue('msg-race')
+    })
+
+    mockAgent.streamGenerate = vi.fn().mockImplementation(createAbortableStreamMock())
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: mockPersistence
+    })
+
+    const stateManager = (server as any).stateManager
+
+    const messagePromise = messageHandler({
+      message: 'Test message',
+      agentId: 'test-agent',
+      context: { metadata: { appId: 'test-app' } }
+    })
+
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    // Capture the controller, then abort AND clean up state (simulates the race)
+    const capturedController = stateManager.getAbortController(mockSocket.id)
+    expect(capturedController).not.toBeNull()
+
+    capturedController!.abort()
+    await stateManager.cleanup(mockSocket.id)
+
+    expect(stateManager.getAbortController(mockSocket.id)).toBeNull()
+
+    // Handler completes without error — locally captured signal survives cleanup
+    await expect(messagePromise).resolves.toBeUndefined()
+
+    // publishToEventChannel returns undefined when state is gone (line 952),
+    // so the complete event won't reach the socket, but the handler exits
+    // cleanly via the abort path rather than rethrowing.
+    expect(capturedController!.signal.aborted).toBe(true)
+
+    server.close()
+  })
+})
