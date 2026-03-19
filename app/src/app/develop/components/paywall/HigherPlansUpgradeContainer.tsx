@@ -61,6 +61,18 @@ const HigherPlansUpgradeContainer = ({
     logImpressionEvent('plan.purchase.success')()
     shipAnalyticsLog('airoplus.purchase.in-app', { source, productId, fromPlan: planBeforePurchase, toPlan: planAfterPurchase })
 
+    // Renewal: same plan before and after - no polling needed since plan won't change
+    if (planBeforePurchase && planAfterPurchase && planBeforePurchase === planAfterPurchase) {
+      shipAnalyticsLog('paid_plan.renewal.success', { source, productId, plan: planAfterPurchase })
+      return
+    }
+
+    // Renewal of the scheduled downgrade plan - no polling needed since plan won't change
+    if (planBeforePurchase && downgradedPlan && planAfterPurchase && downgradedPlan === planAfterPurchase) {
+      shipAnalyticsLog('paid_plan.renewal_downgrade.success', { source, productId, plan: planAfterPurchase })
+      return
+    }
+
     // Determine if this is an upgrade or downgrade
     // - Upgrade: plan changes immediately, poll until subscription.plan changes
     // - Downgrade: scheduled for term end, poll until downgradedAt/downgradedPlan are set

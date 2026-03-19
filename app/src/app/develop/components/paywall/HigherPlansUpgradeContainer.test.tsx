@@ -134,6 +134,18 @@ vi.mock('./cdsLoader', () => ({
         >
           On Error
         </button>
+        <button
+          data-testid="renew-professional-button"
+          onClick={() => props.upgradeCallback({ planType: SubscriptionPlan.Professional })}
+        >
+          Renew Professional
+        </button>
+        <button
+          data-testid="renew-starter-button"
+          onClick={() => props.upgradeDowngradeCallback({ planType: SubscriptionPlan.Starter })}
+        >
+          Renew Starter
+        </button>
       </div>
     );
   },
@@ -496,5 +508,70 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
       'test-subscription-123', // subscriptionId for grant polling
       'initial-plan-monthly-grant-id' // initialPlanMonthlyGrantId for grant polling
     );
+  });
+
+  it('skips polling for renewal when plan before and after are the same', function skipsPollingForRenewal() {
+    mockGetQueryData.mockReturnValue({
+      active: {
+        plan: 'professional',
+        downgradedPlan: undefined,
+      },
+    });
+
+    renderWithProviders(
+      <HigherPlansUpgradeContainer
+        onClose={mockOnClose}
+        source="test-source"
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('renew-professional-button'));
+
+    expect(logImpressionEvent).toHaveBeenCalledWith('plan.purchase.success');
+    expect(shipAnalyticsLog).toHaveBeenCalledWith('airoplus.purchase.in-app', expect.objectContaining({
+      source: 'test-source',
+      fromPlan: 'professional',
+      toPlan: SubscriptionPlan.Professional,
+    }));
+    expect(shipAnalyticsLog).toHaveBeenCalledWith('paid_plan.renewal.success', {
+      source: 'test-source',
+      productId: expect.any(String),
+      plan: SubscriptionPlan.Professional,
+    });
+    // Should NOT call handlePurchaseSuccess for renewals - no polling needed
+    expect(mockHandlePurchaseSuccess).not.toHaveBeenCalled();
+  });
+
+  it('skips polling for renewal of scheduled downgrade plan', function skipsPollingForDowngradeRenewal() {
+    mockGetQueryData.mockReturnValue({
+      active: {
+        plan: 'professional',
+        downgradedPlan: 'starter', // user had previously scheduled downgrade to starter
+      },
+    });
+
+    renderWithProviders(
+      <HigherPlansUpgradeContainer
+        onClose={mockOnClose}
+        source="test-source"
+      />
+    );
+
+    // User purchases the plan they were already scheduled to downgrade to
+    fireEvent.click(screen.getByTestId('renew-starter-button'));
+
+    expect(logImpressionEvent).toHaveBeenCalledWith('plan.purchase.success');
+    expect(shipAnalyticsLog).toHaveBeenCalledWith('airoplus.purchase.in-app', expect.objectContaining({
+      source: 'test-source',
+      fromPlan: 'professional',
+      toPlan: SubscriptionPlan.Starter,
+    }));
+    expect(shipAnalyticsLog).toHaveBeenCalledWith('paid_plan.renewal_downgrade.success', {
+      source: 'test-source',
+      productId: expect.any(String),
+      plan: SubscriptionPlan.Starter,
+    });
+    // Should NOT call handlePurchaseSuccess for renewal of downgrade - no polling needed
+    expect(mockHandlePurchaseSuccess).not.toHaveBeenCalled();
   });
 });
