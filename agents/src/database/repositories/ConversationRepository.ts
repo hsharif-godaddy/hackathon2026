@@ -65,7 +65,7 @@ export class ConversationRepository {
     const stmt = this.db.prepare('SELECT * FROM conversations WHERE id = ?');
     const row = stmt.get(conversationId) as any;
 
-    if (!row) return null;
+    if (!row) {return null;}
 
     return {
       id: row.id,
@@ -376,7 +376,7 @@ export class ConversationRepository {
     `);
     const row = stmt.get(messageId) as any;
 
-    if (!row) return null;
+    if (!row) {return null;}
 
     return {
       id: row.id,
@@ -469,7 +469,7 @@ export class ConversationRepository {
       }
     }
 
-    if (updateFields.length === 0) return;
+    if (updateFields.length === 0) {return;}
 
     values.push(messageId);
 

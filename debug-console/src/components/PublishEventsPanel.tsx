@@ -73,10 +73,10 @@ export default function PublishEventsPanel({ appId, timeRange = '7d', refreshKey
     setError(null);
     try {
       const params = new URLSearchParams({ days: String(days), limit: '200' });
-      if (appId) params.set('appId', appId);
+      if (appId) {params.set('appId', appId);}
 
       const res = await fetch(`/api/publish-events?${params}`);
-      if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
+      if (!res.ok) {throw new Error(`Failed to fetch: ${res.status}`);}
 
       const data: PublishEventsResponse = await res.json();
       setEvents(data.events);

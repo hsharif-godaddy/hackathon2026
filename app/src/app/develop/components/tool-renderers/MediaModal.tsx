@@ -35,7 +35,7 @@ export default function MediaModal({
 }: MediaModalProps) {
   // Close on Escape key
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen) {return}
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {

@@ -31,7 +31,7 @@ export default function SharePanel() {
    * Handle creating a new share token
    */
   const handleCreate = async () => {
-    if (!appId) return;
+    if (!appId) {return;}
 
     try {
       await createToken.mutateAsync({

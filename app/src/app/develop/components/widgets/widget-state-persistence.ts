@@ -13,7 +13,7 @@ function getErrorMessage(error: unknown): string {
 }
 
 export function saveWidgetState<T>(instanceId: string, state: T): void {
-  if (typeof window === 'undefined' || !instanceId) return
+  if (typeof window === 'undefined' || !instanceId) {return}
 
   const stateData: StoredWidgetState<T> = {
     state,
@@ -34,11 +34,11 @@ export function saveWidgetState<T>(instanceId: string, state: T): void {
 }
 
 export function loadWidgetState<T>(instanceId: string): T | null {
-  if (typeof window === 'undefined' || !instanceId) return null
+  if (typeof window === 'undefined' || !instanceId) {return null}
 
   try {
     const item = localStorage.getItem(`${WIDGET_STATE_PREFIX}-${instanceId}`)
-    if (!item) return null
+    if (!item) {return null}
 
     const stateData: StoredWidgetState<T> = JSON.parse(item)
 
@@ -59,7 +59,7 @@ export function loadWidgetState<T>(instanceId: string): T | null {
 }
 
 export function clearWidgetState(instanceId: string): void {
-  if (typeof window === 'undefined' || !instanceId) return
+  if (typeof window === 'undefined' || !instanceId) {return}
 
   try {
     localStorage.removeItem(`${WIDGET_STATE_PREFIX}-${instanceId}`)
@@ -72,17 +72,17 @@ export function clearWidgetState(instanceId: string): void {
 }
 
 export function clearExpiredWidgetStates(): void {
-  if (typeof window === 'undefined') return
+  if (typeof window === 'undefined') {return}
 
   try {
     const keysToRemove: string[] = []
 
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)
-      if (!key?.startsWith(WIDGET_STATE_PREFIX)) continue
+      if (!key?.startsWith(WIDGET_STATE_PREFIX)) {continue}
 
       const item = localStorage.getItem(key)
-      if (!item) continue
+      if (!item) {continue}
 
       const stateData: StoredWidgetState<unknown> = JSON.parse(item)
       const age = Date.now() - stateData.timestamp

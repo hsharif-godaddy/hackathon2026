@@ -295,7 +295,7 @@ export default function EventModal({
   const isPast = selectedDate < todayDate;
 
   // Early return before any JSX creation for optimization
-  if (!isOpen) return null;
+  if (!isOpen) {return null;}
 
   return (
     <Modal title={intl.formatDate(date, {

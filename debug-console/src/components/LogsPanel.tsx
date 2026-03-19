@@ -164,7 +164,7 @@ export default function LogsPanel({
 
   // Column resize handlers
   const handleColumnMouseMove = useCallback((e: MouseEvent) => {
-    if (!resizingColumnRef.current) return;
+    if (!resizingColumnRef.current) {return;}
     const deltaX = e.clientX - startXRef.current;
     const newWidth = Math.max(50, startWidthRef.current + deltaX);
     setColumnWidths(prev => ({
@@ -227,7 +227,7 @@ export default function LogsPanel({
   }, [defaultSource, selectedSource]);
 
   const fetchLogs = useCallback(async function fetchLogsInternal() {
-    if (!selectedSource) return;
+    if (!selectedSource) {return;}
 
     setLoading(true);
     setError(null);
@@ -240,8 +240,8 @@ export default function LogsPanel({
 
       // Build levels filter: always include ERROR, optionally WARN and INFO
       const levels = ['ERROR'];
-      if (includeWarn) levels.push('WARN');
-      if (includeInfo) levels.push('INFO');
+      if (includeWarn) {levels.push('WARN');}
+      if (includeInfo) {levels.push('INFO');}
       urlParams.set('levels', levels.join(','));
 
       // Handle appId filtering based on mode
@@ -361,8 +361,8 @@ export default function LogsPanel({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (selectedLogIndex === null) return;
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (selectedLogIndex === null) {return;}
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {return;}
 
       switch (e.key) {
         case 'ArrowUp':

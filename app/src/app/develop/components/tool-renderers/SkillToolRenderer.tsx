@@ -99,7 +99,7 @@ function useInstallProgress(isRunning: boolean): string {
     }
 
     const [, duration] = INSTALL_PROGRESS_PHASES[phaseIndex]
-    if (duration === 0) return // last phase, stay here
+    if (duration === 0) {return} // last phase, stay here
 
     const timer = setTimeout(() => {
       setPhaseIndex(i => Math.min(i + 1, INSTALL_PROGRESS_PHASES.length - 1))
@@ -127,19 +127,21 @@ function formatSkillName(name: string): string {
  */
 function getSkillMessage(action: string, result: SkillResult | null): { message: string; icon: React.ReactNode } {
   switch (action) {
-    case 'list':
+    case 'list': {
       const count = (result && 'count' in result) ? result.count : 0
       return {
         message: `Found ${count} available ${count === 1 ? 'skill' : 'skills'}`,
         icon: <BookOpen className="w-2 h-2" />
       }
-    case 'load':
+    }
+    case 'load': {
       const skillName = (result && 'skill' in result) ? result.skill : 'Unknown'
       return {
         message: `Loaded skill: ${formatSkillName(skillName)}`,
         icon: <BookOpen className="w-2 h-2" />
       }
-    case 'install':
+    }
+    case 'install': {
       const filesCount = (result && 'filesInstalled' in result) ? result.filesInstalled : 0
       const installSkillName = (result && 'skill' in result) ? result.skill : 'skill'
       const depsInstalled = (result && 'dependenciesInstalled' in result) ? result.dependenciesInstalled : undefined
@@ -149,6 +151,7 @@ function getSkillMessage(action: string, result: SkillResult | null): { message:
         message: `Installed ${formatSkillName(installSkillName)} (${filesCount} ${filesCount === 1 ? 'file' : 'files'}${depInfo})`,
         icon: <Package className="w-2 h-2" />
       }
+    }
     default:
       return {
         message: 'Skill',
@@ -166,7 +169,7 @@ function SkillListContent({ skills }: { skills: Skill[] }) {
   const itemsPerPage = SKILLS_PER_PAGE
 
   const filteredSkills = useMemo(() => {
-    if (!searchQuery.trim()) return skills
+    if (!searchQuery.trim()) {return skills}
 
     const query = searchQuery.toLowerCase()
     return skills.filter(skill =>

@@ -151,7 +151,7 @@ export default function MediaSearchToolRenderer({
 
   // Helper function to ensure URLs have proper protocol
   const ensureHttps = (url: string): string => {
-    if (!url) return url
+    if (!url) {return url}
     if (url.startsWith('http://') || url.startsWith('https://')) {
       return url
     }
@@ -193,7 +193,7 @@ export default function MediaSearchToolRenderer({
   }
 
   useEffect(() => {
-    if (!isModalOpen || images.length <= 1) return
+    if (!isModalOpen || images.length <= 1) {return}
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft') {

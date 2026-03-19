@@ -256,7 +256,7 @@ export class AppPlanTool {
 
   getPlansByName(name: string): AppPlanData[] {
     return this.getAllPlans().filter(plan => 
-      plan.appName && plan.appName.toLowerCase().includes(name.toLowerCase())
+      plan.appName?.toLowerCase().includes(name.toLowerCase())
     );
   }
 

@@ -101,11 +101,11 @@ export class ProdSiteAdapter implements ISiteAdapter {
     // Map SiteInfo updates to the format expected by SiteService
     const updateData: any = {};
 
-    if (updates.name) updateData.title = updates.name;
-    if (updates.status) updateData.status = updates.status;
-    if (updates.agent_url) updateData.agent_url = updates.agent_url;
-    if (updates.backend_url !== undefined) updateData.backend_url = updates.backend_url;
-    if (updates.preview_url !== undefined) updateData.preview_url = updates.preview_url;
+    if (updates.name) {updateData.title = updates.name;}
+    if (updates.status) {updateData.status = updates.status;}
+    if (updates.agent_url) {updateData.agent_url = updates.agent_url;}
+    if (updates.backend_url !== undefined) {updateData.backend_url = updates.backend_url;}
+    if (updates.preview_url !== undefined) {updateData.preview_url = updates.preview_url;}
 
     const updatedSite = await this.siteService.updateSite(siteId, updateData);
 

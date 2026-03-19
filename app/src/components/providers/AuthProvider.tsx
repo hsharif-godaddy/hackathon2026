@@ -71,7 +71,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   // Load auth provider conditionally (wait for server config)
   useEffect(() => {
     // Don't load auth provider until we have server config or confirmed it failed
-    if (serverAuthConfig === null) return;
+    if (serverAuthConfig === null) {return;}
 
     async function loadAuthProvider() {
       try {

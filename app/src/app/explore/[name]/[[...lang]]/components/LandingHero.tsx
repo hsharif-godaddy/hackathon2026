@@ -96,7 +96,7 @@ const LandingHero = forwardRef<LandingHeroRef, LandingHeroProps>(({
   const placeholderTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   const isSafari = useMemo(() => {
-    if (typeof window === 'undefined') return false
+    if (typeof window === 'undefined') {return false}
     return /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
   }, [])
 
@@ -188,8 +188,8 @@ const LandingHero = forwardRef<LandingHeroRef, LandingHeroProps>(({
   }, [isFocused, displayText, isSafari, placeholders])
 
   const typeText = useCallback(async (targetText: string) => {
-    if (isLoading) return
-    if (displayText === targetText) return
+    if (isLoading) {return}
+    if (displayText === targetText) {return}
 
     if (isSafari) {
       setDisplayText(targetText)
@@ -204,13 +204,13 @@ const LandingHero = forwardRef<LandingHeroRef, LandingHeroProps>(({
 
     const currentText = displayText
     for (let i = currentText.length; i >= 0; i--) {
-      if (animationQueueRef.current[0] !== targetText) return
+      if (animationQueueRef.current[0] !== targetText) {return}
       setDisplayText(currentText.slice(0, i))
       await new Promise(resolve => setTimeout(resolve, typingSpeed))
     }
 
     for (let i = 0; i <= targetText.length; i++) {
-      if (animationQueueRef.current[0] !== targetText) return
+      if (animationQueueRef.current[0] !== targetText) {return}
       const newText = targetText.slice(0, i)
       setDisplayText(newText)
       if (i === targetText.length) {
@@ -308,7 +308,7 @@ const LandingHero = forwardRef<LandingHeroRef, LandingHeroProps>(({
                 data-testid="landing-prompt-input"
                 value={displayText}
                 onChange={(e) => {
-                  if (isTyping || isListening) return
+                  if (isTyping || isListening) {return}
                   const newValue = e.target.value
                   isUserTypingRef.current = true
                   setDisplayText(newValue)

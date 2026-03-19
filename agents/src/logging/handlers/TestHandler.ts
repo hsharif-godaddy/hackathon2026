@@ -70,7 +70,7 @@ export class TestHandler implements LogHandler {
   getLastEventByType(eventType: string): LogEvent | undefined {
     for (let i = this.events.length - 1; i >= 0; i--) {
       const event = this.events[i];
-      if (event && event.event === eventType) {
+      if (event?.event === eventType) {
         return event;
       }
     }
@@ -107,8 +107,8 @@ export class TestHandler implements LogHandler {
       }
 
       const cleanup = () => {
-        if (timeout) clearTimeout(timeout);
-        if (checkInterval) clearInterval(checkInterval);
+        if (timeout) {clearTimeout(timeout);}
+        if (checkInterval) {clearInterval(checkInterval);}
       };
 
       // Set timeout

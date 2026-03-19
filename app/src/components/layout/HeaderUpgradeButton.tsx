@@ -43,7 +43,7 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
   // Only show on develop page, when feature enabled, and user doesn't have paid plan
   // With higher plans enabled, also show for non-Ultimate paid users
   if (!isDevelopPage || isFeatureLoading || isPaywallLoading || !featureEnabled ||
-      (!showPaywall && !canUpgradePlan(currentPlan, !!isHigherPlansEnabled))) return null;
+      (!showPaywall && !canUpgradePlan(currentPlan, !!isHigherPlansEnabled))) {return null;}
 
   const handleUpgradeClick = () => {
     setOpen(false);

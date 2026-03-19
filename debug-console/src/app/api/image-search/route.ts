@@ -9,7 +9,7 @@ const isDevMode = process.env.NODE_ENV === "development";
 // Basic JWT structure validation - checks format without decoding
 function isValidJWTStructure(token: string): boolean {
   const parts = token.split(".");
-  if (parts.length !== 3) return false;
+  if (parts.length !== 3) {return false;}
 
   // Each part should be valid base64url (alphanumeric, -, _, no padding required)
   const base64urlRegex = /^[A-Za-z0-9_-]+$/;

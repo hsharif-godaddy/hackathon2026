@@ -118,7 +118,7 @@ export default function LogsPanel() {
   const PAGE_SIZE = 50;
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!resizingColumnRef.current) return;
+    if (!resizingColumnRef.current) {return;}
 
     const deltaX = e.clientX - startXRef.current;
     const newWidth = Math.max(50, startWidthRef.current + deltaX);

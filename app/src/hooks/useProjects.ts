@@ -16,7 +16,7 @@ export type { ProjectEdge };
 
 async function fetch(): Promise<ProjectEdge[]> {
   const response = await appFetch('/api/projects', { credentials: 'include' });
-  if (!response.ok) return [];
+  if (!response.ok) {return [];}
   const data = await response.json();
   return data?.data?.projects?.edges ?? [];
 }

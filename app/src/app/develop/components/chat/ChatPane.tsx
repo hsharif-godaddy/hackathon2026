@@ -140,7 +140,7 @@ export default function ChatPane({
         const response = await appFetch('/api/venture')
 
         // Check if component unmounted during fetch
-        if (cancelled) return;
+        if (cancelled) {return;}
 
         if (!response.ok) {
           logger.error('chat-pane.venture-fetch-error', {
@@ -159,7 +159,7 @@ export default function ChatPane({
           })
         }
       } catch (err) {
-        if (cancelled) return;
+        if (cancelled) {return;}
 
         logger.error('chat-pane.venture-fetch-exception', {
           message: 'Exception fetching venture ID',
@@ -178,8 +178,8 @@ export default function ChatPane({
   // Combine messages and activeStream, guarding against duplicate IDs
   // (can happen when persistHistory and set({ activeStream }) are separate store updates)
   const allMessages = useMemo(() => {
-    if (!activeStream) return messages
-    if (messages.some((m) => m.id === activeStream.id)) return messages
+    if (!activeStream) {return messages}
+    if (messages.some((m) => m.id === activeStream.id)) {return messages}
     return [...messages, activeStream]
   }, [messages, activeStream])
 
@@ -325,7 +325,7 @@ export default function ChatPane({
         // Count user messages with early exit (we only care if <= 1)
         let userCount = 0
         for (const msg of messages) {
-          if (msg.role === 'user' && ++userCount > 1) break
+          if (msg.role === 'user' && ++userCount > 1) {break}
         }
         // If there's 0 or 1 user message (the auto-sent one), this is the first manual interaction
         if (userCount <= 1) {

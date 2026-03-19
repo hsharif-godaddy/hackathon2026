@@ -156,7 +156,7 @@ export class SocialV2Client {
   }
 
   async getSocialConnectionsBatch(socialIds: string[]): Promise<SocialConnection[]> {
-    if (socialIds.length === 0) return []
+    if (socialIds.length === 0) {return []}
 
     const response = await fetch(`${SOCIAL_V2_BASE_URL}/social_connections/batch`, {
       method: 'POST',

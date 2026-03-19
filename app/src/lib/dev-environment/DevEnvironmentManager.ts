@@ -76,7 +76,7 @@ export class DevEnvironmentManager {
    * Initialize the dev environment manager
    */
   async initialize(): Promise<void> {
-    if (this.initialized) return;
+    if (this.initialized) {return;}
 
     // Initialize in-memory dev database (no database tables needed)
     this.devDb.initializeTables();
@@ -884,7 +884,7 @@ export class DevEnvironmentManager {
       try {
         stat = await fsPromises.lstat(publicAssetsPath);
       } catch (e: any) {
-        if (e.code !== 'ENOENT') throw e;
+        if (e.code !== 'ENOENT') {throw e;}
       }
 
       if (stat?.isSymbolicLink()) {
@@ -1079,7 +1079,7 @@ export class DevEnvironmentManager {
         if (!activeSiteIds.has(appId)) {
           logger.info('dev-environment.reconcile.removing_orphan', { appId });
           const removed = await this.deleteDevApp(appId);
-          if (removed) containersRemoved++;
+          if (removed) {containersRemoved++;}
         }
       }
 
@@ -1169,11 +1169,11 @@ export class DevEnvironmentManager {
   private extractAppIdFromContainerName(containerName: string): string | null {
     // New pattern: preview-{appId}-1 or publish-{appId}-1
     const newMatch = containerName.match(/^(?:preview|publish)-([a-f0-9-]+)-1$/);
-    if (newMatch) return newMatch[1];
+    if (newMatch) {return newMatch[1];}
 
     // Old pattern: airo-app-{appId}-app-1
     const oldMatch = containerName.match(/^airo-app-([a-f0-9-]+)-app-1$/);
-    if (oldMatch) return oldMatch[1];
+    if (oldMatch) {return oldMatch[1];}
 
     return null;
   }

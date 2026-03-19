@@ -340,7 +340,7 @@ export class GettyMediaDriver extends BaseDriver implements MediaDriver {
     ];
 
     for (const { key, param, values, imageOnly } of arrayFilters) {
-      if (dropFilters.has(key)) continue;
+      if (dropFilters.has(key)) {continue;}
       if (values && values.length > 0 && (!imageOnly || mediaType === 'image')) {
         for (const value of values) {
           queryParams.append(param, value);
@@ -433,7 +433,7 @@ export class GettyMediaDriver extends BaseDriver implements MediaDriver {
 
       const uploadData = (await response.json()) as { id: string; videoUrl: string };
 
-      if (!uploadData || !uploadData.videoUrl) {
+      if (!uploadData?.videoUrl) {
         return null;
       }
 
@@ -456,21 +456,21 @@ export class GettyMediaDriver extends BaseDriver implements MediaDriver {
     const urls: { preview?: string; thumbnail?: string; standard?: string; highRes?: string } = {};
 
     if (item.display_sizes && Array.isArray(item.display_sizes)) {
-      const preview = item.display_sizes.find((size) => size && size.name === 'preview');
-      const thumbnail = item.display_sizes.find((size) => size && size.name === 'thumb');
-      const standard = item.display_sizes.find((size) => size && size.name === 'comp');
+      const preview = item.display_sizes.find((size) => size?.name === 'preview');
+      const thumbnail = item.display_sizes.find((size) => size?.name === 'thumb');
+      const standard = item.display_sizes.find((size) => size?.name === 'comp');
 
-      if (preview && preview.uri) urls.preview = preview.uri;
-      if (thumbnail && thumbnail.uri) urls.thumbnail = thumbnail.uri;
-      if (standard && standard.uri) urls.standard = standard.uri;
+      if (preview?.uri) {urls.preview = preview.uri;}
+      if (thumbnail?.uri) {urls.thumbnail = thumbnail.uri;}
+      if (standard?.uri) {urls.standard = standard.uri;}
 
       if (mediaType === 'image') {
-        const midRes = item.display_sizes.find((size) => size && size.name === 'mid_res_comp');
-        const highRes = item.display_sizes.find((size) => size && size.name === 'high_res_comp');
+        const midRes = item.display_sizes.find((size) => size?.name === 'mid_res_comp');
+        const highRes = item.display_sizes.find((size) => size?.name === 'high_res_comp');
 
-        if (highRes && highRes.uri) {
+        if (highRes?.uri) {
           urls.highRes = highRes.uri;
-        } else if (midRes && midRes.uri) {
+        } else if (midRes?.uri) {
           urls.highRes = midRes.uri;
         }
       }

@@ -322,8 +322,8 @@ function DevelopPageContent() {
 
   // Determine initial preview visibility based on persisted state or loaded history
   useEffect(() => {
-    if (previewInitializedRef.current) return
-    if (loadingPhase !== 'ready' || !appId) return
+    if (previewInitializedRef.current) {return}
+    if (loadingPhase !== 'ready' || !appId) {return}
 
     const storageKey = `airo-preview-visible-${appId}`
     const savedState = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null
@@ -334,7 +334,7 @@ function DevelopPageContent() {
       return
     }
 
-    if (!historyLoadingComplete) return
+    if (!historyLoadingComplete) {return}
 
     const hasHistory = messages.length > 0
     setIsPreviewVisible(hasHistory)
@@ -372,7 +372,7 @@ function DevelopPageContent() {
   // Fallback: if isFixingError is set but isProcessing never becomes true
   // (e.g. sendMessage silently fails), reset after a short window
   useEffect(() => {
-    if (!isFixingError || isProcessing) return
+    if (!isFixingError || isProcessing) {return}
     const timeout = setTimeout(() => {
       if (!isProcessingRef.current) {
         setIsFixingError(false)
@@ -383,7 +383,7 @@ function DevelopPageContent() {
   }, [isFixingError, isProcessing])
 
   const sendStyleUpdate = useCallback(async (styleData: { selector: string; property: string; value: string; newClassName: string; newStyle?: string }) => {
-    if (!appId) return
+    if (!appId) {return}
 
     try {
       const result = await appService.updateStyles(appId, { /* eslint-disable-line @typescript-eslint/no-unused-vars */
@@ -404,7 +404,7 @@ function DevelopPageContent() {
   }, [appId, selectedElement])
 
   const handleScreenshotUpload = useCallback(async (screenshotDataUrl: string) => {
-    if (!appId) return
+    if (!appId) {return}
 
     logger.info('develop-page.screenshot.upload.start', { appId })
 
@@ -441,7 +441,7 @@ function DevelopPageContent() {
   }, [appId])
 
   const sendTextUpdate = useCallback(async (textData: { selector: string; oldText: string; newText: string; devContext: Record<string, unknown> }) => {
-    if (!appId) return
+    if (!appId) {return}
 
     logger.info('develop-page.text-update.begin', {
       appId,
@@ -449,8 +449,8 @@ function DevelopPageContent() {
       oldTextLength: textData.oldText?.length || 0,
       newTextLength: textData.newText?.length || 0,
       hasDevContext: !!textData.devContext,
-      hasFileName: !!(textData.devContext && textData.devContext.fileName),
-      hasComponentName: !!(textData.devContext && textData.devContext.componentName)
+      hasFileName: !!(textData.devContext?.fileName),
+      hasComponentName: !!(textData.devContext?.componentName)
     })
 
     try {
@@ -465,7 +465,7 @@ function DevelopPageContent() {
   }, [appId])
 
   const handleStyleUpdate = useCallback(async (styleData: { selector: string; property: string; value: string; newClassName: string; newStyle?: string }) => {
-    if (!appId) return
+    if (!appId) {return}
 
     // Send first update immediately
     if (isFirstUpdateRef.current) {
@@ -494,7 +494,7 @@ function DevelopPageContent() {
 
   // Listen for file edit tool completions to show preview
   useEffect(() => {
-    if (!appId || !activeStream) return
+    if (!appId || !activeStream) {return}
 
     // Check if any fileEdit tool calls have completed successfully
     const completedFileEdit = activeStream.toolCalls.find(
@@ -519,10 +519,10 @@ function DevelopPageContent() {
     const handleMessage = (event: MessageEvent) => {
       // Handle messages from iframe or from same window (for websocket events)
       const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
-      const isFromIframe = iframe && event.source === iframe.contentWindow
+      const isFromIframe = event.source === iframe?.contentWindow
       const isFromSameWindow = event.source === window
 
-      if (!isFromIframe && !isFromSameWindow) return
+      if (!isFromIframe && !isFromSameWindow) {return}
 
       switch (event.data.type) {
         case 'ELEMENT_SELECTED':
@@ -545,7 +545,7 @@ function DevelopPageContent() {
           setAiEditContext(event.data.data)
           logger.info('develop-page.ai-edit-requested', { appId })
           break
-        case 'REPLACE_IMAGE':
+        case 'REPLACE_IMAGE': {
           const replaceImageContext = {
             ...event.data.data,
             isImageReplacement: true
@@ -560,7 +560,8 @@ function DevelopPageContent() {
           setAiEditContext(replaceImageContext)
           setIsAssetManagerOpen(true)
           break
-        case 'SCROLL_POSITION_UPDATE':
+        }
+        case 'SCROLL_POSITION_UPDATE': {
           // Handle real-time scroll position updates from iframe and store for restoration
           const newScrollPos = {
             x: event.data.scrollX || 0,
@@ -568,9 +569,10 @@ function DevelopPageContent() {
           }
           lastIframeState.current.scrollPosition = newScrollPos
           break
+        }
         case 'VISUAL_CONTEXT_RESPONSE':
           // Handle visual context response which includes scroll position
-          if (event.data.context && event.data.context.scroll_position) {
+          if (event.data.context?.scroll_position) {
             lastIframeState.current.scrollPosition = event.data.context.scroll_position
             lastIframeState.current.url = event.data.context.page
           }
@@ -606,7 +608,7 @@ function DevelopPageContent() {
           break
         }
         case 'error-fix-request':
-          if (isFixingErrorRef.current) break
+          if (isFixingErrorRef.current) {break}
           // Agent is already working — don't interrupt with a second message
           if (isProcessingRef.current) {
             logger.info('develop-page.error-fix-request.skipped-processing', { appId })
@@ -757,7 +759,7 @@ function DevelopPageContent() {
 
   // Handle URL message parameter - simplified logic
   useEffect(() => {
-    if (loadingPhase !== 'ready') return
+    if (loadingPhase !== 'ready') {return}
 
     const message = searchParams.get('message')
     // Only auto-fill if there's no conversation history (check messages instead of conversations)
@@ -776,8 +778,8 @@ function DevelopPageContent() {
 
   // Handle auto-send initial message for new apps (driven by init.ui.shouldAutoSendPrompt)
   useEffect(() => {
-    if (!init.ui.shouldAutoSendPrompt || !init.ui.autoSendPromptText || !appId) return
-    if (searchParams.get('message')) return // Don't auto-send if there's a URL message
+    if (!init.ui.shouldAutoSendPrompt || !init.ui.autoSendPromptText || !appId) {return}
+    if (searchParams.get('message')) {return} // Don't auto-send if there's a URL message
 
     if (!pendingAutoSendRef.current) {
       const wasTriggered = autoSendInitialMessage(init.ui.autoSendPromptText, appId)
@@ -836,7 +838,7 @@ function DevelopPageContent() {
   ])
 
   useEffect(() => {
-    if (loadingPhase !== 'ready' || !init.initialJobId) return
+    if (loadingPhase !== 'ready' || !init.initialJobId) {return}
 
     const nameRegistrationKey = `name-registration-pending-${init.initialJobId}`
     const flagExists = sessionStorage.getItem(nameRegistrationKey) === 'true'
@@ -856,7 +858,7 @@ function DevelopPageContent() {
 
   // Check and trigger intro tour after first message completes
   useEffect(() => {
-    if (!appId || !init.isReady) return
+    if (!appId || !init.isReady) {return}
 
     // Trigger tour when we have at least one message and no active stream
     if (messages.length > 0 && !activeStream) {

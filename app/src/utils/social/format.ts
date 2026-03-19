@@ -6,7 +6,7 @@ import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
  * @returns Formatted string like "#tag1 #tag2 #tag3"
  */
 export function formatHashtags(hashtags: string[] | undefined): string {
-  if (!hashtags || hashtags.length === 0) return ''
+  if (!hashtags || hashtags.length === 0) {return ''}
   return hashtags.map(tag => `#${tag}`).join(' ')
 }
 
@@ -16,6 +16,6 @@ export function formatHashtags(hashtags: string[] | undefined): string {
  * @returns Properly formatted platform name (e.g., "Facebook", "Instagram")
  */
 export function formatPlatformName(platform: string): string {
-  if (!platform) return ''
+  if (!platform) {return ''}
   return PLATFORM_TRANSFORMS.toDisplayName(platform)
 }

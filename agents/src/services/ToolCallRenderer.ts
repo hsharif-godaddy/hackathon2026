@@ -135,7 +135,7 @@ export class ToolCallRenderer {
       const deleted: string[] = [];
 
       for (const op of operations) {
-        if (!op.success) continue;
+        if (!op.success) {continue;}
         const filePath = op.path || op.target_file || 'unknown';
         const fileName = basename(filePath);
 
@@ -314,9 +314,9 @@ ${result}
    * Format file size in human readable format
    */
   private static formatFileSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    if (bytes < 1024) {return `${bytes} B`}
+    if (bytes < 1024 * 1024) {return `${(bytes / 1024).toFixed(1)} KB`}
+    if (bytes < 1024 * 1024 * 1024) {return `${(bytes / (1024 * 1024)).toFixed(1)} MB`}
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
   }
 }

@@ -121,7 +121,7 @@ export default function ImageGeneratorToolRenderer({
 
   // Keyboard navigation in modal
   useEffect(() => {
-    if (!isModalOpen || images.length <= 1) return
+    if (!isModalOpen || images.length <= 1) {return}
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft') {

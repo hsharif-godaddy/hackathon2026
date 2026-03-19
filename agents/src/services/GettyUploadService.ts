@@ -28,7 +28,7 @@ export class GettyUploadService {
   }
 
   private parseBaseUrl(baseUrl: string): string {
-    if (!baseUrl) return '';
+    if (!baseUrl) {return '';}
     try {
       const urlObj = new URL(baseUrl);
       return `${urlObj.protocol}//${urlObj.host}`;
@@ -45,7 +45,7 @@ export class GettyUploadService {
    * @returns Array of upload results with CDN URLs, or empty array on failure
    */
   async uploadAndReport(gettyIds: string[]): Promise<UploadResult[]> {
-    if (!gettyIds.length) return [];
+    if (!gettyIds.length) {return [];}
 
     if (!this.apiBaseUrl || !this.authHeader) {
       logger.warn('getty_upload.missing_config', {
@@ -105,7 +105,7 @@ export class GettyUploadService {
    * Fire-and-forget — does not block on response.
    */
   reportUsage(gettyIds: string[]): void {
-    if (!gettyIds.length || !this.apiBaseUrl || !this.authHeader) return;
+    if (!gettyIds.length || !this.apiBaseUrl || !this.authHeader) {return;}
 
     logger.info('getty_usage_report.begin', { ids: gettyIds, count: gettyIds.length });
 

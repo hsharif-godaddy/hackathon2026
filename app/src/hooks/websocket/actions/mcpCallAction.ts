@@ -158,7 +158,7 @@ export const mcpCallAction: ClientActionExecutor = async (params, context) => {
 
       onerror(error) {
         // Don't log/reject if we already handled an error
-        if (hasError) return
+        if (hasError) {return}
 
         logger.error('mcp-call-action.unexpected-error', {
           appId: context.currentAppId,

@@ -145,8 +145,8 @@ Return ONLY the JSON object with the palettes array. No markdown, no code blocks
     toolName: 'colorScheme'
   }
   
-  if (appId) contextData.appId = appId
-  if (sessionId) contextData.conversationId = sessionId
+  if (appId) {contextData.appId = appId}
+  if (sessionId) {contextData.conversationId = sessionId}
 
   // Build execution context for grant-aware metadata
   const executionContext: ExecutionContext | undefined = (appId || sessionId || socketId) ? {
@@ -162,7 +162,7 @@ Return ONLY the JSON object with the palettes array. No markdown, no code blocks
 
   // Additional tags to always include (tool-specific and custom)
   const additionalTags = ['source:tool-llm', 'source:color-scheme']
-  if (customTags?.length) additionalTags.push(...customTags)
+  if (customTags?.length) {additionalTags.push(...customTags)}
 
   // Build metadata using the grants-aware helper
   let litellmMetadata: LitellmMetadata | null = null
@@ -189,8 +189,8 @@ Return ONLY the JSON object with the palettes array. No markdown, no code blocks
       userIdentifier = app?.subscriptionId || app?.customerId
     }
     const baseTags = ['source:tool-llm', 'source:color-scheme']
-    if (agentId) baseTags.push(`agent:${agentId}`)
-    if (customTags?.length) baseTags.push(...customTags)
+    if (agentId) {baseTags.push(`agent:${agentId}`)}
+    if (customTags?.length) {baseTags.push(...customTags)}
     const mergedTags = [...new Set([...(existingMetadata?.tags || []), ...baseTags])]
     litellmMetadata = {
       ...(userIdentifier && { user: userIdentifier }),

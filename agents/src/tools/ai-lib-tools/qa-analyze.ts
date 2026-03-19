@@ -56,7 +56,7 @@ async function getLatestQARunFilePath(appPath: string): Promise<string | null> {
             .filter(f => f.startsWith('qa-run-') && f.endsWith('.json'))
             .map(f => {
                 const match = f.match(/qa-run-(\d+)\.json/)
-                if (match && match[1]) {
+                if (match?.[1]) {
                     return { file: f, timestamp: parseInt(match[1], 10) }
                 }
                 return null
@@ -64,9 +64,9 @@ async function getLatestQARunFilePath(appPath: string): Promise<string | null> {
             .filter((f): f is { file: string; timestamp: number } => f !== null)
             .sort((a, b) => b.timestamp - a.timestamp) // Most recent first
 
-        if (runFiles.length === 0) return null
+        if (runFiles.length === 0) {return null}
         const latestFile = runFiles[0]
-        if (!latestFile) return null
+        if (!latestFile) {return null}
         return join(runsDir, latestFile.file)
     } catch {
         return null
@@ -848,8 +848,8 @@ Return ONLY the JSON object with issues array. No markdown, no code blocks, no e
         toolName: 'qaAnalyze'
     }
 
-    if (appId) contextData.appId = appId
-    if (sessionId) contextData.conversationId = sessionId
+    if (appId) {contextData.appId = appId}
+    if (sessionId) {contextData.conversationId = sessionId}
 
     // Build execution context for grant-aware metadata
     const executionContext: ExecutionContext | undefined = (appId || sessionId || socketId) ? {
@@ -865,7 +865,7 @@ Return ONLY the JSON object with issues array. No markdown, no code blocks, no e
 
     // Additional tags to always include (tool-specific and custom)
     const additionalTags = ['source:tool-llm']
-    if (customTags?.length) additionalTags.push(...customTags)
+    if (customTags?.length) {additionalTags.push(...customTags)}
 
     // Build metadata using the grants-aware helper
     let litellmMetadata: LitellmMetadata | null = null
@@ -892,8 +892,8 @@ Return ONLY the JSON object with issues array. No markdown, no code blocks, no e
             userIdentifier = app?.subscriptionId || app?.customerId
         }
         const baseTags = ['source:tool-llm', 'source:qa-analyze']
-        if (agentId) baseTags.push(`agent:${agentId}`)
-        if (customTags?.length) baseTags.push(...customTags)
+        if (agentId) {baseTags.push(`agent:${agentId}`)}
+        if (customTags?.length) {baseTags.push(...customTags)}
         const mergedTags = [...new Set([...(existingMetadata?.tags || []), ...baseTags])]
         litellmMetadata = {
             ...(userIdentifier && { user: userIdentifier }),
@@ -1040,7 +1040,7 @@ OUTPUT:
 
         // Check for existing history first
         const history = await readQAHistory(app.path)
-        const existingRun = history.lastRun && history.lastRun.mode === mode ? history.lastRun : null
+        const existingRun = history.lastRun?.mode === mode ? history.lastRun : null
 
         // Return existing results if available and not forcing refresh
         if (existingRun && !forceRefresh) {
@@ -1066,7 +1066,7 @@ OUTPUT:
 
             if (latestRunFilePath) {
                 const match = latestRunFilePath.match(/qa-run-(\d+)\.json/)
-                if (match && match[1]) {
+                if (match?.[1]) {
                     runId = match[1]
                     const runFile = await readQARunFile(app.path, runId)
                     if (runFile) {

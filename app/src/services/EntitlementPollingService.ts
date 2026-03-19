@@ -19,8 +19,8 @@ export class EntitlementPollingService {
   private pollInterval: number = 10000; // 10 seconds
 
   constructor(options?: { maxAttempts?: number; pollInterval?: number }) {
-    if (options?.maxAttempts) this.maxAttempts = options.maxAttempts;
-    if (options?.pollInterval) this.pollInterval = options.pollInterval;
+    if (options?.maxAttempts) {this.maxAttempts = options.maxAttempts;}
+    if (options?.pollInterval) {this.pollInterval = options.pollInterval;}
   }
 
   /**

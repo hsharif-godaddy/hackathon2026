@@ -58,9 +58,9 @@ export function useUsage({ appId, enabled = true }: UseUsageOptions): UseUsageRe
     const percentage = totalCreditsMax > 0 ? (totalCreditsSpent / totalCreditsMax) * 100 : 0
 
     let warningLevel: WarningLevel = WarningLevel.NONE
-    if (percentage >= EXCEEDED_THRESHOLD) warningLevel = WarningLevel.EXCEEDED
-    else if (percentage >= WARNING_THRESHOLD) warningLevel = WarningLevel.WARNING
-    else if (percentage >= CAUTION_THRESHOLD) warningLevel = WarningLevel.CAUTION
+    if (percentage >= EXCEEDED_THRESHOLD) {warningLevel = WarningLevel.EXCEEDED}
+    else if (percentage >= WARNING_THRESHOLD) {warningLevel = WarningLevel.WARNING}
+    else if (percentage >= CAUTION_THRESHOLD) {warningLevel = WarningLevel.CAUTION}
 
     const isWarningBannerActive = percentage >= TOAST_THRESHOLD && percentage < EXCEEDED_THRESHOLD
 

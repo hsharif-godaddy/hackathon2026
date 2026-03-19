@@ -323,7 +323,7 @@ async function checkPublished(
 async function storePurchasedDomain(appId: string, fqdn: string) {
     try {
         const app = appRepo.findById(appId)
-        if (!app) return
+        if (!app) {return}
 
         await memoryTool.setMemory(
             {

@@ -30,7 +30,7 @@ export class DuplicateFileReadStrategy implements CompressionStrategy {
     // Check AI SDK v6 format
     if (isAIToolMessage(message)) {
       const toolResult = message.content[0];
-      if (!toolResult || toolResult.toolName !== 'readFile') {
+      if (toolResult?.toolName !== 'readFile') {
         return null;
       }
       toolCallId = toolResult.toolCallId;
@@ -66,7 +66,7 @@ export class DuplicateFileReadStrategy implements CompressionStrategy {
     // Fallback: try to extract from output content
     if (contentToSearch) {
       const match = contentToSearch.match(/(?:File|Path|file_path|path):\s*([^\n]+)/i);
-      if (match && match[1]) {
+      if (match?.[1]) {
         return match[1].trim();
       }
     }
@@ -83,7 +83,7 @@ export class DuplicateFileReadStrategy implements CompressionStrategy {
 
     for (let i = 0; i < messages.length; i++) {
       const message = messages[i];
-      if (!message) continue;
+      if (!message) {continue;}
       const previousMessage = i > 0 ? messages[i - 1] : undefined;
       
       const filePath = this.extractFilePath(message, previousMessage);
@@ -109,7 +109,7 @@ export class DuplicateFileReadStrategy implements CompressionStrategy {
     // Check AI SDK v6 format
     if (isAIToolMessage(message)) {
       const toolResult = message.content[0];
-      if (!toolResult || toolResult.toolName !== 'readFile') {
+      if (toolResult?.toolName !== 'readFile') {
         return false;
       }
     }

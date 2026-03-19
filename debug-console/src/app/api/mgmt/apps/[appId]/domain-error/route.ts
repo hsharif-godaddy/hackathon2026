@@ -14,26 +14,26 @@ export const GET = withAuth<{ appId: string }>(async function getDomainError(
     const { appId } = await context.params;
 
     const invalid = validateId(appId, 'appId', APP_ID_RE);
-    if (invalid) return invalid;
+    if (invalid) {return invalid;}
 
     const { searchParams } = request.nextUrl;
     const fqdn = searchParams.get('fqdn');
     const subscriptionId = searchParams.get('subscriptionId');
     const systemId = searchParams.get('systemId');
 
-    if (!fqdn) return NextResponse.json({ error: 'Missing fqdn' }, { status: 400 });
-    if (!subscriptionId) return NextResponse.json({ error: 'Missing subscriptionId' }, { status: 400 });
-    if (!systemId) return NextResponse.json({ error: 'Missing systemId' }, { status: 400 });
+    if (!fqdn) {return NextResponse.json({ error: 'Missing fqdn' }, { status: 400 });}
+    if (!subscriptionId) {return NextResponse.json({ error: 'Missing subscriptionId' }, { status: 400 });}
+    if (!systemId) {return NextResponse.json({ error: 'Missing systemId' }, { status: 400 });}
 
     if (!/^[a-zA-Z0-9][a-zA-Z0-9\-.]{0,253}$/.test(fqdn)) {
         return NextResponse.json({ error: 'Invalid fqdn' }, { status: 400 });
     }
 
     const subInvalid = validateId(subscriptionId, 'subscriptionId', SUBSCRIPTION_ID_RE);
-    if (subInvalid) return subInvalid;
+    if (subInvalid) {return subInvalid;}
 
     const sysInvalid = validateId(systemId, 'systemId', APP_ID_RE);
-    if (sysInvalid) return sysInvalid;
+    if (sysInvalid) {return sysInvalid;}
 
     try {
         return NextResponse.json(

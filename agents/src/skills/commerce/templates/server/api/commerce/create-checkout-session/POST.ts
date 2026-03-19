@@ -70,9 +70,9 @@ function getCommerceConfig() {
 
   // Validate all required credentials
   const missingFields: string[] = [];
-  if (!clientId) missingFields.push("GODADDY_OAUTH_CLIENT_ID");
-  if (!clientSecret) missingFields.push("GODADDY_OAUTH_CLIENT_SECRET");
-  if (!apiBaseUrl) missingFields.push("GODADDY_API_BASE_URL (env var)");
+  if (!clientId) {missingFields.push("GODADDY_OAUTH_CLIENT_ID");}
+  if (!clientSecret) {missingFields.push("GODADDY_OAUTH_CLIENT_SECRET");}
+  if (!apiBaseUrl) {missingFields.push("GODADDY_API_BASE_URL (env var)");}
 
   if (missingFields.length > 0) {
     throw new Error(

@@ -117,13 +117,13 @@ const MAX_TOKEN_REFRESH_ATTEMPTS = 7
 const defaultDelayMs = 500
 
 const getDefaultStorage = (): StorageLike | undefined => {
-  if (typeof window === 'undefined') return undefined
-  if (!window.sessionStorage) return undefined
+  if (typeof window === 'undefined') {return undefined}
+  if (!window.sessionStorage) {return undefined}
   return window.sessionStorage
 }
 
 const defaultFetchAgentToken = async (siteId: string): Promise<string | null> => {
-  if (typeof document === 'undefined') return null
+  if (typeof document === 'undefined') {return null}
 
   try {
     const { appFetch } = await import('@/lib/gasket-config')
@@ -546,11 +546,11 @@ export class ConnectionManager {
    * Same-origin, so full timing is available without Timing-Allow-Origin.
    */
   private getTokenResourceTiming(): ConnectionPhases['tokenResourceTiming'] | null {
-    if (typeof performance === 'undefined') return null
+    if (typeof performance === 'undefined') {return null}
     try {
       const entries = performance.getEntriesByType('resource') as PerformanceResourceTiming[]
       const entry = entries.filter(e => e.name.includes('/api/auth/agent-token')).pop()
-      if (!entry) return null
+      if (!entry) {return null}
       return {
         serverProcessingMs: Math.round(entry.responseStart - entry.requestStart),
         transferMs: Math.round(entry.responseEnd - entry.responseStart),
@@ -567,7 +567,7 @@ export class ConnectionManager {
    * Cross-origin — requires Timing-Allow-Origin header from agents server for detailed breakdown.
    */
   private getWsResourceTiming(agentBaseUrl: string): ConnectionPhases['wsResourceTiming'] | null {
-    if (typeof performance === 'undefined') return null
+    if (typeof performance === 'undefined') {return null}
     try {
       const agentUrl = new URL(agentBaseUrl)
       const entries = performance.getEntriesByType('resource') as PerformanceResourceTiming[]
@@ -588,7 +588,7 @@ export class ConnectionManager {
         hostEntries.filter(e => e.name.startsWith('ws:') || e.name.startsWith('wss:')).pop() ??
         hostEntries.pop()
 
-      if (!wsEntry) return null
+      if (!wsEntry) {return null}
       return {
         dnsMs: Math.round(wsEntry.domainLookupEnd - wsEntry.domainLookupStart),
         tcpMs: Math.round(
@@ -683,7 +683,7 @@ export class ConnectionManager {
     // Engine is synchronously available after socket.connect() — Manager.open()
     // creates the Engine.IO client before initiating the async handshake.
     const engine = (socket as any).io?.engine
-    if (!engine) return
+    if (!engine) {return}
 
     engine.once('open', () => {
       const durationMs = Date.now() - socketConnectStart
@@ -827,7 +827,7 @@ export class ConnectionManager {
 
   private unregisterLifecycleHandlers(socket: Socket): void {
     const handlers = this.lifecycleHandlersBySocket.get(socket)
-    if (!handlers) return
+    if (!handlers) {return}
 
     socket.off('connect', handlers.onConnect)
     socket.off('connect_error', handlers.onConnectError)
@@ -931,7 +931,7 @@ export class ConnectionManager {
   }
 
   private storeSocketId(appId: string, socketId: string): void {
-    if (!this.deps.storage) return
+    if (!this.deps.storage) {return}
     const key = this.getStorageKey(appId)
     this.deps.storage.setItem(key, socketId)
     logger.debug('websocket.socket_id.stored', { appId, socketId, key })

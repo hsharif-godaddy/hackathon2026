@@ -264,7 +264,7 @@ export function usePaywallModal({
       )
     }
 
-    if (!showAiroPlusPaywall) return null
+    if (!showAiroPlusPaywall) {return null}
 
     return (
       <UpgradeContainer

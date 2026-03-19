@@ -63,8 +63,8 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'app-builder-grants') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 
@@ -83,8 +83,8 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
       // Mock both flags - feature enabled but higher plans disabled
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'appbuilder-higher-plans') return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'appbuilder-higher-plans') {return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
       // Mock subscription with AiroPlus plan
@@ -117,7 +117,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 
@@ -130,7 +130,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: undefined, isLoading: true } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: undefined, isLoading: true } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 
@@ -156,8 +156,8 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'app-builder-grants') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
       vi.mocked(nextNavigation).usePathname.mockReturnValue('/apps');
@@ -174,8 +174,8 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'app-builder-grants') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
       vi.mocked(useBreakpoints).mockReturnValue({ isBelowSmBreakpoint: false } as ReturnType<typeof useBreakpoints>);
@@ -194,8 +194,8 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'app-builder-grants') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
       vi.mocked(useBreakpoints).mockReturnValue({ isBelowSmBreakpoint: true } as ReturnType<typeof useBreakpoints>);
@@ -217,8 +217,8 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'app-builder-grants') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 
@@ -242,8 +242,8 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'app-builder-grants') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 
@@ -268,8 +268,8 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSubscription).mockReturnValue({ data: null, isLoading: false } as ReturnType<typeof useSubscription>);
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'app-builder-grants') return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'app-builder-grants') {return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 
@@ -292,8 +292,8 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'app-builder-grants') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 
@@ -319,8 +319,8 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'app-builder-grants') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 
@@ -347,8 +347,8 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'app-builder-grants') return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'app-builder-grants') {return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 
@@ -382,9 +382,9 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
       vi.mocked(useSubscription).mockReturnValue({ data: { id: 'sub-1', plan: SubscriptionPlan.Starter, builderEntitlementId: 'ent-1' }, isLoading: false } as ReturnType<typeof useSubscription>);
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'appbuilder-higher-plans') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'app-builder-grants') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'appbuilder-higher-plans') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 
@@ -403,9 +403,9 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
       vi.mocked(useSubscription).mockReturnValue({ data: { id: 'sub-1', plan: SubscriptionPlan.Ultimate, builderEntitlementId: 'ent-1' }, isLoading: false } as ReturnType<typeof useSubscription>);
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'appbuilder-higher-plans') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'app-builder-grants') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'appbuilder-higher-plans') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 
@@ -422,9 +422,9 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
       vi.mocked(useSubscription).mockReturnValue({ data: { id: 'sub-1', plan: SubscriptionPlan.Starter, builderEntitlementId: 'ent-1' }, isLoading: false } as ReturnType<typeof useSubscription>);
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'appbuilder-higher-plans') return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'app-builder-grants') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'appbuilder-higher-plans') {return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 
@@ -441,9 +441,9 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
       vi.mocked(useSubscription).mockReturnValue({ data: { id: 'sub-1', plan: SubscriptionPlan.Starter, builderEntitlementId: 'ent-1' }, isLoading: false } as ReturnType<typeof useSubscription>);
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'appbuilder-higher-plans') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'app-builder-grants') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'appbuilder-higher-plans') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 
@@ -467,9 +467,9 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
       vi.mocked(useSubscription).mockReturnValue({ data: { id: 'sub-1', plan: SubscriptionPlan.Professional, builderEntitlementId: 'ent-1' }, isLoading: false } as ReturnType<typeof useSubscription>);
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'appbuilder-higher-plans') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'app-builder-grants') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'appbuilder-higher-plans') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 
@@ -493,9 +493,9 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
       vi.mocked(useSubscription).mockReturnValue({ data: { id: 'sub-1', plan: SubscriptionPlan.Starter, builderEntitlementId: 'ent-1' }, isLoading: false } as ReturnType<typeof useSubscription>);
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'app-builder-grants') return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'appbuilder-higher-plans') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'app-builder-grants') {return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'appbuilder-higher-plans') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 
@@ -521,8 +521,8 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-button') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'app-builder-grants') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
 

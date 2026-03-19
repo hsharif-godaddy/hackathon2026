@@ -161,7 +161,7 @@ export function useDeploymentsQuery({
           }
 
           // Calculate progressive interval
-          if (!pollingStartTimeRef.current) return false;
+          if (!pollingStartTimeRef.current) {return false;}
 
           const elapsed = Date.now() - pollingStartTimeRef.current;
 

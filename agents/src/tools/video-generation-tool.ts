@@ -438,7 +438,7 @@ export class VideoGenerationTool {
           await writeFile(this.videoMetadataPath, JSON.stringify(currentMetadata, null, 2));
         } catch (metadataError) {
           // ENOENT means the file was externally deleted — treat as cancellation
-          if ((metadataError as NodeJS.ErrnoException).code === 'ENOENT') throw metadataError;
+          if ((metadataError as NodeJS.ErrnoException).code === 'ENOENT') {throw metadataError;}
           logger.warn('video-generation.polling.metadata-update-failed', {
             appId: this.appId,
             videoId,

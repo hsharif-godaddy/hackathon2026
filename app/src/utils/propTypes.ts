@@ -7,9 +7,9 @@
 let propTypesPromise: Promise<void> | null = null;
 
 export async function ensurePropTypes(): Promise<void> {
-  if (typeof window === 'undefined') return;
-  if ((window as any).PropTypes) return;
-  if (propTypesPromise) return propTypesPromise;
+  if (typeof window === 'undefined') {return;}
+  if ((window as any).PropTypes) {return;}
+  if (propTypesPromise) {return propTypesPromise;}
   
   propTypesPromise = import('prop-types').then(PropTypes => {
     (window as any).PropTypes = PropTypes.default;

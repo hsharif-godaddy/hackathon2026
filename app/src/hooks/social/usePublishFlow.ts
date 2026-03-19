@@ -46,7 +46,7 @@ export function usePublishFlow(
 
   // Fetch connections for all platforms
   const platformAssociations = useMemo(() => {
-    if (!pendingPublish || !associationsData) return []
+    if (!pendingPublish || !associationsData) {return []}
 
     return pendingPublish.platforms.map(platform => {
       const match = findMatchingAssociation(associationsData.associations || [], platform)
@@ -65,7 +65,7 @@ export function usePublishFlow(
     publish: PendingPublish,
     associations: SiteAssociation[]
   ) => {
-    if (isPublishingRef.current) return
+    if (isPublishingRef.current) {return}
     isPublishingRef.current = true
 
     try {
@@ -188,9 +188,9 @@ export function usePublishFlow(
   }, [appId, errorMessages, onPlatformStatusChange, onPlatformResultChange, onOverallStatusChange, t])
 
   useEffect(() => {
-    if (!isActiveFlow || !pendingPublish) return
-    if (initiatedPublishIds.current.has(publishId)) return
-    if (isLoadingAssociations) return
+    if (!isActiveFlow || !pendingPublish) {return}
+    if (initiatedPublishIds.current.has(publishId)) {return}
+    if (isLoadingAssociations) {return}
     if (isConnectionError) {
       onOverallStatusChange(PublishFlowState.Error)
       pendingPublish.platforms.forEach(platform => {
@@ -201,7 +201,7 @@ export function usePublishFlow(
     }
 
     // Wait for at least one connection to be loaded
-    if (!connection) return
+    if (!connection) {return}
 
     const associations = associationsData?.associations || []
 

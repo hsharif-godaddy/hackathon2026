@@ -100,8 +100,8 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
       // Mock both flags - feature enabled but higher plans disabled
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'appbuilder-airoplus-upgrade-banner') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
-        if (flag === 'appbuilder-higher-plans') return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'appbuilder-airoplus-upgrade-banner') {return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;}
+        if (flag === 'appbuilder-higher-plans') {return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;}
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
       // Mock subscription with AiroPlus plan - should not show upgrade when higher plans disabled

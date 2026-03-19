@@ -11,7 +11,7 @@ import { logger } from '../logging/index.js'
  */
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-  if (!result || !result[1] || !result[2] || !result[3]) {
+  if (!result?.[1] || !result[2] || !result[3]) {
     throw new Error(`Invalid hex color: ${hex}`)
   }
   return {
@@ -81,11 +81,11 @@ function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: n
     r = g = b = l
   } else {
     const hue2rgb = function hue2rgb(p: number, q: number, t: number): number {
-      if (t < 0) t += 1
-      if (t > 1) t -= 1
-      if (t < 1 / 6) return p + (q - p) * 6 * t
-      if (t < 1 / 2) return q
-      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6
+      if (t < 0) {t += 1}
+      if (t > 1) {t -= 1}
+      if (t < 1 / 6) {return p + (q - p) * 6 * t}
+      if (t < 1 / 2) {return q}
+      if (t < 2 / 3) {return p + (q - p) * (2 / 3 - t) * 6}
       return p
     }
 

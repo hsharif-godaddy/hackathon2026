@@ -17,8 +17,8 @@ interface QASummaryBannerProps {
 }
 
 function getEmphasis(unfixedCounts: QASummaryBannerProps['unfixedCounts']): 'critical' | 'warning' | 'info' {
-  if (unfixedCounts.errors > 0) return 'critical';
-  if (unfixedCounts.warnings > 0) return 'warning';
+  if (unfixedCounts.errors > 0) {return 'critical';}
+  if (unfixedCounts.warnings > 0) {return 'warning';}
   return 'info';
 }
 

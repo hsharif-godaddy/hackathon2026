@@ -110,7 +110,7 @@ export function decodeJWT(token: string): JWTPayload | null {
  */
 export function extractCustomerId(token: string): string | null {
   const payload = decodeJWT(token);
-  if (!payload) return null;
+  if (!payload) {return null;}
 
   // Check nested auth objects first (they have priority)
   const nestedAuthTypes = ['cert2s', 'e2s', 's2s', 'e2s2s'];
@@ -149,7 +149,7 @@ export function extractCustomerId(token: string): string | null {
  */
 export function extractShopperId(token: string): string | null {
   const payload = decodeJWT(token);
-  if (!payload) return null;
+  if (!payload) {return null;}
 
   // Check nested auth objects first (they have priority)
   const nestedAuthTypes = ['cert2s', 'e2s', 's2s', 'e2s2s'];

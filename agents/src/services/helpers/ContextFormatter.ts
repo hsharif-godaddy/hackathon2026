@@ -35,7 +35,7 @@ export async function readUploadedFileContent(imageUrl: string, filename: string
   try {
     // Extract appId from imageUrl: .../files/uploads/{appId}/{filename}
     const urlMatch = imageUrl.match(/\/files\/uploads\/([^/]+)\/[^/]+$/)
-    if (!urlMatch || !urlMatch[1]) {
+    if (!urlMatch?.[1]) {
       logger.warn('context.formatter.file_read.invalid_url', {
         imageUrl,
         reason: 'Could not extract appId from URL'
@@ -156,7 +156,7 @@ export async function readAgentUploadAsBase64(imageUrl: string): Promise<string 
     // Strip query params (signed URL has ?sig=...&exp=...) before extracting path segments
     const cleanUrl = imageUrl.split('?')[0] ?? imageUrl
     const urlMatch = cleanUrl.match(/\/files\/uploads\/([^/]+)\/([^/]+)$/)
-    if (!urlMatch || !urlMatch[1] || !urlMatch[2]) {
+    if (!urlMatch?.[1] || !urlMatch[2]) {
       logger.warn('context.formatter.agent_upload.invalid_url', {
         imageUrl,
         reason: 'Could not extract appId and filename from URL'

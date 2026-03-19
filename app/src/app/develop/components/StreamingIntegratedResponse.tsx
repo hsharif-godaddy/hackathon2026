@@ -131,7 +131,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
 
   const hasLoggedBudgetExceededImpressionRef = useRef(false)
   useEffect(() => {
-    if (!message.budgetExceeded || hasLoggedBudgetExceededImpressionRef.current || site === null) return
+    if (!message.budgetExceeded || hasLoggedBudgetExceededImpressionRef.current || site === null) {return}
     hasLoggedBudgetExceededImpressionRef.current = true
     logImpressionEvent('chat.budgetExceeded.view', { "has_published_app": hasPublishedApp, "has_custom_domain": hasCustomDomain })()
   }, [message.budgetExceeded, hasPublishedApp, hasCustomDomain, site])
@@ -140,7 +140,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
   // When grants disabled: use legacy "today at" / "tomorrow at" format
   const resetTime = useMemo(() => {
     if (isGrantsEnabled) {
-      if (!grants) return undefined;
+      if (!grants) {return undefined;}
       const planGrant = getMonthlyPlanGrant(grants);
       if (planGrant?.useBefore) {
         const useByDate = new Date(planGrant.useBefore);
@@ -164,7 +164,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
    * This should only be needed if chronologicalContent processing fails for some reason
    */
   const extractToolCallsFromSegments = (segments: typeof message.segments): ToolCall[] => {
-    if (!segments) return []
+    if (!segments) {return []}
 
     const toolCalls: ToolCall[] = []
     const seenIds = new Set<string>()
@@ -184,7 +184,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
 
   // Create chronological content blocks from segments
   const chronologicalContent = useMemo(() => {
-    if (!hasSegments) return []
+    if (!hasSegments) {return []}
 
     const blocks: ContentBlock[] = []
 

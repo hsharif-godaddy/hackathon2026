@@ -22,7 +22,7 @@ module.exports = {
     "@typescript-eslint/prefer-nullish-coalescing": "warn",
     "@typescript-eslint/prefer-optional-chain": "warn",
     eqeqeq: ["warn", "always"],
-    curly: ["warn", "all"],
+    curly: ["error", "all"],
     "no-eval": "error",
     "no-implied-eval": "error",
     "no-new-func": "error",
@@ -45,13 +45,6 @@ module.exports = {
     ],
     "no-unused-vars": "off",
     "no-undef": "off",
-
-    // Downgrade eslint:recommended errors to warnings for ratchet behavior
-    "no-empty": "warn",
-    "no-constant-condition": "warn",
-    "no-case-declarations": "warn",
-    "no-useless-escape": "warn",
-    "no-self-assign": "warn",
 
     // Kept off (matches existing behavior)
     "@typescript-eslint/explicit-function-return-type": "off",

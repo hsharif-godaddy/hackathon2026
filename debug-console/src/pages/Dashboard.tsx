@@ -282,27 +282,27 @@ export default function Dashboard() {
     setLlmSpendError(null);
 
     const params = new URLSearchParams();
-    if (mgmtRawSubId) params.set('subscriptionId', mgmtRawSubId);
+    if (mgmtRawSubId) {params.set('subscriptionId', mgmtRawSubId);}
     for (const uid of mgmtGrantUserIds) {
       params.append('grantUserId', uid);
     }
     // Also include the subscription-level end_user (airo-builder:sid:<subId>) which
     // may carry spend from calls that use the subscription ID directly (e.g. older billing).
-    if (mgmtRawSubId) params.append('grantUserId', `airo-builder:sid:${mgmtRawSubId}`);
+    if (mgmtRawSubId) {params.append('grantUserId', `airo-builder:sid:${mgmtRawSubId}`);}
 
     fetch(`/api/llm-spend?${params}`, { signal: controller.signal })
       .then(res => {
-        if (!res.ok) throw new Error(`Failed to fetch LLM spend: ${res.status}`);
+        if (!res.ok) {throw new Error(`Failed to fetch LLM spend: ${res.status}`);}
         return res.json();
       })
       .then(data => setLlmSpend(data))
       .catch((err) => {
-        if (err.name === 'AbortError') return;
+        if (err.name === 'AbortError') {return;}
         setLlmSpend(null);
         setLlmSpendError(err instanceof Error ? err.message : 'Failed to fetch LLM spend data');
       })
       .finally(() => {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) {return;}
         setLlmSpendLoading(false);
       });
     return () => controller.abort();
@@ -511,7 +511,7 @@ export default function Dashboard() {
                     value={appId}
                     onChange={(e) => setAppId(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSearch();
+                      if (e.key === 'Enter') {handleSearch();}
                     }}
                     placeholder="Enter app ID..."
                     style={{

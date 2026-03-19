@@ -86,7 +86,7 @@ export default function MediaSlotToolRenderer({
 
 	// Helper to ensure URLs have proper protocol
 	const ensureHttps = (url: string): string => {
-		if (!url) return url;
+		if (!url) {return url;}
 		if (url.startsWith("http://") || url.startsWith("https://")) {
 			return url;
 		}

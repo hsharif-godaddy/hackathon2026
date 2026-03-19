@@ -308,7 +308,7 @@ function getClientId(): string | undefined {
  */
 function getApiHost(): string | undefined {
   const baseUrl = process.env.GODADDY_API_BASE_URL;
-  if (!baseUrl) return undefined;
+  if (!baseUrl) {return undefined;}
   try {
     return new URL(baseUrl).hostname;
   } catch {
@@ -441,8 +441,8 @@ export const manageProductsTool: SkillToolDefinition = {
             throw new Error('label and type are required for createProduct');
           }
           const product: any = { label: input.label, type: input.type };
-          if (input.description) product.description = input.description;
-          if (input.status) product.status = input.status;
+          if (input.description) {product.description = input.description;}
+          if (input.status) {product.status = input.status;}
           if (input.skus) {
             product.skus = input.skus.map((sku: any) => ({
               ...sku,
@@ -467,9 +467,9 @@ export const manageProductsTool: SkillToolDefinition = {
             throw new Error('skuGroupId is required for updateProduct');
           }
           const product: any = {};
-          if (input.label) product.label = input.label;
-          if (input.description) product.description = input.description;
-          if (input.status) product.status = input.status;
+          if (input.label) {product.label = input.label;}
+          if (input.description) {product.description = input.description;}
+          if (input.status) {product.status = input.status;}
           const response = await godaddy.updateSkuGroup(
             { storeId: input.storeId, skuGroupId: input.skuGroupId, product },
             accessToken,
@@ -506,10 +506,10 @@ export const manageProductsTool: SkillToolDefinition = {
             throw new Error('skuId is required for updateSku');
           }
           const sku: any = {};
-          if (input.skuLabel) sku.label = input.skuLabel;
-          if (input.skuName) sku.name = slugify(input.skuName);
-          if (input.skuCode) sku.code = input.skuCode;
-          if (input.status) sku.status = input.status;
+          if (input.skuLabel) {sku.label = input.skuLabel;}
+          if (input.skuName) {sku.name = slugify(input.skuName);}
+          if (input.skuCode) {sku.code = input.skuCode;}
+          if (input.status) {sku.status = input.status;}
           const response = await godaddy.updateSku(
             { storeId: input.storeId, skuId: input.skuId, product: sku },
             accessToken,
@@ -586,13 +586,13 @@ export const manageInventoryTool: SkillToolDefinition = {
             status: 'ACTIVE',
             address: {},
           };
-          if (input.locationName) location.name = slugify(input.locationName);
-          if (input.addressLine1) location.address.addressLine1 = input.addressLine1;
-          if (input.addressLine2) location.address.addressLine2 = input.addressLine2;
-          if (input.adminArea1) location.address.adminArea1 = input.adminArea1;
-          if (input.adminArea2) location.address.adminArea2 = input.adminArea2;
-          if (input.postalCode) location.address.postalCode = input.postalCode;
-          if (input.countryCode) location.address.countryCode = input.countryCode;
+          if (input.locationName) {location.name = slugify(input.locationName);}
+          if (input.addressLine1) {location.address.addressLine1 = input.addressLine1;}
+          if (input.addressLine2) {location.address.addressLine2 = input.addressLine2;}
+          if (input.adminArea1) {location.address.adminArea1 = input.adminArea1;}
+          if (input.adminArea2) {location.address.adminArea2 = input.adminArea2;}
+          if (input.postalCode) {location.address.postalCode = input.postalCode;}
+          if (input.countryCode) {location.address.countryCode = input.countryCode;}
           const response = await godaddy.createLocation(
             { storeId: input.storeId, location },
             accessToken,
@@ -691,14 +691,14 @@ export const managePricingTool: SkillToolDefinition = {
 
 /** Normalize PHOTO → IMAGE since LLMs pick PHOTO more naturally. */
 function normalizeMediaType(type: string | undefined): string {
-  if (type === 'PHOTO') return 'IMAGE';
+  if (type === 'PHOTO') {return 'IMAGE';}
   return type || 'IMAGE';
 }
 
 /** Coerce mediaObjects from a JSON string if the LLM sends it stringified. */
 function coerceMediaObjects(val: unknown): any[] | undefined {
   let arr: any[] | undefined;
-  if (Array.isArray(val)) arr = val;
+  if (Array.isArray(val)) {arr = val;}
   else if (typeof val === 'string') {
     try { arr = JSON.parse(val); } catch { return undefined; }
   }
@@ -707,7 +707,7 @@ function coerceMediaObjects(val: unknown): any[] | undefined {
 
 /** Coerce mediaObjectIds from a JSON string if the LLM sends it stringified. */
 function coerceStringArray(val: unknown): string[] | undefined {
-  if (Array.isArray(val)) return val;
+  if (Array.isArray(val)) {return val;}
   if (typeof val === 'string') {
     try { return JSON.parse(val); } catch { return undefined; }
   }

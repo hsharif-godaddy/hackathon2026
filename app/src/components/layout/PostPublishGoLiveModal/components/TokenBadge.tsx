@@ -38,7 +38,7 @@ export function TokenBadge({ level, label }: TokenBadgeProps) {
   const t = useTranslations();
 
   const getLabel = (): string => {
-    if (label) return label;
+    if (label) {return label;}
 
     switch (level) {
       case TokenCostLevel.LOW:

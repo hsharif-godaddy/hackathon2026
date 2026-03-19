@@ -25,10 +25,10 @@ export const auth = betterAuth({
   // CORS: Only trust origins matching the server's hostname
   // Returns the origin if valid, empty array if not
   trustedOrigins: (request) => {
-    if (!request) return [];
+    if (!request) {return [];}
 
     const origin = request.headers.get('origin');
-    if (!origin) return [];
+    if (!origin) {return [];}
 
     try {
       const originUrl = new URL(origin);

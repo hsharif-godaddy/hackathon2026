@@ -85,17 +85,17 @@ interface KatanaLogEntry {
 }
 
 function safeNum(val: unknown): number {
-  if (typeof val === 'number' && !isNaN(val)) return val;
+  if (typeof val === 'number' && !isNaN(val)) {return val;}
   if (typeof val === 'string') {
     const n = parseInt(val, 10);
-    if (!isNaN(n)) return n;
+    if (!isNaN(n)) {return n;}
   }
   return 0;
 }
 
 // Process a single pioneer log entry - returns true if processed
 function processPioneerLog(log: LogEntry): boolean {
-  if (!log.app_id) return false;
+  if (!log.app_id) {return false;}
     const event = log.event;
 
     switch (event) {
@@ -106,10 +106,10 @@ function processPioneerLog(log: LogEntry): boolean {
           steps?: unknown;
           totalUsage?: { inputTokens?: unknown; outputTokens?: unknown; cachedInputTokens?: unknown };
         };
-      if (!d.totalUsage) return false;
+      if (!d.totalUsage) {return false;}
         const input = safeNum(d.totalUsage.inputTokens);
         const output = safeNum(d.totalUsage.outputTokens);
-      if (input === 0 && output === 0) return false;
+      if (input === 0 && output === 0) {return false;}
         insertRun({
           es_id: log._id,
           timestamp: log.timestamp,
@@ -367,7 +367,7 @@ function processPioneerLog(log: LogEntry): boolean {
 // Process Katana log entry
 function processKatanaLog(log: KatanaLogEntry): boolean {
   const appId = log.data?.appId || log.data?.siteId;
-  if (!appId) return false;
+  if (!appId) {return false;}
 
   insertClientError({
     es_id: log._id,

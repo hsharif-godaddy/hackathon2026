@@ -53,7 +53,7 @@ export function useStreamingWebSocket() {
 
   // Get subscription_id from site store for grant context
   const subscriptionId = useSitesStore((state) => {
-    if (!currentAppId) return undefined
+    if (!currentAppId) {return undefined}
     return state.getSite(currentAppId)?.subscription_id
   })
 
@@ -154,10 +154,10 @@ export function useStreamingWebSocket() {
   }
 
   useEffect(() => {
-    if (!currentAppId) return
+    if (!currentAppId) {return}
 
     const controller = controllerRef.current
-    if (!controller) return
+    if (!controller) {return}
 
     const previousAppId = previousAppIdRef.current
 

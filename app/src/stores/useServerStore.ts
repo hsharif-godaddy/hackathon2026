@@ -132,7 +132,7 @@ export const useServerStore = create<ServerStore>()(
     // Enhanced health checking with connection refused handling and adaptive intervals
     checkServerHealth: async (appId: string) => {
       const server = get().servers.get(appId)
-      if (!server || !server.actualPort) {
+      if (!server?.actualPort) {
         return false
       }
       
@@ -582,7 +582,7 @@ export const useServerStore = create<ServerStore>()(
       })*/
       
       // Only return URL if server is confirmed running AND healthy for this specific appId
-      if (!server || !server.actualPort || server.status !== ServerStatus.RUNNING || !server.isHealthy) {
+      if (!server?.actualPort || server.status !== ServerStatus.RUNNING || !server.isHealthy) {
         return null
       }
       

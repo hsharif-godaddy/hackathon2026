@@ -411,7 +411,7 @@ export class AppRepository {
     `);
 
     const row = stmt.get(id) as any;
-    if (!row) return null;
+    if (!row) {return null;}
 
     return {
       id: row.id,
@@ -443,7 +443,7 @@ export class AppRepository {
     `);
 
     const row = stmt.get(path) as any;
-    if (!row) return null;
+    if (!row) {return null;}
 
     return {
       id: row.id,
@@ -501,7 +501,7 @@ export class AppRepository {
    */
   update(id: string, data: UpdateAppRequest): App | null {
     const existing = this.findById(id);
-    if (!existing) return null;
+    if (!existing) {return null;}
 
     const updates: string[] = [];
     const values: any[] = [];
@@ -539,7 +539,7 @@ export class AppRepository {
   updateStatus(id: string, status: 'creating' | 'created' | 'error'): App | null {
     try {
       const existing = this.findById(id);
-      if (!existing) return null;
+      if (!existing) {return null;}
 
       const stmt = this.db.prepare(`
         UPDATE apps
@@ -568,7 +568,7 @@ export class AppRepository {
   markInitialBuildComplete(id: string): App | null {
     try {
       const existing = this.findById(id);
-      if (!existing) return null;
+      if (!existing) {return null;}
 
       // Only mark as complete if it's not already marked
       if (existing.initialBuildComplete) {
@@ -608,7 +608,7 @@ export class AppRepository {
 
     // Get the app first to retrieve its path
     const app = this.findById(id);
-    if (!app) return false;
+    if (!app) {return false;}
 
     // Server stopping is now handled by deployment adapters
 
@@ -800,7 +800,7 @@ export class AppRepository {
      // Ensure this repository is initialized before creating apps
      await this.initialize();
 
-    if (this.deploymentAdapter && this.deploymentAdapter.getAppLogs) {
+    if (this.deploymentAdapter?.getAppLogs) {
       return this.deploymentAdapter.getAppLogs(appId);
     }
     throw new Error('Log retrieval not supported in current deployment mode');
@@ -810,7 +810,7 @@ export class AppRepository {
      // Ensure this repository is initialized before creating apps
      await this.initialize();
 
-    if (this.deploymentAdapter && this.deploymentAdapter.rebuildApp) {
+    if (this.deploymentAdapter?.rebuildApp) {
       return this.deploymentAdapter.rebuildApp(appId);
     }
     throw new Error('Container rebuilding not supported in current deployment mode');

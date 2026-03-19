@@ -181,7 +181,7 @@ export class ASTImageEditor extends ASTEditorBase {
     }
 
     for (const prop of expr.properties) {
-      if (!this.t.isObjectProperty(prop)) continue;
+      if (!this.t.isObjectProperty(prop)) {continue;}
 
       const key = this.t.isIdentifier(prop.key) ? prop.key.name : null;
       if (key === 'backgroundImage' && this.t.isStringLiteral(prop.value)) {
@@ -234,7 +234,7 @@ export class ASTImageEditor extends ASTEditorBase {
     // Find and update backgroundImage property
     let found = false;
     for (const prop of expr.properties) {
-      if (!this.t.isObjectProperty(prop)) continue;
+      if (!this.t.isObjectProperty(prop)) {continue;}
 
       const key = this.t.isIdentifier(prop.key) ? prop.key.name : null;
       if (key === 'backgroundImage') {
@@ -284,8 +284,8 @@ export class ASTImageEditor extends ASTEditorBase {
    * Check if URLs match (handles path-only vs full URL comparisons)
    */
   private urlsMatch(currentUrl: string | null, expectedUrl: string | null): boolean {
-    if (!expectedUrl) return true; // No expected URL means match any
-    if (!currentUrl) return false;
+    if (!expectedUrl) {return true;} // No expected URL means match any
+    if (!currentUrl) {return false;}
 
     // Normalize URLs for comparison
     const normalize = (url: string): string => {
@@ -333,7 +333,7 @@ export class ASTImageEditor extends ASTEditorBase {
 
     this.traverse(ast, {
       JSXElement: (path: any): void => {
-        if (elementFound) return;
+        if (elementFound) {return;}
 
         const element = path.node as t.JSXElement;
 

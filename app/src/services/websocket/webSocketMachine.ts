@@ -227,7 +227,7 @@ export const webSocketMachine = setup({
 
     logStreamError: ({ context, event }) => {
       // Type guard for TypeScript - action only called for STREAM_ERROR events
-      if (event.type !== 'STREAM_ERROR') return
+      if (event.type !== 'STREAM_ERROR') {return}
 
       logger.error('websocket.machine.stream.error', {
         appId: context.appId,

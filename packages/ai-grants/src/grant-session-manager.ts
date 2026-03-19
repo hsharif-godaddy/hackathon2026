@@ -426,7 +426,7 @@ export class GrantSessionManager {
     // Look up subscriptionId from socketId, then get state
     const subscriptionId = this.sessionToSubscription.get(sessionId)
     const state = subscriptionId ? this.subscriptionSessions.get(subscriptionId) : undefined
-    if (!state) return false
+    if (!state) {return false}
 
     const previousGrantId = state.grants[state.currentIndex]?.id
 
@@ -554,7 +554,7 @@ export class GrantSessionManager {
    */
   hasGrants(sessionId: string): boolean {
     const subscriptionId = this.sessionToSubscription.get(sessionId)
-    if (!subscriptionId) return false
+    if (!subscriptionId) {return false}
     const state = this.subscriptionSessions.get(subscriptionId)
     return !!state && state.grants.length > 0
   }
@@ -566,9 +566,9 @@ export class GrantSessionManager {
    */
   isStale(sessionId: string, maxAgeMs: number = 5 * 60 * 1000): boolean {
     const subscriptionId = this.sessionToSubscription.get(sessionId)
-    if (!subscriptionId) return true
+    if (!subscriptionId) {return true}
     const state = this.subscriptionSessions.get(subscriptionId)
-    if (!state) return true
+    if (!state) {return true}
     return Date.now() - state.lastUpdated > maxAgeMs
   }
 

@@ -15,7 +15,7 @@ export const POST = withApmRoute(async (request: NextRequest) => {
   const cds = (gasket.config as any).cds;
 
  // TODO: Add a check to see if the log has been processed by CDS. If not, log an error, but still return a 200
-  if (!cds || !cds.api || !cds.api.baseUrl || !cds.api.logPath) {
+  if (!cds?.api?.baseUrl || !cds.api.logPath) {
     return NextResponse.json({
       status: 'ok',
       error: `CDS API configuration is missing or incomplete. Logs will not be processed by CDS.`

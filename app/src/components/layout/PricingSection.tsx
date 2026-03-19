@@ -78,10 +78,10 @@ export default function PricingSection() {
   }, [])
 
   useEffect(() => {
-    if (authIsLoading || !isAuthenticated) return
+    if (authIsLoading || !isAuthenticated) {return}
 
     const pendingUpgrade = sessionStorage.getItem(PENDING_UPGRADE_KEY)
-    if (!pendingUpgrade) return
+    if (!pendingUpgrade) {return}
 
     sessionStorage.removeItem(PENDING_UPGRADE_KEY)
 

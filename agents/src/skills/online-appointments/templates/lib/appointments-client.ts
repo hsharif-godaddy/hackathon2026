@@ -100,9 +100,9 @@ export class AppointmentsClient {
     status?: 'confirmed' | 'cancelled' | 'completed';
   }): Promise<Appointment[]> {
     const params = new URLSearchParams();
-    if (filters?.startDate) params.append('startDate', filters.startDate);
-    if (filters?.endDate) params.append('endDate', filters.endDate);
-    if (filters?.status) params.append('status', filters.status);
+    if (filters?.startDate) {params.append('startDate', filters.startDate);}
+    if (filters?.endDate) {params.append('endDate', filters.endDate);}
+    if (filters?.status) {params.append('status', filters.status);}
 
     const url = params.toString() ? `${this.baseUrl}?${params}` : this.baseUrl;
     const response = await fetch(url);

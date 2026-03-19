@@ -90,19 +90,19 @@ export function buildLitellmMetadataFromContext(
   const typedContext = context as ExecutionContext | undefined
   const metadata = typedContext?.metadata as ExecutionContextMetadata | undefined
 
-  if (!metadata) return null
+  if (!metadata) {return null}
 
   const { appId, customerId, subscriptionId } = metadata
   const socketId = typedContext?.socketId
 
-  if (!appId) return null
+  if (!appId) {return null}
 
   // Build tags for cost attribution and filtering
   const tags: string[] = []
-  if (customerId) tags.push(`cid:${customerId}`)
+  if (customerId) {tags.push(`cid:${customerId}`)}
   tags.push(`appId:${appId}`)
   tags.push(`source:${options?.source ?? LlmCallSource.UserChat}`)
-  if (options?.agentId) tags.push(`agent:${options.agentId}`)
+  if (options?.agentId) {tags.push(`agent:${options.agentId}`)}
 
   // E2S (care) sessions bypass grants entirely
   // This is set explicitly by the session that triggered the LLM call
@@ -276,13 +276,13 @@ export function isGrantsExhausted(
 ): boolean {
   const typedContext = context as ExecutionContext | undefined
   const socketId = typedContext?.socketId
-  if (!socketId) return false
+  if (!socketId) {return false}
 
   // Feature not enabled - not exhausted (will use customerId)
-  if (!grantSessionManager.isFeatureEnabled(socketId)) return false
+  if (!grantSessionManager.isFeatureEnabled(socketId)) {return false}
 
   // No grants in session - not exhausted (will use customerId as fallback)
-  if (!grantSessionManager.hasGrants(socketId)) return false
+  if (!grantSessionManager.hasGrants(socketId)) {return false}
 
   // Feature enabled + has grants + no usable grant = exhausted
   const metadata = typedContext?.metadata as ExecutionContextMetadata | undefined

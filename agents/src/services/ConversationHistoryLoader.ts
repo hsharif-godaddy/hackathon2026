@@ -480,7 +480,7 @@ export class ConversationHistoryLoader {
     // Then, add recent messages from the end until we hit the token limit
     for (let i = regularMessages.length - 1; i >= 0; i--) {
       const message = regularMessages[i];
-      if (!message) continue;
+      if (!message) {continue;}
       const messageContent = this.serializeMessageForTokenCount(message);
       const messageTokens = (await countTokens(messageContent, tokenModel)).tokenCount;
 
@@ -893,7 +893,7 @@ export class ConversationHistoryLoader {
     
     for (let i = 0; i < llmMessages.length; i++) {
       const msg = llmMessages[i];
-      if (!msg) continue;
+      if (!msg) {continue;}
 
       // Convert tool messages to AI SDK v6 ToolModelMessage format
       if (msg.role === 'tool') {
@@ -1103,7 +1103,7 @@ export class ConversationHistoryLoader {
     let strippedToolCallCount = 0;
     for (let i = 0; i < formattedMessages.length; i++) {
       const msg = formattedMessages[i];
-      if (!msg || msg.role !== 'assistant') continue;
+      if (msg?.role !== 'assistant') {continue;}
       
       const content = (msg as AssistantModelMessage).content;
       if (Array.isArray(content)) {
@@ -1144,7 +1144,7 @@ export class ConversationHistoryLoader {
 
     // Filter out assistant messages with empty content arrays (can happen after stripping orphaned tool calls)
     formattedMessages = formattedMessages.filter(msg => {
-      if (msg.role !== 'assistant') return true;
+      if (msg.role !== 'assistant') {return true;}
       const content = (msg as AssistantModelMessage).content;
       if (Array.isArray(content) && content.length === 0) {
         logger.warn('conversation.history.loader.skipping_empty_assistant_message', {
@@ -1176,7 +1176,7 @@ export class ConversationHistoryLoader {
 
     // Filter out orphaned tool results
     const validMessages = formattedMessages.filter(msg => {
-      if (msg.role !== 'tool') return true;
+      if (msg.role !== 'tool') {return true;}
       const content = (msg as ToolModelMessage).content;
       if (Array.isArray(content) && content[0]) {
         const firstPart = content[0];
@@ -1212,7 +1212,7 @@ export class ConversationHistoryLoader {
 
     // Count messages with tool calls by checking content array for ToolCallPart objects
     const messagesWithToolCalls = formattedMessages.filter(msg => {
-      if (msg.role !== 'assistant') return false;
+      if (msg.role !== 'assistant') {return false;}
       const content = (msg as AssistantModelMessage).content;
       if (Array.isArray(content)) {
         return content.some((part: any) => part.type === 'tool-call');

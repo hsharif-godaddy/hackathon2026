@@ -190,7 +190,7 @@ export default function ChatInput({
                 data-testid="chat-input-textarea"
                 value={inputValue}
                 onChange={(e) => {
-                  if (isListening) return
+                  if (isListening) {return}
                   onInputChange(e.target.value)
                 }}
                 onKeyDown={onKeyDown}

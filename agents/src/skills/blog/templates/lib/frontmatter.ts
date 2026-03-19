@@ -30,7 +30,7 @@ export function parseFrontmatter(markdown: string): ParsedMarkdown {
 
   for (const line of lines) {
     const colonIndex = line.indexOf(':');
-    if (colonIndex === -1) continue;
+    if (colonIndex === -1) {continue;}
 
     const key = line.slice(0, colonIndex).trim();
     let value = line.slice(colonIndex + 1).trim();

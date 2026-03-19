@@ -147,10 +147,10 @@ export class RequestContextService {
    */
   static getLogContext(): string {
     const context = asyncLocalStorage?.getStore();
-    if (!context) return '';
+    if (!context) {return '';}
 
     const parts: string[] = [];
-    if (context.customerId) parts.push(`customerId:${context.customerId}`);
+    if (context.customerId) {parts.push(`customerId:${context.customerId}`);}
 
     return parts.length > 0 ? `[${parts.join(' ')}]` : '';
   }
@@ -204,7 +204,7 @@ export class ContextLogger {
    * Format message from event and data
    */
   private formatMessage(event: string, data?: any): string {
-    if (!data) return event;
+    if (!data) {return event;}
 
     if (typeof data === 'string') {
       return `${event}: ${data}`;
@@ -340,18 +340,18 @@ export class ContextLogger {
 
     // Format a value for display
     const fmt = (val: unknown): string | null => {
-      if (val === undefined || val === null || val === '') return null;
-      if (typeof val === 'boolean') return val ? 'true' : 'false';
-      if (typeof val === 'number') return String(val);
+      if (val === undefined || val === null || val === '') {return null;}
+      if (typeof val === 'boolean') {return val ? 'true' : 'false';}
+      if (typeof val === 'number') {return String(val);}
       if (typeof val === 'object') {
-        if (val instanceof Date) return isNaN(val.getTime()) ? null : val.toISOString().slice(0, 19);
-        if (Array.isArray(val)) return `[${val.length}]`;
+        if (val instanceof Date) {return isNaN(val.getTime()) ? null : val.toISOString().slice(0, 19);}
+        if (Array.isArray(val)) {return `[${val.length}]`;}
         const keys = Object.keys(val);
         return keys.length > 0 ? `{${keys.slice(0, 2).join(',')}}` : null;
       }
       const s = String(val);
       // Truncate very long strings (but keep UUIDs intact)
-      if (s.length > 80) return s.slice(0, 77) + '...';
+      if (s.length > 80) {return s.slice(0, 77) + '...';}
       return s;
     };
 
@@ -370,9 +370,9 @@ export class ContextLogger {
 
     if (data && typeof data === 'object') {
       for (const [key, val] of Object.entries(data)) {
-        if (skipFields.includes(key)) continue;
+        if (skipFields.includes(key)) {continue;}
         const display = fmt(val);
-        if (display === null) continue;
+        if (display === null) {continue;}
         fields.push(`${c.dim}${key}=${c.reset}${display}`);
       }
     }

@@ -25,7 +25,7 @@ export default function OAuthToolRenderer({ toolStatus, result, ...rest }: Defau
 
     // Render inline auth UI if auth is required
     // Only show the button if the agent has finished streaming
-    if (r.authRequired && r.authRequest && r.authRequest.redirectUrl && r.authRequest.state) {
+    if (r.authRequired && r.authRequest?.redirectUrl && r.authRequest.state) {
       // If still streaming, show a loading state instead of the button
       if (isStreaming) {
         return (

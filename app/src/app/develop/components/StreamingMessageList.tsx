@@ -117,7 +117,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   // Funnel event: Track when first assistant response is rendered (visible to user)
   // Only during create flow from homepage
   useEffect(() => {
-    if (hasLoggedFirstResponseRef.current || !currentAppId || !isCreateFlowSession) return
+    if (hasLoggedFirstResponseRef.current || !currentAppId || !isCreateFlowSession) {return}
 
     // Find first assistant message that has actual content
     const firstAssistantWithContent = allMessages.find(
@@ -160,7 +160,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   // Handle scroll events to detect user scroll (throttled for performance)
   // Reads from refs and store.getState() to avoid dependency churn on every state change
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    if (scrollThrottleRef.current) return
+    if (scrollThrottleRef.current) {return}
 
     // Capture DOM element before setTimeout — React nullifies synthetic event properties after handler returns
     const container = e.currentTarget
@@ -168,7 +168,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
     scrollThrottleRef.current = setTimeout(() => {
       scrollThrottleRef.current = null
 
-      if (!container) return
+      if (!container) {return}
       const { scrollTop, scrollHeight, clientHeight } = container
       const nearBottom = scrollHeight - scrollTop - clientHeight < 150
       isNearBottomRef.current = nearBottom
@@ -382,7 +382,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   // (ignores new live messages appended at the end)
   useEffect(() => {
     const anchor = paginationAnchorRef.current
-    if (!anchor || historyLoadingMore) return
+    if (!anchor || historyLoadingMore) {return}
 
     if (allMessages.length > anchor.messageCount) {
       const container = containerRef.current
@@ -397,7 +397,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   // Safety timeout: reset historyLoadingMore if response never arrives
   // (WebSocket drop mid-flight, server error without isLoadMore flag, or network timeout)
   useEffect(() => {
-    if (!historyLoadingMore) return
+    if (!historyLoadingMore) {return}
 
     const timeout = setTimeout(() => {
       setHistoryLoadingMore(false)
@@ -408,10 +408,10 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
 
   // Auto-load more history when content doesn't fill the container (no scrollbar = no scroll events)
   useEffect(() => {
-    if (!historyHasMore || historyLoadingMore || !historyNextCursor || !isConnected) return
+    if (!historyHasMore || historyLoadingMore || !historyNextCursor || !isConnected) {return}
 
     const container = containerRef.current
-    if (!container) return
+    if (!container) {return}
 
     if (container.scrollHeight <= container.clientHeight) {
       setHistoryLoadingMore(true)
@@ -571,7 +571,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
         // multiple assistant messages (e.g., plan execution + handoff).
         if (message.role === 'assistant') {
           const nextMessage = allMessages[index + 1]
-          const isLastInSequence = !nextMessage || nextMessage.role !== 'assistant'
+          const isLastInSequence = nextMessage?.role !== 'assistant'
 
           if (isLastInSequence) {
             for (let i = index - 1; i >= 0; i--) {
@@ -583,7 +583,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
               // 'assistant' exist, but if a future role appears between the assistant
               // turn and its originating user message we intentionally skip the
               // "Completed" indicator rather than attribute the wrong timestamp.
-              if (allMessages[i].role !== 'assistant') break
+              if (allMessages[i].role !== 'assistant') {break}
             }
           }
         }

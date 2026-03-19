@@ -54,7 +54,7 @@ describe('Git Tool Integration Tests', () => {
 
   describe('Dev-Supervisor Integration', () => {
     it('should connect to dev-supervisor successfully', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       expect(testAppId).toBeTruthy();
       const devSupervisor = DevSupervisorClientFactory.createForApp(testAppId!);
@@ -63,7 +63,7 @@ describe('Git Tool Integration Tests', () => {
     });
 
     it('should have a git repository available in the container', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const devSupervisor = DevSupervisorClientFactory.createForApp(testAppId!);
       
@@ -84,7 +84,7 @@ describe('Git Tool Integration Tests', () => {
 
   describe('Git Status Operations', () => {
     it('should successfully get git status', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const appPath = `/tmp/apps/${testAppId}`;
       const result = await gitTool.executeGitOperation(appPath, {
@@ -100,7 +100,7 @@ describe('Git Tool Integration Tests', () => {
     }, 15000);
 
     it('should detect git repository correctly', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const appPath = `/tmp/apps/${testAppId}`;
       
@@ -117,7 +117,7 @@ describe('Git Tool Integration Tests', () => {
 
   describe('Git Branch Operations', () => {
     it('should list git branches successfully', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const appPath = `/tmp/apps/${testAppId}`;
       const result = await gitTool.executeGitOperation(appPath, {
@@ -134,7 +134,7 @@ describe('Git Tool Integration Tests', () => {
     }, 10000);
 
     it('should have a valid current branch', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const appPath = `/tmp/apps/${testAppId}`;
       const result = await gitTool.executeGitOperation(appPath, {
@@ -154,7 +154,7 @@ describe('Git Tool Integration Tests', () => {
 
   describe('Git Diff Operations', () => {
     it('should execute git diff without errors', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const appPath = `/tmp/apps/${testAppId}`;
       const result = await gitTool.executeGitOperation(appPath, {
@@ -169,7 +169,7 @@ describe('Git Tool Integration Tests', () => {
     }, 10000);
 
     it('should handle staged diff option', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const appPath = `/tmp/apps/${testAppId}`;
       const result = await gitTool.executeGitOperation(appPath, {
@@ -186,7 +186,7 @@ describe('Git Tool Integration Tests', () => {
 
   describe('Git Add Operations', () => {
     it('should execute git add without errors', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const appPath = `/tmp/apps/${testAppId}`;
       
@@ -203,7 +203,7 @@ describe('Git Tool Integration Tests', () => {
     }, 10000);
 
     it('should handle specific file additions', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const appPath = `/tmp/apps/${testAppId}`;
       
@@ -220,7 +220,7 @@ describe('Git Tool Integration Tests', () => {
 
   describe('DevSupervisor Client Integration', () => {
     it('should properly set success field based on exit code', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const devSupervisor = DevSupervisorClientFactory.createForApp(testAppId!);
       
@@ -250,7 +250,7 @@ describe('Git Tool Integration Tests', () => {
     }, 10000);
 
     it('should handle git commands with proper shell escaping', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const appPath = `/tmp/apps/${testAppId}`;
       
@@ -269,7 +269,7 @@ describe('Git Tool Integration Tests', () => {
 
   describe('Error Handling', () => {
     it('should handle invalid git operations gracefully', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const appPath = `/tmp/apps/${testAppId}`;
       
@@ -284,7 +284,7 @@ describe('Git Tool Integration Tests', () => {
     }, 10000);
 
     it('should handle git operations with proper error structure', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const appPath = `/tmp/apps/${testAppId}`;
       
@@ -307,7 +307,7 @@ describe('Git Tool Integration Tests', () => {
 
   describe('Performance', () => {
     it('should complete git operations in reasonable time', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const startTime = Date.now();
       const appPath = `/tmp/apps/${testAppId}`;
@@ -324,7 +324,7 @@ describe('Git Tool Integration Tests', () => {
     }, 10000);
 
     it('should handle multiple concurrent git operations', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const appPath = `/tmp/apps/${testAppId}`;
       
@@ -346,7 +346,7 @@ describe('Git Tool Integration Tests', () => {
 
   describe('Git Tool Formatting', () => {
     it('should format git results properly', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const appPath = `/tmp/apps/${testAppId}`;
       const result = await gitTool.executeGitOperation(appPath, {
@@ -363,7 +363,7 @@ describe('Git Tool Integration Tests', () => {
     }, 10000);
 
     it('should format error results properly', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const appPath = `/tmp/apps/${testAppId}`;
       const result = await gitTool.executeGitOperation(appPath, {

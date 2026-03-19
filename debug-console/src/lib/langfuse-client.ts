@@ -15,6 +15,6 @@ export const langfuseAuthHeader =
 export const langfuseBaseUrl = LANGFUSE_BASE_URL ?? null;
 
 export function getLangfuseConfig(): { baseUrl: string; authHeader: string } | null {
-    if (!langfuseBaseUrl || !langfuseAuthHeader) return null;
+    if (!langfuseBaseUrl || !langfuseAuthHeader) {return null;}
     return { baseUrl: langfuseBaseUrl, authHeader: langfuseAuthHeader };
 }

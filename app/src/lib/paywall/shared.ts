@@ -157,7 +157,7 @@ export function isPaidPlanForGrants(
   plan: SubscriptionPlan | undefined | null,
   isGrantsEnabled: boolean
 ): boolean {
-  if (plan == null) return false;
+  if (plan == null) {return false;}
   const paidPlans = isGrantsEnabled ? GRANTS_PAID_PLANS : PAID_PLANS;
   return (paidPlans as readonly SubscriptionPlan[]).includes(plan);
 }
@@ -223,7 +223,7 @@ export function canUpgradePlan(
   plan: SubscriptionPlan | undefined | null,
   isHigherPlansEnabled: boolean
 ): boolean {
-  if (plan == null) return true; // No plan = should show upgrade
+  if (plan == null) {return true;} // No plan = should show upgrade
 
   if (isHigherPlansEnabled) {
     // With higher plans: upgrade available for all non-Ultimate users
@@ -253,7 +253,7 @@ export const PROFESSIONAL_AND_ABOVE_PLANS = [
 export function isProfessionalOrAbove(
   plan: SubscriptionPlan | undefined | null
 ): boolean {
-  if (plan == null) return false;
+  if (plan == null) {return false;}
   return (PROFESSIONAL_AND_ABOVE_PLANS as readonly SubscriptionPlan[]).includes(plan);
 }
 
@@ -286,7 +286,7 @@ export function isPlanUpgrade(
   oldPlan: SubscriptionPlan | string | undefined | null,
   newPlan: SubscriptionPlan | string | undefined | null
 ): boolean {
-  if (oldPlan == null || newPlan == null) return false;
+  if (oldPlan == null || newPlan == null) {return false;}
 
   const oldPriority = PLAN_PRIORITY[oldPlan as SubscriptionPlan] ?? 0;
   const newPriority = PLAN_PRIORITY[newPlan as SubscriptionPlan] ?? 0;

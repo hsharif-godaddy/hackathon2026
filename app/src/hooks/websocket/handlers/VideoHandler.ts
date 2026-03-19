@@ -17,7 +17,7 @@ interface VideoEventData {
 }
 
 function isVideoEventData(raw: unknown): raw is VideoEventData {
-  if (typeof raw !== 'object' || raw === null) return false
+  if (typeof raw !== 'object' || raw === null) {return false}
   const r = raw as Record<string, unknown>
   return (
     typeof r.status === 'string' &&

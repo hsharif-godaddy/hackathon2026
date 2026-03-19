@@ -96,7 +96,7 @@ export const validateScheduledTime = (
 };
 
 export const shouldDisableTime = (timeString: string, date: Date, isToday: boolean): boolean => {
-  if (!isToday) return false;
+  if (!isToday) {return false;}
 
   const { hours, minutes } = parseTime(timeString);
   const now = new Date();

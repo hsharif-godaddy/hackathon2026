@@ -37,7 +37,7 @@ export function Feedback(props: FeedbackProps) {
       },
     })
     .then((res) => {
-      if (!res.ok) throw new Error(`Error fetching feedback config: ${res.status} ${res.statusText}`);
+      if (!res.ok) {throw new Error(`Error fetching feedback config: ${res.status} ${res.statusText}`);}
       return res.json();
     })
     .then((res) => {

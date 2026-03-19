@@ -17,7 +17,7 @@ export function useSsoSignIn() {
   // Use SSO modal in production and local development, redirect in deployed test environments
   const useSsoModal = useMemo(() => {
     // Local development - use modal (local overrides test-godaddy.com via hosts file)
-    if (process.env.NODE_ENV === 'development') return true;
+    if (process.env.NODE_ENV === 'development') {return true;}
     // Production (godaddy.com) - use modal
     // Deployed test environments (test-godaddy.com, dev-godaddy.com) - use redirect
     return getRootDomain() === 'godaddy.com';

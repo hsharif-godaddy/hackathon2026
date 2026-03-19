@@ -135,7 +135,7 @@ export class GitOpsService {
 
       // Get dev-supervisor for the app
       const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor || !devSupervisor.isAvailable()) {
+      if (!devSupervisor?.isAvailable()) {
         return {
           success: false,
           error: 'App container is not available',
@@ -307,7 +307,7 @@ export class GitOpsService {
 
       // Get dev-supervisor for the app
       const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor || !devSupervisor.isAvailable()) {
+      if (!devSupervisor?.isAvailable()) {
         return {
           success: false,
           error: 'App container is not available',

@@ -555,7 +555,7 @@ export async function matchesBuildToolInContainer(
 ): Promise<boolean> {
   if (buildTool.configFiles.length > 0) {
     const hasConfig = await hasConfigFileInContainer(devSupervisor, projectRoot, buildTool.configFiles);
-    if (hasConfig) return true;
+    if (hasConfig) {return true;}
   }
 
   return hasDependency(packageJson, buildTool.packageNames);

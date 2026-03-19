@@ -12,7 +12,7 @@ let cachedConfig: Record<string, { VALUE: string }> | null | undefined;
  * Results are memoized.
  */
 export function getNomadAllocConfig(): Record<string, { VALUE: string }> | null {
-  if (cachedConfig !== undefined) return cachedConfig; // memoized: null means "no config"
+  if (cachedConfig !== undefined) {return cachedConfig;} // memoized: null means "no config"
 
   const allocConfigPath = join(env.NOMAD_ALLOC_DIR || '/alloc', 'config.json');
   if (!existsSync(allocConfigPath)) {

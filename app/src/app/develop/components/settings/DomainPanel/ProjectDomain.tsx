@@ -27,7 +27,7 @@ export default function ProjectDomain() {
   const currentAppId = useAppIdFromParams();
 
   const site = useSiteStore((state) => {
-    if (!currentAppId) return null;
+    if (!currentAppId) {return null;}
     return state.getSite(currentAppId);
   });
 
@@ -70,7 +70,7 @@ export default function ProjectDomain() {
    * @returns Full URL with https:// protocol
    */
   const getProjectDomainUrl = (domain: string) => {
-    if (!domain) return '';
+    if (!domain) {return '';}
     // Check if domain already has a protocol
     if (domain.startsWith('http://') || domain.startsWith('https://')) {
       return domain;
@@ -109,7 +109,7 @@ export default function ProjectDomain() {
   const { data: polledSite } = useQuery({
     queryKey: ['site-poll', currentAppId, pollSessionId],
     queryFn: async () => {
-      if (!currentAppId) return null;
+      if (!currentAppId) {return null;}
       return await fetchSite(currentAppId, true);
     },
     enabled: shouldPoll && !!currentAppId,

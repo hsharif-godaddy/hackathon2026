@@ -62,9 +62,9 @@ export class OperationLogExtractor {
     const entries: OperationLogEntry[] = [];
 
     for (const msg of messages) {
-      if (msg.role !== 'assistant') continue;
-      if (!isOpenAIMessage(msg)) continue;
-      if (!msg.tool_calls || msg.tool_calls.length === 0) continue;
+      if (msg.role !== 'assistant') {continue;}
+      if (!isOpenAIMessage(msg)) {continue;}
+      if (!msg.tool_calls || msg.tool_calls.length === 0) {continue;}
 
       for (const tc of msg.tool_calls) {
         const entry = this.extractFromToolCall(tc);
@@ -135,7 +135,7 @@ export class OperationLogExtractor {
         const mode = op.mode || 'edit';
         const fileName = this.getFileName(op.path);
         if (fileName) {
-          if (!filesByMode[mode]) filesByMode[mode] = [];
+          if (!filesByMode[mode]) {filesByMode[mode] = [];}
           filesByMode[mode].push(fileName);
         }
       }
@@ -190,7 +190,7 @@ export class OperationLogExtractor {
 
   private static extractTerminalOperation(args: Record<string, unknown>): OperationLogEntry | null {
     const cmd = args.command || args.cmd;
-    if (!cmd) return null;
+    if (!cmd) {return null;}
 
     const cmdStr = String(cmd);
     const truncated = cmdStr.length > 60 ? cmdStr.substring(0, 60) + '...' : cmdStr;
@@ -206,7 +206,7 @@ export class OperationLogExtractor {
 
   private static extractListDirOperation(args: Record<string, unknown>): OperationLogEntry | null {
     const path = args.target_directory || args.path;
-    if (!path) return null;
+    if (!path) {return null;}
 
     return {
       tool: 'list_dir',
@@ -216,7 +216,7 @@ export class OperationLogExtractor {
 
   private static extractGrepOperation(args: Record<string, unknown>): OperationLogEntry | null {
     const pattern = args.pattern || args.search;
-    if (!pattern) return null;
+    if (!pattern) {return null;}
 
     return {
       tool: 'grep',
@@ -226,7 +226,7 @@ export class OperationLogExtractor {
 
   private static extractGitOperation(args: Record<string, unknown>): OperationLogEntry | null {
     const command = args.command || args.subcommand;
-    if (!command) return null;
+    if (!command) {return null;}
 
     return {
       tool: 'git',
@@ -239,7 +239,7 @@ export class OperationLogExtractor {
    * This provides cross-platform compatibility (handles Windows backslashes)
    */
   private static getFileName(path: unknown): string | null {
-    if (!path || typeof path !== 'string') return null;
+    if (!path || typeof path !== 'string') {return null;}
     return basename(path);
   }
 
@@ -250,13 +250,13 @@ export class OperationLogExtractor {
    * @returns Formatted string
    */
   static format(entries: OperationLogEntry[]): string {
-    if (entries.length === 0) return '';
+    if (entries.length === 0) {return '';}
 
     // Group by tool for readability
     const byTool: Record<string, OperationLogEntry[]> = {};
 
     for (const entry of entries) {
-      if (!byTool[entry.tool]) byTool[entry.tool] = [];
+      if (!byTool[entry.tool]) {byTool[entry.tool] = [];}
       byTool[entry.tool]!.push(entry);
     }
 
@@ -267,7 +267,7 @@ export class OperationLogExtractor {
       const fileOps = byTool.file_edit;
       const allFiles = new Set<string>();
       for (const op of fileOps) {
-        if (op.files) op.files.forEach(f => allFiles.add(f));
+        if (op.files) {op.files.forEach(f => allFiles.add(f));}
       }
       sections.push(`Files modified: ${Array.from(allFiles).join(', ')}`);
     }

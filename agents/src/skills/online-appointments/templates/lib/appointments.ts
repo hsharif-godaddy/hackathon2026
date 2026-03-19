@@ -136,7 +136,7 @@ export function extractTimeString(date: Date): string {
  * Check if a slot ending at slotEnd fits within business hours
  */
 function slotFitsInBusinessHours(slotEnd: Date, dayEnd: Date, endTime: string): boolean {
-  if (isBefore(slotEnd, dayEnd)) return true;
+  if (isBefore(slotEnd, dayEnd)) {return true;}
   return isSameDay(slotEnd, dayEnd) && format(slotEnd, 'HH:mm') <= endTime;
 }
 
@@ -231,7 +231,7 @@ export function getAvailableSlots(
     const slotEnd = addMinutes(slotStart, getConfigSync().duration);
 
     const hasConflict = existingAppointments.some((apt) => {
-      if (apt.status === 'cancelled') return false;
+      if (apt.status === 'cancelled') {return false;}
 
       const aptStart = new Date(apt.startTime);
       const aptEnd = new Date(apt.endTime);

@@ -23,7 +23,7 @@ export class Tracer {
   }
 
   trace(event: Omit<TraceEvent, 'id' | 'timestamp'>): void {
-    if (!this.enabled) return;
+    if (!this.enabled) {return;}
 
     const traceEvent: TraceEvent = {
       id: `trace_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -44,8 +44,8 @@ export class Tracer {
       data: traceEvent.data
     };
     
-    if (traceEvent.agentId) tracingData.agentId = traceEvent.agentId;
-    if (traceEvent.threadId) tracingData.threadId = traceEvent.threadId;
+    if (traceEvent.agentId) {tracingData.agentId = traceEvent.agentId;}
+    if (traceEvent.threadId) {tracingData.threadId = traceEvent.threadId;}
 
     switch (traceEvent.type) {
       case 'request':

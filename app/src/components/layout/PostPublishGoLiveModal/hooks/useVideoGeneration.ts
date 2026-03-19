@@ -17,7 +17,7 @@ import { agentService } from '@/services/AgentService';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 
 function normalizeVideoUrl(url: string): string {
-  if (!url) return url;
+  if (!url) {return url;}
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
     return `https://${url}`;
   }
@@ -83,7 +83,7 @@ export function useVideoGeneration(appId: string, publishedUrl?: string) {
 
   // Monitor launchVideoResult for completion or failure (WebSocket or cached)
   useEffect(() => {
-    if (!launchVideoResult || !isGeneratingVideo) return;
+    if (!launchVideoResult || !isGeneratingVideo) {return;}
 
     if (launchVideoResult.type === 'error') {
       logger.error('go-live.video-generation.websocket-failed', { appId, error: launchVideoResult.message });

@@ -79,7 +79,7 @@ export function useAuth(options: UseAuthOptions = {}) {
           setConfigError(null);
         }
       } catch (error) {
-        if (cancelled) return;
+        if (cancelled) {return;}
 
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         logger.error('auth.config.load.error', {

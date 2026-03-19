@@ -85,14 +85,14 @@ export const SchedulingView = memo(({
   }, [timing, date, time]);
 
   const isToday = useMemo(() => {
-    if (!date.length) return false;
+    if (!date.length) {return false;}
     const selectedDate = new Date(date[0]);
     const today = new Date();
     return selectedDate.toDateString() === today.toDateString();
   }, [date]);
 
   const minimumTime = useMemo(() => {
-    if (!isToday) return null;
+    if (!isToday) {return null;}
     const now = new Date();
     const minimum = new Date(now.getTime() + 20 * 60 * 1000);
     return minimum.toLocaleTimeString('en-US', {

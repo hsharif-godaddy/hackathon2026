@@ -96,9 +96,9 @@ export class EnvConfig {
 
     // Better Bedrock status detection
     const awsCredsInfo = []
-    if (process.env.AWS_ACCESS_KEY_ID) awsCredsInfo.push('env vars')
-    if (process.env.AWS_PROFILE) awsCredsInfo.push(`profile: ${process.env.AWS_PROFILE}`)
-    if (process.env.AWS_ROLE_ARN) awsCredsInfo.push('role')
+    if (process.env.AWS_ACCESS_KEY_ID) {awsCredsInfo.push('env vars')}
+    if (process.env.AWS_PROFILE) {awsCredsInfo.push(`profile: ${process.env.AWS_PROFILE}`)}
+    if (process.env.AWS_ROLE_ARN) {awsCredsInfo.push('role')}
     const region = process.env.AWS_REGION || 'us-west-2'
     const awsStatus = awsCredsInfo.length > 0 ? `(${awsCredsInfo.join(', ')}, region: ${region})` : `(region: ${region}, using default credential chain)`
 

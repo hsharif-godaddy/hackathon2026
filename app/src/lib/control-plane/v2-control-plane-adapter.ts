@@ -51,7 +51,7 @@ function hasPublishVariant(variants: unknown): boolean {
   }
 
   return variants.some((v: unknown) => {
-    if (typeof v === 'string') return v === 'publish';
+    if (typeof v === 'string') {return v === 'publish';}
     if (typeof v === 'object' && v !== null) {
       return (v as Record<string, unknown>).variant === 'publish';
     }
@@ -86,7 +86,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       return 'Untitled Project';
     }
     let title = prompt.trim().substring(0, 50).replace(/\s+/g, ' ').trim();
-    if (prompt.length > 50) title += '...';
+    if (prompt.length > 50) {title += '...';}
     return title;
   }
   async createSite(params: CreateSiteParams): Promise<CreateSiteResult> {
@@ -227,7 +227,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
    * Check if subscription cache is stale and needs refreshing
    */
   private isCacheStale(cache: ReturnType<typeof useSubscriptionCacheStore.getState>): boolean {
-    if (!cache.lastRefresh) return true;
+    if (!cache.lastRefresh) {return true;}
     return Date.now() - cache.lastRefresh > cache.CACHE_TTL;
   }
 
@@ -277,7 +277,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       const client = this.createClient(jwt);
       const jobStatus = await client.getAiroJobApps(siteId);
 
-      if (jobStatus.apps && jobStatus.apps.length === 0) {
+      if (jobStatus.apps?.length === 0) {
         return {
           id: siteId,
           name: 'Provisioning...',
@@ -1014,7 +1014,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       const client = this.createClient(jwt);
       const site = await this.getSite(siteId, jwt);
 
-      if (!site || !site.system_id || !site.subscription_id) {
+      if (!site?.system_id || !site.subscription_id) {
         logger.warn('v2-control-plane.update-site.missing-ids', {
           siteId,
           hasSystemId: !!site?.system_id,
@@ -1087,7 +1087,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       const client = this.createClient(jwt);
       const site = await this.getSite(siteId, jwt);
 
-      if (!site || !site.system_id || !site.subscription_id) {
+      if (!site?.system_id || !site.subscription_id) {
         return null;
       }
 
@@ -1279,7 +1279,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       const client = this.createClient(jwt);
       const site = await this.getSite(appId, jwt);
 
-      if (!site || !site.system_id || !site.subscription_id) {
+      if (!site?.system_id || !site.subscription_id) {
         logger.warn('v2-control-plane.get-secrets.missing-ids', {
           appId,
           hasSystemId: !!site?.system_id,
@@ -1356,7 +1356,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       const client = this.createClient(jwt);
       const site = await this.getSite(appId, jwt);
 
-      if (!site || !site.system_id || !site.subscription_id) {
+      if (!site?.system_id || !site.subscription_id) {
         logger.warn('v2-control-plane.update-secrets.missing-ids', { appId });
         throw new Error(`Unable to retrieve system/subscription IDs for app ${appId}`);
       }
@@ -1467,7 +1467,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       const client = this.createClient(jwt);
       const site = await this.getSite(appId, jwt);
 
-      if (!site || !site.system_id || !site.subscription_id) {
+      if (!site?.system_id || !site.subscription_id) {
         logger.warn('v2-control-plane.get-secrets.missing-ids', {
           appId,
           hasSystemId: !!site?.system_id,
@@ -1573,7 +1573,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       const client = this.createClient(jwt);
       const site = await this.getSite(appId, jwt);
 
-      if (!site || !site.system_id || !site.subscription_id) {
+      if (!site?.system_id || !site.subscription_id) {
         logger.warn('v2-control-plane.get-secrets.missing-ids', {
           appId,
           hasSystemId: !!site?.system_id,

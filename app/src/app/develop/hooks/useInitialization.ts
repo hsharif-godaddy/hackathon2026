@@ -25,7 +25,7 @@ import {
  * @returns The initial job ID or null if not found
  */
 function getInitialJobIdFromStorage(appId: string | null): string | null {
-  if (typeof window === 'undefined' || !appId) return null
+  if (typeof window === 'undefined' || !appId) {return null}
   return sessionStorage.getItem(`initial-job-id-${appId}`)
 }
 
@@ -37,30 +37,30 @@ function getInitialJobIdFromStorage(appId: string | null): string | null {
  * @returns True if initial prompt is pending
  */
 function checkHasInitialPrompt(initialJobId: string | null, appId: string | null): boolean {
-  if (typeof window === 'undefined') return false
+  if (typeof window === 'undefined') {return false}
 
   // Check with initialJobId first (normal creation flow)
   if (initialJobId) {
     const hasPromptPending = sessionStorage.getItem(`initial-prompt-pending-${initialJobId}`) === 'true'
     const inCreationFlow = sessionStorage.getItem(`in-creation-flow-${initialJobId}`) === 'true'
-    if (hasPromptPending && inCreationFlow) return true
+    if (hasPromptPending && inCreationFlow) {return true}
   }
 
   // Also check with appId (for rebuild mode where we navigate directly to appId)
   if (appId) {
     const hasPromptPending = sessionStorage.getItem(`initial-prompt-pending-${appId}`) === 'true'
     const inCreationFlow = sessionStorage.getItem(`in-creation-flow-${appId}`) === 'true'
-    if (hasPromptPending && inCreationFlow) return true
+    if (hasPromptPending && inCreationFlow) {return true}
   }
 
   return false
 }
 
 function getStoredInitialPrompt(initialJobId: string | null, appId: string | null): string | null {
-  if (typeof window === 'undefined') return null
+  if (typeof window === 'undefined') {return null}
   if (initialJobId) {
     const prompt = sessionStorage.getItem(`initial-prompt-text-${initialJobId}`)
-    if (prompt) return prompt
+    if (prompt) {return prompt}
   }
   if (appId) {
     return sessionStorage.getItem(`initial-prompt-text-${appId}`)
@@ -76,7 +76,7 @@ function getStoredInitialPrompt(initialJobId: string | null, appId: string | nul
  * @returns True if this is a rebuild mode prompt
  */
 function isRebuildModePrompt(initialJobId: string | null, appId: string | null): boolean {
-  if (typeof window === 'undefined') return false
+  if (typeof window === 'undefined') {return false}
   if (initialJobId && sessionStorage.getItem(`rebuild-mode-prompt-${initialJobId}`) === 'true') {
     return true
   }
@@ -242,9 +242,9 @@ const FILE_EDIT_TOOLS = new Set(['str_replace_based_edit_tool', 'textEditor', 'f
 
 /** Check if a tool call is a completed, non-view file edit */
 export function isCompletedFileEdit(tc: { name: string; status: string; error?: string; input: Record<string, unknown> }): boolean {
-  if (!FILE_EDIT_TOOLS.has(tc.name) || tc.status !== 'completed' || tc.error) return false
+  if (!FILE_EDIT_TOOLS.has(tc.name) || tc.status !== 'completed' || tc.error) {return false}
   // Exclude view-only commands (textEditor/str_replace_based_edit_tool)
-  if (tc.input.command === 'view') return false
+  if (tc.input.command === 'view') {return false}
   return true
 }
 
@@ -252,9 +252,9 @@ export function isCompletedFileEdit(tc: { name: string; status: string; error?: 
 export function getEditPaths(tc: { input: Record<string, unknown> }): string[] {
   const paths: string[] = []
   // Direct path field (textEditor, str_replace_based_edit_tool)
-  if (typeof tc.input.path === 'string') paths.push(tc.input.path)
+  if (typeof tc.input.path === 'string') {paths.push(tc.input.path)}
   // Alternative field name (file_path)
-  if (typeof tc.input.file_path === 'string') paths.push(tc.input.file_path)
+  if (typeof tc.input.file_path === 'string') {paths.push(tc.input.file_path)}
   // Batch operations (fileEdit with operations array)
   if (Array.isArray(tc.input.operations)) {
     for (const op of tc.input.operations) {
@@ -375,7 +375,7 @@ function mapMachinePhaseToUIPhase(machinePhase: string): InitializationPhase {
  * Map XState machine sub-phases to UI sub-phases
  */
 function mapMachineSubPhaseToUISubPhase(machineSubPhase: string | null): InitializationSubPhase | null {
-  if (!machineSubPhase) return null
+  if (!machineSubPhase) {return null}
   const mapping: Record<string, InitializationSubPhase> = {
     'waitingForWebSocket': 'waiting-for-websocket',
     'websocketConnected': 'websocket-connected',
@@ -572,7 +572,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
 
   // Sync site.initial_prompt to sessionStorage
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined') {return}
     if (site?.initial_prompt && site.id) {
       if (isRebuildModePrompt(initialJobId, site.id)) {
         return
@@ -594,7 +594,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
 
   // EFFECT: Initialize on mount
   useEffect(() => {
-    if (!appId) return
+    if (!appId) {return}
 
     // Reset store when navigating to regular app
     if (!isJobId && realAppId) {
@@ -625,7 +625,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // EFFECT: Monitor creation store and send events to machine
   useEffect(() => {
     const phase = getPhaseFromState(state)
-    if (phase !== 'creating') return
+    if (phase !== 'creating') {return}
 
     if (creationPhase === 'complete' && realAppId) {
       // Track which job ID created which realAppId (Issue 2.1)
@@ -671,9 +671,9 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // EFFECT: Initialize page data
   useEffect(() => {
     const phase = getPhaseFromState(state)
-    if (phase !== 'initializingPage') return
+    if (phase !== 'initializingPage') {return}
 
-    if (!appId || initializingAppIdRef.current === appId) return
+    if (!appId || initializingAppIdRef.current === appId) {return}
 
     const effectiveAppId = realAppId || appId
     initializingAppIdRef.current = effectiveAppId
@@ -709,7 +709,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // EFFECT: Wait for history loading to complete
   useEffect(() => {
     const phase = getPhaseFromState(state)
-    if (phase !== 'loadingHistory' || !historyLoadingComplete) return
+    if (phase !== 'loadingHistory' || !historyLoadingComplete) {return}
 
     const effectiveAppId = realAppId || appId
 
@@ -734,7 +734,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // EFFECT: Set timeout for history loading (30 seconds)
   useEffect(() => {
     const phase = getPhaseFromState(state)
-    if (phase !== 'loadingHistory' || !appId || loadingPhase !== 'ready') return
+    if (phase !== 'loadingHistory' || !appId || loadingPhase !== 'ready') {return}
 
     const effectiveAppId = realAppId || appId
 
@@ -769,7 +769,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // EFFECT: Handle WebSocket errors during history loading
   useEffect(() => {
     const phase = getPhaseFromState(state)
-    if (phase !== 'loadingHistory' || !webSocketError) return
+    if (phase !== 'loadingHistory' || !webSocketError) {return}
 
     const effectiveAppId = realAppId || appId
 
@@ -801,7 +801,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   useEffect(() => {
     const phase = getPhaseFromState(state)
     const subPhase = getSubPhaseFromState(state)
-    if (phase !== 'ready') return
+    if (phase !== 'ready') {return}
 
     if (isWebSocketConnected && subPhase === 'waitingForWebSocket') {
       send({ type: 'WEBSOCKET_CONNECTED' })
@@ -850,7 +850,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // We wait for a page file edit (src/pages/) or suggestedResponse (after any edit) to reveal,
   // so the user sees the finished page rather than intermediate scaffolding.
   useEffect(() => {
-    if (state.context.hasSeenFirstFileEdit) return
+    if (state.context.hasSeenFirstFileEdit) {return}
 
     const toolCalls = activeStream?.toolCalls ?? []
 
@@ -878,18 +878,18 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       streamCompleteWithoutEditSentForRef.current = null
       return
     }
-    if (state.context.hasSeenFirstFileEdit) return
-    if (!state.context.hasInitialPrompt) return
-    if (activeStream !== null) return
+    if (state.context.hasSeenFirstFileEdit) {return}
+    if (!state.context.hasInitialPrompt) {return}
+    if (activeStream !== null) {return}
 
     const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant')
-    if (!lastAssistant) return
-    if (streamCompleteWithoutEditSentForRef.current === lastAssistant.id) return
+    if (!lastAssistant) {return}
+    if (streamCompleteWithoutEditSentForRef.current === lastAssistant.id) {return}
 
     const hasCompletedFileEdit = lastAssistant.toolCalls?.some(
       tc => isCompletedFileEdit(tc)
     )
-    if (hasCompletedFileEdit) return
+    if (hasCompletedFileEdit) {return}
 
     // File edit tools and terminalCommand can indicate "stream done but user may still see a first edit":
     // they are the tools that modify workspace (files/shell). Other tools (e.g. read_file, list_dir)
@@ -897,7 +897,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     const hasIncompleteFileEditOrTerminal = lastAssistant.toolCalls?.some(
       tc => tc.status === 'incomplete' && (FILE_EDIT_TOOLS.has(tc.name) || tc.name === 'terminalCommand')
     )
-    if (!hasIncompleteFileEditOrTerminal) return
+    if (!hasIncompleteFileEditOrTerminal) {return}
 
     streamCompleteWithoutEditSentForRef.current = lastAssistant.id
     logger.info('initialization.stream_complete_without_first_edit', {

@@ -281,7 +281,7 @@ export function PublishWidget({ appId, publishId, toolId, conversationId, initia
   const getErrorMessage = () => {
     for (const platform of platforms) {
       const result = platformStatuses[platform]?.result
-      if (result?.error) return result.error
+      if (result?.error) {return result.error}
     }
     return t('builder_common_unknown_error')
   }

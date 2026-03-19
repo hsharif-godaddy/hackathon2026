@@ -153,7 +153,7 @@ async function fetchLogsForApp(
 
   for (const sourceId of sourceIds) {
     const sourceConfig = sources.find((s) => s.id === sourceId);
-    if (!sourceConfig || !sourceConfig.apiKey) continue;
+    if (!sourceConfig?.apiKey) {continue;}
 
     const { fieldMapping } = sourceConfig;
 
@@ -231,7 +231,7 @@ function mergeAggregationBuckets(
   buckets: AggBucket[] | undefined,
   map: Map<string, { count: number; lastSeen: string | null; event: string | null }>
 ): void {
-  if (!buckets) return;
+  if (!buckets) {return;}
   for (const bucket of buckets) {
     const msg = bucket.key;
     if (msg && msg.trim()) {
@@ -279,7 +279,7 @@ async function fetchErrorSummary(
 
   for (const sourceId of sourceIds) {
     const sourceConfig = sources.find((s) => s.id === sourceId);
-    if (!sourceConfig || !sourceConfig.apiKey) continue;
+    if (!sourceConfig?.apiKey) {continue;}
 
     const { fieldMapping } = sourceConfig;
 
@@ -420,7 +420,7 @@ async function fetchErrorSummary(
       // Sort by lastSeen descending (most recent first), then by count descending
       if (a.lastSeen && b.lastSeen) {
         const timeDiff = new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime();
-        if (timeDiff !== 0) return timeDiff;
+        if (timeDiff !== 0) {return timeDiff;}
       } else if (a.lastSeen && !b.lastSeen) {
         return -1; // a has lastSeen, b doesn't - a comes first
       } else if (!a.lastSeen && b.lastSeen) {
@@ -446,7 +446,7 @@ async function fetchLifetimeStats(
 
   for (const sourceId of sourceIds) {
     const sourceConfig = sources.find((s) => s.id === sourceId);
-    if (!sourceConfig || !sourceConfig.apiKey) continue;
+    if (!sourceConfig?.apiKey) {continue;}
 
     const { fieldMapping } = sourceConfig;
 
@@ -510,7 +510,7 @@ const CARE_AGENT_SID = 'airo-builder:care-agent';
 
 /** Normalize a subscriptionId to the billing sid format used in llm_spend_enduser_daily */
 function toBillingSid(raw: string): string {
-  if (!raw) return raw;
+  if (!raw) {return raw;}
   return raw.startsWith(BILLING_SID_PREFIX) ? raw : `${BILLING_SID_PREFIX}${raw}`;
 }
 
@@ -545,7 +545,7 @@ async function queryESFirst(
       })
     }
   );
-  if (!response.ok) return null;
+  if (!response.ok) {return null;}
   const data = await response.json();
   return data.hits?.hits?.[0]?._source ?? null;
 }

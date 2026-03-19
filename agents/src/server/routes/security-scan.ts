@@ -194,7 +194,7 @@ router.post('/security-scan', validateAppOwnershipFromBody('appId'), async (req:
     if (auditData?.vulnerabilities) {
       Object.entries(auditData.vulnerabilities).forEach(([pkgName, vuln]: [string, NpmAuditVulnerability]) => {
         let severity = vuln.severity || 'medium';
-        if (severity === 'moderate') severity = 'medium';
+        if (severity === 'moderate') {severity = 'medium';}
 
         vulnerabilities.push({
           id: `npm-${pkgName}`,
@@ -216,8 +216,8 @@ router.post('/security-scan', validateAppOwnershipFromBody('appId'), async (req:
         if (file.messages && Array.isArray(file.messages)) {
           file.messages.forEach((msg) => {
             eslintSummary.total++;
-            if (msg.severity === 2) eslintSummary.error++;
-            if (msg.severity === 1) eslintSummary.warning++;
+            if (msg.severity === 2) {eslintSummary.error++;}
+            if (msg.severity === 1) {eslintSummary.warning++;}
 
             const isSecurityRule = msg.ruleId && (msg.ruleId.startsWith('security/') || msg.ruleId.startsWith('security-node/'));
             if (isSecurityRule) {
@@ -255,10 +255,10 @@ router.post('/security-scan', validateAppOwnershipFromBody('appId'), async (req:
       message += '✅ No dependency vulnerabilities found\n';
     } else {
       message += `Found ${auditSummary.total} vulnerabilit${auditSummary.total === 1 ? 'y' : 'ies'}:\n`;
-      if (auditSummary.critical > 0) message += `  🔴 Critical: ${auditSummary.critical}\n`;
-      if (auditSummary.high > 0) message += `  🟠 High: ${auditSummary.high}\n`;
-      if (auditSummary.medium > 0) message += `  🟡 Medium: ${auditSummary.medium}\n`;
-      if (auditSummary.low > 0) message += `  🟢 Low: ${auditSummary.low}\n`;
+      if (auditSummary.critical > 0) {message += `  🔴 Critical: ${auditSummary.critical}\n`;}
+      if (auditSummary.high > 0) {message += `  🟠 High: ${auditSummary.high}\n`;}
+      if (auditSummary.medium > 0) {message += `  🟡 Medium: ${auditSummary.medium}\n`;}
+      if (auditSummary.low > 0) {message += `  🟢 Low: ${auditSummary.low}\n`;}
     }
 
     message += '\n**ESLint Security Analysis:**\n';
@@ -266,15 +266,15 @@ router.post('/security-scan', validateAppOwnershipFromBody('appId'), async (req:
       message += '✅ No code security issues found\n';
     } else {
       message += `Found ${eslintSummary.total} issue${eslintSummary.total === 1 ? '' : 's'}:\n`;
-      if (eslintSummary.error > 0) message += `  ❌ Errors: ${eslintSummary.error}\n`;
-      if (eslintSummary.warning > 0) message += `  ⚠️  Warnings: ${eslintSummary.warning}\n`;
-      if (eslintSummary.securityIssues > 0) message += `  🔒 Security-specific: ${eslintSummary.securityIssues}\n`;
+      if (eslintSummary.error > 0) {message += `  ❌ Errors: ${eslintSummary.error}\n`;}
+      if (eslintSummary.warning > 0) {message += `  ⚠️  Warnings: ${eslintSummary.warning}\n`;}
+      if (eslintSummary.securityIssues > 0) {message += `  🔒 Security-specific: ${eslintSummary.securityIssues}\n`;}
     }
 
     if (auditSummary.total > 0 || eslintSummary.total > 0) {
       message += '\n💡 Recommendations:\n';
-      if (auditSummary.total > 0) message += '  • Run `npm audit fix` to resolve dependency issues\n';
-      if (eslintSummary.total > 0) message += '  • Review ESLint security findings\n';
+      if (auditSummary.total > 0) {message += '  • Run `npm audit fix` to resolve dependency issues\n';}
+      if (eslintSummary.total > 0) {message += '  • Review ESLint security findings\n';}
     }
 
     return res.json({

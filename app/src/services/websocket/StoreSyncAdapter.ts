@@ -389,10 +389,10 @@ export class StoreSyncAdapter {
    * Get transport state key for table lookup
    */
   private getTransportStateKey(snapshot: WebSocketSnapshot): string | null {
-    if (snapshot.matches({ transport: 'disconnected' })) return 'transport.disconnected'
-    if (snapshot.matches({ transport: 'connecting' })) return 'transport.connecting'
-    if (snapshot.matches({ transport: 'authenticating' })) return 'transport.authenticating'
-    if (snapshot.matches({ transport: { connected: 'idle' } })) return 'transport.connected.idle'
+    if (snapshot.matches({ transport: 'disconnected' })) {return 'transport.disconnected'}
+    if (snapshot.matches({ transport: 'connecting' })) {return 'transport.connecting'}
+    if (snapshot.matches({ transport: 'authenticating' })) {return 'transport.authenticating'}
+    if (snapshot.matches({ transport: { connected: 'idle' } })) {return 'transport.connected.idle'}
     if (snapshot.matches({ transport: { connected: { recovering: 'pendingAck' } } })) {
       return 'transport.connected.recovering.pendingAck'
     }
@@ -402,8 +402,8 @@ export class StoreSyncAdapter {
     if (snapshot.matches({ transport: { connected: { recovering: 'catchup' } } })) {
       return 'transport.connected.recovering.catchup'
     }
-    if (snapshot.matches({ transport: { reconnecting: 'retrying' } })) return 'transport.reconnecting.retrying'
-    if (snapshot.matches({ transport: { reconnecting: 'exhausted' } })) return 'transport.reconnecting.exhausted'
+    if (snapshot.matches({ transport: { reconnecting: 'retrying' } })) {return 'transport.reconnecting.retrying'}
+    if (snapshot.matches({ transport: { reconnecting: 'exhausted' } })) {return 'transport.reconnecting.exhausted'}
     return null
   }
 
@@ -422,10 +422,10 @@ export class StoreSyncAdapter {
    * Get current stream state as a string for transition detection
    */
   private getStreamState(snapshot: WebSocketSnapshot): string {
-    if (snapshot.matches({ stream: { streaming: 'receiving' } })) return 'streaming.receiving'
-    if (snapshot.matches({ stream: { streaming: 'completing' } })) return 'streaming.completing'
-    if (snapshot.matches({ stream: 'completed' })) return 'completed'
-    if (snapshot.matches({ stream: 'error' })) return 'error'
+    if (snapshot.matches({ stream: { streaming: 'receiving' } })) {return 'streaming.receiving'}
+    if (snapshot.matches({ stream: { streaming: 'completing' } })) {return 'streaming.completing'}
+    if (snapshot.matches({ stream: 'completed' })) {return 'completed'}
+    if (snapshot.matches({ stream: 'error' })) {return 'error'}
     return 'unknown'
   }
 

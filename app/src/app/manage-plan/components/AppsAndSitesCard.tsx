@@ -189,7 +189,7 @@ export default function AppsAndSitesCard({
   };
 
   const handleUnpublishConfirm = (disconnectDomain: boolean) => {
-    if (!selectedApp) return;
+    if (!selectedApp) {return;}
 
     const appId = selectedApp.id;
     const customDomain = getCustomDomain(selectedApp);

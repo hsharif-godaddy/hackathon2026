@@ -65,7 +65,7 @@ export default function UPPModal({
    * Handle postMessage events from UPP iframe
    */
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen) {return}
 
     // Reset loading state when modal opens
     setIsLoading(true)
@@ -128,7 +128,7 @@ export default function UPPModal({
     }
   }, [isOpen, domain, appId, onClose, onPurchaseComplete, onPurchaseError])
 
-  if (!isOpen) return null
+  if (!isOpen) {return null}
 
   return (
     <Modal

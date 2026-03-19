@@ -30,28 +30,28 @@ export function formatColumnType(type: string): string {
   }
 
   // Handle text types
-  if (lowerType === 'text') return 'Long text';
-  if (lowerType === 'tinytext') return 'Short text';
-  if (lowerType === 'mediumtext') return 'Medium text';
-  if (lowerType === 'longtext') return 'Very long text';
+  if (lowerType === 'text') {return 'Long text';}
+  if (lowerType === 'tinytext') {return 'Short text';}
+  if (lowerType === 'mediumtext') {return 'Medium text';}
+  if (lowerType === 'longtext') {return 'Very long text';}
 
   // Handle numeric types
-  if (lowerType.includes('int')) return 'Number';
-  if (lowerType.includes('decimal') || lowerType.includes('numeric')) return 'Decimal number';
-  if (lowerType.includes('float') || lowerType.includes('double')) return 'Decimal number';
+  if (lowerType.includes('int')) {return 'Number';}
+  if (lowerType.includes('decimal') || lowerType.includes('numeric')) {return 'Decimal number';}
+  if (lowerType.includes('float') || lowerType.includes('double')) {return 'Decimal number';}
 
   // Handle date/time types
-  if (lowerType === 'datetime') return 'Date and time';
-  if (lowerType === 'date') return 'Date';
-  if (lowerType === 'time') return 'Time';
-  if (lowerType.includes('timestamp')) return 'Timestamp';
+  if (lowerType === 'datetime') {return 'Date and time';}
+  if (lowerType === 'date') {return 'Date';}
+  if (lowerType === 'time') {return 'Time';}
+  if (lowerType.includes('timestamp')) {return 'Timestamp';}
 
   // Handle boolean
-  if (lowerType === 'tinyint(1)' || lowerType === 'boolean') return 'True/False';
+  if (lowerType === 'tinyint(1)' || lowerType === 'boolean') {return 'True/False';}
 
   // Handle enum/set
-  if (lowerType.startsWith('enum(')) return 'Selection';
-  if (lowerType.startsWith('set(')) return 'Multiple selection';
+  if (lowerType.startsWith('enum(')) {return 'Selection';}
+  if (lowerType.startsWith('set(')) {return 'Multiple selection';}
 
   // Default: return original type
   return type;
@@ -80,8 +80,8 @@ export function triggerTableExport(appId: string, tableName: string, format: 'cs
  * @returns Tailwind grid classes for responsive layout
  */
 export function getGridClasses(columnCount: number): string {
-  if (columnCount <= 4) return 'grid-cols-1';
-  if (columnCount <= 11) return 'grid-cols-1 md:grid-cols-2';
+  if (columnCount <= 4) {return 'grid-cols-1';}
+  if (columnCount <= 11) {return 'grid-cols-1 md:grid-cols-2';}
   return 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3';
 }
 

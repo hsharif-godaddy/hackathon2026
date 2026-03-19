@@ -32,8 +32,8 @@ type EnvironmentPrefix = 'dev-' | 'test-' | '';
  */
 function getMcpEnvironmentPrefix(): EnvironmentPrefix {
   const apiUrl = process.env.GODADDY_API_BASE_URL || '';
-  if (apiUrl.endsWith('dev-godaddy.com')) return 'dev-';
-  if (apiUrl.endsWith('test-godaddy.com')) return 'test-';
+  if (apiUrl.endsWith('dev-godaddy.com')) {return 'dev-';}
+  if (apiUrl.endsWith('test-godaddy.com')) {return 'test-';}
   return ''; // production
 }
 
@@ -323,8 +323,8 @@ export const generateLogoTool: SkillToolDefinition = {
         const palette = planResult.data?.colorPalette;
         if (palette?.primary) {
           const parts = [`primary: ${palette.primary}`];
-          if (palette.secondary) parts.push(`secondary: ${palette.secondary}`);
-          if (palette.accent) parts.push(`accent: ${palette.accent}`);
+          if (palette.secondary) {parts.push(`secondary: ${palette.secondary}`);}
+          if (palette.accent) {parts.push(`accent: ${palette.accent}`);}
           enrichedInput.brandColors = parts.join(', ');
         }
       } catch (e) {

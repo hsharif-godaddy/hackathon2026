@@ -69,10 +69,10 @@ export class DevSupervisorLogClient {
       toolName: 'log-reader',
     };
     
-    if (options.source) beginData.source = options.source;
-    if (options.lines) beginData.lines = options.lines;
-    if (options.since) beginData.since = options.since;
-    if (options.format !== undefined) beginData.format = options.format;
+    if (options.source) {beginData.source = options.source;}
+    if (options.lines) {beginData.lines = options.lines;}
+    if (options.since) {beginData.since = options.since;}
+    if (options.format !== undefined) {beginData.format = options.format;}
     
     toolLogReaderEvents.readBegin(this.logger, beginData);
 
@@ -152,15 +152,15 @@ export class DevSupervisorLogClient {
       };
       
       // Only add defined values to logOptions
-      if (options.source) successData.logOptions.source = options.source;
-      if (options.lines) successData.logOptions.lines = options.lines;
-      if (options.since) successData.logOptions.since = options.since;
-      if (options.format !== undefined) successData.logOptions.format = options.format;
+      if (options.source) {successData.logOptions.source = options.source;}
+      if (options.lines) {successData.logOptions.lines = options.lines;}
+      if (options.since) {successData.logOptions.since = options.since;}
+      if (options.format !== undefined) {successData.logOptions.format = options.format;}
       
       // Only add defined values to resultStats
-      if (options.lines) successData.resultStats.linesRequested = options.lines;
-      if (options.source) successData.resultStats.sourceFilter = options.source;
-      if (options.since) successData.resultStats.sinceFilter = options.since;
+      if (options.lines) {successData.resultStats.linesRequested = options.lines;}
+      if (options.source) {successData.resultStats.sourceFilter = options.source;}
+      if (options.since) {successData.resultStats.sinceFilter = options.since;}
       
       toolLogReaderEvents.readSuccess(this.logger, successData);
 

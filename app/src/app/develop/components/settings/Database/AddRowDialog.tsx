@@ -145,7 +145,7 @@ export function AddRowDialog({
    */
   const parseEnumValues = (type: string): string[] | null => {
     const match = type.match(/^enum\((.*)\)$/i);
-    if (!match) return null;
+    if (!match) {return null;}
 
     // Parse the enum values, handling escaped quotes
     const valuesString = match[1];
@@ -274,7 +274,7 @@ export function AddRowDialog({
     );
   };
 
-  if (!isOpen) return null;
+  if (!isOpen) {return null;}
 
   const editableColumns = schema.filter(col => !isAutoManagedTimestamp(col));
 

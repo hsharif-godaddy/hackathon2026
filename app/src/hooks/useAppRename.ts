@@ -91,7 +91,7 @@ export function useAppRename() {
 
       // Update useDevelopPageStore if this is the currently open app
       const developState = useDevelopPageStore.getState();
-      if (developState.site && developState.site.id === appId) {
+      if (developState.site?.id === appId) {
         useDevelopPageStore.setState((state) => {
           if (state.site) {
             return {

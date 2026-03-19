@@ -31,7 +31,7 @@ interface QARunSource {
 function getClient(): Client | null {
   const endpoint = process.env.AIRO_BUILDER_ES_ENDPOINT;
   const apiKey = process.env.AIRO_BUILDER_ES_API_KEY;
-  if (!endpoint || !apiKey) return null;
+  if (!endpoint || !apiKey) {return null;}
   return new Client({ node: endpoint, auth: { apiKey } });
 }
 

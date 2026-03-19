@@ -159,8 +159,8 @@ export class MarketingAgent {
     stateManager?: SessionStateManager
   }) {
     this.appPath = options?.appPath || process.cwd()
-    if (options?.sessionId) this.sessionId = options.sessionId
-    if (options?.stateManager) this.stateManager = options.stateManager
+    if (options?.sessionId) {this.sessionId = options.sessionId}
+    if (options?.stateManager) {this.stateManager = options.stateManager}
     this.factory = null as any
   }
 
@@ -177,8 +177,8 @@ export class MarketingAgent {
       stateManager?: SessionStateManager
     } = { appPath: this.appPath }
 
-    if (this.sessionId) factoryOptions.sessionId = this.sessionId
-    if (this.stateManager) factoryOptions.stateManager = this.stateManager
+    if (this.sessionId) {factoryOptions.sessionId = this.sessionId}
+    if (this.stateManager) {factoryOptions.stateManager = this.stateManager}
 
     this.factory = await createMarketingAgentFactory(factoryOptions)
     logger.info('marketing_agent.initialization.complete', {

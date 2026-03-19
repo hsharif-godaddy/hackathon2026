@@ -33,7 +33,7 @@ export function translateApiError(
 ): string {
   if (code) {
     const key = API_ERROR_KEYS[code];
-    if (key) return t(key);
+    if (key) {return t(key);}
   }
   return fallback || t('builder_api_error_default');
 }

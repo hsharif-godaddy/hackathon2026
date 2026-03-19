@@ -84,7 +84,7 @@ export class ASTStyleEditor extends ASTEditorBase {
   protected isTargetElement(element: t.JSXElement, elementInfo: ElementInfo): boolean {
     // Check tag name (using base class helper)
     const tagName = this.getTagName(element);
-    if (!tagName || tagName.toLowerCase() !== elementInfo.tagName.toLowerCase()) {
+    if (tagName?.toLowerCase() !== elementInfo.tagName.toLowerCase()) {
       return false;
     }
 

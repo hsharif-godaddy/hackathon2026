@@ -371,7 +371,7 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
         const subId = app?.subscriptionId;
         if (!subId) {
             // app is loaded but has no subscription — signal resolved with nothing
-            if (app !== null) onNoSubscriptionRef.current?.();
+            if (app !== null) {onNoSubscriptionRef.current?.();}
             return;
         }
 
@@ -383,20 +383,20 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
         const subFetch = fetch(`/api/mgmt/subscriptions/${encodeURIComponent(subId)}`, { signal: controller.signal })
             .then(async res => {
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+                if (!res.ok) {throw new Error(data.error ?? `HTTP ${res.status}`);}
                 return data as MgmtSubscription;
             })
             .then(data => { setSubscription(data); return data; })
-            .catch(err => { if (err.name !== 'AbortError') console.warn('[AppDetailsPanel] subscription fetch failed', err); setSubscriptionLoading(false); return null; });
+            .catch(err => { if (err.name !== 'AbortError') {console.warn('[AppDetailsPanel] subscription fetch failed', err);} setSubscriptionLoading(false); return null; });
 
         const grantsFetch = fetch(`/api/mgmt/subscriptions/${encodeURIComponent(subId)}/grants`, { signal: controller.signal })
             .then(async res => {
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+                if (!res.ok) {throw new Error(data.error ?? `HTTP ${res.status}`);}
                 return data as MgmtSubscriptionGrants;
             })
             .then(data => { setGrants(data); onGrantsLoadedRef.current?.(subId, data); return data; })
-            .catch(err => { if (err.name !== 'AbortError') console.warn('[AppDetailsPanel] grants fetch failed', err); setGrantsLoading(false); return null; });
+            .catch(err => { if (err.name !== 'AbortError') {console.warn('[AppDetailsPanel] grants fetch failed', err);} setGrantsLoading(false); return null; });
 
         Promise.all([subFetch, grantsFetch]).then(([sub, grantsData]) => {
             setSubscriptionLoading(false);
@@ -415,7 +415,7 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
     }, [app?.subscriptionId, !!app]);
 
     const fetchDomainError = useCallback(async function fetchDomainError(fqdn: string) {
-        if (!app?.subscriptionId || !app?.systemId) return;
+        if (!app?.subscriptionId || !app?.systemId) {return;}
         setDomainErrorLoading(prev => ({ ...prev, [fqdn]: true }));
         setDomainErrorMsg(prev => ({ ...prev, [fqdn]: '' }));
         try {
@@ -437,7 +437,7 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
     }, [app?.subscriptionId, app?.systemId, appId]);
 
     async function handleReload() {
-        if (!app) return;
+        if (!app) {return;}
         stopPolling();
         setReloadPhase('calling');
         setReloadStatusText('');
@@ -466,8 +466,8 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
                 pollingRef.current = setTimeout(async () => {
                     try {
                         const pollParams = new URLSearchParams();
-                        if (app.subscriptionId) pollParams.set('subscriptionId', app.subscriptionId);
-                        if (app.systemId) pollParams.set('systemId', app.systemId);
+                        if (app.subscriptionId) {pollParams.set('subscriptionId', app.subscriptionId);}
+                        if (app.systemId) {pollParams.set('systemId', app.systemId);}
                         pollParams.set('tryCount', String(tryCount++));
                         const pollRes = await fetch(`/api/mgmt/apps/${encodeURIComponent(appId)}/image-status?${pollParams}`);
                         const pollData: MgmtImageStatus = await pollRes.json();
@@ -483,7 +483,7 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
                         }
                     } catch (err) {
                         console.warn('[AppDetailsPanel] Poll error (will retry)', err);
-                        if (pollingRef.current !== null) poll();
+                        if (pollingRef.current !== null) {poll();}
                     }
                 }, 7000);
             };
@@ -496,7 +496,7 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
     }
 
     useEffect(() => {
-        if (!appId) return;
+        if (!appId) {return;}
 
         setApp(null);
         setImageStatus(null);
@@ -510,7 +510,7 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
         fetch(`/api/mgmt/apps/${encodeURIComponent(appId)}`)
             .then(async res => {
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+                if (!res.ok) {throw new Error(data.error || `HTTP ${res.status}`);}
                 return data as MgmtAppDetails;
             })
             .then(appData => {
@@ -518,13 +518,13 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
                 setLoading(false);
 
                 const params = new URLSearchParams();
-                if (appData.subscriptionId) params.set('subscriptionId', appData.subscriptionId);
-                if (appData.systemId) params.set('systemId', appData.systemId);
+                if (appData.subscriptionId) {params.set('subscriptionId', appData.subscriptionId);}
+                if (appData.systemId) {params.set('systemId', appData.systemId);}
 
                 return fetch(`/api/mgmt/apps/${encodeURIComponent(appId)}/image-status?${params}`)
                     .then(async res => {
                         const data = await res.json();
-                        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+                        if (!res.ok) {throw new Error(data.error || `HTTP ${res.status}`);}
                         return data as MgmtImageStatus;
                     })
                     .then(setImageStatus)
@@ -556,7 +556,7 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
         );
     }
 
-    if (!app) return null;
+    if (!app) {return null;}
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>

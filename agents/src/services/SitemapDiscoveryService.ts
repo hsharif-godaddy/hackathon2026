@@ -122,7 +122,7 @@ export class SitemapDiscoveryService {
           const sitemapPages = await this.parseSitemap(sitemapUrl);
           pages.push(...sitemapPages);
 
-          if (pages.length >= this.maxPages) break;
+          if (pages.length >= this.maxPages) {break;}
         }
       }
 
@@ -209,10 +209,10 @@ export class SitemapDiscoveryService {
 
       while (queue.length > 0 && pages.length < this.maxPages) {
         const currentUrl = queue.shift();
-        if (!currentUrl) continue;
+        if (!currentUrl) {continue;}
 
         const normalizedUrl = this.normalizeUrl(currentUrl);
-        if (visited.has(normalizedUrl)) continue;
+        if (visited.has(normalizedUrl)) {continue;}
         visited.add(normalizedUrl);
 
         // Fetch and parse the page
@@ -427,7 +427,7 @@ export class SitemapDiscoveryService {
         const sitemapPages = await this.parseSitemap(sitemapUrl);
         pages.push(...sitemapPages);
         
-        if (pages.length >= this.maxPages) break;
+        if (pages.length >= this.maxPages) {break;}
       }
     }
 
@@ -447,10 +447,10 @@ export class SitemapDiscoveryService {
     
     for (const urlMatch of urlMatches) {
       const urlBlock = urlMatch[1];
-      if (!urlBlock) continue;
+      if (!urlBlock) {continue;}
       
       const locMatch = urlBlock.match(/<loc>(.*?)<\/loc>/);
-      if (!locMatch || !locMatch[1]) continue;
+      if (!locMatch?.[1]) {continue;}
       
       const page: DiscoveredPage = {
         url: locMatch[1],
@@ -458,23 +458,23 @@ export class SitemapDiscoveryService {
       };
       
       const priorityMatch = urlBlock.match(/<priority>(.*?)<\/priority>/);
-      if (priorityMatch && priorityMatch[1]) {
+      if (priorityMatch?.[1]) {
         page.priority = parseFloat(priorityMatch[1]);
       }
       
       const changefreqMatch = urlBlock.match(/<changefreq>(.*?)<\/changefreq>/);
-      if (changefreqMatch && changefreqMatch[1]) {
+      if (changefreqMatch?.[1]) {
         page.changefreq = changefreqMatch[1];
       }
       
       const lastmodMatch = urlBlock.match(/<lastmod>(.*?)<\/lastmod>/);
-      if (lastmodMatch && lastmodMatch[1]) {
+      if (lastmodMatch?.[1]) {
         page.lastmod = lastmodMatch[1];
       }
       
       pages.push(page);
       
-      if (pages.length >= this.maxPages) break;
+      if (pages.length >= this.maxPages) {break;}
     }
 
     return pages;
@@ -532,7 +532,7 @@ export class SitemapDiscoveryService {
 
       while ((match = linkRegex.exec(html)) !== null) {
         const href = match[1];
-        if (!href) continue;
+        if (!href) {continue;}
 
         try {
           // Resolve relative URLs against the final URL (after redirects)
@@ -557,7 +557,7 @@ export class SitemapDiscoveryService {
           continue;
         }
 
-        if (pages.length >= this.maxPages) break;
+        if (pages.length >= this.maxPages) {break;}
       }
 
       logger.info('sitemap-discovery.crawl.complete', {
@@ -751,7 +751,7 @@ export class SitemapDiscoveryService {
 
       while ((match = linkRegex.exec(html)) !== null) {
         const href = match[1];
-        if (!href) continue;
+        if (!href) {continue;}
 
         try {
           const url = new URL(href, finalUrl);

@@ -137,7 +137,7 @@ export function useAuthPopup(
   }, [])
 
   useEffect(() => {
-    if (!authUrl || shouldPreventAutoOpen) return
+    if (!authUrl || shouldPreventAutoOpen) {return}
 
     const refKey = expectedState || authUrl
     if (!hasAutoOpenedRef.current[refKey]) {

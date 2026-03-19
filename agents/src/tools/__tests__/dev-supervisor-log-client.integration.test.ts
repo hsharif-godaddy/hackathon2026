@@ -91,7 +91,7 @@ describe('DevSupervisorLogClient Integration Tests', () => {
   }, 30000);
   
   afterAll(async () => {
-    if (skipTests) return;
+    if (skipTests) {return;}
 
     // Clean up process using helper
     await cleanupProcess(devSupervisorProcess, 5000);
@@ -108,7 +108,7 @@ describe('DevSupervisorLogClient Integration Tests', () => {
   }, 10000);
 
   beforeEach(async () => {
-    if (skipTests) return;
+    if (skipTests) {return;}
     
     // Generate some additional test logs by executing commands
     try {
@@ -140,7 +140,7 @@ describe('DevSupervisorLogClient Integration Tests', () => {
     });
     
     it('should have dev-supervisor available', () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       expect(existsSync(socketPath)).toBe(true);
       expect(logClient.isAvailable()).toBe(true);
@@ -148,7 +148,7 @@ describe('DevSupervisorLogClient Integration Tests', () => {
     });
 
     it('should be able to communicate with dev-supervisor', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const info = await devSupervisorClient.getInfo();
       expect(info).toBeDefined();
@@ -156,7 +156,7 @@ describe('DevSupervisorLogClient Integration Tests', () => {
     });
 
     it('should be able to get process status', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const status = await devSupervisorClient.getProcessStatus();
       expect(status).toBeDefined();
@@ -168,7 +168,7 @@ describe('DevSupervisorLogClient Integration Tests', () => {
 
   describe('Basic Log Reading', () => {
     it('should read logs without filters', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const result = await logClient.readLogs();
       
@@ -188,7 +188,7 @@ describe('DevSupervisorLogClient Integration Tests', () => {
     });
 
     it('should read logs with line limit', async () => {
-      if (skipTests) return;
+      if (skipTests) {return;}
       
       const result = await logClient.readLogs({ lines: 5 });
       

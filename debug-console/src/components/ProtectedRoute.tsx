@@ -16,7 +16,7 @@ const LoadingComponent = () => (
 );
 
 function isLocalEnv(): boolean {
-    if (typeof window === 'undefined') return false;
+    if (typeof window === 'undefined') {return false;}
     return window.location.hostname === 'localhost' ||
         window.location.hostname === '127.0.0.1' ||
         window.location.hostname.startsWith('192.168.') ||
@@ -37,7 +37,7 @@ export default function ProtectedRoute({
     }, []);
 
     useEffect(() => {
-        if (!mounted) return;
+        if (!mounted) {return;}
 
         // Skip redirect in local development
         if (isLocalEnv()) {

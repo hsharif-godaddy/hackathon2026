@@ -142,7 +142,7 @@ export default function ContentCalendar({ appId, onLoadingChange }: ContentCalen
   // Fetch calendar data
   useEffect(() => {
     const loadCalendarData = async () => {
-      if (!appId) return;
+      if (!appId) {return;}
 
       setIsLoading(true);
       try {

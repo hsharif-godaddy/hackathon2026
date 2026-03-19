@@ -48,7 +48,7 @@ export interface LogsQueryParams {
  * @returns ISO string for the start time or undefined for 'all'
  */
 function calculateStartTime(range: string): string | undefined {
-  if (range === 'all') return undefined;
+  if (range === 'all') {return undefined;}
 
   const now = new Date();
   const value = parseInt(range.slice(0, -1), 10);

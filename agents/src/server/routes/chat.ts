@@ -54,10 +54,10 @@ router.get('/traces', (req, res) => {
   const { agentId, threadId, type, since } = req.query;
   
   const filters: any = {};
-  if (agentId) filters.agentId = agentId as string;
-  if (threadId) filters.threadId = threadId as string;
-  if (type) filters.type = type as string;
-  if (since) filters.since = new Date(since as string);
+  if (agentId) {filters.agentId = agentId as string;}
+  if (threadId) {filters.threadId = threadId as string;}
+  if (type) {filters.type = type as string;}
+  if (since) {filters.since = new Date(since as string);}
   
   const events = globalTracer.getEvents(filters);
   

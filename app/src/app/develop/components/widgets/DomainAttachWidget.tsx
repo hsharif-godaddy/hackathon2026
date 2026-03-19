@@ -121,7 +121,7 @@ export default function DomainAttachWidget({
     includeCdn: true,
     refetchInterval: (data) => {
       const hasPendingDomain = data?.domains?.some(d => {
-        if (d.domainType === 'prefix') return false;
+        if (d.domainType === 'prefix') {return false;}
         return (
           d.status === DomainStatus.PENDING ||
           d.cdnStatus === CdnStatus.INIT ||
@@ -139,11 +139,11 @@ export default function DomainAttachWidget({
 
   // Find CUSTOM domains that are pending (not prefix, not customer-owned)
   const pendingDomain = useMemo(() => {
-    if (!appDetails?.domains) return null;
+    if (!appDetails?.domains) {return null;}
 
     const pending = appDetails.domains.find((d) => {
-      if (d.domainType === 'prefix') return false;
-      if (isCustomerDomain(d.fqdn, domains)) return false;
+      if (d.domainType === 'prefix') {return false;}
+      if (isCustomerDomain(d.fqdn, domains)) {return false;}
       return (
         d.status === DomainStatus.PENDING ||
         d.cdnStatus === CdnStatus.PENDING ||
@@ -211,7 +211,7 @@ export default function DomainAttachWidget({
     }
 
     const trimmedBrandName = brandName.trim();
-    if (!trimmedBrandName) return;
+    if (!trimmedBrandName) {return;}
 
     const fullDomain = reconstructDomain(trimmedBrandName, domains);
 
@@ -279,7 +279,7 @@ export default function DomainAttachWidget({
   }
 
   async function handleConnectDomain(domainName: string) {
-    if (!appId) return;
+    if (!appId) {return;}
 
     const isGoDaddyDomain = isCustomerDomain(domainName, domains);
 
@@ -327,7 +327,7 @@ export default function DomainAttachWidget({
   }
 
   async function handleDisconnectDomain(domainName: string) {
-    if (!appId) return;
+    if (!appId) {return;}
 
     try {
       await modifyDomainsMutation.mutateAsync({
@@ -363,7 +363,7 @@ export default function DomainAttachWidget({
   }
 
   function handleAddCustomDomain() {
-    if (!customDomain || !appId) return;
+    if (!customDomain || !appId) {return;}
 
     const validation = validateDomain(customDomain);
 
@@ -377,7 +377,7 @@ export default function DomainAttachWidget({
   }
 
   async function handleConfirmAddCustomDomain() {
-    if (!customDomain || !appId) return;
+    if (!customDomain || !appId) {return;}
 
     setShowCustomDomainConfirmation(false);
 
@@ -427,7 +427,7 @@ export default function DomainAttachWidget({
   }
 
   async function handleConfirmOwnedDomainAttach() {
-    if (!matchedOwnedDomain) return;
+    if (!matchedOwnedDomain) {return;}
 
     setShowOwnedDomainConfirmation(false);
 

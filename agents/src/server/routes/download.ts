@@ -199,7 +199,7 @@ router.get('/apps/:id/zip', validateAppOwnership, requirePermission('canDownload
     // Clean up zip file after streaming completes or on error
     let cleanupDone = false;
     const cleanup = () => {
-      if (cleanupDone || !zipPath) return;
+      if (cleanupDone || !zipPath) {return;}
       cleanupDone = true;
 
       try {

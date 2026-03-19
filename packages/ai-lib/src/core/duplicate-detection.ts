@@ -103,7 +103,7 @@ export function createDuplicateResponseStopCondition(
 
     // Get the most recent step
     const lastStep = steps[steps.length - 1]
-    if (!lastStep || !lastStep.content || lastStep.content.length === 0) {
+    if (!lastStep?.content || lastStep.content.length === 0) {
       return false
     }
 

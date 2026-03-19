@@ -114,22 +114,22 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
 
   // Helper to get the next step based on current step and feature selections
   const getNextStepAfter = (currentStep: string): 'qa' | 'security-results' | 'video' | 'select-marketing' | null => {
-    if (!featureSelections) return null;
+    if (!featureSelections) {return null;}
 
     switch (currentStep) {
       case 'qa':
-        if (featureSelections.security) return 'security-results';
-        if (featureSelections.video) return 'video';
-        if (featureSelections.marketing) return 'select-marketing';
+        if (featureSelections.security) {return 'security-results';}
+        if (featureSelections.video) {return 'video';}
+        if (featureSelections.marketing) {return 'select-marketing';}
         return null;
 
       case 'security-results':
-        if (featureSelections.video) return 'video';
-        if (featureSelections.marketing) return 'select-marketing';
+        if (featureSelections.video) {return 'video';}
+        if (featureSelections.marketing) {return 'select-marketing';}
         return null;
 
       case 'video':
-        if (featureSelections.marketing) return 'select-marketing';
+        if (featureSelections.marketing) {return 'select-marketing';}
         return null;
 
       case 'select-marketing':

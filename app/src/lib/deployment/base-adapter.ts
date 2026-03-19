@@ -31,12 +31,13 @@ export abstract class BaseDeploymentAdapter implements DeploymentAdapter {
           preview: `http://localhost:3000` // legacy code as each app is spun up as its own container and using 5*** ports
         };
 
-      case 'production':
+      case 'production': {
         const domain = this.environment.domain || 'c4.dev-airoapp.ai';
         return {
           agent: `https://${siteId}.agent.${domain}`,
           preview: `https://${siteId}.preview.${domain}`
         };
+      }
 
       default:
         throw new Error(`Unknown deployment mode: ${this.environment.mode}`);

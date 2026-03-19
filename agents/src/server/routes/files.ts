@@ -111,7 +111,7 @@ function handleMulterError(err: Error, req: Request, res: Response, next: NextFu
 router.post('/upload', uploadRateLimiter,
   (req: Request, res: Response, next: NextFunction) => {
     upload.array('files', 5)(req, res, (err) => {
-      if (err) return handleMulterError(err as Error, req, res, next)
+      if (err) {return handleMulterError(err as Error, req, res, next)}
       next()
     })
   },

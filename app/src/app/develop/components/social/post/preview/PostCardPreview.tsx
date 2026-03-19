@@ -157,7 +157,7 @@ const PreviewFooter = memo(() => {
  */
 export const PostCardPreview = ({ post }: { post: SocialPostData }) => {
   const imageAspectRatio = useMemo(() => {
-    if (post.platform === SocialPlatform.INSTAGRAM) return '1 / 1';
+    if (post.platform === SocialPlatform.INSTAGRAM) {return '1 / 1';}
     return '16 / 9';
   }, [post.platform]);
 

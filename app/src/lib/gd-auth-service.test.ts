@@ -105,7 +105,7 @@ describe('extractTokenFromRequest (standalone function)', () => {
     const request = {
       headers: {
         get: vi.fn((name: string) => {
-          if (name === 'authorization') return 'Bearer standalone-token-123';
+          if (name === 'authorization') {return 'Bearer standalone-token-123';}
           return null;
         })
       },
@@ -121,7 +121,7 @@ describe('extractTokenFromRequest (standalone function)', () => {
     const request = {
       headers: {
         get: vi.fn((name: string) => {
-          if (name === 'authorization') return 'sso-jwt standalone-token-456';
+          if (name === 'authorization') {return 'sso-jwt standalone-token-456';}
           return null;
         })
       },
@@ -138,7 +138,7 @@ describe('extractTokenFromRequest (standalone function)', () => {
       headers: { get: vi.fn(() => null) },
       cookies: {
         get: vi.fn((name: string) => {
-          if (name === 'auth_idp') return { value: 'cookie-token-standalone' };
+          if (name === 'auth_idp') {return { value: 'cookie-token-standalone' };}
           return null;
         })
       }
@@ -287,7 +287,7 @@ describe('GdAuthService', () => {
       const request = {
         headers: {
           get: vi.fn((name: string) => {
-            if (name === 'authorization') return 'Bearer test-token-123';
+            if (name === 'authorization') {return 'Bearer test-token-123';}
             return null;
           })
         },
@@ -305,7 +305,7 @@ describe('GdAuthService', () => {
       const request = {
         headers: {
           get: vi.fn((name: string) => {
-            if (name === 'authorization') return 'sso-jwt test-token-456';
+            if (name === 'authorization') {return 'sso-jwt test-token-456';}
             return null;
           })
         },
@@ -326,7 +326,7 @@ describe('GdAuthService', () => {
         },
         cookies: {
           get: vi.fn((name: string) => {
-            if (name === 'auth_idp') return { value: 'cookie-token-789' };
+            if (name === 'auth_idp') {return { value: 'cookie-token-789' };}
             return null;
           })
         }

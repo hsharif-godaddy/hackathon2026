@@ -69,7 +69,7 @@ export default function VersionHistory() {
 
   // Derive the selected commit object from the hash
   const selectedCommit = useMemo(() => {
-    if (!selectedCommitHash || !commits.length) return null
+    if (!selectedCommitHash || !commits.length) {return null}
     return commits.find(c => c.hash === selectedCommitHash) ?? null
   }, [selectedCommitHash, commits])
 
@@ -86,7 +86,7 @@ export default function VersionHistory() {
   // All commits from that index and before (including it) should be marked as published
   const mostRecentDeployedCommitIndex = useMemo(() => {
     const mostRecentDeployment = deployments.find(d => d.status === DeploymentStatus.DEPLOYED);
-    if (!mostRecentDeployment) return -1;
+    if (!mostRecentDeployment) {return -1;}
 
     return commits.findIndex(c => c.hash === mostRecentDeployment.gitHash);
   }, [deployments, commits])
@@ -98,7 +98,7 @@ export default function VersionHistory() {
   // Uses lightweight state sync (no checkout) when server provides currentCommit
   // IMPORTANT: Only auto-updates when currentCommit changes - respects selections that differ from last auto-sync
   useEffect(() => {
-    if (commits.length === 0 || !appId || isSelectingCommit || commitSelectionError) return
+    if (commits.length === 0 || !appId || isSelectingCommit || commitSelectionError) {return}
 
     const lastSyncedCommit = lastSyncedCommitRef.current[appId]
 

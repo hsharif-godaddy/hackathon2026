@@ -18,7 +18,7 @@ export default function ConversationIdCookie() {
   const searchParams = useSearchParams()
 
   useEffect(function storeConversationId() {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined') {return}
 
     const conversationId = searchParams.get('conversationId')
     if (conversationId && validateUUID(conversationId)) {

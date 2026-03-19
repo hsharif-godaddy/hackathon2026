@@ -65,10 +65,10 @@ function getConfig(): {
 
   // Validate all required values are present
   const missing = [];
-  if (!apiUrl) missing.push('GODADDY_API_BASE_URL');
-  if (!agentUrl) missing.push('AGENT_URL');
-  if (!clientId) missing.push('GODADDY_OAUTH_CLIENT_ID');
-  if (!clientSecret) missing.push('GODADDY_OAUTH_CLIENT_SECRET');
+  if (!apiUrl) {missing.push('GODADDY_API_BASE_URL');}
+  if (!agentUrl) {missing.push('AGENT_URL');}
+  if (!clientId) {missing.push('GODADDY_OAUTH_CLIENT_ID');}
+  if (!clientSecret) {missing.push('GODADDY_OAUTH_CLIENT_SECRET');}
 
   if (missing.length > 0) {
     logger.error('auth-service.config.missing-required-values', {
@@ -216,7 +216,7 @@ export class AuthService {
   private static parseSubClaim(accessToken: string): string | undefined {
     try {
       const parts = accessToken.split('.');
-      if (parts.length < 2 || !parts[1]) return undefined;
+      if (parts.length < 2 || !parts[1]) {return undefined;}
       const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
       return typeof payload.sub === 'string' ? payload.sub : undefined;
     } catch {

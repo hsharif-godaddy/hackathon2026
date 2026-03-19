@@ -15,12 +15,12 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: (feature: string) => {
-    if (feature === 'appbuilder-settings-project') return { data: true };
-    if (feature === 'appbuilder-settings-domain') return { data: true };
-    if (feature === 'appbuilder-settings-backups') return { data: true };
-    if (feature === 'appbuilder-settings-security') return { data: true };
-    if (feature === 'appbuilder-settings-secrets') return { data: true };
-    if (feature === 'appbuilder-settings-visualscan') return { data: false };
+    if (feature === 'appbuilder-settings-project') {return { data: true };}
+    if (feature === 'appbuilder-settings-domain') {return { data: true };}
+    if (feature === 'appbuilder-settings-backups') {return { data: true };}
+    if (feature === 'appbuilder-settings-security') {return { data: true };}
+    if (feature === 'appbuilder-settings-secrets') {return { data: true };}
+    if (feature === 'appbuilder-settings-visualscan') {return { data: false };}
     return { data: false };
   },
 }));

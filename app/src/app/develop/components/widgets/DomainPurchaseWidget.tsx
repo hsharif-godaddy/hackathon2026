@@ -66,7 +66,7 @@ export default function DomainPurchaseWidget({
     queryKey: ['domainConfig'],
     queryFn: async () => {
       const res = await appFetch('/api/domains/config');
-      if (!res.ok) return { apiKeyName: '' };
+      if (!res.ok) {return { apiKeyName: '' };}
       return res.json() as Promise<{ apiKeyName: string }>;
     },
     staleTime: Infinity,
@@ -85,12 +85,12 @@ export default function DomainPurchaseWidget({
   const [showSearchInput, setShowSearchInput] = useState(true);
 
   const getFallbackSearchQuery = (): string => {
-    if (domain?.trim()) return domain.trim();
-    if (brandName?.trim()) return brandName.trim();
-    if (site?.name?.trim()) return site.name.trim();
+    if (domain?.trim()) {return domain.trim();}
+    if (brandName?.trim()) {return brandName.trim();}
+    if (site?.name?.trim()) {return site.name.trim();}
     if (site?.initial_prompt?.trim()) {
       const prompt = site.initial_prompt.trim();
-      if (prompt.length <= 50) return prompt;
+      if (prompt.length <= 50) {return prompt;}
       const truncated = prompt.slice(0, 50);
       const lastSpace = truncated.lastIndexOf(' ');
       return lastSpace > 20 ? truncated.slice(0, lastSpace) : truncated;
@@ -115,7 +115,7 @@ export default function DomainPurchaseWidget({
 
   function runSearch() {
     const q = searchInput.trim();
-    if (q.length >= 2) setSubmittedQuery(q);
+    if (q.length >= 2) {setSubmittedQuery(q);}
   }
 
   // Get product info for a domain
@@ -307,8 +307,8 @@ export default function DomainPurchaseWidget({
   const domains = [...rawDomains].sort((a, b) => {
     const aExact = a.isExactMatch ?? false;
     const bExact = b.isExactMatch ?? false;
-    if (aExact && !bExact) return -1;
-    if (!aExact && bExact) return 1;
+    if (aExact && !bExact) {return -1;}
+    if (!aExact && bExact) {return 1;}
     return 0;
   });
   const hasResults = domains.length > 0;

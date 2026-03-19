@@ -32,7 +32,7 @@ export default function ProjectPanel() {
   })
 
   const handleDownload = async () => {
-    if (!appId) return
+    if (!appId) {return}
 
     // Log download button click event
     logAiroHQEvent({

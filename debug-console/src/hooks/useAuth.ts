@@ -13,7 +13,7 @@ interface AuthState {
 }
 
 function isLocalEnv(): boolean {
-  if (typeof window === 'undefined') return false;
+  if (typeof window === 'undefined') {return false;}
   return window.location.hostname === 'localhost' ||
          window.location.hostname === '127.0.0.1' ||
          window.location.hostname.startsWith('192.168.') ||
@@ -26,8 +26,8 @@ let cachedAuthState: AuthState | null = null;
 let authCheckPromise: Promise<AuthState> | null = null;
 
 async function checkAuthOnce(): Promise<AuthState> {
-  if (cachedAuthState) return cachedAuthState;
-  if (authCheckPromise) return authCheckPromise;
+  if (cachedAuthState) {return cachedAuthState;}
+  if (authCheckPromise) {return authCheckPromise;}
 
   // Bypass auth in local development
   if (isLocalEnv()) {
@@ -82,7 +82,7 @@ export function useAuth(): AuthState {
 
   useEffect(() => {
     // Skip if already authenticated (local env)
-    if (authState.isAuthenticated && !authState.isLoading) return;
+    if (authState.isAuthenticated && !authState.isLoading) {return;}
 
     checkAuthOnce().then(setAuthState);
   }, [authState.isAuthenticated, authState.isLoading]);

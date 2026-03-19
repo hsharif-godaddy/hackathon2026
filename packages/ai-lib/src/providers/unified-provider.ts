@@ -313,13 +313,13 @@ async function handleBudgetExceededWithGrantFallback(
   init: RequestInit | undefined,
   modifiedInit: RequestInit
 ): Promise<Response | null> {
-  if (response.status !== 400 || !metadata._internal?.socketId || !init?.body) return null
+  if (response.status !== 400 || !metadata._internal?.socketId || !init?.body) {return null}
 
   const bodyText = await response.clone().text()
-  if (!containsBudgetExceededPattern(bodyText)) return null
+  if (!containsBudgetExceededPattern(bodyText)) {return null}
 
   const { socketId, customerId } = metadata._internal
-  if (!grantSessionManager.isFeatureEnabled(socketId)) return null
+  if (!grantSessionManager.isFeatureEnabled(socketId)) {return null}
 
   // Extract the userId from the failed request to detect concurrent advances
   let failedUserId: string | undefined
@@ -370,7 +370,7 @@ async function handleBudgetExceededWithGrantFallback(
     newUserId = grantSessionManager.getCurrentUserId(socketId, customerId)
   }
 
-  if (!newUserId) return null
+  if (!newUserId) {return null}
 
   logger.info('grants.fetch.fallback.retry', {
     socketId,
@@ -436,7 +436,7 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
     // Handle budget exceeded with grant fallback
     if (metadata) {
       const retryResponse = await handleBudgetExceededWithGrantFallback(response, metadata, url, init, modifiedInit)
-      if (retryResponse) response = retryResponse
+      if (retryResponse) {response = retryResponse}
     }
 
     // Attempt token refresh on authentication failure
@@ -491,7 +491,7 @@ function createSelectiveBetaHeaderFetch(blockedHeaders?: string[]): typeof fetch
     // Handle budget exceeded with grant fallback
     if (metadata) {
       const retryResponse = await handleBudgetExceededWithGrantFallback(response, metadata, url, init, modifiedInit)
-      if (retryResponse) response = retryResponse
+      if (retryResponse) {response = retryResponse}
     }
 
     return response

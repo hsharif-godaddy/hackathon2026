@@ -87,7 +87,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
         setActiveTransfer(null)
       }
     } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return
+      if (error instanceof DOMException && error.name === 'AbortError') {return}
     }
   }, [site.id])
 
@@ -104,7 +104,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
           }
         }
       } catch (error) {
-        if (error instanceof DOMException && error.name === 'AbortError') return
+        if (error instanceof DOMException && error.name === 'AbortError') {return}
         logger.error('site.details.fetch.failed', {
           siteId: site.id,
           error: error instanceof Error ? error.message : String(error)
@@ -166,7 +166,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
   const [copyFailed, setCopyFailed] = useState(false)
 
   const handleCopyToken = async () => {
-    if (!activeTransfer?.transferToken) return
+    if (!activeTransfer?.transferToken) {return}
     try {
       await navigator.clipboard.writeText(activeTransfer.transferToken)
       setCopied(true)

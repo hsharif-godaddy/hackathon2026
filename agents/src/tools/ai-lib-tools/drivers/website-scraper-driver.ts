@@ -367,7 +367,7 @@ export class WebsiteScraperDriver extends BaseDriver {
 
       const data = await response.json() as ScrapeAPIResponse;
 
-      if (!data || !data.sanitizedContent) {
+      if (!data?.sanitizedContent) {
         return {
           success: false,
           error: 'No content extracted from website'
@@ -659,8 +659,8 @@ export class WebsiteScraperDriver extends BaseDriver {
 
     // Helper to add unique assets
     const addAsset = (url: string | null, type: 'image' | 'font' | 'icon' | 'other', altText?: string) => {
-      if (!url || seenUrls.has(url)) return;
-      if (!this.isValidAssetUrl(url)) return;
+      if (!url || seenUrls.has(url)) {return;}
+      if (!this.isValidAssetUrl(url)) {return;}
       seenUrls.add(url);
       
       this.logger.debug('website-scraper.asset-added', {
@@ -775,30 +775,30 @@ export class WebsiteScraperDriver extends BaseDriver {
     let reason = '';
     
     // Skip data URIs (already embedded)
-    if (url.startsWith('data:')) reason = 'data URI';
+    if (url.startsWith('data:')) {reason = 'data URI';}
     
     // Skip blob URLs
-    else if (url.startsWith('blob:')) reason = 'blob URL';
+    else if (url.startsWith('blob:')) {reason = 'blob URL';}
     
     // Skip javascript: URLs
-    else if (url.startsWith('javascript:')) reason = 'javascript URL';
+    else if (url.startsWith('javascript:')) {reason = 'javascript URL';}
     
     // Skip template placeholders (common in SSR/CSR frameworks)
-    else if (url.includes('{{') || url.includes('}}')) reason = 'template placeholder {{}}';
-    else if (url.includes('${')) reason = 'template placeholder ${}';
-    else if (url.includes('%7B') || url.includes('%7D')) reason = 'encoded template placeholder';
+    else if (url.includes('{{') || url.includes('}}')) {reason = 'template placeholder {{}}';}
+    else if (url.includes('${')) {reason = 'template placeholder ${}';}
+    else if (url.includes('%7B') || url.includes('%7D')) {reason = 'encoded template placeholder';}
     
     // Skip about: and chrome: URLs
-    else if (url.startsWith('about:') || url.startsWith('chrome:')) reason = 'browser URL';
+    else if (url.startsWith('about:') || url.startsWith('chrome:')) {reason = 'browser URL';}
     
     // Skip empty or whitespace-only URLs
-    else if (!url.trim()) reason = 'empty URL';
+    else if (!url.trim()) {reason = 'empty URL';}
     
     // Skip very short URLs that are likely placeholders
-    else if (url.length < 5) reason = 'too short';
+    else if (url.length < 5) {reason = 'too short';}
     
     // Skip URLs with only hash
-    else if (url === '#' || url.startsWith('#')) reason = 'hash only';
+    else if (url === '#' || url.startsWith('#')) {reason = 'hash only';}
     
     if (reason) {
       this.logger.debug('website-scraper.asset-url-rejected', {
@@ -822,12 +822,12 @@ export class WebsiteScraperDriver extends BaseDriver {
   private resolveUrl(url: string, baseUrl: string): string | null {
     try {
       // Skip data URIs - they're embedded content
-      if (url.startsWith('data:')) return null;
+      if (url.startsWith('data:')) {return null;}
       
       // Handle Next.js image optimization URLs - extract the real image URL
       if (url.includes('/_next/image?url=')) {
         const match = url.match(/[?&]url=([^&]+)/);
-        if (match && match[1]) {
+        if (match?.[1]) {
           try {
             const decodedUrl = decodeURIComponent(match[1]);
             this.logger.debug('website-scraper.nextjs-image-extracted', {
@@ -853,10 +853,10 @@ export class WebsiteScraperDriver extends BaseDriver {
       }
       
       // Handle protocol-relative URLs
-      if (url.startsWith('//')) return `https:${url}`;
+      if (url.startsWith('//')) {return `https:${url}`;}
       
       // Already absolute
-      if (url.startsWith('http')) return url;
+      if (url.startsWith('http')) {return url;}
       
       // Resolve relative URL against base
       const base = new URL(baseUrl);

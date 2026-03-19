@@ -44,7 +44,7 @@ export function useSound(
   }, [src, volume])
 
   const play = useCallback(() => {
-    if (!audioRef.current) return
+    if (!audioRef.current) {return}
 
     // If interrupt is false and audio is already playing, don't interrupt it
     if (!interrupt && currentPlayingRef.current && !currentPlayingRef.current.paused) {

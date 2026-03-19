@@ -41,7 +41,7 @@ function SitesPageContent() {
   }, [refreshSites])
 
   const handleAdminStopAll = async () => {
-    if (runningCount === 0) return
+    if (runningCount === 0) {return}
 
     setAdminActionLoading('stop-all')
     try {
@@ -56,7 +56,7 @@ function SitesPageContent() {
   }
 
   const handleAdminDeleteAll = async () => {
-    if (totalSites === 0) return
+    if (totalSites === 0) {return}
 
     setAdminActionLoading('delete-all')
     try {

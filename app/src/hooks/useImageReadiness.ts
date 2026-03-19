@@ -93,7 +93,7 @@ export function useImageReadiness(
   // Status check mutation — fires once when canProceed becomes true
   const statusCheck = useMutation({
     mutationFn: () => {
-      if (!appId) throw new Error('No app ID');
+      if (!appId) {throw new Error('No app ID');}
       logger.info('image-readiness.status-check.start', { appId });
       return fetchImageStatus(appId);
     },
@@ -108,7 +108,7 @@ export function useImageReadiness(
 
       if (data.status === 'reloading') {
         isReloadingInitialRef.current = true;
-        if (appId) startPollingForServer(appId);
+        if (appId) {startPollingForServer(appId);}
         reloadingPollCountRef.current = 0;
         setPhase('polling-images');
         return;
@@ -132,13 +132,13 @@ export function useImageReadiness(
   // Reload mutation — fires when status is 'stale'
   const reload = useMutation({
     mutationFn: () => {
-      if (!appId) throw new Error('No app ID');
+      if (!appId) {throw new Error('No app ID');}
       logger.info('image-readiness.reload.start', { appId });
       return triggerReload(appId);
     },
     onSuccess: () => {
       reloadStartTimeRef.current = Date.now();
-      if (appId) startPollingForServer(appId);
+      if (appId) {startPollingForServer(appId);}
       reloadingPollCountRef.current = 0;
       setPhase('polling-images');
     },
@@ -147,7 +147,7 @@ export function useImageReadiness(
         appId,
         error: err instanceof Error ? err.message : String(err),
       });
-      if (appId) startPollingForServer(appId);
+      if (appId) {startPollingForServer(appId);}
       logger.info('image-readiness.server-wait.start', { appId, reason: 'reload-failed' });
       serverWaitStartTimeRef.current = Date.now();
       setPhase('waiting-server');
@@ -156,7 +156,7 @@ export function useImageReadiness(
 
   // Trigger reload when phase becomes 'reloading'
   useEffect(() => {
-    if (phase !== 'reloading' || reload.isPending) return;
+    if (phase !== 'reloading' || reload.isPending) {return;}
     reload.mutate();
   }, [phase, reload]);
 
@@ -167,7 +167,7 @@ export function useImageReadiness(
   const poll = useQuery({
     queryKey: ['image-status-poll', appId],
     queryFn: async (): Promise<{ action: PollAction } | null> => {
-      if (!appId) return null;
+      if (!appId) {return null;}
 
       if (isReloadingInitialRef.current) {
         reloadingPollCountRef.current++;
@@ -194,7 +194,7 @@ export function useImageReadiness(
 
   // React to poll results — state transitions happen here, not inside queryFn
   useEffect(() => {
-    if (phase !== 'polling-images' || !poll.data) return;
+    if (phase !== 'polling-images' || !poll.data) {return;}
 
     const { action } = poll.data;
 
@@ -218,9 +218,9 @@ export function useImageReadiness(
 
   // Server health timeout check
   useEffect(() => {
-    if (phase !== 'waiting-server') return;
+    if (phase !== 'waiting-server') {return;}
 
-    if (isServerReady) return;
+    if (isServerReady) {return;}
 
     if (!serverWaitStartTimeRef.current) {
       serverWaitStartTimeRef.current = Date.now();
@@ -240,8 +240,8 @@ export function useImageReadiness(
 
   // Completion: server is ready while waiting
   useEffect(() => {
-    if (phase !== 'waiting-server' || !isServerReady || !appId) return;
-    if (hasHandledCompletionRef.current) return;
+    if (phase !== 'waiting-server' || !isServerReady || !appId) {return;}
+    if (hasHandledCompletionRef.current) {return;}
 
     hasHandledCompletionRef.current = true;
     logger.info('image-readiness.complete', { appId });
@@ -255,7 +255,7 @@ export function useImageReadiness(
 
   // Trigger status check when canProceed becomes true
   useEffect(() => {
-    if (!canProceed || !appId || hasStartedRef.current) return;
+    if (!canProceed || !appId || hasStartedRef.current) {return;}
     hasStartedRef.current = true;
     setPhase('checking');
     statusCheck.mutate();

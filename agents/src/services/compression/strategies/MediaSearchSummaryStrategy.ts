@@ -174,7 +174,7 @@ export class MediaSearchSummaryStrategy implements CompressionStrategy {
       // Handle parallel search results array
       if (Array.isArray(result.results)) {
         for (const subResult of result.results) {
-          if (!subResult) continue;
+          if (!subResult) {continue;}
 
           // Aggregate URLs from each sub-result
           if (Array.isArray(subResult.urls)) {

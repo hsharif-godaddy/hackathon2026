@@ -56,7 +56,7 @@ async function isBlogInstalled(appId: string): Promise<boolean> {
  * Validate that a date string is valid and parseable
  */
 function isValidDate(dateString: unknown): dateString is string {
-  if (typeof dateString !== 'string') return false;
+  if (typeof dateString !== 'string') {return false;}
   const date = new Date(dateString);
   return !isNaN(date.getTime());
 }

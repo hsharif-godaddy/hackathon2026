@@ -24,8 +24,7 @@ export class CatchupCompleteHandler implements MessageHandler {
       const pending = context.refs.pendingRecoveryAck.current
 
       if (
-        pending &&
-        pending.ackEvent === 'catchup_ack' &&
+        pending?.ackEvent === 'catchup_ack' &&
         pending.conversationId === data.data.conversationId
       ) {
         pending.lastSequence = data.data.lastSequence as number

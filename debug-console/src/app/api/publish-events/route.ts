@@ -133,8 +133,8 @@ export const GET = withAuth(async (request) => {
       const stats = byApp.get(e.appId) || { total: 0, success: 0, failed: 0 };
       if (e.eventType !== 'begin') {
         stats.total++;
-        if (e.success) stats.success++;
-        else stats.failed++;
+        if (e.success) {stats.success++;}
+        else {stats.failed++;}
       }
       if (!stats.lastPublish || e.timestamp > stats.lastPublish) {
         stats.lastPublish = e.timestamp;

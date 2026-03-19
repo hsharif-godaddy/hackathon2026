@@ -1,5 +1,5 @@
 export function isFullscreen(): boolean {
-  if (typeof document === 'undefined') return false
+  if (typeof document === 'undefined') {return false}
 
   return !!(
     document.fullscreenElement ||

@@ -485,10 +485,10 @@ export default function FileEditToolRenderer({
       const deleted = batchOperations.filter(op => op.success && op.mode === 'delete').length
 
       const parts: string[] = []
-      if (created > 0) parts.push(`${created} created`)
-      if (edited > 0) parts.push(`${edited} edited`)
-      if (rewritten > 0) parts.push(`${rewritten} rewritten`)
-      if (deleted > 0) parts.push(`${deleted} deleted`)
+      if (created > 0) {parts.push(`${created} created`)}
+      if (edited > 0) {parts.push(`${edited} edited`)}
+      if (rewritten > 0) {parts.push(`${rewritten} rewritten`)}
+      if (deleted > 0) {parts.push(`${deleted} deleted`)}
 
       displayMessage = `${t('builder_common_files')}: ${parts.join(', ')}`
     }

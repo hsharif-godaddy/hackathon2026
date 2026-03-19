@@ -42,7 +42,7 @@ export default function PersistentTodoList() {
    */
   useEffect(() => {
     async function load() {
-      if (!appId) return
+      if (!appId) {return}
 
       setIsLoading(true)
 
@@ -332,7 +332,7 @@ function TodoListModal({
 }) {
   const t = useTranslations()
 
-  if (!isOpen || !list) return null
+  if (!isOpen || !list) {return null}
 
   const items = list.items || []
   const totalItems = items.length

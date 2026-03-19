@@ -134,7 +134,7 @@ export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (displayedExamples.length === 0) return
+    if (displayedExamples.length === 0) {return}
 
     // Create random order array
     const indices = Array.from({ length: displayedExamples.length }, (_, i) => i)

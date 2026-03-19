@@ -88,7 +88,7 @@ export function QAStep({ appId, isAnalyzing, analysisError, analysisResults, upd
   };
 
   const handleFixSelected = async () => {
-    if (selectedIssues.size === 0) return;
+    if (selectedIssues.size === 0) {return;}
 
     setIsMarkingFixed(true);
     try {

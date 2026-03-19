@@ -929,10 +929,10 @@ export class GitUtils {
     } = {}
   ): Promise<GitCommandResult> {
     const args = ['rm'];
-    if (options.recursive) args.push('-r');
-    if (options.cached) args.push('--cached');
-    if (options.force) args.push('-f');
-    if (options.quiet) args.push('--quiet');
+    if (options.recursive) {args.push('-r');}
+    if (options.cached) {args.push('--cached');}
+    if (options.force) {args.push('-f');}
+    if (options.quiet) {args.push('--quiet');}
     args.push(...files);
     return this.executeGitCommand(args, repoPath, {
       ...options,

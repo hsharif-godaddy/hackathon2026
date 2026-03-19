@@ -20,11 +20,11 @@ export function generatePostId(): string {
  * @returns Normalized 24-hour time string rounded to 15-min interval (e.g., "16:15") or undefined if invalid
  */
 function normalizeTimeFormat(timeString: string | undefined): string | undefined {
-  if (!timeString) return undefined
+  if (!timeString) {return undefined}
 
   // Match time pattern and extract components
   const timeMatch = timeString.match(/^(\d{1,2}):?(\d{2})?\s*(AM|PM|am|pm|a\.m\.|p\.m\.)?$/i)
-  if (!timeMatch) return undefined
+  if (!timeMatch) {return undefined}
 
   let hours = parseInt(timeMatch[1]!, 10)
   let minutes = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0

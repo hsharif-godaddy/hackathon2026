@@ -44,10 +44,10 @@ export async function initializeBackgroundSummarization(config?: {
     keepRecentTurns: number;
     disableFullRegeneration: boolean;
   }> = {};
-  if (config?.maxPromptTokens !== undefined) summarizerConfig.maxPromptTokens = config.maxPromptTokens;
-  if (config?.debounceMs !== undefined) summarizerConfig.debounceMs = config.debounceMs;
-  if (config?.keepRecentTurns !== undefined) summarizerConfig.keepRecentTurns = config.keepRecentTurns;
-  if (config?.disableFullRegeneration !== undefined) summarizerConfig.disableFullRegeneration = config.disableFullRegeneration;
+  if (config?.maxPromptTokens !== undefined) {summarizerConfig.maxPromptTokens = config.maxPromptTokens;}
+  if (config?.debounceMs !== undefined) {summarizerConfig.debounceMs = config.debounceMs;}
+  if (config?.keepRecentTurns !== undefined) {summarizerConfig.keepRecentTurns = config.keepRecentTurns;}
+  if (config?.disableFullRegeneration !== undefined) {summarizerConfig.disableFullRegeneration = config.disableFullRegeneration;}
 
   logger.info('summarization.initialize.begin', {
     maxPromptTokens: config?.maxPromptTokens ?? 10000,

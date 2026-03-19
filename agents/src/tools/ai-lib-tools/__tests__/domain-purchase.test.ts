@@ -421,7 +421,7 @@ describe('domain-purchase', function packageTests() {
             const mockExecuteAction = vi.fn().mockImplementation(() => {
                 callCount++
                 // First call is getSiteData — reject to trigger fail-open
-                if (callCount === 1) return Promise.reject(new Error('timeout'))
+                if (callCount === 1) {return Promise.reject(new Error('timeout'))}
                 // Second call is attachDomain — succeed
                 return Promise.resolve({ success: true })
             })

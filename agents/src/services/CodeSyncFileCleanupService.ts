@@ -57,17 +57,17 @@ export class CodeSyncFileCleanupService {
 
     // Check OS junk
     for (const pattern of patterns.osJunk) {
-      if (this.matchesPattern(lower, pattern)) return true;
+      if (this.matchesPattern(lower, pattern)) {return true;}
     }
 
     // Check security-sensitive
     for (const pattern of patterns.securitySensitive) {
-      if (this.matchesPattern(lower, pattern)) return true;
+      if (this.matchesPattern(lower, pattern)) {return true;}
     }
 
     // Check IDE config
     for (const pattern of patterns.ideConfig) {
-      if (this.matchesPattern(lower, pattern)) return true;
+      if (this.matchesPattern(lower, pattern)) {return true;}
     }
 
     return false;
@@ -161,7 +161,7 @@ export class CodeSyncFileCleanupService {
       const findArgs = filePatterns
         .map(p => {
           // .env -> ".env*" (matches .env, .env.local, .env.production)
-          if (p === '.env') return "-name '.env*'";
+          if (p === '.env') {return "-name '.env*'";}
           // .pem, .key -> "*.pem", "*.key" (extension patterns)
           if (p.startsWith('.') && !p.includes('.', 1) && p.length <= 4) {
             return `-name '*${p}'`;

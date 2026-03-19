@@ -47,7 +47,7 @@ export interface PublishLimitResult {
  * @returns The publish limit (null = unlimited, number = limit)
  */
 export function getPublishLimit(plan: SubscriptionPlan | undefined): number | null {
-  if (!plan) return 0;
+  if (!plan) {return 0;}
   // Use 'in' check to distinguish between missing key and explicit null value
   if (plan in PLAN_PUBLISH_LIMITS) {
     return PLAN_PUBLISH_LIMITS[plan];
@@ -120,10 +120,10 @@ export function canPublishWithPlan(
   const limit = getPublishLimit(plan);
 
   // Unlimited publishing
-  if (limit === null) return true;
+  if (limit === null) {return true;}
 
   // No publishing allowed
-  if (limit === 0) return false;
+  if (limit === 0) {return false;}
 
   // Allow re-publishing of already-published apps without counting against limit.
   // This is intentional: users should always be able to update their existing published apps.

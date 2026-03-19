@@ -40,7 +40,7 @@ export class VideoPromptGenerationService {
 
       let contentText: string
 
-      if (!summary || !summary.summaryText) {
+      if (!summary?.summaryText) {
         logger.warn('video-prompt-generation.no-summary', { appId })
 
         const conversation = await this.conversationRepo.getLatestForApp(appId)
@@ -140,8 +140,8 @@ export class VideoPromptGenerationService {
       }
 
       const attributes: { userId: string; sessionId?: string; metadata?: Record<string, string> } = { userId: appId }
-      if (socketId) attributes.sessionId = socketId
-      if (customerId) attributes.metadata = { customerId }
+      if (socketId) {attributes.sessionId = socketId}
+      if (customerId) {attributes.metadata = { customerId }}
 
       const generateVideoPromptWithAttributes = async () =>
         propagateAttributes(attributes, async () =>

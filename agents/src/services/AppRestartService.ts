@@ -246,7 +246,7 @@ export class AppRestartService {
         exitCode: result.exitCode,
       };
       const combinedOutput = `${result.stdout || ''}\n${result.stderr || ''}`.trim();
-      if (combinedOutput) response.output = combinedOutput;
+      if (combinedOutput) {response.output = combinedOutput;}
       if (!result.success) {
         response.error = result.stderr || `${command} failed`;
       }
@@ -273,7 +273,7 @@ export class AppRestartService {
       const success = await devSupervisor.stopProcess();
 
       const result: { success: boolean; error?: string } = { success };
-      if (!success) result.error = 'Failed to stop dev server';
+      if (!success) {result.error = 'Failed to stop dev server';}
       return result;
     } catch (error) {
       return {
@@ -312,7 +312,7 @@ export class AppRestartService {
         exitCode: result.exitCode,
       };
       const combinedOutput = `${result.stdout || ''}\n${result.stderr || ''}`.trim();
-      if (combinedOutput) response.output = combinedOutput;
+      if (combinedOutput) {response.output = combinedOutput;}
       if (!result.success) {
         response.error = result.stderr || 'npm install failed';
       }
@@ -354,7 +354,7 @@ export class AppRestartService {
         exitCode: result.exitCode,
       };
       const combinedOutput = `${result.stdout || ''}\n${result.stderr || ''}`.trim();
-      if (combinedOutput) response.output = combinedOutput;
+      if (combinedOutput) {response.output = combinedOutput;}
       if (!result.success) {
         response.error = result.stderr || 'npm run build failed';
       }
@@ -457,7 +457,7 @@ export class AppRestartService {
       const success = await devSupervisor.restartProcess({ graceful: true });
 
       const result: { success: boolean; error?: string } = { success };
-      if (!success) result.error = 'Failed to restart dev server';
+      if (!success) {result.error = 'Failed to restart dev server';}
       return result;
     } catch (error) {
       return {

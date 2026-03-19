@@ -157,26 +157,26 @@ export class ImageSearchServiceDriver implements MediaDriver {
     const filters: Record<string, unknown> = {};
 
     // Getty-native filters
-    if (options.orientations?.length) filters.orientations = options.orientations;
-    if (options.compositions?.length) filters.compositions = options.compositions;
-    if (options.moods?.length) filters.moods = options.moods;
-    if (options.graphicalStyles?.length) filters.graphicalStyles = options.graphicalStyles;
-    if (options.numberOfPeople?.length) filters.numberOfPeople = options.numberOfPeople;
-    if (options.ethnicity?.length) filters.ethnicity = options.ethnicity;
-    if (options.ageOfPeople?.length) filters.ageOfPeople = options.ageOfPeople;
-    if (options.minimumSize) filters.minimumSize = options.minimumSize;
-    if (options.sortOrder) filters.sortOrder = options.sortOrder;
-    if (options.color) filters.color = options.color;
+    if (options.orientations?.length) {filters.orientations = options.orientations;}
+    if (options.compositions?.length) {filters.compositions = options.compositions;}
+    if (options.moods?.length) {filters.moods = options.moods;}
+    if (options.graphicalStyles?.length) {filters.graphicalStyles = options.graphicalStyles;}
+    if (options.numberOfPeople?.length) {filters.numberOfPeople = options.numberOfPeople;}
+    if (options.ethnicity?.length) {filters.ethnicity = options.ethnicity;}
+    if (options.ageOfPeople?.length) {filters.ageOfPeople = options.ageOfPeople;}
+    if (options.minimumSize) {filters.minimumSize = options.minimumSize;}
+    if (options.sortOrder) {filters.sortOrder = options.sortOrder;}
+    if (options.color) {filters.color = options.color;}
 
     // Analysis-enriched filters (service-only)
-    if (options.subjectCategory?.length) filters.subjectCategory = options.subjectCategory;
-    if (options.copySpaceAmount?.length) filters.copySpaceAmount = options.copySpaceAmount;
-    if (options.copySpaceLocation?.length) filters.copySpaceLocation = options.copySpaceLocation;
-    if (options.usageContext?.length) filters.usageContext = options.usageContext;
-    if (options.backgroundType?.length) filters.backgroundType = options.backgroundType;
-    if (options.visualComplexity?.length) filters.visualComplexity = options.visualComplexity;
-    if (options.tone?.length) filters.tone = options.tone;
-    if (options.peopleFocus?.length) filters.peopleFocus = options.peopleFocus;
+    if (options.subjectCategory?.length) {filters.subjectCategory = options.subjectCategory;}
+    if (options.copySpaceAmount?.length) {filters.copySpaceAmount = options.copySpaceAmount;}
+    if (options.copySpaceLocation?.length) {filters.copySpaceLocation = options.copySpaceLocation;}
+    if (options.usageContext?.length) {filters.usageContext = options.usageContext;}
+    if (options.backgroundType?.length) {filters.backgroundType = options.backgroundType;}
+    if (options.visualComplexity?.length) {filters.visualComplexity = options.visualComplexity;}
+    if (options.tone?.length) {filters.tone = options.tone;}
+    if (options.peopleFocus?.length) {filters.peopleFocus = options.peopleFocus;}
 
     return Object.keys(filters).length > 0 ? filters : undefined;
   }

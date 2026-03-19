@@ -70,7 +70,7 @@ export const useSubscriptionCacheStore = create<SubscriptionCacheStore>()(
     // Initialize cache on first use
     initialize: async (jwt: string) => {
       const state = get()
-      if (state.customerId) return // Already initialized
+      if (state.customerId) {return} // Already initialized
       
       logger.info('subscription-cache.init.start')
       await get().refresh(jwt, true)

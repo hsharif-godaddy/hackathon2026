@@ -30,7 +30,7 @@ export function pickAndMarkExtensionResolved(
   candidates: UploadedFile[],
   compareFn: (a: UploadedFile, b: UploadedFile) => number
 ): UploadedFile | null {
-  if (candidates.length === 0) return null
+  if (candidates.length === 0) {return null}
 
   let consumed = extensionResolvedFiles.get(appId)
   if (!consumed) {

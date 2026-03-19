@@ -230,8 +230,7 @@ export class RipgrepUtil {
           // Everything else accumulates in pendingContext → contextBefore of next match.
           const lastMatch = matches[matches.length - 1]
           const ctxFilePath = this.toRelativePath(data.path.text, directory)
-          if (lastMatch
-            && ctxFilePath === lastMatch.path
+          if (ctxFilePath === lastMatch?.path
             && data.line_number > lastMatch.line) {
             lastMatch.contextAfter.push(ctxLine)
           } else {

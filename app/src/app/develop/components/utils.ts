@@ -60,7 +60,7 @@ const VISUAL_CONTEXT_TIMEOUT_MS = 100
 export function handlePreviewRefresh({ lastIframeState }: { lastIframeState: RefObject<any> }) {
   const iframe = document.querySelector('#preview-iframe') as HTMLIFrameElement
 
-  if (!iframe || !iframe.contentWindow) {
+  if (!iframe?.contentWindow) {
     window.postMessage({
       type: 'preview-refresh',
       preserveState: lastIframeState.current
@@ -86,8 +86,8 @@ export function handlePreviewRefresh({ lastIframeState }: { lastIframeState: Ref
   }
 
   const handleVisualContext = (event: MessageEvent) => {
-    if (event.source !== iframe.contentWindow) return
-    if (event.data?.type !== 'VISUAL_CONTEXT_RESPONSE') return
+    if (event.source !== iframe.contentWindow) {return}
+    if (event.data?.type !== 'VISUAL_CONTEXT_RESPONSE') {return}
 
     if (event.data.context?.scroll_position) {
       lastIframeState.current.scrollPosition = event.data.context.scroll_position
@@ -132,7 +132,7 @@ export function handlePreviewRefresh({ lastIframeState }: { lastIframeState: Ref
  */
 export function navigatePreviewToRoute(route: string) {
   const iframe = document.querySelector('#preview-iframe') as HTMLIFrameElement
-  if (!iframe?.contentWindow) return
+  if (!iframe?.contentWindow) {return}
   try {
     postMessageToIframe(iframe, {
       type: 'RESTORE_STATE_AFTER_REFRESH',
@@ -154,7 +154,7 @@ export function navigatePreviewToRoute(route: string) {
  */
 export function requestPreviewScreenshot() {
   const iframe = document.querySelector('#preview-iframe') as HTMLIFrameElement
-  if (!iframe || !iframe.contentWindow) return
+  if (!iframe?.contentWindow) {return}
   try {
     postMessageToIframe(iframe, { type: 'REQUEST_SCREENSHOT' })
   } catch (error) {
@@ -225,11 +225,11 @@ export function extractNewPageRoute(toolCalls: ToolCall[]): string | null {
   let lastRoute: string | null = null
 
   for (const tc of toolCalls) {
-    if (tc.status !== 'completed' || tc.error) continue
+    if (tc.status !== 'completed' || tc.error) {continue}
 
     for (const pagePath of extractCreatedPagePaths(tc)) {
       const route = pagePathToRoute(pagePath)
-      if (route) lastRoute = route
+      if (route) {lastRoute = route}
     }
   }
 
@@ -238,12 +238,12 @@ export function extractNewPageRoute(toolCalls: ToolCall[]): string | null {
 
 function extractCreatedPagePaths(tc: ToolCall): string[] {
   const input = tc.input
-  if (!input) return []
+  if (!input) {return []}
 
   switch (tc.name) {
     case 'str_replace_based_edit_tool':
     case 'textEditor': {
-      if (input.command !== 'create') return []
+      if (input.command !== 'create') {return []}
       const path = input.path
       return typeof path === 'string' && isPageFile(path) ? [path] : []
     }
@@ -255,7 +255,7 @@ function extractCreatedPagePaths(tc: ToolCall): string[] {
     }
 
     case 'fileEdit': {
-      if (!Array.isArray(input.operations)) return []
+      if (!Array.isArray(input.operations)) {return []}
       return (input.operations as Array<Record<string, unknown>>)
         .filter((op): op is Record<string, unknown> & { path: string } =>
           op.type === 'create' && typeof op.path === 'string' && isPageFile(op.path)
@@ -274,12 +274,12 @@ function isPageFile(filePath: string): boolean {
 
 function pagePathToRoute(filePath: string): string | null {
   const match = filePath.match(PAGE_FILE_PATTERN)
-  if (!match) return null
+  if (!match) {return null}
 
   const fileName = match[1].toLowerCase()
 
-  if (EXCLUDED_PAGE_NAMES.has(fileName)) return null
-  if (fileName.includes('[') || fileName.includes(']')) return null
+  if (EXCLUDED_PAGE_NAMES.has(fileName)) {return null}
+  if (fileName.includes('[') || fileName.includes(']')) {return null}
 
   return '/' + fileName
 }

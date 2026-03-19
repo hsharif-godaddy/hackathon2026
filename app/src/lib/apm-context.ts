@@ -146,7 +146,7 @@ export function setApmJobId(jobId: string): void {
  */
 export function setApmUserContext(userId: string): void {
   const span = getActiveSpan();
-  if (!span) return;
+  if (!span) {return;}
 
   try {
     span.setAttribute('enduser.id', userId);
@@ -553,7 +553,7 @@ export function addApmPageContext(
  * Used to add market attribute to spans
  */
 export function getMarketFromCookie(cookieHeader: string | null): string | null {
-  if (!cookieHeader) return null;
+  if (!cookieHeader) {return null;}
 
   try {
     const match = cookieHeader.match(/market=([^;]+)/);
@@ -622,7 +622,7 @@ export function addApmContextFromHeaders(
   pageContext?: ApmPageContext
 ): void {
   const span = getActiveSpan();
-  if (!span) return;
+  if (!span) {return;}
 
   try {
     const cookieHeader = headersList.get('cookie');

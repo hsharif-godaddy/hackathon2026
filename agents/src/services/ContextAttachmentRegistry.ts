@@ -49,7 +49,7 @@ export class ContextAttachmentRegistry {
       return customRenderer
     }
 
-    if (this.defaultRenderer && this.defaultRenderer.canHandle(type)) {
+    if (this.defaultRenderer?.canHandle(type)) {
       return this.defaultRenderer
     }
 

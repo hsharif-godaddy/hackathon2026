@@ -62,7 +62,7 @@ export function useSocialConnections(
 
   // Filter connections by platform if specified
   const filteredConnections = useMemo(() => {
-    if (!normalizedPlatformFilter) return plainConnections
+    if (!normalizedPlatformFilter) {return plainConnections}
 
     return plainConnections.filter((conn: SocialConnection) => {
       const connPlatform = PLATFORM_TRANSFORMS.toDisplay(conn.platform)

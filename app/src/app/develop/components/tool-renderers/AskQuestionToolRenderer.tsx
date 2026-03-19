@@ -97,7 +97,7 @@ export default function AskQuestionToolRenderer({
   const output = resultObj?.output || resultObj
   const widgetData = output?.widgetData
 
-  if (!widgetData || !widgetData.questions || widgetData.questions.length === 0) {
+  if (!widgetData?.questions || widgetData.questions.length === 0) {
     return null
   }
 
@@ -112,7 +112,7 @@ export default function AskQuestionToolRenderer({
   const isLastQuestion = currentQuestionIndex === totalQuestions - 1
 
   function submitAnswer(answer: string) {
-    if (isProcessing || !sendUserMessage) return
+    if (isProcessing || !sendUserMessage) {return}
 
     // Update or append answer depending on whether we're editing
     const newAnswers = [...answers]
@@ -148,7 +148,7 @@ export default function AskQuestionToolRenderer({
   }
 
   function handleSuggestionClick(suggestion: Suggestion) {
-    if (isProcessing) return
+    if (isProcessing) {return}
     const value = suggestion.value || suggestion.text
     submitAnswer(value)
   }

@@ -25,7 +25,7 @@ export class DockerAppService implements IAppAdapter {
   }
 
   async initialize(): Promise<void> {
-    if (this.initialized) return;
+    if (this.initialized) {return;}
 
     try {
       await this.containerManager.initialize();
@@ -60,7 +60,7 @@ export class DockerAppService implements IAppAdapter {
 
       // Check if container already exists
       const existingContainer = await this.containerManager.getContainerStatus(appId);
-      if (existingContainer && existingContainer.status === 'running') {
+      if (existingContainer?.status === 'running') {
         logger.info('docker_app_service.start.already_running', {
           appId
         });

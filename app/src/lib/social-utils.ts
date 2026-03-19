@@ -61,7 +61,7 @@ export function findPageToken(pageTokens: string[], pageId: string): string | un
 export function getConnectionDisplayName(
   connection: SocialConnection | EnrichedSocialConnection | null | undefined
 ): string | null {
-  if (!connection) return null
+  if (!connection) {return null}
 
   if (isFacebookConnection(connection)) {
     const enriched = connection as typeof connection & { pageName?: string }
@@ -119,7 +119,7 @@ export function getConnectionDetails(
 }
 
 function formatAddress(address?: GoogleLocation['storefrontAddress']): string {
-  if (!address) return ''
+  if (!address) {return ''}
 
   const parts: string[] = []
 
@@ -208,8 +208,8 @@ export function getSocialConnectionDisplayInfo(
   data: FacebookPage | GoogleLocation | SocialConnection | EnrichedSocialConnection,
   options?: { isInstagramFlow?: boolean }
 ): SocialDisplayInfo {
-  if (isConnection(data)) return getConnectionDisplayInfo(data)
-  if (isFacebookPage(data)) return getFacebookPageDisplayInfo(data, options?.isInstagramFlow ?? false)
-  if (isGoogleLocation(data)) return getGoogleLocationDisplayInfo(data)
+  if (isConnection(data)) {return getConnectionDisplayInfo(data)}
+  if (isFacebookPage(data)) {return getFacebookPageDisplayInfo(data, options?.isInstagramFlow ?? false)}
+  if (isGoogleLocation(data)) {return getGoogleLocationDisplayInfo(data)}
   return { name: '', subtitle: undefined, pictureUrl: undefined }
 }

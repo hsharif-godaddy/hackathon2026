@@ -42,7 +42,7 @@ export default function ResizableDivider({
   }, [])
 
   const updateWidth = useCallback((clientX: number) => {
-    if (!containerRef.current) return
+    if (!containerRef.current) {return}
 
     const containerRect = containerRef.current.getBoundingClientRect()
     const containerWidth = containerRect.width
@@ -61,7 +61,7 @@ export default function ResizableDivider({
   }, [minLeftWidth, minRightWidth, onResize])
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDragging) return
+    if (!isDragging) {return}
 
     // Throttle updates using requestAnimationFrame
     if (animationFrameRef.current) {

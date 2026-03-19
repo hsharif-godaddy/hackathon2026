@@ -47,13 +47,13 @@ export class FileSearch {
     const searchPattern = options.regex ? new RegExp(query, options.caseSensitive ? 'g' : 'gi') : null
 
     async function searchDirectory(dir: string): Promise<void> {
-      if (matches.length >= maxResults) return
+      if (matches.length >= maxResults) {return}
 
       try {
         const entries = await readdir(dir, { withFileTypes: true })
 
         for (const entry of entries) {
-          if (matches.length >= maxResults) break
+          if (matches.length >= maxResults) {break}
 
           const fullPath = join(dir, entry.name)
 
@@ -69,7 +69,7 @@ export class FileSearch {
           if (entry.isDirectory()) {
             await searchDirectory(fullPath)
           } else if (entry.isFile()) {
-            if (!FileSearch.isTextFile(entry.name)) continue
+            if (!FileSearch.isTextFile(entry.name)) {continue}
 
             const relativePath = fullPath.replace(directory + '/', '')
             if (options.fileBlockChecker && !options.fileBlockChecker(relativePath)) {
@@ -78,17 +78,17 @@ export class FileSearch {
 
             try {
               const stats = await stat(fullPath)
-              if (stats.size > 1024 * 1024) continue
+              if (stats.size > 1024 * 1024) {continue}
 
               const content = await readFile(fullPath, 'utf-8')
               const lines = content.split('\n')
 
               let matchesInFile = 0
               for (let i = 0; i < lines.length && matchesInFile < maxMatchesPerFile; i++) {
-                if (matches.length >= maxResults) break
+                if (matches.length >= maxResults) {break}
 
                 const line = lines[i]
-                if (!line) continue
+                if (!line) {continue}
 
                 if (searchPattern) {
                   searchPattern.lastIndex = 0

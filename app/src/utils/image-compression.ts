@@ -16,12 +16,12 @@ const MIN_SIZE_BYTES = 200 * 1024
  * Format is preserved (JPEG stays JPEG, PNG stays PNG, WebP stays WebP).
  */
 export async function compressImageFile(file: File): Promise<File> {
-  if (!file.type.startsWith('image/')) return file
+  if (!file.type.startsWith('image/')) {return file}
   // SVGs are vector — canvas re-encoding would rasterize them
-  if (file.type === 'image/svg+xml') return file
+  if (file.type === 'image/svg+xml') {return file}
   // Animated GIFs would lose animation through canvas re-encoding
-  if (file.type === 'image/gif') return file
-  if (file.size <= MIN_SIZE_BYTES) return file
+  if (file.type === 'image/gif') {return file}
+  if (file.size <= MIN_SIZE_BYTES) {return file}
 
   const compressed = await imageCompression(file, COMPRESSION_OPTIONS)
 

@@ -110,7 +110,7 @@ export class ToolResultHandler implements MessageHandler {
             useSitesStore.getState().updateSite(context.currentAppId, { name: projectName })
             
             const developState = useDevelopPageStore.getState()
-            if (developState.site && developState.site.id === context.currentAppId) {
+            if (developState.site?.id === context.currentAppId) {
               useDevelopPageStore.setState((state) => {
                 if (state.site) {
                   return {

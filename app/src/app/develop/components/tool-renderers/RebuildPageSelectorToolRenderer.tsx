@@ -158,7 +158,7 @@ export default function RebuildPageSelectorToolRenderer({
   }
 
   function handleBuildPage() {
-    if (!selectedPage || isProcessing || !sendUserMessage) return
+    if (!selectedPage || isProcessing || !sendUserMessage) {return}
 
     // Send a message to trigger the build
     sendUserMessage(`Build the ${selectedPage} page`, { isActionRequest: true })
