@@ -66,143 +66,266 @@ describe('GitHookService', () => {
     appRepoMock.findById.mockReturnValue(TEST_APP);
 
     // Set up DevSupervisorClientFactory mock
-    vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue({} as never);
+    // Default: setup already complete (most tests don't care about setup coordination)
+    vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue({
+      getSetupStatus: vi.fn().mockResolvedValue({
+        setup_configured: true,
+        setup_deferred: false,
+        setup_executed: true,
+        setup_running: false,
+        setup_error: null,
+      }),
+      executeSetup: vi.fn().mockResolvedValue({ status: 'already_executed' }),
+    } as never);
   });
 
-  /** Helper: set up git utils and run handleMessageStart for recovery scenarios */
-  async function setupRecoveryScenario(opts: {
-    currentBranch: string;
-    featureTreeHash?: string;
-    mainTreeHash?: string;
-    commitTreeError?: boolean;
-    resetErrors?: Array<Error | undefined>;
-  }) {
-    const featureTree = opts.featureTreeHash ?? 'feature-tree-hash';
-    const mainTree = opts.mainTreeHash ?? 'main-tree-hash';
-
-    const mockImpl = {
-      isGitRepository: vi.fn().mockResolvedValue(true),
-      getCurrentBranch: vi.fn().mockResolvedValue(opts.currentBranch),
-      hasUncommittedChanges: vi.fn().mockResolvedValue(false),
-      reset: vi.fn().mockResolvedValue(undefined),
-      addFiles: vi.fn().mockResolvedValue(undefined),
-      commit: vi.fn().mockResolvedValue(undefined),
-      createBranch: vi.fn().mockResolvedValue(undefined),
-      switchBranch: vi.fn().mockResolvedValue(undefined),
-      squashMerge: vi.fn().mockResolvedValue(undefined),
-      getCurrentCommit: vi.fn().mockResolvedValue('mock-commit-hash'),
-      getTreeHash: vi.fn().mockImplementation((_path: string, ref: string) => {
-        if (ref === 'HEAD') return Promise.resolve(featureTree);
-        if (ref === 'main') return Promise.resolve(mainTree);
-        return Promise.resolve('unknown-tree');
-      }),
-      resolveCommitHash: vi.fn().mockResolvedValue('main-commit-hash'),
-      commitTree: vi.fn().mockResolvedValue(
-        opts.commitTreeError
-          ? { success: false, stdout: '', stderr: 'commitTree failed' }
-          : { success: true, stdout: 'new-commit-hash\n', stderr: '' }
-      ),
-      updateRef: vi.fn().mockResolvedValue(undefined),
-      getCommitHistory: vi.fn().mockResolvedValue([]),
-      cleanupOldBranches: vi.fn().mockResolvedValue({ needed: false, deleted: 0, failed: [], gcPerformed: false }),
-    };
-
-    if (opts.resetErrors) {
-      let mock = mockImpl.reset;
-      for (const err of opts.resetErrors) {
-        if (err) {
-          mock = mock.mockRejectedValueOnce(err);
-        } else {
-          mock = mock.mockResolvedValueOnce(undefined);
-        }
-      }
+  describe('branch safety check', () => {
+    function createDevSupervisorMock() {
+      const mock = {
+        getSetupStatus: vi.fn().mockResolvedValue({
+          setup_configured: true,
+          setup_deferred: false,
+          setup_executed: true,
+          setup_running: false,
+          setup_error: null,
+        }),
+        executeSetup: vi.fn().mockResolvedValue({ status: 'already_executed' }),
+      };
+      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mock as never);
+      return mock;
     }
 
-    vi.mocked(GitUtils).mockImplementation(() => mockImpl as unknown as GitUtils);
+    function createGitMock(currentBranch: string) {
+      const mockImpl = {
+        isGitRepository: vi.fn().mockResolvedValue(true),
+        getCurrentBranch: vi.fn().mockResolvedValue(currentBranch),
+        hasUncommittedChanges: vi.fn().mockResolvedValue(false),
+        reset: vi.fn().mockResolvedValue(undefined),
+        addFiles: vi.fn().mockResolvedValue(undefined),
+        commit: vi.fn().mockResolvedValue(undefined),
+        createBranch: vi.fn().mockResolvedValue(undefined),
+        switchBranch: vi.fn().mockResolvedValue(undefined),
+        squashMerge: vi.fn().mockResolvedValue(undefined),
+        getCurrentCommit: vi.fn().mockResolvedValue('mock-commit-hash'),
+        getCommitHistory: vi.fn().mockResolvedValue([]),
+        cleanupOldBranches: vi.fn().mockResolvedValue({ needed: false, deleted: 0, failed: [], gcPerformed: false }),
+      };
+      vi.mocked(GitUtils).mockImplementation(() => mockImpl as unknown as GitUtils);
+      return mockImpl;
+    }
 
-    await service.handleMessageStart(TEST_APP_ID);
+    it('switches to main when on unexpected branch', async () => {
+      createDevSupervisorMock();
+      const gitMock = createGitMock('some-leftover-branch');
 
-    return mockImpl;
-  }
+      await service.handleMessageStart(TEST_APP_ID);
 
-  describe('performRecovery', () => {
-    it('calls reset --hard instead of git add', async () => {
-      const mocks = await setupRecoveryScenario({
-        currentBranch: 'some-feature-branch',
-      });
-
-      expect(mocks.reset).toHaveBeenCalledWith(TEST_APP_PATH, { mode: 'hard' });
-      expect(mocks.addFiles).not.toHaveBeenCalled();
+      expect(gitMock.switchBranch).toHaveBeenCalledWith(TEST_APP_PATH, 'main');
+      // Should still create feature branch after switching
+      expect(gitMock.createBranch).toHaveBeenCalled();
+      // Should track the new branch (stale tracking cleared, new branch set)
+      const branchInfo = service.getAppBranch(TEST_APP_ID);
+      expect(branchInfo).toBeDefined();
+      expect(branchInfo!.branchName).not.toBe('some-leftover-branch');
     });
 
-    it('uses plumbing to squash merge after reset', async () => {
-      const mocks = await setupRecoveryScenario({
-        currentBranch: 'some-feature-branch',
-      });
+    it('resets working tree before switching from unexpected branch', async () => {
+      createDevSupervisorMock();
+      const gitMock = createGitMock('some-leftover-branch');
 
-      // Should use plumbing instead of porcelain squashMerge
-      expect(mocks.getTreeHash).toHaveBeenCalledWith(TEST_APP_PATH, 'HEAD');
-      expect(mocks.getTreeHash).toHaveBeenCalledWith(TEST_APP_PATH, 'main');
-      expect(mocks.resolveCommitHash).toHaveBeenCalledWith(TEST_APP_PATH, 'main');
-      expect(mocks.commitTree).toHaveBeenCalledWith(
-        TEST_APP_PATH, 'feature-tree-hash', 'Recovery from interrupted session',
-        { parentHash: 'main-commit-hash' }
-      );
-      expect(mocks.updateRef).toHaveBeenCalledWith(
-        TEST_APP_PATH, 'refs/heads/main', 'new-commit-hash', 'main-commit-hash'
-      );
-      expect(mocks.switchBranch).toHaveBeenCalledWith(TEST_APP_PATH, 'main');
-      // Porcelain squashMerge should NOT be called
-      expect(mocks.squashMerge).not.toHaveBeenCalled();
+      await service.handleMessageStart(TEST_APP_ID);
+
+      // Must reset --hard before switchBranch — dirty working tree from
+      // a crashed tool call would cause git checkout to refuse
+      expect(gitMock.reset).toHaveBeenCalledWith(TEST_APP_PATH, { mode: 'hard' });
+
+      // Verify ordering: reset before switch
+      const resetOrder = gitMock.reset.mock.invocationCallOrder[0];
+      const switchOrder = gitMock.switchBranch.mock.invocationCallOrder[0];
+      expect(resetOrder).toBeLessThan(switchOrder);
     });
 
-    it('skips merge when feature tree matches main tree', async () => {
-      const mocks = await setupRecoveryScenario({
-        currentBranch: 'some-feature-branch',
-        featureTreeHash: 'same-tree',
-        mainTreeHash: 'same-tree',
-      });
+    it('does not switch when already on main', async () => {
+      createDevSupervisorMock();
+      const gitMock = createGitMock('main');
 
-      // Should just switch to main without committing
-      expect(mocks.switchBranch).toHaveBeenCalledWith(TEST_APP_PATH, 'main');
-      expect(mocks.commitTree).not.toHaveBeenCalled();
-      expect(mocks.updateRef).not.toHaveBeenCalled();
+      await service.handleMessageStart(TEST_APP_ID);
+
+      // Should not switch branches — already on main
+      expect(gitMock.switchBranch).not.toHaveBeenCalled();
+      // Should create feature branch
+      expect(gitMock.createBranch).toHaveBeenCalled();
     });
 
-    it('handles detached HEAD via plumbing (getTreeHash works with HEAD ref)', async () => {
-      const mocks = await setupRecoveryScenario({
-        currentBranch: 'HEAD',
-      });
+    it('continues on tracked feature branch without switching', async () => {
+      createDevSupervisorMock();
+      const gitMock = createGitMock('main');
 
-      // Plumbing approach uses getTreeHash('HEAD') which works for detached HEAD
-      expect(mocks.getTreeHash).toHaveBeenCalledWith(TEST_APP_PATH, 'HEAD');
-      expect(mocks.commitTree).toHaveBeenCalled();
+      // First call: creates feature branch
+      await service.handleMessageStart(TEST_APP_ID, 'conv-1', 'sock-1');
+
+      // Get the branch name that was created
+      const branchInfo = service.getAppBranch(TEST_APP_ID);
+      expect(branchInfo).toBeDefined();
+
+      // Mock getCurrentBranch to return the tracked branch
+      gitMock.getCurrentBranch.mockResolvedValue(branchInfo!.branchName);
+
+      // Second call: should continue on existing branch
+      await service.handleMessageStart(TEST_APP_ID, 'conv-1', 'sock-1', 'user prompt');
+
+      // Should not switch or create a new branch
+      expect(gitMock.createBranch).toHaveBeenCalledTimes(1); // Only from first call
+    });
+  });
+
+  describe('setup coordination', () => {
+    function createDevSupervisorMock(setupStatus: {
+      setup_configured?: boolean;
+      setup_deferred?: boolean;
+      setup_executed?: boolean;
+      setup_running?: boolean;
+      setup_error?: string | null;
+    }) {
+      const mock = {
+        getSetupStatus: vi.fn().mockResolvedValue({
+          setup_configured: setupStatus.setup_configured ?? true,
+          setup_deferred: setupStatus.setup_deferred ?? false,
+          setup_executed: setupStatus.setup_executed ?? true,
+          setup_running: setupStatus.setup_running ?? false,
+          setup_error: setupStatus.setup_error ?? null,
+        }),
+        executeSetup: vi.fn().mockResolvedValue({ status: 'executed' }),
+      };
+      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mock as never);
+      return mock;
+    }
+
+    function createGitMock(currentBranch = 'main') {
+      const mockImpl = {
+        isGitRepository: vi.fn().mockResolvedValue(true),
+        getCurrentBranch: vi.fn().mockResolvedValue(currentBranch),
+        hasUncommittedChanges: vi.fn().mockResolvedValue(false),
+        reset: vi.fn().mockResolvedValue(undefined),
+        addFiles: vi.fn().mockResolvedValue(undefined),
+        commit: vi.fn().mockResolvedValue(undefined),
+        createBranch: vi.fn().mockResolvedValue(undefined),
+        switchBranch: vi.fn().mockResolvedValue(undefined),
+        squashMerge: vi.fn().mockResolvedValue(undefined),
+        getCurrentCommit: vi.fn().mockResolvedValue('mock-commit-hash'),
+        getTreeHash: vi.fn().mockResolvedValue('tree-hash'),
+        resolveCommitHash: vi.fn().mockResolvedValue('commit-hash'),
+        commitTree: vi.fn().mockResolvedValue({ success: true, stdout: 'hash\n', stderr: '' }),
+        updateRef: vi.fn().mockResolvedValue(undefined),
+        getCommitHistory: vi.fn().mockResolvedValue([]),
+        cleanupOldBranches: vi.fn().mockResolvedValue({ needed: false, deleted: 0, failed: [], gcPerformed: false }),
+      };
+      vi.mocked(GitUtils).mockImplementation(() => mockImpl as unknown as GitUtils);
+      return mockImpl;
+    }
+
+    it('triggers setup and skips git ops when setup is deferred and not executed', async () => {
+      const dsMock = createDevSupervisorMock({
+        setup_deferred: true,
+        setup_executed: false,
+      });
+      const gitMock = createGitMock();
+
+      await service.handleMessageStart(TEST_APP_ID);
+
+      expect(dsMock.getSetupStatus).toHaveBeenCalled();
+      expect(dsMock.executeSetup).toHaveBeenCalled();
+      // Git ops should be skipped
+      expect(gitMock.isGitRepository).not.toHaveBeenCalled();
+      expect(gitMock.createBranch).not.toHaveBeenCalled();
     });
 
-    it('fallback resets before switching branch on commitTree failure', async () => {
-      const mocks = await setupRecoveryScenario({
-        currentBranch: 'some-feature-branch',
-        commitTreeError: true,
+    it('skips triggering setup when setup is already running', async () => {
+      const dsMock = createDevSupervisorMock({
+        setup_deferred: true,
+        setup_executed: false,
+        setup_running: true,
       });
+      const gitMock = createGitMock();
 
-      // reset called twice: once in main try block, once in catch fallback
-      expect(mocks.reset).toHaveBeenCalledTimes(2);
-      expect(mocks.reset).toHaveBeenNthCalledWith(1, TEST_APP_PATH, { mode: 'hard' });
-      expect(mocks.reset).toHaveBeenNthCalledWith(2, TEST_APP_PATH, { mode: 'hard' });
+      await service.handleMessageStart(TEST_APP_ID);
+
+      expect(dsMock.getSetupStatus).toHaveBeenCalled();
+      expect(dsMock.executeSetup).not.toHaveBeenCalled();
+      // Git ops should still be skipped
+      expect(gitMock.isGitRepository).not.toHaveBeenCalled();
     });
 
-    it('fallback still switches branch if reset fails in catch block', async () => {
-      const mocks = await setupRecoveryScenario({
-        currentBranch: 'some-feature-branch',
-        commitTreeError: true,
-        resetErrors: [undefined, new Error('reset failed')], // first succeeds, second fails
+    it('does not retry setup when setup_error is set', async () => {
+      const dsMock = createDevSupervisorMock({
+        setup_deferred: true,
+        setup_executed: false,
+        setup_error: 'npm install failed',
       });
+      const gitMock = createGitMock();
 
-      // switchBranch should still be called in the fallback despite reset failure
-      // With plumbing, switchBranch is only called once (in the fallback catch),
-      // since commitTree throws before reaching switchBranch in the try block
-      expect(mocks.switchBranch).toHaveBeenCalledTimes(1);
-      expect(mocks.switchBranch).toHaveBeenCalledWith(TEST_APP_PATH, 'main');
+      await service.handleMessageStart(TEST_APP_ID);
+
+      expect(dsMock.getSetupStatus).toHaveBeenCalled();
+      expect(dsMock.executeSetup).not.toHaveBeenCalled();
+      // Git ops should still be skipped
+      expect(gitMock.isGitRepository).not.toHaveBeenCalled();
+    });
+
+    it('proceeds with git ops when setup is not deferred', async () => {
+      createDevSupervisorMock({
+        setup_deferred: false,
+        setup_executed: true,
+      });
+      const gitMock = createGitMock();
+
+      await service.handleMessageStart(TEST_APP_ID);
+
+      expect(gitMock.isGitRepository).toHaveBeenCalled();
+      expect(gitMock.createBranch).toHaveBeenCalled();
+    });
+
+    it('proceeds with git ops when deferred setup has already executed', async () => {
+      createDevSupervisorMock({
+        setup_deferred: true,
+        setup_executed: true,
+      });
+      const gitMock = createGitMock();
+
+      await service.handleMessageStart(TEST_APP_ID);
+
+      expect(gitMock.isGitRepository).toHaveBeenCalled();
+      expect(gitMock.createBranch).toHaveBeenCalled();
+    });
+
+    it('proceeds with git ops when setup is not configured', async () => {
+      createDevSupervisorMock({
+        setup_configured: false,
+        setup_deferred: false,
+        setup_executed: false,
+      });
+      const gitMock = createGitMock();
+
+      await service.handleMessageStart(TEST_APP_ID);
+
+      expect(gitMock.isGitRepository).toHaveBeenCalled();
+      expect(gitMock.createBranch).toHaveBeenCalled();
+    });
+
+    it('falls through to git ops if getSetupStatus throws', async () => {
+      const mock = {
+        getSetupStatus: vi.fn().mockRejectedValue(new Error('connection refused')),
+        executeSetup: vi.fn(),
+      };
+      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mock as never);
+      const gitMock = createGitMock();
+
+      await service.handleMessageStart(TEST_APP_ID);
+
+      // Inner try/catch around getSetupStatus catches the error and falls through.
+      // Git ops should proceed normally.
+      expect(mock.executeSetup).not.toHaveBeenCalled();
+      expect(gitMock.isGitRepository).toHaveBeenCalled();
     });
   });
 });

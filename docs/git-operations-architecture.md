@@ -155,63 +155,84 @@ graph TB
     end
 ```
 
-## Git Recovery Workflow
+## Recovery and Setup Coordination
 
-### Recovery Trigger
+Recovery after container restart is split between two systems with clear ownership boundaries:
 
-Before each new feature request, the agent checks if recovery is needed:
+- **`nomad_setup.sh`** — sole owner of filesystem and git recovery (runs in preview container)
+- **`GitHookService.handleMessageStart`** — coordinates with setup, manages branch lifecycle (runs in agent)
+
+### Recovery Scenarios
+
+| Scenario                | Trigger                                              | Who recovers                | Agent behavior                                                                |
+| ----------------------- | ---------------------------------------------------- | --------------------------- | ----------------------------------------------------------------------------- |
+| **Nomad reschedule**    | Ephemeral disk wiped, `.git` survives on bind mount  | `nomad_setup.sh`            | Setup gate returns early, skips git ops until setup complete                  |
+| **Process restart**     | Agent crashes, supervisor restarts it (no disk wipe) | Agent (branch safety check) | `reset --hard` → `checkout main` → create feature branch                      |
+| **Normal steady state** | No crash                                             | Nobody                      | Setup gate falls through, branch check passes, create/continue feature branch |
+
+### handleMessageStart Flow
 
 ```mermaid
 flowchart TD
-    START[New Feature Request] --> CHECK{On main branch?}
-    CHECK -->|Yes| PROCEED[Proceed with feature]
-    CHECK -->|No| RECOVERY[Execute Recovery]
+    MSG[New message received] --> STATUS[getSetupStatus]
+    STATUS -->|throws| LOG_ERR[Log error, fall through to git ops]
+    STATUS -->|success| DEFERRED{setup_deferred AND<br/>NOT setup_executed?}
 
-    RECOVERY --> UNCOMMITTED{Uncommitted changes?}
-    UNCOMMITTED -->|Yes| COMMIT[Commit changes]
-    UNCOMMITTED -->|No| DIFF[Get diff from main]
+    DEFERRED -->|yes| PENDING_STATE{Setup sub-state?}
+    PENDING_STATE -->|setup_error set| LOG_FAIL[Log setup_failed]
+    PENDING_STATE -->|setup_running| LOG_RUN[Log setup_running]
+    PENDING_STATE -->|idle| TRIGGER[Fire-and-forget<br/>executeSetup]
 
-    COMMIT --> DIFF
-    DIFF --> SIZE{Diff manageable?}
+    LOG_FAIL --> RETURN_EARLY[Return — skip all git ops]
+    LOG_RUN --> RETURN_EARLY
+    TRIGGER --> RETURN_EARLY
 
-    SIZE -->|Yes| LLM_MSG[Generate commit message]
-    SIZE -->|No| FALLBACK[Use fallback message]
+    DEFERRED -->|no| FALL_THROUGH[Fall through to git ops]
+    LOG_ERR --> FALL_THROUGH
 
-    LLM_MSG --> SQUASH[Squash merge to main]
-    FALLBACK --> SQUASH
-    SQUASH --> NOTIFY[Notify LLM of recovery]
-    NOTIFY --> PROCEED
+    FALL_THROUGH --> IS_REPO{Is git repository?}
+    IS_REPO -->|no| RETURN_NO_REPO[Return]
+    IS_REPO -->|yes| BRANCH[getCurrentBranch]
+
+    BRANCH --> ON_MAIN{On main?}
+    ON_MAIN -->|yes| CREATE_BRANCH[Create feature branch]
+
+    ON_MAIN -->|no| EXPECTED{Is tracked<br/>feature branch?}
+    EXPECTED -->|yes| CONTINUE[Continue on<br/>existing branch]
+    EXPECTED -->|no| SAFETY[Branch safety check:<br/>reset --hard<br/>checkout main]
+    SAFETY --> CREATE_BRANCH
+
+    style RETURN_EARLY fill:#f9f,stroke:#333
+    style SAFETY fill:#ff9,stroke:#333
+    style CREATE_BRANCH fill:#9f9,stroke:#333
+    style CONTINUE fill:#9f9,stroke:#333
 ```
 
-### Recovery Process
+### nomad_setup.sh Restart Path
 
-1. **Branch Detection**: Check if current branch is not `main`
-2. **Uncommitted Changes**: Commit any pending changes with recovery marker
-3. **Diff Analysis**: Get changes between current branch and main
-4. **Commit Message Generation**:
-   - If diff is manageable: Use LLM to generate meaningful message
-   - If diff is too large: Use fallback: `{timestamp} - Git recovery from unknown error`
-5. **Squash Merge**: Merge feature branch to main with generated message
-6. **LLM Notification**: Inform LLM about recovery and current state
+When `.git/config` exists (restart detected), the script runs unconditionally:
 
-### Recovery Commands
+1. **Clean stale lock files** — `.git/index.lock`, `.git/refs/heads/*.lock`, `.git/packed-refs.lock`
+2. **`git reset --hard`** — restore working tree from HEAD (handles wiped disk, dirty index, interrupted merges)
+3. **`git checkout main`** — switch to main if not already there (no `|| true` — failure aborts via `set -e`)
+4. **Sync `package.json`** from template
+5. **`npm install`** — only if `node_modules` is missing (idempotent — clean restart is a fast no-op)
+6. **Sync dev-tools, airo-secrets, .npmrc, template files**
 
-```bash
-# Detect current branch
-git branch --show-current
+### Setup Coordination
 
-# Commit uncommitted changes if any
-git add .
-git commit -m "{timestamp}-recovery-uncommitted"
+After Nomad reschedule, `nomad_setup.sh` is deferred to the first HTTP request. The agent may receive WebSocket messages before setup runs. The setup coordination gate in `handleMessageStart` prevents the race:
 
-# Get diff for analysis
-git diff main
+| Message                   | Setup state                            | Agent behavior                                  |
+| ------------------------- | -------------------------------------- | ----------------------------------------------- |
+| 1st after reschedule      | `deferred && !executed && !running`    | Triggers setup (fire-and-forget), skips git ops |
+| 2nd (setup still running) | `deferred && !executed && running`     | Skips git ops                                   |
+| Nth (setup done)          | `deferred && executed`                 | Normal git ops resume                           |
+| Any (setup failed)        | `deferred && !executed && setup_error` | Logs failure, skips git ops, does not retry     |
 
-# Squash merge to main
-git checkout main
-git merge --squash {previous_branch}
-git commit -m "{generated_message}"
-```
+### Branch Safety Check
+
+If the agent finds itself on an unexpected branch (not main, not a tracked feature branch), it resets and switches to main. This handles the process-restart scenario where in-memory `appBranches` is lost but the repo is still on a feature branch with a potentially dirty working tree from a crashed tool call. The abandoned feature branch is not squash-merged — `nomad_setup.sh` handles filesystem recovery, so preserving partial work via plumbing is unnecessary complexity.
 
 ## Git Restore Operations
 
@@ -275,10 +296,10 @@ The agent handles git errors through systematic recovery attempts:
 
 #### Lock File Issues
 
+Stale lock files from crashes are cleaned proactively by `nomad_setup.sh` on restart:
+
 ```bash
-# Error: .git/index.lock exists
-# Recovery: Wait 5 seconds, then remove if persistent
-rm .git/index.lock
+rm -f .git/index.lock .git/refs/heads/*.lock .git/packed-refs.lock
 ```
 
 #### Configuration Issues

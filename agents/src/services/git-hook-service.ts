@@ -19,7 +19,7 @@ interface AppBranchInfo {
  * Git Hook Service
  *
  * Manages automated git operations throughout the message lifecycle:
- * - Recovery check and feature branch creation at message start
+ * - Branch safety check and feature branch creation at message start
  * - Commit all changes and squash merge to main at message completion
  *
  * All changes accumulate on the feature branch during the AI response, then
@@ -99,18 +99,14 @@ export class GitHookService {
   }
 
   /**
-   * Handle message start: ALWAYS check git state and ensure we're on correct branch
-   * Called at the start of EVERY message for an app
-   *
-   * CRITICAL: This ensures that if a previous squash merge failed (due to crash, error, etc.),
-   * we recover before processing the new request.
+   * Handle message start: check setup status, ensure correct branch, create feature branch.
+   * Called at the start of EVERY message for an app.
    *
    * Workflow:
-   * 1. Check current branch (if not main, recovery needed)
-   * 2. If recovery needed:
-   *    - reset --hard to restore working tree from last commit
-   *    - Squash merge to main using git plumbing (getTreeHash/commitTree/updateRef)
-   * 3. Create new feature branch for this message
+   * 1. Check setup status — if deferred setup pending, trigger and skip git ops
+   * 2. Check current branch — if unexpected, warn and switch to main
+   * 3. If on tracked feature branch, continue on it
+   * 4. Create new feature branch for this message
    */
   async handleMessageStart(
     appId: string,
@@ -129,6 +125,47 @@ export class GitHookService {
       if (!devSupervisor) {
         this.logGitError(appId, 'handleMessageStart', 'DevSupervisor not available');
         return;
+      }
+
+      // Setup coordination: ensure nomad_setup.sh has run before git operations.
+      // After Nomad reschedule, deferred setup may not have run yet.
+      // Fire-and-forget: trigger setup but don't block (npm install can take minutes).
+      // Skip git ops for this message; subsequent messages will find setup complete.
+      try {
+        const setupStatus = await devSupervisor.getSetupStatus();
+        if (setupStatus.setup_deferred && !setupStatus.setup_executed) {
+          if (setupStatus.setup_error) {
+            // Setup failed permanently — don't retry, let user diagnose
+            logger.warn('git_hook.message_start.setup_failed', {
+              appId, error: setupStatus.setup_error
+            });
+          } else if (!setupStatus.setup_running) {
+            // Trigger setup but don't block — npm install can take minutes.
+            // executeSetup() is synchronous on the Go side (blocks until script
+            // completes or 5-min mutex timeout). The detached promise keeps the
+            // HTTP request open in the background; Go-side timeout bounds it.
+            devSupervisor.executeSetup().catch(err =>
+              logger.warn('git_hook.setup.trigger_failed', {
+                appId,
+                error: err instanceof Error ? err.message : String(err)
+              })
+            );
+            logger.info('git_hook.message_start.setup_triggered', { appId });
+          } else {
+            logger.info('git_hook.message_start.setup_running', { appId });
+          }
+          return;
+        }
+
+        if (setupStatus.setup_deferred && setupStatus.setup_executed) {
+          logger.debug('git_hook.message_start.setup_complete', { appId });
+        }
+      } catch (setupError) {
+        // getSetupStatus failed (e.g., dev-supervisor not reachable).
+        // Log and continue — this is non-fatal. Without dev-supervisor,
+        // git operations will also fail, but handleMessageStart's outer
+        // try/catch handles that gracefully.
+        this.logGitError(appId, 'setupCoordination', setupError as Error);
       }
 
       const gitUtils = new GitUtils(devSupervisor);
@@ -151,23 +188,25 @@ export class GitHookService {
         trackedBranch: trackedBranch?.branchName || 'none'
       });
 
-      // If not on main, perform recovery
+      // Branch safety check: if not on main and not our tracked branch, switch to main.
+      // With nomad_setup.sh handling filesystem recovery and setup coordination above,
+      // being on an unexpected branch is an edge case. Just switch — don't try to
+      // preserve work via squash merge.
       if (currentBranch !== 'main') {
-        // Check if this is our expected feature branch
         const isExpectedBranch = trackedBranch && currentBranch === trackedBranch.branchName;
 
         if (!isExpectedBranch) {
-          // CRITICAL: We're on an unexpected branch - perform recovery
-          logger.warn('git_hook.message_start.recovery_needed', {
+          logger.warn('git_hook.unexpected_branch', {
             appId,
             currentBranch,
-            expectedBranch: trackedBranch?.branchName || 'none',
-            reason: 'Not on main and not on expected feature branch'
+            expectedBranch: trackedBranch?.branchName || 'none'
           });
-
-          await this.performRecovery(appId, app.path, gitUtils, currentBranch);
-
-          // Clear any stale tracking after recovery
+          // Reset before switching — working tree may be dirty from a crashed
+          // tool call (process restart without Nomad reschedule means
+          // nomad_setup.sh didn't run). git checkout refuses to switch with
+          // conflicting uncommitted changes.
+          await gitUtils.reset(app.path, { mode: 'hard' });
+          await gitUtils.switchBranch(app.path, 'main');
           this.appBranches.delete(appId);
         } else {
           // We're on our expected feature branch - continue
@@ -176,7 +215,6 @@ export class GitHookService {
             branchName: currentBranch
           });
 
-          // Update user prompt if provided
           if (userPrompt && trackedBranch && !trackedBranch.userPrompt) {
             trackedBranch.userPrompt = userPrompt;
             this.appBranches.set(appId, trackedBranch);
@@ -215,85 +253,6 @@ export class GitHookService {
 
     } catch (error) {
       this.logGitError(appId, 'handleMessageStart', error as Error);
-    }
-  }
-
-  /**
-   * Perform git recovery when starting on non-main branch.
-   *
-   * Uses reset --hard to restore the working tree from the last commit rather
-   * than trusting uncommitted state — after a Nomad reschedule the ephemeral
-   * disk is wiped so uncommitted files may be empty/missing while .git survives
-   * on a bind mount. handleToolCallComplete commits after every tool call, so
-   * committed state has all completed work.
-   *
-   * Uses git plumbing (getTreeHash/commitTree/updateRef) to squash-merge to
-   * main, avoiding the transient file reverts that porcelain merge --squash
-   * causes.
-   */
-  private async performRecovery(
-    appId: string,
-    appPath: string,
-    gitUtils: GitUtils,
-    currentBranch: string
-  ): Promise<void> {
-    logger.info('git_hook.recovery.start', {
-      appId,
-      currentBranch
-    });
-
-    try {
-      // Step 1: Restore working tree from last commit.
-      // Never trust uncommitted state during recovery — it could be a wiped
-      // filesystem (ephemeral disk lost on reschedule) or stale partial work
-      // from a crashed tool call.
-      await gitUtils.reset(appPath, { mode: 'hard' });
-
-      // Step 2: Squash merge to main using plumbing (avoids transient file reverts)
-      const recoveryMessage = 'Recovery from interrupted session';
-      const featureTree = await gitUtils.getTreeHash(appPath, 'HEAD');
-      const mainTree = await gitUtils.getTreeHash(appPath, 'main');
-
-      if (featureTree === mainTree) {
-        // No changes — just switch back to main
-        await gitUtils.switchBranch(appPath, 'main');
-        logger.info('git_hook.recovery.no_changes', { appId, currentBranch });
-        return;
-      }
-
-      const mainCommit = await gitUtils.resolveCommitHash(appPath, 'main');
-      const commitResult = await gitUtils.commitTree(
-        appPath, featureTree, recoveryMessage, { parentHash: mainCommit }
-      );
-      if (!commitResult.success) {
-        throw new Error(`Failed to create recovery commit: ${commitResult.stderr}`);
-      }
-      const commitHash = commitResult.stdout.trim();
-      await gitUtils.updateRef(appPath, 'refs/heads/main', commitHash, mainCommit);
-      await gitUtils.switchBranch(appPath, 'main');
-
-      logger.info('git_hook.recovery.complete', {
-        appId,
-        previousBranch: currentBranch,
-        commitHash: commitHash.substring(0, 7),
-        commitMessage: recoveryMessage
-      });
-
-    } catch (error) {
-      this.logGitError(appId, 'performRecovery', error as Error);
-
-      // If recovery fails completely, try to at least get back to main
-      try {
-        // Reset to clear any merge/index corruption before switching
-        try {
-          await gitUtils.reset(appPath, { mode: 'hard' });
-        } catch (resetError) {
-          this.logGitError(appId, 'recoveryFallbackReset', resetError as Error);
-        }
-        await gitUtils.switchBranch(appPath, 'main');
-      } catch (switchError) {
-        this.logGitError(appId, 'recoveryFallback', switchError as Error);
-      }
     }
   }
 

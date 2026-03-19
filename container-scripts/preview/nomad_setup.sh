@@ -6,15 +6,19 @@
 # Detection relationship with dev-supervisor:
 # - dev-supervisor (detectStartupMode) checks .git/config to decide WHEN to run this script:
 #   immediate for first-start, deferred to first HTTP request for restart.
-# - This script checks .git/config + package.json to decide WHAT work to do:
-#   first-start init, corrupted restart recovery, or clean restart (no-op).
+# - This script checks .git/config to decide WHAT work to do:
+#   first-start (no .git/config) or restart (.git/config exists).
+#
+# Restart path always runs reset --hard + switch to main, then conditionally
+# restores dependencies if node_modules is missing. This is idempotent —
+# running on an already-clean workspace is a fast no-op.
 
 # fail immediately if anything fails
 set -e
 
 # Helper function for timestamped logging
 log_step() {
-    echo $1
+    echo "$1"
 }
 
 log_step "=== Setup script started ==="
@@ -47,60 +51,67 @@ else
     log_step "No preview config found, skipping"
 fi
 
-# Detect startup mode based on presence of .git/config and package.json
-# This matches the behavior of nomad_setup_and_serve.sh
-log_step "Checking for .git/config and package.json to determine startup mode..."
+# Detect startup mode based on presence of .git/config
+log_step "Checking for .git/config to determine startup mode..."
 
-if [ -f "$CUSTOMER_APP_DIR/.git/config" ] && [ ! -f "$CUSTOMER_APP_DIR/package.json" ]; then
-    # RESTART PATH: Existing application with missing package.json (corrupted workspace)
-    log_step "=== RESTART PATH detected (corrupted workspace) ==="
-    log_step "Will: restore files, sync template updates, and reinstall dependencies"
+if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
+    # RESTART PATH: Always restore working tree and ensure main branch
+    # Runs on every restart regardless of file state — reset --hard is idempotent
+    # and handles: wiped ephemeral disk, partial state, dirty index, interrupted merges
+    log_step "=== RESTART PATH detected ==="
 
     cd "$CUSTOMER_APP_DIR"
 
-    # Restore all tracked files from current HEAD
-    log_step "Restoring tracked files from git..."
-    git checkout .
-    log_step "Files restored from git"
+    # Clean stale lock files from crash/reschedule before any git operation
+    log_step "Cleaning stale git lock files..."
+    rm -f .git/index.lock .git/refs/heads/*.lock .git/packed-refs.lock
 
-    # Ensure we're on the main branch before making any commits
-    # This handles cases where the repo might be in detached HEAD state
-    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+    # Restore working tree from HEAD
+    # reset --hard clears index + working tree, handling more states than checkout .
+    # Not a regression for uncommitted work: git checkout . also discards uncommitted
+    # changes, and handleToolCallComplete commits after every tool call.
+    log_step "Restoring working tree from HEAD..."
+    git reset --hard
+    log_step "Working tree restored"
+
+    # Switch to main branch if not already there
+    # No || true — if main doesn't exist something is fundamentally broken
+    # and set -e should abort
+    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
     log_step "Current branch: $CURRENT_BRANCH"
     if [ "$CURRENT_BRANCH" != "main" ]; then
         log_step "Switching to main branch..."
-        git checkout main || true
+        git checkout main
         log_step "Switched to main branch"
     fi
 
-    # Sync package.json from base app template to get latest dependencies
-    log_step "Syncing package.json from base template..."
+    # Sync package.json from template (handles both missing and outdated cases)
+    if [ ! -f "$CUSTOMER_APP_DIR/package.json" ]; then
+        log_step "package.json missing after reset, syncing from template..."
+    else
+        log_step "Syncing package.json updates from template..."
+    fi
     /management-scripts/sync-package-additions.js "$BASE_APP_DIR/package.json" "package.json"
-    log_step "package.json synced"
+    git add package.json && git commit -m "Sync upstream package.json $(date +%s)" || true
 
-    # Restore dependencies
-    log_step "Installing dependencies with npm install (this may take a few minutes)..."
-    CI=true npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit
-    log_step "Dependencies installed successfully"
+    if [ ! -d "$CUSTOMER_APP_DIR/node_modules" ]; then
+        # Dependencies missing (ephemeral disk wiped node_modules)
+        log_step "Installing dependencies with npm install (this may take a few minutes)..."
+        CI=true npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit
+        log_step "Dependencies installed successfully"
 
-    # Commit synced package.json and package-lock.json (npm install updates the lockfile)
-    log_step "Committing package.json changes..."
-    git add package.json package-lock.json && git commit -m "Sync upstream package.json $(date +%s)" || true
-    log_step "Package.json changes committed"
+        # Commit package-lock.json changes from npm install
+        git add package-lock.json && git commit -m "Update package-lock.json $(date +%s)" || true
+    fi
 
     # Sync upstream dev-tools and airo-secrets from base app template
-    # Using rsync to ensure the files are deleted if they don't exist in the base app template
     log_step "Syncing dev-tools and airo-secrets with rsync..."
     rsync -a --delete "$BASE_APP_DIR/dev-tools/" "$CUSTOMER_APP_DIR/dev-tools/"
     rsync -a --delete "$BASE_APP_DIR/airo-secrets/" "$CUSTOMER_APP_DIR/airo-secrets/"
+    git add dev-tools airo-secrets && git commit -m "Sync upstream dev tools and airo-secrets $(date +%s)" || true
     log_step "dev-tools and airo-secrets synced"
 
-    # If changes then commit them
-    log_step "Committing dev-tools and airo-secrets changes..."
-    git add dev-tools airo-secrets && git commit -m "Sync upstream dev tools and airo-secrets $(date +%s)" || true
-    log_step "dev-tools/airo-secrets changes committed"
-
-    # Sync .npmrc from base app template to ensure registry configuration is up to date
+    # Sync .npmrc from base app template
     log_step "Syncing .npmrc..."
     cp "$BASE_APP_DIR/.npmrc" "$CUSTOMER_APP_DIR/.npmrc"
     git add .npmrc && git commit -m "Sync upstream .npmrc $(date +%s)" || true

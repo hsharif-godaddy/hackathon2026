@@ -1476,8 +1476,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           })
         }
 
-        // Git hook: ALWAYS check git state at message start (recovery + branch management)
-        // CRITICAL: This ensures if previous squash merge failed, we recover before processing
+        // Git hook: check setup status, ensure correct branch, create feature branch
+        // Coordinates with nomad_setup.sh via dev-supervisor setup status API
         try {
           // Extract conversationId if available for better tracking
           const conversationId = typedContext?.conversation?.conversationId;
