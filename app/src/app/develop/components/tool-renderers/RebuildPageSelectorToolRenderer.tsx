@@ -9,6 +9,7 @@ import text from '@ux/text'
 
 import { useSendUserMessage } from '@/app/develop/components/chat/ChatContext'
 import type { ToolStatus } from '@/app/develop/components/types'
+import { useTranslations } from '@/hooks/useTranslations'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
@@ -44,6 +45,7 @@ export default function RebuildPageSelectorToolRenderer({
   result: any
   size: 'regular' | 'small'
 }) {
+  const t = useTranslations()
   const sendUserMessage = useSendUserMessage()
   const isStreaming = useIsActivelyStreaming()
   const isLoading = useIsLoading()
@@ -69,13 +71,13 @@ export default function RebuildPageSelectorToolRenderer({
         <div>
           <ToolHeader
             icon={<Hammer className="w-2 h-2" />}
-            displayName={`Building ${pageTitle} page...`}
+            displayName={t('builder_rebuild_building_page', { pageTitle })}
             toolStatus={toolStatus}
             hasDetails={false}
           />
           <Box orientation="horizontal" gap="sm" className="mt-1 pl-4">
             <Button
-              text="View prompt"
+              text={t('builder_rebuild_view_prompt')}
               design="tertiary"
               size="sm"
               onClick={() => setIsPromptModalOpen(true)}
@@ -88,12 +90,12 @@ export default function RebuildPageSelectorToolRenderer({
         <ToolModal
           isOpen={isPromptModalOpen}
           onClose={() => setIsPromptModalOpen(false)}
-          title={`${pageTitle} Page Prompt`}
+          title={t('builder_rebuild_page_prompt_title', { pageTitle })}
         >
           <div className="flex-1 overflow-y-auto">
             <Box orientation="horizontal" inlineAlignChildren="end" className="mb-2">
               <Button
-                text="Copy to clipboard"
+                text={t('builder_common_copy_clipboard')}
                 design="tertiary"
                 size="sm"
                 onClick={() => {
@@ -116,7 +118,7 @@ export default function RebuildPageSelectorToolRenderer({
       <div>
         <ToolHeader
           icon={<FileCode className="w-2 h-2" />}
-          displayName="Page selector error"
+          displayName={t('builder_rebuild_page_selector_error')}
           toolStatus="error"
           hasDetails={false}
         />
@@ -135,7 +137,7 @@ export default function RebuildPageSelectorToolRenderer({
       <div>
         <ToolHeader
           icon={<FileCode className="w-2 h-2" />}
-          displayName="Working ..."
+          displayName={t('builder_rebuild_working')}
           toolStatus={toolStatus}
           hasDetails={false}
         />
@@ -172,9 +174,9 @@ export default function RebuildPageSelectorToolRenderer({
           <Box orientation="horizontal" gap="sm" blockAlignChildren="center">
             <CheckCircle className="w-4 h-4" />
             <Box gap="sm">
-              <text.p size={0}>All pages have been built!</text.p>
+              <text.p size={0}>{t('builder_rebuild_all_pages_built')}</text.p>
               <text.p size={-1} emphasis="passive">
-                {builtPages.length} page{builtPages.length !== 1 ? 's' : ''} completed
+                {t('builder_rebuild_pages_completed_summary', { count: builtPages.length })}
               </text.p>
             </Box>
           </Box>
@@ -209,7 +211,7 @@ export default function RebuildPageSelectorToolRenderer({
 
         {/* Build button */}
         <Button
-          text="Build Page"
+          text={t('builder_rebuild_build_page')}
           design="secondary"
           className="suggestion-button rounded-md font-normal"
           size="sm"
@@ -221,7 +223,7 @@ export default function RebuildPageSelectorToolRenderer({
       {/* Built pages list */}
       {size === "regular" && builtPages.length > 0 && (
         <Box gap="sm" className="mt-2">
-          <text.p size={-1} emphasis="passive">Already built:</text.p>
+          <text.p size={-1} emphasis="passive">{t('builder_rebuild_already_built')}</text.p>
           <Box orientation="horizontal" wrap gap="sm">
             {builtPages.map((page) => (
               <Box

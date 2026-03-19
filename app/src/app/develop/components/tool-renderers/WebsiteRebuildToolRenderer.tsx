@@ -54,16 +54,25 @@ export default function WebsiteRebuildToolRenderer({
   const isComplete = !isRunning && !isError && isSuccess
 
   // Build display name based on state
-  let displayName = 'Analyzing website...'
+  let displayName = t('builder_rebuild_analyzing_website')
   if (isComplete) {
-    displayName = `Analyzed ${domain}`
+    displayName = t('builder_rebuild_domain_analyzed', { domain })
   } else if (isError) {
-    displayName = `Failed to analyze ${domain}`
+    displayName = t('builder_rebuild_failed_analyze', { domain })
   } else if (domain) {
-    displayName = `Analyzing ${domain}...`
+    displayName = t('builder_rebuild_analyzing_domain', { domain })
   }
 
   const hasDetails = Boolean(sourceUrl || pagesFound > 0 || homepagePrompt)
+
+  function getAssetTypeDisplay(asset: { type?: string }): { emphasis: 'info' | 'success' | undefined; label: string } {
+    const type = asset.type
+    if (type === 'image') return { emphasis: 'info', label: t('builder_rebuild_asset_type_image') }
+    if (type === 'font') return { emphasis: 'info', label: t('builder_rebuild_asset_type_font') }
+    if (type === 'icon') return { emphasis: 'success', label: t('builder_rebuild_asset_type_icon') }
+    if (!type) return { emphasis: undefined, label: t('builder_rebuild_asset_type_other') }
+    return { emphasis: undefined, label: type }
+  }
 
   return (
     <div>
@@ -85,20 +94,20 @@ export default function WebsiteRebuildToolRenderer({
           <Box orientation="horizontal" gap="sm">
             <CheckCircle className="w-2 h-2" />
             <text.p size={-1}>
-              {pagesScraped} page{pagesScraped !== 1 ? 's' : ''} captured
+              {t('builder_rebuild_pages_captured_summary', { count: pagesScraped })}
             </text.p>
           </Box>
           {assetsFound > 0 && (
             <Box orientation="horizontal" gap="sm">
               <Image className="w-2 h-2" /> {/* eslint-disable-line jsx-a11y/alt-text */}
               <text.p size={-1}>
-                {assetsFound} asset{assetsFound !== 1 ? 's' : ''} found
+                {t('builder_rebuild_assets_found_summary', { count: assetsFound })}
               </text.p>
             </Box>
           )}
           {homepagePrompt && (
             <Button
-              text="View prompt"
+              text={t('builder_rebuild_view_prompt')}
               design="inline"
               size="sm"
               onClick={() => setIsPromptModalOpen(true)}
@@ -122,7 +131,7 @@ export default function WebsiteRebuildToolRenderer({
       <ToolModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={`Website Analysis: ${domain}`}
+        title={t('builder_rebuild_modal_title', { domain })}
       >
         <Box gap="md" className="flex-1 overflow-y-auto">
           {/* Status */}
@@ -130,14 +139,14 @@ export default function WebsiteRebuildToolRenderer({
             {isComplete && <CheckCircle className="w-4 h-4" />}
             {isError && <XCircle className="w-4 h-4" />}
             <text.p size={0}>
-              {isComplete ? 'Analysis Complete' : isError ? 'Analysis Failed' : 'Analyzing...'}
+              {isComplete ? t('builder_rebuild_analysis_complete') : isError ? t('builder_rebuild_analysis_failed') : t('builder_rebuild_analyzing')}
             </text.p>
           </Box>
 
           {/* Source URL */}
           {sourceUrl && (
             <Box gap="sm">
-              <text.p size={0}>Source URL</text.p>
+              <text.p size={0}>{t('builder_rebuild_source_url')}</text.p>
               <Button
                 text={sourceUrl}
                 design="inline"
@@ -151,15 +160,15 @@ export default function WebsiteRebuildToolRenderer({
           {(pagesFound > 0 || pagesScraped > 0 || assetsFound > 0) && (
             <Box orientation="horizontal" gap="lg" wrap>
               <Box gap="sm">
-                <text.p size={0}>Pages Found</text.p>
+                <text.p size={0}>{t('builder_rebuild_pages_found')}</text.p>
                 <text.h3 size={2}>{pagesFound}</text.h3>
               </Box>
               <Box gap="sm">
-                <text.p size={0}>Pages Captured</text.p>
+                <text.p size={0}>{t('builder_rebuild_pages_captured')}</text.p>
                 <text.h3 size={2}>{pagesScraped}</text.h3>
               </Box>
               <Box gap="sm">
-                <text.p size={0}>Assets Found</text.p>
+                <text.p size={0}>{t('builder_rebuild_assets_found')}</text.p>
                 <text.h3 size={2}>{assetsFound}</text.h3>
               </Box>
             </Box>
@@ -168,19 +177,19 @@ export default function WebsiteRebuildToolRenderer({
           {/* Assets by type */}
           {assetsFound > 0 && (
             <Box gap="sm">
-              <text.p size={0}>Assets by Type</text.p>
+              <text.p size={0}>{t('builder_rebuild_assets_by_type')}</text.p>
               <Box orientation="horizontal" gap="sm" wrap>
                 {assetsByType.image > 0 && (
-                  <Tag emphasis="info">{`${assetsByType.image} images`}</Tag>
+                  <Tag emphasis="info">{t('builder_rebuild_count_images', { count: assetsByType.image })}</Tag>
                 )}
                 {assetsByType.font > 0 && (
-                  <Tag emphasis="info">{`${assetsByType.font} fonts`}</Tag>
+                  <Tag emphasis="info">{t('builder_rebuild_count_fonts', { count: assetsByType.font })}</Tag>
                 )}
                 {assetsByType.icon > 0 && (
-                  <Tag emphasis="success">{`${assetsByType.icon} icons`}</Tag>
+                  <Tag emphasis="success">{t('builder_rebuild_count_icons', { count: assetsByType.icon })}</Tag>
                 )}
                 {assetsByType.other > 0 && (
-                  <Tag>{`${assetsByType.other} other`}</Tag>
+                  <Tag>{t('builder_rebuild_count_other', { count: assetsByType.other })}</Tag>
                 )}
               </Box>
             </Box>
@@ -189,20 +198,15 @@ export default function WebsiteRebuildToolRenderer({
           {/* Assets list */}
           {assets.length > 0 && (
             <Box gap="sm">
-              <text.p size={0}>Downloaded Assets</text.p>
+              <text.p size={0}>{t('builder_rebuild_downloaded_assets')}</text.p>
               <Box className="bg-muted p-2 rounded border border-border max-h-48 overflow-y-auto">
                 <Box gap="sm">
-                  {assets.map((asset: any, index: number) => (
+                  {assets.map((asset: any, index: number) => {
+                    const { emphasis, label } = getAssetTypeDisplay(asset)
+                    return (
                     <Box key={index} orientation="horizontal" gap="sm">
-                      <Tag
-                        emphasis={
-                          asset.type === 'image' ? 'info' :
-                          asset.type === 'font' ? 'info' :
-                          asset.type === 'icon' ? 'success' :
-                          undefined
-                        }
-                      >
-                        {asset.type}
+                      <Tag emphasis={emphasis}>
+                        {label}
                       </Tag>
                       <Box gap="sm" className="flex-1 min-w-0">
                         <text.p size={-1} emphasis="passive" className="truncate" title={asset.url}>
@@ -220,7 +224,8 @@ export default function WebsiteRebuildToolRenderer({
                         )}
                       </Box>
                     </Box>
-                  ))}
+                  )
+                  })}
                 </Box>
               </Box>
             </Box>
@@ -242,9 +247,9 @@ export default function WebsiteRebuildToolRenderer({
           {homepagePrompt && (
             <Box gap="sm">
               <Box orientation="horizontal" blockAlignChildren="center" inlineAlignChildren="center">
-                <text.p size={0}>Generated Prompt</text.p>
+                <text.p size={0}>{t('builder_rebuild_generated_prompt')}</text.p>
                 <Button
-                  text="View full"
+                  text={t('builder_rebuild_view_full')}
                   design="tertiary"
                   size="sm"
                   onClick={() => {
@@ -269,12 +274,12 @@ export default function WebsiteRebuildToolRenderer({
       <ToolModal
         isOpen={isPromptModalOpen}
         onClose={() => setIsPromptModalOpen(false)}
-        title="Generated Homepage Prompt"
+        title={t('builder_rebuild_generated_homepage_prompt')}
       >
         <Box gap="sm" className="flex-1 overflow-y-auto">
           <Box orientation="horizontal" inlineAlignChildren="end">
             <Button
-              text="Copy to clipboard"
+              text={t('builder_common_copy_clipboard')}
               design="tertiary"
               size="sm"
               onClick={() => {
