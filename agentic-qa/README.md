@@ -243,17 +243,17 @@ pnpm --filter agentic-qa test -- --quality-only --url https://example.com --skip
 
 The evaluator scores 9 dimensions, each with a specific weight in the overall score:
 
-| Category          | Weight | Method               | What It Checks                                   |
-| ----------------- | ------ | -------------------- | ------------------------------------------------ |
+| Category          | Weight | Method               | What It Checks                                    |
+| ----------------- | ------ | -------------------- | ------------------------------------------------- |
 | **Functional**    | 25%    | Playwright           | JS errors, broken links, broken images, resources |
-| **Content**       | 20%    | LLM-as-Judge         | Relevance, coherence, completeness, uniqueness   |
-| **Visual**        | 15%    | AI Vision + DOM      | Placeholder text, responsive design, aesthetics  |
-| **Performance**   | 10%    | Lighthouse / Nav API | LCP, CLS, FCP, TBT, Speed Index                 |
-| **Accessibility** | 10%    | axe-core             | WCAG 2.0/2.1/2.2 violations (A + AA)            |
-| **Usability**     | 10%    | AI Vision            | Nielsen's 10 heuristics evaluation               |
-| **SEO**           | 5%     | DOM inspection       | Title, meta, headings, alt text, structured data |
-| **Security**      | 3%     | HTTP + DOM           | HTTPS, mixed content, security headers           |
-| **Business Fit**  | 2%     | AI + keyword match   | Site-type specific elements present/missing      |
+| **Content**       | 20%    | LLM-as-Judge         | Relevance, coherence, completeness, uniqueness    |
+| **Visual**        | 15%    | AI Vision + DOM      | Placeholder text, responsive design, aesthetics   |
+| **Performance**   | 10%    | Lighthouse / Nav API | LCP, CLS, FCP, TBT, Speed Index                   |
+| **Accessibility** | 10%    | axe-core             | WCAG 2.0/2.1/2.2 violations (A + AA)              |
+| **Usability**     | 10%    | AI Vision            | Nielsen's 10 heuristics evaluation                |
+| **SEO**           | 5%     | DOM inspection       | Title, meta, headings, alt text, structured data  |
+| **Security**      | 3%     | HTTP + DOM           | HTTPS, mixed content, security headers            |
+| **Business Fit**  | 2%     | AI + keyword match   | Site-type specific elements present/missing       |
 
 ### How It Works
 
@@ -286,6 +286,7 @@ The evaluator scores 9 dimensions, each with a specific weight in the overall sc
 ### Evaluation Flow
 
 1. **Post-build mode** (with scenarios):
+
    - Scenario builds the website via Stagehand
    - Preview URL is extracted from the iframe
    - Screenshots are captured
@@ -349,7 +350,7 @@ sitePrompt:
 qualityEval:
   enabled: true
   siteType: restaurant
-  skipCategories: []  # Run all categories
+  skipCategories: [] # Run all categories
   thresholds:
     minOverallScore: 70
     minAccessibility: 80
@@ -361,10 +362,10 @@ goal: |
 
 ### Environment Variables for Quality Evaluation
 
-| Variable          | Required | Description                                      |
-| ----------------- | -------- | ------------------------------------------------ |
-| `ANTHROPIC_API_KEY` | No     | Enables AI-powered evaluators (visual, content, usability, business-fit). Without it, these fall back to basic checks. |
-| `ANTHROPIC_MODEL`   | No     | Claude model to use (default: claude-sonnet-4-20250514) |
+| Variable            | Required | Description                                                                                                            |
+| ------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY` | No       | Enables AI-powered evaluators (visual, content, usability, business-fit). Without it, these fall back to basic checks. |
+| `ANTHROPIC_MODEL`   | No       | Claude model to use (default: claude-sonnet-4-6)                                                                       |
 
 ### Output
 

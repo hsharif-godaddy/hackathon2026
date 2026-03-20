@@ -42,7 +42,7 @@ export interface AnthropicClientOptions {
   authType?: 'api-key' | 'bearer';
 }
 
-const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
+const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const DEFAULT_BASE_URL = process.env['ANTHROPIC_BASE_URL'] || 'https://api.anthropic.com';
 const DEFAULT_AUTH_TYPE = (process.env['ANTHROPIC_AUTH_TYPE'] === 'bearer' ? 'bearer' : 'api-key') as 'api-key' | 'bearer';
 const DEFAULT_MAX_TOKENS = 4096;
