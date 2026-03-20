@@ -38,9 +38,7 @@ vi.mock('@/hooks/useCustomerDomainAttach', () => ({
   useCustomerDomainAttach: vi.fn(() => ({
     pendingCustomerDomain: null,
     isPolling: false,
-    isAttaching: false,
     hasExternalNameservers: false,
-    attachFailed: false,
     requiresManualDnsSetup: false,
   })),
 }));
@@ -144,9 +142,7 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
       vi.mocked(useCustomerDomainAttach).mockReturnValue({
         pendingCustomerDomain,
         isPolling: true,
-        isAttaching: false,
         hasExternalNameservers: true,
-        attachFailed: false,
         requiresManualDnsSetup: true,
       });
 
@@ -169,36 +165,6 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
       expect(screen.getByText('1.2.3.4')).toBeInTheDocument();
     });
 
-    it('should render DNS instructions when attach API failed', async function renderDnsOnFail() {
-      const { useCustomerDomainAttach } = await import('@/hooks/useCustomerDomainAttach');
-      const { useAppDetails } = await import('@/hooks/useAppDetails');
-
-      vi.mocked(useCustomerDomainAttach).mockReturnValue({
-        pendingCustomerDomain,
-        isPolling: true,
-        isAttaching: false,
-        hasExternalNameservers: false,
-        attachFailed: true,
-        requiresManualDnsSetup: true,
-      });
-
-      vi.mocked(useAppDetails).mockReturnValue({
-        data: {
-          id: 'test-app-123',
-          name: 'Test App',
-          status: 'running',
-          domains: [pendingCustomerDomain],
-        },
-        isFetched: true,
-      } as any);
-
-      renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
-
-      await waitFor(function waitForDns() {
-        expect(screen.getByText('builder_domain_attach_dns_title')).toBeInTheDocument();
-      });
-    });
-
     it('should not render DNS instructions when requiresManualDnsSetup is false and domain is active', async function noDns() {
       const { useCustomerDomainAttach } = await import('@/hooks/useCustomerDomainAttach');
       const { useAppDetails } = await import('@/hooks/useAppDetails');
@@ -206,9 +172,7 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
       vi.mocked(useCustomerDomainAttach).mockReturnValue({
         pendingCustomerDomain: null,
         isPolling: false,
-        isAttaching: false,
         hasExternalNameservers: false,
-        attachFailed: false,
         requiresManualDnsSetup: false,
       });
 

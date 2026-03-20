@@ -67,7 +67,6 @@ export default function DomainAttachWidget({
   // Feature flag check
   const { data: isDomainAttachEnabled, isLoading: isLoadingFlag } = useSwitchboard('appbuilder-domain-attach');
   const { data: isDomainPurchaseEnabled } = useSwitchboard('appbuilder-domain-purchase');
-  const { data: isDCVEnabled } = useSwitchboard('appbuilder-domain-dcv');
 
   // Custom domain input state
   const [customDomain, setCustomDomain] = useState<string | null>(null);
@@ -139,7 +138,7 @@ export default function DomainAttachWidget({
   const {
     pendingCustomerDomain: pendingCustomerDomainForAttach,
     requiresManualDnsSetup,
-  } = useCustomerDomainAttach(appDetails, domains, isDCVEnabled ?? true);
+  } = useCustomerDomainAttach(appDetails, domains);
 
   const pendingDomain = useMemo(() => {
     if (!appDetails?.domains) return null;

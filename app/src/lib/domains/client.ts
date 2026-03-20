@@ -224,33 +224,5 @@ export class DomainsClient {
 
     return response || [];
   }
-
-  /**
-   * Attach a domain to a service
-   *
-   * @param customerId - Customer identifier
-   * @param domainName - Domain name to attach
-   * @param config - Attach configuration
-   * @returns Attach response
-   */
-  async attachDomain(
-    customerId: string,
-    domainName: string,
-    config: {
-      dryrun: boolean;
-      force: boolean;
-      host: string;
-      params: { IP: string } | { target: string };
-      providerId: string;
-      serviceId: string;
-    }
-  ) {
-    return this.request(
-      'POST',
-      `/v1/customers/${customerId}/domains/${domainName}/domainAttach/attach`,
-      config,
-      { logEvent: 'domains.attach-domain' }
-    );
-  }
 }
 

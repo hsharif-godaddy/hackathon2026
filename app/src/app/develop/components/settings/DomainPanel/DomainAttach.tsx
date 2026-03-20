@@ -17,7 +17,6 @@ import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
 import { DomainMutationError, useModifyDomains } from '@/hooks/useModifyDomains';
-import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { CdnStatus, DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
@@ -61,8 +60,6 @@ export default function DomainAttach() {
   const [debouncedDomain, setDebouncedDomain] = useState('');
   const [showAddConfirmation, setShowAddConfirmation] = useState(false);
   const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const { data: isDCVEnabled } = useSwitchboard('appbuilder-domain-dcv');
 
   const site = useSiteStore((state) => {
     if (!currentAppId) return null;
@@ -124,7 +121,7 @@ export default function DomainAttach() {
   const {
     pendingCustomerDomain: pendingCustomerDomainForAttach,
     requiresManualDnsSetup,
-  } = useCustomerDomainAttach(appDetails, domains, isDCVEnabled);
+  } = useCustomerDomainAttach(appDetails, domains);
 
   const pendingDomain = useMemo(() => {
     if (!appDetails?.domains) return null;
