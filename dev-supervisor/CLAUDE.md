@@ -7,10 +7,12 @@ Go-based containerized service acting as PID1 in development Docker containers. 
 ## Integration with Monorepo
 
 dev-supervisor is called by:
+
 - `app/src/lib/dev-environment/adapters/DockerAppService.ts`
 - `app/src/lib/dev-environment/services/docker-compose-generator.ts`
 
 **Socket paths:**
+
 - Container: `/tmp/supervisor/dev-supervisor.sock`
 - Host (local dev): `/tmp/dev-supervisor-{dockerSafeId}/dev-supervisor.sock` (mounted to `/tmp/supervisor` in container)
 - Configurable: `AIRO_SUPERVISOR_SOCKET_PATH` (v4) or `DEV_SUPERVISOR_SOCKET_PATH` (v3 compat)
@@ -56,6 +58,7 @@ Linux-specific features (auto-skipped on macOS): port discovery via `/proc`, zom
 ## Start-on-Request Mode
 
 Preview variant supports auto-start/stop of idle apps:
+
 - First request to stopped app starts the process
 - Idle timeout stops the app (`DEV_SUPERVISOR_IDLE_TIMEOUT=30m`)
 - **Safety:** Automatically disabled if `NOMAD_TASK_NAME != "preview"`
@@ -68,7 +71,7 @@ dev-supervisor/
 ├── api.go                      # HTTP API server (Unix socket/TCP)
 ├── internal/
 │   ├── processmanager/         # Process lifecycle management
-│   ├── proxy/http/             # TLS reverse proxy, WebSocket, static serving, SPA fallback
+│   ├── proxy/http/             # TLS reverse proxy, WebSocket, persistent assets
 │   ├── proxy/smtp/             # SMTP proxy with header injection (localhost:2525 only)
 │   ├── auth/                   # JWT middleware, JWKS validation
 │   ├── config/                 # Env-based configuration
@@ -85,6 +88,7 @@ dev-supervisor/
 ## Testing
 
 Three tiers:
+
 1. **Cross-platform unit tests** — `make test` (runs everywhere)
 2. **Linux-specific tests** — `*_linux_test.go` with `//go:build linux` (auto-skipped on macOS)
 3. **Docker integration tests** — `make test-docker` (tests actual container PID1 behavior)

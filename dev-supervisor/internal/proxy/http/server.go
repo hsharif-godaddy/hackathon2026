@@ -20,7 +20,6 @@ import (
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/auth"
 	"github.com/airo-ai-builder/dev-supervisor/internal/middleware"
-	"github.com/airo-ai-builder/dev-supervisor/internal/proxy/routing"
 )
 
 // HTTPProxy provides HTTP reverse proxy with optional TLS termination.
@@ -106,30 +105,20 @@ func (p *HTTPProxy) Start() error {
 	// Create reverse proxy to backend
 	p.reverseProxy = p.newReverseProxy(targetURL, retryTransport)
 
-	// Load routing configuration (with error handling)
-	routingConfig, err := routing.LoadConfig(routing.LoadOptions{
-		ConfigPath: p.config.ConfigPath,
-		APIPrefix:  p.config.APIPrefix,
-		StaticRoot: p.config.StaticRoot,
-		SPAMode:    p.config.SPAMode,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to load routing configuration: %w", err)
-	}
-
-	// Validate static serving configuration (after loading routing config)
-	if validateErr := p.validateStaticServingConfig(routingConfig); validateErr != nil {
-		return fmt.Errorf("invalid static serving configuration: %w", validateErr)
+	// Determine API prefix (default: /api)
+	apiPrefix := p.config.APIPrefix
+	if apiPrefix == "" {
+		apiPrefix = "/api"
 	}
 
 	// Create HTTP server mux
 	mux := http.NewServeMux()
 
 	// Add health check endpoint (unauthenticated, always available)
-	mux.HandleFunc("/airo/health", p.handleHealthCheck)
+	mux.HandleFunc("/airo/health", handlerWithName("health", p.handleHealthCheck))
 
 	// Add canary checks endpoint for infrastructure verification
-	mux.HandleFunc("/airo/canary_checks", handleCanaryChecks)
+	mux.HandleFunc("/airo/canary_checks", handlerWithName("health", handleCanaryChecks))
 
 	// Add media slot handlers - use app directory for manifest (not static root)
 	// The manifest is written to the app root by the agents service, not to the build output
@@ -188,15 +177,21 @@ func (p *HTTPProxy) Start() error {
 
 	// Add catch-all for /airo/* that returns 404 for unmatched paths
 	// This MUST come after specific /airo/* handlers but before the / catch-all
-	mux.HandleFunc("/airo/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/airo/", handlerWithName("not_found", func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
-	})
+	}))
+
+	// Persistent assets handler — serves /assets/* from CephFS mount,
+	// falling through to proxy (Vite) on miss.
+	persistentAssetsHandler := NewPersistentAssetsHandler(persistentDir, p.reverseProxy)
+	mux.Handle("/assets/", persistentAssetsHandler)
+	slog.Debug("persistent_assets.handler_registered",
+		"persistent_dir", persistentDir)
 
 	// Create request router
 	router := &RequestRouter{
 		proxyHandler:          p.reverseProxy,
-		apiPrefix:             routingConfig.APIPrefix,
-		isProductionMode:      p.config.EnableStaticServing,
+		apiPrefix:             apiPrefix,
 		allowedOrigins:        p.config.AllowedOrigins,
 		procMgr:               p.procMgr,
 		startOnRequestEnabled: p.startOnRequestEnabled,
@@ -205,21 +200,6 @@ func (p *HTTPProxy) Start() error {
 
 	// Route all other requests to the router
 	mux.Handle("/", router)
-
-	// Configure static serving if enabled
-	if p.config.EnableStaticServing {
-		// Use static root from routing config (which may come from JSON or env var)
-		staticRoot := routingConfig.StaticRoot
-		if staticRoot == "" {
-			staticRoot = p.config.StaticRoot
-		}
-
-		router.staticHandler = routing.NewStaticFileHandler(staticRoot, routingConfig.CacheControl)
-
-		if routingConfig.SPAMode {
-			router.spaFallback = filepath.Join(staticRoot, "index.html")
-		}
-	}
 
 	// Build middleware chain (outermost to innermost):
 	// logging -> CORS -> method validation -> JWT -> connection tracking -> activity -> router
@@ -280,7 +260,7 @@ func (p *HTTPProxy) Start() error {
 			ShareValidator: shareValidator,
 			SiteID:         p.config.SiteID,
 			ExcludedPaths:  p.config.JWTExcludedPaths,
-			APIPrefix:      routingConfig.APIPrefix,
+			APIPrefix:      apiPrefix,
 			AllowedOrigins: p.config.AllowedOrigins,
 		})
 

@@ -281,13 +281,8 @@ func (s *Server) startHTTPProxyIfEnabled() error {
 		TLSCertPath: s.config.ProxyCertPath,
 		TLSKeyPath:  s.config.ProxyKeyPath,
 
-		// Static serving configuration
-		StaticRoot:          s.config.ProxyStaticRoot,
-		EnableStaticServing: s.config.ProxyServeStatic,
-		SPAMode:             s.config.ProxySPAMode,
-		APIPrefix:           s.config.ProxyAPIPrefix,
-		ConfigPath:          s.config.ProxyRoutingConfig,
-		AllowedOrigins:      s.config.AllowedOrigins,
+		APIPrefix:      s.config.ProxyAPIPrefix,
+		AllowedOrigins: s.config.AllowedOrigins,
 
 		// JWT authentication configuration (hybrid mode: redirects browsers to builder, 401 for APIs)
 		JWTEnabled:        s.config.JWTEnabled,

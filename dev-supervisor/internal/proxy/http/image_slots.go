@@ -373,6 +373,7 @@ func NewImageSlotHandler(cache *ManifestCache, mediaSearchPaths []string) *Image
 
 // ServeHTTP handles image slot requests.
 func (h *ImageSlotHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	setHandler(r.Context(), "media_slot")
 	h.serveSlot(w, r)
 }
 
@@ -409,5 +410,6 @@ func NewVideoSlotHandler(cache *ManifestCache, mediaSearchPaths []string) *Video
 
 // ServeHTTP handles video slot requests.
 func (h *VideoSlotHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	setHandler(r.Context(), "media_slot")
 	h.serveSlot(w, r)
 }

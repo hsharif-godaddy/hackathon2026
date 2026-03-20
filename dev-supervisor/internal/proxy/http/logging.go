@@ -2,12 +2,42 @@ package httpproxy
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"log/slog"
 	"net"
 	"net/http"
 	"time"
 )
+
+// contextKey is an unexported type for context keys in this package.
+type contextKey string
+
+const handlerKey contextKey = "handler"
+
+// handlerName is a mutable container stored in request context so that inner
+// handlers can set the handler name and the outer logging middleware can read
+// it back after ServeHTTP returns. Using a pointer avoids the problem where
+// r.WithContext() creates a new *http.Request invisible to the middleware.
+type handlerName struct{ name string }
+
+// setHandler mutates the handler name stored in the context by the logging
+// middleware. If no handlerName was seeded (should not happen in production),
+// it is a no-op — the default "proxy" will be logged.
+func setHandler(ctx context.Context, name string) {
+	if hn, ok := ctx.Value(handlerKey).(*handlerName); ok {
+		hn.name = name
+	}
+}
+
+// handlerWithName wraps an http.HandlerFunc to set the handler name on the
+// request context before delegating to the inner handler.
+func handlerWithName(name string, h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		setHandler(r.Context(), name)
+		h(w, r)
+	}
+}
 
 // responseWriter wraps http.ResponseWriter to capture status code and response size.
 // Implements http.Hijacker and http.Flusher interfaces for WebSocket and SSE support.
@@ -51,6 +81,11 @@ func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
+		// Seed a mutable handler name into the context so inner handlers can
+		// set it and we can read it back after ServeHTTP returns.
+		hn := &handlerName{name: "proxy"}
+		r = r.WithContext(context.WithValue(r.Context(), handlerKey, hn))
+
 		// Wrap response writer to capture status and size.
 		wrapped := &responseWriter{
 			ResponseWriter: w,
@@ -73,6 +108,7 @@ func loggingMiddleware(next http.Handler) http.Handler {
 			"status", wrapped.statusCode,
 			"size", wrapped.size,
 			"duration_ms", duration.Milliseconds(),
+			"handler", hn.name,
 			"src_ip", srcIP,
 			"src_port", srcPort,
 		}

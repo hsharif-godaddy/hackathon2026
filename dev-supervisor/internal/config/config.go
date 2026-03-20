@@ -30,13 +30,8 @@ type Config struct {
 	ProxyCertPath          string // Path to TLS certificate
 	ProxyKeyPath           string // Path to TLS private key
 
-	// Static serving configuration
-	ProxyStaticRoot    string   // Root directory for static files (required if ProxyServeStatic=true)
-	ProxyServeStatic   bool     // Enable static file serving (explicit, default: false)
-	ProxySPAMode       bool     // Enable SPA fallback (default: true)
-	ProxyAPIPrefix     string   // API route prefix (default: /api)
-	ProxyRoutingConfig string   // Optional routing config file path
-	AllowedOrigins     []string // CORS allowed origins (comma-separated in env)
+	ProxyAPIPrefix string   // API route prefix (default: /api)
+	AllowedOrigins []string // CORS allowed origins (comma-separated in env)
 
 	// JWT authentication configuration
 	// Auth failure handling uses hybrid mode: redirects browsers to builder, returns 401 for APIs
@@ -112,13 +107,7 @@ func LoadConfig() *Config {
 	config.ProxyCertPath = GetEnvStringWithDefault("DEV_SUPERVISOR_PROXY_CERT_PATH", "")
 	config.ProxyKeyPath = GetEnvStringWithDefault("DEV_SUPERVISOR_PROXY_KEY_PATH", "")
 
-	// Static serving configuration from environment variables
-	// Default static root is /app/dist/client (standard Vite build output in container)
-	config.ProxyStaticRoot = GetEnvStringWithDefault("DEV_SUPERVISOR_STATIC_ROOT", "/app/dist/client")
-	config.ProxyServeStatic = GetEnvBoolWithDefault("DEV_SUPERVISOR_SERVE_STATIC", false)
-	config.ProxySPAMode = GetEnvBoolWithDefault("DEV_SUPERVISOR_SPA_MODE", true)
 	config.ProxyAPIPrefix = GetEnvStringWithDefault("DEV_SUPERVISOR_API_PREFIX", "/api")
-	config.ProxyRoutingConfig = GetEnvStringWithDefault("DEV_SUPERVISOR_ROUTING_CONFIG", "")
 
 	// Parse allowed origins using the same logic as vite.config.ts
 	// This ensures dev-supervisor and Vite have identical CORS configurations
@@ -148,6 +137,10 @@ func LoadConfig() *Config {
 		// Media asset endpoints - must be unauthenticated because <img>/<video> tags cannot send Authorization headers
 		if !slices.Contains(config.JWTExcludedPaths, "/airo-assets/") {
 			config.JWTExcludedPaths = append(config.JWTExcludedPaths, "/airo-assets/")
+		}
+		// Persistent assets served from CephFS mount
+		if !slices.Contains(config.JWTExcludedPaths, "/assets/") {
+			config.JWTExcludedPaths = append(config.JWTExcludedPaths, "/assets/")
 		}
 	}
 

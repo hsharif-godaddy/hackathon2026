@@ -1365,13 +1365,12 @@ func TestHandleSetupExecute_Success(t *testing.T) {
 	server := NewServer()
 
 	tmpDir := t.TempDir()
-	scriptPath := tmpDir + "/test-setup.sh"
-	writeTestScript(t, scriptPath, "#!/bin/sh\necho 'Setup complete'\nexit 0\n")
 
-	server.procMgr.SetDeferredSetup(scriptPath, 10*time.Second, validation.ProcessStartRequest{
-		Command:    "sleep 30",
-		WorkingDir: tmpDir,
-	})
+	server.procMgr.SetDeferredSetup(
+		filepath.Join(testScriptDir, "success.sh"), 10*time.Second, validation.ProcessStartRequest{
+			Command:    "sleep 30",
+			WorkingDir: tmpDir,
+		})
 
 	req := httptest.NewRequest(http.MethodPost, "/setup/execute", nil)
 	w := httptest.NewRecorder()
@@ -1423,11 +1422,8 @@ func TestHandleSetupExecute_AlreadyExecuted(t *testing.T) {
 
 	server := NewServer()
 
-	tmpDir := t.TempDir()
-	scriptPath := tmpDir + "/test-setup.sh"
-	writeTestScript(t, scriptPath, "#!/bin/sh\necho 'Setup complete'\nexit 0\n")
-
-	server.procMgr.SetDeferredSetup(scriptPath, 10*time.Second, validation.ProcessStartRequest{})
+	server.procMgr.SetDeferredSetup(
+		filepath.Join(testScriptDir, "success.sh"), 10*time.Second, validation.ProcessStartRequest{})
 	if err := server.procMgr.ExecuteDeferredSetup(); err != nil {
 		t.Fatalf("Failed to execute deferred setup: %v", err)
 	}
@@ -1456,11 +1452,8 @@ func TestHandleSetupExecute_Failure(t *testing.T) {
 
 	server := NewServer()
 
-	tmpDir := t.TempDir()
-	scriptPath := tmpDir + "/test-setup.sh"
-	writeTestScript(t, scriptPath, "#!/bin/sh\necho 'Setup failed' >&2\nexit 1\n")
-
-	server.procMgr.SetDeferredSetup(scriptPath, 10*time.Second, validation.ProcessStartRequest{})
+	server.procMgr.SetDeferredSetup(
+		filepath.Join(testScriptDir, "fail.sh"), 10*time.Second, validation.ProcessStartRequest{})
 
 	req := httptest.NewRequest(http.MethodPost, "/setup/execute", nil)
 	w := httptest.NewRecorder()

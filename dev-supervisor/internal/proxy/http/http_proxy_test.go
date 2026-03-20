@@ -12,7 +12,6 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -22,7 +21,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/airo-ai-builder/dev-supervisor/internal/proxy/routing"
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
@@ -221,26 +219,25 @@ func newIPv4TestServer(handler http.Handler) *httptest.Server {
 }
 
 // Unit tests for validateConfig()
-func TestValidateConfig_StaticServingDisabled(t *testing.T) {
+func TestValidateConfig_MinimalValid(t *testing.T) {
 	// Create temporary TLS certificate and key for testing
 	certFile := createTempCert(t)
 	keyFile := createTempKey(t)
 
 	proxy := &HTTPProxy{
 		config: Config{
-			Enabled:             true,
-			ListenPort:          5000,
-			TargetHost:          "localhost",
-			TargetPort:          8080,
-			TLSCertPath:         certFile,
-			TLSKeyPath:          keyFile,
-			EnableStaticServing: false,
+			Enabled:     true,
+			ListenPort:  5000,
+			TargetHost:  "localhost",
+			TargetPort:  8080,
+			TLSCertPath: certFile,
+			TLSKeyPath:  keyFile,
 		},
 	}
 
 	err := proxy.validateConfig()
 	if err != nil {
-		t.Errorf("expected no error when static serving is disabled, got: %v", err)
+		t.Errorf("expected no error, got: %v", err)
 	}
 }
 
@@ -248,13 +245,12 @@ func TestValidateConfig_StaticServingDisabled(t *testing.T) {
 func TestValidateConfig_HTTPMode_NoCertificates(t *testing.T) {
 	proxy := &HTTPProxy{
 		config: Config{
-			Enabled:             true,
-			ListenPort:          5000,
-			TargetHost:          "localhost",
-			TargetPort:          8080,
-			TLSCertPath:         "", // No certificates
-			TLSKeyPath:          "",
-			EnableStaticServing: false,
+			Enabled:     true,
+			ListenPort:  5000,
+			TargetHost:  "localhost",
+			TargetPort:  8080,
+			TLSCertPath: "", // No certificates
+			TLSKeyPath:  "",
 		},
 	}
 
@@ -386,203 +382,6 @@ func createTempKey(t *testing.T) string {
 	return keyFile.Name()
 }
 
-func TestValidateStaticServingConfig_MissingRoot(t *testing.T) {
-	proxy := &HTTPProxy{
-		config: Config{
-			EnableStaticServing: true,
-			StaticRoot:          "",
-		},
-	}
-
-	routingConfig := routing.Config{
-		StaticRoot: "", // Empty in both env and routing config
-		SPAMode:    true,
-	}
-
-	err := proxy.validateStaticServingConfig(routingConfig)
-	if err == nil {
-		t.Error("expected error when static root is empty, got nil")
-	}
-	if !strings.Contains(err.Error(), "static root must be specified") {
-		t.Errorf("expected error about missing static root, got: %v", err)
-	}
-}
-
-func TestValidateStaticServingConfig_NonExistentRoot(t *testing.T) {
-	proxy := &HTTPProxy{
-		config: Config{
-			EnableStaticServing: true,
-		},
-	}
-
-	routingConfig := routing.Config{
-		StaticRoot: "/nonexistent/path",
-		SPAMode:    true,
-	}
-
-	// Should not return error when static root doesn't exist (just logs warning)
-	err := proxy.validateStaticServingConfig(routingConfig)
-	if err != nil {
-		t.Errorf("expected no error when static root does not exist (should just warn), got: %v", err)
-	}
-}
-
-func TestValidateStaticServingConfig_ValidRoot(t *testing.T) {
-	// Create temporary directory
-	tmpDir := t.TempDir()
-
-	proxy := &HTTPProxy{
-		config: Config{
-			EnableStaticServing: true,
-		},
-	}
-
-	routingConfig := routing.Config{
-		StaticRoot: tmpDir,
-		SPAMode:    false,
-	}
-
-	err := proxy.validateStaticServingConfig(routingConfig)
-	if err != nil {
-		t.Errorf("expected no error with valid static root, got: %v", err)
-	}
-}
-
-func TestValidateStaticServingConfig_SPAMode_MissingIndexHTML(t *testing.T) {
-	// Create temporary directory without index.html
-	tmpDir := t.TempDir()
-
-	proxy := &HTTPProxy{
-		config: Config{
-			EnableStaticServing: true,
-		},
-	}
-
-	routingConfig := routing.Config{
-		StaticRoot: tmpDir,
-		SPAMode:    true,
-	}
-
-	// Should validate successfully but log a warning (not tested here)
-	err := proxy.validateStaticServingConfig(routingConfig)
-	if err != nil {
-		t.Errorf("expected no error with missing index.html (should warn), got: %v", err)
-	}
-}
-
-func TestValidateStaticServingConfig_JSONStaticRoot(t *testing.T) {
-	// Test that static root from JSON config (routingConfig) is used
-	tmpDir := t.TempDir()
-
-	proxy := &HTTPProxy{
-		config: Config{
-			EnableStaticServing: true,
-			StaticRoot:          "", // Empty in env
-		},
-	}
-
-	routingConfig := routing.Config{
-		StaticRoot: tmpDir, // Set in JSON config
-		SPAMode:    true,
-	}
-
-	err := proxy.validateStaticServingConfig(routingConfig)
-	if err != nil {
-		t.Errorf("expected no error when static root comes from JSON, got: %v", err)
-	}
-}
-
-func TestValidateStaticServingConfig_Disabled(t *testing.T) {
-	proxy := &HTTPProxy{
-		config: Config{
-			EnableStaticServing: false,
-		},
-	}
-
-	routingConfig := routing.Config{
-		StaticRoot: "", // Empty but shouldn't matter
-		SPAMode:    true,
-	}
-
-	err := proxy.validateStaticServingConfig(routingConfig)
-	if err != nil {
-		t.Errorf("expected no error when static serving is disabled, got: %v", err)
-	}
-}
-
-// Integration test: JSON-only configuration
-func TestJSONOnlyConfiguration(t *testing.T) {
-	// This test verifies that an operator can configure static serving
-	// entirely via JSON config without setting any env vars
-	tmpDir := t.TempDir()
-	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	// Create index.html
-	indexPath := path.Join(tmpDir, "index.html")
-	if writeErr := os.WriteFile(indexPath, []byte("<html></html>"), 0600); writeErr != nil {
-		t.Fatal(writeErr)
-	}
-
-	// JSON config with all settings
-	config := routing.Config{
-		StaticRoot: tmpDir,
-		SPAMode:    true,
-		APIPrefix:  "/custom-api",
-	}
-
-	data, marshalErr := json.Marshal(config)
-	if marshalErr != nil {
-		t.Fatal(marshalErr)
-	}
-	if _, writeErr := tmpFile.Write(data); writeErr != nil {
-		t.Fatal(writeErr)
-	}
-	tmpFile.Close()
-
-	// Create proxy with minimal env vars (only enable static serving)
-	proxy := &HTTPProxy{
-		config: Config{
-			EnableStaticServing: true,  // Enable via env var
-			StaticRoot:          "",    // Empty - will come from JSON
-			SPAMode:             false, // Default - will be overridden by JSON
-			APIPrefix:           "",    // Empty - will come from JSON
-			ConfigPath:          tmpFile.Name(),
-		},
-	}
-
-	// Load routing config
-	routingConfig, err := routing.LoadConfig(routing.LoadOptions{
-		ConfigPath: proxy.config.ConfigPath,
-		APIPrefix:  proxy.config.APIPrefix,
-		StaticRoot: proxy.config.StaticRoot,
-		SPAMode:    proxy.config.SPAMode,
-	})
-	if err != nil {
-		t.Errorf("expected no error loading config, got: %v", err)
-	}
-
-	// Validate static serving config (should succeed with JSON values)
-	err = proxy.validateStaticServingConfig(routingConfig)
-	if err != nil {
-		t.Errorf("expected validation to pass with JSON config, got: %v", err)
-	}
-
-	// Verify values came from JSON
-	if routingConfig.StaticRoot != tmpDir {
-		t.Errorf("expected static root from JSON '%s', got: %s", tmpDir, routingConfig.StaticRoot)
-	}
-	if !routingConfig.SPAMode {
-		t.Error("expected SPA mode from JSON to be true")
-	}
-	if routingConfig.APIPrefix != "/custom-api" {
-		t.Errorf("expected API prefix from JSON '/custom-api', got: %s", routingConfig.APIPrefix)
-	}
-}
-
 // Unit tests for RequestRouter
 func TestRequestRouter_APIRoute(t *testing.T) {
 	// Create mock proxy handler
@@ -594,9 +393,8 @@ func TestRequestRouter_APIRoute(t *testing.T) {
 	})
 
 	router := &RequestRouter{
-		proxyHandler:     proxyHandler,
-		apiPrefix:        "/api",
-		isProductionMode: true,
+		proxyHandler: proxyHandler,
+		apiPrefix:    "/api",
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
@@ -612,7 +410,7 @@ func TestRequestRouter_APIRoute(t *testing.T) {
 	}
 }
 
-func TestRequestRouter_StaticServingDisabled(t *testing.T) {
+func TestRequestRouter_NonAPIRoute_ProxiesToBackend(t *testing.T) {
 	// Create mock proxy handler
 	proxyHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -622,9 +420,8 @@ func TestRequestRouter_StaticServingDisabled(t *testing.T) {
 	})
 
 	router := &RequestRouter{
-		proxyHandler:     proxyHandler,
-		apiPrefix:        "/api",
-		isProductionMode: false, // Static serving disabled
+		proxyHandler: proxyHandler,
+		apiPrefix:    "/api",
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/app.js", nil)
@@ -637,196 +434,6 @@ func TestRequestRouter_StaticServingDisabled(t *testing.T) {
 	}
 	if rec.Body.String() != testProxyResponse {
 		t.Errorf("expected body %q, got: %s", testProxyResponse, rec.Body.String())
-	}
-}
-
-func TestRequestRouter_StaticFileWithExtension_GET(t *testing.T) {
-	// Create temporary static file
-	tmpDir := t.TempDir()
-	jsFile := path.Join(tmpDir, "app.js")
-	if err := os.WriteFile(jsFile, []byte("console.log('test')"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create static handler
-	staticHandler := http.FileServer(http.Dir(tmpDir))
-
-	router := &RequestRouter{
-		staticHandler:    staticHandler,
-		proxyHandler:     http.NotFoundHandler(),
-		apiPrefix:        "/api",
-		isProductionMode: true,
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/app.js", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got: %d", rec.Code)
-	}
-	if !strings.Contains(rec.Body.String(), "console.log") {
-		t.Errorf("expected file content, got: %s", rec.Body.String())
-	}
-}
-
-func TestRequestRouter_StaticFileWithExtension_HEAD(t *testing.T) {
-	// Create temporary static file
-	tmpDir := t.TempDir()
-	jsFile := path.Join(tmpDir, "app.js")
-	if err := os.WriteFile(jsFile, []byte("console.log('test')"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create static handler
-	staticHandler := http.FileServer(http.Dir(tmpDir))
-
-	router := &RequestRouter{
-		staticHandler:    staticHandler,
-		proxyHandler:     http.NotFoundHandler(),
-		apiPrefix:        "/api",
-		isProductionMode: true,
-	}
-
-	req := httptest.NewRequest(http.MethodHead, "/app.js", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got: %d", rec.Code)
-	}
-	// HEAD should not return body
-	if rec.Body.Len() > 0 {
-		t.Errorf("expected empty body for HEAD request, got: %s", rec.Body.String())
-	}
-}
-
-func TestRequestRouter_StaticFileWithExtension_OPTIONS(t *testing.T) {
-	// After CORS refactoring: RequestRouter no longer handles CORS
-	// CORS is handled by rs/cors middleware (placed before router in chain)
-	// Router now forwards OPTIONS to http.FileServer which returns 200
-
-	// Create temporary static file
-	tmpDir := t.TempDir()
-	jsFile := path.Join(tmpDir, "app.js")
-	if err := os.WriteFile(jsFile, []byte("console.log('test')"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create static handler
-	staticHandler := http.FileServer(http.Dir(tmpDir))
-
-	router := &RequestRouter{
-		staticHandler:    staticHandler,
-		proxyHandler:     http.NotFoundHandler(),
-		apiPrefix:        "/api",
-		isProductionMode: true,
-	}
-
-	req := httptest.NewRequest(http.MethodOptions, "/app.js", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	// Router no longer handles CORS - it forwards to http.FileServer
-	// http.FileServer returns 200 for OPTIONS (not 204)
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 from http.FileServer, got: %d", rec.Code)
-	}
-	// CORS headers are NOT set by router - that's done by CORS middleware
-	// This test just verifies router routing behavior, not CORS
-}
-
-func TestRequestRouter_ExtensionlessStaticFile_OPTIONS(t *testing.T) {
-	// After CORS refactoring: RequestRouter no longer handles CORS or OPTIONS specially
-	// OPTIONS requests are routed like any other method
-
-	tmpDir := t.TempDir()
-	file := path.Join(tmpDir, ".well-known")
-	if err := os.WriteFile(file, []byte("data"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	router := &RequestRouter{
-		staticHandler:    http.FileServer(http.Dir(tmpDir)),
-		proxyHandler:     http.NotFoundHandler(),
-		apiPrefix:        "/api",
-		isProductionMode: true,
-	}
-
-	req := httptest.NewRequest(http.MethodOptions, "/.well-known", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	// Router forwards to http.FileServer, which returns 200 for OPTIONS on existing files
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200 for OPTIONS from http.FileServer, got %d", rec.Code)
-	}
-}
-
-func TestRequestRouter_SPAFallback(t *testing.T) {
-	// Create temporary index.html
-	tmpDir := t.TempDir()
-	indexFile := path.Join(tmpDir, "index.html")
-	if err := os.WriteFile(indexFile, []byte("<html><body>SPA</body></html>"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	router := &RequestRouter{
-		staticHandler:    http.FileServer(http.Dir(tmpDir)),
-		proxyHandler:     http.NotFoundHandler(),
-		apiPrefix:        "/api",
-		isProductionMode: true,
-		spaFallback:      indexFile,
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/users/profile", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got: %d", rec.Code)
-	}
-	if !strings.Contains(rec.Body.String(), "SPA") {
-		t.Errorf("expected SPA content, got: %s", rec.Body.String())
-	}
-
-	// Verify no-cache headers
-	cacheControl := rec.Header().Get("Cache-Control")
-	if !strings.Contains(cacheControl, "no-cache") {
-		t.Errorf("expected Cache-Control: no-cache, got: %s", cacheControl)
-	}
-}
-
-func TestRequestRouter_SPAFallback_HeadRequest(t *testing.T) {
-	// Create temporary index.html
-	tmpDir := t.TempDir()
-	indexFile := path.Join(tmpDir, "index.html")
-	if err := os.WriteFile(indexFile, []byte("<html><body>SPA</body></html>"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	router := &RequestRouter{
-		staticHandler:    http.FileServer(http.Dir(tmpDir)),
-		proxyHandler:     http.NotFoundHandler(),
-		apiPrefix:        "/api",
-		isProductionMode: true,
-		spaFallback:      indexFile,
-	}
-
-	// HEAD requests to client-side routes should go to static handler, not SPA fallback
-	req := httptest.NewRequest(http.MethodHead, "/users/profile", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	// http.FileServer returns 404 for non-existent paths
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected status 404 for HEAD request to non-existent path, got: %d", rec.Code)
 	}
 }
 
@@ -840,9 +447,8 @@ func TestRequestRouter_PostRequest_ProxyToBackend(t *testing.T) {
 	})
 
 	router := &RequestRouter{
-		proxyHandler:     proxyHandler,
-		apiPrefix:        "/api",
-		isProductionMode: true,
+		proxyHandler: proxyHandler,
+		apiPrefix:    "/api",
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/submit", nil)
@@ -855,467 +461,6 @@ func TestRequestRouter_PostRequest_ProxyToBackend(t *testing.T) {
 	}
 	if rec.Body.String() != testProxyResponse {
 		t.Errorf("expected body %q, got: %s", testProxyResponse, rec.Body.String())
-	}
-}
-
-// Test that extensionless files are served before SPA fallback
-func TestRequestRouter_ExtensionlessFile_ServedBeforeSPA(t *testing.T) {
-	// Create temporary directory with .well-known file (no extension)
-	tmpDir := t.TempDir()
-	wellKnownDir := path.Join(tmpDir, ".well-known")
-	if err := os.Mkdir(wellKnownDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create apple-app-site-association file (no extension)
-	aaasaFile := path.Join(wellKnownDir, "apple-app-site-association")
-	aaasaContent := `{"applinks":{"apps":[],"details":[]}}`
-	if err := os.WriteFile(aaasaFile, []byte(aaasaContent), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create index.html for SPA fallback
-	indexFile := path.Join(tmpDir, "index.html")
-	if err := os.WriteFile(indexFile, []byte("<html><body>SPA</body></html>"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	router := &RequestRouter{
-		staticHandler:    http.FileServer(http.Dir(tmpDir)),
-		proxyHandler:     http.NotFoundHandler(),
-		apiPrefix:        "/api",
-		isProductionMode: true,
-		spaFallback:      indexFile,
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/.well-known/apple-app-site-association", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	// Should serve the actual file, NOT the SPA fallback
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got: %d", rec.Code)
-	}
-	if !strings.Contains(rec.Body.String(), "applinks") {
-		t.Errorf("expected apple-app-site-association content, got SPA fallback: %s", rec.Body.String())
-	}
-}
-
-// Test that non-existent extensionless paths fall back to SPA for GET
-func TestRequestRouter_ExtensionlessPath_FallsBackToSPA(t *testing.T) {
-	tmpDir := t.TempDir()
-	indexFile := path.Join(tmpDir, "index.html")
-	if err := os.WriteFile(indexFile, []byte("<html><body>SPA</body></html>"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	router := &RequestRouter{
-		staticHandler:    http.FileServer(http.Dir(tmpDir)),
-		proxyHandler:     http.NotFoundHandler(),
-		apiPrefix:        "/api",
-		isProductionMode: true,
-		spaFallback:      indexFile,
-	}
-
-	// Request for non-existent extensionless path should fall back to SPA
-	req := httptest.NewRequest(http.MethodGet, "/users/profile", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got: %d", rec.Code)
-	}
-	if !strings.Contains(rec.Body.String(), "SPA") {
-		t.Errorf("expected SPA content, got: %s", rec.Body.String())
-	}
-}
-
-// Test that HEAD requests to non-existent extensionless paths return 404 (not SPA)
-func TestRequestRouter_ExtensionlessPath_HEAD_Returns404(t *testing.T) {
-	tmpDir := t.TempDir()
-	indexFile := path.Join(tmpDir, "index.html")
-	if err := os.WriteFile(indexFile, []byte("<html><body>SPA</body></html>"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	router := &RequestRouter{
-		staticHandler:    http.FileServer(http.Dir(tmpDir)),
-		proxyHandler:     http.NotFoundHandler(),
-		apiPrefix:        "/api",
-		isProductionMode: true,
-		spaFallback:      indexFile,
-	}
-
-	// HEAD requests to client-side routes receive 404, not SPA fallback
-	// This is documented behavior: HEAD on a client-side route is unusual
-	req := httptest.NewRequest(http.MethodHead, "/users/profile", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected status 404 for HEAD request to non-existent path, got: %d", rec.Code)
-	}
-}
-
-// Test that HEAD requests to existing extensionless files return 200
-func TestRequestRouter_ExtensionlessFile_HEAD_Returns200(t *testing.T) {
-	tmpDir := t.TempDir()
-	wellKnownDir := path.Join(tmpDir, ".well-known")
-	if err := os.Mkdir(wellKnownDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	aaasaFile := path.Join(wellKnownDir, "apple-app-site-association")
-	if err := os.WriteFile(aaasaFile, []byte(`{"applinks":{}}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	indexFile := path.Join(tmpDir, "index.html")
-	if err := os.WriteFile(indexFile, []byte("<html></html>"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	router := &RequestRouter{
-		staticHandler:    http.FileServer(http.Dir(tmpDir)),
-		proxyHandler:     http.NotFoundHandler(),
-		apiPrefix:        "/api",
-		isProductionMode: true,
-		spaFallback:      indexFile,
-	}
-
-	req := httptest.NewRequest(http.MethodHead, "/.well-known/apple-app-site-association", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 for HEAD request to existing file, got: %d", rec.Code)
-	}
-	// HEAD should not return body
-	if rec.Body.Len() > 0 {
-		t.Errorf("expected empty body for HEAD request, got: %s", rec.Body.String())
-	}
-}
-
-// Test that cache headers from newStaticFileHandler are preserved for extensionless files
-func TestRequestRouter_ExtensionlessFile_CacheHeaders(t *testing.T) {
-	tmpDir := t.TempDir()
-	wellKnownDir := path.Join(tmpDir, ".well-known")
-	if err := os.Mkdir(wellKnownDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create a .json file (has extension, so cache headers apply)
-	jsonFile := path.Join(wellKnownDir, "assetlinks.json")
-	if err := os.WriteFile(jsonFile, []byte(`[{"relation":[]}]`), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	cacheSettings := routing.CacheSettings{
-		EnableCaching: true,
-		MaxAge: map[string]int{
-			".json": 3600, // 1 hour
-		},
-	}
-
-	staticHandler := routing.NewStaticFileHandler(tmpDir, cacheSettings)
-
-	indexFile := path.Join(tmpDir, "index.html")
-	if err := os.WriteFile(indexFile, []byte("<html></html>"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	router := &RequestRouter{
-		staticHandler:    staticHandler,
-		proxyHandler:     http.NotFoundHandler(),
-		apiPrefix:        "/api",
-		isProductionMode: true,
-		spaFallback:      indexFile,
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/.well-known/assetlinks.json", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got: %d", rec.Code)
-	}
-
-	// Verify cache headers were set by newStaticFileHandler
-	cacheControl := rec.Header().Get("Cache-Control")
-	if !strings.Contains(cacheControl, "max-age=3600") {
-		t.Errorf("expected Cache-Control with max-age=3600, got: %s", cacheControl)
-	}
-}
-
-// Test that SPA fallback serves index.html with correct Content-Type (not text/plain from 404 probe)
-func TestRequestRouter_SPAFallback_CorrectContentType(t *testing.T) {
-	tmpDir := t.TempDir()
-	indexFile := path.Join(tmpDir, "index.html")
-	indexContent := "<!DOCTYPE html><html><head></head><body>SPA</body></html>"
-	if err := os.WriteFile(indexFile, []byte(indexContent), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	router := &RequestRouter{
-		staticHandler:    http.FileServer(http.Dir(tmpDir)),
-		proxyHandler:     http.NotFoundHandler(),
-		apiPrefix:        "/api",
-		isProductionMode: true,
-		spaFallback:      indexFile,
-	}
-
-	// Request for non-existent extensionless path should fall back to SPA
-	req := httptest.NewRequest(http.MethodGet, "/users/profile", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got: %d", rec.Code)
-	}
-
-	// Verify Content-Type is text/html, NOT text/plain (which would come from 404 probe contamination)
-	contentType := rec.Header().Get("Content-Type")
-	if !strings.Contains(contentType, "text/html") {
-		t.Errorf("expected Content-Type text/html, got: %s (header contamination from 404 probe?)", contentType)
-	}
-
-	if !strings.Contains(rec.Body.String(), "SPA") {
-		t.Errorf("expected SPA content, got: %s", rec.Body.String())
-	}
-}
-
-// Test that HEAD/OPTIONS requests without SPA mode proxy to backend instead of returning 404
-func TestRequestRouter_HeadRequest_NoSPAMode_ProxiesToBackend(t *testing.T) {
-	proxyHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte("backend-response")); err != nil {
-			t.Errorf("failed to write response: %v", err)
-		}
-	})
-
-	tmpDir := t.TempDir()
-
-	router := &RequestRouter{
-		staticHandler:    http.FileServer(http.Dir(tmpDir)),
-		proxyHandler:     proxyHandler,
-		apiPrefix:        "/api",
-		isProductionMode: true,
-		spaFallback:      "", // SPA mode disabled
-	}
-
-	// HEAD request to extensionless path with SPA mode off should proxy to backend
-	req := httptest.NewRequest(http.MethodHead, "/health", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	// Should be proxied to backend (200), not 404
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 (proxied to backend), got: %d", rec.Code)
-	}
-}
-
-// Test that OPTIONS requests without SPA mode proxy to backend (for CORS preflight)
-func TestRequestRouter_OptionsRequest_NoSPAMode_ProxiesToBackend(t *testing.T) {
-	proxyHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.WriteHeader(http.StatusNoContent)
-	})
-
-	tmpDir := t.TempDir()
-
-	router := &RequestRouter{
-		staticHandler:    http.FileServer(http.Dir(tmpDir)),
-		proxyHandler:     proxyHandler,
-		apiPrefix:        "/api",
-		isProductionMode: true,
-		spaFallback:      "", // SPA mode disabled
-	}
-
-	// OPTIONS request (CORS preflight) with SPA mode off should proxy to backend
-	req := httptest.NewRequest(http.MethodOptions, "/dynamic-route", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	// Should be proxied to backend (204 No Content), not 404
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("expected status 204 (CORS preflight from backend), got: %d", rec.Code)
-	}
-
-	// Verify CORS headers from backend
-	if rec.Header().Get("Access-Control-Allow-Origin") != "*" {
-		t.Errorf("expected CORS headers from backend, got: %v", rec.Header())
-	}
-}
-
-// Test that GET requests without SPA mode proxy to backend
-func TestRequestRouter_GetRequest_NoSPAMode_ProxiesToBackend(t *testing.T) {
-	proxyHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
-			t.Errorf("failed to write response: %v", err)
-		}
-	})
-
-	tmpDir := t.TempDir()
-
-	router := &RequestRouter{
-		staticHandler:    http.FileServer(http.Dir(tmpDir)),
-		proxyHandler:     proxyHandler,
-		apiPrefix:        "/api",
-		isProductionMode: true,
-		spaFallback:      "", // SPA mode disabled
-	}
-
-	// GET request to extensionless path with SPA mode off should proxy to backend
-	req := httptest.NewRequest(http.MethodGet, "/dynamic-route", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 (proxied to backend), got: %d", rec.Code)
-	}
-	if rec.Body.String() != `{"status":"ok"}` {
-		t.Errorf("expected backend response, got: %s", rec.Body.String())
-	}
-}
-
-// Test that root path / serving index.html gets no-cache headers (prevents stale app shell)
-func TestRequestRouter_RootPath_IndexHTML_GetsNoCacheHeaders(t *testing.T) {
-	tmpDir := t.TempDir()
-	indexFile := path.Join(tmpDir, "index.html")
-	indexContent := "<!DOCTYPE html><html><head></head><body>App Shell</body></html>"
-	if err := os.WriteFile(indexFile, []byte(indexContent), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	router := &RequestRouter{
-		staticHandler:    http.FileServer(http.Dir(tmpDir)),
-		proxyHandler:     http.NotFoundHandler(),
-		apiPrefix:        "/api",
-		isProductionMode: true,
-		spaFallback:      indexFile,
-	}
-
-	// Request to / should serve index.html with no-cache headers
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got: %d", rec.Code)
-	}
-
-	// Verify strict no-cache headers are set (prevents stale app shell)
-	cacheControl := rec.Header().Get("Cache-Control")
-	if !strings.Contains(cacheControl, "no-cache") || !strings.Contains(cacheControl, "no-store") {
-		t.Errorf("expected Cache-Control: no-cache, no-store, must-revalidate, got: %s", cacheControl)
-	}
-	if rec.Header().Get("Pragma") != "no-cache" {
-		t.Errorf("expected Pragma: no-cache, got: %s", rec.Header().Get("Pragma"))
-	}
-	if rec.Header().Get("Expires") != "0" {
-		t.Errorf("expected Expires: 0, got: %s", rec.Header().Get("Expires"))
-	}
-
-	// Verify content is served correctly
-	if !strings.Contains(rec.Body.String(), "App Shell") {
-		t.Errorf("expected index.html content, got: %s", rec.Body.String())
-	}
-}
-
-// Test that subdirectory index.html also gets no-cache headers
-func TestRequestRouter_SubdirectoryIndexHTML_GetsNoCacheHeaders(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create subdirectory with index.html
-	subDir := path.Join(tmpDir, "about")
-	if err := os.Mkdir(subDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	indexFile := path.Join(subDir, "index.html")
-	if err := os.WriteFile(indexFile, []byte("<html>About Page</html>"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	router := &RequestRouter{
-		staticHandler:    http.FileServer(http.Dir(tmpDir)),
-		proxyHandler:     http.NotFoundHandler(),
-		apiPrefix:        "/api",
-		isProductionMode: true,
-		spaFallback:      "", // SPA fallback not needed for this test
-	}
-
-	// Request to /about/ should serve index.html with no-cache headers
-	req := httptest.NewRequest(http.MethodGet, "/about/", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got: %d", rec.Code)
-	}
-
-	// Verify no-cache headers are set
-	cacheControl := rec.Header().Get("Cache-Control")
-	if !strings.Contains(cacheControl, "no-cache") {
-		t.Errorf("expected Cache-Control with no-cache for HTML, got: %s", cacheControl)
-	}
-}
-
-// Test that non-HTML extensionless files (like .well-known) don't get no-cache override
-func TestRequestRouter_ExtensionlessNonHTML_NoCacheNotForced(t *testing.T) {
-	tmpDir := t.TempDir()
-	wellKnownDir := path.Join(tmpDir, ".well-known")
-	if err := os.Mkdir(wellKnownDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create apple-app-site-association (JSON content, no extension)
-	aaasaFile := path.Join(wellKnownDir, "apple-app-site-association")
-	aaasaContent := `{"applinks":{"apps":[],"details":[]}}`
-	if err := os.WriteFile(aaasaFile, []byte(aaasaContent), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	router := &RequestRouter{
-		staticHandler:    http.FileServer(http.Dir(tmpDir)),
-		proxyHandler:     http.NotFoundHandler(),
-		apiPrefix:        "/api",
-		isProductionMode: true,
-		spaFallback:      "",
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/.well-known/apple-app-site-association", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got: %d", rec.Code)
-	}
-
-	// Non-HTML files should NOT have the strict no-cache headers forced
-	// (they may have their own caching or none, but not the SPA shell treatment)
-	cacheControl := rec.Header().Get("Cache-Control")
-	if strings.Contains(cacheControl, "no-store") {
-		t.Errorf("non-HTML extensionless files should not get no-store, got: %s", cacheControl)
-	}
-
-	// Verify correct content
-	if !strings.Contains(rec.Body.String(), "applinks") {
-		t.Errorf("expected JSON content, got: %s", rec.Body.String())
 	}
 }
 
@@ -1798,9 +943,10 @@ func TestAiroPath_ExactAiroPath_Returns404(t *testing.T) {
 
 	mux.ServeHTTP(rec, req)
 
-	// Should be either 301 (redirect to /airo/) or 404
-	if rec.Code != http.StatusMovedPermanently && rec.Code != http.StatusNotFound {
-		t.Errorf("expected status 301 or 404 for /airo, got: %d", rec.Code)
+	// Should be a redirect (301 or 307 depending on Go version) or 404
+	if rec.Code != http.StatusMovedPermanently && rec.Code != http.StatusTemporaryRedirect &&
+		rec.Code != http.StatusNotFound {
+		t.Errorf("expected redirect or 404 for /airo, got: %d", rec.Code)
 	}
 }
 

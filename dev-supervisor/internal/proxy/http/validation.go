@@ -3,11 +3,7 @@ package httpproxy
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
-	"path/filepath"
-
-	"github.com/airo-ai-builder/dev-supervisor/internal/proxy/routing"
 )
 
 // validateConfig validates the proxy configuration.
@@ -43,48 +39,6 @@ func (p *HTTPProxy) validateConfig() error {
 			return fmt.Errorf("TLS key file not found: %s", p.config.TLSKeyPath)
 		}
 	}
-
-	return nil
-}
-
-// validateStaticServingConfig validates static serving configuration after routing config is loaded.
-func (p *HTTPProxy) validateStaticServingConfig(routingConfig routing.Config) error {
-	if !p.config.EnableStaticServing {
-		slog.Info("static file serving disabled, proxying all requests to backend")
-		return nil
-	}
-
-	// Determine effective static root (from routingConfig or fallback to p.config)
-	staticRoot := routingConfig.StaticRoot
-	if staticRoot == "" {
-		staticRoot = p.config.StaticRoot
-	}
-
-	if staticRoot == "" {
-		return errors.New(
-			"static root must be specified when static serving is enabled (via DEV_SUPERVISOR_STATIC_ROOT env var or static_root in routing config)",
-		)
-	}
-
-	// Check if static root exists (warn but don't fail - directory may be created after startup)
-	if _, err := os.Stat(staticRoot); os.IsNotExist(err) {
-		slog.Warn("static root directory does not exist at startup, will be unavailable until created",
-			"path", staticRoot)
-	} else if routingConfig.SPAMode {
-		// Only check index.html if directory exists and SPA mode is enabled
-		indexPath := filepath.Join(staticRoot, "index.html")
-		if _, err := os.Stat(indexPath); os.IsNotExist(err) {
-			slog.Warn("index.html not found in static root, SPA fallback may not work",
-				"path", indexPath)
-		}
-	}
-
-	// Log whether using default or custom static root
-	isDefault := staticRoot == "/app/dist/client"
-	slog.Info("static file serving enabled",
-		"root", staticRoot,
-		"spa_mode", routingConfig.SPAMode,
-		"using_default_root", isDefault)
 
 	return nil
 }

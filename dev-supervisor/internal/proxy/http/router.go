@@ -6,14 +6,11 @@ import (
 	"strings"
 )
 
-// RequestRouter handles HTTP request routing based on configuration.
-// Routes requests to static file handler, SPA fallback, or backend proxy.
+// RequestRouter handles HTTP request routing.
+// Routes API requests and all other requests to the backend proxy.
 type RequestRouter struct {
-	staticHandler         http.Handler
 	proxyHandler          http.Handler
-	spaFallback           string
 	apiPrefix             string
-	isProductionMode      bool
 	allowedOrigins        []string
 	procMgr               ProcessController
 	startOnRequestEnabled bool
@@ -42,24 +39,8 @@ func (rr *RequestRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Static serving disabled - proxy everything else to backend.
-	if !rr.isProductionMode {
-		slog.Debug("proxying to backend (static serving disabled)", "path", r.URL.Path)
-		if rr.procMgr != nil && rr.startOnRequestEnabled {
-			rr.procMgr.UpdateActivity()
-		}
-		rr.proxyHandler.ServeHTTP(w, r)
-		return
-	}
-
-	// 3. Static serving enabled - handle safe HTTP methods for static content.
-	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
-		if handled := rr.handleStaticRequest(w, r); handled {
-			return
-		}
-	}
-
-	// 4. Default - proxy to backend.
+	// 2. All other requests - proxy to backend.
+	slog.Debug("proxying to backend", "path", r.URL.Path)
 	if rr.procMgr != nil && rr.startOnRequestEnabled {
 		rr.procMgr.UpdateActivity()
 	}

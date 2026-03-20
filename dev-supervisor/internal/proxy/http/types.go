@@ -89,13 +89,8 @@ type Config struct {
 	InitialBackoff time.Duration // Initial backoff duration (default: 100ms)
 	MaxBackoff     time.Duration // Maximum backoff duration (default: 2s)
 
-	// Static serving configuration
-	StaticRoot          string   // Root directory for static files (required if EnableStaticServing=true)
-	EnableStaticServing bool     // Enable static file serving (explicit, default: false)
-	SPAMode             bool     // Enable SPA fallback (default: true when static serving enabled)
-	APIPrefix           string   // API route prefix (default: "/api")
-	ConfigPath          string   // Optional path to routing config file
-	AllowedOrigins      []string // CORS allowed origins (whitelist)
+	APIPrefix      string   // API route prefix (default: "/api")
+	AllowedOrigins []string // CORS allowed origins (whitelist)
 
 	// JWT authentication configuration
 	// Auth failure handling uses hybrid mode: redirects browsers to builder, returns 401 for APIs

@@ -28,6 +28,8 @@ func NewUploadedMediaHandler(searchPaths []string) *UploadedMediaHandler {
 
 // ServeHTTP serves uploaded media files.
 func (h *UploadedMediaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	setHandler(r.Context(), "uploaded_media")
+
 	// Only GET and HEAD allowed
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
