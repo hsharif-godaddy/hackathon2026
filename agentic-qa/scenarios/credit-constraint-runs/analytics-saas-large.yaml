@@ -1,8 +1,8 @@
-# Budget-based build scenario: SaaS product marketing site with complex features
-name: Budget Build - SaaS Platform
+# Credit-based build scenario: SaaS product marketing site with complex features
+name: Credit Build - SaaS Platform
 description: |
   Build a B2B SaaS analytics platform website and keep sending complex
-  modifications until $5 of AI token spend. Exercises dashboards, pricing
+  modifications until 50 credits consumed. Exercises dashboards, pricing
   tables, documentation, integrations, and enterprise features.
 
 startUrl: https://airo-builder.godaddy.com
@@ -15,7 +15,7 @@ credentials:
   username: ${TEST_USERNAME}
   password: ${TEST_PASSWORD}
 
-tokenBudgetUSD: 5.00
+creditLimit: 50
 
 sitePrompt:
   prompt: |

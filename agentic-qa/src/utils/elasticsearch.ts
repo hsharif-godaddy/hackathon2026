@@ -105,10 +105,10 @@ export interface IndexableResult {
   // Model info
   model: string;
 
-  // Budget mode metrics
-  appCostUSD?: number;
+  // Credit mode metrics
+  creditsUsed?: number;
   chatMessagesCompleted?: number;
-  tokenBudgetUSD?: number;
+  creditLimit?: number;
 }
 
 /**
@@ -308,10 +308,10 @@ function toIndexableResult(result: EvalResult): IndexableResult {
     // Model info
     model: process.env.OPENAI_MODEL || process.env.ANTHROPIC_MODEL || 'unknown',
 
-    // Budget mode metrics
-    appCostUSD: result.appCostUSD,
+    // Credit mode metrics
+    creditsUsed: result.creditsUsed,
     chatMessagesCompleted: result.chatMessagesCompleted,
-    tokenBudgetUSD: result.tokenBudgetUSD,
+    creditLimit: result.creditLimit,
 
     // Quality evaluation metrics
     qualityScore: result.quality?.overall.score,

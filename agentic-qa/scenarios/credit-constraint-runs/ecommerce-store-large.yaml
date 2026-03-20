@@ -1,8 +1,8 @@
-# Budget-based build scenario: premium e-commerce platform with advanced features
-name: Budget Build - E-Commerce Platform
+# Credit-based build scenario: premium e-commerce platform with advanced features
+name: Credit Build - E-Commerce Platform
 description: |
   Build a premium multi-category e-commerce store and keep sending complex
-  modifications until $5 of AI token spend. Exercises product catalogs,
+  modifications until 50 credits consumed. Exercises product catalogs,
   cart systems, checkout flows, loyalty programs, and advanced UI patterns.
 
 startUrl: https://airo-builder.godaddy.com
@@ -15,13 +15,16 @@ credentials:
   username: ${TEST_USERNAME}
   password: ${TEST_PASSWORD}
 
-tokenBudgetUSD: 5.00
+creditLimit: 50
 
 sitePrompt:
   prompt: |
     I'm launching Velvet & Vine, a premium home goods and lifestyle e-commerce store
     based in Portland, Oregon. We sell artisan ceramics, handmade textiles, natural
-    candles, curated kitchen tools, and small-batch skincare.
+    candles, curated kitchen tools, and small-batch skincare. Every product is hand-
+    selected from independent makers who share our commitment to sustainable
+    craftsmanship. We are certified B Corp, 1% for the Planet member, and Climate
+    Neutral certified. Our packaging is 100% plastic-free and compostable.
 
     Design: Warm minimalist aesthetic with earthy tones. Primary color warm terracotta
     #C67B5C, secondary sage green #8B9F82, accent cream #F5F0E8, dark charcoal #2D2D2D
@@ -29,34 +32,72 @@ sitePrompt:
     Lots of whitespace, editorial feel like Kinfolk magazine meets Anthropologie.
 
     Hero: Full-width lifestyle image placeholder with headline "Thoughtfully Crafted for
-    Everyday Living" and subtext "Artisan home goods from independent makers." Two CTAs:
-    "Shop New Arrivals" and "Our Story".
+    Everyday Living" and subtext "Artisan home goods from independent makers. Each piece
+    tells a story of craft, care, and connection." Two CTAs: "Shop New Arrivals" and
+    "Our Story".
+
+    Announcement Bar: Fixed at top, cream background, rotating messages: "Free Shipping
+    Over $150 | Easy 30-Day Returns | Handmade With Love in Small Batches".
 
     Navigation: Shop (with mega-menu for categories), New Arrivals, Best Sellers,
-    Our Story, Journal, Contact.
+    Our Story, Journal, Contact. Right side: search icon, wishlist heart with count
+    badge, cart bag icon with item count.
 
-    Product categories with at least 3 items each showing name, price, and short description:
+    Product categories with 4 items each showing name, price, and short description:
 
-    Ceramics: Speckled Dinner Plate Set (4pc) $128, Hand-thrown Vase $85,
-    Ramen Bowl Duo $72, Espresso Cup Set (2pc) $48.
+    Ceramics: Speckled Dinner Plate Set (4pc) $128 — hand-thrown stoneware, organic
+    speckle glaze, 10.5" diameter, colors Bone White/Sage/Dusty Rose. Hand-thrown
+    Ceramic Vase $85 — imperfect wobble finish, 12" tall, colors Sand/Charcoal/Ocean.
+    Ramen Bowl Duo $72 — chopstick rests in rim, 7" diameter, colors Midnight/Celadon.
+    Espresso Cup Set (2pc) $48 — thumb-dimple grip, 3oz, colors Terracotta/Cream/Slate.
 
-    Textiles: Linen Table Runner $65, Hand-loomed Throw Blanket $195,
-    Organic Cotton Napkin Set (6pc) $54, Indigo Dyed Pillow Cover $78.
+    Textiles: Linen Table Runner $65 — stonewashed Belgian linen, raw edge, 14"x72",
+    colors Natural/Fog/Terracotta/Olive. Hand-loomed Throw Blanket $195 — Peruvian
+    highland wool, 50"x70", Oatmeal/Charcoal Stripe or Rust/Cream Herringbone.
+    Organic Cotton Napkin Set (6pc) $54 — GOTS-certified, block-printed, 18"x18".
+    Indigo Dyed Pillow Cover $78 — Japanese shibori technique, 20"x20".
 
-    Candles: Cedarwood & Sage Candle 8oz $38, Lavender Fields Trio Set $89,
-    Beeswax Taper Set (4pc) $32, Fireside Amber Candle 12oz $45.
+    Candles: Cedarwood & Sage Candle 8oz $38 — coconut-soy wax, cotton wick, 45-hour
+    burn, reusable terracotta vessel. Lavender Fields Trio Set $89 — three 4oz candles
+    gift-boxed with dried lavender sprig. Beeswax Taper Set (4pc) $32 — pure Oregon
+    beeswax, 10" tall, hand-dipped. Fireside Amber Candle 12oz $45 — amber resin and
+    vetiver, crackling wooden wick, 65-hour burn, matte black ceramic vessel.
 
-    Kitchen: Olivewood Cutting Board $92, Brass Measuring Spoons $48,
-    Handforged Chef Knife $165, Ceramic Salt Cellar $36.
+    Kitchen: Olivewood Cutting Board $92 — from 100-year-old olive trees in Tunisia,
+    16"x10", includes board butter. Brass Measuring Spoons $48 — set of 6 in solid
+    brass with leather loop, engraved, hand-finished in Jaipur. Handforged Chef Knife
+    8" $165 — high-carbon steel, walnut and brass handle, leather blade guard.
+    Ceramic Salt Cellar $36 — open-top with wooden spoon, colors Cream/Sage/Charcoal.
 
-    Skincare: Rosehip Face Oil 1oz $42, Shea Body Butter 8oz $34,
-    Charcoal Clay Mask 4oz $28, Botanical Hand Cream $22.
+    Skincare: Rosehip Face Oil 1oz $42 — cold-pressed with vitamin E and jojoba,
+    amber glass dropper bottle, certified organic. Shea Body Butter 8oz $34 — whipped
+    unrefined shea with sweet almond oil, scents Unscented/Vanilla/Citrus/Lavender.
+    Charcoal Clay Mask 4oz $28 — bamboo charcoal with kaolin clay and tea tree oil.
+    Botanical Hand Cream 3oz $22 — calendula and chamomile, scents Rose/Herb/Unscented.
 
-    Each product card: image placeholder, name, price, "Add to Bag" button,
-    quick-view icon. Show "New" badge on 4 items, "Best Seller" on 3 items.
+    Each product card: image placeholder, name, price, "Add to Bag" button, quick-view
+    icon. Show "New" badge on 4 items, "Best Seller" on 3 items, "Low Stock" on 2.
 
-    Footer: Newsletter signup "Join the Vine — 10% off your first order",
-    Instagram @velvetandvine, shipping info, return policy, FAQ links.
+    "Our Makers" section: 4 maker profile cards with portrait, name, location, quote.
+    Maria Torres, Oaxaca — "Every imperfection in clay is a fingerprint of the maker."
+    Akira Yamamoto, Kyoto — "I've shaped clay for 40 years and it still surprises me."
+    Ilze Berzina, Riga — "Linen taught me patience. Good things need time."
+    Fatima Benali, Atlas Mountains — "My grandmother taught me these patterns."
+
+    "Sustainability" banner: sage green background, 4 stats: "100% Plastic-Free
+    Packaging", "Carbon Neutral Shipping", "40-60% Above Fair Trade", "B Corp Certified".
+
+    "Reviews" section: 3 customer reviews with 5-star ratings:
+    "The ceramics are even more beautiful in person." — Amanda R., Seattle
+    "Bought the throw blanket as a gift and kept it for myself." — Marcus T., Denver
+    "A brand that cares about sustainability AND has gorgeous products." — Priya K., Brooklyn
+
+    Newsletter: "Join the Vine — 10% off your first order" with email signup field.
+
+    Footer: 4-column layout. Shop links, About (Our Story, Makers, Sustainability),
+    Help (FAQ, Shipping, Returns, Contact), Connect (Instagram @velvetandvine,
+    Pinterest). Bottom: © 2025 Velvet & Vine | Privacy | Terms | Accessibility.
+    Payment icons: Visa, Mastercard, Amex, Apple Pay, Shop Pay, Afterpay.
 
 systemPrompt: |
   ${common.developPageBase}

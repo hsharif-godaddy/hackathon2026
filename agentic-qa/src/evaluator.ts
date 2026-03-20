@@ -10,8 +10,8 @@ export function generateReport(results: EvalResult[]): Report {
     (sum, r) => sum + r.usage.inputTokens + r.usage.outputTokens + r.usage.reasoningTokens,
     0
   );
-  const totalAppCostUSD = results.reduce(
-    (sum, r) => sum + (r.appCostUSD ?? 0),
+  const totalCreditsUsed = results.reduce(
+    (sum, r) => sum + (r.creditsUsed ?? 0),
     0
   );
 
@@ -22,7 +22,7 @@ export function generateReport(results: EvalResult[]): Report {
     failed: results.filter(r => !r.success).length,
     totalTokens,
     totalDuration,
-    totalAppCostUSD,
+    totalCreditsUsed,
     results,
   };
 }
@@ -47,7 +47,7 @@ export function formatReportSummary(report: Report): string {
     '',
     `Total Duration: ${(report.totalDuration / 1000).toFixed(1)}s`,
     `Total Tokens: ${report.totalTokens.toLocaleString()}`,
-    ...(report.totalAppCostUSD > 0 ? [`Total App Cost: $${report.totalAppCostUSD.toFixed(4)}`] : []),
+    ...(report.totalCreditsUsed > 0 ? [`Total Credits Used: ${report.totalCreditsUsed}`] : []),
     '',
     '───────────────────────────────────────────────────────────────',
     '                      SCENARIO RESULTS                         ',
@@ -62,10 +62,10 @@ export function formatReportSummary(report: Report): string {
     lines.push(`[${status}] ${result.scenario}`);
     lines.push(`  Duration: ${duration}s | Steps: ${result.steps} | Tokens: ${result.usage.inputTokens + result.usage.outputTokens}`);
 
-    if (result.appCostUSD !== undefined) {
-      const budgetStr = result.tokenBudgetUSD ? ` / $${result.tokenBudgetUSD}` : '';
+    if (result.creditsUsed !== undefined) {
+      const limitStr = result.creditLimit ? ` / ${result.creditLimit}` : '';
       const msgsStr = result.chatMessagesCompleted !== undefined ? ` | Messages: ${result.chatMessagesCompleted}` : '';
-      lines.push(`  App Cost: $${result.appCostUSD.toFixed(4)}${budgetStr}${msgsStr}`);
+      lines.push(`  Credits Used: ${result.creditsUsed}${limitStr}${msgsStr}`);
     }
 
     if (result.message) {
@@ -197,7 +197,7 @@ function generateHTMLReport(report: Report): string {
             <span>Duration: ${duration}s</span>
             <span>Steps: ${result.steps}</span>
             <span>Tokens: ${tokens}</span>
-            ${result.appCostUSD !== undefined ? `<span>App Cost: $${result.appCostUSD.toFixed(4)}${result.tokenBudgetUSD ? ` / $${result.tokenBudgetUSD}` : ''}</span>` : ''}
+            ${result.creditsUsed !== undefined ? `<span>Credits Used: ${result.creditsUsed}${result.creditLimit ? ` / ${result.creditLimit}` : ''}</span>` : ''}
             ${result.chatMessagesCompleted !== undefined ? `<span>Messages: ${result.chatMessagesCompleted}</span>` : ''}
           </div>
           ${result.previewUrl ? `<p class="preview-url"><strong>Preview URL:</strong> <a href="${escapeHtml(result.previewUrl)}" target="_blank">${escapeHtml(result.previewUrl)}</a></p>` : ''}
@@ -467,10 +467,10 @@ function generateHTMLReport(report: Report): string {
       <div class="stat-value">${report.totalTokens.toLocaleString()}</div>
       <div class="stat-label">Total Tokens</div>
     </div>
-    ${report.totalAppCostUSD > 0 ? `
+    ${report.totalCreditsUsed > 0 ? `
     <div class="stat">
-      <div class="stat-value">$${report.totalAppCostUSD.toFixed(4)}</div>
-      <div class="stat-label">Total App Cost</div>
+      <div class="stat-value">${report.totalCreditsUsed}</div>
+      <div class="stat-label">Total Credits Used</div>
     </div>
     ` : ''}
     ${avgQualityScore !== null ? `

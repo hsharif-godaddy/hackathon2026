@@ -1,9 +1,12 @@
 /**
- * Poll the app's AI token spend via the token-budget API.
+ * Poll the app's credit usage via the credit grants API.
  *
  * Uses the same API the frontend's UsageGauge calls:
  *   1. GET /api/subscriptions → active subscription ID
- *   2. GET /api/token-budget/{subscriptionId} → { spend, maxBudget, percentage }
+ *   2. GET /api/credits/grants?subscriptionId=...&syncSpend=true
+ *      → { success: boolean; data: CreditGrant[] }
+ *
+ * Only available (isAvailable === true) grants are aggregated.
  */
 
 type BrowserPage = {
@@ -13,30 +16,31 @@ type BrowserPage = {
 
 export interface AppUsageResult {
   subscriptionId: string;
-  spend: number;
-  maxBudget: number;
+  creditsSpent: number;
+  creditsMax: number;
   percentage: number;
-  resetTime: string | null;
 }
 
 interface BrowserResult {
   subscriptionId?: string;
-  spend?: number;
-  maxBudget?: number;
+  creditsSpent?: number;
+  creditsMax?: number;
   percentage?: number;
-  resetTime?: string | null;
   error?: string;
 }
 
 /**
- * Fetch the app's current token spend from the mgmt-airo token-budget API.
+ * Fetch the app's current credit usage from the credit grants API.
  * Runs in the browser context using the authenticated session.
+ *
+ * @param syncSpend - When true, triggers a backend spend sync before returning.
+ *   Pass true for the initial call and false for retry/poll calls to avoid
+ *   redundant backend work.
  */
-export async function fetchAppUsage(page: BrowserPage): Promise<AppUsageResult | null> {
+export async function fetchAppUsage(page: BrowserPage, syncSpend = true): Promise<AppUsageResult | null> {
   try {
-    const result: BrowserResult = await page.evaluate(async () => {
+    const result: BrowserResult = await page.evaluate(async (sync: unknown) => {
       try {
-        // Step 1: Get active subscription ID
         const subResponse = await fetch('/api/subscriptions', { credentials: 'include' });
         if (!subResponse.ok) {
           return { error: `Failed to fetch subscriptions: ${subResponse.status}` };
@@ -47,42 +51,58 @@ export async function fetchAppUsage(page: BrowserPage): Promise<AppUsageResult |
           return { error: 'No active subscription found' };
         }
 
-        // Step 2: Get token budget (spend + limits)
-        const budgetResponse = await fetch(`/api/token-budget/${encodeURIComponent(subscriptionId)}`);
-        if (!budgetResponse.ok) {
-          return { error: `Failed to fetch token budget: ${budgetResponse.status}` };
+        const params = new URLSearchParams({
+          subscriptionId,
+          syncSpend: String(Boolean(sync)),
+        });
+        const grantsResponse = await fetch(`/api/credits/grants?${params.toString()}`, {
+          credentials: 'include',
+        });
+        if (!grantsResponse.ok) {
+          return { error: `Failed to fetch credit grants: ${grantsResponse.status}` };
         }
-        const budget = await budgetResponse.json();
+        const grantsData = await grantsResponse.json();
+
+        if (!grantsData.success || !Array.isArray(grantsData.data)) {
+          return { error: 'Unexpected credit grants response format' };
+        }
+
+        const grants: Array<{ creditsSpent: number; creditsMax: number; isAvailable: boolean }> = grantsData.data;
+        let totalSpent = 0;
+        let totalMax = 0;
+        for (const grant of grants.filter(g => g.isAvailable)) {
+          const max = grant.creditsMax ?? 0;
+          totalSpent += Math.min(grant.creditsSpent ?? 0, max);
+          totalMax += max;
+        }
 
         return {
           subscriptionId,
-          spend: budget.spend ?? 0,
-          maxBudget: budget.maxBudget ?? 0,
-          percentage: budget.percentage ?? 0,
-          resetTime: budget.resetTime ?? null,
+          creditsSpent: totalSpent,
+          creditsMax: totalMax,
+          percentage: totalMax > 0 ? Math.round((totalSpent / totalMax) * 100) : 0,
         };
       } catch (err) {
         return { error: String(err) };
       }
-    });
+    }, syncSpend);
 
     if (result.error) {
       console.log('App usage fetch error: %s', result.error);
       return null;
     }
 
-    if (result.subscriptionId === undefined || result.spend === undefined ||
-        result.maxBudget === undefined || result.percentage === undefined) {
+    if (result.subscriptionId === undefined || result.creditsSpent === undefined ||
+        result.creditsMax === undefined || result.percentage === undefined) {
       console.log('App usage response missing required fields: %j', result);
       return null;
     }
 
     return {
       subscriptionId: result.subscriptionId,
-      spend: result.spend,
-      maxBudget: result.maxBudget,
+      creditsSpent: result.creditsSpent,
+      creditsMax: result.creditsMax,
       percentage: result.percentage,
-      resetTime: result.resetTime ?? null,
     };
   } catch (error) {
     console.log('Failed to fetch app usage: %s', error);

@@ -1,0 +1,97 @@
+# Credit-based build scenario: medium-complexity restaurant site (~25 credits)
+name: Credit Build - Medium Restaurant Site
+description: |
+  Build a restaurant website with menu, reservations, and gallery.
+  Exercises multi-section layouts, interactive forms, and image-heavy
+  design within a moderate credit budget.
+
+startUrl: https://airo-builder.godaddy.com
+timeout: 1800000 # 30 minutes
+maxSteps: 50
+stepsPerMessage: 20
+headed: false
+
+credentials:
+  username: ${TEST_USERNAME}
+  password: ${TEST_PASSWORD}
+
+# Medium credit limit for a multi-section site
+creditLimit: 25
+
+sitePrompt:
+  prompt: |
+    I own Saffron & Sage, a modern Mediterranean restaurant in Brooklyn, New York.
+    We serve creative dishes inspired by Greek, Turkish, and Lebanese cuisines.
+
+    Design: Warm and inviting. Primary deep olive #556B2F, secondary warm gold
+    #DAA520, accent cream #FFFDD0, dark text #2C2C2C. Serif headings, clean
+    sans-serif body. Elegant but approachable.
+
+    Hero: Full-width image placeholder with headline "Saffron & Sage — Modern
+    Mediterranean" and subtext "Fresh ingredients. Bold flavors. Brooklyn soul."
+    Two CTAs: "Reserve a Table" and "View Menu".
+
+    Navigation: Home, Menu, About, Reservations, Gallery, Contact.
+
+    Menu section with 3 categories:
+    Small Plates: Hummus Trio $14, Grilled Halloumi $16, Lamb Kofta Skewers $18,
+    Stuffed Grape Leaves $12.
+    Mains: Whole Branzino $34, Lamb Shank Tagine $28, Falafel Bowl $19,
+    Chicken Shawarma Platter $24.
+    Desserts: Baklava Flight $12, Saffron Panna Cotta $14, Turkish Coffee
+    Affogato $10.
+
+    Footer: Address 247 Smith St, Brooklyn NY 11231, phone 718-555-0220,
+    hours Tue-Sun 5pm-11pm (closed Monday), Instagram @saffronandsage.
+
+systemPrompt: |
+  ${common.developPageBase}
+
+  ${common.errorHandlingInstructions}
+
+  ${common.chatInstructions}
+
+  IMPORTANT - During site creation, Airo may ask clarifying questions with
+  multiple-choice options. You MUST actively answer these questions by clicking
+  on the most relevant option to continue the build process. Do NOT just wait.
+
+goal: |
+  The site is being created. During the build process, Airo may ask you
+  clarifying questions with multiple-choice options (radio buttons). You must:
+
+  1. If you see a question with options, click the most appropriate answer:
+     - For goal questions, pick "Get reservations" or "Show our menu"
+     - For style questions, pick the most warm/elegant option
+     - For any other question, pick the first relevant option
+  2. After answering all questions, wait for the site to finish building
+  3. The preview iframe should become visible with "Saffron & Sage" content
+
+  Report success once the preview is loaded and showing the site content.
+  Do NOT just wait passively - interact with any questions that appear.
+
+# Chat messages sent one-by-one until credit limit is reached.
+chatMessages:
+  - "Build a Reservations page with a booking form. Fields: date picker, time dropdown (5:00pm through 10:30pm in 30-min increments), party size dropdown (1-12), full name, phone number, email, special requests textarea (allergies, celebrations, seating preference). Add a note: 'For parties of 13+, please call us directly.' Show accepted party sizes and a confirmation message on submit."
+
+  - "Create an About section with our story. Headline 'Our Story'. Two columns: left has text, right has a large photo placeholder. Text: 'Saffron & Sage was born in 2019 when chef Nadia Khoury brought her grandmother's recipes from Beirut to Brooklyn. Every dish tells a story of family, tradition, and the vibrant markets of the Mediterranean. We source from local farms, bake our pita daily, and make every sauce from scratch.' Add a second paragraph about the team: 'Our team of 15 brings passion from kitchens across Istanbul, Athens, and Marrakech. Together, we create a dining experience that feels like a dinner party at a friend's home — if your friend happened to be an incredible chef.'"
+
+  - "Build a photo Gallery page with 8 image placeholders in a masonry grid layout. Each placeholder should have a caption: 1) 'Our signature Whole Branzino', 2) 'Fresh herbs from the rooftop garden', 3) 'The bar — craft cocktails with Mediterranean flair', 4) 'Baklava Flight — three regional styles', 5) 'Chef Nadia in the kitchen', 6) 'Private dining room for up to 20 guests', 7) 'Weekend brunch on the patio', 8) 'Hand-rolled grape leaves, a family tradition'. Add a lightbox effect when clicking an image placeholder."
+
+  - "Add a Drinks & Cocktails menu section. Categories: Signature Cocktails: Saffron Negroni $16 (gin, Campari, saffron-infused vermouth), Sage Spritz $14 (prosecco, elderflower, fresh sage), Pomegranate Sour $15 (bourbon, pomegranate molasses, lemon). Wine: House Red (Côtes du Rhône) $14/$56, House White (Assyrtiko) $13/$52, Rosé (Provence) $14/$56. Beer: Efes Pilsner $8, Brooklyn Lager $9. Non-Alcoholic: Turkish Ayran $6, Fresh Mint Lemonade $7, Sparkling Water $4. Format as a styled drinks menu with categories and pricing aligned right."
+
+  - "Create a Private Events section. Headline 'Host Your Next Event With Us'. Show 3 event packages as cards: 1) Intimate Dinner (up to 12 guests, $85/person) — 4-course family-style menu, dedicated server, complimentary sparkling toast. 2) Cocktail Reception (up to 40 guests, $65/person) — 2-hour open bar, passed appetizer selection of 6 items, use of mezzanine level. 3) Full Buyout (up to 80 guests, custom pricing) — Complete restaurant exclusive, custom menu, DJ/entertainment coordination, event planner assistance. Add an inquiry form below: name, email, phone, event type dropdown, estimated guest count, preferred date, and message."
+
+  - "Add a Reviews & Press section. Show 3 press quotes in a highlighted banner: 'Best New Mediterranean in Brooklyn — Eater NY', 'A flavor revelation — NY Times Dining', 'Don't skip the Saffron Panna Cotta — Infatuation'. Below that, 4 customer reviews in cards with star ratings: 1) 5 stars — 'The lamb tagine transported me to Marrakech. Incredible depth of flavor.' — Amanda R. 2) 5 stars — 'We celebrated our anniversary here. The private dining room was perfect and the staff made us feel so special.' — David & Lisa K. 3) 4 stars — 'Amazing food, great cocktails, slightly noisy on weekends but worth it.' — Chris P. 4) 5 stars — 'Best brunch in Brooklyn, hands down. The shakshuka is life-changing.' — Mia T."
+
+  - "Build a Catering & Takeout page. Section 1 'Catering Menu': 3 package tiers — Mezze Spread ($20/person, min 10): hummus trio, falafel, tabbouleh, pita, grape leaves, grilled vegetables. Mediterranean Feast ($35/person, min 15): everything in Mezze plus chicken shawarma, lamb kofta, branzino, rice pilaf, two desserts. Chef's Table ($55/person, min 20): custom menu designed with Chef Nadia, includes premium proteins and seasonal specials. Section 2 'Order Takeout': show our full dinner menu with 'Order on DoorDash' and 'Order on Uber Eats' buttons plus 'Call for Pickup: 718-555-0220'. Add a note: 'Takeout available Tue-Sun 5pm-10pm. 15% off your first online order with code SAFFRON15.'"
+
+qualityEval:
+  enabled: true
+  siteType: restaurant
+  thresholds:
+    minOverallScore: 50
+    minPerformance: 30
+    minAccessibility: 60
+
+cleanup:
+  deleteAllSitesViaAPI: false

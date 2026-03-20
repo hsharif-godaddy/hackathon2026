@@ -1,8 +1,8 @@
-# Budget-based build scenario: healthcare platform with patient portal and compliance
-name: Budget Build - Healthcare Platform
+# Credit-based build scenario: healthcare platform with patient portal and compliance
+name: Credit Build - Healthcare Platform
 description: |
   Build a comprehensive healthcare clinic website and keep sending complex
-  modifications until $5 of AI token spend. Exercises patient portals,
+  modifications until 50 credits consumed. Exercises patient portals,
   appointment booking, provider directories, compliance features, and
   medical-grade UI patterns.
 
@@ -16,7 +16,7 @@ credentials:
   username: ${TEST_USERNAME}
   password: ${TEST_PASSWORD}
 
-tokenBudgetUSD: 5.00
+creditLimit: 50
 
 sitePrompt:
   prompt: |

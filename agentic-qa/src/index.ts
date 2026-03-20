@@ -36,8 +36,8 @@ interface CLIOptions {
   qualityUrl?: string;
   siteType?: SiteType;
   skipQuality?: EvaluationCategory[];
-  // Budget override (USD)
-  budget?: number;
+  // Credit limit override
+  credits?: number;
 }
 
 function parseArgs(): { options: CLIOptions; scenarioPath?: string } {
@@ -106,18 +106,18 @@ function parseArgs(): { options: CLIOptions; scenarioPath?: string } {
       if (value) {
         options.skipQuality = value.split(',').map(s => s.trim()) as EvaluationCategory[];
       }
-    } else if (arg === '--budget' || arg === '-b') {
+    } else if (arg === '--credits' || arg === '-c') {
       const value = args[++i];
       if (value === undefined) {
-        console.error('Missing value for --budget/-b — expected a positive number (USD)');
+        console.error('Missing value for --credits/-c — expected a positive number');
         process.exit(1);
       }
       const parsed = parseFloat(value);
       if (isNaN(parsed) || parsed <= 0) {
-        console.error('Invalid budget: %s — must be a positive number (USD)', value);
+        console.error('Invalid credit limit: %s — must be a positive number', value);
         process.exit(1);
       }
-      options.budget = parsed;
+      options.credits = parsed;
     } else if (arg === '--help') {
       printHelp();
       process.exit(0);
@@ -146,8 +146,8 @@ Options:
   --scenarios, -s <dir> Scenarios directory (default: ./scenarios)
   --help                Show this help message
 
-Budget Options:
-  --budget, -b <usd>    Override tokenBudgetUSD for the scenario (e.g. --budget 5.00)
+Credit Options:
+  --credits, -c <num>   Override creditLimit for the scenario (e.g. --credits 500)
 
 Quality Evaluation Options:
   --quality, -q         Enable quality evaluation (default: on)
@@ -164,11 +164,11 @@ Examples:
   # Run a specific scenario with quality evaluation
   pnpm --filter agentic-qa test scenarios/create-site.yaml
 
-  # Run a budget-based build (build until $5 spent)
-  pnpm --filter agentic-qa test scenarios/budget-build.yaml
+  # Run a credit-based build (build until 500 credits used)
+  pnpm --filter agentic-qa test scenarios/credit-constraint-runs/credit-build.yaml
 
-  # Override budget from CLI
-  pnpm --filter agentic-qa test --budget 10.00 scenarios/budget-build.yaml
+  # Override credit limit from CLI
+  pnpm --filter agentic-qa test --credits 1000 scenarios/credit-constraint-runs/credit-build.yaml
 
   # Run all scenarios
   pnpm --filter agentic-qa test --all
@@ -305,12 +305,12 @@ async function main(): Promise<void> {
     console.log(`Loading scenarios from: ${options.scenarios}`);
     const scenarios = await loadAllScenarios(options.scenarios);
 
-    // Apply budget override from CLI
-    if (options.budget) {
+    // Apply credit limit override from CLI
+    if (options.credits) {
       for (const s of scenarios) {
-        s.tokenBudgetUSD = options.budget;
+        s.creditLimit = options.credits;
       }
-      console.log(`Budget override: $${options.budget} applied to all scenarios`);
+      console.log(`Credit limit override: ${options.credits} credits applied to all scenarios`);
     }
 
     console.log(`Found ${scenarios.length} scenarios`);
@@ -319,10 +319,10 @@ async function main(): Promise<void> {
     console.log(`Loading scenario: ${scenarioPath}`);
     const scenario = await loadScenario(scenarioPath);
 
-    // Apply budget override from CLI
-    if (options.budget) {
-      scenario.tokenBudgetUSD = options.budget;
-      console.log(`Budget override: $${options.budget}`);
+    // Apply credit limit override from CLI
+    if (options.credits) {
+      scenario.creditLimit = options.credits;
+      console.log(`Credit limit override: ${options.credits} credits`);
     }
 
     results = [await runScenario(scenario, runnerOptions)];

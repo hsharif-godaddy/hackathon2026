@@ -126,11 +126,13 @@ export async function runScenario(
 
     const agent = stagehand.agent({
       model: modelConfig,
-      systemPrompt: scenario.systemPrompt || `You are a QA tester for Airo Builder.
-Your goal is to complete the test scenario by interacting with the web application.
-Be patient with loading times - site creation can take up to 5 minutes.
-If you encounter a sign-in form, use the provided credentials.
-Always verify the final state matches the expected outcome.`,
+      systemPrompt: scenario.systemPrompt || [
+        'You are a QA tester for Airo Builder.',
+        'Your goal is to complete the test scenario by interacting with the web application.',
+        'Be patient with loading times - site creation can take up to 5 minutes.',
+        'If you encounter a sign-in form, use the provided credentials.',
+        'Always verify the final state matches the expected outcome.',
+      ].join('\n'),
     });
 
     console.log('Starting agent execution...');
@@ -159,121 +161,120 @@ Always verify the final state matches the expected outcome.`,
     console.log('Actions:', JSON.stringify(result.actions, null, 2));
     console.log('===================================\n');
 
-    // Accumulate all actions across rounds (initial + budget chat messages)
+    // Accumulate all actions across rounds (initial + credit chat messages)
     const allActions: AgentAction[] = toAgentActions(result.actions);
     let overallSuccess = result.success;
     let overallMessage = result.message || '';
-    let appCostUSD: number | undefined;
+    let creditsUsed: number | undefined;
     let chatMessagesCompleted = 0;
+    let errorMessage: string | undefined;
 
-    // Budget mode: send chat messages one-by-one, checking app cost between each
-    const isBudgetMode = scenario.tokenBudgetUSD && scenario.chatMessages?.length;
-    if (isBudgetMode) {
-      // Fetch the starting spend so budget is additive (startSpend + $5, not absolute $5)
+    // Credit mode: send chat messages one-by-one, checking credits between each
+    const isCreditMode = Boolean(scenario.creditLimit && scenario.chatMessages?.length);
+    if (isCreditMode) {
       const initialUsage = await fetchAppUsage(page);
       if (!initialUsage) {
-        console.warn('WARNING: Unable to fetch initial usage — skipping budget mode to avoid inaccurate spend tracking.');
-        console.warn('Chat messages will NOT be sent. Fix the token-budget API connection and retry.');
-      }
-      const startSpend = initialUsage?.spend ?? 0;
-      const spendTarget = startSpend + scenario.tokenBudgetUSD!;
-      appCostUSD = startSpend;
+        console.warn('WARNING: Unable to fetch initial usage — aborting credit mode.');
+        console.warn('Chat messages will NOT be sent. Fix the credit grants API connection and retry.');
 
-      console.log('\n========== BUDGET MODE ==========');
-      if (!initialUsage) console.log('⚠ Initial usage fetch FAILED — budget mode disabled');
-      console.log(`Current spend:  $${startSpend.toFixed(4)}`);
-      console.log(`Budget to add:  $${scenario.tokenBudgetUSD}`);
-      console.log(`Stop target:    $${spendTarget.toFixed(4)}`);
-      console.log(`Chat messages:  ${scenario.chatMessages!.length} queued`);
-      console.log('=================================\n');
+        overallSuccess = false;
+        errorMessage = 'Credit mode unavailable: could not fetch initial usage';
+        overallMessage = errorMessage;
+        creditsUsed = 0;
 
-      for (let i = 0; initialUsage && i < scenario.chatMessages!.length; i++) {
-        // Check if we've spent enough
-        const spent = appCostUSD - startSpend;
-        if (spent >= scenario.tokenBudgetUSD!) {
-          console.log(`\nBudget reached: spent $${spent.toFixed(4)} (current $${appCostUSD.toFixed(4)} - start $${startSpend.toFixed(4)}) >= $${scenario.tokenBudgetUSD}`);
-          console.log(`Completed ${chatMessagesCompleted}/${scenario.chatMessages!.length} chat messages`);
-          break;
-        }
+        // Skip the rest of credit mode — jump to screenshots/quality
+      } else {
+        const startCredits = initialUsage.creditsSpent;
+        let currentCreditsSpent = startCredits;
 
-        const chatMsg = scenario.chatMessages![i];
-        console.log(`\n--- Chat message ${i + 1}/${scenario.chatMessages!.length} ---`);
-        console.log(`Spend: $${appCostUSD.toFixed(4)} (started at $${startSpend.toFixed(4)}, +$${spent.toFixed(4)} / $${scenario.tokenBudgetUSD})`);
-        console.log(`Message: ${chatMsg.substring(0, 80)}${chatMsg.length > 80 ? '...' : ''}`);
+        console.log('\n========== CREDIT MODE ==========');
+        console.log(`Current credits used:  ${startCredits}`);
+        console.log(`Credit limit to add:   ${scenario.creditLimit}`);
+        console.log(`Stop target:           ${startCredits + scenario.creditLimit!}`);
+        console.log(`Chat messages:         ${scenario.chatMessages!.length} queued`);
+        console.log('=================================\n');
 
-        const chatInstruction = [
-          `Send this chat message to modify the site: "${chatMsg}"`,
-          'Type the message in the chat input, submit it, and wait for the site to update.',
-          'Verify the change appeared in the preview before reporting completion.',
-        ].join('\n');
-
-        try {
-          const chatAgent = stagehand.agent({
-            model: modelConfig,
-            systemPrompt: scenario.systemPrompt || 'You are a QA tester. Send the chat message and verify the result.',
-          });
-
-          const chatResult = await chatAgent.execute({
-            instruction: chatInstruction,
-            maxSteps: scenario.stepsPerMessage,
-          });
-
-          allActions.push(...toAgentActions(chatResult.actions));
-
-          console.log(`Chat message ${i + 1}: ${chatResult.success ? 'OK' : 'FAILED'} (${chatResult.actions?.length || 0} steps)`);
-
-          if (chatResult.success) {
-            chatMessagesCompleted++;
-          } else {
-            console.log(`Chat message failed: ${chatResult.message}`);
+        for (let i = 0; i < scenario.chatMessages!.length; i++) {
+          const spent = currentCreditsSpent - startCredits;
+          if (spent >= scenario.creditLimit!) {
+            console.log(`\nCredit limit reached: used ${spent} credits (current ${currentCreditsSpent} - start ${startCredits}) >= ${scenario.creditLimit}`);
+            console.log(`Completed ${chatMessagesCompleted}/${scenario.chatMessages!.length} chat messages`);
+            break;
           }
 
-        } catch (chatError) {
-          console.error('Chat message %d failed: %s', i + 1, chatError);
+          const chatMsg = scenario.chatMessages![i];
+          console.log(`\n--- Chat message ${i + 1}/${scenario.chatMessages!.length} ---`);
+          console.log(`Credits: ${currentCreditsSpent} (started at ${startCredits}, +${spent} / ${scenario.creditLimit})`);
+          console.log(`Message: ${chatMsg.substring(0, 80)}${chatMsg.length > 80 ? '...' : ''}`);
+
+          const chatInstruction = [
+            `Send this chat message to modify the site: "${chatMsg}"`,
+            'Type the message in the chat input and submit it.',
+            'Wait for the response to complete (the loading indicator disappears).',
+            'Do NOT open the preview in a new tab or navigate away from the develop page.',
+            'Stay on the develop page at all times.',
+          ].join('\n');
+
+          try {
+            const chatResult = await agent.execute({
+              instruction: chatInstruction,
+              maxSteps: scenario.stepsPerMessage,
+            });
+
+            allActions.push(...toAgentActions(chatResult.actions));
+
+            console.log(`Chat message ${i + 1}: ${chatResult.success ? 'OK' : 'FAILED'} (${chatResult.actions?.length || 0} steps)`);
+
+            if (chatResult.success) {
+              chatMessagesCompleted++;
+            } else {
+              console.log(`Chat message failed: ${chatResult.message}`);
+            }
+
+          } catch (chatError) {
+            console.error('Chat message %d failed: %s', i + 1, chatError);
+          }
+
+          // Poll usage until credits update or max attempts (syncSpend=false on retries)
+          const previousCredits = currentCreditsSpent;
+          let usage: Awaited<ReturnType<typeof fetchAppUsage>> = null;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, [3000, 4000, 6000][attempt]));
+            usage = await fetchAppUsage(page, attempt === 0);
+            if (usage && usage.creditsSpent !== previousCredits) break;
+          }
+
+          if (!usage) {
+            console.warn(
+              `Unable to fetch updated usage after chat message ${i + 1}; ` +
+              'stopping further messages to avoid exceeding the credit limit.'
+            );
+            break;
+          }
+
+          currentCreditsSpent = usage.creditsSpent;
+          console.log(`Credits after message ${i + 1}: ${currentCreditsSpent} (+${currentCreditsSpent - startCredits})`);
+
+          if ((currentCreditsSpent - startCredits) >= scenario.creditLimit!) {
+            console.log(`\nCredit limit reached after message ${i + 1}: ${currentCreditsSpent - startCredits} >= ${scenario.creditLimit}`);
+            break;
+          }
         }
 
-        // Poll usage with exponential backoff until spend updates or max attempts
-        const previousSpend = appCostUSD;
-        let usage: Awaited<ReturnType<typeof fetchAppUsage>> = null;
-        for (const delay of [3000, 4000, 6000]) {
-          await new Promise(resolve => setTimeout(resolve, delay));
-          usage = await fetchAppUsage(page);
-          if (usage && usage.spend !== previousSpend) break;
-        }
+        creditsUsed = currentCreditsSpent - startCredits;
 
-        if (!usage) {
-          console.warn(
-            `Unable to fetch updated usage after chat message ${i + 1}; ` +
-            'stopping further messages to avoid exceeding the token budget.'
-          );
-          break;
-        }
+        // Credit mode succeeds only if earlier steps succeeded AND
+        // at least one chat message was completed
+        overallSuccess = overallSuccess && chatMessagesCompleted > 0;
 
-        appCostUSD = usage.spend;
-        console.log(`Spend after message ${i + 1}: $${appCostUSD.toFixed(4)} (+$${(appCostUSD - startSpend).toFixed(4)})`);
-
-        // Post-message budget check to avoid sending one extra message
-        if ((appCostUSD - startSpend) >= scenario.tokenBudgetUSD!) {
-          console.log(`\nBudget reached after message ${i + 1}: $${(appCostUSD - startSpend).toFixed(4)} >= $${scenario.tokenBudgetUSD}`);
-          break;
-        }
+        console.log('\n========== CREDIT MODE COMPLETE ==========');
+        console.log(`Messages completed: ${chatMessagesCompleted}/${scenario.chatMessages!.length}`);
+        console.log(`Start credits:      ${startCredits}`);
+        console.log(`Final credits:      ${currentCreditsSpent}`);
+        console.log(`Credits consumed:   ${creditsUsed} / ${scenario.creditLimit} limit`);
+        overallMessage = `Credit mode: ${chatMessagesCompleted}/${scenario.chatMessages!.length} messages, ${creditsUsed} credits used (start ${startCredits} -> ${currentCreditsSpent})`;
+        console.log('==========================================\n');
       }
-
-      const totalSpent = (appCostUSD ?? startSpend) - startSpend;
-      // Store incremental spend (not total account spend) so reports make sense
-      appCostUSD = totalSpent;
-
-      // Budget mode succeeds only if earlier steps succeeded AND
-      // at least one chat message was completed
-      overallSuccess = overallSuccess && chatMessagesCompleted > 0;
-
-      console.log('\n========== BUDGET MODE COMPLETE ==========');
-      console.log(`Messages completed: ${chatMessagesCompleted}/${scenario.chatMessages!.length}`);
-      console.log(`Start spend:    $${startSpend.toFixed(4)}`);
-      console.log(`Final spend:    $${(startSpend + totalSpent).toFixed(4)}`);
-      console.log(`Amount spent:   $${totalSpent.toFixed(4)} / $${scenario.tokenBudgetUSD} budget`);
-      overallMessage = `Budget mode: ${chatMessagesCompleted}/${scenario.chatMessages!.length} messages, $${totalSpent.toFixed(4)} spent (start $${startSpend.toFixed(4)} -> $${(startSpend + totalSpent).toFixed(4)})`;
-      console.log('==========================================\n');
     }
 
     // Log step count from result
@@ -368,8 +369,8 @@ Always verify the final state matches the expected outcome.`,
     console.log(`Scenario completed: ${overallSuccess ? 'PASSED' : 'FAILED'}`);
     console.log(`  Duration: ${(duration / 1000).toFixed(1)}s`);
     console.log(`  Steps: ${allActions.length}`);
-    if (appCostUSD !== undefined) {
-      console.log(`  App cost: $${appCostUSD.toFixed(4)}`);
+    if (creditsUsed !== undefined) {
+      console.log(`  Credits used: ${creditsUsed}`);
     }
 
     await stagehand.close();
@@ -388,12 +389,13 @@ Always verify the final state matches the expected outcome.`,
       },
       screenshots,
       previewUrl,
+      error: errorMessage,
       quality,
       qualityStatus,
       qualityError: qualityErrorMsg,
-      appCostUSD,
-      chatMessagesCompleted: isBudgetMode ? chatMessagesCompleted : undefined,
-      tokenBudgetUSD: scenario.tokenBudgetUSD,
+      creditsUsed,
+      chatMessagesCompleted: isCreditMode ? chatMessagesCompleted : undefined,
+      creditLimit: scenario.creditLimit,
     };
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -458,6 +460,21 @@ interface ScreenshotOptions {
   waitMs?: number;
 }
 
+async function triggerLazyImages(
+  page: ReturnType<Stagehand['context']['pages']>[0]
+): Promise<void> {
+  await page.evaluate(async () => {
+    const distance = Math.max(window.innerHeight * 0.8, 600);
+    const totalHeight = document.documentElement.scrollHeight;
+    for (let y = 0; y < totalHeight; y += distance) {
+      window.scrollTo(0, y);
+      await new Promise(r => setTimeout(r, 200));
+    }
+    window.scrollTo(0, 0);
+  });
+  await new Promise(resolve => setTimeout(resolve, 10000));
+}
+
 async function captureScreenshot(
   page: ReturnType<Stagehand['context']['pages']>[0],
   dir: string,
@@ -469,8 +486,11 @@ async function captureScreenshot(
   const filename = `${name}-${timestamp}.png`;
   const filepath = join(dir, filename);
 
-  // Single stabilization point: let animations, lazy images, fonts settle
-  await new Promise(resolve => setTimeout(resolve, options.waitMs ?? 5000));
+  if (options.fullPage) {
+    await triggerLazyImages(page);
+  }
+
+  await new Promise(resolve => setTimeout(resolve, options.waitMs ?? 3000));
   const buffer = await page.screenshot({ fullPage: options.fullPage ?? false });
   await writeFile(filepath, buffer);
 

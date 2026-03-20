@@ -4,7 +4,10 @@ run-name: "Agentic QA - ${{ inputs.environment || 'prod' }} (${{ github.event_na
 
 on:
   schedule:
-    - cron: "0 */6 * * *"
+    - cron: "0 */6 * * *" # create-site smoke test every 6h
+    - cron: "0 1 * * *" # credit-small daily at 01:00 UTC
+    - cron: "0 9 * * *" # credit-medium daily at 09:00 UTC
+    - cron: "0 17 * * *" # credit-large daily at 17:00 UTC
 
   # Allow manual triggering
   workflow_dispatch:
@@ -28,11 +31,16 @@ on:
           - golden-dataset-all
           # Main scenarios
           - scenarios/create-site.yaml
-          # Budget constraint runs
-          - scenarios/budget-constraint-runs/budget-build.yaml
-          - scenarios/budget-constraint-runs/budget-ecommerce.yaml
-          - scenarios/budget-constraint-runs/budget-saas.yaml
-          - scenarios/budget-constraint-runs/budget-healthcare.yaml
+          # Credit: Small (10 credits)
+          - scenarios/credit-constraint-runs/trainer-landing-small.yaml
+          # Credit: Medium (25 credits)
+          - scenarios/credit-constraint-runs/restaurant-site-medium.yaml
+          - scenarios/credit-constraint-runs/consulting-site-medium.yaml
+          # Credit: Large (50 credits)
+          - scenarios/credit-constraint-runs/saas-auth-large.yaml
+          - scenarios/credit-constraint-runs/ecommerce-store-large.yaml
+          - scenarios/credit-constraint-runs/analytics-saas-large.yaml
+          - scenarios/credit-constraint-runs/healthcare-clinic-large.yaml
           # App Types (10 scenarios)
           - scenarios/golden-dataset/app-types/landing-page.yaml
           - scenarios/golden-dataset/app-types/ecommerce-store.yaml
@@ -49,8 +57,8 @@ on:
         required: false
         type: boolean
         default: false
-      budget:
-        description: "Token budget override in USD (e.g. 5.00). Only applies to budget-constraint scenarios."
+      credits:
+        description: "Credit limit override (e.g. 500). Only applies to credit-constraint scenarios."
         required: false
         type: string
         default: ""
@@ -68,15 +76,15 @@ on:
         required: false
         type: string
         default: "all"
-      budget:
-        description: "Token budget override in USD (e.g. 5.00). Only applies to budget-constraint scenarios."
+      credits:
+        description: "Credit limit override (e.g. 500). Only applies to credit-constraint scenarios."
         required: false
         type: string
         default: ""
 
-# Cancel in-progress runs for the same branch
+# Cancel in-progress runs for the same trigger (schedule cron or branch)
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.schedule || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -128,10 +136,35 @@ jobs:
 
           GOLDEN_DATASET_SCENARIOS='["scenarios/golden-dataset/app-types/landing-page.yaml","scenarios/golden-dataset/app-types/ecommerce-store.yaml","scenarios/golden-dataset/app-types/portfolio-site.yaml","scenarios/golden-dataset/app-types/restaurant-site.yaml","scenarios/golden-dataset/app-types/blog-site.yaml","scenarios/golden-dataset/app-types/fitness-studio.yaml","scenarios/golden-dataset/app-types/medical-practice.yaml","scenarios/golden-dataset/app-types/law-firm.yaml","scenarios/golden-dataset/app-types/event-planner.yaml","scenarios/golden-dataset/app-types/nonprofit-charity.yaml"]'
 
-          # Scheduled runs only execute the create-site smoke test
+          # Credit scenario groups (pick one randomly per scheduled run)
+          CREDIT_SMALL=("scenarios/credit-constraint-runs/trainer-landing-small.yaml")
+          CREDIT_MEDIUM=("scenarios/credit-constraint-runs/restaurant-site-medium.yaml" "scenarios/credit-constraint-runs/consulting-site-medium.yaml")
+          CREDIT_LARGE=("scenarios/credit-constraint-runs/saas-auth-large.yaml" "scenarios/credit-constraint-runs/ecommerce-store-large.yaml" "scenarios/credit-constraint-runs/analytics-saas-large.yaml" "scenarios/credit-constraint-runs/healthcare-clinic-large.yaml")
+
+          # Scheduled runs: map cron expression to a random scenario from the group
           if [ "$EVENT_NAME" = "schedule" ]; then
-            echo "ℹ️ Scheduled run: create-site scenario only"
-            SCENARIOS='["scenarios/create-site.yaml"]'
+            CRON="${{ github.event.schedule }}"
+            case "$CRON" in
+              "0 1 * * *")
+                PICK=${CREDIT_SMALL[$RANDOM % ${#CREDIT_SMALL[@]}]}
+                echo "ℹ️ Scheduled credit-small: $PICK"
+                SCENARIOS="[\"$PICK\"]"
+                ;;
+              "0 9 * * *")
+                PICK=${CREDIT_MEDIUM[$RANDOM % ${#CREDIT_MEDIUM[@]}]}
+                echo "ℹ️ Scheduled credit-medium: $PICK"
+                SCENARIOS="[\"$PICK\"]"
+                ;;
+              "0 17 * * *")
+                PICK=${CREDIT_LARGE[$RANDOM % ${#CREDIT_LARGE[@]}]}
+                echo "ℹ️ Scheduled credit-large: $PICK"
+                SCENARIOS="[\"$PICK\"]"
+                ;;
+              *)
+                echo "ℹ️ Scheduled run: create-site smoke test"
+                SCENARIOS='["scenarios/create-site.yaml"]'
+                ;;
+            esac
           elif [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "pull_request" ]; then
             echo "ℹ️ Push/PR trigger: running ALL scenarios in PARALLEL"
             SCENARIOS="$ALL_SCENARIOS"
@@ -334,7 +367,7 @@ jobs:
           OPENAI_API_KEY: ${{ steps.get-awsiam-token.outputs.jwt }}
           OPENAI_BASE_URL: "https://api.gocode.caas.gdcorp.tools/v1"
           INPUT_HEADED: ${{ github.event.inputs.headed }}
-          INPUT_BUDGET: ${{ inputs.budget || github.event.inputs.budget }}
+          INPUT_CREDITS: ${{ inputs.credits || github.event.inputs.credits }}
           # Elasticsearch for result indexing (optional)
           ES_URL: ${{ steps.get-es-creds.outputs.es_url }}
           ES_API_KEY: ${{ steps.get-es-creds.outputs.es_api_key }}
@@ -350,8 +383,8 @@ jobs:
             ARGS+=("--headed")
           fi
 
-          if [ -n "$INPUT_BUDGET" ]; then
-            ARGS+=("--budget" "$INPUT_BUDGET")
+          if [ -n "$INPUT_CREDITS" ]; then
+            ARGS+=("--credits" "$INPUT_CREDITS")
           fi
 
           echo "🚀 Running: pnpm ${ARGS[*]}"

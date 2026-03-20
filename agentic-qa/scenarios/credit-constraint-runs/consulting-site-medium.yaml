@@ -1,9 +1,9 @@
-# Budget-based build scenario: keep modifying the site until $5 of app AI spend
-name: Budget Build - Consulting Site
+# Credit-based build scenario: keep modifying the site until 50 credits consumed
+name: Credit Build - Consulting Site
 description: |
   Build a consulting website and keep sending modifications until the app's
-  AI token spend reaches $5. Measures how much site improvement is achievable
-  within a fixed dollar budget.
+  credit usage reaches 50. Measures how much site improvement is achievable
+  within a fixed credit limit.
 
 startUrl: https://airo-builder.godaddy.com
 timeout: 1800000 # 30 minutes (budget-based, may take a while)
@@ -15,8 +15,8 @@ credentials:
   username: ${TEST_USERNAME}
   password: ${TEST_PASSWORD}
 
-# Budget: stop sending chat messages when the app has spent this much
-tokenBudgetUSD: 5.00
+# Medium credit limit: consulting site is a moderate-complexity build
+creditLimit: 25
 
 sitePrompt:
   prompt: |
@@ -63,7 +63,7 @@ goal: |
   Report success once the preview is loaded and showing the site content.
   Do NOT just wait passively - interact with any questions that appear.
 
-# Chat messages sent one-by-one until budget is reached.
+# Chat messages sent one-by-one until credit limit is reached.
 # Each message is deliberately large and complex to exercise heavy code generation.
 chatMessages:
   - "Completely redesign the color system. I want a sophisticated palette: primary forest green #1B4332, secondary warm gold #D4A574, accent copper #B87333, background cream #FAF8F5, dark text #1A1A2E, muted text #6B7280. Apply these throughout the entire site - hero gradient from #1B4332 to #0B2620, section backgrounds alternating between cream and white, gold accents on buttons and highlights, copper for hover states. Update every heading, paragraph, button, link, border, and shadow to use this palette. Make the overall feel like a premium luxury consulting brand."

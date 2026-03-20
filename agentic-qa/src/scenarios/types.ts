@@ -64,15 +64,15 @@ export const ScenarioSchema = z.object({
   sitePrompt: SitePromptSchema.optional(),
   // Quality evaluation: evaluates the built website against quality criteria
   qualityEval: QualityEvalSchema.optional(),
-  // Budget mode: keep sending chatMessages until app has spent this much (USD)
-  tokenBudgetUSD: z.number().positive().optional(),
-  // Iterative chat messages to send one-by-one (used with tokenBudgetUSD)
+  // Credit mode: keep sending chatMessages until this many credits are consumed
+  creditLimit: z.number().positive().optional(),
+  // Iterative chat messages to send one-by-one (used with creditLimit)
   chatMessages: z.array(z.string()).optional(),
   // Max agent steps per individual chat message (default: 20)
   stepsPerMessage: z.number().default(20),
 }).refine(
-  (data) => !data.tokenBudgetUSD || (data.chatMessages && data.chatMessages.length > 0),
-  { message: 'tokenBudgetUSD requires a non-empty chatMessages array' }
+  (data) => !data.creditLimit || (data.chatMessages && data.chatMessages.length > 0),
+  { message: 'creditLimit requires a non-empty chatMessages array' }
 );
 
 export type Scenario = z.infer<typeof ScenarioSchema>;
@@ -118,12 +118,12 @@ export interface EvalResult {
   quality?: QualityEvaluation;
   qualityStatus?: 'success' | 'failed' | 'skipped';
   qualityError?: string;
-  // Budget mode: incremental spend during this run (from token-budget API)
-  appCostUSD?: number;
-  // Budget mode: how many chat messages were completed before budget was reached
+  // Credit mode: credits consumed during this run (from credit grants API)
+  creditsUsed?: number;
+  // Credit mode: how many chat messages were completed before credit limit was reached
   chatMessagesCompleted?: number;
-  // Budget mode: the configured budget limit
-  tokenBudgetUSD?: number;
+  // Credit mode: the configured credit limit
+  creditLimit?: number;
 }
 
 export interface Report {
@@ -133,6 +133,6 @@ export interface Report {
   failed: number;
   totalTokens: number;
   totalDuration: number;
-  totalAppCostUSD: number;
+  totalCreditsUsed: number;
   results: EvalResult[];
 }

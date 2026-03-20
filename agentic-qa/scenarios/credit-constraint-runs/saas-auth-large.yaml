@@ -1,0 +1,107 @@
+# Credit-based build scenario: large complex site with auth + i18n (~50 credits)
+name: Credit Build - Large SaaS with Auth & i18n
+description: |
+  Build a complex B2B project management SaaS site with authentication
+  system, multi-language support, and advanced features. Exercises the
+  heaviest build patterns including auth flows, i18n, dashboards, and
+  enterprise-grade UI within the maximum credit budget.
+
+startUrl: https://airo-builder.godaddy.com
+timeout: 2400000 # 40 minutes
+maxSteps: 50
+stepsPerMessage: 20
+headed: false
+
+credentials:
+  username: ${TEST_USERNAME}
+  password: ${TEST_PASSWORD}
+
+# Large credit limit for a full-featured complex build
+creditLimit: 50
+
+sitePrompt:
+  prompt: |
+    I'm building the marketing site and app for Taskflow, a B2B project management
+    and team collaboration platform. Based in Berlin, Germany — we serve teams
+    across Europe and North America.
+
+    Design: Modern, clean, productivity-focused. Primary deep blue #1E40AF,
+    secondary violet #7C3AED, accent emerald #059669 for success states,
+    background #F8FAFC, dark surfaces #0F172A, text #1E293B. Typography:
+    geometric sans-serif (like Inter), clean and readable.
+
+    Hero: Split layout — left side headline "Manage Projects. Ship Faster.
+    Together." with subtext "The all-in-one platform for modern teams. Task
+    management, time tracking, and real-time collaboration." Three CTAs:
+    "Start Free Trial", "Watch Demo", "View Pricing". Right side: dashboard
+    mockup placeholder. Below: "Trusted by 3,000+ teams" with 6 company
+    logo placeholders.
+
+    Navigation: Product, Solutions, Pricing, Resources, Company. Right side:
+    language selector (EN/DE/FR/ES), "Log In", "Start Free Trial" button.
+
+    Features grid: 6 cards — Kanban Boards, Gantt Charts, Time Tracking,
+    Team Chat, File Sharing, Reporting & Analytics.
+
+    Footer: Product links, Company links, Resources links, Legal links,
+    language selector, SOC2 badge, GDPR badge.
+
+systemPrompt: |
+  ${common.developPageBase}
+
+  ${common.errorHandlingInstructions}
+
+  ${common.chatInstructions}
+
+  IMPORTANT - During site creation, Airo may ask clarifying questions with
+  multiple-choice options. You MUST actively answer these questions by clicking
+  on the most relevant option to continue the build process. Do NOT just wait.
+
+goal: |
+  The site is being created. During the build process, Airo may ask you
+  clarifying questions with multiple-choice options (radio buttons). You must:
+
+  1. If you see a question with options, click the most appropriate answer:
+     - For goal questions, pick "Get signups" or "Generate leads"
+     - For style questions, pick the most modern/professional option
+     - For any other question, pick the first relevant option
+  2. After answering all questions, wait for the site to finish building
+  3. The preview iframe should become visible with "Taskflow" content
+
+  Report success once the preview is loaded and showing the site content.
+  Do NOT just wait passively - interact with any questions that appear.
+
+# Chat messages sent one-by-one until credit limit is reached.
+chatMessages:
+  - "Build a complete authentication system. Add 'Log In' and 'Sign Up' buttons in the header. The Sign Up page has: full name, work email, password with strength indicator (weak/medium/strong shown as colored bar), confirm password, company name, company size dropdown (1-10/11-50/51-200/201-1000/1000+), role dropdown (CEO/CTO/Engineering Manager/Product Manager/Designer/Developer/Other), 'I agree to Terms of Service and Privacy Policy' checkbox, and 'Create Account' button. Add social sign-up buttons for Google and Microsoft. The Log In page has: email, password, 'Remember me' checkbox, 'Sign In' button, 'Forgot Password?' link, social sign-in for Google and Microsoft. On mock login (accept email ending @demo.taskflow.io with password 'demo123'), redirect to a dashboard."
+
+  - "Build a full user dashboard visible after login. Top bar: user avatar placeholder with name dropdown (Profile, Settings, Log Out), notification bell with count badge, workspace selector dropdown. Left sidebar navigation: Dashboard, My Tasks, Projects, Team, Calendar, Time Tracking, Reports, Settings. Main area: 'Good morning, Sarah' welcome with today's date. 4 stat cards: Tasks Due Today (5), In Progress (12), Completed This Week (28), Team Utilization (78%). Below: a Kanban board with 4 columns (To Do, In Progress, Review, Done) — populate each with 2-3 task cards showing: task title, priority badge (High red, Medium yellow, Low green), assignee avatar circle with initials, due date, and project tag. Add a recent activity feed sidebar showing 5 entries like 'Marcus moved "API Integration" to Review — 2h ago'."
+
+  - "Build a comprehensive Pricing page with 3 tiers and annual/monthly toggle. Monthly prices: Free (up to 5 users): 3 projects, basic Kanban, 1GB storage, community support. Pro ($12/user/mo): unlimited projects, Gantt charts, time tracking, 50GB storage, priority email support, custom fields, guest access. Enterprise ($29/user/mo): everything in Pro plus SSO/SAML, advanced permissions, audit logs, 500GB storage, dedicated success manager, custom integrations API, SLA guarantee, data residency options. Annual prices show 20% discount. Add 'Most Popular' badge on Pro. Feature comparison table below with 20+ rows grouped into: Project Management, Collaboration, Security, Support, Integrations. FAQ accordion with 6 questions about billing, trials, and plan changes."
+
+  - "Add multi-language (i18n) support. Build a language selector in the header and footer that switches between English, German (Deutsch), French (Français), and Spanish (Español). When a language is selected, translate ALL visible UI text on the current page: navigation items, hero headline and subtext, CTA buttons, feature card titles and descriptions, pricing tier names and descriptions, footer links, and form labels. Use these translations — German hero: 'Projekte verwalten. Schneller liefern. Gemeinsam.' German subtext: 'Die All-in-One-Plattform für moderne Teams.' French hero: 'Gérez vos projets. Livrez plus vite. Ensemble.' Spanish hero: 'Gestiona proyectos. Entrega más rápido. Juntos.' Translate the navigation: Product→Produkt/Produit/Producto, Pricing→Preise/Tarifs/Precios, Resources→Ressourcen/Ressources/Recursos. Store the selected language in localStorage so it persists across page refreshes."
+
+  - "Build a Team Collaboration page. Section 1 'Real-Time Collaboration': show a mockup of simultaneous editing with colored cursors. Features: live document editing, @mentions with notifications, threaded comments on any task, file attachments with preview (PDF, images, docs), screen recording and sharing. Section 2 'Team Chat': built-in messaging with channels (general, engineering, design, marketing), direct messages, message threading, emoji reactions, file sharing in chat, search across all messages. Section 3 'Video Meetings': one-click video calls from any task, screen sharing, meeting recordings with auto-transcription, calendar integration (Google Calendar, Outlook), recurring meeting templates. Section 4 'Permissions & Roles': role matrix table showing 4 roles (Owner, Admin, Member, Guest) and permissions for: create projects, delete projects, invite members, manage billing, view reports, export data, access API, manage integrations."
+
+  - "Build an Integrations page with 30 integration cards in a filterable grid. Categories as filter pills: All, Project Management, Communication, Developer Tools, Design, CRM, Storage, Analytics. Integrations (6 per row, 5 rows): Slack, Microsoft Teams, GitHub, GitLab, Jira, Figma, Google Drive, Dropbox, Salesforce, HubSpot, Zapier, Google Calendar, Outlook, Notion, Confluence, VS Code, Zoom, Linear, Asana (import), Trello (import), Miro, Loom, Sentry, Datadog, Intercom, Stripe, QuickBooks, Okta, Azure AD, Webhooks. Each card: icon placeholder, name, category badge, short description (one line), 'Connect' button (or 'Coming Soon' gray badge for 5 items). Add a 'Build Custom Integrations' section at bottom with REST API and Webhook documentation teaser and a 'View API Docs' CTA."
+
+  - "Build a complete Settings page accessible from the dashboard sidebar. Tabbed interface with 5 tabs: Profile (avatar upload, name, email, timezone dropdown with 20 major timezones, language preference dropdown EN/DE/FR/ES, bio textarea), Security (change password form with current/new/confirm fields, enable 2FA toggle with QR code placeholder, active sessions list showing 3 devices with 'Revoke' buttons, login history table showing last 5 logins with date/IP/location/device), Notifications (toggle switches for: email on task assigned, email on mention, email on due date, email weekly digest, push on task update, push on new comment, push on project invite — grouped by Email and Push categories), Workspace (workspace name, workspace URL slug, default project template dropdown, timezone, auto-archive completed tasks after X days), Billing (current plan card showing 'Pro — $12/user/mo', usage bar showing '45 of 50 users', next billing date, payment method card ending 4242, billing history table with last 6 invoices showing date/amount/status/download link)."
+
+  - "Build a comprehensive Resource Center page. Section 1 'Getting Started Guides': 4 guide cards — Quick Start (10 min read, set up your first project), Migration from Jira (15 min, import guide), Migration from Trello (10 min, board import), Team Onboarding Playbook (20 min, rollout guide for managers). Section 2 'Video Tutorials': 6 video cards with thumbnail placeholders and play button overlay — Creating Your First Kanban Board (3 min), Setting Up Gantt Charts (5 min), Time Tracking Best Practices (4 min), Custom Workflows & Automations (7 min), Managing Team Permissions (3 min), API & Webhooks Tutorial (8 min). Section 3 'Blog': 4 article cards — 'Why We Built Taskflow: Our Founder's Story' (Jan 2025), '10 Project Management Mistakes and How to Avoid Them' (Dec 2024), 'Remote Team Productivity: Data from 1,000 Teams' (Nov 2024), 'Taskflow vs. Competitors: An Honest Comparison' (Oct 2024). Section 4 'API Documentation' teaser: show a code snippet for creating a task via REST API with syntax highlighting, and a 'View Full API Docs' button."
+
+  - "Build a complete Company page with 4 sections. Section 1 'About Us': Founded in Berlin in 2021 by former Atlassian and Asana engineers. Mission: 'Make every team's work visible, organized, and enjoyable.' Now 85 employees across Berlin, London, and New York, serving 3,000+ teams. Section 2 'Our Values': 4 value cards — Transparency (We build in public and share our roadmap), Speed (Ship weekly, iterate daily, never stop improving), Craft (Every pixel and every API response matters), Trust (Your data security is our top priority). Section 3 'Leadership Team': 4 team member cards — 1) Lukas Weber, CEO & Co-founder (ex-Atlassian, 12 years in SaaS), 2) Emma Schmidt, CTO & Co-founder (ex-Asana, built infra serving 50M users), 3) James Park, VP Product (ex-Linear, ex-Notion), 4) Sofia Rodriguez, VP Sales (ex-Figma, scaled ARR from $5M to $40M). Each card: circular photo placeholder with initials, name, title, 2-sentence bio, LinkedIn icon. Section 4 'Careers': heading 'Join Us — We're Hiring' with 6 open positions listed: Senior Frontend Engineer (Berlin/Remote), Backend Engineer - Rust (Berlin), Product Designer (London/Remote), Enterprise Account Executive (New York), Developer Advocate (Remote), Site Reliability Engineer (Berlin). Each listing: title, location, department badge, 'Apply' button."
+
+  - "Now add a complete Status Page at '/status' and a Trust Center. Status page: overall status banner (green 'All Systems Operational'), 6 service rows with uptime bars — Web App (99.99%), API (99.98%), Real-Time Sync (99.97%), File Storage (99.95%), Authentication (100%), Webhooks (99.96%). Last 3 incidents in timeline format. Subscribe to updates form with email input. Trust Center section: Security Overview (AES-256 encryption at rest, TLS 1.3 in transit, daily backups), Compliance badges (SOC2 Type II, GDPR, ISO 27001), Data Residency options (EU/Frankfurt, US/Virginia, UK/London), Penetration testing summary (last tested Jan 2025, 0 critical findings), Bug Bounty Program details. Add a Privacy Center link explaining data handling under GDPR with user rights (access, deletion, portability)."
+
+  - "Do a final design polish pass. Update the navigation to support the authenticated state: when logged in, replace 'Log In' and 'Start Free Trial' with the user avatar dropdown and notification bell from the dashboard. Add smooth page transitions between sections. Add a cookie consent banner at the bottom: 'We use cookies to improve your experience. By continuing, you agree to our Cookie Policy.' with 'Accept All', 'Customize', and 'Reject Non-Essential' buttons. The Customize option opens a modal with toggle switches for: Essential (always on), Analytics, Marketing, Preferences. Add a skip-to-content link for accessibility. Ensure all interactive elements have visible focus rings. Add a 'Back to Top' floating button that appears after scrolling past the hero section."
+
+qualityEval:
+  enabled: true
+  siteType: service-business
+  thresholds:
+    minOverallScore: 50
+    minPerformance: 30
+    minAccessibility: 60
+
+cleanup:
+  deleteAllSitesViaAPI: false
