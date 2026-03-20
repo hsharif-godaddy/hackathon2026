@@ -14,6 +14,7 @@ import { AiroSubscription } from '@/lib/mgmt-airo/types';
 import { isPlanUpgrade } from '@/lib/paywall/shared'
 import type { CreditGrant } from '@/types/credits';
 import { GrantType, SubscriptionPlan } from '@/types/credits';
+import { resetFocusOnModalClose } from '@/utils/focus'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { ComponentLoader } from './cdsLoader'
 import { UPGRADE_DEPS, UPGRADE_PRODUCT_IDS } from './constants'
@@ -134,13 +135,23 @@ const HigherPlansUpgradeContainer = ({
     onError?.(error)
   }, [source, productId, onError])
 
+  const handleClose = useCallback(() => {
+    onClose()
+    resetFocusOnModalClose()
+  }, [onClose])
+
+  const handleSuccessClick = useCallback(() => {
+    onSuccessClick?.()
+    resetFocusOnModalClose()
+  }, [onSuccessClick])
+
   return (
     <ErrorBoundary
       fallback={(error, reset) => (
         <PaywallErrorFallback
           error={error}
           reset={reset}
-          onClose={onClose}
+          onClose={handleClose}
           onError={handleError}
         />
       )}
@@ -159,13 +170,13 @@ const HigherPlansUpgradeContainer = ({
         locale={gasketData?.intl?.locale || 'en-US'}
         app="airo-builder"
         source="app-builder-NES"
-        onClose={onClose}
+        onClose={handleClose}
         upgradeCallback={handleSuccess}
         upgradeDowngradeCallback={handleSuccess}
-        onPostUpgradeSuccessClick={onSuccessClick}
+        onPostUpgradeSuccessClick={handleSuccessClick}
         errorCallback={onErrorClick}
         onError={handleError}
-        LoadingComponent={<PaywallLoadingModal onClose={onClose} variant={PaywallLoadingModalVariant.HigherPlans} />}
+        LoadingComponent={<PaywallLoadingModal onClose={handleClose} variant={PaywallLoadingModalVariant.HigherPlans} />}
         // used for breaking cache between conversions
         currentPlan={subscription?.downgradedPlan ?? subscription?.plan}
       />

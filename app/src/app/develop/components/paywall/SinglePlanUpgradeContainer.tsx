@@ -10,6 +10,7 @@ import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { waitForQueryUpdate } from '@/lib/query-utils'
+import { resetFocusOnModalClose } from '@/utils/focus'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { ComponentLoader } from './cdsLoader'
 import { UPGRADE_DEPS, UPGRADE_PRODUCT_IDS } from './constants'
@@ -111,13 +112,25 @@ const SinglePlanUpgradeContainer = ({
     onError?.(error)
   }, [source, productId, onError])
 
+  // Wrap callbacks to include focus reset - prevents focus jumping to random elements
+  // when modal closes and original trigger (e.g., popover button) no longer exists
+  const handleClose = useCallback(() => {
+    onClose()
+    resetFocusOnModalClose()
+  }, [onClose])
+
+  const handleSuccessClick = useCallback(() => {
+    onSuccessClick?.()
+    resetFocusOnModalClose()
+  }, [onSuccessClick])
+
   return (
     <ErrorBoundary
       fallback={(error, reset) => (
         <PaywallErrorFallback
           error={error}
           reset={reset}
-          onClose={onClose}
+          onClose={handleClose}
           onError={handleError}
         />
       )}
@@ -134,15 +147,15 @@ const SinglePlanUpgradeContainer = ({
         returnApp="airo-builder"
         source="app-builder"
         itc={itc}
-        onClose={onClose}
+        onClose={handleClose}
         onPurchaseSuccess={handleSuccess}
-        onSuccessClick={onSuccessClick}
+        onSuccessClick={handleSuccessClick}
         onErrorClick={onErrorClick}
         secondaryCTA={{
           skipDefaultBehavior: true,
-          onClick: onClose
+          onClick: handleClose
         }}
-        LoadingComponent={<PaywallLoadingModal onClose={onClose} />}
+        LoadingComponent={<PaywallLoadingModal onClose={handleClose} />}
       />
     </ErrorBoundary>
   )

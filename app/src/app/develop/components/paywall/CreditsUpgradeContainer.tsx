@@ -9,6 +9,7 @@ import { useGasketData } from '@/hooks/useGasketData'
 import { getErrorMessage } from '@/lib/errors'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
+import { resetFocusOnModalClose } from '@/utils/focus'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { ComponentLoader } from './cdsLoader'
 import { UPGRADE_DEPS, UPGRADE_PRODUCT_IDS } from './constants'
@@ -65,12 +66,17 @@ const CreditsUpgradeContainer = ({
       newTotalBalance: details.newTotalBalance,
     })
 
+    const callOnSuccessWithFocusReset = () => {
+      onSuccess?.(basketId, details)
+      resetFocusOnModalClose()
+    }
+
     try {
       if (subscriptionId && initialGrantCount !== undefined) {
-        await handlePurchaseSuccess(subscriptionId, initialGrantCount, () => onSuccess?.(basketId, details))
+        await handlePurchaseSuccess(subscriptionId, initialGrantCount, callOnSuccessWithFocusReset)
       } else {
         invalidateQueries()
-        onSuccess?.(basketId, details)
+        callOnSuccessWithFocusReset()
       }
     } catch (error) {
       logger.error('credits.purchase.handle-success-error', {
@@ -80,7 +86,7 @@ const CreditsUpgradeContainer = ({
       })
       // Still call onSuccess to close the modal and not leave user stuck
       invalidateQueries()
-      onSuccess?.(basketId, details)
+      callOnSuccessWithFocusReset()
     }
   }, [source, subscriptionId, initialGrantCount, handlePurchaseSuccess, invalidateQueries, onSuccess])
 
@@ -94,9 +100,14 @@ const CreditsUpgradeContainer = ({
     onError?.(error)
   }, [source, onError])
 
+  const handleClose = useCallback(() => {
+    onClose()
+    resetFocusOnModalClose()
+  }, [onClose])
+
   const loadingComponent = useMemo(() => (
-    <PaywallLoadingModal onClose={onClose} />
-  ), [onClose])
+    <PaywallLoadingModal onClose={handleClose} />
+  ), [handleClose])
 
   // Early return if entitlementId is missing - cannot purchase credits without it
   if (!entitlementId) {
@@ -109,7 +120,7 @@ const CreditsUpgradeContainer = ({
         <PaywallErrorFallback
           error={error}
           reset={reset}
-          onClose={onClose}
+          onClose={handleClose}
           onError={handleError}
         />
       )}
@@ -126,7 +137,7 @@ const CreditsUpgradeContainer = ({
         source={source}
         itc={itc}
         onSuccess={handleSuccess}
-        onClose={onClose}
+        onClose={handleClose}
         onErrorClick={onErrorClick}
         LoadingComponent={loadingComponent}
       />
