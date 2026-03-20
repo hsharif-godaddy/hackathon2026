@@ -647,6 +647,27 @@ export function addApmContextFromHeaders(
 }
 
 /**
+ * Sanitize user-controlled `site_location` parameter before adding it to telemetry.
+ * - Trims whitespace
+ * - Clamps to a small max length
+ * - Restricts characters to a safe subset to avoid leaking arbitrary URLs/PII
+ */
+function sanitizeSiteLocation(raw: string | null): string | null {
+  const MAX_SITE_LOCATION_LENGTH = 64;
+  if (!raw) {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+  // Clamp length to avoid large/unique values in telemetry backends
+  const clamped = trimmed.slice(0, MAX_SITE_LOCATION_LENGTH);
+  // Allow only a conservative character set; replace others with "_"
+  const safe = clamped.replace(/[^a-zA-Z0-9._-]/g, '_');
+  return safe || null;
+}
+/**
  * Instrument a page request for OpenTelemetry tracking
  * Call this from root layout to instrument all page requests
  *
@@ -663,7 +684,6 @@ export async function instrumentPageRequest(headersList: ReadonlyHeaders): Promi
     const xMatchedPath = headersList.get('x-matched-path');
     const xUrl = headersList.get('x-url');
     const referer = headersList.get('referer');
-
     let pathname = xInvokePath
       || xMatchedPath
       || (xUrl ? xUrl.split('?')[0] : null)
@@ -716,6 +736,26 @@ export async function instrumentPageRequest(headersList: ReadonlyHeaders): Promi
     if (authInfo?.auth === 'e2s') {
       setApmLabel('delegated', true);
       debugLog('instrumentPageRequest: Set delegated label (e2s auth)');
+    }
+
+    // Capture site_location query param for redirect source tracking.
+    // Prefer x-url and fall back to referer when x-url is unavailable.
+    const rawUrl = xUrl || referer;
+     if (rawUrl) {
+       try {
+         const url =
+           rawUrl.startsWith('http://') || rawUrl.startsWith('https://')
+             ? new URL(rawUrl)
+             : new URL(rawUrl, 'http://localhost');
+         const rawSiteLocation = url.searchParams.get('site_location');
+         const siteLocation = sanitizeSiteLocation(rawSiteLocation);
+         if (siteLocation) {
+           setApmLabel('site_location', siteLocation);
+           debugLog('instrumentPageRequest: Set site_location:', siteLocation);
+         }
+       } catch {
+         // Ignore malformed URLs in headers
+      }
     }
   } catch (e) {
     debugLog('instrumentPageRequest error:', e);

@@ -66,6 +66,14 @@ function HomeContentInner({ serverFeatures }: HomeContentProps) {
     })();
   }, [])
 
+  // Track the source of the redirect
+  useEffect(() => {
+    const siteLocation = searchParams.get('site_location') || document.referrer;
+    if (siteLocation) {
+      shipAnalyticsLog('homepage.redirect.source', { siteLocation });
+    }
+  }, []);
+
   // Check for URL parameter and prefill prompt text
   useEffect(() => {
     const initialPromptParam = searchParams.get('initialPrompt')
