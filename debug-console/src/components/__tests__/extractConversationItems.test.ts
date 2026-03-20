@@ -14,6 +14,7 @@ function makeSession(overrides: {
       id: string;
       name: string;
       type: string;
+      model?: string;
       startTime?: string;
       endTime?: string;
       parentObservationId?: string;
@@ -24,6 +25,7 @@ function makeSession(overrides: {
       promptTokens?: number;
       completionTokens?: number;
       totalTokens?: number;
+      calculatedTotalCost?: number;
       metadata?: { attributes?: Record<string, unknown>; [key: string]: unknown };
     }>;
   }>;
@@ -364,6 +366,147 @@ describe('extractConversationItems', () => {
       expect(assistant!.observationErrors![1]).toEqual({
         name: 'rag-retrieval', message: 'Retrieval timeout', obsType: 'SPAN',
       });
+    });
+  });
+
+  describe('cost estimation', () => {
+    it('uses client-side estimate when model is in ANTHROPIC_PRICING and cache tokens present', () => {
+      const session = makeSession({
+        traces: [{
+          id: 'trace-1',
+          input: { messages: [{ role: 'user', content: 'hello' }] },
+          observations: [{
+            id: 'gen-1', name: 'agent-dev', type: 'GENERATION',
+            model: 'claude-sonnet-4-5-20250929',
+            startTime: '2025-01-01T00:00:01Z', endTime: '2025-01-01T00:00:02Z',
+            output: { content: 'response' },
+            promptTokens: 10000,
+            completionTokens: 500,
+            calculatedTotalCost: 0.01, // Langfuse's (wrong) cost
+            metadata: {
+              attributes: {
+                'ai.model.id': 'claude-sonnet-4-5-20250929',
+                'ai.usage.cachedInputTokens': '8000',
+                'ai.response.providerMetadata': JSON.stringify({
+                  anthropic: { cacheCreationInputTokens: 1000 },
+                }),
+              },
+            },
+          }],
+        }],
+      });
+
+      const items = extractConversationItems([session]);
+      const assistant = items.find(i => i.type === 'assistant');
+      expect(assistant).toBeDefined();
+      expect(assistant!.cost).toBeDefined();
+      // Expected: (10000-8000)*3/1M + 8000*0.30/1M + 1000*3.75/1M + 500*15/1M
+      //         = 0.006 + 0.0024 + 0.00375 + 0.0075 = 0.01965
+      expect(assistant!.cost).toBeCloseTo(0.01965, 5);
+      // Must NOT be Langfuse's 0.01
+      expect(assistant!.cost).not.toBeCloseTo(0.01, 4);
+    });
+
+    it('falls back to Langfuse calculatedTotalCost when model is not in pricing table', () => {
+      const session = makeSession({
+        traces: [{
+          id: 'trace-1',
+          input: { messages: [{ role: 'user', content: 'hello' }] },
+          observations: [{
+            id: 'gen-1', name: 'agent-dev', type: 'GENERATION',
+            model: 'some-unknown-model',
+            startTime: '2025-01-01T00:00:01Z', endTime: '2025-01-01T00:00:02Z',
+            output: { content: 'response' },
+            promptTokens: 1000,
+            completionTokens: 100,
+            calculatedTotalCost: 0.05,
+            metadata: { attributes: { 'ai.model.id': 'some-unknown-model' } },
+          }],
+        }],
+      });
+
+      const items = extractConversationItems([session]);
+      const assistant = items.find(i => i.type === 'assistant');
+      expect(assistant!.cost).toBe(0.05);
+    });
+
+    it('parses cacheReadInputTokens from ai.usage.cachedInputTokens attribute', () => {
+      const session = makeSession({
+        traces: [{
+          id: 'trace-1',
+          input: { messages: [{ role: 'user', content: 'hello' }] },
+          observations: [{
+            id: 'gen-1', name: 'agent-dev', type: 'GENERATION',
+            model: 'claude-sonnet-4-6',
+            startTime: '2025-01-01T00:00:01Z', endTime: '2025-01-01T00:00:02Z',
+            output: { content: 'response' },
+            promptTokens: 5000,
+            completionTokens: 200,
+            metadata: {
+              attributes: {
+                'ai.model.id': 'claude-sonnet-4-6',
+                'ai.usage.cachedInputTokens': JSON.stringify({ intValue: 4000 }),
+              },
+            },
+          }],
+        }],
+      });
+
+      const items = extractConversationItems([session]);
+      const assistant = items.find(i => i.type === 'assistant');
+      expect(assistant!.cacheReadInputTokens).toBe(4000);
+    });
+
+    it('parses cacheWriteInputTokens from providerMetadata', () => {
+      const session = makeSession({
+        traces: [{
+          id: 'trace-1',
+          input: { messages: [{ role: 'user', content: 'hello' }] },
+          observations: [{
+            id: 'gen-1', name: 'agent-dev', type: 'GENERATION',
+            model: 'claude-sonnet-4-6',
+            startTime: '2025-01-01T00:00:01Z', endTime: '2025-01-01T00:00:02Z',
+            output: { content: 'response' },
+            promptTokens: 5000,
+            completionTokens: 200,
+            metadata: {
+              attributes: {
+                'ai.model.id': 'claude-sonnet-4-6',
+                'ai.response.providerMetadata': JSON.stringify({
+                  anthropic: { cacheCreationInputTokens: 3000 },
+                }),
+              },
+            },
+          }],
+        }],
+      });
+
+      const items = extractConversationItems([session]);
+      const assistant = items.find(i => i.type === 'assistant');
+      expect(assistant!.cacheWriteInputTokens).toBe(3000);
+    });
+
+    it('returns 0 cost for recognized model with zero tokens (does not fall back to Langfuse)', () => {
+      const session = makeSession({
+        traces: [{
+          id: 'trace-1',
+          input: { messages: [{ role: 'user', content: 'hello' }] },
+          observations: [{
+            id: 'gen-1', name: 'agent-dev', type: 'GENERATION',
+            model: 'claude-sonnet-4-6',
+            startTime: '2025-01-01T00:00:01Z', endTime: '2025-01-01T00:00:02Z',
+            output: { content: 'response' },
+            promptTokens: 0,
+            completionTokens: 0,
+            calculatedTotalCost: 0.99, // Should NOT be used
+            metadata: { attributes: { 'ai.model.id': 'claude-sonnet-4-6' } },
+          }],
+        }],
+      });
+
+      const items = extractConversationItems([session]);
+      const assistant = items.find(i => i.type === 'assistant');
+      expect(assistant!.cost).toBe(0);
     });
   });
 

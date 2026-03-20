@@ -10,6 +10,42 @@ interface LangfuseConfig {
 let cachedLangfuseConfig: LangfuseConfig | null = null;
 let configFetchPromise: Promise<LangfuseConfig | null> | null = null;
 
+// Anthropic pricing per million tokens (USD).
+// We compute cost ourselves because Langfuse's calculatedTotalCost has a known
+// bug with cache-enabled Anthropic models: it treats cache reads as free ($0
+// instead of $0.30/MTok) and incorrectly subtracts cache writes from the input
+// token pool, under-reporting cost by ~50%.
+// Keys are model name prefixes — date-suffixed variants (e.g. claude-haiku-4-5-20251001)
+// are matched via the startsWith fallback in estimateCostFromTokens.
+const ANTHROPIC_PRICING: Record<string, { in: number; out: number; cacheRead: number; cacheWrite: number }> = {
+  'claude-sonnet-4-6':  { in: 3.00, out: 15.00, cacheRead: 0.30, cacheWrite: 3.75 },
+  'claude-sonnet-4-5':  { in: 3.00, out: 15.00, cacheRead: 0.30, cacheWrite: 3.75 },
+  'claude-opus-4-6':    { in: 15.00, out: 75.00, cacheRead: 1.50, cacheWrite: 18.75 },
+  'claude-haiku-4-5':   { in: 0.80, out: 4.00, cacheRead: 0.08, cacheWrite: 1.00 },
+  'claude-3-5-sonnet':  { in: 3.00, out: 15.00, cacheRead: 0.30, cacheWrite: 3.75 },
+  'claude-3-5-haiku':   { in: 0.80, out: 4.00, cacheRead: 0.08, cacheWrite: 1.00 },
+  'claude-3-opus':      { in: 15.00, out: 75.00, cacheRead: 1.50, cacheWrite: 18.75 },
+};
+
+function estimateCostFromTokens(
+  model: string | undefined,
+  inputTokens: number,
+  outputTokens: number,
+  cacheRead = 0,
+  cacheWrite = 0,
+): number | undefined {
+  if (!model) return undefined;
+  const pricing = ANTHROPIC_PRICING[model] ??
+    Object.entries(ANTHROPIC_PRICING).find(([k]) => model.startsWith(k))?.[1];
+  if (!pricing) return undefined;
+  // Anthropic: input_tokens includes cache_read but NOT cache_creation.
+  // Regular input = input_tokens - cache_read_input_tokens (at full input price).
+  // Cache reads are billed separately at the lower cache read price.
+  // Cache writes (cache_creation_input_tokens) are NOT in input_tokens — billed additionally.
+  const regularInput = Math.max(0, inputTokens - cacheRead);
+  return (regularInput * pricing.in + cacheRead * pricing.cacheRead + cacheWrite * pricing.cacheWrite + outputTokens * pricing.out) / 1_000_000;
+}
+
 async function getLangfuseConfig(): Promise<LangfuseConfig | null> {
   if (cachedLangfuseConfig) return cachedLangfuseConfig;
   if (configFetchPromise) return configFetchPromise;
@@ -322,8 +358,6 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
         }
       }
 
-      const cost = totalCost || undefined;
-      const model = obsAttrs?.['ai.model.id'] || textGenObs?.model;
       const provider = obsAttrs?.['ai.model.provider'];
       const temperature = obsAttrs?.['ai.settings.temperature'] ? parseFloat(obsAttrs['ai.settings.temperature']) : undefined;
       const finishReason = obsAttrs?.['ai.response.finishReason'];
@@ -367,6 +401,15 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
           }
         } catch { /* ignore parse errors */ }
       }
+
+      const model = obsAttrs?.['ai.model.id'] || textGenObs?.model;
+      // Prefer our estimate over Langfuse's calculatedTotalCost — Langfuse has a
+      // known bug with Anthropic cache pricing (treats cache reads as free).
+      // Use ?? (not ||) so that 0 from a recognized model doesn't fall through.
+      const cost =
+        estimateCostFromTokens(model, inputTokens, outputTokens, cacheReadInputTokens, cacheWriteInputTokens) ??
+        totalCost ??
+        undefined;
 
       // Compute trace-level metrics from all observations
       const allObservations = trace.observations || [];
@@ -1407,7 +1450,7 @@ function FormattedContent({ content }: { content: string }) {
   );
 }
 
-function UserMessage({ item, langfuseBaseUrl }: { item: ConversationItem; langfuseBaseUrl?: string }) {
+function UserMessage({ item, traceUrlBase }: { item: ConversationItem; traceUrlBase?: string }) {
   const [expanded, setExpanded] = useState(false);
 
   const hasStructuredContent = /^(User:|Assistant actions?:|Tool result:|Read:|Write:|Edit:|Terminal:)/m.test(item.content);
@@ -1433,7 +1476,7 @@ function UserMessage({ item, langfuseBaseUrl }: { item: ConversationItem; langfu
   const textColor = isHandoff ? '#78350f' : '#1e3a8a';
   const label = isHandoff ? `Handoff from ${item.sourceAgent || 'Agent'}` : 'User';
 
-  const traceLink = langfuseBaseUrl && item.traceId ? `${langfuseBaseUrl}/trace/${item.traceId}` : undefined;
+  const traceLink = traceUrlBase && item.traceId ? `${traceUrlBase}/${item.traceId}` : undefined;
 
   return (
     <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.6rem' }}>
@@ -1498,7 +1541,7 @@ function UserMessage({ item, langfuseBaseUrl }: { item: ConversationItem; langfu
   );
 }
 
-function AssistantMessage({ item, langfuseBaseUrl }: { item: ConversationItem; langfuseBaseUrl?: string }) {
+function AssistantMessage({ item, traceUrlBase }: { item: ConversationItem; traceUrlBase?: string }) {
   const [expanded, setExpanded] = useState(false);
 
   const hasStructuredContent = /^(User:|Assistant actions?:|Tool result:|Read:|Write:|Edit:|Terminal:)/m.test(item.content);
@@ -1508,7 +1551,7 @@ function AssistantMessage({ item, langfuseBaseUrl }: { item: ConversationItem; l
   const hasMoreLines = item.content.includes('\n') || item.content.length > 150;
   const isCollapsible = hasContent && (hasMoreLines || hasStructuredContent || !!item.agentSteps);
 
-  const traceLink = langfuseBaseUrl && item.traceId ? `${langfuseBaseUrl}/trace/${item.traceId}` : undefined;
+  const traceLink = traceUrlBase && item.traceId ? `${traceUrlBase}/${item.traceId}` : undefined;
 
   return (
     <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.6rem' }}>
@@ -1647,10 +1690,10 @@ function AssistantMessage({ item, langfuseBaseUrl }: { item: ConversationItem; l
   );
 }
 
-function SummarizationMessage({ item, langfuseBaseUrl }: { item: ConversationItem; langfuseBaseUrl?: string }) {
+function SummarizationMessage({ item, traceUrlBase }: { item: ConversationItem; traceUrlBase?: string }) {
   const [expanded, setExpanded] = useState(false);
 
-  const traceLink = langfuseBaseUrl && item.traceId ? `${langfuseBaseUrl}/trace/${item.traceId}` : undefined;
+  const traceLink = traceUrlBase && item.traceId ? `${traceUrlBase}/${item.traceId}` : undefined;
   const steps = item.summarySteps || [];
   const totalProcessingMs = item.summaryTimeMs || steps.reduce((sum, s) => sum + s.durationMs, 0);
   const stepCount = item.summaryStepCount || steps.length;
@@ -1795,7 +1838,11 @@ interface TimelineItem {
   data: ConversationItem | ESError;
 }
 
-function ConversationView({ items, errors, langfuseBaseUrl }: { items: ConversationItem[]; errors?: ESError[]; langfuseBaseUrl?: string }) {
+function ConversationView({ items, errors, langfuseBaseUrl, langfuseProjectId }: { items: ConversationItem[]; errors?: ESError[]; langfuseBaseUrl?: string; langfuseProjectId?: string }) {
+  const normalizedBase = langfuseBaseUrl?.replace(/\/+$/, '');
+  const traceUrlBase = normalizedBase && langfuseProjectId
+    ? `${normalizedBase}/project/${langfuseProjectId}/traces`
+    : undefined;
   const timeline: TimelineItem[] = [
     ...items.map(item => ({ type: 'conversation' as const, timestamp: item.timestamp, data: item })),
     ...(errors || []).map(err => ({ type: 'error' as const, timestamp: err.lastSeen, data: err }))
@@ -1812,9 +1859,9 @@ function ConversationView({ items, errors, langfuseBaseUrl }: { items: Conversat
           <React.Fragment key={`${item.type}-${idx}`}>
             {showDateSeparator && <DateSeparator date={itemDate} />}
             {item.type === 'error' && <ErrorMessage error={item.data as ESError} />}
-            {item.type === 'conversation' && (item.data as ConversationItem).type === 'user' && <UserMessage item={item.data as ConversationItem} langfuseBaseUrl={langfuseBaseUrl} />}
-            {item.type === 'conversation' && (item.data as ConversationItem).type === 'assistant' && <AssistantMessage item={item.data as ConversationItem} langfuseBaseUrl={langfuseBaseUrl} />}
-            {item.type === 'conversation' && (item.data as ConversationItem).type === 'summarization' && <SummarizationMessage item={item.data as ConversationItem} langfuseBaseUrl={langfuseBaseUrl} />}
+            {item.type === 'conversation' && (item.data as ConversationItem).type === 'user' && <UserMessage item={item.data as ConversationItem} traceUrlBase={traceUrlBase} />}
+            {item.type === 'conversation' && (item.data as ConversationItem).type === 'assistant' && <AssistantMessage item={item.data as ConversationItem} traceUrlBase={traceUrlBase} />}
+            {item.type === 'conversation' && (item.data as ConversationItem).type === 'summarization' && <SummarizationMessage item={item.data as ConversationItem} traceUrlBase={traceUrlBase} />}
           </React.Fragment>
         );
       })}
@@ -1997,7 +2044,7 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
     });
   }, []);
 
-  const conversationItems = extractConversationItems(sessions);
+  const conversationItems = useMemo(() => extractConversationItems(sessions), [sessions]);
   const userMessages = conversationItems.filter(i => i.type === 'user').length;
   const assistantMessages = conversationItems.filter(i => i.type === 'assistant').length;
   const totalTools = conversationItems.reduce((sum, i) => sum + (i.tools?.length || 0), 0);
@@ -2017,17 +2064,57 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
         for (const obs of (trace.observations || [])) {
           observationCount++;
           // Only count tokens and cost from GENERATION observations to avoid
-          // double-counting parent SPANs that aggregate their children's costs
+          // double-counting parent SPANs that aggregate their children's values
           if (obs.type === 'GENERATION') {
-            inputTokens += obs.promptTokens || 0;
-            outputTokens += obs.completionTokens || 0;
+            const prompt = obs.promptTokens || 0;
+            const completion = obs.completionTokens || 0;
+            inputTokens += prompt;
+            outputTokens += completion;
             totalTokens += obs.totalTokens || 0;
-            cost += obs.calculatedTotalCost || 0;
-            const cachedRaw = obs.metadata?.attributes?.['ai.usage.cachedInputTokens'];
+
+            let obsCacheRead = 0;
+            let obsCacheWrite = 0;
+
+            // Parse cache read — mirrors extractConversationItems logic:
+            // handles number, JSON-encoded {intValue: N}, and plain numeric strings
+            const attrs = obs.metadata?.attributes as Record<string, unknown> | undefined;
+            const cachedRaw = attrs?.['ai.usage.cachedInputTokens'];
             if (cachedRaw) {
-              const num = typeof cachedRaw === 'number' ? cachedRaw : parseInt(String(cachedRaw), 10);
-              if (!isNaN(num)) cachedInputTokens += num;
+              if (typeof cachedRaw === 'number') {
+                obsCacheRead = cachedRaw;
+              } else if (typeof cachedRaw === 'string') {
+                try {
+                  const parsed = JSON.parse(cachedRaw);
+                  const val = parsed.intValue ?? parsed;
+                  if (typeof val === 'number') obsCacheRead = val;
+                } catch {
+                  const num = parseInt(cachedRaw, 10);
+                  if (!isNaN(num)) obsCacheRead = num;
+                }
+              }
+              if (obsCacheRead > 0) cachedInputTokens += obsCacheRead;
             }
+
+            // Parse cache write from providerMetadata
+            const metaStr = attrs?.['ai.response.providerMetadata'];
+            if (typeof metaStr === 'string') {
+              try {
+                const parsed = JSON.parse(metaStr);
+                const meta: Record<string, unknown> = (parsed as Record<string, unknown>).anthropic as Record<string, unknown> || parsed;
+                const rawUsage = meta.usage as Record<string, unknown> | undefined;
+                const write = (meta.cacheCreationInputTokens as number | null) ?? (rawUsage?.cache_creation_input_tokens as number | undefined);
+                if (typeof write === 'number' && write > 0) obsCacheWrite = write;
+                // Fallback cache read from providerMetadata when AI SDK attribute absent
+                if (obsCacheRead === 0) {
+                  const read = (meta.cacheReadInputTokens as number | null) ?? (rawUsage?.cache_read_input_tokens as number | undefined);
+                  if (typeof read === 'number' && read > 0) { cachedInputTokens += read; obsCacheRead = read; }
+                }
+              } catch { /* ignore */ }
+            }
+
+            const model = (attrs?.['ai.model.id'] as string) || obs.model;
+            const estimated = estimateCostFromTokens(model, prompt, completion, obsCacheRead, obsCacheWrite);
+            cost += estimated ?? obs.calculatedTotalCost ?? 0;
           }
         }
       }
@@ -2275,7 +2362,7 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
                 )}
               </div>
             )}
-            <ConversationView items={conversationItems} errors={esErrors?.errors} langfuseBaseUrl={langfuseBaseUrl} />
+            <ConversationView items={conversationItems} errors={esErrors?.errors} langfuseBaseUrl={langfuseBaseUrl} langfuseProjectId={langfuseProjectId} />
           </div>
         </>
       )}
