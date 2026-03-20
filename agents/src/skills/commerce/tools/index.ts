@@ -12,7 +12,7 @@ import { GoDaddyCommerce, type GetSkuGroupsResponse } from '../../../lib/godaddy
 import { Logger } from '../../../logging/index.js';
 import { getNomadAllocConfig } from '../../../utils/nomad-config.js';
 import { appRepository } from '../../../database/repositories/index.js';
-import { withCommerceAuth } from './auth.js';
+import { withCommerceAuth, type CommerceAuthResult } from './auth.js';
 import type { SkillToolDefinition, SkillHooks } from '@airo/ai-skills';
 import { ensureViteResolveDedupe } from '../../../services/vite-dedupe.js';
 
@@ -27,9 +27,209 @@ export const hooks: SkillHooks = {
 };
 const godaddy = new GoDaddyCommerce();
 
+type CommerceManageLinks = {
+  homeUrl: string;
+  ordersUrl: string;
+  catalogUrl: string;
+};
+
+function buildManageLinks(storeId: string): CommerceManageLinks {
+  return {
+    homeUrl: godaddy.getStoreManagementUrl(storeId),
+    ordersUrl: godaddy.getOrdersManagementUrl(),
+    catalogUrl: godaddy.getCatalogManagementUrl(),
+  };
+}
+
+function buildDashboardLinksMarkdown(manageLinks: CommerceManageLinks): string {
+  return [
+    'Manage your store in Commerce Home:',
+    `- Home: ${manageLinks.homeUrl}`,
+    `- Orders: ${manageLinks.ordersUrl}`,
+    `- Catalog: ${manageLinks.catalogUrl}`,
+  ].join('\n');
+}
+
+function withManageLinks(
+  authResult: CommerceAuthResult<any>,
+  storeId?: string,
+): CommerceAuthResult<any> {
+  if (!storeId) {
+    return authResult;
+  }
+
+  if (!('success' in authResult) || authResult.success !== true) {
+    return authResult;
+  }
+
+  const manageLinks = buildManageLinks(storeId);
+  const existingManageUrl =
+    typeof (authResult.data as Record<string, unknown> | undefined)?.manageUrl === 'string'
+      ? ((authResult.data as Record<string, unknown>).manageUrl as string)
+      : manageLinks.homeUrl;
+
+  return {
+    success: true,
+    data: {
+      ...(authResult.data || {}),
+      manageLinks,
+      manageUrl: existingManageUrl,
+      dashboardLinks: buildDashboardLinksMarkdown(manageLinks),
+    },
+  };
+}
+
 /** Convert a human-readable name to a lowercase slug (API requires ^[a-z0-9_-]+$). */
 function slugify(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-{2,}/g, '-').replace(/^-|-$/g, '');
+}
+
+function ensureUniqueSlug(base: string, used: Set<string>): string {
+  const normalizedBase = slugify(base || 'item') || 'item';
+  let candidate = normalizedBase;
+  let i = 2;
+  while (used.has(candidate)) {
+    candidate = `${normalizedBase}-${i}`;
+    i += 1;
+  }
+  used.add(candidate);
+  return candidate;
+}
+
+type CommerceAttributeInput = {
+  label: string;
+  name?: string;
+  description?: string;
+  position?: number;
+  values?: Array<{
+    label: string;
+    name?: string;
+    position?: number;
+  }>;
+};
+
+type GeneratedSkuAssociation = {
+  skuName: string;
+  attributePairs: Array<{ attributeName: string; valueName: string }>;
+};
+
+function normalizeAttributes(attributes: CommerceAttributeInput[] | undefined): CommerceAttributeInput[] | undefined {
+  if (!attributes || attributes.length === 0) {
+    return attributes;
+  }
+
+  const usedAttributeNames = new Set<string>();
+
+  return attributes.map((attribute) => {
+    const attributeName = ensureUniqueSlug(attribute.name || attribute.label, usedAttributeNames);
+    const usedValueNames = new Set<string>();
+
+    return {
+      ...attribute,
+      name: attributeName,
+      values: attribute.values?.map((value) => ({
+        ...value,
+        name: ensureUniqueSlug(value.name || value.label, usedValueNames),
+      })),
+    };
+  });
+}
+
+function generateDefaultSku(args: {
+  label: string;
+  name?: string;
+  defaultSku?: any;
+}) {
+  return {
+    label: args.defaultSku?.label ?? args.label,
+    name: args.defaultSku?.name ?? `${slugify(args.name || args.label)}-default`,
+    status: args.defaultSku?.status ?? 'ACTIVE',
+    code: args.defaultSku?.code,
+    description: args.defaultSku?.description,
+    prices: args.defaultSku?.prices,
+    weight: args.defaultSku?.weight,
+    unitOfWeight: args.defaultSku?.unitOfWeight,
+  };
+}
+
+function generateSkusFromAttributes(args: {
+  label: string;
+  name?: string;
+  attributes: CommerceAttributeInput[];
+  skuTemplate?: any;
+}): { skus: any[]; associations: GeneratedSkuAssociation[] } {
+  const attributesWithValues = args.attributes.filter((attribute) => (attribute.values?.length || 0) > 0);
+
+  const combinations: Array<
+    Array<{
+      attributeName: string;
+      valueName: string;
+      valueLabel: string;
+    }>
+  > = [];
+
+  const walk = (
+    index: number,
+    current: Array<{
+      attributeName: string;
+      valueName: string;
+      valueLabel: string;
+    }>,
+  ) => {
+    if (index >= attributesWithValues.length) {
+      combinations.push(current);
+      return;
+    }
+
+    const attribute = attributesWithValues[index];
+    if (!attribute) return;
+
+    for (const value of attribute.values || []) {
+      walk(index + 1, [
+        ...current,
+        {
+          attributeName: attribute.name || slugify(attribute.label),
+          valueName: value.name || slugify(value.label),
+          valueLabel: value.label,
+        },
+      ]);
+    }
+  };
+
+  walk(0, []);
+
+  const usedSkuNames = new Set<string>();
+  const skus = combinations.map((combo, index) => {
+    const valueLabels = combo.map((entry) => entry.valueLabel).join(' / ');
+    const generatedName = `${args.name || args.label}-${combo.map((entry) => entry.valueName).join('-')}`;
+
+    return {
+      label: args.skuTemplate?.label ?? `${args.label} - ${valueLabels}`,
+      name: ensureUniqueSlug(
+        args.skuTemplate?.name ? `${args.skuTemplate.name}-${index + 1}` : generatedName,
+        usedSkuNames,
+      ),
+      status: args.skuTemplate?.status ?? 'ACTIVE',
+      code: args.skuTemplate?.code,
+      description: args.skuTemplate?.description,
+      prices: args.skuTemplate?.prices,
+      weight: args.skuTemplate?.weight,
+      unitOfWeight: args.skuTemplate?.unitOfWeight,
+    };
+  });
+
+  const associations: GeneratedSkuAssociation[] = skus.map((sku, index) => {
+    const combo = combinations[index] || [];
+    return {
+      skuName: sku.name,
+      attributePairs: combo.map((entry) => ({
+        attributeName: entry.attributeName,
+        valueName: entry.valueName,
+      })),
+    };
+  });
+
+  return { skus, associations };
 }
 
 // ============================================================================
@@ -204,7 +404,11 @@ export const setupStoreTool: SkillToolDefinition = {
       };
     });
 
-    return authResult;
+    const resolvedStoreId =
+      'success' in authResult && typeof (authResult as any).data?.storeId === 'string'
+        ? (authResult as any).data.storeId
+        : undefined;
+    return withManageLinks(authResult, resolvedStoreId);
   },
 };
 
@@ -287,7 +491,7 @@ export const fetchCatalogTool: SkillToolDefinition = {
       };
     });
 
-    return authResult;
+    return withManageLinks(authResult, input.storeId);
   },
 };
 
@@ -316,10 +520,30 @@ function getApiHost(): string | undefined {
   }
 }
 
+/**
+ * Normalize API base URL for server-side Commerce routes.
+ */
+function getApiBaseUrl(): string | undefined {
+  const baseUrl = process.env.GODADDY_API_BASE_URL;
+  if (baseUrl) {
+    if (/^https?:\/\//.test(baseUrl)) return baseUrl;
+    return `https://${baseUrl}`;
+  }
+
+  const hostOnly = process.env.VITE_GODADDY_API_HOST;
+  if (hostOnly) {
+    return /^https?:\/\//.test(hostOnly) ? hostOnly : `https://${hostOnly}`;
+  }
+
+  const apiHost = getApiHost();
+  if (!apiHost) return undefined;
+  return `https://${apiHost}`;
+}
+
 export const installStorefrontTool: SkillToolDefinition = {
   name: 'install_storefront',
   description:
-    'Configure environment variables for GoDaddy Commerce storefront. Writes VITE_GODADDY_CLIENT_ID, VITE_GODADDY_API_HOST, VITE_GODADDY_STORE_ID, and VITE_GODADDY_CHANNEL_ID to the app .env file. Templates are installed by the skill loader.',
+    'Configure environment variables for GoDaddy Commerce storefront. Writes VITE_GODADDY_CLIENT_ID, VITE_GODADDY_API_HOST, GODADDY_API_BASE_URL, VITE_GODADDY_STORE_ID, and VITE_GODADDY_CHANNEL_ID to the app .env file. Templates are installed by the skill loader.',
   parameters: z.object({
     storeId: z.string().describe('The store ID to configure'),
     channelId: z.string().describe('The channel ID to configure'),
@@ -341,6 +565,7 @@ export const installStorefrontTool: SkillToolDefinition = {
 
     const clientId = getClientId();
     const apiHost = getApiHost();
+    const apiBaseUrl = getApiBaseUrl();
     const envVarsWritten: string[] = [];
 
     const envPath = join(app.path, '.env');
@@ -374,6 +599,11 @@ export const installStorefrontTool: SkillToolDefinition = {
       envVarsWritten.push('VITE_GODADDY_API_HOST');
     }
 
+    if (apiBaseUrl) {
+      envContent = upsertEnvVar(envContent, 'GODADDY_API_BASE_URL', apiBaseUrl);
+      envVarsWritten.push('GODADDY_API_BASE_URL');
+    }
+
     envContent = upsertEnvVar(envContent, 'VITE_GODADDY_STORE_ID', input.storeId);
     envVarsWritten.push('VITE_GODADDY_STORE_ID');
 
@@ -382,12 +612,13 @@ export const installStorefrontTool: SkillToolDefinition = {
 
     await writeFile(envPath, envContent);
 
-    if (!clientId || !apiHost) {
+    if (!clientId || !apiHost || !apiBaseUrl) {
       logger.warn('commerce.skill.install_storefront.missing_optional_vars', {
         appId,
         storeId: input.storeId,
         hasClientId: !!clientId,
         hasApiHost: !!apiHost,
+        hasApiBaseUrl: !!apiBaseUrl,
       });
     }
 
@@ -397,10 +628,15 @@ export const installStorefrontTool: SkillToolDefinition = {
       envVarsWritten,
     });
 
+    const manageLinks = buildManageLinks(input.storeId);
+
     return {
       storeId: input.storeId,
       channelId: input.channelId,
       envVarsWritten,
+      manageUrl: godaddy.getStoreManagementUrl(input.storeId),
+      manageLinks,
+      dashboardLinks: buildDashboardLinksMarkdown(manageLinks),
     };
   },
 };
@@ -425,7 +661,57 @@ export const manageProductsTool: SkillToolDefinition = {
     skuLabel: z.string().optional().describe('SKU label for updateSku'),
     skuName: z.string().optional().describe('SKU name (auto-slugified) for updateSku'),
     skuCode: z.string().optional().describe('SKU code for updateSku'),
-    skus: z.array(z.object({ label: z.string().optional() }).passthrough()).optional().describe('Array of SKU objects for createProduct'),
+    skuGenerationMode: z
+      .enum(['manual', 'singleDefault', 'fromAttributes'])
+      .optional()
+      .describe('SKU creation mode for createProduct. manual uses skus[] directly. singleDefault auto-creates one default SKU. fromAttributes auto-generates SKUs from attributes[].values[] and associates attribute values to each SKU.'),
+    defaultSku: z
+      .object({
+        label: z.string().optional(),
+        name: z.string().optional(),
+        status: z.enum(['ACTIVE', 'DRAFT']).optional(),
+        code: z.string().optional(),
+        description: z.string().optional(),
+        prices: z.array(z.any()).optional(),
+        weight: z.number().optional(),
+        unitOfWeight: z.enum(['KG', 'GR', 'LB', 'OZ']).optional(),
+      })
+      .optional()
+      .describe('Template used when skuGenerationMode is singleDefault'),
+    skuTemplate: z
+      .object({
+        label: z.string().optional(),
+        name: z.string().optional(),
+        status: z.enum(['ACTIVE', 'DRAFT']).optional(),
+        code: z.string().optional(),
+        description: z.string().optional(),
+        prices: z.array(z.any()).optional(),
+        weight: z.number().optional(),
+        unitOfWeight: z.enum(['KG', 'GR', 'LB', 'OZ']).optional(),
+      })
+      .optional()
+      .describe('Template applied to generated SKUs when skuGenerationMode is fromAttributes'),
+    attributes: z
+      .array(
+        z.object({
+          label: z.string(),
+          name: z.string().optional(),
+          description: z.string().optional(),
+          position: z.number().int().optional(),
+          values: z
+            .array(
+              z.object({
+                label: z.string(),
+                name: z.string().optional(),
+                position: z.number().int().optional(),
+              }),
+            )
+            .optional(),
+        }),
+      )
+      .optional()
+      .describe('Optional product attributes and values for createProduct'),
+    skus: z.array(z.object({ label: z.string().optional() }).passthrough()).optional().describe('Array of SKU objects for createProduct (manual mode)'),
   }),
   execute: async (input: any, context?: any) => {
     const appId = context?.metadata?.appId as string | undefined;
@@ -440,15 +726,77 @@ export const manageProductsTool: SkillToolDefinition = {
           if (!input.label || !input.type) {
             throw new Error('label and type are required for createProduct');
           }
-          const product: any = { label: input.label, type: input.type };
-          if (input.description) product.description = input.description;
-          if (input.status) product.status = input.status;
-          if (input.skus) {
-            product.skus = input.skus.map((sku: any) => ({
-              ...sku,
-              ...(sku.name && { name: slugify(sku.name) }),
-            }));
+
+          const skuGenerationMode = input.skuGenerationMode || 'manual';
+          const normalizedAttributes = normalizeAttributes(input.attributes as CommerceAttributeInput[] | undefined);
+
+          const manualSkus = input.skus?.map((sku: any) => ({
+            ...sku,
+            ...(sku.name && { name: slugify(sku.name) }),
+            status: sku.status ?? 'ACTIVE',
+          }));
+
+          if (skuGenerationMode === 'fromAttributes' && manualSkus && manualSkus.length > 0) {
+            throw new Error('skus cannot be provided when skuGenerationMode is "fromAttributes"');
           }
+
+          if (skuGenerationMode === 'singleDefault' && manualSkus && manualSkus.length > 0) {
+            throw new Error('skus cannot be provided when skuGenerationMode is "singleDefault"');
+          }
+
+          let skus = manualSkus;
+          let generatedAssociations: GeneratedSkuAssociation[] = [];
+
+          if ((!skus || skus.length === 0) && skuGenerationMode === 'singleDefault') {
+            skus = [
+              generateDefaultSku({
+                label: input.label,
+                name: input.name,
+                defaultSku: input.defaultSku,
+              }),
+            ];
+          }
+
+          if ((!skus || skus.length === 0) && skuGenerationMode === 'fromAttributes') {
+            if (!normalizedAttributes || normalizedAttributes.length === 0) {
+              throw new Error('attributes with values are required when skuGenerationMode is "fromAttributes"');
+            }
+
+            const missingValues = normalizedAttributes.filter((attribute) => !attribute.values || attribute.values.length === 0);
+            if (missingValues.length > 0) {
+              throw new Error('Each attribute must include at least one value when skuGenerationMode is "fromAttributes"');
+            }
+
+            const generated = generateSkusFromAttributes({
+              label: input.label,
+              name: input.name,
+              attributes: normalizedAttributes,
+              skuTemplate: input.skuTemplate,
+            });
+
+            skus = generated.skus;
+            generatedAssociations = generated.associations;
+          }
+
+          if (!skus || skus.length === 0) {
+            skus = [
+              generateDefaultSku({
+                label: input.label,
+                name: input.name,
+                defaultSku: input.defaultSku,
+              }),
+            ];
+          }
+
+          const product: any = {
+            label: input.label,
+            type: input.type,
+            status: input.status ?? 'ACTIVE',
+          };
+          if (input.description) product.description = input.description;
+          if (normalizedAttributes) product.attributes = normalizedAttributes;
+          if (skus) product.skus = skus;
+
           const response = await godaddy.createSkuGroup(
             { storeId: input.storeId, product },
             accessToken,
@@ -456,9 +804,106 @@ export const manageProductsTool: SkillToolDefinition = {
           if (!response.success) {
             throw new Error(`Failed to create product: ${response.error}`);
           }
+
+          let skuGroup = response.data.createSkuGroup;
+          const skuAssociationErrors: string[] = [];
+          let skuAssociationFailedCount = 0;
+
+          if (skuGenerationMode === 'fromAttributes' && generatedAssociations.length > 0) {
+            const skuGroupRead = await godaddy.getSkuGroup(
+              { storeId: input.storeId, skuGroupId: skuGroup.id },
+              accessToken,
+            );
+
+            if (!skuGroupRead.success || !skuGroupRead.data?.skuGroup) {
+              skuAssociationErrors.push(skuGroupRead.error || 'Failed to fetch SKU Group for SKU attribute association');
+              // If we cannot fetch the created SKU group, all associations are considered failed.
+              skuAssociationFailedCount = generatedAssociations.length;
+            } else {
+              skuGroup = skuGroupRead.data.skuGroup;
+
+              const skuIdByName = new Map(
+                (skuGroup.skus?.edges || []).map((edge: any) => [edge.node.name, edge.node.id]),
+              );
+
+              const attributeValueIdByName = new Map<string, string>();
+              for (const attributeEdge of skuGroup.attributes?.edges || []) {
+                const attributeName = attributeEdge.node.name;
+                for (const valueEdge of attributeEdge.node.values?.edges || []) {
+                  attributeValueIdByName.set(
+                    `${attributeName}::${valueEdge.node.name}`,
+                    valueEdge.node.id,
+                  );
+                }
+              }
+
+              for (const association of generatedAssociations) {
+                const errorsBefore = skuAssociationErrors.length;
+
+                const skuId = skuIdByName.get(association.skuName);
+                if (!skuId) {
+                  skuAssociationErrors.push(`Could not find generated SKU with name "${association.skuName}"`);
+                  skuAssociationFailedCount += 1;
+                  continue;
+                }
+
+                const attributeValueIds: string[] = [];
+                for (const pair of association.attributePairs) {
+                  const attributeValueId = attributeValueIdByName.get(`${pair.attributeName}::${pair.valueName}`);
+                  if (!attributeValueId) {
+                    skuAssociationErrors.push(
+                      `Could not find attribute value for pair "${pair.attributeName}:${pair.valueName}"`,
+                    );
+                    continue;
+                  }
+                  attributeValueIds.push(attributeValueId);
+                }
+
+                if (attributeValueIds.length !== association.attributePairs.length) {
+                  if (skuAssociationErrors.length > errorsBefore) {
+                    skuAssociationFailedCount += 1;
+                  }
+                  continue;
+                }
+
+                const associationResult = await godaddy.addAttributeValuesToSku(
+                  { storeId: input.storeId, skuId, attributeValueIds },
+                  accessToken,
+                );
+                if (!associationResult.success) {
+                  skuAssociationErrors.push(
+                    `Failed to associate attribute values for SKU "${association.skuName}": ${associationResult.error}`,
+                  );
+                }
+
+                if (skuAssociationErrors.length > errorsBefore) {
+                  skuAssociationFailedCount += 1;
+                }
+              }
+            }
+          }
+
+          if (skuAssociationErrors.length > 0) {
+            logger.warn('commerce.skill.manage_products.create_product.association.partial_failure', {
+              appId,
+              storeId: input.storeId,
+              skuGroupId: skuGroup.id,
+              errors: skuAssociationErrors,
+            });
+          }
+
           return {
-            skuGroup: response.data.createSkuGroup,
-            manageUrl: godaddy.getCatalogManagementUrl(input.storeId),
+            skuGroup,
+            skuGenerationMode,
+            generatedSkuCount: skus.length,
+            skuAssociation: skuGenerationMode === 'fromAttributes'
+              ? {
+                  attempted: generatedAssociations.length,
+                  failed: skuAssociationFailedCount,
+                  errors: skuAssociationErrors,
+                }
+              : undefined,
+            manageUrl: godaddy.getCatalogManagementUrl(),
           };
         }
 
@@ -479,7 +924,7 @@ export const manageProductsTool: SkillToolDefinition = {
           }
           return {
             skuGroup: response.data.updateSkuGroup,
-            manageUrl: godaddy.getCatalogManagementUrl(input.storeId),
+            manageUrl: godaddy.getCatalogManagementUrl(),
           };
         }
 
@@ -525,7 +970,7 @@ export const manageProductsTool: SkillToolDefinition = {
       }
     });
 
-    return authResult;
+    return withManageLinks(authResult, input.storeId);
   },
 };
 
@@ -636,7 +1081,7 @@ export const manageInventoryTool: SkillToolDefinition = {
       }
     });
 
-    return authResult;
+    return withManageLinks(authResult, input.storeId);
   },
 };
 
@@ -647,11 +1092,11 @@ export const manageInventoryTool: SkillToolDefinition = {
 export const managePricingTool: SkillToolDefinition = {
   name: 'manage_pricing',
   description:
-    'Update a SKU price in a GoDaddy Commerce store. All price values must be integers in minor currency units (e.g. 550 for $5.50, 1000 for $10.00). Get the priceId from fetch_catalog.',
+    'Create or update a SKU price in a GoDaddy Commerce store. All price values must be integers in minor currency units (e.g. 550 for $5.50, 1000 for $10.00). Provide priceId from fetch_catalog to update an existing price, or omit priceId / set priceId to "new" to create one.',
   parameters: z.object({
     storeId: z.string().describe('The store ID'),
-    skuId: z.string().describe('SKU ID whose price to update'),
-    priceId: z.string().describe('Price ID to update (from fetch_catalog response)'),
+    skuId: z.string().describe('SKU ID whose price to create/update'),
+    priceId: z.string().optional().describe('Existing price ID to update (from fetch_catalog). Omit or set to "new" to create a price for the SKU.'),
     currencyCode: z.string().describe('Currency code (e.g. USD, AUD, JPY)'),
     value: z.coerce.number().int().describe('Price in minor currency units (e.g. 550 for $5.50)'),
     compareAtValue: z.coerce.number().int().optional().describe('Compare-at price in minor currency units (for showing discounts)'),
@@ -664,13 +1109,30 @@ export const managePricingTool: SkillToolDefinition = {
     }
 
     const authResult = await withCommerceAuth(appId, async (accessToken) => {
-      if (!input.skuId || !input.priceId) {
-        throw new Error('skuId and priceId are required for updatePrice');
+      if (!input.skuId) {
+        throw new Error('skuId is required for manage_pricing');
       }
+
       const priceInput: any = { value: { currencyCode: input.currencyCode, value: input.value } };
       if (input.compareAtValue !== undefined) {
         priceInput.compareAtValue = { currencyCode: input.currencyCode, value: input.compareAtValue };
       }
+
+      const shouldCreate = !input.priceId || String(input.priceId).toLowerCase() === 'new';
+
+      if (shouldCreate) {
+        const response = await godaddy.createSkuPrice(
+          { storeId: input.storeId, skuId: input.skuId, input: priceInput },
+          accessToken,
+        );
+
+        if (!response.success) {
+          throw new Error(`Failed to create price: ${response.error}`);
+        }
+
+        return { price: response.data.createSkuPrice, operation: 'create' };
+      }
+
       const response = await godaddy.updateSkuPrice(
         { storeId: input.storeId, priceId: input.priceId, input: priceInput },
         accessToken,
@@ -678,10 +1140,10 @@ export const managePricingTool: SkillToolDefinition = {
       if (!response.success) {
         throw new Error(`Failed to update price: ${response.error}`);
       }
-      return { price: response.data.updateSkuPrice };
+      return { price: response.data.updateSkuPrice, operation: 'update' };
     });
 
-    return authResult;
+    return withManageLinks(authResult, input.storeId);
   },
 };
 
@@ -776,7 +1238,7 @@ export const manageMediaTool: SkillToolDefinition = {
       }
     });
 
-    return authResult;
+    return withManageLinks(authResult, input.storeId);
   },
 };
 
@@ -850,6 +1312,6 @@ export const getOrdersTool: SkillToolDefinition = {
       };
     });
 
-    return authResult;
+    return withManageLinks(authResult, input.storeId);
   },
 };

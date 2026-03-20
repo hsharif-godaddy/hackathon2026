@@ -6,6 +6,9 @@ const mockWithCommerceAuth = vi.fn();
 vi.mock('../../../../lib/godaddy-commerce.js', () => ({
   GoDaddyCommerce: vi.fn().mockImplementation(() => ({
     getSkuGroups: mockGetSkuGroups,
+    getStoreManagementUrl: vi.fn().mockReturnValue('https://manage.godaddy.com/store/store-1'),
+    getOrdersManagementUrl: vi.fn().mockReturnValue('https://manage.godaddy.com/orders'),
+    getCatalogManagementUrl: vi.fn().mockReturnValue('https://manage.godaddy.com/catalog'),
   })),
 }));
 

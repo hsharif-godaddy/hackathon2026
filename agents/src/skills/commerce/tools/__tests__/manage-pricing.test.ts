@@ -1,11 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockUpdateSkuPrice = vi.fn();
+const mockCreateSkuPrice = vi.fn();
 const mockWithCommerceAuth = vi.fn();
 
 vi.mock('../../../../lib/godaddy-commerce.js', () => ({
   GoDaddyCommerce: vi.fn().mockImplementation(() => ({
     updateSkuPrice: mockUpdateSkuPrice,
+    createSkuPrice: mockCreateSkuPrice,
+    getStoreManagementUrl: vi.fn().mockReturnValue('https://manage.godaddy.com/store/store-1'),
+    getOrdersManagementUrl: vi.fn().mockReturnValue('https://manage.godaddy.com/orders'),
+    getCatalogManagementUrl: vi.fn().mockReturnValue('https://manage.godaddy.com/catalog'),
   })),
 }));
 
@@ -102,6 +107,63 @@ describe('commerce__manage_pricing', () => {
       },
       'token-abc',
     );
+  });
+
+  it('should create a price when priceId is "new"', async () => {
+    mockWithCommerceAuth.mockImplementation(async (_appId: string, fn: (token: string, customerId: string) => Promise<unknown>) => {
+      const result = await fn('token-abc', 'customer-1');
+      return { success: true, data: result };
+    });
+    mockCreateSkuPrice.mockResolvedValue({
+      success: true,
+      data: { createSkuPrice: { id: 'price-new', value: { value: 650, currencyCode: 'USD' } } },
+    });
+
+    const result = await managePricingTool.execute(
+      {
+        storeId: 'store-1',
+        skuId: 'sku-1',
+        priceId: 'new',
+        currencyCode: 'USD',
+        value: 650,
+      },
+      context,
+    );
+
+    expect(result.data.price.id).toBe('price-new');
+    expect(mockCreateSkuPrice).toHaveBeenCalledWith(
+      {
+        storeId: 'store-1',
+        skuId: 'sku-1',
+        input: { value: { currencyCode: 'USD', value: 650 } },
+      },
+      'token-abc',
+    );
+    expect(mockUpdateSkuPrice).not.toHaveBeenCalled();
+  });
+
+  it('should create a price when priceId is omitted', async () => {
+    mockWithCommerceAuth.mockImplementation(async (_appId: string, fn: (token: string, customerId: string) => Promise<unknown>) => {
+      const result = await fn('token-abc', 'customer-1');
+      return { success: true, data: result };
+    });
+    mockCreateSkuPrice.mockResolvedValue({
+      success: true,
+      data: { createSkuPrice: { id: 'price-new-2', value: { value: 700, currencyCode: 'USD' } } },
+    });
+
+    await managePricingTool.execute(
+      {
+        storeId: 'store-1',
+        skuId: 'sku-1',
+        currencyCode: 'USD',
+        value: 700,
+      },
+      context,
+    );
+
+    expect(mockCreateSkuPrice).toHaveBeenCalled();
+    expect(mockUpdateSkuPrice).not.toHaveBeenCalled();
   });
 
   it('should return needsAuth when not authenticated', async () => {

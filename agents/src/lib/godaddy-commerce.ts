@@ -19,9 +19,11 @@ import type {
   MutationCreateLocationInput,
   GetSkuGroupsResponse as GraphQLGetSkuGroupsResponse,
   CreateSkuGroupResponse as GraphQLCreateSkuGroupResponse,
+  CreateSkuPriceResponse as GraphQLCreateSkuPriceResponse,
   UpdateSkuGroupResponse as GraphQLUpdateSkuGroupResponse,
   UpdateSkuResponse as GraphQLUpdateSkuResponse,
   UpdateSkuPriceResponse as GraphQLUpdateSkuPriceResponse,
+  AddAttributeValuesToSkuResponse as GraphQLAddAttributeValuesToSkuResponse,
   DeleteSkuGroupResponse as GraphQLDeleteSkuGroupResponse,
   GetInventoryCountsResponse as GraphQLGetInventoryCountsResponse,
   AdjustInventoryResponse as GraphQLAdjustInventoryResponse,
@@ -131,6 +133,13 @@ export type CreateSkuGroupResponse =
   | { success: false; data?: never; error: string };
 
 /**
+ * GraphQL create SKU price mutation response wrapper
+ */
+export type CreateSkuPriceResponse =
+  | { success: true; data: GraphQLCreateSkuPriceResponse; error?: never }
+  | { success: false; data?: never; error: string };
+
+/**
  * GraphQL update SKU Group mutation response wrapper
  */
 export type UpdateSkuGroupResponse =
@@ -149,6 +158,13 @@ export type UpdateSkuResponse =
  */
 export type UpdateSkuPriceResponse =
   | { success: true; data: GraphQLUpdateSkuPriceResponse; error?: never }
+  | { success: false; data?: never; error: string };
+
+/**
+ * GraphQL add attribute values to SKU mutation response wrapper
+ */
+export type AddAttributeValuesToSkuResponse =
+  | { success: true; data: GraphQLAddAttributeValuesToSkuResponse; error?: never }
   | { success: false; data?: never; error: string };
 
 /**
@@ -231,12 +247,17 @@ export class GoDaddyCommerce {
 
   public getStoreManagementUrl(storeId: string): string {
     const domain = this.getCommerceDomain();
-    return `https://spa.commerce.${domain}/home/store?store=${storeId}`;
+    return `https://spa.commerce.${domain}/home/store?storeId=${storeId}`;
   }
 
-  public getCatalogManagementUrl(storeId: string): string {
+  public getCatalogManagementUrl(): string {
     const domain = this.getCommerceDomain();
-    return `https://spa.commerce.${domain}/products?store=${storeId}`;
+    return `https://spa.commerce.${domain}/products`;
+  }
+
+  public getOrdersManagementUrl(): string {
+    const domain = this.getCommerceDomain();
+    return `https://spa.commerce.${domain}/orders`;
   }
 
   public async getStoreSummary(
@@ -681,6 +702,24 @@ export class GoDaddyCommerce {
               }
             }
           }
+          attributes(first: 50) {
+            edges {
+              node {
+                id
+                label
+                name
+                values(first: 100) {
+                  edges {
+                    node {
+                      id
+                      label
+                      name
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     `;
@@ -924,6 +963,81 @@ export class GoDaddyCommerce {
     };
   }
 
+  public async createSkuPrice(
+    args: { storeId: string; skuId: string; input: CreateSKUPriceInput },
+    accessToken: string
+  ): Promise<CreateSkuPriceResponse> {
+    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+
+    const mutation = `
+      mutation CreateSkuPrice($input: MutationCreateSkuPriceInput!) {
+        createSkuPrice(input: $input) {
+          id
+          value {
+            value
+            currencyCode
+          }
+          compareAtValue {
+            value
+            currencyCode
+          }
+        }
+      }
+    `;
+
+    const response = await fetchWithRetry(graphqlUrl, {
+      method: 'POST',
+      headers: {
+        ...this.baseHeaders,
+        Authorization: `Bearer ${accessToken}`,
+        'x-store-id': args.storeId,
+      },
+      body: JSON.stringify({
+        query: mutation,
+        variables: {
+          input: {
+            skuId: args.skuId,
+            ...args.input,
+          },
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('commerce.create-sku-price.request-failed', {
+        storeId: args.storeId,
+        skuId: args.skuId,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      return {
+        success: false,
+        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
+      };
+    }
+
+    const data = await response.json();
+
+    if (data.errors) {
+      logger.error('commerce.create-sku-price.graphql-errors', {
+        storeId: args.storeId,
+        skuId: args.skuId,
+        errors: data.errors.map((e: any) => e.message),
+      });
+      return {
+        success: false,
+        error: data.errors.map((e: any) => e.message).join(', '),
+      };
+    }
+
+    return {
+      success: true,
+      data: data.data,
+    };
+  }
+
   public async updateSkuPrice(
     args: { storeId: string; priceId: string; input: MutationUpdateSkuPriceInput },
     accessToken: string
@@ -983,6 +1097,79 @@ export class GoDaddyCommerce {
       logger.error('commerce.update-sku-price.graphql-errors', {
         storeId: args.storeId,
         priceId: args.priceId,
+        errors: data.errors.map((e: any) => e.message),
+      });
+      return {
+        success: false,
+        error: data.errors.map((e: any) => e.message).join(', '),
+      };
+    }
+
+    return {
+      success: true,
+      data: data.data,
+    };
+  }
+
+  public async addAttributeValuesToSku(
+    args: { storeId: string; skuId: string; attributeValueIds: string[] },
+    accessToken: string
+  ): Promise<AddAttributeValuesToSkuResponse> {
+    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+
+    const mutation = `
+      mutation AddAttributeValuesToSku($id: String!, $input: MutationAddAttributeValuesToSkuInput!) {
+        addAttributeValuesToSku(id: $id, input: $input) {
+          id
+          label
+          name
+          code
+          status
+        }
+      }
+    `;
+
+    const response = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: {
+        ...this.baseHeaders,
+        Authorization: `Bearer ${accessToken}`,
+        'x-store-id': args.storeId,
+      },
+      body: JSON.stringify({
+        query: mutation,
+        variables: {
+          id: args.skuId,
+          input: {
+            attributeValueIds: args.attributeValueIds,
+          },
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('commerce.add-attribute-values-to-sku.request-failed', {
+        storeId: args.storeId,
+        skuId: args.skuId,
+        attributeValueIds: args.attributeValueIds,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      return {
+        success: false,
+        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
+      };
+    }
+
+    const data = await response.json();
+
+    if (data.errors) {
+      logger.error('commerce.add-attribute-values-to-sku.graphql-errors', {
+        storeId: args.storeId,
+        skuId: args.skuId,
+        attributeValueIds: args.attributeValueIds,
         errors: data.errors.map((e: any) => e.message),
       });
       return {

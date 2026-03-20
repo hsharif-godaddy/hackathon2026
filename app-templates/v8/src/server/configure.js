@@ -5,8 +5,21 @@ import { dirname, join, extname } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+function normalizeCommerceApiBaseUrlEnv() {
+  if (process.env.GODADDY_API_BASE_URL) return;
+
+  const hostOnly = process.env.VITE_GODADDY_API_HOST;
+  if (!hostOnly) return;
+
+  const normalizedHost = hostOnly.replace(/^https?:\/\//, "").trim();
+  if (!normalizedHost) return;
+
+  process.env.GODADDY_API_BASE_URL = `https://${normalizedHost}`;
+}
+
 export const viteServerBefore = (server, viteServer) => {
   console.log("VITEJS SERVER");
+  normalizeCommerceApiBaseUrlEnv();
   server.use(express.json());
   server.use(express.urlencoded({ extended: true }));
 };
@@ -25,6 +38,8 @@ export const viteServerAfter = (server, viteServer) => {
 
 // ServerHook
 export const serverBefore = (server) => {
+  normalizeCommerceApiBaseUrlEnv();
+
   const shutdown = async (signal) => {
     console.log(`Got ${signal}, shutting down gracefully...`);
 

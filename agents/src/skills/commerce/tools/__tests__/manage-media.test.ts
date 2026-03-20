@@ -8,6 +8,9 @@ vi.mock('../../../../lib/godaddy-commerce.js', () => ({
   GoDaddyCommerce: vi.fn().mockImplementation(() => ({
     addMediaObjectsToSkuGroup: mockAddMediaObjectsToSkuGroup,
     removeMediaObjectsFromSkuGroup: mockRemoveMediaObjectsFromSkuGroup,
+    getStoreManagementUrl: vi.fn().mockReturnValue('https://manage.godaddy.com/store/store-1'),
+    getOrdersManagementUrl: vi.fn().mockReturnValue('https://manage.godaddy.com/orders'),
+    getCatalogManagementUrl: vi.fn().mockReturnValue('https://manage.godaddy.com/catalog'),
   })),
 }));
 

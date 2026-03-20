@@ -23,8 +23,6 @@
   },
   "dependencies": {
     "@dr.pogodin/react-helmet": "^3.0.5",
-    "@godaddy/localizations": "^1",
-    "@godaddy/react": "^1",
     "@heroicons/react": "^2.2.0",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.12",

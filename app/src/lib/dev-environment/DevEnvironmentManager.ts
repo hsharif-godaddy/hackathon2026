@@ -431,8 +431,8 @@ export class DevEnvironmentManager {
       });
 
       if (result.success) {
-        // Note: Commerce API credentials are hardcoded in generated code by Develop Agent
-        // See agents/src/prompts/develop/commerce-checkout-guide.md for details
+        // Note: Commerce integrations are installed via commerce-related skills
+        // (templates + API routes are no longer baked into the base v8 template)
 
         // Create .is_ready file for Docker mode to signal template is ready
         if (!this.adapter?.getCapabilities().supportsProcessOperations) {

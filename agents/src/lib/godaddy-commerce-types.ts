@@ -377,6 +377,23 @@ export interface SKUResponse {
   };
 }
 
+export interface AttributeValueResponse {
+  id: string;
+  label: string | null;
+  name: string;
+}
+
+export interface AttributeResponse {
+  id: string;
+  label: string | null;
+  name: string;
+  values?: {
+    edges: Array<{
+      node: AttributeValueResponse;
+    }>;
+  };
+}
+
 export interface SKUGroupResponse {
   id: string;
   label: string | null;
@@ -392,6 +409,11 @@ export interface SKUGroupResponse {
   skus?: {
     edges: Array<{
       node: SKUResponse;
+    }>;
+  };
+  attributes?: {
+    edges: Array<{
+      node: AttributeResponse;
     }>;
   };
 }
@@ -410,6 +432,10 @@ export interface CreateSkuGroupResponse {
   createSkuGroup: SKUGroupResponse;
 }
 
+export interface CreateSkuPriceResponse {
+  createSkuPrice: SKUPriceResponse;
+}
+
 export interface UpdateSkuGroupResponse {
   updateSkuGroup: SKUGroupResponse;
 }
@@ -420,6 +446,10 @@ export interface UpdateSkuResponse {
 
 export interface UpdateSkuPriceResponse {
   updateSkuPrice: SKUPriceResponse;
+}
+
+export interface AddAttributeValuesToSkuResponse {
+  addAttributeValuesToSku: SKUResponse;
 }
 
 export interface DeleteSkuGroupResponse {

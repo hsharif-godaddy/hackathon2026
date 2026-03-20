@@ -8,6 +8,8 @@ const mockEnableGoDaddyPaymentsApplication = vi.fn();
 const mockCreateLocation = vi.fn();
 const mockGetLocations = vi.fn();
 const mockGetStoreManagementUrl = vi.fn().mockReturnValue('https://manage.godaddy.com/store-1');
+const mockGetOrdersManagementUrl = vi.fn().mockReturnValue('https://manage.godaddy.com/orders');
+const mockGetCatalogManagementUrl = vi.fn().mockReturnValue('https://manage.godaddy.com/catalog');
 const mockWithCommerceAuth = vi.fn();
 
 vi.mock('../../../../lib/godaddy-commerce.js', () => ({
@@ -19,6 +21,8 @@ vi.mock('../../../../lib/godaddy-commerce.js', () => ({
     createLocation: mockCreateLocation,
     getLocations: mockGetLocations,
     getStoreManagementUrl: mockGetStoreManagementUrl,
+    getOrdersManagementUrl: mockGetOrdersManagementUrl,
+    getCatalogManagementUrl: mockGetCatalogManagementUrl,
   })),
 }));
 

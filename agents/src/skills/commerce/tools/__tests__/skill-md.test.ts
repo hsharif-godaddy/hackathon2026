@@ -13,8 +13,7 @@ describe('commerce skill.md', () => {
   it('should have valid frontmatter', () => {
     expect(data.name).toBe('commerce');
     expect(data.description).toBeTruthy();
-    expect(data.dependencies).toBeInstanceOf(Array);
-    expect(data.dependencies).toContain('@godaddy/react');
-    expect(data.dependencies).toContain('@tanstack/react-query');
+    expect(data.whenToUse).toBeTruthy();
+    expect(data.dependencies).toBeUndefined();
   });
 });

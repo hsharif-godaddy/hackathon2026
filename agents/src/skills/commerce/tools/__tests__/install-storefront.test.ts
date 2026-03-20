@@ -22,7 +22,11 @@ vi.mock('../../../../database/repositories/index.js', () => ({
 }));
 
 vi.mock('../../../../lib/godaddy-commerce.js', () => ({
-  GoDaddyCommerce: vi.fn().mockImplementation(() => ({})),
+  GoDaddyCommerce: vi.fn().mockImplementation(() => ({
+    getStoreManagementUrl: vi.fn().mockReturnValue('https://manage.godaddy.com/store/store-1'),
+    getOrdersManagementUrl: vi.fn().mockReturnValue('https://manage.godaddy.com/orders'),
+    getCatalogManagementUrl: vi.fn().mockReturnValue('https://manage.godaddy.com/catalog'),
+  })),
 }));
 
 vi.mock('../auth.js', () => ({
@@ -50,7 +54,7 @@ describe('commerce__install_storefront', () => {
     expect(installStorefrontTool.execute).toBeTypeOf('function');
   });
 
-  it('should write VITE_ env vars to app .env file', async () => {
+  it('should write storefront env vars to app .env file', async () => {
     mockGetNomadAllocConfig.mockReturnValue({
       GODADDY_OAUTH_CLIENT_ID: { VALUE: 'alloc-client-id' },
     });
@@ -70,6 +74,10 @@ describe('commerce__install_storefront', () => {
     );
     expect(mockWriteFile).toHaveBeenCalledWith(
       expect.stringContaining('.env'),
+      expect.stringContaining('GODADDY_API_BASE_URL=https://api.dev-godaddy.com'),
+    );
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      expect.stringContaining('.env'),
       expect.stringContaining('VITE_GODADDY_STORE_ID=store-1'),
     );
     expect(mockWriteFile).toHaveBeenCalledWith(
@@ -78,6 +86,7 @@ describe('commerce__install_storefront', () => {
     );
     expect(result.envVarsWritten).toContain('VITE_GODADDY_CLIENT_ID');
     expect(result.envVarsWritten).toContain('VITE_GODADDY_API_HOST');
+    expect(result.envVarsWritten).toContain('GODADDY_API_BASE_URL');
     expect(result.envVarsWritten).toContain('VITE_GODADDY_STORE_ID');
     expect(result.envVarsWritten).toContain('VITE_GODADDY_CHANNEL_ID');
   });
@@ -109,6 +118,25 @@ describe('commerce__install_storefront', () => {
     expect(mockWriteFile).toHaveBeenCalledWith(
       expect.stringContaining('.env'),
       expect.stringContaining('VITE_GODADDY_API_HOST=api.godaddy.com'),
+    );
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      expect.stringContaining('.env'),
+      expect.stringContaining('GODADDY_API_BASE_URL=https://api.godaddy.com'),
+    );
+  });
+
+  it('should add https protocol when GODADDY_API_BASE_URL is host-only', async () => {
+    process.env.GODADDY_API_BASE_URL = 'api.godaddy.com';
+    mockGetNomadAllocConfig.mockReturnValue(null);
+
+    await installStorefrontTool.execute(
+      { storeId: 'store-1', channelId: 'ch-1' },
+      context,
+    );
+
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      expect.stringContaining('.env'),
+      expect.stringContaining('GODADDY_API_BASE_URL=https://api.godaddy.com'),
     );
   });
 

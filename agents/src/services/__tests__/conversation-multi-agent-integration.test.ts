@@ -193,6 +193,12 @@ describe('Multi-Agent Conversation History Integration', () => {
   })
 
   it('should start new conversation through persistence layer with correct agent context', async () => {
+    // Ensure this test exercises "new conversation" creation logic and is not
+    // affected by latest-conversation reuse semantics from seeded fixtures.
+    const db = getDatabase()
+    db.prepare('DELETE FROM conversation_messages WHERE conversation_id IN (?, ?)').run(developConversationId, designConversationId)
+    db.prepare('DELETE FROM conversations WHERE id IN (?, ?)').run(developConversationId, designConversationId)
+
     const newDevelopContext: ConversationContext = {
       socketId: 'socket-develop-new',
       appId: testAppId,
@@ -220,9 +226,6 @@ describe('Multi-Agent Conversation History Integration', () => {
     expect(userMessage).toBeDefined()
     expect(userMessage!.content).toContain('refactor this code')
 
-    const db = getDatabase()
-    db.prepare('DELETE FROM conversation_messages WHERE conversation_id = ?').run(newConversationId)
-    db.prepare('DELETE FROM conversations WHERE id = ?').run(newConversationId)
   })
 
   it('should retrieve conversation history with existing conversationId in context', async () => {
