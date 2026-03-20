@@ -17,6 +17,7 @@ interface UseCreditGrantsOptions {
 
 interface UseCreditGrantsResult {
   data: CreditGrant[] | undefined;
+  isFetching: boolean;
   isLoading: boolean;
   isError: boolean;
   error: Error | null;

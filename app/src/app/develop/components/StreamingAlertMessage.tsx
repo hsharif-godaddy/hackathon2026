@@ -7,6 +7,7 @@ interface StreamingAlertMessageProps {
   message: ReactNode
   type?: 'Critical' | 'Warning' | 'Info'
   actions?: ReactNode
+  onClose?: () => void
 }
 
 const emphasisMap = {
@@ -15,10 +16,10 @@ const emphasisMap = {
   Info: 'info'
 } as const;
 
-export default function StreamingAlertMessage({ title, message, type = 'Critical', actions }: StreamingAlertMessageProps) {
+export default function StreamingAlertMessage({ title, message, type = 'Critical', actions, onClose }: StreamingAlertMessageProps) {
   return (
     <div className="mt-2">
-      <Alert emphasis={emphasisMap[type]} title={title} actions={actions}>
+      <Alert emphasis={emphasisMap[type]} title={title} actions={actions} onClose={onClose}>
         <text.p>{message}</text.p>
       </Alert>
     </div>

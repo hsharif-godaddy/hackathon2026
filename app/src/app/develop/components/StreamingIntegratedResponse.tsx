@@ -1,27 +1,15 @@
 'use client'
 
-import { useEffect, useMemo, useRef } from 'react'
-import { useIntl } from 'react-intl'
-import Button from '@ux/button'
-import text from '@ux/text'
+import { useMemo } from 'react'
 
+import BudgetExceededBanner from '@/app/develop/components/chat/BudgetExceededBanner'
 import MessageContentRenderer, { type ContentBlock } from '@/app/develop/components/MessageContentRenderer'
 import MessageToolCallsRenderer from '@/app/develop/components/MessageToolCallsRenderer'
 import ResponseMetadata from '@/app/develop/components/ResponseMetadata'
 import StreamingAlertMessage from '@/app/develop/components/StreamingAlertMessage'
 import { hasValidSegments, isStreamingMessage } from '@/app/develop/components/utils'
-import { useCreditGrants } from '@/hooks/useCreditGrants'
-import { useSubscription } from '@/hooks/useSubscription'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
-import { DomainStatus, DomainType } from '@/lib/control-plane/types'
-import { canUpgradePlan, PAYWALL_ITC } from '@/lib/paywall/shared'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import type { ChatMessage, StreamingMessage as StreamingMessageType, ToolCall } from '@/stores/useStreamingConversationStore'
-import { SubscriptionPlan } from '@/types/credits'
-import { getMonthlyPlanGrant, getPlanFromSubscription } from '@/utils/credits'
-import { logImpressionEvent } from '@/utils/instrumentation'
-import { hasBeenPublished } from '@/utils/site'
 
 interface StreamingIntegratedResponseProps {
   message: ChatMessage | StreamingMessageType
@@ -31,9 +19,6 @@ interface StreamingIntegratedResponseProps {
   streamingState?: 'idle' | 'streaming' | 'completing' | 'retrying' | 'error'
 }
 
-/**
- * Calculate the next budget reset time (00:10:00 UTC) and whether it's tomorrow
- */
 /**
  * Check if a tool call is a media slot tool that should be grouped
  */
@@ -80,84 +65,11 @@ function groupConsecutiveMediaTools(blocks: ContentBlock[]): ContentBlock[] {
   return result
 }
 
-/**
- * Calculate the next budget reset time (00:10:00 UTC) and whether it's tomorrow
- */
-function getNextResetInfo(): { date: Date; isTomorrow: boolean } {
-  const now = new Date();
-  const resetTime = new Date(now);
-
-  // Set to 00:10:00 UTC
-  resetTime.setUTCHours(0, 10, 0, 0);
-
-  // If we're past today's reset time, move to tomorrow
-  const isTomorrow = now >= resetTime;
-  if (isTomorrow) {
-    resetTime.setUTCDate(resetTime.getUTCDate() + 1);
-  }
-
-  return { date: resetTime, isTomorrow };
-}
-
 export default function StreamingIntegratedResponse({ message, isActiveStream = false, isLastAssistantMessage = false, startTime, streamingState }: StreamingIntegratedResponseProps) {
   const t = useTranslations();
-  const intl = useIntl();
-  const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
-  const openCreditsModal = useDevelopPageStore((state) => state.openCreditsModal)
-  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants')
-  const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans')
   const hasSegments = hasValidSegments(message)
   const isComplete = isStreamingMessage(message) ? message.isComplete : true
 
-  // Subscription and grants for determining reset time when grants are enabled
-  const { data: subscription, isLoading: isSubscriptionLoading } = useSubscription()
-  const { data: grants } = useCreditGrants({
-    subscriptionId: isGrantsEnabled ? subscription?.id : undefined,
-  })
-
-  const currentPlan = subscription ? getPlanFromSubscription(subscription) : SubscriptionPlan.None
-  const isNotUltimatePlan = !isSubscriptionLoading && canUpgradePlan(currentPlan, isHigherPlansEnabled === true)
-  const builderEntitlementId = subscription?.builderEntitlementId
-
-  // Disable purchase buttons when grants enabled but entitlement not yet available
-  const isPurchaseDisabled = isGrantsEnabled === true && !builderEntitlementId
-
-  // Use reactive selector from useDevelopPageStore for site data
-  const site = useDevelopPageStore((state) => state.site)
-  const hasPublishedApp = hasBeenPublished(site)
-  const hasCustomDomain = Boolean(
-    site?.domains?.some((d) => d.domainType !== DomainType.PREFIX && d.status === DomainStatus.ACTIVE)
-  )
-
-  const hasLoggedBudgetExceededImpressionRef = useRef(false)
-  useEffect(() => {
-    if (!message.budgetExceeded || hasLoggedBudgetExceededImpressionRef.current || site === null) return
-    hasLoggedBudgetExceededImpressionRef.current = true
-    logImpressionEvent('chat.budgetExceeded.view', { "has_published_app": hasPublishedApp, "has_custom_domain": hasCustomDomain })()
-  }, [message.budgetExceeded, hasPublishedApp, hasCustomDomain, site])
-
-  // When grants enabled: use the plan-monthly grant's useBefore date
-  // When grants disabled: use legacy "today at" / "tomorrow at" format
-  const resetTime = useMemo(() => {
-    if (isGrantsEnabled) {
-      if (!grants) return undefined;
-      const planGrant = getMonthlyPlanGrant(grants);
-      if (planGrant?.useBefore) {
-        const useByDate = new Date(planGrant.useBefore);
-        const date = intl.formatDate(useByDate, { month: 'long', day: 'numeric' });
-        const time = intl.formatDate(useByDate, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
-        return t('builder_usage_limit_reset_on_date', { date, time });
-      }
-      return undefined;
-    }
-
-    // Legacy: "today at" / "tomorrow at" format
-    const { date, isTomorrow } = getNextResetInfo();
-    const time = intl.formatDate(date, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
-    return isTomorrow
-      ? t('builder_usage_limit_reset_tomorrow', { time }, `tomorrow at ${time}`)
-      : t('builder_usage_limit_reset_today', { time }, `today at ${time}`);
-  }, [intl, t, isGrantsEnabled, grants]);
 
   /**
    * Extract tool calls directly from segments as a fallback when chronologicalContent is empty
@@ -360,51 +272,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
         )}
 
         {/* Budget exceeded error notification */}
-        {message.budgetExceeded && (
-          <StreamingAlertMessage
-            type="Critical"
-            title={t('builder_usage_limit_title')}
-            message={
-              resetTime ? (
-                <text.p
-                  size={0}
-                  dangerouslySetInnerHTML={{
-                    __html: t('builder_usage_limit_message', {
-                      resetTime,
-                      strong: (chunks: string) => `<strong>${chunks}</strong>`
-                    })
-                  }}
-                />
-              ) : (
-                t('builder_usage_limit_message_no_reset_time')
-              )
-            }
-            actions={isGrantsEnabled && (
-              <div className="flex gap-2">
-                {/* When grants enabled: only show upgrade button if user is on free plan (not paid) */}
-                {isNotUltimatePlan && (
-                  <Button
-                    design="primary"
-                    size="sm"
-                    onClick={() => openUpgradeModal('budget_exceeded.upgrade', PAYWALL_ITC.UPGRADE)}
-                    text={t('builder_usage_gauge_upgrade')}
-                    disabled={isPurchaseDisabled}
-                  />
-                )}
-                <Button
-                  design={isNotUltimatePlan ? 'secondary' : 'primary'}
-                  size="sm"
-                  onClick={() => isGrantsEnabled
-                    ? openCreditsModal('budget_exceeded.buy_credits', PAYWALL_ITC.CREDITS)
-                    : openUpgradeModal('budget_exceeded.buy_credits', PAYWALL_ITC.UPGRADE)
-                  }
-                  text={t('builder_usage_gauge_buy_tokens')}
-                  disabled={isPurchaseDisabled}
-                />
-              </div>
-            )}
-          />
-        )}
+        {message.budgetExceeded && <BudgetExceededBanner />}
 
         {/* Upstream service error notification */}
         {message.upstreamError && !message.budgetExceeded && (

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/AssetTypes'
 import ChatBanners from '@/app/develop/components/chat/banners/ChatBanners'
+import BudgetExceededBanner from '@/app/develop/components/chat/BudgetExceededBanner'
 import { ChatContext } from '@/app/develop/components/chat/ChatContext'
 import ChatInput from '@/app/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
@@ -75,13 +76,27 @@ export default function ChatPane({
 
   const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants')
   const { data: subscription } = useSubscription()
-  const { data: grants } = useCreditGrants({
+  const { data: grants, isFetching: isGrantsFetching } = useCreditGrants({
     subscriptionId: isGrantsEnabled ? subscription?.id : undefined,
   })
 
-  // Only block input if budget flag is set AND user has no available credits
   const hasAvailableCredits = isGrantsEnabled && grants && getActiveGrant(grants) !== undefined
-  const budgetExceeded = budgetExceededFlag && !hasAvailableCredits
+  // grantsLoaded is false while fetching (including background refetches of stale cache) to prevent
+  // briefly blocking a user who purchased credits between page visits.
+  const grantsLoaded = isGrantsEnabled && grants !== undefined && !isGrantsFetching
+  const budgetExceeded = !hasAvailableCredits && (grantsLoaded || budgetExceededFlag)
+  const [isProactiveBannerDismissed, setIsProactiveBannerDismissed] = useState(false)
+
+  // Reset dismissal only when grants data is stable and credits are no longer exhausted.
+  // Excluding isGrantsFetching prevents a background refetch from briefly flipping
+  // budgetExceeded=false (via grantsLoaded) and resetting a dismissal the user just made.
+  useEffect(() => {
+    if (!budgetExceeded && !isGrantsFetching) setIsProactiveBannerDismissed(false)
+  }, [budgetExceeded, isGrantsFetching])
+
+  // Only show the proactive banner when budgetExceededFlag is false — the mid-stream
+  // case already shows an identical banner inline in the message list.
+  const showProactiveBudgetBanner = budgetExceeded && !budgetExceededFlag && !isProactiveBannerDismissed
 
   const hasLoggedFirstUserMessageRef = useRef(false)
 
@@ -663,6 +678,11 @@ export default function ChatPane({
 
           <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} />
 
+          {showProactiveBudgetBanner && (
+            <div className="mx-2 sm:mx-3 mb-2">
+              <BudgetExceededBanner onClose={() => setIsProactiveBannerDismissed(true)} />
+            </div>
+          )}
           <ChatBanners appId={appId} />
           {uploadError && (
             <div className="mx-2 sm:mx-3 md:mx-0 mb-1 px-3 py-2 text-sm rounded-md bg-intents-ux-feedbackHighContrastCritical-feedbackColor/10 text-intents-ux-feedbackHighContrastCritical-feedbackColor flex items-center justify-between">
@@ -746,6 +766,11 @@ export default function ChatPane({
           </div>
         )}
 
+        {showProactiveBudgetBanner && (
+          <div className="px-2 sm:px-3 md:px-1 mb-2">
+            <BudgetExceededBanner onClose={() => setIsProactiveBannerDismissed(true)} />
+          </div>
+        )}
         <div className="px-2 sm:px-3 md:px-0">
           <ChatBanners appId={appId} />
           {uploadError && (
