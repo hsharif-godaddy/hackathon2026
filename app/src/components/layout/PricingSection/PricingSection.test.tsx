@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom'
 
+import React from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, screen, waitFor } from '@testing-library/react'
 
@@ -34,7 +35,7 @@ vi.mock('react-intl', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-intl')>()
   return {
     ...actual,
-    FormattedMessage: ({ id, values }: { id: string; values?: Record<string, unknown> }) => {
+    FormattedMessage: ({ id, values }: { id: string; values?: Record<string, React.ReactNode> }) => {
       let text = id
       if (values?.count !== undefined) text = `${id}_${values.count}`
       return (
@@ -154,7 +155,7 @@ vi.mock('@/components/ui/InfoTooltip', () => ({
   ),
 }))
 
-vi.mock('@/components/layout/PlanPriceDisplay', () => ({
+vi.mock('@/components/layout/PricingSection/PlanPriceDisplay', () => ({
   default: ({ planOffer, isLoading }: { planOffer: unknown; isLoading: boolean }) => (
     <div data-testid="plan-price-display">
       {isLoading ? 'Loading...' : planOffer ? 'Price displayed' : 'No price'}
@@ -438,6 +439,28 @@ describe('PricingSection', () => {
       authContextOverrides = { isAuthenticated: true, isAuthDisabled: false, isLoading: false }
     })
 
+    it('should disable Professional CTA when auth is loading', async () => {
+      authContextOverrides = { isAuthenticated: false, isAuthDisabled: false, isLoading: true }
+
+      renderWithProviders(<PricingSection showHighTierPlans={true} />)
+
+      const professionalCard = screen.getByText('builder_pricing_professional_title').closest('div')
+      const ctaButton = professionalCard?.querySelector('button')
+
+      expect(ctaButton).toBeDisabled()
+    })
+
+    it('should disable Ultimate CTA when auth is loading', async () => {
+      authContextOverrides = { isAuthenticated: false, isAuthDisabled: false, isLoading: true }
+
+      renderWithProviders(<PricingSection showHighTierPlans={true} />)
+
+      const ultimateCard = screen.getByText('builder_pricing_ultimate_title').closest('div')
+      const ctaButton = ultimateCard?.querySelector('button')
+
+      expect(ctaButton).toBeDisabled()
+    })
+
     it('should call openUpgradeModal when clicking Professional CTA', async () => {
       const { user } = renderWithProviders(<PricingSection showHighTierPlans={true} />)
 
@@ -446,10 +469,9 @@ describe('PricingSection', () => {
       const professionalCard = screen.getByText('builder_pricing_professional_title').closest('div')
       const ctaButton = professionalCard?.querySelector('button')
 
-      if (ctaButton) {
-        await user.click(ctaButton)
-        expect(mockOpenUpgradeModal).toHaveBeenCalledWith('pricing_section.upgrade', 'slp_airo_ai_builder')
-      }
+      expect(ctaButton).not.toBeNull()
+      await user.click(ctaButton!)
+      expect(mockOpenUpgradeModal).toHaveBeenCalledWith('pricing_section.upgrade', 'slp_airo_ai_builder')
     })
 
     it('should call openUpgradeModal when clicking Ultimate CTA', async () => {
@@ -458,10 +480,9 @@ describe('PricingSection', () => {
       const ultimateCard = screen.getByText('builder_pricing_ultimate_title').closest('div')
       const ctaButton = ultimateCard?.querySelector('button')
 
-      if (ctaButton) {
-        await user.click(ctaButton)
-        expect(mockOpenUpgradeModal).toHaveBeenCalledWith('pricing_section.upgrade', 'slp_airo_ai_builder')
-      }
+      expect(ctaButton).not.toBeNull()
+      await user.click(ctaButton!)
+      expect(mockOpenUpgradeModal).toHaveBeenCalledWith('pricing_section.upgrade', 'slp_airo_ai_builder')
     })
   })
 })

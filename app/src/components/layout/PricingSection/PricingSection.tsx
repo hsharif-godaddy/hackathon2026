@@ -14,7 +14,7 @@ import UserIcon from '@ux/icon/user'
 import text from '@ux/text'
 
 import PageSection from '@/components/layout/PageSection'
-import PlanPriceDisplay from '@/components/layout/PlanPriceDisplay'
+import PlanPriceDisplay from '@/components/layout/PricingSection/PlanPriceDisplay'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { InfoTooltip } from '@/components/ui/InfoTooltip'
 import { usePricingOffers } from '@/hooks/usePricingOffers'
@@ -150,9 +150,9 @@ export default function PricingSection({ showHighTierPlans = false }: PricingSec
   }
 
   const renderFeatures = (features: PlanFeature[]) => {
-    return features.map((feature, index) => (
+    return features.map((feature) => (
       <PricingItem
-        key={index}
+        key={feature.titleKey}
         icon={<feature.icon className="size-2" />}
         feature={feature}
       />
@@ -161,7 +161,7 @@ export default function PricingSection({ showHighTierPlans = false }: PricingSec
 
   const renderFeaturesWithSeparators = (features: PlanFeature[]) => {
     return features.map((feature, index) => (
-      <React.Fragment key={index}>
+      <React.Fragment key={feature.titleKey}>
         {index > 0 && <hr className="border-intents-ux-box-borderColor my-1.5" />}
         <PricingItem
           icon={<feature.icon className="size-2" />}
@@ -235,6 +235,7 @@ export default function PricingSection({ showHighTierPlans = false }: PricingSec
                   text={t('builder_pricing_free_cta')}
                   onClick={handleUpgradeClick}
                   data-eid={generateClickEID('pricing_section.upgrade_button.professional')}
+                  disabled={authIsLoading}
                   className="!mb-6"
                 />
                 <div className="space-y-3">
@@ -254,6 +255,7 @@ export default function PricingSection({ showHighTierPlans = false }: PricingSec
                   text={t('builder_pricing_free_cta')}
                   data-eid={generateClickEID('pricing_section.upgrade_button.ultimate')}
                   onClick={handleUpgradeClick}
+                  disabled={authIsLoading}
                   className="!mb-6"
                 />
                 <div className="space-y-3">
