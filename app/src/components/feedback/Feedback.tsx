@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
-import Modal from "@ux/modal"
-import Spinner from "@ux/spinner"
+import { isEmployeeAuthType } from '@airo/shared/auth';
+import Modal from "@ux/modal";
+import Spinner from "@ux/spinner";
+import text from "@ux/text";
 
 import { FeedbackDescription } from '@/components/feedback/FeedbackDescription';
 import { FeedbackForm } from '@/components/feedback/FeedbackForm';
 import { FeedbackProps } from '@/components/feedback/types';
 import { getBaseUrl, getMockFeedbackConfig, isLocalhost } from '@/components/feedback/utils';
+import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useTranslations } from "@/hooks/useTranslations";
 import { logger } from '@/lib/request-context';
 
@@ -13,10 +16,21 @@ export function Feedback(props: FeedbackProps) {
   const t = useTranslations();
   const [isLoading, setIsLoading] = useState(true);
   const [config, setConfig] = useState(null);
+  const { authState } = useAuthContext();
+  // Gasket Auth spreads the full /api/auth/validate response onto authState,
+  // so authType is available directly (same pattern as authReason in useAuth.ts)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const isImpersonating = isEmployeeAuthType((authState as any)?.authType);
 
   const { feedbackId, onClose, onSubmitSuccess } = props;
 
   useEffect(() => {
+    // CRM impersonation sessions cannot submit feedback
+    if (isImpersonating) {
+      setIsLoading(false);
+      return;
+    }
+
     // Use mock data on localhost
     if (isLocalhost()) {
       const mockConfig = getMockFeedbackConfig(feedbackId);
@@ -52,7 +66,7 @@ export function Feedback(props: FeedbackProps) {
       setIsLoading(false);
       onClose();
     });
-  }, [feedbackId, onClose]);
+  }, [feedbackId, isImpersonating, onClose]);
 
   return (
     <Modal
@@ -61,14 +75,22 @@ export function Feedback(props: FeedbackProps) {
       id="feedback-modal"
       onClose={onClose}
     >
-      <FeedbackDescription />
-      {isLoading && <Spinner />}
-      {config && !isLoading && (
-        <FeedbackForm
-          config={config}
-          onClose={onClose}
-          onSubmitSuccess={onSubmitSuccess}
-        />
+      {isImpersonating ? (
+        <text.p size={-1} emphasis="passive">
+          {t('builder_feedback_impersonation_message')}
+        </text.p>
+      ) : (
+        <>
+          <FeedbackDescription />
+          {isLoading && <Spinner />}
+          {config && !isLoading && (
+            <FeedbackForm
+              config={config}
+              onClose={onClose}
+              onSubmitSuccess={onSubmitSuccess}
+            />
+          )}
+        </>
       )}
     </Modal>
   );

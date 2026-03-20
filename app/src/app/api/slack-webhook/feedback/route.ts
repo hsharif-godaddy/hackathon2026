@@ -55,6 +55,18 @@ export const POST = withCustomerAuth(async (
     if (!authContext.jwt) {
       return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
     }
+
+    // CRM impersonation sessions cannot submit feedback on behalf of customers
+    if (authContext.user.authType === 'e2s') {
+      logger.info('feedback.slack.impersonation_blocked', {
+        message: 'Feedback submission blocked for impersonation session',
+        shopperId: authContext.user.shopperId,
+      });
+      return NextResponse.json(
+        { error: 'Feedback cannot be submitted during account impersonation' },
+        { status: 403 }
+      );
+    }
     // Get webhook URL from server-side environment variable (NOT exposed to client)
     const webhookUrl = process.env.SLACK_FEEDBACK_WEBHOOK_URL;
 

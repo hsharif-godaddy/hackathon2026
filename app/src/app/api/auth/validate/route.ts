@@ -74,7 +74,8 @@ async function validateHandler(request: NextRequest) {
       valid: result.valid,
       payload: result.payload,
       reason: result.reason,
-      ...(result.authReason !== undefined ? { authReason: result.authReason } : {})
+      ...(result.authReason !== undefined ? { authReason: result.authReason } : {}),
+      ...(result.payload?.authType ? { authType: result.payload.authType } : {})
     }, {
       status: result.valid ? 200 : 401
     });
