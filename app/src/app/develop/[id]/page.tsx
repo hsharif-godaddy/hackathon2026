@@ -19,6 +19,7 @@ import { ChatTab } from '@/app/develop/components/types'
 import { extractNewPageRoute, handlePreviewRefresh, navigatePreviewToRoute, requestPreviewScreenshot, useAppIdFromParams } from '@/app/develop/components/utils'
 import VersionHistory from '@/app/develop/components/VersionHistory'
 import { clearExpiredWidgetStates } from '@/app/develop/components/widgets'
+import { useEvalSnapshotCapture } from '@/app/develop/hooks/useEvalSnapshotCapture'
 import { useInitialization } from '@/app/develop/hooks/useInitialization'
 import { ProtectedRoute } from '@/components/auth'
 import { Feedback } from '@/components/feedback/Feedback'
@@ -98,6 +99,9 @@ function DevelopPageContent() {
       });
     }
   }, [hibernation.resumeComplete, appId]);
+
+  // Eval snapshot capture - captures screenshot on first build completion
+  const { triggerEvalSnapshot, handleEvalViewportScreenshot } = useEvalSnapshotCapture({ appId })
 
   // Server polling store - only used for cleanup on unmount
   // Note: Server polling lifecycle is managed by PreviewPane component
@@ -514,6 +518,13 @@ function DevelopPageContent() {
     }
   }, [appId, activeStream, isPreviewVisible, setIsPreviewVisible, init.actions])
 
+  // Listen for eval snapshot trigger from CompleteHandler
+  useEffect(() => {
+    const handler = () => triggerEvalSnapshot()
+    window.addEventListener('eval-snapshot-trigger', handler)
+    return () => window.removeEventListener('eval-snapshot-trigger', handler)
+  }, [triggerEvalSnapshot])
+
   // Listen for messages from preview iframe
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -723,6 +734,11 @@ function DevelopPageContent() {
             handleScreenshotUpload(event.data.screenshot)
           }
           break
+        case 'VIEWPORT_SCREENSHOT_RESPONSE':
+          if (event.data.screenshot) {
+            handleEvalViewportScreenshot(event.data.screenshot)
+          }
+          break
         case 'OPEN_MEDIA_SLOT_DIALOG':
           // Handle request to open media slot dialog from dev-tools
           if (event.data.slotName && appId) {
@@ -738,7 +754,7 @@ function DevelopPageContent() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setIsSelectMode, sendMessage, setInputValue, handleScreenshotUpload, setIsAssetManagerOpen, appId, scheduleMicrotask])
+  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setIsSelectMode, sendMessage, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask])
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {

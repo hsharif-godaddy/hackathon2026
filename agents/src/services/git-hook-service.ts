@@ -369,6 +369,9 @@ export class GitHookService {
       // Step 3: Squash merge to main
       try {
         await gitUtils.switchBranch(app.path, 'main');
+        const mainHeadBefore = await gitUtils.getCommitHistory(app.path, 1);
+        const mainHashBefore = mainHeadBefore[0]?.hash ?? null;
+
         await gitUtils.squashMerge(app.path, currentBranch, squashMessage);
 
         logger.info('git_hook.connection_end.squash_merged', {
@@ -380,12 +383,14 @@ export class GitHookService {
         });
 
         // Get the commit hash we just created
-        const commits = await gitUtils.getCommitHistory(app.path, 1);
-        const commitHash = commits[0]?.hash || null;
+        const commitsAfter = await gitUtils.getCommitHistory(app.path, 1);
+        const mainHashAfter = commitsAfter[0]?.hash ?? null;
+        const commitHash =
+          mainHashAfter && mainHashAfter !== mainHashBefore ? mainHashAfter : null;
 
         logger.info('git_hook.connection_end.commit_hash', {
           appId,
-          commitHash: commitHash ? commitHash.substring(0, 7) : 'unknown',
+          commitHash: commitHash ? commitHash.substring(0, 7) : 'none',
           reason
         });
 

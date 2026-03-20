@@ -25,6 +25,7 @@ describe('CompleteHandler', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    sessionStorage.removeItem('airo_eval_snapshot_app_build_count_app-123')
   })
 
   it('finalizes stream and clears recovery state on completion', async () => {
@@ -32,6 +33,7 @@ describe('CompleteHandler', () => {
     mockStore.getState.mockReturnValue({
       connectionRetry: { isRetrying: true },
       clearConnectionRetry,
+      messages: [],
     })
 
     const context = createMockMessageContext()
@@ -60,6 +62,51 @@ describe('CompleteHandler', () => {
     // Machine handles UI state transitions via STREAM_COMPLETE event (Tier 1)
     // Adapter syncs: setWebSocketState, setStreamingState, setIsLoading
     expect(context.helpers.handleCommitComplete).toHaveBeenCalledWith('abcdef1')
-    // Note: We no longer clear the stored socket ID on completion to enable recovery on page reload
+  })
+
+  it('dispatches eval-snapshot-trigger on first completion with commitHash', async () => {
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+    sessionStorage.removeItem('airo_eval_snapshot_app_build_count_app-123')
+    mockStore.getState.mockReturnValue({
+      connectionRetry: { isRetrying: false },
+      clearConnectionRetry: vi.fn(),
+      messages: [],
+    })
+
+    await handler.handle(
+      {
+        type: 'complete',
+        content: '',
+        data: { commitHash: 'abc1111' },
+      },
+      createMockMessageContext()
+    )
+
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'eval-snapshot-trigger' })
+    )
+    expect(sessionStorage.getItem('airo_eval_snapshot_app_build_count_app-123')).toBe('1')
+    dispatchSpy.mockRestore()
+  })
+
+  it('does not dispatch eval-snapshot-trigger when commitHash is absent', async () => {
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+    sessionStorage.removeItem('airo_eval_snapshot_app_build_count_app-123')
+    mockStore.getState.mockReturnValue({
+      connectionRetry: { isRetrying: false },
+      clearConnectionRetry: vi.fn(),
+      messages: [{ role: 'assistant' as const, toolCalls: [{ id: '1', name: 'edit_file' }] }],
+    })
+
+    await handler.handle(
+      { type: 'complete', content: '', data: { agentId: 'develop' } },
+      createMockMessageContext()
+    )
+
+    expect(dispatchSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'eval-snapshot-trigger' })
+    )
+    expect(sessionStorage.getItem('airo_eval_snapshot_app_build_count_app-123')).toBe(null)
+    dispatchSpy.mockRestore()
   })
 })

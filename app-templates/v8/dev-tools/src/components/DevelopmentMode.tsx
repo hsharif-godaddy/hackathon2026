@@ -2,7 +2,7 @@ import { useDevelopmentMode } from '../hooks/useDevelopmentMode'
 import { useState, useEffect } from 'react'
 import ElementEditor, { editorTypographyStyles } from './ElementEditor'
 import { safePostMessage, isOriginAllowed } from '../utils/postMessage'
-import { captureAndResizeScreenshot } from '../utils/screenshot'
+import { captureAndResizeScreenshot, captureViewportScreenshot } from '../utils/screenshot'
 
 export default function DevelopmentMode() {
   const {
@@ -399,6 +399,17 @@ export default function DevelopmentMode() {
             }
           }).catch((error) => {
             console.error('Screenshot: Error capturing:', error)
+          })
+        } else if (event.data && event.data.type === 'REQUEST_VIEWPORT_SCREENSHOT') {
+          captureViewportScreenshot().then(screenshot => {
+            if (screenshot && window.parent !== window) {
+              safePostMessage(window.parent, {
+                type: 'VIEWPORT_SCREENSHOT_RESPONSE',
+                screenshot: screenshot
+              })
+            }
+          }).catch((error) => {
+            console.error('Viewport eval screenshot: Error capturing:', error)
           })
         } else if (event.data?.type === 'RELOAD_MEDIA_SLOT' && event.data.slotPath) {
           reloadMediaSlot(event.data.slotPath)

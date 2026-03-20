@@ -53,6 +53,7 @@ export class EvalSnapshotsStack extends GDStack {
       principals: [
         new iam.ArnPrincipal(`arn:aws:iam::${cdk.Aws.ACCOUNT_ID}:role/GD-AWS-USA-GD-AiroBuilde-Ops`),
         ...config.gocodeAssumeRoleArns.map(arn => new iam.ArnPrincipal(arn)),
+        ...config.katanaEcsTaskRoleArn.map(arn => new iam.ArnPrincipal(arn)),
       ],
     });
 

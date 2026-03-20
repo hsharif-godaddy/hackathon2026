@@ -2502,8 +2502,11 @@ export class WebSocketServer {
         )
 
         if (preCompletionResult && processedContext) {
-          // Merge pre-completion data into context
           Object.assign(processedContext, preCompletionResult)
+          const conv = this.getConversation(socketId)
+          if (conv) {
+            Object.assign(conv.context as Record<string, unknown>, preCompletionResult)
+          }
 
           this.logger.debug('message.pre_completion.success', {
             socketId,
@@ -2531,8 +2534,10 @@ export class WebSocketServer {
         conversation.context
       )
 
-      // Get commit hash from context (set by beforeMessageComplete or persistence layer)
-      commitHash = (conversation.context as any).commitHash ?? null
+      commitHash =
+        (conversation.context as { commitHash?: string | null }).commitHash ??
+        (processedContext as { commitHash?: string | null }).commitHash ??
+        null
 
       // Don't delete conversation - keep it active for next user message
       // Only cleanup happens on disconnect or error

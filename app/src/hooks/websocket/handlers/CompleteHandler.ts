@@ -17,6 +17,8 @@ import type { LifecycleHandlerContext, MessageHandler, WebSocketMessage } from '
 const SESSION_PROMPT_COUNT_KEY = 'airo_session_prompt_count'
 const SESSION_FEEDBACK_SHOWN_KEY = 'airo_session_feedback_shown'
 const SESSION_FEEDBACK_TRIGGER_THRESHOLD = 10 // Number of user prompts before showing feedback
+/** Per-app build completion count (eval snapshot: trigger only when count === 1) */
+const EVAL_SNAPSHOT_APP_BUILD_COUNT_PREFIX = 'airo_eval_snapshot_app_build_count_'
 
 /**
  * Check if we should show the feedback widget
@@ -36,12 +38,34 @@ function shouldShowFeedbackBanner(): boolean {
 }
 
 /**
- * Increment session prompt counter
+ * Increment session prompt counter (global, for feedback widget). Always call on every complete.
  */
-function incrementPromptCount(): void {
+function incrementSessionPromptCount(): void {
   const countStr = sessionStorage.getItem(SESSION_PROMPT_COUNT_KEY)
   const count = countStr ? parseInt(countStr, 10) : 0
   sessionStorage.setItem(SESSION_PROMPT_COUNT_KEY, String(count + 1))
+}
+
+/**
+ * Non-empty commit hash from complete payload (server squash-merge to main).
+ */
+function commitHashFromComplete(data: WebSocketMessage): string | undefined {
+  const raw = data.data?.commitHash
+  return typeof raw === 'string' && raw.length > 0 ? raw : undefined
+}
+
+/**
+ * Increment per-app build count when this completion included a git commit.
+ * Eval snapshot fires only when count === 1 (first committed build this session). Returns 0 if no appId.
+ */
+function incrementEvalSnapshotBuildCount(appId: string | null): number {
+  if (!appId) return 0
+  const key = `${EVAL_SNAPSHOT_APP_BUILD_COUNT_PREFIX}${appId}`
+  const countStr = sessionStorage.getItem(key)
+  const count = countStr ? parseInt(countStr, 10) : 0
+  const newCount = count + 1
+  sessionStorage.setItem(key, String(newCount))
+  return newCount
 }
 
 /**
@@ -74,8 +98,9 @@ export class CompleteHandler implements MessageHandler {
     // Flush any buffered tool input deltas
     context.actions.flushToolDeltaBufferImmediate()
 
-    // Increment session prompt count and check if we should show feedback widget BEFORE finalizing
-    incrementPromptCount()
+    const commitHash = commitHashFromComplete(data)
+    const appId = context.currentAppId
+    incrementSessionPromptCount()
 
     const shouldShowBanner = shouldShowFeedbackBanner()
     if (shouldShowBanner) {
@@ -112,7 +137,23 @@ export class CompleteHandler implements MessageHandler {
     // Machine handles UI state transitions via STREAM_COMPLETE event
     // Adapter syncs: setWebSocketState, setStreamingState, setIsLoading, finalizeStream
 
-    const commitHash = data.data?.commitHash as string | undefined
+    // Determine eval snapshot eligibility after finalizeStream so the current turn's
+    // tool calls are available in messages[]. Skip counting when the agent stopped on
+    // askQuestion — that means it wrote partial scaffold and is waiting for user input,
+    // not that it completed the first real build.
+    let shouldFireEvalSnapshotTrigger = false
+    if (commitHash) {
+      const { messages } = useStreamingConversationStore.getState()
+      const lastMsg = messages[messages.length - 1]
+      const stoppedOnAskQuestion = lastMsg?.role === 'assistant' &&
+        lastMsg.toolCalls?.some((tc) => tc.name === 'askQuestion')
+      if (!stoppedOnAskQuestion) {
+        const buildCount = incrementEvalSnapshotBuildCount(appId)
+        if (buildCount === 1) {
+          shouldFireEvalSnapshotTrigger = true
+        }
+      }
+    }
 
     if (commitHash) {
       // Handle commit selection and preview refresh.
@@ -136,9 +177,12 @@ export class CompleteHandler implements MessageHandler {
       }
     }
 
+    if (shouldFireEvalSnapshotTrigger) {
+      window.dispatchEvent(new CustomEvent('eval-snapshot-trigger'))
+    }
+
     // Update site's updated_at timestamp so it moves to top of apps list
     // Call the backend API to persist a lastInteractionAt variable, then update frontend stores
-    const appId = context.currentAppId
     if (appId) {
       appFetch(`/api/sites/${appId}/variables`, {
         method: 'PATCH',

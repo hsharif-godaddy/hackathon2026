@@ -28,6 +28,8 @@ import { postMessageToIframe } from '@/utils/postMessage'
 // Timing constants for iframe lifecycle management
 const REFRESH_DEBOUNCE_MS = 500 // Debounce rapid refresh requests
 const STATE_RESTORE_FALLBACK_MS = 3000 // Fallback timeout if iframe doesn't send ready signal
+/** Eval snapshot: IFRAME_READY means the iframe has registered its message listener; HMR-only builds use fallback */
+const EVAL_SNAPSHOT_IFRAME_FALLBACK_MS = 8000
 
 /**
  * Restore iframe state (URL and scroll position) via postMessage.
@@ -177,6 +179,8 @@ export default function PreviewPane({
   // Track message handler timers for proper cleanup (from PR #1056)
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null)
   const scrollRestoreTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const pendingEvalFullHeightRef = useRef(false)
+  const evalFullHeightFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Track previous viewMode to determine flip direction
   const previousViewModeRef = useRef<ViewMode>(viewMode)
@@ -345,14 +349,84 @@ export default function PreviewPane({
     attemptStateRestorationRef.current = attemptStateRestoration
   }, [attemptStateRestoration])
 
+  useEffect(() => {
+    function clearEvalFullHeightFallback() {
+      if (evalFullHeightFallbackTimerRef.current !== null) {
+        clearTimeout(evalFullHeightFallbackTimerRef.current)
+        evalFullHeightFallbackTimerRef.current = null
+      }
+    }
+
+    function deliverEvalFullHeightRequest(reason: string) {
+      if (!iframeRef.current?.contentWindow) {
+        logger.warn('preview.eval-snapshot.skipped', { reason, message: 'iframe contentWindow unavailable' })
+        return
+      }
+      postMessageToIframe(iframeRef.current, {
+        type: 'REQUEST_VIEWPORT_SCREENSHOT',
+      })
+      logger.info('preview.eval-snapshot.posted', { reason })
+    }
+
+    function handleEvalSnapshotRequest() {
+      pendingEvalFullHeightRef.current = true
+      clearEvalFullHeightFallback()
+      evalFullHeightFallbackTimerRef.current = setTimeout(function evalSnapshotFallback() {
+        evalFullHeightFallbackTimerRef.current = null
+        if (!pendingEvalFullHeightRef.current) return
+        deliverEvalFullHeightRequest('fallback-timeout')
+        // Intentionally do NOT clear pendingEvalFullHeightRef here.
+        // If the iframe wasn't ready when the fallback fired (DevelopmentMode still mounting),
+        // the IFRAME_READY handler will catch it and send again. The flag is only cleared
+        // when VIEWPORT_SCREENSHOT_RESPONSE is actually received.
+      }, EVAL_SNAPSHOT_IFRAME_FALLBACK_MS)
+    }
+
+    window.addEventListener('eval-snapshot-request', handleEvalSnapshotRequest)
+    return () => {
+      window.removeEventListener('eval-snapshot-request', handleEvalSnapshotRequest)
+      clearEvalFullHeightFallback()
+      pendingEvalFullHeightRef.current = false
+    }
+  }, [])
+
   // Listen for file save events and preview refresh requests to auto-refresh preview
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      // Handle iframe ready signal for immediate state restoration
-      if (event.data.type === 'IFRAME_READY' && isWaitingForIframeReady) {
-        logger.debug('preview-pane.iframe.ready', { message: 'Iframe ready signal received, restoring state immediately' })
-        if (attemptStateRestorationRef.current) {
-          attemptStateRestorationRef.current()
+      const fromPreviewIframe =
+        iframeRef.current?.contentWindow != null && event.source === iframeRef.current.contentWindow
+
+      if (event.data?.type === 'VIEWPORT_SCREENSHOT_RESPONSE' && fromPreviewIframe) {
+        pendingEvalFullHeightRef.current = false
+        if (evalFullHeightFallbackTimerRef.current !== null) {
+          clearTimeout(evalFullHeightFallbackTimerRef.current)
+          evalFullHeightFallbackTimerRef.current = null
+        }
+      }
+
+      if (event.data?.type === 'IFRAME_READY' && fromPreviewIframe) {
+        if (isWaitingForIframeReady) {
+          logger.debug('preview-pane.iframe.ready', { message: 'Iframe ready signal received, restoring state immediately' })
+          if (attemptStateRestorationRef.current) {
+            attemptStateRestorationRef.current()
+          }
+        }
+        if (pendingEvalFullHeightRef.current && iframeRef.current) {
+          // Wait a bit more for content to fully render after IFRAME_READY
+          // IFRAME_READY means the script is loaded, but React might still be hydrating/rendering
+          setTimeout(() => {
+            if (iframeRef.current) {
+              postMessageToIframe(iframeRef.current, {
+                type: 'REQUEST_VIEWPORT_SCREENSHOT',
+              })
+              logger.info('preview.eval-snapshot.posted', { reason: 'iframe-ready' })
+            }
+          }, 1000) // 1 second delay to let React hydrate and render content
+          pendingEvalFullHeightRef.current = false
+          if (evalFullHeightFallbackTimerRef.current !== null) {
+            clearTimeout(evalFullHeightFallbackTimerRef.current)
+            evalFullHeightFallbackTimerRef.current = null
+          }
         }
         return
       }
