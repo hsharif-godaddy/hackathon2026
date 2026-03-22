@@ -8,11 +8,11 @@ on:
         required: true
         type: choice
         options:
-          - "TEST"
+          - "DEV-PRIVATE"
           - "PROD"
-        default: "TEST"
+        default: "DEV-PRIVATE"
       documents:
-        description: "Comma-separated document IDs or empty to ingest all"
+        description: "Comma-separated document names (without .md) or empty to ingest all"
         required: false
         type: string
         default: ""
@@ -23,12 +23,16 @@ on:
         required: true
         type: string
       documents:
-        description: "Comma-separated document IDs or empty to ingest all"
+        description: "Comma-separated document names (without .md) or empty to ingest all"
         required: false
         type: string
         default: ""
 
 run-name: "Ingest ${{ inputs.documents || 'all documents' }} to ${{ inputs.environment }}"
+
+permissions:
+  id-token: write # required for sso-awsiam-jwt action
+  contents: read
 
 jobs:
   ingest-documents:
@@ -41,91 +45,39 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
 
-      - name: Get Artifactory Token
-        id: jfrog
-        uses: jfrog/setup-jfrog-cli@f748a0599171a192a2668afee8d0497f7c1069df # v4.5.6
+      - name: Resolve environment config
+        id: env
         env:
-          JF_URL: ${{ vars.JF_URL }}
-        with:
-          oidc-provider-name: github
-
-      - name: Setup Artifactory Creds
-        env:
-          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+          ENVIRONMENT: ${{ inputs.environment }}
         run: |
-          echo "::add-mask::$OIDC_TOKEN"
-          echo "ARTIFACTORY_TOKEN=${OIDC_TOKEN}" >> $GITHUB_ENV
+          if [ "$ENVIRONMENT" = "PROD" ]; then
+            echo "api_url=https://knowledge.api.int.godaddy.com" >> $GITHUB_OUTPUT
+            echo "sso_env=prod" >> $GITHUB_OUTPUT
+          else
+            echo "api_url=https://airobuilde-app-builder-knowledge-dev-private.airobuilde-dev-private.prod.onkatana.net" >> $GITHUB_OUTPUT
+            echo "sso_env=test" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Get AWS IAM JWT
+        id: get-awsiam
+        uses: gdcorp-actions/sso-awsiam-jwt@1a1c7cef15317e1b1baeab47fa47666b6cc84960
         with:
-          python-version: "3.12"
+          sso_env: ${{ steps.env.outputs.sso_env }}
 
-      - name: Configure pip for Artifactory
-        run: |
-          mkdir -p ~/.pip
-          cat > ~/.pip/pip.conf << EOF
-          [global]
-          index-url = https://artifactory:${ARTIFACTORY_TOKEN}@gdartifactory1.jfrog.io/artifactory/api/pypi/python-virt/simple
-          trusted-host = gdartifactory1.jfrog.io
-          EOF
-
-      - name: Install gd-auth
-        run: pip3 install gd-auth
-
-      - name: Generate IAM JWT and ingest documents
+      - name: Ingest documents
         env:
-          AWS_REGION: us-west-2
+          API_URL: ${{ steps.env.outputs.api_url }}
+          IAM_JWT: ${{ steps.get-awsiam.outputs.jwt }}
           ENVIRONMENT: ${{ inputs.environment }}
           DOCUMENTS: ${{ inputs.documents }}
         run: |
+          echo "::add-mask::$IAM_JWT"
           echo "Starting knowledge service document ingestion..."
           echo "Environment: $ENVIRONMENT"
+          echo "API URL: $API_URL"
 
-          # Determine AWS account ID, IAM role, and API URL based on environment
-          if [ "$ENVIRONMENT" = "PROD" ]; then
-            AWS_ACCOUNT_ID="644094189644"
-            IAM_ROLE="GD-AWS-USA-GD-AiroBuilde-Prod-Deploy"
-            API_URL="https://knowledge.api.int.godaddy.com"
-            SSO_HOST="sso.godaddy.com"
-            echo "Using PROD environment"
-          else
-            AWS_ACCOUNT_ID="694282668781"
-            IAM_ROLE="GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy"
-            API_URL="https://knowledge.api.int.test-godaddy.com"
-            SSO_HOST="sso.test-godaddy.com"
-            echo "Using TEST environment"
-          fi
-
-          # Assume IAM role
-          export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" $(aws sts assume-role \
-            --role-arn arn:aws:iam::${AWS_ACCOUNT_ID}:role/${IAM_ROLE} \
-            --role-session-name knowledge-ingest-${GITHUB_RUN_ID} \
-            --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" --output text))
-
-          # Generate IAM JWT using gd-auth
-          echo "Generating IAM JWT token..."
-          cat > generate_iam_token.py << 'PYTHON_EOF'
-          from gd_auth.client import AwsIamAuthTokenClient
-          import os
-
-          sso_host = os.environ.get('SSO_HOST', 'sso.test-godaddy.com')
-          client = AwsIamAuthTokenClient(
-              sso_host,
-              refresh_min=45,
-              primary_region='us-west-2',
-              secondary_region='us-west-2'
-          )
-          print(client.token)
-          PYTHON_EOF
-
-          IAM_TOKEN=$(SSO_HOST=$SSO_HOST python3 generate_iam_token.py 2>/dev/null)
-          echo "::add-mask::$IAM_TOKEN"
-          echo "✅ IAM JWT token generated successfully"
-
-          # Ingest documents
           INGEST_COUNT=0
           FAILED_COUNT=0
 
@@ -133,19 +85,23 @@ jobs:
           if [ -n "$DOCUMENTS" ]; then
             echo "Ingesting specific documents: $DOCUMENTS"
             IFS=',' read -ra DOC_ARRAY <<< "$DOCUMENTS"
-            DOCS_TO_INGEST=("${DOC_ARRAY[@]}")
+            DOCS_TO_INGEST=()
+            for item in "${DOC_ARRAY[@]}"; do
+              DOCS_TO_INGEST+=("$(echo "$item" | xargs)")
+            done
           else
             echo "Ingesting all markdown files from knowledge-base/"
             DOCS_TO_INGEST=(knowledge-base/*.md)
           fi
 
-          # Ingest each document
           for doc in "${DOCS_TO_INGEST[@]}"; do
             if [ -n "$DOCUMENTS" ]; then
-              # Specific document ID provided
-              doc_file="knowledge-base/${doc}"
+              if [[ "$doc" == */* ]] || [[ "$doc" == *..* ]]; then
+                echo "ERROR: invalid document name (path separators not allowed): $doc"
+                exit 1
+              fi
+              doc_file="knowledge-base/${doc}.md"
             else
-              # Full path from glob
               doc_file="$doc"
             fi
 
@@ -155,26 +111,24 @@ jobs:
               continue
             fi
 
-            doc_id=$(basename "$doc_file" .md)
+            doc_name=$(basename "$doc_file" .md)
             echo ""
             echo "=================================================="
-            echo "Ingesting: $doc_id"
+            echo "Ingesting: $doc_name"
             echo "=================================================="
 
-            # Read document content
             doc_content=$(cat "$doc_file")
 
-            # Create JSON payload
+            # Payload matches IngestDocument model: {name, content}
             payload=$(jq -n \
-              --arg id "$doc_id" \
+              --arg name "$doc_name" \
               --arg content "$doc_content" \
-              '{documents: [{id: $id, content: $content, metadata: {source: "github-actions", filename: $id}}]}')
+              '{documents: [{name: $name, content: $content}]}')
 
-            # Ingest via API
             response=$(curl -s -w "\n%{http_code}" \
               -X POST \
               "${API_URL}/api/v1/ingest" \
-              -H "Authorization: Bearer ${IAM_TOKEN}" \
+              -H "Authorization: sso-jwt ${IAM_JWT}" \
               -H "Content-Type: application/json" \
               -d "$payload")
 
@@ -185,10 +139,10 @@ jobs:
             echo "Response body: $response_body"
 
             if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
-              echo "✅ Successfully ingested: $doc_id"
+              echo "✅ Successfully ingested: $doc_name"
               INGEST_COUNT=$((INGEST_COUNT + 1))
             else
-              echo "❌ Failed to ingest: $doc_id (HTTP $http_code)"
+              echo "❌ Failed to ingest: $doc_name (HTTP $http_code)"
               FAILED_COUNT=$((FAILED_COUNT + 1))
             fi
           done
@@ -200,19 +154,15 @@ jobs:
           echo "Environment: $ENVIRONMENT"
           echo "API URL: $API_URL"
           echo "Successfully ingested: $INGEST_COUNT document(s)"
-          echo "Failed ingestions: $FAILED_COUNT document(s)"
+          echo "Failed: $FAILED_COUNT document(s)"
 
           if [ $FAILED_COUNT -gt 0 ]; then
-            echo ""
-            echo "⚠️  Some ingestions failed. Please check the logs above."
             exit 1
           fi
 
           if [ $INGEST_COUNT -eq 0 ]; then
-            echo ""
-            echo "⚠️  No documents were ingested. Check if files exist in knowledge-base directory."
+            echo "⚠️  No documents were ingested."
             exit 1
-          else
-            echo ""
-            echo "✅ All documents ingested successfully!"
           fi
+
+          echo "✅ All documents ingested successfully!"

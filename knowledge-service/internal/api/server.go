@@ -95,6 +95,16 @@ func (s *Server) Start() error {
 		IdleTimeout:  time.Duration(s.config.HTTPIdleTimeout) * time.Second,
 	}
 
+	hasCert := s.config.TLSCertPath != ""
+	hasKey := s.config.TLSKeyPath != ""
+	if hasCert != hasKey {
+		return fmt.Errorf("SERVER_CERT_PATH and SERVER_KEY_PATH must both be set to enable TLS (got cert=%v key=%v)", hasCert, hasKey)
+	}
+	if hasCert {
+		slog.Info("server.start.tls", "addr", addr, "certPath", s.config.TLSCertPath)
+		return s.httpServer.ListenAndServeTLS(s.config.TLSCertPath, s.config.TLSKeyPath)
+	}
+
 	slog.Info("server.start", "addr", addr)
 	return s.httpServer.ListenAndServe()
 }

@@ -2,6 +2,7 @@ package qdrant
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -31,6 +32,13 @@ func New(cfg *config.Config) (*Client, error) {
 		qdrantConfig.APIKey = cfg.QdrantAPIKey
 	}
 	qdrantConfig.UseTLS = cfg.QdrantUseTLS
+	if cfg.QdrantUseTLS {
+		tlsCfg := &tls.Config{MinVersion: tls.VersionTLS13}
+		if cfg.QdrantTLSSkipVerify {
+			tlsCfg.InsecureSkipVerify = true //nosemgrep: problem-based-packs.insecure-transport.go-stdlib.bypass-tls-verification.bypass-tls-verification -- Self-signed certs in internal network
+		}
+		qdrantConfig.TLSConfig = tlsCfg
+	}
 
 	client, err := qdrant.NewClient(qdrantConfig)
 	if err != nil {

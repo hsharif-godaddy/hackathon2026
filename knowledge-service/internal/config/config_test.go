@@ -14,6 +14,7 @@ var testedEnvVars = []string{
 	"QDRANT_COLLECTION",
 	"QDRANT_API_KEY",
 	"QDRANT_USE_TLS",
+	"QDRANT_TLS_SKIP_VERIFY",
 	"OPENAI_API_KEY",
 	"OPENAI_BASE_URL",
 	"EMBEDDING_MODEL",
@@ -34,6 +35,8 @@ var testedEnvVars = []string{
 	"HTTP_IDLE_TIMEOUT",
 	"RATE_LIMIT_ENABLED",
 	"RATE_LIMIT_RPS",
+	"SERVER_CERT_PATH",
+	"SERVER_KEY_PATH",
 }
 
 func saveEnvVars(vars []string) func() {
@@ -83,6 +86,9 @@ func TestLoadConfig_Defaults_NoAuth(t *testing.T) {
 	if cfg.QdrantCollection != "knowledge_base" {
 		t.Errorf("expected default collection knowledge_base, got %s", cfg.QdrantCollection)
 	}
+	if cfg.QdrantTLSSkipVerify {
+		t.Errorf("expected QdrantTLSSkipVerify to be false by default")
+	}
 	if cfg.EmbeddingModel != "text-embedding-3-small" {
 		t.Errorf("expected default embedding model text-embedding-3-small, got %s", cfg.EmbeddingModel)
 	}
@@ -114,9 +120,12 @@ func TestLoadConfig_FromEnv(t *testing.T) {
 	_ = os.Setenv("PORT", "9090")
 	_ = os.Setenv("LOG_LEVEL", "debug")
 	_ = os.Setenv("QDRANT_HOST", "qdrant.example.com")
+	_ = os.Setenv("QDRANT_TLS_SKIP_VERIFY", "true")
 	_ = os.Setenv("SEARCH_TOP_N", "10")
 	_ = os.Setenv("RATE_LIMIT_ENABLED", "true")
 	_ = os.Setenv("AUTH_TYPE", "none")
+	_ = os.Setenv("SERVER_CERT_PATH", "/app/certs/server.crt")
+	_ = os.Setenv("SERVER_KEY_PATH", "/app/certs/server.key")
 
 	cfg, err := LoadConfig()
 	if err != nil {
@@ -132,11 +141,20 @@ func TestLoadConfig_FromEnv(t *testing.T) {
 	if cfg.QdrantHost != "qdrant.example.com" {
 		t.Errorf("expected qdrant host qdrant.example.com, got %s", cfg.QdrantHost)
 	}
+	if !cfg.QdrantTLSSkipVerify {
+		t.Errorf("expected QdrantTLSSkipVerify to be true when QDRANT_TLS_SKIP_VERIFY=true")
+	}
 	if cfg.SearchTopN != 10 {
 		t.Errorf("expected search top N 10, got %d", cfg.SearchTopN)
 	}
 	if !cfg.RateLimitEnabled {
 		t.Errorf("expected rate limiting enabled")
+	}
+	if cfg.TLSCertPath != "/app/certs/server.crt" {
+		t.Errorf("expected TLSCertPath /app/certs/server.crt, got %s", cfg.TLSCertPath)
+	}
+	if cfg.TLSKeyPath != "/app/certs/server.key" {
+		t.Errorf("expected TLSKeyPath /app/certs/server.key, got %s", cfg.TLSKeyPath)
 	}
 }
 

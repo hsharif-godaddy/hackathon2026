@@ -14,11 +14,12 @@ type Config struct {
 	Version  string
 
 	// Qdrant
-	QdrantHost       string
-	QdrantPort       int
-	QdrantCollection string
-	QdrantAPIKey     string
-	QdrantUseTLS     bool
+	QdrantHost          string
+	QdrantPort          int
+	QdrantCollection    string
+	QdrantAPIKey        string
+	QdrantUseTLS        bool
+	QdrantTLSSkipVerify bool
 
 	// OpenAI (Embeddings)
 	OpenAIAPIKey       string
@@ -45,6 +46,10 @@ type Config struct {
 	IngestBatchSize    int
 	IngestMinChunkSize int
 
+	// Server TLS
+	TLSCertPath string
+	TLSKeyPath  string
+
 	// HTTP Server timeouts
 	HTTPReadTimeout  int
 	HTTPWriteTimeout int
@@ -65,11 +70,12 @@ func LoadConfig() (*Config, error) {
 		Version:  getEnvString("VERSION", "dev"),
 
 		// Qdrant (use 127.0.0.1 to avoid IPv6 timeout when Docker only binds IPv4)
-		QdrantHost:       getEnvString("QDRANT_HOST", "127.0.0.1"),
-		QdrantPort:       getEnvInt("QDRANT_PORT", 6334),
-		QdrantCollection: getEnvString("QDRANT_COLLECTION", "knowledge_base"),
-		QdrantAPIKey:     getEnvString("QDRANT_API_KEY", ""),
-		QdrantUseTLS:     getEnvBool("QDRANT_USE_TLS", false),
+		QdrantHost:          getEnvString("QDRANT_HOST", "127.0.0.1"),
+		QdrantPort:          getEnvInt("QDRANT_PORT", 6334),
+		QdrantCollection:    getEnvString("QDRANT_COLLECTION", "knowledge_base"),
+		QdrantAPIKey:        getEnvString("QDRANT_API_KEY", ""),
+		QdrantUseTLS:        getEnvBool("QDRANT_USE_TLS", false),
+		QdrantTLSSkipVerify: getEnvBool("QDRANT_TLS_SKIP_VERIFY", false),
 
 		// OpenAI (Embeddings)
 		OpenAIAPIKey:       getEnvString("OPENAI_API_KEY", ""),
@@ -95,6 +101,10 @@ func LoadConfig() (*Config, error) {
 		// Ingest
 		IngestBatchSize:    getEnvInt("INGEST_BATCH_SIZE", 100),
 		IngestMinChunkSize: getEnvInt("INGEST_MIN_CHUNK_SIZE", 100),
+
+		// TLS
+		TLSCertPath: getEnvString("SERVER_CERT_PATH", ""),
+		TLSKeyPath:  getEnvString("SERVER_KEY_PATH", ""),
 
 		// HTTP Server timeouts (seconds)
 		HTTPReadTimeout:  getEnvInt("HTTP_READ_TIMEOUT", 30),

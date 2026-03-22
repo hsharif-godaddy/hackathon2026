@@ -7,12 +7,30 @@ USER root
 
 WORKDIR /app
 
-# Copy go mod files first for better caching
-COPY go.mod go.sum ./
-RUN go mod download
+# Install git required by go mod download for VCS-hosted private dependencies
+RUN apk add --no-cache git
 
-# Copy source code
-COPY . .
+# Copy packages/go-auth to satisfy the replace directive in go.mod:
+#   replace .../packages/go-auth => ../packages/go-auth
+# With WORKDIR=/app, that resolves to /packages/go-auth inside the container.
+COPY packages/go-auth /packages/go-auth
+
+# Copy go mod files first for better caching
+COPY image-search-service/go.mod image-search-service/go.sum ./
+
+# Use GHEC-SA token mounted as a secret to authenticate private gdcorp-golang modules.
+# The git config is written and removed within the same RUN step so the token
+# is never persisted in any image layer. The subshell ensures cleanup runs even
+# if go mod download fails.
+RUN --mount=type=secret,id=ghec_token \
+    TOKEN=$(cat /run/secrets/ghec_token) && \
+    git config --global --add "url.https://x-access-token:${TOKEN}@github.com/gdcorp-golang/.insteadOf" "https://github.com/gdcorp-golang/" && \
+    { GOPRIVATE=github.com/gdcorp-golang/* go mod download; rc=$?; \
+      git config --global --remove-section "url.https://x-access-token:${TOKEN}@github.com/gdcorp-golang/"; \
+      exit $rc; }
+
+# Copy service source code
+COPY image-search-service/ .
 
 # Build the binary with optimizations for smaller, reproducible builds
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/server ./cmd/server
@@ -36,7 +54,8 @@ RUN mkdir -p /app/certs && \
     -days 365 -nodes -subj "/CN=image-search-service" \
     -addext "subjectAltName=DNS:*,IP:127.0.0.1,IP:0.0.0.0" && \
     chmod 644 /app/certs/server.crt && \
-    chmod 644 /app/certs/server.key
+    chmod 600 /app/certs/server.key && \
+    chown 1000:1000 /app/certs/server.key /app/certs/server.crt
 
 # Copy binary from builder
 COPY --from=builder /app/server /app/server
