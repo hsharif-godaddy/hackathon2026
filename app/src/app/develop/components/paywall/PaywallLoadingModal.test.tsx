@@ -7,8 +7,8 @@ import { PaywallLoadingModal, PaywallLoadingModalVariant } from './PaywallLoadin
 
 // Mock UX components
 vi.mock('@ux/modal', () => ({
-  default: ({ children, title, onClose, centered }: any) => (
-    <div data-testid="modal" data-centered={centered} role="dialog">
+  default: ({ children, title, onClose, centered, stretch }: any) => (
+    <div data-testid="modal" data-centered={centered} data-stretch={stretch} role="dialog">
       <div data-testid="modal-title">{title}</div>
       <button onClick={onClose} aria-label="close">Close</button>
       {children}
@@ -25,6 +25,12 @@ vi.mock('@ux/box', () => ({
 vi.mock('@ux/spinner', () => ({
   default: ({ size }: any) => (
     <div data-testid="spinner" data-size={size} role="status">Loading...</div>
+  ),
+}))
+
+vi.mock('@ux/skeleton', () => ({
+  default: ({ size, width, height, className }: any) => (
+    <div data-testid="skeleton" data-size={size} data-width={width} data-height={height} className={className} />
   ),
 }))
 
@@ -82,8 +88,12 @@ describe('PaywallLoadingModal', function paywallLoadingModalTests() {
       // Spinner should NOT be visible
       expect(screen.queryByTestId('spinner')).not.toBeInTheDocument()
 
-      // Should render 3 skeleton plan cards (check for animated elements)
-      const skeletonElements = document.querySelectorAll('.animate-pulse')
+      // Should render 3 skeleton plan cards
+      const skeletonCards = screen.getAllByTestId('skeleton-plan-card')
+      expect(skeletonCards).toHaveLength(3)
+
+      // Each card should contain skeleton elements
+      const skeletonElements = screen.getAllByTestId('skeleton')
       expect(skeletonElements.length).toBeGreaterThan(0)
     })
 
@@ -102,6 +112,13 @@ describe('PaywallLoadingModal', function paywallLoadingModalTests() {
       render(<PaywallLoadingModal onClose={mockOnClose} variant={PaywallLoadingModalVariant.HigherPlans} />)
 
       expect(screen.getByTestId('modal')).toHaveAttribute('data-centered', 'true')
+    })
+
+    it('should have stretch prop for full width on small screens', function stretchHigherPlansModal() {
+      const mockOnClose = vi.fn()
+      render(<PaywallLoadingModal onClose={mockOnClose} variant={PaywallLoadingModalVariant.HigherPlans} />)
+
+      expect(screen.getByTestId('modal')).toHaveAttribute('data-stretch', 'true')
     })
   })
 })
