@@ -12,6 +12,7 @@ import {
   TodoListRemovalStrategy,
   SecretOperationCompressionStrategy,
   MediaSearchSummaryStrategy,
+  ToolResultCompressionStrategy,
 } from './compression/strategies/index.js';
 import { CssSuggestCompressionStrategy } from './compression/strategies/CssSuggestCompressionStrategy.js';
 import { ContextFormatter } from './helpers/ContextFormatter.js';
@@ -57,6 +58,8 @@ export class ConversationContextManager {
     this.historyLoader.registerCompressionStrategy(new CssSuggestCompressionStrategy());
     // Transform deprecated mediaSearch tool calls to summary text (tool was replaced by media slot tool)
     this.historyLoader.registerCompressionStrategy(new MediaSearchSummaryStrategy());
+    // Compress old edit tool results — keep only the most recent, summarize superseded failures
+    this.historyLoader.registerCompressionStrategy(new ToolResultCompressionStrategy());
   }
 
   /**

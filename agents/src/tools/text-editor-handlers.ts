@@ -6,6 +6,17 @@ import { createInterface } from 'readline';
 import { rename, unlink } from 'fs/promises';
 
 /**
+ * Success message prefixes returned by edit commands.
+ * Shared with ToolResultCompressionStrategy to detect successful edit results
+ * without false positives from error messages containing embedded file content.
+ */
+export const EDIT_SUCCESS_PREFIXES = [
+  'successfully replaced text',
+  'successfully created',
+  'successfully inserted text',
+] as const;
+
+/**
  * Text Editor Command Handlers
  *
  * Implements the four commands for Anthropic's schema-less text editor tool:
@@ -94,6 +105,69 @@ export async function handleView(
   return formatted;
 }
 
+/** Hard cap on snippet size to handle minified files with very long lines */
+const MAX_SNIPPET_CHARS = 20_000;
+
+/**
+ * Build a file content snippet for error messages.
+ * Uses the same line number format as handleView so the LLM can construct correct replacements.
+ */
+function buildErrorSnippet(lines: string[], searchText: string): string {
+  /**
+   * Format lines with a character budget. Returns the formatted string and chars consumed.
+   */
+  const formatLines = (selected: string[], startLine: number, charBudget: number): { text: string; chars: number } => {
+    let result = '';
+    let totalChars = 0;
+    for (let i = 0; i < selected.length; i++) {
+      const fullLine = `${startLine + i}: ${selected[i]!}`;
+      if (totalChars + fullLine.length + 1 > charBudget) {
+        // If we haven't emitted any content yet, include a truncated prefix of this line
+        // so the LLM gets at least some context (handles minified single-line files)
+        if (totalChars === 0) {
+          const truncLen = Math.max(0, charBudget - 50); // leave room for truncation marker
+          result = fullLine.slice(0, truncLen) + `\n... (line truncated, ${fullLine.length} chars total) ...`;
+          totalChars = result.length;
+        } else {
+          result += `\n... (truncated at ${charBudget} character limit) ...`;
+        }
+        break;
+      }
+      if (i > 0) result += '\n';
+      result += fullLine;
+      totalChars += fullLine.length + 1;
+    }
+    return { text: result, chars: totalChars };
+  };
+
+  // Small files: show everything (subject to char cap)
+  if (lines.length <= 100) {
+    return formatLines(lines, 1, MAX_SNIPPET_CHARS).text;
+  }
+
+  // Try to find the best partial match location using the first line of the search text
+  const firstSearchLine = searchText.split('\n')[0]?.trim();
+  if (firstSearchLine && firstSearchLine.length > 10) {
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i]!.includes(firstSearchLine)) {
+        const start = Math.max(0, i - 50);
+        const end = Math.min(lines.length, i + 51);
+        return formatLines(lines.slice(start, end), start + 1, MAX_SNIPPET_CHARS).text;
+      }
+    }
+  }
+
+  // No partial match: show first 50 + last 50 (unified cap across both sections)
+  const head = formatLines(lines.slice(0, 50), 1, MAX_SNIPPET_CHARS);
+  const omitted = lines.length - 100;
+  const separator = `\n... (${omitted} line${omitted === 1 ? '' : 's'} omitted) ...\n`;
+  const tailBudget = MAX_SNIPPET_CHARS - head.chars - separator.length;
+  const tail = tailBudget > 0
+    ? formatLines(lines.slice(-50), lines.length - 49, tailBudget).text
+    : '... (tail truncated) ...';
+  return `${head.text}${separator}${tail}`;
+}
+
 /**
  * Handle 'str_replace' command - replace exact text match
  * Must match exactly once (Anthropic requirement)
@@ -114,11 +188,36 @@ export async function handleStrReplace(
   const matches = content.split(oldStr).length - 1;
 
   if (matches === 0) {
-    throw new Error('No match found for replacement. Please check your text and try again.');
+    const lines = content.split('\n');
+    const snippet = buildErrorSnippet(lines, oldStr);
+    throw new Error(
+      `No match found for replacement. The text you provided does not exist in the file.\n\n` +
+      `Current file content (${lines.length} lines):\n${snippet}`
+    );
   }
 
   if (matches > 1) {
-    throw new Error(`Found ${matches} matches for replacement text. Please provide more context to make a unique match.`);
+    // Find line numbers of each match — single pass tracking newlines incrementally
+    const matchLines: number[] = [];
+    let searchFrom = 0;
+    let lineNum = 1;
+    let lastCountedPos = 0;
+    for (let i = 0; i < matches; i++) {
+      const idx = content.indexOf(oldStr, searchFrom);
+      if (idx !== -1) {
+        // Count newlines between last position and this match
+        for (let j = lastCountedPos; j < idx; j++) {
+          if (content[j] === '\n') lineNum++;
+        }
+        lastCountedPos = idx;
+        matchLines.push(lineNum);
+        searchFrom = idx + oldStr.length;
+      }
+    }
+    throw new Error(
+      `Found ${matches} matches for replacement text at lines: ${matchLines.join(', ')}. ` +
+      `Please provide more context to make a unique match.`
+    );
   }
 
   // Perform single replacement

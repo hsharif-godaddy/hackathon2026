@@ -74,16 +74,91 @@ describe('text-editor-handlers', () => {
       expect(readFileSync(filePath, 'utf-8')).toBe('hello world\nreplaced\nbaz')
     })
 
-    it('should throw when no match found', async () => {
+    it('should throw when no match found with file content in error', async () => {
       const filePath = join(testDir, 'test.txt')
       writeFileSync(filePath, 'hello world')
       await expect(handleStrReplace(filePath, 'not here', 'x')).rejects.toThrow('No match found')
     })
 
-    it('should throw when multiple matches found', async () => {
+    it('should include file content snippet in no-match error for small files', async () => {
+      const filePath = join(testDir, 'test.txt')
+      writeFileSync(filePath, 'line one\nline two\nline three')
+      try {
+        await handleStrReplace(filePath, 'not here', 'x')
+        expect.fail('Should have thrown')
+      } catch (e: any) {
+        expect(e.message).toContain('Current file content (3 lines):')
+        expect(e.message).toContain('1: line one')
+        expect(e.message).toContain('2: line two')
+        expect(e.message).toContain('3: line three')
+      }
+    })
+
+    it('should show ±50 lines around partial match for large files', async () => {
+      const filePath = join(testDir, 'large.txt')
+      const lines = Array.from({ length: 200 }, (_, i) => `line number ${i + 1}`)
+      // Put a distinctive line at position 100 (index 99)
+      lines[99] = 'UNIQUE_MARKER_LINE here'
+      writeFileSync(filePath, lines.join('\n'))
+      try {
+        // Use multi-line search where first line matches but full text doesn't
+        await handleStrReplace(filePath, 'UNIQUE_MARKER_LINE here\nthis second line does not exist', 'x')
+        expect.fail('Should have thrown')
+      } catch (e: any) {
+        // Should find partial match on the first line of search text
+        expect(e.message).toContain('Current file content (200 lines):')
+        // Should include line 100 (the marker)
+        expect(e.message).toContain('100: UNIQUE_MARKER_LINE here')
+        // Should NOT include line 1 (too far from match)
+        expect(e.message).not.toMatch(/\n1: line number 1\n/)
+      }
+    })
+
+    it('should show first 50 + last 50 with omission when no partial match in large file', async () => {
+      const filePath = join(testDir, 'large.txt')
+      const lines = Array.from({ length: 200 }, (_, i) => `content ${i + 1}`)
+      writeFileSync(filePath, lines.join('\n'))
+      try {
+        // Search text whose first line is short (<=10 chars), so no partial match
+        await handleStrReplace(filePath, 'xyz', 'x')
+        expect.fail('Should have thrown')
+      } catch (e: any) {
+        expect(e.message).toContain('1: content 1')
+        expect(e.message).toContain('50: content 50')
+        expect(e.message).toContain('(100 lines omitted)')
+        expect(e.message).toContain('151: content 151')
+        expect(e.message).toContain('200: content 200')
+      }
+    })
+
+    it('should include truncated prefix for oversized single-line files', async () => {
+      const filePath = join(testDir, 'minified.js')
+      // Create a single-line file larger than the 20KB snippet cap
+      const longLine = 'var x=' + 'a'.repeat(25_000) + ';'
+      writeFileSync(filePath, longLine)
+      try {
+        await handleStrReplace(filePath, 'not_in_file', 'x')
+        expect.fail('Should have thrown')
+      } catch (e: any) {
+        expect(e.message).toContain('Current file content (1 lines):')
+        // Should include a truncated prefix, not just the truncation marker
+        expect(e.message).toContain('1: var x=')
+        expect(e.message).toContain('chars total')
+        // Should NOT contain the full 25KB line
+        expect(e.message.length).toBeLessThan(25_000)
+      }
+    })
+
+    it('should throw when multiple matches found with line numbers', async () => {
       const filePath = join(testDir, 'test.txt')
       writeFileSync(filePath, 'foo\nbar\nfoo')
-      await expect(handleStrReplace(filePath, 'foo', 'baz')).rejects.toThrow(/Found 2 matches/)
+      try {
+        await handleStrReplace(filePath, 'foo', 'baz')
+        expect.fail('Should have thrown')
+      } catch (e: any) {
+        expect(e.message).toMatch(/Found 2 matches/)
+        expect(e.message).toContain('at lines: 1, 3')
+      }
     })
 
     it('should throw for non-existent file', async () => {
