@@ -3,124 +3,19 @@
  *
  * Provides tools for:
  * - Logo generation (direct REST API call via LogoService with S2S auth)
- * - Image generation (imagegen-agent MCP server)
- * - Image editing (imagegen-agent MCP server)
- * - Video generation (imagegen-agent MCP server)
+ * - Image generation (direct REST API call via ImagegenService with S2S auth)
+ * - Image editing (direct REST API call via ImagegenService with S2S auth)
+ * - Video generation (direct REST API call via ImagegenService with S2S auth, internal polling)
  */
 
 import { z } from 'zod';
 import { logger } from '../../../logging/index.js';
-import { getClientActionService } from '../../../server/ai-lib-websocket-server.js';
 import { grantSessionManager } from '@airo/ai-grants';
 import type { SkillToolDefinition } from '@airo/ai-skills';
 import { logoService } from '../../../services/LogoService.js';
+import { imagegenService } from '../../../services/ImagegenService.js';
 import { appRepository } from '../../../database/repositories/index.js';
 import { appPlanTool } from '../../../tools/app-plan-tool.js';
-
-// ============================================================================
-// Environment Configuration
-// ============================================================================
-
-/**
- * Valid environment prefixes for MCP server URLs
- */
-type EnvironmentPrefix = 'dev-' | 'test-' | '';
-
-/**
- * Get MCP environment prefix based on GODADDY_API_BASE_URL
- * Returns validated prefix to ensure requests go to expected hosts only
- */
-function getMcpEnvironmentPrefix(): EnvironmentPrefix {
-  const apiUrl = process.env.GODADDY_API_BASE_URL || '';
-  if (apiUrl.endsWith('dev-godaddy.com')) return 'dev-';
-  if (apiUrl.endsWith('test-godaddy.com')) return 'test-';
-  return ''; // production
-}
-
-/**
- * Get MCP server URLs based on environment
- */
-function getMcpServerUrls() {
-  const envPrefix = getMcpEnvironmentPrefix();
-  return {
-    imagegenAgent: `https://imagegen-agent.mvci.api.${envPrefix}godaddy.com/mcp`,
-  };
-}
-
-// ============================================================================
-// MCP Client Helper (via Client-Side Proxy)
-// ============================================================================
-
-/**
- * Call an MCP tool via client-side proxy
- *
- * The browser makes the request with its auth_idp SSO cookie,
- * so user credentials never leave the browser boundary.
- *
- * Flow:
- * 1. Agent tool calls this function with socketId from context
- * 2. ClientActionService emits 'client_action' to browser via WebSocket
- * 3. Browser's mcpCallAction makes fetch() with credentials: 'include'
- * 4. MCP server receives request with auth_idp cookie
- * 5. Result flows back via WebSocket to agent tool
- */
-async function callMcpTool<T>(
-  serverUrl: string,
-  toolName: string,
-  input: Record<string, unknown>,
-  context: unknown
-): Promise<T> {
-  // Extract socketId from context (set by ai-lib during tool execution)
-  const socketId = (context as { socketId?: string })?.socketId;
-
-  if (!socketId) {
-    throw new Error(
-      'Socket ID not available in context - cannot proxy MCP call to client. ' +
-      'Tool must be called via WebSocket connection.'
-    );
-  }
-
-  // Get the ClientActionService for this socket
-  const clientActionService = getClientActionService(socketId);
-  if (!clientActionService) {
-    throw new Error(
-      'Client action service not available for socket - cannot proxy MCP call. ' +
-      'WebSocket connection may have been closed.'
-    );
-  }
-
-  logger.info('skills.media.tools.mcp_call.start', {
-    serverUrl,
-    toolName,
-    viaClientProxy: true,
-  });
-
-  try {
-    // Execute MCP call via client-side proxy
-    const result = await clientActionService.executeAction({
-      action: 'mcp_call',
-      params: { serverUrl, toolName, input },
-      timeoutMs: 120000, // MCP calls can be slow (image/video generation)
-    });
-
-    // Check if client action succeeded
-    if (!result.success) {
-      throw new Error(result.error || 'MCP call failed on client');
-    }
-
-    logger.info('skills.media.tools.mcp_call.success', {
-      toolName,
-    });
-
-    return result.result as T;
-  } catch (error) {
-    logger.error('skills.media.tools.mcp_call.error', {
-      toolName,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    throw error;
-  }
-}
 
 // ============================================================================
 // Input Schemas
@@ -207,7 +102,7 @@ const GenerateLogoInputSchema = z.object({
     .optional()
     .describe('Target audience description (e.g., "young professionals", "families with children")'),
 
-  count: z.number().int().min(1).max(4).default(4).describe('Number of logo variations to generate (1-4, default: 4)'),
+  count: z.coerce.number().int().min(1).max(4).default(4).describe('Number of logo variations to generate (1-4, default: 4)'),
 });
 
 const GenerateImageInputSchema = z.object({
@@ -245,19 +140,18 @@ const GenerateVideoInputSchema = z.object({
     .min(1)
     .max(1000)
     .describe('The text prompt to generate a video for'),
-  model: z
-    .enum(['sora-2', 'veo-2', 'veo-3'])
-    .default('veo-2')
-    .describe('The model to use for video generation'),
   orientation: z
     .enum(['landscape', 'portrait'])
     .default('landscape')
     .describe('The orientation of the video'),
   duration: z
-    .string()
-    .describe(
-      'The duration of the video in seconds (4, 8, 12 for sora-2; 5-8 for veo-2; 4, 6, 8 for veo-3)'
-    ),
+    .coerce
+    .number()
+    .int()
+    .refine((val) => [5, 6, 7, 8].includes(val), {
+      message: 'Duration must be 5, 6, 7, or 8 seconds',
+    })
+    .describe('The duration of the video in seconds (5, 6, 7, or 8)'),
 });
 
 // ============================================================================
@@ -362,7 +256,7 @@ export const generateLogoTool: SkillToolDefinition = {
 };
 
 /**
- * Image generation tool using imagegen-agent MCP server
+ * Image generation tool using direct REST API call via ImagegenService
  */
 export const generateImageTool: SkillToolDefinition = {
   name: 'generate_image',
@@ -372,21 +266,57 @@ export const generateImageTool: SkillToolDefinition = {
   parameters: GenerateImageInputSchema,
 
   async execute(input: GenerateImageInput, context?: unknown) {
-    const servers = getMcpServerUrls();
+    const appId = (context as { metadata?: { appId?: string } })?.metadata?.appId;
+    const socketId = (context as { socketId?: string })?.socketId;
 
     logger.info('skills.media.tools.generate_image.start', {
       promptLength: input.prompt.length,
       orientation: input.orientation,
       imageCount: input.imageCount,
+      appId,
     });
 
-    const result = await callMcpTool(servers.imagegenAgent, 'generate_image', input, context);
+    // 1. Get customer context from app database
+    const app = appId ? appRepository.findById(appId) : null;
+    const customerId = app?.customerId;
+
+    if (!customerId) {
+      logger.error('skills.media.tools.generate_image.no_customer', { appId });
+      return { error: 'Unable to determine customer identity for image generation' };
+    }
+
+    // 2. Get budget user from grant system
+    const budgetUserId = socketId
+      ? grantSessionManager.getCurrentUserId(socketId, customerId)
+      : customerId;
+
+    if (!budgetUserId) {
+      logger.error('skills.media.tools.generate_image.grants_exhausted', { appId, socketId });
+      return { error: 'All credit grants have been exhausted. Please purchase additional credits to generate images.' };
+    }
+
+    // 3. Call imagegen API (map tool params to API params)
+    const result = await imagegenService.generateImages({
+      description: input.prompt,
+      orientation: input.orientation,
+      count: input.imageCount,
+      customerId,
+      budgetUserId,
+    });
 
     logger.info('skills.media.tools.generate_image.success', {
+      sessionId: result.sessionId,
+      imageCount: result.images.length,
       orientation: input.orientation,
     });
 
-    return result;
+    // 4. Return structured result
+    return {
+      structuredContent: {
+        images: result.images,
+        sessionId: result.sessionId,
+      },
+    };
   },
 
   config: {
@@ -395,7 +325,7 @@ export const generateImageTool: SkillToolDefinition = {
 };
 
 /**
- * Image editing tool using imagegen-agent MCP server
+ * Image editing tool using direct REST API call via ImagegenService
  */
 export const editImageTool: SkillToolDefinition = {
   name: 'edit_image',
@@ -405,18 +335,53 @@ export const editImageTool: SkillToolDefinition = {
   parameters: EditImageInputSchema,
 
   async execute(input: EditImageInput, context?: unknown) {
-    const servers = getMcpServerUrls();
+    const appId = (context as { metadata?: { appId?: string } })?.metadata?.appId;
+    const socketId = (context as { socketId?: string })?.socketId;
 
     logger.info('skills.media.tools.edit_image.start', {
       promptLength: input.prompt.length,
       hasImageUrl: !!input.imageUrl,
+      appId,
     });
 
-    const result = await callMcpTool(servers.imagegenAgent, 'edit_image', input, context);
+    // 1. Get customer context from app database
+    const app = appId ? appRepository.findById(appId) : null;
+    const customerId = app?.customerId;
 
-    logger.info('skills.media.tools.edit_image.success', {});
+    if (!customerId) {
+      logger.error('skills.media.tools.edit_image.no_customer', { appId });
+      return { error: 'Unable to determine customer identity for image editing' };
+    }
 
-    return result;
+    // 2. Get budget user from grant system
+    const budgetUserId = socketId
+      ? grantSessionManager.getCurrentUserId(socketId, customerId)
+      : customerId;
+
+    if (!budgetUserId) {
+      logger.error('skills.media.tools.edit_image.grants_exhausted', { appId, socketId });
+      return { error: 'All credit grants have been exhausted. Please purchase additional credits to edit images.' };
+    }
+
+    // 3. Call imagegen API
+    const result = await imagegenService.editImage({
+      description: input.prompt,
+      imageUrl: input.imageUrl,
+      customerId,
+      budgetUserId,
+    });
+
+    logger.info('skills.media.tools.edit_image.success', {
+      sessionId: result.sessionId,
+    });
+
+    // 4. Return structured result
+    return {
+      structuredContent: {
+        url: result.url,
+        sessionId: result.sessionId,
+      },
+    };
   },
 
   config: {
@@ -425,35 +390,69 @@ export const editImageTool: SkillToolDefinition = {
 };
 
 /**
- * Video generation tool using imagegen-agent MCP server
+ * Video generation tool using direct REST API call via ImagegenService
+ * Polls internally until the video is ready (up to 5 minutes).
  */
 export const generateVideoTool: SkillToolDefinition = {
   name: 'generate_video',
   description:
-    'Generate videos from text prompts using AI models like Sora or Veo. Returns URL to generated video.',
+    'Generate videos from text prompts using AI. Returns URL to generated video. Video generation takes up to 5 minutes.',
 
   parameters: GenerateVideoInputSchema,
 
   async execute(input: GenerateVideoInput, context?: unknown) {
-    const servers = getMcpServerUrls();
+    const appId = (context as { metadata?: { appId?: string } })?.metadata?.appId;
+    const socketId = (context as { socketId?: string })?.socketId;
 
     logger.info('skills.media.tools.generate_video.start', {
       promptLength: input.prompt.length,
-      model: input.model,
       orientation: input.orientation,
       duration: input.duration,
+      appId,
     });
 
-    const result = await callMcpTool(servers.imagegenAgent, 'generate_video', input, context);
+    // 1. Get customer context from app database
+    const app = appId ? appRepository.findById(appId) : null;
+    const customerId = app?.customerId;
+
+    if (!customerId) {
+      logger.error('skills.media.tools.generate_video.no_customer', { appId });
+      return { error: 'Unable to determine customer identity for video generation' };
+    }
+
+    // 2. Get budget user from grant system
+    const budgetUserId = socketId
+      ? grantSessionManager.getCurrentUserId(socketId, customerId)
+      : customerId;
+
+    if (!budgetUserId) {
+      logger.error('skills.media.tools.generate_video.grants_exhausted', { appId, socketId });
+      return { error: 'All credit grants have been exhausted. Please purchase additional credits to generate videos.' };
+    }
+
+    // 3. Call imagegen API (polls internally until complete)
+    const result = await imagegenService.generateVideo({
+      description: input.prompt,
+      orientation: input.orientation,
+      duration: input.duration,
+      customerId,
+      budgetUserId,
+    });
 
     logger.info('skills.media.tools.generate_video.success', {
-      model: input.model,
+      sessionId: result.sessionId,
     });
 
-    return result;
+    // 4. Return structured result
+    return {
+      structuredContent: {
+        url: result.url,
+        sessionId: result.sessionId,
+      },
+    };
   },
 
   config: {
-    timeout: 300000, // 5 minutes for video generation
+    timeout: 330000, // 5.5 minutes (poll timeout is 5 min, add buffer)
   },
 };

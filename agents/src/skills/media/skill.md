@@ -141,21 +141,19 @@ media__edit_image({
 
 **`media__generate_video`** - Generate videos from text prompts
 
-| Parameter     | Type   | Required | Description                                                                    |
-| ------------- | ------ | -------- | ------------------------------------------------------------------------------ |
-| `prompt`      | string | Yes      | Description of the video (max 1000 chars)                                      |
-| `model`       | enum   | No       | `'sora-2'`, `'veo-2'`, or `'veo-3'` (default: `'veo-2'`)                       |
-| `orientation` | enum   | No       | `'landscape'` or `'portrait'` (default: `'landscape'`)                         |
-| `duration`    | string | No       | Duration in seconds (model-specific: sora-2: 4/8/12, veo-2: 5-8, veo-3: 4/6/8) |
+| Parameter     | Type   | Required | Description                                            |
+| ------------- | ------ | -------- | ------------------------------------------------------ |
+| `prompt`      | string | Yes      | Description of the video (max 1000 chars)              |
+| `orientation` | enum   | No       | `'landscape'` or `'portrait'` (default: `'landscape'`) |
+| `duration`    | number | Yes      | Duration in seconds: 5, 6, 7, or 8                     |
 
 **Example:**
 
 ```typescript
 media__generate_video({
   prompt: 'Aerial drone shot of a sunrise over mountain peaks with fog in the valleys',
-  model: 'veo-2',
   orientation: 'landscape',
-  duration: '8',
+  duration: 8,
 });
 ```
 
@@ -225,11 +223,8 @@ Only ask the user for information that isn't already available in the context. T
 
 ### Video Generation
 
-- Video generation takes longer (30-120 seconds)
-- Choose the right model for the use case:
-  - `veo-2`: Best balance of quality and speed (recommended default)
-  - `sora-2`: Good for shorter clips
-  - `veo-3`: Highest quality, longer processing
+- Video generation takes up to 5 minutes — the system polls internally until complete
+- Duration must be 5, 6, 7, or 8 seconds
 
 ---
 
@@ -250,7 +245,7 @@ If generation fails:
 1. Check error message for specific issue
 2. Verify all required parameters are provided
 3. Try with simpler/shorter prompts
-4. Fall back to alternative tools if MCP server is down
+4. Fall back to alternative tools if generation service is unavailable
 5. Inform user clearly about the issue
 
 ---

@@ -48,9 +48,8 @@ export class MessageSegmentManager {
    */
   updateToolCallSegment(segmentId: string, toolCall: Partial<ToolCall>): MessageSegment | null {
     const segment = this.segments.find(s => s.id === segmentId);
-    if (segment && segment.type === 'tool_call' && segment.tool_call) {
+    if (segment?.type === 'tool_call' && segment.tool_call) {
       segment.tool_call = { ...segment.tool_call, ...toolCall };
-      segment.timestamp = new Date(); // Update timestamp
       return segment;
     }
     return null;
@@ -132,8 +131,7 @@ export class MessageSegmentManager {
   findToolCallSegment(toolCallId: string): MessageSegment | null {
     return this.segments.find(s => 
       s.type === 'tool_call' && 
-      s.tool_call && 
-      s.tool_call.id === toolCallId
+      s.tool_call?.id === toolCallId
     ) || null;
   }
 

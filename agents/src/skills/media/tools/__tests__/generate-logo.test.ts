@@ -50,9 +50,13 @@ vi.mock('../../../../tools/app-plan-tool.js', () => ({
   },
 }));
 
-// Mock ClientActionService (still needed for image/video tools in same file)
-vi.mock('../../../../server/ai-lib-websocket-server.js', () => ({
-  getClientActionService: vi.fn(),
+// Mock ImagegenService (needed because same file exports all tools)
+vi.mock('../../../../services/ImagegenService.js', () => ({
+  imagegenService: {
+    generateImages: vi.fn(),
+    editImage: vi.fn(),
+    generateVideo: vi.fn(),
+  },
 }));
 
 describe('generateLogoTool', () => {
