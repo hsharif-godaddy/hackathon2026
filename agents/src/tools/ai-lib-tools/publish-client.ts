@@ -71,6 +71,19 @@ IMPORTANT: Always call publishStatus after this tool to verify the app started s
       throw new Error('App ID is required for publishing')
     }
 
+    // Pre-validate publish permission to fail fast before the ~35s publish workflow
+    const permissions = (context?.metadata as any)?.permissions ?? {}
+    const canPublish = permissions.canPublish ?? false
+    if (!canPublish) {
+      logger.warn('publish-client.permission-denied', { appId, reason: 'missing canPublish permission' })
+      return {
+        success: false,
+        message: 'Publishing requires an Airo Plus subscription. Please upgrade your plan to publish your site. Do not call publishStatus — no publish was started.',
+        requiresUpgrade: true,
+        publishStarted: false,
+      }
+    }
+
     // Get socketId from context with validation
     const socketId = (context as any)?.socketId
     if (!socketId || typeof socketId !== 'string') {
