@@ -128,7 +128,8 @@ export interface RecoveryStatusData {
 
 /**
  * Data structure for server_config WebSocket message
- * Sent immediately after connection for timeout synchronization and feature detection
+ * Sent immediately after connection (before authentication) so the client has
+ * timeout values and capability flags available when it sends the authenticate event.
  */
 export interface ServerConfigData {
   /** Stream recovery window timeout in milliseconds */

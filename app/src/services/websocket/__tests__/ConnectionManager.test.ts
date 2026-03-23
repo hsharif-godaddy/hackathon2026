@@ -493,6 +493,37 @@ describe('ConnectionManager', () => {
       expect((socket as any).auth?.token).toBeUndefined()
     })
 
+    it('authTimeoutId is cleared when socket disconnects during auth', async () => {
+      vi.useFakeTimers()
+
+      const { manager, sockets } = createManager()
+
+      const callbacks: ConnectionCallbacks = {
+        onAuthFailed: vi.fn(),
+        onDisconnect: vi.fn(),
+      }
+
+      const connectPromise = manager.connect('app-auth', callbacks)
+      await vi.advanceTimersByTimeAsync(1)
+      await connectPromise
+
+      const socket = sockets[0]
+      ;(socket as any).connected = true
+      socket.trigger('connect')
+
+      expect((manager as any).authTimeoutId).not.toBeNull()
+
+      // Disconnect before auth completes
+      socket.trigger('disconnect', 'transport close')
+
+      expect((manager as any).authTimeoutId).toBeNull()
+      expect(callbacks.onDisconnect).toHaveBeenCalled()
+
+      // Advancing past auth timeout should NOT trigger onAuthFailed (timer cleared)
+      vi.advanceTimersByTime(30_000)
+      expect(callbacks.onAuthFailed).not.toHaveBeenCalled()
+    })
+
     it('cachedToken is cleared on auth failure', async () => {
       const fetchAgentToken = vi.fn().mockResolvedValue('token-123')
       const { manager, sockets } = createManager({ fetchAgentToken })

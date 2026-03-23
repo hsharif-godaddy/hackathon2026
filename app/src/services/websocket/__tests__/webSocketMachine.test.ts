@@ -349,6 +349,41 @@ describe('webSocketMachine', () => {
       harness.destroy()
     })
 
+    it('should clear stale recovery context when reconnecting back to idle', async () => {
+      const harness = new StateMachineTestHarness(webSocketMachine)
+
+      // Setup connection and start recovery
+      harness.simulateConnect('app-123')
+      harness.simulateConnectionEstablished('socket-456')
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
+      harness.simulateRecoveryFlow('recovery-123', 5)
+      harness.assertState((s) =>
+        s.matches({ transport: { connected: { recovering: 'pendingAck' } } })
+      )
+      harness.assertContext((ctx) => ctx.recoveryId === 'recovery-123')
+
+      // Disconnect during recovery
+      harness.simulateDisconnect('transport close')
+      harness.assertState((s) =>
+        s.matches({ transport: { reconnecting: 'retrying' } })
+      )
+
+      // Reconnect successfully
+      await vi.advanceTimersByTimeAsync(1000)
+      harness.simulateConnectionEstablished('socket-789')
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-789' })
+      harness.assertState((s) =>
+        s.matches({ transport: { connected: 'idle' } })
+      )
+
+      // Recovery context should be cleared
+      harness.assertContext((ctx) => ctx.recoveryId === null)
+      harness.assertContext((ctx) => ctx.expectedReplayEvents === 0)
+      harness.assertContext((ctx) => ctx.receivedReplayEvents === 0)
+
+      harness.destroy()
+    })
+
     it('should handle catchup flow', () => {
       const harness = new StateMachineTestHarness(webSocketMachine)
 
@@ -420,24 +455,50 @@ describe('webSocketMachine', () => {
       harness.destroy()
     })
 
-    it('should handle CONNECTION_ESTABLISHED at higher retry counts', async () => {
+    it('should accept SERVER_CONFIG_RECEIVED while in reconnecting.retrying', function serverConfigDuringReconnecting() {
       const harness = new StateMachineTestHarness(webSocketMachine)
 
       harness.simulateConnect('app-123')
       harness.simulateConnectionEstablished('socket-456')
       harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
 
-      // Cycle through a few retries to increase the delay
-      for (let i = 0; i < 3; i++) {
-        harness.simulateDisconnect('transport close')
-        const delay = Math.min(500 * Math.pow(2, i + 1), MAX_RETRY_DELAY_MS)
-        await vi.advanceTimersByTimeAsync(delay)
-        harness.simulateConnectionEstablished(`socket-retry-${i}`)
-        harness.actor.send({ type: 'AUTH_SUCCESS', socketId: `socket-retry-${i}` })
-      }
-
-      // Now disconnect again — retry delay is 4000ms
       harness.simulateDisconnect('transport close')
+      harness.assertState((s) =>
+        s.matches({ transport: { reconnecting: 'retrying' } })
+      )
+
+      harness.actor.send({
+        type: 'SERVER_CONFIG_RECEIVED',
+        config: { streamRecoveryWindow: 60000, ackTimeout: 10000 },
+      })
+
+      harness.assertContext((ctx) => ctx.serverConfig?.ackTimeout === 10000)
+      harness.assertState((s) =>
+        s.matches({ transport: { reconnecting: 'retrying' } })
+      )
+
+      harness.destroy()
+    })
+
+    it('should handle CONNECTION_ESTABLISHED at higher retry counts', async () => {
+      const harness = new StateMachineTestHarness(webSocketMachine)
+
+      harness.simulateConnect('app-123')
+
+      // Build up retryCount to 3 via CONNECTION_FAILED — AUTH_SUCCESS is deliberately
+      // avoided here because it calls resetRetry and would reset the delay back to 500ms.
+      harness.actor.send({ type: 'CONNECTION_FAILED', error: new Error('timeout') })
+      harness.assertContext((ctx) => ctx.retryCount === 1 && ctx.retryDelayMs === 1000)
+      await vi.advanceTimersByTimeAsync(1000) // RETRY_DELAY fires → connecting
+
+      harness.actor.send({ type: 'CONNECTION_FAILED', error: new Error('timeout') })
+      harness.assertContext((ctx) => ctx.retryCount === 2 && ctx.retryDelayMs === 2000)
+      await vi.advanceTimersByTimeAsync(2000) // RETRY_DELAY fires → connecting
+
+      harness.actor.send({ type: 'CONNECTION_FAILED', error: new Error('timeout') })
+      harness.assertContext((ctx) => ctx.retryCount === 3 && ctx.retryDelayMs === 4000)
+
+      // Machine is waiting out the 4000ms delay — socket connects before it fires
       harness.assertState((s) =>
         s.matches({ transport: { reconnecting: 'retrying' } })
       )
@@ -541,6 +602,42 @@ describe('webSocketMachine', () => {
       harness.destroy()
     })
 
+    it('should accept SERVER_CONFIG_RECEIVED during authenticating', () => {
+      const harness = new StateMachineTestHarness(webSocketMachine)
+
+      harness.simulateConnect('app-123')
+      harness.simulateConnectionEstablished('socket-456')
+      harness.assertState((s) => s.matches({ transport: 'authenticating' }))
+
+      const config = {
+        streamRecoveryWindow: 60000,
+        ackTimeout: 10000,
+      }
+
+      harness.actor.send({ type: 'SERVER_CONFIG_RECEIVED', config })
+      harness.assertContext((ctx) => ctx.serverConfig?.streamRecoveryWindow === 60000)
+      harness.assertState((s) => s.matches({ transport: 'authenticating' }))
+
+      harness.destroy()
+    })
+
+    it('should accept SERVER_CONFIG_RECEIVED during connecting', () => {
+      const harness = new StateMachineTestHarness(webSocketMachine)
+
+      harness.simulateConnect('app-123')
+      harness.assertState((s) => s.matches({ transport: 'connecting' }))
+
+      const config = {
+        streamRecoveryWindow: 60000,
+        ackTimeout: 10000,
+      }
+
+      harness.actor.send({ type: 'SERVER_CONFIG_RECEIVED', config })
+      harness.assertContext((ctx) => ctx.serverConfig?.streamRecoveryWindow === 60000)
+
+      harness.destroy()
+    })
+
     it('should track pending message on disconnect', () => {
       const harness = new StateMachineTestHarness(webSocketMachine)
 
@@ -564,6 +661,52 @@ describe('webSocketMachine', () => {
 
       harness.simulateConnect('app-123')
       harness.assertContext((ctx) => ctx.lastError === null)
+
+      harness.destroy()
+    })
+  })
+
+  describe('auth timeout defense-in-depth', () => {
+    it('should transition from authenticating to reconnecting after AUTH_TIMEOUT (35s)', async () => {
+      const harness = new StateMachineTestHarness(webSocketMachine)
+
+      harness.simulateConnect('app-123')
+      harness.simulateConnectionEstablished('socket-456')
+      harness.assertState((s) => s.matches({ transport: 'authenticating' }))
+
+      // Advance just under 35s — should still be authenticating
+      await vi.advanceTimersByTimeAsync(34_999)
+      harness.assertState((s) => s.matches({ transport: 'authenticating' }))
+
+      // Cross the 35s boundary
+      await vi.advanceTimersByTimeAsync(1)
+      harness.assertState((s) =>
+        s.matches({ transport: { reconnecting: 'retrying' } })
+      )
+      harness.assertContext((ctx) => ctx.retryCount === 1)
+
+      harness.destroy()
+    })
+
+    it('should NOT trigger AUTH_TIMEOUT if AUTH_SUCCESS arrives before 35s', async () => {
+      const harness = new StateMachineTestHarness(webSocketMachine)
+
+      harness.simulateConnect('app-123')
+      harness.simulateConnectionEstablished('socket-456')
+      harness.assertState((s) => s.matches({ transport: 'authenticating' }))
+
+      // Auth succeeds at 10s — well before 35s timeout
+      await vi.advanceTimersByTimeAsync(10_000)
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
+      harness.assertState((s) =>
+        s.matches({ transport: { connected: 'idle' } })
+      )
+
+      // Advance past 35s — should remain connected (timeout cancelled)
+      await vi.advanceTimersByTimeAsync(30_000)
+      harness.assertState((s) =>
+        s.matches({ transport: { connected: 'idle' } })
+      )
 
       harness.destroy()
     })

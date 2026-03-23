@@ -217,8 +217,8 @@ export class ConnectionManager {
   private connectStartSnapshot: number | null = null
   /**
    * Reference to the latest server config, shared with TransportSupervisor.
-   * Used to read `supportsConnectThenAuth` for reconnection decisions
-   * and `ackTimeout` for auth timeout.
+   * Used to read supportsConnectThenAuth for reconnection decisions
+   * and ackTimeout for auth timeout.
    */
   private serverConfigRef: { current: ServerConfig | null } = { current: null }
   private lifecycleHandlersBySocket = new WeakMap<
@@ -570,13 +570,15 @@ export class ConnectionManager {
       cleanup()
       // Clear cached token to force a fresh fetch on retry
       this.cachedToken = null
-      const error = new Error('Authentication timed out')
       logger.warn('websocket.auth.client_timeout', {
         appId,
         socketId: socket.id,
         timeoutMs: authTimeoutMs,
       })
-      this.callbacks?.onAuthFailed?.(error)
+      // Explicitly close the socket so the machine's AUTH_TIMEOUT (35s safety net)
+      // sees an already-gone socket rather than a live unauthenticated one.
+      socket.disconnect()
+      this.callbacks?.onAuthFailed?.(new Error('Authentication timed out'))
     }, authTimeoutMs)
 
     socket.on('authenticateSuccess', onAuthSuccess)
@@ -846,6 +848,10 @@ export class ConnectionManager {
       },
 
       onDisconnect: (reason: Socket.DisconnectReason) => {
+        if (this.authTimeoutId) {
+          clearTimeout(this.authTimeoutId)
+          this.authTimeoutId = null
+        }
         this.callbacks?.onDisconnect?.({ reason, socket })
       },
 

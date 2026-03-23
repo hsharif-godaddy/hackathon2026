@@ -1889,12 +1889,94 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       grantSessionManager.stopCleanupInterval()
     })
 
-    // Add grant_context handler for each socket connection
-    ioInstance.on('connection', (socket: any) => {
-      // Handle grant context updates from frontend
+    // Registers a socket.use() middleware that validates tenant isolation for
+    // chat events. Using socket.use() rather than wrapping individual handlers
+    // avoids reading socket._events (a private Socket.IO API) and works
+    // correctly even when multiple handlers are registered on the same event.
+    const addTenantValidationMiddleware = (socket: Socket): void => {
+      socket.use(([event, ...args]: [string, ...any[]], next: (err?: Error) => void) => {
+        if (event !== 'chat' && event !== 'chat_message') {
+          next()
+          return
+        }
+
+        const data = args[0]
+        const authenticatedSiteId = socket.handshake.auth?.agentContext?.siteId
+
+        // Check presence before bypass so bypass only applies to known siteIds,
+        // never to unauthenticated sockets (prevents empty-string bypass edge case).
+        if (!authenticatedSiteId) {
+          logger.error('websocket.message.no_authenticated_siteid', {
+            message: 'SECURITY VIOLATION: No authenticated siteId in socket',
+            socketId: socket.id,
+            hasAgentContext: !!socket.handshake.auth?.agentContext
+          }, { tags: ['security', 'authorization-failure'] })
+          socket.emit('error', {
+            type: 'authorization_error',
+            message: 'Authentication context missing'
+          })
+          return
+        }
+
+        if (BYPASS_SITE_IDS.includes(authenticatedSiteId)) {
+          next()
+          return
+        }
+
+        const requestedAppId = data?.context?.metadata?.appId
+
+        if (!requestedAppId) {
+          logger.warn('websocket.message.no_app_id', {
+            message: 'No appId in message context',
+            socketId: socket.id
+          })
+          socket.emit('error', {
+            type: 'validation_error',
+            message: 'appId required in message context'
+          })
+          return
+        }
+
+        if (requestedAppId !== authenticatedSiteId) {
+          logger.error('websocket.message.cross_tenant_attempt', {
+            message: 'SECURITY VIOLATION: Cross-tenant access attempt via WebSocket message',
+            authenticatedSiteId,
+            requestedAppId,
+            socketId: socket.id,
+            severity: 'CRITICAL'
+          }, { tags: ['security', 'authorization-failure', 'cross-tenant-attempt'] })
+          socket.emit('error', {
+            type: 'authorization_error',
+            message: 'Access denied: appId does not match authenticated tenant'
+          })
+          return
+        }
+
+        next()
+      })
+    }
+
+    let pendingAuthCount = 0
+
+    // SETUP_TIMEOUT_MS must be strictly less than the client machine's AUTH_TIMEOUT (35s).
+    // If setup hangs this long, the socket is disconnected before the machine's safety net fires.
+    const SETUP_TIMEOUT_MS = 30000;
+
+    // Shared JWT validation logic used by both handshake middleware and authenticate event
+    const AUTH_TIMEOUT_MS = 30000;
+
+    // Single connection handler — three concerns in a deterministic order:
+    //   1. Grant context listeners   (all sockets)
+    //   2. Auth routing              (handshake-auth vs connect-then-auth)
+    //   3. Tenant validation         (wraps chat handlers AFTER they exist)
+    //
+    // Tenant validation must run after chat handlers are registered, which
+    // happens at different times depending on the auth path:
+    //   handshake-auth  → base class already called completeConnectionSetup
+    //   connect-then-auth → completeConnectionSetup runs after authenticate succeeds
+    ioInstance.on('connection', (socket: Socket) => {
+      // ── Grant context listeners (always) ──────────────────────────────
       socket.on('grant_context', (data: GrantContextPayload) => {
-        // Skip storing grants when feature is disabled to avoid unnecessary memory usage
-        // Frontend should not send grant_context when feature is OFF, but handle defensively
         if (!data.featureEnabled) {
           logger.debug('websocket.grant_context.skipped', {
             socketId: socket.id,
@@ -1912,16 +1994,184 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         grantSessionManager.setGrants(socket.id, data.grants, data.featureEnabled)
       })
 
-      // Handle request for grant refresh (e.g., when grants are stale)
       socket.on('request_grant_refresh_ack', () => {
         logger.debug('websocket.grant_context.refresh_acknowledged', {
           socketId: socket.id,
         })
       })
-    })
 
-    // Shared JWT validation logic used by both handshake middleware and authenticate event
-    const AUTH_TIMEOUT_MS = 30000;
+      // ── Handshake-auth path (old clients, PaaS, reconnects) ───────────
+      // Base class already ran completeConnectionSetup, so chat handlers
+      // exist and we can wrap them with tenant validation immediately.
+      const isHandshakeAuth = socket.handshake.auth?.agentContext && !socket.handshake.auth?.pendingAuth;
+
+      if (isHandshakeAuth) {
+        socket.on('authenticate', () => {
+          socket.emit('authenticateSuccess', {
+            siteId: socket.handshake.auth.agentContext.siteId,
+            socketId: socket.id,
+          });
+        });
+        addTenantValidationMiddleware(socket);
+        return;
+      }
+
+      // ── Connect-then-auth path ────────────────────────────────────────
+      if (!socket.handshake.auth?.pendingAuth) return;
+
+      pendingAuthCount++
+      logger.info('websocket.connection.pending_auth_count', {
+        pendingCount: pendingAuthCount,
+        socketId: socket.id,
+      })
+
+      const authTimeout = setTimeout(() => {
+        if (socket.handshake.auth?.pendingAuth) {
+          logger.warn('websocket.auth.timeout', {
+            message: 'Authentication timeout - disconnecting unauthenticated socket',
+            socketId: socket.id,
+            timeoutMs: AUTH_TIMEOUT_MS,
+          }, { tags: ['security'] });
+          socket.emit('authenticateError', { error: 'Authentication timeout' });
+          socket.disconnect(true);
+        }
+      }, AUTH_TIMEOUT_MS);
+
+      socket.use(([event]: [string, ...any[]], next: (err?: Error) => void) => {
+        if (socket.handshake.auth?.pendingAuth && event !== 'authenticate' && event !== 'disconnect') {
+          logger.debug('websocket.auth.blocked_event', {
+            message: 'Blocked event from unauthenticated socket',
+            event,
+            socketId: socket.id,
+          });
+          next(new Error('Authentication required'));
+          return;
+        }
+        next();
+      });
+
+      let authInProgress = false;
+
+      const handleAuthenticate = async (data: { token: string }) => {
+        if (authInProgress) {
+          logger.debug('websocket.auth.concurrent_rejected', {
+            message: 'Rejected concurrent authenticate event',
+            socketId: socket.id,
+          });
+          socket.emit('authenticateError', { error: 'Authentication already in progress' });
+          return;
+        }
+
+        if (socket.handshake.auth?.agentContext) {
+          logger.warn('websocket.auth.already_authenticated', {
+            message: 'Rejected authenticate event on already-authenticated socket',
+            socketId: socket.id,
+            siteId: socket.handshake.auth.agentContext.siteId,
+          }, { tags: ['security'] });
+          socket.emit('authenticateError', { error: 'Already authenticated' });
+          return;
+        }
+
+        if (!data?.token) {
+          socket.emit('authenticateError', { error: 'Missing token' });
+          return;
+        }
+
+        authInProgress = true;
+        try {
+          const authResult = await validateAndCreateAgentContext(data.token);
+          if (!authResult.valid) {
+            clearTimeout(authTimeout);
+            logger.warn('websocket.auth.authenticate_failed', {
+              message: 'Authentication failed via authenticate event',
+              error: authResult.error,
+              socketId: socket.id,
+            }, { tags: ['security'] });
+            socket.emit('authenticateError', { error: authResult.error });
+            socket.disconnect(true);
+            return;
+          }
+
+          clearTimeout(authTimeout);
+          const originalAuth = socket.handshake.auth;
+          socket.handshake.auth = {
+            ...originalAuth,
+            pendingAuth: false,
+            token: data.token,
+            decoded: authResult.claims,
+            agentContext: authResult.agentContext,
+          };
+          pendingAuthCount = Math.max(0, pendingAuthCount - 1)
+
+          logger.info('websocket.auth.connection_approved', {
+            message: 'Connection approved: JWT validation passed (authenticate event)',
+            siteId: authResult.agentContext!.siteId,
+            tokenTTL: authResult.agentContext!.exp - authResult.agentContext!.iat,
+            socketId: socket.id,
+            authPhaseMs: Date.now() - (socket.data?.connectTime || Date.now()),
+          }, { tags: ['security'] });
+
+          registerTokenRefreshHandler(socket);
+
+          socket.emit('authenticateSuccess', {
+            siteId: authResult.agentContext!.siteId,
+            socketId: socket.id,
+          });
+
+          if (!socket.connected) {
+            logger.warn('websocket.auth.disconnected_during_auth', {
+              message: 'Socket disconnected during authentication - skipping connection setup',
+              socketId: socket.id,
+            });
+            return;
+          }
+
+          // Install tenant validation before completeConnectionSetup so that any
+          // chat event arriving immediately after authenticateSuccess is already
+          // guarded — socket.use() middleware fires on all inbound events regardless
+          // of when handlers are registered.
+          addTenantValidationMiddleware(socket);
+
+          let setupFailed = false
+          try {
+            await wsServer.completeConnectionSetup(socket, AbortSignal.timeout(SETUP_TIMEOUT_MS))
+          } catch (setupError) {
+            logger.error('websocket.auth.connection_setup_failed', {
+              message: 'completeConnectionSetup failed after successful auth - disconnecting socket',
+              error: setupError instanceof Error ? setupError.message : String(setupError),
+              socketId: socket.id,
+            });
+            setupFailed = true
+          }
+
+          if (setupFailed) {
+            socket.disconnect(true)
+            return
+          }
+        } catch (error) {
+          clearTimeout(authTimeout);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          logger.error('websocket.auth.authenticate_error', {
+            message: 'Error during authenticate event',
+            error: errorMessage,
+            socketId: socket.id,
+          }, { tags: ['security'] });
+          socket.emit('authenticateError', { error: errorMessage });
+          socket.disconnect(true);
+        } finally {
+          authInProgress = false;
+        }
+      };
+
+      socket.on('authenticate', handleAuthenticate);
+
+      socket.on('disconnect', () => {
+        if (socket.handshake.auth?.pendingAuth) {
+          pendingAuthCount = Math.max(0, pendingAuthCount - 1)
+        }
+        clearTimeout(authTimeout);
+      });
+    })
 
     const validateAndCreateAgentContext = async (token: string): Promise<{
       valid: boolean;
@@ -1980,7 +2230,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     };
 
     // Register tokenRefresh handler on a socket (shared between handshake-auth and authenticate-event paths)
-    const registerTokenRefreshHandler = (socket: any): void => {
+    const registerTokenRefreshHandler = (socket: Socket): void => {
       socket.on('tokenRefresh', async (data: any) => {
         try {
           const originalSiteId = socket.handshake.auth.agentContext?.siteId;
@@ -2086,7 +2336,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     // Add Socket.IO authentication middleware
     wsServer.getIO().use(async (socket, next) => {
       try {
-        // Handle different authentication types via centralized feature system
+        socket.data = { ...socket.data, connectTime: Date.now() }
+
         const authType = auth.getType();
 
         if (authType === AuthType.NONE) {
@@ -2200,6 +2451,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           message: 'Connection approved: JWT validation passed (handshake)',
           siteId: authResult.agentContext!.siteId,
           tokenTTL: authResult.agentContext!.exp - authResult.agentContext!.iat,
+          authPhaseMs: Date.now() - (socket.data?.connectTime || Date.now()),
         }, {
           tags: ['security']
         });
@@ -2219,240 +2471,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       }
     });
 
-    // Connect-then-auth: Handle auth state for all connected sockets
-    wsServer.getIO().on('connection', (socket: any) => {
-      const isHandshakeAuth = socket.handshake.auth?.agentContext && !socket.handshake.auth?.pendingAuth;
-
-      // For handshake-auth sockets (old clients, PaaS, reconnects), register an
-      // `authenticate` handler that responds with `authenticateSuccess` immediately.
-      // This avoids a race condition where emitting `authenticateSuccess` in the
-      // connection handler could fire before the client registers its listeners.
-      if (isHandshakeAuth) {
-        socket.on('authenticate', () => {
-          socket.emit('authenticateSuccess', {
-            siteId: socket.handshake.auth.agentContext.siteId,
-            socketId: socket.id,
-          });
-        });
-        return;
-      }
-
-      if (!socket.handshake.auth?.pendingAuth) return;
-
-      // Auth timeout — disconnect if not authenticated within AUTH_TIMEOUT_MS
-      const authTimeout = setTimeout(() => {
-        if (socket.handshake.auth?.pendingAuth) {
-          logger.warn('websocket.auth.timeout', {
-            message: 'Authentication timeout - disconnecting unauthenticated socket',
-            socketId: socket.id,
-            timeoutMs: AUTH_TIMEOUT_MS,
-          }, { tags: ['security'] });
-          socket.emit('authenticateError', { error: 'Authentication timeout' });
-          socket.disconnect(true);
-        }
-      }, AUTH_TIMEOUT_MS);
-
-      // Packet middleware — gate ALL inbound events except `authenticate` and `disconnect`
-      socket.use(([event]: [string, ...any[]], next: (err?: Error) => void) => {
-        if (socket.handshake.auth?.pendingAuth && event !== 'authenticate' && event !== 'disconnect') {
-          logger.debug('websocket.auth.blocked_event', {
-            message: 'Blocked event from unauthenticated socket',
-            event,
-            socketId: socket.id,
-          });
-          next(new Error('Authentication required'));
-          return;
-        }
-        next();
-      });
-
-      // `authenticate` event handler — single-use initial authentication.
-      // Extracted to a named function for readability given the nested try/finally/catch.
-      let authInProgress = false;
-
-      const handleAuthenticate = async (data: { token: string }) => {
-        // Prevent concurrent authenticate events from racing
-        if (authInProgress) {
-          logger.debug('websocket.auth.concurrent_rejected', {
-            message: 'Rejected concurrent authenticate event',
-            socketId: socket.id,
-          });
-          socket.emit('authenticateError', { error: 'Authentication already in progress' });
-          return;
-        }
-
-        // Reject if already authenticated (single-use to prevent tenant-switch attacks)
-        if (socket.handshake.auth?.agentContext) {
-          logger.warn('websocket.auth.already_authenticated', {
-            message: 'Rejected authenticate event on already-authenticated socket',
-            socketId: socket.id,
-            siteId: socket.handshake.auth.agentContext.siteId,
-          }, { tags: ['security'] });
-          socket.emit('authenticateError', { error: 'Already authenticated' });
-          return;
-        }
-
-        if (!data?.token) {
-          socket.emit('authenticateError', { error: 'Missing token' });
-          return;
-        }
-
-        authInProgress = true;
-        // Auth timeout stays active as a backstop — if validateAndCreateAgentContext
-        // hangs (e.g., JWKS endpoint unreachable), the timeout will fire and disconnect.
-        // Timeout is cleared on completion (success or failure).
-        try {
-          const authResult = await validateAndCreateAgentContext(data.token);
-          if (!authResult.valid) {
-            clearTimeout(authTimeout);
-            logger.warn('websocket.auth.authenticate_failed', {
-              message: 'Authentication failed via authenticate event',
-              error: authResult.error,
-              socketId: socket.id,
-            }, { tags: ['security'] });
-            socket.emit('authenticateError', { error: authResult.error });
-            socket.disconnect(true);
-            return;
-          }
-
-          // Auth succeeded — clear the timeout and set context
-          clearTimeout(authTimeout);
-          const originalAuth = socket.handshake.auth;
-          socket.handshake.auth = {
-            ...originalAuth,
-            pendingAuth: false,
-            token: data.token,
-            decoded: authResult.claims,
-            agentContext: authResult.agentContext,
-          };
-
-          logger.info('websocket.auth.connection_approved', {
-            message: 'Connection approved: JWT validation passed (authenticate event)',
-            siteId: authResult.agentContext!.siteId,
-            tokenTTL: authResult.agentContext!.exp - authResult.agentContext!.iat,
-            socketId: socket.id,
-          }, { tags: ['security'] });
-
-          registerTokenRefreshHandler(socket);
-
-          socket.emit('authenticateSuccess', {
-            siteId: authResult.agentContext!.siteId,
-            socketId: socket.id,
-          });
-
-          // Complete the deferred connection setup now that auth is done.
-          // For pendingAuth sockets, the base class skips recovery/agents/history
-          // until this point to prevent leaking data to unauthenticated connections.
-          if (socket.connected) {
-            await wsServer.completeConnectionSetup(socket);
-          } else {
-            logger.info('websocket.auth.disconnected_during_auth', {
-              message: 'Socket disconnected during authentication - skipping connection setup',
-              socketId: socket.id,
-            });
-          }
-        } catch (error) {
-          clearTimeout(authTimeout);
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          logger.error('websocket.auth.authenticate_error', {
-            message: 'Error during authenticate event',
-            error: errorMessage,
-            socketId: socket.id,
-          }, { tags: ['security'] });
-          socket.emit('authenticateError', { error: errorMessage });
-          socket.disconnect(true);
-        } finally {
-          authInProgress = false;
-        }
-      };
-
-      socket.on('authenticate', handleAuthenticate);
-
-      // Clean up timeout on disconnect
-      socket.on('disconnect', () => {
-        clearTimeout(authTimeout);
-      });
-    });
-
-    // SECURITY: Add message-level tenant isolation validation
-    // This intercepts chat messages and validates that the appId in the message context
-    // matches the authenticated JWT siteId. This prevents cross-tenant data exfiltration
-    // where an attacker with valid credentials for tenant A attempts to access tenant B's
-    // data by sending tenant B's appId in the message.
-    wsServer.getIO().on('connection', (socket: any) => {
-      // Store original chat handler
-      const originalChatHandler = socket._events['chat'];
-      const originalChatMessageHandler = socket._events['chat_message'];
-
-      // Wrap chat handler with tenant validation
-      const createValidatedHandler = (originalHandler: any) => {
-        return async function (this: any, ...args: any[]) {
-          const data = args[0];
-          const authenticatedSiteId = socket.handshake.auth?.agentContext?.siteId;
-          const requestedAppId = data?.context?.metadata?.appId;
-
-          // Skip validation for BYPASS_SITE_IDS (dev/test sites)
-          if (BYPASS_SITE_IDS.includes(authenticatedSiteId)) {
-            // Allow bypass sites to access any appId
-            return originalHandler.apply(this, args);
-          }
-
-          if (!authenticatedSiteId) {
-            logger.error('websocket.message.no_authenticated_siteid', {
-              message: 'SECURITY VIOLATION: No authenticated siteId in socket',
-              socketId: socket.id,
-              hasAgentContext: !!socket.handshake.auth?.agentContext
-            }, { tags: ['security', 'authorization-failure'] });
-            socket.emit('error', {
-              type: 'authorization_error',
-              message: 'Authentication context missing'
-            });
-            return;
-          }
-
-          if (!requestedAppId) {
-            logger.warn('websocket.message.no_app_id', {
-              message: 'No appId in message context',
-              socketId: socket.id
-            });
-            socket.emit('error', {
-              type: 'validation_error',
-              message: 'appId required in message context'
-            });
-            return;
-          }
-
-          // CRITICAL: Verify appId matches authenticated siteId
-          if (requestedAppId !== authenticatedSiteId) {
-            logger.error('websocket.message.cross_tenant_attempt', {
-              message: 'SECURITY VIOLATION: Cross-tenant access attempt via WebSocket message',
-              authenticatedSiteId,
-              requestedAppId,
-              socketId: socket.id,
-              severity: 'CRITICAL'
-            }, { tags: ['security', 'authorization-failure', 'cross-tenant-attempt'] });
-            socket.emit('error', {
-              type: 'authorization_error',
-              message: 'Access denied: appId does not match authenticated tenant'
-            });
-            return;
-          }
-
-          // Validation passed - call original handler
-          return originalHandler.apply(this, args);
-        };
-      };
-
-      // Wrap both chat event handlers
-      if (originalChatHandler) {
-        socket.off('chat', originalChatHandler);
-        socket.on('chat', createValidatedHandler(originalChatHandler));
-      }
-      if (originalChatMessageHandler) {
-        socket.off('chat_message', originalChatMessageHandler);
-        socket.on('chat_message', createValidatedHandler(originalChatMessageHandler));
-      }
-    });
+    // Handlers 2 & 3 (auth state machine, tenant validation) are now part of
+    // the consolidated connection handler above.
 
     return { wsServer, agentFactory }
 

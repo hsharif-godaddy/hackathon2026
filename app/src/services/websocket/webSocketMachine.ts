@@ -299,6 +299,9 @@ export const webSocketMachine = setup({
     RETRY_DELAY: ({ context }) => context.retryDelayMs,
     RECOVERY_ACK_TIMEOUT: RECOVERY_ACK_TIMEOUT_MS,
     STREAM_COMPLETE_DELAY: STREAM_COMPLETE_DELAY_MS,
+    // 5s above the server's AUTH_TIMEOUT_MS (30s) as a last-resort safety net.
+    // If the server-side default changes, update this value to stay above it.
+    AUTH_TIMEOUT: 35_000,
   },
 }).createMachine({
   id: 'webSocket',
@@ -328,11 +331,13 @@ export const webSocketMachine = setup({
     transport: {
       initial: 'disconnected',
 
-      // Handle CONNECT from ANY state (enables app switching)
       on: {
         CONNECT: {
           target: '.connecting',
           actions: ['setAppId', 'logConnectionStart'],
+        },
+        SERVER_CONFIG_RECEIVED: {
+          actions: ['setServerConfig'],
         },
       },
 
@@ -374,6 +379,12 @@ export const webSocketMachine = setup({
               actions: ['setError', 'logDisconnect'],
             },
           },
+          after: {
+            AUTH_TIMEOUT: {
+              target: 'reconnecting',
+              actions: ['setError', 'logConnectionFailed'],
+            },
+          },
         },
 
         connected: {
@@ -384,14 +395,11 @@ export const webSocketMachine = setup({
               target: 'reconnecting',
               actions: ['setError', 'logDisconnect'],
             },
-            SERVER_CONFIG_RECEIVED: {
-              actions: ['setServerConfig'],
-            },
           },
 
           states: {
             idle: {
-              entry: ['clearError'],
+              entry: ['clearError', 'clearRecovery'],
               on: {
                 RECOVERY_STATUS: {
                   target: 'recovering',

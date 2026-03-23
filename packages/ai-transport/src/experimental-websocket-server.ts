@@ -1,6 +1,7 @@
 import type { ModelMessage } from 'ai'
 import { APICallError, RetryError } from 'ai'
 import { Server as SocketIOServer } from 'socket.io'
+import type { Socket, ServerOptions } from 'socket.io'
 import { Server as HTTPServer } from 'http'
 import type { AgentFactory, AgentWrapper, PipelineContextMessage } from '@airo/ai-lib'
 import { createAgentFactory } from '@airo/ai-lib'
@@ -234,7 +235,7 @@ export interface WebSocketConfig {
   }) => void | Promise<void>
 
   /** Socket.IO server options */
-  socketOptions?: Partial<import('socket.io').ServerOptions>
+  socketOptions?: Partial<ServerOptions>
 
   /** Event channel buffer size per conversation (default: 1000) */
   eventBufferSize?: number
@@ -651,23 +652,11 @@ export class WebSocketServer {
         previousSocketId: previousSocketId || 'none',
       })
 
-      // Send server config immediately after connection (intentionally pre-auth).
-      // Client needs timeout config and capability flags before authenticating,
-      // so this is emitted before the authenticate event is received.
-      socket.emit('message', {
-        type: 'server_config',
-        content: '',
-        data: {
-          // Timeout configuration (for synchronization)
-          streamRecoveryWindow: this.STREAM_RECOVERY_WINDOW,
-          ackTimeout: this.ACK_TIMEOUT_MS,
-
-          // Capability flags (for backwards compatibility)
-          supportsWebSocketHistory: !!this.config.historyProvider,
-          supportsConnectThenAuth: true,
-          serverVersion: '2.0' // Increment when breaking changes occur
-        }
-      })
+      // Send server_config immediately — client needs timeout values (ackTimeout) and
+      // capability flags (supportsConnectThenAuth) before it can authenticate.
+      // These values are not sensitive; the real protection against unauthenticated
+      // access to conversation data is completeConnectionSetup being deferred below.
+      this.emitServerConfig(socket)
 
       // Debug logging for recovery
       if (previousSocketId) {
@@ -689,14 +678,29 @@ export class WebSocketServer {
     })
   }
 
+  private emitServerConfig(socket: Socket): void {
+    if (socket.data?.serverConfigSent) return
+    socket.data = { ...socket.data, serverConfigSent: true }
+    socket.emit('message', {
+      type: 'server_config',
+      content: '',
+      data: {
+        streamRecoveryWindow: this.STREAM_RECOVERY_WINDOW,
+        ackTimeout: this.ACK_TIMEOUT_MS,
+        supportsWebSocketHistory: !!this.config.historyProvider,
+        supportsConnectThenAuth: true,
+        serverVersion: '2.0'
+      }
+    })
+  }
+
   /**
    * Complete connection setup after authentication.
    * Called immediately for handshake-auth sockets, deferred for connect-then-auth sockets.
    *
-   * Includes: recovery detection, onConnection callback, sendAvailableAgents, history_complete,
-   * and cancel handler registration.
+   * Includes: recovery detection, onConnection callback, sendAvailableAgents and history_complete
    */
-  async completeConnectionSetup(socket: import('socket.io').Socket): Promise<void> {
+  async completeConnectionSetup(socket: Socket, signal?: AbortSignal): Promise<void> {
     // Idempotency guard — prevent duplicate setup if called more than once
     if (socket.data?.connectionSetupComplete) {
       this.logger.debug('websocket.setup.already_complete', { socketId: socket.id })
@@ -707,211 +711,197 @@ export class WebSocketServer {
 
     const socketId = socket.id
     const auth = socket.handshake.auth || {}
-    const previousSocketId = auth.previousSocketId
 
-    // Use recovery manager to detect and handle recovery
     const detectedRecoveryMode = await this.recoveryManager.attemptRecovery(socket)
+    signal?.throwIfAborted()
 
-    // Check for manual recovery after page reload (client sends previousSocketId)
     if (detectedRecoveryMode === 'manual') {
-      await this.recoveryManager.handleManualRecovery(socket, previousSocketId!, {
-        onRecoveryComplete: (_completedSocketId, _events, _finalSequence) => {
-          // State manager handles all state updates including socket ID migration
-          // No local Map updates needed
-        },
-        onRecoveryFailed: (_failedSocketId, _reason) => {
-          // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
-          // No additional cleanup needed
-        },
-        createWebSocketSubscriber: (sock) => this.createCoalescingWebSocketSubscriber(sock)
-      })
-      return // Recovery handled, skip fresh connection setup
+      await this.runManualRecovery(socket, auth.previousSocketId!)
+      return
     }
 
-    // Check if client is trying to recover but stream already completed/cleaned up
-    // This handles edge case where previousSocketId exists but no conversationId
-    if (previousSocketId && !detectedRecoveryMode) {
-      this.logger.info('Recovery attempted but no buffered events found', {
-        newSocketId: socketId,
-        previousSocketId,
-        hasConversationId: !!auth.conversationId
-      })
-
-      // Extract appId from auth for history loading
-      // Same logic as connection-recovery-manager.ts extractAppId()
-      const extractAppId = (authData: unknown): string | undefined => {
-        if (!authData || typeof authData !== 'object') {return undefined}
-        const authRecord = authData as Record<string, unknown>
-
-        // Try direct appId first (most common)
-        if (typeof authRecord.appId === 'string') {return authRecord.appId}
-
-        // Try agentContext.appId (JWT auth)
-        const agentContext = authRecord.agentContext as Record<string, unknown> | undefined
-        if (agentContext && typeof agentContext.appId === 'string') {return agentContext.appId}
-
-        // Try decoded.appId (JWT auth fallback)
-        const decoded = authRecord.decoded as Record<string, unknown> | undefined
-        if (decoded && typeof decoded.appId === 'string') {return decoded.appId}
-
-        return undefined
-      }
-
-      // Use sendStreamCompletedStatus for consistent history handling
-      // This will load and stream persisted history if conversationId exists
-      await this.recoveryManager.sendStreamCompletedStatus(
-        socket,
-        auth.conversationId,
-        extractAppId(auth)
-      )
+    if (auth.previousSocketId && !detectedRecoveryMode) {
+      signal?.throwIfAborted()
+      await this.runStaleReconnect(socket, socketId, auth)
     }
-    // Conversation-based recovery fallback (for tab-closure recovery when socket ID is lost)
-    // This allows recovery using a durable conversationId cookie instead of ephemeral sessionStorage
+
     if (detectedRecoveryMode === 'conversation') {
-      // Find the connection state for validation
-      const entry = this.stateManager.findDisconnectedByConversationId(auth.conversationId)
-      const stateData = entry?.[1]
-
-      // Validation function for security check
-      // Checks siteId from all possible auth sources:
-      // - agentContext.siteId (JWT auth)
-      // - decoded.siteId (JWT auth fallback)
-      // - siteId (NONE/MOCK auth modes)
-      interface AuthDataWithSiteId {
-        agentContext?: { siteId?: string }
-        decoded?: { siteId?: string }
-        siteId?: string
-      }
-      const validateAppId = (conversationId: string, authData: Record<string, unknown>): boolean => {
-        const typedAuth = authData as AuthDataWithSiteId
-        const authenticatedSiteId =
-          typedAuth.agentContext?.siteId ||
-          typedAuth.decoded?.siteId ||
-          typedAuth.siteId
-
-        // Block recovery if we can't determine the authenticated site
-        if (!authenticatedSiteId) {
-          this.logger.warn('recovery.conversation.no_site_id', {
-            socketId,
-            conversationId,
-            authKeys: Object.keys(authData)
-          })
-          return false
-        }
-
-        // Block recovery if site doesn't match the conversation's app
-        if (stateData && stateData.context?.appId !== authenticatedSiteId) {
-          this.logger.warn('recovery.conversation.site_mismatch', {
-            socketId,
-            conversationId,
-            authenticatedSiteId,
-            conversationAppId: stateData.context?.appId
-          })
-          return false
-        }
-
-        return true
-      }
-
-      await this.recoveryManager.handleConversationRecovery(socket, auth.conversationId, validateAppId, {
-        onRecoveryComplete: (_completedSocketId, _events, _finalSequence) => {
-          // State manager handles all state updates including socket ID migration
-          // No local Map updates needed
-        },
-        onRecoveryFailed: (_failedSocketId, _reason) => {
-          // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
-          // No additional cleanup needed
-        },
-        createWebSocketSubscriber: (sock) => this.createCoalescingWebSocketSubscriber(sock)
-      })
-      return // Recovery handled, skip fresh connection setup
+      signal?.throwIfAborted()
+      await this.runConversationRecovery(socket, socketId, auth)
+      return
     }
 
-    // Initial recovery (conversationId exists but no disconnected state)
-    // Triggered on: initial load with existing conversation OR page reload after recovery window
     if (detectedRecoveryMode === 'initial') {
-      // Validation function for security check (same logic as conversation recovery)
-      interface AuthDataWithSiteId {
-        agentContext?: { siteId?: string }
-        decoded?: { siteId?: string }
-        siteId?: string
-      }
-      const validateAppId = (conversationId: string, authData: Record<string, unknown>): boolean => {
-        const typedAuth = authData as AuthDataWithSiteId
-        const authenticatedSiteId =
-          typedAuth.agentContext?.siteId ||
-          typedAuth.decoded?.siteId ||
-          typedAuth.siteId
-
-        // Block recovery if we can't determine the authenticated site
-        if (!authenticatedSiteId) {
-          this.logger.warn('recovery.initial.no_site_id', {
-            socketId,
-            conversationId,
-            authKeys: Object.keys(authData)
-          })
-          return false
-        }
-
-        // For initial recovery, we can't validate against stateData (it doesn't exist)
-        // The authentication middleware has already validated the user's access to the appId
-        // We return true if we have a valid authenticated site ID, as the conversationId
-        // cookie is already scoped to the authenticated domain
-        this.logger.debug('recovery.initial.validation', {
-          socketId,
-          conversationId,
-          authenticatedSiteId
-        })
-        return true
-      }
-
-      await this.recoveryManager.handleInitialRecovery(socket, auth.conversationId, validateAppId, {
-        onRecoveryComplete: (_completedSocketId, _events, _finalSequence) => {
-          // State manager handles all state updates
-          // No local Map updates needed
-        },
-        onRecoveryFailed: (_failedSocketId, _reason) => {
-          // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
-          // No additional cleanup needed
-        },
-        createWebSocketSubscriber: (sock) => this.createCoalescingWebSocketSubscriber(sock)
-      })
-      return // Recovery handled, skip fresh connection setup
+      signal?.throwIfAborted()
+      await this.runInitialRecovery(socket, socketId, auth)
+      return
     }
+
+    signal?.throwIfAborted()
 
     // Call connection handler (await to ensure async initialization completes before subsequent handlers)
     await this.config.onConnection?.(socketId)
 
-    // Send available agents on connection
     this.sendAvailableAgents(socket)
 
-    // Send history_complete for fresh connections (no history to load)
-    // This ensures client initialization completes immediately for new users
+    // Fresh connections have no history to replay — signal client to proceed immediately
     socket.emit('message', {
       type: 'history_complete',
       content: '',
-      data: {
-        messageCount: 0
-      }
+      data: { messageCount: 0 }
     } as WebSocketMessage)
 
   }
 
-  private createCoalescingWebSocketSubscriber(socket: any): WebSocketSubscriber {
+  // Extracts appId from any auth shape (direct, JWT agentContext, or JWT decoded).
+  // Mirrors extractAppId() in connection-recovery-manager.ts — keep in sync.
+  private extractAuthAppId(authData: Record<string, any> | null | undefined): string | undefined {
+    if (!authData) return undefined
+    if (typeof authData.appId === 'string') return authData.appId
+    if (typeof authData.agentContext?.appId === 'string') return authData.agentContext.appId
+    if (typeof authData.decoded?.appId === 'string') return authData.decoded.appId
+    return undefined
+  }
+
+  private async runManualRecovery(socket: Socket, previousSocketId: string): Promise<void> {
+    await this.recoveryManager.handleManualRecovery(socket, previousSocketId, {
+      onRecoveryComplete: (_completedSocketId, _events, _finalSequence) => {
+        // State manager handles all state updates including socket ID migration
+      },
+      onRecoveryFailed: (_failedSocketId, _reason) => {
+        // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
+      },
+      createWebSocketSubscriber: (sock) => this.createCoalescingWebSocketSubscriber(sock)
+    })
+  }
+
+  // Handles the edge case where previousSocketId was sent but the stream had already
+  // completed/cleaned up before the client reconnected — no buffered events to replay.
+  private async runStaleReconnect(
+    socket: Socket,
+    socketId: string,
+    auth: Record<string, any>
+  ): Promise<void> {
+    this.logger.info('Recovery attempted but no buffered events found', {
+      newSocketId: socketId,
+      previousSocketId: auth.previousSocketId,
+      hasConversationId: !!auth.conversationId
+    })
+    await this.recoveryManager.sendStreamCompletedStatus(
+      socket,
+      auth.conversationId,
+      this.extractAuthAppId(auth)
+    )
+  }
+
+  // Tab-closure recovery: client lost the ephemeral socketId but has a durable conversationId cookie.
+  private async runConversationRecovery(
+    socket: Socket,
+    socketId: string,
+    auth: Record<string, any>
+  ): Promise<void> {
+    interface AuthDataWithSiteId {
+      agentContext?: { siteId?: string }
+      decoded?: { siteId?: string }
+      siteId?: string
+    }
+    const entry = this.stateManager.findDisconnectedByConversationId(auth.conversationId)
+    const stateData = entry?.[1]
+    const validate = (conversationId: string, authData: Record<string, any>): boolean => {
+      const typedAuth = authData as AuthDataWithSiteId
+      const authenticatedSiteId =
+        typedAuth.agentContext?.siteId ||
+        typedAuth.decoded?.siteId ||
+        typedAuth.siteId
+      if (!authenticatedSiteId) {
+        this.logger.warn('recovery.conversation.no_site_id', {
+          socketId,
+          conversationId,
+          authKeys: Object.keys(authData)
+        })
+        return false
+      }
+      if (stateData && stateData.context?.appId !== authenticatedSiteId) {
+        this.logger.warn('recovery.conversation.site_mismatch', {
+          socketId,
+          conversationId,
+          authenticatedSiteId,
+          conversationAppId: stateData.context?.appId
+        })
+        return false
+      }
+      return true
+    }
+    await this.recoveryManager.handleConversationRecovery(socket, auth.conversationId, validate, {
+      onRecoveryComplete: (_completedSocketId, _events, _finalSequence) => {
+        // State manager handles all state updates including socket ID migration
+      },
+      onRecoveryFailed: (_failedSocketId, _reason) => {
+        // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
+      },
+      createWebSocketSubscriber: (sock) => this.createCoalescingWebSocketSubscriber(sock)
+    })
+  }
+
+  // Initial load with existing conversationId OR reconnect after the recovery window expired.
+  private async runInitialRecovery(
+    socket: Socket,
+    socketId: string,
+    auth: Record<string, any>
+  ): Promise<void> {
+    interface AuthDataWithSiteId {
+      agentContext?: { siteId?: string }
+      decoded?: { siteId?: string }
+      siteId?: string
+    }
+    const validate = (conversationId: string, authData: Record<string, any>): boolean => {
+      const typedAuth = authData as AuthDataWithSiteId
+      const authenticatedSiteId =
+        typedAuth.agentContext?.siteId ||
+        typedAuth.decoded?.siteId ||
+        typedAuth.siteId
+      if (!authenticatedSiteId) {
+        this.logger.warn('recovery.initial.no_site_id', {
+          socketId,
+          conversationId,
+          authKeys: Object.keys(authData)
+        })
+        return false
+      }
+      // No stateData to compare against — auth middleware already validated access to appId.
+      // The conversationId cookie is scoped to the authenticated domain.
+      this.logger.debug('recovery.initial.validation', {
+        socketId,
+        conversationId,
+        authenticatedSiteId
+      })
+      return true
+    }
+    await this.recoveryManager.handleInitialRecovery(socket, auth.conversationId, validate, {
+      onRecoveryComplete: (_completedSocketId, _events, _finalSequence) => {
+        // State manager handles all state updates
+      },
+      onRecoveryFailed: (_failedSocketId, _reason) => {
+        // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
+      },
+      createWebSocketSubscriber: (sock) => this.createCoalescingWebSocketSubscriber(sock)
+    })
+  }
+
+  // Engine.IO internal API (socket.io ^4.8.3, engine.io 6.6.4).
+  // writeBuffer is private — no public backpressure signal exists.
+  // If this path breaks after a Socket.IO upgrade, returns 0 → base window (safe fallback).
+  // Verify after upgrading: `socket.conn.writeBuffer` should be an array of pending packets.
+  private createCoalescingWebSocketSubscriber(socket: Socket): WebSocketSubscriber {
     const subscriber = new WebSocketSubscriber(
       socket,
       (id: string) => this.stateManager.isDisconnected(id),
       {
-        // Engine.IO internal API (socket.io ^4.8.3, engine.io 6.6.4).
-        // writeBuffer is private — no public backpressure signal exists.
-        // If this path breaks after a Socket.IO upgrade, returns 0 → base window (safe fallback).
-        // Verify after upgrading: `socket.conn.writeBuffer` should be an array of pending packets.
         getBackpressure: () => (socket as any).conn?.writeBuffer?.length ?? 0
       }
     )
-    // Store reference for dispose on disconnect
-    if (!(socket as any).data) (socket as any).data = {}
-    ;(socket as any).data.wsSubscriber = subscriber
+    if (!socket.data) socket.data = {}
+    socket.data.wsSubscriber = subscriber
     return subscriber
   }
 
@@ -1033,6 +1023,12 @@ export class WebSocketServer {
           // Silently fail - APM cleanup should not disrupt disconnect handling
         }
         this.activeToolSpans.delete(spanKey)
+      }
+    }
+
+    for (const [spanKey] of this.activeObservabilityToolSpans.entries()) {
+      if (spanKey.startsWith(`${socketId}:`)) {
+        this.activeObservabilityToolSpans.delete(spanKey)
       }
     }
   }

@@ -15,8 +15,8 @@ export class ServerConfigHandler implements MessageHandler {
   readonly type = 'server_config'
 
   async handle(data: WebSocketMessage, context: LifecycleHandlerContext): Promise<void> {
-    // Server sends configuration during handshake for timeout synchronization
-    // This ensures client and server use the same recovery window
+    // Server sends server_config immediately after connection (before auth) so the
+    // client has ackTimeout and capability flags available when sending authenticate.
     const config = {
       streamRecoveryWindow: (data.data?.streamRecoveryWindow as number | undefined) ?? CONNECTION_RETRY_TIMEOUT_MS,
       ackTimeout: (data.data?.ackTimeout as number | undefined) ?? 30000,
