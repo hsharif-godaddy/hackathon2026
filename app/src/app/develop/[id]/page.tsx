@@ -264,7 +264,24 @@ function DevelopPageContent() {
     })();
 
     clearExpiredWidgetStates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Funnel event: Track that user reached the develop page
+  // Separate effect with [appId] dep so it fires even if appId resolves after initial render.
+  // useRef guard ensures it fires at most once per page mount.
+  const hasFiredDevelopPageLoaded = useRef(false)
+  useEffect(() => {
+    if (appId && !hasFiredDevelopPageLoaded.current) {
+      hasFiredDevelopPageLoaded.current = true
+      // Check session storage directly because isCreateFlowSession is not yet set at mount time
+      const hasInitialPrompt = sessionStorage.getItem(`initial-prompt-pending-${appId}`) !== null;
+      shipAnalyticsLog('funnel.develop_page.loaded', {
+        appId,
+        source: hasInitialPrompt ? 'quick-create' : 'direct-nav',
+      });
+    }
+  }, [appId])
 
   // Sync responsive state (isMobile) with store using useMediaQuery
   useSyncResponsiveState()

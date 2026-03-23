@@ -13,6 +13,7 @@
 
 import { io, type Socket } from 'socket.io-client'
 
+import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { getSharedSocket, setSharedSocket } from '@/lib/socketRegistry'
 import type { ServerConfig } from './stateMachineTypes'
@@ -126,6 +127,7 @@ const defaultFetchAgentToken = async (siteId: string): Promise<string | null> =>
   if (typeof document === 'undefined') return null
 
   try {
+    const fetchStart = Date.now()
     const { appFetch } = await import('@/lib/gasket-config')
     const response = await appFetch('/api/auth/agent-token', {
       method: 'POST',
@@ -142,6 +144,11 @@ const defaultFetchAgentToken = async (siteId: string): Promise<string | null> =>
         error: errorText,
         siteId,
       })
+      shipAnalyticsLog('funnel.ws.token_failed', {
+        appId: siteId,
+        error: errorText.substring(0, 200),
+        status: response.status,
+      })
       return null
     }
 
@@ -150,15 +157,27 @@ const defaultFetchAgentToken = async (siteId: string): Promise<string | null> =>
 
     if (!token) {
       logger.error('websocket.token.missing_field', { appId: siteId })
+      shipAnalyticsLog('funnel.ws.token_failed', {
+        appId: siteId,
+        error: 'Token field missing from response',
+      })
       return null
     }
 
+    shipAnalyticsLog('funnel.ws.token_acquired', {
+      appId: siteId,
+      durationMs: Date.now() - fetchStart,
+    })
     return token
   } catch (error) {
     logger.error('websocket.token.exception', {
       message: 'Failed to get WebSocket auth token',
       error: error instanceof Error ? error.message : String(error),
       siteId,
+    })
+    shipAnalyticsLog('funnel.ws.token_failed', {
+      appId: siteId,
+      error: error instanceof Error ? error.message : String(error),
     })
     return null
   }
@@ -192,6 +211,10 @@ export class ConnectionManager {
    * straight to onAuthenticated.
    */
   private handshakeAuthMode = false
+  /** Guards funnel.ws.connected to fire once per session (not on reconnects). Reset in disconnect(). */
+  private hasFiredFunnelConnected = false
+  /** Snapshot of connectAttemptStart captured in onConnect before nulling, for durationMs calculation. */
+  private connectStartSnapshot: number | null = null
   /**
    * Reference to the latest server config, shared with TransportSupervisor.
    * Used to read `supportsConnectThenAuth` for reconnection decisions
@@ -329,6 +352,8 @@ export class ConnectionManager {
     this.connectAttemptStart = null
     this.cachedToken = null
     this.handshakeAuthMode = false
+    this.hasFiredFunnelConnected = false
+    this.connectStartSnapshot = null
   }
 
   /**
@@ -416,6 +441,11 @@ export class ConnectionManager {
           this.socket = null
           setSharedSocket(null)
         }
+        shipAnalyticsLog('funnel.ws.connect_failed', {
+          appId,
+          error: 'Failed to acquire authentication token',
+          reason: 'token_failed',
+        })
         this.callbacks?.onConnectionFailed?.(new Error('Failed to acquire authentication token'))
         return
       }
@@ -487,6 +517,15 @@ export class ConnectionManager {
         this.callbacks?.onConnectionPhases?.(this.connectionPhases)
       }
 
+      // Funnel event: WebSocket fully connected and authenticated (once per session)
+      if (!this.hasFiredFunnelConnected) {
+        this.hasFiredFunnelConnected = true
+        shipAnalyticsLog('funnel.ws.connected', {
+          appId,
+          durationMs: this.connectStartSnapshot ? Date.now() - this.connectStartSnapshot : undefined,
+        })
+      }
+
       this.callbacks?.onAuthenticated?.({ socket })
     }
 
@@ -506,6 +545,11 @@ export class ConnectionManager {
         appId,
         socketId: socket.id,
         error: error.message,
+      })
+      shipAnalyticsLog('funnel.ws.connect_failed', {
+        appId,
+        error: error.message,
+        reason: 'auth_rejected',
       })
       this.callbacks?.onAuthFailed?.(error)
     }
@@ -733,9 +777,13 @@ export class ConnectionManager {
         this.storeSocketId(appId, socket.id)
         this.tokenRefreshCount = 0
 
+        // Capture before nulling — used by funnel.ws.connected events below and in onAuthSuccess
+        this.connectStartSnapshot = this.connectAttemptStart
+        const connectStartSnapshot = this.connectStartSnapshot
+
         // Compute socket connect duration
-        if (this.connectionPhases && this.connectAttemptStart) {
-          this.connectionPhases.socketConnectMs = Date.now() - this.connectAttemptStart
+        if (this.connectionPhases && connectStartSnapshot) {
+          this.connectionPhases.socketConnectMs = Date.now() - connectStartSnapshot
           this.connectAttemptStart = null
 
           // Collect WS Resource Timing (cross-origin — needs Timing-Allow-Origin)
@@ -752,6 +800,13 @@ export class ConnectionManager {
         // Fallback path: old server already authenticated via io.use() — skip authenticate event
         if (this.handshakeAuthMode) {
           this.handshakeAuthMode = false
+          if (!this.hasFiredFunnelConnected) {
+            this.hasFiredFunnelConnected = true
+            shipAnalyticsLog('funnel.ws.connected', {
+              appId,
+              durationMs: connectStartSnapshot ? Date.now() - connectStartSnapshot : undefined,
+            })
+          }
           this.callbacks?.onAuthenticated?.({ socket })
           return
         }
@@ -762,6 +817,13 @@ export class ConnectionManager {
         // Skip the authenticate event — the server has no handler for it in handshake-auth
         // mode and sending it would cause a 30s auth timeout on old servers.
         if (hasAuthToken(socket.auth)) {
+          if (!this.hasFiredFunnelConnected) {
+            this.hasFiredFunnelConnected = true
+            shipAnalyticsLog('funnel.ws.connected', {
+              appId,
+              durationMs: connectStartSnapshot ? Date.now() - connectStartSnapshot : undefined,
+            })
+          }
           this.callbacks?.onAuthenticated?.({ socket })
           return
         }
@@ -800,6 +862,11 @@ export class ConnectionManager {
       },
 
       onReconnectFailed: () => {
+        shipAnalyticsLog('funnel.ws.connect_failed', {
+          appId,
+          error: 'Reconnection attempts exhausted',
+          reason: 'transport_error',
+        })
         this.callbacks?.onReconnectFailed?.({ socket })
       },
 
@@ -861,6 +928,11 @@ export class ConnectionManager {
         this.handshakeAuthMode = true
         this.createAndRegisterSocket({ appId, token, previousSocketId, isNew: true })
       } else {
+        shipAnalyticsLog('funnel.ws.connect_failed', {
+          appId,
+          error: 'Failed to acquire authentication token for fallback',
+          reason: 'token_failed',
+        })
         this.callbacks?.onConnectionFailed?.(new Error('Failed to acquire authentication token for fallback'))
       }
       return

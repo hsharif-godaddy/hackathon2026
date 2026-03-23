@@ -156,6 +156,10 @@ const connectionStartTimes = new Map<string, number>()
 const MAX_CONNECTION_TRACKING_AGE_MS = 24 * 60 * 60 * 1000 // 24 hours
 const PRUNE_THRESHOLD_SIZE = 1000
 
+// Tracks initial-prompt metadata per socket for funnel events in onMessageComplete/onError
+// Populated in onMessageStart, consumed and cleaned up in onMessageComplete/onError/onDisconnection
+const initialPromptMetadata = new Map<string, { isInitialPrompt: boolean; customerId?: string; agentName?: string; startTime: number }>();
+
 /**
  * Socket.IO server instance for emitting events
  * Exported for use in other services (e.g., OAuth result notifications)
@@ -1520,6 +1524,15 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             conversationId: typedContext?.conversation?.conversationId
           });
         }
+
+        // Store metadata for funnel events in onMessageComplete/onError
+        // These callbacks don't receive per-message data from ai-transport
+        initialPromptMetadata.set(socketId, {
+          isInitialPrompt,
+          customerId,
+          agentName: agentName || undefined,
+          startTime: Date.now(),
+        });
       },
 
       // Pre-completion callback for git operations
@@ -1582,6 +1595,22 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           agentId
         });
 
+        // Funnel event: Track completion of initial prompt (first build)
+        const promptMeta = initialPromptMetadata.get(socketId);
+        if (promptMeta?.isInitialPrompt && appId) {
+          const durationMs = Date.now() - promptMeta.startTime;
+          logger.info('funnel.initial_prompt.complete', {
+            appId,
+            customerId: promptMeta.customerId,
+            durationMs,
+            agentName: promptMeta.agentName || result.agentName || result.agentId || 'unknown',
+          });
+        }
+        // Always clean up regardless of isInitialPrompt
+        if (promptMeta) {
+          initialPromptMetadata.delete(socketId);
+        }
+
         if (appId) {
           const contextLogger = log.forApp(appId);
           contextLogger.info('websocket.request.site_completed', {});
@@ -1608,6 +1637,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           })
           connectionStartTimes.delete(socketId)
         }
+
+        initialPromptMetadata.delete(socketId);
 
         logger.info('websocket.connection.disconnected', {
           message: 'WebSocket client disconnected',
@@ -1727,6 +1758,21 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             error: error.message,
             message: message ? message.substring(0, 100) : undefined
           });
+        }
+
+        // Funnel event: Track failure of initial prompt
+        const promptMeta = initialPromptMetadata.get(socketId);
+        if (promptMeta?.isInitialPrompt && appId) {
+          logger.info('funnel.initial_prompt.error', {
+            appId,
+            customerId: promptMeta.customerId,
+            error: error.message,
+            agentName: promptMeta.agentName || 'unknown',
+          });
+        }
+        // Always clean up
+        if (promptMeta) {
+          initialPromptMetadata.delete(socketId);
         }
 
         // Git hook: Squash merge to main on error (if we have appId)

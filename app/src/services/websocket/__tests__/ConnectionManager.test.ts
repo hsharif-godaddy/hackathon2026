@@ -1,6 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { shipAnalyticsLog } from '@/lib/logging'
 import { getSharedSocket, setSharedSocket } from '@/lib/socketRegistry'
+
+vi.mock('@/lib/logging', () => ({
+  shipAnalyticsLog: vi.fn(),
+}))
 import type { ConnectionCallbacks } from '../ConnectionManager'
 import { ConnectionManager } from '../ConnectionManager'
 
@@ -507,6 +512,160 @@ describe('ConnectionManager', () => {
 
       // Access private field for verification (test-only)
       expect((manager as any).cachedToken).toBeNull()
+    })
+  })
+
+  describe('funnel analytics events', () => {
+    beforeEach(() => {
+      vi.mocked(shipAnalyticsLog).mockClear()
+    })
+
+    describe('funnel.ws.connected', () => {
+      it('fires on authenticateSuccess (connect-then-auth)', async () => {
+        const { manager, sockets } = createManager()
+
+        const callbacks: ConnectionCallbacks = {
+          onAuthenticated: vi.fn(),
+        }
+
+        await manager.connect('app-funnel', callbacks)
+
+        const socket = sockets[0]
+        ;(socket as any).connected = true
+        socket.trigger('connect')
+        socket.trigger('authenticateSuccess', { socketId: 'socket-0' })
+
+        expect(shipAnalyticsLog).toHaveBeenCalledWith('funnel.ws.connected', expect.objectContaining({
+          appId: 'app-funnel',
+        }))
+      })
+
+      it('fires on handshakeAuthMode path', async () => {
+        const { manager, sockets } = createManager()
+
+        const callbacks: ConnectionCallbacks = {
+          onAuthenticated: vi.fn(),
+        }
+
+        await manager.connect('app-fallback-funnel', callbacks)
+
+        // Trigger fallback path
+        sockets[0].trigger('connect_error', new Error('Missing or invalid Authorization'))
+        await flushPromises()
+
+        const secondSocket = sockets[1]
+        ;(secondSocket as any).connected = true
+        secondSocket.trigger('connect')
+
+        expect(shipAnalyticsLog).toHaveBeenCalledWith('funnel.ws.connected', expect.objectContaining({
+          appId: 'app-fallback-funnel',
+        }))
+      })
+
+      it('fires when socket reconnects with handshake token', async () => {
+        const { manager, sockets } = createManager()
+
+        const callbacks: ConnectionCallbacks = {
+          onAuthenticated: vi.fn(),
+        }
+
+        await manager.connect('app-reconnect-funnel', callbacks)
+
+        const socket = sockets[0]
+        ;(socket as any).auth = { token: 'handshake-token', appId: 'app-reconnect-funnel' }
+        ;(socket as any).connected = true
+        socket.trigger('connect')
+
+        expect(shipAnalyticsLog).toHaveBeenCalledWith('funnel.ws.connected', expect.objectContaining({
+          appId: 'app-reconnect-funnel',
+        }))
+      })
+    })
+
+    describe('funnel.ws.connect_failed', () => {
+      it('fires on authenticateError (auth_rejected)', async () => {
+        const { manager, sockets } = createManager()
+
+        const callbacks: ConnectionCallbacks = {
+          onAuthFailed: vi.fn(),
+        }
+
+        await manager.connect('app-auth-fail', callbacks)
+
+        const socket = sockets[0]
+        ;(socket as any).connected = true
+        socket.trigger('connect')
+        socket.trigger('authenticateError', { error: 'Invalid token' })
+
+        expect(shipAnalyticsLog).toHaveBeenCalledWith('funnel.ws.connect_failed', {
+          appId: 'app-auth-fail',
+          error: 'Invalid token',
+          reason: 'auth_rejected',
+        })
+      })
+
+      it('fires when token is null (token_failed)', async () => {
+        const fetchAgentToken = vi.fn().mockResolvedValue(null)
+        const { manager } = createManager({ fetchAgentToken })
+
+        const callbacks: ConnectionCallbacks = {
+          onConnectionFailed: vi.fn(),
+        }
+
+        await manager.connect('app-no-token', callbacks)
+
+        expect(shipAnalyticsLog).toHaveBeenCalledWith('funnel.ws.connect_failed', {
+          appId: 'app-no-token',
+          error: 'Failed to acquire authentication token',
+          reason: 'token_failed',
+        })
+      })
+
+      it('fires on reconnect_failed (transport_error)', async () => {
+        const { manager, sockets } = createManager()
+
+        const callbacks: ConnectionCallbacks = {
+          onReconnectFailed: vi.fn(),
+        }
+
+        await manager.connect('app-transport-fail', callbacks)
+
+        sockets[0].trigger('reconnect_failed')
+
+        expect(shipAnalyticsLog).toHaveBeenCalledWith('funnel.ws.connect_failed', {
+          appId: 'app-transport-fail',
+          error: 'Reconnection attempts exhausted',
+          reason: 'transport_error',
+        })
+      })
+
+      it('fires on handshake fallback token failure (token_failed)', async () => {
+        const fetchAgentToken = vi.fn()
+          .mockResolvedValueOnce('token-initial')  // initial connect succeeds
+          .mockResolvedValueOnce(null)              // fallback fetch fails
+        const { manager, sockets } = createManager({ fetchAgentToken })
+
+        const callbacks: ConnectionCallbacks = {
+          onConnectionFailed: vi.fn(),
+        }
+
+        await manager.connect('app-fallback-fail', callbacks)
+
+        // Clear cachedToken so the fallback path calls fetchAgentToken (which returns null)
+        ;(manager as any).cachedToken = null
+
+        vi.mocked(shipAnalyticsLog).mockClear()
+
+        // Trigger handshake fallback path
+        sockets[0].trigger('connect_error', new Error('Missing or invalid Authorization'))
+        await flushPromises()
+
+        expect(shipAnalyticsLog).toHaveBeenCalledWith('funnel.ws.connect_failed', {
+          appId: 'app-fallback-fail',
+          error: 'Failed to acquire authentication token for fallback',
+          reason: 'token_failed',
+        })
+      })
     })
   })
 })
