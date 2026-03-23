@@ -1,0 +1,112 @@
+route:
+  language: en
+  name: airo-build-a-thon
+  label: Airo Build-a-Thon
+  useCase: airo-build-a-thon
+
+meta:
+  title: "Airo Build-a-Thon | Turn Your Business Idea Into Reality"
+  description: "Official landing for Airo Build-a-Thon. Turn Your Business Idea Into a Polished Web Experience. Build for projects, portfolios, student organizations, or real-world ventures."
+
+theme:
+  backgroundGradient: >-
+    linear-gradient(160deg, #0f172a 0%, #1e293b 45%, #0c4a6e 100%)
+  glowColors:
+    - "#38bdf8"
+    - "#818cf8"
+    - "#c084fc"
+    - "#22d3ee"
+    - "#38bdf8"
+  featureColors:
+    - "#38bdf8"
+    - "#818cf8"
+    - "#c084fc"
+  accentColor: "#38bdf8"
+
+header:
+  showLogo: true
+  location: landing-airo-build-a-thon
+
+hero:
+  title: "Airo Build-a-Thon — Turn Your Business Idea Into Reality"
+  subtitle: "Begin with your business idea and define your audience, structure, and key sections. Airo then helps you turn it into a clean, professional website perfect for startups, side projects, or academic use."
+  placeholders:
+    - "An e-commerce store with products, pricing, checkout..."
+    - "A healthcare startup with services, patient info, contact..."
+    - "A gaming idea with features, storyline, demo links..."
+    - "A consulting firm with offerings, testimonials, contact..."
+    - "A startup idea with positioning, features, signup..."
+  placeholdersMobile:
+    - "E-commerce site with products, pricing, and checkout..."
+    - "Healthcare startup idea..."
+    - "Gaming idea with demo..."
+  examples:
+    - title: "Business Idea Landing Page"
+      prompt: "Create a landing page for a business idea: clear value proposition, target audience, key features or services, pricing or offering overview, and a strong call-to-action. Keep it clean, modern, and easy to scan."
+      slug: business_idea
+      featured: true
+    - title: "Course Project Site"
+      prompt: "Build a concise microsite for a semester project: one-paragraph overview, learning goals, methodology summary, results with two bullet metrics, team member roles, and a footer with course name and term."
+      slug: course_project_site
+    - title: "Student Organization"
+      prompt: "Create a professional page for a university student chapter: mission statement, who we serve, meeting cadence, how to join, officer list, and events section."
+      slug: student_organization
+    - title: "E-Commerce Storefront"
+      prompt: "Build a storefront-style page for a product business idea: hero with value prop, 4-6 product cards with short descriptions and price placeholders, simple cart or buy CTAs, shipping and returns note, and a trust section with reviews or guarantees. Mobile-first layout."
+      slug: ecommerce_storefront
+    - title: "Event or Program Page"
+      prompt: "Create a one-page site for a timed program or event: what it is, who it's for, schedule or milestones, rules or requirements, FAQ, and a clear signup or interest form section. Tone: professional and easy to scan."
+      slug: event_program_page
+  scrollLabel: "See how it works"
+  disclaimer: true
+
+sections:
+  - type: explainer
+    id: airo-build-a-thon-overview
+    preTitle: "From Idea to Execution"
+    title: "Turn Your Business Idea Into Something Real, Fast"
+    text: "Every strong business idea starts with clarity: who it's for, what it offers, and how it delivers value. Airo helps you turn that idea into a structured, professional web experience in minutes. Whether it's for a Build-a-Thon, a startup concept, or a project, you stay in control while Airo removes friction from formatting and iteration."
+    image: /images/block-1-big.png
+    imageSmall: /images/block-1-small.png
+    imagePosition: left
+
+  - type: features
+    id: student-outcomes
+    items:
+      - title: "Shape Your Business Idea With Plain Language"
+        description: "Describe your idea, refine sections, and adjust messaging without worrying about layout or code."
+      - title: "Professional Structure for Real Ideas"
+        description: "Present your business idea with clarity: strong hierarchy, clear sections, and a polished, credible layout."
+      - title: "Launch-Ready Outcomes"
+        description: "Turn your business idea into a live site you can demo, share, validate, or build into something bigger."
+
+  - type: explainer
+    id: where-it-fits
+    preTitle: "Where Business Ideas Come to Life"
+    title: "From Ideas to Startups, Side Projects, and Beyond"
+    text: "Use Airo when you want to bring a business idea to life, whether it's an e-commerce concept, healthcare solution, gaming idea, professional service, or even a structured academic project. It helps you move from idea to execution quickly, with a web presence you can actually share."
+    image: /images/block-2-big.jpg
+    imageSmall: /images/block-2-small.png
+    imagePosition: right
+
+  - type: faq
+    id: faq
+    title: "Frequently Asked Questions"
+    items:
+      - question: "Do I need web development experience?"
+        answer: "No. You can turn your business idea into a website using simple descriptions. No coding required."
+      - question: "How should I start so the first draft is useful?"
+        answer: "Start with your business idea: define your audience, value proposition, key sections, and tone. The clearer your idea, the better the output."
+      - question: "Can teams collaborate on one project?"
+        answer: "Yes. Teams can align on a business idea and refine it together into a shared web experience."
+      - question: "What about academic integrity?"
+        answer: "Airo helps you structure and present ideas. You are responsible for originality, accuracy, and following institutional or competition guidelines."
+      - question: "Will this work for non-English content?"
+        answer: "Yes. You can build your business idea for any audience or market in your preferred language."
+
+  - type: help
+    id: help
+    title: "Need Help With Your Account or Builder?"
+    text: "For product issues, billing, or technical support, contact GoDaddy help. For Build-a-Thon or program-related questions, contact your organizer or administrator."
+    ctaText: "Contact GoDaddy support"
+    ctaUrl: "https://www.godaddy.com/help/contact-us"

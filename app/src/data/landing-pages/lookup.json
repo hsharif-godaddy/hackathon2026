@@ -1,5 +1,10 @@
 {
   "routes": {
+    "airo-build-a-thon": {
+      "file": "airo-build-a-thon/en-airo-build-a-thon.yaml",
+      "language": "en",
+      "useCase": "airo-build-a-thon"
+    },
     "games": {
       "file": "games/en-games.yaml",
       "language": "en",
@@ -12,6 +17,12 @@
     }
   },
   "alternates": {
+    "airo-build-a-thon": [
+      {
+        "name": "airo-build-a-thon",
+        "hreflang": "en"
+      }
+    ],
     "games": [
       {
         "name": "games",
@@ -25,6 +36,10 @@
     ]
   },
   "pages": [
+    {
+      "label": "Airo Build-a-Thon",
+      "href": "/explore/airo-build-a-thon"
+    },
     {
       "label": "Games",
       "href": "/explore/games"
