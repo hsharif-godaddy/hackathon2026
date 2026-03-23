@@ -42,6 +42,7 @@ export const ERROR_CATEGORIES = [
   'bad_request',
   'file_not_found',
   'quota_exceeded',
+  'request_timeout',
   'other',
 ] as const;
 

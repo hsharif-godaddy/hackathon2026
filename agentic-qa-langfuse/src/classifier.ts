@@ -49,6 +49,13 @@ or their subscription tier does not permit the requested action (e.g., publishin
 Signals: "credit", "credits exhausted", "budget", "usage limit", "quota",
 "purchase more", "subscription required", "upgrade required", "Airo Plus".
 
+### request_timeout
+An outbound HTTP request (typically to an LLM provider) was aborted due to a
+timeout or the operation taking too long to complete.
+Signals: "AbortError", "This operation was aborted", "ETIMEDOUT", "ESOCKETTIMEDOUT",
+"timeout", "request timed out", "socket hang up", "ECONNRESET", "network timeout",
+"context deadline exceeded", "deadline exceeded".
+
 ### other
 The error does not clearly fit any of the above categories.
 Use this only when you are genuinely uncertain — do not force a classification.
