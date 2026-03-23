@@ -880,6 +880,73 @@ const messages = await loadTranslations("en-US", [
 
 - **This README**: `app/src/lib/translations/README.md`
 
+## Creating and Managing Translation Keys
+
+### Fetching Available Keys
+
+**For LLMs/Agents/Scripts:**
+
+```bash
+curl https://api.i18n.int.gdcorp.tools/api/v2/package/market/en-US/%40airo%2Fapp-builder
+```
+
+No authentication required. Returns JSON object with all available translation keys.
+
+**Example Response:**
+
+```json
+{
+  "builder_title": "Airo Builder",
+  "builder_beta": "Beta",
+  "builder_project_domain_title": "Project Domain"
+}
+```
+
+### Creating New Translation Keys
+
+**Use the i18n Management UI:**
+https://i18n.int.gdcorp.tools/org/hcx/app/airo-app-builder
+
+**Prerequisites:**
+
+1. Add yourself to the `PARTNERSTRANSLATIONS` AD group
+2. Connect to GoDaddy VPN
+
+**Steps:**
+
+1. Visit the i18n management UI
+2. Click "Add Translation"
+3. Enter key name following naming conventions (see below)
+4. Provide English translation
+5. (Optional) Add translations for other locales
+6. Publish changes
+
+**Key Naming Conventions:**
+
+- Use `builder_` prefix for all keys
+- Format: `builder_{feature}_{element}_{detail}`
+- Examples:
+  - `builder_settings_database_title`
+  - `builder_common_retry`
+  - `builder_error_network_timeout`
+
+### Pre-commit Validation
+
+Translation keys are automatically validated during `git commit`:
+
+- Extracts all keys from staged `.ts` and `.tsx` files in `app/src`
+- Fetches available keys from API
+- Reports missing keys with file locations
+- Blocks commit if validation fails
+
+**To bypass validation (emergencies only):**
+
+```bash
+git commit --no-verify
+```
+
+**Note:** Validation is skipped if the API is unreachable (e.g., not on VPN). This prevents blocking commits due to network issues.
+
 ## External Resources
 
 - [GoDaddy Translation API](https://api.i18n.int.gdcorp.tools/api/v2)

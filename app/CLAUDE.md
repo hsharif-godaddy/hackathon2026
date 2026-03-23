@@ -82,20 +82,22 @@ Translations use react-intl via Gasket's `pluginIntl` (62 locales, default `en-U
 **Usage:**
 
 ```typescript
-import { useTranslations } from '@/hooks/useTranslations';
+import { useTranslations } from "@/hooks/useTranslations";
 
 const t = useTranslations();
-t('builder_publish_limit_title');                          // Key only (preferred)
-t('builder_publish_limit_plan_info', { planName, limit }); // With interpolation values
+t("builder_publish_limit_title"); // Key only (preferred)
+t("builder_publish_limit_plan_info", { planName, limit }); // With interpolation values
 ```
 
 For JSX-embedded translations use `<FormattedMessage id="key" values={{ ... }} />`.
 
-**Do NOT specify `defaultMessage`.** All strings must exist in the translation system. Adding English defaults causes translations to silently fall back to English instead of surfacing missing keys.
-
 **Key structure:** `builder_{feature}_{element}` (e.g., `builder_settings_database_title`, `builder_common_retry`).
 
 **Key files:** `src/hooks/useTranslations.ts` (hook), `src/lib/translations/load-translations.ts` (server-side loader), `src/components/providers/TranslationProvider.tsx` (provider), `gasket.ts` (locale config).
+
+**Pre-commit validation:** Translation keys are validated automatically. Missing keys will block commits. Add missing keys via the i18n UI before committing.
+
+**Full documentation:** See `src/lib/translations/README.md` for comprehensive translation guide covering client/server patterns, pluralization, rich text formatting, and API details.
 
 ## Database (MySQL/Prisma)
 

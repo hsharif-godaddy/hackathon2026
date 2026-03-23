@@ -25,6 +25,9 @@
     "apm:clean": "./scripts/local-apm.sh clean"
   },
   "devDependencies": {
+    "@babel/parser": "^7.26.3",
+    "@babel/traverse": "^7.26.4",
+    "@babel/types": "^7.26.3",
     "@elastic/elasticsearch": "^8.19.1",
     "@playwright/test": "^1.56.1",
     "husky": "^8.0.0",
@@ -37,7 +40,8 @@
       "pnpm --filter @airo/agents lint:fix"
     ],
     "app/**/*.{ts,tsx,js,jsx}": [
-      "bash -c 'cd app && pnpm lint --fix'"
+      "bash -c 'cd app && pnpm lint --fix'",
+      "node scripts/validate-i18n.mjs"
     ],
     "proxy/**/*.{ts,tsx,js,jsx}": [
       "pnpm --filter proxy lint:fix"

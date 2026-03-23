@@ -131,6 +131,22 @@ Use `./setup.sh` — don't create `.env` files manually.
 - Setup: `GETTING_STARTED.md`
 - Mock auth: `app/MOCK-AUTH-SETUP.md`
 
+## i18n Validation
+
+All translation keys are validated during pre-commit. The system:
+
+- Fetches available keys from i18n API (no auth required)
+- Validates all t(), FormattedMessage, and intl.formatMessage() calls
+- Blocks commits if keys are missing
+
+To fetch available translations (for LLM/agents):
+GET https://api.i18n.int.gdcorp.tools/api/v2/package/market/en-US/%40airo%2Fapp-builder
+
+To create missing keys, visit: https://i18n.int.gdcorp.tools/org/hcx/app/airo-app-builder
+(Requires PARTNERSTRANSLATIONS AD group membership)
+
+See app/src/lib/translations/README.md for full details.
+
 ## E2E Test Maintenance
 
 **When modifying UI components, always check if E2E tests reference affected `data-testid` attributes, selectors, or user flows.** E2E smoke tests live in `tests/smoke/` and run against the real app. If you add, rename, or remove a `data-testid`, change a component's DOM structure, or alter a user interaction flow (e.g., confirmation dialogs, navigation), update the corresponding E2E tests to match. Grep for the test ID in `tests/smoke/` to find affected specs.
