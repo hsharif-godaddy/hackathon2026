@@ -42,8 +42,9 @@ func (p *Pipeline) IngestDocument(ctx context.Context, doc models.IngestDocument
 
 	slog.Info("ingest.document.begin", "docName", doc.Name)
 
-	// 1. Chunk by headers
-	chunks := ChunkMarkdown(doc.Name, doc.Content, doc.Tags, p.cfg.IngestMinChunkSize)
+	// 1. Chunk by headers, with max size + overlap applied within each section
+	chunks := ChunkMarkdown(doc.Name, doc.Content, doc.Tags,
+		p.cfg.IngestMinChunkSize, p.cfg.IngestMaxChunkSize, p.cfg.IngestChunkOverlap)
 	if len(chunks) == 0 {
 		result.Status = "skipped"
 		slog.Info("ingest.document.empty", "docName", doc.Name)
@@ -68,7 +69,11 @@ func (p *Pipeline) IngestDocument(ctx context.Context, doc models.IngestDocument
 	var changedChunks []*models.Chunk
 	for _, chunk := range chunks {
 		if _, exists := existingByHash[chunk.ContentHash]; exists {
-			// Content unchanged — skip LLM, embedding, and upsert entirely
+			// Content unchanged — skip LLM, embedding, and upsert entirely.
+			// WARNING: if the embedding pipeline changed (e.g. sectionPath prefix
+			// was added), stored embeddings for these chunks are from the old
+			// pipeline. Delete the collection and re-ingest all documents to
+			// ensure a semantically consistent index.
 			result.ChunksUpdated++
 			continue
 		}
@@ -83,11 +88,25 @@ func (p *Pipeline) IngestDocument(ctx context.Context, doc models.IngestDocument
 		result.ChunksCreated++
 	}
 
+	if result.ChunksUpdated > 0 {
+		slog.Debug("ingest.document.skipped_chunks",
+			"docName", doc.Name,
+			"skipped", result.ChunksUpdated,
+			"hint", "skipped chunks reuse stored embeddings; delete the collection and re-ingest if the embedding pipeline changed")
+	}
+
 	// 4. Batch embed only new/changed chunks
 	if len(changedChunks) > 0 {
 		texts := make([]string, len(changedChunks))
 		for i, c := range changedChunks {
-			texts[i] = c.ContextualContent
+			// Prepend sectionPath so the dense embedding captures document
+			// hierarchy (e.g. "Deployment > Publishing Sites") in addition to
+			// the contextual prefix and raw content.
+			if c.SectionPath != "" {
+				texts[i] = c.SectionPath + "\n" + c.ContextualContent
+			} else {
+				texts[i] = c.ContextualContent
+			}
 		}
 
 		vectors, err := p.embeddings.GenerateBatch(ctx, texts)

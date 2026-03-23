@@ -3,7 +3,9 @@ package api
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
+	"unicode"
 )
 
 // responseWriter wraps http.ResponseWriter to capture status code.
@@ -31,10 +33,22 @@ func loggingMiddleware(next http.Handler) http.Handler {
 
 		slog.Info("http.request.complete",
 			"method", r.Method,
-			"path", r.URL.Path,
+			"path", sanitizeLogValue(r.URL.Path),
 			"status", rw.statusCode,
 			"durationMs", time.Since(start).Milliseconds(),
-			"userAgent", r.UserAgent(),
+			"userAgent", sanitizeLogValue(r.UserAgent()),
 		)
 	})
+}
+
+// sanitizeLogValue strips control characters (newlines, CR, tabs, ANSI escapes)
+// from user-supplied strings before they are written to the log, preventing
+// log injection regardless of the log format (text or JSON).
+func sanitizeLogValue(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, s)
 }

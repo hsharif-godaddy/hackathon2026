@@ -5,18 +5,25 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/golang-nlp/stopwords"
+	"github.com/kljensen/snowball"
+
 	"github.com/airo-ai-builder/knowledge-service/pkg/models"
 )
 
 // Tokenize converts text to a BM25 sparse vector.
-// Steps: lowercase, strip punctuation, split whitespace, compute term frequencies.
-// Qdrant applies IDF server-side via sparse vector modifier.
+// Steps: lowercase → strip punctuation → split whitespace →
+//
+//	remove stop words → stem (Snowball/Porter2) → compute term frequencies.
+//
+// Qdrant applies IDF server-side via the sparse vector modifier.
+// Both query-time and ingest-time tokenization must use the same pipeline
+// so that sparse vector indices align.
 func Tokenize(text string) *models.SparseVector {
 	if text == "" {
 		return &models.SparseVector{}
 	}
 
-	// Lowercase and strip punctuation
 	cleaned := strings.Map(func(r rune) rune {
 		if unicode.IsPunct(r) || unicode.IsSymbol(r) {
 			return -1
@@ -24,20 +31,31 @@ func Tokenize(text string) *models.SparseVector {
 		return unicode.ToLower(r)
 	}, text)
 
-	// Split on whitespace
 	words := strings.Fields(cleaned)
 	if len(words) == 0 {
 		return &models.SparseVector{}
 	}
 
-	// Compute term frequencies
 	tf := make(map[uint32]float32)
 	for _, word := range words {
-		idx := hashToken(word)
-		tf[idx]++
+		if stopwords.IsStopWord("en", word) {
+			continue
+		}
+
+		// Snowball Porter2 English stemmer — errors only occur for unsupported
+		// languages; "english" is always supported, so we ignore the error.
+		stemmed, err := snowball.Stem(word, "english", true)
+		if err != nil {
+			stemmed = word
+		}
+
+		tf[hashToken(stemmed)]++
 	}
 
-	// Convert to sparse vector
+	if len(tf) == 0 {
+		return &models.SparseVector{}
+	}
+
 	indices := make([]uint32, 0, len(tf))
 	values := make([]float32, 0, len(tf))
 	for idx, freq := range tf {
@@ -51,7 +69,7 @@ func Tokenize(text string) *models.SparseVector {
 	}
 }
 
-// hashToken uses FNV-1a to map term strings to uint32 indices.
+// hashToken uses FNV-1a to map stemmed term strings to uint32 indices.
 func hashToken(s string) uint32 {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(s))

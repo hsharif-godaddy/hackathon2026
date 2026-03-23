@@ -69,6 +69,10 @@ func (s *Server) Initialize(ctx context.Context) error {
 	// Ingestion pipeline
 	s.pipeline = ingest.NewPipeline(s.config, s.embeddings, s.llmClient, s.qdrant)
 
+	// Warn once if the embedding pipeline configuration has changed since the
+	// last run so operators know to re-ingest before the index becomes stale.
+	ingest.CheckVersion(s.config)
+
 	// Auth middleware
 	s.authMiddleware = goauth.NewMiddleware(s.config.AuthType, s.config.SSOHost)
 

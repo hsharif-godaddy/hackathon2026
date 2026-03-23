@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"log/slog"
 	"os"
 	"strconv"
 )
@@ -45,6 +46,8 @@ type Config struct {
 	// Ingest
 	IngestBatchSize    int
 	IngestMinChunkSize int
+	IngestMaxChunkSize int
+	IngestChunkOverlap int
 
 	// Server TLS
 	TLSCertPath string
@@ -95,12 +98,14 @@ func LoadConfig() (*Config, error) {
 		SearchTopN:              getEnvInt("SEARCH_TOP_N", 5),
 		SearchPrefetchLimit:     getEnvInt("SEARCH_PREFETCH_LIMIT", 20),
 		SearchPrefetchThreshold: getEnvFloat32("SEARCH_PREFETCH_THRESHOLD", 0.25),
-		SearchFusionThreshold:   getEnvFloat32("SEARCH_FUSION_THRESHOLD", 0.55),
+		SearchFusionThreshold:   getEnvFloat32("SEARCH_FUSION_THRESHOLD", 0.4),
 		SearchFormulaBoost:      getEnvFloat32("SEARCH_FORMULA_BOOST", 0.05),
 
 		// Ingest
 		IngestBatchSize:    getEnvInt("INGEST_BATCH_SIZE", 100),
 		IngestMinChunkSize: getEnvInt("INGEST_MIN_CHUNK_SIZE", 100),
+		IngestMaxChunkSize: getEnvInt("INGEST_MAX_CHUNK_SIZE", 1500),
+		IngestChunkOverlap: getEnvInt("INGEST_CHUNK_OVERLAP", 150),
 
 		// TLS
 		TLSCertPath: getEnvString("SERVER_CERT_PATH", ""),
@@ -118,6 +123,13 @@ func LoadConfig() (*Config, error) {
 
 	if cfg.AuthType == "jwt" && cfg.SSOHost == "" {
 		return nil, errors.New("SSO_HOST must be set when AUTH_TYPE=jwt")
+	}
+
+	if cfg.IngestMaxChunkSize > 0 && cfg.IngestChunkOverlap >= cfg.IngestMaxChunkSize {
+		slog.Warn("config.invalid.chunk_overlap",
+			"IngestChunkOverlap", cfg.IngestChunkOverlap,
+			"IngestMaxChunkSize", cfg.IngestMaxChunkSize,
+			"hint", "overlap will be silently reduced to maxChars/4 inside slidingWindow; set INGEST_CHUNK_OVERLAP < INGEST_MAX_CHUNK_SIZE")
 	}
 
 	return cfg, nil

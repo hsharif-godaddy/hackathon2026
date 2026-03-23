@@ -181,7 +181,22 @@ func (c *Client) HybridSearch(ctx context.Context, params HybridSearchParams) ([
 	prefetchThreshold := c.cfg.SearchPrefetchThreshold
 	fusionThreshold := c.cfg.SearchFusionThreshold
 	formulaBoost := c.cfg.SearchFormulaBoost
-	overFetchLimit := params.Limit * 3 // over-fetch for dedup
+
+	// Over-fetch to give dedup enough candidates. topN*3 is too low for small
+	// topN values (e.g. topN=3 → only 9 candidates for RRF). Floor at 30,
+	// capped at maxOverFetch to prevent uint64 overflow on large inputs.
+	// Guard multiplication first: if params.Limit > maxOverFetch/10 the
+	// product would overflow uint64 before the cap check could fire.
+	const maxOverFetch = uint64(1000)
+	var overFetchLimit uint64
+	if params.Limit > maxOverFetch/10 {
+		overFetchLimit = maxOverFetch
+	} else {
+		overFetchLimit = params.Limit * 10
+	}
+	if overFetchLimit < 30 {
+		overFetchLimit = 30
+	}
 
 	// Build filter conditions (applied at the innermost prefetch level)
 	filter := c.buildSearchFilter(params.DocNamesFilter, params.TagsFilter)

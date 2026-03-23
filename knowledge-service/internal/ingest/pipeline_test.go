@@ -19,7 +19,7 @@ All requests require a Bearer token in the Authorization header.
 GET /api/v1/resources - List all resources.
 POST /api/v1/resources - Create a new resource.`
 
-	chunks := ChunkMarkdown("api-reference", content, []string{"api", "docs"}, 50)
+	chunks := ChunkMarkdown("api-reference", content, []string{"api", "docs"}, 50, 0, 0)
 
 	if len(chunks) == 0 {
 		t.Fatal("expected chunks")
@@ -43,7 +43,7 @@ func TestChunkAndHash(t *testing.T) {
 
 Some content for testing the pipeline integration.`
 
-	chunks := ChunkMarkdown("test-doc", content, nil, 10)
+	chunks := ChunkMarkdown("test-doc", content, nil, 10, 0, 0)
 	if len(chunks) != 1 {
 		t.Fatalf("expected 1 chunk, got %d", len(chunks))
 	}

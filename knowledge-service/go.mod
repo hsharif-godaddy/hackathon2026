@@ -4,8 +4,10 @@ go 1.25.5
 
 require (
 	github.com/gdcorp-partners/airo-app-builder/packages/go-auth v0.0.0
+	github.com/golang-nlp/stopwords v1.0.0
 	github.com/gorilla/mux v1.8.1
 	github.com/joho/godotenv v1.5.1
+	github.com/kljensen/snowball v0.10.0
 	github.com/openai/openai-go/v3 v3.24.0
 	github.com/qdrant/go-client v1.17.1
 )

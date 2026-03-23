@@ -10,10 +10,12 @@ import (
 )
 
 // ChunkMarkdown splits markdown by h1/h2/h3 headers into chunks.
-// Merges small chunks (< minChars) into previous.
+// Merges small chunks (< minChars) into previous, then splits oversized
+// chunks (> maxChars) into overlapping sliding-window sub-chunks.
 // Tracks sectionPath: "Deployment > Vercel > Config".
 // Computes contentHash (SHA-256 hex of content).
-func ChunkMarkdown(docName, content string, tags []string, minChars int) []*models.Chunk {
+// Pass maxChars=0 to disable the max-size split.
+func ChunkMarkdown(docName, content string, tags []string, minChars, maxChars, overlapChars int) []*models.Chunk {
 	if strings.TrimSpace(content) == "" {
 		return nil
 	}
@@ -23,12 +25,23 @@ func ChunkMarkdown(docName, content string, tags []string, minChars int) []*mode
 		return nil
 	}
 
-	// Merge small sections into previous
 	merged := mergeSections(sections, minChars)
 
+	// Expand any section that exceeds maxChars into overlapping sub-chunks.
+	// Use rune length (not byte length) so multi-byte characters are counted
+	// consistently with the rune-based slidingWindow implementation.
+	var expanded []section
+	for _, s := range merged {
+		if maxChars > 0 && len([]rune(s.content)) > maxChars {
+			expanded = append(expanded, slidingWindow(s, maxChars, overlapChars)...)
+		} else {
+			expanded = append(expanded, s)
+		}
+	}
+
 	now := time.Now().UTC()
-	chunks := make([]*models.Chunk, len(merged))
-	for i, s := range merged {
+	chunks := make([]*models.Chunk, len(expanded))
+	for i, s := range expanded {
 		chunks[i] = &models.Chunk{
 			DocName:     docName,
 			SectionPath: s.path,
@@ -42,6 +55,65 @@ func ChunkMarkdown(docName, content string, tags []string, minChars int) []*mode
 	}
 
 	return chunks
+}
+
+// slidingWindow splits a section whose content exceeds maxChars into
+// overlapping sub-chunks of up to maxChars characters with overlapChars overlap.
+// Each sub-chunk inherits the section path. Chunks are snapped to the nearest
+// preceding whitespace so they never cut mid-word.
+func slidingWindow(s section, maxChars, overlapChars int) []section {
+	if maxChars <= 0 {
+		return []section{s}
+	}
+	if overlapChars < 0 {
+		overlapChars = 0
+	}
+	if overlapChars >= maxChars {
+		overlapChars = maxChars / 4
+	}
+
+	runes := []rune(s.content)
+
+	var result []section
+	start := 0
+	for start < len(runes) {
+		end := start + maxChars
+		if end > len(runes) {
+			end = len(runes)
+		} else {
+			// Snap end back to the nearest preceding whitespace so chunks do
+			// not cut mid-word. Fall back to the rune boundary if no whitespace
+			// exists in the window.
+			snap := end
+			for snap > start && runes[snap-1] != ' ' && runes[snap-1] != '\n' && runes[snap-1] != '\t' {
+				snap--
+			}
+			if snap > start {
+				end = snap
+			}
+		}
+		result = append(result, section{
+			path:    s.path,
+			content: string(runes[start:end]),
+			level:   s.level,
+		})
+		if end == len(runes) {
+			break
+		}
+		// Advance from the snapped end so no content between chunks is skipped.
+		// Guard against no-progress when the snap lands at or before start
+		// (e.g. a long token with no whitespace fills the entire window):
+		// always move at least one rune forward to prevent an infinite loop.
+		next := end - overlapChars
+		if next < 0 {
+			next = 0
+		}
+		if next <= start {
+			next = start + 1
+		}
+		start = next
+	}
+	return result
 }
 
 type section struct {
@@ -116,7 +188,7 @@ func mergeSections(sections []section, minChars int) []section {
 
 	merged := []section{sections[0]}
 	for i := 1; i < len(sections); i++ {
-		if len(sections[i].content) < minChars {
+		if len([]rune(sections[i].content)) < minChars {
 			// Merge into previous
 			prev := &merged[len(merged)-1]
 			prev.content = prev.content + "\n\n" + sections[i].content
