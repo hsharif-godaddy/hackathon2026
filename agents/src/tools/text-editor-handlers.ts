@@ -120,7 +120,8 @@ function buildErrorSnippet(lines: string[], searchText: string): string {
     let result = '';
     let totalChars = 0;
     for (let i = 0; i < selected.length; i++) {
-      const fullLine = `${startLine + i}: ${selected[i]!}`;
+      // Use readFile format (padded line number + pipe) so the LLM recognises this as file content
+      const fullLine = `${String(startLine + i).padStart(6)}|${selected[i]!}`;
       if (totalChars + fullLine.length + 1 > charBudget) {
         // If we haven't emitted any content yet, include a truncated prefix of this line
         // so the LLM gets at least some context (handles minified single-line files)

@@ -88,9 +88,10 @@ describe('text-editor-handlers', () => {
         expect.fail('Should have thrown')
       } catch (e: any) {
         expect(e.message).toContain('Current file content (3 lines):')
-        expect(e.message).toContain('1: line one')
-        expect(e.message).toContain('2: line two')
-        expect(e.message).toContain('3: line three')
+        // Uses readFile format: padded line number + pipe separator
+        expect(e.message).toContain('     1|line one')
+        expect(e.message).toContain('     2|line two')
+        expect(e.message).toContain('     3|line three')
       }
     })
 
@@ -108,9 +109,9 @@ describe('text-editor-handlers', () => {
         // Should find partial match on the first line of search text
         expect(e.message).toContain('Current file content (200 lines):')
         // Should include line 100 (the marker)
-        expect(e.message).toContain('100: UNIQUE_MARKER_LINE here')
+        expect(e.message).toContain('   100|UNIQUE_MARKER_LINE here')
         // Should NOT include line 1 (too far from match)
-        expect(e.message).not.toMatch(/\n1: line number 1\n/)
+        expect(e.message).not.toContain('     1|line number 1')
       }
     })
 
@@ -123,11 +124,11 @@ describe('text-editor-handlers', () => {
         await handleStrReplace(filePath, 'xyz', 'x')
         expect.fail('Should have thrown')
       } catch (e: any) {
-        expect(e.message).toContain('1: content 1')
-        expect(e.message).toContain('50: content 50')
+        expect(e.message).toContain('     1|content 1')
+        expect(e.message).toContain('    50|content 50')
         expect(e.message).toContain('(100 lines omitted)')
-        expect(e.message).toContain('151: content 151')
-        expect(e.message).toContain('200: content 200')
+        expect(e.message).toContain('   151|content 151')
+        expect(e.message).toContain('   200|content 200')
       }
     })
 
@@ -142,7 +143,7 @@ describe('text-editor-handlers', () => {
       } catch (e: any) {
         expect(e.message).toContain('Current file content (1 lines):')
         // Should include a truncated prefix, not just the truncation marker
-        expect(e.message).toContain('1: var x=')
+        expect(e.message).toContain('     1|var x=')
         expect(e.message).toContain('chars total')
         // Should NOT contain the full 25KB line
         expect(e.message.length).toBeLessThan(25_000)
