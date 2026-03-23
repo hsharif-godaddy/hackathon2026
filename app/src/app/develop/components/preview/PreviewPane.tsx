@@ -2,10 +2,8 @@
 
 import clsx from 'clsx'
 import { animate, motion, useMotionValue } from 'framer-motion'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader } from '@airo-ux/loader'
-import Alert from '@ux/alert'
-import Button from '@ux/button'
 
 import { getDevicePreset } from '@/app/develop/components/preview/devicePresets'
 import PreviewCode from '@/app/develop/components/preview/PreviewCode'
@@ -15,13 +13,10 @@ import Tips from '@/app/develop/components/tips/Tips'
 import { PreviewViewMode, ViewMode } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
-import { useGitHistoryQuery } from '@/hooks/useGitHistory'
-import { useRestoreCommitMutation } from '@/hooks/useRestoreCommitMutation'
 import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { useGitStore } from '@/stores/useGitStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { postMessageToIframe } from '@/utils/postMessage'
 
@@ -94,8 +89,6 @@ export default function PreviewPane({
   const startPollingForServer = useServerPollingStore((state) => state.startPollingForServer)
   const stopPollingForServer = useServerPollingStore((state) => state.stopPollingForServer)
 
-  const restoreMutation = useRestoreCommitMutation();
-
   const previewViewMode = useDevelopPageStore((state) => state.previewViewMode)
   const viewMode = useDevelopPageStore((state) => state.viewMode)
   const selectedDeviceId = useDevelopPageStore((state) => state.selectedDeviceId)
@@ -119,27 +112,7 @@ export default function PreviewPane({
     maxMargin - ((clampedHeight - minHeight) / (maxHeight - minHeight)) * (maxMargin - minMargin)
   )
 
-  const appId = useAppIdFromParams();
-  const isPublishing = useDevelopPageStore((state) =>
-    appId ? (state.publishStates?.[appId]?.isPublishing ?? false) : false
-  );
-
-  // Get selected commit hash from git store
-  const selectedCommitHash = useGitStore((state) => appId ? state.getSelectedCommitHash(appId) : null)
-
-  // Get commits to determine if selected commit is the latest
-  const { data } = useGitHistoryQuery({
-    appId: appId || '',
-    enabled: !!appId
-  });
-  // Memoize commits to prevent unnecessary recalculations from array reference changes
-  const commits = useMemo(() => data?.commits || [], [data?.commits])
-
-  // Derive selected commit object from hash
-  const selectedCommit = useMemo(() => {
-    if (!selectedCommitHash || !commits.length) return null
-    return commits.find(c => c.hash === selectedCommitHash) ?? null
-  }, [selectedCommitHash, commits]);
+  const appId = useAppIdFromParams()
 
   useEffect(() => {
     if (isMobile) {
@@ -151,11 +124,6 @@ export default function PreviewPane({
 
   const serverState = getServerState(appId)
   const previewUrl = serverState?.isReady ? serverState.url : null
-
-  const latestCommit = commits.length > 0 ? commits[0] : null
-  const isVersionHistoryOpen = useDevelopPageStore((state) => state.isVersionHistoryOpen)
-
-  const isViewingHistoricalCommit = selectedCommit && latestCommit && selectedCommit.hash !== latestCommit.hash && isVersionHistoryOpen
 
   // Iframe state
   const [iframeError, setIframeError] = useState(false)
@@ -450,7 +418,8 @@ export default function PreviewPane({
         // Debounce refreshes to avoid too many reloads
         refreshTimerRef.current = setTimeout(() => {
           if (iframeRef.current) {
-            iframeRef.current.src = iframeRef.current.src
+            const iframeSrc = iframeRef.current.src
+            iframeRef.current.src = iframeSrc
 
             // If we have state to restore, do it after iframe loads
             if (event.data.preserveState) {
@@ -491,30 +460,6 @@ export default function PreviewPane({
     startPollingForServer(appId)
     setIframeError(false)
     setIframeKey(prev => prev + 1)
-  }
-
-  function handleRestoreConfirm() {
-    if (!selectedCommit) return
-
-    restoreMutation.mutate(
-      { appId, commitHash: selectedCommit.hash },
-      {
-        onSuccess: () => {
-          logger.info('preview-pane.restore.success', {
-            message: 'Successfully restored commit',
-            appId,
-            commitHash: selectedCommit.hash.substring(0, 7)
-          })
-        },
-        onError: (error) => {
-          logger.error('preview-pane.restore.error', {
-            message: 'Failed to restore commit',
-            appId,
-            error: error instanceof Error ? error.message : String(error)
-          })
-        }
-      }
-    )
   }
 
   const handleIframeError = () => {
@@ -597,27 +542,6 @@ export default function PreviewPane({
   if (previewUrl && serverState?.isReady) {
     return (
       <div className="h-full flex flex-col">
-        {isViewingHistoricalCommit && !isPublishing && (
-          <div className="mx-1 my-1 md:mx-2 md:my-0">
-            <Alert
-              emphasis="info"
-              actions={
-                <Button
-                  design="secondary"
-                  size="sm"
-                  onClick={handleRestoreConfirm}
-                  disabled={restoreMutation.isPending}
-                  title={t('builder_preview_git_title')}
-                >
-                  {restoreMutation.isPending ? t('builder_preview_error_restoring') : t('builder_preview_error_restore')}
-                </Button>
-              }
-            >
-              {t('builder_preview_git_text')}
-            </Alert>
-          </div>
-        )}
-
         <div className={clsx(
           "inset-0 relative h-full", {
             "p-2": !isMobile

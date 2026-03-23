@@ -1,19 +1,24 @@
 'use client'
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import Alert from '@ux/alert'
+import Button from '@ux/button'
 import CheckboxFilledIcon from '@ux/icon/checkbox-filled'
+import ChevronDownIcon from '@ux/icon/chevron-down'
+import ChevronRightIcon from '@ux/icon/chevron-right'
 import Spinner from '@ux/spinner'
 import Tag from '@ux/tag'
 
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
+import { useRestoreCommitMutation } from '@/hooks/useRestoreCommitMutation'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { DeploymentStatus } from '@/lib/mgmt-airo/types'
 import { logger } from '@/lib/request-context'
+import { GIT_HISTORY_PAGE_SIZE } from '@/services/AppService'
 import { useGitStore } from '@/stores/useGitStore'
 import { useSiteStore } from '@/stores/useSiteStore'
 import { formatDate } from '@/utils/common'
@@ -28,9 +33,37 @@ interface Commit {
   date: string
 }
 
+function groupCommitsByDate(commits: Commit[]): Record<string, Commit[]> {
+  const groups: Record<string, Commit[]> = {}
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+
+  commits.forEach(commit => {
+    const commitDate = new Date(commit.date)
+    commitDate.setHours(0, 0, 0, 0)
+
+    let groupKey: string
+    if (commitDate.getTime() === today.getTime()) {
+      groupKey = '__today__'
+    } else if (commitDate.getTime() === yesterday.getTime()) {
+      groupKey = '__yesterday__'
+    } else {
+      groupKey = formatDate(commit.date, false)
+    }
+
+    if (!groups[groupKey]) {
+      groups[groupKey] = []
+    }
+    groups[groupKey].push(commit)
+  })
+
+  return groups
+}
+
 export default function VersionHistory() {
   const t = useTranslations();
-  const commitsListRef = useRef<HTMLUListElement>(null)
   const appId = useAppIdFromParams()
   const queryClient = useQueryClient()
   const { activeChatTab } = useChatTabs()
@@ -50,17 +83,58 @@ export default function VersionHistory() {
   const isHistoryTabActive = activeChatTab === ChatTab.HISTORY;
   const isAppPublished = hasBeenPublished(site);
 
+  // Pagination state
+  const [offset, setOffset] = useState(0);
+  const [allCommits, setAllCommits] = useState<Commit[]>([]);
+  const [hasMoreCommits, setHasMoreCommits] = useState(true);
+  const [restoreError, setRestoreError] = useState<string | null>(null)
+  const [restoringHash, setRestoringHash] = useState<string | null>(null)
+
+  // Collapsed date groups state (Set of collapsed date group keys)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
   const {
     data,
     isLoading: loading,
-    error: queryError
+    error: queryError,
+    isFetching
   } = useGitHistoryQuery({
     appId: appId || '',
-    enabled: !!appId && isHistoryTabActive
+    enabled: !!appId && isHistoryTabActive,
+    offset
   })
 
-  // Memoize commits to prevent unnecessary effect triggers from array reference changes
-  const commits = useMemo(() => data?.commits || [], [data?.commits])
+  useEffect(() => {
+    setOffset(0)
+    setAllCommits([])
+    setHasMoreCommits(true)
+    setCollapsedGroups(new Set())
+    setRestoringHash(null)
+  }, [appId, isHistoryTabActive])
+
+  useEffect(() => {
+    if (!appId || !isHistoryTabActive || !data?.commits) {
+      return
+    }
+    if (offset === 0) {
+      setAllCommits(data.commits)
+    } else {
+      setAllCommits(prev => {
+        const existingHashes = new Set(prev.map(c => c.hash))
+        const newCommits = data.commits.filter(c => !existingHashes.has(c.hash))
+        return [...prev, ...newCommits]
+      })
+    }
+    setHasMoreCommits(data.hasMore)
+  }, [appId, data?.commits, data?.hasMore, isHistoryTabActive, offset])
+
+  const commitHashToIndex = useMemo(() => {
+    const m = new Map<string, number>()
+    for (let i = 0; i < allCommits.length; i++) {
+      m.set(allCommits[i].hash, i)
+    }
+    return m
+  }, [allCommits])
   const currentCommit = data?.currentCommit || null
 
   // NOTE: commits array is ordered from NEWEST to OLDEST (chronologically descending)
@@ -69,17 +143,17 @@ export default function VersionHistory() {
 
   // Derive the selected commit object from the hash
   const selectedCommit = useMemo(() => {
-    if (!selectedCommitHash || !commits.length) return null
-    return commits.find(c => c.hash === selectedCommitHash) ?? null
-  }, [selectedCommitHash, commits])
+    if (!selectedCommitHash || !allCommits.length) return null
+    return allCommits.find(c => c.hash === selectedCommitHash) ?? null
+  }, [selectedCommitHash, allCommits])
 
   const error = queryError?.message || null
 
   const { data: deployments = [] } = useDeploymentsQuery({
     appId: appId || '',
-    enabled: isPublishButtonEnabledFlag && !!appId && !!site?.agent_url && commits.length > 0 && isHistoryTabActive,
+    enabled: isPublishButtonEnabledFlag && !!appId && !!site?.agent_url && allCommits.length > 0 && isHistoryTabActive,
     includeJobData: true,
-    limit: commits.length > 150 ? 150 : commits.length,
+    limit: allCommits.length > 150 ? 150 : allCommits.length,
   })
 
   // Find the most recent deployed commit index
@@ -88,8 +162,20 @@ export default function VersionHistory() {
     const mostRecentDeployment = deployments.find(d => d.status === DeploymentStatus.DEPLOYED);
     if (!mostRecentDeployment) return -1;
 
-    return commits.findIndex(c => c.hash === mostRecentDeployment.gitHash);
-  }, [deployments, commits])
+    return allCommits.findIndex(c => c.hash === mostRecentDeployment.gitHash);
+  }, [deployments, allCommits])
+
+  const groupedCommits = useMemo(() => groupCommitsByDate(allCommits), [allCommits])
+
+  const getGroupLabel = (groupKey: string): string => {
+    if (groupKey === '__today__') {
+      return t('builder_version_history_today')
+    }
+    if (groupKey === '__yesterday__') {
+      return t('builder_version_history_yesterday')
+    }
+    return groupKey
+  }
 
   // Track the last currentCommit we synced to - when it changes, we should sync again
   const lastSyncedCommitRef = useRef<Record<string, string>>({})
@@ -98,7 +184,7 @@ export default function VersionHistory() {
   // Uses lightweight state sync (no checkout) when server provides currentCommit
   // IMPORTANT: Only auto-updates when currentCommit changes - respects selections that differ from last auto-sync
   useEffect(() => {
-    if (commits.length === 0 || !appId || isSelectingCommit || commitSelectionError) return
+    if (allCommits.length === 0 || !appId || isSelectingCommit || commitSelectionError) return
 
     const lastSyncedCommit = lastSyncedCommitRef.current[appId]
 
@@ -108,18 +194,18 @@ export default function VersionHistory() {
     // Only auto-select if we haven't moved selection beyond the last auto-sync
     const shouldAutoSelect = !selectedCommitHash || selectedCommitHash === lastSyncedCommit
 
-    if (shouldAutoSelect && currentCommit && commits.some(c => c.hash === currentCommit)) {
+    if (shouldAutoSelect && currentCommit && allCommits.some(c => c.hash === currentCommit)) {
       // Use lightweight setter - just sync UI state, don't trigger checkout
       // The server already has this commit checked out (it's HEAD)
       setSelectedCommitHash(appId, currentCommit)
       lastSyncedCommitRef.current[appId] = currentCommit
-    } else if (!selectedCommitHash && commits.length > 0) {
+    } else if (!selectedCommitHash && allCommits.length > 0) {
       // Fallback: When currentCommit is null (old backend or git failure),
       // use the latest commit to maintain backward compatibility
-      setSelectedCommitHash(appId, commits[0].hash)
-      lastSyncedCommitRef.current[appId] = commits[0].hash
+      setSelectedCommitHash(appId, allCommits[0].hash)
+      lastSyncedCommitRef.current[appId] = allCommits[0].hash
     }
-  }, [commits, selectedCommitHash, currentCommit, isSelectingCommit, commitSelectionError, appId, setSelectedCommitHash])
+  }, [allCommits, selectedCommitHash, currentCommit, isSelectingCommit, commitSelectionError, appId, setSelectedCommitHash])
 
   // Handle commit selection using global store
   const handleSelectCommit = async (commit: Commit) => {
@@ -156,21 +242,66 @@ export default function VersionHistory() {
     }
   }
 
+  // Restore commit logic
+  const restoreMutation = useRestoreCommitMutation();
+
+  const handleRestoreCommit = (commit: Commit) => {
+    setRestoreError(null)
+    setRestoringHash(commit.hash)
+    restoreMutation.mutate(
+      { appId, commitHash: commit.hash },
+      {
+        onSuccess: () => {
+          logger.info('version-history.restore.success', {
+            appId,
+            commitHash: commit.hash.substring(0, 7)
+          });
+        },
+        onError: (error) => {
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          setRestoreError(errorMessage)
+          logger.error('version-history.restore.error', {
+            appId,
+            error: errorMessage
+          })
+        },
+        onSettled: () => {
+          setRestoringHash(null)
+        }
+      }
+    );
+  };
+
+  // Toggle date group collapse state
+  const toggleDateGroup = (dateGroup: string) => {
+    setCollapsedGroups(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(dateGroup)) {
+        newSet.delete(dateGroup);
+      } else {
+        newSet.add(dateGroup);
+      }
+      return newSet;
+    });
+  };
+
+  // Determine if commit is latest
+  const isLatestCommit = (commit: Commit) => {
+    return allCommits.length > 0 && allCommits[0].hash === commit.hash;
+  };
+
   const renderCommitItem = ({
-    key,
     message,
     description,
     isSelected,
     onClick
   }: {
-    key: string,
-    message: string,
-    description?: string | React.ReactNode,
-    isSelected: boolean,
+    message: string
+    description?: string | React.ReactNode
+    isSelected: boolean
     onClick: () => void
   }) => (
-    <li
-      key={key}
+    <div
       className={`rounded-md overflow-auto border transition-colors duration-200 ${
         isSelected
           ? 'border-intents-ux-boxHighContrast-borderColor'
@@ -198,7 +329,7 @@ export default function VersionHistory() {
           { isSelected && <CheckboxFilledIcon className="w-2.5 h-2.5 top-0.5 right-0.5 absolute text-intents-ux-feedbackHighContrastSuccess-feedbackColor" /> }
         </button>
       </div>
-    </li>
+    </div>
   )
 
   return (
@@ -227,38 +358,106 @@ export default function VersionHistory() {
           </div>
         )}
 
-        {!loading && commits.length === 0 && !error && (
+        {!loading && allCommits.length === 0 && !error && (
           <div className="flex justify-center items-center h-full">
-            No commit history found
+            {t('builder_version_history_empty')}
           </div>
         )}
 
-        <ul ref={commitsListRef} className="space-y-1 max-h-full">
-          { commits.map((commit, index) => {
-            // A commit is published if it's at or older than the most recent deployed commit:
-            // 1. There is a deployed commit (mostRecentDeployedCommitIndex >= 0), AND
-            // 2. This commit's index >= deployed index (meaning it's the same age or older)
-            const isPublished = mostRecentDeployedCommitIndex >= 0 && index >= mostRecentDeployedCommitIndex;
+        {restoreError && (
+          <Alert
+            emphasis="critical"
+            onClose={() => setRestoreError(null)}
+          >
+            <div className="font-semibold">{t('builder_preview_error_failed')}</div>
+            <div className="text-sm mt-0.5">{restoreError}</div>
+          </Alert>
+        )}
 
-            return renderCommitItem({
-              key: commit.hash,
-              onClick: () => handleSelectCommit(commit),
-              message: commit.message,
-              description: (
-                <div className="flex items-center gap-1">
-                  <Tag type="info">{commit.hash.substring(0, 7)}</Tag>
-                  {isPublished && (
-                    <Tag emphasis={isAppPublished ? "success" : "passive"}>{isAppPublished ? t("builder_status_published") : t("builder_status_unpublished")}</Tag>
+        <div className="space-y-3">
+          {Object.entries(groupedCommits).map(([dateGroup, dateCommits]) => {
+            const isCollapsed = collapsedGroups.has(dateGroup);
+            const commitCount = dateCommits.length;
+
+            return (
+              <div key={dateGroup}>
+                <button
+                  onClick={() => toggleDateGroup(dateGroup)}
+                  className="w-full flex items-center gap-1.5 text-xs font-semibold text-intents-ux-textMediumEmphasis-textColor mb-1 px-1 hover:text-intents-ux-textHighEmphasis-textColor transition-colors"
+                >
+                  {isCollapsed ? (
+                    <ChevronRightIcon className="w-3 h-3" />
+                  ) : (
+                    <ChevronDownIcon className="w-3 h-3" />
                   )}
-                  <span className="text-xs">
-                    {formatDate(commit.date, true)}
-                  </span>
-                </div>
-              ),
-              isSelected: selectedCommit?.hash === commit.hash
-            })
+                  <span>{getGroupLabel(dateGroup)}</span>
+                  <span className="text-intents-ux-textLowEmphasis-textColor font-normal">({commitCount})</span>
+                </button>
+                {!isCollapsed && (
+                  <ul className="space-y-1">
+                    {dateCommits.map((commit) => {
+                      const commitIndex = commitHashToIndex.get(commit.hash) ?? -1
+                      const isPublished = mostRecentDeployedCommitIndex >= 0 &&
+                        commitIndex >= mostRecentDeployedCommitIndex
+                      const isSelected = selectedCommit?.hash === commit.hash;
+                      const showRestore = isSelected && !isLatestCommit(commit);
+                      const isRestoringThisCommit =
+                        restoreMutation.isPending && restoringHash === commit.hash
+
+                      return (
+                        <li key={commit.hash} className="space-y-1">
+                          {renderCommitItem({
+                            onClick: () => handleSelectCommit(commit),
+                            message: commit.message,
+                            description: (
+                              <div className="flex items-center gap-1">
+                                <Tag type="info">{commit.hash.substring(0, 7)}</Tag>
+                                {isPublished && (
+                                  <Tag emphasis={isAppPublished ? "success" : "passive"}>
+                                    {isAppPublished ? t("builder_status_published") : t("builder_status_unpublished")}
+                                  </Tag>
+                                )}
+                                <span className="text-xs">
+                                  {formatDate(commit.date, true)}
+                                </span>
+                              </div>
+                            ),
+                            isSelected
+                          })}
+                          {showRestore && (
+                            <div className="px-2 pb-1">
+                              <Button
+                                design="secondary"
+                                size="sm"
+                                onClick={() => handleRestoreCommit(commit)}
+                                disabled={restoreMutation.isPending}
+                              >
+                                {isRestoringThisCommit ? t('builder_preview_error_restoring') : t('builder_preview_error_restore')}
+                              </Button>
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            );
           })}
-        </ul>
+        </div>
+
+        {hasMoreCommits && !loading && allCommits.length > 0 && (
+          <div className="flex justify-center pt-2 pb-2">
+            <Button
+              design="tertiary"
+              size="md"
+              onClick={() => setOffset(prev => prev + GIT_HISTORY_PAGE_SIZE)}
+              disabled={isFetching}
+            >
+              {isFetching ? t('builder_common_loading') : t('builder_version_history_load_more')}
+            </Button>
+          </div>
+        )}
       </div>
 
     </div>

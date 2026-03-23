@@ -66,6 +66,8 @@ export interface GitToolOptions {
     mode?: 'soft' | 'mixed' | 'hard';
     /** Number of commits (for log, reset) */
     count?: number;
+    /** Offset for pagination (for log) */
+    offset?: number;
     /** Create new branch (for checkout) */
     createBranch?: boolean;
     /** Include untracked files (for stash) */
@@ -555,8 +557,9 @@ export class GitTool {
   private async handleLog(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
     try {
       const count = options.options?.count || 10;
+      const offset = options.options?.offset || 0;
       // Pass options explicitly to ensure we get all commits
-      const commits = await this.gitUtils.getCommitHistory(appPath, count);
+      const commits = await this.gitUtils.getCommitHistory(appPath, count, offset);
 
       const output = commits
         .map(

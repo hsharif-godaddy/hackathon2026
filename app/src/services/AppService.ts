@@ -27,6 +27,15 @@ export interface GitCommit {
   date: string
 }
 
+/** Page size for `getGitHistory`; keep default in sync with agents `GIT_HISTORY_DEFAULT_COUNT` in `git.ts` routes. */
+export const GIT_HISTORY_PAGE_SIZE = 30
+
+export interface GitHistoryResponse {
+  commits: GitCommit[]
+  currentCommit: string | null
+  hasMore: boolean
+}
+
 export interface AppConfig {
   showUsageCost: boolean
 }
@@ -231,8 +240,12 @@ export class AppService {
   /**
    * Get git commit history for an app
    */
-  async getGitHistory(appId: string): Promise<{ commits: GitCommit[]; currentCommit: string | null }> {
-    const apiUrl = await buildDynamicApiUrl(`git/history`, appId)
+  async getGitHistory(appId: string, offset: number = 0): Promise<GitHistoryResponse> {
+    const params = new URLSearchParams({
+      offset: String(offset),
+      count: String(GIT_HISTORY_PAGE_SIZE),
+    })
+    const apiUrl = await buildDynamicApiUrl(`git/history?${params}`, appId)
     const response = await agentFetch(apiUrl, { siteId: appId })
 
     if (!response.ok) {
@@ -241,10 +254,11 @@ export class AppService {
 
     const data = await response.json()
 
-    // Ensure backward compatibility with agents that don't return currentCommit
+    // Ensure backward compatibility with agents that don't return currentCommit/hasMore.
     return {
       commits: data.commits || [],
-      currentCommit: data.currentCommit ?? null
+      currentCommit: data.currentCommit ?? null,
+      hasMore: data.hasMore ?? (data.commits || []).length >= GIT_HISTORY_PAGE_SIZE
     }
   }
 

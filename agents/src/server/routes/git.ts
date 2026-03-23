@@ -9,6 +9,35 @@ import { validateAppOwnership } from '../middleware/app-ownership.js';
 const router: Router = Router();
 const appRepository = new AppRepository();
 
+/** Default page size; keep in sync with app `GIT_HISTORY_PAGE_SIZE` (`app/src/services/AppService.ts`). */
+const GIT_HISTORY_DEFAULT_COUNT = 30;
+const GIT_HISTORY_MAX_COUNT = 200;
+const GIT_HISTORY_MAX_OFFSET = 100_000;
+
+function parseGitHistoryCount(value: unknown): number | null {
+  if (value === undefined || value === '') {
+    return GIT_HISTORY_DEFAULT_COUNT;
+  }
+  const raw = Array.isArray(value) ? value[0] : value;
+  const n = Number(typeof raw === 'string' ? raw.trim() : raw);
+  if (!Number.isInteger(n) || n < 1 || n > GIT_HISTORY_MAX_COUNT) {
+    return null;
+  }
+  return n;
+}
+
+function parseGitHistoryOffset(value: unknown): number | null {
+  if (value === undefined || value === '') {
+    return 0;
+  }
+  const raw = Array.isArray(value) ? value[0] : value;
+  const n = Number(typeof raw === 'string' ? raw.trim() : raw);
+  if (!Number.isInteger(n) || n < 0 || n > GIT_HISTORY_MAX_OFFSET) {
+    return null;
+  }
+  return n;
+}
+
 /**
  * Get commit history for an app
  * SECURITY: Ownership validation prevents cross-tenant git history access
@@ -16,7 +45,14 @@ const appRepository = new AppRepository();
 router.get('/apps/:id/git/history', validateAppOwnership, async (req, res) => {
   try {
     const id = req.params.id!; // Validated by validateAppOwnership middleware
-    const { count = 30 } = req.query;
+    const count = parseGitHistoryCount(req.query.count);
+    const offset = parseGitHistoryOffset(req.query.offset);
+    if (count === null || offset === null) {
+      return res.status(400).json({
+        error: 'Invalid git history query parameters',
+        details: 'count must be an integer 1-' + GIT_HISTORY_MAX_COUNT + ', offset must be an integer 0-' + GIT_HISTORY_MAX_OFFSET,
+      });
+    }
     const contextLogger = log.forApp(id);
 
     // Get app path from database
@@ -30,11 +66,12 @@ router.get('/apps/:id/git/history', validateAppOwnership, async (req, res) => {
     const gitTool = new GitTool(devSupervisor || undefined)
     const gitUtils = new GitUtils(devSupervisor || undefined)
 
-    // Get commit history - always get all commits
+    // Fetch one extra commit so the API can return hasMore without an extra round-trip.
     const result = await gitTool.executeGitOperation(app.path, {
       operation: 'log',
       options: {
-        count: Number(count)
+        count: count + 1,
+        offset
       }
     });
 
@@ -46,6 +83,8 @@ router.get('/apps/:id/git/history', validateAppOwnership, async (req, res) => {
     }
 
     const commits = result.commits || [];
+    const hasMore = commits.length > count;
+    const visibleCommits = hasMore ? commits.slice(0, count) : commits;
 
     // Get current commit (HEAD)
     let currentCommit: string | null = null;
@@ -59,13 +98,15 @@ router.get('/apps/:id/git/history', validateAppOwnership, async (req, res) => {
     }
 
     contextLogger.info('route.git.history.success', {
-      commitCount: commits.length,
+      commitCount: visibleCommits.length,
+      hasMore,
       currentCommit: currentCommit?.substring(0, 7),
     });
 
     return res.json({
       success: true,
-      commits: commits,
+      commits: visibleCommits,
+      hasMore,
       currentCommit: currentCommit
     });
   } catch (error) {

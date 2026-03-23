@@ -40,6 +40,7 @@ describe('useGitHistoryQuery', () => {
         },
       ],
       currentCommit: 'abc123',
+      hasMore: false,
     });
 
     const { result } = renderHook(
@@ -54,6 +55,7 @@ describe('useGitHistoryQuery', () => {
     expect(result.current.data?.commits).toHaveLength(1);
     expect(result.current.data?.commits[0].hash).toBe('abc123');
     expect(result.current.data?.currentCommit).toBe('abc123');
+    expect(result.current.data?.hasMore).toBe(false);
   });
 
   it('should not fetch when appId is empty', () => {

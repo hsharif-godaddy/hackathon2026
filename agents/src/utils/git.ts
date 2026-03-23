@@ -229,12 +229,15 @@ export class GitUtils {
   async getCommitHistory(
     repoPath: string,
     limit: number = 10,
+    offset: number = 0,
     options: GitCommandOptions = {}
   ): Promise<GitCommitInfo[]> {
     // Use custom format to get full hash and all commit information
     // Format: <full-hash>|<author-name>|<author-email>|<iso-date>|<commit-message>
+    const skipFlag = offset > 0 ? `--skip=${offset}` : '';
+    const gitArgs = ['log', 'main', `--pretty=format:%H|%an|%ae|%aI|%s`, `--max-count=${limit}`, skipFlag].filter(Boolean);
     const result = await this.executeGitCommand(
-      ['log', 'main', `--pretty=format:%H|%an|%ae|%aI|%s`, `--max-count=${limit}`],
+      gitArgs,
       repoPath,
       options
     );
@@ -455,7 +458,7 @@ export class GitUtils {
    */
   async getLastCommit(repoPath: string, options: GitCommandOptions = {}): Promise<GitCommitInfo | null> {
     try {
-      const commits = await this.getCommitHistory(repoPath, 1, options);
+      const commits = await this.getCommitHistory(repoPath, 1, 0, options);
       return commits[0] || null;
     } catch {
       return null;

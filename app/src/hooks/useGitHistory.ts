@@ -19,6 +19,7 @@ export interface GitCommit {
 export interface UseGitHistoryQueryOptions {
   appId: string;
   enabled?: boolean;
+  offset?: number;
 }
 
 /**
@@ -27,6 +28,7 @@ export interface UseGitHistoryQueryOptions {
 export interface GitHistoryQueryResult {
   commits: GitCommit[];
   currentCommit: string | null;
+  hasMore: boolean;
 }
 
 /**
@@ -51,7 +53,7 @@ export interface GitHistoryQueryResult {
  * ```
  */
 export function useGitHistoryQuery(options: UseGitHistoryQueryOptions) {
-  const { appId, enabled = true } = options;
+  const { appId, enabled = true, offset = 0 } = options;
   const queryClient = useQueryClient();
   const prevAppIdRef = useRef(appId);
 
@@ -65,16 +67,17 @@ export function useGitHistoryQuery(options: UseGitHistoryQueryOptions) {
   }, [appId, queryClient]);
 
   return useQuery({
-    queryKey: ['git-history', appId],
+    queryKey: ['git-history', appId, offset],
     queryFn: async function fetchGitHistory(): Promise<GitHistoryQueryResult> {
       if (!appId) {
         throw new Error('App ID is required');
       }
 
-      const { commits, currentCommit } = await appService.getGitHistory(appId);
+      const { commits, currentCommit, hasMore } = await appService.getGitHistory(appId, offset);
       return {
         commits: commits || [],
         currentCommit: currentCommit || null,
+        hasMore,
       };
     },
     enabled: enabled && !!appId,
