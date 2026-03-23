@@ -102,6 +102,12 @@ describe('ChatToolbar', () => {
     expect(screen.getByText('builder_chat_toolbar_button_history')).toBeInTheDocument();
   });
 
+  it('should render media button', () => {
+    renderWithProviders(<ChatToolbar {...defaultProps} />);
+
+    expect(screen.getByText('builder_chat_toolbar_button_media')).toBeInTheDocument();
+  });
+
   it('should render settings button on desktop', () => {
     mockDevelopStore.isMobile = false;
 
@@ -146,6 +152,17 @@ describe('ChatToolbar', () => {
     const historyButton = Array.from(buttons).find(btn => btn.textContent?.includes('builder_chat_toolbar_button_history'));
     // Active state is shown via background color classes
     expect(historyButton).toHaveClass('bg-intents-ux-boxHighContrast-backgroundColor');
+  });
+
+  it('should mark media button as active when media tab selected', () => {
+    mockChatTabs.activeChatTab = ChatTab.MEDIAS;
+
+    const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
+
+    const buttons = container.querySelectorAll('button');
+    const mediaButton = Array.from(buttons).find(btn => btn.textContent?.includes('builder_chat_toolbar_button_media'));
+    // Active state is shown via background color classes
+    expect(mediaButton).toHaveClass('bg-intents-ux-boxHighContrast-backgroundColor');
   });
 
   it('should disable history button when processing', () => {
@@ -210,6 +227,9 @@ describe('ChatToolbar', () => {
 
     const historyButton = container.querySelector('[data-eid="develop.chat_toolbar.history"]');
     expect(historyButton).toBeInTheDocument();
+
+    const mediaButton = container.querySelector('[data-eid="develop.chat_toolbar.media"]');
+    expect(mediaButton).toBeInTheDocument();
 
     const settingsButton = container.querySelector('[data-eid="develop.chat_toolbar.settings"]');
     expect(settingsButton).toBeInTheDocument();

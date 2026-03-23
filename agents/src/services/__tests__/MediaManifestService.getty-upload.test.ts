@@ -288,6 +288,37 @@ describe('MediaManifestService - Getty upload integration', () => {
     });
   });
 
+  describe('updateSlot with uploaded image injection', () => {
+    it('injects uploaded URL as currentUrl and shifts all others to alternatives', async () => {
+      const existingSlot = makeSlot({
+        currentUrl: 'https://preview.getty.com/current.jpg',
+        gettyId: 'getty-100',
+        alternatives: ['https://preview.getty.com/alt1.jpg'],
+        alternativeGettyIds: ['getty-201'],
+      });
+
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({ 'hero-image': existingSlot })
+      );
+
+      const result = await service.updateSlot('test-app', 'hero-image', {
+        newUrl: '/airo-assets/uploads/new-upload.jpg',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.slot!.currentUrl).toBe('/airo-assets/uploads/new-upload.jpg');
+      expect(result.slot!.gettyId).toBeUndefined();
+      expect(result.slot!.alternatives).toEqual([
+        'https://preview.getty.com/current.jpg',
+        'https://preview.getty.com/alt1.jpg',
+      ]);
+      expect(result.slot!.alternativeGettyIds).toEqual([
+        'getty-100',
+        'getty-201',
+      ]);
+    });
+  });
+
   describe('updateSlot without Getty ID', () => {
     it('does not call uploadAndReport when the new active image has no Getty ID', async () => {
       const existingSlot = makeSlot({

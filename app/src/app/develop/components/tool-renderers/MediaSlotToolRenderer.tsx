@@ -6,6 +6,8 @@ import { useEffect, useRef } from "react";
 
 import type { DefaultToolRendererProps } from "@/app/develop/components/tool-renderers/DefaultToolRenderer";
 import ToolHeader from "@/app/develop/components/tool-renderers/ToolHeader";
+import { ChatTab } from '@/app/develop/components/types';
+import { useChatTabs } from '@/hooks/useChatTabs';
 import { logger } from "@/lib/request-context";
 import { useMediaSlotDialogStore } from "@/stores/useMediaSlotDialogStore";
 import { postMessageToIframe } from "@/utils/postMessage";
@@ -36,7 +38,8 @@ export default function MediaSlotToolRenderer({
 }: DefaultToolRendererProps) {
 	const params = useParams();
 	const appId = params?.id as string | undefined;
-	const openDialog = useMediaSlotDialogStore((state) => state.openDialog);
+	const navigateToSlot = useMediaSlotDialogStore((state) => state.navigateToSlot);
+	const { setActiveChatTab } = useChatTabs();
 
 	// Parse result
 	let parsedResult: MediaSlotResultData | null = null;
@@ -113,7 +116,8 @@ export default function MediaSlotToolRenderer({
 
 	const handleClick = () => {
 		if (appId && parsedResult?.slot) {
-			openDialog(appId, parsedResult.slot);
+			navigateToSlot(parsedResult.slot);
+			setActiveChatTab(ChatTab.MEDIAS);
 		}
 	};
 

@@ -1,63 +1,27 @@
 import { create } from 'zustand';
 
-/**
- * State for the media slot dialog
- * Used to open/close the dialog from anywhere (tool renderer or dev-tools)
- */
 interface MediaSlotDialogState {
-  /** Whether the dialog is open */
-  isOpen: boolean;
-  /** The slot name to display (e.g., "pages/home/hero") */
-  slotName: string | null;
-  /** The app ID for the current context */
-  appId: string | null;
-  /** All slot names for carousel mode (optional) */
-  allSlotNames: string[] | null;
-  /** Open the dialog for a specific slot */
-  openDialog: (appId: string, slotName: string, allSlotNames?: string[]) => void;
-  /** Close the dialog */
-  closeDialog: () => void;
+  /**
+   * Panel navigation: slot to navigate to in the Media tab panel.
+   * Set externally (e.g., from preview "Swap Image") to push to that slot's detail view.
+   * Consumed and cleared by MediaPanel.
+   */
+  panelSlotName: string | null;
+
+  /** Navigate the media panel to a specific slot (does not open the sheet dialog) */
+  navigateToSlot: (slotName: string) => void;
+  /** Clear the panel navigation slot (consumed by MediaPanel) */
+  clearPanelSlot: () => void;
 }
 
-/**
- * Zustand store for media slot dialog state
- *
- * This store manages the global state for the MediaSlotDialog component,
- * allowing it to be opened from:
- * - MediaGroupRenderer thumbnails in chat
- * - Dev-tools ElementEditor "Swap Media" button
- *
- * @example
- * ```tsx
- * // Open dialog from component
- * const { openDialog } = useMediaSlotDialogStore();
- * openDialog(appId, 'pages/home/hero');
- *
- * // Read state in dialog component
- * const { isOpen, slotName, appId, closeDialog } = useMediaSlotDialogStore();
- * ```
- */
 export const useMediaSlotDialogStore = create<MediaSlotDialogState>((set) => ({
-  isOpen: false,
-  slotName: null,
-  appId: null,
-  allSlotNames: null,
+  panelSlotName: null,
 
-  openDialog: (appId: string, slotName: string, allSlotNames?: string[]) => {
-    set({
-      isOpen: true,
-      slotName,
-      appId,
-      allSlotNames: allSlotNames || null,
-    });
+  navigateToSlot: (slotName: string) => {
+    set({ panelSlotName: slotName });
   },
 
-  closeDialog: () => {
-    set({
-      isOpen: false,
-      slotName: null,
-      appId: null,
-      allSlotNames: null,
-    });
+  clearPanelSlot: () => {
+    set({ panelSlotName: null });
   },
 }));

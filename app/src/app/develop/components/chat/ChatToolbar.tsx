@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import Box from '@ux/box'
 import CommentsIcon from '@ux/icon/comments'
 import HistoryIcon from '@ux/icon/history'
+import ImageIcon from '@ux/icon/image'
 import SettingsIcon from '@ux/icon/settings'
 import WebsiteIcon from '@ux/icon/website'
 
@@ -158,6 +159,13 @@ export default function ChatToolbar({
         active={displayActiveTab === ChatTab.HISTORY}
         disabled={isProcessing || isFetchingCommits || isSelectingCommit || viewMode === ViewMode.CODE || isSelectMode || isPublishing}
         showLabelAlways={!isMobile}
+      />
+      <IconButton
+        icon={<ImageIcon />}
+        dataEid={generateClickEID('develop.chat_toolbar.media')}
+        onClick={() => handleTabClick(ChatTab.MEDIAS)}
+        label={t('builder_chat_toolbar_button_media')}
+        active={displayActiveTab === ChatTab.MEDIAS}
       />
       {isMobile ? (
         isSettingsEnabled && <SettingsMenu />

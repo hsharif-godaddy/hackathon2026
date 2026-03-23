@@ -9,6 +9,7 @@ import { ChatContext } from '@/app/develop/components/chat/ChatContext'
 import ChatInput from '@/app/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
 import { UploadedFile } from '@/app/develop/components/chat/FileUploadButton'
+import MediaPanel from '@/app/develop/components/media/MediaPanel'
 import PersistentTodoList from '@/app/develop/components/PersistentTodoList'
 import PlanTracker from '@/app/develop/components/PlanTracker'
 import SettingsPane from '@/app/develop/components/settings/SettingsPane'
@@ -809,6 +810,14 @@ export default function ChatPane({
         style={{ display: activeChatTab === ChatTab.HISTORY ? 'flex' : 'none' }}
       >
         <VersionHistory />
+      </div>
+
+      {/* Media Tab - Keep mounted, hide with CSS */}
+      <div
+        className="flex flex-col flex-1 min-h-0"
+        style={{ display: activeChatTab === ChatTab.MEDIAS ? 'flex' : 'none' }}
+      >
+        <MediaPanel isActive={activeChatTab === ChatTab.MEDIAS} />
       </div>
 
       {/* Settings Tab - Keep mounted, hide with CSS */}

@@ -9,7 +9,7 @@ import AppNotFound from '@/app/develop/components/AppNotFound'
 import ChatPane from '@/app/develop/components/chat/ChatPane'
 import ChatPaneLoader, { ImageReloadLoaderPhase, ResumeLoaderPhase } from '@/app/develop/components/chat/ChatPaneLoader'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
-import { MediaSlotDialog } from '@/app/develop/components/media/MediaSlotDialog'
+import MediaPanel from '@/app/develop/components/media/MediaPanel'
 import { DevelopCreditsModal, UpgradeContainer, UpgradePollingModal } from '@/app/develop/components/paywall'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
@@ -757,9 +757,10 @@ function DevelopPageContent() {
           }
           break
         case 'OPEN_MEDIA_SLOT_DIALOG':
-          // Handle request to open media slot dialog from dev-tools
+          // Navigate the Media tab panel to the requested slot
           if (event.data.slotName && appId) {
-            useMediaSlotDialogStore.getState().openDialog(appId, event.data.slotName)
+            useMediaSlotDialogStore.getState().navigateToSlot(event.data.slotName)
+            useDevelopPageStore.getState().setActiveChatTab(ChatTab.MEDIAS)
           }
           break
         case 'error-fix-resolved':
@@ -1156,6 +1157,18 @@ function DevelopPageContent() {
                       <VersionHistory />
                     </div>
 
+                    {/* Media Tab */}
+                    <div
+                      className="absolute inset-0 flex flex-col overflow-hidden transition-opacity duration-150"
+                      style={{
+                        opacity: optimisticMobileTab === ChatTab.MEDIAS ? 1 : 0,
+                        pointerEvents: optimisticMobileTab === ChatTab.MEDIAS ? 'auto' : 'none',
+                        willChange: 'opacity'
+                      }}
+                    >
+                      <MediaPanel isActive={optimisticMobileTab === ChatTab.MEDIAS} />
+                    </div>
+
                     {/* Settings Tab */}
                     <div
                       className="absolute inset-0 flex flex-col transition-opacity duration-150"
@@ -1194,7 +1207,6 @@ function DevelopPageContent() {
           onClose={() => setShowIntroTour(false)}
         />
 
-        <MediaSlotDialog />
         <Growl />
 
         {isUpgradePolling && <UpgradePollingModal />}

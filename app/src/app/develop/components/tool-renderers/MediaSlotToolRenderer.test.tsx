@@ -2,11 +2,15 @@ import '@testing-library/jest-dom'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
+import { ChatTab } from '@/app/develop/components/types'
 import { renderWithProviders } from '@/tests/test-utils'
 import MediaSlotToolRenderer from './MediaSlotToolRenderer'
 
 const mockPostMessageToIframe = vi.fn()
+const mockNavigateToSlot = vi.fn()
+const mockSetActiveChatTab = vi.fn()
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({}),
@@ -16,6 +20,18 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/utils/postMessage', () => ({
   postMessageToIframe: (...args: unknown[]) => mockPostMessageToIframe(...args),
+}))
+
+vi.mock('@/stores/useMediaSlotDialogStore', () => ({
+  useMediaSlotDialogStore: (selector: unknown) => (selector as (state: unknown) => unknown)({
+    navigateToSlot: mockNavigateToSlot,
+  }),
+}))
+
+vi.mock('@/hooks/useChatTabs', () => ({
+  useChatTabs: () => ({
+    setActiveChatTab: mockSetActiveChatTab,
+  }),
 }))
 
 const successResult = JSON.stringify({
@@ -128,5 +144,22 @@ describe('MediaSlotToolRenderer', () => {
     )
 
     expect(mockPostMessageToIframe).toHaveBeenCalledTimes(1)
+  })
+
+  it('navigates to media tab and slot when clicked', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(
+      <MediaSlotToolRenderer
+        toolName="media"
+        toolStatus="completed"
+        result={successResult}
+      />
+    )
+
+    const button = screen.getByRole('button')
+    await user.click(button)
+
+    expect(mockNavigateToSlot).toHaveBeenCalledWith('pages/home/hero')
+    expect(mockSetActiveChatTab).toHaveBeenCalledWith(ChatTab.MEDIAS)
   })
 })

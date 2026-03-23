@@ -6,6 +6,8 @@ import ImageIcon from '@ux/icon/image'
 import PlusIcon from '@ux/icon/plus'
 
 import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
+import { ChatTab } from '@/app/develop/components/types'
+import { useChatTabs } from '@/hooks/useChatTabs'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
@@ -65,7 +67,8 @@ export default function MediaGroupRenderer({
   const t = useTranslations()
   const params = useParams()
   const appId = params?.id as string | undefined
-  const openDialog = useMediaSlotDialogStore((state) => state.openDialog)
+  const navigateToSlot = useMediaSlotDialogStore((state) => state.navigateToSlot)
+  const { setActiveChatTab } = useChatTabs()
 
   // Parse all tool calls
   const parsedSlots: ParsedMediaSlot[] = toolCalls.map((toolCall) => {
@@ -123,11 +126,8 @@ export default function MediaGroupRenderer({
 
   const handleThumbnailClick = (slotName: string) => {
     if (appId && slotName) {
-      // Always pass all slot names for carousel navigation when multiple slots exist
-      const allSlotNames = completedSlots.length > 1
-        ? completedSlots.map((s) => s.result!.slot)
-        : undefined
-      openDialog(appId, slotName, allSlotNames)
+      navigateToSlot(slotName)
+      setActiveChatTab(ChatTab.MEDIAS)
     }
   }
 
@@ -162,9 +162,9 @@ export default function MediaGroupRenderer({
   }
 
   const handleSeeAllClick = () => {
-    if (appId && completedSlots.length > 1) {
-      const allSlotNames = completedSlots.map((s) => s.result!.slot)
-      openDialog(appId, completedSlots[0].result!.slot, allSlotNames)
+    if (appId) {
+      navigateToSlot('__GRID__')
+      setActiveChatTab(ChatTab.MEDIAS)
     }
   }
 

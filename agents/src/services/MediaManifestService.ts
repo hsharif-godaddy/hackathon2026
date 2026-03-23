@@ -249,29 +249,48 @@ export class MediaManifestService {
 
       // Validate the new URL is in the list
       const urlIndex = options.alternativeIndex ?? allUrls.indexOf(options.newUrl);
+      
+      let newCurrentUrl: string;
+      let newAlternatives: string[];
+      let newCurrentGettyId: string | undefined;
+      let newAlternativeGettyIds: string[];
+
       if (urlIndex === -1 || urlIndex >= allUrls.length) {
-        return {
-          success: false,
-          error: 'Invalid URL or alternative index',
-        };
+        // Allow injecting an existing uploaded image URL that isn't in this slot yet
+        if (options.newUrl && options.newUrl.startsWith('/airo-assets/uploads/')) {
+          newCurrentUrl = options.newUrl;
+          newAlternatives = allUrls; // Push everything down
+          newCurrentGettyId = undefined;
+          
+          const altGettyIds = existingSlot.alternativeGettyIds || [];
+          const paddedAltGettyIds = altGettyIds.length >= existingSlot.alternatives.length
+            ? altGettyIds
+            : [...altGettyIds, ...Array<string>(existingSlot.alternatives.length - altGettyIds.length).fill('')];
+          newAlternativeGettyIds = [existingSlot.gettyId || '', ...paddedAltGettyIds];
+        } else {
+          return {
+            success: false,
+            error: 'Invalid URL or alternative index',
+          };
+        }
+      } else {
+        // Swap: new URL becomes current, old current goes to alternatives
+        newCurrentUrl = allUrls[urlIndex]!;
+        newAlternatives = allUrls.filter((_, i) => i !== urlIndex);
+
+        // Build Getty ID arrays (current + alternatives, same order as allUrls)
+        // Pad alternativeGettyIds to match alternatives length to prevent misalignment
+        const altGettyIds = existingSlot.alternativeGettyIds || [];
+        const paddedAltGettyIds = altGettyIds.length >= existingSlot.alternatives.length
+          ? altGettyIds
+          : [...altGettyIds, ...Array<string>(existingSlot.alternatives.length - altGettyIds.length).fill('')];
+        const allGettyIds = [
+          existingSlot.gettyId || '',
+          ...paddedAltGettyIds,
+        ];
+        newCurrentGettyId = allGettyIds[urlIndex] || undefined;
+        newAlternativeGettyIds = allGettyIds.filter((_, i) => i !== urlIndex);
       }
-
-      // Swap: new URL becomes current, old current goes to alternatives
-      let newCurrentUrl = allUrls[urlIndex]!;
-      const newAlternatives = allUrls.filter((_, i) => i !== urlIndex);
-
-      // Build Getty ID arrays (current + alternatives, same order as allUrls)
-      // Pad alternativeGettyIds to match alternatives length to prevent misalignment
-      const altGettyIds = existingSlot.alternativeGettyIds || [];
-      const paddedAltGettyIds = altGettyIds.length >= existingSlot.alternatives.length
-        ? altGettyIds
-        : [...altGettyIds, ...Array<string>(existingSlot.alternatives.length - altGettyIds.length).fill('')];
-      const allGettyIds = [
-        existingSlot.gettyId || '',
-        ...paddedAltGettyIds,
-      ];
-      const newCurrentGettyId = allGettyIds[urlIndex] || undefined;
-      const newAlternativeGettyIds = allGettyIds.filter((_, i) => i !== urlIndex);
 
       // If the newly-active image has a Getty ID, upload it to CDN and report usage
       if (newCurrentGettyId) {
@@ -294,7 +313,7 @@ export class MediaManifestService {
         userModified: options.markUserModified ?? true,
         lastUpdated: new Date().toISOString(),
         gettyId: newCurrentGettyId,
-        alternativeGettyIds: newAlternativeGettyIds.filter(Boolean).length > 0
+        alternativeGettyIds: newAlternativeGettyIds.some(Boolean)
           ? newAlternativeGettyIds.filter(Boolean)
           : undefined,
       };
@@ -390,10 +409,28 @@ export class MediaManifestService {
       }
 
       // Move current URL to alternatives (if it's not already the uploaded URL)
-      const newAlternatives =
-        existingSlot.currentUrl !== uploadedUrl
-          ? [existingSlot.currentUrl, ...existingSlot.alternatives]
-          : existingSlot.alternatives;
+      let newAlternatives: string[];
+      let newCurrentGettyId: string | undefined;
+      let newAlternativeGettyIds: string[] | undefined;
+
+      if (existingSlot.currentUrl !== uploadedUrl) {
+        newAlternatives = [existingSlot.currentUrl, ...existingSlot.alternatives];
+        
+        // Shift Getty IDs as well to maintain alignment
+        const altGettyIds = existingSlot.alternativeGettyIds || [];
+        const paddedAltGettyIds = altGettyIds.length >= existingSlot.alternatives.length
+          ? altGettyIds
+          : [...altGettyIds, ...Array<string>(existingSlot.alternatives.length - altGettyIds.length).fill('')];
+          
+        const allGettyIds = [existingSlot.gettyId || '', ...paddedAltGettyIds];
+        
+        newCurrentGettyId = undefined; // Uploaded image has no Getty ID
+        newAlternativeGettyIds = allGettyIds;
+      } else {
+        newAlternatives = existingSlot.alternatives;
+        newCurrentGettyId = existingSlot.gettyId;
+        newAlternativeGettyIds = existingSlot.alternativeGettyIds;
+      }
 
       // Update slot with uploaded URL as current
       const updatedSlot: MediaSlot = {
@@ -402,6 +439,10 @@ export class MediaManifestService {
         alternatives: newAlternatives,
         userModified: true,
         lastUpdated: new Date().toISOString(),
+        gettyId: newCurrentGettyId,
+        alternativeGettyIds: newAlternativeGettyIds?.some(Boolean) 
+          ? newAlternativeGettyIds.filter(Boolean)
+          : undefined,
       };
 
       manifest[slotName] = updatedSlot;
