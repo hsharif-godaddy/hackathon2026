@@ -146,7 +146,11 @@ export async function generateTextWithTracking(
       ...(system && { system }),
       prompt,
       ...(temperature !== undefined && { temperature }),
-      ...(maxOutputTokens !== undefined && { maxOutputTokens })
+      ...(maxOutputTokens !== undefined && { maxOutputTokens }),
+      experimental_telemetry: {
+        isEnabled: true,
+        functionId: context?.toolName ? `tool-${context.toolName}` : 'tool-llm'
+      }
     })
 
     const durationMs = Date.now() - startTime
