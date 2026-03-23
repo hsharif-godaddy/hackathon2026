@@ -70,7 +70,7 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := s.pipeline.IngestDocuments(r.Context(), req.Documents)
+	resp, err := s.pipeline.IngestDocuments(r.Context(), req.Documents, req.Force)
 	if err != nil {
 		slog.Error("ingest.failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "ingestion failed", "INGEST_ERROR")

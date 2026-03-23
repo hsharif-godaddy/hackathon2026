@@ -2,7 +2,83 @@ package ingest
 
 import (
 	"testing"
+
+	"github.com/airo-ai-builder/knowledge-service/pkg/models"
 )
+
+func TestSelectChunks_ForceBypassesHashSkip(t *testing.T) {
+	chunks := []*models.Chunk{
+		{ContentHash: "abc"},
+		{ContentHash: "def"},
+	}
+	existingByHash := map[string]string{"abc": "point-1"}
+
+	skipped := 0
+	selected := selectChunks(chunks, existingByHash, true, &skipped)
+
+	if len(selected) != 2 {
+		t.Errorf("force=true: expected 2 chunks selected, got %d", len(selected))
+	}
+	if skipped != 0 {
+		t.Errorf("force=true: expected ChunksSkipped=0, got %d", skipped)
+	}
+}
+
+func TestSelectChunks_HashMatchSkipsWithoutForce(t *testing.T) {
+	chunks := []*models.Chunk{
+		{ContentHash: "abc"},
+		{ContentHash: "def"},
+	}
+	existingByHash := map[string]string{"abc": "point-1"}
+
+	skipped := 0
+	selected := selectChunks(chunks, existingByHash, false, &skipped)
+
+	if len(selected) != 1 {
+		t.Errorf("force=false: expected 1 chunk selected, got %d", len(selected))
+	}
+	if selected[0].ContentHash != "def" {
+		t.Errorf("force=false: expected unmatched chunk to be selected, got hash %q", selected[0].ContentHash)
+	}
+	if skipped != 1 {
+		t.Errorf("force=false: expected ChunksSkipped=1, got %d", skipped)
+	}
+}
+
+func TestSelectChunks_NoExistingHashesSelectsAll(t *testing.T) {
+	chunks := []*models.Chunk{
+		{ContentHash: "abc"},
+		{ContentHash: "def"},
+	}
+
+	skipped := 0
+	selected := selectChunks(chunks, map[string]string{}, false, &skipped)
+
+	if len(selected) != 2 {
+		t.Errorf("no existing hashes: expected all 2 chunks selected, got %d", len(selected))
+	}
+	if skipped != 0 {
+		t.Errorf("no existing hashes: expected ChunksSkipped=0, got %d", skipped)
+	}
+}
+
+func TestSelectChunks_AllMatchedSkipsAllWithoutForce(t *testing.T) {
+	chunks := []*models.Chunk{
+		{ContentHash: "abc"},
+		{ContentHash: "def"},
+	}
+	existingByHash := map[string]string{"abc": "p1", "def": "p2"}
+
+	skipped := 0
+	selected := selectChunks(chunks, existingByHash, false, &skipped)
+
+	if len(selected) != 0 {
+		t.Errorf("all matched: expected 0 selected, got %d", len(selected))
+	}
+	if skipped != 2 {
+		t.Errorf("all matched: expected ChunksSkipped=2, got %d", skipped)
+	}
+}
 
 func TestChunkMarkdown_PipelineIntegration(t *testing.T) {
 	// Verify chunker + tokenizer work together

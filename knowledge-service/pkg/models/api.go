@@ -38,6 +38,10 @@ type SearchResponse struct {
 // IngestRequest is the POST body for /api/v1/ingest.
 type IngestRequest struct {
 	Documents []IngestDocument `json:"documents"`
+	// Force bypasses the content-hash skip so all chunks are re-embedded and
+	// re-upserted even when their content has not changed. Use after pipeline
+	// upgrades to refresh stale embeddings without wiping the collection.
+	Force bool `json:"force,omitempty"`
 }
 
 // IngestDocument is a single document in an ingest request.
@@ -51,7 +55,7 @@ type IngestDocument struct {
 type IngestResult struct {
 	DocName       string `json:"docName"`
 	ChunksCreated int    `json:"chunksCreated"`
-	ChunksUpdated int    `json:"chunksUpdated"`
+	ChunksSkipped int    `json:"chunksSkipped"`
 	ChunksDeleted int    `json:"chunksDeleted"`
 	Status        string `json:"status"`
 }

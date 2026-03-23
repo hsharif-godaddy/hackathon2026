@@ -16,6 +16,13 @@ on:
         required: false
         type: string
         default: ""
+      force:
+        description: "Force re-embed all chunks even if content is unchanged (use after pipeline upgrades)"
+        required: false
+        type: boolean
+        default: false
+  # workflow_call inputs mirror workflow_dispatch above — GitHub requires both
+  # blocks to declare inputs independently; they cannot share a definition.
   workflow_call:
     inputs:
       environment:
@@ -27,6 +34,11 @@ on:
         required: false
         type: string
         default: ""
+      force:
+        description: "Force re-embed all chunks even if content is unchanged"
+        required: false
+        type: boolean
+        default: false
 
 run-name: "Ingest ${{ inputs.documents || 'all documents' }} to ${{ inputs.environment }}"
 
@@ -72,11 +84,13 @@ jobs:
           IAM_JWT: ${{ steps.get-awsiam.outputs.jwt }}
           ENVIRONMENT: ${{ inputs.environment }}
           DOCUMENTS: ${{ inputs.documents }}
+          FORCE: ${{ inputs.force }}
         run: |
           echo "::add-mask::$IAM_JWT"
           echo "Starting knowledge service document ingestion..."
           echo "Environment: $ENVIRONMENT"
           echo "API URL: $API_URL"
+          echo "Force re-embed: $FORCE"
 
           INGEST_COUNT=0
           FAILED_COUNT=0
@@ -123,7 +137,8 @@ jobs:
             payload=$(jq -n \
               --arg name "$doc_name" \
               --arg content "$doc_content" \
-              '{documents: [{name: $name, content: $content}]}')
+              --argjson force "${FORCE:-false}" \
+              '{documents: [{name: $name, content: $content}], force: $force}')
 
             response=$(curl -s -w "\n%{http_code}" \
               -X POST \
