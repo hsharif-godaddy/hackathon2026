@@ -127,7 +127,7 @@ async function generatePalettesWithLLM(
   subscriptionId?: string,
   customerId?: string
 ): Promise<Array<{ name: string; primary: string; background: string }>> {
-  const { model, modelName } = await getAgentModelWithName('fast')
+  const { model, modelName } = await getAgentModelWithName('cheap')
 
   const userPrompt = `Generate ${count} color palette${count > 1 ? 's' : ''} for: ${description}
 

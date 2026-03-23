@@ -140,7 +140,7 @@ async function generateFontsWithLLM(
   subscriptionId?: string,
   customerId?: string
 ): Promise<LLMFontPairing[]> {
-  const { model, modelName } = await getAgentModelWithName('fast')
+  const { model, modelName } = await getAgentModelWithName('cheap')
   const systemPrompt = await loadFontGenerationPrompt()
 
   const userPrompt = `Generate ${count} font pairing${count > 1 ? 's' : ''} for: ${description}
