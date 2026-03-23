@@ -71,6 +71,33 @@ const airoAgentsFieldMapping: FieldMapping = {
   }
 };
 
+// Field mapping for Preview/Publish containers (has app_id as direct field)
+// These use structured JSON logging with uppercase level values (INFO, WARN, ERROR)
+const airoContainerFieldMapping: FieldMapping = {
+  appIdField: 'app_id',
+  appIdQueryType: 'term',
+  timestampField: '@timestamp',
+  levelField: 'level',
+  levelKeywordField: 'level.keyword',
+  messageField: 'msg',
+  eventField: 'type',
+  eventKeywordField: 'type.keyword',
+  serviceField: 'com.hashicorp.nomad.task_name',
+  serviceKeywordField: 'com.hashicorp.nomad.task_name',
+  displayFields: [
+    { key: 'appId', label: 'App ID', path: 'app_id' },
+    { key: 'path', label: 'Path', path: 'path' },
+    { key: 'status', label: 'Status', path: 'status' }
+  ],
+  logLevelFieldMap: {
+    'debug': 'DEBUG',
+    'info': 'INFO',
+    'warn': 'WARN',
+    'error': 'ERROR',
+    'fatal': 'FATAL'
+  }
+};
+
 // Field mapping for Airo App Builder
 const airoAppFieldMapping: FieldMapping = {
   appIdField: 'data.appId',
@@ -97,9 +124,10 @@ const airoAppFieldMapping: FieldMapping = {
   }
 };
 
-// Field mapping for Control Plane (filters by app_id)
+// Field mapping for Control Plane (searches both hosting-activity and airo-activity indices)
+// Pipe-separated appIdField matches on either app_id OR appId_str
 const controlPlaneFieldMapping: FieldMapping = {
-  appIdField: 'app_id', // Apply app ID filter
+  appIdField: 'app_id|appId_str',
   appIdQueryType: 'term',
   timestampField: '@timestamp',
   levelField: 'level',
@@ -130,7 +158,7 @@ function getESConfigForSource(sourceId: string): LogSourceConfig | null {
   const sources: LogSourceRegistry = {
     'airo-agents': {
       id: 'airo-agents',
-      name: 'Agent Logs',
+      name: 'Agent App',
       description: 'Logs from the Airo Agents service',
       endpoint: env.PIONEER_ES_ENDPOINT || '',
       apiKey: env.PIONEER_ES_API_KEY || '',
@@ -140,7 +168,7 @@ function getESConfigForSource(sourceId: string): LogSourceConfig | null {
     },
     'airo-app': {
       id: 'airo-app',
-      name: 'UI Logs',
+      name: 'UI Client App',
       description: 'Logs from the Airo App Builder application',
       endpoint: env.AIRO_BUILDER_ES_ENDPOINT || '',
       apiKey: env.AIRO_BUILDER_ES_API_KEY || '',
@@ -148,13 +176,33 @@ function getESConfigForSource(sourceId: string): LogSourceConfig | null {
       environment: isTestEnv ? 'dev' : 'prod',
       fieldMapping: airoAppFieldMapping
     },
+    'airo-preview': {
+      id: 'airo-preview',
+      name: 'Preview App',
+      description: 'Logs from the preview application containers',
+      endpoint: env.PIONEER_ES_ENDPOINT || '',
+      apiKey: env.PIONEER_ES_API_KEY || '',
+      index: isTestEnv ? 'airo-preview-application-dev' : 'airo-preview-application-prod',
+      environment: isTestEnv ? 'dev' : 'prod',
+      fieldMapping: airoContainerFieldMapping
+    },
+    'airo-publish': {
+      id: 'airo-publish',
+      name: 'Publish App',
+      description: 'Logs from the published application containers',
+      endpoint: env.PIONEER_ES_ENDPOINT || '',
+      apiKey: env.PIONEER_ES_API_KEY || '',
+      index: isTestEnv ? 'airo-publish-application-dev' : 'airo-publish-application-prod',
+      environment: isTestEnv ? 'dev' : 'prod',
+      fieldMapping: airoContainerFieldMapping
+    },
     'control_plane': {
       id: 'control_plane',
-      name: 'Hosting Logs',
+      name: 'Control Plane',
       description: 'Logs from the hosting service',
       endpoint: env.CONTROL_PLANE_ES_ENDPOINT || '',
       apiKey: env.CONTROL_PLANE_ES_API_KEY || '',
-      index: isTestEnv ? 'pagely-mgmt-worker-hosting-activity-dev' : 'pagely-mgmt-worker-hosting-activity-prod',
+      index: isTestEnv ? 'pagely-mgmt-worker-hosting-activity-dev,pagely-mgmt-worker-airo-activity-dev' : 'pagely-mgmt-worker-hosting-activity-prod,pagely-mgmt-worker-airo-activity-prod',
       environment: isTestEnv ? 'dev' : 'prod',
       fieldMapping: controlPlaneFieldMapping
     }
@@ -175,7 +223,7 @@ export function getAllLogSources(): LogSourceConfig[] {
   return [
     {
       id: 'airo-agents',
-      name: 'Agent Logs',
+      name: 'Agent App',
       description: 'Logs from the Airo Agents service',
       endpoint: env.PIONEER_ES_ENDPOINT || '',
       apiKey: env.PIONEER_ES_API_KEY || '',
@@ -184,8 +232,28 @@ export function getAllLogSources(): LogSourceConfig[] {
       fieldMapping: airoAgentsFieldMapping
     },
     {
+      id: 'airo-preview',
+      name: 'Preview App',
+      description: 'Logs from the preview application containers',
+      endpoint: env.PIONEER_ES_ENDPOINT || '',
+      apiKey: env.PIONEER_ES_API_KEY || '',
+      index: isTestEnv ? 'airo-preview-application-dev' : 'airo-preview-application-prod',
+      environment: isTestEnv ? 'dev' : 'prod',
+      fieldMapping: airoContainerFieldMapping
+    },
+    {
+      id: 'airo-publish',
+      name: 'Publish App',
+      description: 'Logs from the published application containers',
+      endpoint: env.PIONEER_ES_ENDPOINT || '',
+      apiKey: env.PIONEER_ES_API_KEY || '',
+      index: isTestEnv ? 'airo-publish-application-dev' : 'airo-publish-application-prod',
+      environment: isTestEnv ? 'dev' : 'prod',
+      fieldMapping: airoContainerFieldMapping
+    },
+    {
       id: 'airo-app',
-      name: 'UI Logs',
+      name: 'UI Client App',
       description: 'Logs from the Airo App Builder application',
       endpoint: env.AIRO_BUILDER_ES_ENDPOINT || '',
       apiKey: env.AIRO_BUILDER_ES_API_KEY || '',
@@ -195,11 +263,11 @@ export function getAllLogSources(): LogSourceConfig[] {
     },
     {
       id: 'control_plane',
-      name: 'Hosting Logs',
+      name: 'Control Plane',
       description: 'Logs from the hosting service',
       endpoint: env.CONTROL_PLANE_ES_ENDPOINT || '',
       apiKey: env.CONTROL_PLANE_ES_API_KEY || '',
-      index: isTestEnv ? 'pagely-mgmt-worker-hosting-activity-dev' : 'pagely-mgmt-worker-hosting-activity-prod',
+      index: isTestEnv ? 'pagely-mgmt-worker-hosting-activity-dev,pagely-mgmt-worker-airo-activity-dev' : 'pagely-mgmt-worker-hosting-activity-prod,pagely-mgmt-worker-airo-activity-prod',
       environment: isTestEnv ? 'dev' : 'prod',
       fieldMapping: controlPlaneFieldMapping
     }
@@ -225,20 +293,34 @@ export function buildAppIdQuery(
     return null; // This source doesn't support app ID filtering
   }
 
-  if (fieldMapping.appIdQueryType === 'term') {
-    return { term: { [fieldMapping.appIdField]: appId } };
-  }
+  // Support pipe-separated fields (e.g. 'app_id|appId_str') — match on any
+  const fields = fieldMapping.appIdField.split('|');
 
-  if (fieldMapping.appIdQueryType === 'prefix') {
-    if (fieldMapping.appIdField === 'com.hashicorp.nomad.job_name') {
-      return { prefix: { [fieldMapping.appIdField]: `airo-${appId}` } };
+  function buildSingleFieldQuery(field: string): Record<string, unknown> {
+    if (fieldMapping.appIdQueryType === 'term') {
+      return { term: { [field]: appId } };
     }
-    // For other fields using prefix, use simple prefix query
-    return { prefix: { [fieldMapping.appIdField]: appId } };
+    if (fieldMapping.appIdQueryType === 'prefix') {
+      if (field === 'com.hashicorp.nomad.job_name') {
+        return { prefix: { [field]: `airo-${appId}` } };
+      }
+      return { prefix: { [field]: appId } };
+    }
+    throw new Error(
+      `Unsupported appIdQueryType '${fieldMapping.appIdQueryType}' for field '${field}'. ` +
+      `Supported types are 'term' (exact match) or 'prefix' (prefix match).`
+    );
   }
 
-  throw new Error(
-    `Unsupported appIdQueryType '${fieldMapping.appIdQueryType}' for field '${fieldMapping.appIdField}'. ` +
-    `Supported types are 'term' (exact match) or 'prefix' (prefix match).`
-  );
+  if (fields.length === 1) {
+    return buildSingleFieldQuery(fields[0]);
+  }
+
+  // Multiple fields: match on any using bool.should
+  return {
+    bool: {
+      should: fields.map(f => buildSingleFieldQuery(f)),
+      minimum_should_match: 1
+    }
+  };
 }

@@ -199,7 +199,7 @@ export default function PublishEventsPanel({ appId, timeRange = '7d', refreshKey
           </div>
 
           {/* Table rows */}
-          <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
+          <div style={{ overflowY: 'auto' }}>
             {filteredEvents.map((event) => (
               <div key={event.id}>
                 <div

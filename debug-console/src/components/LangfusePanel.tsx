@@ -2293,7 +2293,7 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
           </div>
 
           {/* Conversation View */}
-          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, maxHeight: '600px' }}>
+          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
             {/* Load More (older traces) */}
             {hasMore && (
               <div style={{ textAlign: 'center', padding: '0.5rem 0 0.75rem', display: 'flex', justifyContent: 'center', gap: '0.5rem', alignItems: 'center' }}>

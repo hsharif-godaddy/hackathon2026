@@ -79,7 +79,7 @@ describe('log-sources', () => {
         const config = getLogSourceConfig('control_plane');
 
         expect(config).not.toBeNull();
-        expect(config?.index).toBe('pagely-mgmt-worker-hosting-activity-dev');
+        expect(config?.index).toBe('pagely-mgmt-worker-hosting-activity-dev,pagely-mgmt-worker-airo-activity-dev');
         expect(config?.environment).toBe('dev');
       });
 
@@ -91,7 +91,7 @@ describe('log-sources', () => {
         const config = getLogSourceConfig('control_plane');
 
         expect(config).not.toBeNull();
-        expect(config?.index).toBe('pagely-mgmt-worker-hosting-activity-prod');
+        expect(config?.index).toBe('pagely-mgmt-worker-hosting-activity-prod,pagely-mgmt-worker-airo-activity-prod');
         expect(config?.environment).toBe('prod');
       });
 
@@ -170,19 +170,32 @@ describe('log-sources', () => {
 
       const sources = getAllLogSources();
 
-      expect(sources).toHaveLength(3);
+      expect(sources).toHaveLength(5);
 
       const agentSource = sources.find(s => s.id === 'airo-agents');
       expect(agentSource?.index).toBe('airo-agents-prod');
       expect(agentSource?.environment).toBe('prod');
+
+      const previewSource = sources.find(s => s.id === 'airo-preview');
+      expect(previewSource?.index).toBe('airo-preview-application-prod');
+      expect(previewSource?.environment).toBe('prod');
+      expect(previewSource?.fieldMapping.appIdField).toBe('app_id');
+      expect(previewSource?.fieldMapping.messageField).toBe('msg');
+
+      const publishSource = sources.find(s => s.id === 'airo-publish');
+      expect(publishSource?.index).toBe('airo-publish-application-prod');
+      expect(publishSource?.environment).toBe('prod');
+      expect(publishSource?.fieldMapping.appIdField).toBe('app_id');
+      expect(publishSource?.fieldMapping.messageField).toBe('msg');
 
       const appSource = sources.find(s => s.id === 'airo-app');
       expect(appSource?.index).toBe('logs-*');
       expect(appSource?.environment).toBe('prod');
 
       const controlPlaneSource = sources.find(s => s.id === 'control_plane');
-      expect(controlPlaneSource?.index).toBe('pagely-mgmt-worker-hosting-activity-prod');
+      expect(controlPlaneSource?.index).toBe('pagely-mgmt-worker-hosting-activity-prod,pagely-mgmt-worker-airo-activity-prod');
       expect(controlPlaneSource?.environment).toBe('prod');
+      expect(controlPlaneSource?.fieldMapping.appIdField).toBe('app_id|appId_str');
     });
 
     it('should return all log sources with dev indices when ENVIRONMENT_NAME is test', () => {
@@ -199,11 +212,19 @@ describe('log-sources', () => {
       const agentSource = sources.find(s => s.id === 'airo-agents');
       expect(agentSource?.index).toBe('airo-agents-dev');
 
+      const previewSource = sources.find(s => s.id === 'airo-preview');
+      expect(previewSource?.index).toBe('airo-preview-application-dev');
+      expect(previewSource?.fieldMapping.appIdField).toBe('app_id');
+
+      const publishSource = sources.find(s => s.id === 'airo-publish');
+      expect(publishSource?.index).toBe('airo-publish-application-dev');
+      expect(publishSource?.fieldMapping.appIdField).toBe('app_id');
+
       const appSource = sources.find(s => s.id === 'airo-app');
       expect(appSource?.index).toBe('logs-*');
 
       const controlPlaneSource = sources.find(s => s.id === 'control_plane');
-      expect(controlPlaneSource?.index).toBe('pagely-mgmt-worker-hosting-activity-dev');
+      expect(controlPlaneSource?.index).toBe('pagely-mgmt-worker-hosting-activity-dev,pagely-mgmt-worker-airo-activity-dev');
     });
   });
 
@@ -300,7 +321,13 @@ describe('log-sources', () => {
         const query = buildAppIdQuery('test-app-123', config!.fieldMapping);
 
         expect(query).toEqual({
-          term: { 'app_id': 'test-app-123' }
+          bool: {
+            should: [
+              { term: { 'app_id': 'test-app-123' } },
+              { term: { 'appId_str': 'test-app-123' } }
+            ],
+            minimum_should_match: 1
+          }
         });
       });
 

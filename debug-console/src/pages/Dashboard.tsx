@@ -78,7 +78,7 @@ interface LlmSpendData {
   truncated?: boolean;
 }
 
-type TabId = 'details' | 'summary' | 'conversation' | 'agent-logs' | 'ui-logs' | 'hosting-logs' | 'publish' | 'llm-spend';
+type TabId = 'details' | 'summary' | 'conversation' | 'logs' | 'publish' | 'llm-spend';
 
 
 function GrantSpendSection({ grant, mgmtGrant, isActive }: { grant: GrantBreakdown; mgmtGrant?: import('@/lib/mgmt-control-plane-adapter').MgmtGrant; isActive?: boolean }) {
@@ -178,15 +178,12 @@ export default function Dashboard() {
   // true once AppDetailsPanel confirms whether a subscription exists or not
   const [mgmtSubscriptionResolved, setMgmtSubscriptionResolved] = useState(false);
 
-  // Refresh keys to trigger re-fetches for each tab
   const [refreshKeys, setRefreshKeys] = useState({
     details: 0,
     summary: 0,
     conversation: 0,
-    'agent-logs': 0,
-    'ui-logs': 0,
-    'hosting-logs': 0,
-    'publish': 0,
+    logs: 0,
+    publish: 0,
     'llm-spend': 0,
   });
 
@@ -203,7 +200,7 @@ export default function Dashboard() {
       setAppId(urlAppId);
       setSubmittedAppId(urlAppId);
     }
-    if (urlTab && ['details', 'summary', 'conversation', 'agent-logs', 'ui-logs', 'hosting-logs', 'publish', 'llm-spend'].includes(urlTab)) {
+    if (urlTab && ['details', 'summary', 'conversation', 'logs', 'publish', 'llm-spend'].includes(urlTab)) {
       setActiveTab(urlTab);
     }
     if (urlTimeRange && VALID_TIME_RANGE_VALUES.includes(urlTimeRange)) {
@@ -404,9 +401,7 @@ export default function Dashboard() {
     { id: 'details', label: 'Details', icon: '🗂️' },
     { id: 'summary', label: 'Summary', icon: '📊' },
     { id: 'conversation', label: 'Conversation', icon: '💬' },
-    { id: 'agent-logs', label: 'Agent Logs', icon: '🤖' },
-    { id: 'ui-logs', label: 'UI Logs', icon: '🖥️' },
-    { id: 'hosting-logs', label: 'Hosting Logs', icon: '☁️' },
+    { id: 'logs', label: 'Logs', icon: '📋' },
     { id: 'publish', label: 'Publish Events', icon: '🚀' },
     { id: 'llm-spend', label: 'Subscription', icon: '💳' },
   ];
@@ -415,190 +410,86 @@ export default function Dashboard() {
     <div style={{
       minHeight: '100vh',
       backgroundColor: '#f5f5f5',
-      padding: '2rem'
+      padding: '0.5rem 1.5rem'
     }}>
-      <div style={{
-        maxWidth: '1400px',
-        margin: '0 auto'
-      }}>
-        {/* Header */}
+      <div>
+        {/* Compact single-row header */}
         <header style={{
           backgroundColor: 'white',
-          padding: '1.5rem 2rem',
-          borderRadius: '8px',
-          marginBottom: '1.5rem',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+          padding: '0.75rem 1rem',
+          borderRadius: '6px',
+          marginBottom: '0.5rem',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem',
+          minHeight: '3.25rem'
         }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '1.5rem'
-          }}>
-            <div>
-              <h1 style={{
-                margin: 0,
-                fontSize: '1.75rem',
-                fontWeight: 600,
-                color: '#1a1a1a'
-              }}>
-                Debug Console : Airo AI Builder
-              </h1>
-              <p style={{
-                margin: '0.5rem 0 0 0',
-                fontSize: '0.875rem',
-                color: '#666'
-              }}>
-                Enter an App ID to view logs and conversation history
-              </p>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <a
-                href="/analytics"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  color: '#3b82f6',
-                  textDecoration: 'none',
-                  fontSize: '0.875rem',
-                  fontWeight: 500,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.25rem'
-                }}
-              >
-                📊 Analytics
-              </a>
-              <a
-                href="/image-search"
-                style={{
-                  color: '#3b82f6',
-                  textDecoration: 'none',
-                  fontSize: '0.875rem',
-                  fontWeight: 500,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.25rem',
-                  marginLeft: '1rem',
-                }}
-              >
-                Image Search
-              </a>
-            </div>
-          </div>
-
-          {/* App ID and Time Range inputs */}
-          <div style={{
-            display: 'flex',
-            gap: '1rem',
-            alignItems: 'flex-end',
-            flexWrap: 'wrap'
-          }}>
-            <div style={{ flex: 1, minWidth: '250px', maxWidth: '400px' }}>
-              <label style={{
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                color: '#374151',
-                display: 'block',
-                marginBottom: '0.5rem'
-              }}>
-                App ID
-              </label>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <div style={{ position: 'relative', flex: 1 }}>
-                  <input
-                    type="text"
-                    value={appId}
-                    onChange={(e) => setAppId(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSearch();
-                    }}
-                    placeholder="Enter app ID..."
-                    style={{
-                      width: '100%',
-                      padding: '0.625rem 2rem 0.625rem 1rem',
-                      borderRadius: '6px',
-                      border: '1px solid #d1d5db',
-                      fontSize: '0.875rem'
-                    }}
-                  />
-                  {appId && (
-                    <button
-                      onClick={handleClear}
-                      style={{
-                        position: 'absolute',
-                        right: '8px',
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        background: '#e5e7eb',
-                        border: 'none',
-                        borderRadius: '50%',
-                        width: '18px',
-                        height: '18px',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '12px',
-                        color: '#6b7280',
-                        fontWeight: 'bold'
-                      }}
-                      title="Clear"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-                <button
-                  onClick={handleSearch}
-                  disabled={!appId.trim()}
-                  style={{
-                    padding: '0.625rem 1.25rem',
-                    backgroundColor: appId.trim() ? '#3b82f6' : '#9ca3af',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: appId.trim() ? 'pointer' : 'not-allowed',
-                    fontSize: '0.875rem',
-                    fontWeight: 500,
-                    opacity: appId.trim() ? 1 : 0.6
-                  }}
-                >
-                  Search
-                </button>
-              </div>
-            </div>
-
-            <div style={{ minWidth: '180px' }}>
-              <label style={{
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                color: '#374151',
-                display: 'block',
-                marginBottom: '0.5rem'
-              }}>
-                Time Range
-              </label>
-              <select
-                value={timeRange}
-                onChange={(e) => { setTimeRange(e.target.value); updateUrl(undefined, undefined, e.target.value); }}
+          <h1 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#1a1a1a', whiteSpace: 'nowrap' }}>
+            Airo AI Builder Console
+          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
+            <div style={{ position: 'relative', width: '220px' }}>
+              <input
+                type="text"
+                value={appId}
+                onChange={(e) => setAppId(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+                placeholder="App ID..."
                 style={{
                   width: '100%',
-                  padding: '0.625rem 0.75rem',
-                  borderRadius: '6px',
+                  padding: '0.375rem 1.75rem 0.375rem 0.625rem',
+                  borderRadius: '4px',
                   border: '1px solid #d1d5db',
-                  fontSize: '0.875rem',
-                  backgroundColor: 'white',
-                  cursor: 'pointer'
+                  fontSize: '0.875rem'
                 }}
-              >
-                {TIME_RANGES.map((range) => (
-                  <option key={range.value} value={range.value}>
-                    {range.label}
-                  </option>
-                ))}
-              </select>
+              />
+              {appId && (
+                <button
+                  onClick={handleClear}
+                  style={{
+                    position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)',
+                    background: '#e5e7eb', border: 'none', borderRadius: '50%',
+                    width: '16px', height: '16px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '11px', color: '#6b7280', fontWeight: 'bold'
+                  }}
+                  title="Clear"
+                >×</button>
+              )}
             </div>
+            <button
+              onClick={handleSearch}
+              disabled={!appId.trim()}
+              style={{
+                padding: '0.375rem 0.75rem',
+                backgroundColor: appId.trim() ? '#3b82f6' : '#9ca3af',
+                color: 'white', border: 'none', borderRadius: '4px',
+                cursor: appId.trim() ? 'pointer' : 'not-allowed',
+                fontSize: '0.875rem', fontWeight: 500,
+                opacity: appId.trim() ? 1 : 0.6
+              }}
+            >Search</button>
+            <select
+              value={timeRange}
+              onChange={(e) => { setTimeRange(e.target.value); updateUrl(undefined, undefined, e.target.value); }}
+              style={{
+                padding: '0.375rem 0.5rem', borderRadius: '4px',
+                border: '1px solid #d1d5db', fontSize: '0.875rem',
+                backgroundColor: 'white', cursor: 'pointer'
+              }}
+            >
+              {TIME_RANGES.map((range) => (
+                <option key={range.value} value={range.value}>{range.label}</option>
+              ))}
+            </select>
+          </div>
+          {loading && <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Loading...</span>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
+            <a href="/analytics" target="_blank" rel="noopener noreferrer"
+              style={{ display: 'inline-block', padding: '0.375rem 0.875rem', backgroundColor: '#3b82f6', color: 'white', borderRadius: '4px', textDecoration: 'none', fontSize: '0.813rem', fontWeight: 600 }}>Analytics</a>
+            <a href="/image-search"
+              style={{ display: 'inline-block', padding: '0.375rem 0.875rem', backgroundColor: '#6b7280', color: 'white', borderRadius: '4px', textDecoration: 'none', fontSize: '0.813rem', fontWeight: 600 }}>Images</a>
           </div>
         </header>
 
@@ -631,95 +522,71 @@ export default function Dashboard() {
         ) : (
           <div style={{
             backgroundColor: 'white',
-            borderRadius: '8px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-            overflow: 'hidden'
+            borderRadius: '6px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            minHeight: 'calc(100vh - 3.5rem)'
           }}>
-            {/* App Info Header */}
+            {/* App ID label */}
             <div style={{
-              padding: '1rem 1.5rem',
-              borderBottom: '1px solid #e5e7eb',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              backgroundColor: '#f9fafb'
+              padding: '0.5rem 0.75rem',
+              borderBottom: '1px solid #f3f4f6',
+              backgroundColor: '#fafafa'
             }}>
-              <div>
-                <h2 style={{
-                  margin: 0,
-                  fontSize: '1.125rem',
-                  fontWeight: 600,
-                  color: '#1a1a1a'
-                }}>
-                  App: {submittedAppId}
-                </h2>
-                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.25rem' }}>
-                  {context?.metadata?.lastActivity && (
-                    <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                      Last activity: {formatTimestamp(context.metadata.lastActivity)}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                {loading && (
-                  <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                    Loading...
-                  </span>
-                )}
-              </div>
+              <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>
+                app id - {submittedAppId}
+              </span>
             </div>
-
-            {/* Tabs */}
+            {/* Tabs bar — centered */}
             <div style={{
               display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               borderBottom: '1px solid #e5e7eb',
               backgroundColor: '#fafafa',
-              overflowX: 'auto'
+              gap: '0'
             }}>
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => handleTabChange(tab.id)}
                   style={{
-                    padding: '0.875rem 1.5rem',
+                    padding: '0.5rem 1rem',
                     backgroundColor: activeTab === tab.id ? 'white' : 'transparent',
                     border: 'none',
                     borderBottom: activeTab === tab.id ? '2px solid #3b82f6' : '2px solid transparent',
                     cursor: 'pointer',
-                    fontSize: '0.875rem',
+                    fontSize: '0.84rem',
                     fontWeight: activeTab === tab.id ? 600 : 500,
                     color: activeTab === tab.id ? '#3b82f6' : '#6b7280',
                     whiteSpace: 'nowrap',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
                     transition: 'all 0.15s ease'
                   }}
                 >
-                  <span>{tab.icon}</span>
                   {tab.label}
                 </button>
               ))}
             </div>
 
             {/* Tab Content */}
-            <div style={{ padding: '1.5rem' }}>
+            <div style={{ padding: '0.75rem', flex: 1 }}>
               {error && (
                 <div style={{
                   backgroundColor: '#fef2f2',
                   color: '#991b1b',
-                  padding: '1rem',
-                  borderRadius: '6px',
-                  marginBottom: '1rem',
-                  fontSize: '0.875rem'
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: '4px',
+                  marginBottom: '0.5rem',
+                  fontSize: '0.813rem'
                 }}>
                   {error}
                 </div>
               )}
 
               {/* Details Tab */}
-              <div style={{ display: activeTab === 'details' ? 'flex' : 'none', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: activeTab === 'details' ? 'flex' : 'none', flexDirection: 'column', gap: '1rem', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <button
                     onClick={() => handleRefreshTab('details')}
@@ -845,9 +712,7 @@ export default function Dashboard() {
                         <div style={{
                           display: 'flex',
                           flexDirection: 'column',
-                          gap: '0.5rem',
-                          maxHeight: '500px',
-                          overflowY: 'auto'
+                          gap: '0.5rem'
                         }}>
                           {context.errorSummary.errorGroups.map((group, index) => (
                             <div key={index}>
@@ -1011,39 +876,14 @@ export default function Dashboard() {
                 />
               </div>
 
-              {/* Agent Logs Tab - always rendered for eager loading */}
-              <div style={{ display: activeTab === 'agent-logs' ? 'block' : 'none' }}>
+              {/* Logs Tab */}
+              <div style={{ display: activeTab === 'logs' ? 'block' : 'none' }}>
                 <LogsPanel
                   sources={sources}
-                  defaultSource="airo-agents"
                   globalAppId={submittedAppId}
                   timeRange={timeRange}
-                  refreshKey={refreshKeys['agent-logs']}
-                  onRefresh={() => handleRefreshTab('agent-logs')}
-                />
-              </div>
-
-              {/* UI Logs Tab - always rendered for eager loading */}
-              <div style={{ display: activeTab === 'ui-logs' ? 'block' : 'none' }}>
-                <LogsPanel
-                  sources={sources}
-                  defaultSource="airo-app"
-                  globalAppId={submittedAppId}
-                  timeRange={timeRange}
-                  refreshKey={refreshKeys['ui-logs']}
-                  onRefresh={() => handleRefreshTab('ui-logs')}
-                />
-              </div>
-
-              {/* Hosting Logs Tab - always rendered for eager loading */}
-              <div style={{ display: activeTab === 'hosting-logs' ? 'block' : 'none' }}>
-                <LogsPanel
-                  sources={sources}
-                  defaultSource="control_plane"
-                  globalAppId={submittedAppId}
-                  timeRange={timeRange}
-                  refreshKey={refreshKeys['hosting-logs']}
-                  onRefresh={() => handleRefreshTab('hosting-logs')}
+                  refreshKey={refreshKeys.logs}
+                  onRefresh={() => handleRefreshTab('logs')}
                 />
               </div>
 
@@ -1058,7 +898,7 @@ export default function Dashboard() {
               </div>
 
               {/* Subscription Tab */}
-              <div style={{ display: activeTab === 'llm-spend' ? 'flex' : 'none', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: activeTab === 'llm-spend' ? 'flex' : 'none', flexDirection: 'column', gap: '1rem', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
 
                 {/* Subscription details — shown as soon as data is available */}
                 {mgmtSubscription && (

@@ -3,11 +3,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { formatTimestamp } from '@/lib/date-utils';
-import LogDetailPanel from './LogDetailPanel';
-
-function escapeKQL(value: string): string {
-  return '"' + value.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
-}
 
 export interface LogSource {
   id: string;
@@ -29,6 +24,7 @@ export interface LogEntry {
   environment?: string;
   region?: string;
   version?: string;
+  sourceId?: string;
   data?: {
     message?: string;
     [key: string]: unknown;
@@ -79,22 +75,35 @@ function safeRender(value: unknown): string {
   return String(value);
 }
 
+// Prepare log JSON for display: remove timestamp, promote message/data/error to top
+function formatLogJson(raw: Record<string, unknown>): string {
+  const promoted: Record<string, unknown> = {};
+  const rest: Record<string, unknown> = {};
+  const skipKeys = new Set(['@timestamp', 'time', 'timestamp']);
+  const promoteKeys = ['message', 'msg', 'data', 'error'];
+
+  for (const key of promoteKeys) {
+    if (key in raw) promoted[key] = raw[key];
+  }
+  for (const [key, value] of Object.entries(raw)) {
+    if (skipKeys.has(key) || promoteKeys.includes(key)) continue;
+    rest[key] = value;
+  }
+  return JSON.stringify({ ...promoted, ...rest });
+}
+
 interface LogsPanelProps {
   sources: LogSource[];
-  defaultSource?: string;
   globalAppId?: string;
-  // Central filter controls
   timeRange?: string;
   query?: string;
-  // Refresh control
   refreshKey?: number;
   onRefresh?: () => void;
 }
 
 const INITIAL_COLUMN_WIDTHS = {
   timestamp: 160,
-  level: 80,
-  event: 200
+  source: 80
 };
 
 // Source-specific field mappings
@@ -116,6 +125,18 @@ const SOURCE_FIELD_MAPPINGS: Record<string, {
     getIdValue: (log) => (log.raw?.customerId as string) || (log.raw?.['customer.id'] as string) || (log.raw?.['user.id'] as string) || ((log.raw?.data as Record<string, unknown>)?.customerId as string) || undefined,
     appIdFilterMode: 'field'
   },
+  'airo-preview': {
+    idField: 'appId',
+    idLabel: 'App ID',
+    getIdValue: (log) => log.appId,
+    appIdFilterMode: 'field'
+  },
+  'airo-publish': {
+    idField: 'appId',
+    idLabel: 'App ID',
+    getIdValue: (log) => log.appId,
+    appIdFilterMode: 'field'
+  },
   'control_plane': {
     idField: 'appId',
     idLabel: 'App ID',
@@ -131,30 +152,34 @@ const DEFAULT_FIELD_MAPPING = {
   appIdFilterMode: 'field' as const
 };
 
+const SOURCE_LABELS: Record<string, string> = {
+  'airo-agents': 'Agent',
+  'airo-preview': 'Preview',
+  'airo-publish': 'Publish',
+  'airo-app': 'UI Client',
+  'control_plane': 'CP',
+};
+
 export default function LogsPanel({
   sources,
-  defaultSource,
   globalAppId,
   timeRange = '1h',
   query = '',
   refreshKey = 0,
   onRefresh
 }: LogsPanelProps) {
-  const [selectedSource, setSelectedSource] = useState<string>(defaultSource || sources[0]?.id || '');
+  const [selectedSource, setSelectedSource] = useState<string>('all');
   const [selectedLogIndex, setSelectedLogIndex] = useState<number | null>(null);
   const [page, setPage] = useState(0);
   const [accumulatedLogs, setAccumulatedLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
-  const [includeWarn, setIncludeWarn] = useState(false);
-  const [includeInfo, setIncludeInfo] = useState(false);
+  const [filterText, setFilterText] = useState('');
+  const [levelFilters, setLevelFilters] = useState({ error: true, warn: false });
   const PAGE_SIZE = 50;
   const panelRef = useRef<HTMLDivElement>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
-  const selectedRowRef = useRef<HTMLTableRowElement>(null);
-
-  const fieldMapping = SOURCE_FIELD_MAPPINGS[selectedSource] || DEFAULT_FIELD_MAPPING;
 
   // Column resizing state
   const [columnWidths, setColumnWidths] = useState(INITIAL_COLUMN_WIDTHS);
@@ -219,104 +244,94 @@ export default function LogsPanel({
     };
   }, [handleColumnMouseMove, handleColumnMouseUp]);
 
-  // Update selectedSource when defaultSource changes (e.g., switching tabs)
-  useEffect(() => {
-    if (defaultSource && defaultSource !== selectedSource) {
-      setSelectedSource(defaultSource);
+  const buildTimeParams = useCallback(function buildTime(params: URLSearchParams) {
+    if (timeRange !== 'all') {
+      const now = new Date();
+      const value = parseInt(timeRange.slice(0, -1), 10);
+      const unit = timeRange.slice(-1);
+      const startTime = new Date(now);
+      switch (unit) {
+        case 'm': startTime.setMinutes(startTime.getMinutes() - value); break;
+        case 'h': startTime.setHours(startTime.getHours() - value); break;
+        case 'd': startTime.setDate(startTime.getDate() - value); break;
+      }
+      params.set('startTime', startTime.toISOString());
+      params.set('endTime', now.toISOString());
     }
-  }, [defaultSource, selectedSource]);
+  }, [timeRange]);
+
+  const fetchSingleSource = useCallback(async function fetchSingle(sourceId: string): Promise<{ logs: LogEntry[]; total: number }> {
+    const fm = SOURCE_FIELD_MAPPINGS[sourceId] || DEFAULT_FIELD_MAPPING;
+    const urlParams = new URLSearchParams();
+    urlParams.set('source', sourceId);
+    urlParams.set('size', PAGE_SIZE.toString());
+    urlParams.set('from', (page * PAGE_SIZE).toString());
+
+    // Combine level checkboxes + filter text + external query as free-text search
+    const levelTerms = Object.entries(levelFilters).filter(([, on]) => on).map(([k]) => k).join(' ');
+    const searchTerms = [levelTerms, filterText, query].filter(Boolean).join(' ');
+
+    if (globalAppId && fm.appIdFilterMode !== 'none') {
+      if (fm.appIdFilterMode === 'field') {
+        urlParams.set('appId', globalAppId);
+        if (searchTerms) urlParams.set('query', searchTerms);
+      } else if (fm.appIdFilterMode === 'query') {
+        const combined = globalAppId ? `${searchTerms} ${globalAppId}`.trim() : searchTerms;
+        if (combined) urlParams.set('query', combined);
+      }
+    } else if (searchTerms) {
+      urlParams.set('query', searchTerms);
+    }
+    buildTimeParams(urlParams);
+
+    const response = await fetch(`/api/es-logs?${urlParams.toString()}`);
+    if (!response.ok) {
+      let errorMessage = 'Failed to fetch logs';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorData.details || errorMessage;
+      } catch {
+        errorMessage = `Server error: ${response.status} ${response.statusText}`;
+      }
+      throw new Error(errorMessage);
+    }
+    const data = await response.json();
+    const logs = (data.logs || []).map((log: LogEntry) => ({ ...log, sourceId }));
+    return { logs, total: data.total || 0 };
+  }, [filterText, levelFilters, query, globalAppId, page, buildTimeParams]);
 
   const fetchLogs = useCallback(async function fetchLogsInternal() {
-    if (!selectedSource) return;
-
     setLoading(true);
     setError(null);
 
     try {
-      const urlParams = new URLSearchParams();
-      urlParams.set('source', selectedSource);
-      urlParams.set('size', PAGE_SIZE.toString());
-      urlParams.set('from', (page * PAGE_SIZE).toString());
-
-      // Build levels filter: always include ERROR, optionally WARN and INFO
-      const levels = ['ERROR'];
-      if (includeWarn) levels.push('WARN');
-      if (includeInfo) levels.push('INFO');
-      urlParams.set('levels', levels.join(','));
-
-      // Handle appId filtering based on mode
-      if (globalAppId && fieldMapping.appIdFilterMode !== 'none') {
-        if (fieldMapping.appIdFilterMode === 'field') {
-          // Filter by specific field
-          urlParams.set('appId', globalAppId);
-        } else if (fieldMapping.appIdFilterMode === 'query') {
-          // Add to free-text query search
-          const searchQuery = query ? `${query} ${globalAppId}` : globalAppId;
-          urlParams.set('query', searchQuery);
+      if (selectedSource === 'all') {
+        const results = await Promise.all(sources.map(s => fetchSingleSource(s.id)));
+        const merged = results.flatMap(r => r.logs)
+          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        const totalSum = results.reduce((sum, r) => sum + r.total, 0);
+        setTotal(totalSum);
+        if (page === 0) {
+          setAccumulatedLogs(merged);
+        } else {
+          setAccumulatedLogs(prev => [...prev, ...merged].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
         }
-      }
-
-      // Add any additional query terms (if not already added above)
-      if (query && fieldMapping.appIdFilterMode !== 'query') {
-        urlParams.set('query', query);
-      }
-
-      if (timeRange !== 'all') {
-        const now = new Date();
-        const value = parseInt(timeRange.slice(0, -1), 10);
-        const unit = timeRange.slice(-1);
-        const startTime = new Date(now);
-
-        switch (unit) {
-          case 'm':
-            startTime.setMinutes(startTime.getMinutes() - value);
-            break;
-          case 'h':
-            startTime.setHours(startTime.getHours() - value);
-            break;
-          case 'd':
-            startTime.setDate(startTime.getDate() - value);
-            break;
-        }
-        urlParams.set('startTime', startTime.toISOString());
-        urlParams.set('endTime', now.toISOString());
-      }
-
-      const response = await fetch(`/api/es-logs?${urlParams.toString()}`);
-
-      if (!response) {
-        throw new Error('No response received from server');
-      }
-
-      if (!response.ok) {
-        let errorMessage = 'Failed to fetch logs';
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorData.details || errorMessage;
-        } catch {
-          errorMessage = `Server error: ${response.status} ${response.statusText}`;
-        }
-        throw new Error(errorMessage);
-      }
-
-      const data = await response.json();
-      setTotal(data.total || 0);
-
-      if (page === 0) {
-        setAccumulatedLogs(data.logs || []);
       } else {
-        setAccumulatedLogs((prev) => [...prev, ...(data.logs || [])]);
+        const result = await fetchSingleSource(selectedSource);
+        setTotal(result.total);
+        if (page === 0) {
+          setAccumulatedLogs(result.logs);
+        } else {
+          setAccumulatedLogs(prev => [...prev, ...result.logs]);
+        }
       }
     } catch (err) {
-      const errorMessage = err instanceof Error
-        ? err.message
-        : 'Failed to fetch logs';
-      setError(errorMessage);
+      setError(err instanceof Error ? err.message : 'Failed to fetch logs');
       console.error('Error fetching logs:', err);
     } finally {
       setLoading(false);
     }
-  }, [selectedSource, includeWarn, includeInfo, timeRange, query, globalAppId, page, fieldMapping, refreshKey]);
+  }, [selectedSource, sources, fetchSingleSource, page]); // refreshKey triggers via reset effect → page=0 → re-fetch
 
   useEffect(() => {
     fetchLogs();
@@ -325,7 +340,7 @@ export default function LogsPanel({
   useEffect(() => {
     setPage(0);
     setAccumulatedLogs([]);
-  }, [selectedSource, includeWarn, includeInfo, query, timeRange, globalAppId, refreshKey]);
+  }, [selectedSource, filterText, levelFilters, query, timeRange, globalAppId, refreshKey]);
 
   const loadMore = () => {
     if (!loading && accumulatedLogs.length < total) {
@@ -333,58 +348,9 @@ export default function LogsPanel({
     }
   };
 
-  const selectLog = (index: number) => {
-    setSelectedLogIndex(index);
+  const toggleLog = (index: number) => {
+    setSelectedLogIndex(selectedLogIndex === index ? null : index);
   };
-
-  const closeDetailPanel = () => {
-    setSelectedLogIndex(null);
-  };
-
-  const selectPreviousLog = useCallback(() => {
-    if (selectedLogIndex !== null && selectedLogIndex > 0) {
-      setSelectedLogIndex(selectedLogIndex - 1);
-    }
-  }, [selectedLogIndex]);
-
-  const selectNextLog = useCallback(() => {
-    if (selectedLogIndex !== null && selectedLogIndex < accumulatedLogs.length - 1) {
-      setSelectedLogIndex(selectedLogIndex + 1);
-    }
-  }, [selectedLogIndex, accumulatedLogs.length]);
-
-  useEffect(() => {
-    if (selectedRowRef.current && tableContainerRef.current) {
-      selectedRowRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  }, [selectedLogIndex]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (selectedLogIndex === null) return;
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-
-      switch (e.key) {
-        case 'ArrowUp':
-          e.preventDefault();
-          selectPreviousLog();
-          break;
-        case 'ArrowDown':
-          e.preventDefault();
-          selectNextLog();
-          break;
-        case 'Escape':
-          e.preventDefault();
-          closeDetailPanel();
-          break;
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [selectedLogIndex, selectPreviousLog, selectNextLog]);
-
-  const selectedLog = selectedLogIndex !== null ? accumulatedLogs[selectedLogIndex] : null;
 
   if (sources.length === 0) {
     return (
@@ -412,7 +378,7 @@ export default function LogsPanel({
         position: 'relative'
       }}
     >
-      {/* Header with level filters and refresh button */}
+      {/* Header with source selector, level filters and refresh button */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -421,65 +387,56 @@ export default function LogsPanel({
         flexWrap: 'wrap',
         gap: '0.5rem'
       }}>
-        <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-          Showing {accumulatedLogs.length} of {total.toLocaleString()} logs
-          {selectedSource && ` from ${sources.find(s => s.id === selectedSource)?.name}`}
-          {globalAppId && ` for App: ${globalAppId}`}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <select
+            value={selectedSource}
+            onChange={(e) => setSelectedSource(e.target.value)}
+            style={{
+              padding: '0.375rem 0.625rem',
+              borderRadius: '6px',
+              border: '1px solid #d1d5db',
+              fontSize: '0.813rem',
+              backgroundColor: 'white',
+              cursor: 'pointer',
+              color: '#374151',
+              fontWeight: 500
+            }}
+          >
+            <option value="all">All Sources</option>
+            {sources.map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+            {accumulatedLogs.length} of {total.toLocaleString()} logs
+            {globalAppId && ` for ${globalAppId}`}
+          </span>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          {(() => {
-            const currentSource = sources.find(s => s.id === selectedSource);
-            if (currentSource?.kibanaUrl) {
-              let query: string;
-              let dataViewId: string;
-
-              if (selectedSource === 'airo-agents') {
-                query = globalAppId ? `com.hashicorp.nomad.job_name:airo-${escapeKQL(globalAppId)}*` : '*';
-                dataViewId = '6b6e4be0-1f3d-4b22-b8f3-5270cd9cc2df';
-              } else if (selectedSource === 'control_plane') {
-                query = globalAppId ? `app_id:${escapeKQL(globalAppId)}` : '*';
-                dataViewId = 'pagely-mgmt-worker-hosting-activity-*';
-              } else {
-                query = globalAppId
-                  ? `KATANA_NAMESPACE:airobuilde AND data.appId:${escapeKQL(globalAppId)}`
-                  : 'KATANA_NAMESPACE:airobuilde';
-                dataViewId = 'logs-*';
-              }
-
-              // Map timeRange prop to Kibana time format
-              const kibanaFrom = timeRange === 'all' ? 'now-30d' : `now-${timeRange}`;
-              const kibanaParams = `_g=(time:(from:${kibanaFrom},to:now))&_a=(dataSource:(dataViewId%3A%27${dataViewId}%27,type:dataView),query:(language:kuery,query:'${encodeURIComponent(query)}'))`;
-              return (
-                <a
-                  href={`${currentSource.kibanaUrl}/app/discover#/?${kibanaParams}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ fontSize: '0.813rem', color: '#3b82f6', textDecoration: 'none' }}
-                >
-                  Kibana ↗
-                </a>
-              );
-            }
-            return null;
-          })()}
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.813rem', color: '#6b7280', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={includeWarn}
-              onChange={(e) => setIncludeWarn(e.target.checked)}
-              style={{ cursor: 'pointer' }}
-            />
-            Warnings
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.813rem', color: '#6b7280', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={includeInfo}
-              onChange={(e) => setIncludeInfo(e.target.checked)}
-              style={{ cursor: 'pointer' }}
-            />
-            Info
-          </label>
+          {(['error', 'warn'] as const).map((lvl) => (
+            <label key={lvl} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.813rem', color: '#6b7280', cursor: 'pointer', textTransform: 'capitalize' }}>
+              <input
+                type="checkbox"
+                checked={levelFilters[lvl]}
+                onChange={(e) => setLevelFilters(prev => ({ ...prev, [lvl]: e.target.checked }))}
+                style={{ cursor: 'pointer' }}
+              />
+              {lvl}
+            </label>
+          ))}
+          <input
+            type="text"
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            placeholder="Filter..."
+            style={{
+              padding: '0.375rem 0.625rem',
+              borderRadius: '4px',
+              border: '1px solid #d1d5db',
+              fontSize: '0.813rem',
+              width: '150px'
+            }}
+          />
           {onRefresh && (
             <button
               onClick={onRefresh}
@@ -566,8 +523,7 @@ export default function LogsPanel({
           border: '1px solid #e5e7eb',
           borderRadius: '8px',
           overflow: 'hidden',
-          minHeight: '300px',
-          maxHeight: '600px'
+          minHeight: '200px'
         }}>
           <div
             ref={tableContainerRef}
@@ -630,16 +586,16 @@ export default function LogsPanel({
                     textAlign: 'left',
                     padding: '0.75rem 1rem',
                     fontWeight: 600,
-                    width: `${columnWidths.level}px`,
+                    width: `${columnWidths.source}px`,
                     color: '#374151',
                     position: 'relative',
                     borderRight: '1px solid #e5e7eb'
                   }}>
-                    Level
+                    Source
                     <button
                       type="button"
-                      onMouseDown={(e) => handleColumnMouseDown('level', e)}
-                      onKeyDown={(e) => handleColumnKeyDown('level', e)}
+                      onMouseDown={(e) => handleColumnMouseDown('source', e)}
+                      onKeyDown={(e) => handleColumnKeyDown('source', e)}
                       style={{
                         position: 'absolute',
                         right: -3,
@@ -656,42 +612,7 @@ export default function LogsPanel({
                       onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                       onFocus={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
                       onBlur={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                      aria-label="Resize level column"
-                      role="separator"
-                      aria-orientation="vertical"
-                    />
-                  </th>
-                  <th style={{
-                    textAlign: 'left',
-                    padding: '0.75rem 1rem',
-                    fontWeight: 600,
-                    width: `${columnWidths.event}px`,
-                    color: '#374151',
-                    position: 'relative',
-                    borderRight: '1px solid #e5e7eb'
-                  }}>
-                    Event
-                    <button
-                      type="button"
-                      onMouseDown={(e) => handleColumnMouseDown('event', e)}
-                      onKeyDown={(e) => handleColumnKeyDown('event', e)}
-                      style={{
-                        position: 'absolute',
-                        right: -3,
-                        top: 0,
-                        bottom: 0,
-                        width: '6px',
-                        cursor: 'col-resize',
-                        backgroundColor: 'transparent',
-                        zIndex: 10,
-                        border: 'none',
-                        padding: 0
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                      onFocus={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
-                      onBlur={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                      aria-label="Resize event column"
+                      aria-label="Resize source column"
                       role="separator"
                       aria-orientation="vertical"
                     />
@@ -702,76 +623,62 @@ export default function LogsPanel({
                     fontWeight: 600,
                     color: '#374151'
                   }}>
-                    Message
+                    Log
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {accumulatedLogs.map((log, index) => {
                   const isSelected = selectedLogIndex === index;
+                  const logJson = formatLogJson(log.raw);
                   return (
-                    <tr
-                      key={log.id}
-                      ref={isSelected ? selectedRowRef : null}
-                      onClick={() => selectLog(index)}
-                      style={{
-                        cursor: 'pointer',
-                        transition: 'background-color 0.15s',
-                        borderBottom: '1px solid #f3f4f6',
-                        backgroundColor: isSelected ? '#eff6ff' : 'transparent',
-                        borderLeft: isSelected ? '3px solid #3b82f6' : '3px solid transparent'
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isSelected) {
-                          e.currentTarget.style.backgroundColor = '#f9fafb';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isSelected) {
-                          e.currentTarget.style.backgroundColor = 'transparent';
-                        }
-                      }}
-                    >
-                      <td style={{
-                        padding: '0.75rem 1rem',
-                        fontFamily: 'monospace',
-                        whiteSpace: 'nowrap',
-                        fontSize: '0.75rem',
-                        color: isSelected ? '#1e40af' : '#6b7280'
-                      }}>
-                        {formatTimestamp(log.timestamp)}
-                      </td>
-                      <td style={{ padding: '0.75rem 1rem' }}>
-                        <span style={getLogLevelBadgeStyle(log.level || '')}>
-                          {(log.level || '').toString().toLowerCase()}
-                        </span>
-                      </td>
-                      <td style={{
-                        padding: '0.75rem 1rem',
-                        fontFamily: 'monospace',
-                        fontSize: '0.75rem',
-                        color: '#6b7280',
-                        maxWidth: '200px',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap'
-                      }} title={safeRender(log.event)}>
-                        {safeRender(log.event)}
-                      </td>
-                      <td style={{
-                        padding: '0.75rem 1rem',
-                        fontSize: '0.875rem',
-                        maxWidth: '400px',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        color: isSelected ? '#1e40af' : 'inherit'
-                      }}>
-                        {log.event === 'http.request.error' && log.data?.url
-                          ? `${safeRender(log.data.url)} - ${safeRender(log?.data?.message || log.message)}`
-                          : safeRender(log?.data?.message || log.message)}
-                      </td>
-                    </tr>
+                    <React.Fragment key={log.id}>
+                      <tr
+                        onClick={() => toggleLog(index)}
+                        style={{
+                          cursor: 'pointer',
+                          transition: 'background-color 0.15s',
+                          borderBottom: isSelected ? 'none' : '1px solid #f3f4f6',
+                          backgroundColor: isSelected ? '#eff6ff' : 'transparent',
+                          borderLeft: isSelected ? '3px solid #3b82f6' : '3px solid transparent'
+                        }}
+                        onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
+                        onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                      >
+                        <td style={{
+                          padding: '0.5rem 0.75rem', fontFamily: 'monospace',
+                          whiteSpace: 'nowrap', fontSize: '0.7rem',
+                          color: isSelected ? '#1e40af' : '#6b7280'
+                        }}>
+                          {formatTimestamp(log.timestamp)}
+                        </td>
+                        <td style={{ padding: '0.5rem 0.5rem', fontSize: '0.65rem', fontWeight: 600, color: '#6b7280', whiteSpace: 'nowrap' }}>
+                          {SOURCE_LABELS[log.sourceId || selectedSource] || log.sourceId || selectedSource}
+                        </td>
+                        <td style={{
+                          padding: '0.5rem 0.75rem', fontFamily: 'monospace', fontSize: '0.75rem',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          color: isSelected ? '#1e40af' : '#374151'
+                        }}>
+                          {logJson}
+                        </td>
+                      </tr>
+                      {isSelected && (
+                        <tr>
+                          <td colSpan={3} style={{ padding: 0, borderBottom: '1px solid #e5e7eb' }}>
+                            <pre style={{
+                              margin: 0, padding: '0.5rem 0.75rem',
+                              backgroundColor: '#1e293b', color: '#e2e8f0',
+                              fontSize: '0.7rem', lineHeight: 1.5,
+                              fontFamily: 'monospace', overflow: 'auto',
+                              maxHeight: '300px', whiteSpace: 'pre-wrap', wordBreak: 'break-all'
+                            }}>
+                              {JSON.stringify(JSON.parse(logJson), null, 2)}
+                            </pre>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -806,45 +713,6 @@ export default function LogsPanel({
         </div>
       )}
 
-      {/* Drawer overlay */}
-      {selectedLog && (
-        <>
-          <div
-            style={{
-              position: 'fixed',
-              top: '60px',
-              right: 0,
-              bottom: 0,
-              width: '500px',
-              maxWidth: '90vw',
-              backgroundColor: 'white',
-              boxShadow: '-4px 0 20px rgba(0, 0, 0, 0.15)',
-              zIndex: 50,
-              animation: 'slideIn 0.25s ease-out',
-              display: 'flex',
-              flexDirection: 'column',
-              borderTopLeftRadius: '8px'
-            }}
-          >
-            <LogDetailPanel
-              log={selectedLog}
-              fieldMapping={fieldMapping}
-              onClose={closeDetailPanel}
-              onPrevious={selectPreviousLog}
-              onNext={selectNextLog}
-              hasPrevious={selectedLogIndex !== null && selectedLogIndex > 0}
-              hasNext={selectedLogIndex !== null && selectedLogIndex < accumulatedLogs.length - 1}
-            />
-          </div>
-
-          <style>{`
-            @keyframes slideIn {
-              from { transform: translateX(100%); }
-              to { transform: translateX(0); }
-            }
-          `}</style>
-        </>
-      )}
     </div>
   );
 }
