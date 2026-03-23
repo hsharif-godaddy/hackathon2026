@@ -38,6 +38,7 @@ import { toolImageSearchEvents, toolVideoSearchEvents, toolImageGenerationEvents
 import OpenAI from 'openai';
 import fs from 'node:fs';
 import path from 'node:path';
+import { getPersistentPublicDir } from '../utils/persistent-assets.js';
 
 /**
  * Media type enumeration - now includes generate
@@ -561,15 +562,8 @@ export class MediaSearchTool {
       }
 
       const appPath = app.path;
-      const publicDir = path.join(appPath, 'public');
-      const imagesDir = path.join(publicDir, 'images');
-
-      if (!fs.existsSync(publicDir)) {
-        fs.mkdirSync(publicDir, { recursive: true });
-      }
-      if (!fs.existsSync(imagesDir)) {
-        fs.mkdirSync(imagesDir, { recursive: true });
-      }
+      const imagesDir = path.join(getPersistentPublicDir(appPath), 'images');
+      fs.mkdirSync(imagesDir, { recursive: true });
 
       const result = await openaiClient.images.generate({
         model: "gpt-image-1",
@@ -616,7 +610,7 @@ export class MediaSearchTool {
 
       fs.writeFileSync(filePath, imageBuffer);
 
-      const publicPath = `/images/${fullFilename}`;
+      const publicPath = `/airo-assets/uploads/${fullFilename}`;
       const executionTime = Date.now() - startTime;
 
       toolImageGenerationEvents.success(logger, {

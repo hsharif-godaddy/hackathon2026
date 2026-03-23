@@ -582,7 +582,7 @@ describe('video-generation-tool', function packageTests() {
           data: {
             status: 'completed',
             jobId: 'vid-success',
-            videoUrl: expect.stringContaining('/public/images/'),
+            videoUrl: expect.stringContaining('/airo-assets/uploads/'),
             appId: 'test-app-123'
           }
         });

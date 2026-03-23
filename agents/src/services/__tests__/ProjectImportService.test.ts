@@ -822,7 +822,7 @@ describe('ProjectImportService', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should verify cleanup command structure with regex for graceful public directory handling', async () => {
+    it('should verify cleanup command structure (no public dir special-casing needed)', async () => {
       let cleanupCommand = '';
       const mockDevSupervisor = {
         exec: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
@@ -840,16 +840,13 @@ describe('ProjectImportService', () => {
         '/tmp/apps/test-app/app'
       );
 
-      // Verify the cleanup command structure using regex for robustness
-      // Pattern: `{ [ -d "/app/public" ] && find "/app/public" ... || true; }`
-      // The braces are essential - they ensure || true only applies to public cleanup,
-      // not the main cleanup (which must fail properly on errors)
-      expect(cleanupCommand).toMatch(/\{\s*\[\s*-d\s+"[^"]+\/public"\s*\]\s*&&.*\|\|\s*true\s*;\s*\}/);
-
-      // Also verify specific components
-      expect(cleanupCommand).toContain('[ -d "/app/public" ]'); // Directory existence check
-      expect(cleanupCommand).toContain('|| true'); // Fallback to success
-      expect(cleanupCommand).toContain('! -name "assets"'); // Preserve assets directory
+      // Persistent user data lives at /shared-storage/ (outside /app),
+      // so no special public/assets handling is needed in the cleanup command.
+      expect(cleanupCommand).toContain('find "/app"');
+      expect(cleanupCommand).toContain('-exec rm -rf');
+      // No public directory exclusion or assets preservation needed
+      expect(cleanupCommand).not.toContain('! -name "public"');
+      expect(cleanupCommand).not.toContain('! -name "assets"');
     });
 
     it('should fail when main cleanup command fails (error propagates correctly)', async () => {
@@ -937,7 +934,6 @@ describe('ProjectImportService', () => {
       expect(cleanupCommand).toContain('! -name ".gitignore"');
       expect(cleanupCommand).toContain('! -name ".is_ready"');
       expect(cleanupCommand).toContain('! -name ".import-*"');
-      expect(cleanupCommand).toContain('! -name "public"'); // public dir excluded from top-level deletion
     });
 
     it('should verify braces are essential for correct error propagation', async () => {

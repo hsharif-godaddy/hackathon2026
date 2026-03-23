@@ -7,6 +7,7 @@ import sharp from 'sharp';
 
 import { Logger } from '../logging/index.js';
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js';
+import { getPersistentPublicDir } from '../utils/persistent-assets.js';
 import type { AssetInfo, AssetManifest } from '../types/rebuild.js';
 
 const logger = Logger.create({ service: 'asset-processing-service' });
@@ -40,7 +41,7 @@ export class AssetProcessingService {
   constructor(appPath: string) {
     this.appPath = appPath;
     this.assetsDir = path.join(appPath, '.source-site', 'assets');
-    this.publicDir = path.join(appPath, 'public');
+    this.publicDir = getPersistentPublicDir(this.appPath);
   }
 
   /**
@@ -301,7 +302,7 @@ export class AssetProcessingService {
       logger.debug('asset-processing.download-success', {
         url,
         localPath: relativePath,
-        publicPath: path.relative(this.appPath, publicPath)
+        publicPath
       });
 
       return {

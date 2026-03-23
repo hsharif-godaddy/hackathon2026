@@ -193,6 +193,9 @@ export class DockerComposeGenerator {
 		env.DEV_SUPERVISOR_SETUP_SCRIPT = "/management-scripts/nomad_setup.sh";
 		env.DEV_SUPERVISOR_DEFER_RESTART_SETUP = "true"; // Defer restart setup to first request
 
+		// Persistent assets mount location (matches container volume mount)
+		env.PERSISTENT_ASSETS_DIR = "/shared-storage";
+
 		return env;
 	}
 
@@ -254,6 +257,9 @@ export class DockerComposeGenerator {
 		// Go runtime memory limit for dev-supervisor (matches production)
 		env.GOMEMLIMIT = `${GO_MEM_LIMIT_MB}MiB`;
 
+		// Persistent assets mount location (matches container volume mount)
+		env.PERSISTENT_ASSETS_DIR = "/shared-storage";
+
 		return env;
 	}
 
@@ -283,8 +289,8 @@ export class DockerComposeGenerator {
 			`${allocPath}:/alloc`,                               // Config/secrets (shared between tasks, writable for Nomad config moves)
 			`${previewLocalPath}:/local`,                       // Task-private dir (NOMAD_TASK_DIR)
 			`${gitRepoPath}/.git:/app/.git`,                    // Git repo bind mount
-			`${assetsPath}/public:/app/public/assets`,          // Public assets
-			`${assetsPath}/private:/private`,                   // Private assets
+			`${assetsPath}/public:/shared-storage/public`,   // Persistent public assets
+			`${assetsPath}/private:/shared-storage/private`, // Persistent private assets
 			`${tmpPath}:/tmp`,                                  // Temp directory
 		];
 
@@ -380,8 +386,8 @@ ${volumeLines}
 			`${allocPath}:/alloc`,                               // Config/secrets (shared between tasks, writable for Nomad config moves)
 			`${publishLocalPath}:/local`,                       // Task-private dir (NOMAD_TASK_DIR)
 			`${sslPath}:/app/.ssl:ro`,
-			`${assetsPath}/public:/app/public/assets`,
-			`${assetsPath}/private:/private`,
+			`${assetsPath}/public:/shared-storage/public`,   // Persistent public assets
+			`${assetsPath}/private:/shared-storage/private`, // Persistent private assets
 			`${tmpPath}:/tmp`,
 		];
 

@@ -412,13 +412,10 @@ export class MediaManifestService {
       await fs.writeFile(tempPath, content, 'utf-8');
       await fs.rename(tempPath, manifestPath);
 
-      // Commit to git (including the uploaded media file)
+      // Commit manifest to git (media file is in persistent storage, not the workspace)
       let commitHash: string | undefined;
       try {
-        // Extract filename from uploadedUrl (e.g., "/airo-assets/uploads/image.jpg" -> "image.jpg")
-        const uploadedFilename = uploadedUrl.replace('/airo-assets/uploads/', '');
-        const mediaFilePath = path.join('public', 'media', uploadedFilename);
-        commitHash = await this.commitManifestChange(appId, slotName, 'update', [mediaFilePath]);
+        commitHash = await this.commitManifestChange(appId, slotName, 'update');
       } catch (gitError) {
         logger.warn('media_manifest.upload_slot.git_commit_failed', {
           ...logContext,

@@ -6,6 +6,7 @@ import { logger } from '../logging/index.js';
 import { toolImageGenerationEvents } from '../logging/events/index.js';
 import fs from 'node:fs';
 import path from 'node:path';
+import { getPersistentPublicDir } from '../utils/persistent-assets.js';
 
 export interface ImageEditorOptions {
   prompt: string;
@@ -57,15 +58,8 @@ export class ImageEditorTool {
       }
 
       const appPath = app.path;
-      const publicDir = path.join(appPath, 'public');
-      const imagesDir = path.join(publicDir, 'images');
-
-      if (!fs.existsSync(publicDir)) {
-        fs.mkdirSync(publicDir, { recursive: true });
-      }
-      if (!fs.existsSync(imagesDir)) {
-        fs.mkdirSync(imagesDir, { recursive: true });
-      }
+      const imagesDir = path.join(getPersistentPublicDir(appPath), 'images');
+      fs.mkdirSync(imagesDir, { recursive: true });
 
       const result = await generateImageWithModel({
         prompt: prompt.trim(),
@@ -94,7 +88,7 @@ export class ImageEditorTool {
       const imageBuffer = Buffer.from(result.image, 'base64');
       fs.writeFileSync(filePath, imageBuffer);
 
-      const publicPath = `/images/${fullFilename}`;
+      const publicPath = `/airo-assets/uploads/${fullFilename}`;
       const executionTime = Date.now() - startTime;
 
       toolImageGenerationEvents.success(logger, {

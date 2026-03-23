@@ -55,8 +55,8 @@ func generatePreviewService(app *store.App, basePath string) string {
 		fmt.Sprintf("%s:/alloc", allocPath),
 		fmt.Sprintf("%s:/local", previewLocalPath),
 		fmt.Sprintf("%s/.git:/app/.git", gitRepoPath),
-		fmt.Sprintf("%s/public:/app/public/assets", assetsPath),
-		fmt.Sprintf("%s/private:/private", assetsPath),
+		fmt.Sprintf("%s/public:/shared-storage/public", assetsPath),
+		fmt.Sprintf("%s/private:/shared-storage/private", assetsPath),
 		fmt.Sprintf("%s:/tmp", tmpPath),
 	}
 	volumeLines := formatVolumeLines(volumes)
@@ -119,8 +119,8 @@ func generatePublishService(app *store.App, basePath string) string {
 		fmt.Sprintf("%s:/alloc", allocPath),
 		fmt.Sprintf("%s:/local", publishLocalPath),
 		fmt.Sprintf("%s:/app/.ssl:ro", sslPath),
-		fmt.Sprintf("%s/public:/app/public/assets", assetsPath),
-		fmt.Sprintf("%s/private:/private", assetsPath),
+		fmt.Sprintf("%s/public:/shared-storage/public", assetsPath),
+		fmt.Sprintf("%s/private:/shared-storage/private", assetsPath),
 		fmt.Sprintf("%s:/tmp", tmpPath),
 	}
 	volumeLines := formatVolumeLines(volumes)
@@ -233,6 +233,9 @@ func generatePreviewEnvironment(app *store.App) map[string]string {
 		"BASE_APP_DIR":                        "/app-template",
 		"DEV_SUPERVISOR_SETUP_SCRIPT":         "/management-scripts/nomad_setup.sh",
 		"DEV_SUPERVISOR_DEFER_RESTART_SETUP":  "true",
+
+		// Persistent assets mount location (matches container volume mount)
+		"PERSISTENT_ASSETS_DIR": "/shared-storage",
 	}
 
 	if v := os.Getenv("GODADDY_API_BASE_URL"); v != "" {
@@ -254,6 +257,9 @@ func generatePublishEnvironment(app *store.App) map[string]string {
 		"CUSTOMER_APP_DIR":           "",
 		"DEV_SUPERVISOR_SETUP_SCRIPT": "",
 		"GOMEMLIMIT":     fmt.Sprintf("%dMiB", goMemLimitMB),
+
+		// Persistent assets mount location (matches container volume mount)
+		"PERSISTENT_ASSETS_DIR": "/shared-storage",
 	}
 
 	if app.PublishSupervisorPort > 0 {

@@ -106,9 +106,6 @@ func (t *TemplateSetup) Provision(appID string, previewPort, publishPort, superv
 		slog.Warn("setup.git_init.failed", "app_id", appID, "error", err)
 	}
 
-	// Create assets symlink: preview/public/assets → ../../assets/public
-	t.setupAssetsSymlink(appID, previewPath, assetsPath)
-
 	// Generate SSL certificates for HTTPS (preview needs /app/.ssl, publish needs /alloc/.ssl)
 	if err := t.generateSSLCerts(appID, base); err != nil {
 		slog.Warn("setup.ssl.failed", "app_id", appID, "error", err)
@@ -202,43 +199,6 @@ func (t *TemplateSetup) initGitWithTemplate(appID, previewPath, gitRepoPath stri
 	}
 
 	return nil
-}
-
-// setupAssetsSymlink creates preview/public/assets → ../../assets/public
-// so agent writes transparently land in the bind-mounted assets directory.
-func (t *TemplateSetup) setupAssetsSymlink(appID, previewPath, assetsPath string) {
-	publicDir := filepath.Join(previewPath, "public")
-	publicAssetsPath := filepath.Join(publicDir, "assets")
-	assetsPublicDir := filepath.Join(assetsPath, "public")
-
-	os.MkdirAll(publicDir, 0755)
-	os.MkdirAll(assetsPublicDir, 0755)
-
-	// If public/assets exists as a real directory, move contents to assets/public
-	info, err := os.Lstat(publicAssetsPath)
-	if err == nil && info.Mode().IsDir() {
-		entries, _ := os.ReadDir(publicAssetsPath)
-		for _, entry := range entries {
-			src := filepath.Join(publicAssetsPath, entry.Name())
-			dst := filepath.Join(assetsPublicDir, entry.Name())
-			if _, err := os.Stat(dst); os.IsNotExist(err) {
-				os.Rename(src, dst)
-			}
-		}
-		os.RemoveAll(publicAssetsPath)
-	} else if err == nil && info.Mode()&os.ModeSymlink != 0 {
-		// Already a symlink, check if correct
-		return
-	}
-
-	// Create symlink
-	if err := os.Symlink("../../assets/public", publicAssetsPath); err != nil {
-		slog.Warn("setup.assets_symlink.failed", "app_id", appID, "error", err)
-		return
-	}
-
-	slog.Info("setup.assets_symlink.created", "app_id", appID,
-		"link", publicAssetsPath, "target", "../../assets/public")
 }
 
 func (t *TemplateSetup) writeConfigFiles(basePath, appID string, dbCreds *DBCredentials) error {

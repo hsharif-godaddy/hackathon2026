@@ -5,7 +5,7 @@
  * runs prompt → screenshot → job → poll → download → stitch in the background,
  * then pushes the result to the client via WebSocket (eventType "video").
  *
- * Generated videos are saved to the app's /public/images directory.
+ * Generated videos are saved to the persistent assets directory.
  * State is tracked in .airo/video.json; if the file already exists with a
  * completed video, the cached result is returned immediately.
  */
@@ -16,6 +16,7 @@ import { nanoid } from 'nanoid';
 import { createOpenAIClient } from '@airo/ai-lib';
 import { videoApiFetch } from '../helper/video-api-helper.js';
 import { logger } from '../logging/index.js';
+import { getPersistentPublicDir } from '../utils/persistent-assets.js';
 import { getVideoPromptGenerationService } from '../services/video-prompt-generation.js';
 import { WebsiteScraperDriver } from './ai-lib-tools/drivers/website-scraper-driver.js';
 
@@ -236,7 +237,9 @@ export class VideoGenerationTool {
 
       if (videoMetadata.status === 'completed' && videoMetadata.url) {
         try {
-          await access(path.join(this.appPath, videoMetadata.url));
+          // URL is /airo-assets/uploads/{filename}; resolve to persistent storage path
+          const filename = path.basename(videoMetadata.url);
+          await access(path.join(getPersistentPublicDir(this.appPath), 'images', filename));
           return {
             status: 'completed',
             url: this.previewUrl
@@ -568,7 +571,7 @@ export class VideoGenerationTool {
     openaiClient: any
   ): Promise<void> {
     const { resolution = '720x1280' } = options;
-    const imagesDir = path.join(this.appPath, 'public', 'images');
+    const imagesDir = path.join(getPersistentPublicDir(this.appPath), 'images');
 
     await mkdir(imagesDir, { recursive: true });
 
@@ -617,7 +620,7 @@ export class VideoGenerationTool {
       });
     }
 
-    const publicPath = `/public/images/${fullFilename}`;
+    const publicPath = `/airo-assets/uploads/${fullFilename}`;
     await this.saveVideoMetadata(videoId, 'completed', publicPath);
     logger.info('video-generation.completed', { appId: this.appId, videoId, filename: fullFilename });
 

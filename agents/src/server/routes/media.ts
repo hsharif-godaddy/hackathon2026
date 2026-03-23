@@ -18,6 +18,7 @@ import { imageProcessingService } from '../../services/ImageProcessingService.js
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { logger } from '../../logging/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
+import { getPersistentPublicDir } from '../../utils/persistent-assets.js';
 
 const router: IRouter = Router();
 
@@ -342,8 +343,8 @@ router.post(
       const ext = processed.format === 'jpeg' ? 'jpg' : processed.format;
       const filename = `${sanitizedSlot}-${hash}.${ext}`;
 
-      // Ensure /public/media/ directory exists
-      const mediaDir = path.join(app.path, 'public', 'media');
+      // Ensure persistent media directory exists
+      const mediaDir = path.join(getPersistentPublicDir(app.path), 'media');
       await fs.mkdir(mediaDir, { recursive: true });
 
       // Build file path and verify it stays within media directory (defense in depth)

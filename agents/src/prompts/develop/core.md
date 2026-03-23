@@ -430,7 +430,7 @@ The rebuild workflow creates a `.source-site/` directory containing:
 - `sitemap.json` - List of discovered pages
 - `site-metadata.json` - Analyzed site information (colors, fonts, content)
 - `assets/` - Downloaded images and assets
-- Assets are copied to `public/images/` and `public/other/` for use in the app
+- Assets are copied to persistent storage and served via `/images/[filename]` or `/other/[filename]` URLs
 - `workflow-state.json` - Tracks which pages have been built
 
 ### Building Rebuild Pages

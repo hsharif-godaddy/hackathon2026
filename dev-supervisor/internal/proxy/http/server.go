@@ -130,7 +130,7 @@ func (p *HTTPProxy) Start() error {
 	// Persistent assets directory (CephFS mount in production, host dir in local dev)
 	persistentDir := os.Getenv("PERSISTENT_ASSETS_DIR")
 	if persistentDir == "" {
-		persistentDir = "/airo-persistent-assets"
+		persistentDir = "/shared-storage"
 	}
 
 	// Define media search paths for all handlers - single source of truth

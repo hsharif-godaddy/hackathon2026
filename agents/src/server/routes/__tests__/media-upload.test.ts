@@ -8,6 +8,11 @@ vi.mock('../../middleware/app-ownership.js', () => ({
   validateAppOwnership: vi.fn((req, res, next) => next()),
 }))
 
+// Mock persistent assets helper to use test paths
+vi.mock('../../../utils/persistent-assets.js', () => ({
+  getPersistentPublicDir: vi.fn((appPath: string) => `${appPath}/public`),
+}))
+
 // Mock dependencies
 vi.mock('../../../services/MediaManifestService.js', () => ({
   mediaManifestService: {
