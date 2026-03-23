@@ -169,7 +169,7 @@ describe('model-normalization', () => {
     it('should return normalized name for aliases', () => {
       expect(getNormalizedModelName('gpt4o')).toBe('gpt-4o')
       expect(getNormalizedModelName('claude4')).toBe('claude-sonnet-4')
-      expect(getNormalizedModelName('sonnet')).toBe('claude-sonnet-4-5')
+      expect(getNormalizedModelName('sonnet')).toBe('claude-sonnet-4-6')
     })
 
     it('should return same name for already normalized models', () => {
