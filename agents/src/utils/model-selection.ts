@@ -107,7 +107,7 @@ async function wrapWithDevTools(model: LanguageModel): Promise<LanguageModel> {
   })
 }
 
-export type ModelTier = 'full' | 'fast' | 'cheap'
+export type ModelTier = 'full' | 'fast'
 
 /**
  * Model mappings for different tiers and providers
@@ -120,16 +120,10 @@ const MODEL_MAPPINGS = {
     fallback: 'sonnet'            // Always Claude Sonnet
   },
   fast: {
-    // Claude Sonnet — same as full tier, reserved for future differentiation
-    bedrock: 'sonnet',
-    openai: 'sonnet',
-    fallback: 'sonnet'
-  },
-  cheap: {
-    // Claude Haiku for lightweight tool-level LLM calls (color palettes, font selection)
-    bedrock: 'haiku',
-    openai: 'haiku',
-    fallback: 'haiku'
+    // Always use Claude Sonnet for consistent experience
+    bedrock: 'sonnet',             // Claude Sonnet (consistent experience)
+    openai: 'sonnet',              // Claude Sonnet through proxy/Anthropic
+    fallback: 'sonnet'             // Always Claude Sonnet
   }
 } as const
 
@@ -182,14 +176,16 @@ export function getModelOverride(): string | null {
 /**
  * Get the appropriate model for the specified tier
  * 
- * @param tier - 'full' for premium models, 'fast' for quick responses, 'cheap' for lightweight tool calls (Haiku)
+ * @param tier - 'full' for premium models, 'fast' for quick responses
  * @returns Promise<LanguageModel> - The selected model instance
- *
+ * 
  * @example
  * ```typescript
- * const fullModel = await getAgentModel('full')    // Complex reasoning (Sonnet)
- * const fastModel = await getAgentModel('fast')    // Quick responses (Sonnet)
- * const cheapModel = await getAgentModel('cheap')  // Lightweight tools (Haiku)
+ * // For complex reasoning tasks
+ * const fullModel = await getAgentModel('full')
+ * 
+ * // For quick responses
+ * const fastModel = await getAgentModel('fast')
  * ```
  */
 export async function getAgentModel(tier: ModelTier): Promise<LanguageModel> {
@@ -254,7 +250,7 @@ export async function getAgentModel(tier: ModelTier): Promise<LanguageModel> {
     })
   } else if (anthropicAvailable) {
     // Second preference: Anthropic direct API
-    selectedModel = config.openai // Same model alias, resolved to Anthropic provider by ai-lib
+    selectedModel = config.bedrock // Use Claude models through Anthropic API
     logger.info('model.provider.selected', {
       provider: 'anthropic',
       selectedModel,
@@ -308,7 +304,7 @@ export async function getAgentModel(tier: ModelTier): Promise<LanguageModel> {
 /**
  * Get the appropriate model and model name for the specified tier
  * 
- * @param tier - 'full' for premium models, 'fast' for quick responses, 'cheap' for lightweight tool calls (Haiku)
+ * @param tier - 'full' for premium models, 'fast' for quick responses
  * @returns Promise<{model: LanguageModel, modelName: string}> - The selected model instance and name
  */
 export async function getAgentModelWithName(tier: ModelTier): Promise<{model: any, modelName: string}> {
@@ -377,7 +373,7 @@ export async function getAgentModelWithName(tier: ModelTier): Promise<{model: an
     })
   } else if (anthropicAvailable) {
     // Second preference: Anthropic direct API
-    selectedModel = config.openai // Same model alias, resolved to Anthropic provider by ai-lib
+    selectedModel = config.bedrock // Use Claude models through Anthropic API
     logger.info('model.provider.selected', {
       provider: 'anthropic',
       selectedModel,
@@ -439,8 +435,8 @@ export function getModelRecommendations() {
     full: {
       description: 'Premium models for complex reasoning, coding, and analysis',
       models: {
-        bedrock: 'Claude Sonnet - Latest and most capable',
-        openai: 'Claude Sonnet through proxy'
+        bedrock: 'Claude Sonnet 4 - Latest and most capable',
+        openai: 'GPT-4o - High performance OpenAI model'
       },
       useCases: [
         'Complex code generation and debugging',
@@ -450,28 +446,16 @@ export function getModelRecommendations() {
       ]
     },
     fast: {
-      description: 'Claude Sonnet — same as full, reserved for future differentiation',
+      description: 'Fast models for quick responses and simple tasks',
       models: {
-        bedrock: 'Claude Sonnet',
-        openai: 'Claude Sonnet through proxy'
+        bedrock: 'Claude 3.5 Haiku - Fast and efficient',
+        openai: 'GPT-4o Mini - Cost-effective and quick'
       },
       useCases: [
-        'Initial app scaffolding',
-        'Quick agent responses',
+        'Quick questions and answers',
+        'Simple code snippets',
         'Fast text processing',
         'Real-time chat interactions'
-      ]
-    },
-    cheap: {
-      description: 'Claude Haiku for lightweight tool-level LLM calls',
-      models: {
-        bedrock: 'Claude Haiku - Fast and cost-effective',
-        openai: 'Claude Haiku through proxy'
-      },
-      useCases: [
-        'Color palette generation',
-        'Font pairing selection',
-        'Simple structured output tasks'
       ]
     }
   }
