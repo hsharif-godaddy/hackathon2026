@@ -389,6 +389,39 @@ export interface EventMetadata {
 }
 
 /**
+ * Returns a coalesce key for a message, or null if non-coalesceable.
+ * This is the single source of truth for which event types can be coalesced.
+ * Events with the same key can be merged.
+ *
+ * Coalesceable types:
+ * - chunk: content string concatenation (key: "chunk")
+ * - tool_input_delta: data.delta concatenation, keyed by toolId so
+ *   deltas for different tool calls don't merge (key: "tid:{toolId}")
+ */
+export function getCoalesceKey(type: string, data: Record<string, unknown>): string | null {
+  if (type === 'chunk') return 'chunk'
+  if (type === 'tool_input_delta') return `tid:${data.toolId}`
+  return null
+}
+
+/**
+ * Merge data for a coalesced event into the pending event's data.
+ * For tool_input_delta, concatenates data.delta. For all others, replaces data.
+ */
+export function mergeCoalescedData(
+  type: string,
+  pendingData: Record<string, unknown>,
+  incomingData: Record<string, unknown>
+): Record<string, unknown> {
+  if (type === 'tool_input_delta') {
+    const prevDelta = (pendingData.delta as string) ?? ''
+    const newDelta = (incomingData.delta as string) ?? ''
+    return { ...incomingData, delta: prevDelta + newDelta }
+  }
+  return incomingData
+}
+
+/**
  * Configuration for circular buffer
  */
 export interface CircularBufferConfig {

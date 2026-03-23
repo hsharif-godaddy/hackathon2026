@@ -561,6 +561,16 @@ export class WebSocketServer {
         }
       })
 
+      socket.on('disconnecting', () => {
+        // Flush coalesced events while socket can still write, then clean up timer.
+        // During 'disconnect', socket.connected is already false so emitMessages
+        // would be a no-op. The event channel has all events for recovery regardless.
+        const wsSubscriber = (socket as any).data?.wsSubscriber as WebSocketSubscriber | undefined
+        if (wsSubscriber) {
+          wsSubscriber.dispose()
+        }
+      })
+
       socket.on('disconnect', async (reason) => {
         if (reason === 'ping timeout') {
           this.logger.warn('websocket.quality.ping_timeout_disconnect', {
@@ -713,10 +723,7 @@ export class WebSocketServer {
           // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
           // No additional cleanup needed
         },
-        createWebSocketSubscriber: (sock) => new WebSocketSubscriber(
-          sock,
-          (id) => this.stateManager.isDisconnected(id)
-        )
+        createWebSocketSubscriber: (sock) => this.createCoalescingWebSocketSubscriber(sock)
       })
       return // Recovery handled, skip fresh connection setup
     }
@@ -815,10 +822,7 @@ export class WebSocketServer {
           // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
           // No additional cleanup needed
         },
-        createWebSocketSubscriber: (sock) => new WebSocketSubscriber(
-          sock,
-          (id) => this.stateManager.isDisconnected(id)
-        )
+        createWebSocketSubscriber: (sock) => this.createCoalescingWebSocketSubscriber(sock)
       })
       return // Recovery handled, skip fresh connection setup
     }
@@ -870,10 +874,7 @@ export class WebSocketServer {
           // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
           // No additional cleanup needed
         },
-        createWebSocketSubscriber: (sock) => new WebSocketSubscriber(
-          sock,
-          (id) => this.stateManager.isDisconnected(id)
-        )
+        createWebSocketSubscriber: (sock) => this.createCoalescingWebSocketSubscriber(sock)
       })
       return // Recovery handled, skip fresh connection setup
     }
@@ -894,6 +895,24 @@ export class WebSocketServer {
       }
     } as WebSocketMessage)
 
+  }
+
+  private createCoalescingWebSocketSubscriber(socket: any): WebSocketSubscriber {
+    const subscriber = new WebSocketSubscriber(
+      socket,
+      (id: string) => this.stateManager.isDisconnected(id),
+      {
+        // Engine.IO internal API (socket.io ^4.8.3, engine.io 6.6.4).
+        // writeBuffer is private — no public backpressure signal exists.
+        // If this path breaks after a Socket.IO upgrade, returns 0 → base window (safe fallback).
+        // Verify after upgrading: `socket.conn.writeBuffer` should be an array of pending packets.
+        getBackpressure: () => (socket as any).conn?.writeBuffer?.length ?? 0
+      }
+    )
+    // Store reference for dispose on disconnect
+    if (!(socket as any).data) (socket as any).data = {}
+    ;(socket as any).data.wsSubscriber = subscriber
+    return subscriber
   }
 
   /**
@@ -1857,10 +1876,13 @@ export class WebSocketServer {
         // Use effective socket ID to handle migrations (A→B) where recovery already registered websocket-B
         // This mirrors the cleanup logic at line 1996 and ensures exactly one subscriber exists
         const effectiveSocketId = this.stateManager.getEffectiveSocketId(socketId)
+        // Dispose old subscriber's coalescer timer before unsubscribing
+        const oldSubscriber = (socket as any).data?.wsSubscriber as WebSocketSubscriber | undefined
+        if (oldSubscriber) oldSubscriber.dispose()
         this.eventChannel.unsubscribe(conversationId, `websocket-${effectiveSocketId}`)
         this.eventChannel.subscribe(
           conversationId,
-          new WebSocketSubscriber(socket, (id) => this.stateManager.isDisconnected(id))
+          this.createCoalescingWebSocketSubscriber(socket)
         )
 
         // Persistence (non-blocking)

@@ -422,8 +422,10 @@ describe('ConnectionRecoveryManager', () => {
           .map((call: any[]) => call[1].content)
 
         // Both events replayed because no history was loaded
-        expect(replayedContents).toContain('persisted chunk')
-        expect(replayedContents).toContain('live chunk')
+        // Consecutive same-type chunks are coalesced into one event
+        expect(replayedContents).toHaveLength(1)
+        expect(replayedContents[0]).toContain('persisted chunk')
+        expect(replayedContents[0]).toContain('live chunk')
       })
     })
 
@@ -516,7 +518,7 @@ describe('ConnectionRecoveryManager', () => {
 
         manager.beginCatchUpHandshake(catchUpSocket, {
           conversationId: 'conv-1',
-          events: [
+          coalescedEvents: [
             {
               id: 'cu-1',
               conversationId: 'conv-1',
@@ -528,6 +530,7 @@ describe('ConnectionRecoveryManager', () => {
               agentName: 'test-agent'
             }
           ],
+          lastSequence: 99,
           onComplete: vi.fn(),
           onTimeout: vi.fn()
         })
@@ -541,12 +544,14 @@ describe('ConnectionRecoveryManager', () => {
     })
 
     it('scales ACK timeout with replayed event count', async () => {
+      // Alternate between chunk and tool_input_delta so coalescing keeps all
+      // 200 events (alternating types prevent merging)
       const manyEvents = Array.from({ length: 200 }, (_, i) => ({
         id: `evt-${i}`,
         conversationId: 'conv-1',
         sequence: i + 1,
-        type: 'chunk',
-        content: `chunk-${i}`,
+        type: i % 2 === 0 ? 'chunk' : 'tool_input_delta',
+        content: `data-${i}`,
         data: {},
         timestamp: new Date(),
         agentName: 'test-agent'
@@ -555,8 +560,9 @@ describe('ConnectionRecoveryManager', () => {
 
       await manager.handleManualRecovery(socket, 'socket-old', callbacks)
 
-      // Base timeout (30s) should NOT trigger failure when events extend the window
+      // After coalescing, alternating types produce 200 events (each is a single run)
       // 200 events × 100ms = 20s extra, so adaptive timeout = 50s
+      // Base timeout (30s) should NOT trigger failure when events extend the window
       vi.advanceTimersByTime(config.ackTimeout + 1000) // 31s — within adaptive window
       expect(callbacks.onRecoveryFailed).not.toHaveBeenCalled()
 
@@ -724,7 +730,8 @@ describe('ConnectionRecoveryManager', () => {
 
       manager.beginCatchUpHandshake(socket, {
         conversationId: 'conv-1',
-        events,
+        coalescedEvents: events,
+        lastSequence: 20,
         onComplete: vi.fn(),
         onTimeout: vi.fn()
       })
@@ -754,7 +761,8 @@ describe('ConnectionRecoveryManager', () => {
 
       manager.beginCatchUpHandshake(socket, {
         conversationId: 'conv-1',
-        events,
+        coalescedEvents: events,
+        lastSequence: 20,
         onComplete: vi.fn(),
         onTimeout: vi.fn()
       })
@@ -789,7 +797,8 @@ describe('ConnectionRecoveryManager', () => {
 
       manager.beginCatchUpHandshake(socket, {
         conversationId: 'conv-1',
-        events,
+        coalescedEvents: events,
+        lastSequence: 20,
         onComplete: vi.fn(),
         onTimeout: vi.fn()
       })
@@ -820,7 +829,8 @@ describe('ConnectionRecoveryManager', () => {
 
       manager.beginCatchUpHandshake(socket, {
         conversationId: 'conv-1',
-        events,
+        coalescedEvents: events,
+        lastSequence: 20,
         onComplete,
         onTimeout: vi.fn()
       })
@@ -850,7 +860,8 @@ describe('ConnectionRecoveryManager', () => {
 
       manager.beginCatchUpHandshake(socket, {
         conversationId: 'conv-1',
-        events,
+        coalescedEvents: events,
+        lastSequence: 20,
         onComplete: vi.fn(),
         onTimeout
       })
@@ -862,12 +873,14 @@ describe('ConnectionRecoveryManager', () => {
 
     it('scales catch-up ACK timeout with event count', () => {
       const onTimeout = vi.fn()
+      // Alternate between chunk and tool_input_delta so coalescing keeps all
+      // 300 events (alternating types prevent merging)
       const manyEvents: StreamingEvent[] = Array.from({ length: 300 }, (_, i) => ({
         id: `evt-${i}`,
         conversationId: 'conv-1',
         sequence: i + 1,
-        type: 'chunk',
-        content: `chunk-${i}`,
+        type: i % 2 === 0 ? 'chunk' : 'tool_input_delta',
+        content: `data-${i}`,
         data: {},
         timestamp: new Date(),
         agentName: 'test-agent'
@@ -875,7 +888,8 @@ describe('ConnectionRecoveryManager', () => {
 
       manager.beginCatchUpHandshake(socket, {
         conversationId: 'conv-1',
-        events: manyEvents,
+        coalescedEvents: manyEvents,
+        lastSequence: 300,
         onComplete: vi.fn(),
         onTimeout
       })
@@ -906,7 +920,8 @@ describe('ConnectionRecoveryManager', () => {
 
       manager.beginCatchUpHandshake(socket, {
         conversationId: 'conv-1',
-        events,
+        coalescedEvents: events,
+        lastSequence: 20,
         onComplete: vi.fn(),
         onTimeout
       })

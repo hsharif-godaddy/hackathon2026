@@ -1,4 +1,5 @@
 import type { EventSubscriber, StreamingEvent } from '../interfaces.js'
+import { EventCoalescer, type CoalescerConfig, type CoalescedMessage } from './event-coalescer.js'
 
 /**
  * WebSocket message format for Socket.IO emission
@@ -17,101 +18,63 @@ export type IsDisconnectedFn = (socketId: string) => boolean
 
 /**
  * WebSocket subscriber that delivers events to connected Socket.IO clients
+ * Coalesces consecutive chunk/tool_input_delta events into single emits.
  * Skips events during disconnection (buffering happens in event channel)
- *
- * Key features:
- * - Emits events to connected sockets via Socket.IO
- * - Skips events during disconnection (event channel buffers them)
- * - Converts StreamingEvent to WebSocketMessage format
- * - Handles socket connection state gracefully
- *
- * @example
- * ```typescript
- * const subscriber = new WebSocketSubscriber(
- *   socket,
- *   (socketId) => stateManager.isDisconnected(socketId)
- * )
- * channel.subscribe(conversationId, subscriber)
- * ```
  */
 export class WebSocketSubscriber implements EventSubscriber {
   id: string
 
   /**
-   * Blocking subscriber - WebSocket errors should abort the stream.
-   * This ensures we detect socket failures immediately and can handle them
-   * (e.g., buffer for recovery or abort the stream).
+   * Blocking subscriber — onEvent() resolves immediately after buffering
+   * (synchronous push). The event channel awaits the buffer-add, not the
+   * socket emit. Actual emission happens asynchronously via the coalescer's
+   * flush timer. Emit errors are caught in emitMessages() to prevent
+   * uncaught exceptions in the timer callback.
    */
   blocking = true
 
   private socket: any // Socket.IO socket
   private isDisconnected: IsDisconnectedFn
+  private coalescer: EventCoalescer
 
-  /**
-   * Creates a new WebSocket subscriber
-   *
-   * @param socket - Socket.IO socket instance
-   * @param isDisconnected - Function to check if socket is disconnected
-   *
-   * @example
-   * ```typescript
-   * const subscriber = new WebSocketSubscriber(
-   *   socket,
-   *   (socketId) => stateManager.isDisconnected(socketId)
-   * )
-   * ```
-   */
   constructor(
     socket: any,
-    isDisconnected: IsDisconnectedFn
+    isDisconnected: IsDisconnectedFn,
+    coalescerConfig?: CoalescerConfig
   ) {
     this.socket = socket
     this.isDisconnected = isDisconnected
     this.id = `websocket-${socket.id}`
+
+    this.coalescer = new EventCoalescer(
+      (messages) => this.emitMessages(messages),
+      coalescerConfig
+    )
   }
 
-  /**
-   * Handles a streaming event by emitting to WebSocket or skipping
-   * Skips when disconnected (event channel buffers events for later replay)
-   *
-   * @param event - The streaming event to process
-   * @throws Error if event delivery fails (for fail-fast behavior)
-   *
-   * @example
-   * ```typescript
-   * await subscriber.onEvent(event)
-   * ```
-   */
   async onEvent(event: StreamingEvent): Promise<void> {
-    // Check if socket is disconnected but stream is still active
-    // Skip emitting - events are buffered in the event channel and will be
-    // replayed via getEventsSince() when the socket reconnects
     if (this.isDisconnected(this.socket.id)) {
-      return // No-op: event channel handles buffering
+      return
     }
 
     if (this.socket.connected) {
-      // Normal emit to connected socket
       const message = this.toWebSocketMessage(event)
-      this.socket.emit('message', message)
+      this.coalescer.push(message)
     }
-    // If not connected and not in recovery window, silently skip
-    // (subscriber should have been unregistered)
   }
 
   /**
-   * Handles an error that occurred during event processing
-   * Emits error event to WebSocket client if connected
-   *
-   * @param error - The error that occurred
-   *
-   * @example
-   * ```typescript
-   * subscriber.onError(new Error('Failed to process event'))
-   * ```
+   * Flush pending buffer and release timer resources.
+   * MUST be called on socket disconnect to avoid leaking buffered events.
    */
+  dispose(): void {
+    this.coalescer.dispose()
+  }
+
   onError(error: Error): void {
     if (this.socket.connected) {
+      // Flush pending events before emitting error (non-terminal — coalescer stays usable)
+      this.coalescer.flush()
       this.socket.emit('message', {
         type: 'error',
         content: error.message,
@@ -123,34 +86,29 @@ export class WebSocketSubscriber implements EventSubscriber {
     }
   }
 
-  /**
-   * Optional filter - WebSocketSubscriber receives all events by default
-   *
-   * @param _event - The event to filter (unused)
-   * @returns true (receives all events)
-   */
   filter(_event: StreamingEvent): boolean {
-    return true // No filtering by default
+    return true
   }
 
-  /**
-   * Converts StreamingEvent to WebSocketMessage format
-   * Preserves event type, content, and data fields
-   *
-   * @param event - The streaming event to convert
-   * @returns WebSocket message ready for Socket.IO emission
-   *
-   * @example
-   * ```typescript
-   * const message = subscriber.toWebSocketMessage(event)
-   * socket.emit('message', message)
-   * ```
-   */
   toWebSocketMessage(event: StreamingEvent): WebSocketMessage {
     return {
       type: event.type,
       content: event.content,
       data: event.data
+    }
+  }
+
+  private emitMessages(messages: CoalescedMessage[]): void {
+    if (!this.socket.connected) return
+    try {
+      for (const msg of messages) {
+        // Strip coalescedCount — internal metadata, not part of the wire protocol
+        const { coalescedCount: _, ...wireMessage } = msg
+        this.socket.emit('message', wireMessage)
+      }
+    } catch {
+      // Swallow emit errors in timer callback to prevent uncaught exceptions.
+      // The event channel has all events buffered for recovery regardless.
     }
   }
 }

@@ -1158,7 +1158,8 @@ describe('WebSocketServer - Error Handling', () => {
           call[1].data.isRecovering === true
         )
         expect(recoveryStartCall).toBeDefined()
-        expect(recoveryStartCall[1].data.bufferedEventCount).toBe(3)
+        // Two consecutive chunks coalesce into one, plus one tool_result = 2 events
+        expect(recoveryStartCall[1].data.bufferedEventCount).toBe(2)
         expect(recoveryStartCall[1].data.requiresAck).toBe(true)
 
         const replayCompleteCall = emitCalls.find(call =>
@@ -1166,20 +1167,21 @@ describe('WebSocketServer - Error Handling', () => {
           call[1].type === 'replay_complete'
         )
         expect(replayCompleteCall).toBeDefined()
-        expect(replayCompleteCall?.[1].data.eventsReplayed).toBe(3)
+        expect(replayCompleteCall?.[1].data.eventsReplayed).toBe(2)
 
         // Verify missed events were replayed via volatile.emit
+        // Two consecutive chunks are coalesced into one event with concatenated content
         const volatileEmits = newMockSocket.volatile.emit.mock.calls
-        const chunkCalls = volatileEmits.filter(call =>
+        const replayedCalls = volatileEmits.filter(call =>
           call[0] === 'message' &&
-          (call[1].type === 'chunk' || call[1].type === 'tool_result') &&
-          ['Missed 1', 'Missed 2', 'Tool done'].includes(call[1].content)
+          (call[1].type === 'chunk' || call[1].type === 'tool_result')
         )
-        expect(chunkCalls.length).toBe(3)
-        const chunkContents = chunkCalls.map(call => call[1].content)
-        expect(chunkContents).toContain('Missed 1')
-        expect(chunkContents).toContain('Missed 2')
-        expect(chunkContents).toContain('Tool done')
+        expect(replayedCalls.length).toBe(2)
+        const replayedContents = replayedCalls.map(call => call[1].content)
+        // First event: coalesced chunks ("Missed 1" + "Missed 2")
+        expect(replayedContents[0]).toBe('Missed 1Missed 2')
+        // Second event: tool_result unchanged
+        expect(replayedContents[1]).toBe('Tool done')
 
         // Simulate client sending recovery_ack
         const recoveryAckHandler = newMockSocket.once.mock.calls.find(call => call[0] === 'recovery_ack')?.[1]
@@ -1199,7 +1201,8 @@ describe('WebSocketServer - Error Handling', () => {
           call[1].data.isRecovering === false
         )
         expect(recoveryCompleteCall).toBeDefined()
-        expect(recoveryCompleteCall[1].data.eventsReplayed).toBe(3)
+        // Two consecutive chunks coalesced into one + one tool_result = 2 coalesced events
+        expect(recoveryCompleteCall[1].data.eventsReplayed).toBe(2)
       }
 
       // Clean up
@@ -1776,14 +1779,17 @@ describe('WebSocketServer - Error Handling', () => {
       eventChannel.subscribe(conversationId, subscriberA)
 
       // Publish events 1-3 to socket A
-      await eventChannel.publish(conversationId, { type: 'chunk', content: 'Event 1', data: {} })
-      await eventChannel.publish(conversationId, { type: 'chunk', content: 'Event 2', data: {} })
-      await eventChannel.publish(conversationId, { type: 'chunk', content: 'Event 3', data: {} })
+      // Use 'start' type (non-coalesceable) so events pass through immediately.
+      // This test validates migration/dedup, not coalescing behavior.
+      await eventChannel.publish(conversationId, { type: 'start', content: 'Event 1', data: {} })
+      await eventChannel.publish(conversationId, { type: 'start', content: 'Event 2', data: {} })
+      await eventChannel.publish(conversationId, { type: 'start', content: 'Event 3', data: {} })
 
       expect(socketAEvents).toHaveLength(3)
 
       // === Phase 2: Socket A disconnects, Socket B reconnects (A→B migration) ===
       mockSocketA.connected = false
+      subscriberA.dispose()
       eventChannel.unsubscribe(conversationId, `websocket-socket-A`)
 
       // Migrate socket A → B
@@ -1795,14 +1801,15 @@ describe('WebSocketServer - Error Handling', () => {
       eventChannel.subscribe(conversationId, subscriberB)
 
       // Publish events 4-6 to socket B
-      await eventChannel.publish(conversationId, { type: 'chunk', content: 'Event 4', data: {} })
-      await eventChannel.publish(conversationId, { type: 'chunk', content: 'Event 5', data: {} })
-      await eventChannel.publish(conversationId, { type: 'chunk', content: 'Event 6', data: {} })
+      await eventChannel.publish(conversationId, { type: 'start', content: 'Event 4', data: {} })
+      await eventChannel.publish(conversationId, { type: 'start', content: 'Event 5', data: {} })
+      await eventChannel.publish(conversationId, { type: 'start', content: 'Event 6', data: {} })
 
       expect(socketBEvents).toHaveLength(3)
 
       // === Phase 3: Socket B disconnects, Socket C reconnects (B→C migration, chain A→B→C) ===
       mockSocketB.connected = false
+      subscriberB.dispose()
       eventChannel.unsubscribe(conversationId, `websocket-socket-B`)
 
       // Migrate socket B → C (now chain: A→B→C)
@@ -1814,9 +1821,9 @@ describe('WebSocketServer - Error Handling', () => {
       eventChannel.subscribe(conversationId, subscriberC)
 
       // Publish events 7-9 to socket C
-      await eventChannel.publish(conversationId, { type: 'chunk', content: 'Event 7', data: {} })
-      await eventChannel.publish(conversationId, { type: 'chunk', content: 'Event 8', data: {} })
-      await eventChannel.publish(conversationId, { type: 'chunk', content: 'Event 9', data: {} })
+      await eventChannel.publish(conversationId, { type: 'start', content: 'Event 7', data: {} })
+      await eventChannel.publish(conversationId, { type: 'start', content: 'Event 8', data: {} })
+      await eventChannel.publish(conversationId, { type: 'start', content: 'Event 9', data: {} })
 
       expect(socketCEvents).toHaveLength(3)
 
@@ -1836,6 +1843,7 @@ describe('WebSocketServer - Error Handling', () => {
 
       // === Cleanup using original socket ID (simulates finally block) ===
       // When original handler (socket-A) finishes, it should clean up using effective ID
+      subscriberC.dispose()
       const effectiveForCleanup = stateManager.getEffectiveSocketId('socket-A')
       expect(effectiveForCleanup).toBe('socket-C')
 

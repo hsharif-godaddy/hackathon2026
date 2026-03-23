@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { WebSocketSubscriber, type IsDisconnectedFn } from '../websocket-subscriber.js'
 import type { StreamingEvent } from '../../interfaces.js'
 
@@ -51,10 +51,16 @@ describe('WebSocketSubscriber', () => {
   let subscriber: WebSocketSubscriber
 
   beforeEach(() => {
+    vi.useFakeTimers()
     socket = new MockSocket('socket-123')
     disconnectedSocketIds = new Set<string>()
     isDisconnected = (socketId: string) => disconnectedSocketIds.has(socketId)
     subscriber = new WebSocketSubscriber(socket, isDisconnected)
+  })
+
+  afterEach(() => {
+    subscriber.dispose()
+    vi.useRealTimers()
   })
 
   describe('constructor', () => {
@@ -67,8 +73,8 @@ describe('WebSocketSubscriber', () => {
   describe('onEvent', () => {
     it('emits to connected socket', async () => {
       const event = createTestEvent({
-        type: 'chunk',
-        content: 'Hello world',
+        type: 'tool_result',
+        content: 'Tool completed',
         data: { step: 1 }
       })
 
@@ -77,8 +83,8 @@ describe('WebSocketSubscriber', () => {
       expect(socket.emittedEvents).toHaveLength(1)
       expect(socket.emittedEvents[0].event).toBe('message')
       expect(socket.emittedEvents[0].data).toEqual({
-        type: 'chunk',
-        content: 'Hello world',
+        type: 'tool_result',
+        content: 'Tool completed',
         data: { step: 1 }
       })
     })
@@ -266,6 +272,7 @@ describe('WebSocketSubscriber', () => {
 
       // New events after reconnection should emit normally
       await subscriber.onEvent(createTestEvent({ content: 'Event 4' }))
+      vi.advanceTimersByTime(30)
       expect(socket.emittedEvents).toHaveLength(1)
       expect(socket.emittedEvents[0].data.content).toBe('Event 4')
     })
@@ -279,6 +286,45 @@ describe('WebSocketSubscriber', () => {
 
       disconnectedSocketIds.delete('socket-123')
       expect(isDisconnected('socket-123')).toBe(false)
+    })
+  })
+
+  describe('event coalescing', () => {
+    it('coalesces consecutive chunk events into single emit', async () => {
+      await subscriber.onEvent(createTestEvent({ type: 'chunk', content: 'He', sequence: 1 }))
+      await subscriber.onEvent(createTestEvent({ type: 'chunk', content: 'llo', sequence: 2 }))
+      await subscriber.onEvent(createTestEvent({ type: 'chunk', content: ' world', sequence: 3 }))
+
+      expect(socket.emittedEvents).toHaveLength(0)
+
+      vi.advanceTimersByTime(30)
+
+      expect(socket.emittedEvents).toHaveLength(1)
+      expect(socket.emittedEvents[0].data.content).toBe('Hello world')
+    })
+
+    it('flushes immediately on complete event', async () => {
+      await subscriber.onEvent(createTestEvent({ type: 'chunk', content: 'final', sequence: 1 }))
+      await subscriber.onEvent(createTestEvent({ type: 'complete', content: '', sequence: 2, data: { usage: {} } }))
+
+      expect(socket.emittedEvents).toHaveLength(2)
+      expect(socket.emittedEvents[0].data.content).toBe('final')
+      expect(socket.emittedEvents[1].data.type).toBe('complete')
+    })
+
+    it('flushes pending buffer on dispose', async () => {
+      await subscriber.onEvent(createTestEvent({ type: 'chunk', content: 'pending', sequence: 1 }))
+      subscriber.dispose()
+
+      expect(socket.emittedEvents).toHaveLength(1)
+      expect(socket.emittedEvents[0].data.content).toBe('pending')
+    })
+
+    it('non-coalesceable events pass through immediately', async () => {
+      await subscriber.onEvent(createTestEvent({ type: 'tool_start', content: '', sequence: 1 }))
+
+      expect(socket.emittedEvents).toHaveLength(1)
+      expect(socket.emittedEvents[0].data.type).toBe('tool_start')
     })
   })
 })

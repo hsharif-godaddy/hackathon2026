@@ -9,6 +9,7 @@ import type {
 import type { ConversationEventChannel } from './conversation-event-channel.js'
 import type { ConnectionStateManager, ConnectionStateData } from './connection-state-manager.js'
 import { WebSocketSubscriber } from './subscribers/websocket-subscriber.js'
+import { coalesceEvents } from './coalesce-events.js'
 import { createLogger } from '@airo/ai-common'
 
 /**
@@ -716,6 +717,8 @@ export class ConnectionRecoveryManager {
         })
       : events
 
+    const coalescedReplay = coalesceEvents(eventsToReplay)
+
     // The server's event channel is the authority on whether a stream is still active.
     // If no messages are pending, the agent has completed (or crashed and was cleaned up).
     // The DB may still have stale inProgress: true metadata, but that's not authoritative.
@@ -727,8 +730,8 @@ export class ConnectionRecoveryManager {
       content: 'Recovering connection...',
       data: {
         isRecovering: true,
-        hasBufferedEvents: eventsToReplay.length > 0,
-        bufferedEventCount: eventsToReplay.length,
+        hasBufferedEvents: coalescedReplay.length > 0,
+        bufferedEventCount: coalescedReplay.length,
         streamCompleted,
         conversationId: context.conversationId,
         agentName: stateData?.agentName ?? context.agentName,
@@ -776,7 +779,7 @@ export class ConnectionRecoveryManager {
     // Replay buffered events using volatile.emit to prevent Socket.IO's
     // adapter from storing replay packets in its recovery buffer,
     // which would cause duplicates on subsequent reconnections
-    for (const event of eventsToReplay) {
+    for (const event of coalescedReplay) {
       socket.volatile.emit('message', {
         type: event.type,
         content: event.content,
@@ -791,7 +794,7 @@ export class ConnectionRecoveryManager {
       data: {
         lastSequence: replayLastSequence,
         conversationId: context.conversationId,
-        eventsReplayed: eventsToReplay.length
+        eventsReplayed: coalescedReplay.length
       }
     } as WebSocketMessage)
 
@@ -800,7 +803,7 @@ export class ConnectionRecoveryManager {
       socket,
       context,
       preReplaySequence,
-      eventsToReplay,
+      coalescedReplay,
       callbacks
     )
   }
@@ -922,11 +925,13 @@ export class ConnectionRecoveryManager {
         return
       }
 
-      // Begin catch-up handshake
+      // Begin catch-up handshake — coalesce once here, pass to handler
+      const coalescedCatchUp = coalesceEvents(catchUpEvents)
       this.beginCatchUpHandshake(socket, {
         conversationId: context.conversationId,
-        events: catchUpEvents,
-        onComplete: (finalSequence) => finalizeRecovery(finalSequence, catchUpEvents.length),
+        coalescedEvents: coalescedCatchUp,
+        lastSequence: catchUpEvents[catchUpEvents.length - 1]!.sequence,
+        onComplete: (finalSequence) => finalizeRecovery(finalSequence, coalescedCatchUp.length),
         onTimeout: () => {
           this.cleanupAfterRecoveryFailure(context)
           callbacks.onRecoveryFailed(context.newSocketId, 'catchup_timeout')
@@ -946,13 +951,13 @@ export class ConnectionRecoveryManager {
     socket: Socket,
     params: {
       conversationId: string
-      events: StreamingEvent[]
+      coalescedEvents: StreamingEvent[]
+      lastSequence: number
       onComplete: (finalSequence: number) => void
       onTimeout: () => void
     }
   ): void {
-    const { conversationId, events, onComplete, onTimeout } = params
-    const finalSequence = events[events.length - 1]!.sequence
+    const { conversationId, coalescedEvents, lastSequence: finalSequence, onComplete, onTimeout } = params
 
     // Send catchup status
     socket.emit('message', {
@@ -960,7 +965,7 @@ export class ConnectionRecoveryManager {
       content: 'Delivering queued events',
       data: {
         conversationId,
-        pendingCount: events.length,
+        pendingCount: coalescedEvents.length,
         lastSequence: finalSequence,
         requiresAck: true
       }
@@ -968,7 +973,7 @@ export class ConnectionRecoveryManager {
 
     // Replay catch-up events using volatile.emit to prevent
     // Socket.IO adapter from storing packets for future replays
-    for (const event of events) {
+    for (const event of coalescedEvents) {
       socket.volatile.emit('message', {
         type: event.type,
         content: event.content,
@@ -982,7 +987,7 @@ export class ConnectionRecoveryManager {
       content: 'Catch-up events sent',
       data: {
         conversationId,
-        eventsReplayed: events.length,
+        eventsReplayed: coalescedEvents.length,
         lastSequence: finalSequence
       }
     } as WebSocketMessage)
@@ -1000,7 +1005,7 @@ export class ConnectionRecoveryManager {
     }
 
     // Scale timeout with event count: base + 100ms per event
-    const adaptiveTimeout = this.config.ackTimeout + (events.length * 100)
+    const adaptiveTimeout = this.config.ackTimeout + (coalescedEvents.length * 100)
     const timeoutId = setTimeout(handleTimeout, adaptiveTimeout)
 
     const handleCatchUpAck = (ackData: { conversationId: string; lastSequence: number }) => {

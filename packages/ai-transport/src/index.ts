@@ -59,6 +59,8 @@ export type {
   WebSocketMessage,
   IsDisconnectedFn
 } from './subscribers/websocket-subscriber.js'
+export type { CoalescerConfig, CoalescedMessage } from './subscribers/event-coalescer.js'
+export { EventCoalescer } from './subscribers/event-coalescer.js'
 export type {
   APMAgent,
   APMSpan,
@@ -77,6 +79,9 @@ export type {
   ConnectionStateManagerConfig,
   StateManagerLogger
 } from './connection-state-manager.js'
+
+// Event Coalescing (recovery replay)
+export { coalesceEvents } from './coalesce-events.js'
 
 // Connection Recovery Management
 export {
