@@ -68,6 +68,23 @@ export function formatReportSummary(report: Report): string {
       lines.push(`  Credits Used: ${result.creditsUsed}${limitStr}${msgsStr}`);
     }
 
+    if (result.buildMetrics) {
+      const bm = result.buildMetrics;
+      lines.push(`  Build Agent: ${bm.turns} turns | ${bm.totalTokens.toLocaleString()} tokens | $${bm.totalCostUSD} | ${bm.models.join(', ') || 'unknown'}`);
+      const toolSummary = bm.toolUsage
+        .map(t => `${t.name}(${t.count})`)
+        .join(', ');
+      if (toolSummary) {
+        lines.push(`  Tool Usage: ${toolSummary}`);
+      }
+      if (bm.toolErrorCount > 0) {
+        const failedNames = bm.toolFailedNames.length > 0
+          ? bm.toolFailedNames.join(', ')
+          : 'unknown';
+        lines.push(`  Tool Errors: ${bm.toolErrorCount} — ${failedNames}`);
+      }
+    }
+
     if (result.message) {
       lines.push(`  Message: ${result.message.substring(0, 100)}${result.message.length > 100 ? '...' : ''}`);
     }

@@ -29,6 +29,8 @@ on:
         options:
           - all
           - golden-dataset-all
+          # Quick test
+          - scenarios/hello-world.yaml
           # Main scenarios
           - scenarios/create-site.yaml
           # Credit: Small (10 credits)
@@ -304,6 +306,39 @@ jobs:
             echo "⚠️ Elasticsearch URL not found in secret - indexing will be skipped"
           fi
 
+      - name: Get Langfuse credentials from Secrets Manager
+        id: get-langfuse-creds
+        continue-on-error: true
+        run: |
+          echo "Retrieving Langfuse credentials from Secrets Manager..."
+          SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id "langfuse_test" --query 'SecretString' --output text --region us-west-2 2>/dev/null || echo "")
+
+          if [ -z "$SECRET_JSON" ]; then
+            echo "⚠️ Langfuse credentials not found - build metrics tracking will be skipped"
+            exit 0
+          fi
+
+          PUBLIC_KEY=$(echo "$SECRET_JSON" | jq -r '.LANGFUSE_PUBLIC_KEY // empty')
+          SECRET_KEY=$(echo "$SECRET_JSON" | jq -r '.LANGFUSE_SECRET_KEY // empty')
+          BASE_URL=$(echo "$SECRET_JSON" | jq -r '.LANGFUSE_BASE_URL // empty')
+          PROJECT_ID=$(echo "$SECRET_JSON" | jq -r '.LANGFUSE_PROJECT_ID // empty')
+
+          if [ -n "$PUBLIC_KEY" ] && [ -n "$SECRET_KEY" ]; then
+            echo "::add-mask::$PUBLIC_KEY"
+            echo "::add-mask::$SECRET_KEY"
+            echo "public_key=$PUBLIC_KEY" >> $GITHUB_OUTPUT
+            echo "secret_key=$SECRET_KEY" >> $GITHUB_OUTPUT
+            if [ -n "$BASE_URL" ]; then
+              echo "base_url=$BASE_URL" >> $GITHUB_OUTPUT
+            fi
+            if [ -n "$PROJECT_ID" ]; then
+              echo "project_id=$PROJECT_ID" >> $GITHUB_OUTPUT
+            fi
+            echo "✅ Langfuse credentials retrieved (base_url=${BASE_URL:-default}, project_id=${PROJECT_ID:-none})"
+          else
+            echo "⚠️ Langfuse keys not found in secret - build metrics tracking will be skipped"
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -371,6 +406,11 @@ jobs:
           # Elasticsearch for result indexing (optional)
           ES_URL: ${{ steps.get-es-creds.outputs.es_url }}
           ES_API_KEY: ${{ steps.get-es-creds.outputs.es_api_key }}
+          # Langfuse for website-building agent cost tracking (optional)
+          LANGFUSE_PUBLIC_KEY: ${{ steps.get-langfuse-creds.outputs.public_key }}
+          LANGFUSE_SECRET_KEY: ${{ steps.get-langfuse-creds.outputs.secret_key }}
+          LANGFUSE_BASE_URL: ${{ steps.get-langfuse-creds.outputs.base_url }}
+          LANGFUSE_PROJECT_ID: ${{ steps.get-langfuse-creds.outputs.project_id }}
           TEST_ENVIRONMENT: ${{ needs.setup.outputs.environment }}
         run: |
           # Use array-based command construction to prevent shell injection

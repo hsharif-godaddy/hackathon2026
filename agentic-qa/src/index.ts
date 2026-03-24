@@ -199,6 +199,12 @@ Elasticsearch (optional - for CI/CD result indexing):
   ES_USERNAME         Elasticsearch username (or use ES_API_KEY)
   ES_PASSWORD         Elasticsearch password
   ES_API_KEY          Elasticsearch API key (alternative to user/pass)
+
+Langfuse (optional - for website-building agent cost tracking):
+  LANGFUSE_PUBLIC_KEY  Langfuse public key
+  LANGFUSE_SECRET_KEY  Langfuse secret key
+  LANGFUSE_BASE_URL    Langfuse API URL (default: internal GoDaddy instance)
+  LANGFUSE_PROJECT_ID  Langfuse project ID (logged for debugging)
 `);
 }
 

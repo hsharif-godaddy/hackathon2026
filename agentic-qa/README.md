@@ -451,14 +451,18 @@ Create a `.env` file in the `agentic-qa/` directory (copy from `.env.example`):
 cp agentic-qa/.env.example agentic-qa/.env
 ```
 
-| Variable             | Required        | Description                                         |
-| -------------------- | --------------- | --------------------------------------------------- |
-| `TEST_USERNAME`      | Yes             | GoDaddy test account username                       |
-| `TEST_PASSWORD`      | Yes             | GoDaddy test account password                       |
-| `ANTHROPIC_API_KEY`  | If using Claude | Anthropic API key                                   |
-| `ANTHROPIC_BASE_URL` | No              | Custom Anthropic API URL (default: Anthropic's API) |
-| `OPENAI_API_KEY`     | If using GPT    | OpenAI API key                                      |
-| `OPENAI_BASE_URL`    | No              | Custom OpenAI API URL                               |
+| Variable              | Required        | Description                                                       |
+| --------------------- | --------------- | ----------------------------------------------------------------- |
+| `TEST_USERNAME`       | Yes             | GoDaddy test account username                                     |
+| `TEST_PASSWORD`       | Yes             | GoDaddy test account password                                     |
+| `ANTHROPIC_API_KEY`   | If using Claude | Anthropic API key                                                 |
+| `ANTHROPIC_BASE_URL`  | No              | Custom Anthropic API URL (default: Anthropic's API)               |
+| `OPENAI_API_KEY`      | If using GPT    | OpenAI API key                                                    |
+| `OPENAI_BASE_URL`     | No              | Custom OpenAI API URL                                             |
+| `LANGFUSE_PUBLIC_KEY` | No              | Langfuse public key — enables website-building agent cost tracking |
+| `LANGFUSE_SECRET_KEY` | No              | Langfuse secret key                                               |
+| `LANGFUSE_BASE_URL`   | No              | Langfuse API URL (default: internal GoDaddy instance)             |
+| `LANGFUSE_PROJECT_ID` | No              | Langfuse project ID — logged for debugging                        |
 
 Example `.env` file:
 

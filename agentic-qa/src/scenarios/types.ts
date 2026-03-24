@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import type { QualityEvaluation } from '../quality/types.js';
+import type { BuildMetrics } from '../utils/langfuse.js';
 
 export const CredentialsSchema = z.object({
   username: z.string(),
@@ -124,6 +125,8 @@ export interface EvalResult {
   chatMessagesCompleted?: number;
   // Credit mode: the configured credit limit
   creditLimit?: number;
+  // Website-building agent metrics from Langfuse
+  buildMetrics?: BuildMetrics;
 }
 
 export interface Report {

@@ -109,6 +109,18 @@ export interface IndexableResult {
   creditsUsed?: number;
   chatMessagesCompleted?: number;
   creditLimit?: number;
+
+  // Website-building agent metrics (from Langfuse)
+  buildInputTokens?: number;
+  buildOutputTokens?: number;
+  buildTotalTokens?: number;
+  buildCostUSD?: number;
+  buildTurns?: number;
+  buildModels?: string[];
+  buildToolNames?: string[];
+  buildToolErrorCount?: number;
+  buildToolFailedNames?: string[];
+  buildToolErrors?: string[];
 }
 
 /**
@@ -186,13 +198,17 @@ async function ensureIndex(client: Client, index: string): Promise<void> {
                 base64: { type: 'binary' },
               },
             },
+            buildModels: { type: 'keyword' },
+            buildToolNames: { type: 'keyword' },
+            buildToolFailedNames: { type: 'keyword' },
+            buildToolErrors: { type: 'text' },
           },
         },
       });
     } catch {
       // Mapping conflict — field exists with incompatible type.
       // Delete and recreate the index to apply correct mappings.
-      console.warn('Recreating index %s due to mapping conflict with screenshots field', index);
+      console.warn('Recreating index %s due to mapping conflict', index);
       await client.indices.delete({ index });
       return ensureIndex(client, index);
     }
@@ -214,6 +230,10 @@ async function ensureIndex(client: Client, index: string): Promise<void> {
               base64: { type: 'binary' },
             },
           },
+          buildModels: { type: 'keyword' },
+          buildToolNames: { type: 'keyword' },
+          buildToolFailedNames: { type: 'keyword' },
+          buildToolErrors: { type: 'text' },
         },
       },
     },
@@ -312,6 +332,18 @@ function toIndexableResult(result: EvalResult): IndexableResult {
     creditsUsed: result.creditsUsed,
     chatMessagesCompleted: result.chatMessagesCompleted,
     creditLimit: result.creditLimit,
+
+    // Website-building agent metrics (from Langfuse)
+    buildInputTokens: result.buildMetrics?.inputTokens,
+    buildOutputTokens: result.buildMetrics?.outputTokens,
+    buildTotalTokens: result.buildMetrics?.totalTokens,
+    buildCostUSD: result.buildMetrics?.totalCostUSD,
+    buildTurns: result.buildMetrics?.turns,
+    buildModels: result.buildMetrics?.models,
+    buildToolNames: result.buildMetrics?.toolNames,
+    buildToolErrorCount: result.buildMetrics?.toolErrorCount,
+    buildToolFailedNames: result.buildMetrics?.toolFailedNames,
+    buildToolErrors: result.buildMetrics?.toolErrors,
 
     // Quality evaluation metrics
     qualityScore: result.quality?.overall.score,

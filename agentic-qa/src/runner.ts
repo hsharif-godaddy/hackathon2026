@@ -9,6 +9,7 @@ import type { AgentAction, EvalResult, PreviewScreenshot, Scenario, ScreenshotIn
 import { fetchAppUsage } from './utils/app-usage.js';
 import { deleteAllSitesViaAPI, deleteOldestSitesIfOverLimit } from './utils/auth.js';
 import { runDeterministicSetup } from './utils/deterministic-actions.js';
+import { extractAppId, fetchBuildMetrics, loadCredentials } from './utils/langfuse.js';
 
 export interface RunnerOptions {
   headed?: boolean;
@@ -356,12 +357,25 @@ export async function runScenario(
       qualityStatus = 'skipped';
     }
 
+    // Capture endTime before Langfuse fetch so polling overhead doesn't inflate duration
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+
+    // Fetch website-building agent metrics from Langfuse
+    // Extract appId from preview URL subdomain (agents service uses this as Langfuse userId)
+    const langfuseAppId = previewUrl ? extractAppId(previewUrl) : null;
+    if (previewUrl && !langfuseAppId) {
+      console.warn(`Could not extract appId from preview URL: ${previewUrl} — Langfuse metrics will be skipped`);
+    }
+    const langfuseCreds = loadCredentials();
+    const buildMetrics = (langfuseAppId && langfuseCreds)
+      ? await fetchBuildMetrics(langfuseCreds, langfuseAppId, startTime, endTime)
+      : null;
+
     // Run cleanup if specified
     if (scenario.cleanup?.deleteAllSitesViaAPI) {
       await deleteAllSitesViaAPI(stagehand);
     }
-
-    const duration = Date.now() - startTime;
 
     // Get metrics
     const metrics = await stagehand.metrics;
@@ -396,6 +410,7 @@ export async function runScenario(
       creditsUsed,
       chatMessagesCompleted: isCreditMode ? chatMessagesCompleted : undefined,
       creditLimit: scenario.creditLimit,
+      buildMetrics: buildMetrics ?? undefined,
     };
   } catch (error) {
     const duration = Date.now() - startTime;
