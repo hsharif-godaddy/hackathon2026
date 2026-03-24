@@ -909,7 +909,7 @@ export class ProjectImportService {
       // Note: Using "rm -r -f" instead of "rm -rf" for /node_modules to avoid
       // triggering dev-supervisor's dangerous command detection which blocks "rm -rf /"
       const deleteResult = await devSupervisor.exec({
-        command: `find "${containerAppPath}" -mindepth 1 -maxdepth 1 ! -name ".git" ! -name ".gitignore" ! -name ".is_ready" ! -name ".import-*" -exec rm -rf {} + && { [ -d /node_modules ] && rm -r -f /node_modules || true; }`,
+        command: `find "${containerAppPath}" -mindepth 1 -maxdepth 1 ! -name ".git" ! -name ".gitignore" ! -name ".is_ready" ! -name ".import-*" ! -name "public" -exec rm -rf {} + && { [ -d "${containerAppPath}/public" ] && find "${containerAppPath}/public" -mindepth 1 -maxdepth 1 ! -name "assets" -exec rm -rf {} + || true; } && { [ -d /node_modules ] && rm -r -f /node_modules || true; }`,
         timeout: 30, // seconds
       });
 
