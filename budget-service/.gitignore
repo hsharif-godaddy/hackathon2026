@@ -1,0 +1,12 @@
+# Binary output
+/server
+
+# IDE
+.idea/
+.vscode/
+
+# Test coverage
+coverage.out
+
+# Environment
+.env
