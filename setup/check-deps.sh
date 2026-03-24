@@ -87,6 +87,47 @@ check_pnpm() {
     fi
 }
 
+# Check Go installation (required for local control plane)
+check_go() {
+    print_info "Checking Go installation..."
+
+    if command -v go &> /dev/null; then
+        # Prefer go env GOVERSION (reliable); fall back to parsing `go version` output
+        GO_VERSION_RAW=$(go env GOVERSION 2>/dev/null || true)
+        if [ -z "$GO_VERSION_RAW" ]; then
+            GO_VERSION_RAW=$(go version 2>/dev/null | awk '{print $3}')
+        fi
+
+        # Normalize: drop leading "go" and any non-numeric suffix (e.g., rc/beta)
+        GO_VERSION=$(printf '%s\n' "$GO_VERSION_RAW" | sed -E 's/^go//; s/[^0-9.].*$//')
+
+        if ! echo "$GO_VERSION" | grep -Eq '^[0-9]+\.[0-9]+'; then
+            print_error "Unable to parse Go version from '$GO_VERSION_RAW'"
+            print_warning "Please ensure Go 1.25 or higher is installed and available on PATH"
+            show_go_install_instructions
+            return 1
+        fi
+
+        GO_MAJOR=$(echo "$GO_VERSION" | cut -d'.' -f1)
+        GO_MINOR=$(echo "$GO_VERSION" | cut -d'.' -f2)
+
+        if [ "$GO_MAJOR" -gt 1 ] || { [ "$GO_MAJOR" -eq 1 ] && [ "$GO_MINOR" -ge 25 ]; }; then
+            print_status "Go $GO_VERSION is installed and compatible"
+            return 0
+        else
+            print_error "Go $GO_VERSION found, but version 1.25 or higher is required"
+            print_warning "Go 1.25+ is needed for the local control plane"
+            show_go_install_instructions
+            return 1
+        fi
+    else
+        print_error "Go is not installed"
+        print_warning "Go is required for the local control plane service"
+        show_go_install_instructions
+        return 1
+    fi
+}
+
 # Check mkcert installation
 check_mkcert() {
     print_info "Checking mkcert installation..."
@@ -207,6 +248,24 @@ show_corepack_instructions() {
     echo ""
 }
 
+# Show Go installation instructions
+show_go_install_instructions() {
+    echo ""
+    print_warning "Go 1.25 or higher installation required for local control plane"
+    echo ""
+    echo "For macOS:"
+    echo ""
+    echo "  # Using Homebrew"
+    echo "  brew install go"
+    echo ""
+    echo "For Linux and other platforms:"
+    echo ""
+    echo "  # Follow the official installation instructions at:"
+    echo "  # https://go.dev/doc/install"
+    echo "  # This covers all architectures (amd64, arm64, etc.)"
+    echo ""
+}
+
 # Show mkcert installation instructions
 show_mkcert_install_instructions() {
     echo ""
@@ -308,6 +367,7 @@ main() {
 
     local nodejs_ok=0
     local pnpm_ok=0
+    local go_ok=0
     local mkcert_ok=0
     local direnv_ok=0
     local direnv_hook_ok=0
@@ -348,6 +408,12 @@ main() {
         pnpm_ok=1
     fi
 
+    echo ""
+
+    if check_go; then
+        go_ok=1
+    fi
+
     # Summary - adjust based on mode
     if [ "$integrated_mode" = false ]; then
         echo ""
@@ -356,7 +422,7 @@ main() {
         echo "=================================="
     fi
 
-    if [ $direnv_ok -eq 1 ] && [ $direnv_hook_ok -eq 1 ] && [ $nodejs_ok -eq 1 ] && [ $pnpm_ok -eq 1 ]; then
+    if [ $direnv_ok -eq 1 ] && [ $direnv_hook_ok -eq 1 ] && [ $nodejs_ok -eq 1 ] && [ $pnpm_ok -eq 1 ] && [ $go_ok -eq 1 ]; then
         if [ "$integrated_mode" = false ]; then
             print_status "All required dependencies are satisfied!"
             echo ""

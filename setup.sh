@@ -22,7 +22,7 @@ print_header() {
     echo -e "${CYAN}╚══════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "${BLUE}This setup will guide you through:${NC}"
-    echo "  1. Basic dependency verification (Node.js 22 + Corepack + pnpm)"
+    echo "  1. Basic dependency verification (Node.js 22 + Corepack + pnpm + Go)"
     echo "  2. Docker environment setup"
     echo "  3. Environment configuration (.env files)"
     echo "  4. AWS profile configuration"
@@ -99,7 +99,7 @@ main() {
 
     # Step 1: Basic Dependencies
     print_step "1" "Basic Dependency Check"
-    echo -e "${BLUE}Checking Node.js 22, Corepack, and pnpm installation...${NC}"
+    echo -e "${BLUE}Checking Node.js 22, Corepack, pnpm, and Go installation...${NC}"
     echo ""
 
     if ./setup/check-deps.sh --integrated; then
@@ -161,7 +161,7 @@ main() {
     echo -e "${GREEN}🎉 Airo Builder setup completed successfully!${NC}"
     echo ""
     echo -e "${CYAN}📋 What's been configured:${NC}"
-    echo "  ✅ Node.js 22, Corepack, and pnpm verified"
+    echo "  ✅ Node.js 22, Corepack, pnpm, and Go verified"
     echo "  ✅ Docker environment checked"
     echo "  ✅ Environment files generated"
     echo "  ✅ AWS profile configured"
