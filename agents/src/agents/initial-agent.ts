@@ -11,10 +11,10 @@ import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 
 /**
  * Initial Agent - Creates single-page preview plans for new apps
- * 
+ *
  * This agent is only used for brand new apps with no conversation history.
  * It creates a minimal todo list for a single-page preview and hands off to develop agent.
- * 
+ *
  * Prompt structure:
  * - core.md: Core role, workflow, and rules
  * - attributes.md: Attribute discovery for personalization
@@ -90,7 +90,7 @@ export async function createInitialAgent(
     maxSteps: 10,
     temperature: 0.5,
     maxOutputTokens: 8000,
-    timeout: { stepMs: 60_000 },
+    timeout: { stepMs: 300_000 },
     providerOptions: {
       anthropic: {
         effort: 'low',

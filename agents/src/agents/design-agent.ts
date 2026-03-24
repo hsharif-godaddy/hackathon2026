@@ -119,7 +119,7 @@ export async function createDesignAgent(): Promise<AgentConfig> {
     maxSteps: 20,
     temperature: 0.7, // Higher temperature for creative design work
     maxOutputTokens: 4000,
-    timeout: { stepMs: 90_000 },
+    timeout: { stepMs: 300_000 },
     providerOptions: {
       anthropic: {
         effort: 'medium',
