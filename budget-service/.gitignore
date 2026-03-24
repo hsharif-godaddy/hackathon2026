@@ -10,3 +10,6 @@ coverage.out
 
 # Environment
 .env
+
+# Audit log
+audit.log

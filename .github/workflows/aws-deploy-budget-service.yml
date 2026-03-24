@@ -1,1 +1,87 @@
 name: AWS Deploy Budget Service
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "budget-service/**"
+      - ".github/workflows/aws-deploy-budget-service.yml"
+
+  # Manual deployment
+  workflow_dispatch:
+
+run-name: "[Env: dev-private] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  continuous-integration:
+    name: "[Env: dev-private] branch: ${{ github.ref_name }}"
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+
+    env:
+      DEPLOY_TO_ENV: dev-private
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - id: katana-app
+        name: Get Katana App Info
+        uses: gdcorp-actions/katana-get-app@v1
+        with:
+          path: /budget-service
+
+      - name: Golden Container Registry Login
+        run: |
+          aws ecr get-login-password --region us-west-2 | docker login 764525110978.dkr.ecr.us-west-2.amazonaws.com -u AWS --password-stdin
+
+      - name: Build Container
+        run: |
+          docker build --platform linux/amd64 \
+            -f budget-service/Dockerfile \
+            -t ${{ steps.katana-app.outputs.app }}:${{ github.sha }} \
+            budget-service
+
+      - id: katana-publish
+        name: Publish Katana Artifact
+        uses: gdcorp-actions/katana-publish-artifact@v1
+        with:
+          namespace: ${{ steps.katana-app.outputs.namespace }}
+          app: ${{ steps.katana-app.outputs.app }}
+          image_name: ${{ steps.katana-app.outputs.app }}:${{ github.sha }}
+          artifact_kind: ecs
+          artifact_options_json: |
+            {
+              "protocol": "https",
+              "ports": [8080],
+              "healthcheckPath": "/api/v1/health",
+              "healthcheckGracePeriod": 60
+            }
+
+      - name: Promote to dev-private Environment
+        uses: gdcorp-actions/katana-promote-artifact@v1
+        with:
+          namespace: ${{ steps.katana-app.outputs.namespace }}
+          app: ${{ steps.katana-app.outputs.app }}
+          environment: ${{ env.DEPLOY_TO_ENV }}
+          artifact_id: ${{ steps.katana-publish.outputs.artifact_id }}
+
+      - name: Publish Summary
+        run: |
+          {
+            printf '**Build Summary:**\n\n```\n'
+            echo "Artifact ID: ${{ steps.katana-publish.outputs.artifact_id }}"
+            echo "Deployed to: ${{ env.DEPLOY_TO_ENV }}"
+            echo "Image: ${{ steps.katana-publish.outputs.image_uri }}"
+            echo "Commit: ${{ github.sha }}"
+            echo "Branch: ${{ github.ref_name }}"
+            echo "Actor: ${{ github.actor }}"
+            printf '\n```\n\n'
+          } >> $GITHUB_STEP_SUMMARY

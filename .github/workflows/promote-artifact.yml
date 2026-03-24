@@ -10,6 +10,7 @@ on:
         type: choice
         options:
           - "app"
+          - "budget-service"
           - "proxy"
       environment:
         description: "Environment to promote to"
