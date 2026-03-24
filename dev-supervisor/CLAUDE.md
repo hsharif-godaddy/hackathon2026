@@ -67,8 +67,9 @@ Preview variant supports auto-start/stop of idle apps:
 
 ```
 dev-supervisor/
-├── cmd/dev-supervisor/main.go  # Entry point, CLI, supervisor init
-├── api.go                      # HTTP API server (Unix socket/TCP)
+├── cmd/
+│   ├── dev-supervisor/         # Main binary (PID 1, API, proxy)
+│   └── airo-sandbox/           # Landlock sandbox wrapper binary
 ├── internal/
 │   ├── processmanager/         # Process lifecycle management
 │   ├── proxy/http/             # TLS reverse proxy, WebSocket, persistent assets
@@ -78,8 +79,10 @@ dev-supervisor/
 │   ├── health/                 # Health checks (command, HTTP, TCP)
 │   ├── logs/                   # Buffered log manager
 │   ├── ports/                  # Linux port discovery via /proc
-│   ├── validation/             # Input validation (dangerous commands, path traversal)
+│   ├── sandbox/                # Sandbox config, profiles, command wrapping
+│   ├── validation/             # Input validation (path traversal, env vars)
 │   └── process/                # Exit codes, zombie reaping
+├── docs/SANDBOX.md             # Sandbox architecture and configuration
 ├── Makefile
 ├── .golangci.yml
 └── Dockerfile                  # Multi-stage Alpine build

@@ -1,6 +1,6 @@
 # dev-supervisor Makefile
 
-.PHONY: build clean test test-all test-docker test-docker-go lint lint-all fmt fmt-fix vet run help install deps
+.PHONY: build build-supervisor build-sandbox build-all clean test test-all test-docker test-docker-go lint lint-all fmt fmt-fix vet run help install deps
 
 # Build variables
 BINARY_NAME := dev-supervisor
@@ -15,10 +15,19 @@ export GOTOOLCHAIN := go1.25.7
 .DEFAULT_GOAL := help
 
 ## Build the binary
-build:
+build: build-supervisor build-sandbox
+
+## Build the dev-supervisor binary
+build-supervisor:
 	@echo "Building ${BINARY_NAME}..."
 	@mkdir -p ${BUILD_DIR}
 	CGO_ENABLED=0 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME} ./cmd/dev-supervisor
+
+## Build the airo-sandbox binary
+build-sandbox:
+	@echo "Building airo-sandbox..."
+	@mkdir -p ${BUILD_DIR}
+	CGO_ENABLED=0 go build ${LDFLAGS} -o ${BUILD_DIR}/airo-sandbox ./cmd/airo-sandbox
 
 ## Build for multiple platforms
 build-all:
@@ -29,6 +38,11 @@ build-all:
 	GOOS=darwin GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-darwin-amd64 ./cmd/dev-supervisor
 	GOOS=darwin GOARCH=arm64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-darwin-arm64 ./cmd/dev-supervisor
 	GOOS=windows GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-windows-amd64.exe ./cmd/dev-supervisor
+	GOOS=linux GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/airo-sandbox-linux-amd64 ./cmd/airo-sandbox
+	GOOS=linux GOARCH=arm64 go build ${LDFLAGS} -o ${BUILD_DIR}/airo-sandbox-linux-arm64 ./cmd/airo-sandbox
+	GOOS=darwin GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/airo-sandbox-darwin-amd64 ./cmd/airo-sandbox
+	GOOS=darwin GOARCH=arm64 go build ${LDFLAGS} -o ${BUILD_DIR}/airo-sandbox-darwin-arm64 ./cmd/airo-sandbox
+	# airo-sandbox is not built for Windows (requires POSIX sh)
 
 ## Clean build artifacts
 clean:

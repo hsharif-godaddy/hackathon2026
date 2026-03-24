@@ -22,8 +22,9 @@ RUN go mod download
 # Copy source code from build context
 COPY --from=dev-supervisor . .
 
-# Build binary with static linking for Alpine
+# Build binaries with static linking for Alpine
 RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static" -w -s' -o /usr/local/bin/dev-supervisor ./cmd/dev-supervisor
+RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static" -w -s' -o /usr/local/bin/airo-sandbox ./cmd/airo-sandbox
 
 # =================================================================
 # Build publish app stage
@@ -68,6 +69,7 @@ RUN CONTAINER_UID=${HOST_UID}; \
 
 # Copy dev-supervisor binary from builder stage
 COPY --chown=agent:agent --from=dev-supervisor-builder /usr/local/bin/dev-supervisor /usr/local/bin/dev-supervisor
+COPY --chown=agent:agent --from=dev-supervisor-builder /usr/local/bin/airo-sandbox /usr/local/bin/airo-sandbox
 
 # Copy publish scripts from container-scripts build context (already executable)
 COPY --from=container-scripts --chown=agent:agent publish/run-app.sh /publish/run-app.sh

@@ -17,8 +17,9 @@ RUN go mod download
 # Copy source code from build context
 COPY --from=dev-supervisor . .
 
-# Build binary with static linking for Alpine
+# Build binaries with static linking for Alpine
 RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static" -w -s' -o /usr/local/bin/dev-supervisor ./cmd/dev-supervisor
+RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static" -w -s' -o /usr/local/bin/airo-sandbox ./cmd/airo-sandbox
 
 # =================================================================
 # Stage 0.5: Prepare gitleaks binary (CACHED - rarely changes)
@@ -134,6 +135,7 @@ COPY --chown=agent:agent --from=gitleaks-preparer /usr/local/bin/gitleaks /usr/l
 
 # Copy dev-supervisor binary from build stage (not pre-built image)
 COPY --chown=agent:agent --from=dev-supervisor-builder /usr/local/bin/dev-supervisor /usr/local/bin/dev-supervisor
+COPY --chown=agent:agent --from=dev-supervisor-builder /usr/local/bin/airo-sandbox /usr/local/bin/airo-sandbox
 
 # Copy node_modules from deps stage to /node_modules (not /app/node_modules)
 # This allows the /app bind mount to overlay the image without requiring a 549MB volume copy

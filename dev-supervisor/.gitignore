@@ -8,6 +8,8 @@
 # Build output (Makefile builds to dist/)
 /dist/
 /dev-supervisor
+/airo-supervisor
+/airo-sandbox
 
 # Test binary, built with `go test -c`
 *.test

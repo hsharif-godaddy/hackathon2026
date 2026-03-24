@@ -126,7 +126,7 @@ jobs:
         working-directory: dev-supervisor
         run: go mod download
 
-      - name: Build binary
+      - name: Build binaries
         working-directory: dev-supervisor
         env:
           GOOS: ${{ matrix.goos }}
@@ -134,10 +134,17 @@ jobs:
           CGO_ENABLED: 0
         run: |
           BINARY_NAME="dev-supervisor"
+          SANDBOX_NAME="airo-sandbox"
           if [ "$GOOS" = "windows" ]; then
             BINARY_NAME="${BINARY_NAME}.exe"
+            SANDBOX_NAME="${SANDBOX_NAME}.exe"
           fi
           go build -ldflags="-w -s" -o "dist/${BINARY_NAME}-${GOOS}-${GOARCH}" ./cmd/dev-supervisor
+
+          # airo-sandbox requires POSIX sh and is excluded for Windows by build tags
+          if [ "$GOOS" != "windows" ]; then
+            go build -ldflags="-w -s" -o "dist/${SANDBOX_NAME}-${GOOS}-${GOARCH}" ./cmd/airo-sandbox
+          fi
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
