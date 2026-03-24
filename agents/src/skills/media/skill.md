@@ -12,28 +12,28 @@ whenToUse: User wants AI-generated images, logos, or videos (NOT stock photos). 
 
 ---
 
-## When to Use This Skill
+## Backend Services
 
-**IMPORTANT:** This skill is for AI GENERATION only, not for searching stock photos/videos.
+Each tool in this skill is backed by a dedicated service. Understanding which service handles each operation is important for debugging and error handling.
 
-Load this skill ONLY when the user explicitly requests AI-generated content using words like:
+| Tool                    | Service           | File                                     | API Endpoint               |
+| ----------------------- | ----------------- | ---------------------------------------- | -------------------------- |
+| `media__generate_logo`  | `LogoService`     | `agents/src/services/LogoService.ts`     | `POST /api/logo`           |
+| `media__generate_image` | `ImagegenService` | `agents/src/services/ImagegenService.ts` | `POST /v2/api/images`      |
+| `media__edit_image`     | `ImagegenService` | `agents/src/services/ImagegenService.ts` | `POST /v2/api/images/edit` |
+| `media__generate_video` | `ImagegenService` | `agents/src/services/ImagegenService.ts` | `POST /v2/api/videos`      |
 
-- "generate", "create", "make", "design", "AI-generated"
-- "edit an image", "modify this image" (for image editing)
+---
 
-**Examples that SHOULD load this skill:**
+## Choosing the Right Tool
 
-- "Generate a logo for my business"
-- "Create an AI image of a sunset"
-- "Design a custom banner"
-
-**Examples that should NOT load this skill (use media tool for search instead):**
-
-- "Add an image of a sunset" → use `media` tool
-- "Find a photo of a team meeting" → use `media` tool
-- "I need a hero image" → use `media` tool
-
-Default to stock photo search. Only use AI generation when explicitly requested.
+| User request                               | Tool to use             |
+| ------------------------------------------ | ----------------------- |
+| "Generate a logo for my business"          | `media__generate_logo`  |
+| "Create an AI image of a sunset"           | `media__generate_image` |
+| "Design a custom banner"                   | `media__generate_image` |
+| "Edit this photo to remove the background" | `media__edit_image`     |
+| "Generate a short video clip"              | `media__generate_video` |
 
 ---
 
@@ -41,7 +41,9 @@ Default to stock photo search. Only use AI generation when explicitly requested.
 
 ### Logo Generation
 
-**`media__generate_logo`** - Generate professional logos for a business
+**`media__generate_logo`** — Generate professional logos for a business
+
+**Backed by:** `LogoService` → `logo-agent` API (`POST /api/logo`)
 
 | Parameter          | Type         | Required | Description                                     |
 | ------------------ | ------------ | -------- | ----------------------------------------------- |
@@ -73,8 +75,6 @@ media__generate_logo({
 
 **Output Format:**
 
-The tool returns a structured response with:
-
 ```typescript
 {
   structuredContent: {
@@ -93,11 +93,15 @@ The tool returns a structured response with:
 
 Use `transparentUrl` or `solidUrl` for placing the logo. The `mockupUrl` shows the logo in a realistic context.
 
+> **Note:** Do NOT use `media__generate_image` for logos. `LogoService` produces structured multi-variant output (transparent/solid/mockup) that the generic image generation API cannot provide.
+
 ---
 
 ### Image Generation
 
-**`media__generate_image`** - Generate images from text prompts
+**`media__generate_image`** — Generate images from text prompts
+
+**Backed by:** `ImagegenService` → `imagegen-agent` API (`POST /v2/api/images`)
 
 | Parameter     | Type         | Required | Description                                                         |
 | ------------- | ------------ | -------- | ------------------------------------------------------------------- |
@@ -115,11 +119,26 @@ media__generate_image({
 });
 ```
 
+**Output Format:**
+
+```typescript
+{
+  structuredContent: {
+    sessionId: string,
+    images: [
+      { id: string, url: string }
+    ]
+  }
+}
+```
+
 ---
 
 ### Image Editing
 
-**`media__edit_image`** - Edit an existing image using AI
+**`media__edit_image`** — Edit an existing image using AI
+
+**Backed by:** `ImagegenService` → `imagegen-agent` API (`POST /v2/api/images/edit`)
 
 | Parameter  | Type         | Required | Description                                   |
 | ---------- | ------------ | -------- | --------------------------------------------- |
@@ -135,11 +154,24 @@ media__edit_image({
 });
 ```
 
+**Output Format:**
+
+```typescript
+{
+  structuredContent: {
+    sessionId: string,
+    url: string  // URL of the edited image
+  }
+}
+```
+
 ---
 
 ### Video Generation
 
-**`media__generate_video`** - Generate videos from text prompts
+**`media__generate_video`** — Generate videos from text prompts
+
+**Backed by:** `ImagegenService` → `imagegen-agent` API (`POST /v2/api/videos` + polling `GET /v2/api/videos/:sessionId`)
 
 | Parameter     | Type   | Required | Description                                            |
 | ------------- | ------ | -------- | ------------------------------------------------------ |
@@ -157,24 +189,35 @@ media__generate_video({
 });
 ```
 
+**Output Format:**
+
+```typescript
+{
+  structuredContent: {
+    sessionId: string,
+    url: string  // URL of the completed video (mp4)
+  }
+}
+```
+
+> **Note:** Video generation is asynchronous. `ImagegenService` submits the job then polls the status endpoint every 5 seconds for up to 5 minutes. The tool call will not return until the video is complete or the timeout is reached — inform the user upfront that this may take a few minutes.
+
 ---
 
 ## Using Generated Media
 
-After calling any media generation tool, the response includes CDN URLs (isteam.wsimg.com) to the generated content. These URLs are **already optimized for serving** - do NOT download and save locally.
+After calling any media generation tool, the response includes CDN URLs (`isteam.wsimg.com`) to the generated content. These URLs are **already optimized for serving** — do NOT download and save locally.
 
 ### Using the CDN URLs Directly
 
-The returned URLs are production-ready CDN links. Use them directly in components:
-
 ```tsx
-// Logo example - use the CDN URL directly
+// Logo — prefer transparentUrl for placement, solidUrl for opaque backgrounds
 <img src="https://isteam.wsimg.com/genai-assistant/mcp/generated_logos/abc123.png" alt="Company Logo" />
 
-// Or in Next.js Image component (add domain to next.config.js if needed)
+// Next.js Image component (add isteam.wsimg.com to next.config.js remotePatterns if needed)
 <Image src={logoUrl} alt="Company Logo" width={200} height={200} />
 
-// Video example
+// Video
 <video src="https://isteam.wsimg.com/genai-assistant/mcp/generated_videos/xyz789.mp4" controls />
 ```
 
@@ -182,7 +225,7 @@ The returned URLs are production-ready CDN links. Use them directly in component
 
 ## Best Practices
 
-### Logo Generation
+### Logo Generation (LogoService)
 
 **Brand Data from Context:**
 
@@ -200,31 +243,20 @@ Only ask the user for information that isn't already available in the context. T
 - Offer style customization options (style preset, colors, symbol)
 - Generate multiple variations (3-4) so user has choices
 - Use the CDN URLs directly in components
-- Provide clear usage instructions with the CDN URL
 - Fill in aesthetic and style details to get the best results (determine style based on brand personality and audience if not specified)
 
 **DON'T:**
 
 - Ask for brand name/description if already known from context
-- Use generic image generation for logos (use `generate_logo` instead)
+- Use `media__generate_image` for logos — it won't return transparent/solid/mockup variants
 - Download and re-save CDN media locally (wastes storage, slower delivery)
-- Assume business details beyond what's in context - ask the user for unknowns
+- Assume business details beyond what's in context — ask the user for unknowns
 
-### Image Generation
+### Video Generation (ImagegenService)
 
-**When to use `media__generate_image` vs `mediaSearch`:**
-
-- Use `mediaSearch` for stock photos and common imagery
-- Use `media__generate_image` when:
-  - Image search doesn't find suitable results
-  - User explicitly requests AI-generated/custom images
-  - Specific creative vision that stock photos can't match
-  - Unique compositions or concepts
-
-### Video Generation
-
-- Video generation takes up to 5 minutes — the system polls internally until complete
-- Duration must be 5, 6, 7, or 8 seconds
+- Video generation takes up to 5 minutes — `ImagegenService` polls internally until complete
+- Duration must be exactly 5, 6, 7, or 8 seconds — no other values are accepted
+- Set user expectations upfront: "This will take a few minutes"
 
 ---
 
@@ -232,9 +264,10 @@ Only ask the user for information that isn't already available in the context. T
 
 If generation services are unavailable, fall back to existing tools:
 
-1. **For image generation**: Use `media` tool (stock photos as alternative)
-2. **For image editing**: Use `imageEditor` tool
-3. **For video search**: Use `media` tool with `mediaType: 'video'`
+1. **For logo generation** (`LogoService` down): Inform user; no direct fallback for logo variants
+2. **For image generation** (`ImagegenService` down): Use `media` tool (stock photos as alternative)
+3. **For image editing** (`ImagegenService` down): Use `imageEditor` tool
+4. **For video generation** (`ImagegenService` down): Use `media` tool with `mediaType: 'video'`
 
 ---
 
@@ -245,16 +278,16 @@ If generation fails:
 1. Check error message for specific issue
 2. Verify all required parameters are provided
 3. Try with simpler/shorter prompts
-4. Fall back to alternative tools if generation service is unavailable
-5. Inform user clearly about the issue
+4. Fall back to alternative tools if the generation service is unavailable
+5. Inform the user clearly about the issue
 
 ---
 
 ## Summary
 
-| Tool                    | Use Case                          |
-| ----------------------- | --------------------------------- |
-| `media__generate_logo`  | Professional logos for businesses |
-| `media__generate_image` | Custom AI-generated images        |
-| `media__edit_image`     | Modify existing images with AI    |
-| `media__generate_video` | AI-generated video content        |
+| Tool                    | Service           | Use Case                                                             |
+| ----------------------- | ----------------- | -------------------------------------------------------------------- |
+| `media__generate_logo`  | `LogoService`     | Professional logos — multi-variant output (transparent/solid/mockup) |
+| `media__generate_image` | `ImagegenService` | Custom AI-generated images                                           |
+| `media__edit_image`     | `ImagegenService` | Modify existing images with AI                                       |
+| `media__generate_video` | `ImagegenService` | AI-generated video (async, up to 5min)                               |
