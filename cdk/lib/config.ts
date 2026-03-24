@@ -61,6 +61,12 @@ interface Config {
   serverlessV2MinCapacity: number;
   serverlessV2MaxCapacity: number;
   mysqlReadersCount: number;
+  // PostgreSQL configuration
+  postgresDatabases: string[];
+  postgresBackupRetentionDays: number;
+  postgresServerlessV2MinCapacity: number;
+  postgresServerlessV2MaxCapacity: number;
+  postgresReadersCount: number;
   gocodeAssumeRoleArns: string[];
   katanaEcsTaskRoleArn: string[];  // Katana ECS Task Role for JWT access
   awsIamJwtAccount: string[];
@@ -83,6 +89,12 @@ const devConfig: Config = {
   serverlessV2MinCapacity: 0.5,
   serverlessV2MaxCapacity: 4,
   mysqlReadersCount: 0,
+  // PostgreSQL configuration
+  postgresDatabases: ['dev', 'test'],
+  postgresBackupRetentionDays: 7,
+  postgresServerlessV2MinCapacity: 0.5,
+  postgresServerlessV2MaxCapacity: 4,
+  postgresReadersCount: 0,
   gocodeAssumeRoleArns: [
     'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
@@ -143,6 +155,12 @@ const testConfig: Config = {
   serverlessV2MinCapacity: 0.5,
   serverlessV2MaxCapacity: 8,
   mysqlReadersCount: 0,
+  // PostgreSQL configuration (test DB runs in dev account)
+  postgresDatabases: [],
+  postgresBackupRetentionDays: 15,
+  postgresServerlessV2MinCapacity: 0.5,
+  postgresServerlessV2MaxCapacity: 8,
+  postgresReadersCount: 0,
   gocodeAssumeRoleArns: [
     'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
@@ -190,6 +208,12 @@ const prodConfig: Config = {
   serverlessV2MinCapacity: 2,
   serverlessV2MaxCapacity: 16,
   mysqlReadersCount: 1,
+  // PostgreSQL configuration
+  postgresDatabases: ['prod'],
+  postgresBackupRetentionDays: 30,
+  postgresServerlessV2MinCapacity: 2,
+  postgresServerlessV2MaxCapacity: 16,
+  postgresReadersCount: 1,
   gocodeAssumeRoleArns: [
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c24-onegroup',
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c35-onegroup',

@@ -21,6 +21,7 @@ on:
           - "--all"
           - "AiroBuilderStack"
           - "MySQLV2Stack"
+          - "PostgresStack"
           - "AiroJWTKeyStack"
           - "GocaasSpendLambdaStack"
           - "EvalSnapshotsStack"

@@ -2,6 +2,7 @@ import config from "../lib/config";
 import { App } from "aws-cdk-lib";
 import {AiroBuilderStack} from "../lib/application-stack";
 import { MySQLV2Stack } from "../lib/mysql-v2-stack";
+import { PostgresStack } from "../lib/postgres-stack";
 import { AiroJWTKeyStack } from "../lib/airo-jwt-key-stack";
 import { MonitoringStack } from '../lib/monitoring-stack';
 import { GocaasSpendLambdaStack } from "../lib/gocaas-spend-lambda-stack";
@@ -14,7 +15,8 @@ import { QdrantEcrStack } from "../lib/qdrant-ecr-stack";
  * Main function to execute the CDK app
  *
  * Creates and orchestrates the following stacks:
- * - MySQLV2Stack: Aurora RDS database cluster
+ * - MySQLV2Stack: Aurora MySQL RDS database cluster
+ * - PostgresStack: Aurora PostgreSQL RDS database cluster
  * - AiroBuilderStack: IAM roles for GoCode access
  * - MonitoringStack: CloudWatch alarms and alert integrations
  */
@@ -26,6 +28,9 @@ async function main() {
 
   // Create MySQL V2 stack using existing VPC, for env based databases
   new MySQLV2Stack(app, 'MySQLV2Stack', { env });
+
+  // Create PostgreSQL stack using existing VPC, for env based databases
+  new PostgresStack(app, 'PostgresStack', { env });
 
   // Create application stack with IAM roles
   new AiroBuilderStack(app, 'AiroBuilderStack', { env });
