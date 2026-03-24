@@ -56,8 +56,9 @@ func (s *Store) Create(r *Run) error {
 		return fmt.Errorf("run %q: %w", r.ID, ErrRunExists)
 	}
 
+	runCopy := *r
 	s.runs[r.ID] = &runLog{
-		run:    r,
+		run:    &runCopy,
 		events: []Event{},
 	}
 	return nil

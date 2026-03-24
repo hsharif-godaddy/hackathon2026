@@ -3,14 +3,12 @@ package eventbus
 import (
 	"sync"
 	"sync/atomic"
-
-	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/run"
 )
 
 // Subscription represents an active subscription to events on a topic.
 // Read events from Ch. Call Close to unsubscribe and release resources.
 type Subscription struct {
-	Ch    <-chan run.Event
+	Ch    <-chan any
 	sub   *subscriber
 	close func()
 }
@@ -29,13 +27,13 @@ func (s *Subscription) Dropped() int64 {
 
 // subscriber is the internal state for a single subscription.
 type subscriber struct {
-	ch      chan run.Event
+	ch      chan any
 	closed  bool
 	mu      sync.Mutex
 	dropped atomic.Int64
 }
 
-// Bus is an in-process typed pub/sub event bus.
+// Bus is an in-process pub/sub event bus.
 // All components publish and subscribe through it rather than calling each other directly.
 type Bus struct {
 	mu          sync.RWMutex
@@ -52,7 +50,7 @@ func New() *Bus {
 // Publish sends an event to all subscribers of the given topic.
 // It never blocks: if a subscriber's buffer is full, the event is dropped
 // and the subscriber's dropped counter is incremented.
-func (b *Bus) Publish(topic string, event run.Event) {
+func (b *Bus) Publish(topic string, event any) {
 	b.mu.RLock()
 	subs := append([]*subscriber(nil), b.subscribers[topic]...)
 	b.mu.RUnlock()
@@ -100,7 +98,7 @@ func (b *Bus) Subscribe(topic string, bufferSize int) *Subscription {
 	if bufferSize < 0 {
 		bufferSize = 0
 	}
-	ch := make(chan run.Event, bufferSize)
+	ch := make(chan any, bufferSize)
 	s := &subscriber{ch: ch}
 
 	b.mu.Lock()
