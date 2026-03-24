@@ -39,6 +39,7 @@ export default function AppPublish({ location }: { location?: string }) {
   const [open, setOpen] = useState(false);
   const [entitlementsPollingFailed, setEntitlementsPollingFailed] = useState(false);
   const pathname = usePathname();
+  const isDevelopPage = pathname?.includes('/develop');
   const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
@@ -50,8 +51,11 @@ export default function AppPublish({ location }: { location?: string }) {
   // Coerce to boolean to prevent React Query errors when undefined
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
   const isPublishButtonEnabledFlag = isPublishButtonEnabled === true;
-  const { data: isAiroPlusPaywallEnabled } = useSwitchboard('appbuilder-airoplus-paywall');
-  const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets');
+  // Secondary flags only needed once the publish button is confirmed enabled on the develop page.
+  // AppPublish is always mounted in the header, so without this guard they fire on every page load.
+  const publishFlagsEnabled = isPublishButtonEnabledFlag && isDevelopPage;
+  const { data: isAiroPlusPaywallEnabled } = useSwitchboard('appbuilder-airoplus-paywall', { enabled: publishFlagsEnabled });
+  const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets', { enabled: publishFlagsEnabled });
 
   // Use shared paywall modal hook (includes publish limit check)
   const { checkAndShowPaywall, PaywallModal, isPolling, isPaywallLoading, isPublishLimitLoading } = usePaywallModal({
@@ -86,7 +90,6 @@ export default function AppPublish({ location }: { location?: string }) {
   }, [storeLastPublishedCommitHash, currentAppId]);
 
   const publishMutation = usePublishApp();
-  const isDevelopPage = pathname?.includes('/develop');
 
   const site = useSiteStore((state) => currentAppId ? state.getSite(currentAppId) : null);
 

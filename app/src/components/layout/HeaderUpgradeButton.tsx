@@ -34,8 +34,9 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal);
 
   const { data: featureEnabled, isLoading: isFeatureLoading } = useSwitchboard('appbuilder-airoplus-upgrade-button');
-  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants');
-  const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans');
+  // Secondary flags only relevant once the upgrade button feature is confirmed enabled.
+  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants', { enabled: featureEnabled === true });
+  const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans', { enabled: featureEnabled === true });
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(currentAppId || undefined);
   const { data: subscription } = useSubscription();
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : undefined;

@@ -15,16 +15,16 @@ import DomainItem from '@/app/develop/components/settings/components/DomainItem'
 import ExternalDomainInput from '@/app/develop/components/settings/components/ExternalDomainInput';
 import { useAppIdFromParams } from '@/app/develop/components/utils';
 import DomainPurchaseWidget from '@/app/develop/components/widgets/DomainPurchaseWidget';
-import { useAppDetails } from '@/hooks/useAppDetails';
 import { useAuth } from '@/hooks/useAuth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
+import { useDomainPolling } from '@/hooks/useDomainPolling';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
 import { DomainMutationError, useModifyDomains } from '@/hooks/useModifyDomains';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
-import { CdnStatus, DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
+import { DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { useSiteStore } from '@/stores/useSiteStore';
 import { isCustomerDomain, sanitizeDomainInput, validateDomain } from '@/utils/domain';
@@ -63,7 +63,6 @@ export default function DomainAttachWidget({
   const paramAppId = useAppIdFromParams();
   const appId = propAppId || paramAppId;
   const { isAuthenticated, isLoading: authLoading } = useAuth();
-
   // Feature flag check
   const { data: isDomainAttachEnabled, isLoading: isLoadingFlag } = useSwitchboard('appbuilder-domain-attach');
   const { data: isDomainPurchaseEnabled } = useSwitchboard('appbuilder-domain-purchase');
@@ -115,24 +114,8 @@ export default function DomainAttachWidget({
   // Compute actual loading state
   const isLoading = authLoading || isLoadingDomains || (!isDomainsFetched && isAuthenticated);
 
-  // Get app details for displaying domain list with polling for pending domains
-  const { data: appDetails, isFetched: isAppDetailsFetched } = useAppDetails(appId, {
-    enabled: !!appId,
-    includeCdn: true,
-    refetchInterval: (data) => {
-      const hasPendingDomain = data?.domains?.some(d => {
-        if (d.domainType === 'prefix') return false;
-        return (
-          d.status === DomainStatus.PENDING ||
-          d.cdnStatus === CdnStatus.INIT ||
-          d.cdnStatus === CdnStatus.PENDING ||
-          !d.status ||
-          (d.status !== DomainStatus.ACTIVE && d.status !== DomainStatus.DELETING && !d.anycastIp)
-        );
-      });
-      return hasPendingDomain ? 5000 : false;
-    },
-  });
+  // Poll while any domain is in a transitional state (pending, deleting, no status yet)
+  const { data: appDetails, isFetched: isAppDetailsFetched } = useDomainPolling(appId);
 
   // Handle customer domain attachment with automatic DNS configuration
   const {
@@ -153,12 +136,8 @@ export default function DomainAttachWidget({
     const pending = appDetails.domains.find((d) => {
       if (d.domainType === 'prefix') return false;
       if (isCustomerDomain(d.fqdn, domains)) return false;
-      return (
-        d.status === DomainStatus.PENDING ||
-        d.cdnStatus === CdnStatus.PENDING ||
-        !d.status ||
-        (d.status && d.status !== DomainStatus.ACTIVE && d.status !== DomainStatus.DELETING && !d.anycastIp)
-      );
+      // ERROR/FAILED/INACTIVE are terminal, and no-status means we don't yet know — don't show DNS instructions for either.
+      return d.status === DomainStatus.PENDING || d.status === DomainStatus.DELETING;
     });
 
     return pending ? pending.fqdn : null;
@@ -489,7 +468,7 @@ export default function DomainAttachWidget({
 
   const hasActiveOrPendingDomain = appDetails?.domains
     ?.filter((d) => d.domainType !== 'prefix')
-    ?.some((d) => d.cdnStatus === CdnStatus.PENDING || d.status === DomainStatus.ACTIVE);
+    ?.some((d) => d.status === DomainStatus.PENDING || d.status === DomainStatus.ACTIVE);
 
   const isPublished = hasBeenPublished(site);
 

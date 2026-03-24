@@ -11,15 +11,15 @@ import DomainItem from "@/app/develop/components/settings/components/DomainItem"
 import { Status } from "@/app/develop/components/types";
 import { useAppIdFromParams } from "@/app/develop/components/utils";
 import BigCard from "@/components/layout/BigCard";
-import { useAppDetails } from '@/hooks/useAppDetails';
 import { useAuth } from '@/hooks/useAuth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
+import { useDomainPolling } from '@/hooks/useDomainPolling';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
 import { DomainMutationError, useModifyDomains } from '@/hooks/useModifyDomains';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
-import { CdnStatus, DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
+import { DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { useSiteStore } from "@/stores/useSiteStore";
 import { isCustomerDomain, sanitizeDomainInput, validateDomain } from '@/utils/domain';
@@ -93,28 +93,8 @@ export default function DomainAttach() {
   // Compute actual loading state - show loading until we've attempted to fetch
   const isLoading = authLoading || isLoadingDomains || (!isDomainsFetched && isAuthenticated);
 
-  // Get app details for displaying domain list
-  // Poll while any domain (customer or custom) is pending activation
-  // This single polling instance handles both customer and custom domains
-  const { data: appDetails, isFetched: isAppDetailsFetched } = useAppDetails(currentAppId, {
-    enabled: !!currentAppId,
-    includeCdn: true,
-    refetchInterval: (data) => {
-      const hasPendingDomain = data?.domains?.some(d => {
-        if (d.domainType === 'prefix') return false;
-
-        return (
-          d.status === DomainStatus.PENDING ||
-          d.cdnStatus === CdnStatus.INIT ||
-          d.cdnStatus === CdnStatus.PENDING ||
-          !d.status ||
-          (d.status !== DomainStatus.ACTIVE && d.status !== DomainStatus.DELETING && !d.anycastIp)
-        );
-      });
-
-      return hasPendingDomain ? 5000 : false;
-    },
-  });
+  // Poll while any domain is in a transitional state (pending, deleting, no status yet)
+  const { data: appDetails, isFetched: isAppDetailsFetched } = useDomainPolling(currentAppId);
 
   // Handle customer domain attachment with automatic DNS configuration
   // Hook receives appDetails from above query and manages auto-attach flow for GoDaddy domains
@@ -140,13 +120,8 @@ export default function DomainAttach() {
       // Exclude customer domains (including subdomains of customer domains)
       if (isCustomerDomain(d.fqdn, domains)) return false;
 
-      // Check for pending status
-      return (
-        d.status === DomainStatus.PENDING ||
-        d.cdnStatus === CdnStatus.PENDING ||
-        !d.status || // New custom domain without status yet
-        (d.status && d.status !== DomainStatus.ACTIVE && d.status !== DomainStatus.DELETING && !d.anycastIp) // Domain provisioning CDN
-      );
+      // ERROR/FAILED/INACTIVE are terminal, and no-status means we don't yet know — don't show DNS instructions for either.
+      return d.status === DomainStatus.PENDING || d.status === DomainStatus.DELETING;
     });
 
     return pending ? pending.fqdn : null;
@@ -345,7 +320,7 @@ export default function DomainAttach() {
 
   const hasActiveOrPendingDomain = appDetails?.domains
     ?.filter((d) => d.domainType !== 'prefix')
-    ?.some((d) => d.cdnStatus === CdnStatus.PENDING || d.status === DomainStatus.ACTIVE);
+    ?.some((d) => d.status === DomainStatus.PENDING || d.status === DomainStatus.ACTIVE);
 
   const isPublished = hasBeenPublished(site);
 
@@ -360,9 +335,7 @@ export default function DomainAttach() {
 
     if (connectedDomains.length === 0) return undefined;
 
-    const hasPending = connectedDomains.some(d =>
-      d.status === DomainStatus.PENDING || d.cdnStatus === CdnStatus.PENDING
-    );
+    const hasPending = connectedDomains.some(d => d.status === DomainStatus.PENDING);
 
     const hasActive = connectedDomains.some(d =>
       d.status === DomainStatus.ACTIVE
