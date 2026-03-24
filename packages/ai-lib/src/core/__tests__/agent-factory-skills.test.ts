@@ -5,9 +5,10 @@
  * - cleanupInactiveSkills runs once in prepareCall (start of run), not per-step
  * - currentBaseToolNames remains stable across steps within the same run
  * - New skills activated mid-run are picked up in prepareStep
+ * - Skill tools are only merged into agents that declare the 'skill' loader tool
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { AgentWrapper } from '../agent-factory.js'
+import { AgentWrapper, AgentFactory } from '../agent-factory.js'
 import type { AgentConfig, SkillToolProvider } from '../types.js'
 
 vi.mock('ai', async importOriginal => {
@@ -225,5 +226,88 @@ describe('AgentWrapper skill cleanup and activeTools stability', () => {
 
     // Still only the one call from prepareCall
     expect(skillProvider.cleanupInactiveSkills).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('AgentFactory skill tool merge gating', () => {
+  it('should not merge skill tools for agents without the skill loader tool', function noSkillLoader() {
+    const skillProvider = createMockSkillToolProvider()
+    const factory = new AgentFactory({ skillToolProvider: skillProvider })
+
+    const agents = factory.defineAgents({
+      initial: {
+        name: 'Initial',
+        model: 'test-model' as any,
+        system: 'You are an initial assistant',
+        tools: {
+          todoList: { execute: vi.fn() } as any,
+          askQuestion: { execute: vi.fn() } as any,
+        }
+      }
+    })
+
+    const merged = agents.getConfig('initial')
+
+    expect(merged.tools).toHaveProperty('todoList')
+    expect(merged.tools).toHaveProperty('askQuestion')
+    expect(merged.tools).not.toHaveProperty('skill__foo__doStuff')
+    expect(merged.tools).not.toHaveProperty('skill__bar__doOther')
+    expect(skillProvider.getAllTools).not.toHaveBeenCalled()
+  })
+
+  it('should merge skill tools for agents that declare the skill loader tool', function withSkillLoader() {
+    const skillProvider = createMockSkillToolProvider()
+    const factory = new AgentFactory({ skillToolProvider: skillProvider })
+
+    const agents = factory.defineAgents({
+      develop: {
+        name: 'Develop',
+        model: 'test-model' as any,
+        system: 'You are a develop assistant',
+        tools: {
+          baseTool: { execute: vi.fn() } as any,
+          skill: { execute: vi.fn() } as any,
+        }
+      }
+    })
+
+    const merged = agents.getConfig('develop')
+
+    expect(merged.tools).toHaveProperty('baseTool')
+    expect(merged.tools).toHaveProperty('skill')
+    expect(merged.tools).toHaveProperty('skill__foo__doStuff')
+    expect(merged.tools).toHaveProperty('skill__bar__doOther')
+    expect(skillProvider.getAllTools).toHaveBeenCalled()
+  })
+
+  it('should gate per-agent when defining multiple agents together', function mixedAgents() {
+    const skillProvider = createMockSkillToolProvider()
+    const factory = new AgentFactory({ skillToolProvider: skillProvider })
+
+    const agents = factory.defineAgents({
+      initial: {
+        name: 'Initial',
+        model: 'test-model' as any,
+        system: 'Initial agent',
+        tools: {
+          todoList: { execute: vi.fn() } as any,
+        }
+      },
+      develop: {
+        name: 'Develop',
+        model: 'test-model' as any,
+        system: 'Develop agent',
+        tools: {
+          baseTool: { execute: vi.fn() } as any,
+          skill: { execute: vi.fn() } as any,
+        }
+      }
+    })
+
+    const initialConfig = agents.getConfig('initial')
+    const developConfig = agents.getConfig('develop')
+
+    expect(initialConfig.tools).not.toHaveProperty('skill__foo__doStuff')
+    expect(developConfig.tools).toHaveProperty('skill__foo__doStuff')
   })
 })

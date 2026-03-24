@@ -1521,10 +1521,18 @@ export class AgentFactory {
       maxSteps: config.maxSteps ?? 8 // Default to 8 reasoning steps
     }
 
-    // Merge tools (global tools + skill tools + agent-specific tools)
+    // Merge tools (global tools + agent-specific tools, skill tools only if agent has skill loader)
     const globalTools = this.globalConfig.globalTools || []
-    const skillTools = this.globalConfig.skillToolProvider?.getAllTools() || {}
     const configTools = config.tools || {}
+
+    // Only merge skill tools for agents that declare the 'skill' tool — agents
+    // without the skill loader have no mechanism to activate skills, so merging
+    // skill tool definitions just bloats their tool map and risks exposing them
+    // if the activeTools filter doesn't run (e.g. missing conversationId).
+    const hasSkillLoader = configTools['skill'] != null
+    const skillTools = hasSkillLoader
+      ? (this.globalConfig.skillToolProvider?.getAllTools() || {})
+      : {}
 
     // Convert global tools array to object if needed
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
