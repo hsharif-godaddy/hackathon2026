@@ -16,6 +16,7 @@ import { getErrorMessage } from '@/lib/errors'
 import { isFeatureEnabled } from '@/lib/features'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
+import { useAuthUIStore } from '@/stores/useAuthUIStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 import LandingHero from './LandingHero'
 import SectionRenderer from './SectionRenderer'
@@ -43,6 +44,21 @@ function LandingPageContent({ data }: LandingPageProps) {
 
   const { isAuthenticated, isAuthDisabled, isLoading: authIsLoading } = useAuthContext()
   const { signIn } = useSsoSignIn()
+  const setRedirectUrl = useAuthUIStore((state) => state.setRedirectUrl)
+
+  const signInFromLanding = useCallback(() => {
+    if (typeof window === 'undefined') {
+      signIn({ onShowMockLogin: () => setShowMockLogin(true) })
+      return
+    }
+    setRedirectUrl(
+      window.location.pathname + window.location.search + window.location.hash
+    )
+    signIn({
+      redirectUrl: window.location.href,
+      onShowMockLogin: () => setShowMockLogin(true),
+    })
+  }, [setRedirectUrl, signIn])
 
   useSafariClass()
 
@@ -101,7 +117,7 @@ function LandingPageContent({ data }: LandingPageProps) {
       if (!isAuthDisabled && !isAuthenticated) {
         logger.info('landing.auth.sso-login', { action: 'showing-sso-login' });
         savePromptForRetry(promptToUse, 'login');
-        signIn({ onShowMockLogin: () => setShowMockLogin(true) });
+        signInFromLanding();
         setIsLoading(false);
         setIsRedirecting(false);
         return;
@@ -120,7 +136,7 @@ function LandingPageContent({ data }: LandingPageProps) {
             phase: 'quick-create'
           });
           savePromptForRetry(promptToUse, 'session-refresh');
-          signIn({ onShowMockLogin: () => setShowMockLogin(true) });
+          signInFromLanding();
           setIsLoading(false);
           setIsRedirecting(false);
           return;
@@ -171,7 +187,7 @@ function LandingPageContent({ data }: LandingPageProps) {
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, authIsLoading, signIn, savePromptForRetry, t, slug])
+  }, [router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, authIsLoading, signInFromLanding, savePromptForRetry, t, slug])
 
   useEffect(function restorePromptAfterLogin() {
     if (!isAuthenticated || authIsLoading) return

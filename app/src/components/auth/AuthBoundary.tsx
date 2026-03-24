@@ -6,6 +6,7 @@ import Button from '@ux/button';
 import Modal from '@ux/modal';
 import text from '@ux/text';
 
+import { isLandingPagePathname } from '@/data/landing-pages/landing-page-paths';
 import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
@@ -22,6 +23,7 @@ interface AuthBoundaryProps {
  *
  * Key behaviors:
  * - Skips homepage (/) which should work for unauthenticated users
+ * - Skips explore YAML landings listed in `lookup.json` (see `isLandingPagePathname`)
  * - Shows UXCore Modal with "Sign in" button when needsReauth is true
  * - Button opens the SSO modal (same as SessionExpirationBanner)
  * - Does NOT auto-open modal to avoid loops if backend keeps returning 401
@@ -40,14 +42,14 @@ export default function AuthBoundary({ children }: AuthBoundaryProps) {
   const pathname = usePathname();
   const { needsReauth, reauthReason, openSsoLogin, isSsoLoginOpen, setRedirectUrl } = useAuthUIStore();
 
-  // Skip auth boundary on homepage - it should work for unauthenticated users
   const isHomepage = pathname === '/' || pathname === '';
+  const isLandingPage = isLandingPagePathname(pathname);
 
   // Don't show boundary if:
-  // - We're on the homepage
+  // - We're on homepage or a landing page
   // - Auth is not required
   // - SSO modal is already open (user is in the process of signing in)
-  if (isHomepage || !needsReauth || isSsoLoginOpen) {
+  if (isHomepage || isLandingPage || !needsReauth || isSsoLoginOpen) {
     return <>{children}</>;
   }
 

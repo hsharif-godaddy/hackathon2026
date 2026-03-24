@@ -156,7 +156,7 @@ describe('AuthBoundary', () => {
     expect(screen.queryByText('Sign In Required')).not.toBeInTheDocument();
   });
 
-  describe('homepage bypass', () => {
+  describe('public route bypass', () => {
     it('should skip auth boundary on homepage (/)', async () => {
       // Mock pathname to be homepage
       const { usePathname } = vi.mocked(await import('next/navigation'));
@@ -192,6 +192,46 @@ describe('AuthBoundary', () => {
       );
 
       expect(screen.queryByText('Sign In Required')).not.toBeInTheDocument();
+    });
+
+    it.each([
+      '/explore/airo-build-a-thon',
+      '/explore/games',
+      '/explore/games/',
+      '/explore/games/hi',
+    ])('should skip auth boundary on explore landing %s', async (explorePath) => {
+      const { usePathname } = vi.mocked(await import('next/navigation'));
+      usePathname.mockReturnValue(explorePath);
+
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('not_authenticated');
+      });
+
+      render(
+        <AuthBoundary>
+          <div data-testid="child-content">Landing Content</div>
+        </AuthBoundary>
+      );
+
+      expect(screen.getByTestId('child-content')).toBeInTheDocument();
+      expect(screen.queryByText('Sign In Required')).not.toBeInTheDocument();
+    });
+
+    it('should show modal on unknown explore slug', async () => {
+      const { usePathname } = vi.mocked(await import('next/navigation'));
+      usePathname.mockReturnValue('/explore/__test-not-a-landing__');
+
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('not_authenticated');
+      });
+
+      render(
+        <AuthBoundary>
+          <div data-testid="child-content">Content</div>
+        </AuthBoundary>
+      );
+
+      expect(screen.getByText('Sign In Required')).toBeInTheDocument();
     });
   });
 });
