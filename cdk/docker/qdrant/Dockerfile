@@ -22,7 +22,7 @@
 # -----------------------------------------------------------------------------
 # Stage 1: Source - Extract binary and assets from official Qdrant image
 # -----------------------------------------------------------------------------
-FROM qdrant/qdrant:v1.13.2 AS qdrant-source
+FROM qdrant/qdrant:v1.16.3 AS qdrant-source
 
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime - GoDaddy golden Debian image

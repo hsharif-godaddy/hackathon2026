@@ -23,9 +23,9 @@ on:
           - dev
           - prod
       image_tag:
-        description: "Image tag (default: latest)"
+        description: "Image tag (e.g. v1.16.3)"
         required: false
-        default: "latest"
+        default: "v1.16.3"
         type: string
 
 permissions:
@@ -61,7 +61,14 @@ jobs:
             TAG="${{ inputs.image_tag }}"
           elif [ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/main" ]; then
             ENV="dev"
-            TAG="latest"
+            # Extract version from Dockerfile so tag stays in sync automatically.
+            # The trailing '.*' (not ' .*') handles FROM lines both with and without AS alias.
+            TAG=$(grep "FROM qdrant/qdrant:" cdk/docker/qdrant/Dockerfile | head -1 | sed 's/FROM qdrant\/qdrant:\(v[^ ]*\).*/\1/')
+            if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "ERROR: Failed to extract valid semver tag from Dockerfile (got: '$TAG')"
+              exit 1
+            fi
+            echo "Extracted Qdrant version from Dockerfile: $TAG"
           else
             ENV="dev"
             TAG="pr-${{ github.event.pull_request.number }}"
