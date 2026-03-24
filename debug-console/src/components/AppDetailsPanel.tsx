@@ -503,6 +503,7 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
 
         fetch(`/api/mgmt/apps/${encodeURIComponent(appId)}`)
             .then(async res => {
+                if (res.status >= 500) throw new Error(`Internal error (${res.status}) — the management service may be temporarily unavailable`);
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
                 return data as MgmtAppDetails;
@@ -517,6 +518,7 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
 
                 return fetch(`/api/mgmt/apps/${encodeURIComponent(appId)}/image-status?${params}`)
                     .then(async res => {
+                        if (res.status >= 500) throw new Error(`Internal error (${res.status})`);
                         const data = await res.json();
                         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
                         return data as MgmtImageStatus;

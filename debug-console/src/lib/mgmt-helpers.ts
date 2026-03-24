@@ -4,6 +4,7 @@ import { MgmtControlPlaneError } from '@/lib/mgmt-control-plane-adapter';
 
 export const APP_ID_RE = /^[A-Za-z0-9]{8,20}$/i;
 export const SUBSCRIPTION_ID_RE = /^[A-Za-z0-9]{4,30}$/i;
+export const CUSTOMER_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function validateId(value: string, name: string, re: RegExp): NextResponse | null {
     if (!re.test(value)) {

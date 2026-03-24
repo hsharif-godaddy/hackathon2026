@@ -122,7 +122,7 @@ class MgmtSSOClient {
      * Make an authenticated request to the mgmt airo control plane.
      * Token is automatically fetched and cached.
      */
-    async fetch(path: string, init: RequestInit = {}, retried = false): Promise<Response> {
+    async fetch(path: string, init: RequestInit & { timeoutMs?: number } = {}, retried = false): Promise<Response> {
         const response = await this._fetch(path, init);
 
         if (response.status === 401 && !retried) {
@@ -133,18 +133,18 @@ class MgmtSSOClient {
         return response;
     }
 
-    private async _fetch(path: string, init: RequestInit): Promise<Response> {
+    private async _fetch(path: string, init: RequestInit & { timeoutMs?: number }): Promise<Response> {
         const token = await this.getToken();
+        const { timeoutMs, ...fetchInit } = init;
 
-        // 10s timeout is default for fetch, disable caching to avoid stale responses
         return fetch(`${getMgmtBaseUrl()}${path}`, {
-            ...init,
+            ...fetchInit,
             headers: {
                 'Content-Type': 'application/json',
-                ...init.headers,
+                ...fetchInit.headers,
                 Authorization: `sso-jwt ${token}`
             },
-            signal: AbortSignal.timeout(10000),
+            signal: AbortSignal.timeout(timeoutMs ?? 10000),
             cache: 'no-store' as RequestCache,
         });
     }

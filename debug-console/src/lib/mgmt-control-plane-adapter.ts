@@ -196,8 +196,37 @@ export interface MgmtDomainError {
     completedAt: string;
 }
 
+export interface MgmtCustomerApp {
+    appId: string;
+    subscriptionId: string;
+    systemId: string;
+    status: string;
+    published: boolean;
+}
+
+interface CustomerTreeApp {
+    id: string;
+    status: string;
+    published: boolean;
+}
+
+interface CustomerTreeSystem {
+    systemId: string;
+    apps: CustomerTreeApp[];
+}
+
+interface CustomerTreeSubscription {
+    subscriptionId: string;
+    systems: CustomerTreeSystem[];
+}
+
+interface CustomerTreeResponse {
+    customerId: string;
+    subscriptions: CustomerTreeSubscription[];
+}
+
 export class MgmtControlPlaneAdapter {
-    private async request<T>(path: string, init?: RequestInit): Promise<T> {
+    private async request<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
         const response = await mgmtSSOClient.fetch(path, init);
 
         if (!response.ok) {
@@ -251,6 +280,29 @@ export class MgmtControlPlaneAdapter {
             : `/api/hosting/v1/apps/${encodeURIComponent(appId)}/reload`;
 
         return this.request(path, { method: 'POST', body: '{}' });
+    }
+
+    async getCustomerApps(customerId: string): Promise<MgmtCustomerApp[]> {
+        const tree = await this.request<CustomerTreeResponse>(
+            `/api/airo/v1/customers/${encodeURIComponent(customerId)}/tree?ownerProduct=AiroAppBuilder`,
+            { timeoutMs: 30000 }
+        );
+
+        const apps: MgmtCustomerApp[] = [];
+        for (const sub of tree.subscriptions ?? []) {
+            for (const sys of sub.systems ?? []) {
+                for (const app of sys.apps ?? []) {
+                    apps.push({
+                        appId: app.id,
+                        subscriptionId: sub.subscriptionId,
+                        systemId: sys.systemId,
+                        status: app.status,
+                        published: app.published,
+                    });
+                }
+            }
+        }
+        return apps;
     }
 }
 

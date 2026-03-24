@@ -4,8 +4,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import AppDetailsPanel from '@/components/AppDetailsPanel';
-import type { MgmtSubscription, MgmtSubscriptionGrants } from '@/lib/mgmt-control-plane-adapter';
+import type { MgmtCustomerApp, MgmtSubscription, MgmtSubscriptionGrants } from '@/lib/mgmt-control-plane-adapter';
 import { formatTimestamp } from '@/lib/date-utils';
+import { CUSTOMER_ID_RE } from '@/lib/mgmt-helpers';
 import LangfusePanel from '@/components/LangfusePanel';
 import LogsPanel, { type LogSource } from '@/components/LogsPanel';
 import PublishEventsPanel from '@/components/PublishEventsPanel';
@@ -159,6 +160,11 @@ export default function Dashboard() {
 
   const [appId, setAppId] = useState('');
   const [submittedAppId, setSubmittedAppId] = useState('');
+  const [submittedCustomerId, setSubmittedCustomerId] = useState('');
+  const [customerApps, setCustomerApps] = useState<MgmtCustomerApp[]>([]);
+  const [customerAppsLoading, setCustomerAppsLoading] = useState(false);
+  const [customerAppsError, setCustomerAppsError] = useState<string | null>(null);
+  const [customerAppsRefresh, setCustomerAppsRefresh] = useState(0);
   const [timeRange, setTimeRange] = useState('24h');
   const [activeTab, setActiveTab] = useState<TabId>('details');
   const [sources, setSources] = useState<LogSource[]>([]);
@@ -191,12 +197,19 @@ export default function Dashboard() {
     setRefreshKeys(prev => ({ ...prev, [tabId]: prev[tabId] + 1 }));
   }, []);
 
-  // Initialize from URL params on mount
+  // Initialize from URL params on mount only
   useEffect(() => {
     const urlAppId = searchParams?.get('appId');
+    const urlCustomerId = searchParams?.get('customerId');
     const urlTab = searchParams?.get('tab') as TabId | null;
     const urlTimeRange = searchParams?.get('timeRange');
-    if (urlAppId) {
+    if (urlCustomerId) {
+      setAppId(urlCustomerId);
+      setSubmittedCustomerId(urlCustomerId);
+      if (urlAppId) {
+        setSubmittedAppId(urlAppId);
+      }
+    } else if (urlAppId) {
       setAppId(urlAppId);
       setSubmittedAppId(urlAppId);
     }
@@ -206,7 +219,7 @@ export default function Dashboard() {
     if (urlTimeRange && VALID_TIME_RANGE_VALUES.includes(urlTimeRange)) {
       setTimeRange(urlTimeRange);
     }
-  }, [searchParams]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch log sources on mount
   useEffect(() => {
@@ -215,6 +228,37 @@ export default function Dashboard() {
       .then(data => setSources(data.sources || []))
       .catch(() => setSources([]));
   }, []);
+
+  // Fetch customer apps when customerId is submitted
+  useEffect(() => {
+    if (!submittedCustomerId) {
+      setCustomerApps([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    setCustomerAppsLoading(true);
+    setCustomerAppsError(null);
+
+    fetch(`/api/mgmt/customers/${encodeURIComponent(submittedCustomerId)}/apps`, { signal: controller.signal })
+      .then(res => {
+        if (!res.ok) {
+          if (res.status >= 500) throw new Error(`Internal error (${res.status}) — the management service may be temporarily unavailable`);
+          return res.json().then(d => { throw new Error(d.error || `HTTP ${res.status}`); });
+        }
+        return res.json();
+      })
+      .then(data => setCustomerApps(data))
+      .catch(err => {
+        if (err.name === 'AbortError') return;
+        setCustomerAppsError(err instanceof Error ? err.message : 'Failed to fetch customer apps');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setCustomerAppsLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [submittedCustomerId, customerAppsRefresh]);
 
   // Fetch app context when appId is submitted
   const fetchContext = useCallback(async () => {
@@ -305,12 +349,16 @@ export default function Dashboard() {
     return () => controller.abort();
   }, [mgmtGrantUserIds, mgmtRawSubId]);
 
-  const updateUrl = useCallback((newAppId?: string, newTab?: TabId, newTimeRange?: string) => {
+  const updateUrl = useCallback((opts?: { appId?: string | null; customerId?: string | null; tab?: TabId; timeRange?: string }) => {
     const params = new URLSearchParams();
-    const effectiveAppId = newAppId ?? submittedAppId;
-    const effectiveTab = newTab ?? activeTab;
-    const effectiveTimeRange = newTimeRange ?? timeRange;
+    const effectiveCustomerId = opts?.customerId !== undefined ? opts.customerId : submittedCustomerId;
+    const effectiveAppId = opts?.appId !== undefined ? opts.appId : submittedAppId;
+    const effectiveTab = opts?.tab ?? activeTab;
+    const effectiveTimeRange = opts?.timeRange ?? timeRange;
 
+    if (effectiveCustomerId) {
+      params.set('customerId', effectiveCustomerId);
+    }
     if (effectiveAppId) {
       params.set('appId', effectiveAppId);
     }
@@ -323,14 +371,24 @@ export default function Dashboard() {
 
     const query = params.toString();
     router.push(query ? `/?${query}` : '/', { scroll: false });
-  }, [router, submittedAppId, activeTab, timeRange]);
+  }, [router, submittedAppId, submittedCustomerId, activeTab, timeRange]);
+
+  const isUUID = (value: string) => CUSTOMER_ID_RE.test(value);
 
   const handleSearch = () => {
     const trimmed = appId.trim();
-    if (trimmed) {
+    if (!trimmed) return;
+
+    if (isUUID(trimmed)) {
+      setSubmittedAppId('');
+      if (submittedCustomerId === trimmed) setCustomerAppsRefresh(k => k + 1);
+      setSubmittedCustomerId(trimmed);
+      updateUrl({ customerId: trimmed, appId: null, tab: 'details' });
+    } else {
+      setSubmittedCustomerId('');
       setSubmittedAppId(trimmed);
       setActiveTab('details');
-      updateUrl(trimmed, 'details');
+      updateUrl({ appId: trimmed, customerId: null, tab: 'details' });
     }
   };
 
@@ -362,15 +420,31 @@ export default function Dashboard() {
   const handleClear = () => {
     setAppId('');
     setSubmittedAppId('');
+    setSubmittedCustomerId('');
+    setCustomerApps([]);
+    setCustomerAppsError(null);
     setContext(null);
     setActiveTab('summary');
     router.push('/', { scroll: false });
   };
 
+  const handleSelectCustomerApp = (selectedAppId: string) => {
+    setSubmittedAppId(selectedAppId);
+    setActiveTab('details');
+    updateUrl({ appId: selectedAppId, tab: 'details' });
+  };
+
+  const handleBackToCustomerApps = () => {
+    setSubmittedAppId('');
+    setContext(null);
+    setActiveTab('details');
+    updateUrl({ appId: null, tab: 'details' });
+  };
+
   const handleTabChange = (tabId: TabId) => {
     setActiveTab(tabId);
     if (submittedAppId) {
-      updateUrl(submittedAppId, tabId);
+      updateUrl({ tab: tabId });
     }
   };
 
@@ -429,21 +503,33 @@ export default function Dashboard() {
             Airo AI Builder Console
           </h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
-            <div style={{ position: 'relative', width: '220px' }}>
+            <div style={{ position: 'relative', flex: 1, maxWidth: '500px' }}>
               <input
                 type="text"
                 value={appId}
                 onChange={(e) => setAppId(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-                placeholder="App ID..."
+                placeholder="App ID or Customer ID..."
                 style={{
                   width: '100%',
-                  padding: '0.375rem 1.75rem 0.375rem 0.625rem',
+                  padding: appId.trim() ? '0.375rem 4.5rem 0.375rem 0.625rem' : '0.375rem 1.75rem 0.375rem 0.625rem',
                   borderRadius: '4px',
                   border: '1px solid #d1d5db',
                   fontSize: '0.875rem'
                 }}
               />
+              {appId.trim() && (
+                <span style={{
+                  position: 'absolute', right: '24px', top: '50%', transform: 'translateY(-50%)',
+                  fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
+                  padding: '0.1rem 0.3rem', borderRadius: '3px',
+                  backgroundColor: isUUID(appId.trim()) ? '#dbeafe' : '#f0fdf4',
+                  color: isUUID(appId.trim()) ? '#1d4ed8' : '#15803d',
+                  pointerEvents: 'none',
+                }}>
+                  {isUUID(appId.trim()) ? 'customerId' : 'appId'}
+                </span>
+              )}
               {appId && (
                 <button
                   onClick={handleClear}
@@ -472,7 +558,7 @@ export default function Dashboard() {
             >Search</button>
             <select
               value={timeRange}
-              onChange={(e) => { setTimeRange(e.target.value); updateUrl(undefined, undefined, e.target.value); }}
+              onChange={(e) => { setTimeRange(e.target.value); updateUrl({ timeRange: e.target.value }); }}
               style={{
                 padding: '0.375rem 0.5rem', borderRadius: '4px',
                 border: '1px solid #d1d5db', fontSize: '0.875rem',
@@ -494,7 +580,94 @@ export default function Dashboard() {
         </header>
 
         {/* Main Content */}
-        {!submittedAppId ? (
+        {submittedCustomerId && !submittedAppId ? (
+          /* Customer apps list view */
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '6px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
+            overflow: 'hidden',
+            maxWidth: '1200px',
+            margin: '0 auto',
+          }}>
+            <div style={{
+              padding: '0.75rem 1rem',
+              borderBottom: '1px solid #f3f4f6',
+              backgroundColor: '#fafafa',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}>
+              <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>
+                Customer: {submittedCustomerId}
+              </span>
+              {!customerAppsLoading && customerApps.length > 0 && (
+                <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                  ({customerApps.length} app{customerApps.length !== 1 ? 's' : ''})
+                </span>
+              )}
+            </div>
+            <div style={{ padding: '0.75rem' }}>
+              {customerAppsLoading ? (
+                <div style={{ padding: '3rem 2rem', textAlign: 'center', color: '#6b7280', fontSize: '0.875rem' }}>
+                  Loading customer apps...
+                </div>
+              ) : customerAppsError ? (
+                <div style={{ padding: '1rem', backgroundColor: '#fef2f2', color: '#991b1b', borderRadius: '4px', fontSize: '0.813rem' }}>
+                  {customerAppsError}
+                </div>
+              ) : customerApps.length === 0 ? (
+                <div style={{ padding: '3rem 2rem', textAlign: 'center', color: '#6b7280', fontSize: '0.875rem' }}>
+                  No apps found for this customer
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#f9fafb' }}>
+                        <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600, color: '#374151' }}>App ID</th>
+                        <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600, color: '#374151' }}>Status</th>
+                        <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600, color: '#374151' }}>Published</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {customerApps.map(app => (
+                        <tr
+                          key={app.appId}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => handleSelectCustomerApp(app.appId)}
+                          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectCustomerApp(app.appId); } }}
+                          style={{ borderBottom: '1px solid #f3f4f6', cursor: 'pointer' }}
+                          onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f0f7ff')}
+                          onMouseLeave={e => (e.currentTarget.style.backgroundColor = '')}
+                        >
+                          <td style={{ padding: '0.5rem 0.75rem' }}>
+                            <div style={{ fontFamily: 'monospace', color: '#2563eb', fontWeight: 600 }}>{app.appId}</div>
+                            <div style={{ fontFamily: 'monospace', fontSize: '0.68rem', color: '#9ca3af', marginTop: '0.1rem' }}>{app.subscriptionId}</div>
+                          </td>
+                          <td style={{ padding: '0.5rem 0.75rem' }}>
+                            <span style={{
+                              fontSize: '0.72rem',
+                              padding: '0.15rem 0.4rem',
+                              borderRadius: '9999px',
+                              fontWeight: 600,
+                              backgroundColor: app.status === 'RUNNING' ? '#dcfce7' : app.status === 'STOPPED' ? '#fee2e2' : '#f3f4f6',
+                              color: app.status === 'RUNNING' ? '#166534' : app.status === 'STOPPED' ? '#991b1b' : '#374151',
+                            }}>{app.status}</span>
+                          </td>
+                          <td style={{ padding: '0.5rem 0.75rem', color: app.published ? '#16a34a' : '#6b7280' }}>
+                            {app.published ? 'Yes' : 'No'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : !submittedAppId ? (
           <div style={{
             backgroundColor: 'white',
             padding: '4rem 2rem',
@@ -509,7 +682,7 @@ export default function Dashboard() {
               fontWeight: 600,
               color: '#1a1a1a'
             }}>
-              Enter an App ID to get started
+              Enter an App ID or Customer ID to get started
             </h2>
             <p style={{
               margin: 0,
@@ -529,12 +702,30 @@ export default function Dashboard() {
             flexDirection: 'column',
             minHeight: 'calc(100vh - 3.5rem)'
           }}>
-            {/* App ID label */}
+            {/* App ID label / breadcrumb */}
             <div style={{
               padding: '0.5rem 0.75rem',
               borderBottom: '1px solid #f3f4f6',
-              backgroundColor: '#fafafa'
+              backgroundColor: '#fafafa',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
             }}>
+              {submittedCustomerId && (
+                <>
+                  <button
+                    onClick={handleBackToCustomerApps}
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      fontSize: '0.813rem', color: '#2563eb', fontWeight: 600,
+                      padding: 0,
+                    }}
+                  >
+                    Customer: {submittedCustomerId}
+                  </button>
+                  <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>&gt;</span>
+                </>
+              )}
               <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>
                 app id - {submittedAppId}
               </span>
