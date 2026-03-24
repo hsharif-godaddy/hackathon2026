@@ -41,6 +41,25 @@ export async function dismissBanners(page: Page): Promise<void> {
 }
 
 /**
+ * Dismiss any blocking overlays (cookie consent, coachmark tours, backdrops).
+ * Safe to call at any point — no-ops when nothing is blocking.
+ * Coachmark tours use UX library shadow DOM so detection is unreliable;
+ * we press Escape unconditionally to clear them.
+ */
+export async function dismissOverlays(page: Page): Promise<void> {
+  const cookieAccept = page.locator('#pw_accept');
+  if (await cookieAccept.isVisible({ timeout: SHORT_TIMEOUT }).catch(() => false)) {
+    await cookieAccept.click({ force: true });
+    await expect(cookieAccept).not.toBeVisible({ timeout: SHORT_TIMEOUT }).catch(() => {});
+    console.log('  ✓ Dismissed cookie consent banner');
+  }
+
+  for (let i = 0; i < 3; i++) {
+    await page.keyboard.press('Escape');
+  }
+}
+
+/**
  * Wait for homepage to fully load
  */
 export async function waitForHomepage(page: Page): Promise<void> {

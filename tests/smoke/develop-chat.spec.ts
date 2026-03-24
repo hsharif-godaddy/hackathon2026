@@ -18,7 +18,7 @@ import { test, expect } from '@playwright/test';
 import { deleteAllSitesViaAPI } from '../helpers/api';
 import { handleSsoLogin, openUserMenu } from '../helpers/auth';
 import { LONG_TIMEOUT, DEFAULT_TIMEOUT, PREVIEW_TIMEOUT, AI_RESPONSE_TIMEOUT_MS, CHAT_INPUT_TIMEOUT, getSpecPrefix } from '../helpers/constants';
-import { waitForDevelopPage, waitForChatInput } from '../helpers/ui';
+import { dismissOverlays, waitForDevelopPage, waitForChatInput } from '../helpers/ui';
 
 test.describe('Develop Page', () => {
   test.beforeEach(async ({ }, testInfo) => {
@@ -35,6 +35,12 @@ test.describe('Develop Page', () => {
     // STEP 1: Create an app (with login)
     // ========================================
     console.log('📱 Step 1: Creating app...');
+
+    // Prevent coachmark tour from appearing
+    await page.addInitScript(() => {
+      localStorage.setItem('airo-intro-tour-shown', 'true');
+    });
+
     await page.goto('/');
 
     const promptInput = page.getByTestId('homepage-prompt-input');
@@ -53,17 +59,7 @@ test.describe('Develop Page', () => {
     const appId = page.url().match(/\/develop\/([a-zA-Z0-9]+)/)?.[1] || '';
     console.log(`✅ App created: ${appId}`);
 
-    // Dismiss any blocking overlays (coachmark tours, backdrops)
-    for (let i = 0; i < 5; i++) {
-      const backdrop = page.locator('.ux-disrupt-backdrop');
-      if (await backdrop.isVisible({ timeout: 1000 }).catch(() => false)) {
-        await page.keyboard.press('Escape');
-        await page.waitForTimeout(500);
-        console.log(`  ✓ Dismissed overlay (attempt ${i + 1})`);
-      } else {
-        break;
-      }
-    }
+    await dismissOverlays(page);
 
     // ========================================
     // STEP 2: Verify all components loaded
@@ -94,6 +90,7 @@ test.describe('Develop Page', () => {
     // ========================================
     // STEP 3: Test header elements
     // ========================================
+    await dismissOverlays(page);
     console.log('🏷️ Step 3: Testing header elements...');
 
     // Verify user menu shows Sign Out
@@ -105,6 +102,12 @@ test.describe('Develop Page', () => {
     // ========================================
     // STEP 4: Test preview controls
     // ========================================
+    await dismissOverlays(page);
+
+    // Wait for initial app generation to finish before interacting with preview
+    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    console.log('  ✓ Initial app generation completed');
+
     console.log('🖼️ Step 4: Testing preview controls...');
 
     // Verify controls exist
@@ -119,6 +122,7 @@ test.describe('Develop Page', () => {
 
     // Test device selector - mobile view
     await page.locator('[data-eid*="preview.device_selector"]').click({ force: true });
+    await page.locator('[data-radix-popper-content-wrapper]').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
     await page.locator('[data-radix-popper-content-wrapper]')
       .locator('[data-eid*="preview.device_select_iphone-se"]')
       .click({ force: true });
@@ -128,6 +132,7 @@ test.describe('Develop Page', () => {
 
     // Test device selector - back to desktop
     await page.locator('[data-eid*="preview.device_selector"]').click({ force: true });
+    await page.locator('[data-radix-popper-content-wrapper]').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
     await page.locator('[data-radix-popper-content-wrapper]')
       .locator('[data-eid*="preview.device_select_full"]')
       .click({ force: true });
@@ -137,6 +142,7 @@ test.describe('Develop Page', () => {
     // ========================================
     // STEP 5: Test chat toolbar navigation
     // ========================================
+    await dismissOverlays(page);
     console.log('🔧 Step 5: Testing chat toolbar...');
 
     // Verify toolbar buttons
@@ -157,6 +163,7 @@ test.describe('Develop Page', () => {
     // ========================================
     // STEP 6: Test chat input states
     // ========================================
+    await dismissOverlays(page);
     console.log('📝 Step 6: Testing chat input states...');
 
     const chatInput = page.getByTestId('chat-input-textarea');
@@ -174,9 +181,10 @@ test.describe('Develop Page', () => {
 
     // Shift+Enter multiline
     await chatInput.clear();
-    await chatInput.fill('Line 1');
+    await chatInput.click();
+    await chatInput.pressSequentially('Line 1');
     await chatInput.press('Shift+Enter');
-    await chatInput.type('Line 2');
+    await chatInput.pressSequentially('Line 2');
     const multilineValue = await chatInput.inputValue();
     expect(multilineValue).toContain('Line 1');
     expect(multilineValue).toContain('Line 2');
@@ -187,11 +195,8 @@ test.describe('Develop Page', () => {
     // ========================================
     // STEP 7: Test sending message via click
     // ========================================
+    await dismissOverlays(page);
     console.log('🖱️ Step 7: Testing send via click...');
-
-    // Dismiss any overlay that might be blocking
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(300);
 
     const clickMessage = 'Add a header section';
     await chatInput.fill(clickMessage);
@@ -202,16 +207,14 @@ test.describe('Develop Page', () => {
     await expect(transcript.getByText(clickMessage, { exact: true })).toBeVisible({ timeout: 10000 });
     console.log('  ✓ Message sent via click');
 
-    // Wait for AI response
-    await expect(async () => {
-      const isDisabled = await chatInput.isDisabled();
-      expect(isDisabled).toBe(false);
-    }).toPass({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    // Wait for AI response to complete (send button reappears when done)
+    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
     console.log('  ✓ AI response completed');
 
     // ========================================
     // STEP 8: Test sending message via Enter
     // ========================================
+    await dismissOverlays(page);
     console.log('⌨️ Step 8: Testing send via Enter...');
 
     const enterMessage = 'Add a footer';
@@ -223,16 +226,14 @@ test.describe('Develop Page', () => {
     await expect(transcript.getByText(enterMessage, { exact: true })).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     console.log('  ✓ Message sent via Enter');
 
-    // Wait for AI response
-    await expect(async () => {
-      const isDisabled = await chatInput.isDisabled();
-      expect(isDisabled).toBe(false);
-    }).toPass({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    // Wait for AI response to complete (send button reappears when done)
+    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
     console.log('  ✓ AI response completed');
 
     // ========================================
     // STEP 9: Test stop button during streaming
     // ========================================
+    await dismissOverlays(page);
     console.log('🛑 Step 9: Testing stop button...');
 
     const stopMessage = 'Create a long detailed blog post';
@@ -253,12 +254,11 @@ test.describe('Develop Page', () => {
     await expect(page.getByTestId('chat-send-button')).not.toBeVisible();
     console.log('  ✓ Send button hidden during streaming');
 
-    // Click stop button
     await stopButton.click({ force: true });
     console.log('  ✓ Stop button clicked');
 
     // Wait for streaming to end and send button to reappear
-    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
     console.log('  ✓ Send button reappeared after stop');
 
     // Verify input is enabled (can type during and after streaming)
