@@ -40,10 +40,11 @@ describe('social-posts', () => {
     isAuthenticated: true,
   };
 
+  const mockAgentUrl = 'http://localhost:4000';
+
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch = vi.fn();
-    process.env.AGENTS_SERVICE_URL = 'http://localhost:4000';
   });
 
   describe('fetchSocialPostsFromAgents', () => {
@@ -78,7 +79,7 @@ describe('social-posts', () => {
         json: async () => mockApiResponse,
       });
 
-      const result = await fetchSocialPostsFromAgents(mockAppId, mockMonth, mockAuthContext);
+      const result = await fetchSocialPostsFromAgents(mockAppId, mockMonth, mockAuthContext, mockAgentUrl);
 
       expect(result).toHaveLength(2);
       expect(result[0]).toEqual({
@@ -130,7 +131,7 @@ describe('social-posts', () => {
         json: async () => mockApiResponse,
       });
 
-      const result = await fetchSocialPostsFromAgents(mockAppId, mockMonth, mockAuthContext);
+      const result = await fetchSocialPostsFromAgents(mockAppId, mockMonth, mockAuthContext, mockAgentUrl);
 
       expect(result).toHaveLength(1);
       expect(result[0].slug).toBe('post-1');
@@ -168,7 +169,7 @@ describe('social-posts', () => {
         json: async () => mockApiResponse,
       });
 
-      const result = await fetchSocialPostsFromAgents(mockAppId, mockMonth, mockAuthContext);
+      const result = await fetchSocialPostsFromAgents(mockAppId, mockMonth, mockAuthContext, mockAgentUrl);
 
       expect(result).toHaveLength(1);
       expect(result[0].slug).toBe('post-1');
@@ -193,7 +194,7 @@ describe('social-posts', () => {
         json: async () => mockApiResponse,
       });
 
-      const result = await fetchSocialPostsFromAgents(mockAppId, mockMonth, mockAuthContext);
+      const result = await fetchSocialPostsFromAgents(mockAppId, mockMonth, mockAuthContext, mockAgentUrl);
 
       // Truncation adds '...' to 100 chars
       expect(result[0].message?.length).toBeLessThanOrEqual(103);
@@ -207,7 +208,7 @@ describe('social-posts', () => {
         text: async () => 'Internal Server Error',
       });
 
-      const result = await fetchSocialPostsFromAgents(mockAppId, mockMonth, mockAuthContext);
+      const result = await fetchSocialPostsFromAgents(mockAppId, mockMonth, mockAuthContext, mockAgentUrl);
 
       expect(result).toEqual([]);
     });
@@ -215,7 +216,7 @@ describe('social-posts', () => {
     it('should return empty array when fetch throws error', async () => {
       (global.fetch as any).mockRejectedValueOnce(new Error('Network error'));
 
-      const result = await fetchSocialPostsFromAgents(mockAppId, mockMonth, mockAuthContext);
+      const result = await fetchSocialPostsFromAgents(mockAppId, mockMonth, mockAuthContext, mockAgentUrl);
 
       expect(result).toEqual([]);
     });
@@ -238,23 +239,23 @@ describe('social-posts', () => {
         json: async () => mockApiResponse,
       });
 
-      const result = await fetchSocialPostsFromAgents(mockAppId, mockMonth, mockAuthContext);
+      const result = await fetchSocialPostsFromAgents(mockAppId, mockMonth, mockAuthContext, mockAgentUrl);
 
       expect(result).toHaveLength(1);
       expect(result[0].message).toBeUndefined();
       expect(result[0].imageUrls).toEqual([]);
     });
 
-    it('should use correct AGENTS_SERVICE_URL', async () => {
+    it('should use the provided agent URL', async () => {
       (global.fetch as any).mockResolvedValueOnce({
         ok: true,
         json: async () => ({ posts: [] }),
       });
 
-      await fetchSocialPostsFromAgents(mockAppId, mockMonth, mockAuthContext);
+      await fetchSocialPostsFromAgents(mockAppId, mockMonth, mockAuthContext, 'https://agent.example.com');
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:4000/apps/test-app-id/social/posts',
+        'https://agent.example.com/apps/test-app-id/social/posts',
         expect.objectContaining({
           headers: expect.objectContaining({
             'Authorization': 'Bearer mock-jwt-token',
@@ -269,7 +270,7 @@ describe('social-posts', () => {
         json: async () => ({ posts: [] }),
       });
 
-      await fetchSocialPostsFromAgents(mockAppId, mockMonth, mockAuthContext);
+      await fetchSocialPostsFromAgents(mockAppId, mockMonth, mockAuthContext, mockAgentUrl);
 
       // Verify fetch was called with Bearer token
       expect(global.fetch).toHaveBeenCalledWith(

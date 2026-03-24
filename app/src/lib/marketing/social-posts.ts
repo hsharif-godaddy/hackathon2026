@@ -4,8 +4,6 @@ import { getJWTService } from '@/lib/jwt-service';
 import { logger } from '@/lib/request-context';
 import type { ScheduledPost } from '@/types/marketing';
 
-// Use AGENTS_SERVICE_URL for consistency with the rest of the codebase
-const AGENTS_SERVICE_URL = process.env.AGENTS_SERVICE_URL || 'http://localhost:4000';
 const AGENTS_API_TIMEOUT_MS = 10000; // 10 seconds, consistent with content-inspirations
 const MESSAGE_TRUNCATION_LIMIT = 100;
 
@@ -104,12 +102,14 @@ function transformSocialPost(post: any): ScheduledPost | null {
  * @param appId - The app/site ID
  * @param month - The month to fetch posts for
  * @param authContext - Customer authentication context
+ * @param agentUrl - Agent service URL from the control plane
  * @returns Array of scheduled social posts (empty array on error for graceful degradation)
  */
 export async function fetchSocialPostsFromAgents(
   appId: string,
   month: Date,
-  authContext: CustomerAuthContext
+  authContext: CustomerAuthContext,
+  agentUrl: string
 ): Promise<ScheduledPost[]> {
   try {
     logger.info('calendar.social_posts.fetch_begin', {
@@ -132,7 +132,7 @@ export async function fetchSocialPostsFromAgents(
       tokenExpires: tokenResult.expires,
     });
 
-    const url = `${AGENTS_SERVICE_URL}/apps/${appId}/social/posts`;
+    const url = `${agentUrl}/apps/${appId}/social/posts`;
 
     logger.info('calendar.social_posts.fetching', {
       appId,

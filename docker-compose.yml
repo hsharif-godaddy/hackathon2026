@@ -42,7 +42,6 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - HTTPS_PORT=3443
-      - DATABASE_URL=mysql://airo:airopassword@localhost:3306/airo_app?sslaccept=accept_invalid_certs
       - SSO_LOGIN_URL=https://sso.dev-godaddy.com/login
       - SSO_LOGOUT_URL=https://sso.dev-godaddy.com/logout
       - LOGIN_REDIRECT_URL=https://local.gasket.dev-godaddy.com:8443/
@@ -71,8 +70,8 @@ services:
     networks:
       - airo-network
 
-  # MySQL database for app local development
-  # Shared by main app and generated apps via airo-network
+  # MySQL database for local control plane app containers
+  # Per-app databases are provisioned dynamically by local-control-plane
   app-mysql:
     image: mysql:8.0
     container_name: airo-app-mysql
@@ -81,12 +80,8 @@ services:
       - "3306:3306"
     environment:
       - MYSQL_ROOT_PASSWORD=rootpassword
-      - MYSQL_DATABASE=airo_app
-      - MYSQL_USER=airo
-      - MYSQL_PASSWORD=airopassword
     volumes:
       - mysql-data:/var/lib/mysql
-      - ./setup/mysql-init:/docker-entrypoint-initdb.d
     networks:
       - airo-network
     restart: unless-stopped

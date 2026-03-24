@@ -18,11 +18,10 @@ export interface Site {
   preview_url?: string
   account_id: string
   initial_prompt?: string
-  controlPlane?: 'v2' | 'legacy' // Control plane type (v2 or legacy)
   system_id?: string // V2 only: systemId from mgmt-hosting
   subscription_id?: string // V2 only: subscriptionId from mgmt-hosting
-  created_at: string
-  updated_at: string
+  created_at: Date
+  updated_at: Date
 }
 
 export type SiteCreationPhase =
@@ -35,8 +34,8 @@ export type SiteCreationPhase =
 
 interface SiteCreationStore {
   // Core state
-  siteId: string | null      // Initial ID (job ID in V2, permanent ID in legacy)
-  realAppId: string | null   // Final app ID after V2 job completion (null in legacy mode)
+  siteId: string | null      // Initial ID (job ID during provisioning, permanent ID once resolved)
+  realAppId: string | null   // Final app ID after job completion (null while still a job ID)
   site: Site | null
 
   // Flow state
@@ -137,8 +136,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         if (siteData) {
           
           // V2 apps deploy automatically - never call deploy endpoint
-          // Check if this is V2 by looking for controlPlane field or system_id
-          const isV2 = siteData.controlPlane === 'v2' || siteData.system_id
+          const isV2 = !!siteData.system_id
           
           if (isV2) {
             set((state) => {
@@ -149,7 +147,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
             return
           }
 
-          // Legacy quick-create starts deployment in the background and returns a job ID.
+          // Quick-create starts deployment in the background and returns a job ID.
           // Treat "creating" as already in progress so we don't trigger a second deploy.
           if (siteData.status === 'running' || siteData.status === 'created' || siteData.status === 'creating') {
             set((state) => {
@@ -161,7 +159,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
           }
         }
         
-        // Legacy site needs deployment - proceed
+        // Site needs deployment - proceed
         set((state) => {
           state.phase = 'deploying'
           state.error = null
@@ -357,8 +355,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         }
         
         // Check if agent is ready (has agent_url and status is 'running' or 'creating')
-        // V2 apps can have agent URLs even in 'creating' status, which differs from legacy behavior.
-        // For legacy apps, agent_url is only present when status is 'running'.
+        // Apps can have agent URLs even in 'creating' status during provisioning.
         // IMPORTANT: Don't stop polling for job IDs even if they have URLs - wait for real app ID
         if ((finalSiteData.status === 'running' || finalSiteData.status === 'creating') && finalSiteData.agent_url && !isJobId) {
           get()._stopPolling()

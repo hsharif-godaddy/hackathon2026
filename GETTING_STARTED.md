@@ -91,6 +91,7 @@ If you need to change your AI provider, authentication settings, or regenerate e
 2. **Select "📱 Configure App Environment (.env)"**
 
 3. **Follow the prompts to update:**
+
    - AI Model Provider (GoCode, AWS Bedrock)
    - Authentication Type (None, Mock, JWT/SSO) you must select JWT
    - AWS Profile (this is normally "default")
@@ -149,9 +150,6 @@ NODE_ENV=development
 PORT=3000
 HTTPS_PORT=8443
 
-# Database (MySQL via Docker)
-DATABASE_URL=mysql://airo:airopassword@localhost:3306/airo_app?sslaccept=accept_invalid_certs
-
 # Authentication (JWT with SSO - recommended)
 AUTH_TYPE=jwt
 SSO_LOGIN_URL=https://sso.dev-godaddy.com/login
@@ -186,24 +184,6 @@ pnpm run dev:agents
 # Terminal 2 - Main App (HTTPS port 8443)
 pnpm run dev:app
 ```
-
-**Database Setup and Migrations:**
-
-```bash
-# Run from project root using workspace filter
-# This applies migrations to the database
-pnpm --filter website exec prisma migrate dev
-
-# Regenerate Prisma client (after schema changes)
-pnpm --filter website exec prisma generate
-```
-
-**Important:** After pulling code with Prisma schema changes, you MUST run both:
-
-1. `pnpm exec prisma generate` - Regenerates TypeScript types
-2. `pnpm exec prisma migrate dev` - Applies database migrations
-
-If you see errors like `Invalid prisma.sites.findMany() invocation: The column 'airo_app.sites.p...'`, this means your database schema doesn't match the Prisma schema. Run the migration command above to fix it.
 
 ## Environment Configuration
 
@@ -245,7 +225,6 @@ If you need to customize or didn't run `./setup.sh`, you can manually create the
 SSO_LOGIN_URL=https://sso.dev-godaddy.com/login
 SSO_LOGOUT_URL=https://sso.dev-godaddy.com/logout
 LOGIN_REDIRECT_URL=https://local.gasket.dev-godaddy.com:8443/
-AGENTS_SERVICE_URL=http://localhost:4000
 AWS_REGION=us-west-2
 ```
 
@@ -255,7 +234,6 @@ AWS_REGION=us-west-2
 SSO_LOGIN_URL=https://sso.test-godaddy.com/login
 SSO_LOGOUT_URL=https://sso.test-godaddy.com/logout
 LOGIN_REDIRECT_URL=https://airo-builder.test-godaddy.com:8443/
-AGENTS_SERVICE_URL=http://localhost:4000
 AWS_REGION=us-west-2
 
 # Management API Base URL used for V2 control plane when USE_V2_CONTROL_PLANE is true
@@ -271,7 +249,6 @@ MGMT_AIRO_BASE_URL=https://mgmt.nstk.net
 SSO_LOGIN_URL=https://sso.godaddy.com/login
 SSO_LOGOUT_URL=https://sso.godaddy.com/logout
 LOGIN_REDIRECT_URL=https://airo-builder.godaddy.com:8443/
-AGENTS_SERVICE_URL=http://localhost:4000
 AWS_REGION=us-west-2
 
 # Management API Base URL

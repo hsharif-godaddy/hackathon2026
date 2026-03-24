@@ -1,25 +1,65 @@
 /**
  * Control Plane Adapter Types
  *
- * Defines the contract for managing sites across different control planes:
- * - V2: mgmt-airo + mgmt-hosting (customer-facing)
- * - Legacy: Direct database + Nomad/SQS (internal)
+ * Defines the contract for managing sites via the V2 control plane
+ * (mgmt-airo + mgmt-hosting).
  */
 
 import type {
   AiroImageStatus as ImageStatus,
   AiroImageStatusEntry as ImageStatusEntry,
 } from '@/lib/mgmt-airo';
-import type { SiteVariant } from '@/lib/site-adapters/interfaces/ISiteAdapter';
+/**
+ * Lifecycle state for a site variant (from hosting_app_lifecycle table)
+ */
+export enum LifecycleState {
+  RUNNING = 'running',
+  PAUSED = 'paused',
+  PROVISIONING = 'provisioning',
+  DELETING = 'deleting',
+  FAILED = 'failed',
+}
 
-// Re-export lifecycle types from ISiteAdapter for consumers
-export {
-  type LifecycleMetadata,
-  LifecycleReason,
-  LifecycleState,
-  type SiteVariant,
-  type VariantLifecycle,
-} from '@/lib/site-adapters/interfaces/ISiteAdapter';
+/**
+ * Reason for the current lifecycle state
+ */
+export enum LifecycleReason {
+  HIBERNATION = 'hibernation',
+  USER_REQUEST = 'user_request',
+  MAINTENANCE = 'maintenance',
+  DEPLOYMENT_COMPLETE = 'deployment_complete',
+  USER_RESUMED = 'user_resumed',
+}
+
+/**
+ * Lifecycle metadata providing additional context
+ */
+export interface LifecycleMetadata {
+  pausedBy?: 'system' | 'user';
+  daysSinceActivity?: number;
+  hibernatedAt?: string;
+  thresholdDays?: number;
+}
+
+/**
+ * Lifecycle information for a site variant
+ */
+export interface VariantLifecycle {
+  lifecycleState: LifecycleState;
+  reason?: LifecycleReason;
+  stateChangedAt?: string;
+  metadata?: LifecycleMetadata;
+}
+
+/**
+ * Site variant with lifecycle information
+ */
+export interface SiteVariant {
+  variant: string;
+  status: string;
+  lifecycle?: VariantLifecycle;
+  lastActivityTime?: string;
+}
 
 export type SiteStatus = 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error';
 
@@ -129,9 +169,8 @@ export interface CreateSiteResult {
   status: SiteStatus;
   error?: string;
   created_at?: Date;
-  // Additional fields to match Legacy response format
-  name?: string;        // Site title (placeholder in V2, real in Legacy)
-  account_id?: string;  // Account ID
+  name?: string;
+  account_id?: string;
   updated_at?: Date;    // Last update timestamp
   type?: IdType;        // 'job' for V2 job IDs, 'site' for real site IDs
 }
@@ -164,8 +203,6 @@ export interface ReloadImagesResponse {
 
 /**
  * Control Plane Adapter Interface
- *
- * Abstracts the control plane implementation (V2 mgmt-airo vs Legacy database)
  */
 export interface IControlPlaneAdapter {
   /**
@@ -186,17 +223,16 @@ export interface IControlPlaneAdapter {
    * Create a new site
    *
    * @param params - Site creation parameters
-   * @returns Result with siteId (statusJobId for V2, database ID for legacy)
+   * @returns Result with siteId (statusJobId during provisioning, appId once ready)
    */
   createSite(params: CreateSiteParams): Promise<CreateSiteResult>;
 
   /**
    * Get site by ID
    *
-   * V2: Handles both statusJobId (temporary) and appId (permanent)
-   * Legacy: Uses database site ID
+   * Handles both statusJobId (temporary) and appId (permanent).
    *
-   * @param siteId - Site identifier (statusJobId or appId for V2, db ID for legacy)
+   * @param siteId - Site identifier (statusJobId or appId)
    * @param jwt - Customer JWT token
    * @param owningProduct - Optional owner product filter (defaults to AiroAppBuilder)
    * @param options - Optional flags; `includeCdn` (default: false) controls whether CDN-related data (cdnStatus, anycastIp) is included in the response
@@ -225,9 +261,6 @@ export interface IControlPlaneAdapter {
   /**
    * Deploy site
    *
-   * V2: No-op (deployment happens automatically during signup)
-   * Legacy: Triggers manual deployment via background task
-   *
    * @param siteId - Site identifier
    * @param jwt - Customer JWT token
    * @param options - Optional deployment options (variant, resumeFromHibernation)
@@ -237,9 +270,6 @@ export interface IControlPlaneAdapter {
 
   /**
    * Resume site variant from hibernation
-   *
-   * V2: POST /airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/variants/:variant/resume
-   * Legacy: Not implemented
    *
    * @param siteId - Site identifier
    * @param variant - Variant to resume (e.g., 'preview', 'publish')
@@ -251,9 +281,6 @@ export interface IControlPlaneAdapter {
   /**
    * Get image status for an app
    *
-   * V2: GET /airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/image-status
-   * Legacy: Returns { status: 'current' } (not supported)
-   *
    * @param siteId - Site identifier
    * @param jwt - Customer JWT token
    * @returns Image status response
@@ -262,9 +289,6 @@ export interface IControlPlaneAdapter {
 
   /**
    * Reload images for an app
-   *
-   * V2: POST /airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/reload
-   * Legacy: Returns { status: 'current' } (not supported)
    *
    * @param siteId - Site identifier
    * @param jwt - Customer JWT token
@@ -275,9 +299,6 @@ export interface IControlPlaneAdapter {
   /**
    * Update site
    *
-   * V2: Not implemented (sites are immutable in V2)
-   * Legacy: Updates site metadata in database
-   *
    * @param siteId - Site identifier
    * @param updates - Partial site data to update
    * @param jwt - Customer JWT token
@@ -287,9 +308,6 @@ export interface IControlPlaneAdapter {
 
   /**
    * Update site variables (metadata)
-   *
-   * V2: Updates app variables in mgmt-airo
-   * Legacy: Updates site metadata in database (same as updateSite)
    *
    * @param siteId - Site identifier
    * @param variableUpdates - Variables to update

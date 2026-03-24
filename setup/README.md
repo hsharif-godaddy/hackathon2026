@@ -59,18 +59,16 @@ Choose "Selective Configuration" to:
 ### App Environment (`app/.env`)
 The setup generates a complete `.env` file for the main application including:
 
-- **Database**: MySQL connection to Docker container
 - **AI Provider**: AWS Bedrock or GoCode configuration
 - **Security**: Auto-generated session and JWT secrets
 - **Ports**: Development server configuration
 - **Features**: Usage tracking, real-time collaboration settings
 
 ### MySQL Configuration
-- **Container**: `airo-app-mysql` 
+- **Container**: `airo-app-mysql`
 - **Host**: `localhost:3306`
-- **Database**: `airo_app`
-- **User**: `airo`
-- **Password**: `airopassword`
+- **Root Password**: `rootpassword`
+- Per-app databases are provisioned dynamically by the local control plane
 
 ## AI Model Providers
 

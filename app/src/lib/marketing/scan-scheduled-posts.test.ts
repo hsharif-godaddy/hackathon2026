@@ -5,9 +5,6 @@ import { clearScheduledPostsCache, getScheduledPostsForMonth, scanScheduledPosts
 
 // Mock dependencies
 vi.mock('fs/promises');
-vi.mock('@/lib/dev-environment/utils/app-paths', () => ({
-  getAppPath: vi.fn((appId: string) => `/tmp/apps/${appId}/app`),
-}));
 
 vi.mock('@/lib/request-context', () => ({
   logger: {

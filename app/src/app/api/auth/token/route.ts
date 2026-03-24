@@ -8,7 +8,7 @@
  *
  * Query parameters:
  * - siteId (required): site to scope token to
- * - owningProduct (optional): owner product filter for V2 site lookup
+ * - owningProduct (optional): owner product filter for site lookup
  *   (defaults to AiroAppBuilder when omitted)
  *
  * Use case: Preview apps run on different domains than the builder app:
@@ -24,11 +24,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-plane';
+import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, type CustomerUser, withCustomerAuth } from '@/lib/customer-auth';
 import { getJWTService } from '@/lib/jwt-service';
 import { AIRO_OWNER_PRODUCTS, type AiroOwnerProduct } from '@/lib/mgmt-airo';
-import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,9 +58,9 @@ function parseOwningProduct(owningProduct: string | null): { owningProduct?: Air
 }
 
 /**
- * Validate and retrieve site using V2 control plane adapter
+ * Validate site access and ownership via control plane adapter
  */
-async function getSiteV2(siteId: string, user: CustomerUser, jwt: string, owningProduct?: AiroOwnerProduct): Promise<NextResponse | null> {
+async function validateSiteAccess(siteId: string, user: CustomerUser, jwt: string, owningProduct?: AiroOwnerProduct): Promise<NextResponse | null> {
   if (!customerHasAccount(user)) {
     return createCustomerAuthError('You must have an account to access preview apps', 403);
   }
@@ -77,39 +76,6 @@ async function getSiteV2(siteId: string, user: CustomerUser, jwt: string, owning
   }
 
   return null;
-}
-
-/**
- * Validate and retrieve site using legacy site adapter
- */
-async function getSiteLegacy(siteId: string, user: CustomerUser): Promise<NextResponse | null> {
-  const siteAdapter = SiteAdapterFactory.getInstance();
-
-  if (siteAdapter.requiresAuth() && !customerHasAccount(user)) {
-    return createCustomerAuthError('You must have an account to access preview apps', 403);
-  }
-
-  const site = await siteAdapter.getSiteById(siteId);
-
-  if (!site) {
-    return NextResponse.json({
-      error: 'Site not found'
-    }, { status: 404 });
-  }
-
-  if (siteAdapter.requiresAuth() && site.account_id !== user.accountId) {
-    return createCustomerAuthError('You can only access your own sites', 403);
-  }
-
-  return null;
-}
-
-/**
- * Validate site access and ownership based on control plane mode
- */
-async function validateSiteAccess(siteId: string, user: CustomerUser, jwt: string, owningProduct?: AiroOwnerProduct): Promise<NextResponse | null> {
-  const isV2 = isV2ControlPlaneEnabled();
-  return isV2 ? await getSiteV2(siteId, user, jwt, owningProduct) : await getSiteLegacy(siteId, user);
 }
 
 export const GET = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext): Promise<NextResponse> => {

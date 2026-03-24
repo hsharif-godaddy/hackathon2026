@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { createCustomerAuthError, type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { fetchContentInspirations } from '@/lib/marketing/content-inspirations';
 import { generateMilestoneEvents } from '@/lib/marketing/get-calendar-events';
 import { getScheduledPostsForMonth } from '@/lib/marketing/scan-scheduled-posts';
 import { fetchSocialPostsFromAgents } from '@/lib/marketing/social-posts';
-import { getPrismaClient } from '@/lib/prisma';
 import { logger } from '@/lib/request-context';
 import { BusinessType } from '@/types/marketing';
 
@@ -93,16 +93,9 @@ export const GET = withCustomerAuth(
         month = new Date(new Date().getFullYear(), new Date().getMonth(), 1, 12, 0, 0, 0);
       }
 
-      // Get site information and verify ownership
-      const prisma = getPrismaClient();
-      const site = await prisma.sites.findUnique({
-        where: { id: siteId },
-        select: {
-          id: true,
-          created_at: true,
-          account_id: true,
-        }
-      });
+      // Get site information and verify ownership via control plane adapter
+      const adapter = getControlPlaneAdapter();
+      const site = await adapter.getSite(siteId, authContext.jwt);
 
       if (!site) {
         return NextResponse.json(
@@ -111,7 +104,7 @@ export const GET = withCustomerAuth(
         );
       }
 
-      // CRITICAL: Verify the authenticated user owns this site
+      // Verify the authenticated user owns this site
       if (site.account_id !== authContext.user.accountId) {
         logger.warn('marketing.calendar.unauthorized_access_attempt', {
           siteId,
@@ -134,7 +127,9 @@ export const GET = withCustomerAuth(
       const [inspirationEvents, scheduledBlogPosts, socialPosts] = await Promise.all([
         fetchContentInspirations(request, businessType, month, market, timezone, authContext),
         getScheduledPostsForMonth(siteId, month),
-        fetchSocialPostsFromAgents(siteId, month, authContext),
+        site.agent_url
+          ? fetchSocialPostsFromAgents(siteId, month, authContext, site.agent_url)
+          : Promise.resolve([]),
       ]);
 
       // Generate milestone events

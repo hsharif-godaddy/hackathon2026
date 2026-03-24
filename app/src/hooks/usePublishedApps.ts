@@ -7,8 +7,8 @@
 
 import { useMemo } from 'react';
 
+import type { SiteInfo } from '@/lib/control-plane/types';
 import { filterPublishedApps } from '@/lib/publish-limit';
-import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
 import { useSites } from '@/stores/useSitesStore';
 
 interface UsePublishedAppsResult {

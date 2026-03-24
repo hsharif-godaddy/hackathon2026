@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getPrismaClient } from '@/lib/prisma';
 import { GET } from './route';
 
 // Mock auth context that will be injected by withCustomerAuth mock
@@ -13,6 +12,10 @@ const mockAuthContext = {
   },
   isAuthenticated: true,
   jwt: 'test-jwt-token',
+};
+
+const mockControlPlaneAdapter = {
+  getSite: vi.fn(),
 };
 
 // Mock dependencies
@@ -38,12 +41,8 @@ vi.mock('@/lib/request-context', () => ({
   },
 }));
 
-vi.mock('@/lib/prisma', () => ({
-  getPrismaClient: vi.fn(() => ({
-    sites: {
-      findUnique: vi.fn(),
-    },
-  })),
+vi.mock('@/lib/control-plane', () => ({
+  getControlPlaneAdapter: vi.fn(() => mockControlPlaneAdapter),
 }));
 
 vi.mock('@/lib/marketing/get-calendar-events', () => ({
@@ -80,16 +79,13 @@ describe('Marketing Calendar API Route', () => {
     vi.clearAllMocks();
     global.fetch = vi.fn();
 
-    // Set up default Prisma mock to return a valid site owned by the test user
-    const mockPrisma = getPrismaClient as any;
-    mockPrisma.mockReturnValue({
-      sites: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: 'test-site-id',
-          created_at: new Date('2020-01-01'),
-          account_id: 'test-account-id',
-        }),
-      },
+    // Set up default control plane adapter mock to return a valid site owned by the test user
+    mockControlPlaneAdapter.getSite.mockResolvedValue({
+      id: 'test-site-id',
+      created_at: new Date('2020-01-01'),
+      updated_at: new Date('2020-01-01'),
+      account_id: 'test-account-id',
+      status: 'running',
     });
   });
 
@@ -220,15 +216,12 @@ describe('Marketing Calendar API Route', () => {
   describe('Authorization', () => {
     it('should return 403 when user does not own the site', async () => {
       // Mock a site owned by a different account
-      const mockPrisma = getPrismaClient as any;
-      mockPrisma.mockReturnValueOnce({
-        sites: {
-          findUnique: vi.fn().mockResolvedValue({
-            id: '12345678-1234-1234-1234-123456789abc',
-            created_at: new Date('2020-01-01'),
-            account_id: 'different-account-id', // Different from mockAuthContext.user.accountId
-          }),
-        },
+      mockControlPlaneAdapter.getSite.mockResolvedValueOnce({
+        id: '12345678-1234-1234-1234-123456789abc',
+        created_at: new Date('2020-01-01'),
+        updated_at: new Date('2020-01-01'),
+        account_id: 'different-account-id', // Different from mockAuthContext.user.accountId
+        status: 'running',
       });
 
       const request = createMockRequest(
@@ -330,10 +323,6 @@ describe('Marketing Calendar API Route', () => {
   });
 
   describe('External API Timeout Handling', () => {
-    beforeEach(() => {
-      // Mocks are already configured at module level
-    });
-
     it('should handle timeout from Content Inspirations API', async () => {
       // Mock fetch to simulate timeout
       (global.fetch as any).mockImplementation(() => {
@@ -374,14 +363,9 @@ describe('Marketing Calendar API Route', () => {
     });
   });
 
-  describe('Database Errors', () => {
+  describe('Site Not Found', () => {
     it('should return 404 if site not found', async () => {
-      const mockPrisma = getPrismaClient as any;
-      mockPrisma.mockReturnValueOnce({
-        sites: {
-          findUnique: vi.fn().mockResolvedValue(null),
-        },
-      });
+      mockControlPlaneAdapter.getSite.mockResolvedValueOnce(null);
 
       const request = createMockRequest(
         '/api/marketing/calendar?siteId=12345678-1234-1234-1234-123456789abc&month=2024-01&market=en-US&timezone=America/New_York'

@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-plane';
+import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, type CustomerUser, withCustomerAuth } from '@/lib/customer-auth';
 import { getJWTService } from '@/lib/jwt-service';
 import { AIRO_OWNER_PRODUCTS } from '@/lib/mgmt-airo';
@@ -18,7 +18,6 @@ import { checkPaywallEligibility, PaywallAction } from '@/lib/paywall/core';
 import { ServerPaywallProvider } from '@/lib/paywall/server-provider';
 import { PaywallDenialReason } from '@/lib/paywall/shared';
 import { logger } from '@/lib/request-context';
-import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 import { getSiteValidationFromCache, setSiteValidationCache } from './site-validation-cache';
 
@@ -36,10 +35,10 @@ export const dynamic = 'force-dynamic';
 const MAX_EXPIRATION_SECONDS = 12 * 60 * 60; // 43200 seconds
 
 /**
- * Validate site existence using V2 control plane adapter (lightweight)
+ * Validate site existence using control plane adapter (lightweight)
  * Uses appExists() instead of getSite() to avoid expensive getApp() API call
  */
-async function getSiteV2(siteId: string, user: CustomerUser, jwt: string, owningProduct?: string): Promise<NextResponse | null> {
+async function validateSiteAccess(siteId: string, user: CustomerUser, jwt: string, owningProduct?: string): Promise<NextResponse | null> {
   if (!customerHasAccount(user)) {
     return createCustomerAuthError('You must have an account to create agent tokens', 403);
   }
@@ -55,39 +54,6 @@ async function getSiteV2(siteId: string, user: CustomerUser, jwt: string, owning
   }
 
   return null;
-}
-
-/**
- * Validate and retrieve site using legacy site adapter
- */
-async function getSiteLegacy(siteId: string, user: CustomerUser): Promise<NextResponse | null> {
-  const siteAdapter = SiteAdapterFactory.getInstance();
-
-  if (siteAdapter.requiresAuth() && !customerHasAccount(user)) {
-    return createCustomerAuthError('You must have an account to create agent tokens', 403);
-  }
-
-  const site = await siteAdapter.getSiteById(siteId);
-
-  if (!site) {
-    return NextResponse.json({
-      error: 'Site not found'
-    }, { status: 404 });
-  }
-
-  if (siteAdapter.requiresAuth() && site.account_id !== user.accountId) {
-    return createCustomerAuthError('You can only create tokens for your own sites', 403);
-  }
-
-  return null;
-}
-
-/**
- * Validate site access and ownership based on control plane mode
- */
-async function validateSiteAccess(siteId: string, user: CustomerUser, jwt: string, owningProduct?: string): Promise<NextResponse | null> {
-  const isV2 = isV2ControlPlaneEnabled();
-  return isV2 ? await getSiteV2(siteId, user, jwt, owningProduct) : await getSiteLegacy(siteId, user);
 }
 
 /**

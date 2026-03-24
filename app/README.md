@@ -88,59 +88,7 @@ pnpm run build
 # For complete setup instructions, see GETTING_STARTED.md
 ```
 
-The application supports two deployment modes:
-
-- **Legacy Mode**: Uses local database + Nomad/SQS (default)
-- **V2 Mode**: Uses mgmt-airo + mgmt-hosting APIs (test environment)
-
-#### Setting Up V2 Mode for Testing
-
-1. **Create/Edit `.env`:**
-
-```bash
-# Enable V2 Control Plane
-USE_V2_CONTROL_PLANE=true
-
-# V2 requires test SSO environment (not dev)
-SSO_LOGIN_URL=https://sso.test-godaddy.com/login
-SSO_LOGOUT_URL=https://sso.test-godaddy.com/logout
-LOGIN_REDIRECT_URL=https://airo-builder.test-godaddy.com/
-LOGOUT_REDIRECT_URL=https://airo-builder.test-godaddy.com/
-
-# mgmt-airo API Configuration
-MGMT_AIRO_BASE_URL=https://mgmt.nstk.net
-
-# Authentication mode
-AUTH_TYPE=jwt
-```
-
-2. **Restart your development server:**
-
-```bash
-pnpm run dev:app
-```
-
-3. **Verify V2 Mode is Active:**
-   - Create a new site - it should have `controlPlane: "v2"`
-   - Check browser console for `control-plane.factory` logs
-   - The Publish button should appear on `/develop` pages for V2 sites
-
-#### Features Available in V2 Mode
-
-- ✅ **App Publish Button**: Trigger deployments from the UI
-- ✅ **Deployment History**: View past deployments with React Query polling
-- ✅ **Real-time Status**: Automatic polling during deployment (every 3s)
-- ✅ **mgmt-airo Integration**: Uses production-like infrastructure APIs
-
-#### Differences Between Modes
-
-| Feature         | Legacy Mode                      | V2 Mode                  |
-| --------------- | -------------------------------- | ------------------------ |
-| Control Plane   | Database + Nomad                 | mgmt-airo + mgmt-hosting |
-| SSO Environment | `sso.dev-godaddy.com`            | `sso.test-godaddy.com`   |
-| Deployment      | Manual via SQS                   | API-triggered            |
-| Publish Button  | Hidden                           | Visible for V2 sites     |
-| Site Fields     | No `subscription_id`/`system_id` | Has V2 metadata          |
+The application uses the V2 control plane (mgmt-airo API) for all site management operations. For local development, the `local-control-plane` Go service provides a compatible API backed by SQLite + Docker compose.
 
 ## Technology Stack
 
@@ -183,12 +131,11 @@ app/
 ├── src/
 │   ├── app/                     # Next.js App Router pages
 │   │   ├── api/                 # API routes
-│   │   │   ├── accounts/        # Account management endpoints
 │   │   │   ├── apps/            # App lifecycle API
 │   │   │   ├── auth/            # Authentication endpoints
 │   │   │   ├── config/          # Configuration endpoints
 │   │   │   ├── health/          # Health check
-│   │   │   ├── plans/           # Plan management
+│   │   │   ├── marketing/       # Marketing calendar API
 │   │   │   ├── servers/         # Server management API
 │   │   │   └── sites/           # Site management API
 │   │   ├── apps/                # Apps dashboard page
@@ -211,12 +158,9 @@ app/
 │   ├── contexts/                # React contexts
 │   ├── hooks/                   # Custom React hooks
 │   ├── lib/                     # Core business logic
-│   │   ├── account-adapters/    # Account service adapters
-│   │   ├── database/            # Database services
-│   │   ├── deployment/          # Deployment adapters
-│   │   ├── dev-environment/     # Development environment management
+│   │   ├── control-plane/       # V2 control plane adapter (mgmt-airo)
 │   │   ├── shadcn/              # UI component library
-│   │   └── site-adapters/       # Site service adapters
+│   │   └── ...                  # Auth, features, paywall, marketing, etc.
 │   ├── services/                # External service integrations
 │   ├── stores/                  # Zustand state stores
 │   ├── styles/                  # Global styles and design system
@@ -230,7 +174,6 @@ app/
 
 - **Multi-service Architecture**: Separate frontend and backend services
 - **Agent Registry**: Pluggable AI agent system
-- **Adapter Pattern**: Support for local and Docker deployment modes
+- **V2 Control Plane**: All site management via mgmt-airo API (or local-control-plane for local dev)
 - **Real-time Communication**: WebSocket v2 protocol
-- **Database Persistence**: SQLite with foreign key constraints
 - **Template Composition**: Dynamic template system with version detection

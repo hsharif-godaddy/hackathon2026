@@ -3,8 +3,8 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { waitFor } from '@testing-library/react';
 
+import type { SiteInfo } from '@/lib/control-plane/types';
 import { DomainStatus, DomainType } from '@/lib/control-plane/types';
-import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
 import { createMockSite } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 import StreamingIntegratedResponse from './StreamingIntegratedResponse';

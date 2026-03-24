@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { withApmRoute } from '@/lib/apm-context';
-import { ensureTestUserExists } from '@/lib/database/seed-test-user';
 import { isFeatureEnabled } from '@/lib/features';
 // Lazy import to avoid initializing gd-auth during module loading
 import { isAuthDisabled } from '@/lib/gasket-config';
@@ -13,9 +12,6 @@ async function validateHandler(request: NextRequest) {
     // Handle mock authentication
     if (isFeatureEnabled.mockLogin()) {
       try {
-        // Ensure test user account exists in database
-        await ensureTestUserExists();
-
         // In mock mode, we check for a header or assume user is authenticated
         // The client-side should have already validated the user is logged in
         return NextResponse.json({

@@ -348,7 +348,7 @@ describe('exports API', function exportsApiTests() {
       expect(response.status).toBe(200);
       expect(data.exports).toEqual([]);
       expect(data.total).toBe(0);
-      expect(data.message).toBe('Legacy site - no export tracking available');
+      expect(data.message).toBe('Site missing subscription metadata - no export tracking available');
 
       expect(mockAiroMgmtClient.getAppExports).not.toHaveBeenCalled();
     });

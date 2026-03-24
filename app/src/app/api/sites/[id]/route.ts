@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-plane';
+import { getControlPlaneAdapter } from '@/lib/control-plane';
 import {
   createCustomerAuthError,
   type CustomerAuthContext,
@@ -21,10 +21,9 @@ async function handleGetSite(request: NextRequest, siteId: string, authContext: 
     return NextResponse.json({ error: 'Site not found' }, { status: 404 });
   }
 
-  // Add control plane type to response so client knows whether to skip deploy
   const siteWithMetadata = {
     ...site,
-    controlPlane: isV2ControlPlaneEnabled() ? 'v2' : 'legacy'
+    controlPlane: 'v2'
   };
 
   // Add no-cache headers to prevent caching during polling

@@ -69,9 +69,7 @@ async function handleLocalDevPublishSuccess(
   // Clear publishing state immediately (no deployment polling in local dev)
   setIsPublishing(appId, false);
 
-  // Refetch site from DB to get fresh data
-  // LegacyControlPlaneAdapter.mapToSiteInfo() automatically computes variants from published_url
-  // published_url is already in DB (set during app creation with coming soon page)
+  // Refetch site to get fresh data with updated variants
   try {
     // Update both stores to keep them in sync
     await Promise.all([

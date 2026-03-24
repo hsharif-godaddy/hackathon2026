@@ -19,7 +19,7 @@ interface OperationsRequest {
  * GET handler for fetching app secrets
  *
  * Retrieves the list of secrets configured for a specific application and variant
- * using the control plane adapter (legacy: local JSON files, V2: mgmt-airo).
+ * using the control plane adapter.
  *
  * @param request - The incoming Next.js request
  * @param authContext - Customer authentication context with user and JWT
@@ -82,20 +82,14 @@ export const GET = withCustomerAuth(async (
  * POST handler for bulk secret operations
  *
  * Handles bulk operations (additions, updates, deletions) for secrets in a specific
- * application variant using the control plane adapter (legacy: local JSON files, V2: mgmt-airo).
+ * application variant using the control plane adapter.
  * All operations are performed atomically - if any operation fails, none of the changes are persisted.
- *
- * Value parsing (Legacy):
- * - Secret values are automatically parsed as JSON if they are valid JSON
- * - If JSON parsing fails, the value is stored as a string
- * - This allows storing both simple strings and complex JSON objects/arrays
  *
  * Security constraints:
  * - All newly added secrets are created with SYSTEM_MANAGED: false
  * - Only secrets with SYSTEM_MANAGED: false can be updated
  * - Only secrets with SYSTEM_MANAGED: false can be deleted
  * - Attempting to modify system-managed secrets returns 403 Forbidden
- * - Shared secrets (from shared.json) cannot be modified through variant endpoints (Legacy only)
  * - Additions cannot create duplicates of existing variant-specific or shared secrets
  *
  * @param request - The incoming Next.js request with operations in body

@@ -93,8 +93,8 @@ describe('useAppRename', function useAppRenameTests() {
       name: 'Old Name',
       status: 'running' as const,
       account_id: 'acc-1',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: new Date(),
+      updated_at: new Date(),
     };
 
     // Setup initial state
@@ -190,8 +190,8 @@ describe('useAppRename', function useAppRenameTests() {
       name: 'Different App',
       status: 'running' as const,
       account_id: 'acc-1',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: new Date(),
+      updated_at: new Date(),
     };
 
     // Set develop store to different app
@@ -227,8 +227,8 @@ describe('useAppRename', function useAppRenameTests() {
       name: 'Original Name',
       status: 'running' as const,
       account_id: 'acc-1',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: new Date(),
+      updated_at: new Date(),
     };
 
     // Setup initial state

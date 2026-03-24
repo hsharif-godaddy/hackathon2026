@@ -2,7 +2,6 @@ import fs from 'fs/promises';
 import matter from 'gray-matter';
 import path from 'path';
 
-import { getAppPath } from '@/lib/dev-environment/utils/app-paths';
 import { logger } from '@/lib/request-context';
 import { ScheduledPost } from '@/types/marketing';
 
@@ -19,15 +18,22 @@ const CACHE_TTL_MS = 30000; // 30 seconds
 const scanLocks = new Map<string, Promise<ScheduledPost[]>>();
 
 /**
- * Get the blog content directory path for an app
- * Includes input validation as defense-in-depth security measure
+ * Get the app preview workspace path
+ * Matches the V4 directory structure: /tmp/airo-app-builder/{appId}/preview
  */
-function getBlogPath(appId: string): string {
-  // Validate appId contains only safe characters (defense-in-depth)
-  // Even though appId comes from authenticated routes, validate to prevent path traversal
+function getAppPath(appId: string): string {
+  // Validate appId contains only safe characters to prevent path traversal
   if (!/^[a-zA-Z0-9_-]+$/.test(appId)) {
     throw new Error(`Invalid appId format: ${appId}`);
   }
+  const baseDir = process.env.APPS_BASE_DIR || '/tmp/airo-app-builder';
+  return path.join(baseDir, appId, 'preview');
+}
+
+/**
+ * Get the blog content directory path for an app
+ */
+function getBlogPath(appId: string): string {
   return path.join(getAppPath(appId), 'src/content/blog');
 }
 

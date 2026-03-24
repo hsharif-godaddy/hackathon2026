@@ -3,7 +3,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 
-import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
+import { DomainStatus, DomainType, type SiteInfo } from '@/lib/control-plane/types';
 import { renderWithProviders } from '@/tests/test-utils';
 
 const mockPush = vi.fn();
@@ -122,8 +122,8 @@ const createMockSite = (overrides: Partial<SiteInfo> = {}): SiteInfo => ({
   name: 'Test App',
   status: 'running',
   account_id: 'account-123',
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
+  created_at: new Date('2024-01-01T00:00:00Z'),
+  updated_at: new Date('2024-01-01T00:00:00Z'),
   ...overrides,
 });
 
@@ -425,7 +425,7 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
         name: 'App with null domain type',
         variants: ['preview', 'publish'],
         published_url: 'https://default.example.com',
-        domains: [{ fqdn: 'custom.example.com', domainType: null, status: 'active' }],
+        domains: [{ fqdn: 'custom.example.com', domainType: null, status: DomainStatus.ACTIVE }],
       });
       renderWithProviders(<AppsAndSitesCard sites={[siteWithNullDomainType]} />);
 
@@ -439,7 +439,7 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
         name: 'App with fqdn domain type',
         variants: ['preview', 'publish'],
         published_url: 'https://default.example.com',
-        domains: [{ fqdn: 'fqdn.example.com', domainType: 'fqdn', status: 'active' }],
+        domains: [{ fqdn: 'fqdn.example.com', domainType: DomainType.FQDN, status: DomainStatus.ACTIVE }],
       });
       renderWithProviders(<AppsAndSitesCard sites={[siteWithFqdnType]} />);
 
@@ -453,7 +453,7 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
         name: 'App with pending domain',
         variants: ['preview', 'publish'],
         published_url: 'https://default.example.com',
-        domains: [{ fqdn: 'pending.example.com', domainType: null, status: 'pending' }],
+        domains: [{ fqdn: 'pending.example.com', domainType: null, status: DomainStatus.PENDING }],
       });
       renderWithProviders(<AppsAndSitesCard sites={[siteWithPendingDomain]} />);
 
@@ -467,7 +467,7 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
         name: 'App with prefix domain',
         variants: ['preview', 'publish'],
         published_url: 'https://default.example.com',
-        domains: [{ fqdn: 'prefix.example.com', domainType: 'prefix', status: 'active' }],
+        domains: [{ fqdn: 'prefix.example.com', domainType: DomainType.PREFIX, status: DomainStatus.ACTIVE }],
       });
       renderWithProviders(<AppsAndSitesCard sites={[siteWithPrefixDomain]} />);
 
@@ -493,7 +493,7 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
         name: 'App with custom domain',
         variants: ['preview', 'publish'],
         published_url: 'https://default.example.com',
-        domains: [{ fqdn: 'custom.example.com', domainType: null, status: 'active' }],
+        domains: [{ fqdn: 'custom.example.com', domainType: null, status: DomainStatus.ACTIVE }],
       });
       renderWithProviders(<AppsAndSitesCard sites={[siteWithCustomDomain]} />);
 
@@ -693,7 +693,7 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
         variants: ['preview', 'publish'],
         published_url: 'https://custom.example.com',
         domains: [
-          { fqdn: 'custom.example.com', domainType: 'FQDN', status: 'active' },
+          { fqdn: 'custom.example.com', domainType: DomainType.FQDN, status: DomainStatus.ACTIVE },
         ],
       });
 

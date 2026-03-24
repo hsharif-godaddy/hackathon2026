@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 
+import { LifecycleReason, LifecycleState, type SiteVariant } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
-import { LifecycleReason, LifecycleState, type SiteVariant } from '@/lib/site-adapters/interfaces/ISiteAdapter';
 import type { AppDetailsResponse } from './useAppDetails';
 import { useAppHibernation } from './useAppHibernation';
 

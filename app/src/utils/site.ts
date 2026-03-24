@@ -14,7 +14,7 @@ type PublishCheckableSite = {
  * Check if a site has an active publish variant
  *
  * The publish variant indicates that a site is currently published to production.
- * Handles both V2 (variantsWithLifecycle) and legacy (variants) formats.
+ * Handles both variantsWithLifecycle and variants formats.
  *
  * @param site - The site information object (only needs variants/variantsWithLifecycle)
  * @returns true if the site has an active publish variant, false otherwise
@@ -34,7 +34,7 @@ export function hasBeenPublished(site: PublishCheckableSite): boolean {
     );
   }
 
-  // Legacy fallback: Check variants array for 'publish'
+  // Fallback: Check variants array for 'publish'
   if (site?.variants?.length) {
     return site.variants.includes('publish');
   }

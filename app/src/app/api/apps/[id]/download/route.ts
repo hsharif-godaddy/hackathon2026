@@ -43,7 +43,7 @@ interface TrackingResult {
  * Record export tracking to MHP-Airo
  *
  * Non-blocking - returns result but doesn't throw on failure.
- * Legacy sites without V2 metadata will return tracked: false.
+ * Sites without subscription/system metadata will return tracked: false.
  */
 async function recordExportTracking(
   siteId: string,

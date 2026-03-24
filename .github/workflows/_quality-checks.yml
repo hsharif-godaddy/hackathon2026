@@ -25,11 +25,6 @@ on:
         required: false
         type: string
         default: "22.12"
-      run-prisma-generate:
-        description: "Run Prisma generate (app only)"
-        required: false
-        type: boolean
-        default: false
       skip-tests:
         description: "Skip running tests"
         required: false
@@ -226,11 +221,6 @@ jobs:
 
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Generate Prisma Client
-        if: inputs.run-prisma-generate
-        working-directory: ${{ inputs.working-directory }}
-        run: npx prisma generate
 
       - name: Build workspace dependencies
         run: pnpm exec turbo run build --filter="${{ inputs.pnpm-filter }}^..."

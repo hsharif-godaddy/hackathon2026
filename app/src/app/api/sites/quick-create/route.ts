@@ -15,7 +15,6 @@ import { detectLocale } from '@/lib/translations/server-intl';
 import { getByteLength, MAX_PROMPT_BYTES } from '@/lib/waf-validation';
 
 // POST /api/sites/quick-create - Fast site creation
-// Uses control plane adapter (V2 or Legacy)
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
   try {
     const body = await request.json();
@@ -81,7 +80,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // Detect locale for datacenter selection
     const marketId = await detectLocale();
 
-    // Use control plane adapter (automatically handles V2 vs Legacy)
+    // Use control plane adapter
     const adapter = getControlPlaneAdapter();
 
     const createSiteParams: CreateSiteParams = {

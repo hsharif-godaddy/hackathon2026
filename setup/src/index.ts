@@ -694,25 +694,22 @@ async function fullSetup(yesToAll: boolean = false): Promise<void> {
     console.log('1. Install dependencies:');
     console.log(chalk.gray('   pnpm install  # Install all workspace dependencies'));
     console.log('');
-    console.log('2. Run database migrations:');
-    console.log(chalk.gray('   pnpm --filter website exec prisma migrate dev'));
-    console.log('');
-    console.log('3. Start the services:');
+    console.log('2. Start the services:');
     console.log(chalk.gray('   pnpm run dev  # Start both services concurrently'));
     console.log(chalk.gray('   # Or start individually:'));
-    console.log(chalk.gray('   pnpm run dev:agents  # Backend (port 4000)'));
-    console.log(chalk.gray('   pnpm run dev:app     # Frontend (port 3000)'));
+    console.log(chalk.gray('   pnpm run dev:agents          # Backend (port 4000)'));
+    console.log(chalk.gray('   pnpm run dev:app             # Frontend (port 3000)'));
+    console.log(chalk.gray('   pnpm run dev:control-plane   # Local Control Plane (port 4100)'));
     console.log('');
-    console.log('4. Access the application:');
+    console.log('3. Access the application:');
     console.log(chalk.gray('   http://localhost:3000'));
     console.log('');
 
     if (dockerOk) {
-      console.log('5. MySQL is available at:');
+      console.log('4. MySQL is available at:');
       console.log(chalk.gray('   Host: localhost:3306'));
-      console.log(chalk.gray('   Database: airo_app'));
-      console.log(chalk.gray('   User: airo'));
-      console.log(chalk.gray('   Password: airopassword'));
+      console.log(chalk.gray('   Root password: rootpassword'));
+      console.log(chalk.gray('   Per-app databases are provisioned by the local control plane'));
       console.log('');
     }
   }

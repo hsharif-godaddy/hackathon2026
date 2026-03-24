@@ -21,29 +21,18 @@ This document explains how the mock authentication system works for local develo
 
 The mock system is designed to be minimal and non-intrusive:
 
-### 1. Database Seeding
-- **Test User Creation**: When mock login is enabled, a test user account is automatically created in the database
-- **User Details**: 
-  - ID: `dev-user-123`
-  - Email: `developer@example.com`
-  - Name: `Dev User`  
-  - Plan: `Free`
-
-### 2. Authentication Flow
+### 1. Authentication Flow
 - **Client-Side**: Mock login UI components handle the login/logout experience
 - **Server-Side**: Auth validation API (`/api/auth/validate`) returns mock user data when feature flag is enabled
-- **Database**: Existing APIs (like `/api/accounts`) work normally since test user exists in database
 
-### 3. Integration Points
+### 2. Integration Points
 - **Auth Validation**: `/api/auth/validate` handles mock authentication
-- **Database Seeding**: Test user account is created automatically 
 - **UI Components**: Mock login dialogs and user switchers
 - **Feature Flag**: `isFeatureEnabled.mockLogin()` controls when mock auth is active
 
 ## Benefits
 
 - **No Code Pollution**: Mock authentication doesn't spread throughout the codebase
-- **Real Database**: Uses actual database records, so all APIs work normally
 - **Easy Toggle**: Single environment variable to enable/disable
 - **Realistic Testing**: Mimics real authentication flow without external dependencies
 
@@ -51,7 +40,6 @@ The mock system is designed to be minimal and non-intrusive:
 
 - `src/lib/mock-auth.ts` - Core mock authentication manager
 - `src/hooks/useMockAuth.ts` - React hook for components
-- `src/lib/database/seed-test-user.ts` - Database seeding utility
 - `src/components/auth/MockLogin.tsx` - UI components
 - `src/app/api/auth/validate/route.ts` - Server-side validation
 

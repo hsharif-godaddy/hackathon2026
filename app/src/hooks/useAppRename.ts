@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
+import { SiteInfo } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
-import { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSitesStore } from '@/stores/useSitesStore';
 import { useSiteStore } from '@/stores/useSiteStore';

@@ -11,7 +11,7 @@ import text from '@ux/text';
 
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
-import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
+import type { SiteInfo } from '@/lib/control-plane/types';
 import { SubscriptionPlan } from '@/types/credits';
 import { getPlanDisplayLabelKey } from '@/utils/credits';
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation';

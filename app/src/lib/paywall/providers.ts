@@ -8,7 +8,7 @@
  * This abstraction allows the core paywall logic to be environment-agnostic.
  */
 
-import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
+import type { SiteInfo } from '@/lib/control-plane/types';
 import { SubscriptionPlan } from '@/types/credits';
 import type { ProjectEdge } from './shared';
 

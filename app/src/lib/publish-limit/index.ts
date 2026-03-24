@@ -5,7 +5,7 @@
  * based on subscription plans when the app-builder-grants feature flag is enabled.
  */
 
-import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
+import type { SiteInfo } from '@/lib/control-plane/types';
 import { SubscriptionPlan } from '@/types/credits';
 
 /**
@@ -61,17 +61,15 @@ interface VariantWithLifecycle {
 }
 
 interface AppWithVariants {
-  /** V2 control plane: variants with lifecycle status */
   variantsWithLifecycle?: VariantWithLifecycle[];
-  /** Legacy control plane: simple variants array */
   variants?: string[];
 }
 
 /**
  * Check if an app has an active publish variant
  *
- * Handles both V2 (variantsWithLifecycle) and legacy (variants) formats.
- * V2 is preferred as it includes status information.
+ * Handles both variantsWithLifecycle and variants formats.
+ * variantsWithLifecycle is preferred as it includes status information.
  *
  * @param app - App or site object with variantsWithLifecycle or variants
  * @returns True if the app has an active publish variant
@@ -84,7 +82,7 @@ export function isPublishedApp<T extends AppWithVariants>(app: T): boolean {
     );
   }
 
-  // Legacy fallback: Check variants array for 'publish' (local development)
+  // Fallback: Check variants array for 'publish' (local development)
   if (app.variants?.length) {
     return app.variants.includes('publish');
   }

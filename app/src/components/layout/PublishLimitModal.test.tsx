@@ -3,7 +3,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen } from '@testing-library/react';
 
-import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
+import type { SiteInfo } from '@/lib/control-plane/types';
 import { renderWithProviders } from '@/tests/test-utils';
 import { SubscriptionPlan } from '@/types/credits';
 import PublishLimitModal from './PublishLimitModal';
@@ -77,8 +77,8 @@ const createMockSite = (overrides: Partial<SiteInfo> = {}): SiteInfo => ({
   name: 'Test App',
   status: 'running',
   account_id: 'account-123',
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
+  created_at: new Date('2024-01-01T00:00:00Z'),
+  updated_at: new Date('2024-01-01T00:00:00Z'),
   ...overrides,
 });
 

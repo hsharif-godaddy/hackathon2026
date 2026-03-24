@@ -5,8 +5,8 @@ import text from '@ux/text';
 
 import AppThumbnail from '@/app/apps/AppThumbnail';
 import { useTranslations } from '@/hooks/useTranslations';
+import type { SiteInfo } from '@/lib/control-plane/types';
 import { PAYWALL_ITC, type PaywallType } from '@/lib/paywall/shared';
-import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
 import { generateClickEID, logClickEvent } from '@/utils/instrumentation';
 
 interface AppSiteRowProps {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-plane';
+import { getControlPlaneAdapter } from '@/lib/control-plane';
 import {
   createCustomerAuthError,
   type CustomerAuthContext,
@@ -55,34 +55,18 @@ export const GET = withCustomerAuth(async (
       );
     }
 
-    const isV2 = isV2ControlPlaneEnabled();
-
-    // Check if site has subscription and system IDs (required for V2 deployments)
+    // Check if site has subscription and system IDs (required for deployments)
     if (!site.subscription_id || !site.system_id) {
-      if (isV2) {
-        // V2 sites MUST have these fields - return 400 error
-        logger.error('deployments.api.missing-v2-ids', {
-          siteId,
-          hasSubscriptionId: !!site.subscription_id,
-          hasSystemId: !!site.system_id,
-          message: 'V2 site missing required subscription_id or system_id'
-        });
-        return NextResponse.json(
-          { error: 'Site missing required V2 metadata (subscription_id or system_id)' },
-          { status: 400 }
-        );
-      } else {
-        // Legacy/dev sites don't have V2 IDs - return empty array
-        logger.info('deployments.api.legacy-site', {
-          siteId,
-          message: 'Legacy site has no V2 deployments - returning empty array'
-        });
-        return NextResponse.json({
-          deployments: [],
-          totalCount: 0,
-          hasMore: false
-        });
-      }
+      logger.error('deployments.api.missing-ids', {
+        siteId,
+        hasSubscriptionId: !!site.subscription_id,
+        hasSystemId: !!site.system_id,
+        message: 'Site missing required subscription_id or system_id'
+      });
+      return NextResponse.json(
+        { error: 'Site missing required metadata (subscription_id or system_id)' },
+        { status: 400 }
+      );
     }
 
     // Parse query parameters
@@ -210,33 +194,18 @@ export const POST = withCustomerAuth(async (
       );
     }
 
-    const isV2 = isV2ControlPlaneEnabled();
-
-    // Check if site has subscription and system IDs (required for V2 deployments)
+    // Check if site has subscription and system IDs (required for deployments)
     if (!site.subscription_id || !site.system_id) {
-      if (isV2) {
-        // V2 sites MUST have these fields - return 400 error
-        logger.error('deployments.api.create.missing-v2-ids', {
-          siteId,
-          hasSubscriptionId: !!site.subscription_id,
-          hasSystemId: !!site.system_id,
-          message: 'V2 site missing required subscription_id or system_id'
-        });
-        return NextResponse.json(
-          { error: 'Site missing required V2 metadata (subscription_id or system_id)' },
-          { status: 400 }
-        );
-      } else {
-        // Legacy/dev sites don't have V2 IDs - return error
-        logger.info('deployments.api.create.legacy-site', {
-          siteId,
-          message: 'Legacy site cannot create V2 deployments'
-        });
-        return NextResponse.json(
-          { error: 'Deployment creation not supported for legacy sites' },
-          { status: 400 }
-        );
-      }
+      logger.error('deployments.api.create.missing-ids', {
+        siteId,
+        hasSubscriptionId: !!site.subscription_id,
+        hasSystemId: !!site.system_id,
+        message: 'Site missing required subscription_id or system_id'
+      });
+      return NextResponse.json(
+        { error: 'Site missing required metadata (subscription_id or system_id)' },
+        { status: 400 }
+      );
     }
 
     // JWT is provided by withCustomerAuth wrapper

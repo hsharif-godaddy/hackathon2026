@@ -7,11 +7,10 @@ import '@testing-library/jest-dom/vitest';
  * Configures test environment with mock values and global mocks
  */
 
-// Mock environment variables for V2 control plane
+// Mock environment variables for control plane
 process.env.MGMT_AIRO_BASE_URL = 'https://mgmt.nstk.net';
 process.env.MGMT_AIRO_DATACENTER = 'sxb1';
 process.env.MGMT_AIRO_PRODUCT_ID = 'aab-v1';
-process.env.USE_V2_CONTROL_PLANE = 'true';
 
 // Mock console methods to reduce noise in test output
 // Errors and warnings are still captured by vitest for assertion

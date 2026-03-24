@@ -31,7 +31,6 @@ export interface AuthConfig {
 
 export interface AppEnvConfig {
 	nodeEnv: string;
-	databaseUrl: string;
 	authConfig: AuthConfig;
 	awsProfile?: string;
 	awsRegion?: string;
@@ -89,8 +88,6 @@ export interface ImageSearchEnvConfig {
 
 export class EnvGenerator {
 	private projectRoot: string;
-	private static readonly DEFAULT_DATABASE_URL =
-		"mysql://airo:airopassword@localhost:3306/airo_app?sslaccept=accept_invalid_certs";
 	private awsSSO: AWSSSoSetup;
 	private warnings: string[] = [];
 
@@ -662,10 +659,6 @@ NODE_ENV=${config.nodeEnv}
 PORT=${config.port}
 HTTPS_PORT=${config.httpsPort}
 
-# Database Configuration (MySQL via Docker)
-# The 'airo' user has enhanced privileges for Prisma migrations
-DATABASE_URL=${config.databaseUrl}
-
 # AWS Configuration
 `;
 
@@ -714,10 +707,9 @@ NEXT_PUBLIC_USE_MOCK_LOGIN=${config.authConfig.authType === "mock" ? "true" : "f
 `;
 		}
 
-		// V2 Control Plane via local-control-plane service
+		// Control plane via local-control-plane service
 		envContent += `
-# V2 Control Plane (local-control-plane service)
-USE_V2_CONTROL_PLANE=true
+# Control Plane (local-control-plane service)
 MGMT_AIRO_BASE_URL=http://localhost:4100
 `;
 
@@ -736,7 +728,6 @@ MGMT_AIRO_BASE_URL=http://localhost:4100
 				ssoLoginUrl: 'https://sso.dev-godaddy.com/login',
 				ssoLogoutUrl: 'https://sso.dev-godaddy.com/logout',
 				loginRedirectUrl: 'https://local.gasket.dev-godaddy.com:8443/',
-				agentsServiceUrl: 'http://localhost:4000',
 				awsRegion: config.awsRegion || 'us-west-2',
 			},
 			test: {
@@ -744,7 +735,6 @@ MGMT_AIRO_BASE_URL=http://localhost:4100
 				ssoLoginUrl: 'https://sso.test-godaddy.com/login',
 				ssoLogoutUrl: 'https://sso.test-godaddy.com/logout',
 				loginRedirectUrl: 'https://airo-builder.test-godaddy.com:8443/',
-				agentsServiceUrl: 'http://localhost:4000',
 				awsRegion: config.awsRegion || 'us-west-2',
 			},
 			prod: {
@@ -752,7 +742,6 @@ MGMT_AIRO_BASE_URL=http://localhost:4100
 				ssoLoginUrl: 'https://sso.godaddy.com/login',
 				ssoLogoutUrl: 'https://sso.godaddy.com/logout',
 				loginRedirectUrl: 'https://airo-builder.godaddy.com:8443/',
-				agentsServiceUrl: 'http://localhost:4000',
 				awsRegion: config.awsRegion || 'us-west-2',
 			},
 		};
@@ -793,10 +782,6 @@ SSO_LOGIN_URL=${envConfig.ssoLoginUrl}
 SSO_LOGOUT_URL=${envConfig.ssoLogoutUrl}
 LOGIN_REDIRECT_URL=${envConfig.loginRedirectUrl}
 
-# Agents Service (Legacy Control Plane)
-# For V2 control plane, agents run remotely
-AGENTS_SERVICE_URL=${envConfig.agentsServiceUrl}
-
 # AWS Configuration
 AWS_REGION=${envConfig.awsRegion}
 `;
@@ -804,12 +789,8 @@ AWS_REGION=${envConfig.awsRegion}
 		if (env === 'test' || env === 'prod') {
 			const mgmtUrl = env === 'test' ? 'https://mgmt.nstk.net' : 'https://mgmt.woosaas.godaddy.com';
 			content += `
-# Management API Base URL used for V2 control plane when USE_V2_CONTROL_PLANE is true
+# Management API Base URL (control plane)
 MGMT_AIRO_BASE_URL=${mgmtUrl}
-
-# V2 Control Plane Configuration (optional)
-# Uncomment to use V2 control plane instead of legacy
-# USE_V2_CONTROL_PLANE=true
 `;
 		}
 
@@ -880,7 +861,7 @@ AUTH_TYPE=${config.authType}
 # Legacy Authentication Setting (DEPRECATED - Use AUTH_TYPE instead)
 BYPASS_AUTH_FOR_LOCAL=${config.authType === "none" ? "true" : "false"}
 
-# MySQL configuration (for app databases, not agent storage)
+# MySQL configuration (used by agents for per-app databases)
 MYSQL_ROOT_HOST=${config.mysqlRootHost}
 MYSQL_ROOT_PORT=${config.mysqlRootPort}
 MYSQL_ROOT_USER=${config.mysqlRootUser}
@@ -951,7 +932,6 @@ ENABLE_SOCIAL=false
 
 		const config: AppEnvConfig = {
 			nodeEnv: "development",
-			databaseUrl: EnvGenerator.DEFAULT_DATABASE_URL,
 			authConfig,
 			awsProfile,
 			awsRegion: 'us-west-2',
@@ -1001,7 +981,6 @@ ENABLE_SOCIAL=false
 		}
 
 		console.log(chalk.cyan("\n📋 Configuration Summary:"));
-		console.log(`Database: MySQL (Docker container)`);
 		console.log(`AWS Region: ${config.awsRegion || 'us-west-2'}`);
 		console.log(`AWS Profile: ${config.awsProfile || 'not configured'}`);
 		console.log(
@@ -1106,7 +1085,7 @@ SSO_HOST=${envConfig.ssoHost}
 
 		const modelConfig = await this.promptModelProvider(yesToAll);
 
-		console.log(chalk.cyan("\n🗄 MySQL Configuration (for app databases)"));
+		console.log(chalk.cyan("\n🗄 MySQL Configuration (used by agents for per-app databases)"));
 
 		const defaultMysqlConfig = {
 			mysqlRootHost: "localhost",

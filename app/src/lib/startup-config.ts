@@ -16,24 +16,11 @@ export function logStartupConfiguration() {
     message: '🚀 Airo Builder - Service Configuration'
   });
 
-  // Database Configuration
-  const hasDatabaseUrl = !!process.env.DATABASE_URL?.startsWith('mysql://');
-  const hasMySqlCredentials = !!process.env.MYSQL_DB_USERNAME && !!process.env.MYSQL_DB_PASSWORD &&
-  !!process.env.MYSQL_DB_PATH && !!process.env.MYSQL_DB_PORT && !!process.env.MYSQL_DB_NAME;
-
-  logger.info('startup.config.database', {
-    message: '🔧 Database Configuration',
+  // Control Plane Configuration
+  logger.info('startup.config.controlPlane', {
+    message: '🔧 Control Plane Configuration',
     environment: process.env.NODE_ENV,
-    databaseType: 'MySQL (with SQLite-syntax conversion)',
-    hasDatabaseUrl,
-    hasMySqlCredentials,
-    ...(hasDatabaseUrl ? { viaUrl: 'configured' } : {}),
-    ...(hasMySqlCredentials ? {
-      host: process.env.MYSQL_DB_PATH || 'default',
-      port: process.env.MYSQL_DB_PORT || '3306',
-      database: process.env.MYSQL_DB_NAME || 'airo_builder'
-    } : {}),
-    ...(!hasDatabaseUrl && !hasMySqlCredentials ? { warning: 'No MySQL configuration found' } : {})
+    mgmtAiroBaseUrl: process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net',
   });
 
   // GdAuth Service Configuration
@@ -52,8 +39,7 @@ export function logStartupConfiguration() {
     message: '🚀 Deployment Configuration',
     mode: deploymentMode,
     ...(["development", "docker"].includes(deploymentMode) ? {
-      agentsServiceUrl: process.env.AGENTS_SERVICE_URL || 'http://localhost:4000',
-      appsDirectory: process.env.APPS_BASE_DIR || '/tmp/apps',
+      appsDirectory: process.env.APPS_BASE_DIR || '/tmp/airo-app-builder',
       templateDirectory: process.env.APP_TEMPLATE_DIR || 'app-templates/v8'
     } : {})
   });

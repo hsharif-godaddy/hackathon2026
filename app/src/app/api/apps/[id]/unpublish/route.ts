@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-plane';
+import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { DomainStatus, DomainType } from '@/lib/control-plane/types';
 import {
   type CustomerAuthContext,
@@ -105,18 +105,15 @@ export const POST = withCustomerAuth(async (
       );
     }
 
-    const isV2 = isV2ControlPlaneEnabled();
-
     logger.info('unpublish.api.start', {
       siteId,
-      isV2,
       disconnectDomain: body.disconnectDomain,
       domainFqdn: body.domainFqdn,
     });
 
     // Step 1: Optionally disconnect custom domain first
     let domainJobId: string | undefined;
-    if (body.disconnectDomain && body.domainFqdn && isV2 && site.subscription_id && site.system_id) {
+    if (body.disconnectDomain && body.domainFqdn && site.subscription_id && site.system_id) {
       // Find the domain by fqdn first
       const matchingDomain = site.domains?.find((d) => d.fqdn === body.domainFqdn);
 
@@ -202,16 +199,20 @@ export const POST = withCustomerAuth(async (
     }
 
     // Step 2: Call agents service to remove publish symlink
-    // In V2 mode, use the app's agent_url; in local dev, use AGENTS_SERVICE_URL
+    if (!site.agent_url) {
+      logger.error('unpublish.api.agents.no_url', { siteId });
+      return NextResponse.json(
+        { error: 'App agent not available', retryable: true },
+        { status: 503 }
+      );
+    }
+
     let agentsSuccess = false;
     let agentsError: { status?: number; message?: string } | null = null;
     try {
-      const agentsBaseUrl = isV2 && site.agent_url
-        ? site.agent_url
-        : (process.env.AGENTS_SERVICE_URL || 'http://localhost:4000');
-      const agentsUrl = `${agentsBaseUrl}/apps/${siteId}/unpublish`;
+      const agentsUrl = `${site.agent_url}/apps/${siteId}/unpublish`;
 
-      logger.info('unpublish.api.agents.start', { siteId, agentsBaseUrl });
+      logger.info('unpublish.api.agents.start', { siteId, agentUrl: site.agent_url });
 
       // Create a token with canPublish permission for the agents service
       // This is needed because unpublish requires the same permission as publish
@@ -264,8 +265,8 @@ export const POST = withCustomerAuth(async (
       );
     }
 
-    // Step 3: Call control plane to mark publish variant as inactive (V2 only)
-    if (isV2 && site.subscription_id && site.system_id) {
+    // Step 3: Call control plane to mark publish variant as inactive
+    if (site.subscription_id && site.system_id) {
       try {
         const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
         const client = new AiroMgmtClient({ baseUrl, jwt: authContext.jwt });

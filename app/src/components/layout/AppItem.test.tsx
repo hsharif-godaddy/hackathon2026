@@ -25,8 +25,8 @@ describe('AppItem', () => {
     name: 'My Test App',
     status: 'running',
     account_id: 'test-account',
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z',
+    created_at: new Date('2024-01-01T00:00:00Z'),
+    updated_at: new Date('2024-01-01T00:00:00Z'),
   };
 
   it('should render without crashing', () => {

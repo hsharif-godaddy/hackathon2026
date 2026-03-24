@@ -572,9 +572,6 @@ NODE_ENV=development
 MYSQL_DB_USERNAME=""                # MySQL = Production
 AWS_REGION_NOMAD=""                 # AWS = Production
 PRODUCTION_DOMAIN=""                # Domain = Production
-
-# Service URLs
-AGENTS_SERVICE_URL="http://localhost:4000"
 ```
 
 ## Development Workflow

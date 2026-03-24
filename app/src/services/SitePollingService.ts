@@ -1,7 +1,6 @@
 import { agentFetch } from '@/lib/agent-fetch';
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
-import { formatSubscriptionId } from '@/lib/subscription-id';
 
 export interface SiteStatus {
   siteId: string;
@@ -38,11 +37,11 @@ export class SitePollingService {
   }
 
   /**
-   * Poll for agent readiness by directly checking agent URL and then create the app
+   * Poll for agent readiness and check if app exists
    */
   async pollForReadinessAndCreateApp(
     siteId: string,
-    initialPrompt: string,
+    _initialPrompt: string,
     onStatusUpdate?: (status: SiteStatus, attempt: number) => void
   ): Promise<CreateAppResult> {
     return new Promise((resolve, reject) => {
@@ -101,7 +100,7 @@ export class SitePollingService {
           // Check if agent is ready
           if (siteStatus.ready) {
             try {
-              // Check if app already exists to avoid duplicates
+              // Check if app already exists
               const appExists = await this.checkAppExists(siteId, site.agent_url);
 
               if (appExists) {
@@ -113,16 +112,14 @@ export class SitePollingService {
                 return;
               }
 
-              // Create app via agent API
-              const createAppResult = await this.createAppViaAgent(siteId, initialPrompt, site.agent_url);
-
-              if (createAppResult.success) {
-                // Update site status to running
-                await this.updateSiteStatus(siteId, 'running');
-                resolve(createAppResult);
-              } else {
-                reject(new Error(createAppResult.error || 'Failed to create app'));
-              }
+              // In V2 mode, app creation is handled during site creation.
+              // If we got here and services are ready but app doesn't exist,
+              // the agent should auto-register on startup.
+              await this.updateSiteStatus(siteId, 'running');
+              resolve({
+                success: true,
+                app: { id: siteId, status: 'running' }
+              });
             } catch (createError) {
               logger.error('polling.create-app.failed', { appId: siteId, error: createError });
               await this.updateSiteStatus(siteId, 'failed');
@@ -218,73 +215,6 @@ export class SitePollingService {
   }
 
   /**
-   * Generate app name from initial prompt or fallback to site ID
-   */
-  private generateAppName(initialPrompt?: string, siteId?: string): string {
-    if (initialPrompt && initialPrompt.trim()) {
-      // Take first 3-5 words from prompt and clean them up
-      const words = initialPrompt.trim()
-        .split(/\s+/)
-        .slice(0, 4)
-        .map(word => word.replace(/[^\w]/g, ''))
-        .filter(word => word.length > 0);
-
-      if (words.length > 0) {
-        return words.join(' ');
-      }
-    }
-
-    // Fallback to a generic name with site ID
-    return siteId ? `App ${siteId.slice(0, 8)}` : 'New App';
-  }
-
-  /**
-   * Create app via agent API
-   */
-  private async createAppViaAgent(
-    siteId: string,
-    initialPrompt: string,
-    _agentUrl: string
-  ): Promise<CreateAppResult> {
-    try {
-      // Call our local app creation API instead of agents service
-      const response = await appFetch('/api/apps/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          siteId: siteId,
-          name: this.generateAppName(initialPrompt, siteId),
-          initialPrompt: initialPrompt || undefined
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`App creation API error: ${response.status} ${errorText}`);
-      }
-
-      const data = await response.json();
-
-      return {
-        success: true,
-        app: data.app,
-        aiGeneratedName: data.aiGeneratedName,
-        nameSuggested: data.nameSuggested,
-        originalName: data.originalName
-      };
-
-    } catch (error) {
-      logger.error('polling.create-app-via-agent.failed', { appId: siteId, error });
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
-  }
-
-  /**
    * Update site status via API
    */
   private async updateSiteStatus(siteId: string, status: string): Promise<void> {
@@ -323,7 +253,7 @@ export class SitePollingService {
     if (!site.agent_url) {
       return {
         siteId: site.id,
-        status: site.status, // Keep existing status from database
+        status: site.status,
         agent_url: site.agent_url,
         backend_url: site.backend_url,
         preview_url: site.preview_url,
@@ -343,56 +273,10 @@ export class SitePollingService {
 
     const allServicesReady = agentHealthy && frontendHealthy;
 
-    // Track registration status
-    let registrationComplete = false;
-    let registrationAttempted = false;
+    // In V2 mode, agent registers automatically on startup
+    const registrationComplete = site.status === 'running';
 
-    // Register app with agent service if agent is ready (Legacy mode only)
-    // V2 mode: Agent automatically registers on startup, skip this call
-    // Legacy mode: status is 'created' when ready, needs manual registration
-    // In V2 mode: status is 'running' immediately when active
-    const isV2Mode = process.env.USE_V2_CONTROL_PLANE === 'true';
-    const shouldRegister = !isV2Mode && agentHealthy && site.agent_url && site.status === 'created';
-    
-    if (shouldRegister) {
-      registrationAttempted = true;
-
-      // Register app with agent service
-      try {
-        const prefixedSubscriptionId = formatSubscriptionId(site.subscription_id);
-        const registerPayload = {
-          siteId: site.id,
-          name: site.name || `App ${site.id}`,
-          initialPrompt: site.initial_prompt,
-          previewUrl: site.preview_url,
-          subscriptionId: prefixedSubscriptionId,
-          customerId: site.account_id
-        };
-
-        const registerResponse = await agentFetch(`${site.agent_url}/apps/register`, {
-          siteId,
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(registerPayload)
-        });
-
-        if (registerResponse.ok) {
-          await registerResponse.json();
-          registrationComplete = true;
-        }
-      } catch (error) {
-        logger.warn('polling.app-registration.error', {
-          siteId: site.id,
-          error: error instanceof Error ? error.message : String(error),
-          registrationComplete: false
-        });
-      }
-    } else if (isV2Mode && site.status === 'running') {
-      // In V2 mode, agent registers automatically on startup
-      registrationComplete = true;
-    }
-
-    // Auto-update status from "created" to "running" if services are ready (Legacy mode only)
+    // Auto-update status to "running" if services are ready
     if (site.status === 'created' && allServicesReady && site.agent_url && site.preview_url) {
       await this.updateSiteStatus(siteId, 'running');
       site.status = 'running'; // Update local object for return
@@ -400,14 +284,14 @@ export class SitePollingService {
 
     return {
       siteId: site.id,
-      status: site.status, // Will now be 'running' if updated above
+      status: site.status,
       agent_url: site.agent_url,
       backend_url: site.backend_url,
       preview_url: site.preview_url,
       ready: allServicesReady,
       registrationComplete,
-      registrationAttempted,
-      message: `Agent: ${agentHealthy ? '✅' : '❌'}, Frontend: ${frontendHealthy ? '✅' : '❌'}, Registration: ${registrationComplete ? '✅' : registrationAttempted ? '❌ Failed' : '⏳ Pending'}`
+      registrationAttempted: false,
+      message: `Agent: ${agentHealthy ? '✅' : '❌'}, Frontend: ${frontendHealthy ? '✅' : '❌'}`
     };
   }
 }

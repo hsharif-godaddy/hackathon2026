@@ -14,21 +14,16 @@ import { clearSiteValidationCache } from '../site-validation-cache';
 /**
  * Mock dependencies using vi.hoisted to avoid hoisting issues
  */
-const { mockJWTService, mockSiteAdapter, mockAuthenticateCustomer, mockControlPlaneAdapter, mockIsV2ControlPlaneEnabled, mockCheckSwitchboardFlag } = vi.hoisted(function setup() {
+const { mockJWTService, mockAuthenticateCustomer, mockControlPlaneAdapter, mockCheckSwitchboardFlag } = vi.hoisted(function setup() {
   return {
     mockJWTService: {
       getToken: vi.fn(),
       createToken: vi.fn()
     },
-    mockSiteAdapter: {
-      requiresAuth: vi.fn(),
-      getSiteById: vi.fn()
-    },
     mockControlPlaneAdapter: {
       getSite: vi.fn(),
       appExists: vi.fn()
     },
-    mockIsV2ControlPlaneEnabled: vi.fn(),
     mockAuthenticateCustomer: vi.fn(),
     mockCheckSwitchboardFlag: vi.fn()
   };
@@ -44,23 +39,11 @@ vi.mock('@/lib/jwt-service', function mockJWTServiceModule() {
 });
 
 /**
- * Mock site adapter factory
- */
-vi.mock('@/lib/site-adapters/SiteAdapterFactory', function mockSiteAdapterModule() {
-  return {
-    SiteAdapterFactory: {
-      getInstance: vi.fn().mockReturnValue(mockSiteAdapter)
-    }
-  };
-});
-
-/**
  * Mock control plane adapter
  */
 vi.mock('@/lib/control-plane', function mockControlPlaneModule() {
   return {
     getControlPlaneAdapter: vi.fn().mockReturnValue(mockControlPlaneAdapter),
-    isV2ControlPlaneEnabled: mockIsV2ControlPlaneEnabled
   };
 });
 
@@ -152,15 +135,6 @@ const MOCK_USER = {
   iat: Math.floor(Date.now() / 1000)
 };
 
-const MOCK_SITE = {
-  id: MOCK_SITE_ID,
-  account_id: MOCK_ACCOUNT_ID,
-  name: 'Test Site',
-  status: 'running',
-  agent_url: 'https://agent.example.com',
-  preview_url: 'https://preview.example.com'
-};
-
 const MOCK_JWT_TOKEN = 'mock-jwt-token-for-testing';
 const MOCK_TOKEN_EXPIRES = new Date(Date.now() + 3600000);
 
@@ -184,10 +158,9 @@ describe('agent-token', function packageTests() {
       vi.clearAllMocks();
       clearSiteValidationCache();
 
-      // Default mock implementations - use legacy mode by default
-      mockIsV2ControlPlaneEnabled.mockReturnValue(false);
+      // Default mock implementations
       mockCheckSwitchboardFlag.mockResolvedValue(false);
-      mockSiteAdapter.requiresAuth.mockReturnValue(true);
+      mockControlPlaneAdapter.appExists.mockResolvedValue(true);
       mockJWTService.getToken.mockResolvedValue({
         token: MOCK_JWT_TOKEN,
         expires: MOCK_TOKEN_EXPIRES
@@ -205,7 +178,7 @@ describe('agent-token', function packageTests() {
         jwt: 'user-jwt-token'
       });
 
-      mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
+      mockControlPlaneAdapter.appExists.mockResolvedValue(true);
 
       const request = createMockRequest({ siteId: MOCK_SITE_ID });
       const response = await POST(request);
@@ -218,6 +191,7 @@ describe('agent-token', function packageTests() {
         siteId: MOCK_SITE_ID,
         type: 'jwt'
       });
+      expect(mockControlPlaneAdapter.appExists).toHaveBeenCalledWith(MOCK_SITE_ID, 'user-jwt-token', 'AiroAppBuilder');
       expect(mockJWTService.getToken).toHaveBeenCalledWith({
         siteId: MOCK_SITE_ID,
         canDownload: false,
@@ -267,7 +241,7 @@ describe('agent-token', function packageTests() {
       expect(data).toEqual({
         error: 'You must have an account to create agent tokens'
       });
-      expect(mockJWTService.getToken).not.toHaveBeenCalled();
+      expect(mockControlPlaneAdapter.appExists).not.toHaveBeenCalled();
     });
 
     it('should reject request when siteId is missing', async function rejectMissingSiteId() {
@@ -288,14 +262,14 @@ describe('agent-token', function packageTests() {
       expect(mockJWTService.getToken).not.toHaveBeenCalled();
     });
 
-    it('should reject request when site does not exist', async function rejectNonexistentSite() {
+    it('should return 404 when site not found', async function siteNotFound() {
       mockAuthenticateCustomer.mockResolvedValue({
         isAuthenticated: true,
         user: MOCK_USER,
         jwt: 'user-jwt-token'
       });
 
-      mockSiteAdapter.getSiteById.mockResolvedValue(null);
+      mockControlPlaneAdapter.appExists.mockResolvedValue(false);
 
       const request = createMockRequest({ siteId: MOCK_SITE_ID });
       const response = await POST(request);
@@ -308,48 +282,24 @@ describe('agent-token', function packageTests() {
       expect(mockJWTService.getToken).not.toHaveBeenCalled();
     });
 
-    it('should reject request when user does not own the site', async function rejectWrongOwner() {
+    it('should handle control plane adapter errors gracefully', async function handleAdapterError() {
       mockAuthenticateCustomer.mockResolvedValue({
         isAuthenticated: true,
         user: MOCK_USER,
         jwt: 'user-jwt-token'
       });
 
-      mockSiteAdapter.getSiteById.mockResolvedValue({
-        ...MOCK_SITE,
-        account_id: 'different-account-id'
-      });
+      mockControlPlaneAdapter.appExists.mockRejectedValue(new Error('Control plane connection failed'));
 
       const request = createMockRequest({ siteId: MOCK_SITE_ID });
       const response = await POST(request);
       const data = await response.json();
 
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(500);
       expect(data).toEqual({
-        error: 'You can only create tokens for your own sites'
+        error: 'Token creation failed',
+        details: 'Control plane connection failed'
       });
-      expect(mockJWTService.getToken).not.toHaveBeenCalled();
-    });
-
-    it('should allow token creation when auth is not required', async function allowNoAuth() {
-      mockAuthenticateCustomer.mockResolvedValue({
-        isAuthenticated: true,
-        user: {
-          ...MOCK_USER,
-          accountId: undefined
-        },
-        jwt: 'user-jwt-token'
-      });
-
-      mockSiteAdapter.requiresAuth.mockReturnValue(false);
-      mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
-
-      const request = createMockRequest({ siteId: MOCK_SITE_ID });
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.token).toBe(MOCK_JWT_TOKEN);
     });
 
     it('should handle JWT service errors gracefully', async function handleJWTError() {
@@ -359,7 +309,7 @@ describe('agent-token', function packageTests() {
         jwt: 'user-jwt-token'
       });
 
-      mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
+      mockControlPlaneAdapter.appExists.mockResolvedValue(true);
       mockJWTService.getToken.mockRejectedValue(new Error('JWT generation failed'));
 
       const request = createMockRequest({ siteId: MOCK_SITE_ID });
@@ -373,571 +323,8 @@ describe('agent-token', function packageTests() {
       });
     });
 
-    it('should handle site adapter errors gracefully', async function handleAdapterError() {
-      mockAuthenticateCustomer.mockResolvedValue({
-        isAuthenticated: true,
-        user: MOCK_USER,
-        jwt: 'user-jwt-token'
-      });
-
-      mockSiteAdapter.getSiteById.mockRejectedValue(new Error('Database connection failed'));
-
-      const request = createMockRequest({ siteId: MOCK_SITE_ID });
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(500);
-      expect(data).toEqual({
-        error: 'Token creation failed',
-        details: 'Database connection failed'
-      });
-    });
-
-    it('should validate multiple sites for same user', async function validateMultipleSites() {
-      mockAuthenticateCustomer.mockResolvedValue({
-        isAuthenticated: true,
-        user: MOCK_USER,
-        jwt: 'user-jwt-token'
-      });
-
-      const site1 = { ...MOCK_SITE, id: 'site-1', account_id: MOCK_ACCOUNT_ID };
-      const site2 = { ...MOCK_SITE, id: 'site-2', account_id: MOCK_ACCOUNT_ID };
-
-      mockSiteAdapter.getSiteById.mockResolvedValueOnce(site1);
-      const request1 = createMockRequest({ siteId: 'site-1' });
-      const response1 = await POST(request1);
-      expect(response1.status).toBe(200);
-
-      mockSiteAdapter.getSiteById.mockResolvedValueOnce(site2);
-      const request2 = createMockRequest({ siteId: 'site-2' });
-      const response2 = await POST(request2);
-      expect(response2.status).toBe(200);
-
-      expect(mockJWTService.getToken).toHaveBeenCalledTimes(2);
-    });
-
-    it('should reject when siteId is empty string', async function rejectEmptySiteId() {
-      mockAuthenticateCustomer.mockResolvedValue({
-        isAuthenticated: true,
-        user: MOCK_USER,
-        jwt: 'user-jwt-token'
-      });
-
-      const request = createMockRequest({ siteId: '' });
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data).toEqual({
-        error: 'siteId is required'
-      });
-    });
-
-    it('should include correct token expiration in response', async function includeExpiration() {
-      mockAuthenticateCustomer.mockResolvedValue({
-        isAuthenticated: true,
-        user: MOCK_USER,
-        jwt: 'user-jwt-token'
-      });
-
-      mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
-
-      const customExpires = new Date('2025-12-31T23:59:59Z');
-      mockJWTService.getToken.mockResolvedValue({
-        token: MOCK_JWT_TOKEN,
-        expires: customExpires
-      });
-
-      const request = createMockRequest({ siteId: MOCK_SITE_ID });
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(data.expires).toBe(customExpires.toISOString());
-    });
-
-    describe('expiresInSeconds parameter', function expiresTests() {
-      it('should create token with custom expiration when expiresInSeconds is provided', async function customExpiration() {
-        mockAuthenticateCustomer.mockResolvedValue({
-          isAuthenticated: true,
-          user: MOCK_USER,
-          jwt: 'user-jwt-token'
-        });
-
-        mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
-
-        const expiresInSeconds = 300;
-        const request = createMockRequest({
-          siteId: MOCK_SITE_ID,
-          expiresInSeconds
-        });
-        const response = await POST(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(200);
-        expect(data).toEqual({
-          token: MOCK_JWT_TOKEN,
-          expires: MOCK_TOKEN_EXPIRES.toISOString(),
-          siteId: MOCK_SITE_ID,
-          type: 'jwt',
-          expiresInSeconds
-        });
-        expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false },
-          expiresInSeconds
-        );
-        expect(mockJWTService.getToken).not.toHaveBeenCalled();
-      });
-
-      it('should use getToken when expiresInSeconds is not provided', async function defaultExpiration() {
-        mockAuthenticateCustomer.mockResolvedValue({
-          isAuthenticated: true,
-          user: MOCK_USER,
-          jwt: 'user-jwt-token'
-        });
-
-        mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
-
-        const request = createMockRequest({ siteId: MOCK_SITE_ID });
-        const response = await POST(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(200);
-        expect(data.expiresInSeconds).toBeUndefined();
-        expect(mockJWTService.getToken).toHaveBeenCalledWith({
-          siteId: MOCK_SITE_ID,
-          canDownload: false,
-          canPublish: false,
-          canPurchaseDomain: false,
-          authType: 'basic',
-          isE2S: false,
-          useTestBudget: false
-        });
-        expect(mockJWTService.createToken).not.toHaveBeenCalled();
-      });
-
-      it('should reject when expiresInSeconds is zero', async function rejectZero() {
-        mockAuthenticateCustomer.mockResolvedValue({
-          isAuthenticated: true,
-          user: MOCK_USER,
-          jwt: 'user-jwt-token'
-        });
-
-        const request = createMockRequest({
-          siteId: MOCK_SITE_ID,
-          expiresInSeconds: 0
-        });
-        const response = await POST(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(400);
-        expect(data).toEqual({
-          error: 'expiresInSeconds must be greater than 0'
-        });
-        expect(mockJWTService.createToken).not.toHaveBeenCalled();
-        expect(mockJWTService.getToken).not.toHaveBeenCalled();
-      });
-
-      it('should reject when expiresInSeconds is negative', async function rejectNegative() {
-        mockAuthenticateCustomer.mockResolvedValue({
-          isAuthenticated: true,
-          user: MOCK_USER,
-          jwt: 'user-jwt-token'
-        });
-
-        const request = createMockRequest({
-          siteId: MOCK_SITE_ID,
-          expiresInSeconds: -100
-        });
-        const response = await POST(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(400);
-        expect(data).toEqual({
-          error: 'expiresInSeconds must be greater than 0'
-        });
-        expect(mockJWTService.createToken).not.toHaveBeenCalled();
-      });
-
-      it('should reject when expiresInSeconds exceeds 12 hours', async function rejectTooLarge() {
-        mockAuthenticateCustomer.mockResolvedValue({
-          isAuthenticated: true,
-          user: MOCK_USER,
-          jwt: 'user-jwt-token'
-        });
-
-        const request = createMockRequest({
-          siteId: MOCK_SITE_ID,
-          expiresInSeconds: 50000
-        });
-        const response = await POST(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(400);
-        expect(data).toEqual({
-          error: 'expiresInSeconds cannot exceed 43200 seconds (12 hours)'
-        });
-        expect(mockJWTService.createToken).not.toHaveBeenCalled();
-      });
-
-      it('should accept expiresInSeconds at maximum limit (12 hours)', async function acceptMaximum() {
-        mockAuthenticateCustomer.mockResolvedValue({
-          isAuthenticated: true,
-          user: MOCK_USER,
-          jwt: 'user-jwt-token'
-        });
-
-        mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
-
-        const expiresInSeconds = 43200;
-        const request = createMockRequest({
-          siteId: MOCK_SITE_ID,
-          expiresInSeconds
-        });
-        const response = await POST(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(200);
-        expect(data.expiresInSeconds).toBe(expiresInSeconds);
-        expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false },
-          expiresInSeconds
-        );
-      });
-
-      it('should create short-lived token for WebSocket use case', async function websocketToken() {
-        mockAuthenticateCustomer.mockResolvedValue({
-          isAuthenticated: true,
-          user: MOCK_USER,
-          jwt: 'user-jwt-token'
-        });
-
-        mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
-
-        const expiresInSeconds = 300;
-        const request = createMockRequest({
-          siteId: MOCK_SITE_ID,
-          expiresInSeconds
-        });
-        const response = await POST(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(200);
-        expect(data.expiresInSeconds).toBe(300);
-        expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false },
-          300
-        );
-      });
-    });
-
-    describe('site validation cache', function cacheTests() {
-      it('should skip getSite on second request for same customer+site within TTL', async function cacheHit() {
-        mockAuthenticateCustomer.mockResolvedValue({
-          isAuthenticated: true,
-          user: MOCK_USER,
-          jwt: 'user-jwt-token'
-        });
-
-        mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
-
-        // First request — cache miss, calls getSiteById
-        const request1 = createMockRequest({ siteId: MOCK_SITE_ID });
-        const response1 = await POST(request1);
-        expect(response1.status).toBe(200);
-        expect(mockSiteAdapter.getSiteById).toHaveBeenCalledTimes(1);
-
-        // Second request — cache hit, should NOT call getSiteById again
-        const request2 = createMockRequest({ siteId: MOCK_SITE_ID });
-        const response2 = await POST(request2);
-        expect(response2.status).toBe(200);
-        expect(mockSiteAdapter.getSiteById).toHaveBeenCalledTimes(1);
-      });
-
-      it('should not cache failed validations', async function cacheNoFailure() {
-        mockAuthenticateCustomer.mockResolvedValue({
-          isAuthenticated: true,
-          user: MOCK_USER,
-          jwt: 'user-jwt-token'
-        });
-
-        // First request — site not found
-        mockSiteAdapter.getSiteById.mockResolvedValueOnce(null);
-        const request1 = createMockRequest({ siteId: MOCK_SITE_ID });
-        const response1 = await POST(request1);
-        expect(response1.status).toBe(404);
-
-        // Second request — should still call getSiteById (not cached)
-        mockSiteAdapter.getSiteById.mockResolvedValueOnce(MOCK_SITE);
-        const request2 = createMockRequest({ siteId: MOCK_SITE_ID });
-        const response2 = await POST(request2);
-        expect(response2.status).toBe(200);
-        expect(mockSiteAdapter.getSiteById).toHaveBeenCalledTimes(2);
-      });
-
-      it('should cache separately per site', async function cacheSeparateSites() {
-        mockAuthenticateCustomer.mockResolvedValue({
-          isAuthenticated: true,
-          user: MOCK_USER,
-          jwt: 'user-jwt-token'
-        });
-
-        const site1 = { ...MOCK_SITE, id: 'site-1', account_id: MOCK_ACCOUNT_ID };
-        const site2 = { ...MOCK_SITE, id: 'site-2', account_id: MOCK_ACCOUNT_ID };
-
-        mockSiteAdapter.getSiteById.mockResolvedValueOnce(site1);
-        await POST(createMockRequest({ siteId: 'site-1' }));
-
-        mockSiteAdapter.getSiteById.mockResolvedValueOnce(site2);
-        await POST(createMockRequest({ siteId: 'site-2' }));
-
-        // Both sites required a lookup
-        expect(mockSiteAdapter.getSiteById).toHaveBeenCalledTimes(2);
-
-        // Repeat — both should be cached
-        await POST(createMockRequest({ siteId: 'site-1' }));
-        await POST(createMockRequest({ siteId: 'site-2' }));
-        expect(mockSiteAdapter.getSiteById).toHaveBeenCalledTimes(2);
-      });
-    });
-
-    describe('useTestBudget switchboard flag', function testBudgetTests() {
-      it('should pass useTestBudget: true when switchboard flag is enabled', async function testBudgetEnabled() {
-        mockAuthenticateCustomer.mockResolvedValue({
-          isAuthenticated: true,
-          user: MOCK_USER,
-          jwt: 'user-jwt-token'
-        });
-
-        mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
-        // Enable the test-budget flag
-        mockCheckSwitchboardFlag.mockImplementation((flag: string) => {
-          if (flag === 'appbuilder-test-budget') return Promise.resolve(true);
-          return Promise.resolve(false);
-        });
-
-        const request = createMockRequest({ siteId: MOCK_SITE_ID });
-        const response = await POST(request);
-
-        expect(response.status).toBe(200);
-        expect(mockJWTService.getToken).toHaveBeenCalledWith({
-          siteId: MOCK_SITE_ID,
-          canDownload: false,
-          canPublish: false,
-          canPurchaseDomain: false,
-          authType: 'basic',
-          isE2S: false,
-          useTestBudget: true
-        });
-      });
-
-      it('should pass useTestBudget: false when switchboard flag check rejects (fail closed)', async function testBudgetRejectFailsClosed() {
-        mockAuthenticateCustomer.mockResolvedValue({
-          isAuthenticated: true,
-          user: MOCK_USER,
-          jwt: 'user-jwt-token'
-        });
-
-        mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
-        // Simulate switchboard flag check failure
-        mockCheckSwitchboardFlag.mockImplementation((flag: string) => {
-          if (flag === 'appbuilder-test-budget') return Promise.reject(new Error('Switchboard unavailable'));
-          return Promise.resolve(false);
-        });
-
-        const request = createMockRequest({ siteId: MOCK_SITE_ID });
-        const response = await POST(request);
-
-        expect(response.status).toBe(200);
-        // Should fail closed to false
-        expect(mockJWTService.getToken).toHaveBeenCalledWith({
-          siteId: MOCK_SITE_ID,
-          canDownload: false,
-          canPublish: false,
-          canPurchaseDomain: false,
-          authType: 'basic',
-          isE2S: false,
-          useTestBudget: false
-        });
-      });
-    });
-
-    describe('auth type handling', function authTypeTests() {
-      it('should set isE2S: true for e2s auth type', async function e2sAuthType() {
-        mockAuthenticateCustomer.mockResolvedValue({
-          isAuthenticated: true,
-          user: {
-            ...MOCK_USER,
-            authType: 'e2s',
-            isE2S: true
-          },
-          jwt: 'user-jwt-token'
-        });
-
-        mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
-
-        const request = createMockRequest({ siteId: MOCK_SITE_ID });
-        const response = await POST(request);
-
-        expect(response.status).toBe(200);
-        expect(mockJWTService.getToken).toHaveBeenCalledWith({
-          siteId: MOCK_SITE_ID,
-          canDownload: false,
-          canPublish: false,
-          canPurchaseDomain: false,
-          authType: 'e2s',
-          isE2S: true,
-          useTestBudget: false
-        });
-      });
-
-      it('should set isE2S: false for s2s (delegate) auth type - regression test for bug fix', async function s2sAuthType() {
-        // This is a regression test for the bug where S2S sessions were incorrectly
-        // treated as E2S sessions due to `isE2S = authType === 'e2s' || authType === 's2s'`
-        // The fix changed it to `isE2S = authType === 'e2s'` only
-        mockAuthenticateCustomer.mockResolvedValue({
-          isAuthenticated: true,
-          user: {
-            ...MOCK_USER,
-            authType: 's2s',
-            isE2S: false  // S2S should NOT be treated as E2S
-          },
-          jwt: 'user-jwt-token'
-        });
-
-        mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
-
-        const request = createMockRequest({ siteId: MOCK_SITE_ID });
-        const response = await POST(request);
-
-        expect(response.status).toBe(200);
-        // S2S (delegate) sessions should NOT have isE2S: true
-        expect(mockJWTService.getToken).toHaveBeenCalledWith({
-          siteId: MOCK_SITE_ID,
-          canDownload: false,
-          canPublish: false,
-          canPurchaseDomain: false,
-          authType: 's2s',
-          isE2S: false,  // This is the key assertion - S2S is NOT E2S
-          useTestBudget: false
-        });
-      });
-    });
-
-    describe('V2 control plane mode', function v2Tests() {
-      beforeEach(function setupV2() {
-        mockIsV2ControlPlaneEnabled.mockReturnValue(true);
-      });
-
-      it('should create agent token using control plane adapter in V2 mode', async function createV2Token() {
-        mockAuthenticateCustomer.mockResolvedValue({
-          isAuthenticated: true,
-          user: MOCK_USER,
-          jwt: 'user-jwt-token'
-        });
-
-        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
-
-        const request = createMockRequest({ siteId: MOCK_SITE_ID });
-        const response = await POST(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(200);
-        expect(data).toEqual({
-          token: MOCK_JWT_TOKEN,
-          expires: MOCK_TOKEN_EXPIRES.toISOString(),
-          siteId: MOCK_SITE_ID,
-          type: 'jwt'
-        });
-        expect(mockControlPlaneAdapter.appExists).toHaveBeenCalledWith(MOCK_SITE_ID, 'user-jwt-token', 'AiroAppBuilder');
-        expect(mockJWTService.getToken).toHaveBeenCalledWith({
-          siteId: MOCK_SITE_ID,
-          canDownload: false,
-          canPublish: false,
-          canPurchaseDomain: false,
-          authType: 'basic',
-          isE2S: false,
-          useTestBudget: false
-        });
-      });
-
-      it('should reject when user has no account in V2 mode', async function v2RejectNoAccount() {
-        mockAuthenticateCustomer.mockResolvedValue({
-          isAuthenticated: true,
-          user: {
-            ...MOCK_USER,
-            accountId: undefined
-          },
-          jwt: 'user-jwt-token'
-        });
-
-        const request = createMockRequest({ siteId: MOCK_SITE_ID });
-        const response = await POST(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(403);
-        expect(data).toEqual({
-          error: 'You must have an account to create agent tokens'
-        });
-        expect(mockControlPlaneAdapter.appExists).not.toHaveBeenCalled();
-      });
-
-      it('should return 404 when site not found in V2 mode', async function v2SiteNotFound() {
-        mockAuthenticateCustomer.mockResolvedValue({
-          isAuthenticated: true,
-          user: MOCK_USER,
-          jwt: 'user-jwt-token'
-        });
-
-        mockControlPlaneAdapter.appExists.mockResolvedValue(false);
-
-        const request = createMockRequest({ siteId: MOCK_SITE_ID });
-        const response = await POST(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(404);
-        expect(data).toEqual({
-          error: 'Site not found'
-        });
-      });
-
-      it('should handle control plane adapter errors in V2 mode', async function v2HandleError() {
-        mockAuthenticateCustomer.mockResolvedValue({
-          isAuthenticated: true,
-          user: MOCK_USER,
-          jwt: 'user-jwt-token'
-        });
-
-        mockControlPlaneAdapter.appExists.mockRejectedValue(new Error('Control plane connection failed'));
-
-        const request = createMockRequest({ siteId: MOCK_SITE_ID });
-        const response = await POST(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(500);
-        expect(data).toEqual({
-          error: 'Token creation failed',
-          details: 'Control plane connection failed'
-        });
-      });
-
-      it('should not use SiteAdapterFactory in V2 mode', async function v2NoSiteAdapter() {
-        mockAuthenticateCustomer.mockResolvedValue({
-          isAuthenticated: true,
-          user: MOCK_USER,
-          jwt: 'user-jwt-token'
-        });
-
-        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
-
-        const request = createMockRequest({ siteId: MOCK_SITE_ID });
-        await POST(request);
-
-        // Should not call SiteAdapter methods
-        expect(mockSiteAdapter.getSiteById).not.toHaveBeenCalled();
-        expect(mockSiteAdapter.requiresAuth).not.toHaveBeenCalled();
-      });
-
-      it('should support custom expiresInSeconds in V2 mode', async function v2CustomExpiration() {
+    describe('expiresInSeconds', function expirationTests() {
+      it('should support custom expiresInSeconds', async function customExpiration() {
         mockAuthenticateCustomer.mockResolvedValue({
           isAuthenticated: true,
           user: MOCK_USER,
@@ -963,7 +350,7 @@ describe('agent-token', function packageTests() {
         expect(mockJWTService.getToken).not.toHaveBeenCalled();
       });
 
-      it('should validate expiresInSeconds limits in V2 mode', async function v2ValidateLimits() {
+      it('should reject expiresInSeconds that exceeds maximum', async function rejectExceedsMax() {
         mockAuthenticateCustomer.mockResolvedValue({
           isAuthenticated: true,
           user: MOCK_USER,
@@ -982,6 +369,132 @@ describe('agent-token', function packageTests() {
           error: 'expiresInSeconds cannot exceed 43200 seconds (12 hours)'
         });
         expect(mockControlPlaneAdapter.appExists).not.toHaveBeenCalled();
+      });
+
+      it('should reject expiresInSeconds less than or equal to 0', async function rejectZero() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        const request = createMockRequest({
+          siteId: MOCK_SITE_ID,
+          expiresInSeconds: 0
+        });
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(400);
+        expect(data).toEqual({
+          error: 'expiresInSeconds must be greater than 0'
+        });
+      });
+    });
+
+    describe('auth type handling', function authTypeTests() {
+      it('should pass e2s auth type and isE2S flag to JWT service', async function e2sAuthType() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: {
+            ...MOCK_USER,
+            authType: 'e2s',
+            isE2S: true
+          },
+          jwt: 'user-jwt-token'
+        });
+
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith({
+          siteId: MOCK_SITE_ID,
+          canDownload: false,
+          canPublish: false,
+          canPurchaseDomain: false,
+          authType: 'e2s',
+          isE2S: true,
+          useTestBudget: false
+        });
+      });
+
+      it('should pass s2s auth type without isE2S flag', async function s2sAuthType() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: {
+            ...MOCK_USER,
+            authType: 's2s',
+            isE2S: false
+          },
+          jwt: 'user-jwt-token'
+        });
+
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith({
+          siteId: MOCK_SITE_ID,
+          canDownload: false,
+          canPublish: false,
+          canPurchaseDomain: false,
+          authType: 's2s',
+          isE2S: false,
+          useTestBudget: false
+        });
+      });
+    });
+
+    describe('site validation cache', function cacheTests() {
+      it('should cache site validation and skip re-validation on second call', async function cacheHit() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+
+        // First call - should validate
+        const request1 = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response1 = await POST(request1);
+        expect(response1.status).toBe(200);
+        expect(mockControlPlaneAdapter.appExists).toHaveBeenCalledTimes(1);
+
+        // Second call - should use cache
+        const request2 = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response2 = await POST(request2);
+        expect(response2.status).toBe(200);
+        expect(mockControlPlaneAdapter.appExists).toHaveBeenCalledTimes(1); // Not called again
+      });
+    });
+
+    describe('switchboard flags', function switchboardTests() {
+      it('should pass useTestBudget flag from switchboard', async function testBudgetFlag() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+        mockCheckSwitchboardFlag.mockResolvedValue(true);
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({
+            useTestBudget: true,
+            canPurchaseDomain: true
+          })
+        );
       });
     });
   });

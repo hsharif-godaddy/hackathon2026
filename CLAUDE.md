@@ -6,9 +6,9 @@ AI-powered app development platform. Multi-service architecture with AI agents, 
 
 ## Deployment Topology
 
-**Production:** One agent + preview + publish per app, deployed together as a Nomad job. The `app` (management UI) is a separate Katana deployment with hosted MySQL. Job allocation managed by [mhp-core](https://github.com/gdcorp-partners/mhp-core) control plane.
+**Production:** One agent + preview + publish per app, deployed together as a Nomad job. The `app` (management UI) is a separate Katana deployment. Job allocation managed by [mhp-core](https://github.com/gdcorp-partners/mhp-core) control plane (mgmt-airo).
 
-**Local dev:** Agent and app processes run on host. Preview and publish containers run in Docker via `docker-compose-generator.ts`.
+**Local dev:** Agent and app processes run on host. Preview and publish containers run in Docker, managed by the `local-control-plane` Go service (`local-control-plane/`) which provides a local mgmt-airo-compatible API backed by SQLite + Docker compose.
 
 **App creation flow:** User clicks create → BFF calls mhp-core management service → control plane allocates Nomad job → user redirected to job instance running agent/preview/publish containers.
 
@@ -42,7 +42,7 @@ if (options.token && options.repoUrl) {
 | Service              | Package        | Port | Notes                                                                           |
 | -------------------- | -------------- | ---- | ------------------------------------------------------------------------------- |
 | **agents/**          | `@airo/agents` | 4000 | Express API, AI agents, SQLite, WebSocket                                       |
-| **app/**             | `website`      | 3000 | Next.js BFF + builder UI, MySQL/Prisma                                          |
+| **app/**             | `website`      | 3000 | Next.js BFF + builder UI                                                        |
 | **dev-supervisor/**  | Go binary      | —    | PID1, process lifecycle, HTTP proxy, JWT auth                                   |
 | **proxy/**           | `airo-proxy`   | —    | Getty Images API proxy                                                          |
 | **packages/shared/** | `@airo/shared` | —    | Shared types and pure utilities (grants, context-attachment, social, websocket) |
@@ -118,14 +118,13 @@ Use `./setup.sh` — don't create `.env` files manually.
 
 - Agents: `agents/.env.example`
 - App: `app/.env.example`
-- Key vars: `OPENAI_API_KEY`, `OPENAI_MODEL`, `DATABASE_URL`, `LOG_LEVEL`
+- Key vars: `OPENAI_API_KEY`, `OPENAI_MODEL`, `LOG_LEVEL`
 
 ## Additional Documentation
 
 - Architecture: `ARCHITECTURE_DOCUMENTATION.md`
 - WebSocket: `docs/client-websocket-architecture.md`
 - OAuth: `docs/oauth-architecture.md`
-- Deployment: `app/DEPLOYMENT-ADAPTER-SYSTEM.md`
 - Testing: `app/TESTING.md`
 - Logging: `LOGGING-GUIDE.md`
 - Setup: `GETTING_STARTED.md`

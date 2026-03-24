@@ -7,7 +7,7 @@ This document describes the `social_posts` table schema and the publish flow for
 **Social posts data is now stored in SQLite (agents service).**
 
 - **Location:** `agents/src/database/schema.ts` → SQLite database (`agents/data/apps.db`)
-- **Reason:** Social posts are agent-generated content and should live with other agent data (conversations, files, memories), Prisma is only for local to fake the v2 control plane
+- **Reason:** Social posts are agent-generated content and should live with other agent data (conversations, files, memories)
 
 ---
 

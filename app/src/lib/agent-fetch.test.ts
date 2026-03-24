@@ -14,9 +14,8 @@ vi.mock('@/stores/useAuthUIStore', () => ({
   },
 }));
 
-// Mock gasket-config to avoid transitive Prisma import chain.
-// appFetch is used by getAgentToken to request agent tokens from the BFF.
-// We make it delegate to global.fetch so existing test mocks continue to work.
+// Mock gasket-config so appFetch delegates to global.fetch.
+// This lets existing test mocks continue to work for getAgentToken.
 vi.mock('@/lib/gasket-config', () => ({
   appFetch: (...args: unknown[]) => (global.fetch as any)(...args),
 }));

@@ -84,7 +84,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
     }
 
-    // Use control plane adapter (automatically handles V2 vs Legacy)
+    // Use control plane adapter
     const adapter = getControlPlaneAdapter();
     const result = await adapter.deploySite(siteId, authContext.jwt, {
       variant,

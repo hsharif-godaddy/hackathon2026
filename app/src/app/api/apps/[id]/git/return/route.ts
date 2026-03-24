@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { agentFetch } from '@/lib/agent-fetch';
+import { getControlPlaneAdapter } from '@/lib/control-plane';
 import {
   createCustomerAuthError,
   type CustomerAuthContext,
   customerHasAccount,
   withCustomerAuth} from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
-import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
 
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext, { params }: { params: Promise<{ id: string }> }) => {
   try {
@@ -26,28 +26,23 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       );
     }
 
-    // Get site adapter and check site exists and ownership
-    const siteAdapter = SiteAdapterFactory.getInstance();
-    const site = await siteAdapter.getSiteById(siteId);
+    // Get site from control plane adapter
+    const adapter = getControlPlaneAdapter();
+    const site = await adapter.getSite(siteId, authContext.jwt || '');
 
     if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     }
 
-    // Customer can only access sites from their own account
-    if (siteAdapter.requiresAuth() && site.account_id !== user.accountId) {
-      return createCustomerAuthError('You can only access your own sites', 403);
-    }
-    
-    if (!site?.agent_url) {
+    if (!site.agent_url) {
       throw new Error('Site does not have agent URL')
     }
-    
+
     // Forward the request to the agent service
     const agentUrl = `${site.agent_url}/git/return`
-    
+
     const body = await request.text()
-    
+
     const response = await agentFetch(agentUrl, {
       siteId: siteId,
       method: 'POST',
@@ -64,9 +59,9 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         statusText: response.statusText
       })
       return NextResponse.json(
-        { 
+        {
           error: 'Failed to return to latest commit',
-          status: response.status 
+          status: response.status
         },
         { status: response.status }
       )
@@ -81,9 +76,9 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       error: error instanceof Error ? error.message : String(error)
     })
     return NextResponse.json(
-      { 
-        error: 'Internal server error', 
-        message: error instanceof Error ? error.message : 'Unknown error' 
+      {
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
     )

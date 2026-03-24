@@ -6,7 +6,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { AuthType } from '@airo/shared/auth';
 
-import { AccountAdapterFactory } from '@/lib/account-adapters/AccountAdapterFactory';
 import {
   addApmContext,
   extractAppIdFromPath,
@@ -50,9 +49,13 @@ export function setSpanJobId(jobId: string): void {
  */
 export const SHOPPER_AUTH_FAILURE_MESSAGE = 'Your account does not have authorization to access this application.';
 
-// Use account adapter factory to get the appropriate service for the environment
-function getAccountService() {
-  return AccountAdapterFactory.getInstance();
+/**
+ * Simple account service that derives accountId from customer identity.
+ * In V2, account management is handled by mgmt-airo; we just need to return
+ * an account-like object so customerHasAccount() returns true.
+ */
+function getOrCreateAccount(_shopperId: string, customerId: string): { id: string } {
+  return { id: customerId };
 }
 
 export interface CustomerUser {
@@ -92,8 +95,7 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       const mockShopperId = MOCK_USER.id;
       const mockCustomerId = MOCK_USER.id;
 
-      // Use idempotent getOrCreateAccount (safe for concurrent calls)
-      const mockAccount = await getAccountService().getOrCreateAccount(mockShopperId, mockCustomerId);
+      const mockAccount = getOrCreateAccount(mockShopperId, mockCustomerId);
       logger.info('auth.mock.account.ready', { message: 'Mock account ready for customer auth', accountId: mockAccount.id }, { tags: ['security'] });
 
       return {
@@ -114,12 +116,11 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
     if (await isAuthDisabled()) {
       logger.info('auth.dev.bypass', 'Customer auth bypassed - development mode', { tags: ['security'] });
 
-      // Ensure dev account exists in database
+      // Derive dev account from hardcoded dev identity
       const devShopperId = 'dev-user';
       const devCustomerId = 'dev-customer-123';
 
-      // Use idempotent getOrCreateAccount (safe for concurrent calls)
-      const devAccount = await getAccountService().getOrCreateAccount(devShopperId, devCustomerId);
+      const devAccount = getOrCreateAccount(devShopperId, devCustomerId);
       logger.info('auth.dev.account.ready', { message: 'Dev account ready for testing', accountId: devAccount.id }, { tags: ['security'] });
 
       return {
@@ -127,7 +128,7 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
         user: {
           shopperId: devShopperId,
           customerId: devCustomerId,
-          accountId: devAccount?.id, // Use actual account ID from database
+          accountId: devAccount?.id, // Derived from customerId
           exp: Math.floor(Date.now() / 1000) + 3600,
           iat: Math.floor(Date.now() / 1000),
           isE2S: false
@@ -182,9 +183,8 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       };
     }
 
-    // Get or create account using idempotent upsert
-    // Safe for concurrent calls - will not throw unique constraint errors
-    const account = await getAccountService().getOrCreateAccount(shopperId, customerId);
+    // Derive accountId from customerId (pure mapping, no persistence)
+    const account = getOrCreateAccount(shopperId, customerId);
 
     const authType = result.payload.authType || 'basic';
     const user: CustomerUser = {

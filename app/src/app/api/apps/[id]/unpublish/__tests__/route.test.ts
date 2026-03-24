@@ -20,7 +20,6 @@ import { POST } from '../route';
  */
 const {
   mockControlPlaneAdapter,
-  mockIsV2ControlPlaneEnabled,
   mockAuthenticateCustomer,
   mockAiroMgmtClient,
   mockLogger,
@@ -32,7 +31,6 @@ const {
     mockControlPlaneAdapter: {
       getSite: vi.fn(),
     },
-    mockIsV2ControlPlaneEnabled: vi.fn(),
     mockAuthenticateCustomer: vi.fn(),
     mockAiroMgmtClient: {
       unpublishApp: vi.fn(),
@@ -57,7 +55,6 @@ const {
 vi.mock('@/lib/control-plane', function mockControlPlaneModule() {
   return {
     getControlPlaneAdapter: vi.fn().mockReturnValue(mockControlPlaneAdapter),
-    isV2ControlPlaneEnabled: mockIsV2ControlPlaneEnabled,
   };
 });
 
@@ -264,7 +261,6 @@ describe('unpublish POST', function unpublishTests() {
       vi.clearAllMocks();
 
       // Default mock implementations
-      mockIsV2ControlPlaneEnabled.mockReturnValue(true);
       mockCheckSwitchboardFlag.mockResolvedValue(true);
       mockAiroMgmtClient.unpublishApp.mockResolvedValue(MOCK_UNPUBLISH_RESPONSE);
       mockJWTService.createToken.mockResolvedValue({ token: 'test-token', expires: new Date() });
@@ -453,7 +449,6 @@ describe('unpublish POST', function unpublishTests() {
       });
 
       mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_V2_SITE);
-      mockIsV2ControlPlaneEnabled.mockReturnValue(true);
 
       const request = createMockRequest(MOCK_SITE_ID, {
         disconnectDomain: true,
@@ -504,7 +499,6 @@ describe('unpublish POST', function unpublishTests() {
       });
 
       mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_V2_SITE_WITH_PENDING_DOMAIN);
-      mockIsV2ControlPlaneEnabled.mockReturnValue(true);
 
       const request = createMockRequest(MOCK_SITE_ID, {
         disconnectDomain: true,
@@ -528,7 +522,6 @@ describe('unpublish POST', function unpublishTests() {
       });
 
       mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_V2_SITE_WITH_PREFIX_DOMAIN);
-      mockIsV2ControlPlaneEnabled.mockReturnValue(true);
 
       const request = createMockRequest(MOCK_SITE_ID, {
         disconnectDomain: true,
@@ -592,8 +585,7 @@ describe('unpublish POST', function unpublishTests() {
       expect(data.retryable).toBe(true);
     });
 
-    it('should work for legacy site with agents only', async function legacySite() {
-      mockIsV2ControlPlaneEnabled.mockReturnValue(false);
+    it('should work for site without V2 metadata with agents only', async function siteWithoutV2Metadata() {
       mockAuthenticateCustomer.mockResolvedValue({
         isAuthenticated: true,
         user: MOCK_USER,
@@ -613,8 +605,7 @@ describe('unpublish POST', function unpublishTests() {
       expect(mockAiroMgmtClient.unpublishApp).not.toHaveBeenCalled();
     });
 
-    it('should return 500 when both agents and control plane fail', async function bothFail() {
-      mockIsV2ControlPlaneEnabled.mockReturnValue(false);
+    it('should return 500 when agents call fails for site without V2 metadata', async function agentsFail() {
       mockAuthenticateCustomer.mockResolvedValue({
         isAuthenticated: true,
         user: MOCK_USER,

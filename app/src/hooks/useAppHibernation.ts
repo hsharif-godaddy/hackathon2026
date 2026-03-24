@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { LifecycleReason, LifecycleState, type SiteVariant } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
-import { LifecycleReason, LifecycleState, type SiteVariant } from '@/lib/site-adapters/interfaces/ISiteAdapter';
 import { useServerPollingStore } from '@/stores/useServerPollingStore';
 import { AppDetailsResponse } from './useAppDetails';
 

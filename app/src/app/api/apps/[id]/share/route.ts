@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { agentFetch } from '@/lib/agent-fetch';
+import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
@@ -64,13 +65,23 @@ export const GET = withCustomerAuth(async (
       return NextResponse.json({ error: 'appId path parameter is required' }, { status: 400 });
     }
 
+    // Get site from control plane to resolve agent URL
+    const adapter = getControlPlaneAdapter();
+    const site = await adapter.getSite(appId, authContext.jwt);
+
+    if (!site) {
+      return NextResponse.json({ error: 'App not found' }, { status: 404 });
+    }
+
+    if (!site.agent_url) {
+      return NextResponse.json({ error: 'App agent not available' }, { status: 503 });
+    }
+
     logger.info('share.api.list.start', {
       appId,
     });
 
-    // Call agents API to list share tokens
-    const agentsBaseUrl = process.env.AGENTS_SERVICE_URL || 'http://localhost:4000';
-    const url = `${agentsBaseUrl}/apps/${appId}/share`;
+    const url = `${site.agent_url}/apps/${appId}/share`;
     const response = await agentFetch(url, {
       siteId: appId,
     });
@@ -190,15 +201,25 @@ export const POST = withCustomerAuth(async (
     // Convert days to seconds for agents API
     const expiresIn = Math.floor(expiresInDays * 86400); // 86400 seconds per day
 
+    // Get site from control plane to resolve agent URL
+    const adapter = getControlPlaneAdapter();
+    const site = await adapter.getSite(appId, authContext.jwt);
+
+    if (!site) {
+      return NextResponse.json({ error: 'App not found' }, { status: 404 });
+    }
+
+    if (!site.agent_url) {
+      return NextResponse.json({ error: 'App agent not available' }, { status: 503 });
+    }
+
     logger.info('share.api.create.start', {
       appId,
       expiresInDays,
       expiresIn,
     });
 
-    // Call agents API to create share token (API accepts seconds)
-    const agentsBaseUrl = process.env.AGENTS_SERVICE_URL || 'http://localhost:4000';
-    const url = `${agentsBaseUrl}/apps/${appId}/share`;
+    const url = `${site.agent_url}/apps/${appId}/share`;
     const response = await agentFetch(url, {
       siteId: appId,
       method: 'POST',

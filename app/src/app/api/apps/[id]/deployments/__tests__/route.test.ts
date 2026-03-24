@@ -16,12 +16,11 @@ import { POST } from '../route';
 /**
  * Mock dependencies using vi.hoisted to avoid hoisting issues
  */
-const { mockControlPlaneAdapter, mockIsV2ControlPlaneEnabled, mockAuthenticateCustomer, mockAiroMgmtClient, mockLogger } = vi.hoisted(function setup() {
+const { mockControlPlaneAdapter, mockAuthenticateCustomer, mockAiroMgmtClient, mockLogger } = vi.hoisted(function setup() {
   return {
     mockControlPlaneAdapter: {
       getSite: vi.fn()
     },
-    mockIsV2ControlPlaneEnabled: vi.fn(),
     mockAuthenticateCustomer: vi.fn(),
     mockAiroMgmtClient: {
       publishApp: vi.fn()
@@ -40,7 +39,6 @@ const { mockControlPlaneAdapter, mockIsV2ControlPlaneEnabled, mockAuthenticateCu
 vi.mock('@/lib/control-plane', function mockControlPlaneModule() {
   return {
     getControlPlaneAdapter: vi.fn().mockReturnValue(mockControlPlaneAdapter),
-    isV2ControlPlaneEnabled: mockIsV2ControlPlaneEnabled
   };
 });
 
@@ -171,8 +169,7 @@ describe('deployments POST', function packageTests() {
     beforeEach(function resetMocks() {
       vi.clearAllMocks();
 
-      // Default mock implementations - V2 mode by default
-      mockIsV2ControlPlaneEnabled.mockReturnValue(true);
+      // Default mock implementations
       mockAiroMgmtClient.publishApp.mockResolvedValue(MOCK_DEPLOYMENT_RESPONSE);
     });
 
@@ -292,8 +289,8 @@ describe('deployments POST', function packageTests() {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBe('Site missing required V2 metadata (subscription_id or system_id)');
-      expect(mockLogger.error).toHaveBeenCalledWith('deployments.api.create.missing-v2-ids', expect.any(Object));
+      expect(data.error).toBe('Site missing required metadata (subscription_id or system_id)');
+      expect(mockLogger.error).toHaveBeenCalledWith('deployments.api.create.missing-ids', expect.any(Object));
     });
 
     it('should return 400 for V2 site missing system_id', async function missingSystemId() {
@@ -311,11 +308,11 @@ describe('deployments POST', function packageTests() {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBe('Site missing required V2 metadata (subscription_id or system_id)');
-      expect(mockLogger.error).toHaveBeenCalledWith('deployments.api.create.missing-v2-ids', expect.any(Object));
+      expect(data.error).toBe('Site missing required metadata (subscription_id or system_id)');
+      expect(mockLogger.error).toHaveBeenCalledWith('deployments.api.create.missing-ids', expect.any(Object));
     });
 
-    it('should return 400 for legacy site without V2 IDs in V2 mode', async function legacySiteV2Mode() {
+    it('should return 400 for site without subscription/system IDs', async function siteMissingMetadata() {
       mockAuthenticateCustomer.mockResolvedValue({
         isAuthenticated: true,
         user: MOCK_USER,
@@ -329,27 +326,7 @@ describe('deployments POST', function packageTests() {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBe('Site missing required V2 metadata (subscription_id or system_id)');
-    });
-
-    it('should return 400 for legacy site in legacy mode', async function legacySiteLegacyMode() {
-      mockIsV2ControlPlaneEnabled.mockReturnValue(false);
-
-      mockAuthenticateCustomer.mockResolvedValue({
-        isAuthenticated: true,
-        user: MOCK_USER,
-        jwt: 'user-jwt-token'
-      });
-
-      mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_LEGACY_SITE);
-
-      const request = createMockRequest(MOCK_SITE_ID, { gitHash: MOCK_GIT_HASH });
-      const response = await POST(request, { params: Promise.resolve({ id: MOCK_SITE_ID }) });
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error).toBe('Deployment creation not supported for legacy sites');
-      expect(mockLogger.info).toHaveBeenCalledWith('deployments.api.create.legacy-site', expect.any(Object));
+      expect(data.error).toBe('Site missing required metadata (subscription_id or system_id)');
     });
 
     it('should return 403 when user has no account', async function noAccount() {

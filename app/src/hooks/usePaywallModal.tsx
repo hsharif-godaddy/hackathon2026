@@ -3,11 +3,11 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { UpgradeContainer } from '@/app/develop/components/paywall'
 import PublishLimitModal from '@/components/layout/PublishLimitModal'
+import type { SiteInfo } from '@/lib/control-plane/types'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
-import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
 import { entitlementPollingService } from '@/services/EntitlementPollingService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useSiteStore } from '@/stores/useSiteStore'

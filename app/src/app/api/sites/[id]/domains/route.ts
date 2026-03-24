@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-plane';
+import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { type AiroApiError, type AiroApiErrorV2, AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
@@ -46,14 +46,6 @@ export const POST = withCustomerAuth(async (
       return NextResponse.json(
         { code: ApiErrorCode.AUTH_REQUIRED, error: 'Authentication token required' },
         { status: 401 }
-      );
-    }
-
-    // Only V2 control plane supports domain management
-    if (!isV2ControlPlaneEnabled()) {
-      return NextResponse.json(
-        { code: ApiErrorCode.V2_CONTROL_PLANE_REQUIRED, error: 'Domain management requires V2 control plane' },
-        { status: 400 }
       );
     }
 

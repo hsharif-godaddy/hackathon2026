@@ -64,7 +64,7 @@ export const GET = withCustomerAuth(async (
       return NextResponse.json({
         exports: [],
         total: 0,
-        message: 'Legacy site - no export tracking available'
+        message: 'Site missing subscription metadata - no export tracking available'
       });
     }
 
@@ -171,7 +171,7 @@ export const POST = withCustomerAuth(async (
         message: 'Site missing subscription_id or system_id - export tracking skipped'
       });
 
-      // Return false since tracking didn't occur (legacy site without V2 metadata)
+      // Return false since tracking didn't occur (site missing subscription metadata)
       return NextResponse.json({
         success: false,
         message: 'Export not tracked (missing metadata)',

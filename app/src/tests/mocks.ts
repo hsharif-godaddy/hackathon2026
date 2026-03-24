@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 
-import type { SiteInfo, SiteVariant } from '@/lib/site-adapters/interfaces/ISiteAdapter';
+import type { SiteInfo, SiteVariant } from '@/lib/control-plane/types';
 
 /**
  * Create a mock SiteVariant
@@ -79,8 +79,8 @@ export function createMockSite(overrides: Partial<SiteInfo> = {}): SiteInfo {
     status: 'running',
     account_id: 'test-account-123',
     initial_prompt: 'Build a todo app',
-    created_at: '2024-01-01T00:00:00.000Z',
-    updated_at: '2024-01-01T00:00:00.000Z',
+    created_at: new Date('2024-01-01T00:00:00.000Z'),
+    updated_at: new Date('2024-01-01T00:00:00.000Z'),
     preview_url: 'https://preview.test/app',
     published_url: null,
     variants: [],

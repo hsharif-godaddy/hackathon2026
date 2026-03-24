@@ -88,7 +88,6 @@ export async function getInsightsAuthToken(hostname?: string | null): Promise<st
       // Fall back to environment-based detection
       isProduction =
         process.env.NODE_ENV === 'production' ||
-        !!process.env.MYSQL_DB_USERNAME ||
         !!process.env.AWS_REGION_NOMAD ||
         !!process.env.PRODUCTION_DOMAIN
     }

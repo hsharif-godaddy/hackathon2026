@@ -170,19 +170,6 @@ export class AppService {
     const response = await agentFetch(apiUrl, { siteId: appId })
 
     if (!response.ok) {
-      if (response.status === 404) {
-        const isV2 = process.env.NEXT_PUBLIC_USE_V2_CONTROL_PLANE === 'true'
-
-        if (isV2) {
-          throw new Error(`App not found in agents service: ${response.status}`)
-        }
-
-        logger.info('app-service.get-app.not-found', {
-          appId,
-          message: 'App not found in agents database (may not be registered yet) - returning placeholder for legacy mode'
-        });
-        return { app: { id: appId, name: 'Loading...', port: 0, status: 'creating', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } };
-      }
       throw new Error(`Failed to fetch app: ${response.status}`)
     }
 

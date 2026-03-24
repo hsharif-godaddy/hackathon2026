@@ -38,17 +38,16 @@ The BFF is Next.js App Router API routes at `src/app/api/`. It does NOT just pro
 
 **Agent communication is NOT through the BFF.** The browser talks directly to agents (port 4000) using a Bearer token obtained from `POST /api/auth/agent-token`. See `src/lib/agent-fetch.ts` — it includes circuit breaker (rejects if SSO expired) and retry on 401.
 
-**Control Plane Adapter** (`src/lib/control-plane/`): Routes requests to either V2 (mgmt-airo) or Legacy (local database) based on `USE_V2_CONTROL_PLANE` flag. Don't hardcode V2 vs Legacy logic — use the adapter.
+**Control Plane Adapter** (`src/lib/control-plane/`): Routes requests to mgmt-airo (production) or local-control-plane (local dev) via V2ControlPlaneAdapter.
 
 ### Key BFF Routes
 
-| Route                            | Purpose                | Downstream                          |
-| -------------------------------- | ---------------------- | ----------------------------------- |
-| `POST /api/apps/create`          | Create app             | SiteAdapterFactory                  |
-| `GET/POST/DELETE /api/sites`     | Site management        | Control Plane Adapter               |
-| `POST /api/auth/agent-token`     | JWT for agents service | JWT Service + paywall + switchboard |
-| `GET /api/apps/[id]/deployments` | Deployment history     | mgmt-airo API                       |
-| `GET /api/config`                | Feature flags + config | Returns flags                       |
+| Route                            | Purpose                | Downstream                                |
+| -------------------------------- | ---------------------- | ----------------------------------------- |
+| `GET/POST/DELETE /api/sites`     | Site management        | V2ControlPlaneAdapter → mgmt-airo         |
+| `POST /api/auth/agent-token`     | JWT for agents service | JWT Service + paywall + switchboard       |
+| `GET /api/apps/[id]/deployments` | Deployment history     | mgmt-airo API                             |
+| `GET /api/config`                | Feature flags + config | Returns flags                             |
 
 ## Feature Flags
 
@@ -98,18 +97,6 @@ For JSX-embedded translations use `<FormattedMessage id="key" values={{ ... }} /
 **Pre-commit validation:** Translation keys are validated automatically. Missing keys will block commits. Add missing keys via the i18n UI before committing.
 
 **Full documentation:** See `src/lib/translations/README.md` for comprehensive translation guide covering client/server patterns, pluralization, rich text formatting, and API details.
-
-## Database (MySQL/Prisma)
-
-Schema: `prisma/schema.prisma`. Config: `.env` (`DATABASE_URL`).
-
-```bash
-pnpm --filter website exec prisma migrate dev   # Apply migrations
-pnpm --filter website exec prisma generate       # Regenerate client types
-pnpm --filter website exec prisma studio         # Database GUI
-```
-
-**After pulling schema changes, ALWAYS run both `prisma generate` AND `prisma migrate dev`.** Common error when you forget: `Invalid prisma.sites.findMany() invocation: The column 'airo_app.sites.p...'`
 
 ## WebSocket Architecture
 

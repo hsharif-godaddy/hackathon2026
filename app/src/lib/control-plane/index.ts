@@ -1,12 +1,11 @@
 /**
  * Control Plane Module
  *
- * Exports control plane adapters and utilities for managing sites
- * across different infrastructure backends (V2 mgmt-airo vs Legacy database)
+ * Exports control plane adapter and types for managing sites
+ * via the V2 mgmt-airo backend.
  */
 
-export { getControlPlaneAdapter, isV2ControlPlaneEnabled } from './adapter-factory';
-export { LegacyControlPlaneAdapter } from './legacy-control-plane-adapter';
+export { getControlPlaneAdapter } from './adapter-factory';
 export type {
   CreateSiteResult,
   IControlPlaneAdapter,
@@ -14,4 +13,3 @@ export type {
   SiteStatus
 } from './types';
 export { V2ControlPlaneAdapter } from './v2-control-plane-adapter';
-

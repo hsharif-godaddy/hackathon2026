@@ -9,10 +9,10 @@
  */
 
 import { fetchFeatureFlag } from '@/hooks/useSwitchboard';
+import type { SiteInfo } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
 import { filterPublishedApps } from '@/lib/publish-limit';
 import { logger } from '@/lib/request-context';
-import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
 import { getRootDomain } from '@/utils/getRootDomain';
 import type { AccountSubscription, PaywallDataProvider, PublishedAppsData, SwitchboardFlagsResult } from './providers';
 import { PAYWALL_CONFIG, type ProjectEdge } from './shared';

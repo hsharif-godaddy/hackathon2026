@@ -143,19 +143,14 @@ export const auth = {
  * Dev-supervisor configuration helpers
  */
 export const devSupervisor = {
-  /** Check if TCP mode should be used (only in development) */
+  /** Check if TCP mode should be used */
   shouldUseTcp: () => {
-    // Only allow TCP mode in development
-    if (!isFeatureEnabled.developmentMode()) {
-      return false;
-    }
-
     // Enable if explicitly configured
     if (isFeatureEnabled.devSupervisorTcp()) {
       return true;
     }
 
-    // Auto-enable on macOS for better Docker compatibility (development only)
+    // Auto-enable on macOS for better Docker compatibility
     if (typeof process !== 'undefined' && process.platform === 'darwin') {
       return true;
     }
