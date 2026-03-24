@@ -140,11 +140,60 @@ describe('ChatInput', () => {
     expect(sendButton).toBeDisabled();
   });
 
+  it('should not call onSendMessage via Enter key when input is empty', async () => {
+    const onSendMessage = vi.fn();
+    const { user } = renderWithProviders(
+      <ChatInput {...defaultProps} inputValue="" onSendMessage={onSendMessage} />
+    );
+
+    const textarea = screen.getByRole('textbox');
+    await user.click(textarea);
+    await user.keyboard('{Enter}');
+
+    expect(onSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('should not call onSendMessage via Enter key when input is only whitespace', async () => {
+    const onSendMessage = vi.fn();
+    const { user } = renderWithProviders(
+      <ChatInput {...defaultProps} inputValue="   " onSendMessage={onSendMessage} />
+    );
+
+    const textarea = screen.getByRole('textbox');
+    await user.click(textarea);
+    await user.keyboard('{Enter}');
+
+    expect(onSendMessage).not.toHaveBeenCalled();
+  });
+
   it('should enable send button when input has value', () => {
     renderWithProviders(<ChatInput {...defaultProps} inputValue="Test" />);
 
     const sendButton = screen.getByRole('button', { name: 'builder_chatinput_send' });
     expect(sendButton).not.toBeDisabled();
+  });
+
+  it('should render stop button instead of send button when streaming', () => {
+    renderWithProviders(
+      <ChatInput {...defaultProps} inputValue="Test" isStreaming={true} onStopGeneration={vi.fn()} />
+    );
+
+    expect(screen.getByTestId('chat-stop-button')).toBeInTheDocument();
+    expect(screen.queryByTestId('chat-send-button')).not.toBeInTheDocument();
+  });
+
+  it('should call onStopGeneration when stop button clicked', async () => {
+    const onStopGeneration = vi.fn();
+    const { user } = renderWithProviders(
+      <ChatInput {...defaultProps} inputValue="Test" isStreaming={true} onStopGeneration={onStopGeneration} />
+    );
+
+    const stopButton = screen.getByTestId('chat-stop-button');
+    await user.click(stopButton);
+
+    await waitFor(() => {
+      expect(onStopGeneration).toHaveBeenCalledOnce();
+    });
   });
 
   it('should disable send button when isDisabled is true', () => {
@@ -181,6 +230,60 @@ describe('ChatInput', () => {
     await user.keyboard('{Enter}');
 
     expect(onSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('should not call onSendMessage via Enter key while streaming', async () => {
+    const onSendMessage = vi.fn();
+    const { user } = renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        onSendMessage={onSendMessage}
+        isStreaming={true}
+        onStopGeneration={vi.fn()}
+      />
+    );
+
+    const textarea = screen.getByRole('textbox');
+    await user.click(textarea);
+    await user.keyboard('{Enter}');
+
+    expect(onSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('should allow Enter key submission when streaming without stop handler', async () => {
+    const onSendMessage = vi.fn();
+    const { user } = renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        onSendMessage={onSendMessage}
+        isStreaming={true}
+        // onStopGeneration intentionally omitted - edge case
+      />
+    );
+
+    const textarea = screen.getByRole('textbox');
+    await user.click(textarea);
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => {
+      expect(onSendMessage).toHaveBeenCalledOnce();
+    });
+  });
+
+  it('should render send button when streaming without stop handler', () => {
+    renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        isStreaming={true}
+        // onStopGeneration intentionally omitted - edge case
+      />
+    );
+
+    expect(screen.getByTestId('chat-send-button')).toBeInTheDocument();
+    expect(screen.queryByTestId('chat-stop-button')).not.toBeInTheDocument();
   });
 
   it('should disable textarea when isDisabled is true', () => {

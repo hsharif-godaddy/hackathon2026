@@ -27,7 +27,6 @@ interface ChatInputProps {
   onInputChange: (value: string) => void
   onSendMessage: (content?: string, options?: SendMessageOptions) => void
   onStopGeneration?: () => void
-  onKeyDown?: (e: React.KeyboardEvent<Element>) => void;
   selectedAssets?: AssetManagerItem[]
   maxAssets?: number
   onClearSelectedAsset?: (index: number) => void
@@ -117,7 +116,7 @@ export default function ChatInput({
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      if (uploadingFiles.length === 0) {
+      if (inputValue?.trim() && uploadingFiles.length === 0 && !(isStreaming && onStopGeneration)) {
         handleSend()
       }
     }
