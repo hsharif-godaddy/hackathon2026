@@ -355,6 +355,21 @@ export class StreamingWebSocketController extends EventEmitter {
   }
 
   /**
+   * Request the server to stop the current generation.
+   * Triggers abort on the server's AbortController for the active stream.
+   */
+  stopGeneration(): void {
+    const socket = this.supervisor.getSocket()
+    if (!socket?.connected) return
+
+    socket.emit('stop_generation', {}, (response: { success?: boolean; error?: string }) => {
+      if (response?.error) {
+        logger.warn('websocket.stop.failed', { error: response.error })
+      }
+    })
+  }
+
+  /**
    * Send a message through the WebSocket
    */
   async sendMessage(params: {

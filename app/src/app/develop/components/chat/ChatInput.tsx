@@ -5,6 +5,7 @@ import { useIntl } from 'react-intl'
 import Button from '@ux/button'
 import MicIcon from '@ux/icon/mic'
 import SendIcon from '@ux/icon/send'
+import StopIcon from '@ux/icon/stop'
 
 import AssetInline, { AssetMode } from '@/app/develop/components/chat/AssetInline'
 import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/AssetTypes'
@@ -21,9 +22,11 @@ interface ChatInputProps {
   appId?: string | null
   inputValue?: string
   isDisabled?: boolean
+  isStreaming?: boolean
   isBudgetExceeded?: boolean
   onInputChange: (value: string) => void
   onSendMessage: (content?: string, options?: SendMessageOptions) => void
+  onStopGeneration?: () => void
   onKeyDown?: (e: React.KeyboardEvent<Element>) => void;
   selectedAssets?: AssetManagerItem[]
   maxAssets?: number
@@ -45,9 +48,11 @@ export default function ChatInput({
   appId = null,
   inputValue = '',
   isDisabled,
+  isStreaming,
   isBudgetExceeded,
   onInputChange,
   onSendMessage,
+  onStopGeneration,
   selectedAssets = [],
   maxAssets = 1,
   onClearSelectedAsset,
@@ -194,9 +199,9 @@ export default function ChatInput({
                   onInputChange(e.target.value)
                 }}
                 onKeyDown={onKeyDown}
-                placeholder={isBudgetExceeded ? t('builder_chatinput_budget_exceeded') : isDisabled ? t('builder_chatinput_processing') : t('builder_chatinput_ask_airo')}
+                placeholder={isBudgetExceeded ? t('builder_chatinput_budget_exceeded') : (isDisabled && !isStreaming) ? t('builder_chatinput_processing') : t('builder_chatinput_ask_airo')}
                 rows={3}
-                disabled={isDisabled || isListening || isBudgetExceeded}
+                disabled={(isDisabled && !isStreaming) || isListening || isBudgetExceeded}
                 className={`w-full h-full resize-none border-0 focus:ring-0 focus:outline-none text-base md:text-sm chat-input-text`}
               />
             </div>
@@ -212,7 +217,7 @@ export default function ChatInput({
                   onFileReferencesSelected={onFileReferencesSelected}
                   onUploadStart={onUploadStart}
                   onUploadError={onUploadError}
-                  disabled={isDisabled || isBudgetExceeded || !canAddAsset}
+                  disabled={(isDisabled && !isStreaming) || isBudgetExceeded || !canAddAsset}
                 />
               )}
               {isChatGaugeEnabled && <UsageGauge appId={appId} />}
@@ -224,7 +229,7 @@ export default function ChatInput({
                   onClick={toggleSpeech}
                   onMouseDown={(e) => e.preventDefault()}
                   data-eid={generateClickEID('develop.prompt.speech')}
-                  disabled={isDisabled || isBudgetExceeded}
+                  disabled={(isDisabled && !isStreaming) || isBudgetExceeded}
                   design={isListening ? 'primary' : 'control'}
                   className={isListening
                     ? '!bg-intents-ux-feedbackHighContrastCritical-feedbackColor !border-none'
@@ -234,18 +239,30 @@ export default function ChatInput({
                   size="sm"
                 />
               )}
-              <Button
-                id="chat-send-button"
-                data-testid="chat-send-button"
-                onClick={handleSend}
-                data-eid={generateClickEID('develop.prompt.send')}
-                disabled={!inputValue?.trim() || isDisabled || isBudgetExceeded || uploadingFiles.length > 0}
-                aria-label={t('builder_chatinput_send')}
-                design="primary"
-                icon={<SendIcon />}
-                size="sm"
-                data-partial="componentAiro"
-              />
+              {isStreaming && onStopGeneration ? (
+                <Button
+                  data-testid="chat-stop-button"
+                  onClick={onStopGeneration}
+                  data-eid={generateClickEID('develop.prompt.stop')}
+                  aria-label={t('builder_chatinput_stop')}
+                  design="primary"
+                  icon={<StopIcon />}
+                  size="sm"
+                />
+              ) : (
+                <Button
+                  id="chat-send-button"
+                  data-testid="chat-send-button"
+                  onClick={handleSend}
+                  data-eid={generateClickEID('develop.prompt.send')}
+                  disabled={!inputValue?.trim() || (isDisabled && !isStreaming) || isBudgetExceeded || uploadingFiles.length > 0}
+                  aria-label={t('builder_chatinput_send')}
+                  design="primary"
+                  icon={<SendIcon />}
+                  size="sm"
+                  data-partial="componentAiro"
+                />
+              )}
             </div>
           </div>
         </div>

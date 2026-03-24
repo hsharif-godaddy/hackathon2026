@@ -437,6 +437,18 @@ export class WebSocketServer {
         await this.handleChatMessage(socket, data)
       })
 
+      socket.on('stop_generation', (_data: Record<string, unknown>, ack?: (response: { success?: boolean; error?: string }) => void) => {
+        const stateData = this.stateManager.getStateData(socketId)
+        if (!stateData?.abortController) {
+          ack?.({ error: 'No active stream' })
+          return
+        }
+        this.stateManager.updateConnection(socketId, { userStopped: true })
+        stateData.abortController.abort('user_stopped')
+        this.logger.info('websocket.stop_generation', { socketId })
+        ack?.({ success: true })
+      })
+
       socket.on('get_agents', () => {
         this.sendAvailableAgents(socket)
       })
@@ -1273,7 +1285,7 @@ export class WebSocketServer {
           this.activeObservabilityToolSpans.set(spanKey, result)
         }
       } catch (hookError) {
-        this.logger.warn('Tool start hook failed', hookError)
+        this.logger.warn('websocket.tool_start_hook.failed', { error: hookError })
       }
     }
   }
@@ -1329,7 +1341,7 @@ export class WebSocketServer {
 
         await this.config.onToolEnd(params)
       } catch (hookError) {
-        this.logger.warn('Tool end hook failed', hookError)
+        this.logger.warn('websocket.tool_end_hook.failed', { error: hookError })
       }
     }
 
@@ -1926,7 +1938,7 @@ export class WebSocketServer {
       // the stream's async abort handlers finish executing.
       const controller = new AbortController()
       const abortSignal = controller.signal
-      this.stateManager.updateConnection(socketId, { abortController: controller })
+      this.stateManager.updateConnection(socketId, { abortController: controller, userStopped: false })
 
       // Clear pending setup if socket disconnected during setup but stream is now starting
       // This happens when the agent starts streaming after the client disconnected
@@ -2102,7 +2114,10 @@ export class WebSocketServer {
       //   - Persistence finalization (message saved with inProgress: false)
       //   - Pre-completion hooks (git commits)
       //   - Complete event publication (with finishReason if aborted)
-      const finishReason = abortSignal.aborted ? 'aborted' : undefined
+      const completionStateData = this.stateManager.getStateData(socketId)
+      const finishReason = abortSignal.aborted
+        ? (completionStateData?.userStopped ? 'user_stopped' : 'aborted')
+        : undefined
       await this.completeConversation(socketId, agentName, startTime, processedContext, finishReason)
 
       // Clean up state after abort — the disconnect timeout handler defers cleanup
@@ -2862,7 +2877,7 @@ export class WebSocketServer {
           llmSpanInfo = result
         }
       } catch (hookError) {
-        this.logger.warn('LLM start hook failed', hookError)
+        this.logger.warn('websocket.llm_start_hook.failed', { error: hookError })
       }
     }
 
@@ -3252,7 +3267,7 @@ Please try again with corrected formatting.`
 
           await this.config.onLlmEnd(llmEndParams)
         } catch (hookError) {
-          this.logger.warn('LLM end hook failed', hookError)
+          this.logger.warn('websocket.llm_end_hook.failed', { error: hookError })
         }
       }
 

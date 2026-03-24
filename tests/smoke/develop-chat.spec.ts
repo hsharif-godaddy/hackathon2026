@@ -231,9 +231,44 @@ test.describe('Develop Page', () => {
     console.log('  ✓ AI response completed');
 
     // ========================================
-    // STEP 9: Test page refresh recovery
+    // STEP 9: Test stop button during streaming
     // ========================================
-    console.log('🔄 Step 9: Testing page refresh...');
+    console.log('🛑 Step 9: Testing stop button...');
+
+    const stopMessage = 'Create a long detailed blog post';
+    await chatInput.clear();
+    await chatInput.fill(stopMessage);
+    await chatInput.press('Enter');
+
+    // Verify message appears in transcript
+    await expect(transcript.getByText(stopMessage, { exact: true })).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    console.log('  ✓ Message sent for stop test');
+
+    // Wait for stop button to appear (replaces send button during streaming)
+    const stopButton = page.getByTestId('chat-stop-button');
+    await expect(stopButton).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    console.log('  ✓ Stop button appeared during streaming');
+
+    // Verify send button is not visible (replaced by stop button)
+    await expect(page.getByTestId('chat-send-button')).not.toBeVisible();
+    console.log('  ✓ Send button hidden during streaming');
+
+    // Click stop button
+    await stopButton.click({ force: true });
+    console.log('  ✓ Stop button clicked');
+
+    // Wait for streaming to end and send button to reappear
+    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: 10000 });
+    console.log('  ✓ Send button reappeared after stop');
+
+    // Verify input is enabled (can type during and after streaming)
+    await expect(chatInput).not.toBeDisabled();
+    console.log('  ✓ Chat input remains enabled');
+
+    // ========================================
+    // STEP 10: Test page refresh recovery
+    // ========================================
+    console.log('🔄 Step 10: Testing page refresh...');
 
     await page.reload();
 

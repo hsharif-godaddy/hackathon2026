@@ -2699,3 +2699,128 @@ describe('WebSocketServer - Abort Signal Handling', () => {
     server.close()
   })
 })
+
+describe('WebSocketServer - Stop Generation', () => {
+  let httpServer: HTTPServer
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    httpServer = new HTTPServer()
+  })
+
+  async function setupWithStopHandler() {
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent'
+    })
+
+    const stopCall = mockSocket.on.mock.calls.find((call: any[]) => call[0] === 'stop_generation')
+    if (!stopCall) {
+      throw new Error('stop_generation handler not found after connection setup')
+    }
+
+    return { server, messageHandler, stopHandler: stopCall[1] as (data: any, ack?: (...args: any[]) => void) => Promise<void> }
+  }
+
+  it('should return error via ACK when no active stream', async () => {
+    const { server, stopHandler } = await setupWithStopHandler()
+    const ack = vi.fn()
+
+    await stopHandler({}, ack)
+
+    expect(ack).toHaveBeenCalledWith({ error: 'No active stream' })
+    server.close()
+  })
+
+  it('should set userStopped and abort when stream is active', async () => {
+    const { server, stopHandler } = await setupWithStopHandler()
+
+    // Create a connection with an active abort controller
+    const stateManager = (server as any).stateManager
+    stateManager.createConnection(mockSocket.id, {
+      conversationId: 'conv-stop-test',
+      agentName: 'test-agent',
+      context: { socketId: mockSocket.id, agentName: 'test-agent' }
+    })
+    const abortController = new AbortController()
+    stateManager.updateConnection(mockSocket.id, { abortController })
+
+    const ack = vi.fn()
+    await stopHandler({}, ack)
+
+    expect(ack).toHaveBeenCalledWith({ success: true })
+    expect(stateManager.getStateData(mockSocket.id).userStopped).toBe(true)
+    expect(abortController.signal.aborted).toBe(true)
+
+    server.close()
+  })
+
+  it('should produce user_stopped finishReason instead of aborted', async () => {
+    const mockPersistence = createMockPersistence({
+      startConversation: vi.fn().mockResolvedValue('conv-stop'),
+      startAgentTurn: vi.fn().mockResolvedValue('msg-stop')
+    })
+
+    // Abortable stream that blocks until abort signal fires
+    mockAgent.streamGenerate = vi.fn().mockImplementation((_prompt: string, options: any) => {
+      return Promise.resolve({
+        baseStream: {
+          getReader: () => ({
+            read: () => new Promise((_, reject) => {
+              options?.abortSignal?.addEventListener('abort', () => {
+                const error = new Error('The operation was aborted')
+                error.name = 'AbortError'
+                reject(error)
+              })
+            }),
+            cancel: vi.fn(),
+            releaseLock: vi.fn()
+          }),
+          cancel: vi.fn()
+        },
+        // eslint-disable-next-line require-yield
+        textStream: (async function* () {
+          await new Promise((_, reject) => {
+            options?.abortSignal?.addEventListener('abort', () => {
+              const error = new Error('The operation was aborted')
+              error.name = 'AbortError'
+              reject(error)
+            })
+          })
+        })(),
+        getFinalResult: vi.fn().mockResolvedValue({
+          usage: { inputTokens: 10, outputTokens: 5 },
+          toolCalls: [],
+          finishReason: 'stop'
+        })
+      })
+    })
+
+    const { server, messageHandler, stopHandler } = await setupWithStopHandler();
+    (server as any).messagePersistence = mockPersistence
+
+    const messagePromise = messageHandler({
+      message: 'Test user stop',
+      agentId: 'test-agent',
+      context: { metadata: { appId: 'test-app' } }
+    })
+
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    // Use the stop handler to set userStopped and abort (like a real user click)
+    const ack = vi.fn()
+    await stopHandler({}, ack)
+    expect(ack).toHaveBeenCalledWith({ success: true })
+
+    await messagePromise
+
+    const completeEvents = mockSocket.emit.mock.calls.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'complete'
+    )
+
+    expect(completeEvents).toHaveLength(1)
+    expect(completeEvents[0][1].data.finishReason).toBe('user_stopped')
+
+    server.close()
+  })
+})

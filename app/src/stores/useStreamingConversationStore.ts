@@ -81,6 +81,7 @@ export interface StreamingMessage {
   maxStepsReached?: boolean        // True when agent hit max steps limit
   outputTokenLimitReached?: boolean // True when LLM hit maxOutputTokens (text truncation or incomplete tools)
   connectionLost?: boolean         // True when stream was aborted due to disconnect timeout
+  userStopped?: boolean            // True when user clicked stop button
   upstreamError?: boolean           // True if an error from upstream service, if any
   budgetExceeded?: boolean         // True if user exceeded their usage budget
   error?: string                   // Error message
@@ -112,6 +113,7 @@ export interface ChatMessage {
   maxStepsReached?: boolean        // True when agent hit max steps limit
   outputTokenLimitReached?: boolean // True when LLM hit maxOutputTokens (text truncation or incomplete tools)
   connectionLost?: boolean         // True when stream was aborted due to disconnect timeout
+  userStopped?: boolean            // True when user clicked stop button
   upstreamError?: boolean          // True if an error from upstream service, if any
   budgetExceeded?: boolean         // True if user exceeded their usage budget
   error?: string                   // Error message
@@ -888,6 +890,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     const outputTokenLimitReached = metadata?.finishReason === 'length'
     // Detect connection lost: stream aborted due to disconnect grace period timeout
     const connectionLost = metadata?.finishReason === 'aborted'
+    // Detect user-initiated stop
+    const userStopped = metadata?.finishReason === 'user_stopped'
 
     if (outputTokenLimitReached) {
       logger.warn('streaming-store.stream.finalize.output_limit', {
@@ -901,6 +905,12 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       logger.warn('streaming-store.stream.finalize.connection_lost', {
         messageId: activeStream.id,
         finishReason: metadata?.finishReason,
+      })
+    }
+
+    if (userStopped) {
+      logger.info('streaming-store.stream.finalize.user_stopped', {
+        messageId: activeStream.id,
       })
     }
 
@@ -926,6 +936,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       maxStepsReached: activeStream.maxStepsReached,
       outputTokenLimitReached: outputTokenLimitReached || undefined,
       connectionLost: connectionLost || undefined,
+      userStopped: userStopped || undefined,
       upstreamError: activeStream.upstreamError,
       budgetExceeded: activeStream.budgetExceeded,
       ...(activeStream.error && { error: activeStream.error }),

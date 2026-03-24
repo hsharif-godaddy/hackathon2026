@@ -113,7 +113,7 @@ function DevelopPageContent() {
   const setInputValue = useSetInputValue()
   const setAiEditContext = useSetAiEditContext()
   const autoSendInitialMessage = useAutoSendInitialMessage()
-  const { sendMessage, loadMoreHistory, webSocketState } = useStreamingWebSocket()
+  const { sendMessage, stopGeneration, loadMoreHistory, webSocketState } = useStreamingWebSocket()
   const isLoading = useIsLoading()
   const isStreaming = useIsActivelyStreaming()
 
@@ -987,6 +987,7 @@ function DevelopPageContent() {
               ) : (
                 <ChatPane
                   sendMessage={sendMessage}
+                  stopGeneration={stopGeneration}
                   isCreateFlowSession={isCreateFlowSession}
                 />
               )}
@@ -1141,6 +1142,7 @@ function DevelopPageContent() {
                     >
                       <ChatPane
                         sendMessage={sendMessage}
+                        stopGeneration={stopGeneration}
                         isCreateFlowSession={isCreateFlowSession}
                       />
                     </div>

@@ -177,6 +177,7 @@ vi.mock('framer-motion', () => ({
 
 describe('ChatPane', () => {
   const mockSendMessage = vi.fn();
+  const mockStopGeneration = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -206,25 +207,25 @@ describe('ChatPane', () => {
   });
 
   it('should render without crashing', () => {
-    renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+    renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
     expect(screen.getByTestId('chat-input')).toBeInTheDocument();
   });
 
   it('should render chat input', () => {
-    renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+    renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
     expect(screen.getByTestId('chat-input')).toBeInTheDocument();
   });
 
   it('should render chat toolbar', () => {
-    renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+    renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
     expect(screen.getByTestId('chat-toolbar')).toBeInTheDocument();
   });
 
   it('should render message list', () => {
-    renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+    renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
     expect(screen.getByTestId('message-list')).toBeInTheDocument();
   });
@@ -232,7 +233,7 @@ describe('ChatPane', () => {
   it('should show version history when HISTORY tab is active', () => {
     mockChatTabs.activeChatTab = ChatTab.HISTORY;
 
-    renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+    renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
     expect(screen.getByTestId('version-history')).toBeInTheDocument();
   });
@@ -241,13 +242,13 @@ describe('ChatPane', () => {
     mockChatTabs.activeChatTab = ChatTab.PREVIEW;
     mockDevelopPageStore.isMobile = false;
 
-    renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+    renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
     expect(mockChatTabs.setActiveChatTab).toHaveBeenCalledWith(ChatTab.CHAT);
   });
 
   it('should fetch ventureId on mount', async () => {
-    renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+    renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
     await waitFor(() => {
       const urls = (global.fetch as any).mock.calls.map((call: any[]) => String(call[0]))
@@ -258,7 +259,7 @@ describe('ChatPane', () => {
   it('should handle sendMessage prop', () => {
     const sendMessage = vi.fn();
 
-    renderWithProviders(<ChatPane sendMessage={sendMessage} />);
+    renderWithProviders(<ChatPane sendMessage={sendMessage} stopGeneration={vi.fn()} />);
 
     expect(screen.getByTestId('chat-input')).toBeInTheDocument();
   });
@@ -266,7 +267,7 @@ describe('ChatPane', () => {
   describe('input disabled during recovery', () => {
     it('should disable input when historyLoadingComplete is false', () => {
       mockStreamingStore.historyLoadingComplete = false;
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       const chatInput = screen.getByTestId('chat-input');
       expect(chatInput).toHaveAttribute('data-disabled', 'true');
@@ -276,7 +277,7 @@ describe('ChatPane', () => {
       mockStreamingStore.historyLoadingComplete = true;
       mockStreamingStore.isLoading = false;
       mockStreamingStore.isActivelyStreaming = false;
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       const chatInput = screen.getByTestId('chat-input');
       expect(chatInput).toHaveAttribute('data-disabled', 'false');
@@ -288,7 +289,7 @@ describe('ChatPane', () => {
       mockStreamingStore.inputValue = 'fix this error'
       const sendMessage = vi.fn()
 
-      renderWithProviders(<ChatPane sendMessage={sendMessage} />)
+      renderWithProviders(<ChatPane sendMessage={sendMessage} stopGeneration={vi.fn()} />)
 
       act(() => {
         window.dispatchEvent(
@@ -307,7 +308,7 @@ describe('ChatPane', () => {
       mockStreamingStore.inputValue = 'fix this error'
       const sendMessage = vi.fn()
 
-      renderWithProviders(<ChatPane sendMessage={sendMessage} />)
+      renderWithProviders(<ChatPane sendMessage={sendMessage} stopGeneration={vi.fn()} />)
 
       act(() => {
         window.dispatchEvent(
@@ -322,7 +323,7 @@ describe('ChatPane', () => {
       mockStreamingStore.inputValue = ''
       const sendMessage = vi.fn()
 
-      renderWithProviders(<ChatPane sendMessage={sendMessage} />)
+      renderWithProviders(<ChatPane sendMessage={sendMessage} stopGeneration={vi.fn()} />)
 
       act(() => {
         window.dispatchEvent(
@@ -338,7 +339,7 @@ describe('ChatPane', () => {
       mockStreamingStore.isLoading = true
       const sendMessage = vi.fn()
 
-      renderWithProviders(<ChatPane sendMessage={sendMessage} />)
+      renderWithProviders(<ChatPane sendMessage={sendMessage} stopGeneration={vi.fn()} />)
 
       act(() => {
         window.dispatchEvent(
@@ -354,7 +355,7 @@ describe('ChatPane', () => {
       mockStreamingStore.isActivelyStreaming = true
       const sendMessage = vi.fn()
 
-      renderWithProviders(<ChatPane sendMessage={sendMessage} />)
+      renderWithProviders(<ChatPane sendMessage={sendMessage} stopGeneration={vi.fn()} />)
 
       act(() => {
         window.dispatchEvent(
@@ -369,13 +370,13 @@ describe('ChatPane', () => {
   it('should render plan tracker when development plan exists', () => {
     mockStreamingStore.developmentPlan = { phases: [] };
 
-    renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+    renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
     expect(screen.getByTestId('plan-tracker')).toBeInTheDocument();
   });
 
   it('should not render rebuild context panel', () => {
-    renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+    renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
     expect(screen.queryByText(/rebuild mode/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/loading rebuild context/i)).not.toBeInTheDocument();
@@ -386,7 +387,7 @@ describe('ChatPane', () => {
       mockStreamingStore.messages = [];
       mockStreamingStore.activeStream = null;
 
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       const chatInput = screen.getByTestId('chat-input');
       expect(chatInput).toHaveAttribute('data-budget-exceeded', 'false');
@@ -396,7 +397,7 @@ describe('ChatPane', () => {
       mockStreamingStore.messages = [{ budgetExceeded: true }];
       mockSwitchboardData.data = false;
 
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       const chatInput = screen.getByTestId('chat-input');
       expect(chatInput).toHaveAttribute('data-budget-exceeded', 'true');
@@ -409,7 +410,7 @@ describe('ChatPane', () => {
       mockGrantsData.data = [{ id: 'grant-1', creditsSpent: 100, creditsMax: 100 }];
       mockActiveGrant.result = undefined; // No active grant available
 
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       const chatInput = screen.getByTestId('chat-input');
       expect(chatInput).toHaveAttribute('data-budget-exceeded', 'true');
@@ -422,7 +423,7 @@ describe('ChatPane', () => {
       mockGrantsData.data = [{ id: 'grant-1', creditsSpent: 50, creditsMax: 100 }];
       mockActiveGrant.result = { id: 'grant-1' }; // Active grant available
 
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       const chatInput = screen.getByTestId('chat-input');
       expect(chatInput).toHaveAttribute('data-budget-exceeded', 'false');
@@ -438,7 +439,7 @@ describe('ChatPane', () => {
       mockSubscriptionData.data = { id: 'sub-123' };
       mockGrantsData.data = undefined; // Still loading
 
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       const chatInput = screen.getByTestId('chat-input');
       expect(chatInput).toHaveAttribute('data-budget-exceeded', 'true');
@@ -453,7 +454,7 @@ describe('ChatPane', () => {
       mockSubscriptionData.data = { id: 'sub-123' };
       mockGrantsData.data = undefined; // Still loading
 
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       const chatInput = screen.getByTestId('chat-input');
       expect(chatInput).toHaveAttribute('data-budget-exceeded', 'false');
@@ -466,7 +467,7 @@ describe('ChatPane', () => {
       mockGrantsData.data = [];
       mockActiveGrant.result = undefined;
 
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       const chatInput = screen.getByTestId('chat-input');
       expect(chatInput).toHaveAttribute('data-budget-exceeded', 'true');
@@ -477,7 +478,7 @@ describe('ChatPane', () => {
       mockStreamingStore.activeStream = { budgetExceeded: true };
       mockSwitchboardData.data = false;
 
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       const chatInput = screen.getByTestId('chat-input');
       expect(chatInput).toHaveAttribute('data-budget-exceeded', 'true');
@@ -495,7 +496,7 @@ describe('ChatPane', () => {
       mockGrantsData.data = [{ id: 'grant-1', creditsSpent: 0, creditsMax: 100 }];
       mockActiveGrant.result = { id: 'grant-1' }; // Fresh grant available
 
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       const chatInput = screen.getByTestId('chat-input');
       expect(chatInput).toHaveAttribute('data-budget-exceeded', 'false');
@@ -514,7 +515,7 @@ describe('ChatPane', () => {
       ];
       mockActiveGrant.result = { id: 'credit-pack-new' }; // New pack is active
 
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       const chatInput = screen.getByTestId('chat-input');
       expect(chatInput).toHaveAttribute('data-budget-exceeded', 'false');

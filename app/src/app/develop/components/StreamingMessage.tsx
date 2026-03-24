@@ -34,7 +34,8 @@ function shouldRenderMessage(message: ChatMessage | StreamingMessageType): boole
     message.budgetExceeded || // Show budget exceeded message
     message.maxStepsReached || // Show max steps warnings
     message.outputTokenLimitReached || // Show output token limit warnings
-    message.connectionLost // Show connection lost warning
+    message.connectionLost || // Show connection lost warning
+    message.userStopped // Show user stopped indicator
   )
 
   return hasContent

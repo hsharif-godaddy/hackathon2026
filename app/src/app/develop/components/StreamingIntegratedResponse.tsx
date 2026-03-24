@@ -271,6 +271,15 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
           />
         )}
 
+        {/* User stopped notification */}
+        {message.userStopped && (
+          <StreamingAlertMessage
+            type="Info"
+            title={t('builder_chatinput_user_stopped_title')}
+            message={t('builder_chatinput_user_stopped_message')}
+          />
+        )}
+
         {/* Budget exceeded error notification */}
         {message.budgetExceeded && <BudgetExceededBanner />}
 

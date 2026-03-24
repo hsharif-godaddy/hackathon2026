@@ -256,6 +256,13 @@ export function useStreamingWebSocket() {
   )
 
   /**
+   * Stop generation - abort the current agent turn
+   */
+  const stopGeneration = useCallback(() => {
+    controllerRef.current?.stopGeneration()
+  }, [])
+
+  /**
    * Load more history messages (pagination)
    * Returns true if the request was sent, false if not connected
    */
@@ -272,6 +279,7 @@ export function useStreamingWebSocket() {
 
   return {
     sendMessage,
+    stopGeneration,
     loadMoreHistory,
     webSocketState,
     isConnected: webSocketState.connected,

@@ -33,6 +33,9 @@ export interface ConnectionStateData {
   // Setup tracking (from pendingSetup)
   setupTimeoutId: NodeJS.Timeout | null
 
+  // User-initiated stop tracking
+  userStopped: boolean
+
   // Current state
   state: ConnectionState
 }
@@ -181,6 +184,7 @@ export class ConnectionStateManager {
       abortController: null,
       recoveryTimeoutId: null,
       setupTimeoutId: null,
+      userStopped: false,
       state: 'connected'
     }
 
@@ -262,7 +266,7 @@ export class ConnectionStateManager {
   updateConnection(socketId: string, updates: Partial<Pick<ConnectionStateData,
     'abortController' | 'lastDeliveredSequence' | 'recoveryTimeoutId' | 'setupTimeoutId' |
     'streamingEvents' | 'pendingSegments' | 'pendingToolCalls' | 'accumulatedContent' |
-    'agentName' | 'context'
+    'agentName' | 'context' | 'userStopped'
   >>): boolean {
     const effectiveId = this.getEffectiveSocketId(socketId)
     const data = this.connections.get(effectiveId)
@@ -281,6 +285,7 @@ export class ConnectionStateManager {
     if (updates.accumulatedContent !== undefined) data.accumulatedContent = updates.accumulatedContent
     if (updates.agentName !== undefined) data.agentName = updates.agentName
     if (updates.context !== undefined) data.context = updates.context
+    if (updates.userStopped !== undefined) data.userStopped = updates.userStopped
 
     return true
   }

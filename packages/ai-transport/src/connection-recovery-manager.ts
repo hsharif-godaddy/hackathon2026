@@ -406,6 +406,7 @@ export class ConnectionRecoveryManager {
       abortController,
       recoveryTimeoutId: null,
       setupTimeoutId: null,
+      userStopped: false,
       state: 'connected'
     }
 

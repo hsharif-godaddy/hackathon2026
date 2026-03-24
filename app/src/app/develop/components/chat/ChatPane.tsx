@@ -52,11 +52,13 @@ import { postMessageToIframe } from '@/utils/postMessage'
 
 interface ChatPaneProps {
   sendMessage: (content: string, aiEditContext?: any, selectedAssets?: AssetManagerItem[] | null, todoListContext?: any, isActionRequest?: boolean, customContext?: any) => Promise<void>
+  stopGeneration: () => void
   isCreateFlowSession?: boolean
 }
 
 export default function ChatPane({
   sendMessage,
+  stopGeneration,
   isCreateFlowSession = false
 }: ChatPaneProps) {
   const t = useTranslations();
@@ -695,9 +697,11 @@ export default function ChatPane({
             appId={appId}
             inputValue={safeInputValue}
             isDisabled={isProcessing}
+            isStreaming={isStreaming}
             isBudgetExceeded={budgetExceeded}
             onInputChange={setInputValue}
             onSendMessage={handleSendMessage}
+            onStopGeneration={stopGeneration}
             selectedAssets={selectedAssets}
             maxAssets={maxAssets}
             onClearSelectedAsset={handleClearSingleAsset}
@@ -784,9 +788,11 @@ export default function ChatPane({
             appId={appId}
             inputValue={safeInputValue}
             isDisabled={isProcessing}
+            isStreaming={isStreaming}
             isBudgetExceeded={budgetExceeded}
             onInputChange={setInputValue}
             onSendMessage={handleSendMessage}
+            onStopGeneration={stopGeneration}
             selectedAssets={selectedAssets}
             maxAssets={maxAssets}
             onClearSelectedAsset={handleClearSingleAsset}
