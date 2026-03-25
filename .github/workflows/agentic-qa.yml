@@ -394,7 +394,7 @@ jobs:
 
       - name: Run Agentic QA Test - ${{ matrix.scenario }}
         id: run-tests
-        timeout-minutes: 45
+        timeout-minutes: 60
         env:
           CI: true
           TEST_USERNAME: ${{ steps.get-credentials.outputs.username }}
