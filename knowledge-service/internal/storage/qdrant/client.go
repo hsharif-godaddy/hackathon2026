@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/qdrant/go-client/qdrant"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/airo-ai-builder/knowledge-service/internal/config"
 	"github.com/airo-ai-builder/knowledge-service/pkg/models"
@@ -75,15 +77,7 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 	}
 
 	if exists {
-		info, infoErr := c.client.GetCollectionInfo(ctx, c.collection)
-		if infoErr != nil {
-			slog.Warn("qdrant.collection.info.failed", "error", infoErr)
-		} else {
-			slog.Debug("qdrant.collection.exists",
-				"collection", c.collection,
-				"pointsCount", info.PointsCount,
-				"status", info.Status.String())
-		}
+		slog.Debug("qdrant.collection.exists", "collection", c.collection)
 		return nil
 	}
 
@@ -117,6 +111,12 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 		},
 	})
 	if err != nil {
+		// Treat AlreadyExists as success — concurrent requests can race to create
+		// the collection when it's missing; the one that loses is still correct.
+		if status.Code(err) == codes.AlreadyExists {
+			slog.Debug("qdrant.collection.already_exists", "collection", c.collection)
+			return nil
+		}
 		return fmt.Errorf("failed to create collection: %w", err)
 	}
 

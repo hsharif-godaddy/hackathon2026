@@ -70,6 +70,14 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ensure the collection exists before ingesting — guards against Qdrant
+	// restarts or Raft sync gaps where some nodes lose the collection.
+	if err := s.qdrant.EnsureCollection(r.Context()); err != nil {
+		slog.Error("ingest.ensure_collection.failed", "error", err)
+		writeError(w, http.StatusServiceUnavailable, "qdrant collection unavailable", "QDRANT_ERROR")
+		return
+	}
+
 	resp, err := s.pipeline.IngestDocuments(r.Context(), req.Documents, req.Force)
 	if err != nil {
 		slog.Error("ingest.failed", "error", err)
