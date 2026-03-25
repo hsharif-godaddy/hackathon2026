@@ -15,7 +15,7 @@ export class PostgresStack extends GDStack {
 
     const vpc = ec2.Vpc.fromLookup(this, 'VPC', { vpcId: this.gdTrustedLandingZone.networking.vpcId });
 
-    if (['dev', 'prod'].includes(config.envName)) {
+    if (['dev', 'prod', 'test'].includes(config.envName)) {
       config.postgresDatabases.forEach(database => {
         // Create security group for PostgreSQL
         const postgresSecurityGroup = new ec2.SecurityGroup(this, `${database}-PostgresSecurityGroup`, {

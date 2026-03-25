@@ -90,7 +90,7 @@ const devConfig: Config = {
   serverlessV2MaxCapacity: 4,
   mysqlReadersCount: 0,
   // PostgreSQL configuration
-  postgresDatabases: ['dev', 'test'],
+  postgresDatabases: ['dev'],
   postgresBackupRetentionDays: 7,
   postgresServerlessV2MinCapacity: 0.5,
   postgresServerlessV2MaxCapacity: 4,
@@ -104,6 +104,7 @@ const devConfig: Config = {
   katanaEcsTaskRoleArn: [
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment5688GlobalEcsTaskRole6C689234',
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment5808GlobalEcsTaskRoleF525C3A7',
+    'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment9599GlobalEcsTaskRole78E503A1', // budget-service dev-private
     'arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Ops'
   ],
   vpnIps: {
@@ -155,8 +156,8 @@ const testConfig: Config = {
   serverlessV2MinCapacity: 0.5,
   serverlessV2MaxCapacity: 8,
   mysqlReadersCount: 0,
-  // PostgreSQL configuration (test DB runs in dev account)
-  postgresDatabases: [],
+  // PostgreSQL configuration
+  postgresDatabases: ['test'],
   postgresBackupRetentionDays: 15,
   postgresServerlessV2MinCapacity: 0.5,
   postgresServerlessV2MaxCapacity: 8,
@@ -166,7 +167,10 @@ const testConfig: Config = {
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops'
   ],
-  katanaEcsTaskRoleArn: ['arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment5808GlobalEcsTaskRoleF525C3A7'],
+  katanaEcsTaskRoleArn: [
+    'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment5808GlobalEcsTaskRoleF525C3A7',
+    'arn:aws:iam::269423819739:role/airobuilde-custom-KatanaEnvironment9636GlobalEcsTaskRoleC9421049', // budget-service test
+  ],
   vpnIps: {},
   awsIamJwtAccount: ['333184933228'],
   monitoring: {
