@@ -11,7 +11,7 @@
  * from low-level transport details and making the connection logic testable.
  */
 
-import { io, type Socket } from 'socket.io-client'
+import { type DisconnectDescription, io, type Socket } from 'socket.io-client'
 
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
@@ -93,7 +93,7 @@ export interface ConnectionCallbacks {
   /**
    * Invoked when the socket disconnects after being connected.
    */
-  onDisconnect?: (params: { reason: Socket.DisconnectReason; socket: Socket }) => void
+  onDisconnect?: (params: { reason: Socket.DisconnectReason; socket: Socket; description?: DisconnectDescription }) => void
   onReconnectAttempt?: (params: { socket: Socket; attempt: number }) => void
   onReconnect?: (params: { socket: Socket; attempt: number }) => void
   onReconnectError?: (params: { socket: Socket; error: Error }) => void
@@ -226,7 +226,7 @@ export class ConnectionManager {
     {
       onConnect: () => void
       onConnectError: (error: Error) => void
-      onDisconnect: (reason: Socket.DisconnectReason) => void
+      onDisconnect: (reason: Socket.DisconnectReason, description?: DisconnectDescription) => void
       onReconnectAttempt: (attempt: number) => void
       onReconnect: (attempt: number) => void
       onReconnectError: (error: Error) => void
@@ -847,12 +847,55 @@ export class ConnectionManager {
         void this.handleConnectError(error, appId)
       },
 
-      onDisconnect: (reason: Socket.DisconnectReason) => {
+      onDisconnect: (reason: Socket.DisconnectReason, description?: DisconnectDescription) => {
         if (this.authTimeoutId) {
           clearTimeout(this.authTimeoutId)
           this.authTimeoutId = null
         }
-        this.callbacks?.onDisconnect?.({ reason, socket })
+
+        // Log disconnect reason with optional description and transport info from Socket.IO
+        // Disconnect reason mapping:
+        // 'io server disconnect' - server forcefully closed connection
+        // 'io client disconnect' - client called disconnect()
+        // 'ping timeout' - client didn't respond to pings
+        // 'transport close' - underlying connection closed
+        // 'transport error' - transport-level error
+        const logData: Record<string, unknown> = {
+          appId,
+          socketId: socket.id,
+          reason,
+        }
+
+        // Extract transport name if available (defensive access for test compatibility)
+        const transportName = socket.io?.engine?.transport?.name
+        if (transportName) {
+          logData.transport = transportName
+        }
+
+        if (description) {
+          if (description instanceof Error) {
+            logData.errorMessage = description.message
+            logData.errorName = description.name
+            logData.errorStack = description.stack
+          } else {
+            const { description: descriptionText, context } = description
+            logData.description = descriptionText
+            if (context) {
+              // Safely serialize context to avoid JSON.stringify issues with non-serializable values
+              try {
+                logData.context = typeof context === 'object'
+                  ? JSON.parse(JSON.stringify(context))
+                  : context
+              } catch {
+                logData.context = String(context)
+              }
+            }
+          }
+        }
+
+        logger.warn('websocket.connection.disconnect', logData)
+
+        this.callbacks?.onDisconnect?.({ reason, socket, description })
       },
 
       onReconnectAttempt: (attempt: number) => {
@@ -877,12 +920,36 @@ export class ConnectionManager {
       },
 
       onError: (error: Error) => {
-        logger.error('websocket.connection.error', {
+        const errorData: Record<string, unknown> = {
           appId,
           message: error.message,
-          stack: error.stack,
+          errorName: error.name,
+          errorType: error.constructor.name,
           connectAttemptId: this.connectionPhases?.connectAttemptId,
-        })
+        }
+
+        // Capture Socket.IO specific error properties if they exist
+        if ('type' in error && typeof error.type === 'string') {
+          errorData.socketIoType = error.type
+        }
+        if ('description' in error && error.description) {
+          errorData.description = error.description
+        }
+        if ('context' in error && error.context) {
+          // Safely serialize context to avoid JSON.stringify issues
+          try {
+            errorData.context = typeof error.context === 'object'
+              ? JSON.parse(JSON.stringify(error.context))
+              : error.context
+          } catch {
+            errorData.context = String(error.context)
+          }
+        }
+        if (error.stack) {
+          errorData.errorStack = error.stack
+        }
+
+        logger.error('websocket.socket.error', errorData)
       },
     }
 

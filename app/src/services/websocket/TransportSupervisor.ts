@@ -12,7 +12,7 @@
  */
 
 import { EventEmitter } from 'events'
-import type { Socket } from 'socket.io-client'
+import type { DisconnectDescription, Socket } from 'socket.io-client'
 
 import {
   AgentsAvailableHandler,
@@ -60,7 +60,7 @@ export interface TransportSupervisorEvents {
   'connection:established': { socket: Socket; recovered: boolean }
   'connection:failed': { error: Error }
   'connection:error': { error: Error }
-  'disconnect': { reason: Socket.DisconnectReason; socket: Socket; wasStreaming: boolean }
+  'disconnect': { reason: Socket.DisconnectReason; socket: Socket; wasStreaming: boolean; description?: DisconnectDescription }
   'reconnect:attempt': { socket: Socket }
   'reconnect:success': { socket: Socket }
   'reconnect:error': { error: Error }
@@ -222,6 +222,15 @@ export class TransportSupervisor extends EventEmitter {
       this.deps.qualityMonitor?.attachToSocket(socket, this.currentAppId)
     }
 
+    // Log connection establishment with transport details
+    const transportName = socket.io?.engine?.transport?.name
+    logger.info('websocket.connection.established', {
+      appId: this.currentAppId,
+      socketId: socket.id,
+      recovered,
+      ...(transportName && { transport: transportName }),
+    })
+
     this.emit('connection:established', { socket, recovered })
   }
 
@@ -237,18 +246,21 @@ export class TransportSupervisor extends EventEmitter {
   private handleAuthFailed(error: Error): void {
     logger.error('websocket.auth.failed', {
       appId: this.currentAppId,
-      error: error.message,
+      errorMessage: error.message,
+      errorName: error.name,
+      errorStack: error.stack,
     })
 
     this.deps.machine.send({ type: 'AUTH_FAILED', error })
   }
 
   private handleConnectionFailed(error: Error): void {
-    const errorMessage = error?.message ?? 'Unknown error'
     logger.error('websocket.connection.init_failed', {
       message: 'Failed to initialize persistent connection',
-      error: errorMessage,
       appId: this.currentAppId,
+      errorMessage: error?.message ?? 'Unknown error',
+      errorName: error?.name,
+      errorStack: error?.stack,
     })
 
     this.deps.machine.send({ type: 'CONNECTION_FAILED', error })
@@ -257,19 +269,42 @@ export class TransportSupervisor extends EventEmitter {
   }
 
   private handleConnectError(error: Error): void {
-    const errorMessage = error?.message ?? 'Unknown error'
-    logger.error('websocket.connection.error', {
-      message: errorMessage,
+    const errorData: Record<string, unknown> = {
       appId: this.currentAppId,
-    })
+      message: error.message,
+      errorName: error.name,
+      errorType: error.constructor.name,
+      errorStack: error.stack,
+    }
+
+    // Capture Socket.IO-specific error properties if they exist
+    // Socket.IO can attach additional fields like 'type', 'description', 'context'
+    if ('type' in error && typeof error.type === 'string') {
+      errorData.socketIoType = error.type
+    }
+    if ('description' in error && error.description) {
+      errorData.description = error.description
+    }
+    if ('context' in error && error.context) {
+      // Safely serialize context to avoid JSON.stringify issues
+      try {
+        errorData.context = typeof error.context === 'object'
+          ? JSON.parse(JSON.stringify(error.context))
+          : error.context
+      } catch {
+        errorData.context = String(error.context)
+      }
+    }
+
+    logger.error('websocket.connect.error', errorData)
 
     this.emit('connection:error', { error })
   }
 
-  private handleDisconnect({ reason, socket }: { reason: Socket.DisconnectReason; socket: Socket }): void {
+  private handleDisconnect({ reason, socket, description }: { reason: Socket.DisconnectReason; socket: Socket; description?: DisconnectDescription }): void {
     this.deps.refs.pendingRecoveryAck.current = null
 
-    // Send DISCONNECT event to machine
+    // Send DISCONNECT event to machine (machine action will log it)
     this.deps.machine.send({ type: 'DISCONNECT', reason: reason || 'unknown' })
 
     const { streamingState, activeStream } = this.deps.getStreamingState()
@@ -295,21 +330,40 @@ export class TransportSupervisor extends EventEmitter {
       }, this.deps.refs.serverConfig.current?.streamRecoveryWindow ?? CONNECTION_RETRY_TIMEOUT_MS)
     }
 
-    this.emit('disconnect', { reason, socket, wasStreaming: isStreaming })
+    this.emit('disconnect', { reason, socket, wasStreaming: isStreaming, description })
   }
 
-  private handleReconnectAttempt({ socket }: { socket: Socket; attempt: number }): void {
+  private handleReconnectAttempt({ socket, attempt }: { socket: Socket; attempt: number }): void {
+    logger.info('websocket.reconnect.attempt', {
+      appId: this.currentAppId,
+      socketId: socket.id,
+      attemptNumber: attempt,
+    })
+
     this.emit('reconnect:attempt', { socket })
   }
 
-  private handleReconnect({ socket }: { socket: Socket; attempt: number }): void {
+  private handleReconnect({ socket, attempt }: { socket: Socket; attempt: number }): void {
     this.clearEscalationTimeout()
+
+    const transportName = socket.io?.engine?.transport?.name
+    logger.info('websocket.reconnect.success', {
+      appId: this.currentAppId,
+      socketId: socket.id,
+      attemptNumber: attempt,
+      ...(transportName && { transport: transportName }),
+    })
+
     this.emit('reconnect:success', { socket })
   }
 
-  private handleReconnectError({ error }: { socket: Socket; error: Error }): void {
+  private handleReconnectError({ socket, error }: { socket: Socket; error: Error }): void {
     logger.warn('websocket.reconnect.error', {
-      error: error.message,
+      appId: this.currentAppId,
+      socketId: socket.id,
+      errorMessage: error.message,
+      errorName: error.name,
+      errorStack: error.stack,
     })
     this.emit('reconnect:error', { error })
   }
@@ -320,6 +374,12 @@ export class TransportSupervisor extends EventEmitter {
     const { streamingState, activeStream } = this.deps.getStreamingState()
     const isStreaming =
       streamingState === 'streaming' || streamingState === 'retrying' || activeStream !== null
+
+    logger.error('websocket.reconnect.failed', {
+      appId: this.currentAppId,
+      socketId: socket.id,
+      wasStreaming: isStreaming,
+    })
 
     if (isStreaming && activeStream) {
       this.deps.machine.send({
