@@ -27,6 +27,7 @@ export interface HeroSectionProps {
 
 export interface HeroSectionRef {
   typeText: (text: string) => void
+  getFirstInputTime: () => number | null
 }
 
 export interface HeroExamplesProps {

@@ -11,11 +11,13 @@ describe('useAuthUIStore', () => {
       useAuthUIStore.setState({
         isSsoLoginOpen: false,
         isSsoLoading: true,
+        ssoCloseReason: null,
         needsReauth: false,
         reauthReason: null,
         requiresRefresh: false,
         authReason: null,
         needsReauthSeq: 0,
+        redirectUrl: null,
       });
     });
   });
@@ -37,7 +39,28 @@ describe('useAuthUIStore', () => {
         useAuthUIStore.getState().closeSsoLogin();
       });
 
-      expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(false);
+      const state = useAuthUIStore.getState();
+      expect(state.isSsoLoginOpen).toBe(false);
+      expect(state.ssoCloseReason).toBe('dismiss');
+    });
+
+    it('should set ssoCloseReason to success when closed with success', () => {
+      act(() => {
+        useAuthUIStore.getState().openSsoLogin();
+        useAuthUIStore.getState().closeSsoLogin('success');
+      });
+
+      expect(useAuthUIStore.getState().ssoCloseReason).toBe('success');
+    });
+
+    it('should clear ssoCloseReason', () => {
+      act(() => {
+        useAuthUIStore.getState().openSsoLogin();
+        useAuthUIStore.getState().closeSsoLogin();
+        useAuthUIStore.getState().clearSsoCloseReason();
+      });
+
+      expect(useAuthUIStore.getState().ssoCloseReason).toBeNull();
     });
 
     it('should guard against multiple opens', () => {

@@ -3,11 +3,19 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowRightIcon } from '@heroicons/react/24/outline'
 
 import { Example, HeroExamplesProps } from '@/app/components/types'
+import { useAuthContext } from '@/components/providers/AuthProvider'
+import { EXPERIMENT_IDS } from '@/config/experiments'
+import { useAnalytics } from '@/hooks/useAnalytics'
 import { useTranslations } from '@/hooks/useTranslations'
 import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
 
 export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
   const t = useTranslations();
+  const { isAuthenticated } = useAuthContext()
+  const { logAnalytics } = useAnalytics({
+    experimentId: EXPERIMENT_IDS.homepageEngagement,
+    baseData: { isAuthenticated },
+  })
   const [visibleItems, setVisibleItems] = useState<boolean[]>([])
 
   const examples = useMemo<Example[]>(() => [
@@ -175,6 +183,7 @@ export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
             data-eid={generateClickEID(`homepage.examples.example_${example.slug}`)}
             onClick={() => {
               onExampleClick(example.prompt);
+              logAnalytics('homepage.template.click', { templateSlug: example.slug })
               logClickEvent('homepage.examples.example')();
               logClickEvent(`homepage.examples.example_${example.slug}`)();
             } }

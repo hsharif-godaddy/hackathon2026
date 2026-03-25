@@ -72,6 +72,10 @@ export default function SsoLogin() {
   const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, redirectUrl, setRedirectUrl, authReason } = useAuthUIStore();
   const clearRequiresAuth = useSitesStore((state) => state.clearRequiresAuth);
 
+  function dismissSsoModal() {
+    closeSsoLogin('dismiss');
+  }
+
   // Determine consuming port on client-side only using lazy initializer to avoid SSR hydration issues
   // Only pass non-standard ports (not 80, 443, or 3000) to SsoDeck for proper origin validation
   const [consumingPort] = useState(() => {
@@ -231,7 +235,7 @@ export default function SsoLogin() {
     });
 
     setError(null);
-    closeSsoLogin();
+    closeSsoLogin('success');
     clearRequiresAuth(); // Allow sites store to refetch
 
     // Use redirect_url from SSO if provided AND it matches our origin
@@ -294,7 +298,7 @@ export default function SsoLogin() {
     <Modal
       className='sso-login-modal min-h-[520px] sm:min-h-[620px] sm:min-w-[580px] max-sm:!px-0'
       title=''
-      onClose={closeSsoLogin}
+      onClose={dismissSsoModal}
       strategy='fixed'
       stretch={!isSmBreakpoint}
     >

@@ -9,8 +9,19 @@ import { renderWithProviders } from '@/tests/test-utils';
 import HomeContent from './HomeContent';
 
 const mockSignIn = vi.fn();
+const shipAnalyticsLogMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/gasket-config');
+vi.mock('@/hooks/useHivemind', () => ({
+  useHivemind: () => ({ cohort: 'test-cohort', data: undefined, experiment: undefined }),
+}));
+vi.mock('@/lib/logging', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('@/lib/logging')>();
+  return {
+    ...mod,
+    shipAnalyticsLog: (...args: unknown[]) => shipAnalyticsLogMock(...args),
+  };
+});
 vi.mock('next/navigation', () => ({
   useRouter: () => mockRouter(),
   useSearchParams: () => mockSearchParams(),
@@ -167,6 +178,87 @@ describe('Home Page', () => {
 
       await waitFor(() => {
         expect(localStorage.getItem('airo-pending-prompt')).toBe('Build a dashboard');
+      });
+    });
+  });
+
+  describe('homepage engagement shipAnalyticsLog', () => {
+    it('logs homepage.view after auth resolved', async function homepageView() {
+      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
+
+      await waitFor(() => {
+        expect(shipAnalyticsLogMock).toHaveBeenCalledWith(
+          'homepage.view',
+          expect.objectContaining({ isAuthenticated: true, cohort: 'test-cohort' }),
+        );
+      });
+    });
+
+    it('logs submit_attempt and redirect.develop on quick-create success', async function redirectSuccess() {
+      vi.mocked(appFetch).mockResolvedValue(mockResponse({ id: 'site-1', type: 'app' }, 200) as any);
+
+      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
+      await typePromptAndSubmit('Build me an app');
+
+      await waitFor(() => {
+        expect(shipAnalyticsLogMock).toHaveBeenCalledWith(
+          'homepage.prompt.submit_attempt',
+          expect.objectContaining({
+            submitSource: 'text',
+            promptLength: expect.any(Number),
+            cohort: 'test-cohort',
+            isAuthenticated: true,
+          }),
+        );
+        expect(shipAnalyticsLogMock).toHaveBeenCalledWith(
+          'homepage.redirect.develop',
+          expect.objectContaining({
+            submitSource: 'text',
+            cohort: 'test-cohort',
+            isAuthenticated: true,
+          }),
+        );
+      });
+    });
+
+    it('logs auth_gate.shown when quick-create returns 401', async function authGate401() {
+      vi.mocked(appFetch).mockResolvedValue(mockResponse(
+        { error: 'Authentication token required' }, 401
+      ) as any);
+
+      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
+      await typePromptAndSubmit('Build me an app');
+
+      await waitFor(() => {
+        expect(shipAnalyticsLogMock).toHaveBeenCalledWith(
+          'homepage.auth_gate.shown',
+          expect.objectContaining({
+            submitSource: 'text',
+            cohort: 'test-cohort',
+            isAuthenticated: true,
+          }),
+        );
+      });
+    });
+
+    it('logs submit.error on 500 quick-create', async function submitError500() {
+      vi.mocked(appFetch).mockResolvedValue(mockResponse(
+        { error: 'Failed to create site record', details: 'Subscription has no systems' }, 500
+      ) as any);
+
+      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
+      await typePromptAndSubmit('Build me an app');
+
+      await waitFor(() => {
+        expect(shipAnalyticsLogMock).toHaveBeenCalledWith(
+          'homepage.submit.error',
+          expect.objectContaining({
+            submitSource: 'text',
+            cohort: 'test-cohort',
+            isAuthenticated: true,
+            errorMessage: expect.stringContaining('Failed to create site'),
+          }),
+        );
       });
     });
   });

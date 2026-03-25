@@ -1,23 +1,32 @@
 'use client'
 
 import { motion, useInView } from 'framer-motion'
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import text from '@ux/text'
 
 import PageSection from '@/components/layout/PageSection'
+import { EXPERIMENT_IDS } from '@/config/experiments'
+import { useAnalytics } from '@/hooks/useAnalytics'
 import { useTranslations } from '@/hooks/useTranslations'
+import { generateClickEID } from '@/utils/instrumentation'
 
 const NUMBER_OF_FAQS = 12;
 
-function AnimatedFAQItem({ index }: { index: number }) {
+interface AnimatedFAQItemProps {
+  index: number
+  onToggle: (index: number, opened: boolean) => void
+}
+
+function AnimatedFAQItem({ index, onToggle }: AnimatedFAQItemProps) {
   const t = useTranslations();
   const [isOpen, setIsOpen] = useState(false)
   const ref = useRef(null)
   const isInView = useInView(ref, { once: true, amount: 0.1, margin: '0px 0px -100px 0px' })
 
-  const faq = {
-    question: t(`builder_faq_${index + 1}_question`),
-    answer: t(`builder_faq_${index + 1}_answer`)
+  function toggle() {
+    const nextOpen = !isOpen
+    setIsOpen(nextOpen)
+    onToggle(index, nextOpen)
   }
 
   return (
@@ -37,13 +46,14 @@ function AnimatedFAQItem({ index }: { index: number }) {
     >
       <div className="overflow-hidden">
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={toggle}
           className="w-full text-left p-0 flex items-center justify-between hover:cursor-pointer"
           aria-expanded={isOpen}
           aria-controls={`faq-answer-${index}`}
+          data-eid={generateClickEID(`homepage.faq.item_${index + 1}`)}
         >
           <text.h3 as="heading" size={-2} itemProp="name" className="!font-normal">
-            {faq.question}
+            {t(`builder_faq_${index + 1}_question`)}
           </text.h3>
           <motion.svg
             animate={{ rotate: isOpen ? 180 : 0 }}
@@ -75,7 +85,7 @@ function AnimatedFAQItem({ index }: { index: number }) {
         >
           <div className="pt-2 pr-6">
             <text.p size={0} itemProp="text">
-              {faq.answer}
+              {t(`builder_faq_${index + 1}_answer`)}
             </text.p>
           </div>
         </motion.div>
@@ -86,12 +96,38 @@ function AnimatedFAQItem({ index }: { index: number }) {
 
 export default function FAQSection() {
   const t = useTranslations();
+  const { logAnalytics } = useAnalytics({ experimentId: EXPERIMENT_IDS.homepageEngagement })
+  const sectionRef = useRef<HTMLDivElement>(null)
+  const isFaqSectionInView = useInView(sectionRef, { once: true, amount: 0.2 })
+  const hasLoggedViewRef = useRef(false)
+  const openCountRef = useRef(0)
+
+  useEffect(() => {
+    if (!isFaqSectionInView || hasLoggedViewRef.current) {
+      return
+    }
+    hasLoggedViewRef.current = true
+    logAnalytics('homepage.faq.view', {
+      msFromPageLoad: Math.round(performance.now()),
+    })
+  }, [isFaqSectionInView, logAnalytics])
+
+  function handleToggle(index: number, opened: boolean) {
+    if (opened) {
+      openCountRef.current += 1
+    }
+    logAnalytics(`homepage.faq.item_${opened ? 'opened' : 'closed'}`, {
+      faqIndex: index + 1,
+      totalOpened: openCountRef.current,
+    })
+  }
+
   return(
     <PageSection data-testid="faq-section">
-      <div className="max-w-screen-lg mx-auto relative overflow-visible flex flex-col gap-4" itemScope itemType="https://schema.org/FAQPage">
+      <div ref={sectionRef} className="max-w-screen-lg mx-auto relative overflow-visible flex flex-col gap-4" itemScope itemType="https://schema.org/FAQPage">
         <text.h2 as="heading" size={2}>{t('builder_faq_title')}</text.h2>
         {Array.from({ length: NUMBER_OF_FAQS }).map((_, index) => (
-          <AnimatedFAQItem key={`faq-${index}`} index={index} />
+          <AnimatedFAQItem key={`faq-${index}`} index={index} onToggle={handleToggle} />
         ))}
       </div>
     </PageSection>

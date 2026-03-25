@@ -17,6 +17,8 @@ import FeaturesSection from '@/components/layout/Features'
 import Header from '@/components/layout/Header'
 import PricingSection from '@/components/layout/PricingSection'
 import { useAuthContext } from '@/components/providers/AuthProvider'
+import { EXPERIMENT_IDS } from '@/config/experiments'
+import { useAnalytics } from '@/hooks/useAnalytics'
 import { useSafariClass } from '@/hooks/useSafariClass'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -27,12 +29,15 @@ import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import type { ServerFeatureFlags } from '@/lib/server-features'
 import { validateAndClampPrompt } from '@/lib/waf-validation'
+import { useAuthUIStore } from '@/stores/useAuthUIStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 
 interface HomeContentProps {
   serverFeatures: ServerFeatureFlags
 }
+
+type SubmitSource = 'example' | 'restored' | 'text'
 
 function HomeContentInner({ serverFeatures }: HomeContentProps) {
   const t = useTranslations();
@@ -44,27 +49,125 @@ function HomeContentInner({ serverFeatures }: HomeContentProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const heroSectionRef = useRef<HeroSectionRef>(null)
+  const homepageViewRecordedRef = useRef(false)
+  const scrollMilestonesLoggedRef = useRef<Set<number>>(new Set())
+  const authGateShownAtRef = useRef<number | null>(null)
+  const homepageSubmitAttemptRef = useRef(0)
+  const pendingHomepageErrorRef = useRef<{
+    attemptNumber: number
+    errorType: string
+    occurredAt: number
+  } | null>(null)
   const promptTextRef = useRef(promptText)
+  const submitSourceRef = useRef<SubmitSource>('text')
   // Ensure ref always mirrors latest prompt text without extra renders
   promptTextRef.current = promptText
 
   const { isAuthenticated, isAuthDisabled, isLoading: authIsLoading } = useAuthContext()
-  const { signIn } = useSsoSignIn();
+  const { logAnalytics } = useAnalytics({
+    experimentId: EXPERIMENT_IDS.homepageEngagement,
+    baseData: { isAuthenticated },
+  })
+  const { signIn } = useSsoSignIn()
   const showUpgradeModal = useDevelopPageStore((state) => state.showUpgradeModal)
   const upgradeModalSource = useDevelopPageStore((state) => state.upgradeModalSource)
   const upgradeModalItc = useDevelopPageStore((state) => state.upgradeModalItc)
   const closeUpgradeModal = useDevelopPageStore((state) => state.closeUpgradeModal)
 
+  const setHeroError = useCallback((next: string | null) => {
+    if (next === null && pendingHomepageErrorRef.current) {
+      logAnalytics('homepage.error.abandon', {
+        attemptNumber: pendingHomepageErrorRef.current.attemptNumber,
+        errorType: pendingHomepageErrorRef.current.errorType,
+        msFromError: Math.round(Date.now() - pendingHomepageErrorRef.current.occurredAt),
+      })
+      pendingHomepageErrorRef.current = null
+    }
+    setError(next)
+  }, [logAnalytics])
+
+  const logHomepagePricingView = useCallback(
+    ({ viewDurationMs }: { viewDurationMs: number }) => {
+      logAnalytics('homepage.pricing.view', {
+        msFromPageLoad: Math.round(performance.now()),
+        promptState: promptText.trim().length > 0 ? 'has_content' : 'empty',
+        viewDurationMs,
+      })
+    },
+    [logAnalytics, promptText],
+  )
+
   useSafariClass()
 
+  const ssoCloseReason = useAuthUIStore((s) => s.ssoCloseReason)
+  const clearSsoCloseReason = useAuthUIStore((s) => s.clearSsoCloseReason)
+
   useEffect(() => {
+    if (ssoCloseReason == null) {
+      return
+    }
+    if (ssoCloseReason === 'success') {
+      authGateShownAtRef.current = null
+    } else if (ssoCloseReason === 'dismiss' && authGateShownAtRef.current != null) {
+      logAnalytics('homepage.auth_gate.dismissed', {
+        msFromShown: Math.round(Date.now() - authGateShownAtRef.current),
+        promptLength: promptTextRef.current.length,
+      })
+      authGateShownAtRef.current = null
+    }
+    clearSsoCloseReason()
+  }, [clearSsoCloseReason, logAnalytics, ssoCloseReason])
+
+  useEffect(() => {
+    if (authIsLoading || homepageViewRecordedRef.current) {
+      return
+    }
+    homepageViewRecordedRef.current = true
+    logAnalytics('homepage.view')
     logImpressionEvent('homepage.page.view')();
     logAiroHQEvent({
       category: 'impression',
       recommendation_task: 'builder_homepage_viewed',
       recommendation_type: 'navigation'
     })();
-  }, [])
+  }, [authIsLoading, logAnalytics])
+
+  useEffect(() => {
+    function updateScrollMilestones() {
+      if (scrollMilestonesLoggedRef.current.size === 4) return
+
+      const scrollable = document.documentElement.scrollHeight - window.innerHeight
+      const promptHasContent = promptTextRef.current.trim().length > 0
+      const msFromPageLoad = Math.round(performance.now())
+
+      if (scrollable <= 0) {
+        if (!scrollMilestonesLoggedRef.current.has(100)) {
+          scrollMilestonesLoggedRef.current.add(25)
+          scrollMilestonesLoggedRef.current.add(50)
+          scrollMilestonesLoggedRef.current.add(75)
+          scrollMilestonesLoggedRef.current.add(100)
+          logAnalytics('homepage.scroll.milestone', {
+            depth: 100,
+            msFromPageLoad,
+            promptHasContent,
+          })
+        }
+        return
+      }
+
+      const percent = (window.scrollY / scrollable) * 100
+      for (const depth of [25, 50, 75, 100] as const) {
+        if (percent >= depth && !scrollMilestonesLoggedRef.current.has(depth)) {
+          scrollMilestonesLoggedRef.current.add(depth)
+          logAnalytics('homepage.scroll.milestone', { depth, msFromPageLoad, promptHasContent })
+        }
+      }
+    }
+
+    window.addEventListener('scroll', updateScrollMilestones, { passive: true })
+    updateScrollMilestones()
+    return () => window.removeEventListener('scroll', updateScrollMilestones)
+  }, [logAnalytics])
 
   // Track the source of the redirect
   useEffect(() => {
@@ -83,6 +186,11 @@ function HomeContentInner({ serverFeatures }: HomeContentProps) {
       const validated = validateAndClampPrompt(decoded)
       setPromptText(validated.text)
 
+      logAnalytics('homepage.prompt.prefill_from_url', {
+        clipped: validated.wasClipped,
+        promptLength: validated.text.length,
+      })
+
       if (validated.wasClipped) {
         logger.warn('homepage.url-param.clipped', {
           originalLength: decoded.length,
@@ -93,7 +201,7 @@ function HomeContentInner({ serverFeatures }: HomeContentProps) {
     }
     // Intentionally excluding promptText from the dependency array to prevent clearing the input when typing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+  }, [logAnalytics, searchParams])
 
   useEffect(() => {
     // Reset the redirect state when returning to this page
@@ -137,6 +245,8 @@ function HomeContentInner({ serverFeatures }: HomeContentProps) {
         byteLength: validated.byteLength
       })
     }
+    const submitSource = submitSourceRef.current
+    const firstInputTime = heroSectionRef.current?.getFirstInputTime()
 
     // Short-circuit if auth state is still loading.
     // Wait for auth to resolve before deciding whether to show SSO login or proceed.
@@ -144,6 +254,24 @@ function HomeContentInner({ serverFeatures }: HomeContentProps) {
     if (authIsLoading) {
       logger.debug('page.auth.loading', 'Auth state still loading, waiting before proceeding')
       return
+    }
+
+    logAnalytics('homepage.prompt.submit_attempt', {
+      submitSource,
+      promptLength: promptToUse.length,
+      msFromPageLoad: Math.round(performance.now()),
+      ...(firstInputTime && { msFromFirstInput: Date.now() - firstInputTime }),
+    })
+
+    homepageSubmitAttemptRef.current += 1
+    const submitAttemptNumber = homepageSubmitAttemptRef.current
+    if (pendingHomepageErrorRef.current) {
+      logAnalytics('homepage.error.retry', {
+        attemptNumber: submitAttemptNumber,
+        errorType: pendingHomepageErrorRef.current.errorType,
+        msFromError: Math.round(Date.now() - pendingHomepageErrorRef.current.occurredAt),
+      })
+      pendingHomepageErrorRef.current = null
     }
 
     // Clear any previous errors and set loading state
@@ -168,6 +296,10 @@ function HomeContentInner({ serverFeatures }: HomeContentProps) {
         // Save the prompt to localStorage before showing login
         savePromptForRetry(promptToUse, 'login');
 
+        logAnalytics('homepage.auth_gate.shown', {
+          submitSource,
+        })
+        authGateShownAtRef.current = Date.now()
         signIn({ onShowMockLogin: () => setShowMockLogin(true) });
         setIsLoading(false);
         setIsRedirecting(false);
@@ -194,6 +326,10 @@ function HomeContentInner({ serverFeatures }: HomeContentProps) {
           // Save the prompt to localStorage before showing login
           savePromptForRetry(promptToUse, 'session-refresh');
 
+          logAnalytics('homepage.auth_gate.shown', {
+            submitSource,
+          })
+          authGateShownAtRef.current = Date.now()
           signIn({ onShowMockLogin: () => setShowMockLogin(true) });
           setIsLoading(false);
           setIsRedirecting(false);
@@ -231,40 +367,57 @@ function HomeContentInner({ serverFeatures }: HomeContentProps) {
         idType: siteData.type,
         redirectUrl
       })
+      logAnalytics('homepage.redirect.develop', { submitSource })
 
+      pendingHomepageErrorRef.current = null
       router.push(redirectUrl)
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
       logger.error('homepage.start_building.failed', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMsg,
         details: error instanceof Error ? (error as any).details : undefined
       })
+      logAnalytics('homepage.submit.error', {
+        submitSource,
+        errorMessage: errorMsg.substring(0, 200),
+      })
 
-      // Set user-friendly error message
       let errorMessage = 'Something went wrong. Please try again.'
+      let errorType = 'generic'
 
       if (error instanceof Error) {
         if (error.message.includes('Failed to create site')) {
+          errorType = 'create_failed'
           errorMessage = t('builder_homepage_error_create')
         } else if (error.message.includes('Failed to validate account')) {
+          errorType = 'validate_failed'
           errorMessage = t('builder_homepage_error_validate')
-        } else if (error.message.includes('fetch')) {
-          errorMessage = t('builder_homepage_error_fetch')
         } else if (error.message.includes('Failed to fetch')) {
+          errorType = 'network'
           errorMessage = t('builder_homepage_error_network')
+        } else if (error.message.includes('fetch')) {
+          errorType = 'network'
+          errorMessage = t('builder_homepage_error_fetch')
         } else if (error.message.includes('TypeError')) {
+          errorType = 'connection'
           errorMessage = t('builder_homepage_error_connection')
         } else {
           errorMessage = error.message
         }
       }
 
+      pendingHomepageErrorRef.current = {
+        attemptNumber: homepageSubmitAttemptRef.current,
+        errorType,
+        occurredAt: Date.now(),
+      }
       setError(errorMessage)
 
       // Reset flags on error
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, authIsLoading, signIn, savePromptForRetry, t])
+  }, [authIsLoading, isAuthDisabled, isAuthenticated, isLoading, isRedirecting, logAnalytics, router, savePromptForRetry, signIn, t])
 
   // Restore prompt from localStorage after login and clear it
   useEffect(() => {
@@ -279,6 +432,8 @@ function HomeContentInner({ serverFeatures }: HomeContentProps) {
       const validated = validateAndClampPrompt(savedPrompt)
       setPromptText(validated.text)
       localStorage.removeItem('airo-pending-prompt')
+      submitSourceRef.current = 'restored'
+      logAnalytics('homepage.auth_prompt.restored')
 
       if (validated.wasClipped) {
         logger.warn('homepage.restore.clipped', {
@@ -290,9 +445,10 @@ function HomeContentInner({ serverFeatures }: HomeContentProps) {
 
       handleStartBuilding(validated.text)
     }
-  }, [isAuthenticated, authIsLoading, promptText, handleStartBuilding])
+  }, [authIsLoading, handleStartBuilding, isAuthenticated, logAnalytics, promptText])
 
   const handleExampleClick = (examplePrompt: string) => {
+    submitSourceRef.current = 'example'
     if (heroSectionRef.current) {
       // typeText already validates inside HeroSection
       heroSectionRef.current.typeText(examplePrompt)
@@ -328,7 +484,7 @@ function HomeContentInner({ serverFeatures }: HomeContentProps) {
             onStartBuilding={handleStartBuilding}
             isLoading={isLoading}
             error={error}
-            setError={setError}
+            setError={setHeroError}
             onExampleClick={handleExampleClick}
           />
 
@@ -370,7 +526,7 @@ function HomeContentInner({ serverFeatures }: HomeContentProps) {
             ]}
           />
 
-          {serverFeatures.showPricingSection && <PricingSection showHighTierPlans={serverFeatures.showHighTierPlans} />}
+          {serverFeatures.showPricingSection && <PricingSection showHighTierPlans={serverFeatures.showHighTierPlans} onPricingViewEnd={logHomepagePricingView} />}
 
           <FAQSection />
 

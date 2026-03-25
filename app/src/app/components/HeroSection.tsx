@@ -10,12 +10,17 @@ import Spinner from '@ux/spinner'
 import { text } from '@ux/text'
 
 import ExamplesSection from '@/app/components/HeroExamples'
+import { useAuthContext } from '@/components/providers/AuthProvider'
+import { EXPERIMENT_IDS } from '@/config/experiments'
+import { useAnalytics } from '@/hooks/useAnalytics'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useTranslations } from '@/hooks/useTranslations'
 import { getByteLength, MAX_PROMPT_BYTES, validateAndClampPrompt } from '@/lib/waf-validation'
 import { generateClickEID } from '@/utils/instrumentation'
 import { HeroSectionProps, HeroSectionRef } from './types'
+
+const PROMPT_IDLE_MS = 30_000
 
 const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   promptText,
@@ -24,9 +29,14 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   isLoading,
   error,
   setError,
-  onExampleClick
+  onExampleClick,
 }, ref) => {
   const t = useTranslations();
+  const { isAuthenticated } = useAuthContext()
+  const { logAnalytics } = useAnalytics({
+    experimentId: EXPERIMENT_IDS.homepageEngagement,
+    baseData: { isAuthenticated },
+  })
   const intl = useIntl();
   const [isTyping, setIsTyping] = useState(false)
   const [displayText, setDisplayText] = useState(promptText)
@@ -88,7 +98,67 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   const animationQueueRef = useRef<string[]>([])
   const lastErrorClearRef = useRef<string>('')
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const hasLoggedFocusRef = useRef(false)
+  const hasLoggedFirstInputRef = useRef(false)
+  const firstInputTimeRef = useRef<number | null>(null)
   const placeholderTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Track prompt abandonment when user leaves with unsent text
+  const isLoadingRef = useRef(isLoading)
+  isLoadingRef.current = isLoading
+  const displayTextRef = useRef(displayText)
+  displayTextRef.current = displayText
+
+  useEffect(function trackAbandonment() {
+    function onVisibilityChange() {
+      if (document.visibilityState !== 'hidden') return
+      const text = displayTextRef.current.trim()
+      if (text.length > 0 && !isLoadingRef.current && firstInputTimeRef.current) {
+        logAnalytics('homepage.prompt.abandoned', {
+          promptLength: text.length,
+          msFromFirstInput: Date.now() - firstInputTimeRef.current,
+          msFromPageLoad: Math.round(performance.now()),
+        })
+      }
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [logAnalytics])
+
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(function trackPromptIdle() {
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current)
+      idleTimerRef.current = null
+    }
+    const trimmed = displayText.trim()
+    if (trimmed.length === 0 || isLoading) {
+      return
+    }
+    idleTimerRef.current = setTimeout(function onPromptIdle() {
+      idleTimerRef.current = null
+      if (isLoadingRef.current) {
+        return
+      }
+      const text = displayTextRef.current.trim()
+      if (text.length === 0) {
+        return
+      }
+      logAnalytics('homepage.prompt.idle', {
+        promptLength: text.length,
+      })
+    }, PROMPT_IDLE_MS)
+    return function cleanupPromptIdle() {
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current)
+        idleTimerRef.current = null
+      }
+    }
+  }, [displayText, isLoading, logAnalytics])
 
   // Detect Safari browser
   const isSafari = useMemo(() => {
@@ -245,10 +315,14 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   }, [isLoading, displayText, setPromptText, isSafari])
 
   useImperativeHandle(ref, () => ({
-    typeText
+    typeText,
+    getFirstInputTime: () => firstInputTimeRef.current
   }), [typeText])
 
   const scrollToNextSection = useCallback(() => {
+    logAnalytics('homepage.hero.scroll_cta_click', {
+      msFromPageLoad: Math.round(performance.now()),
+    })
     const nextSection = document.getElementById('infra-section');
 
     // Calculate target position with fallback
@@ -281,7 +355,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
     };
 
     requestAnimationFrame(animateScroll);
-  }, [])
+  }, [logAnalytics])
 
   // Memoize aria-label to prevent translation errors on every render (20-33 times/second due to placeholder animation)
   // Use intl.formatMessage directly as intl instance is stable (unlike t which is recreated each render)
@@ -346,11 +420,30 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                   // conflicts between manual typing, animated text, and voice transcript.
                   // Users can stop listening to edit the transcript.
                   if (isTyping || isListening) return
+                  const prevTrimmedLength = displayText.trim().length
+                  const nextValue = e.target.value
+                  if (!hasLoggedFirstInputRef.current) {
+                    hasLoggedFirstInputRef.current = true
+                    firstInputTimeRef.current = Date.now()
+                    logAnalytics('homepage.prompt.first_input', {
+                      msFromPageLoad: Math.round(performance.now()),
+                    })
+                  }
                   isUserTypingRef.current = true
-                  setDisplayText(e.target.value)
-                  debouncedSetPromptText(e.target.value)
-                  if (error && lastErrorClearRef.current !== e.target.value) {
-                    lastErrorClearRef.current = e.target.value
+                  if (
+                    prevTrimmedLength > 0 &&
+                    nextValue.trim().length === 0 &&
+                    firstInputTimeRef.current !== null
+                  ) {
+                    logAnalytics('homepage.prompt.cleared', {
+                      previousLength: prevTrimmedLength,
+                      msFromFirstInput: Date.now() - firstInputTimeRef.current,
+                    })
+                  }
+                  setDisplayText(nextValue)
+                  debouncedSetPromptText(nextValue)
+                  if (error && lastErrorClearRef.current !== nextValue) {
+                    lastErrorClearRef.current = nextValue
                     setError(null)
                   }
                 }}
@@ -362,7 +455,15 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                     }
                   }
                 }}
-                onFocus={() => setIsFocused(true)}
+                onFocus={() => {
+                  setIsFocused(true)
+                  if (!hasLoggedFocusRef.current) {
+                    hasLoggedFocusRef.current = true
+                    logAnalytics('homepage.prompt.focus', {
+                      msFromPageLoad: Math.round(performance.now()),
+                    })
+                  }
+                }}
                 onBlur={() => {
                   setIsFocused(false)
                   isUserTypingRef.current = false
@@ -410,7 +511,10 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
               })}>
                 {isSpeechSupported && (
                   <Button
-                    onClick={toggleSpeech}
+                    onClick={() => {
+                      logAnalytics('homepage.prompt.speech_toggled', { active: !isListening })
+                      toggleSpeech()
+                    }}
                     onMouseDown={(e) => e.preventDefault()}
                     data-eid={generateClickEID('homepage.prompt.speech')}
                     disabled={isLoading || isTyping}

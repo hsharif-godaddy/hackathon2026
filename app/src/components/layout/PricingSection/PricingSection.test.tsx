@@ -11,6 +11,16 @@ import PricingSection from './PricingSection'
 
 const PENDING_UPGRADE_KEY = 'airo-pending-pricing-upgrade'
 
+let mockInViewValue = false
+
+vi.mock('framer-motion', async () => {
+  const actual = await vi.importActual<typeof import('framer-motion')>('framer-motion')
+  return {
+    ...actual,
+    useInView: () => mockInViewValue,
+  }
+})
+
 // Mock dependencies
 const mockSignIn = vi.fn()
 const mockOpenUpgradeModal = vi.fn()
@@ -173,6 +183,7 @@ vi.mock('@/components/providers/AuthProvider', () => ({
 describe('PricingSection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockInViewValue = false
     sessionStorage.clear()
     authContextOverrides = { isAuthenticated: false, isAuthDisabled: false, isLoading: false }
 
@@ -182,7 +193,21 @@ describe('PricingSection', () => {
   })
 
   afterEach(() => {
-    vi.restoreAllMocks()
+    mockInViewValue = false
+  })
+
+  describe('onPricingViewEnd', () => {
+    it('should call onPricingViewEnd once when section leaves view after being visible', async () => {
+      const onPricingViewEnd = vi.fn()
+      mockInViewValue = true
+      const { rerender } = renderWithProviders(<PricingSection onPricingViewEnd={onPricingViewEnd} />)
+
+      mockInViewValue = false
+      rerender(<PricingSection onPricingViewEnd={onPricingViewEnd} />)
+
+      expect(onPricingViewEnd).toHaveBeenCalledTimes(1)
+      expect(onPricingViewEnd).toHaveBeenCalledWith({ viewDurationMs: expect.any(Number) })
+    })
   })
 
   describe('2-tier layout (default)', () => {

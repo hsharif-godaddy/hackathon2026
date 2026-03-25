@@ -14,6 +14,8 @@ interface AuthUIStore {
   isSsoLoginOpen: boolean;
   /** Whether the SSO deck iframe is loading */
   isSsoLoading: boolean;
+  /** Last modal close: success (auth completed) vs dismiss (user closed without completing) */
+  ssoCloseReason: 'success' | 'dismiss' | null;
 
   // === Auth Boundary State ===
   /** Whether re-authentication is needed (set automatically by appFetch on 401) */
@@ -35,8 +37,9 @@ interface AuthUIStore {
   // === SSO Modal Actions ===
   /** Open the SSO login modal */
   openSsoLogin: () => void;
-  /** Close the SSO login modal */
-  closeSsoLogin: () => void;
+  /** Close the SSO login modal (default: user dismissed) */
+  closeSsoLogin: (reason?: 'success' | 'dismiss') => void;
+  clearSsoCloseReason: () => void;
   /** Mark SSO deck as loaded */
   setSsoLoaded: () => void;
 
@@ -82,6 +85,7 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
   // SSO Modal State
   isSsoLoginOpen: false,
   isSsoLoading: true,
+  ssoCloseReason: null,
 
   // Auth Boundary State
   needsReauth: false,
@@ -95,9 +99,10 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
   openSsoLogin: () => {
     // Guard against multiple opens
     if (get().isSsoLoginOpen) return;
-    set({ isSsoLoginOpen: true, isSsoLoading: true });
+    set({ isSsoLoginOpen: true, isSsoLoading: true, ssoCloseReason: null });
   },
-  closeSsoLogin: () => set({ isSsoLoginOpen: false }),
+  closeSsoLogin: (reason = 'dismiss') => set({ isSsoLoginOpen: false, ssoCloseReason: reason }),
+  clearSsoCloseReason: () => set({ ssoCloseReason: null }),
   setSsoLoaded: () => set({ isSsoLoading: false }),
 
   // Auth Boundary Actions

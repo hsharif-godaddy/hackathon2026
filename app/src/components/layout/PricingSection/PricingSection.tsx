@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useCallback, useEffect } from 'react'
+import { useInView } from 'framer-motion'
+import React, { useCallback, useEffect, useRef } from 'react'
 import { FormattedMessage } from 'react-intl'
 import Box from '@ux/box'
 import Button from '@ux/button'
@@ -31,8 +32,9 @@ import { generateClickEID } from '@/utils/instrumentation'
 // Session-scoped storage key for pending upgrade action
 const PENDING_UPGRADE_KEY = 'airo-pending-pricing-upgrade'
 
-interface PricingSectionProps {
+export interface PricingSectionProps {
   showHighTierPlans?: boolean
+  onPricingViewEnd?: (detail: { viewDurationMs: number }) => void
 }
 
 interface PlanFeature {
@@ -78,7 +80,7 @@ const ULTIMATE_FEATURES: PlanFeature[] = [
   // { icon: CodeIcon, titleKey: 'builder_pricing_item_git_hosting', tooltipKey: 'builder_pricing_item_git_hosting_tooltip' },
 ]
 
-export default function PricingSection({ showHighTierPlans = false }: PricingSectionProps) {
+export default function PricingSection({ showHighTierPlans = false, onPricingViewEnd }: PricingSectionProps) {
   const t = useTranslations();
   const { data: pricingData, isLoading } = usePricingOffers()
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
@@ -87,6 +89,42 @@ export default function PricingSection({ showHighTierPlans = false }: PricingSec
   const { signIn } = useSsoSignIn()
   // Disabled by default - only refetch when restoring pending upgrade to avoid unnecessary API calls
   const { refetch: refetchSubscription } = useSubscription({ enabled: false })
+
+  const sectionRef = useRef<HTMLDivElement | null>(null)
+  const isInView = useInView(sectionRef, { amount: 0.1 })
+  const visibleSinceRef = useRef<number | null>(null)
+  const hasLoggedViewRef = useRef(false)
+
+  useEffect(() => {
+    if (!onPricingViewEnd || hasLoggedViewRef.current) return
+    if (isInView) {
+      if (visibleSinceRef.current === null) visibleSinceRef.current = performance.now()
+    } else if (visibleSinceRef.current !== null) {
+      onPricingViewEnd({ viewDurationMs: Math.round(performance.now() - visibleSinceRef.current) })
+      hasLoggedViewRef.current = true
+      visibleSinceRef.current = null
+    }
+  }, [isInView, onPricingViewEnd])
+
+  useEffect(() => {
+    if (!onPricingViewEnd) return
+    function flush() {
+      if (hasLoggedViewRef.current || visibleSinceRef.current === null) return
+      onPricingViewEnd({ viewDurationMs: Math.round(performance.now() - visibleSinceRef.current) })
+      hasLoggedViewRef.current = true
+      visibleSinceRef.current = null
+    }
+    function onVisibility() {
+      if (document.visibilityState === 'hidden') flush()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('pagehide', flush)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pagehide', flush)
+      flush()
+    }
+  }, [onPricingViewEnd])
 
   useEffect(() => {
     if (authIsLoading || !isAuthenticated) return
@@ -175,6 +213,7 @@ export default function PricingSection({ showHighTierPlans = false }: PricingSec
   const cardContentPadding = "p-4 2xl:p-6"
 
   return (
+    <div ref={sectionRef}>
     <PageSection data-testid="pricing-section" id="pricing-section">
       {showHighTierPlans ? (
         <div className="w-full max-w-[1700px] mx-auto px-4">
@@ -299,5 +338,6 @@ export default function PricingSection({ showHighTierPlans = false }: PricingSec
         </div>
       )}
     </PageSection>
+    </div>
   )
 }
