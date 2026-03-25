@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
+import type { QueryObserverResult } from '@tanstack/react-query'
 
 import { useCreditGrants } from '@/hooks/useCreditGrants'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -48,6 +49,10 @@ function computeGrantHash(grants: CreditGrant[] | undefined): string {
  * - On tab visibility change (handles stale data)
  * - When agent requests refresh
  *
+ * Refetch handlers call send(force=true, result.data): the agent must receive grant_context after
+ * refetch even when the hash matches the prior snapshot (React Query + effect deps may not re-run).
+ * result.data comes from the refetch promise, not the previous render's `grants`, and avoids waiting on isGrantsLoading.
+ *
  * Does NOT send grants with every message - agent caches per session.
  *
  * IMPORTANT: When the feature flag is OFF, this hook is a no-op:
@@ -77,13 +82,17 @@ export function useGrantContext({
     syncSpend: true,
   })
 
-  // Send grants to agent
+  const refetchGrantsRef = useRef(refetchGrants)
+  refetchGrantsRef.current = refetchGrants
+
   const sendGrantContext = useCallback(
-    function send(force = false) {
+    function send(force = false, grantsOverride?: CreditGrant[]) {
       if (!controller || !isConnected) return
 
-      // Wait for both flag and grants to finish loading before proceeding
-      if (isFlagLoading || isGrantsLoading) return
+      if (isFlagLoading) return
+
+      // Without grantsOverride, wait for query idle; refetch paths pass result.data so we are not blocked here.
+      if (grantsOverride === undefined && isGrantsLoading) return
 
       // Skip emission entirely when feature is disabled to avoid unnecessary traffic
       if (!grantsEnabled) {
@@ -93,9 +102,10 @@ export function useGrantContext({
         return
       }
 
-      const grantHash = computeGrantHash(grants)
+      const payloadGrants = grantsOverride ?? grants
+      const grantHash = computeGrantHash(payloadGrants)
 
-      // Skip if unchanged (unless forced)
+      // force=true skips dedup (needed after refetch when payload hashes the same as last send)
       if (!force && grantHash === lastSentHashRef.current) {
         return
       }
@@ -104,14 +114,14 @@ export function useGrantContext({
       isInitialSendRef.current = false
 
       logger.info('websocket.grant_context.send', {
-        grantCount: grants?.length ?? 0,
+        grantCount: payloadGrants?.length ?? 0,
         featureEnabled: grantsEnabled,
         isInitial,
         forced: force,
       })
 
       controller.emitGrantContext({
-        grants: grants ?? [],
+        grants: payloadGrants ?? [],
         featureEnabled: grantsEnabled,
         timestamp: Date.now(),
       })
@@ -119,6 +129,27 @@ export function useGrantContext({
       lastSentHashRef.current = grantHash
     },
     [controller, isConnected, grants, grantsEnabled, isFlagLoading, isGrantsLoading]
+  )
+
+  // Refetch .then / setTimeout run later; keep a ref so they invoke the latest send, not a stale closure.
+  const sendGrantContextRef = useRef(sendGrantContext)
+  sendGrantContextRef.current = sendGrantContext
+
+  const emitAfterRefetch = useCallback(
+    function emitAfterRefetch(
+      result: QueryObserverResult<CreditGrant[], Error>,
+      source: 'agent_refresh' | 'stream_complete' | 'visibility',
+    ): void {
+      if (result.data === undefined) {
+        logger.warn('websocket.grant_context.refresh_no_data', {
+          message: 'Refetch settled without data; skipping grant_context send to avoid stale hook grants',
+          source,
+        })
+        return
+      }
+      sendGrantContextRef.current(true, result.data)
+    },
+    []
   )
 
   // Send on connection and data changes
@@ -155,9 +186,14 @@ export function useGrantContext({
       return controller.onGrantRefreshRequested(function onRefresh() {
         logger.info('websocket.grant_context.refresh_requested')
         refetchGrants()
-          .then(() => {
-            // Force send after refetch completes
-            lastSentHashRef.current = null
+          .then(function afterAgentRefreshRefetch(result: QueryObserverResult<CreditGrant[], Error>) {
+            if (result.isError && result.error) {
+              logger.warn('websocket.grant_context.refresh_failed', {
+                error: result.error instanceof Error ? result.error.message : String(result.error),
+              })
+              return
+            }
+            emitAfterRefetch(result, 'agent_refresh')
           })
           .catch((error) => {
             logger.warn('websocket.grant_context.refresh_failed', {
@@ -166,7 +202,7 @@ export function useGrantContext({
           })
       })
     },
-    [controller, refetchGrants, grantsEnabled]
+    [controller, emitAfterRefetch, grantsEnabled, refetchGrants]
   )
 
   // Re-send on visibility change (user returns to tab)
@@ -181,8 +217,14 @@ export function useGrantContext({
           logger.debug('websocket.grant_context.visibility_refresh')
           // Refetch and force send
           refetchGrants()
-            .then(() => {
-              lastSentHashRef.current = null
+            .then(function afterVisibilityRefetch(result: QueryObserverResult<CreditGrant[], Error>) {
+              if (result.isError && result.error) {
+                logger.warn('websocket.grant_context.visibility_refresh_failed', {
+                  error: result.error instanceof Error ? result.error.message : String(result.error),
+                })
+                return
+              }
+              emitAfterRefetch(result, 'visibility')
             })
             .catch((error) => {
               logger.warn('websocket.grant_context.visibility_refresh_failed', {
@@ -195,41 +237,71 @@ export function useGrantContext({
       document.addEventListener('visibilitychange', onVisibilityChange)
       return () => document.removeEventListener('visibilitychange', onVisibilityChange)
     },
-    [controller, isConnected, refetchGrants, grantsEnabled]
+    [controller, emitAfterRefetch, grantsEnabled, isConnected, refetchGrants]
   )
 
   // Refetch grants when stream completes (credits have been consumed)
   // Uses same pattern as ThinkingIndicator - watching isActivelyStreaming
   const isStreaming = useIsActivelyStreaming()
   const prevIsStreamingRef = useRef<boolean | null>(null)
+  const streamCompleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(
     function handleStreamComplete() {
       const prevIsStreaming = prevIsStreamingRef.current
       prevIsStreamingRef.current = isStreaming
 
-      // Skip when feature is disabled - no grants to refresh
-      if (!grantsEnabled) return
+      if (!grantsEnabled) {
+        if (streamCompleteTimeoutRef.current) {
+          clearTimeout(streamCompleteTimeoutRef.current)
+          streamCompleteTimeoutRef.current = null
+        }
+        return
+      }
 
       // Detect transition from streaming to not streaming (completion)
       if (prevIsStreaming === true && isStreaming === false) {
         logger.debug('websocket.grant_context.stream_complete_refresh')
 
+        let cancelled = false
+
+        if (streamCompleteTimeoutRef.current) {
+          clearTimeout(streamCompleteTimeoutRef.current)
+        }
+
         // Delay refetch to allow spend data to propagate (2s balances freshness vs API load)
-        setTimeout(() => {
-          refetchGrants()
-            .then(() => {
-              lastSentHashRef.current = null
+        streamCompleteTimeoutRef.current = setTimeout(() => {
+          streamCompleteTimeoutRef.current = null
+          refetchGrantsRef
+            .current()
+            .then(function afterStreamCompleteRefetch(result: QueryObserverResult<CreditGrant[], Error>) {
+              if (cancelled) return
+              if (result.isError && result.error) {
+                logger.warn('websocket.grant_context.stream_complete_refresh_failed', {
+                  error: result.error instanceof Error ? result.error.message : String(result.error),
+                })
+                return
+              }
+              emitAfterRefetch(result, 'stream_complete')
             })
             .catch((error) => {
+              if (cancelled) return
               logger.warn('websocket.grant_context.stream_complete_refresh_failed', {
                 error: error instanceof Error ? error.message : String(error),
               })
             })
         }, 2_000)
+
+        return function cleanupStreamCompleteDelay() {
+          cancelled = true
+          if (streamCompleteTimeoutRef.current) {
+            clearTimeout(streamCompleteTimeoutRef.current)
+            streamCompleteTimeoutRef.current = null
+          }
+        }
       }
     },
-    [isStreaming, refetchGrants, grantsEnabled]
+    [emitAfterRefetch, grantsEnabled, isStreaming]
   )
 
   // Reset on disconnect
@@ -247,9 +319,6 @@ export function useGrantContext({
   // This handles the case where subscription is active but grants aren't provisioned yet
   const emptyGrantsRetryStartRef = useRef<number | null>(null)
   const emptyGrantsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  // Use ref for refetchGrants to avoid re-creating interval when function reference changes
-  const refetchGrantsRef = useRef(refetchGrants)
-  refetchGrantsRef.current = refetchGrants
 
   useEffect(
     function retryOnEmptyGrants() {
