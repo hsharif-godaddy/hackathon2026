@@ -45,6 +45,7 @@ import { logger, log } from '../logging/index.js'
 import { jwtAuthMiddleware } from './middleware/jwt-auth.js'
 import { getAgentConfig } from '../services/features.js'
 import { getModelOverride } from '../utils/model-selection.js'
+import { todoListIdFromContextAttachments } from '../utils/todo-list-id-from-context-attachments.js'
 import {
   calculateCacheMetrics,
   calculateContextWindowUtilization
@@ -709,7 +710,21 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           let todoContextMessage: ContextMessage | null = null
           const sessionId = agentsAppContext.metadata?.sessionId as string
           if (sessionId) {
-            const selectedTodoListId = stateManager.getSelectedTodoList(sessionId)
+            const fromAttachment = todoListIdFromContextAttachments(agentsAppContext.contextAttachments)
+            const sessionSelectedId = stateManager.getSelectedTodoList(sessionId)
+            let selectedTodoListId = sessionSelectedId
+            if (fromAttachment) {
+              selectedTodoListId = fromAttachment
+              stateManager.setSelectedTodoList(sessionId, fromAttachment)
+              if (sessionSelectedId && sessionSelectedId !== fromAttachment) {
+                logger.info('todo.list.selection.override_from_message', {
+                  sessionId,
+                  previousListId: sessionSelectedId,
+                  listIdFromAttachment: fromAttachment,
+                  message: 'todo_list_context on user message takes precedence over session selection'
+                })
+              }
+            }
             if (selectedTodoListId && agentsAppContext.metadata?.appId) {
               const { getTodoContextManager } = await import('../services/TodoContextManager.js')
               const todoContextManager = getTodoContextManager()

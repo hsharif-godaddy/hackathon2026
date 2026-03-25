@@ -1,15 +1,18 @@
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { type MouseEvent, useEffect, useState } from 'react';
 import Alert from '@ux/alert';
 import Box from "@ux/box";
 import Button from "@ux/button";
 import Card from "@ux/card";
+import Growl from '@ux/growl';
 import ShieldIcon from '@ux/icon/shield-check-filled';
 import Tag from '@ux/tag';
 import text from '@ux/text';
 import TextLockup from '@ux/text-lockup';
 
+import { ChatTab } from '@/app/develop/components/types';
 import { useAppIdFromParams } from '@/app/develop/components/utils';
+import { useChatTabs } from '@/hooks/useChatTabs';
 import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
 import { type TestPilotRunResult } from '@/lib/testpilot';
@@ -93,12 +96,14 @@ function SecurityVulnerabilityCard({
   vulnerability,
   vulnerabilityId,
   isChecked,
-  onToggle
+  onToggle,
+  selectionDisabled
 }: {
   vulnerability: SecurityVulnerability;
   vulnerabilityId: string;
   isChecked: boolean;
   onToggle: (id: string) => void;
+  selectionDisabled: boolean;
 }) {
   const getSeverityTagEmphasis = (severity: string): 'critical' | 'warning' | 'info' | 'neutral' => {
     switch (severity.toLowerCase()) {
@@ -120,12 +125,23 @@ function SecurityVulnerabilityCard({
       id={vulnerabilityId}
       className="p-2.5 checkbox-card"
       as="checkbox"
+      disabled={selectionDisabled}
       checked={isChecked}
-      onChange={() => onToggle(vulnerabilityId)}
+      onChange={() => {
+        if (!selectionDisabled) {
+          onToggle(vulnerabilityId);
+        }
+      }}
       cornerActions={
         <Button
           as="checkbox"
-          onClick={() => onToggle(vulnerabilityId)}
+          disabled={selectionDisabled}
+          onClick={function securityVulnerabilityCornerClick(e: MouseEvent<HTMLButtonElement>) {
+            e.stopPropagation();
+            if (!selectionDisabled) {
+              onToggle(vulnerabilityId);
+            }
+          }}
           active={isChecked}
           size="sm"
         />
@@ -155,14 +171,35 @@ function SecurityVulnerabilityCard({
  * Component to display security analysis results
  *
  * @param results - The TestPilot API response containing security test results
+ * @param onQuickFixInProgressChange - Notifies parent when Quick Fix create/navigation is in progress
  */
-export default function SecurityResults({ results }: { results: { security?: TestPilotRunResult } }) {
+export default function SecurityResults({
+  results,
+  onQuickFixInProgressChange
+}: {
+  results: { security?: TestPilotRunResult }
+  onQuickFixInProgressChange?: (inProgress: boolean) => void
+}) {
   const t = useTranslations();
   const router = useRouter();
   const appId = useAppIdFromParams();
+  const { activeChatTab } = useChatTabs();
   const [checkedVulnerabilities, setCheckedVulnerabilities] = useState<Set<string>>(new Set());
   const [isCreatingTodoList, setIsCreatingTodoList] = useState(false);
   const todoListService = new TodoListService();
+
+  useEffect(() => {
+    if (activeChatTab !== ChatTab.SETTINGS) {
+      setIsCreatingTodoList(false);
+    }
+  }, [activeChatTab]);
+
+  useEffect(() => {
+    onQuickFixInProgressChange?.(isCreatingTodoList)
+    return () => {
+      onQuickFixInProgressChange?.(false)
+    }
+  }, [isCreatingTodoList, onQuickFixInProgressChange])
 
   const errorAlert = (
     <Alert
@@ -224,6 +261,9 @@ export default function SecurityResults({ results }: { results: { security?: Tes
    * @param vulnerabilityId - The unique ID of the vulnerability to toggle
    */
   const toggleVulnerability = (vulnerabilityId: string) => {
+    if (isCreatingTodoList) {
+      return;
+    }
     setCheckedVulnerabilities((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(vulnerabilityId)) {
@@ -259,6 +299,9 @@ export default function SecurityResults({ results }: { results: { security?: Tes
    * Handle select all / deselect all functionality
    */
   const handleSelectAll = () => {
+    if (isCreatingTodoList) {
+      return;
+    }
     const allIds = getAllVulnerabilityIds();
     if (areAllSelected()) {
       // Deselect all
@@ -304,18 +347,20 @@ export default function SecurityResults({ results }: { results: { security?: Tes
         todoItems,
       );
 
-      // Clear selections after successful creation
-      setCheckedVulnerabilities(new Set());
-
-      // Route to develop page with todoListId query parameter
       router.push(`/develop/${appId}?todoListId=${newTodoList.id}`);
+      // Keep isCreatingTodoList true until unmount so checkboxes stay locked and selected during navigation.
     } catch (error) {
       logger.error('security.todo_list.create.failed', {
         appId,
         error: error instanceof Error ? error.message : String(error)
       });
-      // TODO: Show error message to user
-    } finally {
+      Growl.addGrowlMessage({
+        id: 'security-quick-fix-create-failed',
+        title: t('builder_settings_security_quick_fix_create_failed_title', undefined, 'Could not start Quick Fix'),
+        children: t('builder_settings_security_quick_fix_create_failed_description', undefined, 'The fix list could not be created. Please try again.'),
+        emphasis: 'critical',
+        lifetime: 7000
+      });
       setIsCreatingTodoList(false);
     }
   };
@@ -343,7 +388,12 @@ export default function SecurityResults({ results }: { results: { security?: Tes
               {t('builder_settings_security_results_title')} ({vulnerabilities.length})
             </text.h3>
             <div className="flex gap-1">
-              <Button size="sm" design="secondary" onClick={handleSelectAll}>
+              <Button
+                size="sm"
+                design="secondary"
+                disabled={isCreatingTodoList}
+                onClick={handleSelectAll}
+              >
                 {areAllSelected() ? t('builder_common_deselect_all') : t('builder_common_select_all')}
               </Button>
               <Button
@@ -351,7 +401,11 @@ export default function SecurityResults({ results }: { results: { security?: Tes
                 design="primary"
                 onClick={handleQuickFix}
                 disabled={checkedVulnerabilities.size === 0 || isCreatingTodoList}
-                text={isCreatingTodoList ? t('builder_common_creating') : t('builder_common_quick_fix')}
+                text={
+                  isCreatingTodoList
+                    ? t('builder_common_creating')
+                    : t('builder_settings_security_ask_airo_to_fix', undefined, 'Ask Airo to fix')
+                }
               />
             </div>
           </div>
@@ -365,6 +419,7 @@ export default function SecurityResults({ results }: { results: { security?: Tes
                   vulnerabilityId={vulnerabilityId}
                   isChecked={checkedVulnerabilities.has(vulnerabilityId)}
                   onToggle={toggleVulnerability}
+                  selectionDisabled={isCreatingTodoList}
                 />
               );
             })}

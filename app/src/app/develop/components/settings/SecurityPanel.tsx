@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Alert from '@ux/alert';
 import Box from "@ux/box";
 import Button from "@ux/button";
@@ -10,6 +10,7 @@ import { useAppIdFromParams } from '@/app/develop/components/utils';
 import BigCard from "@/components/layout/BigCard";
 import { useTranslations } from '@/hooks/useTranslations';
 import { type TestPilotRunResult } from "@/lib/testpilot";
+import { useSecurityQuickFixHandoffStore } from '@/stores/useSecurityQuickFixHandoffStore';
 import { useServerPollingStore } from '@/stores/useServerPollingStore';
 import SecurityResults from './components/security/SecurityResults';
 
@@ -26,9 +27,23 @@ export default function SecurityPanel() {
   const serverState = getServerState(appId);
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isQuickFixInProgress, setIsQuickFixInProgress] = useState(false);
   const [results, setResults] = useState<{ security?: TestPilotRunResult } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorTitle, setErrorTitle] = useState<string | null>(null);
+
+  const handoffCompleteNonce = useSecurityQuickFixHandoffStore((s) => s.handoffCompleteNonce);
+  const lastPanelResetNonce = useSecurityQuickFixHandoffStore((s) => s.lastPanelResetNonce);
+  const recordPanelReset = useSecurityQuickFixHandoffStore((s) => s.recordPanelReset);
+
+  useEffect(() => {
+    if (handoffCompleteNonce > lastPanelResetNonce) {
+      setResults(null);
+      setError(null);
+      setErrorTitle(null);
+      recordPanelReset();
+    }
+  }, [handoffCompleteNonce, lastPanelResetNonce, recordPanelReset]);
 
   /**
    * Retry a timed out task by polling its results
@@ -149,7 +164,7 @@ export default function SecurityPanel() {
           <Button
             design="primary"
             icon={<WandIcon />}
-            disabled={!isReady || isLoading}
+            disabled={!isReady || isLoading || isQuickFixInProgress}
             onClick={handleRunAnalysis}
             text={isLoading ? t('builder_settings_security_analysis_running') : t('builder_settings_security_analysis_run')}
           />
@@ -174,7 +189,10 @@ export default function SecurityPanel() {
         )}
 
         {results && !isLoading && (
-          <SecurityResults results={results} />
+          <SecurityResults
+            results={results}
+            onQuickFixInProgressChange={setIsQuickFixInProgress}
+          />
         )}
 
         {error && (

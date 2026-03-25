@@ -47,10 +47,13 @@ import { agentFetch } from '@/lib/agent-fetch'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
+import { claimTodoListHandoff, releaseTodoListHandoff } from '@/lib/todo-list-handoff-dedupe'
 import { cn } from '@/lib/utils'
 import { appService } from '@/services/AppService'
+import { todoListService } from '@/services/TodoListService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
+import { useSecurityQuickFixHandoffStore } from '@/stores/useSecurityQuickFixHandoffStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import {
   useActiveStream,
@@ -63,11 +66,13 @@ import {
   useSetInputValue,
   useStreamingConversationStore
 } from '@/stores/useStreamingConversationStore'
+import { useTodoListStore } from '@/stores/useTodoListStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 
 function DevelopPageContent() {
   const t = useTranslations();
   const searchParams = useSearchParams()
+  const todoListIdParam = searchParams.get('todoListId')
   const router = useRouter()
   const appId = useAppIdFromParams()
   const isJobId = searchParams.get('type') === 'job'
@@ -121,7 +126,7 @@ function DevelopPageContent() {
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges)
   const isChatPaneCollapsed = useDevelopPageStore((state) => state.isChatPaneCollapsed)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
-  const { activeChatTab } = useChatTabs()
+  const { activeChatTab, setActiveChatTab } = useChatTabs()
   const isPreviewVisible = useDevelopPageStore((state) => state.isPreviewVisible)
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
   const openFeedbackId = useDevelopPageStore((state) => state.openFeedbackId)
@@ -168,6 +173,8 @@ function DevelopPageContent() {
   const [isFixingError, setIsFixingError] = useState(false)
   const isFixingErrorRef = useRef(false)
   const isProcessingRef = useRef(false)
+  const securityQuickFixFailCountRef = useRef<Map<string, number>>(new Map())
+  const [securityHandoffRetryNonce, setSecurityHandoffRetryNonce] = useState(0)
 
   // Sync optimistic state with URL state
   useEffect(() => {
@@ -297,39 +304,93 @@ function DevelopPageContent() {
 
   // State logging moved to useInitialization hook to prevent render loop
 
-  // Handle todoListId query parameter
+  // Handle todoListId query parameter: strip URL only after send succeeds so retries still see the param
   useEffect(() => {
-    const todoListId = searchParams.get('todoListId')
-    if (todoListId) {
-      const handleTodoListContext = async () => {
-        try {
-          // Send message with todo list context
-          const message = 'Fix my selected Security Vulnerabilities.'
-          await ws.actions.send({
-            content: message,
-            todoListContext: { id: todoListId }
-          })
-        } catch (error) {
-          logger.error('develop.todo_context.send.failed', {
-            todoListId,
-            error: error instanceof Error ? error.message : String(error)
-          })
-        }
-      }
+    if (!todoListIdParam) {
+      return
+    }
+    if (!claimTodoListHandoff(todoListIdParam)) {
+      return
+    }
 
-      handleTodoListContext()
-
-      // Remove the todoListId from the URL
-      const newSearchParams = new URLSearchParams(searchParams.toString())
+    const stripTodoListIdFromUrl = function stripTodoListIdFromUrl() {
+      const newSearchParams = new URLSearchParams(window.location.search)
       newSearchParams.delete('todoListId')
-
       const newUrl = newSearchParams.toString()
         ? `${window.location.pathname}?${newSearchParams.toString()}`
         : window.location.pathname
-
       router.replace(newUrl)
     }
-  }, [searchParams, router, appId, ws.actions.send])
+
+    const restoreTodoListIdInUrl = function restoreTodoListIdInUrl() {
+      const newSearchParams = new URLSearchParams(window.location.search)
+      if (newSearchParams.get('todoListId') === todoListIdParam) {
+        return
+      }
+      newSearchParams.set('todoListId', todoListIdParam)
+      router.replace(`${window.location.pathname}?${newSearchParams.toString()}`)
+    }
+
+    const handleTodoListContext = async function securityTodoHandoff() {
+      try {
+        if (appId) {
+          try {
+            const list = await todoListService.setCurrentList(appId, todoListIdParam)
+            useTodoListStore.getState().setCurrentList(list)
+          } catch (err) {
+            logger.warn('develop.todo_context.set_current.failed', {
+              appId,
+              todoListId: todoListIdParam,
+              error: err instanceof Error ? err.message : String(err)
+            })
+          }
+        }
+        const message = 'Fix my selected Security Vulnerabilities.'
+        await ws.actions.send({
+          content: message,
+          todoListContext: { id: todoListIdParam }
+        })
+        setActiveChatTab(ChatTab.CHAT)
+        securityQuickFixFailCountRef.current.delete(todoListIdParam)
+        useSecurityQuickFixHandoffStore.getState().markHandoffComplete()
+        stripTodoListIdFromUrl()
+      } catch (error) {
+        releaseTodoListHandoff(todoListIdParam)
+        restoreTodoListIdInUrl()
+        const fails = (securityQuickFixFailCountRef.current.get(todoListIdParam) ?? 0) + 1
+        securityQuickFixFailCountRef.current.set(todoListIdParam, fails)
+        logger.error('develop.todo_context.send.failed', {
+          todoListId: todoListIdParam,
+          error: error instanceof Error ? error.message : String(error),
+          attempt: fails
+        })
+        if (fails < 3) {
+          Growl.addGrowlMessage({
+            id: 'security-quick-fix-send-failed',
+            title: t('builder_develop_security_quick_fix_error_title', undefined, 'Unable to send fix request'),
+            children: t('builder_develop_security_quick_fix_error_description', undefined, 'Something went wrong. Retrying…'),
+            emphasis: 'critical',
+            lifetime: 5000
+          })
+          setSecurityHandoffRetryNonce(function bumpNonce(n) {
+            return n + 1
+          })
+        } else {
+          securityQuickFixFailCountRef.current.delete(todoListIdParam)
+          stripTodoListIdFromUrl()
+          Growl.addGrowlMessage({
+            id: 'security-quick-fix-give-up',
+            title: t('builder_develop_security_quick_fix_give_up_title', undefined, 'Security fix unavailable'),
+            children: t('builder_develop_security_quick_fix_give_up_description', undefined, 'Open Security settings and try Quick Fix again.'),
+            emphasis: 'critical',
+            lifetime: 7000
+          })
+        }
+      }
+    }
+
+    void handleTodoListContext()
+  }, [todoListIdParam, router, appId, ws.actions.send, securityHandoffRetryNonce, setActiveChatTab, t])
 
   // Cleanup WebSocket connections and batched updates on unmount
   useEffect(() => {
