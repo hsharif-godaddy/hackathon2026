@@ -15,13 +15,6 @@ if [[ ! -x "/usr/local/bin/node" ]]; then
 fi
 log "Node version: $(/usr/local/bin/node --version)"
 
-# Unified job mode: move publish config to task-local directory and create symlink
-if [ -f "${NOMAD_ALLOC_DIR}/publish-config.json" ]; then
-    mv "${NOMAD_ALLOC_DIR}/publish-config.json" "${NOMAD_TASK_DIR}/config.json"
-    ln -sf "${NOMAD_TASK_DIR}/config.json" "${NOMAD_ALLOC_DIR}/config.json"
-    echo "Configured secrets at ${NOMAD_TASK_DIR}/config.json (symlinked from ${NOMAD_ALLOC_DIR}/config.json)"
-fi
-
 # Verify app directory exists and is writable
 [[ ! -d "$APP_DIR" ]] && error_exit "App directory not found: $APP_DIR"
 [[ ! -w "$APP_DIR" ]] && error_exit "App directory is not writable: $APP_DIR"

@@ -19,6 +19,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"github.com/airo-ai-builder/dev-supervisor/internal/allocconfig"
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 	"github.com/airo-ai-builder/dev-supervisor/internal/middleware"
@@ -1019,6 +1020,9 @@ func main() {
 	// Initialize structured logging
 	initLogging()
 	configureSchedulerDefaults()
+
+	// Migrate task-specific config before anything reads NOMAD_ALLOC_DIR/config.json
+	allocconfig.MigrateTaskConfig()
 
 	if cfg.UseTCP {
 		slog.Info("starting dev-supervisor",

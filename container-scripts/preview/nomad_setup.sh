@@ -39,18 +39,6 @@ log_step "Git configuration complete"
 log_step "Changing directory to $CUSTOMER_APP_DIR"
 cd "$CUSTOMER_APP_DIR"
 
-# Unified job mode: move preview config to task-local directory and create symlink
-# This must happen before mode detection so config is available for both first-start and restart
-log_step "Checking for preview config..."
-if [ -f "${NOMAD_ALLOC_DIR}/preview-config.json" ]; then
-    log_step "Moving preview config to task-local directory..."
-    mv "${NOMAD_ALLOC_DIR}/preview-config.json" "${NOMAD_TASK_DIR}/config.json"
-    ln -sf "${NOMAD_TASK_DIR}/config.json" "${NOMAD_ALLOC_DIR}/config.json"
-    log_step "Configured secrets at ${NOMAD_TASK_DIR}/config.json"
-else
-    log_step "No preview config found, skipping"
-fi
-
 # Detect startup mode based on presence of .git/config
 log_step "Checking for .git/config to determine startup mode..."
 
