@@ -117,3 +117,4 @@ res.status(201).json(newUser[0]);
 - Schema changes require migrations - Use db:generate and db:migrate
 - Use `.js` extensions - Backend imports require explicit extensions
 - Migration files auto-committed - Git tracks schema changes
+- No native addons - Production runs Alpine (musl). Use pure-JS packages only

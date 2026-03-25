@@ -4,20 +4,24 @@ You work in the **preview** container (development mode, hot reload). The **publ
 
 <publish_flow>
 When the user publishes:
+
 1. `npm run build` runs in preview with `NODE_ENV=production`
 2. `dist/` output is archived as `{commitHash}.tar.gz` in `/dist`
 3. The `current` symlink updates to the new archive
 4. Archive extracts into the publish container's `/app`
 5. Publish container runs `node /app/dist/server.bundle.cjs` from `/app/dist`
-</publish_flow>
+   </publish_flow>
 
 The `build` script runs `vite build`, which builds the frontend into `dist/` and bundles the Express server into `dist/server.bundle.cjs`.
 
 <build_critical_files>
-These files control the build pipeline. Modifying them breaks publishing because the publish container expects exact output paths and script names:
+These files control the build pipeline. Do not modify the build pipeline to fix build errors; fix the application code or dependencies instead.
+
 - `package.json` scripts: `build`
-- `vite.config.ts` — Vite config including the server bundling plugin
+- `vite.config.ts` — must retain `serverBundlePlugin()`; keep `esbuild` in devDependencies
 - `src/server/configure.js` — Express setup consumed by the bundle
+
+The publish container runs `node:22-alpine` (musl libc) — only use pure-JS packages, no native addons.
 </build_critical_files>
 
 <user_facing_urls>
