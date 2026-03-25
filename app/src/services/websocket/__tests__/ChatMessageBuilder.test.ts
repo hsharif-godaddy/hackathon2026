@@ -6,7 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { type Asset, type BuildMessageParams, ChatMessageBuilder } from '../ChatMessageBuilder'
+import { type BuildMessageParams, ChatMessageBuilder } from '../ChatMessageBuilder'
 
 describe('ChatMessageBuilder', () => {
   let builder: ChatMessageBuilder
@@ -198,7 +198,7 @@ describe('ChatMessageBuilder', () => {
 
       const attachment = result.context?.contextAttachments?.[0]
       expect(attachment?.type).toBe('selected_assets')
-      const assets = attachment?.data as Asset[]
+      const assets = attachment?.data as Array<{ imageUrl?: string }>
       expect(assets[0].imageUrl).toBeUndefined()
     })
 

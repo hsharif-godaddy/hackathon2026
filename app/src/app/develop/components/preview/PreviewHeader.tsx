@@ -84,7 +84,9 @@ function DomainBar() {
 
     try {
       // Not including the domain name in the prompt as it's not needed for the domain purchase
-      await sendMessage(t('builder_custom_domain_suggestion_prompt', undefined, "I'd like to purchase the domain for my website. Can you help me get started?"));
+      await sendMessage({
+        content: t('builder_custom_domain_suggestion_prompt', undefined, "I'd like to purchase the domain for my website. Can you help me get started?")
+      });
     } catch {
       Growl.addGrowlMessage({
         id: 'domain-suggestion-error',

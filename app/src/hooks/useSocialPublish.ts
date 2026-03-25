@@ -106,26 +106,34 @@ export function useSocialPublish({
                             platformName,
                         })
 
-                    await sendMessage(chatMessage, undefined, undefined, undefined, false, {
-                        type: 'social_publish_ready',
-                        data: {
-                            platform: post.platform,
-                            connectionVerified: true,
-                            pendingPublish,
-                            postData: post,
-                        },
-                        persistence: 'save',
+                    await sendMessage({
+                        content: chatMessage,
+                        isActionRequest: false,
+                        customContext: {
+                            type: 'social_publish_ready',
+                            data: {
+                                platform: post.platform,
+                                connectionVerified: true,
+                                pendingPublish,
+                                postData: post,
+                            },
+                            persistence: 'save',
+                        }
                     })
                 } else {
                     // No connection - prompt user to connect
-                    await sendMessage(`Connect to ${platformName}`, undefined, undefined, undefined, false, {
-                        type: CONNECT_REQUEST_FROM_PUBLISH,
-                        data: {
-                            platform: post.platform,
-                            pendingPublish,
-                            postData: post,
-                        },
-                        persistence: 'save',
+                    await sendMessage({
+                        content: `Connect to ${platformName}`,
+                        isActionRequest: false,
+                        customContext: {
+                            type: CONNECT_REQUEST_FROM_PUBLISH,
+                            data: {
+                                platform: post.platform,
+                                pendingPublish,
+                                postData: post,
+                            },
+                            persistence: 'save',
+                        }
                     })
                 }
 

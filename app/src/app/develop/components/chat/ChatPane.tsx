@@ -19,6 +19,7 @@ import { useAppIdFromParams } from '@/app/develop/components/utils'
 import VersionHistory from '@/app/develop/components/VersionHistory'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useCreditGrants } from '@/hooks/useCreditGrants'
+import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -51,7 +52,7 @@ import { logAiroHQEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 
 interface ChatPaneProps {
-  sendMessage: (content: string, aiEditContext?: any, selectedAssets?: AssetManagerItem[] | null, todoListContext?: any, isActionRequest?: boolean, customContext?: any) => Promise<void>
+  sendMessage: (options: SendMessageOptions) => Promise<void>
   stopGeneration: () => void
   isCreateFlowSession?: boolean
 }
@@ -371,12 +372,20 @@ export default function ChatPane({
         // - todoListContext: undefined since todo context is managed separately
         // - isActionRequest: signals agent to execute request immediately
         // - customContext: pass file references if any
-        const customContext = referencedFiles.length > 0 ? { referencedFiles } : undefined
-        sendMessage(messageToSend, { screenshot: null }, undefined, undefined, options?.isActionRequest, customContext)
+        sendMessage({
+          content: messageToSend,
+          aiEditContext: { screenshot: null },
+          isActionRequest: options?.isActionRequest,
+          customContext: referencedFiles.length > 0 ? { referencedFiles } : undefined
+        })
       } else {
         // User input send - include all context
-        const customContext = referencedFiles.length > 0 ? { referencedFiles } : undefined
-        sendMessage(messageToSend, { ...safeAiEditContext, screenshot: null }, selectedAssets.length > 0 ? selectedAssets : undefined, undefined, undefined, customContext)
+        sendMessage({
+          content: messageToSend,
+          aiEditContext: { ...safeAiEditContext, screenshot: null },
+          selectedAssets: selectedAssets.length > 0 ? selectedAssets : undefined,
+          customContext: referencedFiles.length > 0 ? { referencedFiles } : undefined
+        })
 
         // Clear contexts only for user input sends
       if (safeAiEditContext) {
@@ -469,7 +478,11 @@ export default function ChatPane({
               hasSelectedAsset: true,
               hasBuildErrorContext: false
             })
-            sendMessage(message, { ...currentAiEditContext, screenshot: null }, [selectedItem])
+            sendMessage({
+              content: message,
+              aiEditContext: { ...currentAiEditContext, screenshot: null },
+              selectedAssets: [selectedItem]
+            })
             handleClearAiEditContext()
           }
         }
@@ -643,7 +656,11 @@ export default function ChatPane({
     const handleErrorFixEvent = (event: CustomEvent) => {
       if (!isProcessing && event.detail.appId === appId && inputValue?.trim()) {
         // Use the actual sendMessage function from WebSocket hook
-        sendMessage(inputValue, { ...safeAiEditContext, screenshot: null }, selectedAssets.length > 0 ? selectedAssets : undefined)
+        sendMessage({
+          content: inputValue,
+          aiEditContext: { ...safeAiEditContext, screenshot: null },
+          selectedAssets: selectedAssets.length > 0 ? selectedAssets : undefined
+        })
 
         // Clear the AI edit context after sending
         if (safeAiEditContext) {

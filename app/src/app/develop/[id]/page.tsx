@@ -113,7 +113,7 @@ function DevelopPageContent() {
   const setInputValue = useSetInputValue()
   const setAiEditContext = useSetAiEditContext()
   const autoSendInitialMessage = useAutoSendInitialMessage()
-  const { sendMessage, stopGeneration, loadMoreHistory, webSocketState } = useStreamingWebSocket()
+  const ws = useStreamingWebSocket()
   const isLoading = useIsLoading()
   const isStreaming = useIsActivelyStreaming()
 
@@ -305,7 +305,10 @@ function DevelopPageContent() {
         try {
           // Send message with todo list context
           const message = 'Fix my selected Security Vulnerabilities.'
-          await sendMessage(message, undefined, undefined, { id: todoListId })
+          await ws.actions.send({
+            content: message,
+            todoListContext: { id: todoListId }
+          })
         } catch (error) {
           logger.error('develop.todo_context.send.failed', {
             todoListId,
@@ -326,7 +329,7 @@ function DevelopPageContent() {
 
       router.replace(newUrl)
     }
-  }, [searchParams, router, appId, sendMessage])
+  }, [searchParams, router, appId, ws.actions.send])
 
   // Cleanup WebSocket connections and batched updates on unmount
   useEffect(() => {
@@ -391,7 +394,7 @@ function DevelopPageContent() {
   }, [isProcessing])
 
   // Fallback: if isFixingError is set but isProcessing never becomes true
-  // (e.g. sendMessage silently fails), reset after a short window
+  // (e.g. ws.actions.send silently fails), reset after a short window
   useEffect(() => {
     if (!isFixingError || isProcessing) return
     const timeout = setTimeout(() => {
@@ -656,13 +659,11 @@ function DevelopPageContent() {
             setInputValue('Please analyze and fix this runtime error.')
 
             scheduleMicrotask(() => {
-              void sendMessage(
-                'Please analyze and fix this runtime error.',
-                null, // aiEditContext
-                undefined, // selectedAssets
-                null, // todoListContext
-                false, // isActionRequest
-                {
+              void ws.actions.send({
+                content: 'Please analyze and fix this runtime error.',
+                aiEditContext: null,
+                isActionRequest: false,
+                customContext: {
                   type: 'runtime_error',
                   data: {
                     message,
@@ -675,7 +676,7 @@ function DevelopPageContent() {
                   persistence: 'ephemeral',
                   source: 'error-boundary'
                 }
-              )
+              })
             })
           }
           // Handle legacy compile error fix requests (old format with errorMessage string)
@@ -686,7 +687,10 @@ function DevelopPageContent() {
             })
             setInputValue(`Please fix this error: ${event.data.errorMessage}`)
             scheduleMicrotask(() => {
-              void sendMessage(`Please fix this error: ${event.data.errorMessage}`, null)
+              void ws.actions.send({
+                content: `Please fix this error: ${event.data.errorMessage}`,
+                aiEditContext: null
+              })
             })
           }
           break
@@ -703,7 +707,10 @@ function DevelopPageContent() {
             const messageContent = `The page at path ${event.data.pathToBuild} doesn't exist yet, please build it with appropriate content.`;
             setInputValue(messageContent);
             scheduleMicrotask(() => {
-              void sendMessage(messageContent, null)
+              void ws.actions.send({
+                content: messageContent,
+                aiEditContext: null
+              })
             })
           }
           break
@@ -725,13 +732,11 @@ function DevelopPageContent() {
             setInputValue(messageContent);
             // Pass build error data directly via customContext (same pattern as runtime error handler)
             scheduleMicrotask(() => {
-              void sendMessage(
-                messageContent,
-                null, // aiEditContext
-                undefined, // selectedAssets
-                null, // todoListContext
-                false, // isActionRequest
-                {
+              void ws.actions.send({
+                content: messageContent,
+                aiEditContext: null,
+                isActionRequest: false,
+                customContext: {
                   type: 'build_error',
                   data: {
                     error: event.data.errorMessage,
@@ -741,7 +746,7 @@ function DevelopPageContent() {
                   persistence: 'ephemeral',
                   source: 'publish-failure'
                 }
-              )
+              })
             })
           }
           break
@@ -772,7 +777,7 @@ function DevelopPageContent() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setIsSelectMode, sendMessage, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask])
+  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setIsSelectMode, ws.actions.send, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask])
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -835,7 +840,7 @@ function DevelopPageContent() {
 
     if (
       pendingAutoSendRef.current &&
-      webSocketState.connected &&
+      ws.connection.isConnected &&
       !autoSendInFlightRef.current
     ) {
       autoSendInFlightRef.current = true
@@ -843,7 +848,10 @@ function DevelopPageContent() {
 
       const sendPendingMessage = async () => {
         try {
-          await sendMessage(messageToSend, null)
+          await ws.actions.send({
+            content: messageToSend,
+            aiEditContext: null
+          })
           pendingAutoSendRef.current = null
           init.actions.markInitialPromptSent()
         } catch (error) {
@@ -863,10 +871,10 @@ function DevelopPageContent() {
     init.ui.autoSendPromptText,
     searchParams,
     autoSendInitialMessage,
-    sendMessage,
+    ws.actions.send,
     appId,
     init.actions,
-    webSocketState.connected
+    ws.connection.isConnected
   ])
 
   useEffect(() => {
@@ -916,7 +924,7 @@ function DevelopPageContent() {
   };
 
   return (
-    <WebSocketProvider sendMessage={sendMessage} loadMoreHistory={loadMoreHistory}>
+    <WebSocketProvider sendMessage={ws.actions.send} loadMoreHistory={ws.actions.loadMore}>
       <div
         // Switch from fixed to absolute to support PresentationCentral delegation/browser deprecation banners
         className={cn("absolute inset-0 flex flex-col overflow-hidden bg-develop-bg", {
@@ -986,8 +994,8 @@ function DevelopPageContent() {
                 />
               ) : (
                 <ChatPane
-                  sendMessage={sendMessage}
-                  stopGeneration={stopGeneration}
+                  sendMessage={ws.actions.send}
+                  stopGeneration={ws.actions.stop}
                   isCreateFlowSession={isCreateFlowSession}
                 />
               )}
@@ -1141,8 +1149,8 @@ function DevelopPageContent() {
                       }}
                     >
                       <ChatPane
-                        sendMessage={sendMessage}
-                        stopGeneration={stopGeneration}
+                        sendMessage={ws.actions.send}
+                        stopGeneration={ws.actions.stop}
                         isCreateFlowSession={isCreateFlowSession}
                       />
                     </div>

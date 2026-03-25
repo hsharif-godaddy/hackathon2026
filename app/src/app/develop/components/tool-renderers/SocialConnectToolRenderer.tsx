@@ -117,13 +117,10 @@ function SocialConnectToolRenderer({
             remaining: stillNeedConnecting
           })
 
-          sendMessage(
-            `Connect to ${nextPlatformName}`,
-            undefined,
-            undefined,
-            undefined,
-            false,
-            {
+          sendMessage({
+            content: `Connect to ${nextPlatformName}`,
+            isActionRequest: false,
+            customContext: {
               type: CONNECT_REQUEST_FROM_PUBLISH,
               data: {
                 platforms: stillNeedConnecting,  // Pass only remaining platforms
@@ -131,7 +128,7 @@ function SocialConnectToolRenderer({
                 postData
               }
             }
-          )
+          })
           return
         }
       }
@@ -159,13 +156,10 @@ function SocialConnectToolRenderer({
 
       // Brief delay to let user see the success state before auto-publishing
       setTimeout(() => {
-        sendMessage(
-          `Publish ${postData?.styleLabel || 'post'} to ${platformNames}`,
-          undefined,
-          undefined,
-          undefined,
-          false,
-          {
+        sendMessage({
+          content: `Publish ${postData?.styleLabel || 'post'} to ${platformNames}`,
+          isActionRequest: false,
+          customContext: {
             type: 'social_publish_ready',
             data: {
               platforms: normalizedPendingPublish.platforms,
@@ -174,7 +168,7 @@ function SocialConnectToolRenderer({
               postData
             }
           }
-        )
+        })
       }, 1500) // 1.5 second delay
     }
   }, [postData, pendingPublish, r, sendMessage])

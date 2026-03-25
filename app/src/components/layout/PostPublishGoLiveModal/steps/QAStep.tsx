@@ -124,13 +124,9 @@ export function QAStep({ appId, isAnalyzing, analysisError, analysisResults, upd
       });
 
       // Send message with detailed issues in context (hidden from user)
-      await sendMessage(
-        message,
-        undefined, // aiEditContext
-        undefined, // selectedAsset
-        undefined, // todoListContext
-        undefined, // isActionRequest
-        {
+      await sendMessage({
+        content: message,
+        customContext: {
           type: 'qa_issues_fix_request',
           data: {
             runId: analysisResults?.runId,
@@ -152,7 +148,7 @@ export function QAStep({ appId, isAnalyzing, analysisError, analysisResults, upd
           persistence: 'ephemeral',
           source: 'qa-modal'
         }
-      );
+      });
 
       // Clear selection and close modal
       setSelectedIssues(new Set());

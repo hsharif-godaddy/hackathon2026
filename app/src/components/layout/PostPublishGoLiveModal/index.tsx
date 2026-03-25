@@ -267,13 +267,9 @@ ONLY complete these ${taskCount} task${taskCount === 1 ? '' : 's'}. DO NOT do an
 
 Create a todo list to track these ${taskCount} specific task${taskCount === 1 ? '' : 's'} and complete each one. After completing tasks that modify the site code (blog, SEO), remind the user to publish their site again to deploy the changes.`;
 
-    await sendMessage(
-      message,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      {
+    await sendMessage({
+      content: message,
+      customContext: {
         type: 'marketing_launch_package',
         data: {
           siteName,
@@ -285,7 +281,7 @@ Create a todo list to track these ${taskCount} specific task${taskCount === 1 ? 
         persistence: 'ephemeral',
         source: 'go-live-modal'
       }
-    );
+    });
 
     await handleCompleteFlow();
   };
@@ -312,13 +308,9 @@ Create a todo list to track these ${taskCount} specific task${taskCount === 1 ? 
     shipAnalyticsLog('go_live.security_fixes.requested', { appId, issueCount: totalIssues });
 
     // Send message with vulnerability details in context (similar to QA)
-    await sendMessage(
-      message,
-      undefined, // aiEditContext
-      undefined, // selectedAsset
-      undefined, // todoListContext
-      undefined, // isActionRequest
-      {
+    await sendMessage({
+      content: message,
+      customContext: {
         type: 'security_issues_fix_request',
         data: {
           issueCount: totalIssues,
@@ -332,7 +324,7 @@ Create a todo list to track these ${taskCount} specific task${taskCount === 1 ? 
         persistence: 'ephemeral',
         source: 'security-modal'
       }
-    );
+    });
     handleClose('action-taken');
   };
 

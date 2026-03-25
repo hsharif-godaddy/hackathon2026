@@ -229,13 +229,10 @@ export const PostModal = memo(({
       // Case 1: All platforms connected - publish to all in one message
       if (notConnectedPlatforms.length === 0) {
         // Send ONE message for all platforms
-        await sendMessage(
-          displayMessage,
-          undefined,
-          undefined,
-          undefined,
-          false,
-          {
+        await sendMessage({
+          content: displayMessage,
+          isActionRequest: false,
+          customContext: {
             type: 'social_publish_ready',
             data: {
               platforms: selectedPlatformsArray,
@@ -244,7 +241,7 @@ export const PostModal = memo(({
             },
             persistence: 'save'
           }
-        )
+        })
       } else {
         // Case 2/3: Some or all platforms not connected
         // Send connect for FIRST platform only (sequential flow)
@@ -256,13 +253,10 @@ export const PostModal = memo(({
         const platformName = formatPlatformName(firstPlatform)
 
         // Send connect request with full context (all platforms + pending publish)
-        await sendMessage(
-          `Connect to ${platformName}`,
-          undefined,
-          undefined,
-          undefined,
-          false,
-          {
+        await sendMessage({
+          content: `Connect to ${platformName}`,
+          isActionRequest: false,
+          customContext: {
             type: CONNECT_REQUEST_FROM_PUBLISH,
             data: {
               platforms: notConnectedPlatforms,  // Full list of platforms that need connecting
@@ -275,7 +269,7 @@ export const PostModal = memo(({
             },
             persistence: 'save'
           }
-        )
+        })
       }
 
       if (onPublish) {

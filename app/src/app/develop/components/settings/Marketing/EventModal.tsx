@@ -181,19 +181,15 @@ export default function EventModal({
     setActiveChatTab(ChatTab.CHAT);
 
     // Send message with context (same pattern as Go Live modal)
-    await sendMessage(
-      message,
-      undefined, // aiEditContext
-      undefined, // selectedAsset
-      undefined, // todoListContext
-      undefined, // isActionRequest
-      {
+    await sendMessage({
+      content: message,
+      customContext: {
         type: 'scheduled_content_creation',
         data: contextData,
         persistence: 'ephemeral',
         source: 'marketing-calendar'
       }
-    );
+    });
 
     // Close modal and reset state
     handleClose();
@@ -271,19 +267,15 @@ export default function EventModal({
     setActiveChatTab(ChatTab.CHAT);
 
     // Send WebSocket message
-    await sendMessage(
-      message,
-      undefined, // aiEditContext
-      undefined, // selectedAsset
-      undefined, // todoListContext
-      undefined, // isActionRequest
-      {
+    await sendMessage({
+      content: message,
+      customContext: {
         type: 'social_post_from_calendar',
         data: contextData,
         persistence: 'ephemeral',
         source: 'marketing-calendar'
       }
-    );
+    });
 
     handleClose();
   };

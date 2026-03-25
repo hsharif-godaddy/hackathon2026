@@ -17,6 +17,7 @@ import type { Actor } from 'xstate'
 import { createActor } from 'xstate'
 import type { AgentsAppChatMessage } from '@airo/shared/websocket'
 
+import type { AssetManagerItem } from '@/app/develop/components/chat/AssetTypes'
 import type { VisualContext } from '@/app/develop/components/visualContextCapture'
 import type {
   MessageHandlerActions,
@@ -30,9 +31,9 @@ import {
   getConversationIdFromCookie,
 } from '@/hooks/websocket/useWebSocketHelpers'
 import { logger } from '@/lib/request-context'
+import { toWebSocketError, WebSocketError, WebSocketErrorCode } from '@/lib/websocket-errors'
 import {
   type AIEditContext,
-  type Asset,
   type BuildError,
   type BuildMessageParams,
   ChatMessageBuilder,
@@ -74,7 +75,7 @@ export interface StreamingWebSocketControllerDeps {
   getStoreState: () => {
     streamingState: string
     activeStream: unknown
-    buildErrorContext: unknown
+    buildErrorContext: BuildError | null
     // Lifecycle actions - called by adapter via events
     setWebSocketState: (state: WebSocketStateUpdate) => void
     setStreamingState: (state: string) => void
@@ -376,7 +377,7 @@ export class StreamingWebSocketController extends EventEmitter {
     content: string
     visualContext?: VisualContext | null
     aiEditContext?: AIEditContext
-    selectedAssets?: Asset[]
+    selectedAssets?: AssetManagerItem[]
     todoListContext?: TodoContext
     isActionRequest?: boolean
     customContext?: CustomContext
@@ -391,17 +392,35 @@ export class StreamingWebSocketController extends EventEmitter {
       const socket = this.supervisor.getSocket()
 
       if (!socket) {
-        throw new Error('WebSocket connection not initialized. Please wait for connection to establish.')
+        throw new WebSocketError(WebSocketErrorCode.SOCKET_NOT_INITIALIZED, {
+          context: {
+            appId: this.currentAppId,
+            socketState: 'disconnected'
+          }
+        })
       }
 
       if (!socket.connected) {
-        throw new Error('WebSocket not connected. Connection may be reconnecting...')
+        throw new WebSocketError(WebSocketErrorCode.CONNECTION_LOST, {
+          context: {
+            appId: this.currentAppId,
+            socketId: socket.id,
+            socketState: 'disconnected'
+          }
+        })
       }
 
       // Prevent sending messages during the authentication window
       const snapshot = this.machine.getSnapshot()
       if (!snapshot.matches({ transport: 'connected' })) {
-        throw new Error('WebSocket not authenticated. Please wait for authentication to complete.')
+        throw new WebSocketError(WebSocketErrorCode.INVALID_STATE, {
+          message: 'WebSocket not authenticated. Please wait for authentication to complete.',
+          context: {
+            appId: this.currentAppId,
+            socketId: socket.id,
+            machineState: JSON.stringify(snapshot.value)
+          }
+        })
       }
 
       // Create user message in store (Tier 2 - transcript data)
@@ -419,7 +438,7 @@ export class StreamingWebSocketController extends EventEmitter {
       }
       // If no conversationId found, server will create a new conversation
 
-      const messageParams: BuildMessageParams = {
+      const messageParams: BuildMessageParams<AssetManagerItem> = {
         content,
         appId: this.currentAppId,
         sessionId: socket.id,
@@ -428,7 +447,7 @@ export class StreamingWebSocketController extends EventEmitter {
         aiEditContext: params.aiEditContext,
         selectedAssets: params.selectedAssets,
         todoListContext: params.todoListContext,
-        buildErrorContext: buildErrorContext as BuildError | null,
+        buildErrorContext,
         isActionRequest: params.isActionRequest,
         customContext: params.customContext,
       }
@@ -477,22 +496,30 @@ export class StreamingWebSocketController extends EventEmitter {
 
       this.emit('message:sent', { message: chatMessage })
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      logger.error('websocket.message.failure', { appId: this.currentAppId, error: errorMessage })
+      // Convert to WebSocketError and enrich with call-site context
+      // toWebSocketError merges context for existing WebSocketError instances
+      const wsError = toWebSocketError(error, WebSocketErrorCode.MESSAGE_SEND_FAILED, {
+        appId: this.currentAppId,
+        socketId: this.supervisor.getSocket()?.id,
+        messageLength: content.length
+      })
 
-      const errorObj = error instanceof Error ? error : new Error(errorMessage)
+      logger.error('websocket.message.failure', wsError.toLogObject())
 
-      // Send STREAM_ERROR event to machine (non-retryable)
+      // Send STREAM_ERROR event to machine
       this.machine.send({
         type: 'STREAM_ERROR',
-        error: errorObj,
-        retryable: false
+        error: wsError,
+        retryable: wsError.retryable
       })
 
       // Emit stream:error so adapter can update store (markUpstreamError + finalizeStream)
-      this.emit('stream:error', { error: errorObj, shouldFinalize: true })
+      // Always finalize MESSAGE_SEND_FAILED - these are pre-send failures after startNewStream()
+      // For other streaming errors, only finalize if non-retryable
+      const shouldFinalize = wsError.code === WebSocketErrorCode.MESSAGE_SEND_FAILED || !wsError.retryable
+      this.emit('stream:error', { error: wsError, shouldFinalize })
 
-      this.emit('message:error', { error: errorObj })
+      this.emit('message:error', { error: wsError })
     }
   }
 

@@ -10,13 +10,6 @@ import type { AgentsAppChatMessage, AgentsAppContext } from '@airo/shared/websoc
 
 import type { VisualContext } from '@/app/develop/components/visualContextCapture'
 
-export interface Asset {
-  imageUrl?: string
-  thumbnailUrl?: string
-  videoUrl?: string
-  [key: string]: unknown
-}
-
 export interface AIEditContext {
   [key: string]: unknown
 }
@@ -40,14 +33,20 @@ export interface CustomContext {
   referencedFiles?: Array<{ path: string; content: string }>
 }
 
-export interface BuildMessageParams {
+export interface BuildMessageParams<
+  TAsset extends { imageUrl?: string; thumbnailUrl?: string; videoUrl?: string } = {
+    imageUrl?: string
+    thumbnailUrl?: string
+    videoUrl?: string
+  }
+> {
   content: string
   appId: string
   sessionId: string
   conversationId?: string | null
   visualContext?: VisualContext | null
   aiEditContext?: AIEditContext
-  selectedAssets?: Asset[]
+  selectedAssets?: TAsset[]
   todoListContext?: TodoContext
   buildErrorContext?: BuildError | null
   isActionRequest?: boolean
@@ -60,8 +59,11 @@ export class ChatMessageBuilder {
 
   /**
    * Transform asset URLs to include https protocol
+   * Generic function that preserves the input type while normalizing URL fields
    */
-  private transformAssets(assets: Asset[] | undefined): Asset[] {
+  private transformAssets<T extends { imageUrl?: string; thumbnailUrl?: string; videoUrl?: string }>(
+    assets: T[] | undefined
+  ): T[] {
     if (!assets || assets.length === 0) return []
 
     return assets.map(asset => ({
@@ -87,7 +89,9 @@ export class ChatMessageBuilder {
   /**
    * Build context attachments array from various context sources
    */
-  private buildContextAttachments(params: BuildMessageParams): ContextAttachment[] {
+  private buildContextAttachments<TAsset extends { imageUrl?: string; thumbnailUrl?: string; videoUrl?: string }>(
+    params: BuildMessageParams<TAsset>
+  ): ContextAttachment[] {
     const attachments: ContextAttachment[] = []
     const timestamp = Date.now()
 
@@ -212,7 +216,10 @@ export class ChatMessageBuilder {
   /**
    * Build rich context object with metadata and attachments
    */
-  private buildRichContext(params: BuildMessageParams, attachments: ContextAttachment[]): AgentsAppContext {
+  private buildRichContext<TAsset extends { imageUrl?: string; thumbnailUrl?: string; videoUrl?: string }>(
+    params: BuildMessageParams<TAsset>,
+    attachments: ContextAttachment[]
+  ): AgentsAppContext {
     const richContext: AgentsAppContext = {
       metadata: {
         appId: params.appId,
@@ -245,7 +252,9 @@ export class ChatMessageBuilder {
   /**
    * Build complete chat message with context
    */
-  build(params: BuildMessageParams): AgentsAppChatMessage {
+  build<TAsset extends { imageUrl?: string; thumbnailUrl?: string; videoUrl?: string }>(
+    params: BuildMessageParams<TAsset>
+  ): AgentsAppChatMessage {
     const attachments = this.buildContextAttachments(params)
     const context = this.buildRichContext(params, attachments)
 

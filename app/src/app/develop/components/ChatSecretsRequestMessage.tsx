@@ -158,7 +158,7 @@ export default function ChatSecretsRequestMessage({
 
         const savedNames = additions.map(s => s.name).join(', ')
         const continueMessage = `Secrets added successfully: ${savedNames}. Please continue.`
-        queueMicrotask(() => { void sendMessage(continueMessage) })
+        queueMicrotask(() => { void sendMessage({ content: continueMessage }) })
       } catch (err) {
         setStatus('failed')
         setError(err instanceof Error ? err.message : 'Failed to auto-save secrets')
@@ -453,7 +453,7 @@ export default function ChatSecretsRequestMessage({
 
       // Notify agent in a microtask to avoid background-tab rAF throttling.
       const continueMessage = `Secrets ${actionWord} successfully: ${savedNames}. Please continue.`
-      queueMicrotask(() => { void sendMessage(continueMessage) })
+      queueMicrotask(() => { void sendMessage({ content: continueMessage }) })
 
     } catch (err) {
       logger.error('secrets.chat_request.error', {
@@ -468,7 +468,7 @@ export default function ChatSecretsRequestMessage({
   }
 
   const handleCancel = () => {
-    sendMessage('I cancelled adding secrets.')
+    sendMessage({ content: 'I cancelled adding secrets.' })
   }
 
   // Determine if we can remove a row (can't remove required secrets or if only one row left)

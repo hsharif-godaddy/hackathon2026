@@ -292,19 +292,20 @@ describe('useStreamingWebSocket', () => {
       const { useStreamingWebSocket } = await import('./useStreamingWebSocket');
       const { result } = renderHook(() => useStreamingWebSocket());
 
-      expect(result.current).toHaveProperty('sendMessage');
-      expect(result.current).toHaveProperty('webSocketState');
-      expect(result.current).toHaveProperty('isConnected');
-      expect(result.current).toHaveProperty('isStreaming');
-      expect(typeof result.current.sendMessage).toBe('function');
+      expect(result.current).toHaveProperty('actions');
+      expect(result.current).toHaveProperty('connection');
+      expect(result.current).toHaveProperty('stream');
+      expect(typeof result.current.actions.send).toBe('function');
+      expect(typeof result.current.actions.stop).toBe('function');
+      expect(typeof result.current.actions.loadMore).toBe('function');
     });
 
     it('should return initial connection state', async () => {
       const { useStreamingWebSocket } = await import('./useStreamingWebSocket');
       const { result } = renderHook(() => useStreamingWebSocket());
 
-      expect(result.current.isConnected).toBe(false);
-      expect(result.current.isStreaming).toBe(false);
+      expect(result.current.connection.isConnected).toBe(false);
+      expect(result.current.stream.isStreaming).toBe(false);
     });
   });
 
@@ -322,14 +323,14 @@ describe('useStreamingWebSocket', () => {
       mockSetIsLoadingAction.mockClear();
 
       // Test empty string
-      await result.current.sendMessage('');
+      await result.current.actions.send({ content: '' });
 
       // Test whitespace only
-      await result.current.sendMessage('   ');
-      await result.current.sendMessage('\n\t  ');
+      await result.current.actions.send({ content: '   ' });
+      await result.current.actions.send({ content: '\n\t  ' });
 
       // Verify no state changes occurred for empty messages
-      expect(result.current.webSocketState).toBeDefined();
+      expect(result.current.connection).toBeDefined();
       expect(mockSetIsLoadingAction).not.toHaveBeenCalled();
     });
 
@@ -348,10 +349,10 @@ describe('useStreamingWebSocket', () => {
       // Clear initial setIsLoading(false) call from idle state sync
       mockSetIsLoadingAction.mockClear();
 
-      await result.current.sendMessage('Test message');
+      await result.current.actions.send({ content: 'Test message' });
 
       // Should not proceed without appId
-      expect(result.current.webSocketState).toBeDefined();
+      expect(result.current.connection).toBeDefined();
       expect(mockSetIsLoadingAction).not.toHaveBeenCalled();
     });
 
@@ -360,10 +361,48 @@ describe('useStreamingWebSocket', () => {
       const { hook } = await setupWebSocketWithApp('test-app-optimistic');
 
       await act(async () => {
-        await hook.result.current.sendMessage('Test message');
+        await hook.result.current.actions.send({ content: 'Test message' });
       });
 
       expect(mockSetIsLoadingAction).toHaveBeenCalledWith(true);
+      vi.useRealTimers();
+    });
+
+    it('should pass full options object to controller.sendMessage', async () => {
+      vi.useFakeTimers();
+      const { StreamingWebSocketController } = await import('@/services/websocket/StreamingWebSocketController');
+      const sendMessageSpy = vi.spyOn(StreamingWebSocketController.prototype, 'sendMessage');
+
+      const { hook } = await setupWebSocketWithApp('test-app-happy-path');
+
+      const mockAssets = [{ id: 'asset-1', url: 'http://example.com/image.jpg' }] as any;
+      const mockAiEditContext = { selector: '#test', elementInfo: { tagName: 'div' } } as any;
+      const mockTodoContext = { todos: [] } as any;
+      const mockCustomContext = { referencedFiles: [] } as any;
+
+      await act(async () => {
+        await hook.result.current.actions.send({
+          content: 'Build a login page',
+          selectedAssets: mockAssets,
+          aiEditContext: mockAiEditContext,
+          todoListContext: mockTodoContext,
+          isActionRequest: true,
+          customContext: mockCustomContext,
+        });
+      });
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: 'Build a login page',
+          selectedAssets: mockAssets,
+          aiEditContext: mockAiEditContext,
+          todoListContext: mockTodoContext,
+          isActionRequest: true,
+          customContext: mockCustomContext,
+        })
+      );
+
+      sendMessageSpy.mockRestore();
       vi.useRealTimers();
     });
 
@@ -377,7 +416,7 @@ describe('useStreamingWebSocket', () => {
       const { hook } = await setupWebSocketWithApp('test-app-sync-error');
 
       await act(async () => {
-        await hook.result.current.sendMessage('Trigger failure');
+        await hook.result.current.actions.send({ content: 'Trigger failure' });
       });
 
       expect(mockSetIsLoadingAction).toHaveBeenCalledWith(true);
@@ -398,9 +437,9 @@ describe('useStreamingWebSocket', () => {
 
       const { result } = renderHook(() => useStreamingWebSocket());
 
-      expect(result.current.webSocketState).toEqual(mockState);
-      expect(result.current.isConnected).toBe(true);
-      expect(result.current.isStreaming).toBe(true);
+      expect(result.current.connection.isConnected).toBe(true);
+      expect(result.current.connection.status).toBe('streaming');
+      expect(result.current.stream.isStreaming).toBe(true);
     });
 
     it('should correctly determine isStreaming from status', async () => {
@@ -410,17 +449,17 @@ describe('useStreamingWebSocket', () => {
       // Test streaming status
       vi.mocked(useWebSocketState).mockReturnValue({ connected: true, status: 'streaming' });
       const { result: result1 } = renderHook(() => useStreamingWebSocket());
-      expect(result1.current.isStreaming).toBe(true);
+      expect(result1.current.stream.isStreaming).toBe(true);
 
       // Test idle status
       vi.mocked(useWebSocketState).mockReturnValue({ connected: true, status: 'idle' });
       const { result: result2 } = renderHook(() => useStreamingWebSocket());
-      expect(result2.current.isStreaming).toBe(false);
+      expect(result2.current.stream.isStreaming).toBe(false);
 
       // Test error status
       vi.mocked(useWebSocketState).mockReturnValue({ connected: false, status: 'error', error: { message: 'Test error' } });
       const { result: result3 } = renderHook(() => useStreamingWebSocket());
-      expect(result3.current.isStreaming).toBe(false);
+      expect(result3.current.stream.isStreaming).toBe(false);
     });
   });
 
@@ -469,7 +508,7 @@ describe('useStreamingWebSocket', () => {
       const { result } = renderHook(() => useStreamingWebSocket());
 
       expect(result.current).toBeDefined();
-      expect(result.current.sendMessage).toBeInstanceOf(Function);
+      expect(result.current.actions.send).toBeInstanceOf(Function);
     });
 
     it('should handle visual context capture errors gracefully', async () => {
@@ -486,7 +525,7 @@ describe('useStreamingWebSocket', () => {
       await expect(async () => {
         const { useStreamingWebSocket } = await import('./useStreamingWebSocket');
         const { result } = renderHook(() => useStreamingWebSocket());
-        await result.current.sendMessage('Test message');
+        await result.current.actions.send({ content: 'Test message' });
       }).not.toThrow();
 
       vi.useRealTimers()

@@ -298,9 +298,11 @@ describe('ChatPane', () => {
       })
 
       expect(sendMessage).toHaveBeenCalledWith(
-        'fix this error',
-        expect.objectContaining({ screenshot: null }),
-        undefined
+        expect.objectContaining({
+          content: 'fix this error',
+          aiEditContext: expect.objectContaining({ screenshot: null }),
+          selectedAssets: undefined
+        })
       )
     })
 

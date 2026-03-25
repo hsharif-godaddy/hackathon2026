@@ -7,8 +7,20 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 
+import type { AssetManagerItem } from '@/app/develop/components/chat/AssetTypes'
+import type { VisualContext } from '@/app/develop/components/visualContextCapture'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
+import {
+  toWebSocketError,
+  WebSocketError,
+  WebSocketErrorCode
+} from '@/lib/websocket-errors'
+import type {
+  AIEditContext,
+  CustomContext,
+  TodoContext,
+} from '@/services/websocket/ChatMessageBuilder'
 import { ChatMessageBuilder } from '@/services/websocket/ChatMessageBuilder'
 import { ConnectionManager } from '@/services/websocket/ConnectionManager'
 import { clearController, setController } from '@/services/websocket/controllerRegistry'
@@ -41,6 +53,64 @@ import {
   setConversationIdCookie,
 } from './websocket/useWebSocketHelpers'
 import { captureVisualContext } from '../app/develop/components/visualContextCapture'
+
+/**
+ * Options for sending a message through the WebSocket
+ */
+export interface SendMessageOptions {
+  /** The message content (required) */
+  content: string
+
+  /** Visual context captured from iframe preview */
+  visualContext?: VisualContext | null
+
+  /** AI edit context for code modifications */
+  aiEditContext?: AIEditContext | null
+
+  /** Selected assets (images/videos) to attach */
+  selectedAssets?: AssetManagerItem[]
+
+  /** TODO list context for planning */
+  todoListContext?: TodoContext
+
+  /** Whether this is an action request (vs conversational) */
+  isActionRequest?: boolean
+
+  /** Custom context for extensions */
+  customContext?: CustomContext
+}
+
+/**
+ * Return type for useStreamingWebSocket hook
+ * Organized into semantic groups for better DX
+ */
+export interface UseStreamingWebSocketReturn {
+  /** Core actions for interacting with the WebSocket */
+  actions: {
+    /** Send a message to the agent */
+    send: (options: SendMessageOptions) => Promise<void>
+    /** Stop the current generation */
+    stop: () => void
+    /** Load more history messages */
+    loadMore: (params: { cursor: string; limit?: number }) => boolean
+  }
+
+  /** WebSocket connection state */
+  connection: {
+    /** Whether the WebSocket is connected */
+    isConnected: boolean
+    /** Current connection status */
+    status: 'idle' | 'connecting' | 'authenticating' | 'streaming' | 'completing' | 'error'
+    /** Connection error if any */
+    error?: unknown
+  }
+
+  /** Streaming state */
+  stream: {
+    /** Whether actively streaming a response */
+    isStreaming: boolean
+  }
+}
 
 export function useStreamingWebSocket() {
   const controllerRef = useRef<StreamingWebSocketController | null>(null)
@@ -195,60 +265,91 @@ export function useStreamingWebSocket() {
   })
 
 
-	  /**
-	   * Send message - the main streaming function
-	   *
-	   * This function has a STABLE reference across renders. It is SAFE to use in
-	   * useEffect dependency arrays without causing infinite loops or duplicate sends.
-	   */
+  /**
+   * Send message - the main streaming function
+   *
+   * This function has a STABLE reference across renders. It is SAFE to use in
+   * useEffect dependency arrays without causing infinite loops or duplicate sends.
+   *
+   * @example
+   * sendMessage({
+   *   content: 'Build a login page',
+   *   selectedAssets: [asset1, asset2],
+   *   aiEditContext: editContext
+   * })
+   */
   const sendMessage = useCallback(
-    async (
-      content: string,
-      aiEditContext?: any,
-      selectedAssets?: any[],
-      todoListContext?: any,
-      isActionRequest?: boolean,
-      customContext?: any
-    ) => {
+    async (options: SendMessageOptions) => {
       const controller = controllerRef.current
+      const { currentAppId: activeAppId } = useStreamingConversationStore.getState()
+
+      // Validate preconditions
       if (!controller) {
+        const error = new WebSocketError(WebSocketErrorCode.SOCKET_NOT_INITIALIZED, {
+          context: { appId: activeAppId }
+        })
+        logger.error('websocket.send_message.no_controller', error.toLogObject())
         return
       }
 
-      const hasContent = Boolean(content?.trim())
-      const { currentAppId: activeAppId } = useStreamingConversationStore.getState()
+      const hasContent = Boolean(options.content?.trim())
+      if (!hasContent) {
+        const error = new WebSocketError(WebSocketErrorCode.MESSAGE_EMPTY, {
+          context: { appId: activeAppId }
+        })
+        logger.warn('websocket.send_message.empty_content', error.toLogObject())
+        return
+      }
 
-      if (!hasContent || !activeAppId) {
+      if (!activeAppId) {
+        const error = new WebSocketError(WebSocketErrorCode.APP_ID_MISSING)
+        logger.error('websocket.send_message.no_app_id', error.toLogObject())
         return
       }
 
       useStreamingConversationStore.getState().setIsLoading(true)
 
       // Capture visual context from iframe (with error handling)
-      let visualContext: ReturnType<typeof captureVisualContext> extends Promise<infer T> ? T : never = null
-      try {
-        visualContext = await captureVisualContext()
-      } catch (error) {
-        // Log but don't fail - visual context is optional
-        logger.warn('websocket.visual_context.capture_failed', {
-          error: error instanceof Error ? error.message : String(error),
-        })
+      // Only capture if not explicitly provided
+      let visualContext: VisualContext | null = options.visualContext ?? null
+      if (options.visualContext === undefined) {
+        try {
+          visualContext = await captureVisualContext()
+        } catch (error) {
+          // Convert to structured error but don't fail - visual context is optional
+          const wsError = toWebSocketError(
+            error,
+            WebSocketErrorCode.VISUAL_CONTEXT_CAPTURE_FAILED,
+            { appId: activeAppId }
+          )
+          logger.warn('websocket.visual_context.capture_failed', wsError.toLogObject())
+        }
       }
 
       try {
         await controller.sendMessage({
-          content,
+          content: options.content,
           visualContext,
-          aiEditContext,
-          selectedAssets,
-          todoListContext,
-          isActionRequest,
-          customContext,
+          aiEditContext: options.aiEditContext ?? undefined,
+          selectedAssets: options.selectedAssets,
+          todoListContext: options.todoListContext,
+          isActionRequest: options.isActionRequest,
+          customContext: options.customContext,
         })
       } catch (error) {
-        logger.error('websocket.send_message.invoke_failed', {
-          error: error instanceof Error ? error.message : String(error),
-        })
+        // Convert to structured error with context
+        const wsError = toWebSocketError(
+          error,
+          WebSocketErrorCode.MESSAGE_SEND_FAILED,
+          {
+            appId: activeAppId,
+            messageLength: options.content.length,
+            hasVisualContext: Boolean(visualContext),
+            hasAiEditContext: Boolean(options.aiEditContext),
+            hasAssets: Boolean(options.selectedAssets?.length),
+          }
+        )
+        logger.error('websocket.send_message.invoke_failed', wsError.toLogObject())
         useStreamingConversationStore.getState().setIsLoading(false)
       }
     },
@@ -278,11 +379,18 @@ export function useStreamingWebSocket() {
   )
 
   return {
-    sendMessage,
-    stopGeneration,
-    loadMoreHistory,
-    webSocketState,
-    isConnected: webSocketState.connected,
-    isStreaming: webSocketState.status === 'streaming'
+    actions: {
+      send: sendMessage,
+      stop: stopGeneration,
+      loadMore: loadMoreHistory
+    },
+    connection: {
+      isConnected: webSocketState.connected,
+      status: webSocketState.status,
+      error: webSocketState.error
+    },
+    stream: {
+      isStreaming: webSocketState.status === 'streaming'
+    }
   }
 }
