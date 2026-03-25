@@ -279,7 +279,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     timeout: { stepMs: 300_000 },
     providerOptions: {
       anthropic: {
-        effort: 'medium',
+        effort: 'low',
       },
     },
 

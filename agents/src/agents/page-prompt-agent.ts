@@ -260,7 +260,7 @@ export async function createPagePromptAgent(isFirstPage: boolean = true): Promis
     maxOutputTokens: 4000,
     providerOptions: {
       anthropic: {
-        effort: 'medium',
+        effort: 'low',
       },
     },
     logger: createAgentTelemetryLogger('page-prompt'),

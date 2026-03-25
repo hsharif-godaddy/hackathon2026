@@ -122,7 +122,7 @@ export async function createDesignAgent(): Promise<AgentConfig> {
     timeout: { stepMs: 300_000 },
     providerOptions: {
       anthropic: {
-        effort: 'medium',
+        effort: 'low',
       },
     },
     logger: createAgentTelemetryLogger('design')

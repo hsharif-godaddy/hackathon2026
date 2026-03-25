@@ -61,6 +61,14 @@ describe('design-agent', function designAgentTests() {
       // Design agent should have higher temperature (0.7) vs develop agent (0.3)
       expect(config.temperature).toBe(0.7);
     });
+
+    it('should use effort:low provider option for latency', async function effort() {
+      const config = await createDesignAgent();
+
+      expect(config.providerOptions).toEqual({
+        anthropic: { effort: 'low' }
+      });
+    });
   });
 
   describe('#createDesignAgentFactory', function factoryTests() {

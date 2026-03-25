@@ -80,7 +80,7 @@ export async function createExampleAgent(): Promise<AgentConfig> {
     maxOutputTokens: 2000,
     providerOptions: {
       anthropic: {
-        effort: 'medium',
+        effort: 'low',
       },
     },
     logger: createAgentTelemetryLogger('example')

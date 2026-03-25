@@ -88,7 +88,7 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
     timeout: { stepMs: 300_000 },
     providerOptions: {
       anthropic: {
-        effort: 'medium',
+        effort: 'low',
       },
     },
     logger: createAgentTelemetryLogger('marketing'),

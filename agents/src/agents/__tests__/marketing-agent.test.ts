@@ -77,6 +77,14 @@ describe('marketing-agent', function marketingAgentTests() {
       expect(config.temperature).toBe(0.4);
     });
 
+    it('should use effort:low provider option for latency', async function effort() {
+      const config = await createMarketingAgent();
+
+      expect(config.providerOptions).toEqual({
+        anthropic: { effort: 'low' }
+      });
+    });
+
     it('should configure metadata preferences', async function metadata() {
       const config = await createMarketingAgent();
 
