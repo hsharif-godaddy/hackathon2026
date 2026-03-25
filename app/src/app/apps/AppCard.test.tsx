@@ -22,6 +22,11 @@ vi.mock('next/navigation', () => ({
   useRouter: () => mockRouterInstance,
 }));
 vi.mock('@/utils/instrumentation', () => mockInstrumentation());
+vi.mock('@ux/modal', () => ({
+  default: ({ children, title }: { children: React.ReactNode; title?: string }) => (
+    <div data-testid="mock-modal" aria-label={title}>{children}</div>
+  ),
+}));
 
 global.ResizeObserver = vi.fn().mockImplementation(() => ({
   observe: vi.fn(),
@@ -441,6 +446,62 @@ describe('AppCard', () => {
       });
 
       expect(mockRouterInstance.push).not.toHaveBeenCalled();
+    });
+
+    async function clickMenuItemAndExpectNoNavigation(
+      user: ReturnType<typeof renderWithProviders>['user'],
+      itemLocator: () => HTMLElement
+    ) {
+      await user.click(screen.getByRole('button', { name: 'builder_apps_menu_actions' }));
+      await waitFor(() => {
+        expect(itemLocator()).toBeInTheDocument();
+      });
+      mockRouterInstance.push.mockClear();
+      await user.click(itemLocator());
+      expect(mockRouterInstance.push).not.toHaveBeenCalled();
+    }
+
+    it('should not navigate when delete menu item is clicked', async () => {
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+      await clickMenuItemAndExpectNoNavigation(user, () => screen.getByText('builder_apps_menu_delete'));
+    });
+
+    it('should not navigate when preview menu item is clicked', async () => {
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+      await clickMenuItemAndExpectNoNavigation(user, () => screen.getByText('builder_apps_menu_preview'));
+    });
+
+    it('should not navigate when rename menu item is clicked', async () => {
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+      await clickMenuItemAndExpectNoNavigation(user, () => screen.getByText('builder_common_rename'));
+    });
+
+    it('should not navigate when unpublish menu item is clicked', async () => {
+      const publishedSite = createMockSite({
+        variants: ['preview', 'publish'],
+        variantsWithLifecycle: [
+          { variant: 'preview', status: 'active' },
+          { variant: 'publish', status: 'active' },
+        ],
+      });
+
+      vi.mocked(appFetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          ...publishedSite,
+          published_url: 'https://published.test/app',
+          published_at: '2024-01-01T00:00:00.000Z',
+          variants: ['preview', 'publish'],
+        }),
+      } as Response);
+
+      const { user } = renderWithProviders(<AppCard site={publishedSite} />);
+
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalled();
+      });
+
+      await clickMenuItemAndExpectNoNavigation(user, () => screen.getByTestId('app-card-unpublish-button'));
     });
   });
 

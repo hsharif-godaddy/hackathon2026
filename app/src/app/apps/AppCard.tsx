@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FormattedMessage } from 'react-intl';
 import Box from '@ux/box'
 import Button from '@ux/button'
@@ -25,7 +25,6 @@ import AppThumbnail from '@/app/apps/AppThumbnail'
 import TransferInitiateDialog from '@/app/apps/components/TransferInitiateDialog'
 import UnpublishConfirmationModal from '@/components/layout/UnpublishConfirmationModal'
 import { useAppRename } from '@/hooks/useAppRename'
-import { useMenuClickPrevention } from '@/hooks/useMenuClickPrevention'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useUnpublishApp } from '@/hooks/useUnpublishApp'
@@ -64,7 +63,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
   const [newName, setNewName] = useState(site.name || '')
   const [renameError, setRenameError] = useState<string | null>(null)
 
-  const { menuWrapperProps, menuItemProps, shouldPreventClick } = useMenuClickPrevention()
+  const menuClosedRef = useRef(false)
   const deleteSite = useSitesStore((state) => state.deleteSite)
   const fetchAllSites = useSitesStore((state) => state.fetchAllSites)
   const refreshSites = useSitesStore((state) => state.refreshSites)
@@ -292,10 +291,9 @@ export default function AppCard({ site }: { site: SiteInfo }) {
   const transferMenuItems = hasActiveTransfer ? (
     <>
       <MenuItem
-        {...menuItemProps()}
+        onClick={handleCopyToken}
         data-eid={generateClickEID('apps.app.copy_transfer_code')}
         data-testid="app-card-copy-code-button"
-        onClick={handleCopyToken}
       >
         <Box orientation="horizontal" gap="sm">
           <CopyIcon />
@@ -305,10 +303,9 @@ export default function AppCard({ site }: { site: SiteInfo }) {
         </Box>
       </MenuItem>
       <MenuItem
-        {...menuItemProps()}
+        onClick={showCancelTransferAlert}
         data-eid={generateClickEID('apps.app.cancel_transfer')}
         data-testid="app-card-cancel-transfer-button"
-        onClick={showCancelTransferAlert}
       >
         <Box orientation="horizontal" gap="sm">
           <text.span emphasis="critical"><ShareIcon /></text.span>
@@ -318,10 +315,9 @@ export default function AppCard({ site }: { site: SiteInfo }) {
     </>
   ) : (
     <MenuItem
-      {...menuItemProps()}
+      onClick={() => setIsTransferDialogOpen(true)}
       data-eid={generateClickEID('apps.app.transfer')}
       data-testid="app-card-transfer-button"
-      onClick={() => setIsTransferDialogOpen(true)}
     >
       <Box orientation="horizontal" gap="sm">
         <ShareIcon />
@@ -331,11 +327,19 @@ export default function AppCard({ site }: { site: SiteInfo }) {
   )
 
   const cornerActions = (
-    <div {...menuWrapperProps}>
+    <div
+      onPointerDown={(e) => e.stopPropagation()}
+      onPointerUp={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
       <Menu
         id="app-card-menu"
         size="sm"
         closeOnSelect
+        onSelect={() => {
+          menuClosedRef.current = true;
+          setTimeout(() => { menuClosedRef.current = false; }, 300);
+        }}
       >
         <MenuButton
           aria-label={t('builder_apps_menu_actions')}
@@ -346,7 +350,6 @@ export default function AppCard({ site }: { site: SiteInfo }) {
         />
         <MenuList stretch>
           <MenuItem
-            {...menuItemProps()}
             data-eid={generateClickEID('apps.app.menu_edit')}
             href={`/develop/${site.id}?siteId=${site.id}`}
             isLink={true}
@@ -358,11 +361,8 @@ export default function AppCard({ site }: { site: SiteInfo }) {
           </MenuItem>
           {publishedUrl && (
             <MenuItem
-              {...menuItemProps()}
+              onClick={() => window.open(publishedUrl, '_blank', 'noopener,noreferrer')}
               data-eid={generateClickEID('apps.app.visit_published')}
-              onClick={() => {
-                window.open(publishedUrl, '_blank', 'noopener,noreferrer');
-              }}
             >
               <Box orientation="horizontal" gap="sm">
                 <WebsiteIcon />
@@ -372,10 +372,9 @@ export default function AppCard({ site }: { site: SiteInfo }) {
           )}
           {isUnpublishEnabled && hasBeenPublished(site) && (
             <MenuItem
-              {...menuItemProps()}
+              onClick={() => setIsUnpublishModalOpen(true)}
               data-eid={generateClickEID('apps.app.unpublish')}
               data-testid="app-card-unpublish-button"
-              onClick={() => setIsUnpublishModalOpen(true)}
             >
               <Box orientation="horizontal" gap="sm">
                 <UnlinkIcon />
@@ -385,12 +384,9 @@ export default function AppCard({ site }: { site: SiteInfo }) {
           )}
           {site.status === 'running' && site.preview_url && (
             <MenuItem
-              {...menuItemProps()}
+              onClick={() => window.open(site.preview_url, '_blank', 'noopener,noreferrer')}
               data-eid={generateClickEID('apps.app.view')}
               data-testid="app-card-view-button"
-              onClick={() => {
-                window.open(site.preview_url, '_blank', 'noopener,noreferrer');
-              }}
             >
               <Box orientation="horizontal" gap="sm">
                 <ShowIcon />
@@ -400,7 +396,6 @@ export default function AppCard({ site }: { site: SiteInfo }) {
           )}
           <MenuSeparator />
           <MenuItem
-            {...menuItemProps()}
             href={`/develop/${site.id}?siteId=${site.id}&settings=domain&tab=settings`}
             isLink={true}
           >
@@ -410,9 +405,8 @@ export default function AppCard({ site }: { site: SiteInfo }) {
             </Box>
           </MenuItem>
           <MenuItem
-            {...menuItemProps()}
-            data-eid={generateClickEID('apps.app.rename')}
             onClick={openRenameDialog}
+            data-eid={generateClickEID('apps.app.rename')}
           >
             <Box orientation="horizontal" gap="sm">
               <EditIcon />
@@ -422,12 +416,9 @@ export default function AppCard({ site }: { site: SiteInfo }) {
           {isTransferEnabled && transferMenuItems}
           <MenuSeparator />
           <MenuItem
-            {...menuItemProps()}
+            onClick={() => showDeleteAlert(site.id, site.name || t('builder_apps_alert_delete_untitled'))}
             data-eid={generateClickEID('apps.app.delete')}
             data-testid="app-card-delete-button"
-            onClick={() => {
-              showDeleteAlert(site.id, site.name || t('builder_apps_alert_delete_untitled'));
-            }}
             aria-label={t('builder_apps_menu_delete', { siteName: site.name || t('builder_apps_alert_delete_untitled') })}
           >
             <Box orientation="horizontal" gap="sm">
@@ -497,16 +488,14 @@ export default function AppCard({ site }: { site: SiteInfo }) {
     <>
       <MediaCard
         as="button"
-        onClick={(e) => {
-          if (shouldPreventClick(e)) {
-            return;
-          }
+        onClick={() => {
+          if (menuClosedRef.current) return;
           router.push(`/develop/${site.id}?siteId=${site.id}`);
         }}
         data-eid={generateClickEID('apps.app.edit')}
         data-testid="app-card-edit-button"
         aria-label={t('builder_common_edit') + ' ' + site.name || t('builder_apps_alert_delete_untitled')}
-        className="sm:!flex-row"
+        className="sm:!flex-row touch-manipulation"
         cornerActions={cornerActions}
         title={title}
         description={description}
