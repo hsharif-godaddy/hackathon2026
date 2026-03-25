@@ -707,12 +707,6 @@ NEXT_PUBLIC_USE_MOCK_LOGIN=${config.authConfig.authType === "mock" ? "true" : "f
 `;
 		}
 
-		// Control plane via local-control-plane service
-		envContent += `
-# Control Plane (local-control-plane service)
-MGMT_AIRO_BASE_URL=http://localhost:4100
-`;
-
 		return envContent;
 	}
 
@@ -786,13 +780,15 @@ LOGIN_REDIRECT_URL=${envConfig.loginRedirectUrl}
 AWS_REGION=${envConfig.awsRegion}
 `;
 
-		if (env === 'test' || env === 'prod') {
-			const mgmtUrl = env === 'test' ? 'https://mgmt.nstk.net' : 'https://mgmt.woosaas.godaddy.com';
-			content += `
+		const mgmtUrls = {
+			dev: 'http://localhost:4100',
+			test: 'https://mgmt.nstk.net',
+			prod: 'https://mgmt.woosaas.godaddy.com',
+		};
+		content += `
 # Management API Base URL (control plane)
-MGMT_AIRO_BASE_URL=${mgmtUrl}
+MGMT_AIRO_BASE_URL=${mgmtUrls[env]}
 `;
-		}
 
 		if (env === 'prod') {
 			content += `

@@ -10,6 +10,7 @@ import (
 
 	"github.com/airo-ai-builder/local-control-plane/internal/api"
 	"github.com/airo-ai-builder/local-control-plane/internal/auth"
+	"github.com/airo-ai-builder/local-control-plane/internal/docker"
 	"github.com/airo-ai-builder/local-control-plane/internal/store"
 	"github.com/rs/cors"
 )
@@ -35,11 +36,20 @@ func main() {
 	}
 	defer db.Close()
 
+	if !docker.IsDockerAvailable() {
+		slog.Error("docker.init.failed",
+			"hint", "Docker daemon is not running. Start Docker Desktop and try again.")
+		os.Exit(1)
+	}
+
 	jwtService, err := auth.New()
 	if err != nil {
-		slog.Warn("jwt.init.failed", "error", err.Error(),
-			"hint", "Agent registration will fail. Run ./setup.sh to generate JWT keys.")
+		slog.Error("jwt.init.failed", "error", err.Error(),
+			"hint", fmt.Sprintf("Run: aws sso login --profile %s (or set AWS_PROFILE to use a different profile)", awsProfile()))
+		os.Exit(1)
 	}
+
+	docker.NewManager().Reconcile(db)
 
 	router := api.NewRouter(db, jwtService)
 
@@ -69,4 +79,11 @@ func main() {
 		slog.Error("server error", "error", err)
 		os.Exit(1)
 	}
+}
+
+func awsProfile() string {
+	if p := os.Getenv("AWS_PROFILE"); p != "" {
+		return p
+	}
+	return "airobuild-dev-private-sso"
 }
