@@ -7,6 +7,7 @@
 
 import { useMemo } from 'react';
 
+import { getEffectivePlan } from '@/lib/paywall/shared';
 import {
   canPublishWithPlan,
   getPublishLimit,
@@ -37,7 +38,7 @@ interface UsePublishLimitCheckResult extends PublishLimitResult {
  * Hook to check if a user can publish based on their subscription plan and current publish count
  *
  * When app-builder-grants is enabled:
- * - Legacy AiroPlus users (Starter plan with entitlementId) = 9 apps
+ * - Legacy AiroPlus users (Starter plan with hadAiroPlus) = 9 apps
  * - New users are limited by plan:
  *   - Free = 0 apps (show paywall)
  *   - Starter = 1 app
@@ -106,10 +107,7 @@ export function usePublishLimitCheck(
       };
     }
 
-    // Legacy AiroPlus users show as Starter plan and have entitlementId (airo plus).
-    const isLegacyAiroPlus = subscription?.plan === SubscriptionPlan.Starter &&
-      !!subscription?.entitlementId;
-    const plan = isLegacyAiroPlus ? SubscriptionPlan.AiroPlus : subscription?.plan;
+    const plan = getEffectivePlan(subscription?.plan, subscription?.hadAiroPlus);
 
     // No plan, None, or Free plan - show paywall (limit: 0)
     if (!plan || plan === SubscriptionPlan.None || plan === SubscriptionPlan.Free) {

@@ -406,7 +406,7 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
       expect(screen.queryByRole('button', { name: 'Upgrade to Publish' })).not.toBeInTheDocument();
     });
 
-    it('should treat legacy AiroPlus users correctly with entitlementId', function legacyAiroPlusLimit() {
+    it('should treat legacy AiroPlus users correctly with hadAiroPlus', function legacyAiroPlusLimit() {
       const mockOpenPaywall = vi.fn();
       vi.mocked(getPublishLimit).mockReturnValue(1);
 
@@ -417,7 +417,7 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
         <AppsAndSitesCard
           sites={[publishedSite, unpublishedSite]}
           subscriptionPlan={SubscriptionPlan.Starter}
-          entitlementId="legacy-airo-plus-entitlement"
+          hadAiroPlus={true}
           onOpenPaywall={mockOpenPaywall}
         />
       );

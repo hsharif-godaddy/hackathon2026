@@ -10,9 +10,8 @@
 
 import { canPublishWithPlan, getPublishLimit } from '@/lib/publish-limit';
 import { logger } from '@/lib/request-context';
-import { SubscriptionPlan } from '@/types/credits';
 import type { PaywallDataProvider, SwitchboardFlagsResult } from './providers';
-import { isMatchingProject, isPaidPlanForGrants, type PaywallCheckResult, PaywallDenialReason } from './shared';
+import { getEffectivePlan, isMatchingProject, isPaidPlanForGrants, type PaywallCheckResult, PaywallDenialReason } from './shared';
 
 /**
  * Action types for paywall eligibility check
@@ -169,8 +168,6 @@ export async function checkPaywallEligibility(
       // unless grants is explicitly disabled
       if (action === PaywallAction.Publish && flags.grants && !flags.bypassPublishLimit) {
 
-        // Check publish limit for the plan
-        // Legacy AiroPlus users show as Starter plan and have entitlementId (airo plus).
         let publishedApps;
         try {
           publishedApps = await provider.getPublishedApps();
@@ -193,11 +190,7 @@ export async function checkPaywallEligibility(
           };
         }
 
-        const isLegacyAiroPlus = accountSubscription.plan === SubscriptionPlan.Starter &&
-          !!accountSubscription.entitlementId;
-        const effectivePlan = isLegacyAiroPlus
-          ? SubscriptionPlan.AiroPlus
-          : accountSubscription.plan;
+        const effectivePlan = getEffectivePlan(accountSubscription.plan, accountSubscription.hadAiroPlus);
         const limit = getPublishLimit(effectivePlan);
         const canPublish = canPublishWithPlan(
           effectivePlan,

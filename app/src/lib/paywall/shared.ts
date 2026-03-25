@@ -258,6 +258,29 @@ export function isProfessionalOrAbove(
 }
 
 /**
+ * Legacy AiroPlus users are on the Starter plan but previously had AiroPlus.
+ * They are grandfathered into AiroPlus-tier publish limits (9 apps).
+ */
+export function isLegacyAiroPlus(
+  plan: SubscriptionPlan | undefined | null,
+  hadAiroPlus: boolean | undefined
+): boolean {
+  return plan === SubscriptionPlan.Starter && !!hadAiroPlus;
+}
+
+/**
+ * Returns the effective plan for publish limit calculations.
+ * Legacy AiroPlus users (Starter + hadAiroPlus) are treated as AiroPlus
+ * for limit purposes; all other users use their actual plan.
+ */
+export function getEffectivePlan(
+  plan: SubscriptionPlan | undefined | null,
+  hadAiroPlus: boolean | undefined
+): SubscriptionPlan | undefined | null {
+  return isLegacyAiroPlus(plan, hadAiroPlus) ? SubscriptionPlan.AiroPlus : plan;
+}
+
+/**
  * Check if a project matches Airo Plus criteria
  *
  * @param node - Project node to check

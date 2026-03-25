@@ -120,7 +120,7 @@ describe('GET /api/subscriptions/[id]', function describeRoute() {
         status: 'active',
         isTrial: false,
         customerId: 'test-customer-123',
-        entitlementId: 'ent-123',
+        hadAiroPlus: true,
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z',
       });
@@ -134,7 +134,7 @@ describe('GET /api/subscriptions/[id]', function describeRoute() {
         id: 'sub-123',
         productId: 'aab-v1',
         status: 'active',
-        plan: SubscriptionPlan.AiroPlus, // Derived from productId + isTrial
+        plan: SubscriptionPlan.AiroPlus, // Derived from productId + hadAiroPlus
       });
     });
 

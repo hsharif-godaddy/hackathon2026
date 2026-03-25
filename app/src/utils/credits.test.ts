@@ -11,6 +11,7 @@ import {
   getEffectiveCreditsSpent,
   getMonthlyPlanGrant,
   getPlanDisplayLabelKey,
+  getPlanFromSubscription,
 } from '@/utils/credits';
 
 function createMockGrant(overrides: Partial<CreditGrant> = {}): CreditGrant {
@@ -265,6 +266,68 @@ describe('credits', function creditsTests() {
       expect(periodStart).toBeInstanceOf(Date);
       expect(periodEnd).toBeInstanceOf(Date);
       expect(periodEnd.getTime()).toBeGreaterThan(periodStart.getTime());
+    });
+  });
+
+  describe('#getPlanFromSubscription', function getPlanFromSubscriptionTests() {
+    it('should return explicit plan when set', function explicitPlan() {
+      const result = getPlanFromSubscription({
+        plan: SubscriptionPlan.Starter,
+        productId: 'aab-v1',
+        isTrial: false,
+        hadAiroPlus: true,
+      });
+
+      expect(result).toBe(SubscriptionPlan.Starter);
+    });
+
+    it('should return AiroPlus for aab-v1 with hadAiroPlus and non-trial', function legacyAiroPlus() {
+      const result = getPlanFromSubscription({
+        productId: 'aab-v1',
+        isTrial: false,
+        hadAiroPlus: true,
+      });
+
+      expect(result).toBe(SubscriptionPlan.AiroPlus);
+    });
+
+    it('should return None for aab-v1 with hadAiroPlus and trial', function legacyTrial() {
+      const result = getPlanFromSubscription({
+        productId: 'aab-v1',
+        isTrial: true,
+        hadAiroPlus: true,
+      });
+
+      expect(result).toBe(SubscriptionPlan.None);
+    });
+
+    it('should return None for aab-v1 without hadAiroPlus', function noHadAiroPlus() {
+      const result = getPlanFromSubscription({
+        productId: 'aab-v1',
+        isTrial: false,
+      });
+
+      expect(result).toBe(SubscriptionPlan.None);
+    });
+
+    it('should return None for aab-v1 with hadAiroPlus false', function hadAiroPlusFalse() {
+      const result = getPlanFromSubscription({
+        productId: 'aab-v1',
+        isTrial: false,
+        hadAiroPlus: false,
+      });
+
+      expect(result).toBe(SubscriptionPlan.None);
+    });
+
+    it('should return None when no plan and non-aab-v1 product', function unknownProduct() {
+      const result = getPlanFromSubscription({
+        productId: 'other-product',
+        isTrial: false,
+        hadAiroPlus: true,
+      });
+
+      expect(result).toBe(SubscriptionPlan.None);
     });
   });
 

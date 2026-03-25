@@ -51,6 +51,7 @@ export interface AccountSubscription {
   isTrial?: boolean;
   entitlementId?: string; // Airo Plus entitlement
   builderEntitlementId?: string; // Airo Builder entitlement
+  hadAiroPlus?: boolean; // Whether user previously had Airo Plus
   plan?: SubscriptionPlan;
   renewsAt?: string;
 }

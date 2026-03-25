@@ -49,6 +49,8 @@ export interface AiroSubscription {
   entitlementId?: string;
   /** Airo Builder entitlement ID (new airo builder plans) */
   builderEntitlementId?: string;
+  /** Whether the user previously had an Airo Plus subscription (legacy users converted to Starter) */
+  hadAiroPlus?: boolean;
   /** Subscription plan type (new airo builder plans) */
   plan?: SubscriptionPlan;
   /** When the subscription renews (new airo builder plans) */

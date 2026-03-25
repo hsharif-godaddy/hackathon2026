@@ -19,8 +19,7 @@ import { useTranslations } from '@/hooks/useTranslations';
 import { useUnpublishApp } from '@/hooks/useUnpublishApp';
 import type { SiteInfo } from '@/lib/control-plane/types';
 import { DomainStatus, DomainType } from '@/lib/control-plane/types';
-import { isPaidPlanForGrants, type PaywallType } from '@/lib/paywall/shared';
-import { PAYWALL_ITC } from '@/lib/paywall/shared';
+import { getEffectivePlan, isPaidPlanForGrants, PAYWALL_ITC, type PaywallType } from '@/lib/paywall/shared';
 import { getPublishLimit, isPublishedApp } from '@/lib/publish-limit';
 import { useSitesStore } from '@/stores/useSitesStore';
 import { SubscriptionPlan } from '@/types/credits';
@@ -30,8 +29,7 @@ interface AppsAndSitesCardProps {
   sites: SiteInfo[];
   isLoading?: boolean;
   subscriptionPlan?: SubscriptionPlan;
-  //Legacy AiroPlus entitlement ID
-  entitlementId?: string;
+  hadAiroPlus?: boolean;
   onOpenPaywall?: (source: string, type?: PaywallType, itc?: string) => void;
 }
 
@@ -60,7 +58,7 @@ export default function AppsAndSitesCard({
   sites,
   isLoading = false,
   subscriptionPlan,
-  entitlementId,
+  hadAiroPlus,
   onOpenPaywall,
 }: AppsAndSitesCardProps) {
   const t = useTranslations();
@@ -71,8 +69,7 @@ export default function AppsAndSitesCard({
   const publishMutation = usePublishApp();
   const fetchAllSites = useSitesStore((state) => state.fetchAllSites);
 
-  const isLegacyAiroPlus = subscriptionPlan === SubscriptionPlan.Starter && !!entitlementId;
-  const effectivePlanForLimits = isLegacyAiroPlus ? SubscriptionPlan.AiroPlus : subscriptionPlan;
+  const effectivePlanForLimits = getEffectivePlan(subscriptionPlan, hadAiroPlus);
 
   const publishLimit = getPublishLimit(effectivePlanForLimits);
   const planLabelKey = subscriptionPlan ? getPlanDisplayLabelKey(subscriptionPlan) : null;

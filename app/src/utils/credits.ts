@@ -134,16 +134,19 @@ export function formatFullCreditDate(dateString: string, locale?: string): strin
  * Handles both new plan field and legacy productId mapping
  */
 export function getPlanFromSubscription(
-  subscription: Pick<AiroSubscription, 'plan' | 'productId' | 'builderEntitlementId' | 'isTrial' | 'entitlementId'>
+  subscription: Pick<AiroSubscription, 'plan' | 'productId' | 'isTrial' | 'hadAiroPlus'>
 ): SubscriptionPlan {
   // If plan field has a valid value, use it
   if (subscription?.plan) {
     return subscription.plan;
   }
 
-  // Legacy product ID mapping (when plan is undefined, null, or empty)
-  if (subscription?.productId === 'aab-v1' && !subscription.builderEntitlementId && subscription.entitlementId) {
-    // Non-trial users: return AiroPlus (legacy paid users)
+  // Legacy product ID mapping (when plan is undefined, null, or empty).
+  // hadAiroPlus is set by mgmt-airo only on subscriptions that were originally
+  // Airo Plus before the new plans rollout. Subscriptions with a plan field
+  // already set (e.g. Starter with builderEntitlementId) are handled by the
+  // early return above and never reach this path.
+  if (subscription?.productId === 'aab-v1' && subscription.hadAiroPlus) {
     return subscription.isTrial ? SubscriptionPlan.None : SubscriptionPlan.AiroPlus;
   }
 

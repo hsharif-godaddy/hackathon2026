@@ -707,7 +707,7 @@ describe('checkPaywallEligibility', () => {
       });
     });
 
-    describe('Legacy AiroPlus users (Starter + entitlementId, limit: 9 apps)', () => {
+    describe('Legacy AiroPlus users (Starter + hadAiroPlus, limit: 9 apps)', () => {
       it('should allow publish for legacy AiroPlus user under limit', async () => {
         mockProvider.checkSwitchboardFlags.mockResolvedValue({
           paywall: true,
@@ -719,10 +719,9 @@ describe('checkPaywallEligibility', () => {
           id: 'sub-starter',
           plan: SubscriptionPlan.Starter,
           status: 'active',
-          entitlementId: 'ent-legacy-airoplus', // Legacy AiroPlus entitlement
+          hadAiroPlus: true,
           builderEntitlementId: 'ent-builder',
         });
-        // User has 5 apps published (under AiroPlus limit of 9)
         mockProvider.getPublishedApps.mockResolvedValue({
           count: 5,
           publishedAppIds: Array.from({ length: 5 }, (_, i) => `app-${i}`),
@@ -745,10 +744,9 @@ describe('checkPaywallEligibility', () => {
           id: 'sub-starter',
           plan: SubscriptionPlan.Starter,
           status: 'active',
-          entitlementId: 'ent-legacy-airoplus', // Has entitlementId = legacy AiroPlus
+          hadAiroPlus: true,
           builderEntitlementId: 'ent-builder',
         });
-        // User has 8 apps published - would be denied with Starter limit (1), allowed with AiroPlus limit (9)
         mockProvider.getPublishedApps.mockResolvedValue({
           count: 8,
           publishedAppIds: Array.from({ length: 8 }, (_, i) => `app-${i}`),
@@ -770,7 +768,7 @@ describe('checkPaywallEligibility', () => {
           id: 'sub-starter',
           plan: SubscriptionPlan.Starter,
           status: 'active',
-          entitlementId: 'ent-legacy-airoplus',
+          hadAiroPlus: true,
           builderEntitlementId: 'ent-builder',
         });
         mockProvider.getPublishedApps.mockResolvedValue({
@@ -797,7 +795,7 @@ describe('checkPaywallEligibility', () => {
           id: 'sub-starter',
           plan: SubscriptionPlan.Starter,
           status: 'active',
-          entitlementId: 'ent-legacy-airoplus',
+          hadAiroPlus: true,
           builderEntitlementId: 'ent-builder',
         });
         const publishedAppIds = Array.from({ length: 9 }, (_, i) => `app-${i}`);
@@ -806,13 +804,12 @@ describe('checkPaywallEligibility', () => {
           publishedAppIds,
         });
 
-        // Re-publishing an existing app
         const result = await checkPaywallEligibility(mockProvider, 'app-5', PaywallAction.Publish);
 
         expect(result.hasAccess).toBe(true);
       });
 
-      it('should use Starter limit for Starter user WITHOUT entitlementId', async () => {
+      it('should use Starter limit for Starter user WITHOUT hadAiroPlus', async () => {
         mockProvider.checkSwitchboardFlags.mockResolvedValue({
           paywall: true,
           markets: true,
@@ -823,7 +820,6 @@ describe('checkPaywallEligibility', () => {
           id: 'sub-starter',
           plan: SubscriptionPlan.Starter,
           status: 'active',
-          // No entitlementId = new Starter user, not legacy AiroPlus
         });
         mockProvider.getPublishedApps.mockResolvedValue({
           count: 1,

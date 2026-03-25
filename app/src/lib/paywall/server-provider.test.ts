@@ -301,14 +301,14 @@ describe('ServerPaywallProvider', () => {
         expect(result?.plan).toBe(SubscriptionPlan.None);
       });
 
-      it('should return airoPlus for non-trial aab-v1 subscription', async () => {
+      it('should return airoPlus for non-trial aab-v1 subscription with hadAiroPlus', async () => {
         mockGetSubscriptions.mockResolvedValue([
           {
             id: 'sub-1',
             productId: 'aab-v1',
             status: 'active',
             isTrial: false,
-            entitlementId: '12334-1234-1234-1234-123412341234',
+            hadAiroPlus: true,
           },
         ]);
 

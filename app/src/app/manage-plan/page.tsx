@@ -496,7 +496,7 @@ function ManagePlanContent() {
                   sites={sites}
                   isLoading={isSitesLoading}
                   subscriptionPlan={currentPlan}
-                  entitlementId={subscription?.entitlementId}
+                  hadAiroPlus={subscription?.hadAiroPlus}
                   onOpenPaywall={openPaywall}
                 />
               )}

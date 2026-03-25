@@ -240,6 +240,7 @@ export class ServerPaywallProvider implements PaywallDataProvider {
         isTrial: fullSubscription.isTrial,
         entitlementId: fullSubscription.entitlementId,
         builderEntitlementId: fullSubscription.builderEntitlementId,
+        hadAiroPlus: fullSubscription.hadAiroPlus,
         plan: fullSubscription.plan || bestSubscription.plan,
         renewsAt: fullSubscription.renewsAt
       };
