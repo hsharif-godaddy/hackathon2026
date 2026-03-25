@@ -1,6 +1,7 @@
 /* -> Import styles for UXCore icons */
 @import "@ux/icon/alert/index.css";
 @import "@ux/icon/apps/index.css";
+@import "@ux/icon/apps2/index.css";
 @import "@ux/icon/arrow-left/index.css";
 @import "@ux/icon/arrow-right/index.css";
 @import "@ux/icon/attachment/index.css";
@@ -38,6 +39,7 @@
 @import "@ux/icon/google/index.css";
 @import "@ux/icon/graph/index.css";
 @import "@ux/icon/hamburger/index.css";
+@import "@ux/icon/heart/index.css";
 @import "@ux/icon/history/index.css";
 @import "@ux/icon/image/index.css";
 @import "@ux/icon/information/index.css";
@@ -45,7 +47,9 @@
 @import "@ux/icon/lightbulb/index.css";
 @import "@ux/icon/link/index.css";
 @import "@ux/icon/locked/index.css";
+@import "@ux/icon/logout/index.css";
 @import "@ux/icon/mail/index.css";
+@import "@ux/icon/map/index.css";
 @import "@ux/icon/map-pin/index.css";
 @import "@ux/icon/menu/index.css";
 @import "@ux/icon/mic/index.css";
@@ -86,6 +90,7 @@
 @import "@ux/icon/website-filled/index.css";
 @import "@ux/icon/window-new/index.css";
 @import "@ux/icon/whatsapp/index.css";
+@import "@ux/icon/world/index.css";
 @import "@ux/icon/x/index.css";
 @import "@ux/icon/x-thick/index.css";
 @import "@ux/icon/yelp/index.css";

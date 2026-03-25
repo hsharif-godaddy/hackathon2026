@@ -7,7 +7,6 @@ import Box from '@ux/box';
 import ChevronLeftIcon from '@ux/icon/chevron-left';
 import Tag from '@ux/tag';
 
-import { UserMenu } from '@/components/auth';
 import { AiroLogo } from '@/components/layout/AiroLogo';
 import AppPublish from '@/components/layout/AppPublish';
 import AppSelector from '@/components/layout/AppSelector';
@@ -15,6 +14,7 @@ import DiscordLink from '@/components/layout/DiscordLink';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
 import InviteFriends from '@/components/layout/InviteFriends';
 import { HeaderProps } from '@/components/layout/types';
+import UserMenu from '@/components/layout/UserMenu';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { useTranslations } from '@/hooks/useTranslations';
@@ -64,7 +64,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown',
                 <AiroLogo className="relative" design="dark" />
               </div>
             </Link>
-            <Tag emphasis="highlight" highcontrast>{t('builder_beta', undefined, 'beta')}</Tag>
+            <Tag emphasis="highlight" highcontrast>{t('builder_beta')}</Tag>
           </div>
           <Box orientation="horizontal" className={isBelowSmBreakpoint ? 'gap-1 ml-2' : 'gap-2'}>
             {actions && actions}

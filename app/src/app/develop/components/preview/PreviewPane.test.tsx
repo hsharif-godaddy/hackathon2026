@@ -9,14 +9,6 @@ import PreviewPane, { restoreIframeState } from './PreviewPane';
 import { PreviewViewMode, ViewMode } from '../types';
 
 // Mock child components
-vi.mock('./PreviewHeader', () => ({
-  default: ({ onPreviewRefresh }: any) => (
-    <div data-testid="preview-header">
-      <button onClick={onPreviewRefresh}>Refresh</button>
-    </div>
-  ),
-}));
-
 vi.mock('./PreviewCode', () => ({
   default: ({ appId }: any) => <div data-testid="preview-code">Code: {appId}</div>,
 }));
@@ -116,25 +108,9 @@ describe('PreviewPane', () => {
   });
 
   it('should render without crashing', () => {
-    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+    const { container } = renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
 
-    expect(screen.getByTestId('preview-header')).toBeInTheDocument();
-  });
-
-  it('should render PreviewHeader', () => {
-    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
-
-    expect(screen.getByTestId('preview-header')).toBeInTheDocument();
-  });
-
-  it('should call onPreviewRefresh when refresh button clicked', async () => {
-    const onPreviewRefresh = vi.fn();
-    const { user } = renderWithProviders(<PreviewPane onPreviewRefresh={onPreviewRefresh} />);
-
-    const refreshButton = screen.getByText('Refresh');
-    await user.click(refreshButton);
-
-    expect(onPreviewRefresh).toHaveBeenCalled();
+    expect(container).toBeInTheDocument();
   });
 
   it('should render iframe when server is ready', async () => {

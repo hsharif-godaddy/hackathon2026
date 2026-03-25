@@ -99,7 +99,7 @@ export default function AuthBoundary({ children }: AuthBoundaryProps) {
     <>
       {children}
       <Modal
-        title={t('auth_boundary_title', undefined, 'Sign In Required')}
+        title={t('builder_common_signin_required')}
         strategy="fixed"
       >
         <div className="text-center py-4">
@@ -113,7 +113,7 @@ export default function AuthBoundary({ children }: AuthBoundaryProps) {
             design="primary"
             onClick={handleSignIn}
           >
-            {t('auth_boundary_sign_in_button', undefined, 'Sign In')}
+            {t('builder_common_signin')}
           </Button>
         </div>
       </Modal>

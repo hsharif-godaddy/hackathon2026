@@ -9,13 +9,13 @@ import { clearLocalOverride, setLocalOverride } from '@/utils/moduleFederation';
 
 /**
  * Backups panel for settings
- * 
+ *
  * Loads and renders the remote backups UI component from the @partners/backups-ui
  * module federation package. Configures the component with necessary props including
  * account ID, product type, and upgrade modal handler.
- * 
+ *
  * In development, uses a local module federation setup instead of fetching from the BFF API.
- * 
+ *
  * @returns Rendered backups panel with remote component
  */
 export default function BackupsPanel() {
@@ -45,7 +45,7 @@ export default function BackupsPanel() {
   };
 
   return (
-    <Box className="h-full bg-intents-ux-boxLowContrast-backgroundColor rounded-lg overflow-y-auto">
+    <Box className="h-full bg-intents-ux-box-backgroundColor rounded-lg overflow-y-auto">
       <div className="max-w-[1200px] p-3">
         <RemoteModulePage
           moduleName={moduleName}

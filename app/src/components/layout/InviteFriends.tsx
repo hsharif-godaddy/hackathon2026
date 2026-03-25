@@ -72,7 +72,7 @@ export default function InviteFriends({ location = 'unknown', variant = InviteFr
         icon={<LinkIcon />}
         size='sm'
         onClick={handleClick}
-        data-partial='componentAiro'
+        data-partial='dark'
         data-eid={generateClickEID(`${location}.header.invite_friends`)}
         aria-label={t('builder_invite_friend_title')}
       />

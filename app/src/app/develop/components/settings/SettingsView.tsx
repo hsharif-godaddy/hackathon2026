@@ -70,13 +70,8 @@ export default function SettingsView() {
     }
   }
 
-  // Use wider max-width for Marketing section to give calendar more room
-  const maxWidthClass = activeSettingsSection === SettingsSection.MARKETING
-    ? 'md:max-w-7xl'
-    : 'md:max-w-5xl';
-
   return (
-    <div className={`h-full flex flex-col overflow-y-auto p-2 w-full ${maxWidthClass} mx-auto`}>
+    <div className={`h-full flex flex-col overflow-y-auto px-1.5 md:pr-2.5 md:pl-1 md:py-0 w-full md:max-w-7xl mx-auto`}>
       {renderSection()}
     </div>
   )

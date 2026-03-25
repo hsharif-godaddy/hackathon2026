@@ -33,7 +33,7 @@ export default function DomainPurchaseToolRenderer({
   const domain = widgetData?.domain || (input?.domain as string | undefined)
   const appId = widgetData?.appId || (input?.appId as string | undefined)
 
-  const displayName = t('builder_tools_domain_purchase', undefined, 'Domain Purchase')
+  const displayName = t('builder_tools_domain_purchase')
 
   return (
     <div>
@@ -56,7 +56,7 @@ export default function DomainPurchaseToolRenderer({
                 gap="md"
               >
                 <text.strong size={0}>
-                  {t('builder_domain_purchase_title', undefined, 'Purchase a new domain')}
+                  {t('builder_domain_purchase_title')}
                 </text.strong>
               </Box>
             )}

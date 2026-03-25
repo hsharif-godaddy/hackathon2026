@@ -185,8 +185,10 @@ export default function PublishStatusAlert() {
       appId: currentAppId,
     });
 
+    dismissPublishSuccess(currentAppId);
+    setActiveChatTab(ChatTab.SETTINGS);
     setActiveSettingsSection(SettingsSection.DOMAIN);
-  }, [currentAppId, setActiveSettingsSection]);
+  }, [currentAppId, dismissPublishSuccess, setActiveChatTab, setActiveSettingsSection]);
 
   // Pre-fetch while publishing so the flag is in cache before the success alert appears.
   // Without this, gating on showSuccessAlert alone causes a race: the flag fetch starts at
@@ -312,9 +314,9 @@ export default function PublishStatusAlert() {
           <Alert
             emphasis='info'
             onClose={handleDismiss}
-            title={t('builder_publish_fixing_title', undefined, 'Airo is fixing the issue...')}
+            title={t('builder_publish_fixing_title')}
           >
-            {t('builder_publish_fixing_message', undefined, 'Airo is analyzing and fixing the build failure. Follow the progress in the chat.')}
+            {t('builder_publish_fixing_message')}
           </Alert>
         </div>
       );

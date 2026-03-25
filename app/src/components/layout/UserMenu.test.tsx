@@ -104,11 +104,11 @@ describe('UserMenu', function userMenuTests() {
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
       // Click the user icon to open popover
-      await user.click(screen.getByTestId('user-menu-trigger'));
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
 
       await waitFor(function checkPopover() {
         // Popover should be open - check for sign out button
-        expect(screen.getByText('builder_common_signout')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_sign_out')).toBeInTheDocument();
       });
     });
 
@@ -116,10 +116,10 @@ describe('UserMenu', function userMenuTests() {
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
       // Click to open popover
-      await user.click(screen.getByTestId('user-menu-trigger'));
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
 
       await waitFor(function checkInviteFriends() {
-        expect(screen.getByText('builder_invite_friend_title')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_refer_friend')).toBeInTheDocument();
       });
     });
 
@@ -127,11 +127,10 @@ describe('UserMenu', function userMenuTests() {
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
       // Click to open popover
-      await user.click(screen.getByTestId('user-menu-trigger'));
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
 
       await waitFor(function checkDiscord() {
-        // Discord uses default fallback text
-        expect(screen.getByText('builder_usermenu_discord')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_join_discord')).toBeInTheDocument();
       });
     });
 
@@ -139,10 +138,10 @@ describe('UserMenu', function userMenuTests() {
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
       // Click to open popover
-      await user.click(screen.getByTestId('user-menu-trigger'));
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
 
       await waitFor(function checkSignOut() {
-        expect(screen.getByText('builder_common_signout')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_sign_out')).toBeInTheDocument();
       });
     });
   });
@@ -157,13 +156,13 @@ describe('UserMenu', function userMenuTests() {
 
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
-      await user.click(screen.getByTestId('user-menu-trigger'));
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
 
       await waitFor(function checkPopoverOpen() {
-        expect(screen.getByText('builder_common_signout')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_sign_out')).toBeInTheDocument();
       });
 
-      expect(screen.queryByText('builder_usermenu_manage_plan')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_user_menu_manage_plan')).not.toBeInTheDocument();
     });
 
     it('should not show Manage Plan when subscription is undefined', async function hideWhenNoSubscription() {
@@ -175,13 +174,13 @@ describe('UserMenu', function userMenuTests() {
 
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
-      await user.click(screen.getByTestId('user-menu-trigger'));
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
 
       await waitFor(function checkPopoverOpen() {
-        expect(screen.getByText('builder_common_signout')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_sign_out')).toBeInTheDocument();
       });
 
-      expect(screen.queryByText('builder_usermenu_manage_plan')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_user_menu_manage_plan')).not.toBeInTheDocument();
     });
 
     it('should not show Manage Plan when builderEntitlementId is undefined', async function hideWhenNoEntitlementId() {
@@ -193,13 +192,13 @@ describe('UserMenu', function userMenuTests() {
 
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
-      await user.click(screen.getByTestId('user-menu-trigger'));
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
 
       await waitFor(function checkPopoverOpen() {
-        expect(screen.getByText('builder_common_signout')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_sign_out')).toBeInTheDocument();
       });
 
-      expect(screen.queryByText('builder_usermenu_manage_plan')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_user_menu_manage_plan')).not.toBeInTheDocument();
     });
 
     it('should show Manage Plan when all conditions are met', async function showWhenAllConditionsMet() {
@@ -211,14 +210,14 @@ describe('UserMenu', function userMenuTests() {
 
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
-      await user.click(screen.getByTestId('user-menu-trigger'));
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
 
       await waitFor(function checkManagePlan() {
-        expect(screen.getByText('builder_usermenu_manage_plan')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_manage_plan')).toBeInTheDocument();
       });
     });
 
-    it('should have link to /manage-plan', async function navigateOnClick() {
+    it('should navigate to /manage-plan when clicked', async function navigateOnClick() {
       mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
       mockUseSubscription.mockReturnValue({
         data: { id: 'sub-1', builderEntitlementId: 'entitlement-123' },
@@ -227,15 +226,17 @@ describe('UserMenu', function userMenuTests() {
 
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
-      await user.click(screen.getByTestId('user-menu-trigger'));
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
 
       await waitFor(function checkManagePlan() {
-        expect(screen.getByText('builder_usermenu_manage_plan')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_manage_plan')).toBeInTheDocument();
       });
 
-      // Verify the Link has correct href (navigation is handled by Next.js Link component)
-      const managePlanLink = screen.getByText('builder_usermenu_manage_plan').closest('a');
-      expect(managePlanLink).toHaveAttribute('href', '/manage-plan');
+      // Click the Manage Plan button
+      await user.click(screen.getByText('builder_user_menu_manage_plan'));
+
+      // Verify navigation was triggered
+      expect(mockPush).toHaveBeenCalledWith('/manage-plan');
     });
   });
 
@@ -243,10 +244,10 @@ describe('UserMenu', function userMenuTests() {
     it('should show Give Feedback when authenticated', async function showWhenAuthenticated() {
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
-      await user.click(screen.getByTestId('user-menu-trigger'));
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
 
       await waitFor(function checkFeedbackButton() {
-        expect(screen.getByText('builder_settings_nav_feedback')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_give_feedback')).toBeInTheDocument();
       });
     });
 
@@ -255,24 +256,24 @@ describe('UserMenu', function userMenuTests() {
 
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
-      await user.click(screen.getByTestId('user-menu-trigger'));
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
 
       await waitFor(function checkSignIn() {
         expect(screen.getByText('builder_common_signin')).toBeInTheDocument();
       });
 
-      expect(screen.queryByText('builder_settings_nav_feedback')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_user_menu_give_feedback')).not.toBeInTheDocument();
     });
 
     it('should open feedback modal when Give Feedback is clicked', async function openModal() {
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
-      await user.click(screen.getByTestId('user-menu-trigger'));
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
       await waitFor(function checkFeedbackButton() {
-        expect(screen.getByText('builder_settings_nav_feedback')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_give_feedback')).toBeInTheDocument();
       });
 
-      await user.click(screen.getByText('builder_settings_nav_feedback'));
+      await user.click(screen.getByText('builder_user_menu_give_feedback'));
 
       await waitFor(function checkModalOpen() {
         expect(screen.getByTestId('feedback-modal')).toBeInTheDocument();
@@ -282,26 +283,26 @@ describe('UserMenu', function userMenuTests() {
     it('should close popover when Give Feedback is clicked', async function closePopover() {
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
-      await user.click(screen.getByTestId('user-menu-trigger'));
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
       await waitFor(function checkFeedbackButton() {
-        expect(screen.getByText('builder_settings_nav_feedback')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_give_feedback')).toBeInTheDocument();
       });
 
-      await user.click(screen.getByText('builder_settings_nav_feedback'));
+      await user.click(screen.getByText('builder_user_menu_give_feedback'));
 
       await waitFor(function checkPopoverClosed() {
-        expect(screen.queryByText('builder_common_signout')).not.toBeInTheDocument();
+        expect(screen.queryByText('builder_user_menu_sign_out')).not.toBeInTheDocument();
       });
     });
 
     it('should close feedback modal via onClose callback', async function closeViaOnClose() {
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
-      await user.click(screen.getByTestId('user-menu-trigger'));
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
       await waitFor(function checkFeedbackButton() {
-        expect(screen.getByText('builder_settings_nav_feedback')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_give_feedback')).toBeInTheDocument();
       });
-      await user.click(screen.getByText('builder_settings_nav_feedback'));
+      await user.click(screen.getByText('builder_user_menu_give_feedback'));
       await waitFor(function checkModalOpen() {
         expect(screen.getByTestId('feedback-modal')).toBeInTheDocument();
       });
@@ -316,11 +317,11 @@ describe('UserMenu', function userMenuTests() {
     it('should close feedback modal via onSubmitSuccess callback', async function closeViaSubmit() {
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
-      await user.click(screen.getByTestId('user-menu-trigger'));
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
       await waitFor(function checkFeedbackButton() {
-        expect(screen.getByText('builder_settings_nav_feedback')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_give_feedback')).toBeInTheDocument();
       });
-      await user.click(screen.getByText('builder_settings_nav_feedback'));
+      await user.click(screen.getByText('builder_user_menu_give_feedback'));
       await waitFor(function checkModalOpen() {
         expect(screen.getByTestId('feedback-modal')).toBeInTheDocument();
       });
@@ -343,11 +344,11 @@ describe('UserMenu', function userMenuTests() {
 
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
-      await user.click(screen.getByTestId('user-menu-trigger'));
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
       await waitFor(function checkFeedbackButton() {
-        expect(screen.getByText('builder_settings_nav_feedback')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_give_feedback')).toBeInTheDocument();
       });
-      await user.click(screen.getByText('builder_settings_nav_feedback'));
+      await user.click(screen.getByText('builder_user_menu_give_feedback'));
 
       expect(removeItemSpy).not.toHaveBeenCalledWith(expect.stringContaining('airo-feedback-shown'));
     });

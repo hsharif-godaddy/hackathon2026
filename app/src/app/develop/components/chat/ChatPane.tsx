@@ -740,7 +740,7 @@ export default function ChatPane({
 
   return (
     <ChatContext.Provider value={chatContextValue}>
-    <div className="flex-1 flex flex-col h-full p-0 md:p-2 gap-1 md:gap-2">
+    <div className="flex-1 flex flex-col h-full p-0 md:pl-2 md:pb-2 gap-1">
       <PlanTracker
         developmentPlan={developmentPlan}
         expandedPlan={expandedPlan}
@@ -840,7 +840,7 @@ export default function ChatPane({
         className="flex flex-col flex-1 min-h-0"
         style={{ display: activeChatTab === ChatTab.MEDIAS ? 'flex' : 'none' }}
       >
-        <MediaPanel isActive={activeChatTab === ChatTab.MEDIAS} />
+        <MediaPanel />
       </div>
 
       {/* Settings Tab - Keep mounted, hide with CSS */}

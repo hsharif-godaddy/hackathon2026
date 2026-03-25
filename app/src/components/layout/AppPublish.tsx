@@ -11,7 +11,6 @@ import Tag from '@ux/tag';
 import text from '@ux/text';
 
 import { ChatTab, SettingsSection } from '@/app/develop/components/types';
-import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
 import { useGitHistoryQuery } from '@/hooks/useGitHistory';
@@ -32,10 +31,9 @@ import { useIsLoading, useStreamingState } from '@/stores/useStreamingConversati
 import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
 
-export default function AppPublish({ location }: { location?: string }) {
+export default function AppPublish({ location = 'develop' }: { location?: string }) {
   const intl = useIntl();
   const t = useTranslations();
-  const { isBelowSmBreakpoint } = useBreakpoints();
   const [open, setOpen] = useState(false);
   const [entitlementsPollingFailed, setEntitlementsPollingFailed] = useState(false);
   const pathname = usePathname();
@@ -56,6 +54,8 @@ export default function AppPublish({ location }: { location?: string }) {
   const publishFlagsEnabled = isPublishButtonEnabledFlag && isDevelopPage;
   const { data: isAiroPlusPaywallEnabled } = useSwitchboard('appbuilder-airoplus-paywall', { enabled: publishFlagsEnabled });
   const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets', { enabled: publishFlagsEnabled });
+
+  const isChatToolbar = location === 'develop.chat_toolbar';
 
   // Use shared paywall modal hook (includes publish limit check)
   const { checkAndShowPaywall, PaywallModal, isPolling, isPaywallLoading, isPublishLimitLoading } = usePaywallModal({
@@ -285,7 +285,7 @@ export default function AppPublish({ location }: { location?: string }) {
   /** Combined count for summary line so "X changes since last publish" matches the Unpublished section. */
   const totalChangesToPublish = unpublishedCount + unsyncedSecretsCount;
 
-  if (!isPublishButtonEnabled || !isDevelopPage || !currentAppId || !site?.agent_url) {
+  if(!isDevelopPage) {
     return null;
   }
 
@@ -296,7 +296,7 @@ export default function AppPublish({ location }: { location?: string }) {
   // - Paywall eligibility is being checked
   // - Publish limit is being checked
   // Note: Publishing, deployment, conversation in progress, and current commit deployed are now shown as warnings in the modal
-  const isButtonDisabled = isLoading || isLoadingGitHistory || isPolling || entitlementsPollingFailed || isPaywallLoading || isPublishLimitLoading;
+  const isButtonDisabled = isLoading || isLoadingGitHistory || isPolling || entitlementsPollingFailed || isPaywallLoading || isPublishLimitLoading || !isPublishButtonEnabled || !currentAppId || !site?.agent_url;
 
   const publishWidget = isFirstTimePublishing ? 'app_first_publish' : 'app_publish';
 
@@ -401,9 +401,10 @@ export default function AppPublish({ location }: { location?: string }) {
             data-partial='componentAiro'
             data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
             disabled={isButtonDisabled}
-            icon={<CloudUploadIcon />}
-            text={isBelowSmBreakpoint ? undefined : getPublishButtonText()}
-            aria-label={isBelowSmBreakpoint ? getPublishButtonText() : undefined}
+            icon={isChatToolbar ? <CloudUploadIcon className="!size-2.5" /> : undefined}
+            text={isChatToolbar ? undefined : getPublishButtonText()}
+            aria-label={isChatToolbar ? getPublishButtonText() : undefined}
+            className="!rounded-xmd !pt-0 !pb-0 !pl-1.5 !pr-1.5 sm:!p-1 !border-none md:!border-solid"
           />
         </PopoverTrigger>
         <PopoverContent align='end' className='w-[400px] p-3'>

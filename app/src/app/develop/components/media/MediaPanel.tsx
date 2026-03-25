@@ -10,11 +10,7 @@ import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useMediaManifest } from '@/hooks/useMediaManifest'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
 
-interface MediaPanelProps {
-  isActive: boolean
-}
-
-export default function MediaPanel({ isActive }: MediaPanelProps) {
+export default function MediaPanel() {
   const appId = useAppIdFromParams()
   const [activeSlotName, setActiveSlotName] = useState<string | null>(null)
 
@@ -22,13 +18,12 @@ export default function MediaPanel({ isActive }: MediaPanelProps) {
   const clearPanelSlot = useMediaSlotDialogStore((state) => state.clearPanelSlot)
 
   const { manifest, slotNames, isLoading, error, refetch } = useMediaManifest({
-    appId: appId || null,
-    enabled: isActive,
+    appId: appId || null
   })
 
   // Respond to external navigation requests (e.g., from preview "Swap Image")
   useEffect(function handleExternalNavigation() {
-    if (panelSlotName && isActive) {
+    if (panelSlotName) {
       if (panelSlotName === '__GRID__') {
         setActiveSlotName(null)
       } else {
@@ -36,7 +31,7 @@ export default function MediaPanel({ isActive }: MediaPanelProps) {
       }
       clearPanelSlot()
     }
-  }, [panelSlotName, isActive, clearPanelSlot])
+  }, [panelSlotName, clearPanelSlot])
 
   const handleSelectSlot = useCallback((slotName: string) => {
     setActiveSlotName(slotName)
@@ -64,7 +59,6 @@ export default function MediaPanel({ isActive }: MediaPanelProps) {
           <MediaSlotDetail
             appId={appId}
             slotName={activeSlotName}
-            enabled={isActive}
             onDone={handleBack}
           />
         </div>

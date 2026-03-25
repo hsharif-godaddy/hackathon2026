@@ -36,7 +36,7 @@ vi.mock('@ux/text', () => ({
 
 // Mock translations
 vi.mock('@/hooks/useTranslations', () => ({
-  useTranslations: () => (key: string, _params: unknown, defaultValue: string) => defaultValue,
+  useTranslations: () => (key: string) => key,
 }));
 
 // Mock logger
@@ -71,7 +71,7 @@ describe('AuthBoundary', () => {
     );
 
     expect(screen.getByTestId('child-content')).toBeInTheDocument();
-    expect(screen.queryByText('Sign In Required')).not.toBeInTheDocument();
+    expect(screen.queryByText('builder_common_signin_required')).not.toBeInTheDocument();
   });
 
   it('should show modal when needsReauth is true', () => {
@@ -88,9 +88,9 @@ describe('AuthBoundary', () => {
     // Children should still render (behind modal)
     expect(screen.getByTestId('child-content')).toBeInTheDocument();
     // Modal should be visible
-    expect(screen.getByText('Sign In Required')).toBeInTheDocument();
-    expect(screen.getByText('Please sign in to continue.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Sign In' })).toBeInTheDocument();
+    expect(screen.getByText('builder_common_signin_required')).toBeInTheDocument();
+    expect(screen.getByText('auth_boundary_not_authenticated')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'builder_common_signin' })).toBeInTheDocument();
   });
 
   it('should show session stale message', () => {
@@ -104,7 +104,7 @@ describe('AuthBoundary', () => {
       </AuthBoundary>
     );
 
-    expect(screen.getByText('Your session needs to be refreshed. Please sign in to continue.')).toBeInTheDocument();
+    expect(screen.getByText('auth_boundary_session_stale')).toBeInTheDocument();
   });
 
   it('should show session expired message', () => {
@@ -118,7 +118,7 @@ describe('AuthBoundary', () => {
       </AuthBoundary>
     );
 
-    expect(screen.getByText('Your session has expired. Please sign in to continue.')).toBeInTheDocument();
+    expect(screen.getByText('auth_boundary_session_expired')).toBeInTheDocument();
   });
 
   it('should call openSsoLogin when Sign In button is clicked', () => {
@@ -132,7 +132,7 @@ describe('AuthBoundary', () => {
       </AuthBoundary>
     );
 
-    const signInButton = screen.getByRole('button', { name: 'Sign In' });
+    const signInButton = screen.getByRole('button', { name: 'builder_common_signin' });
     fireEvent.click(signInButton);
 
     expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(true);
@@ -153,7 +153,7 @@ describe('AuthBoundary', () => {
     // Children should render
     expect(screen.getByTestId('child-content')).toBeInTheDocument();
     // Auth boundary modal should NOT be visible (SSO modal is handling it)
-    expect(screen.queryByText('Sign In Required')).not.toBeInTheDocument();
+    expect(screen.queryByText('builder_common_signin_required')).not.toBeInTheDocument();
   });
 
   describe('public route bypass', () => {
@@ -174,7 +174,7 @@ describe('AuthBoundary', () => {
 
       // Children should render without modal
       expect(screen.getByTestId('child-content')).toBeInTheDocument();
-      expect(screen.queryByText('Sign In Required')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_common_signin_required')).not.toBeInTheDocument();
     });
 
     it('should skip auth boundary on empty pathname', async () => {
@@ -191,7 +191,7 @@ describe('AuthBoundary', () => {
         </AuthBoundary>
       );
 
-      expect(screen.queryByText('Sign In Required')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_common_signin_required')).not.toBeInTheDocument();
     });
 
     it.each([
@@ -214,7 +214,7 @@ describe('AuthBoundary', () => {
       );
 
       expect(screen.getByTestId('child-content')).toBeInTheDocument();
-      expect(screen.queryByText('Sign In Required')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_common_signin_required')).not.toBeInTheDocument();
     });
 
     it('should show modal on unknown explore slug', async () => {
@@ -231,7 +231,7 @@ describe('AuthBoundary', () => {
         </AuthBoundary>
       );
 
-      expect(screen.getByText('Sign In Required')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_signin_required')).toBeInTheDocument();
     });
   });
 });

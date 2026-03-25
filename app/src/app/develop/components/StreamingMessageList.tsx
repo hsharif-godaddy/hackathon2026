@@ -554,7 +554,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   }
 
   return (
-    <div ref={containerRef} data-testid="chat-transcript" className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden px-3 md:px-1 pt-1.5 md:pt-0 gap-1" onScroll={handleScroll}>
+    <div ref={containerRef} data-testid="chat-transcript" className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden px-2 md:px-0 pt-3 md:pt-1 gap-1" onScroll={handleScroll}>
       {/* Loading indicator for pagination */}
       {historyLoadingMore && (
         <div className="flex justify-center items-center py-3 gap-2">

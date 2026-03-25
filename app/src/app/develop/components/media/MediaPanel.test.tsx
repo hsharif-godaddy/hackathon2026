@@ -58,34 +58,34 @@ describe('MediaPanel', () => {
   });
 
   it('renders grid by default', () => {
-    renderWithProviders(<MediaPanel isActive={true} />);
+    renderWithProviders(<MediaPanel />);
     expect(screen.getByTestId('media-slots-grid')).toBeInTheDocument();
   });
 
   it('navigates to detail when slot is selected', async () => {
-    const { user } = renderWithProviders(<MediaPanel isActive={true} />);
-    
+    const { user } = renderWithProviders(<MediaPanel />);
+
     await user.click(screen.getByText('Select slot-1'));
-    
+
     expect(screen.getByTestId('media-slot-detail')).toBeInTheDocument();
     expect(screen.getByText('Detail for slot-1')).toBeInTheDocument();
   });
 
   it('navigates back to grid when back button is clicked', async () => {
-    const { user } = renderWithProviders(<MediaPanel isActive={true} />);
-    
+    const { user } = renderWithProviders(<MediaPanel />);
+
     await user.click(screen.getByText('Select slot-1'));
     expect(screen.getByTestId('media-slot-detail')).toBeInTheDocument();
-    
+
     await user.click(screen.getByText('slot-1')); // The back button text
     expect(screen.getByTestId('media-slots-grid')).toBeInTheDocument();
   });
 
   it('navigates to detail when panelSlotName is set externally', async () => {
     mockMediaSlotDialogStore.panelSlotName = 'external-slot';
-    
-    renderWithProviders(<MediaPanel isActive={true} />);
-    
+
+    renderWithProviders(<MediaPanel />);
+
     expect(screen.getByTestId('media-slot-detail')).toBeInTheDocument();
     expect(screen.getByText('Detail for external-slot')).toBeInTheDocument();
     expect(mockMediaSlotDialogStore.clearPanelSlot).toHaveBeenCalled();
@@ -93,14 +93,14 @@ describe('MediaPanel', () => {
 
   it('navigates to grid when panelSlotName is __GRID__', async () => {
     // First navigate to a slot
-    const { user, rerender } = renderWithProviders(<MediaPanel isActive={true} />);
+    const { user, rerender } = renderWithProviders(<MediaPanel />);
     await user.click(screen.getByText('Select slot-1'));
     expect(screen.getByTestId('media-slot-detail')).toBeInTheDocument();
 
     // Then simulate external navigation to __GRID__
     mockMediaSlotDialogStore.panelSlotName = '__GRID__';
-    rerender(<MediaPanel isActive={true} />);
-    
+    rerender(<MediaPanel />);
+
     expect(screen.getByTestId('media-slots-grid')).toBeInTheDocument();
     expect(mockMediaSlotDialogStore.clearPanelSlot).toHaveBeenCalled();
   });

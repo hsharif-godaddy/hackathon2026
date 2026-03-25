@@ -54,13 +54,13 @@ export default function DiscordLink({ location = 'unknown', variant = DiscordLin
 
   return (
     <Button
-      className='!text-intents-ux-boxHighContrast-foregroundColor'
       design='tertiary'
+      data-partial='dark'
+      className='!text-intents-ux-boxHighContrast-foregroundColor'
       size='sm'
       external={true}
       icon={<DiscordIcon />}
       onClick={open}
-      data-partial='componentAiro'
       data-eid={generateClickEID(`${location}.header.discord`)}
       aria-label={t('builder_usermenu_discord')}
     />
