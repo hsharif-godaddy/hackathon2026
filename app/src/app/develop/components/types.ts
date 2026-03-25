@@ -64,7 +64,15 @@ export interface AiEditContext {
 
 export enum ViewMode {
   PREVIEW = 'preview',
+  EDIT = 'edit',
   CODE = 'code'
+}
+
+/** Message types sent to the preview iframe via postMessage */
+export enum IframeMessageType {
+  EDIT_MODE_ENABLED = 'EDIT_MODE_ENABLED',
+  EDIT_MODE_DISABLED = 'EDIT_MODE_DISABLED',
+  TOGGLE_SELECT_MODE = 'TOGGLE_SELECT_MODE',
 }
 
 export enum MobileMode {

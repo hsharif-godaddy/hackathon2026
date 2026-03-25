@@ -10,11 +10,13 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { GitUtils } from '../utils/git.js';
 import { logger } from '../logging/index.js';
 import { gettyUploadService } from './GettyUploadService.js';
+import { astImageEditor } from '../tools/ast-image-editor.js';
 
 export const MANIFEST_FILENAME = 'airo-media.json';
 
@@ -114,6 +116,147 @@ async function acquireLock(appId: string): Promise<() => void> {
 }
 
 /**
+ * Derive a media slot path from dev context and image metadata.
+ *
+ * Existing slot paths follow the pattern: pages/{pageName}/{descriptiveName}
+ * e.g. "pages/home/hero", "pages/home/dog"
+ *
+ * Priority for the image name segment:
+ *  1. Image alt text (most descriptive, e.g. "A happy dog" → "a-happy-dog")
+ *  2. Filename from image URL (e.g. "hero-banner.jpg" → "hero-banner")
+ *  3. Fallback to "image" with line number
+ */
+function deriveSlotPath(
+  devContext?: { fileName: string; componentName: string; lineNumber: number },
+  imageAlt?: string,
+  imageUrl?: string,
+): string {
+  if (!devContext?.fileName) {
+    return `imported/image-${Date.now()}`;
+  }
+
+  // Page segment from file path
+  let pageName = 'unknown';
+  const pageMatch = devContext.fileName.match(/pages\/(.+?)\.[tj]sx?$/);
+  if (pageMatch?.[1]) {
+    pageName = pageMatch[1]
+      .replace(/\.page$/, '')     // strip .page suffix if present
+      .replace(/\/index$/, '')    // strip /index suffix
+      .replace(/^index$/, 'home') // top-level index = home
+      .replace(/\//g, '-');       // flatten nested paths
+  }
+
+  // Image name segment — prefer alt text, then URL filename, then line number
+  let imageName = '';
+
+  if (imageAlt?.trim()) {
+    imageName = imageAlt.trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')  // strip non-alphanumeric
+      .replace(/\s+/g, '-')          // spaces to hyphens
+      .substring(0, 40);             // keep reasonable length
+  }
+
+  if (!imageName && imageUrl && !imageUrl.startsWith('data:')) {
+    try {
+      const pathname = new URL(imageUrl, 'http://localhost').pathname;
+      const filename = pathname.split('/').pop() || '';
+      imageName = filename
+        .replace(/\.[^.]+$/, '')          // strip extension
+        .replace(/[^a-zA-Z0-9-]/g, '-')  // non-alphanum to hyphens
+        .replace(/-+/g, '-')             // collapse multiple hyphens
+        .replace(/^-|-$/g, '')           // trim leading/trailing hyphens
+        .substring(0, 40)
+        .toLowerCase();
+    } catch {
+      // URL parsing failed, fall through
+    }
+  }
+
+  if (!imageName) {
+    imageName = `image-${devContext.lineNumber || Date.now()}`;
+  }
+
+  return `pages/${pageName}/${imageName}`;
+}
+
+/**
+ * Normalize an image URL to a local path if it points to the preview server.
+ * Browser img.src is fully qualified (e.g. "https://localhost:5009/assets/photo.jpg")
+ * but the manifest should store just the path ("/assets/photo.jpg").
+ */
+function normalizeImageUrl(imageUrl: string): string {
+  try {
+    const url = new URL(imageUrl);
+    const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+    // Production preview URLs like icph5qe56k.preview.c37.airoapp.ai serve
+    // the same assets as localhost in dev — normalize to just the pathname.
+    const isPreviewServer = url.hostname.endsWith('.airoapp.ai') && url.hostname.includes('.preview.');
+    if (isLocal || isPreviewServer) {
+      return url.pathname;
+    }
+  } catch {
+    // Not a valid URL, return as-is
+  }
+  return imageUrl;
+}
+
+/**
+ * Copy a local file (served by the preview server) into public/media/ so the
+ * image-slot handler can serve it via /airo-assets/uploads/.
+ *
+ * @returns The /airo-assets/uploads/ URL, or null if the file couldn't be found/copied.
+ */
+async function copyLocalFileToMedia(
+  appPath: string,
+  localUrlPath: string,
+  slotPath: string,
+): Promise<string | null> {
+  // Resolve local URL path to a filesystem path.
+  // Vite serves public/ at root, so /assets/photo.jpg → preview/public/assets/photo.jpg
+  // Strip leading slash so path.resolve doesn't treat it as absolute
+  const sanitizedPath = localUrlPath.replace(/^\/+/, '');
+  const sourcePath = path.resolve(appPath, 'public', sanitizedPath);
+  if (!sourcePath.startsWith(path.resolve(appPath, 'public') + path.sep)) {
+    logger.warn('media_manifest.copy_local.path_traversal_blocked', { localUrlPath });
+    return null;
+  }
+
+  try {
+    await fs.access(sourcePath);
+  } catch {
+    logger.warn('media_manifest.copy_local.source_not_found', {
+      sourcePath,
+      localUrlPath,
+    });
+    return null;
+  }
+
+  // Ensure public/media/ exists
+  const mediaDir = path.join(appPath, 'public', 'media');
+  await fs.mkdir(mediaDir, { recursive: true });
+
+  // Read file and generate a content-hash filename
+  const fileBuffer = await fs.readFile(sourcePath);
+  const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex').slice(0, 8);
+  const ext = path.extname(localUrlPath) || '.jpg';
+  const sanitizedSlot = slotPath.replace(/\//g, '-').replace(/[^a-zA-Z0-9-]/g, '');
+  const filename = `${sanitizedSlot}-${hash}${ext}`;
+
+  const destPath = path.join(mediaDir, filename);
+  const tmpPath = `${destPath}.tmp.${Date.now()}`;
+  await fs.writeFile(tmpPath, fileBuffer);
+  await fs.rename(tmpPath, destPath);
+
+  logger.info('media_manifest.copy_local.success', {
+    source: localUrlPath,
+    dest: filename,
+  });
+
+  return `/airo-assets/uploads/${filename}`;
+}
+
+/**
  * Service for managing the media manifest file with proper locking and git integration
  */
 export class MediaManifestService {
@@ -188,6 +331,143 @@ export class MediaManifestService {
       slot,
       manifest: result.manifest,
     };
+  }
+
+  /**
+   * Import a new slot into the manifest, deriving the slot path from dev context.
+   * If a slot with the derived path already exists, appends a counter suffix.
+   */
+  async importSlot(
+    appId: string,
+    options: {
+      imageUrl: string;
+      devContext?: { fileName: string; componentName: string; lineNumber: number };
+      imageAlt?: string;
+      imageType?: 'img' | 'background';
+    }
+  ): Promise<{ success: boolean; slotPath?: string; error?: string }> {
+    const release = await acquireLock(appId);
+
+    try {
+      const result = await this.getManifest(appId);
+      if (!result.success || !result.manifest) {
+        return { success: false, error: result.error || 'Failed to read manifest' };
+      }
+
+      const manifest = result.manifest;
+      let slotPath = deriveSlotPath(options.devContext, options.imageAlt, options.imageUrl);
+
+      if (manifest[slotPath]) {
+        let counter = 2;
+        while (manifest[`${slotPath}-${counter}`]) {
+          counter++;
+        }
+        slotPath = `${slotPath}-${counter}`;
+      }
+
+      // Normalize localhost URLs to local paths
+      let normalizedUrl = normalizeImageUrl(options.imageUrl);
+
+      // If the URL is a local path (e.g. /assets/photo.jpg), copy the file into
+      // public/media/ so the image-slot handler can serve it via /airo-assets/uploads/.
+      // Without this, the image manager shows broken images for local files.
+      const app = this.appRepository.findById(appId);
+      if (!app?.path) {
+        return { success: false, error: 'App not found' };
+      }
+
+      if (normalizedUrl.startsWith('/') && !normalizedUrl.startsWith('/airo-assets/')) {
+        const uploadUrl = await copyLocalFileToMedia(app.path, normalizedUrl, slotPath);
+        if (uploadUrl) {
+          normalizedUrl = uploadUrl;
+        }
+      }
+
+      const now = new Date().toISOString();
+      manifest[slotPath] = {
+        mediaType: 'image',
+        currentUrl: normalizedUrl,
+        searchQuery: '',
+        alternatives: [normalizedUrl],
+        userModified: false,
+        createdAt: now,
+        lastUpdated: now,
+      };
+
+      const manifestPath = this.getManifestPath(app.path);
+      const tmpPath = `${manifestPath}.tmp.${Date.now()}`;
+      await fs.writeFile(tmpPath, JSON.stringify(manifest, null, 2));
+      await fs.rename(tmpPath, manifestPath);
+
+      // Update the source file to use the new slot URL via AST-based replacement
+      const newSlotUrl = `/airo-assets/images/${slotPath}`;
+      if (options.devContext) {
+        try {
+          const replaceResult = await astImageEditor.replaceImage(app.path, {
+            elementInfo: {
+              tagName: options.imageType === 'background' ? 'div' : 'img',
+              className: '',
+              id: '',
+              selector: '',
+              devContext: options.devContext,
+            },
+            imageInfo: {
+              type: options.imageType || 'img',
+              currentUrl: normalizedUrl,
+            },
+            newImageUrl: newSlotUrl,
+          }, appId);
+
+          if (replaceResult.success) {
+            logger.info('media_manifest.import_slot.source_updated', {
+              appId,
+              slotPath,
+              fileName: options.devContext.fileName,
+            });
+          } else {
+            logger.warn('media_manifest.import_slot.source_update_failed', {
+              appId,
+              slotPath,
+              fileName: options.devContext.fileName,
+              error: replaceResult.error,
+            });
+          }
+        } catch (sourceError) {
+          // Log but don't fail - manifest import was still successful
+          logger.warn('media_manifest.import_slot.source_update_failed', {
+            appId,
+            slotPath,
+            fileName: options.devContext.fileName,
+            error: sourceError instanceof Error ? sourceError.message : String(sourceError),
+          });
+        }
+      }
+
+      // Commit to git (includes both manifest and source file changes)
+      const additionalFiles = options.devContext?.fileName ? [options.devContext.fileName] : undefined;
+      try {
+        await this.commitManifestChange(appId, slotPath, 'create', additionalFiles);
+      } catch (gitError) {
+        // Log but don't fail - the file change was successful
+        logger.warn('media_manifest.import_slot.git_commit_failed', {
+          appId,
+          slotPath,
+          error: gitError instanceof Error ? gitError.message : String(gitError),
+        });
+      }
+
+      logger.info('media_manifest.import_slot.success', { appId, slotPath, imageUrl: options.imageUrl.substring(0, 200) });
+
+      return { success: true, slotPath };
+    } catch (error) {
+      logger.error('media_manifest.import_slot.error', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: 'Failed to import slot' };
+    } finally {
+      release();
+    }
   }
 
   /**

@@ -34,7 +34,10 @@ interface DevelopmentModeState {
   editingElement: HTMLElement | null
 }
 
-export function useDevelopmentMode() {
+export function useDevelopmentMode(options?: { isEditModeActive?: boolean }) {
+  // Default false here is safe — DevelopmentMode.tsx always passes the actual state.
+  // This default only applies to other callers that don't use edit mode.
+  const isEditModeActive = options?.isEditModeActive ?? false
   const [state, setState] = useState<DevelopmentModeState>({
     isEnabled: true, // Auto-enable in development
     isSelectMode: false,
@@ -313,8 +316,8 @@ export function useDevelopmentMode() {
    * Returns the target element if valid, null otherwise
    */
   const shouldHandleEvent = useCallback((e: Event): HTMLElement | null => {
-    // Don't handle during text editing or when not in select mode
-    if (!state.isSelectMode || state.isInlineEditing) return null
+    // Don't handle during text editing, when not in select mode, or when edit mode is active
+    if (!state.isSelectMode || state.isInlineEditing || isEditModeActive) return null
 
     // Guard against non-Element targets (Document, Text nodes, etc.)
     // Prevents TypeError when calling .id, .closest(), .hasAttribute()
@@ -331,7 +334,7 @@ export function useDevelopmentMode() {
     }
 
     return target
-  }, [state.isSelectMode, state.isInlineEditing])
+  }, [state.isSelectMode, state.isInlineEditing, isEditModeActive])
 
   // Handle element hover
   const handleMouseOver = useCallback((e: MouseEvent) => {
@@ -406,7 +409,7 @@ export function useDevelopmentMode() {
   // Handle mouse leave
   const handleMouseLeave = useCallback(() => {
     // Don't handle mouse leave during text editing or when not in select mode
-    if (!state.isSelectMode || state.isInlineEditing) return
+    if (!state.isSelectMode || state.isInlineEditing || isEditModeActive) return
     setState(prev => ({ ...prev, hoveredElement: null }))
     if (state.selectedElement) {
       const element = document.querySelector(state.selectedElement.selector) as HTMLElement
@@ -416,7 +419,7 @@ export function useDevelopmentMode() {
     } else {
       clearHighlight()
     }
-  }, [state.isSelectMode, state.isInlineEditing, state.selectedElement, clearHighlight, highlightElement])
+  }, [state.isSelectMode, state.isInlineEditing, isEditModeActive, state.selectedElement, clearHighlight, highlightElement])
 
   // Handle scroll events to update highlight position and editor position
   const handleScroll = useCallback(() => {

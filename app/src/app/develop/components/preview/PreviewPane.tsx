@@ -600,8 +600,8 @@ export default function PreviewPane({
                       WebkitBackfaceVisibility: 'hidden',
                       transform: 'rotateY(180deg)'
                     }}
-                    aria-hidden={viewMode === ViewMode.PREVIEW ? 'true' : undefined}
-                    inert={viewMode === ViewMode.PREVIEW ? true : undefined}
+                    aria-hidden={viewMode !== ViewMode.CODE ? 'true' : undefined}
+                    inert={viewMode !== ViewMode.CODE ? true : undefined}
                   >
                     <PreviewCode appId={appId} />
                   </div>

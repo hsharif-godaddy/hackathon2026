@@ -40,3 +40,33 @@ export interface OpenMediaSlotDialogMessage {
 export interface ClearSelectionMessage {
   type: 'CLEAR_SELECTION'
 }
+
+/**
+ * Message to enable edit mode in dev-tools (sent from parent)
+ */
+export interface EditModeEnabledMessage {
+  type: "EDIT_MODE_ENABLED";
+}
+
+/**
+ * Message to disable edit mode in dev-tools (sent from parent)
+ */
+export interface EditModeDisabledMessage {
+  type: "EDIT_MODE_DISABLED";
+}
+
+/**
+ * Message to auto-import an image into airo-media.json as a new slot
+ * Sent from dev-tools to parent when "Replace" is clicked on a non-slot image
+ */
+export interface AutoImportMediaSlotMessage {
+  type: "AUTO_IMPORT_MEDIA_SLOT";
+  imageUrl: string;
+  devContext?: {
+    fileName: string;
+    componentName: string;
+    lineNumber: number;
+  };
+  imageAlt?: string;
+  imageType: "img" | "background";
+}

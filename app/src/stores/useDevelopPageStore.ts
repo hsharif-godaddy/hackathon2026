@@ -3,7 +3,7 @@ import { devtools } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 
 import { DEFAULT_MOBILE_DEVICE, DEFAULT_TABLET_DEVICE } from '@/app/develop/components/preview/devicePresets'
-import { ChatTab, MobileMode, PreviewViewMode, SettingsSection, ViewMode } from '@/app/develop/components/types'
+import { ChatTab, IframeMessageType, MobileMode, PreviewViewMode, SettingsSection, ViewMode } from '@/app/develop/components/types'
 import { fetchFeatureFlag } from '@/hooks/useSwitchboard'
 import type { SiteInfo } from '@/lib/control-plane/types'
 import { logger } from '@/lib/request-context'
@@ -142,6 +142,7 @@ interface DevelopPageStore {
   previewViewMode: PreviewViewMode
   selectedDeviceId: string
   isSelectMode: boolean
+  isEditModeEnabled: boolean
   expandedPlan: boolean
   chatPaneWidth: number
   isChatPaneCollapsed: boolean
@@ -222,6 +223,7 @@ interface DevelopPageStore {
   setPreviewViewMode: (mode: PreviewViewMode) => void
   setSelectedDeviceId: (deviceId: string) => void
   setIsSelectMode: (selectMode: boolean) => void
+  setIsEditModeEnabled: (enabled: boolean) => void
   setExpandedPlan: (expanded: boolean) => void
   setChatPaneWidth: (width: number) => void
   setIsChatPaneCollapsed: (collapsed: boolean) => void
@@ -311,6 +313,7 @@ interface DevelopPageStore {
 
   // UI helpers
   toggleSelectMode: () => void
+  toggleEditMode: () => void
   toggleExpandedPlan: () => void
   toggleChatPaneCollapse: () => void
   toggleVersionHistory: () => void
@@ -323,11 +326,12 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
   devtools(
     immer((set, get) => ({
     // Initial UI state
-    viewMode: ViewMode.PREVIEW,
+    viewMode: ViewMode.EDIT,
     mobileMode: MobileMode.TOOLS,
     previewViewMode: PreviewViewMode.DESKTOP,
     selectedDeviceId: 'full',
     isSelectMode: false,
+    isEditModeEnabled: true,
     expandedPlan: false,
     chatPaneWidth: 415,
     isChatPaneCollapsed: false,
@@ -392,6 +396,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     }),
     setSelectedDeviceId: (deviceId) => set((state) => { state.selectedDeviceId = deviceId }),
     setIsSelectMode: (selectMode) => set((state) => { state.isSelectMode = selectMode }),
+    setIsEditModeEnabled: (enabled) => set((state) => { state.isEditModeEnabled = enabled }),
     setExpandedPlan: (expanded) => set((state) => { state.expandedPlan = expanded }),
     setChatPaneWidth: (width) => set((state) => { state.chatPaneWidth = width }),
     setIsChatPaneCollapsed: (collapsed) => set((state) => { state.isChatPaneCollapsed = collapsed }),
@@ -735,9 +740,19 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
       if (iframe) {
         postMessageToIframe(iframe, {
-          type: 'TOGGLE_SELECT_MODE',
+          type: IframeMessageType.TOGGLE_SELECT_MODE,
           data: { isSelectMode: newSelectMode }
         })
+      }
+    },
+
+    toggleEditMode: () => {
+      const newEditMode = !get().isEditModeEnabled
+      set((state) => { state.isEditModeEnabled = newEditMode })
+
+      const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+      if (iframe) {
+        postMessageToIframe(iframe, { type: newEditMode ? IframeMessageType.EDIT_MODE_ENABLED : IframeMessageType.EDIT_MODE_DISABLED })
       }
     },
 
@@ -757,11 +772,21 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     handleViewModeChange: (newMode: ViewMode, hasUnsavedChanges: boolean) => {
       const { viewMode } = get()
 
-      if (hasUnsavedChanges && viewMode === ViewMode.CODE && newMode === ViewMode.PREVIEW) {
+      if (hasUnsavedChanges && viewMode === ViewMode.CODE && (newMode === ViewMode.PREVIEW || newMode === ViewMode.EDIT)) {
         const confirmed = window.confirm(
           'You have unsaved changes in the code editor. Switching to preview will keep your changes, but they won\'t be reflected in the preview until saved. Continue?'
         )
         if (!confirmed) return
+      }
+
+      // Sync edit mode with view mode: EDIT enables it, anything else disables it
+      const editModeEnabled = newMode === ViewMode.EDIT
+      if (get().isEditModeEnabled !== editModeEnabled) {
+        set((state) => { state.isEditModeEnabled = editModeEnabled })
+        const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+        if (iframe) {
+          postMessageToIframe(iframe, { type: editModeEnabled ? IframeMessageType.EDIT_MODE_ENABLED : IframeMessageType.EDIT_MODE_DISABLED })
+        }
       }
 
       set((state) => { state.viewMode = newMode })

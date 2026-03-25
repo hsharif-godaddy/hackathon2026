@@ -3,8 +3,15 @@ import { useState, useEffect } from 'react'
 import ElementEditor, { editorTypographyStyles } from './ElementEditor'
 import { safePostMessage, isOriginAllowed } from '../utils/postMessage'
 import { captureAndResizeScreenshot, captureViewportScreenshot } from '../utils/screenshot'
+import { useEditMode } from "../hooks/useEditMode";
+import ImageHoverBar from "./ImageHoverBar";
+import { initTranslations } from "../utils/translations";
 
 export default function DevelopmentMode() {
+  // Load translations from i18n API on mount
+  useEffect(() => { void initTranslations(); }, []);
+  const [isEditModeActive, setIsEditModeActive] = useState(true); // on by default
+
   const {
     isEnabled,
     isSelectMode,
@@ -18,7 +25,9 @@ export default function DevelopmentMode() {
     startInlineEditing,
     stopInlineEditing,
     cancelInlineEditing
-  } = useDevelopmentMode()
+  } = useDevelopmentMode({ isEditModeActive })
+
+  const { hoveredImage, handleBarMouseEnter, handleBarMouseLeave } = useEditMode(isEditModeActive)
 
   // State to control indicator visibility on hover
   const [isIndicatorHovered, setIsIndicatorHovered] = useState(false)
@@ -341,6 +350,14 @@ export default function DevelopmentMode() {
           return
         }
 
+        if (event.data && event.data.type === 'EDIT_MODE_ENABLED') {
+          setIsEditModeActive(true);
+          return;
+        }
+        if (event.data && event.data.type === 'EDIT_MODE_DISABLED') {
+          setIsEditModeActive(false);
+          return;
+        }
         if (event.data && event.data.type === 'RESTORE_SCROLL_POSITION') {
           if (event.data.scrollPosition) {
             try {
@@ -528,6 +545,13 @@ export default function DevelopmentMode() {
         stopInlineEditing={stopInlineEditing}
         cancelInlineEditing={cancelInlineEditing}
       />
+      {isEditModeActive && hoveredImage && (
+        <ImageHoverBar
+          hoveredImage={hoveredImage}
+          onMouseEnter={handleBarMouseEnter}
+          onMouseLeave={handleBarMouseLeave}
+        />
+      )}
     </>
   )
 }

@@ -105,16 +105,157 @@ export class ASTTextEditor extends ASTEditorBase {
   }
 
   /**
-   * Update text content in a JSX element
+   * Check if an element has any JSXElement children (not just text/expressions)
+   */
+  private hasElementChildren(element: t.JSXElement): boolean {
+    return element.children.some(child => this.t.isJSXElement(child));
+  }
+
+  /**
+   * Recursively extract ALL text content from a JSX element, including
+   * text inside child JSXElements. This mirrors what the browser's
+   * `textContent` property returns.
+   */
+  private extractFullTextContent(element: t.JSXElement): string {
+    let text = '';
+    for (const child of element.children) {
+      if (this.t.isJSXText(child)) {
+        text += child.value;
+      } else if (this.t.isJSXExpressionContainer(child)) {
+        if (this.t.isStringLiteral(child.expression)) {
+          text += child.expression.value;
+        } else if (this.t.isTemplateLiteral(child.expression)) {
+          text += child.expression.quasis.map(q => q.value.raw).join('');
+        }
+      } else if (this.t.isJSXElement(child)) {
+        text += this.extractFullTextContent(child);
+      }
+    }
+    return text;
+  }
+
+  /**
+   * Update text content in a JSX element.
    *
-   * @param element - JSX element to update
-   * @param newText - New text content
+   * When the element has child JSXElements (e.g. styled spans), the browser
+   * may send newText that includes the child element text (because textContent
+   * is recursive). We split newText around child element text anchors and only
+   * assign the non-child portions to JSXText/expression nodes, preventing
+   * duplication.
+   *
+   * When it has only text/expression children, replace everything (simple case).
    */
   private updateTextContent(element: t.JSXElement, newText: string): void {
-    element.children = [];
+    if (!this.hasElementChildren(element)) {
+      // Simple case: no child elements, safe to replace everything
+      element.children = [];
+      if (newText.trim()) {
+        element.children.push(this.t.jsxText(newText));
+      }
+      return;
+    }
 
-    if (newText.trim()) {
-      element.children.push(this.t.jsxText(newText));
+    // Complex case: has child JSXElements.
+    // Collect child element texts as ordered anchors.
+    const childElementAnchors: string[] = [];
+    for (const child of element.children) {
+      if (this.t.isJSXElement(child)) {
+        const text = this.extractFullTextContent(child).replace(/\s+/g, ' ').trim();
+        if (text) childElementAnchors.push(text);
+      }
+    }
+
+    const normalizedNew = newText.replace(/\s+/g, ' ').trim();
+
+    // Try to split newText around child element text anchors.
+    // This handles the case where the browser sends full textContent (recursive)
+    // as newText — we need to strip the child element portions to avoid duplication.
+    let remaining = normalizedNew;
+    const textBetween: string[] = [];
+    let splitOk = true;
+
+    for (const anchor of childElementAnchors) {
+      const idx = remaining.indexOf(anchor);
+      if (idx === -1) { splitOk = false; break; }
+      textBetween.push(remaining.substring(0, idx));
+      remaining = remaining.substring(idx + anchor.length);
+    }
+    if (splitOk) textBetween.push(remaining);
+
+    if (splitOk && childElementAnchors.length > 0) {
+      // Successfully split. Group text/expression children by position
+      // relative to text-bearing child JSXElements, then assign each segment.
+      // Only text-bearing elements (those in childElementAnchors) act as group
+      // boundaries — void elements like <br/>, <img/> are treated as regular
+      // children within their group.
+      const anchorSet = new Set(childElementAnchors);
+      const groups: number[][] = [[]];
+      let groupIdx = 0;
+
+      for (let i = 0; i < element.children.length; i++) {
+        const child = element.children[i];
+        if (!child) continue;
+        if (this.t.isJSXElement(child)) {
+          const childText = this.extractFullTextContent(child).replace(/\s+/g, ' ').trim();
+          if (anchorSet.has(childText)) {
+            groupIdx++;
+            groups[groupIdx] = [];
+          }
+          // Void/empty JSXElements stay in current group (not a boundary)
+        } else {
+          groups[groupIdx]!.push(i);
+        }
+      }
+
+      for (let g = 0; g < groups.length && g < textBetween.length; g++) {
+        const group = groups[g]!;
+        const segText = textBetween[g] || '';
+        let assigned = false;
+
+        for (const childIdx of group) {
+          const child = element.children[childIdx];
+          if (!child) continue;
+
+          if (this.t.isJSXText(child)) {
+            if (!assigned) {
+              child.value = segText;
+              assigned = true;
+            } else {
+              child.value = '';
+            }
+          }
+          // Leave expression containers ({' '} etc.) untouched
+        }
+      }
+      return;
+    }
+
+    // Fallback: couldn't split around child element texts (child text was
+    // also edited, or no child element anchors). Put newText in the first
+    // substantial text node, clear the rest.
+    let updated = false;
+    for (let i = 0; i < element.children.length; i++) {
+      const child = element.children[i];
+      if (!child) continue;
+
+      if (this.t.isJSXText(child)) {
+        const trimmed = child.value.replace(/\s+/g, ' ').trim();
+        if (trimmed.length === 0) continue;
+        if (!updated) {
+          child.value = newText;
+          updated = true;
+        } else {
+          child.value = '';
+        }
+      } else if (this.t.isJSXExpressionContainer(child) &&
+                 this.t.isStringLiteral(child.expression)) {
+        const trimmed = child.expression.value.replace(/\s+/g, ' ').trim();
+        if (trimmed.length === 0) continue;
+        if (!updated) {
+          child.expression.value = newText;
+          updated = true;
+        }
+      }
     }
   }
 
@@ -174,8 +315,20 @@ export class ASTTextEditor extends ASTEditorBase {
       const lineDiff = Math.abs(candidate.line - devContext.lineNumber);
       const normalizedCandidateText = candidate.text.replace(/\s+/g, ' ').trim();
 
-      // Skip candidates too far from target line (unless exact text match)
-      if (lineDiff > 10 && normalizedCandidateText !== normalizedOldText) {
+      // Skip empty-text elements — they are containers, never valid edit targets.
+      // Without this guard, any string "includes" empty string, causing container
+      // divs to match via partial-text scoring and destroy their children.
+      if (normalizedCandidateText.length === 0) {
+        continue;
+      }
+
+      // Skip candidates too far from target line unless they have a text-based match.
+      // Use a wider tolerance (30 lines) because devContext.lineNumber may point to
+      // a parent element while the actual target is a nested child further away.
+      const hasTextOverlap = normalizedCandidateText === normalizedOldText ||
+        normalizedCandidateText.includes(normalizedOldText) ||
+        normalizedOldText.includes(normalizedCandidateText);
+      if (lineDiff > 30 && !hasTextOverlap) {
         continue;
       }
 
@@ -192,7 +345,7 @@ export class ASTTextEditor extends ASTEditorBase {
       } else if (normalizedCandidateText.includes(normalizedOldText)) {
         score += 5000; // Contains target text
         matchType = 'contains-text';
-      } else if (normalizedOldText.includes(normalizedCandidateText)) {
+      } else if (normalizedOldText.includes(normalizedCandidateText) && normalizedCandidateText.length > 0) {
         score += 2500; // Target contains element text (partial)
         matchType = 'partial-text';
       }

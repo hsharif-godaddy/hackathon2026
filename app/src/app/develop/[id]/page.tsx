@@ -16,7 +16,7 @@ import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
 import { AppIntroTour } from '@/app/develop/components/tour/AppIntroTour'
-import { ChatTab, MobileMode } from '@/app/develop/components/types'
+import { ChatTab, IframeMessageType, MobileMode, ViewMode } from '@/app/develop/components/types'
 import { extractNewPageRoute, handlePreviewRefresh, navigatePreviewToRoute, requestPreviewScreenshot, useAppIdFromParams } from '@/app/develop/components/utils'
 import VersionHistory from '@/app/develop/components/VersionHistory'
 import { clearExpiredWidgetStates } from '@/app/develop/components/widgets'
@@ -29,7 +29,7 @@ import PostPublishGoLiveModal from '@/components/layout/PostPublishGoLiveModal'
 import PublishLimitModal from '@/components/layout/PublishLimitModal'
 import PublishStatusAlert from '@/components/layout/PublishStatusAlert'
 import { useAuthContext } from '@/components/providers/AuthProvider'
-import { buildDynamicApiUrl } from '@/config/dynamic-api'
+import { buildDynamicApiUrl, dynamicApiConfigService } from '@/config/dynamic-api'
 import { WebSocketProvider } from '@/contexts/WebSocketContext'
 import { useAppDetails } from '@/hooks/useAppDetails'
 import { useAppHibernation } from '@/hooks/useAppHibernation'
@@ -40,10 +40,12 @@ import { usePageTiming } from '@/hooks/usePageTiming'
 import { usePaywallPrefetch } from '@/hooks/usePaywallPrefetch'
 import { useRumAppContext } from '@/hooks/useRumAppContext'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useSyncResponsiveState } from '@/hooks/useSyncResponsiveState'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsUpgradePolling } from '@/hooks/useUpgradePurchase'
 import { agentFetch } from '@/lib/agent-fetch'
+import { regenerateToken } from '@/lib/jwt-regeneration'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
@@ -68,6 +70,7 @@ import {
 } from '@/stores/useStreamingConversationStore'
 import { useTodoListStore } from '@/stores/useTodoListStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
+import { postMessageToIframe } from '@/utils/postMessage'
 
 function DevelopPageContent() {
   const t = useTranslations();
@@ -166,6 +169,9 @@ function DevelopPageContent() {
 
   // Local state (only what's not in stores)
   const [selectedElement, setSelectedElement] = useState<unknown>(null)
+  const isEditModeEnabled = useDevelopPageStore((state) => state.isEditModeEnabled)
+  const setIsEditModeEnabled = useDevelopPageStore((state) => state.setIsEditModeEnabled)
+  const { data: isEditModeFeatureEnabled } = useSwitchboard('appbuilder-edit-mode')
   // Optimistic mobile tab state for instant transitions
   const [optimisticMobileTab, setOptimisticMobileTab] = useState<ChatTab>(activeChatTab)
   // Track when an error fix request is in progress to show the fixing overlay
@@ -208,6 +214,28 @@ function DevelopPageContent() {
 
     void Promise.resolve().then(() => task())
   }, [])
+
+  const sendEditModeMessage = useCallback((enabled: boolean) => {
+    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+    if (iframe) {
+      postMessageToIframe(iframe, { type: enabled ? IframeMessageType.EDIT_MODE_ENABLED : IframeMessageType.EDIT_MODE_DISABLED })
+    }
+  }, [])
+
+  // Disable edit mode and reset view mode when feature flag is off
+  const viewMode = useDevelopPageStore((state) => state.viewMode)
+  const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange)
+  useEffect(() => {
+    if (isEditModeFeatureEnabled === false) {
+      if (isEditModeEnabled) {
+        setIsEditModeEnabled(false)
+        sendEditModeMessage(false)
+      }
+      if (viewMode === ViewMode.EDIT) {
+        handleViewModeChange(ViewMode.PREVIEW, false)
+      }
+    }
+  }, [isEditModeFeatureEnabled, isEditModeEnabled, setIsEditModeEnabled, sendEditModeMessage, viewMode, handleViewModeChange])
 
   // Funnel event: Track when chat loader hides (user can now see chat)
   // Only during create flow from homepage
@@ -489,6 +517,58 @@ function DevelopPageContent() {
     }
   }, [appId])
 
+  const handleAutoImportMediaSlot = useCallback(async (
+    imageUrl: string,
+    devContext: Record<string, unknown> | undefined,
+    imageAlt: string | undefined,
+    imageType: string | undefined
+  ) => {
+    if (!appId) return
+
+    try {
+      const tokenResult = await regenerateToken({ siteId: appId, force: true })
+      const apiConfig = await dynamicApiConfigService.getConfigForSite(appId)
+
+      if (!apiConfig.agentUrl) {
+        throw new Error('Agent URL not available')
+      }
+
+      const response = await fetch(
+        `${apiConfig.agentUrl}/media/${appId}/slots/import`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${tokenResult.token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ imageUrl, devContext, imageAlt, imageType }),
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error(`Import failed: ${response.status}`)
+      }
+
+      const result = await response.json()
+      if (result.success && result.slotPath) {
+        useMediaSlotDialogStore.getState().navigateToSlot(result.slotPath)
+        useDevelopPageStore.getState().setActiveChatTab(ChatTab.MEDIAS)
+      }
+    } catch (error) {
+      logger.error('develop-page.auto-import-media-slot.error', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      Growl.addGrowlMessage({
+        id: 'auto-import-media-slot-error',
+        title: t('builder_common_error_generic', undefined, 'Something went wrong. Please try again.'),
+        children: t('builder_common_retry', undefined, 'Please try again.'),
+        emphasis: 'critical',
+        lifetime: 5000,
+      })
+    }
+  }, [appId, t])
+
   const sendTextUpdate = useCallback(async (textData: { selector: string; oldText: string; newText: string; devContext: Record<string, unknown> }) => {
     if (!appId) return
 
@@ -599,7 +679,11 @@ function DevelopPageContent() {
           break
         case 'EDIT_WITH_AI':
           setAiEditContext(event.data.data)
+          useDevelopPageStore.getState().setActiveChatTab(ChatTab.CHAT)
           logger.info('develop-page.ai-edit-requested', { appId })
+          break
+        case 'CLEAR_AI_EDIT_CONTEXT':
+          setAiEditContext(null)
           break
         case 'REPLACE_IMAGE':
           const replaceImageContext = {
@@ -797,12 +881,22 @@ function DevelopPageContent() {
           setIsFixingError(false)
           isFixingErrorRef.current = false
           break
+        case 'IFRAME_READY':
+          // Send edit mode state when iframe signals it is ready
+          sendEditModeMessage(isEditModeEnabled)
+          break
+        case 'AUTO_IMPORT_MEDIA_SLOT': {
+          const { imageUrl, devContext, imageAlt, imageType } = event.data
+          if (!imageUrl || !appId) break
+          void handleAutoImportMediaSlot(imageUrl, devContext, imageAlt, imageType)
+          break
+        }
       }
     }
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setIsSelectMode, ws.actions.send, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask])
+  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setIsSelectMode, ws.actions.send, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask, sendEditModeMessage, isEditModeEnabled, handleAutoImportMediaSlot])
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {

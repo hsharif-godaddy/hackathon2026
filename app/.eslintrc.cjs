@@ -25,6 +25,14 @@ module.exports = {
       },
     ],
   },
+  overrides: [
+    {
+      files: ["**/*.test.ts", "**/*.test.tsx", "**/__tests__/**"],
+      rules: {
+        "@typescript-eslint/no-explicit-any": "off",
+      },
+    },
+  ],
   ignorePatterns: [
     "node_modules/**",
     ".next/**",

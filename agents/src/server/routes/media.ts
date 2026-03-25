@@ -109,6 +109,76 @@ router.get('/:appId/manifest', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /media/:appId/slots/import
+ * Auto-import an arbitrary image URL as a new media slot in airo-media.json.
+ */
+router.post('/:appId/slots/import', async (req: Request, res: Response) => {
+  const appId = req.params.appId;
+  const { imageUrl, devContext, imageAlt, imageType } = req.body;
+
+  if (!appId) {
+    res.status(400).json({
+      success: false,
+      error: 'App ID is required',
+    });
+    return;
+  }
+
+  if (!imageUrl || typeof imageUrl !== 'string') {
+    res.status(400).json({
+      success: false,
+      error: 'imageUrl is required and must be a string',
+    });
+    return;
+  }
+
+  logger.info('route.media.import_slot.begin', {
+    appId,
+    imageUrl: imageUrl.substring(0, 200),
+  });
+
+  try {
+    const result = await mediaManifestService.importSlot(appId, {
+      imageUrl,
+      devContext,
+      imageAlt,
+      imageType,
+    });
+
+    if (!result.success) {
+      logger.error('route.media.import_slot.failed', {
+        appId,
+        error: result.error,
+      });
+      res.status(500).json({
+        success: false,
+        error: result.error || 'Failed to import slot',
+      });
+      return;
+    }
+
+    logger.info('route.media.import_slot.success', {
+      appId,
+      slotPath: result.slotPath,
+    });
+
+    res.json({
+      success: true,
+      slotPath: result.slotPath,
+    });
+  } catch (error) {
+    logger.error('route.media.import_slot.error', {
+      appId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+    });
+  }
+});
+
+/**
  * GET /media/:appId/slots/:slotName
  * Get a specific slot from the manifest
  */

@@ -28,6 +28,12 @@ vi.mock('../../logging/index.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+vi.mock('../../tools/ast-image-editor.js', () => ({
+  astImageEditor: {
+    replaceImage: vi.fn().mockResolvedValue({ success: true }),
+  },
+}));
+
 vi.mock('../GettyUploadService.js', () => ({
   gettyUploadService: {
     uploadAndReport: vi.fn().mockResolvedValue([]),

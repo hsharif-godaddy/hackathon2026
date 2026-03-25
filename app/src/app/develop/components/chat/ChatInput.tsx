@@ -6,6 +6,7 @@ import Button from '@ux/button'
 import MicIcon from '@ux/icon/mic'
 import SendIcon from '@ux/icon/send'
 import StopIcon from '@ux/icon/stop'
+import XIcon from '@ux/icon/x'
 
 import AssetInline, { AssetMode } from '@/app/develop/components/chat/AssetInline'
 import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/AssetTypes'
@@ -138,6 +139,28 @@ export default function ChatInput({
                 onClear={onClearAiEditContext}
                 mode={AssetMode.EDIT}
               />
+            </div>
+          )}
+
+          {/* AI Edit Context - element-only (no screenshot) */}
+          {aiEditContext && !aiEditContext.screenshot && (
+            <div className="flex items-center gap-1.5 mb-1 px-2 py-1 bg-intents-ux-box-backgroundColor border border-intents-ux-boxHighContrast-borderColor rounded text-xs">
+              <span className="inline-block w-2 h-2 rounded-full flex-shrink-0 bg-intents-ux-action-backgroundColor" />
+              <span className="text-intents-ux-box-foregroundColor">
+                {t('builder_chatpane_editing_element', undefined, 'Editing')} <strong>&lt;{aiEditContext.elementInfo.tagName}&gt;</strong>
+              </span>
+              {onClearAiEditContext && (
+                <Button
+                  design="inline"
+                  size="sm"
+                  onClick={onClearAiEditContext}
+                  aria-label={t('builder_chatpane_clear_edit_context', undefined, 'Clear edit context')}
+                  className="ml-auto"
+                  data-partial="componentAiro"
+                >
+                  <XIcon className="size-2" />
+                </Button>
+              )}
             </div>
           )}
 

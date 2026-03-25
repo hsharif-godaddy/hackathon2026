@@ -1,0 +1,124 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import express from "express";
+import request from "supertest";
+
+vi.mock("../../../services/MediaManifestService.js", () => ({
+  mediaManifestService: {
+    importSlot: vi.fn(),
+  },
+}));
+
+vi.mock("../../middleware/app-ownership.js", () => ({
+  validateAppOwnership: vi.fn((_req: any, _res: any, next: any) => next()),
+}));
+
+vi.mock("../../../logging/index.js", () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
+vi.mock("../../../services/ImageProcessingService.js", () => ({
+  imageProcessingService: {},
+}));
+
+vi.mock("../../../database/repositories/AppRepository.js", () => ({
+  AppRepository: vi.fn().mockImplementation(() => ({})),
+}));
+
+import { mediaManifestService } from "../../../services/MediaManifestService.js";
+
+const { default: mediaRouter } = await import("../media.js");
+
+function createApp() {
+  const app = express();
+  app.use(express.json());
+  app.use((req: any, _res: any, next: any) => {
+    req.agentContext = { siteId: "test-site" };
+    next();
+  });
+  app.use("/media", mediaRouter);
+  return app;
+}
+
+describe("POST /media/:appId/slots/import", () => {
+  let app: express.Express;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    app = createApp();
+  });
+
+  it("returns 200 with slotPath on success", async () => {
+    vi.mocked(mediaManifestService.importSlot).mockResolvedValue({
+      success: true,
+      slotPath: "pages/about/hero-section",
+    });
+
+    const res = await request(app)
+      .post("/media/test-app/slots/import")
+      .send({
+        imageUrl: "https://example.com/photo.jpg",
+        devContext: {
+          fileName: "src/frontend/pages/about.page.tsx",
+          componentName: "HeroSection",
+          lineNumber: 42,
+        },
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      success: true,
+      slotPath: "pages/about/hero-section",
+    });
+    expect(mediaManifestService.importSlot).toHaveBeenCalledWith("test-app", {
+      imageUrl: "https://example.com/photo.jpg",
+      devContext: {
+        fileName: "src/frontend/pages/about.page.tsx",
+        componentName: "HeroSection",
+        lineNumber: 42,
+      },
+    });
+  });
+
+  it("returns 400 when imageUrl is missing", async () => {
+    const res = await request(app)
+      .post("/media/test-app/slots/import")
+      .send({
+        devContext: {
+          fileName: "test.tsx",
+          componentName: "Test",
+          lineNumber: 1,
+        },
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
+  it("returns 500 when importSlot fails", async () => {
+    vi.mocked(mediaManifestService.importSlot).mockResolvedValue({
+      success: false,
+      error: "Failed to read manifest",
+    });
+
+    const res = await request(app)
+      .post("/media/test-app/slots/import")
+      .send({ imageUrl: "https://example.com/photo.jpg" });
+
+    expect(res.status).toBe(500);
+    expect(res.body.success).toBe(false);
+  });
+
+  it("works without devContext (uses fallback path)", async () => {
+    vi.mocked(mediaManifestService.importSlot).mockResolvedValue({
+      success: true,
+      slotPath: "imported/image-1234567890",
+    });
+
+    const res = await request(app)
+      .post("/media/test-app/slots/import")
+      .send({ imageUrl: "https://example.com/photo.jpg" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.slotPath).toMatch(/^imported\/image-/);
+  });
+});

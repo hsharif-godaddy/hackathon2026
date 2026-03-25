@@ -11,6 +11,7 @@ import MobilePhoneIcon from '@ux/icon/mobile-phone'
 import RefreshIcon from '@ux/icon/refresh'
 import SidebarCollapseIcon from '@ux/icon/sidebar-collapse'
 import SidebarExpandIcon from '@ux/icon/sidebar-expand'
+import WandIcon from '@ux/icon/wand'
 import WebsiteFilledIcon from '@ux/icon/website-filled'
 import WorldIcon from '@ux/icon/world'
 import Tag from '@ux/tag';
@@ -25,6 +26,7 @@ import AppPublish from '@/components/layout/AppPublish';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
 import UserMenu from '@/components/layout/UserMenu';
 import { useChatTabs } from '@/hooks/useChatTabs';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { generateClickEID } from '@/utils/instrumentation'
@@ -51,6 +53,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
   const setIsSelectMode = useDevelopPageStore((state) => state.setIsSelectMode)
   const toggleSelectMode = useDevelopPageStore((state) => state.toggleSelectMode)
   const toggleChatPaneCollapse = useDevelopPageStore((state) => state.toggleChatPaneCollapse)
+  const { data: isEditModeFeatureEnabled } = useSwitchboard('appbuilder-edit-mode')
   const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
 
   const handleDomainSettings = useCallback(() => {
@@ -123,6 +126,15 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                     showLabelAlways
                     data-eid={generateClickEID('develop.header.iframe')}
                   />
+                  {isEditModeFeatureEnabled && (
+                    <ButtonGroup.Item
+                      value={ViewMode.EDIT}
+                      icon={<WandIcon className="size-2.5" />}
+                      label={t('builder_preview_button_edit')}
+                      showLabelAlways
+                      data-eid={generateClickEID('develop.header.edit_mode')}
+                    />
+                  )}
                   <ButtonGroup.Item
                     value={ViewMode.CODE}
                     icon={<CodeIcon className="size-2.5" />}
@@ -133,16 +145,18 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                   />
                 </ButtonGroup>
 
-                <IconButton
-                  icon={<EditIcon className="size-2.5" />}
-                  disabled={viewMode === ViewMode.CODE || isVersionHistoryOpen}
-                  onClick={toggleSelectMode}
-                  data-eid={generateClickEID('develop.header.select_mode')}
-                  active={isSelectMode}
-                  label={t('builder_preview_button_select')}
-                  showLabelWhenActive={false}
-                  id="tour-select-mode-button"
-                />
+                {!isEditModeFeatureEnabled && (
+                  <IconButton
+                    icon={<EditIcon className="size-2.5" />}
+                    disabled={viewMode === ViewMode.CODE || isVersionHistoryOpen}
+                    onClick={toggleSelectMode}
+                    data-eid={generateClickEID('develop.header.select_mode')}
+                    active={isSelectMode}
+                    label={t('builder_preview_button_select')}
+                    showLabelWhenActive={false}
+                    id="tour-select-mode-button"
+                  />
+                )}
               </Box>
             )}
 
