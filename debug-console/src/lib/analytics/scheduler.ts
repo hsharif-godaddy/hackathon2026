@@ -29,11 +29,21 @@ const PIONEER_EVENTS = [
   'tool.ast.edit.failure',
   'conversation.start',
   'conversation.continue',
-  'route.publish.begin',
+  'route.publish.strategy-selected',
+  'route.publish.default.begin',
+  'route.publish.paas.begin',
   'route.publish.success',
+  'route.publish.default.build.failed',
+  'route.publish.paas.build.failed',
+  'route.publish.default.archive.failed',
+  'route.publish.paas.archive.failed',
+  'route.publish.supervisor.begin',
+  'route.publish.supervisor.failed',
+  // Legacy event names (backward compatibility for older logs)
+  'route.publish.begin',
   'route.publish.build.failed',
   'route.publish.archive.failed',
-  'route.publish.git-archive.failed' // Old event name (backward compatibility)
+  'route.publish.git-archive.failed'
 ];
 
 // Katana client error events
@@ -307,7 +317,10 @@ function processPioneerLog(log: LogEntry): boolean {
       return true;
       }
 
-    case 'route.publish.begin': {
+    // Use strategy-selected as the canonical "begin" — fires once per publish.
+    // default.begin / paas.begin / supervisor.begin are sub-steps; skip to avoid inflating begin count.
+    case 'route.publish.strategy-selected':
+    case 'route.publish.begin': { // Legacy
       insertPublishEvent({
         es_id: log._id,
         timestamp: log.timestamp,
@@ -316,7 +329,13 @@ function processPioneerLog(log: LogEntry): boolean {
         success: true
       });
       return true;
-      }
+    }
+
+    // Sub-step events — acknowledged but not indexed to avoid double-counting
+    case 'route.publish.default.begin':
+    case 'route.publish.paas.begin':
+    case 'route.publish.supervisor.begin':
+      return true;
 
     case 'route.publish.success': {
       const d = log.data as { commitHash?: string };
@@ -331,7 +350,9 @@ function processPioneerLog(log: LogEntry): boolean {
       return true;
     }
 
-    case 'route.publish.build.failed': {
+    case 'route.publish.default.build.failed':
+    case 'route.publish.paas.build.failed':
+    case 'route.publish.build.failed': { // Legacy
       const d = log.data as { stderr?: string; commitHash?: string };
       insertPublishEvent({
         es_id: log._id,
@@ -345,8 +366,23 @@ function processPioneerLog(log: LogEntry): boolean {
       return true;
     }
 
+    case 'route.publish.supervisor.failed': {
+      const d = log.data as { error?: string };
+      insertPublishEvent({
+        es_id: log._id,
+        timestamp: log.timestamp,
+        app_id: log.app_id,
+        event_type: 'other_failed',
+        success: false,
+        error_message: d.error?.slice(0, 2000)
+      });
+      return true;
+    }
+
+    case 'route.publish.default.archive.failed':
+    case 'route.publish.paas.archive.failed':
     case 'route.publish.archive.failed':
-    case 'route.publish.git-archive.failed': { // Old event name (backward compatibility)
+    case 'route.publish.git-archive.failed': { // Legacy
       const d = log.data as { error?: string };
       insertPublishEvent({
         es_id: log._id,
@@ -663,7 +699,7 @@ const INDEX_TO_EVENTS: Record<BackfillIndexFilter, string[] | 'all' | 'katana'> 
   conversations: ['conversation.history.loader.token_limit_reached', 'websocket.conversation.error', 'conversation.start', 'conversation.continue'],
   summarizations: ['summarization.background.complete', 'summarization.detailed_llm.failure', 'summarization.detailed_llm.token_budget_exceeded'],
   tool_failures: ['tool.file.edit.operation.failure', 'tool.file.edit.batch.failure', 'tool.git.operation.failure', 'tool.image.search.failure', 'tool.ast.edit.failure'],
-  publish_events: ['route.publish.begin', 'route.publish.success', 'route.publish.build.failed', 'route.publish.archive.failed', 'route.publish.git-archive.failed'],
+  publish_events: ['route.publish.strategy-selected', 'route.publish.success', 'route.publish.supervisor.failed', 'route.publish.default.build.failed', 'route.publish.paas.build.failed', 'route.publish.default.archive.failed', 'route.publish.paas.archive.failed', 'route.publish.begin', 'route.publish.build.failed', 'route.publish.archive.failed', 'route.publish.git-archive.failed'],
   client_errors: 'katana'
 };
 

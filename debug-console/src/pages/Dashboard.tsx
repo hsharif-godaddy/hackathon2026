@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import AppDetailsPanel from '@/components/AppDetailsPanel';
-import type { MgmtCustomerApp, MgmtSubscription, MgmtSubscriptionGrants } from '@/lib/mgmt-control-plane-adapter';
+import type { MgmtCustomerApp, MgmtSubscription, MgmtSubscriptionGrants } from '@/lib/mgmt-types';
 import { formatTimestamp } from '@/lib/date-utils';
 import { CUSTOMER_ID_RE } from '@/lib/mgmt-helpers';
 import LangfusePanel from '@/components/LangfusePanel';
@@ -82,7 +82,7 @@ interface LlmSpendData {
 type TabId = 'details' | 'summary' | 'conversation' | 'logs' | 'publish' | 'llm-spend';
 
 
-function GrantSpendSection({ grant, mgmtGrant, isActive }: { grant: GrantBreakdown; mgmtGrant?: import('@/lib/mgmt-control-plane-adapter').MgmtGrant; isActive?: boolean }) {
+function GrantSpendSection({ grant, mgmtGrant, isActive }: { grant: GrantBreakdown; mgmtGrant?: import('@/lib/mgmt-types').MgmtGrant; isActive?: boolean }) {
   const [expanded, setExpanded] = React.useState(true);
   const fmt = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k` : String(n);
   const pct = mgmtGrant && mgmtGrant.creditsMax > 0 ? Math.min(100, Math.round(mgmtGrant.creditsSpent / mgmtGrant.creditsMax * 100)) : null;
@@ -574,6 +574,8 @@ export default function Dashboard() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
             <a href="/analytics" target="_blank" rel="noopener noreferrer"
               style={{ display: 'inline-block', padding: '0.375rem 0.875rem', backgroundColor: '#3b82f6', color: 'white', borderRadius: '4px', textDecoration: 'none', fontSize: '0.813rem', fontWeight: 600 }}>Analytics</a>
+            <a href="/agentic-qa-results"
+              style={{ display: 'inline-block', padding: '0.375rem 0.875rem', backgroundColor: '#6366f1', color: 'white', borderRadius: '4px', textDecoration: 'none', fontSize: '0.813rem', fontWeight: 600 }}>QA Results</a>
             <a href="/image-search"
               style={{ display: 'inline-block', padding: '0.375rem 0.875rem', backgroundColor: '#6b7280', color: 'white', borderRadius: '4px', textDecoration: 'none', fontSize: '0.813rem', fontWeight: 600 }}>Images</a>
           </div>

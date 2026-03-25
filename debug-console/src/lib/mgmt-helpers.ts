@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { MgmtControlPlaneError } from '@/lib/mgmt-control-plane-adapter';
+import { MgmtControlPlaneError } from '@/lib/mgmt-types';
 
 export const APP_ID_RE = /^[A-Za-z0-9]{8,20}$/i;
 export const SUBSCRIPTION_ID_RE = /^[A-Za-z0-9]{4,30}$/i;

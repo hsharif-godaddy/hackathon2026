@@ -2,25 +2,11 @@ import { NextResponse } from 'next/server';
 
 import { getSummary, getAllApps, getToolStats, getHealthMetrics, getHourlyStats, getErrorStats, getHourlyErrorStats, getLast24HoursStats, getLast24HoursErrorStats, getSummarizationStats, getHourlySummarizationStats, getRollingHourlySummarizations, getPublishStats, getHourlyPublishStats, getRollingHourlyPublish, getClientErrorStats, getHourlyClientErrorStats, getRollingHourlyClientErrors, getDiagnostics, init } from '@/lib/analytics/es-db';
 import { getSchedulerStatus, runBackfill, startScheduler, type BackfillIndexFilter } from '@/lib/analytics/scheduler';
+import { getPdnaSnapshot } from '@/lib/analytics/pdna-db';
+import { getDateRangeError } from '@/lib/analytics/date-range';
 import { withAuth } from '@/lib/api-auth';
 
 export const dynamic = 'force-dynamic';
-
-const MAX_DATE_RANGE_DAYS = 31;
-
-function validateDateRange(start?: string, end?: string): string | null {
-  if (!start || !end) return null;
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-    return 'Invalid date format';
-  }
-  const diffMs = endDate.getTime() - startDate.getTime();
-  const diffDays = diffMs / (1000 * 60 * 60 * 24);
-  if (diffDays < 0) return 'End date must be after start date';
-  if (diffDays > MAX_DATE_RANGE_DAYS) return `Date range cannot exceed ${MAX_DATE_RANGE_DAYS} days`;
-  return null;
-}
 
 let initialized = false;
 
@@ -47,7 +33,7 @@ export const GET = withAuth(async (request) => {
   const start = searchParams.get('start') || undefined;
   const end = searchParams.get('end') || undefined;
 
-  const dateError = validateDateRange(start, end);
+  const dateError = start && end ? getDateRangeError(start, end) : null;
   if (dateError) {
     return NextResponse.json({ error: dateError }, { status: 400 });
   }
@@ -160,6 +146,12 @@ export const GET = withAuth(async (request) => {
 
       case 'diagnostics':
         return NextResponse.json(await getDiagnostics());
+
+      case 'pdna-snapshot': {
+        const snapshot = await getPdnaSnapshot();
+        if (!snapshot) return NextResponse.json({ error: 'PDNA not configured or no data available' }, { status: 503 });
+        return NextResponse.json(snapshot);
+      }
 
       default:
         return NextResponse.json({ error: 'Unknown action' }, { status: 400 });

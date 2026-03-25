@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 
 import LangfuseMetricCards from '@/components/LangfuseMetricCards';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import QAResultsPanel from '@/components/QAResultsPanel';
 
 interface DailyStat {
   date: string;
@@ -328,27 +327,7 @@ function formatDateInput(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-const MAX_DATE_RANGE_DAYS = 31;
-
-function isDateRangeValid(start: string, end: string): boolean {
-  if (!start || !end) return false;
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-  const diffMs = endDate.getTime() - startDate.getTime();
-  const diffDays = diffMs / (1000 * 60 * 60 * 24);
-  return diffDays >= 0 && diffDays <= MAX_DATE_RANGE_DAYS;
-}
-
-function getDateRangeError(start: string, end: string): string | null {
-  if (!start || !end) return null;
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-  const diffMs = endDate.getTime() - startDate.getTime();
-  const diffDays = diffMs / (1000 * 60 * 60 * 24);
-  if (diffDays < 0) return 'End date must be after start date';
-  if (diffDays > MAX_DATE_RANGE_DAYS) return `Date range cannot exceed ${MAX_DATE_RANGE_DAYS} days`;
-  return null;
-}
+import { isDateRangeValid, getDateRangeError } from '@/lib/analytics/date-range';
 
 function AnalyticsContent() {
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -399,8 +378,25 @@ function AnalyticsContent() {
   const [hourlyClientErrorLoading, setHourlyClientErrorLoading] = useState(false);
   const [last24hClientErrors, setLast24hClientErrors] = useState<{ hourly_stats: Array<{ hoursAgo: number; timestamp: string; errors: number; apps: number }> } | null>(null);
 
-  // Pagination state
-  const [chartsExpanded, setChartsExpanded] = useState(false);
+  // Section expand state — lazy-loads data on first expand
+  const [airoExpanded, setAiroExpanded] = useState(false);
+  const [langfuseExpanded, setLangfuseExpanded] = useState(false);
+  const [pdnaExpanded, setPdnaExpanded] = useState(false);
+
+  // PDNA provisioning state
+  const [pdnaSnapshot, setPdnaSnapshot] = useState<{
+    snapshotDate: string; totalApps: number;
+    publishedCount: number; publishRate: number;
+    hibernatedCount: number; hibernationRate: number;
+    deletedCount: number;
+    appsCreatedDaily: Array<{ date: string; created: number }>;
+    appsDeletedDaily: Array<{ date: string; deleted: number }>;
+    uniqueCustomersDaily: Array<{ date: string; uniqueCustomers: number }>;
+    statuses: Record<string, number>;
+    plans: Record<string, number>;
+  } | null>(null);
+  const [pdnaLoading, setPdnaLoading] = useState(false);
+  const [pdnaError, setPdnaError] = useState<string | null>(null);
 
   const fetchData = useCallback(async function fetchData() {
     try {
@@ -493,10 +489,33 @@ function AnalyticsContent() {
     }
   }, [datePreset, customStart, customEnd]);
 
+  // Fetch airo events data when section is expanded
   useEffect(() => {
-    if (!chartsExpanded) return;
+    if (!airoExpanded) return;
     fetchData();
-  }, [chartsExpanded, fetchData]);
+  }, [airoExpanded, fetchData]);
+
+  // Fetch PDNA latest snapshot when section is expanded (skip if already loaded)
+  // PDNA is a complete daily dump — no date range needed, just the latest snapshot
+  useEffect(() => {
+    if (!pdnaExpanded || pdnaSnapshot) return;
+    setPdnaLoading(true);
+    setPdnaError(null);
+    fetch('/api/analytics?action=pdna-snapshot')
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        if (data.snapshotDate) setPdnaSnapshot(data);
+        else setPdnaError('No PDNA snapshot data available');
+      })
+      .catch((err) => {
+        setPdnaError(err instanceof Error ? err.message : 'Failed to fetch PDNA data');
+      })
+      .finally(() => setPdnaLoading(false));
+  }, [pdnaExpanded, pdnaSnapshot]);
 
   useEffect(() => {
     let isMounted = true;
@@ -632,6 +651,49 @@ function AnalyticsContent() {
     return `${d.getMonth() + 1}/${d.getDate()}`;
   }
 
+  function SectionHeader({ title, expanded, onToggle, color, loading: sectionLoading }: {
+    title: string; expanded: boolean; onToggle: () => void; color: string; loading?: boolean;
+  }) {
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        onClick={onToggle}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
+        style={{
+          backgroundColor: expanded ? 'rgba(255,255,255,0.97)' : color,
+          padding: '0.75rem 1.25rem',
+          borderRadius: expanded ? '12px 12px 0 0' : '12px',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          userSelect: 'none',
+          transition: 'all 0.2s',
+          boxShadow: expanded ? '0 2px 10px rgba(0,0,0,0.08)' : `0 2px 10px ${color}40`,
+        }}
+      >
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: '24px', height: '24px', borderRadius: '5px',
+          backgroundColor: expanded ? color : 'rgba(255,255,255,0.2)',
+          color: '#fff', fontSize: '0.75rem', fontWeight: 700, transition: 'all 0.15s',
+        }}>
+          {expanded ? '▾' : '▸'}
+        </span>
+        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: expanded ? '#0f172a' : '#fff' }}>
+          {title}
+        </span>
+        {sectionLoading && (
+          <span style={{ fontSize: '0.75rem', color: expanded ? color : 'rgba(255,255,255,0.7)', fontWeight: 500 }}>
+            Loading...
+          </span>
+        )}
+      </div>
+    );
+  }
+
   // Preset button style
   const presetBtn = (preset: DatePreset, label: string) => (
     <button
@@ -678,7 +740,7 @@ function AnalyticsContent() {
           </div>
 
           {/* Date Range Selector - only when charts expanded */}
-          {chartsExpanded && (
+          {(airoExpanded || langfuseExpanded || pdnaExpanded) && (
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
               {presetBtn('1d', '24h')}
               {presetBtn('7d', '7 days')}
@@ -719,73 +781,8 @@ function AnalyticsContent() {
           </div>
         </header>
 
-        {/* Charts Section - Collapsible */}
-        <div
-          onClick={() => setChartsExpanded(prev => !prev)}
-          style={{
-            backgroundColor: chartsExpanded ? 'rgba(255,255,255,0.97)' : '#1d4ed8',
-            padding: '1rem 1.5rem',
-            borderRadius: '12px',
-            marginBottom: '1.25rem',
-            boxShadow: chartsExpanded ? '0 2px 10px rgba(0,0,0,0.08)' : '0 4px 15px rgba(29,78,216,0.4)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-            userSelect: 'none',
-            transition: 'all 0.2s'
-          }}
-        >
-          <span style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '28px',
-            height: '28px',
-            borderRadius: '6px',
-            backgroundColor: chartsExpanded ? '#1d4ed8' : 'rgba(255,255,255,0.2)',
-            color: '#fff',
-            fontSize: '0.85rem',
-            fontWeight: 700,
-            transition: 'all 0.15s'
-          }}>
-            {chartsExpanded ? '▾' : '▸'}
-          </span>
-          <span style={{ fontSize: '0.95rem', fontWeight: 600, color: chartsExpanded ? '#0f172a' : '#fff' }}>
-            {chartsExpanded ? 'Analytics Charts' : 'Show Analytics Charts'}
-          </span>
-          {chartsExpanded && (loading || (!summary && !error)) && (
-            <span style={{
-              flex: 1,
-              textAlign: 'center',
-              fontSize: '0.85rem',
-              color: '#1d4ed8',
-              fontWeight: 600,
-              letterSpacing: '0.02em'
-            }}>
-              ● Loading charts...
-            </span>
-          )}
-        </div>
-
-        {chartsExpanded && (
-          <>
-
-            {error && (
-              <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: '12px', padding: '2rem', borderLeft: '4px solid #ef4444', marginBottom: '1.25rem' }}>
-                <p style={{ margin: '0 0 0.5rem 0', color: '#dc2626', fontWeight: 600 }}>Error</p>
-                <p style={{ margin: 0, color: '#666' }}>{error}</p>
-                <button
-                  onClick={(e) => { e.stopPropagation(); fetchData(); }}
-                  style={{ marginTop: '1rem', padding: '0.5rem 1rem', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
-                >
-                  Retry
-                </button>
-              </div>
-            )}
-
-            {/* Custom Date Range */}
-            {datePreset === 'custom' && (
+        {/* Custom Date Range — shown when any section is open */}
+        {(airoExpanded || langfuseExpanded || pdnaExpanded) && datePreset === 'custom' && (
           <div style={{
             backgroundColor: 'rgba(255,255,255,0.97)',
             padding: '1rem 1.5rem',
@@ -848,8 +845,18 @@ function AnalyticsContent() {
           </div>
         )}
 
-        {/* Daily Stats Charts */}
-        {summary && summary.daily_stats.length > 0 && (
+        {/* === Airo Events Section === */}
+        <div style={{ marginBottom: '1rem' }}>
+          <SectionHeader title="Airo Events Stats" expanded={airoExpanded} onToggle={() => setAiroExpanded(prev => !prev)} color="#1d4ed8" loading={airoExpanded && loading} />
+          {airoExpanded && error && (
+            <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: '0 0 12px 12px', padding: '1.5rem', borderLeft: '4px solid #ef4444' }}>
+              <p style={{ margin: '0 0 0.5rem 0', color: '#dc2626', fontWeight: 600 }}>Error</p>
+              <p style={{ margin: 0, color: '#666' }}>{error}</p>
+              <button onClick={(e) => { e.stopPropagation(); fetchData(); }} style={{ marginTop: '0.75rem', padding: '0.4rem 0.75rem', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>Retry</button>
+            </div>
+          )}
+        </div>
+        {airoExpanded && summary && summary.daily_stats.length > 0 && (
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
@@ -1202,15 +1209,138 @@ function AnalyticsContent() {
               return <ChartEmptyState message="No client error data" />;
             })()}
 
-            {/* Langfuse Metrics - 3 separate bar charts */}
+          </div>
+        )}
+
+        {/* === Langfuse Section === */}
+        <div style={{ marginBottom: '1rem' }}>
+          <SectionHeader title="Langfuse Stats" expanded={langfuseExpanded} onToggle={() => setLangfuseExpanded(prev => !prev)} color="#7c3aed" />
+        </div>
+        {langfuseExpanded && (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '1rem',
+            marginBottom: '1.25rem'
+          }}>
             <LangfuseMetricCards fromTimestamp={effectiveDateRange.start} toTimestamp={effectiveDateRange.end} />
           </div>
         )}
-          </>
+
+        {/* === PDNA Section === */}
+        <div style={{ marginBottom: '1rem' }}>
+          <SectionHeader title="PDNA Provisioning Stats" expanded={pdnaExpanded} onToggle={() => setPdnaExpanded(prev => !prev)} color="#0d9488" loading={pdnaExpanded && pdnaLoading} />
+        </div>
+        {pdnaExpanded && (
+          pdnaLoading ? (
+            <div style={{ backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: '0 0 12px 12px', padding: '2rem', textAlign: 'center', marginBottom: '1.25rem' }}>
+              <span style={{ color: '#64748b', fontSize: '0.85rem' }}>Loading PDNA snapshot...</span>
+            </div>
+          ) : pdnaError ? (
+            <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: '0 0 12px 12px', padding: '1.5rem', borderLeft: '4px solid #ef4444', marginBottom: '1.25rem' }}>
+              <p style={{ margin: '0 0 0.5rem 0', color: '#dc2626', fontWeight: 600, fontSize: '0.85rem' }}>PDNA Error</p>
+              <p style={{ margin: 0, color: '#666', fontSize: '0.8rem' }}>{pdnaError}</p>
+            </div>
+          ) : pdnaSnapshot ? (
+            <div style={{ marginBottom: '1.25rem' }}>
+              {/* Summary cards */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                gap: '0.75rem',
+                marginBottom: '1rem',
+              }}>
+                {[
+                  { label: 'Snapshot Date', value: pdnaSnapshot.snapshotDate, color: '#475569' },
+                  { label: 'Total Apps', value: pdnaSnapshot.totalApps.toLocaleString(), color: '#1d4ed8' },
+                  { label: 'Published', value: `${pdnaSnapshot.publishedCount.toLocaleString()} (${pdnaSnapshot.publishRate}%)`, color: '#0d9488' },
+                  { label: 'Hibernated', value: `${pdnaSnapshot.hibernatedCount.toLocaleString()} (${pdnaSnapshot.hibernationRate}%)`, color: '#be185d' },
+                  { label: 'Deleted', value: pdnaSnapshot.deletedCount.toLocaleString(), color: '#dc2626' },
+                  ...Object.entries(pdnaSnapshot.statuses).map(([status, count]) => ({
+                    label: status.charAt(0).toUpperCase() + status.slice(1),
+                    value: count.toLocaleString(),
+                    color: status === 'active' ? '#16a34a' : status === 'cancelled' ? '#dc2626' : '#d97706',
+                  })),
+                ].map(({ label, value, color }) => (
+                  <div key={label} style={{
+                    backgroundColor: 'rgba(255,255,255,0.97)',
+                    padding: '0.75rem 1rem',
+                    borderRadius: '10px',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+                  }}>
+                    <div style={{ fontSize: '0.6rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>{label}</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 700, color, fontFamily: 'monospace' }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Plans breakdown */}
+              {Object.keys(pdnaSnapshot.plans).length > 0 && (
+                <div style={{
+                  backgroundColor: 'rgba(255,255,255,0.97)',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '10px',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+                  marginBottom: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1.5rem',
+                  flexWrap: 'wrap',
+                }}>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Plans</span>
+                  {Object.entries(pdnaSnapshot.plans).sort((a, b) => b[1] - a[1]).map(([plan, count]) => (
+                    <span key={plan} style={{ fontSize: '0.8rem', color: '#374151' }}>
+                      <strong style={{ fontFamily: 'monospace' }}>{plan}</strong>: {count.toLocaleString()}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Daily charts (last 3 months) */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gap: '1rem',
+              }}>
+                {pdnaSnapshot.appsCreatedDaily.length > 0 && (
+                  <MiniChart
+                    title="Apps Created/Day"
+                    value={`Total: ${pdnaSnapshot.appsCreatedDaily.reduce((s, d) => s + d.created, 0).toLocaleString()}`}
+                    valueColor="#6366f1"
+                    data={buildDailyChartData(pdnaSnapshot.appsCreatedDaily, s => s.created, (d, s) => `${formatShortDay(d)}: ${s.created} created`, formatShortDay)}
+                    barColor="#6366f1"
+                    barColorLight="#818cf8"
+                  />
+                )}
+                {pdnaSnapshot.appsDeletedDaily.length > 0 && (
+                  <MiniChart
+                    title="Apps Deleted/Day"
+                    value={`Total: ${pdnaSnapshot.appsDeletedDaily.reduce((s, d) => s + d.deleted, 0).toLocaleString()}`}
+                    valueColor="#dc2626"
+                    data={buildDailyChartData(pdnaSnapshot.appsDeletedDaily, s => s.deleted, (d, s) => `${formatShortDay(d)}: ${s.deleted} deleted`, formatShortDay)}
+                    barColor="#dc2626"
+                    barColorLight="#f87171"
+                  />
+                )}
+                {pdnaSnapshot.uniqueCustomersDaily.length > 0 && (
+                  <MiniChart
+                    title="Unique Customers/Day"
+                    value={`Total: ${pdnaSnapshot.uniqueCustomersDaily.reduce((s, d) => s + d.uniqueCustomers, 0).toLocaleString()}`}
+                    valueColor="#7c3aed"
+                    data={buildDailyChartData(pdnaSnapshot.uniqueCustomersDaily, s => s.uniqueCustomers, (d, s) => `${formatShortDay(d)}: ${s.uniqueCustomers} customers`, formatShortDay)}
+                    barColor="#7c3aed"
+                    barColorLight="#a78bfa"
+                  />
+                )}
+              </div>
+            </div>
+          ) : (
+            <div style={{ backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: '0 0 12px 12px', padding: '2rem', textAlign: 'center', marginBottom: '1.25rem' }}>
+              <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No PDNA data available</span>
+            </div>
+          )
         )}
 
-        {/* Agentic QA Results */}
-        <QAResultsPanel />
       </div>
     </div>
   );

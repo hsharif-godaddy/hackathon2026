@@ -501,7 +501,7 @@ export default function QAResultsPanel() {
               fontSize: '0.8rem',
               backgroundColor: 'white',
               cursor: 'pointer',
-              minWidth: '300px'
+              minWidth: '400px'
             }}
           >
             <option value="">Select a run...</option>
@@ -575,7 +575,7 @@ export default function QAResultsPanel() {
 
       {/* Detail view */}
       {detail && !detailLoading && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: '100%' }}>
 
           {/* Overview bar */}
           <div style={{
@@ -760,63 +760,66 @@ export default function QAResultsPanel() {
             </div>
           )}
 
-          {/* Result message */}
-          <div style={{
-            padding: '0.75rem 1rem',
-            backgroundColor: '#f8fafc',
-            borderRadius: '8px',
-            border: '1px solid #e2e8f0'
-          }}>
-            <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', marginBottom: '0.5rem', textTransform: 'uppercase' }}>
-              Result Summary
-            </div>
-
-            {/* Screenshots */}
-            <ScreenshotGallery
-              screenshots={detail.screenshots}
-              onSelect={setExpandedScreenshot}
-            />
-
-            <div style={{ fontSize: '0.8rem', color: '#334155', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-              {detail.rawMessage || detail.message}
-            </div>
-            {detail.qualityScore != null && (
-              <div style={{ marginTop: '0.5rem', padding: '0.4rem 0.6rem', backgroundColor: detail.qualityCriticalIssues ? '#fef2f2' : '#f0fdf4', borderRadius: '4px', border: `1px solid ${detail.qualityCriticalIssues ? '#fecaca' : '#bbf7d0'}` }}>
-                <div style={{ fontSize: '0.6rem', fontWeight: 700, color: detail.qualityCriticalIssues ? '#dc2626' : '#16a34a', textTransform: 'uppercase', marginBottom: '0.125rem' }}>Critical Issues</div>
-                <div style={{ fontSize: '0.7rem', color: detail.qualityCriticalIssues ? '#991b1b' : '#64748b', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                  {detail.qualityCriticalIssues || 'None'}
-                </div>
+          {/* Result + Timing — side-by-side on wide screens */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: '1rem' }}>
+            {/* Result message */}
+            <div style={{
+              padding: '0.75rem 1rem',
+              backgroundColor: '#f8fafc',
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0'
+            }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', marginBottom: '0.5rem', textTransform: 'uppercase' }}>
+                Result Summary
               </div>
-            )}
-            {detail.qualityScore != null && (
-              <div style={{ marginTop: '0.4rem', padding: '0.4rem 0.6rem', backgroundColor: detail.qualityRecommendations ? '#fffbeb' : '#f0fdf4', borderRadius: '4px', border: `1px solid ${detail.qualityRecommendations ? '#fde68a' : '#bbf7d0'}` }}>
-                <div style={{ fontSize: '0.6rem', fontWeight: 700, color: detail.qualityRecommendations ? '#92400e' : '#16a34a', textTransform: 'uppercase', marginBottom: '0.125rem' }}>Recommendations</div>
-                <div style={{ fontSize: '0.7rem', color: detail.qualityRecommendations ? '#78350f' : '#64748b', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                  {detail.qualityRecommendations || 'None'}
-                </div>
-              </div>
-            )}
-          </div>
 
-          {/* Timing */}
-          <div style={{
-            padding: '0.75rem 1rem',
-            backgroundColor: '#f8fafc',
-            borderRadius: '8px',
-            border: '1px solid #e2e8f0'
-          }}>
-            <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', marginBottom: '0.5rem', textTransform: 'uppercase' }}>
-              Timing & Environment
+              {/* Screenshots */}
+              <ScreenshotGallery
+                screenshots={detail.screenshots}
+                onSelect={setExpandedScreenshot}
+              />
+
+              <div style={{ fontSize: '0.8rem', color: '#334155', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                {detail.rawMessage || detail.message}
+              </div>
+              {detail.qualityScore != null && (
+                <div style={{ marginTop: '0.5rem', padding: '0.4rem 0.6rem', backgroundColor: detail.qualityCriticalIssues ? '#fef2f2' : '#f0fdf4', borderRadius: '4px', border: `1px solid ${detail.qualityCriticalIssues ? '#fecaca' : '#bbf7d0'}` }}>
+                  <div style={{ fontSize: '0.6rem', fontWeight: 700, color: detail.qualityCriticalIssues ? '#dc2626' : '#16a34a', textTransform: 'uppercase', marginBottom: '0.125rem' }}>Critical Issues</div>
+                  <div style={{ fontSize: '0.7rem', color: detail.qualityCriticalIssues ? '#991b1b' : '#64748b', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                    {detail.qualityCriticalIssues || 'None'}
+                  </div>
+                </div>
+              )}
+              {detail.qualityScore != null && (
+                <div style={{ marginTop: '0.4rem', padding: '0.4rem 0.6rem', backgroundColor: detail.qualityRecommendations ? '#fffbeb' : '#f0fdf4', borderRadius: '4px', border: `1px solid ${detail.qualityRecommendations ? '#fde68a' : '#bbf7d0'}` }}>
+                  <div style={{ fontSize: '0.6rem', fontWeight: 700, color: detail.qualityRecommendations ? '#92400e' : '#16a34a', textTransform: 'uppercase', marginBottom: '0.125rem' }}>Recommendations</div>
+                  <div style={{ fontSize: '0.7rem', color: detail.qualityRecommendations ? '#78350f' : '#64748b', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                    {detail.qualityRecommendations || 'None'}
+                  </div>
+                </div>
+              )}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', fontSize: '0.75rem', color: '#475569' }}>
-              <div><strong>Started:</strong> {detail.firstActionTimestamp ? formatDate(detail.firstActionTimestamp) : 'N/A'}</div>
-              <div><strong>Ended:</strong> {detail.lastActionTimestamp ? formatDate(detail.lastActionTimestamp) : 'N/A'}</div>
-              <div><strong>Action Duration:</strong> {detail.actionDurationMs ? (detail.actionDurationMs / 1000).toFixed(1) + 's' : 'N/A'}</div>
-              <div><strong>Pages Visited:</strong> {detail.pageUrlCount || 0}</div>
-              <div><strong>Screenshots:</strong> {detail.screenshotCount || 0} ({(detail.screenshotTypes || []).join(', ')})</div>
-              <div><strong>Model:</strong> {detail.model || 'unknown'}</div>
-              <div><strong>Actor:</strong> {detail.actor || 'N/A'}</div>
-              <div><strong>Workflow:</strong> {detail.workflow || 'N/A'}</div>
+
+            {/* Timing */}
+            <div style={{
+              padding: '0.75rem 1rem',
+              backgroundColor: '#f8fafc',
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0'
+            }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', marginBottom: '0.5rem', textTransform: 'uppercase' }}>
+                Timing & Environment
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.75rem', color: '#475569' }}>
+                <div><strong>Started:</strong> {detail.firstActionTimestamp ? formatDate(detail.firstActionTimestamp) : 'N/A'}</div>
+                <div><strong>Ended:</strong> {detail.lastActionTimestamp ? formatDate(detail.lastActionTimestamp) : 'N/A'}</div>
+                <div><strong>Action Duration:</strong> {detail.actionDurationMs ? (detail.actionDurationMs / 1000).toFixed(1) + 's' : 'N/A'}</div>
+                <div><strong>Pages Visited:</strong> {detail.pageUrlCount || 0}</div>
+                <div><strong>Screenshots:</strong> {detail.screenshotCount || 0} ({(detail.screenshotTypes || []).join(', ')})</div>
+                <div><strong>Model:</strong> {detail.model || 'unknown'}</div>
+                <div><strong>Actor:</strong> {detail.actor || 'N/A'}</div>
+                <div><strong>Workflow:</strong> {detail.workflow || 'N/A'}</div>
+              </div>
             </div>
           </div>
 

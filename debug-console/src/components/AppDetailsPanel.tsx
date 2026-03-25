@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { formatTimestamp } from '@/lib/date-utils';
-import type { MgmtAppDetails, MgmtDomainError, MgmtImageStatus, MgmtSubscription, MgmtSubscriptionGrants, MgmtVariantWithLifecycle } from '@/lib/mgmt-control-plane-adapter';
+import type { MgmtAppDetails, MgmtDomainError, MgmtImageStatus, MgmtSubscription, MgmtSubscriptionGrants, MgmtVariantWithLifecycle } from '@/lib/mgmt-types';
 
 interface Props {
     appId: string;
