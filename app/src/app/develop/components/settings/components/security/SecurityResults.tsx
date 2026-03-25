@@ -123,7 +123,7 @@ function SecurityVulnerabilityCard({
   return (
     <Card
       id={vulnerabilityId}
-      className="p-2.5 checkbox-card"
+      className="checkbox-card p-2.5"
       as="checkbox"
       disabled={selectionDisabled}
       checked={isChecked}
@@ -147,21 +147,24 @@ function SecurityVulnerabilityCard({
         />
       }
       title={
-        <Box orientation="horizontal" gap="md" className="pb-1.5">
-            <Tag
-              emphasis={getSeverityTagEmphasis(vulnerability.severity)}
-              size="lg"
-            >
-              {vulnerability.severity}
-            </Tag>
-          {vulnerability.title}
+        <Box className="pb-1.5" gap="sm" orientation="vertical">
+          <Tag
+            className="shrink-0 self-start"
+            emphasis={getSeverityTagEmphasis(vulnerability.severity)}
+            size="lg"
+          >
+            {vulnerability.severity}
+          </Tag>
+          <text.span as="title" className="min-w-0 break-words" size={0}>
+            {vulnerability.title}
+          </text.span>
         </Box>
       }
     >
       {vulnerability.impact && (
-        <div>
+        <Box>
           <text.span>{vulnerability.impact}</text.span>
-        </div>
+        </Box>
       )}
     </Card>
   );
@@ -383,12 +386,13 @@ export default function SecurityResults({
       {/* Vulnerabilities - Only show if vulnerabilities exist */}
       {vulnerabilities && vulnerabilities.length > 0 && (
         <Box gap="md">
-          <div className="flex justify-between items-center">
-            <text.h3 as="title" size={2}>
+          <div className="flex min-w-0 flex-col gap-2 @md:flex-row @md:items-center @md:justify-between @md:gap-4">
+            <text.h3 as="title" className="min-w-0" size={2}>
               {t('builder_settings_security_results_title')} ({vulnerabilities.length})
             </text.h3>
-            <div className="flex gap-1">
+            <div className="grid min-w-0 w-full grid-cols-2 gap-2 @md:flex @md:w-auto @md:flex-row @md:flex-nowrap @md:justify-end">
               <Button
+                className="min-w-0 w-full justify-center @md:w-auto"
                 size="sm"
                 design="secondary"
                 disabled={isCreatingTodoList}
@@ -397,6 +401,7 @@ export default function SecurityResults({
                 {areAllSelected() ? t('builder_common_deselect_all') : t('builder_common_select_all')}
               </Button>
               <Button
+                className="min-w-0 w-full justify-center @md:w-auto"
                 size="sm"
                 design="primary"
                 onClick={handleQuickFix}
