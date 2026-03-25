@@ -15,9 +15,6 @@ describe('CodeSyncFileCleanupService', () => {
     });
 
     it('should identify security-sensitive files', () => {
-      expect(codeSyncFileCleanupService.isCleanableFile('.env')).toBe(true);
-      expect(codeSyncFileCleanupService.isCleanableFile('.env.local')).toBe(true);
-      expect(codeSyncFileCleanupService.isCleanableFile('.env.production')).toBe(true);
       expect(codeSyncFileCleanupService.isCleanableFile('.git/hooks/pre-commit')).toBe(true);
       expect(codeSyncFileCleanupService.isCleanableFile('.git/config')).toBe(true);
       expect(codeSyncFileCleanupService.isCleanableFile('.git/HEAD')).toBe(true);
@@ -40,9 +37,6 @@ describe('CodeSyncFileCleanupService', () => {
     });
 
     it('should NOT match files that start with cleanable pattern but are different', () => {
-      // .env should NOT match .environment (regression test)
-      expect(codeSyncFileCleanupService.isCleanableFile('.environment')).toBe(false);
-      expect(codeSyncFileCleanupService.isCleanableFile('src/.environment')).toBe(false);
       // .npmrc should NOT match .npmrcignore (hypothetical)
       expect(codeSyncFileCleanupService.isCleanableFile('.npmrcconfig')).toBe(false);
     });
@@ -50,13 +44,13 @@ describe('CodeSyncFileCleanupService', () => {
 
   describe('createWarnings', () => {
     it('should create validation errors for cleaned files', () => {
-      const files = ['.DS_Store', '.env'];
+      const files = ['.DS_Store', '.npmrc'];
       const warnings = codeSyncFileCleanupService.createWarnings(files);
 
       expect(warnings).toHaveLength(2);
       expect(warnings[0].key).toBe(ValidationErrorKey.FILE_CLEANED);
       expect(warnings[0].message).toContain('.DS_Store');
-      expect(warnings[1].message).toContain('.env');
+      expect(warnings[1].message).toContain('.npmrc');
     });
 
     it('should return empty array for no files', () => {

@@ -401,10 +401,10 @@ describe('ZipSecurityService', () => {
       expect(result.cleanableFiles).toContain('.git/hooks/pre-commit');
     });
 
-    it('should identify .env files as cleanable', async () => {
-      const zipPath = await createTestZip('env.zip', [
-        { name: '.env', content: 'SECRET=password' },
-        { name: '.env.local', content: 'LOCAL_SECRET=value' },
+    it('should identify security-sensitive files as cleanable', async () => {
+      const zipPath = await createTestZip('security.zip', [
+        { name: '.npmrc', content: '//registry.npmjs.org/:_authToken=secret' },
+        { name: 'certs/server.key', content: 'PRIVATE KEY' },
         { name: 'index.js', content: 'console.log("hello")' },
       ]);
 
@@ -413,8 +413,8 @@ describe('ZipSecurityService', () => {
       // Zip is valid but contains cleanable files
       expect(result.valid).toBe(true);
       expect(result.cleanableFiles).toBeDefined();
-      expect(result.cleanableFiles).toContain('.env');
-      expect(result.cleanableFiles).toContain('.env.local');
+      expect(result.cleanableFiles).toContain('.npmrc');
+      expect(result.cleanableFiles).toContain('certs/server.key');
     });
 
     it('should not include regular files in cleanableFiles', async () => {
