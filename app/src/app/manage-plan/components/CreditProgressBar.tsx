@@ -37,8 +37,12 @@ export default function CreditProgressBar({ spent, max, isExpired = false }: Cre
         className={`h-1.5 bg-[#1111111A] rounded-full overflow-hidden w-full ${isExpired ? 'opacity-50' : ''}`}
       >
         <div
-          className={`h-full transition-all duration-500 ${isFull ? 'bg-ai-light' : 'bg-gradient-to-r from-ai-light/15 to-ai-light'}`}
-          style={{ width: `${percentage}%` }}
+          className={`h-full rounded-full transition-all duration-500 ${isFull ? 'bg-ai-light' : ''}`}
+          style={
+            isFull
+              ? { width: `${percentage}%` }
+              : { width: `${percentage}%`, background: 'var(--credit-meter-fill-gradient)' }
+          }
         />
       </div>
     </div>

@@ -79,11 +79,11 @@ describe('CreditProgressBar', function creditProgressBarTests() {
       expect(progressFill?.className).not.toContain('gradient');
     });
 
-    it('should use gradient when not full', function gradientWhenNotFull() {
+    it('should use shared credit meter gradient when not full', function gradientWhenNotFull() {
       const { container } = renderWithProviders(<CreditProgressBar spent={50} max={100} />);
 
       const progressFill = container.querySelector('[style*="width: 50%"]');
-      expect(progressFill?.className).toContain('gradient');
+      expect(progressFill?.getAttribute('style')).toContain('var(--credit-meter-fill-gradient)');
     });
   });
 

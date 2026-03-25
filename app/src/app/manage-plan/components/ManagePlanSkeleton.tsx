@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import Skeleton from '@ux/skeleton';
+import Skeleton from "@ux/skeleton";
 
 /**
  * Skeleton loader for the Manage Plan page
@@ -14,19 +14,19 @@ export default function ManagePlanSkeleton() {
       <Skeleton size="sm" width="480px" height="20px" className="mb-2" />
 
       {/* Grid layout matching page structure */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+      <div className="grid grid-cols-1 md:grid-cols-12 md:items-start gap-4">
         {/* Left: Total Credits Card */}
-        <div className="flex flex-col items-center gap-2 bg-ai-light/4 border border-ai-light/20 rounded-lg p-4">
-          <Skeleton size="sm" width="140px" height="20px" />
-          <Skeleton size="md" width="100px" height="28px" />
-          <div className="my-2">
-            <Skeleton rounding="full" width="120px" height="120px" />
+        <div className="md:col-span-3 md:min-h-0">
+          <div className="flex flex-col items-center justify-center gap-2 bg-ai-light/4 border border-ai-light/20 rounded-lg p-4">
+            <Skeleton size="sm" width="140px" height="20px" />
+            <Skeleton size="md" width="100px" height="28px" />
+            <div className="my-2">
+              <Skeleton rounding="full" width="120px" height="120px" />
+            </div>
           </div>
         </div>
 
-        {/* Right: Plan Credits Card + Addon Card */}
-        <div className="md:col-span-2 grid grid-cols-1 gap-4">
-          {/* Plan Credits Card */}
+        <div className="flex flex-col gap-4 md:col-span-9 md:min-h-0">
           <div className="flex flex-col bg-intents-ux-box-backgroundColor rounded-xl border border-border gap-2 p-2 sm:p-4">
             {/* Header row with title, active tag, and plan badge */}
             <div className="flex items-center justify-between">
@@ -52,7 +52,6 @@ export default function ManagePlanSkeleton() {
             </div>
           </div>
 
-          {/* Addon Credits Card */}
           <div className="flex flex-col bg-intents-ux-box-backgroundColor rounded-xl border border-border p-2 sm:p-4">
             {/* Title */}
             <Skeleton size="md" width="120px" height="24px" className="mb-2" />
@@ -82,7 +81,7 @@ export default function ManagePlanSkeleton() {
               })}
             </div>
           </div>
-          {/* App and Site Card*/}
+
           <div className="flex flex-col bg-intents-ux-box-backgroundColor rounded-xl border border-border p-2 sm:p-4">
             {/* Title */}
             <Skeleton size="md" width="120px" height="24px" className="mb-2" />

@@ -1,12 +1,13 @@
 'use client';
 
+import { motion } from 'framer-motion';
 import { useMemo, useState } from 'react';
 import Box from '@ux/box';
 import Button from '@ux/button';
 import ChevronDownIcon from '@ux/icon/chevron-down';
-import ChevronUpIcon from '@ux/icon/chevron-up';
 import text from '@ux/text';
 
+import { CollapsibleCardBody } from '@/app/manage-plan/components/CollapsibleCardBody';
 import { useTranslations } from '@/hooks/useTranslations';
 import { isPaidPlanForGrants, PAYWALL_ITC } from '@/lib/paywall/shared';
 import { PAYWALL_TYPE, type PaywallType } from '@/lib/paywall/shared';
@@ -55,12 +56,19 @@ export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeG
             aria-expanded={isExpanded}
             aria-label={isExpanded ? t('builder_common_collapse') : t('builder_common_expand')}
           >
-            {isExpanded ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
+            <motion.span
+              className="inline-flex"
+              initial={false}
+              animate={{ rotate: isExpanded ? 180 : 0 }}
+              transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+            >
+              <ChevronDownIcon className="w-4 h-4" />
+            </motion.span>
           </button>
           <text.strong as="title" size={0} className="block" text={t('builder_manageplan_addons_title')} />
         </div>
 
-        {isExpanded && (
+        <CollapsibleCardBody isExpanded={isExpanded}>
           <div className="flex flex-row items-center gap-4 mt-2 md:mt-0">
             <div className="flex flex-col items-start gap-2 flex-1">
               <text.p as="paragraph" text={hasNoPlanAndNoCredits ? t('builder_manageplan_creditpacks_empty_plan_description') : t('builder_manageplan_creditpacks_empty_description')} />
@@ -101,7 +109,7 @@ export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeG
               {hasNoPlanAndNoCredits ? <RidingArrow /> : <SiteBuild />}
             </div>
           </div>
-        )}
+        </CollapsibleCardBody>
       </div>
     );
   }
@@ -116,7 +124,14 @@ export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeG
           aria-expanded={isExpanded}
           aria-label={isExpanded ? t('builder_common_collapse') : t('builder_common_expand')}
         >
-          {isExpanded ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
+          <motion.span
+            className="inline-flex"
+            initial={false}
+            animate={{ rotate: isExpanded ? 180 : 0 }}
+            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+          >
+            <ChevronDownIcon className="w-4 h-4" />
+          </motion.span>
         </button>
         <text.strong as="title" size={0} className="block" text={t('builder_manageplan_addons_title')} />
         { !isExpanded && (
@@ -126,7 +141,7 @@ export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeG
         )}
       </div>
 
-      {isExpanded && (
+      <CollapsibleCardBody isExpanded={isExpanded}>
         <>
           <text.p as="paragraph" className="mt-2 mb-2 flex-shrink-0" text={t('builder_manageplan_credits_description')} />
           <div className="flex flex-col flex-1 min-h-0 overflow-y-auto pr-1 max-h-40">
@@ -142,7 +157,7 @@ export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeG
             })}
           </div>
         </>
-      )}
+      </CollapsibleCardBody>
     </div>
   );
 }

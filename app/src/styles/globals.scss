@@ -12,6 +12,12 @@
 @theme inline {
   --color-ai: #613EA3;
   --color-ai-light: #744BC4;
+  --credit-meter-fill-start: color-mix(in srgb, var(--color-ai-light) 15%, transparent);
+  --credit-meter-fill-gradient: linear-gradient(
+    to right,
+    var(--credit-meter-fill-start),
+    var(--color-ai-light)
+  );
   --color-ai-dark: #462A72;
   --color-ai-dark-transparent: #37294E80;
   --color-ring-ai: #613EA3;

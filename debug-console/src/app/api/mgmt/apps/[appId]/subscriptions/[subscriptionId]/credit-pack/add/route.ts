@@ -72,7 +72,7 @@ export const POST = withAuth<{ appId: string; subscriptionId: string }>(async fu
     }
     logger.info('credit-pack.add.slot-claimed', { appId, subscriptionId, shopperId: auth.user?.shopperId });
 
-    let responseData: { grant: MgmtGrant | null; creditPack: CreditPackDoc } = { grant: null, creditPack: doc };
+    const responseData: { grant: MgmtGrant | null; creditPack: CreditPackDoc } = { grant: null, creditPack: doc };
     try {
         const response = await mgmtControlPlaneAdapter.addCreditGrant(subscriptionId, {
             type: 'credit-pack',

@@ -138,6 +138,19 @@ function collapseCard() {
 describe('AppsAndSitesCard', function appsAndSitesCardTests() {
   beforeEach(function setup() {
     vi.restoreAllMocks();
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
     // Mock fetch for site details (used when opening unpublish modal)
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -531,7 +544,10 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
 
       // Collapse
       collapseCard();
-      expect(screen.queryByText('Test App')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Expand/i })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
     });
 
     it('should expand when header is clicked again after collapsing', function expandsOnClick() {
@@ -540,7 +556,10 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
 
       // Collapse first
       collapseCard();
-      expect(screen.queryByText('Test App')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Expand/i })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
 
       // Expand - after collapsing, the button label is now "Expand"
       const expandButton = screen.getByRole('button', { name: /Expand/i });

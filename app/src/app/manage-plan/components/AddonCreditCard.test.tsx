@@ -256,9 +256,10 @@ describe('CreditPacksCard', function creditPacksCardTests() {
       // Click collapse button
       collapseCard();
 
-      // Content should be hidden
-      expect(screen.queryByText('builder_manageplan_creditpacks_empty_plan_description')).not.toBeInTheDocument();
-      expect(screen.queryByText('builder_manageplan_upgrade')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Expand/i })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
 
       // Click expand button to show content again
       const expandButton = screen.getByRole('button', { name: /Expand/i });

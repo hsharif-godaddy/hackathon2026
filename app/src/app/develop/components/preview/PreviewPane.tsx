@@ -587,8 +587,7 @@ export default function PreviewPane({
                         title={t('builder_preview_preview_for', { appId })}
                         aria-hidden={viewMode === ViewMode.CODE || showBuildingOverlay ? 'true' : undefined}
                         tabIndex={viewMode === ViewMode.CODE || showBuildingOverlay ? -1 : undefined}
-                        // Type assertion needed: `inert` is a standard HTML attribute but not yet in React types
-                        {...(viewMode === ViewMode.CODE || showBuildingOverlay ? { inert: '' as unknown as boolean } : {})}
+                        inert={viewMode === ViewMode.CODE || showBuildingOverlay ? true : undefined}
                       />
                     </div>
                   </div>
@@ -602,7 +601,7 @@ export default function PreviewPane({
                       transform: 'rotateY(180deg)'
                     }}
                     aria-hidden={viewMode === ViewMode.PREVIEW ? 'true' : undefined}
-                    {...(viewMode === ViewMode.PREVIEW ? { inert: '' as unknown as boolean } : {})}
+                    inert={viewMode === ViewMode.PREVIEW ? true : undefined}
                   >
                     <PreviewCode appId={appId} />
                   </div>

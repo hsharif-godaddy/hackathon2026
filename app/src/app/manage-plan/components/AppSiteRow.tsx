@@ -68,12 +68,12 @@ export default function AppSiteRow({
         }
       } : undefined}
       className={clsx(
-        'flex items-center justify-between py-2 px-2 border-b border-border last:border-b-0',
+        'flex flex-col md:flex-row md:items-center md:justify-between gap-2 py-2 px-2 border-b border-border last:border-b-0',
         onRowClick && 'cursor-pointer rounded-sm transition-colors hover:bg-intents-ux-boxLowContrast-backgroundColor',
         error && 'pb-4 md:pb-2'
       )}
     >
-      <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-center gap-3 min-w-0 w-full md:w-auto">
         <AppThumbnail siteId={site.id} siteName={site.name} size="md" />
         <div className="flex flex-col min-w-0">
           <div className="flex flex-col-reverse md:flex-row md:items-center flex-shrink-0 gap-2">
@@ -101,9 +101,13 @@ export default function AppSiteRow({
         </div>
       </div>
 
-      <div className="relative flex flex-col items-end flex-shrink-0 ml-2" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="relative flex flex-col w-full items-stretch ml-0 md:w-auto md:items-end md:flex-shrink-0 md:ml-2"
+        onClick={(e) => e.stopPropagation()}
+      >
         {isDisconnectingDomain ? (
           <Button
+            className="w-full md:w-auto"
             design="secondary"
             disabled={true}
             size="sm"
@@ -112,6 +116,7 @@ export default function AppSiteRow({
           />
         ) : isPublished && isUnpublishEnabled ? (
           <Button
+            className="w-full md:w-auto"
             design="secondary"
             disabled={disabled}
             size="sm"
@@ -126,6 +131,7 @@ export default function AppSiteRow({
           />
         ) : !isPublished && (!isPaidPlan || (isAtPublishLimit && canUpgrade)) && onOpenPaywall ? (
           <Button
+            className="w-full md:w-auto"
             design="primary"
             size="sm"
             disabled={disabled}
@@ -136,6 +142,7 @@ export default function AppSiteRow({
           />
         ) : !isPublished ? (
           <Button
+            className="w-full md:w-auto"
             design="primary"
             size="sm"
             disabled={disabled || isAtPublishLimit}

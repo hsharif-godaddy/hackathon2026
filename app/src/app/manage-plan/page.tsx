@@ -1,13 +1,18 @@
-'use client';
+"use client";
 
-import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
-import { FormattedMessage } from 'react-intl';
-import Alert from '@ux/alert';
-import Button from '@ux/button';
-import text from '@ux/text';
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { FormattedMessage } from "react-intl";
+import Alert from "@ux/alert";
+import Button from "@ux/button";
+import text from "@ux/text";
 
-import { CreditsUpgradeContainer, GrantPollingModal, UpgradeContainer, UpgradePollingModal } from '@/app/develop/components/paywall';
+import {
+  CreditsUpgradeContainer,
+  GrantPollingModal,
+  UpgradeContainer,
+  UpgradePollingModal,
+} from "@/app/develop/components/paywall";
 import {
   AddonCreditCard,
   AppsAndSitesCard,
@@ -17,21 +22,21 @@ import {
   NewAccountZeroState,
   PageLayout,
   TotalCreditsCard,
-} from '@/app/manage-plan/components';
-import { ProtectedRoute } from '@/components/auth';
-import { useCreditGrants } from '@/hooks/useCreditGrants';
-import { useIsCreditPolling } from '@/hooks/useCreditPurchase';
-import { useEcommSubscriptionAutoRenew } from '@/hooks/useEcommSubscriptionAutoRenew';
-import { useEcommSubscriptionAutoRenewStatus } from '@/hooks/useEcommSubscriptionAutoRenewStatus';
-import { useGasketData } from '@/hooks/useGasketData';
-import { useSubscriptionWithPolling } from '@/hooks/useSubscriptionWithPolling';
-import { useSwitchboard } from '@/hooks/useSwitchboard';
-import { useTranslations } from '@/hooks/useTranslations';
-import { useIsUpgradePolling } from '@/hooks/useUpgradePurchase';
-import { ClientLogBuffer, shipAnalyticsLog } from '@/lib/logging';
-import { isPaidPlanForGrants, type PaywallType } from '@/lib/paywall/shared';
-import { useSites } from '@/stores/useSitesStore';
-import type { CreditGrant } from '@/types/credits';
+} from "@/app/manage-plan/components";
+import { ProtectedRoute } from "@/components/auth";
+import { useCreditGrants } from "@/hooks/useCreditGrants";
+import { useIsCreditPolling } from "@/hooks/useCreditPurchase";
+import { useEcommSubscriptionAutoRenew } from "@/hooks/useEcommSubscriptionAutoRenew";
+import { useEcommSubscriptionAutoRenewStatus } from "@/hooks/useEcommSubscriptionAutoRenewStatus";
+import { useGasketData } from "@/hooks/useGasketData";
+import { useSubscriptionWithPolling } from "@/hooks/useSubscriptionWithPolling";
+import { useSwitchboard } from "@/hooks/useSwitchboard";
+import { useTranslations } from "@/hooks/useTranslations";
+import { useIsUpgradePolling } from "@/hooks/useUpgradePurchase";
+import { ClientLogBuffer, shipAnalyticsLog } from "@/lib/logging";
+import { isPaidPlanForGrants, type PaywallType } from "@/lib/paywall/shared";
+import { useSites } from "@/stores/useSitesStore";
+import type { CreditGrant } from "@/types/credits";
 import {
   getActiveGrant,
   getCreditPackGrants,
@@ -39,11 +44,11 @@ import {
   getMonthlyPlanGrant,
   getPlanDisplayLabelKey,
   getPlanFromSubscription,
-} from '@/utils/credits';
-import { getRootDomain } from '@/utils/getRootDomain';
-import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation';
-import DowngradeScheduledAlert from './components/DowngradeAlert';
-import PlanCreditsCard from './components/PlanCreditsCard';
+} from "@/utils/credits";
+import { getRootDomain } from "@/utils/getRootDomain";
+import { generateClickEID, logImpressionEvent } from "@/utils/instrumentation";
+import DowngradeScheduledAlert from "./components/DowngradeAlert";
+import PlanCreditsCard from "./components/PlanCreditsCard";
 
 /**
  * Safely parse a date string, returning null if invalid
@@ -52,7 +57,7 @@ function parseDate(dateString?: string): Date | null {
   if (!dateString) return null;
   const date = new Date(dateString);
   if (isNaN(date.getTime())) {
-    console.warn('Invalid date string received:', dateString);
+    console.warn("Invalid date string received:", dateString);
     return null;
   }
   return date;
@@ -77,19 +82,22 @@ function CreditsPaywallFallback({
   onErrorClick: () => void;
   itc?: string;
 }) {
-  useEffect(function logFallbackWarning() {
-    // Log warning when fallback is triggered - helps identify edge cases
-    // where entitlementId is unexpectedly missing
-    ClientLogBuffer.add({
-      level: 'warn',
-      event: 'credits.paywall.fallback',
-      data: {
-        reason: 'missing_entitlement_id',
-        source,
-        subscriptionId,
-      },
-    });
-  }, [source, subscriptionId]);
+  useEffect(
+    function logFallbackWarning() {
+      // Log warning when fallback is triggered - helps identify edge cases
+      // where entitlementId is unexpectedly missing
+      ClientLogBuffer.add({
+        level: "warn",
+        event: "credits.paywall.fallback",
+        data: {
+          reason: "missing_entitlement_id",
+          source,
+          subscriptionId,
+        },
+      });
+    },
+    [source, subscriptionId],
+  );
 
   return (
     <UpgradeContainer
@@ -106,21 +114,29 @@ function ManagePlanContent() {
   const t = useTranslations();
   const gasketData = useGasketData();
   const locale = gasketData?.intl?.locale;
-  const rootDomain = getRootDomain() || 'godaddy.com';
+  const rootDomain = getRootDomain() || "godaddy.com";
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [paywallSource, setPaywallSource] = useState<string | null>(null);
-  const [paywallType, setPaywallType] = useState<PaywallType>('upgrade');
+  const [paywallType, setPaywallType] = useState<PaywallType>("upgrade");
   const [paywallItc, setPaywallItc] = useState<string | null>(null);
   const [showSwitchToFreeModal, setShowSwitchToFreeModal] = useState(false);
-  const [isDowngradeAlertDismissed, setIsDowngradeAlertDismissed] = useState(false);
-  const [isFreeAutoRenewAlertDismissed, setIsFreeAutoRenewAlertDismissed] = useState(false);
+  const [isDowngradeAlertDismissed, setIsDowngradeAlertDismissed] =
+    useState(false);
+  const [isFreeAutoRenewAlertDismissed, setIsFreeAutoRenewAlertDismissed] =
+    useState(false);
   const { setAutoRenew } = useEcommSubscriptionAutoRenew();
   const isCreditPolling = useIsCreditPolling();
   const isUpgradePolling = useIsUpgradePolling();
-  const { data: isUnpublishEnabled } = useSwitchboard('appbuilder-unpublish');
-  const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans');
+  const { data: isUnpublishEnabled } = useSwitchboard("appbuilder-unpublish");
+  const { data: isHigherPlansEnabled } = useSwitchboard(
+    "appbuilder-higher-plans",
+  );
 
-  const openPaywall = (source: string, type: PaywallType = 'upgrade', itc?: string) => {
+  const openPaywall = (
+    source: string,
+    type: PaywallType = "upgrade",
+    itc?: string,
+  ) => {
     setPaywallSource(source);
     setPaywallType(type);
     setPaywallItc(itc ?? null);
@@ -134,7 +150,7 @@ function ManagePlanContent() {
   };
 
   useEffect(function logPageView() {
-    logImpressionEvent('manage_plan.page.view')();
+    logImpressionEvent("manage_plan.page.view")();
   }, []);
 
   // Subscription with automatic polling when grants enabled but entitlement not yet available
@@ -154,9 +170,12 @@ function ManagePlanContent() {
     subscriptionId: subscription?.id,
   });
 
-  const { data: autoRenewStatus } = useEcommSubscriptionAutoRenewStatus(builderEntitlementId);
+  const { data: autoRenewStatus } =
+    useEcommSubscriptionAutoRenewStatus(builderEntitlementId);
 
-  const { sites, isLoading: isSitesLoading } = useSites({ enabled: isUnpublishEnabled === true });
+  const { sites, isLoading: isSitesLoading } = useSites({
+    enabled: isUnpublishEnabled === true,
+  });
 
   const { totalCreditsSpent, totalCreditsMax } = useMemo(
     function calculateTotalCredits() {
@@ -164,14 +183,16 @@ function ManagePlanContent() {
       return grants.reduce(
         function sumCredits(acc, grant) {
           return {
-            totalCreditsSpent: acc.totalCreditsSpent + getEffectiveCreditsSpent(grant.creditsSpent, grant.creditsMax),
+            totalCreditsSpent:
+              acc.totalCreditsSpent +
+              getEffectiveCreditsSpent(grant.creditsSpent, grant.creditsMax),
             totalCreditsMax: acc.totalCreditsMax + grant.creditsMax,
           };
         },
-        { totalCreditsSpent: 0, totalCreditsMax: 0 }
+        { totalCreditsSpent: 0, totalCreditsMax: 0 },
       );
     },
-    [grantsData]
+    [grantsData],
   );
 
   if (isSubscriptionLoading || isGrantsLoading) {
@@ -185,7 +206,11 @@ function ManagePlanContent() {
   if (isSubscriptionError || isGrantsError) {
     return (
       <PageLayout>
-          <text.p as="paragraph" className="text-center" text={t('builder_manageplan_error')} />
+        <text.p
+          as="paragraph"
+          className="text-center"
+          text={t("builder_manageplan_error")}
+        />
       </PageLayout>
     );
   }
@@ -205,11 +230,11 @@ function ManagePlanContent() {
   const activeGrant = getActiveGrant(grants);
 
   const currentPlan = getPlanFromSubscription(subscription);
-  const paywallSourceId = paywallSource ?? 'manage_plan';
+  const paywallSourceId = paywallSource ?? "manage_plan";
 
   const isPaidPlan = isPaidPlanForGrants(currentPlan, isGrantsEnabled ?? true);
   const planLabelKey = getPlanDisplayLabelKey(currentPlan);
-  const planDisplayLabel = planLabelKey ? t(planLabelKey) : '';
+  const planDisplayLabel = planLabelKey ? t(planLabelKey) : "";
 
   const paidThroughDate = autoRenewStatus?.paidThroughDate;
   const parsedPaidThroughDate = parseDate(paidThroughDate);
@@ -222,19 +247,29 @@ function ManagePlanContent() {
   // but NOT when only autoRenew is toggled in ecomm. So downgrades (autoRenew=false)
   // won't update updatedAt, allowing the banner to show correctly.
   const RECENT_PLAN_CHANGE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
-  const subscriptionUpdatedAt = subscription?.updatedAt ? parseDate(subscription.updatedAt) : null;
-  const isRecentPlanChange = subscriptionUpdatedAt !== null &&
-    (Date.now() - subscriptionUpdatedAt.getTime()) < RECENT_PLAN_CHANGE_THRESHOLD_MS;
+  const subscriptionUpdatedAt = subscription?.updatedAt
+    ? parseDate(subscription.updatedAt)
+    : null;
+  const isRecentPlanChange =
+    subscriptionUpdatedAt !== null &&
+    Date.now() - subscriptionUpdatedAt.getTime() <
+      RECENT_PLAN_CHANGE_THRESHOLD_MS;
 
   // Show FreeAutoRenewAlert when auto-renew is disabled (autoRenew=false)
   // but not for recent plan changes (upgrade from free to paid still syncing)
   const isAutoRenewDisabled = autoRenewStatus?.autoRenew === false;
-  const showFreeAutoRenewAlert = !isFreeAutoRenewAlertDismissed && isPaidPlan && isAutoRenewDisabled && !isRecentPlanChange;
+  const showFreeAutoRenewAlert =
+    !isFreeAutoRenewAlertDismissed &&
+    isPaidPlan &&
+    isAutoRenewDisabled &&
+    !isRecentPlanChange;
 
   // Show DowngradeScheduledAlert when downgradedAt and downgradedPlan are present
   // This indicates the user has scheduled a downgrade to a different plan
-  const hasScheduledDowngrade = subscription?.downgradedAt && subscription?.downgradedPlan;
-  const showDowngradeScheduledAlert = !isDowngradeAlertDismissed && hasScheduledDowngrade;
+  const hasScheduledDowngrade =
+    subscription?.downgradedAt && subscription?.downgradedPlan;
+  const showDowngradeScheduledAlert =
+    !isDowngradeAlertDismissed && hasScheduledDowngrade;
 
   const mutationError = setAutoRenew.error;
 
@@ -247,7 +282,7 @@ function ManagePlanContent() {
       {isUpgradePolling && <UpgradePollingModal />}
 
       {/* Upgrade Modal (for plan upgrades) */}
-      {showPaywallModal && paywallType === 'upgrade' && (
+      {showPaywallModal && paywallType === "upgrade" && (
         <UpgradeContainer
           source={paywallSourceId}
           itc={paywallItc ?? undefined}
@@ -264,46 +299,51 @@ function ManagePlanContent() {
       )}
 
       {/* Credits Modal (for credits purchase) */}
-      {showPaywallModal && paywallType === 'credits' && builderEntitlementId && subscription?.id && (
-        <CreditsUpgradeContainer
-          source={paywallSourceId}
-          entitlementId={builderEntitlementId}
-          subscriptionId={subscription.id}
-          initialGrantCount={grants.length}
-          itc={paywallItc ?? undefined}
-          onSuccess={() => {
-            closePaywall();
-          }}
-          onClose={() => {
-            closePaywall();
-            shipAnalyticsLog(`${paywallSourceId}.dismissed`, {});
-          }}
-          onErrorClick={() => {
-            closePaywall();
-            shipAnalyticsLog(`${paywallSourceId}.error`, {});
-          }}
-        />
-      )}
+      {showPaywallModal &&
+        paywallType === "credits" &&
+        builderEntitlementId &&
+        subscription?.id && (
+          <CreditsUpgradeContainer
+            source={paywallSourceId}
+            entitlementId={builderEntitlementId}
+            subscriptionId={subscription.id}
+            initialGrantCount={grants.length}
+            itc={paywallItc ?? undefined}
+            onSuccess={() => {
+              closePaywall();
+            }}
+            onClose={() => {
+              closePaywall();
+              shipAnalyticsLog(`${paywallSourceId}.dismissed`, {});
+            }}
+            onErrorClick={() => {
+              closePaywall();
+              shipAnalyticsLog(`${paywallSourceId}.error`, {});
+            }}
+          />
+        )}
 
       {/* Fallback: Show upgrade modal for credits when entitlementId is missing */}
-      {showPaywallModal && paywallType === 'credits' && !builderEntitlementId && (
-        <CreditsPaywallFallback
-          source={paywallSourceId}
-          subscriptionId={subscription?.id}
-          itc={paywallItc ?? undefined}
-          onSuccessClick={() => {
-            closePaywall();
-          }}
-          onClose={() => {
-            closePaywall();
-            shipAnalyticsLog(`${paywallSourceId}.dismissed`, {});
-          }}
-          onErrorClick={() => {
-            closePaywall();
-            shipAnalyticsLog(`${paywallSourceId}.error`, {});
-          }}
-        />
-      )}
+      {showPaywallModal &&
+        paywallType === "credits" &&
+        !builderEntitlementId && (
+          <CreditsPaywallFallback
+            source={paywallSourceId}
+            subscriptionId={subscription?.id}
+            itc={paywallItc ?? undefined}
+            onSuccessClick={() => {
+              closePaywall();
+            }}
+            onClose={() => {
+              closePaywall();
+              shipAnalyticsLog(`${paywallSourceId}.dismissed`, {});
+            }}
+            onErrorClick={() => {
+              closePaywall();
+              shipAnalyticsLog(`${paywallSourceId}.error`, {});
+            }}
+          />
+        )}
 
       {showSwitchToFreeModal && builderEntitlementId && (
         <DowngradeModal
@@ -319,12 +359,12 @@ function ManagePlanContent() {
                   setIsDowngradeAlertDismissed(false);
                   setIsFreeAutoRenewAlertDismissed(false);
                   // Log cancellation success impression for grant tracking
-                  logImpressionEvent('plan.cancellation.success')();
-                  shipAnalyticsLog('plan.cancellation.success', {
+                  logImpressionEvent("plan.cancellation.success")();
+                  shipAnalyticsLog("plan.cancellation.success", {
                     fromPlan: currentPlan,
                   });
-                }
-              }
+                },
+              },
             );
           }}
           isLoading={setAutoRenew.isPending}
@@ -337,7 +377,7 @@ function ManagePlanContent() {
           <div className="mb-4">
             <Alert
               emphasis="critical"
-              title={t('builder_manageplan_downgrade_error_title')}
+              title={t("builder_manageplan_downgrade_error_title")}
               onClose={() => setAutoRenew.reset()}
               actions={
                 builderEntitlementId ? (
@@ -345,22 +385,29 @@ function ManagePlanContent() {
                     design="inline"
                     size="sm"
                     data-partial="componentAiro"
-                    data-eid={generateClickEID('manageplan.buttons.downgrade_retry')}
-                    text={t('builder_manageplan_downgrade_retry')}
-                    onClick={() => setAutoRenew.mutate({ builderEntitlementId, autoRenew: false })}
+                    data-eid={generateClickEID(
+                      "manageplan.buttons.downgrade_retry",
+                    )}
+                    text={t("builder_manageplan_downgrade_retry")}
+                    onClick={() =>
+                      setAutoRenew.mutate({
+                        builderEntitlementId,
+                        autoRenew: false,
+                      })
+                    }
                     disabled={setAutoRenew.isPending}
                   />
                 ) : undefined
               }
             >
-              {t('builder_manageplan_downgrade_error_message')}
+              {t("builder_manageplan_downgrade_error_message")}
             </Alert>
           </div>
         )}
         {showDowngradeScheduledAlert && (
           <DowngradeScheduledAlert
             onKeepPlan={() => {
-              openPaywall('manage_plan.switch_to_current_plan', 'upgrade');
+              openPaywall("manage_plan.switch_to_current_plan", "upgrade");
             }}
             onDismiss={() => setIsDowngradeAlertDismissed(true)}
           />
@@ -371,7 +418,11 @@ function ManagePlanContent() {
             planName={planDisplayLabel}
             onCancelChanges={
               isAutoRenewDisabled && builderEntitlementId
-                ? () => setAutoRenew.mutate({ builderEntitlementId, autoRenew: true })
+                ? () =>
+                    setAutoRenew.mutate({
+                      builderEntitlementId,
+                      autoRenew: true,
+                    })
                 : undefined
             }
             isLoading={setAutoRenew.isPending}
@@ -379,7 +430,7 @@ function ManagePlanContent() {
           />
         )}
         <div className="flex flex-col gap-2">
-          <text.h2 as="title" size={3} text={t('builder_manageplan_title')} />
+          <text.h2 as="title" size={3} text={t("builder_manageplan_title")} />
           <text.p as="paragraph" className="mb-2">
             <FormattedMessage
               id="builder_manageplan_description_help"
@@ -407,14 +458,16 @@ function ManagePlanContent() {
               }}
             />
           </text.p>
-         
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+
+          <div className="grid grid-cols-1 md:grid-cols-12 md:items-start gap-4">
+            <div className="md:col-span-3 md:min-h-0">
               <TotalCreditsCard
                 totalCreditsSpent={totalCreditsSpent}
                 totalCreditsMax={totalCreditsMax}
               />
+            </div>
 
-            <div className='md:col-span-2 grid grid-cols-1 gap-4'>
+            <div className="flex flex-col gap-4 md:col-span-9 md:min-h-0">
               <PlanCreditsCard
                 subscription={subscription}
                 planGrant={planGrant}
@@ -448,8 +501,8 @@ function ManagePlanContent() {
                 />
               )}
             </div>
+          </div>
         </div>
-      </div>
       </PageLayout>
     </>
   );
@@ -458,13 +511,17 @@ function ManagePlanContent() {
 export default function ManagePlan() {
   const t = useTranslations();
   const router = useRouter();
-  const { data: isFeatureEnabled, isLoading: isFeatureLoading } = useSwitchboard('appbuilder-manage-plan');
+  const { data: isFeatureEnabled, isLoading: isFeatureLoading } =
+    useSwitchboard("appbuilder-manage-plan");
 
-  useEffect(function redirectIfDisabled() {
-    if (!isFeatureLoading && !isFeatureEnabled) {
-      router.replace('/');
-    }
-  }, [isFeatureEnabled, isFeatureLoading, router]);
+  useEffect(
+    function redirectIfDisabled() {
+      if (!isFeatureLoading && !isFeatureEnabled) {
+        router.replace("/");
+      }
+    },
+    [isFeatureEnabled, isFeatureLoading, router],
+  );
 
   if (isFeatureLoading || !isFeatureEnabled) {
     return (
@@ -475,7 +532,9 @@ export default function ManagePlan() {
   }
 
   return (
-    <ProtectedRoute unauthorizedMessage={t('builder_manageplan_signin_required')}>
+    <ProtectedRoute
+      unauthorizedMessage={t("builder_manageplan_signin_required")}
+    >
       <ManagePlanContent />
     </ProtectedRoute>
   );

@@ -1,15 +1,16 @@
 'use client';
 
+import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { useCallback, useMemo, useState } from 'react';
 import { FormattedMessage } from 'react-intl';
 import Button from '@ux/button';
 import ChevronDownIcon from '@ux/icon/chevron-down';
-import ChevronUpIcon from '@ux/icon/chevron-up';
 import Skeleton from '@ux/skeleton';
 import text from '@ux/text';
 
 import AppSiteRow from '@/app/manage-plan/components/AppSiteRow';
+import { CollapsibleCardBody } from '@/app/manage-plan/components/CollapsibleCardBody';
 import UnpublishConfirmationModal from '@/components/layout/UnpublishConfirmationModal';
 import { useDomainDisconnectPolling, useMultipleDeploymentStatusPolling } from '@/hooks/useDeploymentStatusPolling';
 import { usePublishApp } from '@/hooks/usePublishApp';
@@ -366,9 +367,16 @@ export default function AppsAndSitesCard({
             className="flex-shrink-0 cursor-pointer"
             onClick={() => setIsExpanded(!isExpanded)}
             aria-expanded={isExpanded}
-            aria-label={isExpanded ? 'Collapse' : 'Expand'}
+            aria-label={isExpanded ? t('builder_common_collapse') : t('builder_common_expand')}
           >
-            {isExpanded ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
+            <motion.span
+              className="inline-flex"
+              initial={false}
+              animate={{ rotate: isExpanded ? 180 : 0 }}
+              transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+            >
+              <ChevronDownIcon className="w-4 h-4" />
+            </motion.span>
           </button>
           <div className="flex items-baseline gap-2 flex-shrink-0">
             <text.strong
@@ -392,7 +400,7 @@ export default function AppsAndSitesCard({
           </div>
         </div>
 
-        {isExpanded && (
+        <CollapsibleCardBody isExpanded={isExpanded}>
           <>
             {planName && publishLimit !== null && publishLimit > 0 && (
               <text.p as="paragraph" size={-1} className="mt-2 mb-3 flex-shrink-0 text-intents-ux-passive-foregroundColor">
@@ -451,7 +459,7 @@ export default function AppsAndSitesCard({
               )}
             </div>
           </>
-        )}
+        </CollapsibleCardBody>
       </div>
 
       {showUnpublishModal && selectedApp && (
