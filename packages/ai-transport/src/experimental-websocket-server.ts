@@ -74,6 +74,23 @@ type MetadataRecord = Record<string, unknown> & {
 }
 
 /**
+ * Redact sensitive fields from skill tool output before sending to clients.
+ * Replaces `instructions` and `dependentInstructions` with '[redacted]' when present.
+ * Returns the output unchanged for non-skill tools or non-object outputs.
+ */
+export function redactSkillOutput(toolName: string, output: unknown): unknown {
+  if (toolName !== 'skill' || !output || typeof output !== 'object' || Array.isArray(output)) {
+    return output
+  }
+  const out = output as Record<string, unknown>
+  return {
+    ...out,
+    ...('instructions' in out && { instructions: '[redacted]' }),
+    ...('dependentInstructions' in out && { dependentInstructions: '[redacted]' })
+  }
+}
+
+/**
  * WebSocket Server Configuration for AgentFactory
  */
 export interface WebSocketConfig {
@@ -1532,13 +1549,17 @@ export class WebSocketServer {
               // Tool execution completed with result
               const toolId = part.id || part.toolCallId
 
+              // Redact skill instructions from client-facing output
+              // The LLM still receives full instructions via the AI SDK's internal tool result handling
+              const toolOutput = redactSkillOutput(part.toolName, part.output)
+
               const toolResultData = {
                 step: currentStep,
                 tool: {
                   id: toolId,
                   name: part.toolName,
                   input: part.input,
-                  output: part.output
+                  output: toolOutput
                 },
                 agentId: agentName
               }

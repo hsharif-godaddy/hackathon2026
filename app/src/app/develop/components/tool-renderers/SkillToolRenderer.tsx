@@ -2,7 +2,6 @@
 
 import { BookOpen, Package } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import Collapsible from '@ux/collapsible'
 import Pagination from '@ux/pagination'
 import TextInput from '@ux/text-input'
 
@@ -32,7 +31,6 @@ interface SkillListResult {
  */
 interface SkillLoadResult {
   skill: string
-  instructions: string
 }
 
 /**
@@ -276,7 +274,7 @@ function renderSkillList(skills: Skill[]): React.JSX.Element {
 /**
  * Render skill load result as HTML
  */
-function renderSkillLoad(skillName: string, instructions: string): React.JSX.Element {
+function renderSkillLoad(skillName: string): React.JSX.Element {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
@@ -286,17 +284,6 @@ function renderSkillLoad(skillName: string, instructions: string): React.JSX.Ele
       <div className="text-sm text-muted-foreground mb-2">
         Skill instructions loaded into context
       </div>
-
-      <Collapsible
-        id="skill-instructions"
-        title="View Instructions"
-      >
-        <div className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-2 border border-border mt-2">
-          <div className="text-xs font-mono text-foreground/80 whitespace-pre-wrap max-h-96 overflow-y-auto">
-            {instructions}
-          </div>
-        </div>
-      </Collapsible>
     </div>
   )
 }
@@ -440,8 +427,8 @@ export default function SkillToolRenderer({
     hasDetails = true
     if (action === 'list' && 'skills' in parsedResult) {
       modalContentElement = renderSkillList(parsedResult.skills)
-    } else if (action === 'load' && 'skill' in parsedResult && 'instructions' in parsedResult) {
-      modalContentElement = renderSkillLoad(parsedResult.skill, parsedResult.instructions)
+    } else if (action === 'load' && 'skill' in parsedResult) {
+      modalContentElement = renderSkillLoad(parsedResult.skill)
     } else if (action === 'install' && 'skill' in parsedResult) {
       modalContentElement = renderSkillInstall(
         parsedResult.skill,
