@@ -1,7 +1,10 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AuthResult } from '@/lib/api-auth';
+
+type RouteHandler = (request: NextRequest, context: unknown) => Promise<NextResponse>;
+type AuthHandler = (request: NextRequest, auth: AuthResult, context: unknown) => Promise<NextResponse>;
 
 const mockAuth: AuthResult = {
     authenticated: true,
@@ -11,7 +14,7 @@ const mockAuth: AuthResult = {
 const mockShouldBypassAuth = vi.fn(() => ({ bypass: false, reason: 'test' }));
 
 vi.mock('@/lib/api-auth', () => ({
-    withAuth: (handler: Function) => (request: NextRequest, context: unknown) =>
+    withAuth: (handler: AuthHandler) => (request: NextRequest, context: unknown) =>
         handler(request, mockAuth, context),
     shouldBypassAuth: () => mockShouldBypassAuth(),
 }));
@@ -60,10 +63,9 @@ vi.mock('@/lib/mgmt-helpers', () => ({
     APP_ID_RE: /^[a-z0-9]+$/,
     SUBSCRIPTION_ID_RE: /^[a-z0-9]+$/,
     validateId: vi.fn(() => null),
-    handleMgmtError: vi.fn((_err, msg) => {
-        const { NextResponse: NR } = require('next/server');
-        return NR.json({ error: msg }, { status: 500 });
-    }),
+    handleMgmtError: vi.fn((_err: unknown, msg: string) =>
+        NextResponse.json({ error: msg }, { status: 500 })
+    ),
 }));
 
 function makePostRequest(body?: unknown): NextRequest {
@@ -85,7 +87,7 @@ describe('credit-pack add route', () => {
 
     it('should return 400 when notes is missing from body', async () => {
         const { POST } = await import('../route');
-        const response = await (POST as Function)(makePostRequest({}), mockContext);
+        const response = await (POST as RouteHandler)(makePostRequest({}), mockContext);
 
         expect(response.status).toBe(400);
         const body = await response.json();
@@ -94,7 +96,7 @@ describe('credit-pack add route', () => {
 
     it('should return 400 when notes is empty string', async () => {
         const { POST } = await import('../route');
-        const response = await (POST as Function)(makePostRequest({ notes: '' }), mockContext);
+        const response = await (POST as RouteHandler)(makePostRequest({ notes: '' }), mockContext);
 
         expect(response.status).toBe(400);
         const body = await response.json();
@@ -103,7 +105,7 @@ describe('credit-pack add route', () => {
 
     it('should return 400 when notes is whitespace only', async () => {
         const { POST } = await import('../route');
-        const response = await (POST as Function)(makePostRequest({ notes: '   ' }), mockContext);
+        const response = await (POST as RouteHandler)(makePostRequest({ notes: '   ' }), mockContext);
 
         expect(response.status).toBe(400);
         const body = await response.json();
@@ -117,7 +119,7 @@ describe('credit-pack add route', () => {
             headers: { 'Content-Type': 'application/json' },
             body: 'not json',
         });
-        const response = await (POST as Function)(request, mockContext);
+        const response = await (POST as RouteHandler)(request, mockContext);
 
         expect(response.status).toBe(400);
         const body = await response.json();
@@ -127,7 +129,7 @@ describe('credit-pack add route', () => {
     it('should return 400 when notes exceeds word limit', async () => {
         const { POST } = await import('../route');
         const overLimit = Array.from({ length: 201 }, (_, i) => `word${i}`).join(' ');
-        const response = await (POST as Function)(makePostRequest({ notes: overLimit }), mockContext);
+        const response = await (POST as RouteHandler)(makePostRequest({ notes: overLimit }), mockContext);
 
         expect(response.status).toBe(400);
         const body = await response.json();
@@ -136,7 +138,7 @@ describe('credit-pack add route', () => {
 
     it('should return 201 when notes is provided', async () => {
         const { POST } = await import('../route');
-        const response = await (POST as Function)(
+        const response = await (POST as RouteHandler)(
             makePostRequest({ notes: 'Customer reported downtime' }),
             mockContext,
         );
@@ -150,7 +152,7 @@ describe('credit-pack add route', () => {
         mockShouldBypassAuth.mockReturnValue({ bypass: true, reason: 'NODE_ENV=development' });
 
         const { POST } = await import('../route');
-        const response = await (POST as Function)(
+        const response = await (POST as RouteHandler)(
             makePostRequest({ notes: 'some note' }),
             mockContext,
         );
@@ -167,7 +169,7 @@ describe('credit-pack add route', () => {
         const { getCreditPackDoc } = await import('@/lib/credit-pack-utils');
         const { POST } = await import('../route');
 
-        await (POST as Function)(
+        await (POST as RouteHandler)(
             makePostRequest({ notes: 'valid note <script>alert(1)</script>' }),
             mockContext,
         );

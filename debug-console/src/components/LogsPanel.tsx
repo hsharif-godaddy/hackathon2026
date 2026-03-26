@@ -32,49 +32,6 @@ export interface LogEntry {
   raw: Record<string, unknown>;
 }
 
-const BASE_LOG_LEVEL_STYLE: React.CSSProperties = {
-  padding: '0.125rem 0.5rem',
-  borderRadius: '4px',
-  fontSize: '0.75rem',
-  fontFamily: 'monospace',
-  fontWeight: 600,
-  border: '1px solid',
-  display: 'inline-block',
-};
-
-const LOG_LEVEL_COLORS: Record<string, React.CSSProperties> = {
-  ERROR: { backgroundColor: '#fee2e2', color: '#991b1b', borderColor: '#fca5a5' },
-  WARN:  { backgroundColor: '#fef3c7', color: '#92400e', borderColor: '#fcd34d' },
-  INFO:  { backgroundColor: '#dbeafe', color: '#1e40af', borderColor: '#93c5fd' },
-  DEBUG: { backgroundColor: '#f3f4f6', color: '#374151', borderColor: '#d1d5db' },
-};
-const DEFAULT_LOG_LEVEL_COLORS: React.CSSProperties = { backgroundColor: '#f3f4f6', color: '#4b5563', borderColor: '#e5e7eb' };
-
-function getLogLevelBadgeStyle(level: string): React.CSSProperties {
-  const upper = level ? String(level).toUpperCase() : '';
-  return { ...BASE_LOG_LEVEL_STYLE, ...(LOG_LEVEL_COLORS[upper] ?? DEFAULT_LOG_LEVEL_COLORS) };
-}
-
-function safeRender(value: unknown): string {
-  if (value == null) {
-    return '-';
-  }
-  if (typeof value === 'string') {
-    return value;
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
-  if (typeof value === 'object') {
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return '[Object]';
-    }
-  }
-  return String(value);
-}
-
 // Prepare log JSON for display: remove timestamp, promote message/data/error to top
 function formatLogJson(raw: Record<string, unknown>): string {
   const promoted: Record<string, unknown> = {};

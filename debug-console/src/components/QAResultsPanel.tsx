@@ -183,6 +183,7 @@ function ScreenshotGallery({ screenshots, onSelect }: ScreenshotGalleryProps) {
           })}
           style={{ cursor: 'zoom-in', position: 'relative', borderRadius: '6px', overflow: 'hidden', border: '1px solid #e2e8f0', flexShrink: 0 }}
         >
+          {/* eslint-disable-next-line @next/next/no-img-element -- base64 data URI thumbnails; next/image adds unnecessary overhead */}
           <img
             src={`data:image/png;base64,${ss.base64}`}
             alt={ss.type}
@@ -373,6 +374,7 @@ function ScreenshotLightbox({ src, alt, onClose }: { src: string; alt: string; o
       }}
     >
       <div style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh' }}>
+        {/* eslint-disable-next-line @next/next/no-img-element -- lightbox display of base64 data URIs */}
         <img src={src} alt={alt} style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: '8px', boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }} />
         <div style={{
           position: 'absolute', bottom: '-2rem', left: 0, right: 0,

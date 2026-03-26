@@ -1304,8 +1304,9 @@ async function getAllAppBucketsComposite(
 ): Promise<Array<{ key: { app_id: string }; doc_count: number; [k: string]: unknown }>> {
   const allBuckets: Array<{ key: { app_id: string }; doc_count: number; [k: string]: unknown }> = [];
   let afterKey: { app_id: string } | undefined;
+  let hasMore = true;
 
-  while (true) {
+  while (hasMore) {
     const body: Record<string, unknown> = {
       query,
       aggs: {
@@ -1326,8 +1327,8 @@ async function getAllAppBucketsComposite(
     if (!agg?.buckets?.length) break;
     allBuckets.push(...agg.buckets);
 
-    if (!agg.after_key) break;
-    afterKey = agg.after_key;
+    hasMore = !!agg.after_key;
+    if (hasMore) afterKey = agg.after_key;
   }
 
   return allBuckets;
@@ -1340,8 +1341,9 @@ async function getAppCountsComposite(
 ): Promise<Map<string, number>> {
   const counts = new Map<string, number>();
   let afterKey: { app_id: string } | undefined;
+  let hasMore = true;
 
-  while (true) {
+  while (hasMore) {
     const body: Record<string, unknown> = {
       ...(query ? { query } : {}),
       aggs: {
@@ -1363,8 +1365,8 @@ async function getAppCountsComposite(
       counts.set(b.key.app_id, b.doc_count);
     }
 
-    if (!agg.after_key) break;
-    afterKey = agg.after_key;
+    hasMore = !!agg.after_key;
+    if (hasMore) afterKey = agg.after_key;
   }
 
   return counts;

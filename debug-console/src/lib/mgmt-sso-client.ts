@@ -150,4 +150,5 @@ class MgmtSSOClient {
     }
 }
 
-export default new MgmtSSOClient();
+const mgmtSSOClient = new MgmtSSOClient();
+export default mgmtSSOClient;

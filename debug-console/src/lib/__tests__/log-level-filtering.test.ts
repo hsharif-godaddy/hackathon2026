@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { getLogSourceConfig, type FieldMapping } from '../log-sources';
+import { getLogSourceConfig } from '../log-sources';
 
 /**
  * Tests for log level filtering logic used in /api/es-logs route

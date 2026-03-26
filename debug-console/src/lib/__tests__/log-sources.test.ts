@@ -5,7 +5,6 @@ import {
   buildAppIdQuery,
   getNestedValue,
   type FieldMapping,
-  type LogSourceConfig
 } from '../log-sources';
 
 describe('log-sources', () => {

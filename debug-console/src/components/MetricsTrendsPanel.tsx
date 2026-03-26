@@ -109,7 +109,8 @@ export default function MetricsTrendsPanel({
                     try {
                         const errorText = await response.text();
                         errorMessage = errorText || errorMessage;
-                    } catch (_textError) {
+                    } catch {
+                        // text() also failed; use default error message
                     }
                 }
                 throw new Error(errorMessage);
