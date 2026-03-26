@@ -1,9 +1,14 @@
 package api
 
 import (
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 
+	"github.com/airo-ai-builder/local-control-plane/internal/setup"
 	"github.com/gorilla/mux"
 )
 
@@ -126,6 +131,12 @@ func (s *Server) UpdateSecrets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if succeeded > 0 {
+		if err := s.syncSecretsToConfigFiles(appID, "preview"); err != nil {
+			slog.Error("secret.config_sync.failed", "app_id", appID, "variant", "preview", "error", err)
+		}
+	}
+
 	// Fetch the updated app to include in the response
 	app, _ := s.DB.GetApp(appID)
 	resp := map[string]any{
@@ -142,4 +153,106 @@ func (s *Server) UpdateSecrets(w http.ResponseWriter, r *http.Request) {
 		resp["variants"] = app.Variants
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// seedSystemSecrets inserts provisioned system-managed secrets into SQLite
+// so they appear in GetSecrets responses, matching production behavior.
+func (s *Server) seedSystemSecrets(appID string, dbCreds *setup.DBCredentials) {
+	dbValue, _ := json.Marshal(map[string]any{
+		"NAME":               dbCreds.Name,
+		"HOST":               "airo-app-mysql",
+		"IP":                 "airo-app-mysql",
+		"PORT":               3306,
+		"USERNAME":           dbCreds.Username,
+		"PASSWORD":           dbCreds.Password,
+		"READ_ONLY_USERNAME": dbCreds.Username + "_readonly",
+		"READ_ONLY_PASSWORD": "",
+		"VARIANT":            "local",
+	})
+
+	secrets := map[string]string{
+		"DATABASE": string(dbValue),
+	}
+
+	if clientID := os.Getenv("GODADDY_OAUTH_CLIENT_ID"); clientID != "" {
+		secrets["GODADDY_OAUTH_CLIENT_ID"] = clientID
+	}
+	if clientSecret := os.Getenv("GODADDY_OAUTH_CLIENT_SECRET"); clientSecret != "" {
+		secrets["GODADDY_OAUTH_CLIENT_SECRET"] = clientSecret
+	}
+
+	appURL := os.Getenv("NEXT_PUBLIC_APP_URL")
+	if appURL == "" {
+		appURL = "https://local.gasket.dev-godaddy.com:8443"
+	}
+	secrets["JWT_REDIRECT_URL"] = fmt.Sprintf("%s/develop/%s?siteId=%s", appURL, appID, appID)
+
+	for name, value := range secrets {
+		if err := s.DB.UpsertSecret(appID, "shared", name, value, true); err != nil {
+			slog.Error("secret.seed.failed", "app_id", appID, "name", name, "error", err)
+		}
+	}
+
+	slog.Info("secret.seed.complete", "app_id", appID, "count", len(secrets))
+}
+
+// syncSecretsToConfigFiles rebuilds config.json for a variant by merging
+// system-managed entries (DATABASE, OAuth, etc.) with user secrets from SQLite.
+func (s *Server) syncSecretsToConfigFiles(appID, variant string) error {
+	if s.TemplateSetup == nil {
+		return nil
+	}
+
+	base := s.TemplateSetup.GetBasePath(appID)
+	configPath := filepath.Join(base, "local", variant, "config.json")
+
+	config := make(map[string]any)
+
+	// Preserve existing system-managed entries from the config file
+	if data, err := os.ReadFile(configPath); err == nil {
+		if err := json.Unmarshal(data, &config); err != nil {
+			slog.Warn("secret.config_read.parse_failed", "app_id", appID, "path", configPath, "error", err)
+			config = make(map[string]any)
+		}
+	}
+
+	// Remove all non-system-managed entries so we rebuild from DB
+	for key, val := range config {
+		entry, ok := val.(map[string]any)
+		if !ok {
+			delete(config, key)
+			continue
+		}
+		if managed, _ := entry["SYSTEM_MANAGED"].(bool); !managed {
+			delete(config, key)
+		}
+	}
+
+	// Add all non-system-managed secrets from SQLite for this variant
+	secrets, err := s.DB.GetSecrets(appID, &variant)
+	if err != nil {
+		return fmt.Errorf("get secrets: %w", err)
+	}
+
+	for _, sec := range secrets {
+		if sec.SystemManaged {
+			continue
+		}
+		config[sec.Name] = map[string]any{
+			"SYSTEM_MANAGED": false,
+			"VALUE":          sec.Value,
+		}
+	}
+
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, data, 0600); err != nil {
+		return fmt.Errorf("write %s: %w", configPath, err)
+	}
+
+	slog.Info("secret.config_sync.complete", "app_id", appID, "variant", variant, "secrets_count", len(secrets))
+	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -383,6 +384,10 @@ func (s *Server) PublishApp(w http.ResponseWriter, r *http.Request) {
 		deploymentID = dep.ID
 	}
 
+	if err := s.copyPreviewConfigToPublish(appID); err != nil {
+		slog.Error("app.publish.config_copy.failed", "app_id", appID, "error", err)
+	}
+
 	go s.completePublish(app, job.ID, dep)
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -395,6 +400,29 @@ func (s *Server) PublishApp(w http.ResponseWriter, r *http.Request) {
 		"appId":          appID,
 		"gitHash":        body.GitHash,
 	})
+}
+
+// copyPreviewConfigToPublish copies preview config.json files to publish,
+// ensuring the publish container has the same secrets as preview.
+func (s *Server) copyPreviewConfigToPublish(appID string) error {
+	if s.TemplateSetup == nil {
+		return nil
+	}
+
+	base := s.TemplateSetup.GetBasePath(appID)
+	src := filepath.Join(base, "local", "preview", "config.json")
+	dst := filepath.Join(base, "local", "publish", "config.json")
+
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", src, err)
+	}
+	if err := os.WriteFile(dst, data, 0600); err != nil {
+		return fmt.Errorf("write %s: %w", dst, err)
+	}
+
+	slog.Info("app.publish.config_copy.complete", "app_id", appID)
+	return nil
 }
 
 func (s *Server) completePublish(app *store.App, jobID string, dep *store.Deployment) {
@@ -551,6 +579,9 @@ func (s *Server) provisionApp(app *store.App) error {
 		return fmt.Errorf("template setup: %w", err)
 	}
 
+	if err == nil {
+		s.seedSystemSecrets(app.ID, dbCreds)
+	}
 	s.registerWithAgent(app)
 
 	if err := s.DockerManager.Up(app); err != nil {

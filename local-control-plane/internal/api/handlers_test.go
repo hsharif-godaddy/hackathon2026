@@ -7,9 +7,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/airo-ai-builder/local-control-plane/internal/setup"
 	"github.com/airo-ai-builder/local-control-plane/internal/store"
 	"github.com/gorilla/mux"
 )
@@ -306,6 +309,473 @@ func TestUpdateSecretsHandlerDelete(t *testing.T) {
 	secrets, _ := srv.DB.GetSecrets("app1", nil)
 	if len(secrets) != 0 {
 		t.Fatalf("expected 0 secrets after delete, got %d", len(secrets))
+	}
+}
+
+func newTestServerWithFS(t *testing.T) (*Server, string) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	t.Setenv("APPS_BASE_DIR", tmpDir)
+	return &Server{
+		DB:            newTestDB(t),
+		TemplateSetup: setup.NewTemplateSetup(),
+	}, tmpDir
+}
+
+func setupAppDirs(t *testing.T, baseDir, appID string) {
+	t.Helper()
+	for _, dir := range []string{
+		filepath.Join(baseDir, appID, "local", "preview"),
+		filepath.Join(baseDir, appID, "local", "publish"),
+		filepath.Join(baseDir, appID, "alloc"),
+	} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+}
+
+func TestUpdateSecretsSyncsConfigFile(t *testing.T) {
+	srv, tmpDir := newTestServerWithFS(t)
+	appID := "test-app"
+	setupAppDirs(t, tmpDir, appID)
+
+	// Write initial system config to mimic provisioning
+	initialConfig := map[string]any{
+		"DATABASE": map[string]any{
+			"SYSTEM_MANAGED": true,
+			"VALUE":          map[string]any{"NAME": "testdb", "HOST": "localhost"},
+		},
+	}
+	configPath := filepath.Join(tmpDir, appID, "local", "preview", "config.json")
+	data, _ := json.MarshalIndent(initialConfig, "", "  ")
+	os.WriteFile(configPath, data, 0600)
+
+	body, _ := json.Marshal(map[string]any{
+		"operations": []map[string]any{
+			{
+				"type": "upsert",
+				"secret": map[string]any{
+					"name":     "API_KEY",
+					"value":    "my-secret-key",
+					"variants": []string{"preview"},
+				},
+			},
+		},
+	})
+
+	req := httptest.NewRequest("POST", "/apps/"+appID+"/secrets", bytes.NewReader(body))
+	req = setMuxVars(req, map[string]string{"appId": appID})
+
+	w := httptest.NewRecorder()
+	srv.UpdateSecrets(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Read the config file and verify it has both system and user secrets
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+
+	var config map[string]any
+	if err := json.Unmarshal(configData, &config); err != nil {
+		t.Fatalf("parse config: %v", err)
+	}
+
+	// System secret should be preserved
+	if _, ok := config["DATABASE"]; !ok {
+		t.Error("expected DATABASE system secret to be preserved")
+	}
+
+	// User secret should be added
+	apiKey, ok := config["API_KEY"]
+	if !ok {
+		t.Fatal("expected API_KEY to be in config")
+	}
+
+	entry := apiKey.(map[string]any)
+	if entry["SYSTEM_MANAGED"] != false {
+		t.Error("expected API_KEY SYSTEM_MANAGED to be false")
+	}
+	if entry["VALUE"] != "my-secret-key" {
+		t.Errorf("expected VALUE my-secret-key, got %v", entry["VALUE"])
+	}
+
+}
+
+func TestUpdateSecretsDeleteRemovesFromConfig(t *testing.T) {
+	srv, tmpDir := newTestServerWithFS(t)
+	appID := "test-app"
+	setupAppDirs(t, tmpDir, appID)
+
+	// Pre-populate DB and config with a user secret
+	srv.DB.UpsertSecret(appID, "preview", "OLD_KEY", "old-value", false)
+
+	configPath := filepath.Join(tmpDir, appID, "local", "preview", "config.json")
+	initialConfig := map[string]any{
+		"DATABASE": map[string]any{"SYSTEM_MANAGED": true, "VALUE": "db"},
+		"OLD_KEY":  map[string]any{"SYSTEM_MANAGED": false, "VALUE": "old-value"},
+	}
+	data, _ := json.MarshalIndent(initialConfig, "", "  ")
+	os.WriteFile(configPath, data, 0600)
+
+	body, _ := json.Marshal(map[string]any{
+		"operations": []map[string]any{
+			{
+				"type": "delete",
+				"secret": map[string]any{
+					"name":     "OLD_KEY",
+					"variants": []string{"preview"},
+				},
+			},
+		},
+	})
+
+	req := httptest.NewRequest("POST", "/apps/"+appID+"/secrets", bytes.NewReader(body))
+	req = setMuxVars(req, map[string]string{"appId": appID})
+
+	w := httptest.NewRecorder()
+	srv.UpdateSecrets(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	configData, _ := os.ReadFile(configPath)
+	var config map[string]any
+	json.Unmarshal(configData, &config)
+
+	if _, ok := config["OLD_KEY"]; ok {
+		t.Error("expected OLD_KEY to be removed from config")
+	}
+	if _, ok := config["DATABASE"]; !ok {
+		t.Error("expected DATABASE to be preserved")
+	}
+}
+
+func TestSyncSecretsNoExistingConfig(t *testing.T) {
+	srv, tmpDir := newTestServerWithFS(t)
+	appID := "test-app"
+	setupAppDirs(t, tmpDir, appID)
+
+	// No config.json exists yet — sync should create one from scratch
+	body, _ := json.Marshal(map[string]any{
+		"operations": []map[string]any{
+			{
+				"type": "upsert",
+				"secret": map[string]any{
+					"name":     "MY_SECRET",
+					"value":    "val123",
+					"variants": []string{"preview"},
+				},
+			},
+		},
+	})
+
+	req := httptest.NewRequest("POST", "/apps/"+appID+"/secrets", bytes.NewReader(body))
+	req = setMuxVars(req, map[string]string{"appId": appID})
+
+	w := httptest.NewRecorder()
+	srv.UpdateSecrets(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	configData, err := os.ReadFile(filepath.Join(tmpDir, appID, "local", "preview", "config.json"))
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+
+	var config map[string]any
+	if err := json.Unmarshal(configData, &config); err != nil {
+		t.Fatalf("parse config: %v", err)
+	}
+
+	entry, ok := config["MY_SECRET"].(map[string]any)
+	if !ok {
+		t.Fatal("expected MY_SECRET in config")
+	}
+	if entry["VALUE"] != "val123" {
+		t.Errorf("expected VALUE val123, got %v", entry["VALUE"])
+	}
+}
+
+func TestSyncSecretsSharedIncludedInPreview(t *testing.T) {
+	srv, tmpDir := newTestServerWithFS(t)
+	appID := "test-app"
+	setupAppDirs(t, tmpDir, appID)
+
+	// Add a shared secret, then a preview secret
+	body, _ := json.Marshal(map[string]any{
+		"operations": []map[string]any{
+			{
+				"type": "upsert",
+				"secret": map[string]any{
+					"name":     "SHARED_KEY",
+					"value":    "shared-val",
+					"variants": []string{"shared"},
+				},
+			},
+			{
+				"type": "upsert",
+				"secret": map[string]any{
+					"name":     "PREVIEW_KEY",
+					"value":    "preview-val",
+					"variants": []string{"preview"},
+				},
+			},
+		},
+	})
+
+	req := httptest.NewRequest("POST", "/apps/"+appID+"/secrets", bytes.NewReader(body))
+	req = setMuxVars(req, map[string]string{"appId": appID})
+
+	w := httptest.NewRecorder()
+	srv.UpdateSecrets(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	configData, _ := os.ReadFile(filepath.Join(tmpDir, appID, "local", "preview", "config.json"))
+	var config map[string]any
+	json.Unmarshal(configData, &config)
+
+	if _, ok := config["SHARED_KEY"]; !ok {
+		t.Error("expected SHARED_KEY in preview config (shared secrets should be included)")
+	}
+	if _, ok := config["PREVIEW_KEY"]; !ok {
+		t.Error("expected PREVIEW_KEY in preview config")
+	}
+}
+
+func TestSyncSecretsMixedOperations(t *testing.T) {
+	srv, tmpDir := newTestServerWithFS(t)
+	appID := "test-app"
+	setupAppDirs(t, tmpDir, appID)
+
+	// Pre-populate with an existing secret to delete
+	srv.DB.UpsertSecret(appID, "preview", "DELETE_ME", "old", false)
+	initialConfig := map[string]any{
+		"DATABASE":  map[string]any{"SYSTEM_MANAGED": true, "VALUE": "db"},
+		"DELETE_ME": map[string]any{"SYSTEM_MANAGED": false, "VALUE": "old"},
+	}
+	configPath := filepath.Join(tmpDir, appID, "local", "preview", "config.json")
+	data, _ := json.MarshalIndent(initialConfig, "", "  ")
+	os.WriteFile(configPath, data, 0600)
+
+	body, _ := json.Marshal(map[string]any{
+		"operations": []map[string]any{
+			{
+				"type": "upsert",
+				"secret": map[string]any{
+					"name":     "NEW_KEY",
+					"value":    "new-val",
+					"variants": []string{"preview"},
+				},
+			},
+			{
+				"type": "upsert",
+				"secret": map[string]any{
+					"name":     "ANOTHER_KEY",
+					"value":    "another-val",
+					"variants": []string{"preview"},
+				},
+			},
+			{
+				"type": "delete",
+				"secret": map[string]any{
+					"name":     "DELETE_ME",
+					"variants": []string{"preview"},
+				},
+			},
+		},
+	})
+
+	req := httptest.NewRequest("POST", "/apps/"+appID+"/secrets", bytes.NewReader(body))
+	req = setMuxVars(req, map[string]string{"appId": appID})
+
+	w := httptest.NewRecorder()
+	srv.UpdateSecrets(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	configData, _ := os.ReadFile(configPath)
+	var config map[string]any
+	json.Unmarshal(configData, &config)
+
+	if _, ok := config["DATABASE"]; !ok {
+		t.Error("expected DATABASE to be preserved")
+	}
+	if _, ok := config["NEW_KEY"]; !ok {
+		t.Error("expected NEW_KEY to be added")
+	}
+	if _, ok := config["ANOTHER_KEY"]; !ok {
+		t.Error("expected ANOTHER_KEY to be added")
+	}
+	if _, ok := config["DELETE_ME"]; ok {
+		t.Error("expected DELETE_ME to be removed")
+	}
+}
+
+func TestSyncSecretsUpdateExistingValue(t *testing.T) {
+	srv, tmpDir := newTestServerWithFS(t)
+	appID := "test-app"
+	setupAppDirs(t, tmpDir, appID)
+
+	// Pre-populate with existing user secret
+	srv.DB.UpsertSecret(appID, "preview", "API_KEY", "old-value", false)
+	configPath := filepath.Join(tmpDir, appID, "local", "preview", "config.json")
+	initialConfig := map[string]any{
+		"DATABASE": map[string]any{"SYSTEM_MANAGED": true, "VALUE": "db"},
+		"API_KEY":  map[string]any{"SYSTEM_MANAGED": false, "VALUE": "old-value"},
+	}
+	data, _ := json.MarshalIndent(initialConfig, "", "  ")
+	os.WriteFile(configPath, data, 0600)
+
+	// Update the secret value
+	body, _ := json.Marshal(map[string]any{
+		"operations": []map[string]any{
+			{
+				"type": "upsert",
+				"secret": map[string]any{
+					"name":     "API_KEY",
+					"value":    "new-value",
+					"variants": []string{"preview"},
+				},
+			},
+		},
+	})
+
+	req := httptest.NewRequest("POST", "/apps/"+appID+"/secrets", bytes.NewReader(body))
+	req = setMuxVars(req, map[string]string{"appId": appID})
+
+	w := httptest.NewRecorder()
+	srv.UpdateSecrets(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	configData, _ := os.ReadFile(configPath)
+	var config map[string]any
+	json.Unmarshal(configData, &config)
+
+	entry := config["API_KEY"].(map[string]any)
+	if entry["VALUE"] != "new-value" {
+		t.Errorf("expected updated VALUE new-value, got %v", entry["VALUE"])
+	}
+}
+
+func TestSyncSecretsNilTemplateSetupIsNoop(t *testing.T) {
+	srv := newTestServer(t) // has nil TemplateSetup
+
+	body, _ := json.Marshal(map[string]any{
+		"operations": []map[string]any{
+			{
+				"type": "upsert",
+				"secret": map[string]any{
+					"name":     "KEY",
+					"value":    "val",
+					"variants": []string{"preview"},
+				},
+			},
+		},
+	})
+
+	req := httptest.NewRequest("POST", "/apps/app1/secrets", bytes.NewReader(body))
+	req = setMuxVars(req, map[string]string{"appId": "app1"})
+
+	w := httptest.NewRecorder()
+	srv.UpdateSecrets(w, req)
+
+	// Should succeed without panicking — config sync is skipped
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSeedSystemSecrets(t *testing.T) {
+	srv := newTestServer(t)
+	appID := "test-app"
+
+	srv.seedSystemSecrets(appID, &setup.DBCredentials{
+		Name:     "testdb",
+		Username: "testuser",
+		Password: "testpass",
+	})
+
+	secrets, err := srv.DB.GetSecrets(appID, nil)
+	if err != nil {
+		t.Fatalf("GetSecrets: %v", err)
+	}
+
+	names := make(map[string]bool)
+	for _, s := range secrets {
+		names[s.Name] = true
+		if !s.SystemManaged {
+			t.Errorf("expected %s to be system-managed", s.Name)
+		}
+		if s.Variant != "shared" {
+			t.Errorf("expected %s variant to be shared, got %s", s.Name, s.Variant)
+		}
+	}
+
+	if !names["DATABASE"] {
+		t.Error("expected DATABASE secret to be seeded")
+	}
+	if !names["JWT_REDIRECT_URL"] {
+		t.Error("expected JWT_REDIRECT_URL secret to be seeded")
+	}
+}
+
+func TestCopyPreviewConfigToPublishMissingSource(t *testing.T) {
+	srv, tmpDir := newTestServerWithFS(t)
+	appID := "test-app"
+	setupAppDirs(t, tmpDir, appID)
+
+	// No preview config.json exists
+	err := srv.copyPreviewConfigToPublish(appID)
+	if err == nil {
+		t.Fatal("expected error when preview config is missing")
+	}
+}
+
+func TestCopyPreviewConfigToPublish(t *testing.T) {
+	srv, tmpDir := newTestServerWithFS(t)
+	appID := "test-app"
+	setupAppDirs(t, tmpDir, appID)
+
+	// Write preview config
+	previewConfig := map[string]any{
+		"DATABASE": map[string]any{"SYSTEM_MANAGED": true, "VALUE": "db"},
+		"API_KEY":  map[string]any{"SYSTEM_MANAGED": false, "VALUE": "secret"},
+	}
+	data, _ := json.MarshalIndent(previewConfig, "", "  ")
+	os.WriteFile(filepath.Join(tmpDir, appID, "local", "preview", "config.json"), data, 0600)
+
+	if err := srv.copyPreviewConfigToPublish(appID); err != nil {
+		t.Fatalf("copyPreviewConfigToPublish: %v", err)
+	}
+
+	publishData, err := os.ReadFile(filepath.Join(tmpDir, appID, "local", "publish", "config.json"))
+	if err != nil {
+		t.Fatalf("read publish config: %v", err)
+	}
+	var publishConfig map[string]any
+	json.Unmarshal(publishData, &publishConfig)
+
+	if _, ok := publishConfig["API_KEY"]; !ok {
+		t.Error("expected API_KEY in publish config")
+	}
+	if _, ok := publishConfig["DATABASE"]; !ok {
+		t.Error("expected DATABASE in publish config")
 	}
 }
 
