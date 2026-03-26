@@ -2,6 +2,7 @@ import uxAlert from '@ux/alert'
 import uxButton from '@ux/button'
 import uxIcon from '@ux/icon'
 import uxModal from '@ux/modal'
+import uxQuantitySelector from '@ux/quantity-selector'
 import uxRadio from '@ux/radio'
 import uxSpinner from '@ux/spinner'
 import uxTag from '@ux/tag'
@@ -32,6 +33,7 @@ export const UPGRADE_DEPS = {
   uxButton: { module: uxButton, version: '2500.7.2' },
   uxIcon: { module: uxIcon, version: '2500.7.2' },
   uxModal: { module: uxModal, version: '2500.7.2' },
+  uxQuantitySelector: { module: uxQuantitySelector, version: '2500.7.2' },
   uxRadio: { module: uxRadio, version: '2500.7.1' },
   uxSpinner: { module: uxSpinner, version: '2500.7.1' },
   uxTag: { module: uxTag, version: '2500.7.2' },

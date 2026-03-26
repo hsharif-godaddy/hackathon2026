@@ -654,6 +654,9 @@ importers:
       '@ux/pagination':
         specifier: 2500.7.2
         version: 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/quantity-selector':
+        specifier: ^2500.7.2
+        version: 2500.11.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/radio':
         specifier: 2500.7.1
         version: 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -7052,6 +7055,14 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
+  '@ux/field-frame@2500.11.0':
+    resolution: {integrity: sha512-2UzuIkanEtfwQfEhj4FvYXeUNoJThXcWLGS3uniTQNP98vd+y89j/8CXi5fGEErT5wlPJKZtBlemM3zFrgJ6sA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/field-frame/-/@ux/field-frame-2500.11.0.tgz}
+    engines: {node: '>= 18'}
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
   '@ux/field-frame@2500.8.1':
     resolution: {integrity: sha512-ElS/H8oTFLEoscHuLIGdVQ/+SwyNvrqKRxgQS+Z7ZXg33gKh8FPk0M8P2tBGlIgrni2N2R4cJ5S03JENDrfchw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/field-frame/-/@ux/field-frame-2500.8.1.tgz}
     engines: {node: '>= 18'}
@@ -7170,6 +7181,14 @@ packages:
   '@ux/presentation-central@4.1.0':
     resolution: {integrity: sha512-pFAZAsSfGTm+ZqtUCjaIBtYOSYkN4IRIOP9DncREh3pLi6kUeoWLYpEep77d7/by5NdFGCkXO9F6yFffRRbZ/w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/presentation-central/-/@ux/presentation-central-4.1.0.tgz}
     engines: {node: '>=16'}
+
+  '@ux/quantity-selector@2500.11.0':
+    resolution: {integrity: sha512-uSiwAVwNumJm7NkdxrRoDpJj8zxyl500DeZhUyYdwW5fsnKD2h0SY6kBDOX1MMaGFoMxrf/OFqER3KUZntfHug==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/quantity-selector/-/@ux/quantity-selector-2500.11.0.tgz}
+    engines: {node: '>= 18'}
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
 
   '@ux/radio@2500.7.1':
     resolution: {integrity: sha512-mUZIyV6ghTRw8Jej3Do8EF7RcR2Oowg8HF+Tt1w76hVH+Hldi1Uj3/jS13bMwtHTC0rV9PN0lwnu8YaMzca0yA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/radio/-/@ux/radio-2500.7.1.tgz}
@@ -7293,6 +7312,14 @@ packages:
     peerDependencies:
       '@ux/intents': 2500.7.1
       tailwindcss: ^3.4.17
+
+  '@ux/text-entry@2500.10.4':
+    resolution: {integrity: sha512-GIU8o8KYgWHY7BUEl6ABj+eYVdlrDkVYBilXElU3E5xHWL/sHiKVgDd126nkzURrEWYYHLp7Pb32J7TRxl+pmw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-entry/-/@ux/text-entry-2500.10.4.tgz}
+    engines: {node: '>= 18'}
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
 
   '@ux/text-entry@2500.7.1':
     resolution: {integrity: sha512-tVSfdR8oRGiSVOowhrEjoBayeH7T0iWGdzSD8eQeX3mzxziZ5msEcFMZzc92A+X1hZmj00GVpdM/x/XDd55BAQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-entry/-/@ux/text-entry-2500.7.1.tgz}
@@ -21278,6 +21305,14 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
 
+  '@ux/field-frame@2500.11.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      '@ux/intents': 2500.7.1
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
   '@ux/field-frame@2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/intents': 2500.7.1
@@ -21451,6 +21486,21 @@ snapshots:
     transitivePeerDependencies:
       - debug
 
+  '@ux/quantity-selector@2500.11.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.10.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/field-frame': 2500.11.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/label': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text-entry': 2500.10.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
   '@ux/radio@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/intents': 2500.7.1
@@ -21607,6 +21657,17 @@ snapshots:
       '@ux/intents': 2500.7.1
       obj-dot-props: 1.1.0
       tailwindcss: 4.1.13
+
+  '@ux/text-entry@2500.10.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      '@ux/component-utilities': 2500.10.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/label': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
 
   '@ux/text-entry@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
