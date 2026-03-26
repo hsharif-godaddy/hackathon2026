@@ -1,0 +1,139 @@
+name: Langfuse Metrics Ingest
+
+run-name: "Langfuse Metrics Ingest - ${{ inputs.days || '1' }}d (by ${{ github.actor }})"
+
+on:
+  schedule:
+    - cron: "30 3 * * *"
+
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Backfill: ingest last N days"
+        required: false
+        default: "1"
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  ingest:
+    timeout-minutes: 15
+    runs-on:
+      labels:
+        - airo-cicd-runners
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Get Artifactory Token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@88e9eba31c07e31beefa4cef5c0e93d1af9535d7 # v4.6.1
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+
+      - name: Setup Artifactory Creds
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "ARTIFACTORY_NPM_TOKEN=${OIDC_TOKEN}" >> $GITHUB_ENV
+
+      - name: Configure pnpm registry
+        run: |
+          echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" > .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/npm-gasket-core-local/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install pnpm
+        run: npm install -g pnpm@10.17.0+sha512.fce8a3dd29a4ed2ec566fb53efbb04d8c44a0f05bc6f24a73046910fb9c3ce7afa35a0980500668fa3573345bd644644fa98338fa168235c80f4aa17aa17fbef
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build langfuse-trace-analyzer
+        run: pnpm --filter langfuse-trace-analyzer build
+
+      - name: Get Langfuse credentials from Secrets Manager
+        id: get-langfuse-creds
+        run: |
+          echo "Retrieving Langfuse credentials from Secrets Manager..."
+          SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id "langfuse_test" --query 'SecretString' --output text --region us-west-2)
+
+          PUBLIC_KEY=$(echo "$SECRET_JSON" | jq -r '.LANGFUSE_PUBLIC_KEY // empty')
+          SECRET_KEY=$(echo "$SECRET_JSON" | jq -r '.LANGFUSE_SECRET_KEY // empty')
+          BASE_URL=$(echo "$SECRET_JSON" | jq -r '.LANGFUSE_BASE_URL // empty')
+
+          if [ -z "$PUBLIC_KEY" ] || [ -z "$SECRET_KEY" ]; then
+            echo "Failed to extract Langfuse credentials from secret"
+            exit 1
+          fi
+
+          echo "::add-mask::$PUBLIC_KEY"
+          echo "::add-mask::$SECRET_KEY"
+          echo "public_key=$PUBLIC_KEY" >> $GITHUB_OUTPUT
+          echo "secret_key=$SECRET_KEY" >> $GITHUB_OUTPUT
+          echo "base_url=$BASE_URL" >> $GITHUB_OUTPUT
+
+      - name: Get Elasticsearch credentials from Secrets Manager
+        id: get-es-creds
+        run: |
+          echo "Retrieving Elasticsearch credentials from Secrets Manager..."
+          SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id "/airo/elasticsearch-credentials" --query 'SecretString' --output text --region us-west-2)
+
+          ES_URL=$(echo "$SECRET_JSON" | jq -r '.url // .ingestion_url // empty')
+          ES_API_KEY=$(echo "$SECRET_JSON" | jq -r '.api_key // empty')
+          ES_USER=$(echo "$SECRET_JSON" | jq -r '.ingestion_user // empty')
+          ES_PASSWORD=$(echo "$SECRET_JSON" | jq -r '.ingestion_user_password // empty')
+
+          if [ -z "$ES_URL" ]; then
+            echo "Failed to extract Elasticsearch URL from secret"
+            exit 1
+          fi
+
+          echo "::add-mask::$ES_URL"
+          echo "es_url=$ES_URL" >> $GITHUB_OUTPUT
+
+          if [ -n "$ES_API_KEY" ]; then
+            echo "::add-mask::$ES_API_KEY"
+            echo "es_api_key=$ES_API_KEY" >> $GITHUB_OUTPUT
+          fi
+
+          if [ -n "$ES_USER" ]; then
+            echo "::add-mask::$ES_USER"
+            echo "::add-mask::$ES_PASSWORD"
+            echo "es_user=$ES_USER" >> $GITHUB_OUTPUT
+            echo "es_password=$ES_PASSWORD" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run metrics ingest
+        env:
+          LANGFUSE_PUBLIC_KEY: ${{ steps.get-langfuse-creds.outputs.public_key }}
+          LANGFUSE_SECRET_KEY: ${{ steps.get-langfuse-creds.outputs.secret_key }}
+          LANGFUSE_BASE_URL: ${{ steps.get-langfuse-creds.outputs.base_url }}
+          ES_ENDPOINT: ${{ steps.get-es-creds.outputs.es_url }}
+          ES_API_KEY: ${{ steps.get-es-creds.outputs.es_api_key }}
+          ES_USER: ${{ steps.get-es-creds.outputs.es_user }}
+          ES_PASSWORD: ${{ steps.get-es-creds.outputs.es_password }}
+        run: |
+          DAYS_INPUT="${{ inputs.days || '1' }}"
+          if ! [[ "$DAYS_INPUT" =~ ^[0-9]+$ ]]; then
+            echo "Error: days ('$DAYS_INPUT') must be a positive integer."
+            exit 1
+          fi
+
+          pnpm --filter langfuse-trace-analyzer start -- --days "$DAYS_INPUT"

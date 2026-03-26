@@ -1095,6 +1095,18 @@ importers:
         specifier: 5.9.2
         version: 5.9.2
 
+  langfuse-trace-analyzer:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.18.12
+        version: 22.18.12
+      tsx:
+        specifier: ^4.6.0
+        version: 4.20.5
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
+
   packages/ai-common:
     dependencies:
       '@ai-sdk/provider':
@@ -6343,7 +6355,7 @@ packages:
     engines: {node: '>=12'}
 
   '@testing-library/dom@10.4.1':
-    resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==}
+    resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@testing-library/dom/-/testing-library-dom-10.4.1.tgz}
     engines: {node: '>=18'}
 
   '@testing-library/jest-dom@6.9.1':
