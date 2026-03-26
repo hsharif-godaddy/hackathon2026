@@ -293,6 +293,7 @@ export default function ChatAttachmentMenu({
             icon={<PlusIcon />}
             className={`!bg-intents-ux-box-backgroundColor !border !border-border !rounded-lg transition-all duration-200 hover:!shadow-md ${open ? '!shadow-md' : ''}`}
             data-eid={generateClickEID('develop.chat_input.attachment_menu')}
+            aria-label={t('builder_chatfiles_attach', undefined, 'Attach')}
           />
         </PopoverTrigger>
         <PopoverContent align="start" className="w-[220px] p-1">

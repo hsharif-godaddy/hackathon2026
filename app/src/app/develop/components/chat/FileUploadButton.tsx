@@ -148,6 +148,7 @@ export default function FileUploadButton({
         design="stateless"
         size="sm"
         icon={<PlusIcon />}
+        aria-label={t('builder_chatfiles_attach', undefined, 'Attach')}
       />
     </>
   );

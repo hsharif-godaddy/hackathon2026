@@ -498,7 +498,7 @@ describe('ChatInput', () => {
     it('should disable speech button when isBudgetExceeded is true', () => {
       renderWithProviders(<ChatInput {...defaultProps} isBudgetExceeded={true} />);
 
-      const speechButton = screen.getByRole('button', { name: '' });
+      const speechButton = screen.getByRole('button', { name: 'builder_chatinput_start_listening' });
       expect(speechButton).toBeDisabled();
     });
 

@@ -311,12 +311,14 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
                             design="tertiary"
                             size="sm"
                             onClick={() => handleEditRow(row)}
+                            aria-label={t('builder_common_edit', undefined, 'Edit')}
                           />
                           <Button
                             icon={<TrashIcon />}
                             design="critical"
                             size="sm"
                             onClick={() => handleDeleteRow(row)}
+                            aria-label={t('builder_common_delete', undefined, 'Delete')}
                           />
                         </div>
                       </Td>

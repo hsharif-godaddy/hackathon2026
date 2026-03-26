@@ -259,6 +259,8 @@ export default function ChatInput({
                   }
                   icon={<MicIcon />}
                   size="sm"
+                  aria-label={isListening ? t('builder_homepage_hero_stop_listening', undefined, 'Stop listening') : t('builder_chatinput_start_listening', undefined, 'Start listening')}
+                  aria-pressed={isListening}
                 />
               )}
               {isStreaming && onStopGeneration ? (

@@ -211,8 +211,8 @@ export default function DomainItem({
           )}
         </Box>
         <Popover open={open} onOpenChange={handlePopoverOpenChange}>
-          <PopoverTrigger>
-            <Button design="minimal" size="sm" icon={<MenuIcon />} />
+          <PopoverTrigger asChild>
+            <Button design="minimal" size="sm" icon={<MenuIcon />} aria-label={t('builder_common_options', undefined, 'Options')} />
           </PopoverTrigger>
           <PopoverContent align="end" className="w-[280px] p-1">
             {showConfirmation ? (

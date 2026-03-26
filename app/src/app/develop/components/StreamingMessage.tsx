@@ -107,13 +107,15 @@ function FullMessageModal({ content, isOpen, onClose }: { content: string; isOpe
           <div className="flex items-center gap-1">
             <Button
               onClick={handleCopyMessage}
-              title={t('builder_common_copy_clipboard')}
+              title={t('builder_common_copy_clipboard', undefined, 'Copy to clipboard')}
+              aria-label={t('builder_common_copy_clipboard', undefined, 'Copy to clipboard')}
               icon={copiedToClipboard ? <Check /> : <ClipboardCopy />}
               size="sm"
             />
             <Button
               onClick={onClose}
-              title={t('builder_common_close')}
+              title={t('builder_common_close', undefined, 'Close')}
+              aria-label={t('builder_common_close', undefined, 'Close')}
               icon={<X />}
               size="sm"
             />

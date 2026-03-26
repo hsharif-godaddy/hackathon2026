@@ -813,7 +813,8 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                 onClick={() => setShowFileTree(false)}
                 className="!p-0.5"
                 design="control"
-                title={t('builder_common_close')}
+                title={t('builder_common_close', undefined, 'Close')}
+                aria-label={t('builder_common_close', undefined, 'Close')}
                 icon={<XIcon />}
               />
             </div>
@@ -891,7 +892,8 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                       handleCloseFile(file.path)
                     }}
                     className="!p-0.5"
-                    title={t('builder_code_close_file')}
+                    title={t('builder_code_close_file', undefined, 'Close file')}
+                    aria-label={t('builder_code_close_file', undefined, 'Close file')}
                     design="control"
                     icon={<XIcon className="!size-1.5" />}
                   />
