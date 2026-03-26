@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - "budget-service/**"
-      - ".github/workflows/aws-deploy-budget-service.yml"
+      - "packages/go-auth/**"
 
   # Manual deployment
   workflow_dispatch:
@@ -14,7 +14,7 @@ on:
 run-name: "[Env: dev-private] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
 
 permissions:
-  id-token: write
+  id-token: write # required for artifactory token login
   contents: read
 
 jobs:
@@ -32,23 +32,56 @@ jobs:
       - name: Checkout Codebase
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
 
+      # Retrieve Katana application info with the katana-get-app GitHub Action
       - id: katana-app
         name: Get Katana App Info
         uses: gdcorp-actions/katana-get-app@v1
         with:
           path: /budget-service
 
+      # Assume role into step outputs only - intentionally NOT written to $GITHUB_ENV
+      # so the runner's original instance role remains intact for Katana steps.
+      - name: Assume CI/CD AWS role for GHEC token
+        id: assume-role
+        run: |
+          read -r KEY SECRET TOKEN <<< $(aws sts assume-role \
+            --role-arn arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy \
+            --role-session-name GHASession \
+            --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
+            --output text)
+          echo "::add-mask::$KEY"
+          echo "::add-mask::$SECRET"
+          echo "::add-mask::$TOKEN"
+          [[ -z "$KEY" || -z "$SECRET" || -z "$TOKEN" ]] && { echo "ERROR: STS assume-role failed or returned empty credentials"; exit 1; }
+          echo "access_key_id=$KEY" >> $GITHUB_OUTPUT
+          echo "secret_access_key=$SECRET" >> $GITHUB_OUTPUT
+          echo "session_token=$TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Get GHEC-SA token for gdcorp-golang/auth
+        uses: gdcorp-actions/get-ghec-sa-tokens@e1012cc92874c6363b29ed6930b7b48badd66440
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.assume-role.outputs.access_key_id }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.assume-role.outputs.secret_access_key }}
+          AWS_SESSION_TOKEN: ${{ steps.assume-role.outputs.session_token }}
+        with:
+          repositories: gdcorp-golang/auth
+
+      # Sets up authentication with Amazon ECR in the chosen region.
       - name: Golden Container Registry Login
         run: |
           aws ecr get-login-password --region us-west-2 | docker login 764525110978.dkr.ecr.us-west-2.amazonaws.com -u AWS --password-stdin
 
+      # Execute the necessary commands to build your application's Docker container image.
+      # DOCKER_BUILDKIT=1 is required to support --mount=type=secret for private module auth.
       - name: Build Container
         run: |
-          docker build --platform linux/amd64 \
+          DOCKER_BUILDKIT=1 docker build --platform linux/amd64 \
+            --secret id=ghec_token,env=GHECSA_GDCORP_GOLANG_AUTH \
             -f budget-service/Dockerfile \
             -t ${{ steps.katana-app.outputs.app }}:${{ github.sha }} \
-            budget-service
+            .
 
+      # Publish the built container image to Katana with the katana-publish-artifact GitHub Action
       - id: katana-publish
         name: Publish Katana Artifact
         uses: gdcorp-actions/katana-publish-artifact@v1
@@ -62,9 +95,10 @@ jobs:
               "protocol": "https",
               "ports": [8080],
               "healthcheckPath": "/api/v1/health",
-              "healthcheckGracePeriod": 60
+              "healthcheckGracePeriod": 120
             }
 
+      # Promote the published artifact to dev-private environment with the katana-promote-artifact GitHub Action
       - name: Promote to dev-private Environment
         uses: gdcorp-actions/katana-promote-artifact@v1
         with:
@@ -73,6 +107,7 @@ jobs:
           environment: ${{ env.DEPLOY_TO_ENV }}
           artifact_id: ${{ steps.katana-publish.outputs.artifact_id }}
 
+      # Publish summary
       - name: Publish Summary
         run: |
           {

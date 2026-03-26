@@ -18,6 +18,10 @@ type Config struct {
 	HTTPWriteTimeout time.Duration
 	HTTPIdleTimeout  time.Duration
 
+	// Server TLS (Katana ELB backend HTTPS)
+	TLSCertPath string
+	TLSKeyPath  string
+
 	// Database
 	DatabaseURL       string
 	DBMaxOpenConns    int
@@ -48,6 +52,8 @@ func LoadConfig() *Config {
 		HTTPReadTimeout:        getEnvDuration("HTTP_READ_TIMEOUT", 30*time.Second),
 		HTTPWriteTimeout:       getEnvDuration("HTTP_WRITE_TIMEOUT", 60*time.Second),
 		HTTPIdleTimeout:        getEnvDuration("HTTP_IDLE_TIMEOUT", 120*time.Second),
+		TLSCertPath:            getEnvString("SERVER_CERT_PATH", ""),
+		TLSKeyPath:             getEnvString("SERVER_KEY_PATH", ""),
 		DatabaseURL:            getEnvString("DATABASE_URL", ""),
 		DBMaxOpenConns:         getEnvInt("DB_MAX_OPEN_CONNS", 25),
 		DBMaxIdleConns:         getEnvInt("DB_MAX_IDLE_CONNS", 5),

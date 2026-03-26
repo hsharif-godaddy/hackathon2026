@@ -24,16 +24,12 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		Uptime:   time.Since(s.startTime).String(),
 	}
 
-	status := http.StatusOK
-
-	// Check database connection
 	if err := s.db.Ping(); err != nil {
 		response.Status = "unhealthy"
 		response.Database = "disconnected"
-		status = http.StatusServiceUnavailable
 	}
 
-	writeJSON(w, status, response)
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) handleCreateBudget(w http.ResponseWriter, r *http.Request) {

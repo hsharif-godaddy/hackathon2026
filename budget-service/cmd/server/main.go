@@ -22,6 +22,7 @@ const version = "0.1.0"
 
 func main() {
 	// Setup structured logging
+
 	logLevel := slog.LevelInfo
 	if os.Getenv("LOG_LEVEL") == "debug" {
 		logLevel = slog.LevelDebug
@@ -60,13 +61,13 @@ func main() {
 	db.SetMaxIdleConns(cfg.DBMaxIdleConns)
 	db.SetConnMaxLifetime(cfg.DBConnMaxLifetime)
 
-	// Verify connection
+	// Best-effort ping so the process can bind and /api/v1/health can report DB status.
 	ctx := context.Background()
 	if err := db.PingContext(ctx); err != nil {
-		slog.Error("database.ping.failed", "error", err, "host", dbHost)
-		os.Exit(1)
+		slog.Warn("database.ping.initial.failed", "error", err, "host", dbHost)
+	} else {
+		slog.Info("database.connected", "host", dbHost, "connectTime", time.Since(connectStart).String())
 	}
-	slog.Info("database.connected", "host", dbHost, "connectTime", time.Since(connectStart).String())
 
 	// Initialize audit logger
 	auditLog, err := logging.NewAuditLogger(cfg.AuditLogPath, cfg.AuditLogSync)

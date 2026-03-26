@@ -98,6 +98,11 @@ func (s *Server) Start() error {
 		IdleTimeout:  s.config.HTTPIdleTimeout,
 	}
 
+	if s.config.TLSCertPath != "" && s.config.TLSKeyPath != "" {
+		slog.Info("server.starting.tls", "port", s.config.Port, "certPath", s.config.TLSCertPath)
+		return s.httpServer.ListenAndServeTLS(s.config.TLSCertPath, s.config.TLSKeyPath)
+	}
+
 	slog.Info("server.starting", "port", s.config.Port)
 	return s.httpServer.ListenAndServe()
 }
