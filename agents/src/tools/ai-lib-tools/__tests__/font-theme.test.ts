@@ -23,8 +23,33 @@ vi.mock('../../../database/repositories/AppRepository.js', () => ({
   }))
 }))
 
+// Create mock functions that can be accessed from tests
+const mockGenerateTextWithTracking = vi.fn()
+
+// Mock model-selection to avoid needing API credentials
+vi.mock('../../utils/model-selection.js', () => ({
+  getAgentModelWithName: vi.fn().mockResolvedValue({
+    model: { name: 'mock-model' },
+    modelName: 'mock-model'
+  })
+}))
+
+// Mock @airo/ai-lib for testing LLM generation
+vi.mock('@airo/ai-lib', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@airo/ai-lib')>()
+  return {
+    ...actual,
+    generateTextWithTracking: mockGenerateTextWithTracking,
+    createTool: vi.fn((desc, schema, fn) => ({ execute: fn })),
+    createPromptBuilder: vi.fn(() => ({
+      file: vi.fn().mockReturnThis(),
+      build: vi.fn().mockResolvedValue('test prompt')
+    }))
+  }
+})
+
 // Import after mocks are set up
-const { updateCssFontVariables, FONT_THEMES } = await import('../font-theme.js')
+const { updateCssFontVariables, FONT_THEMES, clearFontValidationCache, validateAndFilterFonts } = await import('../font-theme.js')
 
 describe('font-theme', function packageTests() {
   describe('#updateCssFontVariables', function updateTests() {
@@ -585,11 +610,22 @@ describe('font-theme', function packageTests() {
     font-family: var(--font-sans);
   }
 }`
+    let originalFetch: typeof global.fetch
 
     beforeEach(() => {
       vi.clearAllMocks()
       vi.mocked(readFile).mockResolvedValue(mockCss)
       vi.mocked(writeFile).mockResolvedValue()
+
+      // Mock fetch to return success for all Google Fonts validation requests
+      originalFetch = global.fetch
+      global.fetch = vi.fn(() =>
+        Promise.resolve({ ok: true, status: 200 } as Response)
+      ) as any
+    })
+
+    afterEach(() => {
+      global.fetch = originalFetch
     })
 
     it('should apply fonts from session using headerFont/bodyFont format', async function applyNewFormat() {
@@ -614,7 +650,7 @@ describe('font-theme', function packageTests() {
 
       const result = await (fontThemeAITool as any).execute(
         { mode: 'apply', themeName: 'Modern Roastery', count: 4 },
-        { experimental_context: context }
+        context
       ) as any
 
       expect(result.success).toBe(true)
@@ -647,7 +683,7 @@ describe('font-theme', function packageTests() {
 
       const result = await (fontThemeAITool as any).execute(
         { mode: 'apply', themeName: 'Classic Serif', count: 4 },
-        { experimental_context: context }
+        context
       ) as any
 
       expect(result.success).toBe(true)
@@ -677,7 +713,7 @@ describe('font-theme', function packageTests() {
       await expect(
         (fontThemeAITool as any).execute(
           { mode: 'apply', themeName: 'Bad Theme', count: 4 },
-          { experimental_context: context }
+          context
         )
       ).rejects.toThrow('found in session but has invalid data')
     })
@@ -729,5 +765,283 @@ describe('font-theme', function packageTests() {
       expect(result.bodyFont.name).toBe('Inter')
     })
   })
+
+  // Note: HTTP validation filtering for LLM-generated fonts is not tested here
+  // because it requires mocking the LLM, which doesn't work reliably in CI.
+  // The validation logic is tested indirectly via:
+  // - Curated theme tests (verify validation is skipped)
+  // - Session-restored theme tests (verify validation is performed)
+
+  describe('curated theme validation', function curatedThemeTests() {
+    const mockCss = `@layer base { :root { --font-sans: sans-serif; } }`
+    let fetchCallCount = 0
+    let originalFetch: typeof global.fetch
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      clearFontValidationCache() // Prevent cache pollution from other tests
+      vi.mocked(readFile).mockResolvedValue(mockCss)
+      vi.mocked(writeFile).mockResolvedValue()
+
+      fetchCallCount = 0
+      originalFetch = global.fetch
+      // Track fetch calls
+      global.fetch = vi.fn(() => {
+        fetchCallCount++
+        return Promise.resolve({ ok: true, status: 200 } as Response)
+      }) as any
+    })
+
+    afterEach(() => {
+      global.fetch = originalFetch
+    })
+
+    it('should skip HTTP validation for curated themes', async function skipValidationForCurated() {
+      const { fontThemeAITool } = await import('../font-theme.js')
+
+      const context = {
+        metadata: {
+          appId: 'test-app',
+          sessionId: 'test-session'
+        }
+      }
+
+      // Apply a curated theme
+      const result = await (fontThemeAITool as any).execute(
+        { mode: 'apply', themeId: 'modern-professional', count: 4 },
+        context
+      ) as any
+
+      expect(result.success).toBe(true)
+      // Verify NO fetch calls were made (curated themes skip validation)
+      expect(fetchCallCount).toBe(0)
+      expect(global.fetch).not.toHaveBeenCalled()
+    })
+
+    it('should validate session-restored themes', async function validateSessionThemes() {
+      const { fontThemeAITool } = await import('../font-theme.js')
+
+      const stateManager = {
+        getSuggestedFont: vi.fn().mockReturnValue({
+          name: 'Custom Theme',
+          headerFont: { name: 'Custom Font', weights: ['600', '700'], category: 'sans-serif' },
+          bodyFont: { name: 'Custom Font', weights: ['400', '500'], category: 'sans-serif' }
+        })
+      }
+
+      const context = {
+        metadata: {
+          appId: 'test-app',
+          sessionId: 'test-session',
+          stateManager
+        },
+        messages: [{ role: 'user', content: 'Apply font theme: Custom Theme' }]
+      }
+
+      const result = await (fontThemeAITool as any).execute(
+        { mode: 'apply', themeName: 'Custom Theme', count: 4 },
+        context
+      ) as any
+
+      expect(result.success).toBe(true)
+      // Verify fetch WAS called (session themes need validation)
+      expect(fetchCallCount).toBeGreaterThan(0)
+    })
+  })
+
+  describe('#validateAndFilterFonts', function validateFilterTests() {
+    let originalFetch: typeof global.fetch
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      clearFontValidationCache()
+      originalFetch = global.fetch
+    })
+
+    afterEach(() => {
+      global.fetch = originalFetch
+    })
+
+    it('should filter out invalid fonts based on HTTP 400 responses', async function filterInvalid() {
+      const fonts = [
+        {
+          id: 'valid-font',
+          name: 'Valid Font',
+          description: 'A valid font',
+          headerFont: { name: 'Inter', weights: ['600', '700'], category: 'sans-serif' as const },
+          bodyFont: { name: 'Roboto', weights: ['400', '500'], category: 'sans-serif' as const }
+        },
+        {
+          id: 'invalid-font',
+          name: 'Invalid Font',
+          description: 'An invalid font',
+          headerFont: { name: 'Nova Classe', weights: ['600', '700'], category: 'serif' as const },
+          bodyFont: { name: 'Fake Font', weights: ['400', '500'], category: 'sans-serif' as const }
+        }
+      ]
+
+      // Mock fetch: 200 for Inter+Roboto, 400 for Nova Classe/Fake Font
+      global.fetch = vi.fn((url: string | URL) => {
+        const urlStr = url.toString()
+        if (urlStr.includes('Inter') && urlStr.includes('Roboto')) {
+          return Promise.resolve({ ok: true, status: 200 } as Response)
+        }
+        if (urlStr.includes('Nova+Classe') || urlStr.includes('Fake+Font')) {
+          return Promise.resolve({ ok: false, status: 400 } as Response)
+        }
+        return Promise.resolve({ ok: true, status: 200 } as Response)
+      }) as any
+
+      const result = await validateAndFilterFonts(fonts)
+
+      expect(result).toHaveLength(1)
+      expect(result[0]!.headerFont.name).toBe('Inter')
+      expect(result[0]!.bodyFont.name).toBe('Roboto')
+      expect(result[0]!.name).toBe('Valid Font')
+    })
+
+    it('should distinguish network errors (5xx) from invalid fonts (400)', async function networkVsValidation() {
+      const fonts = [
+        {
+          id: 'network-error-font',
+          name: 'Network Error Font',
+          description: 'Font with network error',
+          headerFont: { name: 'Network Font', weights: ['600', '700'], category: 'sans-serif' as const },
+          bodyFont: { name: 'Network Font', weights: ['400', '500'], category: 'sans-serif' as const }
+        },
+        {
+          id: 'invalid-font',
+          name: 'Invalid Font',
+          description: 'Font that doesnt exist',
+          headerFont: { name: 'Invalid Font', weights: ['600', '700'], category: 'serif' as const },
+          bodyFont: { name: 'Invalid Font', weights: ['400', '500'], category: 'serif' as const }
+        }
+      ]
+
+      // Mock fetch: 503 for Network Font (network error), 400 for Invalid Font
+      global.fetch = vi.fn((url: string | URL) => {
+        const urlStr = url.toString()
+        if (urlStr.includes('Network+Font')) {
+          return Promise.resolve({ ok: false, status: 503, statusText: 'Service Unavailable' } as Response)
+        }
+        if (urlStr.includes('Invalid+Font')) {
+          return Promise.resolve({ ok: false, status: 400, statusText: 'Bad Request' } as Response)
+        }
+        return Promise.resolve({ ok: true, status: 200 } as Response)
+      }) as any
+
+      // Both should be filtered, but for different reasons
+      await expect(validateAndFilterFonts(fonts)).rejects.toThrow(
+        /Some fonts could not be validated due to network errors/
+      )
+
+      // Verify fetch was called for both fonts
+      expect(global.fetch).toHaveBeenCalledTimes(2)
+    })
+
+    it('should throw network error message when all fonts fail with network errors', async function allNetworkErrors() {
+      const fonts = [
+        {
+          id: 'font1',
+          name: 'Font 1',
+          description: 'Font 1',
+          headerFont: { name: 'Font1', weights: ['600'], category: 'sans-serif' as const },
+          bodyFont: { name: 'Font1', weights: ['400'], category: 'sans-serif' as const }
+        },
+        {
+          id: 'font2',
+          name: 'Font 2',
+          description: 'Font 2',
+          headerFont: { name: 'Font2', weights: ['600'], category: 'serif' as const },
+          bodyFont: { name: 'Font2', weights: ['400'], category: 'serif' as const }
+        }
+      ]
+
+      global.fetch = vi.fn(() => {
+        return Promise.resolve({ ok: false, status: 503 } as Response)
+      }) as any
+
+      await expect(validateAndFilterFonts(fonts)).rejects.toThrow(
+        /Could not validate fonts due to network errors/
+      )
+    })
+
+    it('should throw validation error message when all fonts fail validation', async function allValidationErrors() {
+      const fonts = [
+        {
+          id: 'font1',
+          name: 'Font 1',
+          description: 'Font 1',
+          headerFont: { name: 'Font1', weights: ['600'], category: 'sans-serif' as const },
+          bodyFont: { name: 'Font1', weights: ['400'], category: 'sans-serif' as const }
+        },
+        {
+          id: 'font2',
+          name: 'Font 2',
+          description: 'Font 2',
+          headerFont: { name: 'Font2', weights: ['600'], category: 'serif' as const },
+          bodyFont: { name: 'Font2', weights: ['400'], category: 'serif' as const }
+        }
+      ]
+
+      global.fetch = vi.fn(() => {
+        return Promise.resolve({ ok: false, status: 400 } as Response)
+      }) as any
+
+      await expect(validateAndFilterFonts(fonts)).rejects.toThrow(
+        /do not exist on Google Fonts or use unsupported weights/
+      )
+    })
+
+    it('should use cache to avoid redundant HTTP calls', async function useCache() {
+      const fonts = [
+        {
+          id: 'font1',
+          name: 'Font 1',
+          description: 'Font 1',
+          headerFont: { name: 'Inter', weights: ['600', '700'], category: 'sans-serif' as const },
+          bodyFont: { name: 'Roboto', weights: ['400', '500'], category: 'sans-serif' as const }
+        }
+      ]
+
+      global.fetch = vi.fn(() => {
+        return Promise.resolve({ ok: true, status: 200 } as Response)
+      }) as any
+
+      // First call: should fetch
+      await validateAndFilterFonts(fonts)
+      expect(global.fetch).toHaveBeenCalledTimes(1)
+
+      // Second call: should use cache
+      await validateAndFilterFonts(fonts)
+      expect(global.fetch).toHaveBeenCalledTimes(1) // No additional fetch
+    })
+
+    it('should not cache network errors', async function noCacheNetworkErrors() {
+      const fonts = [
+        {
+          id: 'font1',
+          name: 'Font 1',
+          description: 'Font 1',
+          headerFont: { name: 'Inter', weights: ['600'], category: 'sans-serif' as const },
+          bodyFont: { name: 'Roboto', weights: ['400'], category: 'sans-serif' as const }
+        }
+      ]
+
+      global.fetch = vi.fn(() => {
+        return Promise.resolve({ ok: false, status: 503 } as Response)
+      }) as any
+
+      // First call: network error
+      await expect(validateAndFilterFonts(fonts)).rejects.toThrow()
+      expect(global.fetch).toHaveBeenCalledTimes(1)
+
+      // Second call: should retry (network errors not cached)
+      await expect(validateAndFilterFonts(fonts)).rejects.toThrow()
+      expect(global.fetch).toHaveBeenCalledTimes(2)
+    })
+  })
 })
+
+
 

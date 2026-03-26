@@ -63,6 +63,205 @@ export function buildGoogleFontsUrl(fonts: Array<{ name: string; weights: string
 }
 
 /**
+ * Validate that a font URL is valid by making a HEAD request to Google Fonts.
+ * This validates the exact URL we'll import, including weights.
+ */
+async function validateGoogleFontUrl(url: string, fontName: string): Promise<{ valid: boolean; networkError: boolean }> {
+  try {
+    const response = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(5000) })
+
+    if (response.ok) {
+      // 2xx: URL is valid and reachable
+      return { valid: true, networkError: false }
+    }
+
+    // Log non-2xx responses with status information for observability
+    logger.warn('fontTheme.validation.non_2xx_status', {
+      fontName,
+      url,
+      status: response.status,
+      statusText: response.statusText
+    })
+
+    const status = response.status
+
+    // 400/404: treat as definitively invalid font (no network error)
+    if (status === 400 || status === 404) {
+      return { valid: false, networkError: false }
+    }
+
+    // 429 and 5xx: likely transient (rate limiting / server error) -> network error
+    if (status === 429 || (status >= 500 && status <= 599)) {
+      return { valid: false, networkError: true }
+    }
+
+    // Any other unexpected non-2xx codes: conservatively treat as network error
+    return { valid: false, networkError: true }
+  } catch (error) {
+    logger.error('fontTheme.validation.network_error', {
+      fontName,
+      url,
+      error: error instanceof Error ? error.message : String(error)
+    })
+    return { valid: false, networkError: true }
+  }
+}
+
+/**
+ * Simple LRU cache to bound memory usage of font validation results.
+ */
+class LruCache<K, V> {
+  private readonly map = new Map<K, V>()
+
+  constructor(private readonly maxSize: number) {}
+
+  get(key: K): V | undefined {
+    const value = this.map.get(key)
+    if (value === undefined) {
+      return undefined
+    }
+    // Refresh key as most recently used
+    this.map.delete(key)
+    this.map.set(key, value)
+    return value
+  }
+
+  set(key: K, value: V): void {
+    if (this.map.has(key)) {
+      // Remove so that insertion below moves it to the end (most recently used)
+      this.map.delete(key)
+    }
+    this.map.set(key, value)
+
+    if (this.map.size > this.maxSize) {
+      // Evict least recently used entry (the first key in insertion order)
+      const oldestKey = this.map.keys().next().value
+      if (oldestKey !== undefined) {
+        this.map.delete(oldestKey)
+      }
+    }
+  }
+
+  clear(): void {
+    this.map.clear()
+  }
+}
+
+/**
+ * Cache for validated font URLs to avoid duplicate requests.
+ * Bounded with an LRU policy to prevent unbounded memory growth.
+ */
+const fontValidationCache = new LruCache<string, boolean>(500)
+
+/**
+ * Clear the font validation cache (for testing)
+ * @internal
+ */
+export function clearFontValidationCache(): void {
+  fontValidationCache.clear()
+}
+
+/**
+ * Validate and filter font pairings against Google Fonts API.
+ * Uses cache to avoid redundant HTTP calls. Distinguishes network errors from validation failures.
+ * @internal - exported for testing
+ */
+export async function validateAndFilterFonts(
+  fonts: LLMFontPairing[],
+  requestedCount?: number
+): Promise<LLMFontPairing[]> {
+  logger.info('fontTheme.llm.validating_fonts', {
+    count: fonts.length,
+    fonts: fonts.map((f) => ({
+      header: f.headerFont.name,
+      body: f.bodyFont.name
+    }))
+  })
+
+  const verifiedFonts: LLMFontPairing[] = []
+  let networkErrorCount = 0
+
+  for (const font of fonts) {
+    // Build the actual Google Fonts URL we'll use (validates exact import)
+    const googleFontsUrl = buildGoogleFontsUrl([
+      { name: font.headerFont.name, weights: font.headerFont.weights },
+      { name: font.bodyFont.name, weights: font.bodyFont.weights }
+    ])
+
+    // Check cache first
+    let isValid = fontValidationCache.get(googleFontsUrl)
+    let hadNetworkError = false
+
+    if (isValid === undefined) {
+      // Not in cache, validate via API
+      const result = await validateGoogleFontUrl(
+        googleFontsUrl,
+        `${font.headerFont.name} / ${font.bodyFont.name}`
+      )
+      isValid = result.valid
+      hadNetworkError = result.networkError
+
+      // Only cache successful validations (don't cache network errors)
+      if (!hadNetworkError) {
+        fontValidationCache.set(googleFontsUrl, isValid)
+      }
+    }
+
+    if (isValid) {
+      verifiedFonts.push(font)
+    } else {
+      if (hadNetworkError) {
+        networkErrorCount++
+      }
+
+      logger.warn('fontTheme.llm.font_rejected', {
+        theme: font.name,
+        headerFont: font.headerFont.name,
+        bodyFont: font.bodyFont.name,
+        url: googleFontsUrl,
+        reason: hadNetworkError ? 'network_error' : 'font_not_found'
+      })
+    }
+  }
+
+  if (verifiedFonts.length === 0) {
+    const errorType = networkErrorCount === fonts.length ? 'network' : 'validation'
+    let errorMessage: string
+
+    if (errorType === 'network') {
+      errorMessage = 'Could not validate fonts due to network errors. Please try again.'
+    } else if (networkErrorCount > 0) {
+      errorMessage =
+        'All LLM-generated fonts failed validation. Some fonts could not be validated due to network errors (e.g., temporary Google Fonts issues or rate limiting), and the remaining fonts do not exist on Google Fonts or use unsupported weights. Please try again with a different description.'
+    } else {
+      errorMessage =
+        'All LLM-generated fonts failed validation. The fonts do not exist on Google Fonts or use unsupported weights. Please try again with a different description.'
+    }
+
+    logger.error('fontTheme.llm.all_fonts_rejected', {
+      totalFonts: fonts.length,
+      networkErrors: networkErrorCount,
+      errorType
+    })
+
+    throw new Error(errorMessage)
+  }
+
+  logger.info('fontTheme.llm.success', {
+    requestedCount: requestedCount ?? fonts.length,
+    receivedCount: verifiedFonts.length,
+    rejectedCount: fonts.length - verifiedFonts.length,
+    networkErrorCount,
+    pairings: verifiedFonts.map((f) => ({
+      header: f.headerFont.name,
+      body: f.bodyFont.name
+    }))
+  })
+
+  return verifiedFonts
+}
+
+/**
  * Fallback function to detect font category when LLM doesn't provide it
  */
 function detectFontCategory(fontName: string): FontCategory {
@@ -129,7 +328,7 @@ interface LLMFontPairing {
   }
 }
 
-async function generateFontsWithLLM(
+export async function generateFontsWithLLM(
   description: string,
   count: number,
   appId?: string,
@@ -282,16 +481,8 @@ Return ONLY the JSON object with the fonts array containing headerFont and bodyF
       throw new Error('No valid font pairings in LLM response')
     }
 
-    logger.info('fontTheme.llm.success', {
-      requestedCount: count,
-      receivedCount: validFonts.length,
-      pairings: validFonts.map((f) => ({
-        header: f.headerFont.name,
-        body: f.bodyFont.name
-      }))
-    })
-
-    return validFonts
+    // Validate fonts against Google Fonts API
+    return await validateAndFilterFonts(validFonts, count)
   } catch (error) {
     logger.error('fontTheme.llm.parse_error', {
       error: error instanceof Error ? error.message : String(error),
@@ -873,11 +1064,14 @@ MODE SELECTION GUIDE:
         messageCount: context?.messages?.length
       })
 
+      let skipValidation = false // Curated themes are pre-validated
+
       if (input.themeId && FONT_THEMES[input.themeId]) {
         const curatedTheme = FONT_THEMES[input.themeId]!
         headerFont = curatedTheme.headerFont
         bodyFont = curatedTheme.bodyFont
         themeName = curatedTheme.name
+        skipValidation = true // Curated themes don't need HTTP validation
 
         logger.info('fontTheme.apply.curated', {
           appId,
@@ -956,6 +1150,68 @@ MODE SELECTION GUIDE:
         })
       } else {
         throw new Error(`Either themeId (for curated themes), themeName (from previous suggestion), or fontName + weights are required for apply mode.`)
+      }
+
+      // Validate fonts before applying them (skip for curated themes)
+      if (!skipValidation) {
+        const googleFontsUrl = buildGoogleFontsUrl([
+          { name: headerFont.name, weights: headerFont.weights },
+          { name: bodyFont.name, weights: bodyFont.weights }
+        ])
+
+        // Check cache first to avoid redundant HTTP calls
+        const cachedIsValid = fontValidationCache.get(googleFontsUrl)
+        let isValid = cachedIsValid
+
+        if (isValid === undefined) {
+          // Not in cache, validate via API
+          const validation = await validateGoogleFontUrl(googleFontsUrl, `${headerFont.name} / ${bodyFont.name}`)
+
+          if (!validation.valid) {
+            const errorMessage = validation.networkError
+              ? `Could not validate fonts due to network error. Please try again.`
+              : `Invalid font selection: "${headerFont.name}" / "${bodyFont.name}" not found on Google Fonts or uses unsupported weights.`
+
+            logger.error('fontTheme.apply.validation_failed', {
+              appId,
+              headerFont: headerFont.name,
+              bodyFont: bodyFont.name,
+              url: googleFontsUrl,
+              networkError: validation.networkError
+            })
+
+            // Don't cache network errors
+            if (!validation.networkError) {
+              fontValidationCache.set(googleFontsUrl, false)
+            }
+
+            throw new Error(errorMessage)
+          }
+
+          // Cache successful validation
+          fontValidationCache.set(googleFontsUrl, true)
+          isValid = true
+        }
+
+        // Check if cached validation was false (invalid font)
+        if (isValid === false) {
+          logger.error('fontTheme.apply.validation_failed', {
+            appId,
+            headerFont: headerFont.name,
+            bodyFont: bodyFont.name,
+            url: googleFontsUrl,
+            networkError: false,
+            cached: true
+          })
+          throw new Error(`Invalid font selection: "${headerFont.name}" / "${bodyFont.name}" not found on Google Fonts or uses unsupported weights.`)
+        }
+
+        logger.info('fontTheme.apply.validation_passed', {
+          appId,
+          headerFont: headerFont.name,
+          bodyFont: bodyFont.name,
+          cached: cachedIsValid !== undefined
+        })
       }
 
       const result = await updateCssFontVariables(app.path, headerFont, bodyFont)
