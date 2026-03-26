@@ -448,7 +448,14 @@ export class AgentWrapper {
             toolName,
             args: processedArgs,
             error: serializedError,
-            context
+            context: context ? {
+              sessionId: context.sessionId,
+              userId: context.userId,
+              metadata: context.metadata,
+              messageCount: context.messages?.length,
+              hasInitialContext: !!context.initialContextMessages?.length,
+              timestamp: context.timestamp
+            } : undefined
           })
           // Re-throw a clean error to avoid circular reference issues in AI SDK serialization
           const errorMessage = typeof serializedError.message === 'string' 
