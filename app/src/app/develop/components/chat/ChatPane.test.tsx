@@ -158,6 +158,12 @@ vi.mock('@/lib/request-context', () => ({
   },
 }));
 
+// Mock auth context — default to non-impersonation session
+const mockAuthContextState: { authState: any } = { authState: null };
+vi.mock('@/components/providers/AuthProvider', () => ({
+  useAuthContext: () => mockAuthContextState,
+}));
+
 vi.mock('@/utils/instrumentation', () => ({
   logAiroHQEvent: vi.fn(() => vi.fn()),
   logImpressionEvent: vi.fn(() => vi.fn()),
@@ -196,6 +202,9 @@ describe('ChatPane', () => {
     mockGrantsData.data = undefined;
     mockGrantsData.isFetching = false;
     mockActiveGrant.result = undefined;
+
+    // Reset auth context mock to non-impersonation session
+    mockAuthContextState.authState = null;
 
     // Mock fetch for ventureId
     global.fetch = vi.fn(() =>
@@ -648,6 +657,55 @@ describe('ChatPane', () => {
       await user.click(screen.getByRole('button', { name: 'Close' }));
 
       expect(screen.queryByTestId('budget-exceeded-banner')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('CRM skip / impersonation session', function impersonationTests() {
+    it('should keep chat enabled for e2s session even when budget is exceeded', function e2sBudgetBypass() {
+      mockAuthContextState.authState = { authType: 'e2s' };
+      mockStreamingStore.messages = [{ budgetExceeded: true }];
+      mockSwitchboardData.data = false;
+
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+
+      const chatInput = screen.getByTestId('chat-input');
+      expect(chatInput).toHaveAttribute('data-budget-exceeded', 'false');
+    });
+
+    it('should keep chat enabled for e2s2s session even when budget is exceeded', function e2s2sBudgetBypass() {
+      mockAuthContextState.authState = { authType: 'e2s2s' };
+      mockStreamingStore.messages = [{ budgetExceeded: true }];
+      mockSwitchboardData.data = false;
+
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+
+      const chatInput = screen.getByTestId('chat-input');
+      expect(chatInput).toHaveAttribute('data-budget-exceeded', 'false');
+    });
+
+    it('should keep chat enabled for e2s session even with exhausted grants', function e2sExhaustedGrants() {
+      mockAuthContextState.authState = { authType: 'e2s' };
+      mockStreamingStore.messages = [];
+      mockSwitchboardData.data = true;
+      mockSubscriptionData.data = { id: 'sub-123' };
+      mockGrantsData.data = [{ id: 'grant-1', creditsSpent: 100, creditsMax: 100 }];
+      mockActiveGrant.result = undefined;
+
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+
+      const chatInput = screen.getByTestId('chat-input');
+      expect(chatInput).toHaveAttribute('data-budget-exceeded', 'false');
+    });
+
+    it('should still disable chat for basic auth sessions when budget is exceeded', function basicBudgetExceeded() {
+      mockAuthContextState.authState = { authType: 'basic' };
+      mockStreamingStore.messages = [{ budgetExceeded: true }];
+      mockSwitchboardData.data = false;
+
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+
+      const chatInput = screen.getByTestId('chat-input');
+      expect(chatInput).toHaveAttribute('data-budget-exceeded', 'true');
     });
   });
 });

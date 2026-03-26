@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { isEmployeeAuthType } from '@airo/shared/auth'
 
 import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/AssetTypes'
 import ChatBanners from '@/app/develop/components/chat/banners/ChatBanners'
@@ -17,6 +18,7 @@ import StreamingMessageList from '@/app/develop/components/StreamingMessageList'
 import { ChatTab } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import VersionHistory from '@/app/develop/components/VersionHistory'
+import { useAuthContext } from '@/components/providers/AuthProvider'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useCreditGrants } from '@/hooks/useCreditGrants'
 import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
@@ -84,11 +86,18 @@ export default function ChatPane({
     subscriptionId: isGrantsEnabled ? subscription?.id : undefined,
   })
 
+  const { authState } = useAuthContext()
+  // CRM skip sessions use e2s tokens. isEmployeeAuthType covers e2s/e2s2s — same check
+  // used for feedback impersonation detection in Feedback.tsx.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const isImpersonating = isEmployeeAuthType((authState as any)?.authType)
+
   const hasAvailableCredits = isGrantsEnabled && grants && getActiveGrant(grants) !== undefined
   // grantsLoaded is false while fetching (including background refetches of stale cache) to prevent
   // briefly blocking a user who purchased credits between page visits.
   const grantsLoaded = isGrantsEnabled && grants !== undefined && !isGrantsFetching
-  const budgetExceeded = !hasAvailableCredits && (grantsLoaded || budgetExceededFlag)
+  // CRM skip / impersonation sessions always have chat enabled regardless of credits
+  const budgetExceeded = !isImpersonating && !hasAvailableCredits && (grantsLoaded || budgetExceededFlag)
   const [isProactiveBannerDismissed, setIsProactiveBannerDismissed] = useState(false)
 
   // Reset dismissal only when grants data is stable and credits are no longer exhausted.
