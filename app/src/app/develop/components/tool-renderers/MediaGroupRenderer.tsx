@@ -200,7 +200,7 @@ export default function MediaGroupRenderer({
                   className="w-full h-full object-cover rounded-md transition-transform"
                 />
                 {/* Overlay that expands on hover */}
-                <div className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded-md bg-intents-ux-boxLowContrast-backgroundColor shadow-md transition-all duration-300 ease-in-out origin-bottom-right group-hover:w-full group-hover:h-full group-hover:bottom-0 group-hover:right-0 group-hover:rounded-md group-hover:bg-intents-ux-boxLowContrast-backgroundColor group-hover:backdrop-blur-sm flex flex-col items-center justify-center">
+                <div className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded-md bg-intents-ux-box-backgroundColor shadow-md transition-all duration-300 ease-in-out origin-bottom-right group-hover:w-full group-hover:h-full group-hover:bottom-0 group-hover:right-0 group-hover:rounded-md group-hover:backdrop-blur-sm flex flex-col items-center justify-center">
                   <PlusIcon className="size-2 transition-all duration-300 ease-in-out group-hover:-mt-1" />
                   {/* Show alternatives count on hover */}
                   {(slot.result!.alternativeCount || slot.result!.alternatives?.length) && (

@@ -285,7 +285,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   /** Combined count for summary line so "X changes since last publish" matches the Unpublished section. */
   const totalChangesToPublish = unpublishedCount + unsyncedSecretsCount;
 
-  if(!isDevelopPage) {
+  if (!isDevelopPage) {
     return null;
   }
 

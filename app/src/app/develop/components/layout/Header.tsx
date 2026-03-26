@@ -105,6 +105,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
             orientation="horizontal"
             blockAlignChildren={activeChatTab === ChatTab.SETTINGS ? 'end' : 'spaceBetween'}
             inlineAlignChildren='center'
+            gap="sm"
           >
             {/* Left side controls - hide on Settings tab */}
             {activeChatTab !== ChatTab.SETTINGS && (

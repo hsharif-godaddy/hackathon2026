@@ -5,6 +5,7 @@ import { animate, motion, useMotionValue } from 'framer-motion'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader } from '@airo-ux/loader'
 
+import DomainBar from '@/app/develop/components/layout/DomainBar'
 import { getDevicePreset } from '@/app/develop/components/preview/devicePresets'
 import PreviewCode from '@/app/develop/components/preview/PreviewCode'
 import PreviewError from '@/app/develop/components/preview/PreviewError'
@@ -12,6 +13,7 @@ import Tips from '@/app/develop/components/tips/Tips'
 import { PreviewViewMode, ViewMode } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
@@ -82,6 +84,7 @@ export default function PreviewPane({
   onRetryImageReload,
 }: PreviewPaneProps) {
   const t = useTranslations();
+  const { data: isDomainBarEnabled } = useSwitchboard('appbuilder-domain-bar');
 
   const getServerState = useServerPollingStore((state) => state.getServerState)
   const isPollingServer = useServerPollingStore((state) => state.isPollingServer)
@@ -149,14 +152,14 @@ export default function PreviewPane({
   const pendingEvalFullHeightRef = useRef(false)
   const evalFullHeightFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Track previous viewMode to determine flip direction
+  // Track previous viewMode to determine animation direction
   const previousViewModeRef = useRef<ViewMode>(viewMode)
 
   // Motion values for smooth animation control
-  const rotateY = useMotionValue(0)
-  const scale = useMotionValue(1)
+  const previewOpacity = useMotionValue(1)
+  const codeOpacity = useMotionValue(0)
 
-  // Calculate rotation angle and animate scale based on viewMode transition
+  // Animate fade based on viewMode transition
   useEffect(() => {
     const previous = previousViewModeRef.current
     const current = viewMode
@@ -165,30 +168,31 @@ export default function PreviewPane({
 
     // Skip animation on mobile for better performance and UX
     if (isMobile) {
-      const targetRotation = current === ViewMode.CODE ? 180 : 0
-      rotateY.set(targetRotation)
-      scale.set(1)
+      if (current === ViewMode.CODE) {
+        previewOpacity.set(0)
+        codeOpacity.set(1)
+      } else {
+        previewOpacity.set(1)
+        codeOpacity.set(0)
+      }
       previousViewModeRef.current = current
       return
     }
 
-    const targetRotation = current === ViewMode.CODE ? 180 : 0
-
-    // Animate rotation
-    animate(rotateY, targetRotation, {
-      duration: 0.5,
-      ease: [0.4, 0, 0.2, 1]
-    })
-
-    // Animate scale: 1 -> 0.92 -> 1 (scale down at midpoint, scale back up at end)
-    animate(scale, [1, 0.85, 1], {
-      duration: 0.5,
-      ease: "easeOut",
-      times: [0, 0.5, 1]
-    })
+    if (current === ViewMode.CODE) {
+      // Preview: fade out
+      animate(previewOpacity, 0, { duration: 0.25, ease: [0.4, 0, 0.2, 1] })
+      // Code: fade in with slight delay
+      animate(codeOpacity, 1, { duration: 0.3, ease: [0.4, 0, 0.2, 1], delay: 0.15 })
+    } else {
+      // Code: fade out
+      animate(codeOpacity, 0, { duration: 0.25, ease: [0.4, 0, 0.2, 1] })
+      // Preview: fade in with slight delay
+      animate(previewOpacity, 1, { duration: 0.3, ease: [0.4, 0, 0.2, 1], delay: 0.15 })
+    }
 
     previousViewModeRef.current = current
-  }, [viewMode, rotateY, scale, isMobile])
+  }, [viewMode, previewOpacity, codeOpacity, isMobile])
 
   // Sync ref with state to avoid stale closures
   useEffect(() => {
@@ -544,24 +548,24 @@ export default function PreviewPane({
         <div className="inset-0 relative h-full">
           <div className="flex flex-col items-center justify-center h-full bg-intents-ux-boxLowContrast-backgroundColor rounded-lg md:rounded-b-none">
             <div className="flex flex-col h-full w-full bg-intents-ux-boxLowContrast-backgroundColor relative rounded-lg md:rounded-b-none">
-              {/* 3D Flip Card Container */}
-              <div className="relative w-full h-full overflow-hidden" style={{ transformStyle: 'preserve-3d' }}>
+              {/* Crossfade Animation Container */}
+              <div className="relative w-full h-full overflow-hidden">
+                {/* Preview View (DomainBar + iframe) */}
                 <motion.div
-                  className="relative w-full h-full"
+                  className="absolute inset-0 w-full h-full flex flex-col"
                   style={{
-                    transformStyle: 'preserve-3d',
-                    rotateY,
-                    scale
+                    opacity: previewOpacity,
+                    pointerEvents: viewMode === ViewMode.CODE ? 'none' : 'auto'
                   }}
                 >
-                  {/* Front Face - Preview (iframe) */}
-                  <div
-                    className="absolute inset-0 w-full h-full flex items-center justify-center pb-1 md:pb-0 px-0.5 md:px-0"
-                    style={{
-                      backfaceVisibility: 'hidden',
-                      WebkitBackfaceVisibility: 'hidden'
-                    }}
-                  >
+                  {/* Domain Bar - only show in Preview mode when no alert banner is visible */}
+                  {isDomainBarEnabled && (
+                    <div className="px-1 md:px-2">
+                      <DomainBar />
+                    </div>
+                  )}
+
+                  <div className="flex-1 flex items-center justify-center pb-1 md:pb-0 px-1 md:px-0">
                     <div
                       className={clsx(
                         "relative transition-all duration-300 ease-in-out", {
@@ -591,20 +595,19 @@ export default function PreviewPane({
                       />
                     </div>
                   </div>
+                </motion.div>
 
-                  {/* Back Face - Code Editor */}
-                  <div
-                    className="absolute inset-0 w-full h-full"
-                    style={{
-                      backfaceVisibility: 'hidden',
-                      WebkitBackfaceVisibility: 'hidden',
-                      transform: 'rotateY(180deg)'
-                    }}
-                    aria-hidden={viewMode !== ViewMode.CODE ? 'true' : undefined}
-                    inert={viewMode !== ViewMode.CODE ? true : undefined}
-                  >
-                    <PreviewCode appId={appId} />
-                  </div>
+                {/* Code View */}
+                <motion.div
+                  className="absolute inset-0 w-full h-full"
+                  style={{
+                    opacity: codeOpacity,
+                    pointerEvents: viewMode === ViewMode.PREVIEW ? 'none' : 'auto'
+                  }}
+                  aria-hidden={viewMode === ViewMode.PREVIEW ? 'true' : undefined}
+                  {...(viewMode === ViewMode.PREVIEW ? { inert: '' as unknown as boolean } : {})}
+                >
+                  <PreviewCode appId={appId} />
                 </motion.div>
               </div>
 

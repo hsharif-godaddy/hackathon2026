@@ -92,6 +92,43 @@ vi.mock('@/lib/request-context', () => ({
   },
 }));
 
+vi.mock('@/contexts/WebSocketContext', () => ({
+  useWebSocketContext: () => ({
+    sendMessage: vi.fn(),
+  }),
+}));
+
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: () => ({
+    data: false,
+    isLoading: false,
+  }),
+}));
+
+vi.mock('@/hooks/useDomainSearch', () => ({
+  useDomainSearch: () => ({
+    data: null,
+    isError: false,
+  }),
+}));
+
+vi.mock('@/utils/domain', () => ({
+  isAiroSubdomain: vi.fn(() => false),
+  resolveSiteFqdn: vi.fn(() => null),
+}));
+
+vi.mock('@/utils/site', () => ({
+  hasBeenPublished: vi.fn(() => false),
+}));
+
+vi.mock('@/utils/instrumentation', () => ({
+  generateClickEID: vi.fn((id) => id),
+}));
+
+vi.mock('@/lib/logging', () => ({
+  shipAnalyticsLog: vi.fn(),
+}));
+
 vi.mock('@airo-ux/loader', () => ({
   Loader: () => <div data-testid="loader">Loading...</div>,
 }));
