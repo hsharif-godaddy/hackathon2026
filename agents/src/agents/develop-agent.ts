@@ -17,6 +17,8 @@ import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { SkillLoaderTool, buildSkillsPromptSection } from '../tools/skill-loader-tool.js'
 import { skillToolManager } from '../tools/skill-tool-manager.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
+import { getPersistentAssetPaths } from '../utils/persistent-assets.js'
+import { readFile } from 'fs/promises'
 
 /**
  * Develop Agent - AI developer for building web applications
@@ -130,13 +132,16 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     ? buildSkillsPromptSection(skillsResult.skills)
     : '';
 
+  // Load filesystem.md as a template (contains {{persistentPublicPath}} and {{persistentPrivatePath}} placeholders)
+  const filesystemTemplate = await readFile(paths.getSharedFile('filesystem.md'), 'utf-8');
+
   // Load consolidated prompt sections
   // Order: Identity → Voice → Technical details
   promptBuilder
     .file(paths.getAgentFile('develop', 'core.md'))
     .file(paths.getSharedFile('communication.md'))
     .file(paths.getAgentFile('develop', 'claude-behavior.md'))
-    .file(paths.getSharedFile('filesystem.md'))
+    .template(filesystemTemplate) // Use template instead of file for dynamic path interpolation
     .file(paths.getAgentFile('develop', 'font-theme.md')) // Font theme tool documentation
     //.file(paths.getAgentFile('develop', 'design.md'))
     .file(paths.getAgentFile('develop', 'handoff.md'))
@@ -155,7 +160,9 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
   // Template descriptions are now dynamically injected during conversation execution
   // via AILibContextManager.buildContextMessages() based on app context
 
-  return await promptBuilder.build();
+  // Build with context containing dynamic persistent asset paths
+  const persistentAssetPaths = getPersistentAssetPaths();
+  return await promptBuilder.build(persistentAssetPaths);
 }
 
 /**

@@ -5,6 +5,8 @@ import { countTokens } from '../../utils/token-counter.js'
 import { createPromptBuilder } from '@airo/ai-lib'
 import { getModularPromptPaths } from '../../utils/prompt-utils.js'
 import { validateAppOwnership } from '../middleware/app-ownership.js'
+import { getPersistentAssetPaths } from '../../utils/persistent-assets.js'
+import { readFile } from 'fs/promises'
 
 const router: Router = Router()
 
@@ -44,18 +46,26 @@ async function buildDevelopSystemPrompt(): Promise<string> {
   const srcModuleUrl = debugModuleUrl.replace('/server/routes/debug.ts', '/agents/develop-agent.ts')
   const paths = getModularPromptPaths(srcModuleUrl)
 
+  // Load filesystem.md as a template (contains {{persistentPublicPath}} and {{persistentPrivatePath}} placeholders)
+  const filesystemTemplate = await readFile(paths.getSharedFile('filesystem.md'), 'utf-8');
+
   // Load all modular prompt sections in order (same as develop agent)
   promptBuilder
     .file(paths.getAgentFile('develop', 'core.md'))
     .file(paths.getSharedFile('communication.md'))
-    .file(paths.getAgentFile('develop', 'decision-matrix.md'))
-    .file(paths.getAgentFile('develop', 'approach.md'))
-    .file(paths.getAgentFile('develop', 'visual-context.md'))
-    .file(paths.getAgentFile('develop', 'validation.md'))
-    .file(paths.getAgentFile('develop', 'design.md'))
+    .file(paths.getAgentFile('develop', 'claude-behavior.md'))
+    .template(filesystemTemplate) // Use template instead of file for dynamic path interpolation
+    .file(paths.getAgentFile('develop', 'font-theme.md'))
+    .file(paths.getAgentFile('develop', 'handoff.md'))
+    .file(paths.getAgentFile('develop', 'backend.md'))
+    .file(paths.getAgentFile('develop', 'email.md'))
+    .file(paths.getAgentFile('develop', 'secrets.md'))
+    .file(paths.getSharedFile('publishing.md'))
     .file(paths.getSharedFile('security.md'))
 
-  return await promptBuilder.build()
+  // Build with context containing dynamic persistent asset paths
+  const persistentAssetPaths = getPersistentAssetPaths();
+  return await promptBuilder.build(persistentAssetPaths)
 }
 
 interface ContextSection {

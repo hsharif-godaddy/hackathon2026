@@ -26,7 +26,7 @@ WHEN TO USE:
 
 IMPORTANT:
 - If user doesn't specify which page, ask them which page they want the QR code for (home page, about page, contact page, etc.)
-- The QR code will be saved to the app's /qr-codes/ directory
+- The QR code is saved to persistent storage (accessible at /qr-codes/ in the generated app)
 - Returns a public URL that can be used to access the QR code image`,
   z.object({
     targetPage: z

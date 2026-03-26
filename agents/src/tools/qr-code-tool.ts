@@ -5,6 +5,7 @@ import { nanoid } from 'nanoid';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import type { ClientActionService } from '../services/ClientActionService.js';
 import { logger } from '../logging/index.js';
+import { getPersistentPublicDir } from '../utils/persistent-assets.js';
 
 export interface QRCodeOptions {
   targetPage?: string;
@@ -110,7 +111,7 @@ export class QRCodeTool {
 
       // Setup directories using the app's actual path
       const appPath = app.path;
-      const publicDir = path.join(appPath, 'public');
+      const publicDir = getPersistentPublicDir(appPath);
       const qrCodesDir = path.join(publicDir, 'qr-codes');
 
       if (!fs.existsSync(publicDir)) {

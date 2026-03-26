@@ -1,5 +1,5 @@
-import { 
-  createAgentFactory, 
+import {
+  createAgentFactory,
   type AgentConfig,
   type BeforeToolExecutionHook,
   type AfterToolExecutionHook,
@@ -10,6 +10,8 @@ import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { Logger } from '../logging/index.js'
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
+import { getPersistentAssetPaths } from '../utils/persistent-assets.js'
+import { readFile } from 'fs/promises'
 
 const logger = Logger.create({ service: 'example-agent' })
 
@@ -45,13 +47,19 @@ export async function createExampleAgent(): Promise<AgentConfig> {
   
   // Get modular prompt paths using helper utility
   const paths = getModularPromptPaths(import.meta.url)
-  
+
+  // Load filesystem.md as a template (contains {{persistentPublicPath}} and {{persistentPrivatePath}} placeholders)
+  const filesystemTemplate = await readFile(paths.getSharedFile('filesystem.md'), 'utf-8');
+
+  // Build with context containing dynamic persistent asset paths
+  const persistentAssetPaths = getPersistentAssetPaths();
+
   // Load modular prompt sections
   const systemPrompt = await promptBuilder
     .file(paths.getAgentFile('example', 'core.md'))
     .file(paths.getSharedFile('communication.md'))
-    .file(paths.getSharedFile('filesystem.md'))
-    .build()
+    .template(filesystemTemplate) // Use template instead of file for dynamic path interpolation
+    .build(persistentAssetPaths)
 
   const { model, modelName } = await getAgentModelWithName('fast') // Use fast model for example/demo purposes
 

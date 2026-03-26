@@ -56,7 +56,7 @@ func generatePreviewService(app *store.App, basePath string) string {
 		fmt.Sprintf("%s:/local", previewLocalPath),
 		fmt.Sprintf("%s/.git:/app/.git", gitRepoPath),
 		fmt.Sprintf("%s/public:/shared-storage/public", assetsPath),
-		fmt.Sprintf("%s/private:/shared-storage/private", assetsPath),
+		fmt.Sprintf("%s/private:/private", assetsPath),
 		fmt.Sprintf("%s:/tmp", tmpPath),
 	}
 	volumeLines := formatVolumeLines(volumes)
@@ -120,7 +120,7 @@ func generatePublishService(app *store.App, basePath string) string {
 		fmt.Sprintf("%s:/local", publishLocalPath),
 		fmt.Sprintf("%s:/app/.ssl:ro", sslPath),
 		fmt.Sprintf("%s/public:/shared-storage/public", assetsPath),
-		fmt.Sprintf("%s/private:/shared-storage/private", assetsPath),
+		fmt.Sprintf("%s/private:/private", assetsPath),
 		fmt.Sprintf("%s:/tmp", tmpPath),
 	}
 	volumeLines := formatVolumeLines(volumes)

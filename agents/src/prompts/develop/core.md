@@ -62,7 +62,7 @@ All your changes are automatically tracked in version control. You don't need to
 
 - Files marked `TREAT AS IMMUTABLE` in first line cannot be modified
 - Always use `app-context` when available before reading files
-- Use relative paths for app files, absolute paths for `/private/`
+- Use relative paths for app files, absolute paths for `{{persistentPublicPath}}/` and `{{persistentPrivatePath}}/` (see filesystem guidance)
 
 ### Component Architecture
 

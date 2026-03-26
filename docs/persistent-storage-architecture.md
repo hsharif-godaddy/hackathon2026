@@ -35,7 +35,7 @@ graph TB
             CEPH2["Ceph: /mnt/ceph/.../appId/git-repo"]
             CEPH2 --> |"bind mount /app/.git"| APP2
             CEPH3["Ceph: /mnt/ceph/.../appId/assets/public"]
-            CEPH3 --> |"bind mount /app/public/assets"| APP2
+            CEPH3 --> |"bind mount /shared-storage/public"| APP2
             CEPH4["Ceph: /mnt/ceph/.../appId/assets/private"]
             CEPH4 --> |"bind mount /private"| APP2
         end
@@ -64,7 +64,7 @@ graph TB
             CEPH2["Ceph: /mnt/ceph/.../appId/dist"]
             CEPH2 --> |"bind mount /dist"| APP2
             CEPH3["Ceph: /mnt/ceph/.../appId/assets/public"]
-            CEPH3 --> |"bind mount /app/public/assets"| APP2
+            CEPH3 --> |"bind mount /shared-storage/public"| APP2
             CEPH4["Ceph: /mnt/ceph/.../appId/assets/private"]
             CEPH4 --> |"bind mount /private"| APP2
         end
@@ -112,7 +112,7 @@ Config: {
       type: 'bind',
       readonly: false,
       source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/assets/public`,
-      target: '/app/public/assets'
+      target: '/shared-storage/public'
     },
     {
       type: 'bind',
@@ -153,7 +153,7 @@ Config: {
       type: 'bind',
       readonly: false,
       source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/assets/public`,
-      target: '/app/public/assets'
+      target: '/shared-storage/public'
     },
     {
       type: 'bind',
@@ -192,7 +192,7 @@ Config: {
 | `${NOMAD_ALLOC_DIR}/customer-app/${appId}` | `/app`               | Application runtime directory                   | Ephemeral   |
 | `/mnt/ceph/.../git-repo`                   | `/app/.git`          | Git repository and metadata                     | Persistent  |
 | `/mnt/ceph/.../npm-cache`                  | `/npm-cache`         | NPM package cache for faster installations      | Persistent  |
-| `/mnt/ceph/.../assets/public`              | `/app/public/assets` | Public file assets (shared with publish)        | Persistent  |
+| `/mnt/ceph/.../assets/public`              | `/shared-storage/public` | Public file assets (shared with publish)        | Persistent  |
 | `/mnt/ceph/.../assets/private`             | `/private`           | Private file assets (outside /app for security) | Persistent  |
 
 #### Production (publish) Mode Mount Points
@@ -202,7 +202,7 @@ Config: {
 | `${NOMAD_ALLOC_DIR}/customer-app/${appId}` | `/app`               | Production runtime directory                    | Ephemeral   |
 | `/mnt/ceph/.../dist`                       | `/dist`              | Built application files (versioned)             | Persistent  |
 | `/mnt/ceph/.../npm-cache`                  | `/npm-cache`         | NPM package cache for faster installations      | Persistent  |
-| `/mnt/ceph/.../assets/public`              | `/app/public/assets` | Public file assets (shared with preview)        | Persistent  |
+| `/mnt/ceph/.../assets/public`              | `/shared-storage/public` | Public file assets (shared with preview)        | Persistent  |
 | `/mnt/ceph/.../assets/private`             | `/private`           | Private file assets (outside /app for security) | Persistent  |
 
 > **Note**: Assets are shared between preview and publish modes. When a user uploads an image in preview, it's immediately available in the published site without requiring a republish.
@@ -387,13 +387,14 @@ The AI agents are provided with filesystem guidance through a system prompt loca
 The system prompt explains:
 
 - **Storage Locations**: Where to store different types of files
-  - `public/assets/` - Public persistent files (relative path)
+  - `/shared-storage/public/` - Public persistent files (absolute path)
   - `/private/` - Private persistent files (absolute path)
   - Working directory - Ephemeral files (managed by git)
 
 - **Path Conventions**:
-  - Use relative paths for application files and public assets
-  - Use absolute paths only for `/private/` directory
+  - Use relative paths for application files
+  - Use absolute path `/shared-storage/public/` for runtime user uploads
+  - Use absolute path `/private/` for sensitive files
 
 - **Security Guidelines**:
   - Never expose `/private/` paths publicly

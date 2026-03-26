@@ -10,6 +10,8 @@ import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { logger, log } from '../logging/index.js'
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
+import { getPersistentAssetPaths } from '../utils/persistent-assets.js'
+import { readFile } from 'fs/promises'
 
 /**
  * Design Agent - Creates concise design documentation for applications
@@ -66,6 +68,9 @@ async function buildDesignSystemPrompt(): Promise<string> {
   // Get modular prompt paths using helper utility
   const paths = getModularPromptPaths(import.meta.url);
 
+  // Load filesystem.md as a template (contains {{persistentPublicPath}} and {{persistentPrivatePath}} placeholders)
+  const filesystemTemplate = await readFile(paths.getSharedFile('filesystem.md'), 'utf-8');
+
   // Load all modular prompt sections in order
   // Order: Identity → Voice → Technical details
   promptBuilder
@@ -74,10 +79,12 @@ async function buildDesignSystemPrompt(): Promise<string> {
     .file(paths.getAgentFile('design', 'sections.md'))
     .file(paths.getAgentFile('design', 'memory-usage.md'))
     .file(paths.getAgentFile('design', 'workflow.md'))
-    .file(paths.getSharedFile('filesystem.md'))
+    .template(filesystemTemplate) // Use template instead of file for dynamic path interpolation
     .file(paths.getSharedFile('security.md'));
 
-  return await promptBuilder.build();
+  // Build with context containing dynamic persistent asset paths
+  const persistentAssetPaths = getPersistentAssetPaths();
+  return await promptBuilder.build(persistentAssetPaths);
 }
 
 /**
