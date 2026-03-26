@@ -14,7 +14,9 @@
 
 import { getS2SToken } from '@airo/ai-lib';
 import { BudgetExceededError } from '@airo/ai-common';
+
 import { logger } from '../logging/index.js';
+import { resolveEnv } from '../utils/gd-env.js';
 
 // ============================================================================
 // Types
@@ -79,13 +81,15 @@ interface VideoStatusResponse {
 // URL Resolution
 // ============================================================================
 
+const imagegenUrls = {
+  dev: 'https://imagegen-agent.mvci.api.dev-godaddy.com',
+  test: 'https://imagegen-agent.mvci.api.test-godaddy.com',
+  prod: 'https://imagegen-agent.mvci.api.godaddy.com',
+} as const;
+
 function getImagegenApiBaseUrl(): string {
   if (process.env.IMAGEGEN_API_URL) return process.env.IMAGEGEN_API_URL;
-  
-  const apiUrl = process.env.GODADDY_API_BASE_URL || '';
-  if (apiUrl.includes('dev-godaddy.com')) return 'https://imagegen-agent.mvci.api.dev-godaddy.com';
-  if (apiUrl.includes('test-godaddy.com')) return 'https://imagegen-agent.mvci.api.test-godaddy.com';
-  return 'https://imagegen-agent.mvci.api.godaddy.com';
+  return imagegenUrls[resolveEnv()];
 }
 
 // ============================================================================

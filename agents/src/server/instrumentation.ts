@@ -4,14 +4,9 @@ import { GDEnvEnum } from '@godaddy/agent-observability-events';
 import { createAgentSpanProcessor } from '@godaddy/agent-otel-sdk';
 
 import { logger, toPinoLogger } from '../logging/index.js';
+import { resolveEnv } from '../utils/gd-env.js';
 
-function resolveGdEnv(): GDEnvEnum {
-  switch (process.env.ENVIRONMENT_NAME) {
-    case 'production': return GDEnvEnum.Prod;
-    case 'test': return GDEnvEnum.Test;
-    default: return GDEnvEnum.Dev;
-  }
-}
+const gdEnvMap = { dev: GDEnvEnum.Dev, test: GDEnvEnum.Test, prod: GDEnvEnum.Prod } as const;
 
 const observabilityEnabled = process.env.ENABLE_OBSERVABILITY_EVENTS === 'true';
 const langfuseConfigured = process.env.LANGFUSE_PUBLIC_KEY && process.env.LANGFUSE_SECRET_KEY;
@@ -22,7 +17,7 @@ if (observabilityEnabled || langfuseConfigured) {
   if (observabilityEnabled) {
     spanProcessors.push(createAgentSpanProcessor({
       clientOptions: {
-        gdEnv: resolveGdEnv(),
+        gdEnv: gdEnvMap[resolveEnv()],
         globalContext: {
           site: {
             privateLabelId: 1,

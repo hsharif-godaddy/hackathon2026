@@ -14,7 +14,9 @@
 
 import { getS2SToken } from '@airo/ai-lib';
 import { BudgetExceededError } from '@airo/ai-common';
+
 import { logger } from '../logging/index.js';
+import { resolveEnv } from '../utils/gd-env.js';
 
 export interface LogoGenerateInput {
   brandName: string;
@@ -44,14 +46,15 @@ export interface LogoGenerateResult {
   logos: ProcessedLogo[];
 }
 
+const logoUrls = {
+  dev: 'https://logo-agent.mvci.api.dev-godaddy.com',
+  test: 'https://logo-agent.mvci.api.test-godaddy.com',
+  prod: 'https://logo-agent.mvci.api.godaddy.com',
+} as const;
+
 function getLogoApiBaseUrl(): string {
-  if (process.env.LOGO_API_URL) {
-    return process.env.LOGO_API_URL;
-  }
-  const apiUrl = process.env.GODADDY_API_BASE_URL || '';
-  if (apiUrl.includes('dev-godaddy.com')) return 'https://logo-agent.mvci.api.dev-godaddy.com';
-  if (apiUrl.includes('test-godaddy.com')) return 'https://logo-agent.mvci.api.test-godaddy.com';
-  return 'https://logo-agent.mvci.api.godaddy.com';
+  if (process.env.LOGO_API_URL) return process.env.LOGO_API_URL;
+  return logoUrls[resolveEnv()];
 }
 
 class LogoService {

@@ -131,7 +131,7 @@ createTraceContext({ headers })       → Signals metadata (visitor, customer, s
 
 **SDKs:** `@signals/otel-sdk`, `@godaddy/agent-otel-sdk`, `@godaddy/agent-observability-events`
 
-**Config:** `ENABLE_OBSERVABILITY_EVENTS=true`, `ENVIRONMENT_NAME` (maps to prod/test/dev).
+**Config:** `ENABLE_OBSERVABILITY_EVENTS=true`, env derived from `GODADDY_API_BASE_URL` via `resolveEnv()` in `src/utils/gd-env.ts`.
 
 Key files: `src/server/instrumentation.ts`, `src/server/conversation-persistence.ts`, `packages/ai-lib/.../experimental-websocket-server.ts`.
 
