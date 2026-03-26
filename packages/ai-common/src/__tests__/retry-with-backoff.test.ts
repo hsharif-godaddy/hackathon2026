@@ -138,6 +138,37 @@ describe('retry-with-backoff simplified', () => {
     expect(isRetryableError(createBadRequestError('Invalid parameter'))).toBe(false)
     expect(isRetryableError(createToolValidationError())).toBe(false)
   })
+
+  it('terminated connection errors are retryable', () => {
+    // "terminated" with word boundary should be retryable
+    const terminatedError = new Error('fetch failed: terminated')
+    expect(isRetryableError(terminatedError)).toBe(true)
+    expect(classifyError(terminatedError).category).toBe('transient')
+
+    // "other side closed" should be retryable
+    const otherSideClosedError = new Error('other side closed')
+    expect(isRetryableError(otherSideClosedError)).toBe(true)
+    expect(classifyError(otherSideClosedError).category).toBe('transient')
+  })
+
+  it('unterminated errors are NOT retryable (false positive prevention)', () => {
+    // "unterminated" should NOT match the word-boundary pattern
+    const unterminatedStringError = new Error('SyntaxError: unterminated string literal')
+    expect(isRetryableError(unterminatedStringError)).toBe(false)
+
+    const unterminatedEscapeError = new Error('TypeError: unterminated escape sequence')
+    expect(isRetryableError(unterminatedEscapeError)).toBe(false)
+  })
+
+  it('terminated connection error is retried and succeeds', async () => {
+    const fn = createFailingFunction(1, () => new Error('fetch failed: terminated'), 'ok')
+    const p = retryWithBackoff(fn, DEFAULT_RETRY_CONFIG, { operation: 'generate', logger })
+    await vi.runAllTimersAsync()
+    const res = await p
+    expect(res).toBe('ok')
+    expect(events.warn).toHaveLength(1)
+    expect(events.info).toHaveLength(1)
+  })
 })
 
 describe('retry-after header support', () => {

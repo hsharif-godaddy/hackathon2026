@@ -200,7 +200,7 @@ function classify(error: unknown): RetryDecision {
 
   const networkCodes = ['ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNRESET', 'EPIPE']
   const transientByName = /TimeoutError|ServiceUnavailableException|OverloadedException|GatewayTimeout|ModelTimeout/i.test(name)
-  const timeoutText = /timeout|timed out|socket hang up/i.test(message)
+  const timeoutText = /timeout|timed out|socket hang up|\bterminated\b|other side closed/i.test(message)
   const statusTransient = statusCode === 408 || (statusCode !== undefined && statusCode >= 500)
   if ((errorCode && networkCodes.includes(errorCode)) || transientByName || timeoutText || statusTransient || messageLower.includes('service unavailable') || messageLower.includes('temporarily unavailable') || messageLower.includes('overloaded')) {
     return { retryable: true, category: 'transient', statusCode, message }
