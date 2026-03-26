@@ -1,5 +1,7 @@
 import { Client } from '@elastic/elasticsearch';
 
+import { logger } from '@/lib/logger';
+
 const SOURCE_ES_URL = process.env.PIONEER_ES_ENDPOINT || 'http://localhost:9200';
 const SOURCE_INDEX = 'airo-agents-prod';
 
@@ -160,23 +162,39 @@ const MAPPINGS = {
       llm_budget_user_id: { type: 'keyword' },
       // Used by lock documents; requires an ILM policy with a delete phase
       // keyed on this field to auto-clean stale locks
-      expire_at: { type: 'date' }
+      expire_at: { type: 'date' },
+      notes: {
+        type: 'text',
+        fields: {
+          keyword: { type: 'keyword', ignore_above: 32000 }
+        }
+      }
     }
   }
 };
 
-export async function initIndices(indicesToInit: string[] = Object.values(INDICES)) {
+export async function initIndices(indicesToInit: string[] = Object.values(INDICES), forceUpdate: boolean = false) {
   for (const indexName of indicesToInit) {
     const mapping = MAPPINGS[indexName as keyof typeof MAPPINGS];
     if (!mapping) {
-      console.warn(`No mapping defined for index: ${indexName}, skipping initialization.`);
+      logger.warn('es.index.init.no-mapping', { indexName });
       continue;
     }
     const exists = await writeClient.indices.exists({ index: indexName });
     if (!exists) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await writeClient.indices.create({ index: indexName, mappings: mapping } as any);
-      console.log(`Created index: ${indexName}`);
+      logger.info('es.index.init.created', { indexName });
+    } else if (forceUpdate) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await writeClient.indices.putMapping({ index: indexName, ...mapping } as any);
+        logger.info('es.index.mapping.updated', { indexName });
+      } catch (error) {
+        logger.error('es.index.mapping.update.failed', { indexName }, { error: error as Error });
+      }
+    } else {
+      logger.info('es.index.init.exists', { indexName });
     }
   }
 }
@@ -200,11 +218,19 @@ export async function bulkIndex(docs: BulkDoc[]) {
 
   if (result.errors) {
     const errorItems = result.items.filter(item => item.index?.error);
-    console.error(`Bulk index errors: ${errorItems.length}`);
-    errorItems.slice(0, 3).forEach(item => {
-      console.error(`  Index: ${item.index?._index}, Error: ${JSON.stringify(item.index?.error)}`);
+    logger.error('es.bulk.errors', {
+      errorCount: errorItems.length,
+      samples: errorItems.slice(0, 3).map(item => ({
+        index: item.index?._index,
+        error: item.index?.error,
+      })),
     });
   }
 
   return result;
+}
+
+// "airobuilde" (no trailing 'r') matches the actual ES domain naming convention
+export function isProdES(): boolean {
+  return WRITE_ES_URL.startsWith('https://airobuilde-prod-');
 }

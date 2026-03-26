@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 
+import { NOTES_MAX_WORDS, NOTES_RE } from '@/lib/credit-pack-constants';
 import { formatTimestamp } from '@/lib/date-utils';
 
 type AuthStatus = 'loading' | 'authenticated' | 'forbidden' | 'unauthorized';
@@ -99,6 +100,8 @@ export default function AddCreditPackPage() {
     const [eligibilityError, setEligibilityError] = useState<string | null>(null);
     const [adding, setAdding] = useState(false);
     const [addResult, setAddResult] = useState<{ success: boolean; message: string } | null>(null);
+    const [notes, setNotes] = useState('');
+    const wordCount = notes.trim() ? notes.trim().split(/\s+/).filter(Boolean).length : 0;
 
     useEffect(() => {
         if (isLocalEnv()) {
@@ -343,15 +346,56 @@ export default function AddCreditPackPage() {
                                         </div>
                                     )}
 
+                                    <div style={{ marginTop: '1rem' }}>
+                                        <label htmlFor="credit-pack-notes" style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '0.375rem' }}>
+                                            Notes <span style={{ color: '#dc2626' }}>*</span>
+                                        </label>
+                                        <textarea
+                                            id="credit-pack-notes"
+                                            value={notes}
+                                            onChange={function handleNotes(e) {
+                                                setNotes(e.target.value.replace(NOTES_RE, ''));
+                                            }}
+                                            disabled={adding || addResult?.success === true}
+                                            placeholder="Reason for adding the credit pack (required)"
+                                            rows={4}
+                                            style={{
+                                                width: '100%',
+                                                padding: '0.625rem 0.75rem',
+                                                fontSize: '0.875rem',
+                                                fontFamily: 'inherit',
+                                                border: '1px solid #d1d5db',
+                                                borderRadius: '6px',
+                                                resize: 'vertical',
+                                                boxSizing: 'border-box',
+                                            }}
+                                        />
+                                        <div style={{
+                                            marginTop: '0.25rem',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 500,
+                                            textAlign: 'right',
+                                            color: wordCount >= NOTES_MAX_WORDS - 1 ? '#dc2626'
+                                                : wordCount >= NOTES_MAX_WORDS - 20 ? '#d97706'
+                                                : '#16a34a',
+                                        }}>
+                                            {wordCount} / {NOTES_MAX_WORDS} words
+                                        </div>
+                                    </div>
+
                                     <button
-                                        disabled={adding || addResult?.success === true}
+                                        disabled={adding || addResult?.success === true || !notes.trim() || wordCount > NOTES_MAX_WORDS}
                                         onClick={async function handleAdd() {
                                             setAdding(true);
                                             setAddResult(null);
                                             try {
                                                 const response = await fetch(
                                                     `/api/mgmt/apps/${encodeURIComponent(appId!)}/subscriptions/${encodeURIComponent(subscriptionId!)}/credit-pack/add`,
-                                                    { method: 'POST' }
+                                                    {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify({ notes: notes.trim() }),
+                                                    }
                                                 );
                                                 const body = await response.json().catch(() => ({}));
                                                 if (response.ok) {
@@ -377,10 +421,10 @@ export default function AddCreditPackPage() {
                                             fontSize: '0.875rem',
                                             fontWeight: 600,
                                             color: 'white',
-                                            backgroundColor: adding || addResult?.success === true ? '#9ca3af' : '#2563eb',
+                                            backgroundColor: adding || addResult?.success === true || !notes.trim() || wordCount > NOTES_MAX_WORDS ? '#9ca3af' : '#2563eb',
                                             border: 'none',
                                             borderRadius: '6px',
-                                            cursor: adding || addResult?.success === true ? 'not-allowed' : 'pointer',
+                                            cursor: adding || addResult?.success === true || !notes.trim() || wordCount > NOTES_MAX_WORDS ? 'not-allowed' : 'pointer',
                                         }}
                                     >
                                         {adding ? 'Adding…' : addResult?.success ? 'Added' : 'Add Credit Pack'}

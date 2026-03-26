@@ -10,7 +10,9 @@ let indexInitPromise: Promise<void> | null = null;
 function ensureCreditPackIndex(): Promise<void> {
     if (!indexInitPromise) {
         logger.info('credit-pack.index.init.begin');
-        indexInitPromise = initIndices([INDICES.CREDIT_PACKS]).then(function logSuccess() {
+        // forceUpdate=true: credit_packs schema is still evolving; putMapping
+        // applies new fields on boot. Remove once the schema stabilises.
+        indexInitPromise = initIndices([INDICES.CREDIT_PACKS], true).then(function logSuccess() {
             logger.info('credit-pack.index.init.end');
         }).catch(function resetOnFailure(error) {
             indexInitPromise = null;
@@ -29,7 +31,7 @@ export const CREDIT_PACK_STATUS = {
     FAILED: 'failed',
 } as const;
 
-export function getCreditPackDoc(appId: string, subscriptionId: string, auth: AuthResult): CreditPackDoc {
+export function getCreditPackDoc(appId: string, subscriptionId: string, auth: AuthResult, notes: string): CreditPackDoc {
     const now = new Date();
     const use_before = computeUseBefore();
     const next_credit_allowed_after = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
@@ -46,6 +48,7 @@ export function getCreditPackDoc(appId: string, subscriptionId: string, auth: Au
         added_by_shopper_id: auth.user?.shopperId,
         added_by_cid: auth.user?.cid,
         added_by_email: auth.user?.email,
+        notes,
     };
 }
 
@@ -62,6 +65,7 @@ export interface CreditPackDoc {
     added_by_cid?: string;
     added_by_email?: string;
     llm_budget_user_id?: string;
+    notes?: string;
 }
 
 export type LatestCreditPack = CreditPackDoc & { is_credit_allowed: boolean };

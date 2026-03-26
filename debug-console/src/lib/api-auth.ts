@@ -16,7 +16,7 @@ const AD_MEMBERSHIP_PATH = '/v1/api/jomax/my/ad_membership';
  * Only NODE_ENV=development allows bypass, and we log a warning when it happens.
  * BYPASS_AUTH should be set to 'true' or '1' to bypass auth in test/dev environment.
  */
-function shouldBypassAuth(): { bypass: boolean; reason: string } {
+export function shouldBypassAuth(): { bypass: boolean; reason: string } {
     const nodeEnv = process.env.NODE_ENV;
     const bypassAuth = process.env.BYPASS_AUTH;
 
