@@ -106,24 +106,40 @@ describe('GET /api/subscriptions', function describeRoute() {
       expect(data.data.subscriptions[0].plan).toBe(SubscriptionPlan.Starter);
     });
 
-    it('should select best subscription based on plan priority', async function bestSelection() {
+    it('should prefer active subscription over suspended', async function prefersActive() {
       const request = new NextRequest('http://localhost/api/subscriptions');
       const authContext = createAuthContext('jwt-token');
 
-      // Return multiple subscriptions with different plans
+      // Return suspended and active subscriptions
       mockClient.getSubscriptions.mockResolvedValue([
-        createSubscription({ id: 'sub-free', plan: SubscriptionPlan.Free }),
-        createSubscription({ id: 'sub-starter', plan: SubscriptionPlan.Starter }),
-        createSubscription({ id: 'sub-airo', plan: SubscriptionPlan.AiroPlus }),
+        createSubscription({ id: 'sub-suspended', status: SubscriptionStatus.Suspended, plan: SubscriptionPlan.Starter }),
+        createSubscription({ id: 'sub-active', status: SubscriptionStatus.Active, plan: SubscriptionPlan.Starter }),
       ]);
 
       const response = await GET(request, authContext);
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      // Starter should be selected as best (highest priority)
-      expect(data.data.active.id).toBe('sub-starter');
-      expect(data.data.active.plan).toBe(SubscriptionPlan.Starter);
+      // Active should be selected over suspended
+      expect(data.data.active.id).toBe('sub-active');
+      expect(data.data.active.status).toBe(SubscriptionStatus.Active);
+    });
+
+    it('should return suspended subscription when no active exists', async function fallsBackToSuspended() {
+      const request = new NextRequest('http://localhost/api/subscriptions');
+      const authContext = createAuthContext('jwt-token');
+
+      // Return only suspended subscription
+      mockClient.getSubscriptions.mockResolvedValue([
+        createSubscription({ id: 'sub-suspended', status: SubscriptionStatus.Suspended, plan: SubscriptionPlan.Starter }),
+      ]);
+
+      const response = await GET(request, authContext);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data.active.id).toBe('sub-suspended');
+      expect(data.data.active.status).toBe(SubscriptionStatus.Suspended);
     });
 
     it('should return empty subscriptions array when none exist', async function empty() {

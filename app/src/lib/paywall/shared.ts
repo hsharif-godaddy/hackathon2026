@@ -8,6 +8,36 @@
 import { SubscriptionPlan } from '@/types/credits';
 
 /**
+ * Credit limit for freemium tier (suspended users are limited to this)
+ */
+export const FREEMIUM_CREDIT_LIMIT = 50;
+
+/**
+ * Days after renewsAt when published apps will be unpublished (for suspended subscriptions)
+ */
+export const DAYS_UNTIL_UNPUBLISH = 3;
+
+/**
+ * Calculate and format the unpublish date based on renewsAt
+ *
+ * @param renewsAt - ISO date string when the subscription renews
+ * @returns Formatted date string (e.g., "February 1, 2027") or null if renewsAt is not provided
+ */
+export function getFormattedUnpublishDate(renewsAt?: string, locale: string = 'en-US'): string | null {
+  if (!renewsAt) return null;
+
+  const renewsAtDate = new Date(renewsAt);
+  const unpublishDate = new Date(renewsAtDate);
+  unpublishDate.setDate(unpublishDate.getDate() + DAYS_UNTIL_UNPUBLISH);
+
+  return unpublishDate.toLocaleDateString(locale, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+/**
  * Paywall feature flag and configuration constants
  */
 export const PAYWALL_CONFIG = {

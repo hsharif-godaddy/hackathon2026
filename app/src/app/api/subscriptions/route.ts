@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { createCorsOptionsHandler, withCorsHeaders } from '@/lib/cors';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
-import { AIRO_OWNER_PRODUCTS, AiroHttpError, AiroMgmtClient, type AiroSubscription } from '@/lib/mgmt-airo';
-import { PLAN_PRIORITY } from '@/lib/paywall/shared';
+import { AIRO_OWNER_PRODUCTS, AIRO_PRODUCT_IDS, AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
-import { SubscriptionPlan, SubscriptionStatus } from '@/types/credits';
+import { SubscriptionStatus } from '@/types/credits';
 import { getPlanFromSubscription } from '@/utils/credits';
 
 // Force dynamic rendering
@@ -19,7 +18,7 @@ export const OPTIONS = createCorsOptionsHandler();
  * GET /api/subscriptions - Get all subscriptions with best subscription selection
  *
  * Returns all subscriptions for the authenticated user with derived plan fields,
- * plus the "best" subscription based on plan priority (Starter > Free > AiroPlus > None).
+ * plus the aab-v1 subscription (preferring active over suspended status).
  *
  * Response format:
  * {
@@ -70,32 +69,17 @@ export const GET = withCustomerAuth(async (
       plan: getPlanFromSubscription(sub)
     }));
 
-    // Determine the "best" subscription based on plan priority
-    // Order: Starter > Free > AiroPlus >  None
-    // Note: When grants is enabled, AiroPlus does NOT grant paid access - only Starter does.
-    // The priority ranking is for subscription selection, not access control.
-    let bestSubscription: (AiroSubscription & { plan: SubscriptionPlan }) | null = null;
+    // Find the aab-v1 subscription, preferring active over suspended
+    const aabSubscriptions = subscriptionsWithPlan.filter(
+      sub => sub.productId === AIRO_PRODUCT_IDS.AAB_V1
+    );
 
-    for (const subscription of subscriptionsWithPlan) {
-      // Prioritize active subscriptions
-      if (subscription.status !== SubscriptionStatus.Active && bestSubscription?.status === SubscriptionStatus.Active) {
-        continue;
-      }
-
-      const plan = subscription.plan;
-
-      // Keep the subscription with the highest priority plan
-      if (!bestSubscription ||
-          (PLAN_PRIORITY[plan] || 0) > (PLAN_PRIORITY[bestSubscription.plan] || 0)) {
-        bestSubscription = subscription;
-      }
-    }
-
-    // If no best subscription found, use the first active or first overall
-    if (!bestSubscription && subscriptionsWithPlan.length > 0) {
-      bestSubscription = subscriptionsWithPlan.find(sub => sub.status === SubscriptionStatus.Active) || subscriptionsWithPlan[0];
-    }
-
+    // Prefer active, then suspended, then any other status
+    const bestSubscription =
+      aabSubscriptions.find(sub => sub.status === SubscriptionStatus.Active) ||
+      aabSubscriptions.find(sub => sub.status === SubscriptionStatus.Suspended) ||
+      aabSubscriptions[0] ||
+      null;
 
     logger.info('subscriptions.api.success', {
       count: subscriptionsWithPlan.length,

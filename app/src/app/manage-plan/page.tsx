@@ -10,6 +10,7 @@ import text from "@ux/text";
 import {
   CreditsUpgradeContainer,
   GrantPollingModal,
+  RenewalPollingModal,
   UpgradeContainer,
   UpgradePollingModal,
 } from "@/app/develop/components/paywall";
@@ -21,6 +22,7 @@ import {
   ManagePlanSkeleton,
   NewAccountZeroState,
   PageLayout,
+  SuspendedNonPaymentAlert,
   TotalCreditsCard,
 } from "@/app/manage-plan/components";
 import { ProtectedRoute } from "@/components/auth";
@@ -29,6 +31,10 @@ import { useIsCreditPolling } from "@/hooks/useCreditPurchase";
 import { useEcommSubscriptionAutoRenew } from "@/hooks/useEcommSubscriptionAutoRenew";
 import { useEcommSubscriptionAutoRenewStatus } from "@/hooks/useEcommSubscriptionAutoRenewStatus";
 import { useGasketData } from "@/hooks/useGasketData";
+import {
+  useIsRenewalPolling,
+  useSubscriptionRenewal,
+} from "@/hooks/useSubscriptionRenewal";
 import { useSubscriptionWithPolling } from "@/hooks/useSubscriptionWithPolling";
 import { useSwitchboard } from "@/hooks/useSwitchboard";
 import { useTranslations } from "@/hooks/useTranslations";
@@ -37,6 +43,10 @@ import { ClientLogBuffer, shipAnalyticsLog } from "@/lib/logging";
 import { isPaidPlanForGrants, type PaywallType } from "@/lib/paywall/shared";
 import { useSites } from "@/stores/useSitesStore";
 import type { CreditGrant } from "@/types/credits";
+import {
+  SubscriptionStatus,
+  SubscriptionSuspendReason,
+} from "@/types/credits";
 import {
   getActiveGrant,
   getCreditPackGrants,
@@ -47,7 +57,7 @@ import {
 } from "@/utils/credits";
 import { getRootDomain } from "@/utils/getRootDomain";
 import { generateClickEID, logImpressionEvent } from "@/utils/instrumentation";
-import DowngradeScheduledAlert from "./components/DowngradeAlert";
+import DowngradeScheduledAlert from "./components/alerts/DowngradeAlert";
 import PlanCreditsCard from "./components/PlanCreditsCard";
 
 /**
@@ -124,13 +134,25 @@ function ManagePlanContent() {
     useState(false);
   const [isFreeAutoRenewAlertDismissed, setIsFreeAutoRenewAlertDismissed] =
     useState(false);
+  const [isSuspendedAlertDismissed, setIsSuspendedAlertDismissed] =
+    useState(false);
   const { setAutoRenew } = useEcommSubscriptionAutoRenew();
   const isCreditPolling = useIsCreditPolling();
   const isUpgradePolling = useIsUpgradePolling();
+  const isRenewalPolling = useIsRenewalPolling();
+  const {
+    renewSubscription,
+    error: renewalError,
+    resetError: resetRenewalError,
+  } = useSubscriptionRenewal();
   const { data: isUnpublishEnabled } = useSwitchboard("appbuilder-unpublish");
   const { data: isHigherPlansEnabled } = useSwitchboard(
     "appbuilder-higher-plans",
   );
+  const {
+    data: isSuspendedBannerEnabled,
+    isLoading: isSuspendedFeatureLoading,
+  } = useSwitchboard("appbuilder-suspended-nonpayment-banner");
 
   const openPaywall = (
     source: string,
@@ -271,6 +293,22 @@ function ManagePlanContent() {
   const showDowngradeScheduledAlert =
     !isDowngradeAlertDismissed && hasScheduledDowngrade;
 
+  // Show SuspendedNonPaymentAlert when subscription is suspended due to non-payment
+  const isSuspendedForNonPayment =
+    !isSuspendedFeatureLoading &&
+    isSuspendedBannerEnabled &&
+    subscription?.status === SubscriptionStatus.Suspended &&
+    subscription?.reason === SubscriptionSuspendReason.NonPayment;
+  const showSuspendedAlert =
+    !isSuspendedAlertDismissed && isSuspendedForNonPayment;
+
+  const handleRenew = async () => {
+    if (!autoRenewStatus?.subscriptionId) {
+      return;
+    }
+    await renewSubscription(autoRenewStatus.subscriptionId);
+  };
+
   const mutationError = setAutoRenew.error;
 
   return (
@@ -280,6 +318,9 @@ function ManagePlanContent() {
 
       {/* Polling overlay while waiting for plan change after upgrade purchase */}
       {isUpgradePolling && <UpgradePollingModal />}
+
+      {/* Polling overlay while waiting for subscription renewal */}
+      {isRenewalPolling && <RenewalPollingModal />}
 
       {/* Upgrade Modal (for plan upgrades) */}
       {showPaywallModal && paywallType === "upgrade" && (
@@ -404,7 +445,20 @@ function ManagePlanContent() {
             </Alert>
           </div>
         )}
-        {showDowngradeScheduledAlert && (
+        {/* Priority 1: Suspended non-payment alert */}
+        {showSuspendedAlert && (
+          <SuspendedNonPaymentAlert
+            planName={planDisplayLabel}
+            renewsAt={subscription?.renewsAt}
+            onRenew={handleRenew}
+            onDismiss={() => setIsSuspendedAlertDismissed(true)}
+            isRenewing={isRenewalPolling}
+            error={renewalError}
+            onErrorDismiss={resetRenewalError}
+          />
+        )}
+        {/* Priority 2: Downgrade scheduled alert */}
+        {showDowngradeScheduledAlert && !showSuspendedAlert && (
           <DowngradeScheduledAlert
             onKeepPlan={() => {
               openPaywall("manage_plan.switch_to_current_plan", "upgrade");
@@ -412,23 +466,26 @@ function ManagePlanContent() {
             onDismiss={() => setIsDowngradeAlertDismissed(true)}
           />
         )}
-        {showFreeAutoRenewAlert && !showDowngradeScheduledAlert && (
-          <FreeAutoRenewAlert
-            renewalDate={parsedPaidThroughDate?.toISOString()}
-            planName={planDisplayLabel}
-            onCancelChanges={
-              isAutoRenewDisabled && builderEntitlementId
-                ? () =>
-                    setAutoRenew.mutate({
-                      builderEntitlementId,
-                      autoRenew: true,
-                    })
-                : undefined
-            }
-            isLoading={setAutoRenew.isPending}
-            onDismiss={() => setIsFreeAutoRenewAlertDismissed(true)}
-          />
-        )}
+        {/* Priority 3: Free auto-renew alert */}
+        {showFreeAutoRenewAlert &&
+          !showDowngradeScheduledAlert &&
+          !showSuspendedAlert && (
+            <FreeAutoRenewAlert
+              renewalDate={parsedPaidThroughDate?.toISOString()}
+              planName={planDisplayLabel}
+              onCancelChanges={
+                isAutoRenewDisabled && builderEntitlementId
+                  ? () =>
+                      setAutoRenew.mutate({
+                        builderEntitlementId,
+                        autoRenew: true,
+                      })
+                  : undefined
+              }
+              isLoading={setAutoRenew.isPending}
+              onDismiss={() => setIsFreeAutoRenewAlertDismissed(true)}
+            />
+          )}
         <div className="flex flex-col gap-2">
           <text.h2 as="title" size={3} text={t("builder_manageplan_title")} />
           <text.p as="paragraph" className="mb-2">

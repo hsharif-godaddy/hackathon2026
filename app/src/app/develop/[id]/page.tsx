@@ -11,7 +11,7 @@ import ChatPaneLoader, { ImageReloadLoaderPhase, ResumeLoaderPhase } from '@/app
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
 import DevelopHeader from '@/app/develop/components/layout/Header'
 import MediaPanel from '@/app/develop/components/media/MediaPanel'
-import { DevelopCreditsModal, UpgradeContainer, UpgradePollingModal } from '@/app/develop/components/paywall'
+import { DevelopCreditsModal, RenewalPollingModal, UpgradeContainer, UpgradePollingModal } from '@/app/develop/components/paywall'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
@@ -41,6 +41,7 @@ import { usePaywallPrefetch } from '@/hooks/usePaywallPrefetch'
 import { useRumAppContext } from '@/hooks/useRumAppContext'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
+import { useIsRenewalPolling } from '@/hooks/useSubscriptionRenewal'
 import { useSyncResponsiveState } from '@/hooks/useSyncResponsiveState'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsUpgradePolling } from '@/hooks/useUpgradePurchase'
@@ -151,6 +152,7 @@ function DevelopPageContent() {
   const upgradeModalItc = useDevelopPageStore((state) => state.upgradeModalItc);
   const closeUpgradeModal = useDevelopPageStore((state) => state.closeUpgradeModal);
   const isUpgradePolling = useIsUpgradePolling();
+  const isRenewalPolling = useIsRenewalPolling();
   const publishLimitModalState = useDevelopPageStore((state) =>
     appId ? state.publishStates[appId] : undefined
   );
@@ -1338,6 +1340,7 @@ function DevelopPageContent() {
         <Growl />
 
         {isUpgradePolling && <UpgradePollingModal />}
+        {isRenewalPolling && <RenewalPollingModal />}
 
         {showUpgradeModal && (
           <UpgradeContainer

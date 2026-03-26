@@ -564,6 +564,20 @@ export function getMarketFromCookie(cookieHeader: string | null): string | null 
 }
 
 /**
+ * Extract currency from cookie string
+ */
+export function getCurrencyFromCookie(cookieHeader: string | null): string | null {
+  if (!cookieHeader) return null;
+
+  try {
+    const match = cookieHeader.match(/currency=([^;]+)/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Get customer ID from headers using lightweight token decode
  * Used by instrumentPageRequest to add cid attribute to page spans
  */

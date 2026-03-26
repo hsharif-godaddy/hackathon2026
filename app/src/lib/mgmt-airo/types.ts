@@ -2,7 +2,7 @@
  * Type definitions for mgmt-airo API
  */
 
-import { SubscriptionPlan } from '@/types/credits';
+import { SubscriptionPlan, SubscriptionSuspendReason } from '@/types/credits';
 
 /**
  * Product IDs for Airo products
@@ -57,6 +57,8 @@ export interface AiroSubscription {
   renewsAt?: string;
   downgradedPlan?: SubscriptionPlan;
   downgradedAt?: string;
+  /** Reason for current status (e.g., 'NON_PAYMENT' when suspended) */
+  reason?: SubscriptionSuspendReason | string;
   createdAt: string;
   updatedAt: string;
 }

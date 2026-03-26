@@ -34,6 +34,14 @@ export enum SubscriptionStatus {
   Active = 'active',
   Inactive = 'inactive',
   Cancelled = 'cancelled',
+  Suspended = 'suspended',
+}
+
+/**
+ * Reasons for subscription suspension
+ */
+export enum SubscriptionSuspendReason {
+  NonPayment = 'NON_PAYMENT',
 }
 
 /**

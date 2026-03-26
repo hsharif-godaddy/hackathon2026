@@ -2,10 +2,16 @@ import { useQuery } from '@tanstack/react-query';
 
 import { appFetch } from '@/lib/gasket-config';
 
+interface EcommSubscriptionTerm {
+  termType: string;
+  numberOfTerms: number;
+}
+
 interface EcommSubscriptionStatus {
   autoRenew: boolean;
   paidThroughDate?: string;
   subscriptionId?: string;
+  term?: EcommSubscriptionTerm;
 }
 
 const STALE_TIME = 5 * 1000; // 5 seconds

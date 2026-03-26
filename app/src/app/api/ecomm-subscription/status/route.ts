@@ -143,17 +143,25 @@ export const GET = withCustomerAuth(async (
       );
     }
 
+    // Extract term info from offer (for renewal)
+    const term = details?.offer?.term ? {
+      termType: details.offer.term.termType,
+      numberOfTerms: details.offer.term.numberOfTerms,
+    } : undefined;
+
     logger.info('ecomm-subscription.status.success', {
       customerId,
       subscriptionId,
       autoRenew,
       paidThroughDate: details?.paidThroughDate,
+      term,
     });
 
     return NextResponse.json({
       subscriptionId,
       autoRenew,
       paidThroughDate: details?.paidThroughDate,
+      term,
     });
 
   } catch (error) {

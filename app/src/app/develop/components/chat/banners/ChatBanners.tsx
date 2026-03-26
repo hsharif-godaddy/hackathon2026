@@ -4,10 +4,13 @@ import { useCallback, useEffect, useState } from 'react'
 
 import SessionExpirationBanner from '@/components/auth/SessionExpirationBanner'
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility'
+import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useUsage } from '@/hooks/useUsage'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { SubscriptionStatus, SubscriptionSuspendReason } from '@/types/credits'
 import FeedbackBanner from './FeedbackBanner'
+import SuspendedNonPaymentBanner from './SuspendedNonPaymentBanner'
 import UpgradeBanner from './UpgradeBanner'
 import UsageWarningBanner from './UsageWarningBanner'
 
@@ -29,15 +32,18 @@ function isUpgradeBannerDismissedToday(): boolean {
  * Container component that manages which chat banner to display.
  * Only one banner shows at a time, with priority order:
  * 1. SessionExpirationBanner (session expiring within 5 minutes)
- * 2. UsageWarningBanner (usage >= 90%)
- * 3. UpgradeBanner (no Airo Plus subscription)
- * 4. FeedbackBanner (prompt for user feedback)
+ * 2. SuspendedNonPaymentBanner (subscription suspended for non-payment)
+ * 3. UsageWarningBanner (usage >= 90%)
+ * 4. UpgradeBanner (no Airo Plus subscription)
+ * 5. FeedbackBanner (prompt for user feedback)
  */
 export default function ChatBanners({ appId }: ChatBannersProps) {
   const { isWarningBannerActive } = useUsage({ appId, enabled: !!appId })
   const { data: upgradeBannerEnabled, isLoading: isUpgradeFeatureLoading } = useSwitchboard('appbuilder-airoplus-upgrade-banner')
   const { data: feedbackBannerEnabled, isLoading: isFeedbackFeatureLoading } = useSwitchboard('appbuilder-feedback-banner')
+  const { data: suspendedBannerEnabled, isLoading: isSuspendedFeatureLoading } = useSwitchboard('appbuilder-suspended-nonpayment-banner')
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(appId || undefined)
+  const { data: subscription } = useSubscription()
   const showFeedbackBannerFromStore = useDevelopPageStore((state) => state.showFeedbackBanner)
   const [isUpgradeBannerDismissed, setIsUpgradeBannerDismissed] = useState(true)
   const [mounted, setMounted] = useState(false)
@@ -53,6 +59,13 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
     setIsUpgradeBannerDismissed(true)
   }, [])
 
+  // Check if subscription is suspended due to non-payment (gated by feature flag, wait for flag to load)
+  const isSuspendedForNonPayment =
+    !isSuspendedFeatureLoading &&
+    suspendedBannerEnabled &&
+    subscription?.status === SubscriptionStatus.Suspended &&
+    subscription?.reason === SubscriptionSuspendReason.NonPayment
+
   // Determine if upgrade banner should be shown
   const isUpgradeBannerActive = mounted && !isUpgradeFeatureLoading && !isPaywallLoading && upgradeBannerEnabled && !isUpgradeBannerDismissed && showPaywall
 
@@ -63,7 +76,20 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
   // This component manages its own visibility state
   const sessionBanner = <SessionExpirationBanner />
 
-  // Priority 2: Usage warning takes precedence over upgrade prompt
+  // Priority 2: Suspended non-payment (critical - user needs to renew)
+  if (isSuspendedForNonPayment) {
+    return (
+      <>
+        {sessionBanner}
+        <SuspendedNonPaymentBanner
+          builderEntitlementId={subscription?.builderEntitlementId}
+          renewsAt={subscription?.renewsAt}
+        />
+      </>
+    )
+  }
+
+  // Priority 3: Usage warning takes precedence over upgrade prompt
   if (isWarningBannerActive) {
     return (
       <>
@@ -73,7 +99,7 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
     )
   }
 
-  // Priority 3: Upgrade banner
+  // Priority 4: Upgrade banner
   if (isUpgradeBannerActive) {
     return (
       <>
@@ -83,7 +109,7 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
     )
   }
 
-  // Priority 4: Feedback banner (only if feature flag is enabled)
+  // Priority 5: Feedback banner (only if feature flag is enabled)
   return (
     <>
       {sessionBanner}

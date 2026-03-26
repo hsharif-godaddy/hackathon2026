@@ -99,6 +99,7 @@ describe('/api/ecomm-subscription/status GET', function statusRouteTests() {
       subscriptionId: 'sub-456',
       autoRenew: true,
       paidThroughDate: '2027-01-29T07:00:00Z',
+      term: undefined,
     });
 
     expect(mockLogger.info).toHaveBeenCalledWith(
@@ -118,6 +119,42 @@ describe('/api/ecomm-subscription/status GET', function statusRouteTests() {
         paidThroughDate: '2027-01-29T07:00:00Z',
       })
     );
+  });
+
+  it('should return term info when present in subscription details', async function includesTerm() {
+    const subscriptionLookupResponse = {
+      ok: true,
+      json: async () => ({ subscriptionId: 'sub-456' }),
+    };
+
+    const subscriptionDetailsResponse = {
+      ok: true,
+      json: async () => ({
+        offer: {
+          autoRenew: true,
+          term: {
+            termType: 'MONTH',
+            numberOfTerms: 1,
+          },
+        },
+        paidThroughDate: '2027-01-29T07:00:00Z',
+      }),
+    };
+
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(subscriptionLookupResponse)
+      .mockResolvedValueOnce(subscriptionDetailsResponse);
+
+    const { GET } = await import('../route');
+    const request = createRequest({ builderEntitlementId: 'ent-123' });
+    const response = await GET(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.term).toEqual({
+      termType: 'MONTH',
+      numberOfTerms: 1,
+    });
   });
 
   it('should handle subscription lookup failure', async function lookupFailure() {
