@@ -3,31 +3,41 @@ import { getPersistentPublicDir, getPersistentPrivateDir, getPersistentAssetPath
 
 describe('persistent-assets', () => {
   beforeEach(() => {
-    delete process.env.PERSISTENT_ASSETS_DIR;
+    delete process.env.SHARED_STORAGE_DIR;
   });
 
   afterEach(() => {
-    delete process.env.PERSISTENT_ASSETS_DIR;
+    delete process.env.SHARED_STORAGE_DIR;
   });
 
   describe('getPersistentPublicDir', () => {
-    it('returns {PERSISTENT_ASSETS_DIR}/public when env var is set', () => {
-      process.env.PERSISTENT_ASSETS_DIR = '/shared-storage';
-      expect(getPersistentPublicDir('/app')).toBe('/shared-storage/public');
+    it('returns {SHARED_STORAGE_DIR}/public/assets when env var is set', () => {
+      process.env.SHARED_STORAGE_DIR = '/shared-storage';
+      expect(getPersistentPublicDir('/app')).toBe('/shared-storage/public/assets');
     });
 
-    it('ignores appPath when PERSISTENT_ASSETS_DIR is set', () => {
-      process.env.PERSISTENT_ASSETS_DIR = '/mount/shared';
-      expect(getPersistentPublicDir('/any/path')).toBe('/mount/shared/public');
+    it('ignores appPath when SHARED_STORAGE_DIR is set', () => {
+      process.env.SHARED_STORAGE_DIR = '/mount/shared';
+      expect(getPersistentPublicDir('/any/path')).toBe('/mount/shared/public/assets');
     });
 
-    it('falls back to {appPath}/public when env var is not set', () => {
-      expect(getPersistentPublicDir('/app')).toBe('/app/public');
+    it('returns {appPath}/public/assets in container mode (appPath is /app)', () => {
+      expect(getPersistentPublicDir('/app')).toBe('/app/public/assets');
     });
 
-    it('falls back to {appPath}/public for local dev paths', () => {
+    it('returns {appPath}/public/assets in container mode (appPath starts with /app/)', () => {
+      expect(getPersistentPublicDir('/app/subdir')).toBe('/app/subdir/public/assets');
+    });
+
+    it('returns host assets directory in local dev (appPath is host path)', () => {
       expect(getPersistentPublicDir('/tmp/airo-app-builder/abc123/preview')).toBe(
-        '/tmp/airo-app-builder/abc123/preview/public'
+        '/tmp/airo-app-builder/abc123/assets/public'
+      );
+    });
+
+    it('returns correct path for publish workspace in local dev', () => {
+      expect(getPersistentPublicDir('/tmp/airo-app-builder/abc123/publish')).toBe(
+        '/tmp/airo-app-builder/abc123/assets/public'
       );
     });
   });
@@ -55,25 +65,25 @@ describe('persistent-assets', () => {
   });
 
   describe('getPersistentAssetPaths', () => {
-    it('returns default container mount paths', () => {
+    it('returns v4 default container mount paths', () => {
       expect(getPersistentAssetPaths()).toEqual({
-        persistentPublicPath: '/shared-storage/public',
+        persistentPublicPath: '/app/public/assets',
         persistentPrivatePath: '/private',
       });
     });
 
-    it('uses PERSISTENT_ASSETS_DIR when set', () => {
-      process.env.PERSISTENT_ASSETS_DIR = '/custom/base';
+    it('uses SHARED_STORAGE_DIR when set', () => {
+      process.env.SHARED_STORAGE_DIR = '/custom/base';
       expect(getPersistentAssetPaths()).toEqual({
-        persistentPublicPath: '/custom/base/public',
+        persistentPublicPath: '/custom/base/public/assets',
         persistentPrivatePath: '/private',
       });
     });
 
-    it('matches production configuration', () => {
-      process.env.PERSISTENT_ASSETS_DIR = '/shared-storage';
+    it('uses /shared-storage when SHARED_STORAGE_DIR is set (future deployment)', () => {
+      process.env.SHARED_STORAGE_DIR = '/shared-storage';
       expect(getPersistentAssetPaths()).toEqual({
-        persistentPublicPath: '/shared-storage/public',
+        persistentPublicPath: '/shared-storage/public/assets',
         persistentPrivatePath: '/private',
       });
     });

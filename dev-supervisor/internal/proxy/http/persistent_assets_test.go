@@ -12,11 +12,11 @@ import (
 
 func TestPersistentAssets_ServesExistingFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	publicDir := filepath.Join(tmpDir, "public", "photos")
-	if err := os.MkdirAll(publicDir, 0755); err != nil {
+	assetsDir := filepath.Join(tmpDir, "assets", "photos")
+	if err := os.MkdirAll(assetsDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(publicDir, "product.png"), []byte("PNG DATA"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(assetsDir, "product.png"), []byte("PNG DATA"), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -47,7 +47,7 @@ func TestPersistentAssets_ServesExistingFile(t *testing.T) {
 
 func TestPersistentAssets_ServesNestedSubdirectory(t *testing.T) {
 	tmpDir := t.TempDir()
-	nestedDir := filepath.Join(tmpDir, "public", "media", "uploads", "2026")
+	nestedDir := filepath.Join(tmpDir, "assets", "media", "uploads", "2026")
 	if err := os.MkdirAll(nestedDir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestPersistentAssets_ServesNestedSubdirectory(t *testing.T) {
 
 func TestPersistentAssets_FallsThroughOnMiss(t *testing.T) {
 	tmpDir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(tmpDir, "public"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(tmpDir, "assets"), 0755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -105,7 +105,7 @@ func TestPersistentAssets_FallsThroughOnMiss(t *testing.T) {
 // the handler's defence-in-depth for direct invocation.
 func TestPersistentAssets_BlocksPathTraversal(t *testing.T) {
 	tmpDir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(tmpDir, "public"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(tmpDir, "assets"), 0755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -134,7 +134,7 @@ func TestPersistentAssets_BlocksPathTraversal(t *testing.T) {
 // fails because the path doesn't exist → falls through to proxy.
 func TestPersistentAssets_DoubleSlashFallsThrough(t *testing.T) {
 	tmpDir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(tmpDir, "public"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(tmpDir, "assets"), 0755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -157,7 +157,7 @@ func TestPersistentAssets_DoubleSlashFallsThrough(t *testing.T) {
 
 func TestPersistentAssets_HEADWorks(t *testing.T) {
 	tmpDir := t.TempDir()
-	publicDir := filepath.Join(tmpDir, "public")
+	publicDir := filepath.Join(tmpDir, "assets")
 	if err := os.MkdirAll(publicDir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func TestPersistentAssets_HEADWorks(t *testing.T) {
 
 func TestPersistentAssets_DirectoryFallsThrough(t *testing.T) {
 	tmpDir := t.TempDir()
-	dirPath := filepath.Join(tmpDir, "public", "photos")
+	dirPath := filepath.Join(tmpDir, "assets", "photos")
 	if err := os.MkdirAll(dirPath, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestPersistentAssets_DirectoryFallsThrough(t *testing.T) {
 
 func TestPersistentAssets_POSTFallsThrough(t *testing.T) {
 	tmpDir := t.TempDir()
-	publicDir := filepath.Join(tmpDir, "public")
+	publicDir := filepath.Join(tmpDir, "assets")
 	if err := os.MkdirAll(publicDir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestPersistentAssets_POSTFallsThrough(t *testing.T) {
 
 func TestPersistentAssets_SymlinkEscapeBlocked(t *testing.T) {
 	tmpDir := t.TempDir()
-	publicDir := filepath.Join(tmpDir, "public")
+	publicDir := filepath.Join(tmpDir, "assets")
 	if err := os.MkdirAll(publicDir, 0755); err != nil {
 		t.Fatal(err)
 	}

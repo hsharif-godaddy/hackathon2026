@@ -12,7 +12,7 @@ import (
 // PersistentAssetsHandler serves files from the persistent assets directory
 // (CephFS mount), falling through to the reverse proxy on miss.
 type PersistentAssetsHandler struct {
-	assetRoot    string       // filepath.Join(persistentDir, "public")
+	assetRoot    string       // filepath.Join(persistentDir, "assets")
 	resolvedRoot atomic.Value // cached EvalSymlinks(assetRoot); empty string until resolved
 	fallback     http.Handler // reverse proxy to Vite/backend
 }
@@ -21,7 +21,7 @@ type PersistentAssetsHandler struct {
 // persistent storage, falling through to the proxy for misses.
 func NewPersistentAssetsHandler(persistentDir string, fallback http.Handler) *PersistentAssetsHandler {
 	h := &PersistentAssetsHandler{
-		assetRoot: filepath.Join(persistentDir, "public"),
+		assetRoot: filepath.Join(persistentDir, "assets"),
 		fallback:  fallback,
 	}
 	// Pre-resolve if mount is ready; lazy resolution on first hit otherwise.

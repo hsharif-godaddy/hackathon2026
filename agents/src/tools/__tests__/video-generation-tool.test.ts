@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { VideoGenerationTool } from '../video-generation-tool.js';
 import { WebsiteScraperDriver } from '../ai-lib-tools/drivers/website-scraper-driver.js';
+import { getPersistentPublicDir } from '../../utils/persistent-assets.js';
 
 vi.mock('execa', () => ({
   execa: vi.fn()
@@ -45,9 +46,14 @@ import { videoApiFetch } from '../../helper/video-api-helper.js';
 import { logger } from '../../logging/index.js';
 
 describe('video-generation-tool', function packageTests() {
-  const testAppPath = '/tmp/test-video-gen';
+  // Use unique test base directory to avoid /tmp/assets collision in parallel tests
+  // Structure: /tmp/test-video-gen-{pid}-{timestamp}/preview
+  // This ensures getPersistentPublicDir returns .../{pid}-{timestamp}/assets/public (unique per test)
+  const testBaseDir = `/tmp/test-video-gen-${process.pid}-${Date.now()}`;
+  const testAppPath = path.join(testBaseDir, 'preview');
   const airoDir = path.join(testAppPath, '.airo');
-  const imagesDir = path.join(testAppPath, 'public', 'images');
+  // Use persistent assets path to match production behavior
+  const imagesDir = path.join(getPersistentPublicDir(testAppPath), 'images');
   const defaultCtx = { appId: 'test-app-123', appPath: testAppPath, previewUrl: 'https://test-app.preview.airo.dev' };
 
   function createTool(overrides = {}) {
@@ -61,14 +67,15 @@ describe('video-generation-tool', function packageTests() {
   });
 
   afterEach(() => {
-    if (fs.existsSync(testAppPath)) {
-      fs.rmSync(testAppPath, { recursive: true, force: true });
+    // Clean up entire test base directory (includes preview/ and assets/ subdirs)
+    if (fs.existsSync(testBaseDir)) {
+      fs.rmSync(testBaseDir, { recursive: true, force: true });
     }
   });
 
   describe('#startGeneration', function startTests() {
     it('should return completed when video file already exists', async function alreadyComplete() {
-      const url = '/public/images/go_live-video-abc123.mp4';
+      const url = '/airo-assets/uploads/go_live-video-abc123.mp4';
       fs.writeFileSync(path.join(imagesDir, 'go_live-video-abc123.mp4'), Buffer.from('fake-video'));
       fs.writeFileSync(
         path.join(airoDir, 'video.json'),

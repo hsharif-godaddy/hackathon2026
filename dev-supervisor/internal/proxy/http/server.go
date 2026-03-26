@@ -127,33 +127,59 @@ func (p *HTTPProxy) Start() error {
 		appDir = "/app" // Default app directory in container
 	}
 
-	// Persistent assets directory (CephFS mount in production, host dir in local dev)
-	persistentDir := os.Getenv("PERSISTENT_ASSETS_DIR")
-	if persistentDir == "" {
-		persistentDir = "/shared-storage"
+	// Shared storage directory (future CephFS mount in production)
+	// PersistentAssetsHandler serves static files like Vite's express.static(publicDir)
+	sharedStorageDir := os.Getenv("SHARED_STORAGE_DIR")
+	var persistentDir string
+	if sharedStorageDir != "" {
+		// Shared storage layout: serve from {SHARED_STORAGE_DIR}/public
+		// Files at /shared-storage/public/assets/foo.png serve as /assets/foo.png
+		persistentDir = filepath.Join(sharedStorageDir, "public")
+	} else {
+		// V4 default: serve from /app/public (Vite static root)
+		// Files at /app/public/assets/foo.png serve as /assets/foo.png
+		// Note: persistent storage is bind-mounted at /app/public/assets, so they overlay
+		persistentDir = filepath.Join(appDir, "public")
 	}
 
 	// Define media search paths for all handlers - single source of truth
-	// Search order for uploaded media files:
-	// 1. {persistentDir}/public/media/  - New: persistent media uploads (CephFS mount)
-	// 2. {persistentDir}/public/images/ - New: persistent generated images (CephFS mount)
-	// 3. {appDir}/public/media/         - Existing: workspace media (agents upload here today)
-	// 4. {appDir}/public/images/        - New: workspace images (image-editor/DALL-E write here today,
-	//                                     but were not previously searchable via /airo-assets/uploads/)
-	// 5. {appDir}/dist/media/           - Existing: publish mode SPA (Vite copies public/* to dist/*)
-	// 6. {appDir}/dist/client/media/    - Existing: publish mode SSR (Vite copies public/* to dist/client/*)
-	//
-	// Note: Path 4 is a behavior change — files in public/images/ will now be discoverable
-	// via the uploaded media handler. This is intentional: image generation tools already write
-	// to public/images/ and return /images/ URLs. Adding it here enables the migration to
-	// /airo-assets/uploads/ URLs without breaking existing apps during the transition.
-	mediaSearchPaths := []string{
-		filepath.Join(persistentDir, "public", "media"),
-		filepath.Join(persistentDir, "public", "images"),
-		filepath.Join(appDir, "public", "media"),
-		filepath.Join(appDir, "public", "images"),
-		filepath.Join(appDir, "dist", "media"),
-		filepath.Join(appDir, "dist", "client", "media"),
+	// For forwards/backwards compatibility, we check both shared storage and v4 default paths.
+	// When SHARED_STORAGE_DIR is set, those paths take precedence.
+	var mediaSearchPaths []string
+
+	if sharedStorageDir != "" {
+		// Shared storage enabled: prefer shared storage paths, fall back to v4 default paths
+		// Shared storage files are in /assets subdirectory to match Vite static serving
+		// 1-3. Shared storage persistent paths (future CephFS mount at /shared-storage/public/assets/)
+		// 4-6. V4 default persistent paths (current layout at /app/public/assets/)
+		// 7-8. Legacy workspace paths (ephemeral)
+		// 9-10. Publish mode paths
+		mediaSearchPaths = []string{
+			filepath.Join(sharedStorageDir, "public", "assets", "media"),
+			filepath.Join(sharedStorageDir, "public", "assets", "images"),
+			filepath.Join(sharedStorageDir, "public", "assets", "uploads"),
+			filepath.Join(appDir, "public", "assets", "media"),
+			filepath.Join(appDir, "public", "assets", "images"),
+			filepath.Join(appDir, "public", "assets", "uploads"),
+			filepath.Join(appDir, "public", "media"),
+			filepath.Join(appDir, "public", "images"),
+			filepath.Join(appDir, "dist", "media"),
+			filepath.Join(appDir, "dist", "client", "media"),
+		}
+	} else {
+		// No shared storage: use v4 default paths, check legacy workspace paths too
+		// 1-3. V4 default persistent paths (mounted at /app/public/assets)
+		// 4-5. Legacy workspace paths (for backwards compatibility)
+		// 6-7. Publish mode paths
+		mediaSearchPaths = []string{
+			filepath.Join(appDir, "public", "assets", "media"),
+			filepath.Join(appDir, "public", "assets", "images"),
+			filepath.Join(appDir, "public", "assets", "uploads"),
+			filepath.Join(appDir, "public", "media"),
+			filepath.Join(appDir, "public", "images"),
+			filepath.Join(appDir, "dist", "media"),
+			filepath.Join(appDir, "dist", "client", "media"),
+		}
 	}
 
 	// Manifest paths - check multiple locations for different deployment modes:

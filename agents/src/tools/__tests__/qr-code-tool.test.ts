@@ -33,7 +33,7 @@ describe('qr-code-tool', function packageTests() {
       fs.rmSync(testAppsDir, { recursive: true, force: true })
     }
     // Cleanup environment
-    delete process.env.PERSISTENT_ASSETS_DIR
+    delete process.env.SHARED_STORAGE_DIR
   })
 
   describe('#generateQRCode', function generateTests() {
@@ -125,13 +125,13 @@ describe('qr-code-tool', function packageTests() {
       expect(result.base64).toBeDefined()
     })
 
-    it('should write QR code to production path when PERSISTENT_ASSETS_DIR is set', async function generateProduction() {
+    it('should write QR code to production path when SHARED_STORAGE_DIR is set', async function generateProduction() {
       // Set up production environment
       const prodAssetsDir = path.join(testAppsDir, 'shared-storage')
-      process.env.PERSISTENT_ASSETS_DIR = prodAssetsDir
+      process.env.SHARED_STORAGE_DIR = prodAssetsDir
 
       // Create production directory structure
-      const publicDir = path.join(prodAssetsDir, 'public')
+      const publicDir = path.join(prodAssetsDir, 'public', 'assets')
       const qrCodesDir = path.join(publicDir, 'qr-codes')
       fs.mkdirSync(qrCodesDir, { recursive: true })
 
@@ -144,8 +144,8 @@ describe('qr-code-tool', function packageTests() {
       expect(result.success).toBe(true)
       expect(result.filepath).toBeDefined()
 
-      // Verify file was written to production path
-      const expectedDir = path.join(prodAssetsDir, 'public', 'qr-codes')
+      // Verify file was written to production path (with /assets subdirectory)
+      const expectedDir = path.join(prodAssetsDir, 'public', 'assets', 'qr-codes')
       expect(result.filepath).toContain(expectedDir)
       expect(fs.existsSync(result.filepath!)).toBe(true)
     })
