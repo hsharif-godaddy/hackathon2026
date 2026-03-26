@@ -1,11 +1,11 @@
+import { motion } from "framer-motion";
+import { useState } from "react";
 import { CircleStackIcon, CloudArrowUpIcon } from "@heroicons/react/24/outline";
 import Box from "@ux/box";
 import Button from "@ux/button";
 import ChevronDownIcon from "@ux/icon/chevron-down";
 import Tag from "@ux/tag";
 import text from "@ux/text";
-import { motion } from "framer-motion";
-import { useState } from "react";
 
 import { CollapsibleCardBody } from "@/app/manage-plan/components/CollapsibleCardBody";
 import { InfoTooltip } from "@/components/ui/InfoTooltip";

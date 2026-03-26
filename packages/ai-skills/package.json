@@ -22,7 +22,7 @@
     "dist"
   ],
   "dependencies": {
-    "ai": "^6.0.105",
+    "ai": "^6.0.138",
     "zod": "^3.25.76"
   },
   "devDependencies": {

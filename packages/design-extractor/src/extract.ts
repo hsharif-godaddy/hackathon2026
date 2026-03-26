@@ -230,7 +230,12 @@ JSON structure:
       tools: {},
       maxSteps: 1,
       temperature: 0.2,
-      maxOutputTokens: 4000
+      maxOutputTokens: 4000,
+      logger: {
+        info: (event: string, data: unknown) => console.log(`[INFO] ${event}`, data),
+        warn: (event: string, data: unknown) => console.warn(`[WARN] ${event}`, data),
+        error: (event: string, data: unknown) => console.error(`[ERROR] ${event}`, data)
+      }
     }
   })
   
