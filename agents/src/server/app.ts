@@ -168,12 +168,12 @@ apm.addSpanFilter((span) => {
 // Now import other modules after APM is initialized
 import path from 'node:path';
 
-import express, { Express } from 'express';
+import express, { Express, Router } from 'express';
 import helmet from 'helmet';
 import compression from 'compression';
 import { createServer } from 'http';
 
-import { corsMiddleware, timingAllowOriginMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware } from './middleware/index.js';
+import { corsMiddleware, timingAllowOriginMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware, validateProductAccess } from './middleware/index.js';
 import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, todoListRouter, securityScanRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, secretsScanRouter,oauthRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, customerLogsRouter, zipImportRouter, shareRouter, mediaRouter } from './routes/index.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
 import { setupAILibWebSocketServer, getWebSocketServerInfo, getGitHookService } from './ai-lib-websocket-server.js';
@@ -288,32 +288,39 @@ app.get('/', (req, res) => {
 // File serving with signed URLs - must be before JWT-protected routes
 app.use('/files', filesPublicRouter);
 
-// Protected routes requiring authentication
-app.use('/agents', jwtAuthMiddleware.authenticate, agentsRouter);
-app.use('/apps', jwtAuthMiddleware.authenticate, appsRouter);
-app.use('/apps', jwtAuthMiddleware.authenticate, videoRouter);
-app.use('/apps', jwtAuthMiddleware.authenticate, customerLogsRouter);
-app.use('/', jwtAuthMiddleware.authenticate, dbRouter);
-app.use('/agent', jwtAuthMiddleware.authenticate, chatRouter);
-app.use('/agent', jwtAuthMiddleware.authenticate, todoListRouter);
-// Protected file operations (upload, list, delete) require JWT
-app.use('/files', jwtAuthMiddleware.authenticate, filesRouter);
-app.use('/debug', jwtAuthMiddleware.authenticate, debugRouter);
-app.use('/', jwtAuthMiddleware.authenticate, securityScanRouter);
-app.use('/', jwtAuthMiddleware.authenticate, securityMisconfigScanRouter);
-app.use('/', jwtAuthMiddleware.authenticate, qaAnalyzeRouter);
-app.use('/', jwtAuthMiddleware.authenticate, vulnerabilityScanRouter);
-app.use('/', jwtAuthMiddleware.authenticate, secretsScanRouter);
-app.use('/', jwtAuthMiddleware.authenticate, gitRouter);
-app.use('/', jwtAuthMiddleware.authenticate, zipImportRouter);
-app.use('/', jwtAuthMiddleware.authenticate, gitRemoteRouter);
-app.use('/', jwtAuthMiddleware.authenticate, publishRouter);
-app.use('/', jwtAuthMiddleware.authenticate, downloadRouter);
-app.use('/', jwtAuthMiddleware.authenticate, goLiveRouter);
-app.use('/', jwtAuthMiddleware.authenticate, conversationsRouter);
-app.use('/', jwtAuthMiddleware.authenticate, socialRouter);
-app.use('/', shareRouter); // Share router handles JWT auth internally for protected routes
-app.use('/media', jwtAuthMiddleware.authenticate, mediaRouter);
+// Protected routes: JWT auth + product access applied once via group router
+const protectedRouter = Router();
+protectedRouter.use(jwtAuthMiddleware.authenticate, validateProductAccess);
+
+protectedRouter.use('/agents', agentsRouter);
+protectedRouter.use('/apps', appsRouter);
+protectedRouter.use('/apps', videoRouter);
+protectedRouter.use('/apps', customerLogsRouter);
+protectedRouter.use('/', dbRouter);
+protectedRouter.use('/agent', chatRouter);
+protectedRouter.use('/agent', todoListRouter);
+protectedRouter.use('/files', filesRouter);  // protected file ops
+protectedRouter.use('/debug', debugRouter);
+protectedRouter.use('/', securityScanRouter);
+protectedRouter.use('/', securityMisconfigScanRouter);
+protectedRouter.use('/', qaAnalyzeRouter);
+protectedRouter.use('/', vulnerabilityScanRouter);
+protectedRouter.use('/', secretsScanRouter);
+protectedRouter.use('/', gitRouter);
+protectedRouter.use('/', zipImportRouter);
+protectedRouter.use('/', gitRemoteRouter);
+protectedRouter.use('/', publishRouter);
+protectedRouter.use('/', downloadRouter);
+protectedRouter.use('/', goLiveRouter);
+protectedRouter.use('/', conversationsRouter);
+protectedRouter.use('/', socialRouter);
+protectedRouter.use('/media', mediaRouter);
+
+app.use(protectedRouter);
+
+// Share router handles JWT auth internally for protected routes;
+// public route (/api/share/validate/:token) needs no auth
+app.use('/', shareRouter);
 
 // Error handling
 app.use(notFoundHandler);

@@ -15,7 +15,7 @@ import {
 } from '@airo/ai-transport'
 import { grantSessionManager, type GrantContextPayload, BudgetOverride } from '@airo/ai-grants'
 import { auth, AuthType, BYPASS_SITE_IDS } from '../services/features.js'
-import { isEmployeeAuthType, type AuthType as TokenAuthType } from '@airo/shared/auth'
+import { isEmployeeAuthType, type AuthType as TokenAuthType, type ProductType } from '@airo/shared/auth'
 import apm from 'elastic-apm-node'
 import { observe, updateActiveObservation } from '@langfuse/tracing'
 import type { Socket, Server as SocketIOServer } from 'socket.io'
@@ -42,7 +42,7 @@ import { ConversationContextManager } from '../services/ConversationContextManag
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
 import { fileUploadService } from '../services/FileUploadService.js'
 import { logger, log } from '../logging/index.js'
-import { jwtAuthMiddleware } from './middleware/jwt-auth.js'
+import { jwtAuthMiddleware, coerceProductType } from './middleware/jwt-auth.js'
 import { getAgentConfig } from '../services/features.js'
 import { getModelOverride } from '../utils/model-selection.js'
 import { todoListIdFromContextAttachments } from '../utils/todo-list-id-from-context-attachments.js'
@@ -2108,6 +2108,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           }
 
           clearTimeout(authTimeout);
+
           const originalAuth = socket.handshake.auth;
           socket.handshake.auth = {
             ...originalAuth,
@@ -2200,6 +2201,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         isE2S: boolean;
         authType?: TokenAuthType;
         useTestBudget?: boolean;
+        product: ProductType;
         exp: number;
         iat: number;
       };
@@ -2226,6 +2228,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         isE2S: validationResult.claims?.isE2S ?? false,
         authType: validationResult.claims?.authType ?? 'basic',
         useTestBudget: validationResult.claims?.useTestBudget ?? false,
+        product: coerceProductType(validationResult.claims?.product),
         exp: validationResult.claims?.exp || 0,
         iat: validationResult.claims?.iat || 0
       };
@@ -2239,6 +2242,15 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           maxAllowed: 600
         });
         return { valid: false, error: ttlValidation.error || 'Token TTL validation failed' };
+      }
+
+      // Deny WebSocket access for PaaS callers
+      if (agentContext.product === 'PaaSNodeJS') {
+        logger.warn('websocket.auth.productDenied', {
+          message: 'WebSocket connection denied for PaaS consumer',
+          siteId: agentContext.siteId,
+        }, { tags: ['security'] });
+        return { valid: false, error: 'WebSocket connections are not available for PaaS consumers' };
       }
 
       return { valid: true, claims: validationResult.claims, agentContext };
@@ -2285,6 +2297,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             isE2S: refreshResult.claims?.isE2S ?? false,
             authType: refreshResult.claims?.authType ?? 'basic',
             useTestBudget: refreshResult.claims?.useTestBudget ?? false,
+            product: coerceProductType(refreshResult.claims?.product),
             exp: refreshResult.claims?.exp || 0,
             iat: refreshResult.claims?.iat || 0
           };
@@ -2298,6 +2311,24 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               siteId: originalSiteId
             }, { tags: ['security'] });
             socket.emit('tokenRefreshError', { error: refreshTTLValidation.error });
+            return;
+          }
+
+          // Deny product type change on refresh (prevent PaaS escalation)
+          const originalProduct = socket.handshake.auth.agentContext?.product;
+          if (originalProduct && refreshAgentContext.product !== originalProduct) {
+            logger.error('websocket.auth.token_refresh.productMismatch', {
+              message: 'SECURITY VIOLATION: Token refresh attempted with different product type',
+              originalProduct,
+              newProduct: refreshAgentContext.product,
+              siteId: originalSiteId,
+              socketId: socket.id,
+              action: 'disconnecting_socket'
+            }, { tags: ['security', 'authorization-failure'] });
+            socket.emit('tokenRefreshError', {
+              error: 'Token product type mismatch - please reconnect with correct credentials'
+            });
+            socket.disconnect(true);
             return;
           }
 
@@ -2369,6 +2400,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               canPublish: true,
               canPurchaseDomain: true,
               isE2S: false,
+              product: 'AiroAppBuilder' as ProductType,
               exp: now + 3600,
               iat: now
             }
@@ -2391,6 +2423,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               canPublish: true,
               canPurchaseDomain: true,
               isE2S: false,
+              product: 'AiroAppBuilder' as ProductType,
               exp: now + 3600,
               iat: now
             }

@@ -4,12 +4,23 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import type { AuthType as TokenAuthType } from '@airo/shared/auth';
+import type { AuthType as TokenAuthType, ProductType } from '@airo/shared/auth';
 
 import { getJWTValidator } from '../../lib/jwt-validator.js';
 import { validateJWTAgentConfig } from '../../lib/jwks-config.js';
 import { auth, AuthType } from '../../services/features.js';
 import { logger } from '../../logging/index.js';
+
+export type { ProductType };
+
+/**
+ * Coerce a raw product claim to a valid ProductType.
+ * Only 'PaaSNodeJS' is preserved; everything else (unknown, missing, undefined)
+ * falls back to 'AiroAppBuilder'.
+ */
+export function coerceProductType(raw: string | undefined | null): ProductType {
+  return raw === 'PaaSNodeJS' ? 'PaaSNodeJS' : 'AiroAppBuilder';
+}
 
 export interface AgentContext {
   siteId: string;          // Custom claim
@@ -19,6 +30,7 @@ export interface AgentContext {
   isE2S: boolean; // deprecated: use authType === 'e2s' instead. Only true for e2s (care), NOT s2s (delegation)
   authType?: TokenAuthType; // Authentication type
   useTestBudget?: boolean; // Bypass grants and use test-accounts budget
+  product: ProductType;    // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
   exp: number;
   iat: number;
 }
@@ -100,6 +112,7 @@ export class JWTAuthMiddleware {
           canPublish: true,
           canPurchaseDomain: true,
           isE2S: false,
+          product: 'AiroAppBuilder',
           exp: now + 3600,
           iat: now
         };
@@ -117,6 +130,7 @@ export class JWTAuthMiddleware {
           canPublish: true,
           canPurchaseDomain: true,
           isE2S: false,
+          product: 'AiroAppBuilder',
           exp: now + 3600,
           iat: now
         };
@@ -177,6 +191,7 @@ export class JWTAuthMiddleware {
           isE2S: claims.isE2S ?? false,
           authType: claims.authType ?? 'basic',
           useTestBudget: claims.useTestBudget ?? false,
+          product: coerceProductType(claims.product),
           exp: claims.exp,
           iat: claims.iat
         };

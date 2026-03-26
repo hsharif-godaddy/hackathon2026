@@ -6,7 +6,7 @@
 import { createRequire } from 'module';
 import { createPublicKey, type JsonWebKey } from 'node:crypto';
 import https from 'node:https';
-import type { AuthType } from '@airo/shared/auth';
+import type { AuthType, ProductType } from '@airo/shared/auth';
 
 import { getJWTAgentConfig, validateJWTAgentConfig } from './jwks-config.js';
 import { auth, getFeatures } from '../services/features.js';
@@ -113,6 +113,7 @@ export interface JWTClaims {
   authType?: AuthType; // Authentication type: basic (normal), e2s (care/employee impersonation), s2s (shopper delegation)
   isE2S?: boolean; // DEPRECATED: Use authType === 'e2s' instead. Only true for e2s (care), NOT s2s (delegation)
   useTestBudget?: boolean; // When true, bypass grants and use test-accounts budget (switchboard: appbuilder-test-budget)
+  product?: ProductType; // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
 }
 
 export interface ValidationResult {

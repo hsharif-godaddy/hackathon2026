@@ -4,36 +4,11 @@
 
 import { SubscriptionPlan, SubscriptionSuspendReason } from '@/types/credits';
 
-/**
- * Product IDs for Airo products
- * Use these constants when filtering API requests
- */
-export const AIRO_PRODUCT_IDS = {
-  /** AI App Builder v1 */
-  AAB_V1: 'aab-v1',
-  /** PaaS Node.js v1 */
-  PAAS_NODEJS_V1: 'paas-nodejs-v1',
-} as const;
-
-/**
- * Owner products (product families) for Airo products
- * Use ownerProduct for filtering to be forward-compatible with future versions
- */
-export const AIRO_OWNER_PRODUCTS = {
-  /** AI App Builder product family */
-  AIRO_APP_BUILDER: 'AiroAppBuilder',
-  /** PaaS Node.js product family */
-  PAAS_NODEJS: 'PaaSNodeJS',
-} as const;
-
-/**
- * Default owner product for this application (AI App Builder)
- * Used to filter API responses to only show aab-v1 apps
- */
-export const DEFAULT_OWNER_PRODUCT = AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER;
-
-export type AiroProductId = typeof AIRO_PRODUCT_IDS[keyof typeof AIRO_PRODUCT_IDS];
-export type AiroOwnerProduct = typeof AIRO_OWNER_PRODUCTS[keyof typeof AIRO_OWNER_PRODUCTS];
+// Product constants (AIRO_PRODUCT_IDS, AIRO_OWNER_PRODUCTS, DEFAULT_OWNER_PRODUCT)
+// and their derived types (AiroProductId, AiroOwnerProduct, ProductType)
+// are defined in @airo/shared/auth and re-exported from this module's index.ts
+export type { AiroOwnerProduct, AiroProductId, ProductType } from '@airo/shared/auth';
+export { AIRO_OWNER_PRODUCTS, AIRO_PRODUCT_IDS, DEFAULT_OWNER_PRODUCT } from '@airo/shared/auth';
 
 /**
  * Subscription response from mgmt-airo

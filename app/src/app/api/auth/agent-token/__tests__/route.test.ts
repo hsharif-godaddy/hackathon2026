@@ -199,7 +199,8 @@ describe('agent-token', function packageTests() {
         canPurchaseDomain: false,
         authType: 'basic',
         isE2S: false,
-        useTestBudget: false
+        useTestBudget: false,
+        product: 'AiroAppBuilder'
       });
     });
 
@@ -344,7 +345,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBe(expiresInSeconds);
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false },
+          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false, product: 'AiroAppBuilder' },
           expiresInSeconds
         );
         expect(mockJWTService.getToken).not.toHaveBeenCalled();
@@ -417,7 +418,8 @@ describe('agent-token', function packageTests() {
           canPurchaseDomain: false,
           authType: 'e2s',
           isE2S: true,
-          useTestBudget: false
+          useTestBudget: false,
+          product: 'AiroAppBuilder'
         });
       });
 
@@ -445,7 +447,8 @@ describe('agent-token', function packageTests() {
           canPurchaseDomain: false,
           authType: 's2s',
           isE2S: false,
-          useTestBudget: false
+          useTestBudget: false,
+          product: 'AiroAppBuilder'
         });
       });
     });

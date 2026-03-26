@@ -56,6 +56,46 @@ export type SupportedAuthType = (typeof SUPPORTED_AUTH_TYPES)[number]
 export type AuthType = 'basic' | 'e2s' | 's2s'
 
 /**
+ * Product IDs for Airo products.
+ * Use these constants when filtering API requests by specific product version.
+ */
+export const AIRO_PRODUCT_IDS = {
+  /** AI App Builder v1 */
+  AAB_V1: 'aab-v1',
+  /** PaaS Node.js v1 */
+  PAAS_NODEJS_V1: 'paas-nodejs-v1',
+} as const
+
+export type AiroProductId = typeof AIRO_PRODUCT_IDS[keyof typeof AIRO_PRODUCT_IDS]
+
+/**
+ * Owner products (product families) for Airo's dual-product architecture.
+ * Use ownerProduct for filtering to be forward-compatible with future versions.
+ *
+ * - AiroAppBuilder: Full-stack app builder (UI → BFF → Agents)
+ * - PaaSNodeJS: Headless PaaS (external UI → V2 API / Agents API)
+ */
+export const AIRO_OWNER_PRODUCTS = {
+  /** AI App Builder product family */
+  AIRO_APP_BUILDER: 'AiroAppBuilder',
+  /** PaaS Node.js product family */
+  PAAS_NODEJS: 'PaaSNodeJS',
+} as const
+
+export type AiroOwnerProduct = typeof AIRO_OWNER_PRODUCTS[keyof typeof AIRO_OWNER_PRODUCTS]
+
+/**
+ * ProductType is the same union as AiroOwnerProduct — used in JWT claims and middleware.
+ */
+export type ProductType = AiroOwnerProduct
+
+/**
+ * Default owner product for the application (AI App Builder).
+ * Used to filter API responses to only show AAB apps.
+ */
+export const DEFAULT_OWNER_PRODUCT = AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER
+
+/**
  * Check if an auth type represents an employee session.
  *
  * Employee auth types allowed for use within app:

@@ -2,6 +2,7 @@ import { Router, Request, Response, IRouter } from 'express';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import { jwtAuthMiddleware } from '../middleware/jwt-auth.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
+import { validateProductAccess } from '../middleware/product-access.js';
 import { appRepository, shareTokenRepository } from '../../database/repositories/index.js';
 import { isValidShareTokenFormat } from '../../utils/share-token-generator.js';
 import { Logger } from '../../logging/index.js';
@@ -30,7 +31,7 @@ function getPreviewBaseUrl(appId: string): string | null {
 
 // CRITICAL: Middleware MUST be applied BEFORE route definitions
 // JWT auth FIRST, then ownership validation
-router.use('/apps/:id/share', jwtAuthMiddleware.authenticate, validateAppOwnership);
+router.use('/apps/:id/share', jwtAuthMiddleware.authenticate, validateProductAccess, validateAppOwnership);
 
 /**
  * POST /apps/:id/share

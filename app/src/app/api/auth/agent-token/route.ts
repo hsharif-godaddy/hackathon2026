@@ -9,6 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import type { ProductType } from '@airo/shared/auth';
 
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, type CustomerUser, withCustomerAuth } from '@/lib/customer-auth';
@@ -24,7 +25,7 @@ import { getSiteValidationFromCache, setSiteValidationCache } from './site-valid
 export interface CreateAgentTokenRequest {
   siteId: string;
   expiresInSeconds?: number;
-  owningProduct?: string;
+  owningProduct?: ProductType;
 }
 
 export const dynamic = 'force-dynamic';
@@ -164,6 +165,18 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       }
     }
 
+    // Validate owningProduct against known values
+    if (body.owningProduct !== undefined) {
+      const validOwningProducts = Object.values(AIRO_OWNER_PRODUCTS) as string[];
+      const trimmed = typeof body.owningProduct === 'string' ? body.owningProduct.trim() : '';
+      if (!trimmed || !validOwningProducts.includes(trimmed)) {
+        return NextResponse.json({
+          error: `Invalid owningProduct. Allowed values: ${validOwningProducts.join(', ')}`
+        }, { status: 400 });
+      }
+      body.owningProduct = trimmed as ProductType;
+    }
+
     const siteAccessStart = Date.now();
     const siteValidationCacheHit = getSiteValidationFromCache(user.customerId, body.siteId, body.owningProduct);
 
@@ -230,6 +243,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 
     const jwtStart = Date.now();
     const jwtService = getJWTService();
+    const product = body.owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER;
     const tokenOptions = {
       siteId: body.siteId,
       canDownload,
@@ -237,7 +251,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       canPurchaseDomain,
       authType: user.authType || 'basic',
       isE2S: user.isE2S ?? false,
-      useTestBudget
+      useTestBudget,
+      product
     };
 
     const result = body.expiresInSeconds
