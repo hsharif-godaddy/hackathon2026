@@ -111,12 +111,12 @@ test.describe('Develop Page', () => {
     console.log('🖼️ Step 4: Testing preview controls...');
 
     // Verify controls exist
-    await expect(page.locator('[data-eid*="preview.refresh"]')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(page.locator('[data-eid*="header.refresh"]')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await expect(page.locator('[data-eid*="preview.device_selector"]')).toBeVisible();
     console.log('  ✓ Refresh and device selector visible');
 
     // Test refresh button
-    await page.locator('[data-eid*="preview.refresh"]').click({ force: true });
+    await page.locator('[data-eid*="header.refresh"]').click({ force: true });
     await expect(page.getByTestId('preview-iframe')).toBeVisible();
     console.log('  ✓ Refresh button works');
 

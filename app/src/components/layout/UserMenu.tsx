@@ -105,6 +105,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
               icon={<UserIcon className="size-2.5" />}
               label={t('builder_user_menu_label')}
               data-eid={generateClickEID('develop.chat_toolbar.user_menu')}
+              data-testid="user-menu-trigger"
               aria-label={t('builder_user_menu_label')}
             />
           ) : (
@@ -115,6 +116,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
               size="sm"
               icon={<UserIcon className="size-2" />}
               data-eid={generateClickEID(`${location}.user_menu.button`)}
+              data-testid="user-menu-trigger"
             />
           )}
         </PopoverTrigger>

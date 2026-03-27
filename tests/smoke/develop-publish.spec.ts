@@ -4,7 +4,7 @@
  * Tests automatic publishing via AI agent:
  * 1. Creates an app with prompt to publish
  * 2. Waits for AI agent to auto-publish
- * 3. Verifies success via Go Live modal or Republish button
+ * 3. Verifies success via publish button state and success alert
  *
  * Strategy:
  * - AI agent handles publishing automatically
@@ -14,7 +14,7 @@ import { test, expect } from '@playwright/test';
 
 import { deleteAllSitesViaAPI } from '../helpers/api';
 import { handleSsoLogin } from '../helpers/auth';
-import { LONG_TIMEOUT, DEFAULT_TIMEOUT, getSpecPrefix } from '../helpers/constants';
+import { LONG_TIMEOUT, DEPLOYMENT_TIMEOUT_MS, getSpecPrefix } from '../helpers/constants';
 import { waitForDevelopPage, waitForChatInput } from '../helpers/ui';
 
 test.describe('Publish Flow', () => {
@@ -64,51 +64,15 @@ test.describe('Publish Flow', () => {
     // ========================================
     console.log('✅ Step 3: Verifying publish success...');
 
+    // Wait for the "Published Successfully!" alert — proves deployment actually completed
+    await expect(page.getByTestId('publish-success-alert')).toBeVisible({ timeout: DEPLOYMENT_TIMEOUT_MS });
+    console.log('  ✓ Published Successfully alert visible');
+
+    // Verify publish button is enabled and interactive after deploy
     const publishButton = page.locator('[data-eid*="header"][data-eid*="publish"]');
-    const goLiveModal = page.locator('[data-testid="go-live-modal-later"]');
-
-    // Wait for either Go Live modal OR Republish button (whichever comes first)
-    const successIndicator = await Promise.race([
-      goLiveModal.waitFor({ state: 'visible', timeout: 60000 }).then(() => 'go-live-modal'),
-      publishButton.filter({ hasText: /Republish/i }).waitFor({ state: 'visible', timeout: 60000 }).then(() => 'republish-button')
-    ]).catch(() => 'timeout');
-
-    if (successIndicator === 'go-live-modal') {
-      console.log('  ✓ Go Live modal appeared (publish successful)');
-
-      // Dismiss any coachmark tour blocking the Go Live modal (press Escape or click X)
-      for (let i = 0; i < 3; i++) {
-        const coachmark = page.locator('.ux-coachmark');
-        if (await coachmark.isVisible({ timeout: 1000 }).catch(() => false)) {
-          await page.keyboard.press('Escape');
-          await page.waitForTimeout(300);
-          console.log(`  ✓ Dismissed coachmark (attempt ${i + 1})`);
-        } else {
-          break;
-        }
-      }
-
-      // Now click "Not Yet" on Go Live modal
-      await goLiveModal.click({ force: true });
-      console.log('  ✓ Go Live modal dismissed');
-
-      // Verify button shows Republish after dismissing modal
-      await expect(publishButton).toContainText(/Republish/i, { timeout: DEFAULT_TIMEOUT });
-      console.log('  ✓ Button shows Republish');
-
-    } else if (successIndicator === 'republish-button') {
-      console.log('  ✓ Publish button shows Republish (publish successful)');
-
-    } else {
-      // Check current button state for debugging
-      const buttonText = await publishButton.textContent().catch(() => 'unknown');
-      console.log(`  ⚠ Timeout waiting for success indicator. Button text: "${buttonText}"`);
-
-      // Still verify button is not in "Publishing" state
-      await expect(publishButton).not.toContainText('Publishing');
-    }
-
     await expect(publishButton).not.toBeDisabled();
+    console.log('  ✓ Publish button enabled');
+
     console.log('🎉 Publish flow test passed!');
   });
 

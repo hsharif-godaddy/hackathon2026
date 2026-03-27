@@ -244,7 +244,7 @@ export default function PublishStatusAlert() {
     const showDomainButton = isAiroSubdomain(fqdn);
 
     return (
-      <div className='px-2 py-1'>
+      <div className='px-2 py-1' data-testid="publish-success-alert">
         <Alert
           emphasis='success'
           onClose={() => currentAppId && dismissPublishSuccess(currentAppId)}
