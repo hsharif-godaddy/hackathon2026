@@ -2,6 +2,8 @@ import React, { Component, ReactNode } from 'react';
 import { injectDevToolsStyles } from './utils/injectDevToolsStyles';
 import { safePostMessage } from './utils/postMessage';
 import type { RuntimeErrorData } from './types';
+import MessageOverlay from './components/MessageOverlay';
+import Button from './components/Button';
 
 interface Props {
   children: ReactNode;
@@ -77,83 +79,20 @@ export default class AiroErrorBoundary extends Component<Props, State> {
   };
 
   render() {
-    const { error } = this.state;
+    const { error, isFixing } = this.state;
     if (error) {
       return (
-        <div
-          data-airo-dev-tools
-          style={{
-            height: '100vh',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: '#ffffff',
-            padding: '2rem 1rem',
-            boxSizing: 'border-box',
-          }}
-        >
-          <div
-            style={{
-              maxWidth: '28rem',
-              width: '100%',
-              textAlign: 'center',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              maxHeight: '100%',
-              overflow: 'hidden',
-            }}
-          >
-            <h1
-              style={{
-                fontSize: '1.5rem',
-                fontWeight: 'bold',
-                color: '#dc2626',
-                marginBottom: '1rem',
-                flexShrink: 0,
-              }}
-            >
-              Something went wrong
-            </h1>
-            <pre
-              style={{
-                color: '#6b7280',
-                marginBottom: '1.5rem',
-                backgroundColor: '#f3f4f6',
-                padding: '1rem',
-                borderRadius: '0.375rem',
-                fontSize: '0.875rem',
-                whiteSpace: 'pre-wrap',
-                textAlign: 'left',
-                maxWidth: '100%',
-                overflowY: 'auto',
-                minHeight: 0,
-                flexShrink: 1,
-                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-              }}
-            >
-              {error.message}
-            </pre>
-            <div style={{ display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
-              <button
-                onClick={this.handleAskAiroToFix}
-                style={{
-                  backgroundColor: '#6b46c1',
-                  color: 'white',
-                  padding: '0.5rem 1rem',
-                  borderRadius: '0.375rem',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                  fontWeight: 500,
-                }}
-              >
-                Ask Airo to Fix Code
-              </button>
-            </div>
-          </div>
-        </div>
+        <MessageOverlay
+          title="Something went wrong"
+          message={error.message}
+          button={
+            <Button
+              text={isFixing ? "Processing..." : "Ask Airo to Fix Code"}
+              onClick={this.handleAskAiroToFix}
+              loading={isFixing}
+            />
+          }
+        />
       );
     }
 

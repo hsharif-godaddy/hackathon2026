@@ -1,7 +1,9 @@
 import React, { useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { injectDevToolsStyles } from './utils/injectDevToolsStyles';
 import { safePostMessage } from './utils/postMessage';
+import MessageOverlay from './components/MessageOverlay';
+import Button from './components/Button';
 
 /**
  * Send message to parent window to build this page
@@ -26,83 +28,37 @@ const sendBuildPageRequest = (path: string) => {
  * Development mode 404 - shows "Build this page" option
  */
 function DevelopmentNotFound({ path }: { path: string }) {
+  const navigate = useNavigate();
+  const [isBuilding, setIsBuilding] = React.useState(false);
+
   useEffect(() => {
     injectDevToolsStyles();
   }, []);
 
+  const handleBuildPage = () => {
+    setIsBuilding(true);
+    sendBuildPageRequest(path);
+  };
+
   return (
-    <div
-      data-airo-dev-tools
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#ffffff',
-        padding: '1rem',
-      }}
-    >
-      <div
-        style={{
-          maxWidth: '56rem',
-          margin: '0 auto',
-          textAlign: 'center',
-        }}
-      >
-        <h1
-          style={{
-            fontSize: '1.5rem',
-            fontWeight: 'bold',
-            color: '#dc2626',
-            marginBottom: '1rem',
-          }}
-        >
-          Page doesn't exist
-        </h1>
-
-        <pre
-          style={{
-            color: '#6b7280',
-            marginBottom: '1.5rem',
-            backgroundColor: '#f3f4f6',
-            padding: '1rem',
-            borderRadius: '0.375rem',
-            fontSize: '0.875rem',
-            whiteSpace: 'pre-wrap',
-            textAlign: 'left',
-            maxWidth: '100%',
-            fontFamily: 'monospace',
-          }}
-        >
-          {`The page "${path}" hasn't been created yet.\n\nYou can ask Airo to build this page for you.`}
-        </pre>
-
-        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => sendBuildPageRequest(path)}
-            style={{
-              backgroundColor: '#6b46c1',
-              color: 'white',
-              padding: '0.5rem 1rem',
-              borderRadius: '0.375rem',
-              border: 'none',
-              cursor: 'pointer',
-              transition: 'background-color 0.2s ease-in-out',
-              fontSize: '0.875rem',
-              fontWeight: '500',
-            }}
-            onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
-              e.currentTarget.style.backgroundColor = '#5a32b0';
-            }}
-            onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
-              e.currentTarget.style.backgroundColor = '#6b46c1';
-            }}
-          >
-            Build this page
-          </button>
-        </div>
-      </div>
-    </div>
+    <MessageOverlay
+      title="Page doesn't exist"
+      message={`The page "${path}" hasn't been created yet.`}
+      button={
+        <>
+          <Button
+            text="Go Back"
+            onClick={() => navigate(-1)}
+            variant="secondary"
+          />
+          <Button
+            text={isBuilding ? "Processing..." : "Build this page"}
+            onClick={handleBuildPage}
+            loading={isBuilding}
+          />
+        </>
+      }
+    />
   );
 }
 
