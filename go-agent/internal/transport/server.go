@@ -64,20 +64,63 @@ func (s *Server) Handler() http.Handler {
 	})
 }
 
+// connState holds per-connection state including the write serializer and
+// the active stream goroutine's cancel function.
+type connState struct {
+	conn *websocket.Conn
+	mu   sync.Mutex // serializes writes
+
+	streamMu     sync.Mutex         // guards streamCancel
+	streamCancel context.CancelFunc // cancels the active streamRunEvents goroutine
+}
+
+func (cs *connState) writeJSON(ctx context.Context, msg ServerMessage) error {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	return cs.conn.Write(ctx, websocket.MessageText, data)
+}
+
+// startStream cancels any active stream goroutine and starts a new one.
+func (cs *connState) startStream(
+	ctx context.Context,
+	s *Server,
+	runID string,
+	fromSeq int64,
+) {
+	cs.streamMu.Lock()
+	if cs.streamCancel != nil {
+		cs.streamCancel()
+	}
+	streamCtx, cancel := context.WithCancel(ctx)
+	cs.streamCancel = cancel
+	cs.streamMu.Unlock()
+
+	go s.streamRunEvents(streamCtx, cs, runID, fromSeq)
+}
+
 func (s *Server) handleConnection(
 	ctx context.Context,
 	conn *websocket.Conn,
 	connID string,
 	appID string,
 ) {
-	w := &connWriter{conn: conn}
+	cs := &connState{conn: conn}
 	defer func() {
+		cs.streamMu.Lock()
+		if cs.streamCancel != nil {
+			cs.streamCancel()
+		}
+		cs.streamMu.Unlock()
 		s.sessionMgr.HandleDisconnect(connID)
 		_ = conn.Close(websocket.StatusNormalClosure, "")
 	}()
 
 	// Send server config on connect.
-	if err := w.writeJSON(ctx, ServerMessage{
+	if err := cs.writeJSON(ctx, ServerMessage{
 		Type: MsgTypeServerConfig,
 		Data: map[string]any{
 			"streamRecoveryWindow": 120000,
@@ -94,39 +137,39 @@ func (s *Server) handleConnection(
 
 		var msg ClientMessage
 		if err := json.Unmarshal(data, &msg); err != nil {
-			_ = w.writeJSON(ctx, ServerMessage{
+			_ = cs.writeJSON(ctx, ServerMessage{
 				Type:    MsgTypeError,
 				Content: "invalid JSON",
 			})
 			continue
 		}
 
-		s.dispatch(ctx, w, connID, appID, msg)
+		s.dispatch(ctx, cs, connID, appID, msg)
 	}
 }
 
 func (s *Server) dispatch(
 	ctx context.Context,
-	w *connWriter,
+	cs *connState,
 	connID string,
 	appID string,
 	msg ClientMessage,
 ) {
 	switch msg.Type {
 	case MsgTypePing:
-		_ = w.writeJSON(ctx, ServerMessage{Type: MsgTypePong})
+		_ = cs.writeJSON(ctx, ServerMessage{Type: MsgTypePong})
 
 	case MsgTypeConnect:
-		s.handleConnect(ctx, w, connID, appID, msg)
+		s.handleConnect(ctx, cs, connID, appID, msg)
 
 	case MsgTypeChat:
-		s.handleChat(ctx, w, connID, msg)
+		s.handleChat(ctx, cs, connID, msg)
 
 	case MsgTypeCancel:
-		s.handleCancel(ctx, w, connID)
+		s.handleCancel(ctx, cs, connID)
 
 	default:
-		_ = w.writeJSON(ctx, ServerMessage{
+		_ = cs.writeJSON(ctx, ServerMessage{
 			Type:    MsgTypeError,
 			Content: "unknown message type: " + msg.Type,
 		})
@@ -135,7 +178,7 @@ func (s *Server) dispatch(
 
 func (s *Server) handleConnect(
 	ctx context.Context,
-	w *connWriter,
+	cs *connState,
 	connID string,
 	appID string,
 	msg ClientMessage,
@@ -143,7 +186,7 @@ func (s *Server) handleConnect(
 	var data session.ConnectData
 	if msg.Data != nil {
 		if err := json.Unmarshal(msg.Data, &data); err != nil {
-			_ = w.writeJSON(ctx, ServerMessage{
+			_ = cs.writeJSON(ctx, ServerMessage{
 				Type:    MsgTypeError,
 				Content: "invalid connect data",
 			})
@@ -154,32 +197,32 @@ func (s *Server) handleConnect(
 
 	resp, err := s.sessionMgr.HandleConnect(connID, data)
 	if err != nil {
-		_ = w.writeJSON(ctx, ServerMessage{
+		_ = cs.writeJSON(ctx, ServerMessage{
 			Type:    MsgTypeError,
 			Content: err.Error(),
 		})
 		return
 	}
 
-	_ = w.writeJSON(ctx, ServerMessage{
+	_ = cs.writeJSON(ctx, ServerMessage{
 		Type: MsgTypeConnected,
 		Data: resp,
 	})
 
 	// If there's an active run with replay, subscribe and stream events.
 	if resp.RunID != "" && resp.ReplayFrom != nil {
-		go s.streamRunEvents(ctx, w, resp.RunID, *resp.ReplayFrom)
+		cs.startStream(ctx, s, resp.RunID, *resp.ReplayFrom)
 	}
 }
 
 func (s *Server) handleChat(
 	ctx context.Context,
-	w *connWriter,
+	cs *connState,
 	connID string,
 	msg ClientMessage,
 ) {
 	if msg.Data == nil {
-		_ = w.writeJSON(ctx, ServerMessage{
+		_ = cs.writeJSON(ctx, ServerMessage{
 			Type:    MsgTypeError,
 			Content: "missing chat data",
 		})
@@ -188,7 +231,7 @@ func (s *Server) handleChat(
 
 	var data ChatData
 	if err := json.Unmarshal(msg.Data, &data); err != nil {
-		_ = w.writeJSON(ctx, ServerMessage{
+		_ = cs.writeJSON(ctx, ServerMessage{
 			Type:    MsgTypeError,
 			Content: "invalid chat data",
 		})
@@ -197,24 +240,24 @@ func (s *Server) handleChat(
 
 	runID, err := s.sessionMgr.HandleMessage(connID, data.Message)
 	if err != nil {
-		_ = w.writeJSON(ctx, ServerMessage{
+		_ = cs.writeJSON(ctx, ServerMessage{
 			Type:    MsgTypeError,
 			Content: err.Error(),
 		})
 		return
 	}
 
-	// Stream events from the new run.
-	go s.streamRunEvents(ctx, w, runID, 0)
+	// Cancel any previous stream and start streaming the new run.
+	cs.startStream(ctx, s, runID, 0)
 }
 
 func (s *Server) handleCancel(
 	ctx context.Context,
-	w *connWriter,
+	cs *connState,
 	connID string,
 ) {
 	if err := s.sessionMgr.HandleCancel(connID); err != nil {
-		_ = w.writeJSON(ctx, ServerMessage{
+		_ = cs.writeJSON(ctx, ServerMessage{
 			Type:    MsgTypeError,
 			Content: err.Error(),
 		})
@@ -227,7 +270,7 @@ func (s *Server) handleCancel(
 // subscription channel is closed.
 func (s *Server) streamRunEvents(
 	ctx context.Context,
-	w *connWriter,
+	cs *connState,
 	runID string,
 	fromSeq int64,
 ) {
@@ -246,7 +289,7 @@ func (s *Server) streamRunEvents(
 			if msg == nil {
 				continue
 			}
-			if err := w.writeJSON(ctx, *msg); err != nil {
+			if err := cs.writeJSON(ctx, *msg); err != nil {
 				return
 			}
 			// Stop streaming after terminal events.
@@ -320,21 +363,4 @@ func translateEvent(ev run.Event) *ServerMessage {
 	default:
 		return nil
 	}
-}
-
-// connWriter serializes writes to a websocket.Conn which is not safe for
-// concurrent use.
-type connWriter struct {
-	conn *websocket.Conn
-	mu   sync.Mutex
-}
-
-func (w *connWriter) writeJSON(ctx context.Context, msg ServerMessage) error {
-	data, err := json.Marshal(msg)
-	if err != nil {
-		return err
-	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return w.conn.Write(ctx, websocket.MessageText, data)
 }

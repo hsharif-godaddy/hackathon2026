@@ -60,7 +60,13 @@ var _ run.LLMClient = (*fakeLLM)(nil)
 
 // --- Test Helpers ---
 
-func setupTestServer(t *testing.T, llm run.LLMClient, auth AuthFunc) *httptest.Server {
+type testEnv struct {
+	ts    *httptest.Server
+	mgr   *session.Manager
+	store *run.Store
+}
+
+func setupTestServer(t *testing.T, llm run.LLMClient, auth AuthFunc) *testEnv {
 	t.Helper()
 
 	db, err := store.Open(t.TempDir() + "/test.db")
@@ -100,17 +106,17 @@ func setupTestServer(t *testing.T, llm run.LLMClient, auth AuthFunc) *httptest.S
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 
-	return ts
+	return &testEnv{ts: ts, mgr: mgr, store: runStore}
 }
 
 func allowAll(_ *http.Request) (string, error) {
 	return "app1", nil
 }
 
-func dial(t *testing.T, ts *httptest.Server) *websocket.Conn {
+func dial(t *testing.T, env *testEnv) *websocket.Conn {
 	t.Helper()
 	ctx := context.Background()
-	conn, _, err := websocket.Dial(ctx, "ws"+ts.URL[4:], nil)
+	conn, _, err := websocket.Dial(ctx, "ws"+env.ts.URL[4:], nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { conn.Close(websocket.StatusNormalClosure, "") })
 	return conn
@@ -152,8 +158,8 @@ func readMsgOfType(t *testing.T, conn *websocket.Conn, msgType string) ServerMes
 // --- Tests ---
 
 func TestWebSocket_ServerConfig(t *testing.T) {
-	ts := setupTestServer(t, &fakeLLM{response: "hi"}, allowAll)
-	conn := dial(t, ts)
+	env := setupTestServer(t, &fakeLLM{response: "hi"}, allowAll)
+	conn := dial(t, env)
 
 	// First message should be server_config.
 	msg := readMsg(t, conn)
@@ -161,8 +167,8 @@ func TestWebSocket_ServerConfig(t *testing.T) {
 }
 
 func TestWebSocket_ConnectAndConnected(t *testing.T) {
-	ts := setupTestServer(t, &fakeLLM{response: "hi"}, allowAll)
-	conn := dial(t, ts)
+	env := setupTestServer(t, &fakeLLM{response: "hi"}, allowAll)
+	conn := dial(t, env)
 
 	// Skip server_config.
 	_ = readMsg(t, conn)
@@ -176,8 +182,8 @@ func TestWebSocket_ConnectAndConnected(t *testing.T) {
 }
 
 func TestWebSocket_PingPong(t *testing.T) {
-	ts := setupTestServer(t, &fakeLLM{response: "hi"}, allowAll)
-	conn := dial(t, ts)
+	env := setupTestServer(t, &fakeLLM{response: "hi"}, allowAll)
+	conn := dial(t, env)
 
 	_ = readMsg(t, conn) // server_config
 
@@ -188,8 +194,8 @@ func TestWebSocket_PingPong(t *testing.T) {
 }
 
 func TestWebSocket_ChatReceivesTokensAndComplete(t *testing.T) {
-	ts := setupTestServer(t, &fakeLLM{response: "Hello!"}, allowAll)
-	conn := dial(t, ts)
+	env := setupTestServer(t, &fakeLLM{response: "Hello!"}, allowAll)
+	conn := dial(t, env)
 
 	_ = readMsg(t, conn) // server_config
 
@@ -213,11 +219,11 @@ func TestWebSocket_ChatReceivesTokensAndComplete(t *testing.T) {
 }
 
 func TestWebSocket_Cancel(t *testing.T) {
-	ts := setupTestServer(t, &fakeLLM{
+	env := setupTestServer(t, &fakeLLM{
 		response: "done",
 		delay:    5 * time.Second,
 	}, allowAll)
-	conn := dial(t, ts)
+	conn := dial(t, env)
 
 	_ = readMsg(t, conn) // server_config
 
@@ -242,8 +248,8 @@ func TestWebSocket_Cancel(t *testing.T) {
 }
 
 func TestWebSocket_InvalidMessageType(t *testing.T) {
-	ts := setupTestServer(t, &fakeLLM{response: "hi"}, allowAll)
-	conn := dial(t, ts)
+	env := setupTestServer(t, &fakeLLM{response: "hi"}, allowAll)
+	conn := dial(t, env)
 
 	_ = readMsg(t, conn) // server_config
 
@@ -259,11 +265,11 @@ func TestWebSocket_AuthRejection(t *testing.T) {
 		return "", http.ErrNoCookie // any error rejects
 	}
 
-	ts := setupTestServer(t, &fakeLLM{response: "hi"}, rejectAll)
+	env := setupTestServer(t, &fakeLLM{response: "hi"}, rejectAll)
 
 	// Attempt to connect — should get 401.
 	ctx := context.Background()
-	_, resp, err := websocket.Dial(ctx, "ws"+ts.URL[4:], nil)
+	_, resp, err := websocket.Dial(ctx, "ws"+env.ts.URL[4:], nil)
 	require.Error(t, err)
 	if resp != nil {
 		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
@@ -304,4 +310,62 @@ func TestTranslateEvent_Failed(t *testing.T) {
 	require.NotNil(t, msg)
 	assert.Equal(t, MsgTypeError, msg.Type)
 	assert.Equal(t, "boom", msg.Content)
+}
+
+func TestWebSocket_ReconnectReplay(t *testing.T) {
+	env := setupTestServer(t, &fakeLLM{
+		response: "working",
+		delay:    2 * time.Second,
+	}, allowAll)
+
+	// First connection: use session manager directly to start a run.
+	conn1 := dial(t, env)
+	_ = readMsg(t, conn1) // server_config
+
+	_, err := env.mgr.HandleConnect("direct-conn", session.ConnectData{AppID: "app1"})
+	require.NoError(t, err)
+	runID, err := env.mgr.HandleMessage("direct-conn", "Do work")
+	require.NoError(t, err)
+
+	// Wait for the run to produce events in the store.
+	deadline := time.Now().Add(2 * time.Second)
+	var convID string
+	for {
+		r, getErr := env.store.Get(runID)
+		require.NoError(t, getErr)
+		if r.Status == run.StatusRunning {
+			convID = r.ConversationID
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timeout waiting for run to start")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	require.NotEmpty(t, convID)
+
+	// Reconnect via WebSocket with conversationID — triggers replay path.
+	connectData, _ := json.Marshal(session.ConnectData{
+		ConversationID: convID,
+	})
+	sendMsg(t, conn1, ClientMessage{
+		Type: MsgTypeConnect,
+		Data: connectData,
+	})
+
+	connectedMsg := readMsg(t, conn1)
+	assert.Equal(t, MsgTypeConnected, connectedMsg.Type)
+
+	// The connected response should have a RunID and ReplayFrom.
+	dataMap, ok := connectedMsg.Data.(map[string]any)
+	require.True(t, ok)
+	assert.NotEmpty(t, dataMap["runId"])
+	assert.NotNil(t, dataMap["replayFrom"])
+
+	// Should receive replayed chunk events from the active run.
+	msg := readMsgOfType(t, conn1, MsgTypeChunk)
+	assert.NotEmpty(t, msg.Content)
+
+	// Clean up.
+	_ = env.mgr.HandleCancel("direct-conn")
 }
