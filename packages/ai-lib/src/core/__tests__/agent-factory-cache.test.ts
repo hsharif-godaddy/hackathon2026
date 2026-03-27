@@ -610,7 +610,7 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
     expect(imageBlock.image).toContain(mockFile.base64Content)
   })
 
-  it('should apply cache control to first user message on initial request', async () => {
+  it('should NOT cache first user message on initial request (first turn)', async () => {
     mockAgent.stream.mockResolvedValue({
       textStream: (async function* () {
         yield 'Hello!'
@@ -632,13 +632,13 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
     const userMessages = prepared.messages.filter((msg: any) => msg.role === 'user')
     expect(userMessages.length).toBe(1)
 
-    // First user message should have cache control (so it's cached on request #1)
+    // First user message should NOT have cache control on first turn.
+    // This prevents after_history content from being included in the cached prefix.
     const firstUserMessage = userMessages[0]
-    expect(firstUserMessage.providerOptions?.anthropic?.cacheControl).toBeDefined()
-    expect(firstUserMessage.providerOptions.anthropic.cacheControl.type).toBe('ephemeral')
+    expect(firstUserMessage.providerOptions?.anthropic?.cacheControl).toBeUndefined()
   })
 
-  it('should apply cache control to first user message even when context exists', async () => {
+  it('should NOT cache first user message on first turn (prevents after_history invalidation)', async () => {
     mockAgent.stream.mockResolvedValue({
       textStream: (async function* () {
         yield 'Response'
@@ -670,9 +670,9 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
 
     expect(firstUserMessage).toBeDefined()
 
-    // First user message should have cache control even though context exists
-    expect(firstUserMessage.providerOptions?.anthropic?.cacheControl).toBeDefined()
-    expect(firstUserMessage.providerOptions.anthropic.cacheControl.type).toBe('ephemeral')
+    // First user message should NOT have cache control on first turn.
+    // This prevents after_history content from being included in the cached prefix.
+    expect(firstUserMessage.providerOptions?.anthropic?.cacheControl).toBeUndefined()
   })
 
   it('should cache last history message when history ends with assistant', async () => {
@@ -753,7 +753,7 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
     expect(userMessage.providerOptions?.anthropic?.cacheControl).toBeUndefined()
   })
 
-  it('should cache first user message with context present (first turn)', async () => {
+  it('should NOT cache first user message on first turn (stable prefix only)', async () => {
     mockAgent.stream.mockResolvedValue({
       textStream: (async function* () {
         yield 'test response'
@@ -785,12 +785,11 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
     expect(systemMessage.role).toBe('system')
     expect(systemMessage.providerOptions?.anthropic?.cacheControl).toBeDefined()
 
-    // First user message should ALSO be cached (first-turn behavior)
+    // First user message should NOT be cached (to prevent after_history cache invalidation)
     const userMessage = prepared.messages[1]
     expect(userMessage.role).toBe('user')
     expect(userMessage.content).toBe('First user message')
-    expect(userMessage.providerOptions?.anthropic?.cacheControl).toBeDefined()
-    expect(userMessage.providerOptions.anthropic.cacheControl.type).toBe('ephemeral')
+    expect(userMessage.providerOptions?.anthropic?.cacheControl).toBeUndefined()
   })
 
   it('should preserve existing cache metadata on conversation messages', async () => {

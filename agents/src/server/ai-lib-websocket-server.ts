@@ -428,7 +428,7 @@ function buildDynamicDataMessage(context: AgentsAppContext): {
   return {
     role: 'user',
     content: `## Dynamic Context\n\n${sections.join('\n')}`,
-    insertionOrder: 'before_history'
+    insertionOrder: 'after_history'
   }
 }
 
@@ -804,16 +804,25 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             ...(msg.cachePoint && { cachePoint: msg.cachePoint })
           }))
 
-          // Add dynamic data message at the end if present
-          if (dynamicDataMessage) {
+          // Add after_history messages in architecture-specified order (see docs/prompt-caching-architecture.md):
+          // Segment 6: KnowB Results (query-dependent, changes every request)
+          // Segment 7: Todo Context (variable)
+          // Segment 8: Dynamic Data (request-specific)
+          //
+          // All after_history content is outside the cache breakpoint (which lands on the
+          // last conversation history message), so ordering here doesn't affect caching.
+          // This order matches the architecture spec segments 6/7/8.
+
+          // Add KnowB documentation context if present (Segment 6)
+          if (knowBContextMessage) {
             allMessages.push({
-              role: dynamicDataMessage.role,
-              content: dynamicDataMessage.content,
-              insertionOrder: dynamicDataMessage.insertionOrder
+              role: knowBContextMessage.role as 'user' | 'system',
+              content: knowBContextMessage.content,
+              insertionOrder: knowBContextMessage.insertionOrder
             })
           }
 
-          // Add todo context message if present
+          // Add todo context message if present (Segment 7)
           if (todoContextMessage) {
             allMessages.push({
               role: todoContextMessage.role as 'user' | 'system',
@@ -822,12 +831,12 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             })
           }
 
-          // Add KnowB documentation context if present
-          if (knowBContextMessage) {
+          // Add dynamic data message if present (Segment 8)
+          if (dynamicDataMessage) {
             allMessages.push({
-              role: knowBContextMessage.role as 'user' | 'system',
-              content: knowBContextMessage.content,
-              insertionOrder: knowBContextMessage.insertionOrder
+              role: dynamicDataMessage.role,
+              content: dynamicDataMessage.content,
+              insertionOrder: dynamicDataMessage.insertionOrder
             })
           }
 

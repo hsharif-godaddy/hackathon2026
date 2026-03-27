@@ -170,15 +170,79 @@ describe('defaultConvertToLlm', () => {
       'visual context',
       'current',
     ])
-    // Subsequent turn (has assistant message): cache breakpoints should land on
-    // the last history/context message (visual context), NOT on system messages.
+    // Subsequent turn (has assistant message): cache breakpoint should land on
+    // the last STABLE message (conversation history 'reply'), NOT on after_history
+    // content like 'visual context' which is dynamic and changes every request.
+    // This prevents cache invalidation when after_history content changes.
     const cachedIndices = result
       .map((m, i) => ((m as any).providerOptions?.anthropic?.cacheControl ? i : -1))
       .filter((i) => i >= 0)
-    // Last message before user message is 'visual context' at index 3
-    expect(cachedIndices).toContain(3)
+    // Last stable message is 'reply' at index 2 (before after_history)
+    expect(cachedIndices).toContain(2)
+    // after_history message 'visual context' should NOT be cached
+    expect((result[3] as any).providerOptions?.anthropic?.cacheControl).toBeUndefined()
     // System prompt should NOT be cached on subsequent turns
     expect((result[0] as any).providerOptions?.anthropic?.cacheControl).toBeUndefined()
+  })
+
+  it('first turn with after_history context caches stable prefix only, not user message', () => {
+    const mockModel = {
+      provider: 'anthropic',
+      modelId: 'claude-3-5-sonnet-20241022',
+    } as any
+
+    const result = defaultConvertToLlm({
+      contextMessages: [
+        { role: 'system', content: 'system prompt' },
+        { role: 'user', content: 'knowb results', insertionOrder: 'after_history' },
+      ],
+      conversationMessages: [] as ModelMessage[],
+      userMessage: { role: 'user', content: 'hello' } as ModelMessage,
+      model: mockModel,
+      enablePromptCaching: true,
+    })
+
+    // Order should be: system prompt → knowb results → hello
+    expect(result.map((m) => m.content)).toEqual([
+      'system prompt',
+      'knowb results',
+      'hello',
+    ])
+    // First turn: only system prompt should be cached (stable prefix)
+    expect((result[0] as any).providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' })
+    // after_history 'knowb results' should NOT be cached (outside cached prefix)
+    expect((result[1] as any).providerOptions?.anthropic?.cacheControl).toBeUndefined()
+    // User message should NOT be cached on first turn (comes after after_history)
+    expect((result[2] as any).providerOptions?.anthropic?.cacheControl).toBeUndefined()
+  })
+
+  it('orders multiple after_history messages correctly (knowb → todo → dynamic)', () => {
+    const result = defaultConvertToLlm({
+      contextMessages: [
+        { role: 'system', content: 'system prompt' },
+        { role: 'user', content: 'knowb results', insertionOrder: 'after_history' },
+        { role: 'user', content: 'todo list', insertionOrder: 'after_history' },
+        { role: 'user', content: 'dynamic data', insertionOrder: 'after_history' },
+      ],
+      conversationMessages: [
+        { role: 'user', content: 'prev' },
+        { role: 'assistant', content: 'reply' },
+      ] as ModelMessage[],
+      userMessage: { role: 'user', content: 'current' } as ModelMessage,
+      model: {} as any,
+      enablePromptCaching: false,
+    })
+
+    // Order should be: system → history → after_history (in order) → current user
+    expect(result.map((m) => m.content)).toEqual([
+      'system prompt',
+      'prev',
+      'reply',
+      'knowb results',
+      'todo list',
+      'dynamic data',
+      'current',
+    ])
   })
 
   it('omits user message when userMessage is undefined', () => {

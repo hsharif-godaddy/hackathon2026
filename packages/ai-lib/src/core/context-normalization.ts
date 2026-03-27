@@ -150,20 +150,22 @@ export function applyPromptCaching(
   let resultUserMessage: ModelMessage | undefined = currentUserMessage
 
   if (currentUserMessage && isFirstTurn(conversationMessages)) {
-    // First turn (no prior conversation): cache context + current user message.
+    // First turn (no prior conversation): cache stable prefix ONLY.
+    // Do NOT cache the user message — after_history content will be inserted
+    // between the cached prefix and the user message, so caching the user message
+    // would include after_history content in the cached prefix, causing cache
+    // invalidation on every request when after_history changes.
     // Only reserve a system prompt breakpoint slot when a system prompt was
     // actually set (addCacheControlToSystemPrompt places the breakpoint on
     // ToolLoopAgent instructions, not in the messages array).
     const effectiveCachingStrategy = { ...cachingStrategy, cacheSystemPrompts: hasSystemPrompt }
-    const messagesToCache = [...allMessages, currentUserMessage]
-    const cachedMessages = addCacheControlToMessages(
-      messagesToCache,
+    resultMessages = addCacheControlToMessages(
+      allMessages,
       model,
       effectiveCachingStrategy
     )
-    resultMessages = cachedMessages.slice(0, -1)
-    resultUserMessage =
-      cachedMessages[cachedMessages.length - 1] || currentUserMessage
+    // User message returned unchanged (no cache breakpoint)
+    resultUserMessage = currentUserMessage
   } else {
     // Subsequent turns or empty-prompt turns: cache context/history messages.
     // Disable system message caching here — the system prompt is already cached
@@ -181,6 +183,11 @@ export function applyPromptCaching(
 /**
  * Default convertToLlm implementation.
  * Composes normalization + caching into the pipeline's Stage 2.
+ *
+ * CRITICAL: Cache breakpoint must be placed on the last conversation history message,
+ * NOT on after_history content (knowb, todo, dynamic data). after_history content is
+ * query-dependent and changes every request - including it in the cached prefix would
+ * cause constant cache invalidation and excessive cache writes.
  */
 export function defaultConvertToLlm(input: ConvertToLlmInput): ModelMessage[] {
   // Split context messages by insertionOrder
@@ -197,26 +204,42 @@ export function defaultConvertToLlm(input: ConvertToLlmInput): ModelMessage[] {
     input.conversationMessages
   )
 
-  // Assembly order: before_history → conversation → after_history → user message
-  let allMessages: ModelMessage[] = [
+  // Build stable prefix (before_history + conversation) for caching
+  // This prefix is mostly stable across requests and should have the cache breakpoint
+  let stablePrefixMessages: ModelMessage[] = [
     ...beforeNormalized,
     ...conversationNormalized,
-    ...afterNormalized,
   ]
   let userMessage: ModelMessage | undefined = input.userMessage
 
+  // Apply cache breakpoint to stable prefix ONLY (not including after_history)
+  // This ensures the breakpoint lands on the last history message, preserving cache
+  // even when after_history content (knowb, todo, dynamic data) changes.
+  //
+  // Anthropic cache breakpoint limit (4 max) is enforced in addCacheControlToMessages():
+  // - Counts existing breakpoints in stablePrefixMessages (e.g., memory summary from history loader)
+  // - Reserves 1 for system prompt (if hasSystemPrompt = true)
+  // - Adds 1 for last history message
+  // - Total breakpoints: 1 (memory) + 1 (system) + 1 (history) = 3 ≤ 4 ✓
   if (input.enablePromptCaching) {
     const cached = applyPromptCaching(
-      allMessages,
+      stablePrefixMessages,
       userMessage,
       input.model,
       conversationNormalized,
       input.enablePromptCaching,
       input.hasSystemPrompt ?? true
     )
-    allMessages = cached.messages
+    stablePrefixMessages = cached.messages
     userMessage = cached.userMessage
   }
+
+  // Assemble final message array: cached prefix + dynamic after_history content
+  // after_history content comes AFTER the cache breakpoint and doesn't invalidate cache
+  const allMessages: ModelMessage[] = [
+    ...stablePrefixMessages,
+    ...afterNormalized,
+  ]
 
   if (userMessage) {
     allMessages.push(userMessage)

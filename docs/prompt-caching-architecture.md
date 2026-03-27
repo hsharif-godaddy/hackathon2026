@@ -100,9 +100,12 @@ Segment                    Stability        Cache Point    Reason
 
 **KnowB and beyond (Segments 6-9):**
 
-- Intentionally placed AFTER cache boundary
-- These change every request, so caching would be ineffective
-- Keeping them after history preserves the cached prefix
+- **CRITICAL:** These MUST be placed AFTER the cache boundary (last history message)
+- KnowB is query-dependent and changes every request
+- If KnowB is included in the cached prefix, cache is invalidated on every request
+- This causes excessive cache writes (3000-9000 tokens per request instead of ~250)
+- Placing KnowB FIRST in after_history ensures it's immediately after the breakpoint
+- Even if KnowB changes, the stable prefix (system, template, memory, context, history) remains cached
 
 ## Anthropic API Constraints
 
@@ -158,13 +161,15 @@ SAFE (current approach):
 
 ## Implementation Files
 
-| Component        | File                                                             | Responsibility                |
-| ---------------- | ---------------------------------------------------------------- | ----------------------------- |
-| Context Manager  | `agents/src/agents/ai-lib-agents/context-manager.ts`             | Builds segments 2-4           |
-| History Loader   | `agents/src/services/ConversationHistoryLoader.ts`               | Loads segment 3, 5            |
-| WebSocket Server | `agents/src/server/ai-lib-websocket-server.ts`                   | Assembles all segments        |
-| Message Assembly | `packages/ai-lib/src/websocket/experimental-websocket-server.ts` | Final ordering + cache points |
-| Prompt Caching   | `packages/ai-lib/src/utils/prompt-caching.ts`                    | Auto cache point logic        |
+| Component        | File                                                 | Responsibility                         |
+| ---------------- | ---------------------------------------------------- | -------------------------------------- |
+| Context Manager  | `agents/src/agents/ai-lib-agents/context-manager.ts` | Builds segments 2-4                    |
+| History Loader   | `agents/src/services/ConversationHistoryLoader.ts`   | Loads segment 3, 5                     |
+| WebSocket Server | `agents/src/server/ai-lib-websocket-server.ts`       | Assembles segments 6-8 (after_history) |
+| Message Assembly | `packages/ai-lib/src/core/context-normalization.ts`  | Applies cache to stable prefix only    |
+| Prompt Caching   | `packages/ai-lib/src/utils/prompt-caching.ts`        | Cache breakpoint logic                 |
+
+**Critical Implementation Detail:** The cache breakpoint is applied in `context-normalization.ts:defaultConvertToLlm()` to ONLY the stable prefix (`before_history + conversation`), NOT the full message array. The `after_history` content (knowb, todo, dynamic data) is appended AFTER caching is applied, ensuring these dynamic messages don't invalidate the cache.
 
 ## Cache Behavior Examples
 
