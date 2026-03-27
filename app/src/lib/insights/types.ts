@@ -29,6 +29,19 @@ export interface InsightCountResponse {
         }
       }
     }
+    insightCountByValueDailyAnyWildcard?: {
+      brand?: {
+        namespace?: {
+          insightName?: {
+            count?: number
+            dailyBreakdown?: Array<{
+              date: string
+              count: number
+            }>
+          }
+        }
+      }
+    }
     uniqueCountByValue?: {
       brand?: {
         namespace?: {
@@ -48,6 +61,15 @@ export interface InsightCountResponse {
 export interface DailyPageView {
   date: string
   pageViews: number
+  cumulativeCount: number
+}
+
+/**
+ * Daily click count data
+ */
+export interface DailyClickCount {
+  date: string
+  totalClicks: number
   cumulativeCount: number
 }
 
@@ -83,6 +105,7 @@ export interface UseInsightsAnalyticsOptions {
  */
 export interface AnalyticsMetrics {
   pageViews: number
+  totalClicks: number
   visitors: number
   viewsPerVisit: number
 }

@@ -17,13 +17,14 @@ import type { InsightCountResponse } from './types'
  *
  * @param query - GraphQL query string
  * @param operationName - Name of the operation for logging
- * @param authToken - Authentication token (unused, kept for compatibility)
+ * @param appId - App/site ID for ownership validation
  * @returns Promise resolving to GraphQL response
  * @throws Error if all retries are exhausted
  */
 export async function executeGraphQLQuery(
   query: string,
-  operationName: string
+  operationName: string,
+  appId?: string,
 ): Promise<InsightCountResponse> {
   let lastError: Error | null = null
 
@@ -40,7 +41,7 @@ export async function executeGraphQLQuery(
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query, appId }),
         signal: abortController.signal
       })
 

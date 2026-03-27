@@ -31,13 +31,14 @@ export function MetricCard({
     <Tooltip>
       <TooltipTrigger asChild>
         <div
-          className={clsx("group flex flex-col gap-1 rounded-md border p-2 bg-intents-ux-box-backgroundColor", {
+          className={clsx("group relative flex flex-col justify-between rounded-lg border p-4 pt-5 bg-intents-ux-box-backgroundColor shadow-sm overflow-hidden transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px min-h-[88px]", {
             "cursor-pointer": onClick,
           })}
           onClick={onClick}
         >
-          <text.p as="paragraph" className="!mb-0">{label}</text.p>
-          <text.p as="paragraph" size={2} className="!font-semibold !mb-0">{value}</text.p>
+          <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: 'linear-gradient(90deg, var(--color-ai), var(--color-ai-muted))' }} />
+          <text.p as="paragraph" className="!mb-0 !text-xs !text-muted-foreground !uppercase !tracking-wider">{label}</text.p>
+          <text.span className="!mt-auto !text-[28px] !font-extrabold !leading-none !tracking-tight !text-ai">{value}</text.span>
         </div>
       </TooltipTrigger>
       {description && (

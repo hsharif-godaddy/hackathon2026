@@ -1,0 +1,93 @@
+import { useId } from 'react'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
+} from 'recharts'
+import text from '@ux/text'
+
+import { useTranslations } from '@/hooks/useTranslations'
+import { ChartTooltip, formatChartValue } from './ChartTooltip'
+
+interface ChartDataPoint {
+  date: string
+  value: number
+}
+
+interface AnalyticsBarChartProps {
+  data: ChartDataPoint[]
+  label?: string
+}
+
+const COLORS = ['var(--color-ai)', 'var(--color-ai-light)', 'var(--color-chart-blue)', 'var(--color-chart-green)', 'var(--color-chart-amber)', 'var(--color-chart-pink)', 'var(--color-chart-cyan)', 'var(--color-chart-violet)']
+
+/**
+ * Bar chart component for displaying analytics data
+ *
+ * Renders a vertical bar chart with colored bars.
+ * Uses Recharts library for maintainable and feature-rich charting.
+ *
+ * @param data - Array of data points with date and value
+ * @param label - Chart label
+ */
+export function AnalyticsBarChart({ data, label = 'Value' }: AnalyticsBarChartProps) {
+  const chartId = useId().replace(/:/g, '')
+  const t = useTranslations()
+
+  if (!data || data.length === 0) {
+    return (
+      <text.p emphasis="passive" className="!text-center !py-8">{t('builder_analytics_no_data')}</text.p>
+    )
+  }
+
+  return (
+    <div
+      data-slot="chart"
+      className="flex flex-col w-full rounded-lg border bg-intents-ux-box-backgroundColor p-5 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px min-h-[250px]"
+    >
+      <div className="flex items-center gap-2 mb-3.5">
+        <span className="inline-block w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: 'var(--color-ai)', boxShadow: '0 0 6px var(--color-ai-glow)' }} />
+        <text.span className="!text-[13px] !font-semibold">{label}</text.span>
+      </div>
+      <ResponsiveContainer width="100%" height={350} minHeight={250}>
+        <BarChart
+          data={data}
+          margin={{ top: 20, right: 40, bottom: 40, left: 50 }}
+        >
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="hsl(var(--muted-border))"
+            vertical={false}
+          />
+          <XAxis
+            dataKey="date"
+            stroke="hsl(var(--muted-foreground))"
+            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+            tickLine={{ stroke: 'hsl(var(--muted-foreground))' }}
+          />
+          <YAxis
+            stroke="hsl(var(--muted-foreground))"
+            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+            tickLine={{ stroke: 'hsl(var(--muted-foreground))' }}
+            tickFormatter={formatChartValue}
+          />
+          <Tooltip content={<ChartTooltip label={label} />} />
+          <Bar
+            dataKey="value"
+            radius={[6, 6, 0, 0]}
+            maxBarSize={55}
+          >
+            {data.map((_, index) => (
+              <Cell key={`cell-${chartId}-${index}`} fill={COLORS[index % COLORS.length]} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}

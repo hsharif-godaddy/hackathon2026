@@ -1,3 +1,5 @@
+import text from '@ux/text'
+
 import { useTranslations } from '@/hooks/useTranslations'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/lib/shadcn/tooltip'
 
@@ -8,6 +10,10 @@ interface PageData {
 
 interface AnalyticsTablesProps {
   pageData: PageData[]
+  /** Table title (e.g. "Page Views" or "Type of Clicks") */
+  tableTitle?: string
+  /** Column header for the value (e.g. "Views" or "Clicks") */
+  valueHeader?: string
 }
 
 /**
@@ -20,9 +26,12 @@ interface AnalyticsTablesProps {
  * @param pageData - Array of page data with visitor counts
  */
 export function AnalyticsTables({
-  pageData
+  pageData,
+  tableTitle = 'page',
+  valueHeader
 }: AnalyticsTablesProps) {
   const t = useTranslations()
+  const valueLabel = valueHeader ?? t('builder_analytics_table_views')
 
   const renderTable = <T extends { visitors: number }>(
     title: string,
@@ -31,15 +40,18 @@ export function AnalyticsTables({
     getDescription: (row: T) => string
   ) => {
     return (
-      <div className="flex flex-col gap-4 rounded-md border border-border bg-intents-ux-box-backgroundColor p-2">
+      <div className="flex flex-col gap-4 rounded-lg border border-border bg-intents-ux-box-backgroundColor p-5 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px">
         <div className="flex items-center justify-between text-sm font-medium">
-          <p className="capitalize">{title}</p>
-          <p>{t('builder_analytics_table_views')}</p>
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: 'var(--color-ai)', boxShadow: '0 0 6px var(--color-ai-glow)' }} />
+            <text.p className="!capitalize !text-[13px] !font-semibold !mb-0">{title}</text.p>
+          </div>
+          <text.p emphasis="passive" className="!text-xs !uppercase !tracking-wider !mb-0">{valueLabel}</text.p>
         </div>
         {data.length === 0 ? (
-          <p className="text-base text-muted-foreground md:text-sm">
-            {t('builder_analytics_table_no_data')}
-          </p>
+          <text.p emphasis="passive">
+            {t('builder_analytics_no_data')}
+          </text.p>
         ) : (
           <div className="space-y-2">
             {data.map((row, index) => {
@@ -49,9 +61,9 @@ export function AnalyticsTables({
               return (
                 <Tooltip key={index}>
                   <TooltipTrigger asChild>
-                    <div className="flex items-center justify-between text-sm cursor-pointer hover:opacity-80 transition-opacity">
-                      <span className="capitalize">{value}</span>
-                      <span>{row.visitors}</span>
+                    <div className="flex items-center justify-between gap-3 text-sm cursor-pointer hover:opacity-80 transition-opacity">
+                      <text.span className="!truncate !min-w-0">{value}</text.span>
+                      <text.span className="!flex-shrink-0 !tabular-nums !font-semibold">{row.visitors}</text.span>
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="bg-background text-foreground border border-border shadow-lg">
@@ -75,7 +87,7 @@ export function AnalyticsTables({
 
   return (
     <div className="grid grid-cols-1 gap-6">
-      {renderTable('page', pageData, 'page', getPageDescription)}
+      {renderTable(tableTitle, pageData, 'page', getPageDescription)}
     </div>
   )
 }

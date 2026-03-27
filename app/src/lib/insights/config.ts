@@ -2,39 +2,42 @@
  * Insights API Configuration
  *
  * Centralized configuration for insights GraphQL API client.
+ * URL is set per-environment in gasket.ts (insightsApiUrl) and falls back
+ * to the production endpoint so removal of the config never silently
+ * breaks production.
  */
 
+import gasket from '../../../gasket.ts'
+
+const PROD_INSIGHTS_API_URL = 'https://uip.api.int.godaddy.com/v1/insights/graphql'
+
 /**
- * Get insights API URL based on environment
+ * Get insights API URL from Gasket environment config.
  *
- * Checks hostname for test/dev prefixes or localhost when in browser, otherwise uses NODE_ENV.
- * localhost is always treated as test environment.
+ * Priority: gasket env config → env var override → production fallback.
  *
  * @returns Insights GraphQL API URL
  */
 export function getInsightsApiUrl(): string {
-  // Check hostname in browser environment
-  if (typeof window !== 'undefined' && window.location) {
-    const hostname = window.location.hostname
-    // localhost is always test environment
-    const isLocalhost = hostname === 'localhost' || 
-                       hostname === '127.0.0.1' || 
-                       hostname.startsWith('localhost:') ||
-                       hostname.startsWith('127.0.0.1:')
-    const isTestOrDev = isLocalhost || hostname.includes('test-') || hostname.includes('dev-')
-    return isTestOrDev
-      ? 'https://uip.api.int.test-godaddy.com/v1/insights/graphql'
-      : 'https://uip.api.int.godaddy.com/v1/insights/graphql'
-  }
-
-  // Server-side: check NODE_ENV (default to test for local development)
-  const isProduction = process.env.NODE_ENV === 'production'
-  return isProduction
-    ? 'https://uip.api.int.godaddy.com/v1/insights/graphql'
-    : 'https://uip.api.int.test-godaddy.com/v1/insights/graphql'
+  return (gasket.config as any).insightsApiUrl
+    ?? process.env.UIP_INSIGHTS_API_URL
+    ?? PROD_INSIGHTS_API_URL
 }
 
-export const INSIGHTS_API_URL = getInsightsApiUrl()
+const PROD_SSO_HOST = 'sso.godaddy.com'
+
+/**
+ * Get SSO host for insights token generation from Gasket environment config.
+ *
+ * Always paired with insightsApiUrl so token and API endpoint are
+ * guaranteed to target the same environment.
+ *
+ * @returns SSO hostname (e.g. 'sso.godaddy.com' or 'sso.test-godaddy.com')
+ */
+export function getInsightsSsoHost(): string {
+  return (gasket.config as any).insightsSsoHost
+    ?? PROD_SSO_HOST
+}
 
 export const REQUEST_TIMEOUT_MS = 30000
 export const MAX_RETRIES = 3

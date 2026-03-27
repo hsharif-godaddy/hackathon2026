@@ -39,6 +39,8 @@ export default makeGasket({
       }
     },
     'local.dev': {
+      insightsApiUrl: 'https://uip.api.int.test-godaddy.com/v1/insights/graphql',
+      insightsSsoHost: 'sso.test-godaddy.com',
       http: false,
       https: {
         port: 8443
@@ -66,6 +68,8 @@ export default makeGasket({
     },
     'local.test': {
       airoAppDomain: 'test-airoapp.ai',
+      insightsApiUrl: 'https://uip.api.int.test-godaddy.com/v1/insights/graphql',
+      insightsSsoHost: 'sso.test-godaddy.com',
       http: false,
       https: {
         port: 443
@@ -109,6 +113,8 @@ export default makeGasket({
     },
     'local.prod': {
       airoAppDomain: 'airoapp.ai',
+      insightsApiUrl: 'https://uip.api.int.godaddy.com/v1/insights/graphql',
+      insightsSsoHost: 'sso.godaddy.com',
       http: false,
       https: {
         port: 443
@@ -152,18 +158,24 @@ export default makeGasket({
     },
     // Deployed environments
     'development': {
+      insightsApiUrl: 'https://uip.api.int.test-godaddy.com/v1/insights/graphql',
+      insightsSsoHost: 'sso.test-godaddy.com',
       switchboard: {
         env: 'development'
       }
     },
     'test': {
       airoAppDomain: 'test-airoapp.ai',
+      insightsApiUrl: 'https://uip.api.int.test-godaddy.com/v1/insights/graphql',
+      insightsSsoHost: 'sso.test-godaddy.com',
       switchboard: {
         env: 'test'
       }
     },
     'production': {
       airoAppDomain: 'airoapp.ai',
+      insightsApiUrl: 'https://uip.api.int.godaddy.com/v1/insights/graphql',
+      insightsSsoHost: 'sso.godaddy.com',
       switchboard: {
         env: 'production'
       }

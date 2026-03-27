@@ -10,6 +10,7 @@
 
 import { IamTokenClient } from 'gd-auth-client'
 
+import { getInsightsSsoHost } from '@/lib/insights/config'
 import { logger } from '@/lib/request-context'
 
 /**
@@ -29,70 +30,19 @@ const tokenCacheMap: Map<string, TokenCache> = new Map()
  *
  * Uses IAM-based authentication via gd-auth-client with AWS credential provider.
  * Implements token caching to avoid multiple token generation calls.
- * Tokens are cached for 50 minutes (tokens typically expire after 1 hour).
+ * Tokens are cached for 30 minutes (tokens typically expire after 1 hour).
  *
- * Automatically detects environment (test vs production) based on hostname:
- * - If hostname is provided, uses it to determine environment
- * - If hostname is not provided, attempts to get it from Next.js request headers
- * - Falls back to environment variables if hostname is unavailable
+ * SSO host is derived from Gasket per-environment config (insightsSsoHost)
+ * to guarantee the token always targets the same environment as the API URL.
  *
- * @param hostname - Optional hostname to determine environment (test/dev vs production).
- *                   If not provided, will attempt to get from request headers.
+ * @param _hostname - Deprecated. Ignored — environment is now determined by Gasket config.
  * @returns SSO JWT token with 'sso-jwt' prefix
  * @throws Error if token generation fails
- *
- * @example
- * ```typescript
- * // With explicit hostname
- * const token = await getInsightsAuthToken('airo-builder.test-godaddy.com')
- *
- * // Automatic detection from request headers
- * const token = await getInsightsAuthToken()
- * // Returns: "sso-jwt eyJhbGciOiAiUlMyNTYiLCAia2lkIjogIlRkYUh6T2ZrMkEifQ..."
- * ```
  */
-export async function getInsightsAuthToken(hostname?: string | null): Promise<string> {
+export async function getInsightsAuthToken(_hostname?: string | null): Promise<string> {
   try {
-    // Get hostname from request headers if not provided
-    if (!hostname) {
-      try {
-        const { headers } = await import('next/headers')
-        const headersList = await headers()
-        const host = headersList.get('host') || ''
-        hostname = host.split(':')[0] // Remove port if present
-      } catch {
-        // Headers not available (e.g., not in Next.js request context)
-        hostname = null
-      }
-    }
-
-    // Determine if we should use test or production SSO host
-    // Priority: hostname check > environment variables > NODE_ENV
-    // localhost is always treated as test environment
-    let isProduction = false
-
-    if (hostname) {
-      // localhost is always test environment
-      const isLocalhost = hostname === 'localhost' ||
-                         hostname === '127.0.0.1' ||
-                         hostname.startsWith('localhost:') ||
-                         hostname.startsWith('127.0.0.1:')
-
-      if (isLocalhost) {
-        isProduction = false
-      } else {
-        // Check hostname for test/dev prefixes
-        isProduction = !hostname.includes('test-') && !hostname.includes('dev-')
-      }
-    } else {
-      // Fall back to environment-based detection
-      isProduction =
-        process.env.NODE_ENV === 'production' ||
-        !!process.env.AWS_REGION_NOMAD ||
-        !!process.env.PRODUCTION_DOMAIN
-    }
-
-    // Use environment as cache key to prevent mixing tokens from different environments
+    const ssoHost = getInsightsSsoHost()
+    const isProduction = ssoHost === 'sso.godaddy.com'
     const cacheKey = isProduction ? 'production' : 'test'
     const tokenCache = tokenCacheMap.get(cacheKey) || { token: null, expiresAt: null }
 
@@ -102,13 +52,7 @@ export async function getInsightsAuthToken(hostname?: string | null): Promise<st
       return tokenCache.token
     }
 
-    // SSO host is derived from hostname-based environment detection rather than
-    // gasket-config's getSsoHost() because insights-auth needs to match the SSO
-    // environment to the actual request hostname (not just the SSO_LOGIN_URL env var).
-    // This handles cases like localhost always being test, regardless of env config.
-    const ssoHost = isProduction ? 'sso.godaddy.com' : 'sso.test-godaddy.com'
-
-    // Create IAM token client with AWS credential provider
+    // Create IAM token client with Gasket-configured SSO host
     const ssoClient = new IamTokenClient(ssoHost)
 
     // Listen for primary region failures to capture the real error

@@ -1,14 +1,15 @@
 'use client'
 
-import { useMemo } from 'react'
 import Box from '@ux/box'
 import GraphIcon from '@ux/icon/graph'
 
 import RUM from '@/app/develop/components/settings/Analytics/RUM'
 import { usePublishForDomain } from '@/app/develop/components/settings/DomainPanel/usePublishForDomain'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
+import { usePublishedUrl } from '@/app/develop/hooks/usePublishedUrl'
 import EmptyStateCard from '@/components/layout/EmptyStateCard'
 import { usePaywallModal } from '@/hooks/usePaywallModal'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { useSiteStore } from '@/stores/useSiteStore'
@@ -26,29 +27,11 @@ import { hasBeenPublished } from '@/utils/site'
 export default function AnalyticsPanel() {
   const t = useTranslations()
   const appId = useAppIdFromParams()
-  const site = useSiteStore((state) => appId ? state.getSite(appId) : null)
+  const site = useSiteStore((state) => (appId ? state.getSite(appId) : null))
+  const publishedUrl = usePublishedUrl()
 
-  // Get published URL from site store with priority:
-  // 1. Custom domain (domainType !== 'prefix')
-  // 2. Prefix domain (domainType === 'prefix')
-  // 3. Published URL from site.published_url
-  const publishedUrl = useMemo(() => {
-    if (!hasBeenPublished(site)) {
-      return null
-    }
-
-    const customDomain = site?.domains?.find(d => d.domainType && d.domainType !== 'prefix' && d.status === 'active')
-    const prefixDomain = site?.domains?.find(d => d.domainType === 'prefix' && d.status === 'active')
-    const publishedFqdn = site?.published_url
-
-    if (customDomain?.fqdn) {
-      return customDomain.fqdn.startsWith('https://') ? customDomain.fqdn : `https://${customDomain.fqdn}`
-    }
-    if (prefixDomain?.fqdn) {
-      return prefixDomain.fqdn.startsWith('https://') ? prefixDomain.fqdn : `https://${prefixDomain.fqdn}`
-    }
-    return publishedFqdn || null
-  }, [site])
+  // Feature flag — gate analytics until paid-feature handling is in place
+  const { data: isAnalyticsEnabled, isLoading: isAnalyticsFlagLoading } = useSwitchboard('appbuilder-analytics')
 
   const { handlePublish, isPublishDisabled, publishState } = usePublishForDomain(appId, site)
 
@@ -62,6 +45,10 @@ export default function AnalyticsPanel() {
     await checkAndShowPaywall(async () => {
       await handlePublish()
     })
+  }
+
+  if (isAnalyticsFlagLoading || !isAnalyticsEnabled) {
+    return null
   }
 
   if (!publishedUrl || !hasBeenPublished(site)) {

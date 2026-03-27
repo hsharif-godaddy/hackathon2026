@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import {
   Area,
   AreaChart,
@@ -5,9 +6,12 @@ import {
   ResponsiveContainer,
   Tooltip,
   XAxis,
-  YAxis} from 'recharts'
+  YAxis
+} from 'recharts'
+import text from '@ux/text'
 
 import { useTranslations } from '@/hooks/useTranslations'
+import { ChartTooltip, formatChartValue } from './ChartTooltip'
 
 interface ChartDataPoint {
   date: string
@@ -16,16 +20,8 @@ interface ChartDataPoint {
 
 interface AnalyticsChartProps {
   data: ChartDataPoint[]
-}
-
-interface TooltipPayload {
-  payload: ChartDataPoint
-  value: number
-}
-
-interface CustomTooltipProps {
-  active?: boolean
-  payload?: TooltipPayload[]
+  label?: string
+  embedded?: boolean
 }
 
 /**
@@ -37,55 +33,20 @@ interface CustomTooltipProps {
  *
  * @param data - Array of data points with date and value
  */
-export function AnalyticsChart({ data }: AnalyticsChartProps) {
+export function AnalyticsChart({ data, label, embedded }: AnalyticsChartProps) {
   const t = useTranslations()
+  const gradientId = useId().replace(/:/g, '')
+  const chartLabel = label ?? t('builder_analytics_chart_pageviews')
 
   if (!data || data.length === 0) {
     return (
-      <p className="text-muted-foreground text-center py-8">{t('builder_analytics_chart_no_data')}</p>
+      <text.p emphasis="passive" className="!text-center !py-8">{t('builder_analytics_no_data')}</text.p>
     )
   }
 
-  /**
-   * Format large numbers with K/M suffixes for readability
-   *
-   * @param val - Number to format
-   * @returns Formatted string with K/M suffix if applicable
-   */
-  const formatValue = (val: number): string => {
-    if (val >= 1000000) return `${(val / 1000000).toFixed(1)}M`
-    if (val >= 1000) return `${(val / 1000).toFixed(1)}K`
-    return Math.round(val).toString()
-  }
-
-  /**
-   * Custom tooltip component for the chart
-   *
-   * @param props - Tooltip props from Recharts
-   * @returns Tooltip JSX element
-   */
-  const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-background border rounded-lg shadow-lg p-2">
-          <p className="text-sm font-medium">{payload[0].payload.date}</p>
-          <p className="text-sm text-muted-foreground">
-            {t('builder_analytics_chart_pageviews')}: <span className="font-semibold">{formatValue(payload[0].value)}</span>
-          </p>
-        </div>
-      )
-    }
-    return null
-  }
-
-  return (
-    <div
-      data-slot="chart"
-      className="flex justify-center w-full rounded-md border bg-intents-ux-box-backgroundColor p-2"
-      style={{ minHeight: '250px' }}
-    >
-      <ResponsiveContainer width="100%" height={400} minHeight={250}>
-        <AreaChart
+  const chartContent = (
+    <ResponsiveContainer width="100%" height={350} minHeight={250}>
+      <AreaChart
           data={data}
           margin={{
             top: 20,
@@ -95,7 +56,7 @@ export function AnalyticsChart({ data }: AnalyticsChartProps) {
           }}
         >
           <defs>
-            <linearGradient id="fillGradient" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.2} />
               <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0.02} />
             </linearGradient>
@@ -115,25 +76,35 @@ export function AnalyticsChart({ data }: AnalyticsChartProps) {
             stroke="hsl(var(--muted-foreground))"
             tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
             tickLine={{ stroke: 'hsl(var(--muted-foreground))' }}
-            tickFormatter={formatValue}
-            label={{
-              value: t('builder_analytics_chart_pageviews'),
-              angle: -90,
-              position: 'insideLeft',
-              style: { textAnchor: 'middle', fill: 'hsl(var(--muted-foreground))', fontSize: 12 }
-            }}
+            tickFormatter={formatChartValue}
           />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<ChartTooltip label={chartLabel} />} />
           <Area
             type="monotone"
             dataKey="value"
-            stroke="var(--chart-1)"
-            strokeWidth={2}
-            fill="url(#fillGradient)"
+            stroke="var(--color-ai)"
+            strokeWidth={3}
+            fill={`url(#${gradientId})`}
             fillOpacity={0.6}
+            dot={{ fill: 'var(--color-ai)', r: 5, stroke: 'hsl(var(--background))', strokeWidth: 2 }}
+            activeDot={{ r: 7, stroke: 'var(--color-ai)', strokeWidth: 2, fill: 'hsl(var(--background))' }}
           />
         </AreaChart>
       </ResponsiveContainer>
+  )
+
+  if (embedded) return chartContent
+
+  return (
+    <div
+      data-slot="chart"
+      className="flex flex-col w-full rounded-lg border bg-intents-ux-box-backgroundColor p-5 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px min-h-[250px]"
+    >
+      <div className="flex items-center gap-2 mb-3.5">
+        <span className="inline-block w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: 'var(--color-ai)', boxShadow: '0 0 6px var(--color-ai-glow)' }} />
+        <text.span className="!text-[13px] !font-semibold">{chartLabel}</text.span>
+      </div>
+      {chartContent}
     </div>
   )
 }

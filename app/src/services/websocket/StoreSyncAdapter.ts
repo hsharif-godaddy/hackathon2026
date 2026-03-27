@@ -110,6 +110,7 @@ export class StoreSyncAdapter {
   private machineSubscription: { unsubscribe: () => void } | null = null
   private previousStreamState: string | null = null
   private previousTransportState: string | null = null
+  private disposed = false
   constructor(
     private machine: Actor<WebSocketMachine>,
     private controller: ControllerLike,
@@ -223,6 +224,11 @@ export class StoreSyncAdapter {
   }
 
   private syncToStore(snapshot: WebSocketSnapshot): void {
+    // Guard against xstate delayed transitions (raise/after) firing after destroy().
+    // When the machine is stopped, pending setTimeout callbacks from `after` transitions
+    // can still fire and push one final state snapshot through the subscription callback.
+    if (this.disposed) return
+
     const { context } = snapshot
     const activeAppId = useStreamingConversationStore.getState().currentAppId
 
@@ -433,10 +439,10 @@ export class StoreSyncAdapter {
    * Cleanup - unsubscribe from machine and clear timeouts
    */
   destroy(): void {
+    this.disposed = true
     if (this.machineSubscription) {
       this.machineSubscription.unsubscribe()
       this.machineSubscription = null
     }
-
   }
 }

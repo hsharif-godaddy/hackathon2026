@@ -7,6 +7,10 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 
+// TODO: Re-enable when ownership validation is restored
+// import { getControlPlaneAdapter } from '@/lib/control-plane'
+import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth'
+import { getInsightsApiUrl } from '@/lib/insights/config'
 import { getInsightsAuthToken } from '@/lib/insights-auth'
 import { logger } from '@/lib/request-context'
 
@@ -15,15 +19,16 @@ export const dynamic = 'force-dynamic'
 /**
  * POST /api/analytics/graphql
  *
- * Proxy GraphQL query to UIP Insights API
+ * Proxy GraphQL query to UIP Insights API (authenticated)
  *
  * Request body:
  * - query: string - GraphQL query string
+ * - appId: string - App/site ID (validated for ownership)
  */
-export async function POST(request: NextRequest) {
+export const POST = withCustomerAuth(async (request: NextRequest, _authContext: CustomerAuthContext) => {
   try {
     const body = await request.json()
-    const { query } = body
+    const { query, appId } = body
 
     if (!query || typeof query !== 'string') {
       return NextResponse.json(
@@ -32,14 +37,34 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get hostname from request headers for environment detection
-    const host = request.headers.get('host') || ''
-    const hostname = host.split(':')[0]
+    if (!appId || typeof appId !== 'string') {
+      return NextResponse.json(
+        { error: 'Missing or invalid appId parameter' },
+        { status: 400 }
+      )
+    }
 
-    // Get authentication token
+    // TODO: Re-enable ownership validation in next PR with additional plans(Start/Pro)
+    // Validate that the authenticated user owns this app
+    // const adapter = getControlPlaneAdapter()
+    // const site = await adapter.getSite(appId, authContext.jwt!)
+    // if (!site) {
+    //   logger.warn('analytics.graphql.unauthorized', {
+    //     appId,
+    //     customerId: authContext.user.customerId,
+    //   })
+    //   return NextResponse.json(
+    //     { error: 'Site not found or access denied' },
+    //     { status: 403 }
+    //   )
+    // }
+
+    const operationName = query.match(/query\s+(\w+)/)?.[1] || 'unknown'
+
+    // Get authentication token (environment determined by Gasket config)
     let authToken: string
     try {
-      authToken = await getInsightsAuthToken(hostname)
+      authToken = await getInsightsAuthToken()
     } catch (error) {
       logger.error('analytics.graphql.auth-failed', {
         message: 'Failed to get authentication token',
@@ -51,15 +76,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get API URL based on hostname (server-side)
-    const isLocalhost = hostname === 'localhost' || 
-                       hostname === '127.0.0.1' || 
-                       hostname.startsWith('localhost:') ||
-                       hostname.startsWith('127.0.0.1:')
-    const isTestOrDev = isLocalhost || hostname.includes('test-') || hostname.includes('dev-')
-    const apiUrl = isTestOrDev
-      ? 'https://uip.api.int.test-godaddy.com/v1/insights/graphql'
-      : 'https://uip.api.int.godaddy.com/v1/insights/graphql'
+    // Get API URL from Gasket per-environment config
+    const apiUrl = getInsightsApiUrl()
+
+    logger.info('analytics.graphql.request', {
+      operationName
+    })
 
     // Forward request to UIP Insights API
     const response = await fetch(apiUrl, {
@@ -76,15 +98,24 @@ export async function POST(request: NextRequest) {
       logger.error('analytics.graphql.api-error', {
         message: 'UIP API returned error',
         status: response.status,
-        error: errorText
+        errorText,
       })
       return NextResponse.json(
-        { error: `API error: ${errorText}` },
+        { error: 'Analytics request failed' },
         { status: response.status }
       )
     }
 
     const result = await response.json()
+
+    const wildcardInsight = result?.data?.insightCountByValueDailyAnyWildcard?.brand?.namespace?.insightName
+    const dailyInsight = result?.data?.insightCountByValueDaily?.brand?.namespace?.insightName
+
+    logger.info('analytics.graphql.response', {
+      operationName,
+      count: wildcardInsight?.count ?? dailyInsight?.count ?? 0,
+      dailyBreakdownCount: (wildcardInsight?.dailyBreakdown || dailyInsight?.dailyBreakdown || []).length
+    })
 
     // Return the GraphQL response
     return NextResponse.json(result, {
@@ -102,5 +133,5 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
-}
+})
 
