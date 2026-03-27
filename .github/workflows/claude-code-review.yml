@@ -41,6 +41,7 @@ jobs:
         5. Test gaps for changed code paths
         6. Non-descriptive PR title or missing/empty PR description
         7. UI changes without screenshots or videos in the PR description
+        8. UI or flow changes without corresponding Playwright E2E test updates (see <e2e_review>)
 
         Report these as suggestions (optional improvements):
         - Code clarity or readability enhancements
@@ -49,6 +50,14 @@ jobs:
 
         Use the repository's CLAUDE.md for project-specific conventions.
         </instructions>
+
+        <e2e_review>
+        When the PR modifies UI components (app/src/):
+        1. Grep tests/smoke/ for any data-testid, data-eid, or selectors affected by the diff.
+        2. Issue: Changed/removed selectors or user flows without matching tests/smoke/ updates.
+        3. Suggestion: New user-facing features or flows with no existing E2E coverage — recommend
+           adding a Playwright smoke test for the happy path.
+        </e2e_review>
 
         <output_format>
         Summary comment:
