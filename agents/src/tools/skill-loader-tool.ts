@@ -530,6 +530,11 @@ export class SkillLoaderTool {
       return path.join(appPath, 'src', destPath);
     }
 
+    // Database skill: drizzle.config.ts goes to app root
+    if (skill === 'database' && templatePath === 'drizzle.config.ts') {
+      return path.join(appPath, templatePath);
+    }
+
     // Default: copy to src/{templatePath}
     return path.join(appPath, 'src', templatePath);
   }

@@ -3,7 +3,6 @@ export { TerminalTool } from './terminal.js';
 export { FileEditTool } from './file-edit.js';
 export { GitTool } from './git-tool.js';
 export { ReadFileTool } from './read-file.js';
-export { MySQLTool } from './mysql-tool.js';
 // MediaSearchTool kept as internal implementation for MediaSlotTool
 // Do not export - agents should use MediaSlotTool via media AI tool
 export { VideoGenerationTool } from './video-generation-tool.js';

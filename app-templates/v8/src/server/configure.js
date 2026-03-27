@@ -1,5 +1,4 @@
 import express from "express";
-import { closeConnection } from "./db/client.ts";
 import { fileURLToPath } from "node:url";
 import { dirname, join, extname } from "node:path";
 
@@ -44,18 +43,22 @@ export const serverBefore = (server) => {
     console.log(`Got ${signal}, shutting down gracefully...`);
 
     try {
-      // Close database connection pool before exiting
+      // Close database connection pool if database skill is installed
+      const { closeConnection } = await import("./db/client.js");
       await closeConnection();
       console.log("Database connections closed");
     } catch (error) {
-      console.error("Error closing database connections:", error);
+      // Database skill not installed or module failed to load
+      if (error.code !== 'ERR_MODULE_NOT_FOUND') {
+        console.error("Error during database shutdown:", error.message);
+      }
     }
 
     process.exit(0);
   };
 
   ["SIGTERM", "SIGINT"].forEach((signal) => {
-    process.on(signal, shutdown);
+    process.once(signal, shutdown);
   });
 
   server.use(express.json());

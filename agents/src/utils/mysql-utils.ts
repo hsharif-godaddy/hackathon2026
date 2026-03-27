@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { Readable } from 'stream';
 import { logger } from '../logging/index.js';
-import mysql from 'mysql2/promise';
+import mysql, { type ResultSetHeader } from 'mysql2/promise';
 import { join } from 'path';
 
 /**
@@ -416,9 +416,8 @@ export class MySQLUtils {
         : 0;
 
       // Get paginated data
-      const offset = (page - 1) * limit;
       const validLimit = Math.max(1, Math.min(1000, Math.floor(Number(limit))));
-      const validOffset = Math.max(0, Math.floor(Number(offset)));
+      const validOffset = Math.max(0, Math.floor(Number((page - 1) * limit)));
 
       // Ensure values are actually integers
       if (!Number.isInteger(validLimit) || !Number.isInteger(validOffset)) {
@@ -429,7 +428,7 @@ export class MySQLUtils {
         `SELECT * FROM ${escapedTableName} LIMIT ${validLimit} OFFSET ${validOffset}`
       );
 
-      const hasMore = offset + limit < total;
+      const hasMore = validOffset + validLimit < total;
 
       logger.info('MySQL: Successfully retrieved table data', {
         component: 'MySQLUtils',
@@ -503,12 +502,20 @@ export class MySQLUtils {
 
     return this.withConnection(credentials, async (connection) => {
       const { query, values } = this.buildUpdateQuery(tableName, data, primaryKey);
-      await connection.execute(query, values);
+      const [result] = await connection.execute<ResultSetHeader>(query, values);
+
+      if (result.affectedRows === 0) {
+        throw new Error('No rows matched the primary key - row may not exist');
+      }
+      if (result.affectedRows > 1) {
+        throw new Error(`Multiple rows (${result.affectedRows}) matched - not a valid primary key`);
+      }
 
       logger.info('MySQL: Successfully updated row', {
         component: 'MySQLUtils',
         database: credentials.database,
         table: tableName,
+        affectedRows: result.affectedRows,
       });
     }, 'update row');
   }
@@ -533,12 +540,20 @@ export class MySQLUtils {
 
     return this.withConnection(credentials, async (connection) => {
       const { query, values } = this.buildDeleteQuery(tableName, primaryKey);
-      await connection.execute(query, values);
+      const [result] = await connection.execute<ResultSetHeader>(query, values);
+
+      if (result.affectedRows === 0) {
+        throw new Error('No rows matched the primary key - row may not exist');
+      }
+      if (result.affectedRows > 1) {
+        throw new Error(`Multiple rows (${result.affectedRows}) matched - not a valid primary key`);
+      }
 
       logger.info('MySQL: Successfully deleted row', {
         component: 'MySQLUtils',
         database: credentials.database,
         table: tableName,
+        affectedRows: result.affectedRows,
       });
     }, 'delete row');
   }

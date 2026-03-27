@@ -17,9 +17,7 @@
     "type-check": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.{ts,tsx,json,md}\"",
     "clean": "rm -rf dist node_modules/.vite",
-    "reset": "npm run clean && npm install",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "reset": "npm run clean && npm install"
   },
   "dependencies": {
     "@dr.pogodin/react-helmet": "^3.0.5",
@@ -56,14 +54,12 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
-    "drizzle-orm": "^0.44.7",
     "embla-carousel-react": "^8.6.0",
     "express": "^5.1.0",
     "html-to-image": "^1.11.11",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.454.0",
     "motion": "^12.29.2",
-    "mysql2": "^3.15.3",
     "nodemailer": "^7.0.11",
     "react": "^19.0.0",
     "react-day-picker": "^9.9.0",
@@ -99,7 +95,6 @@
     "@vitest/ui": "^3.2.4",
     "autoprefixer": "^10.4.20",
     "baseline-browser-mapping": "^2.10.0",
-    "drizzle-kit": "^0.31.9",
     "esbuild": "^0.25.12",
     "eslint": "^9.16.0",
     "eslint-plugin-react": "^7.37.2",

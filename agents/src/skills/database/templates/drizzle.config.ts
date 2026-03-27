@@ -1,7 +1,5 @@
-import { defineConfig } from 'drizzle-kit';
-import { getDatabaseCredentials } from './src/server/db/config';
-
-/**
+/** TREAT AS IMMUTABLE - This file is protected by the file-edit tool
+ *
  * Drizzle Kit configuration for database migrations
  *
  * Usage:
@@ -12,6 +10,9 @@ import { getDatabaseCredentials } from './src/server/db/config';
  * - Reads from /alloc/config.json
  * - Throws error if config file not found or invalid
  */
+import { defineConfig } from 'drizzle-kit';
+import { getDatabaseCredentials } from './src/server/db/config';
+
 const credentials = getDatabaseCredentials();
 
 export default defineConfig({
