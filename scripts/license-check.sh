@@ -40,16 +40,16 @@ if [ "$MATRIX_PACKAGE" = "root" ]; then
   MANUAL_EXCLUSIONS="airo-app-builder-root@1.0.0;gd-auth-client@2.1.1"
   CHECK_DEPTH=""
 elif [ "$MATRIX_PACKAGE" = "agents" ]; then
-  MANUAL_EXCLUSIONS="tslib@2.8.1;gd-auth@1.4.1;gd-auth-client@2.1.1;@godaddy/agent-observability-events@1.4.0;@godaddy/goknowb-client@1.0.8;@godaddy/agent-otel-sdk@1.0.1;@signals/otel-sdk@0.1.1"
+  MANUAL_EXCLUSIONS="tslib@2.8.1;gd-auth@1.4.1;gd-auth-client@2.1.1;@godaddy/agent-observability-events@1.4.0;@godaddy/goknowb-client@1.0.8;@godaddy/agent-otel-sdk@1.3.0;@signals/otel-sdk@0.2.0"
   CHECK_DEPTH=""
 elif [[ "$MATRIX_PACKAGE" == app* ]]; then
-  MANUAL_EXCLUSIONS="website@0.1.0;@wsb/image-manager-loader@1.3.0;@godaddy/agent-observability-events@1.4.0;@godaddy/agent-otel-sdk@1.0.1;@signals/otel-sdk@0.1.1;@px/checkouts@1.7.2;@site/buttons@6.3.11;@site/domain-services@4.5.14"
+  MANUAL_EXCLUSIONS="website@0.1.0;@wsb/image-manager-loader@1.3.0;@godaddy/agent-observability-events@1.4.0;@godaddy/agent-otel-sdk@1.3.0;@signals/otel-sdk@0.2.0;@px/checkouts@1.7.2;@site/buttons@6.3.11;@site/domain-services@4.5.14"
   CHECK_DEPTH=""
 elif [ "$MATRIX_PACKAGE" = "v8-template" ]; then
   MANUAL_EXCLUSIONS=""
   CHECK_DEPTH="--depth 0"  # Only check direct dependencies for v8-template
 else
-  MANUAL_EXCLUSIONS="gd-auth-client@2.1.1;@godaddy/agent-observability-events@1.4.0;@godaddy/agent-otel-sdk@1.0.1;@signals/otel-sdk@0.1.1"
+  MANUAL_EXCLUSIONS="gd-auth-client@2.1.1;@godaddy/agent-observability-events@1.4.0;@godaddy/agent-otel-sdk@1.3.0;@signals/otel-sdk@0.2.0"
   CHECK_DEPTH=""
 fi
 
