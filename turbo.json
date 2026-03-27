@@ -23,6 +23,11 @@
       "dependsOn": ["^build"],
       "outputs": [],
       "passThroughEnv": ["NODE_OPTIONS"]
+    },
+    "test:integration": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "passThroughEnv": ["NODE_OPTIONS"]
     }
   }
 }

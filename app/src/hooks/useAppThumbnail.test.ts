@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+/**
+ * @vitest-environment jsdom
+ */
 import { waitFor } from '@testing-library/react';
 
 import { buildDynamicApiUrl } from '@/config/dynamic-api';

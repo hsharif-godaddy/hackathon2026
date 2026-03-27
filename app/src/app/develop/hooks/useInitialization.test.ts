@@ -1,4 +1,7 @@
 /**
+ * @vitest-environment jsdom
+ */
+/**
  * Tests for useInitialization hook
  * 
  * These tests verify the state machine logic and UI state computation

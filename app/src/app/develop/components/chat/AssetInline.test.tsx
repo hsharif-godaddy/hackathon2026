@@ -1,3 +1,6 @@
+/**
+ * @vitest-environment jsdom
+ */
 import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -338,4 +341,3 @@ describe('AssetInlineList', () => {
     expect(buttons.length).toBe(0);
   });
 });
-

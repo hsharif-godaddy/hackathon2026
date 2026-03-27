@@ -1,4 +1,11 @@
 import { defineConfig } from 'vitest/config';
+import os from 'node:os';
+
+// Dynamically determine optimal fork count based on available CPU cores
+// Node environment is less memory-intensive than jsdom, so we can use more forks
+// Use cores minus 1 (leave headroom for OS), capped at 6, minimum 1
+const availableCores = os.cpus().length;
+const optimalForks = Math.max(1, Math.min(6, availableCores - 1));
 
 export default defineConfig({
   test: {
@@ -9,7 +16,7 @@ export default defineConfig({
     poolOptions: {
       forks: {
         minForks: 1,
-        maxForks: 4, // Limit parallelism to prevent memory exhaustion
+        maxForks: optimalForks, // Dynamically set based on CPU cores
         isolate: true, // Each test file runs in fresh process
       },
     },

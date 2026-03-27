@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
+/**
+ * @vitest-environment jsdom
+ */
 import { getRootDomain, getRootDomainFromHeaders } from './getRootDomain';
 
 describe('getRootDomain', () => {

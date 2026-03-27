@@ -32,11 +32,34 @@ permissions:
   contents: read
 
 jobs:
-  quality-checks-app:
+  quality-checks-app-lint-build:
     uses: ./.github/workflows/_quality-checks.yml
     with:
       package-name: app
       pnpm-filter: website
       working-directory: ./app
       cache-next-build: true
+      skip-tests: true
+    secrets: inherit
+
+  quality-checks-app-unit-tests:
+    uses: ./.github/workflows/_quality-checks.yml
+    with:
+      package-name: app-unit
+      pnpm-filter: website
+      working-directory: ./app
+      cache-next-build: false
+      skip-lint-build: true
+      test-script: test:unit
+    secrets: inherit
+
+  quality-checks-app-integration-tests:
+    uses: ./.github/workflows/_quality-checks.yml
+    with:
+      package-name: app-integration
+      pnpm-filter: website
+      working-directory: ./app
+      cache-next-build: false
+      skip-lint-build: true
+      test-script: test:integration
     secrets: inherit

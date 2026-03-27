@@ -1,3 +1,6 @@
+/**
+ * @vitest-environment jsdom
+ */
 /* eslint-disable react-hooks/rules-of-hooks */
 import '@testing-library/jest-dom'
 

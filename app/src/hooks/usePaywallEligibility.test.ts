@@ -1,5 +1,8 @@
 import '@testing-library/jest-dom';
 
+/**
+ * @vitest-environment jsdom
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderHookWithProviders } from '@/tests/test-utils';

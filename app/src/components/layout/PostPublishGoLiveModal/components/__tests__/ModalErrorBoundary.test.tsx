@@ -1,4 +1,7 @@
 /**
+ * @vitest-environment jsdom
+ */
+/**
  * Tests for ModalErrorBoundary component
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

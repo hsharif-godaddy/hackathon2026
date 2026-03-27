@@ -1,4 +1,8 @@
 /* eslint-disable react-hooks/rules-of-hooks */
+/**
+ * @vitest-environment jsdom
+ */
+
 import { useMediaQuery } from 'react-responsive';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';

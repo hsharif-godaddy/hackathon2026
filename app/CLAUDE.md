@@ -42,12 +42,12 @@ The BFF is Next.js App Router API routes at `src/app/api/`. It does NOT just pro
 
 ### Key BFF Routes
 
-| Route                            | Purpose                | Downstream                                |
-| -------------------------------- | ---------------------- | ----------------------------------------- |
-| `GET/POST/DELETE /api/sites`     | Site management        | V2ControlPlaneAdapter → mgmt-airo         |
-| `POST /api/auth/agent-token`     | JWT for agents service | JWT Service + paywall + switchboard       |
-| `GET /api/apps/[id]/deployments` | Deployment history     | mgmt-airo API                             |
-| `GET /api/config`                | Feature flags + config | Returns flags                             |
+| Route                            | Purpose                | Downstream                          |
+| -------------------------------- | ---------------------- | ----------------------------------- |
+| `GET/POST/DELETE /api/sites`     | Site management        | V2ControlPlaneAdapter → mgmt-airo   |
+| `POST /api/auth/agent-token`     | JWT for agents service | JWT Service + paywall + switchboard |
+| `GET /api/apps/[id]/deployments` | Deployment history     | mgmt-airo API                       |
+| `GET /api/config`                | Feature flags + config | Returns flags                       |
 
 ## Feature Flags
 
@@ -157,4 +157,26 @@ pnpm --filter website test "pattern"           # By file path
 pnpm --filter website test -- -t "test name"   # By test name
 ```
 
-Vitest config: forks pool, max 4 forks, 5 concurrent per file, 512MB memory limit, 50% coverage threshold.
+Vitest config: forks pool, dynamically scaled based on CPU cores, 512MB memory limit, 50% coverage threshold.
+
+**Test environment:** Default is lightweight `node` environment. React component and hook tests require jsdom:
+
+```typescript
+/**
+ * @vitest-environment jsdom
+ */
+import { render } from "@testing-library/react";
+// ... your test
+```
+
+**When to use jsdom:**
+
+- Tests that render React components (`render`, `renderHook`)
+- Tests that use DOM APIs (`document`, `window`, `IntersectionObserver`)
+- Tests that use `@testing-library/react` or `@testing-library/react-hooks`
+
+**When NOT to use jsdom:**
+
+- API route tests (Next.js route handlers)
+- Utility function tests (pure logic)
+- Service/adapter tests (no UI)

@@ -1,4 +1,7 @@
 /**
+ * @vitest-environment jsdom
+ */
+/**
  * useToolDeltaBuffer Tests
  *
  * Tests both the React hook wrapper and the underlying module-level utility.

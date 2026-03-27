@@ -1,4 +1,7 @@
 import { beforeEach,describe, expect, it, vi } from 'vitest';
+/**
+ * @vitest-environment jsdom
+ */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 

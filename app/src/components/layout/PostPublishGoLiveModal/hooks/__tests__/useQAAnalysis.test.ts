@@ -1,4 +1,7 @@
 /**
+ * @vitest-environment jsdom
+ */
+/**
  * Tests for useQAAnalysis hook
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

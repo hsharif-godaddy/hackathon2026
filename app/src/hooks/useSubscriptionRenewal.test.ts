@@ -1,4 +1,8 @@
 /* eslint-disable react-hooks/rules-of-hooks */
+/**
+ * @vitest-environment jsdom
+ */
+
 import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';

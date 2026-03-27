@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+/**
+ * @vitest-environment jsdom
+ */
 import { DomainStatus } from '@/lib/mgmt-airo/types';
 import { renderHookWithProviders } from '@/tests/test-utils';
 

@@ -1,5 +1,6 @@
 /**
  * TransportSupervisor Tests
+ * @vitest-environment jsdom
  *
  * Comprehensive unit tests for TransportSupervisor covering critical lifecycle logic.
  * 37 tests organized into 8 categories:

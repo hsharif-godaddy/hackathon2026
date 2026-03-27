@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+/**
+ * @vitest-environment jsdom
+ */
 import { renderHook } from '@testing-library/react'
 
 import { useToolResultSync } from './useToolResultSync'

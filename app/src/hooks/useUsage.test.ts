@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+/**
+ * @vitest-environment jsdom
+ */
 import { renderHookWithProviders } from '@/tests/test-utils'
 import { WarningLevel } from '@/types/usage'
 

@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+/**
+ * @vitest-environment jsdom
+ */
 import { renderHook } from '@testing-library/react';
 
 import { useCustomerDomainAttach } from './useCustomerDomainAttach';

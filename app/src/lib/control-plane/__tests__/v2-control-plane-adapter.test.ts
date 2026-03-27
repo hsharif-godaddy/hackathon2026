@@ -1,4 +1,7 @@
 /**
+ * @vitest-environment jsdom
+ */
+/**
  * V2 Control Plane Adapter Tests
  * 
  * Tests the V2 adapter implementation for mgmt-airo + mgmt-hosting integration.
@@ -1621,4 +1624,3 @@ describe('V2ControlPlaneAdapter', () => {
     });
   });
 });
-

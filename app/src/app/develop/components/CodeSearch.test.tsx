@@ -1,3 +1,6 @@
+/**
+ * @vitest-environment jsdom
+ */
 import '@testing-library/jest-dom'
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -62,4 +65,3 @@ describe('CodeSearch', () => {
     expect(screen.queryByPlaceholderText('builder_code_search_placeholder_files')).not.toBeInTheDocument()
   })
 })
-

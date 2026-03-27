@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+/**
+ * @vitest-environment jsdom
+ */
 import { act } from '@testing-library/react';
 
 import { useDevelopPageStore } from './useDevelopPageStore';

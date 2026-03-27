@@ -1,4 +1,8 @@
 /* eslint-disable react-hooks/rules-of-hooks */
+/**
+ * @vitest-environment jsdom
+ */
+
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

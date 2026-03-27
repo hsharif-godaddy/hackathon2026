@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+/**
+ * @vitest-environment jsdom
+ */
 import { act, renderHook } from '@testing-library/react';
 
 const mockSetWebSocketState = vi.fn()

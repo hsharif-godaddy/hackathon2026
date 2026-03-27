@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
+import os from 'node:os';
 
 /**
  * Vitest configuration
@@ -10,6 +11,13 @@ import path from 'node:path';
  * 2. pnpm --filter website test
  * 3. pnpm --filter website test --coverage
  */
+
+// Dynamically determine optimal fork count based on available CPU cores
+// For jsdom tests, cap at 3 to avoid memory pressure (jsdom is memory-heavy)
+// Use cores/2 to balance parallelism with memory overhead, minimum 1
+const availableCores = os.cpus().length;
+const optimalForks = Math.max(1, Math.min(3, Math.floor(availableCores / 2)));
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -20,15 +28,23 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    environment: 'jsdom',
+    // Default to lightweight node environment (35% of tests don't need jsdom)
+    // Component/hook tests specify @vitest-environment jsdom at file top
+    environment: 'node',
     setupFiles: ['./vitest.setup.ts'],
-    include: ['src/**/__tests__/**/*.test.ts', 'src/**/*.test.ts', 'src/**/*.test.tsx'],
+    include: [
+      'src/**/__tests__/**/*.test.ts',
+      'src/**/*.test.ts',
+      'src/**/*.test.tsx',
+      'src/**/*.integration.test.ts',
+      'src/**/*.integration.test.tsx',
+    ],
     // Use forks pool to isolate memory per test file (prevents OOM)
     pool: 'forks',
     poolOptions: {
       forks: {
         minForks: 1,
-        maxForks: 4, // Limit parallelism to prevent memory exhaustion
+        maxForks: optimalForks, // Dynamically set based on CPU cores
         isolate: true, // Each test file runs in fresh process
       },
     },
@@ -46,6 +62,8 @@ export default defineConfig({
         '**/__tests__/**',
         '**/*.test.ts',
         '**/*.test.tsx',
+        '**/*.integration.test.ts',
+        '**/*.integration.test.tsx',
         '**/types.ts',
         '**/index.ts',
         '**/*.d.ts',

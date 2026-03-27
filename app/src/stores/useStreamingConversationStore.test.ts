@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+/**
+ * @vitest-environment jsdom
+ */
 import { act } from '@testing-library/react';
 
 import {

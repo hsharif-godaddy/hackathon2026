@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+/**
+ * @vitest-environment jsdom
+ */
 import { act, waitFor } from '@testing-library/react';
 
 import { renderHookWithProviders } from '@/tests/test-utils';

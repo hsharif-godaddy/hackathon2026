@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+/**
+ * @vitest-environment jsdom
+ */
 import { act } from '@testing-library/react';
 
 const { appFetch, fetchSite, cleanup, checkSiteStatus, updateSite } = vi.hoisted(() => ({

@@ -1,3 +1,6 @@
+/**
+ * @vitest-environment jsdom
+ */
 import type { Socket } from 'socket.io-client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 

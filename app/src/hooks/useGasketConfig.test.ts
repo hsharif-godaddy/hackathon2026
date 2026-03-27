@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+/**
+ * @vitest-environment jsdom
+ */
 import { renderHook, waitFor } from '@testing-library/react';
 
 import { gasketConfig, getGasketConfig } from '@/lib/gasket-config';

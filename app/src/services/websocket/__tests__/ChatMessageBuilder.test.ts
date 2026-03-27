@@ -1,4 +1,7 @@
 /**
+ * @vitest-environment jsdom
+ */
+/**
  * ChatMessageBuilder Tests
  *
  * Tests for the pure ChatMessageBuilder service

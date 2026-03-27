@@ -19,6 +19,8 @@
     "start:https": "node dist/server.js",
     "preview": "npm run build && npm run start",
     "test": "NODE_OPTIONS='--max-old-space-size=512' vitest run",
+    "test:unit": "NODE_OPTIONS='--max-old-space-size=512' vitest run --exclude='**/*.integration.test.{ts,tsx}'",
+    "test:integration": "NODE_OPTIONS='--max-old-space-size=512' vitest run .integration.test",
     "test:watch": "NODE_OPTIONS='--max-old-space-size=512' vitest",
     "test:ui": "NODE_OPTIONS='--max-old-space-size=512' vitest --ui",
     "test:coverage": "NODE_OPTIONS='--max-old-space-size=512' vitest run --coverage",

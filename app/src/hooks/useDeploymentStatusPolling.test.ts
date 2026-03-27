@@ -1,4 +1,8 @@
 /* eslint-disable react-hooks/rules-of-hooks */
+/**
+ * @vitest-environment jsdom
+ */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { waitFor } from '@testing-library/react';
 

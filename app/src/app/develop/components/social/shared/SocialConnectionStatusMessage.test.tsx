@@ -1,3 +1,6 @@
+/**
+ * @vitest-environment jsdom
+ */
 import '@testing-library/jest-dom'
 
 import { describe, expect, it } from 'vitest'

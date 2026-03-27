@@ -1,4 +1,7 @@
 /**
+ * @vitest-environment jsdom
+ */
+/**
  * Client Provider Tests
  *
  * Tests for client-side paywall data provider, particularly focusing on:

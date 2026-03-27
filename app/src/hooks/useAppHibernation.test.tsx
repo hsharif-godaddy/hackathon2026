@@ -1,4 +1,8 @@
 /* eslint-disable react-hooks/rules-of-hooks */
+/**
+ * @vitest-environment jsdom
+ */
+
 // Disabled because renderHook() requires hooks to be called inside callbacks
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

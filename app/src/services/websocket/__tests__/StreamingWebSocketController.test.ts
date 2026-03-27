@@ -2,6 +2,7 @@
  * StreamingWebSocketController Tests
  *
  * Tests for the headless StreamingWebSocketController service
+ * @vitest-environment jsdom
  */
 
 import { EventEmitter } from 'events'

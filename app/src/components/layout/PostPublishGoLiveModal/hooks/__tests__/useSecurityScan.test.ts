@@ -1,4 +1,7 @@
 /**
+ * @vitest-environment jsdom
+ */
+/**
  * Tests for useSecurityScan hook
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

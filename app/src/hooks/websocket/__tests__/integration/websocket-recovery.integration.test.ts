@@ -1,4 +1,7 @@
 /**
+ * @vitest-environment jsdom
+ */
+/**
  * WebSocket Recovery Integration Tests
  *
  * Tests the full recovery state machine flow including:

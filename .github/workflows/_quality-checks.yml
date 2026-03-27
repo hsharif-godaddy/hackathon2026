@@ -30,15 +30,26 @@ on:
         required: false
         type: boolean
         default: false
+      skip-lint-build:
+        description: "Skip lint, license check, and build"
+        required: false
+        type: boolean
+        default: false
       cache-next-build:
         description: "Cache Next.js build output (app only)"
         required: false
         type: boolean
         default: false
+      test-script:
+        description: "Test script to run (e.g., 'test', 'test:unit', 'test:integration')"
+        required: false
+        type: string
+        default: "test"
 
 jobs:
   # Job 1: Lint, License Check, and Build (runs in parallel with tests)
   lint-build:
+    if: ${{ !inputs.skip-lint-build }}
     runs-on:
       labels:
         - airo-cicd-runners
@@ -226,4 +237,4 @@ jobs:
         run: pnpm exec turbo run build --filter="${{ inputs.pnpm-filter }}^..."
 
       - name: Run tests
-        run: pnpm exec turbo run test --filter="${{ inputs.pnpm-filter }}"
+        run: pnpm exec turbo run "${{ inputs.test-script }}" --filter="${{ inputs.pnpm-filter }}"
