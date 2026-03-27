@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -eo pipefail
 
 # =============================================================================
 # Qdrant Cluster Entrypoint
@@ -7,10 +7,11 @@ set -e
 # Handles TLS certificate fetching and cluster bootstrap/join logic
 #
 # Environment Variables:
-#   QDRANT_CLUSTER_FQDN       - Cluster discovery FQDN (required)
-#   QDRANT_TLS_SECRET_ARN     - Name or ARN of Secrets Manager secret containing TLS cert (optional)
-#   QDRANT_ENABLE_TLS         - Set to "true" to enable TLS (optional)
-#   AWS_REGION                - AWS region for Secrets Manager (defaults to us-west-2)
+#   QDRANT_CLUSTER_FQDN           - Cluster discovery FQDN (required)
+#   QDRANT_TLS_SECRET_ARN         - Name or ARN of Secrets Manager secret containing TLS cert (optional)
+#   QDRANT_ENABLE_TLS             - Set to "true" to enable TLS (optional)
+#   AWS_REGION                    - AWS region for Secrets Manager (defaults to us-west-2)
+#   QDRANT_BOOTSTRAP_WAIT_SECS    - Seconds to wait for bootstrap node (defaults to 60)
 # =============================================================================
 
 QDRANT_CLUSTER_FQDN="${QDRANT_CLUSTER_FQDN:-qdrant.dev.airo.local}"
@@ -113,31 +114,144 @@ setup_tls() {
 # -----------------------------------------------------------------------------
 # Cluster Bootstrap/Join Logic
 # -----------------------------------------------------------------------------
+# On Fargate, ECS Service Discovery registers all task IPs simultaneously —
+# before any Qdrant process has started. The old logic used "DNS records exist"
+# to decide join vs bootstrap, but that means all nodes try --uri (join) when
+# nobody has bootstrapped yet. Each node ends up standalone → split-brain.
+#
+# Strategy:
+#   1. If any peer is already running Qdrant → join it (rolling update case)
+#   2. If nobody is running (fresh start) → lowest IP bootstraps, others wait
+#   3. If bootstrap node is unreachable after timeout → second-lowest takes over;
+#      all others exit 1 (ECS will restart them to retry cleanly)
+# -----------------------------------------------------------------------------
+get_my_ip() {
+    local ip=""
+
+    # Filter by container name to handle sidecar containers at non-zero index
+    if [ -n "${ECS_CONTAINER_METADATA_URI_V4}" ]; then
+        ip=$(curl -sf "${ECS_CONTAINER_METADATA_URI_V4}/task" 2>/dev/null \
+            | jq -r '.Containers[] | select(.Name == "qdrant") | .Networks[0].IPv4Addresses[0] // empty' 2>/dev/null \
+            | head -1 || true)
+    fi
+
+    if [ -z "$ip" ] && command -v hostname >/dev/null 2>&1; then
+        ip=$(hostname -i 2>/dev/null | awk '{print $1}' || true)
+    fi
+
+    printf '%s\n' "${ip}"
+}
+
 start_qdrant() {
     local protocol="http"
     if [ "${QDRANT_ENABLE_TLS}" = "true" ]; then
         protocol="https"
     fi
 
+    local MY_IP
+    MY_IP=$(get_my_ip)
+    echo "My IP: ${MY_IP:-unknown}"
+
+    # Fail fast if we can't determine our own IP — multiple nodes bootstrapping
+    # independently without IP-based leader election recreates split-brain.
+    if [ -z "$MY_IP" ]; then
+        echo "ERROR: Could not determine own IP; cannot safely elect bootstrap node."
+        exit 1
+    fi
+
     echo "Performing DNS lookup for ${QDRANT_CLUSTER_FQDN}..."
 
-    if DNS_RESULT=$(dig +short "$QDRANT_CLUSTER_FQDN" A 2>/dev/null) && [ -n "$DNS_RESULT" ]; then
-        RECORD_COUNT=$(echo "$DNS_RESULT" | grep -cE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' 2>/dev/null || echo 0)
+    # Wait for DNS to populate — Service Discovery can take a few seconds
+    local retries=0
+    local max_retries=10
+    local DNS_RESULT=""
+    local RECORD_COUNT=0
 
-        if [ "$RECORD_COUNT" -eq 0 ]; then
-            echo "No valid IP records found."
-            echo "Bootstrapping NEW Qdrant cluster..."
-            exec ./qdrant --bootstrap "${protocol}://${QDRANT_CLUSTER_FQDN}:6335"
-        else
-            echo "Found ${RECORD_COUNT} DNS record(s)."
-            echo "Joining EXISTING cluster..."
-            exec ./qdrant --uri "${protocol}://${QDRANT_CLUSTER_FQDN}:6335"
+    while [ "$retries" -lt "$max_retries" ]; do
+        DNS_RESULT=$(dig +short "$QDRANT_CLUSTER_FQDN" A 2>/dev/null || true)
+        RECORD_COUNT=$(echo "$DNS_RESULT" | grep -cE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || true)
+        RECORD_COUNT=${RECORD_COUNT:-0}
+
+        if [ "$RECORD_COUNT" -gt 0 ]; then
+            break
         fi
-    else
-        echo "DNS lookup failed or returned empty result."
+
+        retries=$((retries + 1))
+        echo "Waiting for DNS records... (attempt ${retries}/${max_retries})"
+        sleep 3
+    done
+
+    echo "Found ${RECORD_COUNT} DNS record(s): $(echo "$DNS_RESULT" | tr '\n' ' ')"
+
+    if [ "$RECORD_COUNT" -eq 0 ]; then
+        echo "No DNS records found after ${max_retries} attempts."
+        echo "Bootstrapping NEW Qdrant cluster (standalone)..."
+        exec ./qdrant --bootstrap "${protocol}://${QDRANT_CLUSTER_FQDN}:6335"
+    fi
+
+    # Build curl args for Qdrant API probes.
+    # Use array to safely handle API key values with special characters.
+    # Only skip TLS verification when TLS is disabled.
+    local -a curl_opts=(-sf --connect-timeout 2 --max-time 5)
+    [ "${QDRANT_ENABLE_TLS}" != "true" ] && curl_opts+=(-k)
+    [ -n "${QDRANT__SERVICE__API_KEY}" ] && curl_opts+=(-H "api-key:${QDRANT__SERVICE__API_KEY}")
+
+    # Check if any peer already has a running Qdrant cluster (rolling update case)
+    for PEER_IP in $DNS_RESULT; do
+        if [ "$PEER_IP" = "$MY_IP" ]; then
+            continue
+        fi
+        if curl "${curl_opts[@]}" "${protocol}://${PEER_IP}:6333/cluster" >/dev/null 2>&1; then
+            echo "Found running cluster peer at ${PEER_IP}"
+            echo "Joining EXISTING cluster..."
+            exec ./qdrant --uri "${protocol}://${PEER_IP}:6335"
+        fi
+    done
+
+    # No running cluster — all nodes starting fresh.
+    # Lowest IP bootstraps; second-lowest is the fallback if bootstrap unreachable;
+    # all others exit 1 so ECS restarts them to retry cleanly.
+    local SORTED_IPS
+    SORTED_IPS=$(echo "$DNS_RESULT" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n)
+    local LOWEST_IP
+    LOWEST_IP=$(echo "$SORTED_IPS" | head -1)
+    local SECOND_IP
+    SECOND_IP=$(echo "$SORTED_IPS" | sed -n '2p')
+
+    echo "Lowest IP in DNS: ${LOWEST_IP}, Second: ${SECOND_IP:-none}"
+
+    if [ "$MY_IP" = "$LOWEST_IP" ]; then
+        echo "I am the bootstrap node."
         echo "Bootstrapping NEW Qdrant cluster..."
         exec ./qdrant --bootstrap "${protocol}://${QDRANT_CLUSTER_FQDN}:6335"
     fi
+
+    local max_wait_secs="${QDRANT_BOOTSTRAP_WAIT_SECS:-60}"
+    local wait_retries=0
+    local sleep_interval=3
+    local max_wait=$(( max_wait_secs / sleep_interval ))
+
+    echo "Waiting up to ${max_wait_secs}s for bootstrap node (${LOWEST_IP}) to start..."
+    while [ "$wait_retries" -lt "$max_wait" ]; do
+        if curl "${curl_opts[@]}" "${protocol}://${LOWEST_IP}:6333/cluster" >/dev/null 2>&1; then
+            echo "Bootstrap node is ready."
+            echo "Joining cluster..."
+            exec ./qdrant --uri "${protocol}://${LOWEST_IP}:6335"
+        fi
+        wait_retries=$((wait_retries + 1))
+        echo "Waiting for bootstrap node... (attempt ${wait_retries}/${max_wait})"
+        sleep "$sleep_interval"
+    done
+
+    # Bootstrap node unreachable — only second-lowest IP takes over to avoid
+    # multiple nodes bootstrapping independently (split-brain).
+    if [ "$MY_IP" = "$SECOND_IP" ]; then
+        echo "Bootstrap node unreachable; taking over as fallback bootstrap..."
+        exec ./qdrant --bootstrap "${protocol}://${QDRANT_CLUSTER_FQDN}:6335"
+    fi
+
+    echo "ERROR: Bootstrap node unreachable and I am not the fallback. Exiting so ECS can restart me."
+    exit 1
 }
 
 # -----------------------------------------------------------------------------
