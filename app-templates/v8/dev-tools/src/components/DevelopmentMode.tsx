@@ -10,7 +10,7 @@ import { initTranslations } from "../utils/translations";
 export default function DevelopmentMode() {
   // Load translations from i18n API on mount
   useEffect(() => { void initTranslations(); }, []);
-  const [isEditModeActive, setIsEditModeActive] = useState(true); // on by default
+  const [isEditModeActive, setIsEditModeActive] = useState(false); // off by default, parent enables via EDIT_MODE_ENABLED message
 
   const {
     isEnabled,
