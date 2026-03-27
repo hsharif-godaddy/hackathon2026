@@ -14,38 +14,20 @@ Instead of just building demos, Airo AI Builder focuses on creating **real, prod
 
 ## 🛠️ Quick Start
 
-You first need to request access to the `GD-AWS-USA-GD-AiroBuilde-Dev-Private` AWS Account, as the app has to retrive secrets in order to run. Please request access in #airo-app-builder-dev. After verifying access via Okta, you can then proceed with the setup.
+You first need to request access to the `GD-AWS-USA-GD-AiroBuilde-Dev-Private` AWS Account, as the app has to retrieve secrets in order to run. Please request access in #airo-ai-builder-dev. After verifying access via Okta, you can then proceed with the setup.
+
+Additionally, you will want to make sure you request access to the GitHub orgs `JOMAX\gdcorp-partners` and `JOMAX\gdcorp-commerce` so that you can make PRs and run the GitHub Actions.
 
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd airo-ai-builder
-
-# Enable Corepack (ensures consistent pnpm version)
-corepack enable
+cd airo-app-builder
 
 # Run the setup utility
 ./setup.sh
 ```
 
-The setup utility will guide you through:
-
-- **Environment Configuration** - AI providers (AWS Bedrock/GoCode), authentication, database
-- **Getty Images Setup** - Professional stock photos with AWS Secrets Manager integration
-- **Docker Environment** - MySQL container and dependency verification
-- **AWS SSO Integration** - Automatic credential setup for development services
-
-For selective configuration or reconfiguration:
-
-```bash
-# From project root (recommended)
-pnpm --filter airo-setup start
-
-# Or from setup directory
-cd setup && pnpm start
-```
-
-Choose "Selective Configuration" to configure individual components or check system status.
+The setup utility will guide you through the full setup. Make sure to read all the output and confirm everything is configured without any errors. At the end of the `./setup.sh`, final manual directions will be printed that need to be followed.
 
 **[📖 Detailed Setup Guide →](./GETTING_STARTED.md)**
 

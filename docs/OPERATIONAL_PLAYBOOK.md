@@ -1,7 +1,7 @@
 General on call operational info
 
 - ServiceNow oncall group: **DEV-Airo-Builders**
-- Contact information: Slack: **#airo-app-builder-dev**
+- Contact information: Slack: **#airo-ai-builder-dev**
 - Alerts:
   - Dev + Test: **#airo-app-builder-dev-alerts**
   - Prod: **#airo-app-builder-prod-alerts**

@@ -146,6 +146,10 @@ Location: `src/app/develop/hooks/initializationMachine.ts` and `useInitializatio
 - **Context hydration:** Send `HYDRATE_APP` when appId changes to keep context synchronized
 - RESET clears all refs
 
+## Local Dev Logs
+
+When running locally (`GASKET_ENV=local.*`), all stdout/stderr is automatically written to `app/dev.log` (ANSI codes stripped). The file is truncated on each restart. Use this log to troubleshoot issues — read it to see recent errors, startup failures, or unexpected behavior.
+
 ## Testing
 
 ```bash

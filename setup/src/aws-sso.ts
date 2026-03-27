@@ -49,7 +49,8 @@ export class AWSSSoSetup {
       await execa('aws', ['--version']);
     } catch (error) {
       console.log(chalk.red('❌ AWS CLI not found'));
-      console.log('Please install AWS CLI v2: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html');
+      console.log('\n  macOS:  brew install awscli');
+      console.log('  Other:  https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html');
       return false;
     }
 

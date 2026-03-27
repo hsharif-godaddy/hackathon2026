@@ -1,20 +1,21 @@
-# 🚀 Getting Started - Airo Builder
+# Getting Started - Airo Builder
 
-Complete setup guide to run the AI builder locally in under 5 minutes.
+Complete setup guide to run the AI builder locally.
 
 ## Prerequisites
 
 - Access to AWS Account: `GD-AWS-USA-GD-AiroBuilde-Dev-Private`
-- direnv
+- direnv (managed via `.envrc` — auto-configures Node.js, pnpm, corepack)
 - Node.js 22.16.0+
-- pnpm
-- Docker (for local database)
-- AI Provider API Key (OpenAI, AWS Bedrock, or GoCode)
-- For running the test and prod environment locally: Dev-Airo-Builders Ad group access
+- pnpm (managed by Corepack via `.envrc`)
+- Go (for local control plane)
+- Docker (for MySQL container)
+- AI Provider API Key (GoCode recommended, or AWS Bedrock)
+- For running the test and prod environment locally: `Dev-Airo-Builders` AD group access
 
 ## Request Access
 
-You first need to request access to the `GD-AWS-USA-GD-AiroBuilde-Dev-Private` AWS Account, as the app has to retrive secrets in order to run. Please request access in #airo-app-builder-dev. After verifying access via Okta, you can then proceed with the setup.
+You first need to request access to the `GD-AWS-USA-GD-AiroBuilde-Dev-Private` AWS Account, as the app has to retrieve secrets in order to run. Please request access in #airo-ai-builder-dev. After verifying access via Okta, you can then proceed with the setup.
 
 ## 🛠️ Automated Setup (Recommended)
 
@@ -28,10 +29,10 @@ Run the complete setup utility:
 
 This will:
 
-1. ✅ Verify Node.js 22.16.0+ and pnpm installation
+1. ✅ Verify Node.js 22.16.0+, pnpm, and Go installation
 2. ✅ Check Docker environment and start MySQL container
-3. ✅ Configure AI provider (AWS Bedrock, GoCode, or OpenAI)
-4. ✅ Set up authentication (Mock login or SSO)
+3. ✅ Configure AI provider (GoCode recommended, or AWS Bedrock)
+4. ✅ Set up authentication (JWT/SSO)
 5. ✅ Configure Getty Images proxy with AWS Secrets Manager
 6. ✅ Generate all required `.env` files
 
@@ -161,7 +162,18 @@ LOGOUT_REDIRECT_URL=https://local.gasket.dev-godaddy.com:8443/
 NEXT_PUBLIC_USE_MOCK_LOGIN=false
 ```
 
-### 3. Start Services
+### 3. Hosts File (Required)
+
+Add this line to `/etc/hosts`:
+
+```
+127.0.0.1  local.gasket.dev-godaddy.com
+```
+
+On macOS/Linux: `sudo nano /etc/hosts`
+On Windows: `notepad C:\Windows\System32\drivers\etc\hosts` (as Admin)
+
+### 4. Start Services
 
 **Start MySQL Container (if not using setup utility):**
 
@@ -169,21 +181,45 @@ NEXT_PUBLIC_USE_MOCK_LOGIN=false
 docker compose up app-mysql -d
 ```
 
-**Option 1 - Start both services concurrently:**
+**AWS SSO login:**
 
 ```bash
-pnpm run dev
+aws sso login --profile airobuild-dev-private-sso
 ```
 
-**Option 2 - Start services individually:**
+**Start 3 terminals:**
 
 ```bash
 # Terminal 1 - Agents Backend (port 4000)
-pnpm run dev:agents
+cd agents && pnpm run dev
 
-# Terminal 2 - Main App (HTTPS port 8443)
-pnpm run dev:app
+# Terminal 2 - App / BFF (HTTPS port 8443)
+cd app && pnpm run dev
+
+# Terminal 3 - Local Control Plane (port 4100)
+pnpm run dev:control-plane
 ```
+
+## What's Running
+
+| Service                 | Port | Description                                      |
+| ----------------------- | ---- | ------------------------------------------------ |
+| **Agents**              | 4000 | Express API, AI agents, SQLite, WebSocket        |
+| **App**                 | 8443 | Next.js builder UI + BFF (Gasket HTTPS proxy)    |
+| **Local Control Plane** | 4100 | Local mgmt-airo API (Go, SQLite, Docker Compose) |
+| **MySQL**               | 3306 | Per-app databases (Docker container)             |
+
+## Dev Logs
+
+All services automatically log to files during local development:
+
+| Service             | Log file                      |
+| ------------------- | ----------------------------- |
+| Agents              | `agents/dev.log`              |
+| App                 | `app/dev.log`                 |
+| Local Control Plane | `local-control-plane/dev.log` |
+
+Logs are truncated on each restart. ANSI codes are stripped for readability. Use these logs to troubleshoot issues or share with the team.
 
 ## Environment Configuration
 
@@ -192,11 +228,9 @@ pnpm run dev:app
 **Available run commands:**
 
 ```bash
-pnpm run dev              # Dev environment (local.dev) - default legacy control plane
-pnpm run local:test       # Test environment (local.test) - legacy control plane
-pnpm run local:prod       # Prod environment (local.prod) - legacy control plane
-pnpm run local:test:v2    # Test environment (local.test) - V2 control plane
-pnpm run local:prod:v2    # Prod environment (local.prod) - V2 control plane (requires prod JWT keys)
+pnpm run dev              # Dev environment (local.dev) — uses local control plane
+pnpm run local:test       # Test environment (local.test) — uses real control plane
+pnpm run local:prod       # Prod environment (local.prod) — uses real control plane
 ```
 
 #### Environment Configuration
@@ -236,11 +270,8 @@ SSO_LOGOUT_URL=https://sso.test-godaddy.com/logout
 LOGIN_REDIRECT_URL=https://airo-builder.test-godaddy.com:8443/
 AWS_REGION=us-west-2
 
-# Management API Base URL used for V2 control plane when USE_V2_CONTROL_PLANE is true
+# Management API Base URL (real control plane)
 MGMT_AIRO_BASE_URL=https://mgmt.nstk.net
-
-# For V2 Control Plane (optional):
-# USE_V2_CONTROL_PLANE=true
 ```
 
 **`app/.env.local.prod` (godaddy.com):**
@@ -251,17 +282,8 @@ SSO_LOGOUT_URL=https://sso.godaddy.com/logout
 LOGIN_REDIRECT_URL=https://airo-builder.godaddy.com:8443/
 AWS_REGION=us-west-2
 
-# Management API Base URL
+# Management API Base URL (real control plane)
 MGMT_AIRO_BASE_URL=https://mgmt.woosaas.godaddy.com
-
-# For V2 Control Plane (optional):
-# USE_V2_CONTROL_PLANE=true
-
-# JWT Configuration for Production V2 (required for local:prod:v2)
-# See "V2 Production Environment JWT Configuration" section below
-# Uncomment these lines to enable local:prod:v2:
-# AWS_PROFILE=gd-aws-usa-gd-airobuilde-prod
-# JWT_SECRETS_NAME=prod-airo-jwt-keys
 ```
 
 #### Access Requirements
@@ -279,14 +301,18 @@ MGMT_AIRO_BASE_URL=https://mgmt.woosaas.godaddy.com
 
 #### Important Notes
 
-**Legacy Control Plane (Non-V2 Scripts):**
+**Control Plane Architecture:**
 
-- When using `pnpm run dev`, `pnpm run local:test`, or `pnpm run local:prod`, generated apps work across **all environments**.
-- Apps are configured with CORS that accepts requests from all environment domains.
+- **Dev** (`pnpm run dev`): Uses the local control plane at `http://localhost:4100` with local agents at `http://localhost:4000`.
+- **Test/Prod** (`pnpm run local:test`, `pnpm run local:prod`): Uses the real control plane with remote agents.
+
+**Cross-Environment Apps:**
+
+- Generated apps work across **all environments** - apps are configured with CORS that accepts requests from all environment domains.
 - You only need to update `.env.local` to change which SSO system you authenticate with.
 - **No need to regenerate apps when switching environments** - the same app works in dev, test, and prod!
 
-**Generated App Certificate Warnings (Legacy Control Plane):**
+**Generated App Certificate Warnings (Dev):**
 
 Generated apps run on `https://localhost:5XXX` with certificates signed by a local development CA.
 
@@ -299,57 +325,7 @@ Generated apps run on `https://localhost:5XXX` with certificates signed by a loc
 
 This adds the CA to your system trust store, eliminating certificate warnings for **ALL** generated apps.
 
-**Note:** The CA certificate is automatically generated when you create your first app and is stored in `.dev-ca/` (gitignored).
-
-**V2 Control Plane:**
-
-- V2 scripts (`local:test:v2`, `local:prod:v2`) set `USE_V2_CONTROL_PLANE=true` to use the new control plane infrastructure.
-- **V2 scripts do NOT use local agents** - they deploy to remote V2 infrastructure with agents at `https://{appId}.agent.c4.test-airoapp.ai`.
-- **Production V2 (`local:prod:v2`) requires production JWT keys** - see "V2 Production Environment JWT Configuration" section below for setup instructions.
-- Use non-V2 scripts (`pnpm run dev`, `local:test`, `local:prod`) for local agent testing with `http://localhost:4000`.
-
-#### V2 Production Environment JWT Configuration
-
-**Important: Running `pnpm run local:prod:v2` requires production AWS access**
-
-When running the production V2 environment locally (`local:prod:v2`), you need to configure AWS access to fetch JWT keys from AWS Secrets Manager. The app uses these keys to authenticate with remote production agent containers. Without proper AWS access, agent API calls will fail with 401 errors.
-
-**Steps to configure production V2:**
-
-1. **Log into the production AWS account:**
-
-   ```bash
-   # Use gd-aws-okta to log into production AWS account
-   gd-aws-okta login gd-aws-usa-gd-airobuilde-prod
-   ```
-
-2. **Update your `app/.env.local.prod` file:**
-
-   ```bash
-   # Uncomment these lines in .env.local.prod:
-   AWS_PROFILE=gd-aws-usa-gd-airobuilde-prod
-   JWT_SECRETS_NAME=prod-airo-jwt-keys
-   ```
-
-3. **Run the production V2 environment:**
-   ```bash
-   pnpm run local:prod:v2
-   ```
-
-**How it works:**
-
-- The app automatically fetches JWT keys from AWS Secrets Manager using `JWT_SECRETS_NAME`
-- These are the **same keys** that production V2 agents use for validation
-- Tokens signed with these keys will be accepted by production V2 agent containers (`*.agent.c24.airoapp.ai`)
-- No manual key copying required - keys are fetched securely from Secrets Manager
-
-**Why this is needed:**
-
-- Production V2 agent containers validate JWT tokens using production-specific keys
-- Your local app must sign tokens with matching keys from `prod-airo-jwt-keys`
-- Without AWS access to fetch these keys, all agent API calls will return 401 Unauthorized errors
-
-**Note:** Test environment (`local:test:v2`) uses development JWT keys by default (`dev-airo-jwt-keys`) and doesn't require special configuration.
+**Note:** The CA certificate is automatically generated when you create your first app and is stored in `.dev-ca/` (gitignored). Test/prod environments use trusted certificates and don't have this issue.
 
 **General:**
 
@@ -363,37 +339,21 @@ When running the production V2 environment locally (`local:prod:v2`), you need t
 - **Test**: https://airo-builder.test-godaddy.com:443 (with `GASKET_ENV=local.test`)
 - **Prod**: https://airo-builder.godaddy.com:443 (with `GASKET_ENV=local.prod`)
 
-**Agents API (Legacy Control Plane only):**
+**Agents API:**
 
-- **Local Agents**: http://localhost:4000
+- **Local Agents** (dev): http://localhost:4000
 - **Health Check**: http://localhost:4000/health
-- **Note**: V2 control plane uses remote agents, not `localhost:4000`
+- **Note**: Test/prod use remote agents via the real control plane
 
-## Test
+**Local Control Plane:**
 
-```bash
-# List available agents
-curl http://localhost:4000/agents
-
-# Chat with an agent
-curl -X POST http://localhost:4000/agent/example-agent/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Hello!"}'
-```
-
-## What's Running
-
-- **Agents Backend** (port 4000): AI agents with chat APIs
-- **Main App** (port 8443): Next.js builder interface
-- **Database**: SQLite (auto-created)
-- **File Storage**: Generated apps in `/tmp/apps`
+- **API**: http://localhost:4100
 
 ## Next Steps
 
-1. Visit http://local.gasket.dev-godaddy.com:8443 to start building
+1. Visit https://local.gasket.dev-godaddy.com:8443 to start building
 2. Explore the agent chat interface
 3. Try generating a simple app
-4. Check the API documentation at http://localhost:4000
 
 ## 🔧 Setup Utilities
 
@@ -444,23 +404,39 @@ This will:
 
 ## Troubleshooting
 
+### First steps
+
+Before reporting issues, always try a clean install and rebuild:
+
+```bash
+pnpm install --force && pnpm build --force
+```
+
+This resolves most dependency and build cache issues.
+
+### direnv blocked
+
+**Issue**: `direnv: error .envrc is blocked`
+**Solution**: `direnv allow`
+
+### AWS SSO expired
+
+**Issue**: Switchboard authentication errors or "Unable to obtain token from SSO"
+**Solution**: `aws sso login --profile airobuild-dev-private-sso`
+
 ### Configuration Issues
 
 **Recommended**: Use the setup utility to diagnose and fix configuration problems:
 
 ```bash
-# From project root (recommended)
 pnpm --filter airo-setup start
 # Choose "Selective Configuration" → "Check Current Configuration Status"
-
-# Or from setup directory
-cd setup && pnpm start
 ```
 
 ### "Starting Development Server" gets stuck or fails
 
-**Issue**: The development server fails to start for new apps  
-**Cause**: App template dependencies are not installed  
+**Issue**: The development server fails to start for new apps
+**Cause**: App template dependencies are not installed
 **Solution**: Install all dependencies using workspace:
 
 ```bash
@@ -469,8 +445,8 @@ pnpm install
 
 ### Template directory errors
 
-**Issue**: "Template directory not found" warnings  
-**Cause**: The `APP_TEMPLATE_DIR` environment variable points to wrong location  
+**Issue**: "Template directory not found" warnings
+**Cause**: The `APP_TEMPLATE_DIR` environment variable points to wrong location
 **Solution**: Use the setup utility or ensure your `agents/.env` has:
 
 ```bash
@@ -479,25 +455,21 @@ APP_TEMPLATE_DIR=app-templates/v8
 
 ### Getty Images not working
 
-**Issue**: Getty Images search returns errors or no results  
-**Cause**: Missing or expired AWS credentials, incorrect token  
+**Issue**: Getty Images search returns errors or no results
+**Cause**: Missing or expired AWS credentials, incorrect token
 **Solution**: Use the setup utility:
 
 ```bash
-# From project root (recommended)
 pnpm --filter airo-setup start
 # Choose "Selective Configuration" → "Configure Getty Images Proxy"
-
-# Or from setup directory
-cd setup && pnpm start
 ```
 
 ### Generated App Certificate Error (NET::ERR_CERT_AUTHORITY_INVALID)
 
-**Issue**: Generated app preview shows certificate error or blank iframe  
+**Issue**: Generated app preview shows certificate error or blank iframe
 **Cause**: Browser doesn't trust the local development CA that signs certificates for `https://localhost:5XXX`
 
-**Recommended Solution: Trust the Development CA** (one-time fix for all apps or is ran as part of the setup script):
+**Recommended Solution: Trust the Development CA** (one-time fix for all apps or is run as part of the setup script):
 
 ```bash
 # From project root, run:
@@ -518,15 +490,23 @@ This script will:
 
 **Why this happens**: Generated apps use certificates signed by a local development CA. Browsers block untrusted certificates in iframes until you either trust the CA or manually accept each certificate.
 
+**Chrome not loading the CA from macOS keychain:**
+
+If the preview still won't load after running `trust-dev-ca.sh`, Chrome may not be reading the macOS certificate store. Manually import the CA into Chrome:
+
+1. Go to `chrome://certificate-manager/localcerts/usercerts`
+2. Click **Import** on Trust Certificates
+3. Select `airo-app-builder/.dev-ca/ca-cert.pem` (press `Cmd+Shift+.` in the file picker to show hidden directories)
+
 **Note**:
 
 - The CA is automatically generated when you create your first app
-- This only affects legacy control plane. V2 control plane apps use trusted certificates and don't have this issue.
+- This only affects local dev. Test/prod environments use trusted certificates and don't have this issue.
 
 ### Database connection errors
 
-**Issue**: MySQL connection failures  
-**Cause**: MySQL container not running or wrong credentials  
+**Issue**: MySQL connection failures
+**Cause**: MySQL container not running or wrong credentials
 **Solution**: Use the setup utility or manually start container:
 
 ```bash
@@ -534,16 +514,13 @@ This script will:
 pnpm --filter airo-setup start
 # Choose "Start MySQL Container"
 
-# Or from setup directory
-cd setup && pnpm start
-
 # Manual alternative
 docker compose up app-mysql -d
 ```
 
 ### Port conflicts
 
-**Issue**: Development servers fail to start due to port conflicts  
+**Issue**: Development servers fail to start due to port conflicts
 **Solution**: The system automatically assigns ports starting from 5001. Kill any conflicting processes:
 
 ```bash

@@ -142,6 +142,10 @@ Key files: `src/server/instrumentation.ts`, `src/server/conversation-persistence
 - Periodic logging every 5 min (`MEMORY_LOG_INTERVAL_MS`): search for `memory.periodic.snapshot`
 - Dev memory limit: `--max-old-space-size=384` (matches production 512MB - overhead)
 
+## Local Dev Logs
+
+When running locally (`GASKET_ENV=local.*`), all stdout/stderr is automatically written to `agents/dev.log` (ANSI codes stripped). The file is truncated on each restart. Use this log to troubleshoot issues — read it to see recent errors, startup failures, or unexpected behavior.
+
 ## Testing
 
 ```bash

@@ -227,17 +227,43 @@ async function validateGoCodeKey() {
 }
 
 /**
- * Spawn the child process with signal handling
+ * Spawn the child process with signal handling.
+ * In local dev, pipes stdout/stderr to both the terminal and a log file
+ * so developers can share logs when troubleshooting.
  */
 function spawnChildProcess() {
-  // Spawn without shell for better security
-  // Keep child in the same process group so Ctrl-C (SIGINT) is delivered
-  // directly by the OS to all processes — no manual forwarding needed
+  const isLocalDev = (process.env.GASKET_ENV || '').startsWith('local');
+  const logPath = path.join(agentsDir, 'dev.log');
+  let logStream;
+
+  if (isLocalDev) {
+    logStream = fs.createWriteStream(logPath);
+    logStream.on('error', (err) => {
+      console.warn(`dev.log write error: ${err.message}`);
+      logStream = null;
+    });
+    console.log(`📝 Logging output to ${logPath}\n`);
+  }
+
   const child = spawn(command, commandArgs, {
-    stdio: 'inherit',
-    env: process.env,
+    stdio: isLocalDev ? ['inherit', 'pipe', 'pipe'] : 'inherit',
+    env: { ...process.env, ...(isLocalDev ? { FORCE_COLOR: '1' } : {}) },
     shell: false
   });
+
+  if (isLocalDev) {
+    // eslint-disable-next-line no-control-regex
+    const stripAnsi = (buf) => buf.toString().replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+
+    child.stdout.on('data', (data) => {
+      process.stdout.write(data);
+      if (logStream) logStream.write(stripAnsi(data));
+    });
+    child.stderr.on('data', (data) => {
+      process.stderr.write(data);
+      if (logStream) logStream.write(stripAnsi(data));
+    });
+  }
 
   // Guard to prevent double-exit from error and exit events
   let finished = false;
@@ -245,6 +271,7 @@ function spawnChildProcess() {
   function finalizeExit(code) {
     if (finished) return;
     finished = true;
+    if (logStream) logStream.end();
     process.exit(code);
   }
 

@@ -63,6 +63,33 @@ check_nodejs() {
     fi
 }
 
+# Check that a Node.js version manager (mise or nvm) is installed.
+# .envrc relies on one of these to load the correct Node.js version from .nvmrc.
+check_node_version_manager() {
+    if command -v mise &> /dev/null; then
+        print_status "mise is installed (Node.js version manager)"
+        return 0
+    fi
+
+    if [ -n "${NVM_DIR:-}" ] && [ -s "${NVM_DIR}/nvm.sh" ]; then
+        print_status "nvm is installed (Node.js version manager)"
+        return 0
+    fi
+
+    print_warning "No Node.js version manager found (mise or nvm)"
+    echo ""
+    print_info "The .envrc file uses mise or nvm to load the correct Node.js version from .nvmrc"
+    echo ""
+    echo "  Install mise (recommended):"
+    echo "    brew install mise          # macOS"
+    echo "    https://mise.jdx.dev/installing-mise.html  # other platforms"
+    echo ""
+    echo "  Or install nvm:"
+    echo "    https://github.com/nvm-sh/nvm#installing-and-updating"
+    echo ""
+    return 1
+}
+
 # Check pnpm installation
 check_pnpm() {
     print_info "Checking pnpm installation..."
@@ -77,12 +104,12 @@ check_pnpm() {
         else
             print_warning "pnpm $PNPM_VERSION is installed, but $REQUIRED_VERSION is required"
             print_info "Different pnpm versions cause lockfile format inconsistencies"
-            show_corepack_instructions
+            show_pnpm_instructions
             return 1
         fi
     else
         print_error "pnpm is not installed"
-        show_corepack_instructions
+        show_pnpm_instructions
         return 1
     fi
 }
@@ -128,6 +155,83 @@ check_go() {
     fi
 }
 
+# Check Docker installation
+check_docker() {
+    print_info "Checking Docker installation..."
+
+    if command -v docker &> /dev/null; then
+        DOCKER_VERSION=$(docker --version 2>/dev/null | sed 's/Docker version //' | cut -d',' -f1)
+        print_status "Docker $DOCKER_VERSION is installed"
+
+        if docker info &> /dev/null; then
+            print_status "Docker daemon is running"
+        else
+            print_warning "Docker is installed but not running"
+            echo ""
+            echo "  Open the Docker Desktop application to start it"
+            return 1
+        fi
+        return 0
+    else
+        print_error "Docker is not installed"
+        echo ""
+        echo "  Download Docker Desktop:"
+        echo "    https://www.docker.com/products/docker-desktop/"
+        return 1
+    fi
+}
+
+# Check AWS CLI installation
+check_awscli() {
+    print_info "Checking AWS CLI installation..."
+
+    if command -v aws &> /dev/null; then
+        AWS_VERSION=$(aws --version 2>&1 | awk '{print $1}' | cut -d'/' -f2)
+        print_status "AWS CLI $AWS_VERSION is installed"
+        return 0
+    else
+        print_error "AWS CLI is not installed"
+        echo ""
+        echo "  macOS:  brew install awscli"
+        echo "  Other:  https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
+        return 1
+    fi
+}
+
+# Check that make is installed (required for local control plane)
+check_make() {
+    print_info "Checking make installation..."
+
+    if command -v make &> /dev/null; then
+        print_status "make is installed"
+        return 0
+    else
+        print_error "make is not installed"
+        echo ""
+        echo "  macOS:  xcode-select --install"
+        echo "  Linux:  sudo apt install build-essential"
+        return 1
+    fi
+}
+
+# Check /etc/hosts entry for local dev
+check_hosts_file() {
+    print_info "Checking /etc/hosts for local dev entry..."
+
+    if grep -v '^\s*#' /etc/hosts 2>/dev/null | grep -q "local.gasket.dev-godaddy.com"; then
+        print_status "/etc/hosts contains local.gasket.dev-godaddy.com"
+        return 0
+    else
+        print_error "/etc/hosts is missing the local dev entry"
+        echo ""
+        echo "  Add this line to /etc/hosts:"
+        echo "    127.0.0.1  local.gasket.dev-godaddy.com"
+        echo ""
+        echo "  Run: echo '127.0.0.1  local.gasket.dev-godaddy.com' | sudo tee -a /etc/hosts"
+        return 1
+    fi
+}
+
 # Check mkcert installation
 check_mkcert() {
     print_info "Checking mkcert installation..."
@@ -160,11 +264,7 @@ check_direnv() {
 
 # Check if direnv hook is configured and working
 check_direnv_hook() {
-    # Check if DIRENV_DIR is set, which indicates direnv hook is active and .envrc is loaded
-    if [ -n "${DIRENV_DIR:-}" ]; then
-        print_status "direnv hook is configured and .envrc is already loaded"
-        return 0
-    else
+    if [ -z "${DIRENV_DIR:-}" ]; then
         print_warning "direnv hook is not active in this shell session"
         echo ""
         print_info "To enable direnv, add the appropriate hook to your shell config:"
@@ -184,6 +284,24 @@ check_direnv_hook() {
         echo "  3. Run: direnv allow"
         return 1
     fi
+
+    if [ -f ".envrc" ]; then
+        # Extract the allowPath from direnv status and check if it exists on disk.
+        # When .envrc is blocked, the allow file doesn't exist (watch shows epoch 0).
+        # When approved, the allow file exists with a real timestamp.
+        local allow_path
+        allow_path=$(direnv status 2>/dev/null | grep "Found RC allowPath" | awk '{print $NF}')
+
+        if [ -n "$allow_path" ] && [ ! -f "$allow_path" ]; then
+            print_warning ".envrc needs to be approved"
+            echo ""
+            echo "  Run: direnv allow"
+            return 1
+        fi
+    fi
+
+    print_status "direnv hook is configured and .envrc is loaded"
+    return 0
 }
 
 # Show Node.js installation instructions for Ubuntu
@@ -205,40 +323,27 @@ show_nodejs_install_instructions() {
     echo "  # Install Node.js 22 (will install latest 22.x version)"
     echo "  sudo apt install -y nodejs"
     echo ""
-    echo "Alternative using Node Version Manager (nvm) - Recommended:"
+    echo "Alternative using a version manager (recommended):"
     echo ""
-    echo "  # Install nvm"
-    echo "  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash"
+    echo "  mise (recommended):  brew install mise"
+    echo "    https://mise.jdx.dev/installing-mise.html"
     echo ""
-    echo "  # Reload shell or run:"
-    echo "  source ~/.bashrc"
+    echo "  nvm:"
+    echo "    https://github.com/nvm-sh/nvm#installing-and-updating"
     echo ""
-    echo "  # Install and use Node.js 22.16.0 or higher"
-    echo "  nvm install 22"
-    echo "  nvm use 22"
+    echo "  After installing, run: nvm install 22  (or mise install)"
     echo ""
     print_info "Note: Node.js 22.16.0+ is required to fix ERR_INVALID_URL_SCHEME bug"
     echo ""
 }
 
-# Show Corepack instructions (recommended for pnpm version management)
-show_corepack_instructions() {
-    echo ""
-    print_warning "Corepack ensures consistent pnpm version across all developers"
+# Show pnpm fix instructions
+show_pnpm_instructions() {
     echo ""
     print_info "This project requires pnpm 10.17.0 (specified in package.json)"
-    print_info "Using Corepack prevents lockfile format inconsistencies"
     echo ""
-    echo "Enable Corepack (RECOMMENDED - comes with Node.js 22+):"
-    echo ""
-    echo "  # Enable Corepack"
-    echo "  corepack enable"
-    echo ""
-    echo "  # Corepack will automatically install and use pnpm 10.17.0"
-    echo "  # based on the packageManager field in package.json"
-    echo ""
-    print_info "After enabling Corepack, pnpm will be automatically managed"
-    print_info "Run 'pnpm --version' to verify it shows 10.17.0"
+    echo "  Corepack is enabled automatically by .envrc"
+    echo "  Try: direnv allow && pnpm --version"
     echo ""
     echo "Alternative: Manual pnpm installation (NOT recommended):"
     echo ""
@@ -344,7 +449,7 @@ show_direnv_install_instructions() {
     echo "  direnv allow"
     echo ""
     print_info "Once direnv is set up, it will automatically:"
-    echo "  - Load the correct Node.js version (22.16.0+) via nvm"
+    echo "  - Load the correct Node.js version (22.16.0+) via mise or nvm"
     echo "  - Ensure pnpm is installed"
     echo "  - Set up workspace protection for pnpm commands"
     echo ""
@@ -365,98 +470,50 @@ main() {
         print_header
     fi
 
-    local nodejs_ok=0
-    local pnpm_ok=0
-    local go_ok=0
-    local mkcert_ok=0
-    local direnv_ok=0
-    local direnv_hook_ok=0
+    local required_checks=(
+        check_node_version_manager
+        check_direnv
+        check_direnv_hook
+        check_nodejs
+        check_pnpm
+        check_go
+        check_make
+        check_docker
+        check_awscli
+        check_hosts_file
+    )
 
-    # Check mkcert (optional but recommended)
-    if check_mkcert; then
-        mkcert_ok=1
-    fi
-    echo ""
-
-    # Check direnv first - it can automatically manage Node.js and pnpm
-    if check_direnv; then
-        direnv_ok=1
-
-        # Check if direnv hook is properly configured in shell
-        if check_direnv_hook; then
-            direnv_hook_ok=1
+    for check in "${required_checks[@]}"; do
+        if ! "$check"; then
+            echo ""
+            print_info "Fix the issue above, then re-run this check."
+            exit 1
         fi
-
         echo ""
-        if [ $direnv_hook_ok -eq 1 ]; then
+
+        if [ "$check" = "check_direnv_hook" ]; then
             print_info "direnv is fully configured - it will automatically manage Node.js and pnpm via .envrc"
-            print_info "Make sure to run 'direnv allow' in the project directory"
-        else
-            print_warning "direnv is installed but shell hook is NOT configured"
-            print_info "The .envrc file will not load automatically until you configure the hook"
-            print_info "Follow the instructions above to add the hook to your shell config"
+            echo ""
         fi
-        echo ""
-    fi
+    done
 
-    # Check other dependencies
-    if check_nodejs; then
-        nodejs_ok=1
-    fi
-
-    if check_pnpm; then
-        pnpm_ok=1
-    fi
-
+    # Optional — doesn't bail
+    check_mkcert
     echo ""
 
-    if check_go; then
-        go_ok=1
-    fi
-
-    # Summary - adjust based on mode
     if [ "$integrated_mode" = false ]; then
         echo ""
-        echo "=================================="
-        echo "  Dependency Check Summary"
-        echo "=================================="
+        print_status "All required dependencies are satisfied!"
+        echo ""
+        print_info "You can now proceed with the Airo Builder setup."
+        echo ""
+        echo "Next steps:"
+        echo "  1. Run './setup.sh' for full setup, or"
+        echo "  2. Manual setup:"
+        echo "     pnpm install  # Install all workspace dependencies"
+        echo "  3. Configure your environment files"
     fi
-
-    if [ $direnv_ok -eq 1 ] && [ $direnv_hook_ok -eq 1 ] && [ $nodejs_ok -eq 1 ] && [ $pnpm_ok -eq 1 ] && [ $go_ok -eq 1 ]; then
-        if [ "$integrated_mode" = false ]; then
-            print_status "All required dependencies are satisfied!"
-            echo ""
-            print_info "direnv is active and managing your environment!"
-            echo ""
-            if [ $mkcert_ok -eq 0 ]; then
-                print_warning "mkcert is not installed - apps will use self-signed certificates"
-                print_info "Consider installing mkcert for better HTTPS development experience"
-            else
-                print_status "mkcert is installed - apps will use trusted local certificates"
-            fi
-            echo ""
-            print_info "You can now proceed with the Airo Builder setup."
-            echo ""
-            echo "Next steps:"
-            echo "  1. Run './setup.sh' for full setup, or"
-            echo "  2. Manual setup:"
-            echo "     pnpm install  # Install all workspace dependencies"
-            echo "  3. Configure your environment files"
-        fi
-        exit 0
-    else
-        if [ "$integrated_mode" = false ]; then
-            echo ""
-            print_error "Required dependencies are missing."
-            echo ""
-            print_warning "RECOMMENDED: Install direnv first - it will automatically manage Node.js and pnpm"
-            show_direnv_install_instructions
-            echo ""
-            print_info "Alternatively, you can manually install the missing dependencies."
-            print_info "After installing, run this script again or proceed with: ./setup.sh"
-        fi
-        exit 1
-    fi
+    exit 0
 }
 
 # Run main function

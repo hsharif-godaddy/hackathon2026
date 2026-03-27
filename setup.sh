@@ -99,7 +99,7 @@ main() {
 
     # Step 1: Basic Dependencies
     print_step "1" "Basic Dependency Check"
-    echo -e "${BLUE}Checking Node.js 22, Corepack, pnpm, and Go installation...${NC}"
+    echo -e "${BLUE}Checking required dependencies...${NC}"
     echo ""
 
     if ./setup/check-deps.sh --integrated; then
@@ -108,10 +108,7 @@ main() {
         print_error "Basic dependencies not satisfied"
         echo ""
         echo -e "${YELLOW}Please install the missing dependencies and run this setup again.${NC}"
-        echo "You can also run just the dependency checker: ${BLUE}./setup/check-deps.sh${NC}"
-        echo ""
-        echo -e "${BLUE}TIP: Enable Corepack to automatically manage pnpm version:${NC}"
-        echo "  corepack enable"
+        echo -e "You can also run just the dependency checker: ${BLUE}./setup/check-deps.sh${NC}"
         exit 1
     fi
 

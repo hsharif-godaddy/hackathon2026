@@ -58,6 +58,10 @@ Implements the mgmt-airo API routes used by `AiroMgmtClient` in `app/src/lib/mgm
 
 Auth: No authentication is enforced. All requests use a default dev customer ID. The service mints JWTs (via AWS Secrets Manager signing keys) only for outbound agent registration calls.
 
+## Local Dev Logs
+
+All slog output is automatically written to `local-control-plane/dev.log` alongside stdout. The file is truncated on each restart. Use this log to troubleshoot issues — read it to see recent errors, startup failures, or unexpected behavior.
+
 ## Conventions
 
 - **Logging fields use snake_case** (matching dev-supervisor, not the TypeScript monorepo's camelCase)

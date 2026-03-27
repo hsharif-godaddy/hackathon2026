@@ -124,32 +124,20 @@ export class DependencyChecker {
   }
 
   private showDockerInstallInstructions(): void {
-    console.log(chalk.yellow('\n📋 Docker Installation Instructions for Ubuntu:'));
-    console.log('\n1. Update package index:');
-    console.log('   sudo apt update');
-    console.log('\n2. Install prerequisites:');
-    console.log('   sudo apt install apt-transport-https ca-certificates curl software-properties-common');
-    console.log('\n3. Add Docker GPG key:');
-    console.log('   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg');
-    console.log('\n4. Add Docker repository:');
-    console.log('   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null');
-    console.log('\n5. Install Docker:');
-    console.log('   sudo apt update && sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin');
-    console.log('\n6. Add user to docker group (optional, to run without sudo):');
-    console.log('   sudo usermod -aG docker $USER');
-    console.log('   newgrp docker');
+    console.log(chalk.yellow('\n📋 Docker Installation:'));
+    console.log('\n  Download Docker Desktop:');
+    console.log('    https://www.docker.com/products/docker-desktop/');
   }
 
   private showDockerComposeInstructions(): void {
-    console.log(chalk.yellow('\n📋 Docker Compose is usually included with Docker Desktop or docker-ce-cli.'));
-    console.log('If you installed Docker but don\'t have compose, try:');
-    console.log('   sudo apt install docker-compose-plugin');
+    console.log(chalk.yellow('\n📋 Docker Compose is included with Docker Desktop.'));
+    console.log('If you installed Docker but don\'t have compose, reinstall Docker Desktop:');
+    console.log('   https://www.docker.com/products/docker-desktop/');
   }
 
   private showDockerStartInstructions(): void {
-    console.log(chalk.yellow('\n📋 Start Docker daemon:'));
-    console.log('   sudo systemctl start docker');
-    console.log('   sudo systemctl enable docker  # Start on boot');
+    console.log(chalk.yellow('\n📋 Start Docker:'));
+    console.log('   Open the Docker Desktop application');
   }
 
   private showMkcertInstallInstructions(): void {

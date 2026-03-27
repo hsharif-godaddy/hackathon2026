@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -26,7 +27,22 @@ func main() {
 		dbPath = "local-control-plane.db"
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	logFile, err := os.Create("dev.log")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not create dev.log: %v\n", err)
+		logFile = nil
+	}
+	if logFile != nil {
+		defer logFile.Close()
+	}
+
+	var logWriter io.Writer = os.Stdout
+	if logFile != nil {
+		logWriter = io.MultiWriter(os.Stdout, logFile)
+		fmt.Printf("📝 Logging output to dev.log\n")
+	}
+
+	logger := slog.New(slog.NewTextHandler(logWriter, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	slog.SetDefault(logger)
 
 	db, err := store.Open(dbPath)
