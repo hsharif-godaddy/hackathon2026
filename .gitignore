@@ -2,6 +2,7 @@
 
 # Dependencies
 node_modules
+.pnpm-store/
 cdk/package-lock.json
 
 # Local clone of gdcorp-golang/auth (needed for Go replace directives)

@@ -114,6 +114,46 @@ export default function ChatInput({
     onSendMessage()
   }
 
+  function handlePaste(e: React.ClipboardEvent) {
+    if (isDisabled || isBudgetExceeded) return
+
+    const imageItem = Array.from(e.clipboardData.items).find(
+      item => item.type.startsWith('image/')
+    )
+
+    if (!imageItem || !canAddAsset || !onScreenshotCaptured) return
+
+    const file = imageItem.getAsFile()
+    if (!file) return
+
+    e.preventDefault()
+
+    const objectUrl = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      try {
+        const maxDimension = 1024
+        const scale = Math.min(1, maxDimension / img.width, maxDimension / img.height)
+        const targetWidth = Math.round(img.width * scale)
+        const targetHeight = Math.round(img.height * scale)
+
+        const canvas = document.createElement('canvas')
+        canvas.width = targetWidth
+        canvas.height = targetHeight
+
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+
+        ctx.drawImage(img, 0, 0, targetWidth, targetHeight)
+        onScreenshotCaptured(canvas.toDataURL('image/jpeg', 0.75))
+      } finally {
+        URL.revokeObjectURL(objectUrl)
+      }
+    }
+    img.onerror = () => URL.revokeObjectURL(objectUrl)
+    img.src = objectUrl
+  }
+
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -221,6 +261,7 @@ export default function ChatInput({
                   onInputChange(e.target.value)
                 }}
                 onKeyDown={onKeyDown}
+                onPaste={handlePaste}
                 placeholder={isBudgetExceeded ? t('builder_chatinput_budget_exceeded') : (isDisabled && !isStreaming) ? t('builder_chatinput_processing') : t('builder_chatinput_ask_airo')}
                 rows={3}
                 disabled={(isDisabled && !isStreaming) || isListening || isBudgetExceeded}

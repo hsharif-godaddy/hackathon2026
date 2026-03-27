@@ -3,12 +3,16 @@
  */
 import '@testing-library/jest-dom';
 
-import { describe, expect, it } from 'vitest';
-import { screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, screen } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
 import { MediaType } from './AssetTypes';
 import AttachmentBadge, { AttachmentList } from './AttachmentBadge';
+
+vi.mock('@/hooks/useTranslations', () => ({
+  useTranslations: () => (key: string) => key,
+}));
 
 describe('AttachmentBadge', () => {
   it('should render badge with filename and size', () => {
@@ -29,7 +33,7 @@ describe('AttachmentBadge', () => {
     expect(screen.getByText('12.1 KB')).toBeInTheDocument();
   });
 
-  it('should display image icon for IMAGE media type', () => {
+  it('should display thumbnail for IMAGE media type with imageUrl', function thumbnail() {
     const asset = {
       imageUrl: 'https://example.com/file.jpg',
       filename: 'test.jpg',
@@ -41,11 +45,51 @@ describe('AttachmentBadge', () => {
       thumbnailUrl: 'https://example.com/thumb.jpg',
     };
 
+    renderWithProviders(<AttachmentBadge asset={asset} />);
+
+    const thumbnail = screen.getByRole('img', { name: 'test.jpg' });
+    expect(thumbnail).toBeInTheDocument();
+    expect(thumbnail).toHaveAttribute('src', 'https://example.com/file.jpg');
+  });
+
+  it('should open modal when image thumbnail is clicked', async function openModal() {
+    const asset = {
+      imageUrl: 'https://example.com/file.jpg',
+      filename: 'test.jpg',
+      mediaType: MediaType.IMAGE,
+      sourceType: 'gc' as const,
+      contentType: 'image/jpeg',
+      size: 1024,
+      dimensions: { width: 800, height: 600 },
+      thumbnailUrl: 'https://example.com/thumb.jpg',
+    };
+
+    const { user } = renderWithProviders(<AttachmentBadge asset={asset} />);
+
+    await user.click(screen.getByRole('button'));
+
+    const modalImages = screen.getAllByRole('img', { name: 'test.jpg' });
+    expect(modalImages.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('should fall back to icon when image fails to load', function fallback() {
+    const asset = {
+      imageUrl: 'https://example.com/broken.jpg',
+      filename: 'broken.jpg',
+      mediaType: MediaType.IMAGE,
+      sourceType: 'gc' as const,
+      contentType: 'image/jpeg',
+      size: 1024,
+      dimensions: { width: 800, height: 600 },
+      thumbnailUrl: 'https://example.com/thumb.jpg',
+    };
+
     const { container } = renderWithProviders(<AttachmentBadge asset={asset} />);
 
-    // Check that an icon is rendered (UXCore icons render as SVGs)
-    const icon = container.querySelector('svg');
-    expect(icon).toBeInTheDocument();
+    fireEvent.error(screen.getByRole('img', { name: 'broken.jpg' }));
+
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(container.querySelector('svg')).toBeInTheDocument();
   });
 
   it('should display video icon for VIDEO media type', () => {
@@ -131,7 +175,7 @@ describe('AttachmentBadge', () => {
     expect(screen.getByText('2.0 MB')).toBeInTheDocument();
   });
 
-  it('should display "Attachment" when filename is missing', () => {
+  it('should display translated fallback when filename is missing', function fallbackFilename() {
     const asset = {
       imageUrl: 'https://example.com/file.jpg',
       mediaType: MediaType.IMAGE,
@@ -143,7 +187,7 @@ describe('AttachmentBadge', () => {
 
     renderWithProviders(<AttachmentBadge asset={asset} />);
 
-    expect(screen.getByText('Attachment')).toBeInTheDocument();
+    expect(screen.getByText('builder_common_attachment_default')).toBeInTheDocument();
   });
 
   it('should not display file size when size is missing', () => {

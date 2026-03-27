@@ -3,8 +3,8 @@
  */
 import '@testing-library/jest-dom';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { MediaType } from '@/app/develop/components/chat/AssetTypes';
 import { renderWithProviders } from '@/tests/test-utils';
@@ -510,6 +510,153 @@ describe('ChatInput', () => {
 
       expect(screen.getByPlaceholderText('builder_chatinput_budget_exceeded')).toBeInTheDocument();
       expect(screen.queryByPlaceholderText('builder_chatinput_processing')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('paste handling', () => {
+    const OriginalImage = globalThis.Image;
+
+    beforeEach(() => {
+      URL.createObjectURL = vi.fn(() => 'blob:mock-url');
+      URL.revokeObjectURL = vi.fn();
+
+      globalThis.Image = class MockImage {
+        width = 800
+        height = 600
+        onload: (() => void) | null = null
+        onerror: (() => void) | null = null
+        set src(_url: string) {
+          this.onload?.()
+        }
+      } as any;
+
+      const originalCreateElement = document.createElement.bind(document);
+      vi.spyOn(document, 'createElement').mockImplementation(
+        function (this: Document, tagName: string, options?: ElementCreationOptions) {
+          if (tagName === 'canvas') {
+            return {
+              width: 0,
+              height: 0,
+              getContext: () => ({ drawImage: vi.fn() }),
+              toDataURL: () => 'data:image/jpeg;base64,compressed',
+            } as any;
+          }
+          return originalCreateElement.call(this, tagName, options);
+        }
+      );
+    });
+
+    afterEach(() => {
+      globalThis.Image = OriginalImage;
+      vi.mocked(document.createElement).mockRestore();
+    });
+
+    it('should call onScreenshotCaptured and preventDefault when pasting an image', function pasteImage() {
+      const onScreenshotCaptured = vi.fn();
+      renderWithProviders(
+        <ChatInput {...defaultProps} onScreenshotCaptured={onScreenshotCaptured} />
+      );
+
+      const textarea = screen.getByRole('textbox');
+      const defaultNotPrevented = fireEvent.paste(textarea, {
+        clipboardData: {
+          items: [{
+            type: 'image/png',
+            getAsFile: () => new File(['pixel'], 'screenshot.png', { type: 'image/png' }),
+          }],
+        },
+      });
+
+      expect(defaultNotPrevented).toBe(false);
+      expect(onScreenshotCaptured).toHaveBeenCalledWith('data:image/jpeg;base64,compressed');
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
+    });
+
+    it('should not interfere when pasting plain text', function pasteText() {
+      const onScreenshotCaptured = vi.fn();
+      renderWithProviders(
+        <ChatInput {...defaultProps} onScreenshotCaptured={onScreenshotCaptured} />
+      );
+
+      const textarea = screen.getByRole('textbox');
+      const defaultNotPrevented = fireEvent.paste(textarea, {
+        clipboardData: {
+          items: [{ type: 'text/plain', getAsFile: () => null }],
+        },
+      });
+
+      expect(defaultNotPrevented).toBe(true);
+      expect(onScreenshotCaptured).not.toHaveBeenCalled();
+      expect(URL.createObjectURL).not.toHaveBeenCalled();
+    });
+
+    it('should not handle paste when asset limit is reached', function pasteAtLimit() {
+      const onScreenshotCaptured = vi.fn();
+      renderWithProviders(
+        <ChatInput
+          {...defaultProps}
+          onScreenshotCaptured={onScreenshotCaptured}
+          selectedAssets={[{
+            imageUrl: 'https://example.com/existing.jpg',
+            filename: 'existing.jpg',
+            mediaType: MediaType.IMAGE,
+            sourceType: 'gc',
+            contentType: 'image/jpeg',
+            size: 1000,
+            dimensions: { width: 100, height: 100 },
+            thumbnailUrl: 'https://example.com/thumb.jpg',
+          }]}
+          maxAssets={1}
+          onClearSelectedAsset={vi.fn()}
+        />
+      );
+
+      const textarea = screen.getByRole('textbox');
+      fireEvent.paste(textarea, {
+        clipboardData: {
+          items: [{
+            type: 'image/png',
+            getAsFile: () => new File(['pixel'], 'screenshot.png', { type: 'image/png' }),
+          }],
+        },
+      });
+
+      expect(onScreenshotCaptured).not.toHaveBeenCalled();
+    });
+
+    it('should revoke object URL when getContext returns null', function nullContext() {
+      vi.spyOn(document, 'createElement').mockRestore();
+      const originalCreateElement = document.createElement.bind(document);
+      vi.spyOn(document, 'createElement').mockImplementation(
+        function (this: Document, tagName: string, options?: ElementCreationOptions) {
+          if (tagName === 'canvas') {
+            return {
+              width: 0,
+              height: 0,
+              getContext: () => null,
+              toDataURL: vi.fn(),
+            } as any;
+          }
+          return originalCreateElement.call(this, tagName, options);
+        }
+      );
+
+      const onScreenshotCaptured = vi.fn();
+      renderWithProviders(
+        <ChatInput {...defaultProps} onScreenshotCaptured={onScreenshotCaptured} />
+      );
+
+      fireEvent.paste(screen.getByRole('textbox'), {
+        clipboardData: {
+          items: [{
+            type: 'image/png',
+            getAsFile: () => new File(['pixel'], 'screenshot.png', { type: 'image/png' }),
+          }],
+        },
+      });
+
+      expect(onScreenshotCaptured).not.toHaveBeenCalled();
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
     });
   });
 

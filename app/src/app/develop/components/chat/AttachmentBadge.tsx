@@ -1,11 +1,14 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import AttachmentIcon from '@ux/icon/attachment'
 import ImageIcon from '@ux/icon/image'
 import VideoIcon from '@ux/icon/video'
 import text from '@ux/text'
 
 import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/AssetTypes'
+import MediaModal from '@/app/develop/components/tool-renderers/MediaModal'
+import { useTranslations } from '@/hooks/useTranslations'
 import { cn } from '@/lib/utils'
 
 interface AttachmentBadgeProps {
@@ -27,11 +30,11 @@ function getMediaIcon(mediaType: MediaType) {
   }
 }
 
-function getFilename(asset: AssetManagerItem): string {
+function getFilename(asset: AssetManagerItem): string | undefined {
   if ('filename' in asset && asset.filename) {
     return asset.filename
   }
-  return 'Attachment'
+  return undefined
 }
 
 function getFileSize(asset: AssetManagerItem): string {
@@ -45,9 +48,67 @@ function getFileSize(asset: AssetManagerItem): string {
   return ''
 }
 
+function getDisplayUrl(imageUrl: string): string {
+  return imageUrl.startsWith('//') ? `https:${imageUrl}` : imageUrl
+}
+
 export default function AttachmentBadge({ asset, className }: AttachmentBadgeProps) {
-  const filename = getFilename(asset)
+  const t = useTranslations()
+  const [imageLoadFailed, setImageLoadFailed] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+
+  useEffect(function resetFailedOnUrlChange() {
+    setImageLoadFailed(false)
+  }, [asset.imageUrl])
+  const filename = getFilename(asset) ?? t('builder_common_attachment_default')
   const fileSize = getFileSize(asset)
+
+  if (asset.mediaType === MediaType.IMAGE && asset.imageUrl && !imageLoadFailed) {
+    const displayUrl = getDisplayUrl(asset.imageUrl)
+    return (
+      <>
+        <button
+          type="button"
+          aria-label={t('builder_common_view_filename', { filename })}
+          onClick={() => setIsModalOpen(true)}
+          className={cn(
+            'inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor cursor-pointer hover:opacity-80 transition-opacity',
+            className
+          )}
+        >
+          <img // eslint-disable-line @next/next/no-img-element
+            src={displayUrl}
+            alt={filename}
+            onError={() => setImageLoadFailed(true)}
+            className="size-8 rounded object-cover flex-shrink-0"
+          />
+          <div className="flex flex-col min-w-0 text-left">
+            <text.span as="caption" size={-1} className="truncate max-w-[120px]">
+              {filename}
+            </text.span>
+            {fileSize && (
+              <text.span as="caption" size={-2} className="opacity-60">
+                {fileSize}
+              </text.span>
+            )}
+          </div>
+        </button>
+        {isModalOpen && (
+          <MediaModal
+            isOpen={isModalOpen}
+            onClose={() => setIsModalOpen(false)}
+            title={filename}
+          >
+            <img // eslint-disable-line @next/next/no-img-element
+              src={displayUrl}
+              alt={filename}
+              className="w-full h-auto rounded"
+            />
+          </MediaModal>
+        )}
+      </>
+    )
+  }
 
   return (
     <div
