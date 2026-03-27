@@ -17,6 +17,8 @@
     "lint": "turbo run lint",
     "test": "./scripts/test.sh",
     "test:e2e": "playwright test",
+    "pr-check": "./scripts/pr-check.sh",
+    "pr-check:quick": "./scripts/pr-check.sh --quick",
     "prepare": "husky && husky install",
     "apm:start": "./scripts/local-apm.sh start",
     "apm:stop": "./scripts/local-apm.sh stop",
