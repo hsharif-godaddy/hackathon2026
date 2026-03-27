@@ -35,7 +35,7 @@ export function createBackgroundDelegateTool(
     z.object({
       targetAgent: z.string().optional().describe('ID of the agent to delegate to (uses default if not provided)'),
       tasks: z.array(z.string()).min(1).describe('Array of tasks to execute in the background'),
-      context: z.record(z.any()).optional().describe('Additional context data to pass to the target agent')
+      context: z.record(z.string(), z.any()).optional().describe('Additional context data to pass to the target agent')
     }),
     async ({ targetAgent, tasks, context }, executionContext) => {
       const targetAgentId = targetAgent || defaultTargetAgentId

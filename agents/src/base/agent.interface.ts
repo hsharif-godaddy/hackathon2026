@@ -1,5 +1,3 @@
-import { AgentOutputType } from '@openai/agents';
-
 /**
  * Configuration interface for agent tools
  */
@@ -59,9 +57,6 @@ export interface AgentConfig {
   
   /** OpenAI model to use (defaults to gpt-4) */
   readonly model?: string;
-  
-  /** Output type for the agent */
-  readonly outputType?: AgentOutputType;
   
   /** List of tools this agent can use */
   readonly tools: AgentToolConfig[];
@@ -157,10 +152,4 @@ export interface IAgent {
    * Can be used to transform or validate tool results
    */
   afterToolExecution?(toolName: string, args: unknown, result: unknown): Promise<unknown> | unknown;
-  
-  /**
-   * Optional: Sanitize responses to prevent information leakage using OpenAI SDK guardrails
-   * Called before sending responses to users
-   */
-  sanitizeResponse?(response: string, context?: AgentExecutionContext): Promise<string> | string;
 }

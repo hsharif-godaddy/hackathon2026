@@ -209,7 +209,7 @@ export const insertRowTool: SkillToolDefinition = {
   parameters: z.object({
     tableName: z.string().describe('Name of the table'),
     data: z
-      .record(z.any())
+      .record(z.string(), z.any())
       .refine((obj) => Object.keys(obj).length > 0, { message: 'data must not be empty' })
       .describe('Column-value pairs for the new row'),
   }),
@@ -272,11 +272,11 @@ export const updateRowTool: SkillToolDefinition = {
   parameters: z.object({
     tableName: z.string().describe('Name of the table'),
     primaryKey: z
-      .record(z.any())
+      .record(z.string(), z.any())
       .refine((obj) => Object.keys(obj).length > 0, { message: 'primaryKey must not be empty' })
       .describe('Primary key column-value pairs for WHERE clause'),
     data: z
-      .record(z.any())
+      .record(z.string(), z.any())
       .refine((obj) => Object.keys(obj).length > 0, { message: 'data must not be empty' })
       .describe('Column-value pairs to update'),
   }),
@@ -339,7 +339,7 @@ export const deleteRowTool: SkillToolDefinition = {
   parameters: z.object({
     tableName: z.string().describe('Name of the table'),
     primaryKey: z
-      .record(z.any())
+      .record(z.string(), z.any())
       .refine((obj) => Object.keys(obj).length > 0, { message: 'primaryKey must not be empty' })
       .describe('Primary key column-value pairs for WHERE clause'),
   }),

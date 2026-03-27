@@ -36,7 +36,7 @@ router.post('/apps/:id/secrets-scan', async (req: Request, res: Response) => {
     if (!parsedOptions.success) {
       return res.status(400).json({
         error: 'Invalid request body',
-        details: parsedOptions.error.format(),
+        details: z.treeifyError(parsedOptions.error),
       });
     }
     // Remove undefined values to satisfy exactOptionalPropertyTypes

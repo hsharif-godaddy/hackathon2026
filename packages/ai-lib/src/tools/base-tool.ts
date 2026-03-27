@@ -53,7 +53,7 @@ export abstract class BaseTool implements ToolDefinition {
 /**
  * Create a tool that's directly compatible with AI SDK
  */
-export function createTool<T extends z.ZodSchema>(
+export function createTool<T extends z.ZodType<any, any>>(
   description: string,
   inputSchema: T,
   execute: (input: z.infer<T>, context?: AgentContext) => Promise<unknown>,

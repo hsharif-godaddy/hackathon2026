@@ -45,13 +45,13 @@ export const QualityEvalSchema = z.object({
     minOverallScore: z.number().min(0).max(100).default(70),
     minPerformance: z.number().min(0).max(100).default(50),
     minAccessibility: z.number().min(0).max(100).default(80),
-  }).default({}),
+  }).prefault({}),
 });
 
 export const ScenarioSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
-  startUrl: z.string().url(),
+  startUrl: z.url(),
   timeout: z.number().default(300000),
   maxSteps: z.number().default(50),
   headed: z.boolean().default(false),

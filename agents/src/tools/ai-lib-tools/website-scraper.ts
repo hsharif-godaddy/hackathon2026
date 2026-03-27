@@ -19,7 +19,7 @@ export const websiteScraperAITool: Tool = createTool(
     'allowing you to analyze layout, design patterns, and content structure when building similar applications. ' +
     'Use this when a user asks to create something "like [website]" or provides a URL as reference.',
   z.object({
-    url: z.string().url().describe('The full URL of the website to scrape (must include http:// or https://)')
+    url: z.url().describe('The full URL of the website to scrape (must include http:// or https://)')
   }),
   async (input, context) => {
     const { url } = input;

@@ -95,7 +95,7 @@ export const AppPlanToolOptionsSchema = z.object({
   appName: z.string().optional(),
   colorPalette: ColorPaletteSchema.optional(),
   marketing: MarketingDataSchema.optional(),
-  planData: z.record(z.any()).optional(),
+  planData: z.record(z.string(), z.any()).optional(),
 });
 
 export class AppPlanTool {

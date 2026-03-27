@@ -29,8 +29,8 @@ export function createDelegateTool(
     z.object({
       targetAgent: z.string().describe('ID of the agent to delegate to (e.g., "database", "frontend", not display names)'),
       task: z.string().describe('Clear description of the task for the target agent'),
-      context: z.record(z.any()).optional().describe('Additional context data to pass to the target agent'),
-      parameters: z.record(z.any()).optional().describe('Parameters to pass to the target agent'),
+      context: z.record(z.string(), z.any()).optional().describe('Additional context data to pass to the target agent'),
+      parameters: z.record(z.string(), z.any()).optional().describe('Parameters to pass to the target agent'),
       reason: z.string().optional().describe('Reason for the delegation')
     }),
     async ({ targetAgent, task, context, parameters, reason }) => {

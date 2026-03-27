@@ -68,7 +68,7 @@ This tool starts the website rebuild process:
 4. Tool automatically generates homepage build prompt and pases it to the develop agent
 `,
   z.object({
-    url: z.string().url().describe('The URL of the website to rebuild')
+    url: z.url().describe('The URL of the website to rebuild')
   }),
   async (input, context) => {
     const appId = context?.metadata?.appId as string

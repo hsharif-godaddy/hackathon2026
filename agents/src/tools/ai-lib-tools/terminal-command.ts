@@ -17,7 +17,7 @@ export const terminalCommandAITool: Tool = createTool(
     command: z.string().describe('The shell command to execute (e.g., "npm install", "git status", "ls -la")'),
     workingDir: z.string().default('').describe('Working directory relative to app root (default: app root)'),
     timeout: z.number().min(1000).max(300000).default(30000).describe('Maximum execution time in milliseconds'),
-    env: z.record(z.string()).optional().describe('Environment variables to set for the command')
+    env: z.record(z.string(), z.string()).optional().describe('Environment variables to set for the command')
   }),
   async (input, context) => {
     const appId = context?.metadata?.appId as string

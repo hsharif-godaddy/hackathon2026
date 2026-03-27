@@ -36,7 +36,7 @@ export const socialConnect: Tool = createTool(
 
   Use this tool when user wants to connect a platform or before posting content.`,
   z.object({
-    platform: z.nativeEnum(SocialPlatform).describe('Social platform to connect'),
+    platform: z.enum(SocialPlatform).describe('Social platform to connect'),
   }),
   async (input, context) => {
     const { platform } = input;

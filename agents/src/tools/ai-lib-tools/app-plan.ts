@@ -19,7 +19,7 @@ export const appPlanAITool: Tool = createTool(
       secondary: z.string().describe('Secondary color (hex)'),
       accent: z.string().describe('Accent color (hex)')
     }).optional().describe('Color palette configuration'),
-    planData: z.record(z.any()).optional().describe('Additional planning data')
+    planData: z.record(z.string(), z.any()).optional().describe('Additional planning data')
   }),
   async (input, context) => {
     const result = await appPlanTool.execute(input as AppPlanToolOptions)

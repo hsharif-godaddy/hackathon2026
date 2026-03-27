@@ -131,7 +131,7 @@ const EditImageInputSchema = z.object({
     .min(1)
     .max(1000)
     .describe('The prompt for the edits to be made to the image'),
-  imageUrl: z.string().url().describe('The URL of the image to be edited'),
+  imageUrl: z.url().describe('The URL of the image to be edited'),
 });
 
 const GenerateVideoInputSchema = z.object({

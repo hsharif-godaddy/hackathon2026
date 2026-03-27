@@ -74,7 +74,7 @@
     "dotenv": "^16.4.7",
     "gd-auth-client": "^2.1.1",
     "openai": "^5.22.0",
-    "zod": "^3.25.76"
+    "zod": "^4.3.6"
   },
   "peerDependencies": {
     "@ai-sdk/anthropic": "^3.0.64"

@@ -38,7 +38,7 @@ export const LogEventSchema = z.object({
   conversationId: z.string().optional(),
   
   // Event data
-  data: z.record(z.any()).optional(),
+  data: z.record(z.string(), z.any()).optional(),
   
   // Technical fields
   duration: z.number().positive().optional(),
@@ -46,13 +46,13 @@ export const LogEventSchema = z.object({
   
   // Metadata
   tags: z.array(z.string()).optional(),
-  meta: z.record(z.any()).optional(),
+  meta: z.record(z.string(), z.any()).optional(),
 });
 
 export const LogOptionsSchema = z.object({
   duration: z.number().positive().optional(),
   tags: z.array(z.string()).optional(),
-  meta: z.record(z.any()).optional(),
+  meta: z.record(z.string(), z.any()).optional(),
 });
 
 export const LoggerConfigSchema = z.object({

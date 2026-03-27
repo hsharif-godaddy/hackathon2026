@@ -214,7 +214,7 @@ export const QualityEvalConfigSchema = z.object({
     minOverallScore: z.number().min(0).max(100).default(70),
     minPerformance: z.number().min(0).max(100).default(50),
     minAccessibility: z.number().min(0).max(100).default(80),
-  }).default({}),
+  }).prefault({}),
   // For content evaluation - the original prompt/request
   originalPrompt: z.string().optional(),
 });

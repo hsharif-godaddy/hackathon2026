@@ -69,7 +69,7 @@ export function getConfigSync(): AppointmentsConfig {
  */
 export const AppointmentInputSchema = z.object({
   customerName: z.string().min(1, 'Name is required').max(255, 'Name too long (max 255 characters)'),
-  customerEmail: z.string().email('Invalid email format'),
+  customerEmail: z.email('Invalid email format'),
   customerPhone: z.string().regex(/^[\d\s\-+()]*$/, 'Invalid phone format').max(50).optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format. Use YYYY-MM-DD'),
   time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Invalid time format. Use HH:mm'),

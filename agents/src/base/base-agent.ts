@@ -9,8 +9,6 @@ import {
   AgentHandoffConfig,
   AgentExecutionContext,
 } from './agent.interface.js';
-// Template version detection has been moved to the app service
-import { applyOutputGuardrails } from '../utils/openai-guardrails.js';
 import { Logger } from '../logging/index.js';
 
 const logger = Logger.create({ service: 'base-agent' });
@@ -340,21 +338,6 @@ When the user uses ambiguous references like "this", "here", "that", or "these",
       hasContextBuilder: !!this._config.contextBuilder,
       handoffCount: this._config.handoffs?.length || 0,
     };
-  }
-
-  /**
-   * Sanitize responses to prevent information leakage using OpenAI SDK guardrails
-   */
-  async sanitizeResponse(response: string, context?: AgentExecutionContext): Promise<string> {
-    try {
-      return await applyOutputGuardrails(response, context);
-    } catch (error) {
-      logger.error('base-agent.guardrails.error', {
-        error: error instanceof Error ? error.message : String(error),
-      })
-      // Return original response if guardrails fail
-      return response;
-    }
   }
 
   /**

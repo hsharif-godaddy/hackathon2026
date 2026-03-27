@@ -69,7 +69,7 @@ const createDatabaseTool = createTool(
   'Create a new database with specified schema',
   z.object({
     databaseName: z.string().describe('Name of the database to create'),
-    schema: z.record(z.any()).describe('Database schema definition'),
+    schema: z.record(z.string(), z.any()).describe('Database schema definition'),
     credentials: z.object({
       host: z.string(),
       port: z.number(),
@@ -126,7 +126,7 @@ const createComponentTool = createTool(
   z.object({
     componentName: z.string().describe('Name of the component'),
     componentType: z.enum(['functional', 'class']).describe('Type of component'),
-    props: z.record(z.string()).optional().describe('Component props definition'),
+    props: z.record(z.string(), z.string()).optional().describe('Component props definition'),
     styling: z.enum(['css', 'tailwind', 'styled-components']).describe('Styling approach')
   }),
   async ({ componentName, componentType, props, styling }) => {
