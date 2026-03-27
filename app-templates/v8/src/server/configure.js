@@ -64,7 +64,22 @@ export const serverBefore = (server) => {
   server.use(express.json());
   server.use(express.urlencoded({ extended: true }));
 
-  server.use(express.static(join(__dirname, "client")));
+  server.use(express.static(join(__dirname, "client"), {
+    setHeaders(res, filePath) {
+      // Vite content-hashes everything in assets/ — safe to cache long-term.
+      // Everything else (index.html, analytics.js, etc.) must revalidate.
+      res.set("Cache-Control", filePath.includes("/assets/")
+        ? "public, max-age=31536000, immutable"
+        : "no-cache");
+    }
+  }));
+
+  // No-cache for dynamic responses (API routes, SPA fallback, etc.).
+  // express.static already sent the response for static files above.
+  server.use((req, res, next) => {
+    res.set("Cache-Control", "no-cache");
+    next();
+  });
 };
 
 export const serverAfter = (server) => {

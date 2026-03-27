@@ -48,7 +48,8 @@ const SYNC_MANIFEST = [
       '42ba9f4178f0125d150e0453b18aace0', // 0d42af30 - fix: various improvements to local development
       '2accfb4db2acca217a56610abbeff409', // 8c779b55 - feat: changes to support app publish
       '4e602bf93117af87df4621edc156282c', // Before import.meta.url fix - uses express.static("client")
-      'f31a3e2c5c87fb16212a911612d7a3fd'  // Before database extraction to skill - on origin/main
+      'f31a3e2c5c87fb16212a911612d7a3fd', // Before database extraction to skill - on origin/main
+      '5fbbdcc5d9cf08913df35a0c72885356'  // Before cache-control headers
     ],
     force: false
   },

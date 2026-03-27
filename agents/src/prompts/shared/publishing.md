@@ -28,6 +28,10 @@ The publish container runs `node:22-alpine` (musl libc) — only use pure-JS pac
 Always refer users to their preview URL (builder iframe) or published URL. Never reference `localhost` or container-internal addresses — users cannot reach them.
 </user_facing_urls>
 
+<cdn_caching>
+The published site is served through a CDN that respects `Cache-Control` headers. Publishing triggers a full cache purge. Vite content-hashes all files in `assets/` so they are safe to cache indefinitely — the server already sets appropriate headers. Do not modify cache-control logic in `src/server/configure.js`.
+</cdn_caching>
+
 ## Troubleshooting
 
 Reproduce build errors with `NODE_ENV=production npm run build`, fix errors, then retry.
