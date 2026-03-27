@@ -30,6 +30,18 @@ const PAAS_ALLOWED_ROUTES: RoutePattern[] = [
   { method: 'POST', path: '/apps/:id/git/pull' },
   { method: 'GET', path: '/apps/:id/git/remote/status' },
   { method: 'GET', path: '/apps/:id/git/sync/status/:jobId' },
+
+  // Git history
+  { method: 'GET', path: '/apps/:id/git/history' },
+
+  // Publish
+  { method: 'POST', path: '/apps/:id/publish' },
+
+  // App lifecycle
+  { method: 'POST', path: '/apps/:id/restart' },
+
+  // Customer logs
+  { method: 'GET', path: '/apps/:appId/customer-logs' },
 ];
 
 /**

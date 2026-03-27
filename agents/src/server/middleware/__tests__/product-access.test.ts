@@ -97,6 +97,14 @@ describe('product-access middleware', () => {
       { method: 'POST', path: '/apps/abc123/git/pull' },
       { method: 'GET', path: '/apps/abc123/git/remote/status' },
       { method: 'GET', path: '/apps/abc123/git/sync/status/job-456' },
+      // Git history
+      { method: 'GET', path: '/apps/abc123/git/history' },
+      // Publish
+      { method: 'POST', path: '/apps/abc123/publish' },
+      // App lifecycle
+      { method: 'POST', path: '/apps/abc123/restart' },
+      // Customer logs
+      { method: 'GET', path: '/apps/abc123/customer-logs' },
     ];
 
     it.each(allowedRoutes)(
@@ -120,7 +128,6 @@ describe('product-access middleware', () => {
       { method: 'GET', path: '/apps/abc123/social/meta' },
       { method: 'GET', path: '/debug/memory' },
       { method: 'GET', path: '/apps/abc123/download' },
-      { method: 'POST', path: '/apps/abc123/publish' },
       { method: 'GET', path: '/agent/conversations' },
       { method: 'POST', path: '/agent/develop/chat' },
       { method: 'POST', path: '/media/upload' },
@@ -230,6 +237,22 @@ describe('isRouteAllowedForPaaS', () => {
     expect(isRouteAllowedForPaaS('GET', '/apps/test-app/git/sync/status/j-123')).toBe(true);
   });
 
+  it('should allow git history route', () => {
+    expect(isRouteAllowedForPaaS('GET', '/apps/test-app/git/history')).toBe(true);
+  });
+
+  it('should allow publish route', () => {
+    expect(isRouteAllowedForPaaS('POST', '/apps/test-app/publish')).toBe(true);
+  });
+
+  it('should allow restart route', () => {
+    expect(isRouteAllowedForPaaS('POST', '/apps/test-app/restart')).toBe(true);
+  });
+
+  it('should allow customer-logs route', () => {
+    expect(isRouteAllowedForPaaS('GET', '/apps/test-app/customer-logs')).toBe(true);
+  });
+
   it('should deny with wrong method', () => {
     expect(isRouteAllowedForPaaS('GET', '/apps/test-app/zip/upload')).toBe(false);
     expect(isRouteAllowedForPaaS('POST', '/apps/test-app/git/remote/status')).toBe(false);
@@ -238,7 +261,6 @@ describe('isRouteAllowedForPaaS', () => {
   it('should deny non-allowlisted routes', () => {
     expect(isRouteAllowedForPaaS('GET', '/agents')).toBe(false);
     expect(isRouteAllowedForPaaS('GET', '/debug/memory')).toBe(false);
-    expect(isRouteAllowedForPaaS('POST', '/apps/test/publish')).toBe(false);
     expect(isRouteAllowedForPaaS('POST', '/agent/develop/chat')).toBe(false);
   });
 });
