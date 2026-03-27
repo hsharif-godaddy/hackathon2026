@@ -43,8 +43,10 @@ export const serverBefore = (server) => {
     console.log(`Got ${signal}, shutting down gracefully...`);
 
     try {
-      // Close database connection pool if database skill is installed
-      const { closeConnection } = await import("./db/client.js");
+      // Opaque path prevents vite-plugin-api-routes from resolving at build time.
+      // At runtime, the try/catch handles the missing module gracefully.
+      const dbClient = "./db/client" + ".js";
+      const { closeConnection } = await import(dbClient);
       await closeConnection();
       console.log("Database connections closed");
     } catch (error) {
