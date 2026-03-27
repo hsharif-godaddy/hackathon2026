@@ -26,9 +26,13 @@ const mockStarterOffer = {
           renewal: '$12.99',
           renewalDiscounted: null,
         },
+        perTerm: {
+          renewal: '$155.88',
+        },
       },
     },
   },
+  discountPercentage: 23,
 }
 
 const mockProfessionalOffer = {
@@ -45,9 +49,13 @@ const mockProfessionalOffer = {
           renewal: '$29.99',
           renewalDiscounted: null,
         },
+        perTerm: {
+          renewal: '$359.88',
+        },
       },
     },
   },
+  discountPercentage: 17,
 }
 
 const mockUltimateOffer = {
@@ -64,9 +72,13 @@ const mockUltimateOffer = {
           renewal: '$119.99',
           renewalDiscounted: null,
         },
+        perTerm: {
+          renewal: '$1439.88',
+        },
       },
     },
   },
+  discountPercentage: 17,
 }
 
 describe('usePricingOffers', () => {

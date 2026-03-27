@@ -2,6 +2,7 @@
 
 import Skeleton from '@ux/skeleton'
 import text from '@ux/text'
+import TextLockup from '@ux/text-lockup'
 
 import { useTranslations } from '@/hooks/useTranslations'
 import { type PlanOffer } from '@/types/credits'
@@ -24,22 +25,38 @@ export default function PlanPriceDisplay({ planOffer, isLoading }: PlanPriceDisp
     )
   }
 
-  const prices = planOffer?.price?.formatted?.listing?.perMonth
-  if (!prices?.discounted) {
+  const perMonthPrices = planOffer?.price?.formatted?.listing?.perMonth
+  const perTermPrices = planOffer?.price?.formatted?.listing?.perTerm
+  if (!perMonthPrices?.discounted) {
     return null
   }
 
-  const { discounted } = prices
+  const { discounted, renewal: monthlyRenewal } = perMonthPrices
+  const discountPercentage = planOffer?.discountPercentage ?? null
+  const annualRenewalPrice = perTermPrices?.renewal
+  const hasDiscount = discountPercentage !== null && discountPercentage > 0
+
+  const eyebrowContent = hasDiscount && monthlyRenewal ? (
+    <div className="flex items-center gap-2 xl:gap-1.5 2xl:gap-2 flex-wrap">
+      <text.span className="line-through whitespace-nowrap" text={t('builder_pricing_per_month', { price: monthlyRenewal })} />
+      <text.span
+        className="bg-ai-light text-intents-ux-boxHighContrast-foregroundColor px-1.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
+        text={t('builder_pricing_percent_off', { percent: discountPercentage })}
+      />
+    </div>
+  ) : null
 
   return (
     <div className="mt-1 mb-2">
-      <div className="flex items-baseline">
-        <text.h3 as="title" size={2} text={t('builder_pricing_per_month', { price: discounted })} />
-      </div>
-
-      <div className="flex items-center gap-2 mt-1">
-        <text.span as="paragraph" emphasis="passive" text={t('builder_pricing_pay_today')} />
-      </div>
+      <TextLockup
+        eyebrow={eyebrowContent}
+        title={<span className="whitespace-nowrap">{t('builder_pricing_per_month', { price: discounted })}</span>}
+        size="xl"
+      >
+        {annualRenewalPrice && (
+          <text.span as="caption" size={-1} emphasis="passive" text={t('builder_pricing_first_year_term', { renewalPrice: annualRenewalPrice })} />
+        )}
+      </TextLockup>
     </div>
   )
 }

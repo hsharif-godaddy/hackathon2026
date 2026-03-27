@@ -210,7 +210,6 @@ export default function PricingSection({ showHighTierPlans = false, onPricingVie
   }
 
   const paidCardStyles = "flex flex-col h-full bg-intents-ux-boxLowContrast-backgroundColor border border-intents-ux-box-borderColor rounded-2xl text-intents-ux-boxLowContrast-foregroundColor overflow-hidden"
-  const cardContentPadding = "p-4 2xl:p-6"
 
   return (
     <div ref={sectionRef}>
@@ -224,9 +223,9 @@ export default function PricingSection({ showHighTierPlans = false, onPricingVie
               className="flex flex-col h-auto md:h-full xl:h-auto xl:self-center border border-intents-ux-box-borderColor rounded-2xl overflow-hidden"
               data-partial="inverted"
             >
-              <div className={cardContentPadding}>
-                <text.h3 as="heading" size={1} className="mb-2">{t('builder_pricing_free_title')}</text.h3>
-                <text.p size={0} className="mb-4">{t('builder_pricing_free_desc')}</text.p>
+              <div className="p-4">
+                <text.h3 as="heading" size={1} className="mb-2" text={t('builder_pricing_free_title')} />
+                <text.p size={1} className="mb-4" text={t('builder_pricing_free_desc')} />
                 <Button
                   design="primary"
                   text={t('builder_pricing_free_cta')}
@@ -241,9 +240,9 @@ export default function PricingSection({ showHighTierPlans = false, onPricingVie
 
             {/* Starter Plan */}
             <div className={paidCardStyles}>
-              <div className={`${cardContentPadding} flex flex-col h-full`}>
-                <text.h3 as="heading" size={0} className="mb-2">{t('builder_pricing_starter_title')}</text.h3>
-                <text.p size={0} className="mb-2 min-h-8" text={t('builder_pricing_starter_desc')} />
+              <div className="p-4 flex flex-col h-full">
+                <text.h3 as="heading" size={0} className="mb-2" text={t('builder_pricing_starter_title')} />
+                <text.p size={1} className="mb-2 min-h-8" emphasis="passive" text={t('builder_pricing_starter_desc')} />
                 <PlanPriceDisplay planOffer={pricingData?.[SubscriptionPlan.Starter] ?? null} isLoading={isLoading} />
                 <Button
                   design="primary"
@@ -266,9 +265,9 @@ export default function PricingSection({ showHighTierPlans = false, onPricingVie
                 className="absolute -top-3 left-1/2 -translate-x-1/2 bg-ring-ai text-intents-ux-boxHighContrast-foregroundColor font-semibold px-4 py-1.5 rounded-full whitespace-nowrap shadow-lg z-10"
                 text={t('builder_pricing_recommended')}
               />
-              <div className={`${cardContentPadding} flex flex-col h-full`}>
+              <div className="p-4 flex flex-col h-full">
                 <text.h3 as="heading" size={0} className="mb-2" text={t('builder_pricing_professional_title')} />
-                <text.p size={0} className="mb-2 min-h-8" text={t('builder_pricing_professional_desc')} />
+                <text.p size={1} className="mb-2 min-h-8" emphasis="passive" text={t('builder_pricing_professional_desc')} />
                 <PlanPriceDisplay planOffer={pricingData?.[SubscriptionPlan.Professional] ?? null} isLoading={isLoading} />
                 <Button
                   design="primary"
@@ -286,9 +285,9 @@ export default function PricingSection({ showHighTierPlans = false, onPricingVie
 
             {/* Ultimate Plan */}
             <div className={paidCardStyles}>
-              <div className={`${cardContentPadding} flex flex-col h-full`}>
+              <div className="p-4 flex flex-col h-full">
                 <text.h3 as="heading" size={0} className="mb-2" text={t('builder_pricing_ultimate_title')} />
-                <text.p size={0} className="mb-2 min-h-8" text={t('builder_pricing_ultimate_desc')} />
+                <text.p size={1} className="mb-2 min-h-8" emphasis="passive" text={t('builder_pricing_ultimate_desc')} />
                 <PlanPriceDisplay planOffer={pricingData?.[SubscriptionPlan.Ultimate] ?? null} isLoading={isLoading} />
                 <Button
                   design="primary"

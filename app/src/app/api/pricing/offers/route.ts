@@ -6,6 +6,22 @@ import { getApiBaseUrl } from '@/utils/getServerRootDomain';
 
 export const dynamic = 'force-dynamic';
 
+interface RawOffer {
+  id: string;
+  currency: string;
+  marketId: string;
+  price?: {
+    numeric?: {
+      listing?: {
+        perMonth?: {
+          full?: number;
+          discounted?: number;
+        };
+      };
+    };
+  };
+}
+
 const PRICING_QUERY = `
   query {
     airoYearlyMonthly: newOffers(
@@ -50,6 +66,17 @@ const PRICING_QUERY = `
                 discounted
                 renewal
                 renewalDiscounted
+              }
+              perTerm {
+                renewal
+              }
+            }
+          }
+          numeric {
+            listing {
+              perMonth {
+                full
+                discounted
               }
             }
           }
@@ -120,15 +147,37 @@ export const GET = withApmRoute(async (request: NextRequest) => {
       throw new Error(`GraphQL errors: ${JSON.stringify(data.errors)}`);
     }
 
+    // Calculate discount percentage for each offer using raw numeric prices
+    const offers: RawOffer[] = data.data?.airoYearlyMonthly?.offers || [];
+    const offersWithDiscount = offers.map((offer) => {
+      const rawPrices = offer.price?.numeric?.listing?.perMonth;
+      let discountPercentage: number | null = null;
+
+      if (rawPrices?.full != null && rawPrices?.discounted != null && rawPrices.full > 0) {
+        discountPercentage = Math.round(((rawPrices.full - rawPrices.discounted) / rawPrices.full) * 100);
+      }
+
+      return {
+        ...offer,
+        discountPercentage,
+      };
+    });
+
     logger.info('pricing.offers.fetch.success', {
-      offerCount: data.data?.airoYearlyMonthly?.offers?.length || 0,
-      marketId: data.data?.airoYearlyMonthly?.offers?.[0]?.marketId,
-      currency: data.data?.airoYearlyMonthly?.offers?.[0]?.currency,
+      offerCount: offersWithDiscount.length,
+      marketId: offersWithDiscount[0]?.marketId,
+      currency: offersWithDiscount[0]?.currency,
     });
 
     return NextResponse.json({
       success: true,
-      data: data.data,
+      data: {
+        ...(data.data ?? {}),
+        airoYearlyMonthly: {
+          ...(data.data?.airoYearlyMonthly ?? {}),
+          offers: offersWithDiscount,
+        },
+      },
     });
   } catch (error) {
     logger.error('pricing.offers.fetch.error', { error: error as Error });

@@ -53,9 +53,9 @@ export enum SubscriptionTerm {
 }
 
 /**
- * Formatted price strings from Offer Graph API (perMonth on yearly term)
+ * Formatted price strings from Offer Graph API
  */
-export interface FormattedPricePerMonth {
+export interface FormattedPrice {
   full: string
   discounted: string
   renewal: string
@@ -76,10 +76,14 @@ export interface PlanOffer {
   price: {
     formatted: {
       listing: {
-        perMonth: FormattedPricePerMonth
+        perMonth: FormattedPrice
+        perTerm: {
+          renewal: string
+        }
       }
     }
   }
+  discountPercentage: number | null
 }
 
 /**
