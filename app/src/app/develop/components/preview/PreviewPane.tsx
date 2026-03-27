@@ -602,10 +602,10 @@ export default function PreviewPane({
                   className="absolute inset-0 w-full h-full"
                   style={{
                     opacity: codeOpacity,
-                    pointerEvents: viewMode === ViewMode.PREVIEW ? 'none' : 'auto'
+                    pointerEvents: viewMode !== ViewMode.CODE ? 'none' : 'auto'
                   }}
-                  aria-hidden={viewMode === ViewMode.PREVIEW ? 'true' : undefined}
-                  {...(viewMode === ViewMode.PREVIEW ? { inert: '' as unknown as boolean } : {})}
+                  aria-hidden={viewMode !== ViewMode.CODE ? 'true' : undefined}
+                  {...(viewMode !== ViewMode.CODE ? { inert: '' as unknown as boolean } : {})}
                 >
                   <PreviewCode appId={appId} />
                 </motion.div>

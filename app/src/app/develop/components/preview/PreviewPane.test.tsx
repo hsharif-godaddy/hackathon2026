@@ -167,6 +167,16 @@ describe('PreviewPane', () => {
     expect(screen.getByTestId('preview-code')).toBeInTheDocument();
   });
 
+  it('should disable code overlay pointer events in EDIT mode', () => {
+    mockDevelopPageStore.viewMode = ViewMode.EDIT;
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    const codeOverlay = screen.getByTestId('preview-code').parentElement;
+    expect(codeOverlay).toHaveStyle({ pointerEvents: 'none' });
+    expect(codeOverlay).toHaveAttribute('aria-hidden', 'true');
+  });
+
   it('should start polling for server on mount', () => {
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
 
