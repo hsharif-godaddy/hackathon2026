@@ -215,7 +215,7 @@ const PlanCreditsCard = ({
           {(creditPacks.length > 0 ||
             (!isFreePlan && creditPacks.length === 0)) &&
             currentPlan && (
-              <div className="flex flex-col sm:flex-row sm:justify-between gap-2">
+              <div className="mt-2 flex flex-col sm:flex-row sm:justify-between gap-2">
                 <Box orientation="horizontal" gap="md">
                   {isFreePlan &&
                     !isHigherPlansEnabled &&
