@@ -2,10 +2,12 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	goauth "github.com/gdcorp-partners/airo-app-builder/packages/go-auth"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/airo-ai-builder/knowledge-service/internal/config"
 	"github.com/airo-ai-builder/knowledge-service/internal/embeddings"
+	"github.com/airo-ai-builder/knowledge-service/internal/gocode"
 	"github.com/airo-ai-builder/knowledge-service/internal/ingest"
 	"github.com/airo-ai-builder/knowledge-service/internal/llm"
 	"github.com/airo-ai-builder/knowledge-service/internal/ratelimit"
@@ -32,6 +35,8 @@ type Server struct {
 	pipeline       *ingest.Pipeline
 	authMiddleware *goauth.Middleware
 	rateLimiter    *ratelimit.Limiter
+	gocodeClient   *gocode.Client
+	gocodeHTTP     *http.Client // cached S2S HTTP client, nil when gocode is not configured
 }
 
 // NewServer creates a new Server with the given configuration.
@@ -57,11 +62,33 @@ func (s *Server) Initialize(ctx context.Context) error {
 		return fmt.Errorf("failed to ensure collection: %w", err)
 	}
 
-	// Embeddings client
-	s.embeddings = embeddings.New(s.config)
+	// GoCode S2S client (optional — only initialized when env vars are set).
+	// Must be initialized before embeddings/LLM so they can use S2S auth.
+	if s.config.GoCodeRoleARN != "" && s.config.GoCodeBaseURL != "" {
+		if s.config.SSOHost == "" {
+			return errors.New("SSO_HOST must be set when GoCode S2S is configured (GOCODE_ROLE_ARN and GOCODE_BASE_URL are set)")
+		}
+		gocodeClient, err := gocode.New(ctx, s.config.GoCodeRoleARN, s.config.SSOHost, s.config.GoCodeBaseURL)
+		if err != nil {
+			return fmt.Errorf("failed to create gocode client: %w", err)
+		}
+		s.gocodeClient = gocodeClient
+		s.gocodeHTTP = gocodeClient.HTTPClient()
+		slog.Info("server.init.gocode.s2s.enabled", "roleARN", s.config.GoCodeRoleARN)
+		// When S2S is active, always route AI calls through GoCode.
+		// Ensure the base URL ends with /v1 as required by the OpenAI-compatible SDK.
+		base := strings.TrimRight(s.config.GoCodeBaseURL, "/")
+		if !strings.HasSuffix(base, "/v1") {
+			base += "/v1"
+		}
+		s.config.OpenAIBaseURL = base
+	}
 
-	// LLM client
-	s.llmClient = llm.New(s.config)
+	// Embeddings client — uses S2S auth when gocode is configured, API key otherwise
+	s.embeddings = embeddings.New(s.config, s.gocodeHTTP)
+
+	// LLM client — uses S2S auth when gocode is configured, API key otherwise
+	s.llmClient = llm.New(s.config, s.gocodeHTTP)
 
 	// Search orchestrator
 	s.searcher = search.New(s.config, s.embeddings, s.qdrant)

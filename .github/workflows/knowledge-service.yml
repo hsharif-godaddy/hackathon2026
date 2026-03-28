@@ -14,6 +14,10 @@ on:
       - "packages/go-auth/**"
       - ".github/workflows/knowledge-service.yml"
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   lint:
     name: Lint
@@ -21,31 +25,25 @@ jobs:
       labels:
         - airo-cicd-runners
         - self-hosted
-    env:
-      GOPRIVATE: github.com/gdcorp-golang/*
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Assume CI/CD AWS role
-        run: |
-          export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
-            $(aws sts assume-role \
-              --role-arn arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy \
-              --role-session-name GHASession \
-              --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
-              --output text))
-          echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
-          echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
-          echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> $GITHUB_ENV
-
-      - name: Get GHEC-SA token for gdcorp-golang/auth
-        uses: gdcorp-actions/get-ghec-sa-tokens@e1012cc92874c6363b29ed6930b7b48badd66440
+      - name: Get Artifactory Token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@88e9eba31c07e31beefa4cef5c0e93d1af9535d7 # v4.6.1
+        env:
+          JF_URL: ${{ vars.JF_URL }}
         with:
-          repositories: gdcorp-golang/auth
+          oidc-provider-name: github
 
-      - name: Configure Git for private modules
-        run: git config --global url."https://x-access-token:${{ env.GHECSA_GDCORP_GOLANG_AUTH }}@github.com/gdcorp-golang/".insteadOf "https://github.com/gdcorp-golang/"
+      - name: Configure Go environment for JFrog
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "GOPROXY=https://:${OIDC_TOKEN}@gdartifactory1.jfrog.io/artifactory/api/go/go-virt|direct" >> $GITHUB_ENV
+          echo "GONOSUMDB=github.com/gdcorp-golang/*" >> $GITHUB_ENV
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -79,31 +77,25 @@ jobs:
       labels:
         - airo-cicd-runners
         - self-hosted
-    env:
-      GOPRIVATE: github.com/gdcorp-golang/*
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Assume CI/CD AWS role
-        run: |
-          export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
-            $(aws sts assume-role \
-              --role-arn arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy \
-              --role-session-name GHASession \
-              --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
-              --output text))
-          echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
-          echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
-          echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> $GITHUB_ENV
-
-      - name: Get GHEC-SA token for gdcorp-golang/auth
-        uses: gdcorp-actions/get-ghec-sa-tokens@e1012cc92874c6363b29ed6930b7b48badd66440
+      - name: Get Artifactory Token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@88e9eba31c07e31beefa4cef5c0e93d1af9535d7 # v4.6.1
+        env:
+          JF_URL: ${{ vars.JF_URL }}
         with:
-          repositories: gdcorp-golang/auth
+          oidc-provider-name: github
 
-      - name: Configure Git for private modules
-        run: git config --global url."https://x-access-token:${{ env.GHECSA_GDCORP_GOLANG_AUTH }}@github.com/gdcorp-golang/".insteadOf "https://github.com/gdcorp-golang/"
+      - name: Configure Go environment for JFrog
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "GOPROXY=https://:${OIDC_TOKEN}@gdartifactory1.jfrog.io/artifactory/api/go/go-virt|direct" >> $GITHUB_ENV
+          echo "GONOSUMDB=github.com/gdcorp-golang/*" >> $GITHUB_ENV
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -134,8 +126,6 @@ jobs:
         - airo-cicd-runners
         - self-hosted
     needs: [lint, test]
-    env:
-      GOPRIVATE: github.com/gdcorp-golang/*
     strategy:
       matrix:
         goos: [linux]
@@ -144,25 +134,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Assume CI/CD AWS role
-        run: |
-          export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
-            $(aws sts assume-role \
-              --role-arn arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy \
-              --role-session-name GHASession \
-              --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
-              --output text))
-          echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
-          echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
-          echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> $GITHUB_ENV
-
-      - name: Get GHEC-SA token for gdcorp-golang/auth
-        uses: gdcorp-actions/get-ghec-sa-tokens@e1012cc92874c6363b29ed6930b7b48badd66440
+      - name: Get Artifactory Token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@88e9eba31c07e31beefa4cef5c0e93d1af9535d7 # v4.6.1
+        env:
+          JF_URL: ${{ vars.JF_URL }}
         with:
-          repositories: gdcorp-golang/auth
+          oidc-provider-name: github
 
-      - name: Configure Git for private modules
-        run: git config --global url."https://x-access-token:${{ env.GHECSA_GDCORP_GOLANG_AUTH }}@github.com/gdcorp-golang/".insteadOf "https://github.com/gdcorp-golang/"
+      - name: Configure Go environment for JFrog
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "GOPROXY=https://:${OIDC_TOKEN}@gdartifactory1.jfrog.io/artifactory/api/go/go-virt|direct" >> $GITHUB_ENV
+          echo "GONOSUMDB=github.com/gdcorp-golang/*" >> $GITHUB_ENV
 
       - name: Set up Go
         uses: actions/setup-go@v6

@@ -38,32 +38,13 @@ jobs:
         with:
           path: /image-search-service
 
-      # Assume role into step outputs only - intentionally NOT written to $GITHUB_ENV
-      # so the runner's original instance role remains intact for Katana steps.
-      - name: Assume CI/CD AWS role for GHEC token
-        id: assume-role
-        run: |
-          read -r KEY SECRET TOKEN <<< $(aws sts assume-role \
-            --role-arn arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy \
-            --role-session-name GHASession \
-            --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
-            --output text)
-          echo "::add-mask::$KEY"
-          echo "::add-mask::$SECRET"
-          echo "::add-mask::$TOKEN"
-          [[ -z "$KEY" || -z "$SECRET" || -z "$TOKEN" ]] && { echo "ERROR: STS assume-role failed or returned empty credentials"; exit 1; }
-          echo "access_key_id=$KEY" >> $GITHUB_OUTPUT
-          echo "secret_access_key=$SECRET" >> $GITHUB_OUTPUT
-          echo "session_token=$TOKEN" >> $GITHUB_OUTPUT
-
-      - name: Get GHEC-SA token for gdcorp-golang/auth
-        uses: gdcorp-actions/get-ghec-sa-tokens@e1012cc92874c6363b29ed6930b7b48badd66440
+      - name: Get Artifactory Token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@88e9eba31c07e31beefa4cef5c0e93d1af9535d7 # v4.6.1
         env:
-          AWS_ACCESS_KEY_ID: ${{ steps.assume-role.outputs.access_key_id }}
-          AWS_SECRET_ACCESS_KEY: ${{ steps.assume-role.outputs.secret_access_key }}
-          AWS_SESSION_TOKEN: ${{ steps.assume-role.outputs.session_token }}
+          JF_URL: ${{ vars.JF_URL }}
         with:
-          repositories: gdcorp-golang/auth
+          oidc-provider-name: github
 
       # Sets up authentication with Amazon ECR in the chosen region.
       - name: Golden Container Registry Login
@@ -73,9 +54,12 @@ jobs:
       # Execute the necessary commands to build your application's Docker container image.
       # DOCKER_BUILDKIT=1 is required to support --mount=type=secret for private module auth.
       - name: Build Container
+        env:
+          JFROG_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
         run: |
+          echo "::add-mask::$JFROG_TOKEN"
           DOCKER_BUILDKIT=1 docker build --platform linux/amd64 \
-            --secret id=ghec_token,env=GHECSA_GDCORP_GOLANG_AUTH \
+            --secret id=jfrog_token,env=JFROG_TOKEN \
             -f image-search-service/Dockerfile \
             -t ${{ steps.katana-app.outputs.app }}:${{ github.sha }} \
             .

@@ -116,7 +116,7 @@ func TestClient_New(t *testing.T) {
 		EmbeddingDimension: 1536,
 	}
 
-	client := New(cfg)
+	client := New(cfg, nil)
 
 	if client == nil {
 		t.Fatal("New() returned nil client")
@@ -135,7 +135,7 @@ func TestClient_New_WithCustomBaseURL(t *testing.T) {
 		EmbeddingDimension: 1536,
 	}
 
-	client := New(cfg)
+	client := New(cfg, nil)
 
 	if client == nil {
 		t.Fatal("New() returned nil client")

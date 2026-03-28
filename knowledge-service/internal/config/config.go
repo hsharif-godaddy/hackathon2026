@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config holds all service configuration loaded from environment variables.
@@ -35,6 +36,10 @@ type Config struct {
 	// Auth
 	AuthType string
 	SSOHost  string
+
+	// GoCode S2S
+	GoCodeRoleARN string
+	GoCodeBaseURL string
 
 	// Search defaults
 	SearchTopN              int
@@ -94,6 +99,10 @@ func LoadConfig() (*Config, error) {
 		AuthType: getEnvString("AUTH_TYPE", "jwt"),
 		SSOHost:  getEnvString("SSO_HOST", ""),
 
+		// GoCode S2S
+		GoCodeRoleARN: getEnvString("GOCODE_ROLE_ARN", ""),
+		GoCodeBaseURL: getEnvString("GOCODE_BASE_URL", ""),
+
 		// Search defaults
 		SearchTopN:              getEnvInt("SEARCH_TOP_N", 5),
 		SearchPrefetchLimit:     getEnvInt("SEARCH_PREFETCH_LIMIT", 20),
@@ -136,7 +145,7 @@ func LoadConfig() (*Config, error) {
 }
 
 func getEnvString(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
+	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
 		return value
 	}
 	return defaultValue

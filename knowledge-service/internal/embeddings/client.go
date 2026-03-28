@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/http"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
@@ -20,9 +21,14 @@ type Client struct {
 }
 
 // New creates a new embeddings client with the provided configuration.
-func New(cfg *config.Config) *Client {
-	opts := []option.RequestOption{
-		option.WithAPIKey(cfg.OpenAIAPIKey),
+// If httpClient is non-nil it is used for all requests (e.g. S2S auth transport)
+// and the API key is not sent. When httpClient is nil the configured API key is used.
+func New(cfg *config.Config, httpClient *http.Client) *Client {
+	opts := []option.RequestOption{}
+	if httpClient != nil {
+		opts = append(opts, option.WithHTTPClient(httpClient))
+	} else {
+		opts = append(opts, option.WithAPIKey(cfg.OpenAIAPIKey))
 	}
 	if cfg.OpenAIBaseURL != "" {
 		opts = append(opts, option.WithBaseURL(cfg.OpenAIBaseURL))

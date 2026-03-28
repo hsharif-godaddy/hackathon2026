@@ -14,7 +14,7 @@ func TestClient_New(t *testing.T) {
 		LLMMaxTokens:  100,
 	}
 
-	client := New(cfg)
+	client := New(cfg, nil)
 
 	if client == nil {
 		t.Fatal("New() returned nil client")
@@ -37,7 +37,7 @@ func TestClient_New_WithCustomBaseURL(t *testing.T) {
 		LLMMaxTokens:  100,
 	}
 
-	client := New(cfg)
+	client := New(cfg, nil)
 
 	if client == nil {
 		t.Fatal("New() returned nil client")
