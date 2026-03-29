@@ -858,6 +858,64 @@ describe('WebSocketServer - Error Handling', () => {
 
       consoleErrorSpy.mockRestore()
     })
+
+    it('should rethrow when both base stream and text-only fallback fail, freeing the message queue', async () => {
+      // Reproduces: agent stuck in "Thinking..." when NetworkError is swallowed after
+      // both base stream and text-only fallback fail. Without the fix, getFinalResult()
+      // is called on the dead stream and hangs forever, permanently blocking the queue.
+      const networkError = new Error('terminated')
+      networkError.name = 'TypeError'
+      Object.defineProperty(networkError, 'cause', {
+        value: { code: 'UND_ERR_SOCKET', message: 'other side closed' }
+      })
+
+      const mockReader = {
+        read: vi.fn().mockRejectedValue(networkError),
+        cancel: vi.fn().mockResolvedValue(undefined),
+        releaseLock: vi.fn()
+      }
+
+      const mockBaseStream = {
+        getReader: vi.fn().mockReturnValue(mockReader)
+      }
+
+      // Text-only fallback also fails with same network error
+      const failingTextStream = (async function* () {
+        throw networkError
+        yield 'never reached'
+      })()
+
+      const getFinalResult = vi.fn()
+
+      const mockStreamResult = {
+        baseStream: mockBaseStream,
+        textStream: failingTextStream,
+        getFinalResult
+      }
+
+      mockAgent.streamGenerate.mockResolvedValueOnce(mockStreamResult)
+
+      const { server: testServer, messageHandler } = await setupServerWithConnection(httpServer, {
+        agents: mockAgents,
+        defaultAgent: 'test-agent'
+      })
+      server = testServer
+
+      // messageHandler must resolve (not hang) — if getFinalResult were called on the
+      // dead stream it would never resolve, causing this test to time out
+      await messageHandler({ message: 'Test double stream failure', agentId: 'test-agent' })
+
+      // getFinalResult must NOT be called — the error should have propagated before
+      // reaching that line, preventing the infinite hang
+      expect(getFinalResult).not.toHaveBeenCalled()
+
+      // Error event must have been sent to the client
+      const emitCalls = mockSocket.emit.mock.calls
+      const errorCalls = emitCalls.filter(call =>
+        call[0] === 'message' && call[1].type === 'error'
+      )
+      expect(errorCalls.length).toBeGreaterThan(0)
+    })
   })
 
   describe('Debug Logging', () => {

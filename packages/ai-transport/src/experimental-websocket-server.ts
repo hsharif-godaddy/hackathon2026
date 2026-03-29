@@ -1652,20 +1652,12 @@ export class WebSocketServer {
       try {
         await this.processTextOnlyStream(socket, streamResult, currentStep, agentName)
       } catch (fallbackError: unknown) {
-        // Non-retryable errors should propagate
-        const fallbackClassification = classifyError(fallbackError);
-        if (!fallbackClassification.retryable) {
-          throw fallbackError;
-        }
-
         this.logger.error('Fallback to text-only streaming also failed', fallbackError)
-        // Emit error to client as last resort via event channel
-        await this.publishToEventChannel(socketId, 'error', `Stream processing failed: ${errorInfo.message}`, {
-          timestamp: new Date().toISOString(),
-          errorType: errorInfo.type,
-          step: currentStep,
-          agentId: agentName
-        }, agentName)
+        // Always rethrow — both base stream and fallback failed, nothing left to retry.
+        // The outer handleChatMessageInternal catch block notifies the client and cleans
+        // up conversation state. Without rethrowing, the caller proceeds to getFinalResult()
+        // on the dead stream which hangs forever and permanently blocks the message queue.
+        throw fallbackError;
       }
     } finally {
       // Ensure reader is always cleaned up
