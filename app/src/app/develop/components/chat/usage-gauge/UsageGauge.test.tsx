@@ -95,9 +95,10 @@ vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
 }));
 
+const mockLogImpressionEvent = vi.fn(() => vi.fn());
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((eid: string) => `appbuilder.${eid}.click`),
-  logImpressionEvent: vi.fn(() => vi.fn()),
+  logImpressionEvent: (...args: unknown[]) => mockLogImpressionEvent(...args),
 }));
 
 describe('UsageGauge', function usageGaugeTests() {
@@ -780,6 +781,170 @@ describe('UsageGauge', function usageGaugeTests() {
       // Verify buy credits button EID
       const buyCreditsButton = screen.getByText('builder_usage_gauge_buy_credits').closest('button');
       expect(buyCreditsButton).toHaveAttribute('data-eid', 'appbuilder.usage_gauge.popover.buy_credits.click');
+    });
+  });
+
+  describe('threshold impressions', function thresholdImpressionTests() {
+    beforeEach(async function setupThresholdTests() {
+      mockLogImpressionEvent.mockClear();
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
+    });
+
+    it('should not fire threshold events on initial load', async function noInitialEvent() {
+      const { useDailyUsage } = await import('@/hooks/useDailyUsage');
+      vi.mocked(useDailyUsage).mockReturnValue({
+        data: { percentage: 90 },
+        isLoading: false,
+        formattedResetTime: null,
+        warningLevel: WarningLevel.WARNING,
+        refresh: vi.fn(),
+      } as unknown as ReturnType<typeof useDailyUsage>);
+
+      renderWithProviders(<UsageGauge appId="test-app" />);
+
+      await waitFor(function waitForRender() {
+        expect(screen.getByRole('button')).toBeInTheDocument();
+      });
+
+      // Initial load should NOT fire threshold events even though percentage is 90%
+      expect(mockLogImpressionEvent).not.toHaveBeenCalledWith('credits.threshold.warning');
+      expect(mockLogImpressionEvent).not.toHaveBeenCalledWith('credits.threshold.depleted');
+    });
+
+    it('should not fire threshold events while loading', async function noEventWhileLoading() {
+      const { useDailyUsage } = await import('@/hooks/useDailyUsage');
+      vi.mocked(useDailyUsage).mockReturnValue({
+        data: null,
+        isLoading: true,
+        formattedResetTime: null,
+        warningLevel: WarningLevel.NONE,
+        refresh: vi.fn(),
+      } as unknown as ReturnType<typeof useDailyUsage>);
+
+      const { container } = renderWithProviders(<UsageGauge appId="test-app" />);
+
+      // Should show loading state
+      expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
+
+      // Should not fire any threshold events during loading
+      expect(mockLogImpressionEvent).not.toHaveBeenCalledWith('credits.threshold.warning');
+      expect(mockLogImpressionEvent).not.toHaveBeenCalledWith('credits.threshold.depleted');
+    });
+
+    it('should fire warning event when crossing 80% threshold', async function fireWarningEvent() {
+      const { useDailyUsage } = await import('@/hooks/useDailyUsage');
+      const mockUseDailyUsage = vi.mocked(useDailyUsage);
+
+      // Start at 70%
+      mockUseDailyUsage.mockReturnValue({
+        data: { percentage: 70 },
+        isLoading: false,
+        formattedResetTime: null,
+        warningLevel: WarningLevel.NONE,
+        refresh: vi.fn(),
+      } as unknown as ReturnType<typeof useDailyUsage>);
+
+      const { rerender } = renderWithProviders(<UsageGauge appId="test-app" />);
+
+      await waitFor(function waitForRender() {
+        expect(screen.getByRole('button')).toBeInTheDocument();
+      });
+
+      // Clear mock to only capture subsequent calls
+      mockLogImpressionEvent.mockClear();
+
+      // Cross 80% threshold
+      mockUseDailyUsage.mockReturnValue({
+        data: { percentage: 85 },
+        isLoading: false,
+        formattedResetTime: null,
+        warningLevel: WarningLevel.WARNING,
+        refresh: vi.fn(),
+      } as unknown as ReturnType<typeof useDailyUsage>);
+
+      rerender(<UsageGauge appId="test-app" />);
+
+      await waitFor(function waitForWarningEvent() {
+        expect(mockLogImpressionEvent).toHaveBeenCalledWith('credits.threshold.warning');
+      });
+    });
+
+    it('should fire depleted event when crossing 100% threshold', async function fireDepletedEvent() {
+      const { useDailyUsage } = await import('@/hooks/useDailyUsage');
+      const mockUseDailyUsage = vi.mocked(useDailyUsage);
+
+      // Start at 90%
+      mockUseDailyUsage.mockReturnValue({
+        data: { percentage: 90 },
+        isLoading: false,
+        formattedResetTime: null,
+        warningLevel: WarningLevel.WARNING,
+        refresh: vi.fn(),
+      } as unknown as ReturnType<typeof useDailyUsage>);
+
+      const { rerender } = renderWithProviders(<UsageGauge appId="test-app" />);
+
+      await waitFor(function waitForRender() {
+        expect(screen.getByRole('button')).toBeInTheDocument();
+      });
+
+      // Clear mock to only capture subsequent calls
+      mockLogImpressionEvent.mockClear();
+
+      // Cross 100% threshold
+      mockUseDailyUsage.mockReturnValue({
+        data: { percentage: 100 },
+        isLoading: false,
+        formattedResetTime: null,
+        warningLevel: WarningLevel.CRITICAL,
+        refresh: vi.fn(),
+      } as unknown as ReturnType<typeof useDailyUsage>);
+
+      rerender(<UsageGauge appId="test-app" />);
+
+      await waitFor(function waitForDepletedEvent() {
+        expect(mockLogImpressionEvent).toHaveBeenCalledWith('credits.threshold.depleted');
+      });
+    });
+
+    it('should fire both warning and depleted events when jumping from below 80% to 100%', async function fireBothEvents() {
+      const { useDailyUsage } = await import('@/hooks/useDailyUsage');
+      const mockUseDailyUsage = vi.mocked(useDailyUsage);
+
+      // Start at 70% (below warning threshold)
+      mockUseDailyUsage.mockReturnValue({
+        data: { percentage: 70 },
+        isLoading: false,
+        formattedResetTime: null,
+        warningLevel: WarningLevel.NONE,
+        refresh: vi.fn(),
+      } as unknown as ReturnType<typeof useDailyUsage>);
+
+      const { rerender } = renderWithProviders(<UsageGauge appId="test-app" />);
+
+      await waitFor(function waitForRender() {
+        expect(screen.getByRole('button')).toBeInTheDocument();
+      });
+
+      // Clear mock to only capture subsequent calls
+      mockLogImpressionEvent.mockClear();
+
+      // Jump directly to 100% (skipping 80% warning threshold)
+      mockUseDailyUsage.mockReturnValue({
+        data: { percentage: 100 },
+        isLoading: false,
+        formattedResetTime: null,
+        warningLevel: WarningLevel.CRITICAL,
+        refresh: vi.fn(),
+      } as unknown as ReturnType<typeof useDailyUsage>);
+
+      rerender(<UsageGauge appId="test-app" />);
+
+      await waitFor(function waitForBothEvents() {
+        expect(mockLogImpressionEvent).toHaveBeenCalledWith('credits.threshold.warning');
+        expect(mockLogImpressionEvent).toHaveBeenCalledWith('credits.threshold.depleted');
+      });
     });
   });
 });

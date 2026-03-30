@@ -20,7 +20,7 @@ import { regenerateToken } from '@/lib/jwt-regeneration'
 import { logger } from '@/lib/request-context'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { compressImageFile } from '@/utils/image-compression'
-import { generateClickEID } from '@/utils/instrumentation'
+import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 import { GettyImagesLogo } from './icons/GettyImagesLogo'
 
@@ -205,6 +205,7 @@ export function MediaSlotDetail({
         }
 
         logger.info('media_slot_detail.upload_success', { appId, slotName })
+        logImpressionEvent('uploads.mediaslot.success')()
         reloadPreviewSlot(slotName)
         onDone?.()
       } catch (err) {
@@ -213,6 +214,7 @@ export function MediaSlotDetail({
           slotName,
           error: err instanceof Error ? err.message : String(err),
         })
+        logImpressionEvent('uploads.mediaslot.failed')()
         setUploadError(err instanceof Error ? err.message : t('builder_mediaslot_error_failed'))
       } finally {
         setIsUploading(false)
@@ -279,6 +281,7 @@ export function MediaSlotDetail({
         }
 
         logger.info('media_slot_detail.upload_from_chat_success', { appId, slotName, filename: file.filename })
+        logImpressionEvent('uploads.mediaslot.success')()
         reloadPreviewSlot(slotName)
         onDone?.()
       } catch (err) {
@@ -287,6 +290,7 @@ export function MediaSlotDetail({
           slotName,
           error: err instanceof Error ? err.message : String(err),
         })
+        logImpressionEvent('uploads.mediaslot.failed')()
         setUploadError(err instanceof Error ? err.message : t('builder_mediaslot_error_fail_use'))
       } finally {
         setIsUploading(false)

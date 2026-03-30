@@ -15,6 +15,11 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   },
 }))
 
+const mockLogImpressionEvent = vi.fn(() => vi.fn())
+vi.mock('@/utils/instrumentation', () => ({
+  logImpressionEvent: (...args: unknown[]) => mockLogImpressionEvent(...args),
+}))
+
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 
 const mockStore = useStreamingConversationStore as unknown as {
@@ -26,6 +31,7 @@ describe('CompleteHandler', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockLogImpressionEvent.mockClear()
     sessionStorage.removeItem('airo_eval_snapshot_app_build_count_app-123')
   })
 
@@ -63,6 +69,23 @@ describe('CompleteHandler', () => {
     // Machine handles UI state transitions via STREAM_COMPLETE event (Tier 1)
     // Adapter syncs: setWebSocketState, setStreamingState, setIsLoading
     expect(context.helpers.handleCommitComplete).toHaveBeenCalledWith('abcdef1')
+    // Logs usage impression when usage data is present
+    expect(mockLogImpressionEvent).toHaveBeenCalledWith('credits.usage.consumed')
+  })
+
+  it('does not log usage impression when usage data is absent', async () => {
+    mockStore.getState.mockReturnValue({
+      connectionRetry: { isRetrying: false },
+      clearConnectionRetry: vi.fn(),
+      messages: [],
+    })
+
+    await handler.handle(
+      { type: 'complete', content: '', data: { agentId: 'develop' } },
+      createMockMessageContext()
+    )
+
+    expect(mockLogImpressionEvent).not.toHaveBeenCalledWith('credits.usage.consumed')
   })
 
   it('dispatches eval-snapshot-trigger on first completion with commitHash', async () => {

@@ -16,7 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { ACCEPTED_UPLOAD_FILE_TYPES } from '@/utils/file-types';
 import { UPLOAD_TIMEOUT_MS, UPLOAD_TIMEOUT_SECONDS, validate } from '@/utils/file-upload-validation';
 import { compressImageFiles } from '@/utils/image-compression';
-import { generateClickEID } from '@/utils/instrumentation';
+import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation';
 
 export type { UploadedFile } from '@/app/develop/components/chat/FileUploadButton';
 
@@ -135,6 +135,8 @@ export default function ChatAttachmentMenu({
         failedCount: result.failedFiles?.length ?? 0
       });
 
+      logImpressionEvent('uploads.image.success')();
+
       onFilesUploaded(result.files);
 
       if (result.failedFiles?.length > 0) {
@@ -150,7 +152,8 @@ export default function ChatAttachmentMenu({
         fileInputRef.current.value = '';
       }
     } catch (error) {
-      const message = error instanceof DOMException && error.name === 'AbortError'
+      const isTimeout = error instanceof DOMException && error.name === 'AbortError';
+      const message = isTimeout
         ? t('builder_chatfiles_error_timeout_duration', { seconds: UPLOAD_TIMEOUT_SECONDS })
         : error instanceof Error ? error.message : t('builder_chatfiles_error_upload_failed');
 
@@ -158,6 +161,8 @@ export default function ChatAttachmentMenu({
         appId,
         error: message
       });
+
+      logImpressionEvent(isTimeout ? 'uploads.image.timeout' : 'uploads.image.failed')();
 
       onUploadError?.(message);
     } finally {

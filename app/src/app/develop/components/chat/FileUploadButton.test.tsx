@@ -20,9 +20,15 @@ vi.mock('@/lib/file-agent', () => ({
   })
 }));
 
+const mockLogImpressionEvent = vi.fn(() => vi.fn());
+vi.mock('@/utils/instrumentation', () => ({
+  logImpressionEvent: (...args: unknown[]) => mockLogImpressionEvent(...args),
+}));
+
 describe('FileUploadButton', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockLogImpressionEvent.mockClear();
   });
 
   it('should render upload button', () => {
@@ -78,6 +84,7 @@ describe('FileUploadButton', () => {
     });
 
     expect(mockOnFilesUploaded).toHaveBeenCalledWith(mockData.files);
+    expect(mockLogImpressionEvent).toHaveBeenCalledWith('uploads.file.success');
   });
 
   it('should call onUploadError with message on upload failure', async () => {
@@ -93,6 +100,7 @@ describe('FileUploadButton', () => {
 
     await waitFor(() => {
       expect(mockOnUploadError).toHaveBeenCalledWith('Network failure');
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith('uploads.file.failed');
     });
   });
 
@@ -205,5 +213,23 @@ describe('FileUploadButton', () => {
 
     const button = screen.getByRole('button');
     expect(button).toBeDisabled();
+  });
+
+  it('should log timeout impression event on upload timeout', async () => {
+    const mockOnUploadError = vi.fn();
+    const abortError = new DOMException('The operation was aborted.', 'AbortError');
+    vi.mocked(global.fetch).mockRejectedValue(abortError);
+
+    renderWithProviders(<FileUploadButton appId="test-app" onFilesUploaded={() => {}} onUploadError={mockOnUploadError} />);
+
+    const fileInput = screen.getByTestId('file-input') as HTMLInputElement;
+    const file = new File(['content'], 'test.png', { type: 'image/png' });
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(mockOnUploadError).toHaveBeenCalled();
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith('uploads.file.timeout');
+    });
   });
 });

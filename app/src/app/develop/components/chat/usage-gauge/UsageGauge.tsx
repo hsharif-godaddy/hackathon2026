@@ -31,6 +31,7 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
   const t = useTranslations()
   const [open, setOpen] = useState(false)
   const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const previousPercentageRef = useRef<number | null>(null)
 
   const handleMouseEnter = () => {
     if (closeTimeoutRef.current) {
@@ -96,6 +97,32 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
   const grantsPercentage = totalCreditsMax > 0 ? (totalCreditsSpent / totalCreditsMax) * 100 : 0
   const percentage = isGrantsEnabled ? grantsPercentage : (data ? Math.min(data.percentage, 100) : 0)
 
+  // Loading state - compute before threshold effect to gate it
+  const showLoading = isGrantsEnabled
+    ? (isSubscriptionLoading || isGrantsLoading)
+    : (isLoading || !data)
+
+  useEffect(function trackCreditThresholds() {
+    // Don't track thresholds until data is ready to avoid false crossings on initial load
+    if (showLoading) {
+      return
+    }
+
+    const prevPercentage = previousPercentageRef.current
+
+    if (prevPercentage !== null) {
+      if (prevPercentage < 80 && percentage >= 80) {
+        logImpressionEvent('credits.threshold.warning')()
+      }
+
+      if (prevPercentage < 100 && percentage >= 100) {
+        logImpressionEvent('credits.threshold.depleted')()
+      }
+    }
+
+    previousPercentageRef.current = percentage
+  }, [percentage, showLoading])
+
   const handleUpgradeClick = () => {
     openUpgradeModal('usage_gauge.upgrade', USAGE_GAUGE_ITC.UPGRADE)
     setOpen(false)
@@ -118,11 +145,6 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
     setOpen(false)
     shipAnalyticsLog('usage_gauge.buy_tokens.clicked', { appId, percentage })
   }
-
-  // Loading state
-  const showLoading = isGrantsEnabled
-    ? (isSubscriptionLoading || isGrantsLoading)
-    : (isLoading || !data)
 
   if (showLoading) {
     return (

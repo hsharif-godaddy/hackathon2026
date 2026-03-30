@@ -11,6 +11,7 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useSitesStore } from '@/stores/useSitesStore'
 import { useSiteStore } from '@/stores/useSiteStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
+import { logImpressionEvent } from '@/utils/instrumentation'
 import type { LifecycleHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 // Session storage keys for tracking prompts and feedback
@@ -130,6 +131,10 @@ export class CompleteHandler implements MessageHandler {
       totalSteps: data.data?.step as number | undefined,
       finishReason: data.data?.finishReason as string | undefined,
     })
+
+    if (data.data?.usage) {
+      logImpressionEvent('credits.usage.consumed')()
+    }
 
     // Send analytics
     context.helpers.sendToolImpression('complete')

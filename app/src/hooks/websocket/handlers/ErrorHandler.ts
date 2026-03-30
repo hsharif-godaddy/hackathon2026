@@ -12,6 +12,7 @@
 import type { AgentsAppChatMessage, AgentsAppContext } from '@airo/shared/websocket'
 
 import { logger } from '@/lib/request-context'
+import { logImpressionEvent } from '@/utils/instrumentation'
 import type { LifecycleHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 export class ErrorHandler implements MessageHandler {
@@ -85,6 +86,8 @@ export class ErrorHandler implements MessageHandler {
       message: 'Budget exceeded error received',
       content: data.content,
     })
+
+    logImpressionEvent('credits.budget.exceeded')()
 
     context.machine.send({
       type: 'STREAM_ERROR',

@@ -56,8 +56,10 @@ vi.mock('@/app/develop/components/media/UploadedImagesSection', () => ({
   ),
 }));
 
+const mockLogImpressionEvent = vi.fn(() => vi.fn());
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((id) => id),
+  logImpressionEvent: (...args: unknown[]) => mockLogImpressionEvent(...args),
 }));
 
 describe('MediaSlotDetail', () => {
@@ -67,6 +69,7 @@ describe('MediaSlotDetail', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockLogImpressionEvent.mockClear();
     global.fetch = vi.fn();
     
     vi.mocked(useMediaSlot).mockReturnValue({
@@ -183,7 +186,7 @@ describe('MediaSlotDetail', () => {
     const { user } = renderWithProviders(
       <MediaSlotDetail appId={mockAppId} slotName={mockSlotName} onDone={mockOnDone} />
     );
-    
+
     const selectUploadBtn = screen.getByText('Select Uploaded Image');
     await user.click(selectUploadBtn);
 
@@ -199,6 +202,7 @@ describe('MediaSlotDetail', () => {
         })
       );
       expect(mockOnDone).toHaveBeenCalled();
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith('uploads.mediaslot.success');
     });
   });
 
@@ -209,12 +213,13 @@ describe('MediaSlotDetail', () => {
     });
 
     const { user } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
-    
+
     const selectUploadBtn = screen.getByText('Select Uploaded Image');
     await user.click(selectUploadBtn);
 
     await waitFor(() => {
       expect(screen.getByText('Failed to fetch uploaded file')).toBeInTheDocument();
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith('uploads.mediaslot.failed');
     });
   });
 });

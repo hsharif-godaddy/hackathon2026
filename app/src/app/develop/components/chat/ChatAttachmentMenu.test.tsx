@@ -11,6 +11,7 @@ import ChatAttachmentMenu from './ChatAttachmentMenu';
 
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((id) => id),
+  logImpressionEvent: vi.fn(() => vi.fn()),
 }));
 
 vi.mock('@/lib/logging', () => ({

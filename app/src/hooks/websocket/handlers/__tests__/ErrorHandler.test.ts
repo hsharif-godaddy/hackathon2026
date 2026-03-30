@@ -8,12 +8,18 @@ import { createMockMessageContext } from './testUtils'
 import { ErrorHandler } from '../ErrorHandler'
 import type { WebSocketMessage } from '../types'
 
+const mockLogImpressionEvent = vi.fn(() => vi.fn())
+vi.mock('@/utils/instrumentation', () => ({
+  logImpressionEvent: (...args: unknown[]) => mockLogImpressionEvent(...args),
+}))
+
 describe('ErrorHandler', () => {
   const handler = new ErrorHandler()
 
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2024-01-01T00:00:00Z'))
+    mockLogImpressionEvent.mockClear()
   })
 
   afterEach(() => {
@@ -57,6 +63,8 @@ describe('ErrorHandler', () => {
     expect(context.helpers.clearRetryState).toHaveBeenCalled()
     // Note: We no longer clear the stored socket ID on errors to enable recovery on page reload
     expect(context.refs.pendingRecoveryAck.current).toBeNull()
+    // Logs budget exceeded impression
+    expect(mockLogImpressionEvent).toHaveBeenCalledWith('credits.budget.exceeded')
   })
 
   it('retries APP_NOT_FOUND errors within retry window', async () => {

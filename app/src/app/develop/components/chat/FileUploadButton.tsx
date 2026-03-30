@@ -9,6 +9,7 @@ import { getFileUploadAgent } from '@/lib/file-agent';
 import { logger } from '@/lib/request-context';
 import { ACCEPTED_UPLOAD_FILE_TYPES } from '@/utils/file-types';
 import { UPLOAD_TIMEOUT_MS, UPLOAD_TIMEOUT_SECONDS, validate } from '@/utils/file-upload-validation';
+import { logImpressionEvent } from '@/utils/instrumentation';
 
 export interface UploadedFile {
   id: string;
@@ -101,6 +102,8 @@ export default function FileUploadButton({
         failedCount: result.failedFiles?.length ?? 0
       });
 
+      logImpressionEvent('uploads.file.success')();
+
       onFilesUploaded(result.files);
 
       if (result.failedFiles?.length > 0) {
@@ -116,7 +119,8 @@ export default function FileUploadButton({
         fileInputRef.current.value = '';
       }
     } catch (error) {
-      const message = error instanceof DOMException && error.name === 'AbortError'
+      const isTimeout = error instanceof DOMException && error.name === 'AbortError';
+      const message = isTimeout
         ? t('builder_chatfiles_error_timeout_duration', { seconds: UPLOAD_TIMEOUT_SECONDS })
         : error instanceof Error ? error.message : t('builder_chatfiles_error_upload_failed');
 
@@ -124,6 +128,8 @@ export default function FileUploadButton({
         appId,
         error: message
       });
+
+      logImpressionEvent(isTimeout ? 'uploads.file.timeout' : 'uploads.file.failed')();
 
       onUploadError?.(message);
     } finally {
