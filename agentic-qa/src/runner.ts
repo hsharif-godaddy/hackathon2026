@@ -122,7 +122,7 @@ export async function runScenario(
       await page.waitForTimeout(2000);
 
       // Clean up old sites if over limit (before creating new one)
-      await deleteOldestSitesIfOverLimit(stagehand, 100);
+      await deleteOldestSitesIfOverLimit(stagehand);
     }
 
     const agent = stagehand.agent({

@@ -37,12 +37,12 @@ export async function handleSignIn(
 /**
  * Delete oldest sites if total exceeds maxSites limit
  * @param stagehand - Stagehand instance with browser context
- * @param maxSites - Maximum number of sites to keep (default: 100)
+ * @param maxSites - Maximum number of sites to keep (default: 80)
  * @returns Number of sites deleted
  */
 export async function deleteOldestSitesIfOverLimit(
   stagehand: Stagehand,
-  maxSites: number = 100
+  maxSites: number = 80
 ): Promise<number> {
   console.log(`Checking site count (max: ${maxSites})...`);
 
