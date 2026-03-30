@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { dynamicApiConfigService } from "@/config/dynamic-api";
 import { regenerateToken } from "@/lib/jwt-regeneration";
@@ -21,6 +21,7 @@ interface UploadedImagesSectionProps {
   onSelectImage: (file: UploadedFile) => void;
   isDisabled?: boolean;
   layout?: 'horizontal' | 'grid';
+  excludeFilenames?: Set<string>;
 }
 
 // Extend UploadedFile with computed full signed URL for rendering
@@ -33,6 +34,7 @@ export function UploadedImagesSection({
   onSelectImage,
   isDisabled,
   layout = 'horizontal',
+  excludeFilenames,
 }: UploadedImagesSectionProps) {
   const [uploads, setUploads] = useState<UploadedFileWithFullUrl[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -109,6 +111,11 @@ export function UploadedImagesSection({
     fetchUploads();
   }, [fetchUploads, appId]);
 
+  const visibleUploads = useMemo(
+    () => excludeFilenames ? uploads.filter((f) => !excludeFilenames.has(f.filename)) : uploads,
+    [uploads, excludeFilenames]
+  );
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-4">
@@ -121,7 +128,7 @@ export function UploadedImagesSection({
     return null; // Silently hide on error
   }
 
-  if (uploads.length === 0) {
+  if (visibleUploads.length === 0) {
     return null; // Don't show section if no uploads
   }
 
@@ -129,7 +136,7 @@ export function UploadedImagesSection({
   if (layout === 'grid') {
     return (
       <div className="grid grid-cols-2 gap-2 content-start">
-        {uploads.map((file) => (
+        {visibleUploads.map((file) => (
           <button
             key={file.id}
             type="button"
@@ -173,11 +180,11 @@ export function UploadedImagesSection({
         ) : (
           <ChevronRight className="w-4 h-4" />
         )}
-        Your Uploads ({uploads.length})
+        Your Uploads ({visibleUploads.length})
       </button>
       {isExpanded && (
         <div id="uploads-list" className="flex gap-2 overflow-x-auto pb-1 mt-2">
-          {uploads.map((file) => (
+          {visibleUploads.map((file) => (
             <button
               key={file.id}
               type="button"

@@ -447,7 +447,8 @@ router.post(
       const updateResult = await mediaManifestService.updateSlotWithUpload(
         appId,
         slotName,
-        uploadedUrl
+        uploadedUrl,
+        file.originalname
       );
 
       if (!updateResult.success) {

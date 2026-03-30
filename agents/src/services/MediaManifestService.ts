@@ -58,6 +58,8 @@ export interface MediaSlot {
   gettyId?: string;
   /** Getty image IDs for alternative images (parallel to alternatives array) */
   alternativeGettyIds?: string[];
+  /** Original filenames of chat uploads applied to this slot (for client-side dedup) */
+  uploadSourceFilenames?: string[];
 }
 
 /**
@@ -539,7 +541,7 @@ export class MediaManifestService {
         // Allow injecting an existing uploaded image URL that isn't in this slot yet
         if (options.newUrl && options.newUrl.startsWith('/airo-assets/uploads/')) {
           newCurrentUrl = options.newUrl;
-          newAlternatives = allUrls; // Push everything down
+          newAlternatives = [...new Set(allUrls)].filter((url) => url !== options.newUrl);
           newCurrentGettyId = undefined;
           
           const altGettyIds = existingSlot.alternativeGettyIds || [];
@@ -554,9 +556,9 @@ export class MediaManifestService {
           };
         }
       } else {
-        // Swap: new URL becomes current, old current goes to alternatives
+        // Swap: new URL becomes current, remove ALL occurrences from alternatives
         newCurrentUrl = allUrls[urlIndex]!;
-        newAlternatives = allUrls.filter((_, i) => i !== urlIndex);
+        newAlternatives = [...new Set(allUrls.filter((url) => url !== newCurrentUrl))];
 
         // Build Getty ID arrays (current + alternatives, same order as allUrls)
         // Pad alternativeGettyIds to match alternatives length to prevent misalignment
@@ -646,7 +648,8 @@ export class MediaManifestService {
   async updateSlotWithUpload(
     appId: string,
     slotName: string,
-    uploadedUrl: string
+    uploadedUrl: string,
+    sourceFilename?: string
   ): Promise<ManifestOperationResult> {
     const app = this.appRepository.findById(appId);
     if (!app) {
@@ -712,17 +715,28 @@ export class MediaManifestService {
         newAlternativeGettyIds = existingSlot.alternativeGettyIds;
       }
 
+      // Deduplicate alternatives (repeated uploads/swaps can cause duplicates)
+      const deduplicatedAlternatives = [...new Set(newAlternatives)]
+        .filter((url) => url !== uploadedUrl);
+
+      // Track source filenames for client-side dedup with chat uploads
+      const existingSources = existingSlot.uploadSourceFilenames || [];
+      const updatedSources = sourceFilename && sourceFilename !== 'blob'
+        ? [...new Set([...existingSources, sourceFilename])]
+        : existingSources.length > 0 ? existingSources : undefined;
+
       // Update slot with uploaded URL as current
       const updatedSlot: MediaSlot = {
         ...existingSlot,
         currentUrl: uploadedUrl,
-        alternatives: newAlternatives,
+        alternatives: deduplicatedAlternatives,
         userModified: true,
         lastUpdated: new Date().toISOString(),
         gettyId: newCurrentGettyId,
         alternativeGettyIds: newAlternativeGettyIds?.some(Boolean) 
           ? newAlternativeGettyIds.filter(Boolean)
           : undefined,
+        uploadSourceFilenames: updatedSources,
       };
 
       manifest[slotName] = updatedSlot;

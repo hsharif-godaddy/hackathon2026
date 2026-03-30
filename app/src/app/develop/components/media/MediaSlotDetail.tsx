@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
 import Button from '@ux/button'
 import CheckboxFilledIcon from '@ux/icon/checkbox-filled'
@@ -73,7 +73,7 @@ export function MediaSlotDetail({
     enabled,
   })
 
-  const { manifest, refetch: refetchManifest } = useMediaManifest({ appId, enabled })
+  const { refetch: refetchManifest } = useMediaManifest({ appId, enabled })
 
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null)
   const [isSwapping, setIsSwapping] = useState(false)
@@ -301,14 +301,12 @@ export function MediaSlotDetail({
 
   const allImages = slot ? [...new Set([slot.currentUrl, ...slot.alternatives])] : []
   const gettyImages = allImages.filter((url) => !isUploadUrl(url)).sort()
+  const slotUploadedImages = allImages.filter(isUploadUrl).sort()
 
-  const allUploadedImages = manifest
-    ? [...new Set(
-        Object.values(manifest).flatMap((s) =>
-          [s.currentUrl, ...s.alternatives].filter(isUploadUrl)
-        )
-      )].sort()
-    : []
+  const excludeFilenames = useMemo(
+    () => new Set(slot?.uploadSourceFilenames ?? []),
+    [slot]
+  )
 
   const effectiveSelectedUrl = selectedUrl ?? slot?.currentUrl ?? null
   const isCurrentImage = effectiveSelectedUrl === slot?.currentUrl
@@ -434,9 +432,9 @@ export function MediaSlotDetail({
               </button>
               {uploadsOpen && (
                 <div className="flex flex-col gap-2">
-                  {allUploadedImages.length > 0 && (
+                  {slotUploadedImages.length > 0 && (
                     <ImageGrid
-                      images={allUploadedImages}
+                      images={slotUploadedImages}
                       selectedUrl={effectiveSelectedUrl}
                       slotName={slotName}
                       previewBaseUrl={previewBaseUrl}
@@ -448,6 +446,7 @@ export function MediaSlotDetail({
                     onSelectImage={handleSelectFromUploads}
                     isDisabled={isUploading}
                     layout="grid"
+                    excludeFilenames={excludeFilenames}
                   />
                 </div>
               )}

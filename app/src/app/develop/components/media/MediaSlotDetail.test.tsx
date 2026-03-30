@@ -46,14 +46,18 @@ vi.mock('@/utils/postMessage', () => ({
   postMessageToIframe: vi.fn(),
 }));
 
+const mockUploadedImagesSection = vi.fn();
 vi.mock('@/app/develop/components/media/UploadedImagesSection', () => ({
-  UploadedImagesSection: ({ onSelectImage }: { onSelectImage: (file: { filename: string }) => void }) => (
-    <div data-testid="uploaded-images-section">
-      <button onClick={() => onSelectImage({ filename: 'test.jpg' })}>
-        Select Uploaded Image
-      </button>
-    </div>
-  ),
+  UploadedImagesSection: (props: { onSelectImage: (file: { filename: string }) => void; excludeFilenames?: Set<string> }) => {
+    mockUploadedImagesSection(props);
+    return (
+      <div data-testid="uploaded-images-section">
+        <button onClick={() => props.onSelectImage({ filename: 'test.jpg' })}>
+          Select Uploaded Image
+        </button>
+      </div>
+    );
+  },
 }));
 
 const mockLogImpressionEvent = vi.fn(() => vi.fn());
@@ -69,6 +73,7 @@ describe('MediaSlotDetail', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUploadedImagesSection.mockClear();
     mockLogImpressionEvent.mockClear();
     global.fetch = vi.fn();
     
@@ -203,6 +208,31 @@ describe('MediaSlotDetail', () => {
       );
       expect(mockOnDone).toHaveBeenCalled();
       expect(mockLogImpressionEvent).toHaveBeenCalledWith('uploads.mediaslot.success');
+    });
+  });
+
+  it('passes current slot uploadSourceFilenames as excludeFilenames to UploadedImagesSection', async () => {
+    vi.mocked(useMediaSlot).mockReturnValue({
+      slot: {
+        currentUrl: '/airo-assets/uploads/hero-abc123.jpg',
+        alternatives: ['/img1.jpg'],
+        mediaType: 'image',
+        searchQuery: null,
+        uploadSourceFilenames: ['pexels-photo.jpg', 'my-upload.png'],
+      },
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    } as unknown as ReturnType<typeof useMediaSlot>);
+
+    renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
+
+    await waitFor(() => {
+      expect(mockUploadedImagesSection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          excludeFilenames: new Set(['pexels-photo.jpg', 'my-upload.png']),
+        })
+      );
     });
   });
 
