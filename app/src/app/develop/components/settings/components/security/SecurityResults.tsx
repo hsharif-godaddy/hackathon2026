@@ -69,7 +69,15 @@ interface SecurityTestResult {
 }
 
 /**
- * Component to display success screen when no vulnerabilities are found
+ * Listed rows only if `severity.toLowerCase()` is `critical` or `high`. Anything else (medium, low,
+ * info, unknown, or unexpected API values) is omitted from `visibleVulnerabilities` and the list UI.
+ */
+const UI_VULNERABILITY_SEVERITIES = new Set(['critical', 'high']);
+
+/**
+ * Shown when `hasIssues` is false: no rows in `visibleVulnerabilities` and no failed tests.
+ * Success copy (`builder_settings_security_results_complete_text`) should state the scope (critical
+ * or high only) in i18n;
  */
 function SecuritySuccessScreen() {
   const t = useTranslations();
@@ -258,6 +266,10 @@ export default function SecurityResults({
       return getSeverityOrder(a.severity) - getSeverityOrder(b.severity);
     });
 
+  const visibleVulnerabilities = vulnerabilities.filter((v) =>
+    UI_VULNERABILITY_SEVERITIES.has(v.severity.toLowerCase()),
+  );
+
   /**
    * Toggle the checked state of a vulnerability
    *
@@ -281,12 +293,8 @@ export default function SecurityResults({
   /**
    * Get all vulnerability IDs for select all functionality
    */
-  const getAllVulnerabilityIds = (): string[] => {
-    if (!securityReport?.vulnerabilities) return [];
-    return securityReport.vulnerabilities.map(
-      (_, index) => `vulnerability-${index}`,
-    );
-  };
+  const getAllVulnerabilityIds = (): string[] =>
+    visibleVulnerabilities.map((_, index) => `vulnerability-${index}`);
 
   /**
    * Check if all vulnerabilities are selected
@@ -319,11 +327,7 @@ export default function SecurityResults({
    * Handle creating a TO-DO list from selected vulnerabilities
    */
   const handleQuickFix = async () => {
-    if (
-      !appId ||
-      checkedVulnerabilities.size === 0 ||
-      !securityReport?.vulnerabilities
-    ) {
+    if (!appId || checkedVulnerabilities.size === 0 || visibleVulnerabilities.length === 0) {
       return;
     }
 
@@ -331,7 +335,7 @@ export default function SecurityResults({
 
     try {
       // Get selected vulnerabilities
-      const selectedVulnerabilities = vulnerabilities.filter((_, index) => {
+      const selectedVulnerabilities = visibleVulnerabilities.filter((_, index) => {
         const vulnerabilityId = `vulnerability-${index}`;
         return checkedVulnerabilities.has(vulnerabilityId);
       });
@@ -374,52 +378,61 @@ export default function SecurityResults({
       (detail) => detail.status?.toLowerCase() !== "passed",
     ) || [];
 
-  // Check if there are any issues (vulnerabilities or failed tests)
+  // Success when no listed critical/high vulns and no failed tests (matches what the UI surfaces).
   const hasIssues =
-    (vulnerabilities && vulnerabilities.length > 0) || failedTests.length > 0;
+    visibleVulnerabilities.length > 0 || failedTests.length > 0;
 
   return (
     <Box gap="lg" className="p-1.5">
-      {/* Show success screen if no issues found */}
       {!hasIssues && <SecuritySuccessScreen />}
 
-      {/* Vulnerabilities - Only show if vulnerabilities exist */}
-      {vulnerabilities && vulnerabilities.length > 0 && (
+      {visibleVulnerabilities.length > 0 && (
         <Box gap="md">
-          <div className="flex min-w-0 flex-col gap-2 @md:flex-row @md:items-center @md:justify-between @md:gap-4">
-            <text.h3 as="title" className="min-w-0" size={2}>
-              {t('builder_settings_security_results_title')} ({vulnerabilities.length})
-            </text.h3>
-            <div className="grid min-w-0 w-full grid-cols-2 gap-2 @md:flex @md:w-auto @md:flex-row @md:flex-nowrap @md:justify-end">
-              <Button
-                className="min-w-0 w-full justify-center @md:w-auto"
-                size="sm"
-                design="secondary"
-                disabled={isCreatingTodoList}
-                onClick={handleSelectAll}
-              >
-                {areAllSelected() ? t('builder_common_deselect_all') : t('builder_common_select_all')}
-              </Button>
-              <Button
-                className="min-w-0 w-full justify-center @md:w-auto"
-                size="sm"
-                design="primary"
-                onClick={handleQuickFix}
-                disabled={checkedVulnerabilities.size === 0 || isCreatingTodoList}
-                text={
-                  isCreatingTodoList
-                    ? t('builder_common_creating')
-                    : t('builder_settings_security_ask_airo_to_fix', undefined, 'Ask Airo to fix')
-                }
-              />
+          <Box gap="sm">
+            <div className="flex min-w-0 flex-col gap-2 @md:flex-row @md:items-center @md:justify-between @md:gap-4">
+              <div className="flex min-w-0 flex-row flex-wrap items-center gap-0.5">
+                <text.h3 as="title" className="min-w-0" size={2}>
+                  {t('builder_settings_security_results_title')} ({visibleVulnerabilities.length})
+                </text.h3>
+              </div>
+              <div className="grid min-w-0 w-full grid-cols-2 gap-2 @md:flex @md:w-auto @md:flex-row @md:flex-nowrap @md:justify-end">
+                <Button
+                  className="min-w-0 w-full justify-center @md:w-auto"
+                  size="sm"
+                  design="secondary"
+                  disabled={isCreatingTodoList}
+                  onClick={handleSelectAll}
+                >
+                  {areAllSelected() ? t('builder_common_deselect_all') : t('builder_common_select_all')}
+                </Button>
+                <Button
+                  className="min-w-0 w-full justify-center @md:w-auto"
+                  size="sm"
+                  design="primary"
+                  onClick={handleQuickFix}
+                  disabled={checkedVulnerabilities.size === 0 || isCreatingTodoList}
+                  text={
+                    isCreatingTodoList
+                      ? t('builder_common_creating')
+                      : t('builder_settings_security_ask_airo_to_fix', undefined, 'Ask Airo to fix')
+                  }
+                />
+              </div>
             </div>
-          </div>
+            <text.p emphasis="passive" size={-1} className="min-w-0">
+              {t(
+                'builder_settings_security_results_list_scope_note',
+                undefined,
+                'Only critical and high severity findings are listed.',
+              )}
+            </text.p>
+          </Box>
           <div className="grid gap-2">
-            {vulnerabilities.map((vulnerability, index) => {
+            {visibleVulnerabilities.map((vulnerability, index) => {
               const vulnerabilityId = `vulnerability-${index}`;
               return (
                 <SecurityVulnerabilityCard
-                  key={index}
+                  key={vulnerabilityId}
                   vulnerability={vulnerability}
                   vulnerabilityId={vulnerabilityId}
                   isChecked={checkedVulnerabilities.has(vulnerabilityId)}
