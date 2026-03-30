@@ -4,7 +4,9 @@ import clsx from 'clsx'
 import { animate, motion, useMotionValue } from 'framer-motion'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader } from '@airo-ux/loader'
+import Button from '@ux/button'
 
+import MessageOverlay from '@/app/develop/components/dev-tools/MessageOverlay'
 import DomainBar from '@/app/develop/components/layout/DomainBar'
 import { getDevicePreset } from '@/app/develop/components/preview/devicePresets'
 import PreviewCode from '@/app/develop/components/preview/PreviewCode'
@@ -61,6 +63,7 @@ interface PreviewPaneProps {
   isMobile?: boolean
   showBuildingOverlay?: boolean
   fixingOverlayMessage?: string | null
+  unresolvedError?: { message: string; onFix: () => void } | null
   isHibernated?: boolean
   isResuming?: boolean
   resumeFailed?: boolean
@@ -75,6 +78,7 @@ export default function PreviewPane({
   isMobile = false,
   showBuildingOverlay = false,
   fixingOverlayMessage = null,
+  unresolvedError = null,
   isHibernated = false,
   isResuming = false,
   resumeFailed = false,
@@ -623,6 +627,19 @@ export default function PreviewPane({
                 <div className="absolute inset-0 z-50 bg-intents-ux-boxLowContrast-backgroundColor rounded-lg">
                   <Tips buildingMessage={fixingOverlayMessage} />
                 </div>
+              )}
+              {unresolvedError && viewMode !== ViewMode.CODE && (
+                <MessageOverlay
+                  title={t('builder_preview_error_title')}
+                  message={unresolvedError.message}
+                >
+                  <Button
+                    onClick={unresolvedError.onFix}
+                    design="primary"
+                    data-partial="componentAiro"
+                    text={t('builder_common_ask_airo_to_fix', undefined, 'Ask Airo to fix')}
+                  />
+                </MessageOverlay>
               )}
             </div>
           </div>

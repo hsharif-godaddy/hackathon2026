@@ -84,6 +84,7 @@ export default function ImageHoverBar({
 
   return (
     <div
+      data-airo-dev-tools
       className="edit-mode-hover-bar"
       style={{
         ...barStyle,
@@ -120,7 +121,7 @@ export default function ImageHoverBar({
           boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
           fontSize: "12px",
           fontWeight: 600,
-          color: "#1f2937",
+          color: "var(--color-text-secondary)",
           letterSpacing: "-0.01em",
         }}
         onMouseEnter={(e) => {
@@ -147,7 +148,7 @@ export default function ImageHoverBar({
           borderRadius: "6px",
           cursor: "pointer",
           boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-          color: "#1f2937",
+          color: "var(--color-text-secondary)",
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.background = "rgba(245, 245, 245, 0.95)";
@@ -156,7 +157,7 @@ export default function ImageHoverBar({
           e.currentTarget.style.background = "rgba(255, 255, 255, 0.9)";
         }}
       >
-        <Sparkles style={{ width: "15px", height: "15px" }} />
+        <Sparkles style={{ width: "15px", height: "15px", color: "var(--color-accent-purple)" }} />
       </button>
     </div>
   );

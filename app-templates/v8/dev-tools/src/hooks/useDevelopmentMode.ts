@@ -197,7 +197,7 @@ export function useDevelopmentMode(options?: { isEditModeActive?: boolean }) {
 
     const rect = element.getBoundingClientRect()
 
-    const borderColor = type === 'hover' ? '#3b82f6' : '#000000'
+    const borderColor = type === 'hover' ? 'var(--color-interactive)' : '#000000'
     const backgroundColor = type === 'hover' ? 'rgba(59, 130, 246, 0.1)' : 'transparent'
     const borderStyle = type === 'select' ? 'dashed' : 'solid'
 
@@ -222,7 +222,7 @@ export function useDevelopmentMode(options?: { isEditModeActive?: boolean }) {
       setTimeout(() => {
         const highlightBox = document.getElementById('dev-highlight-box')
         if (highlightBox) {
-          highlightBox.style.borderColor = '#9ca3af' // lighter gray
+          highlightBox.style.borderColor = 'var(--color-text-muted)' // lighter gray
         }
       }, 100) // Small delay to ensure the element is rendered
     }
@@ -596,7 +596,7 @@ export function useDevelopmentMode(options?: { isEditModeActive?: boolean }) {
 
     // Make element editable with distinct styling (no boundary overlap)
     element.contentEditable = 'true'
-    element.style.outline = '2px solid #10b981'  // Green outline for text editing
+    element.style.outline = '2px solid var(--color-selection-outline)'  // Green outline for text editing
     element.style.backgroundColor = 'rgba(16, 185, 129, 0.1)'  // Light green background
     element.style.borderRadius = '6px'
     element.style.padding = '6px 12px'

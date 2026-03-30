@@ -13,7 +13,7 @@ function MessageOverlay({
 }: MessageOverlayProps) {
   return (
     <div
-      data-airo-dev-tools
+      data-airo-dev-tool
       style={{
         position: 'fixed',
         top: 0,
@@ -36,7 +36,7 @@ function MessageOverlay({
           top: '50%',
           left: '50%',
           transform: 'translate(-50%, -50%)',
-          backgroundColor: '#ffffff',
+          backgroundColor: 'var(--color-surface)',
           padding: '2rem',
           borderRadius: '1rem',
           boxShadow: '0 0 10px 0 rgba(0, 0, 0, 0.1)',
@@ -47,7 +47,7 @@ function MessageOverlay({
           style={{
             fontSize: '1.5rem',
             fontWeight: '600',
-            color: '#111111',
+            color: 'var(--color-text-primary)',
           }}
         >
           {title}
@@ -55,7 +55,7 @@ function MessageOverlay({
 
         <pre
           style={{
-            color: '#6b7280',
+            color: 'var(--color-text-tertiary)',
             fontSize: '0.875rem',
             marginBottom: '1rem',
             whiteSpace: 'pre-wrap',

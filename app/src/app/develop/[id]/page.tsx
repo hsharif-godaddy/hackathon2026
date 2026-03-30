@@ -20,6 +20,7 @@ import { ChatTab, IframeMessageType, MobileMode, ViewMode } from '@/app/develop/
 import { extractNewPageRoute, handlePreviewRefresh, navigatePreviewToRoute, requestPreviewScreenshot, useAppIdFromParams } from '@/app/develop/components/utils'
 import VersionHistory from '@/app/develop/components/VersionHistory'
 import { clearExpiredWidgetStates } from '@/app/develop/components/widgets'
+import { type PendingError,useErrorFixState } from '@/app/develop/hooks/useErrorFixState'
 import { useEvalSnapshotCapture } from '@/app/develop/hooks/useEvalSnapshotCapture'
 import { useInitialization } from '@/app/develop/hooks/useInitialization'
 import { ProtectedRoute } from '@/components/auth'
@@ -178,10 +179,6 @@ function DevelopPageContent() {
   const { data: isEditModeFeatureEnabled } = useSwitchboard('appbuilder-edit-mode')
   // Optimistic mobile tab state for instant transitions
   const [optimisticMobileTab, setOptimisticMobileTab] = useState<ChatTab>(activeChatTab)
-  // Track when an error fix request is in progress to show the fixing overlay
-  const [isFixingError, setIsFixingError] = useState(false)
-  const isFixingErrorRef = useRef(false)
-  const isProcessingRef = useRef(false)
   const securityQuickFixFailCountRef = useRef<Map<string, number>>(new Map())
   const [securityHandoffRetryNonce, setSecurityHandoffRetryNonce] = useState(0)
 
@@ -433,35 +430,43 @@ function DevelopPageContent() {
   const pendingUpdateRef = useRef<{ selector: string; property: string; value: string; newClassName: string; newStyle?: string } | null>(null)
   const isFirstUpdateRef = useRef(true)
   const isProcessing = isLoading || isStreaming
-
-  // Keep refs in sync so the message handler can read current values without being a dependency
-  isFixingErrorRef.current = isFixingError
+  const isProcessingRef = useRef(isProcessing)
   isProcessingRef.current = isProcessing
 
-  // Reset fixing overlay when the agent finishes processing
-  const prevIsProcessingRef = useRef(isProcessing)
-  useEffect(() => {
-    const wasProcessing = prevIsProcessingRef.current
-    prevIsProcessingRef.current = isProcessing
-
-    if (wasProcessing && !isProcessing) {
-      setIsFixingError(false)
-      isFixingErrorRef.current = false
+  // Three-state error fix lifecycle: none → pending → unresolved (see useErrorFixState)
+  const errorFixSendHandler = useCallback((error: PendingError) => {
+    if (error.errorData) {
+      const { message, name, stack, componentStack, url, timestamp } = error.errorData
+      setInputValue(t('builder_develop_fix_runtime_error', undefined, 'Please analyze and fix this runtime error.'))
+      scheduleMicrotask(() => {
+        void ws.actions.send({
+          content: 'Please analyze and fix this runtime error.',
+          aiEditContext: null,
+          isActionRequest: false,
+          customContext: {
+            type: 'runtime_error',
+            data: { message, name, stack, componentStack, url, timestamp },
+            persistence: 'ephemeral',
+            source: 'error-boundary'
+          }
+        })
+      })
+    } else if (error.errorMessage) {
+      setInputValue(t('builder_develop_fix_compile_error', { errorMessage: error.errorMessage }, `Please fix this error: ${error.errorMessage}`))
+      scheduleMicrotask(() => {
+        void ws.actions.send({
+          content: `Please fix this error: ${error.errorMessage}`,
+          aiEditContext: null
+        })
+      })
     }
-  }, [isProcessing])
-
-  // Fallback: if isFixingError is set but isProcessing never becomes true
-  // (e.g. ws.actions.send silently fails), reset after a short window
-  useEffect(() => {
-    if (!isFixingError || isProcessing) return
-    const timeout = setTimeout(() => {
-      if (!isProcessingRef.current) {
-        setIsFixingError(false)
-        isFixingErrorRef.current = false
-      }
-    }, 5000)
-    return () => clearTimeout(timeout)
-  }, [isFixingError, isProcessing])
+  }, [scheduleMicrotask, setInputValue, ws.actions, t])
+  const {
+    errorFixState,
+    userRequestedFix,
+    pendingError,
+    actions: errorFixActions
+  } = useErrorFixState(isProcessing, errorFixSendHandler)
 
   const sendStyleUpdate = useCallback(async (styleData: { selector: string; property: string; value: string; newClassName: string; newStyle?: string }) => {
     if (!appId) return
@@ -749,64 +754,26 @@ function DevelopPageContent() {
           })
           break
         }
-        case 'error-fix-request':
-          if (isFixingErrorRef.current) break
-          // Agent is already working — don't interrupt with a second message
-          if (isProcessingRef.current) {
-            logger.info('develop-page.error-fix-request.skipped-processing', { appId })
-            break
-          }
-          isFixingErrorRef.current = true
-          setIsFixingError(true)
-          // Handle runtime error fix requests from AiroErrorBoundary (new format with errorData)
+        case 'error-fix-request': {
           if (event.data.errorData) {
-            const { message, name, stack, componentStack, url, timestamp } = event.data.errorData as import('@/types/runtime-error').RuntimeErrorData
+            const errorData = event.data.errorData as import('@/types/runtime-error').RuntimeErrorData
             logger.info('develop-page.error-fix-request', {
               appId,
-              errorName: name,
-              errorMessage: message,
-              hasStack: !!stack,
-              hasComponentStack: !!componentStack
+              errorName: errorData.name,
+              errorMessage: errorData.message,
+              hasStack: !!errorData.stack,
+              hasComponentStack: !!errorData.componentStack
             })
-
-            setInputValue('Please analyze and fix this runtime error.')
-
-            scheduleMicrotask(() => {
-              void ws.actions.send({
-                content: 'Please analyze and fix this runtime error.',
-                aiEditContext: null,
-                isActionRequest: false,
-                customContext: {
-                  type: 'runtime_error',
-                  data: {
-                    message,
-                    name,
-                    stack,
-                    componentStack,
-                    url,
-                    timestamp
-                  },
-                  persistence: 'ephemeral',
-                  source: 'error-boundary'
-                }
-              })
-            })
-          }
-          // Handle legacy compile error fix requests (old format with errorMessage string)
-          else if (event.data.errorMessage) {
-            logger.info('develop-page.error-fix-request.legacy', {
+            errorFixActions.handleErrorFixRequest({ errorData })
+          } else if (event.data.errorMessage) {
+            logger.info('develop-page.error-fix-request.compile', {
               appId,
               errorMessage: event.data.errorMessage
             })
-            setInputValue(`Please fix this error: ${event.data.errorMessage}`)
-            scheduleMicrotask(() => {
-              void ws.actions.send({
-                content: `Please fix this error: ${event.data.errorMessage}`,
-                aiEditContext: null
-              })
-            })
+            errorFixActions.handleErrorFixRequest({ errorMessage: event.data.errorMessage })
           }
           break
+        }
         case 'build-page-request':
           if (isProcessingRef.current) {
             logger.info('develop-page.build-page-request.skipped-processing', { appId })
@@ -882,8 +849,7 @@ function DevelopPageContent() {
           }
           break
         case 'error-fix-resolved':
-          setIsFixingError(false)
-          isFixingErrorRef.current = false
+          errorFixActions.handleErrorFixResolved()
           break
         case 'IFRAME_READY':
           // Send edit mode state when iframe signals it is ready
@@ -900,7 +866,7 @@ function DevelopPageContent() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setIsSelectMode, ws.actions.send, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask, sendEditModeMessage, isEditModeEnabled, handleAutoImportMediaSlot])
+  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setIsSelectMode, ws.actions.send, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask, sendEditModeMessage, isEditModeEnabled, handleAutoImportMediaSlot, errorFixActions])
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -1163,7 +1129,8 @@ function DevelopPageContent() {
                   <PreviewPane
                     onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
                     showBuildingOverlay={init.ui.showPreviewLoader}
-                    fixingOverlayMessage={isFixingError ? t('builder_preview_fixing_error') : null}
+                    fixingOverlayMessage={userRequestedFix && errorFixState === 'pending' ? t('builder_preview_fixing_error') : null}
+                    unresolvedError={errorFixState === 'unresolved' && pendingError ? { message: pendingError.errorMessage || pendingError.errorData?.message || '', onFix: errorFixActions.handleFixError } : null}
                     isHibernated={hibernation.isHibernated}
                     isResuming={hibernation.isResuming}
                     resumeFailed={hibernation.resumeFailed}
@@ -1249,7 +1216,8 @@ function DevelopPageContent() {
                       <PreviewPane
                         onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
                         showBuildingOverlay={init.ui.showPreviewLoader}
-                        fixingOverlayMessage={isFixingError ? t('builder_preview_fixing_error') : null}
+                        fixingOverlayMessage={userRequestedFix && errorFixState === 'pending' ? t('builder_preview_fixing_error') : null}
+                        unresolvedError={errorFixState === 'unresolved' && pendingError ? { message: pendingError.errorMessage || pendingError.errorData?.message || '', onFix: errorFixActions.handleFixError } : null}
                         isHibernated={hibernation.isHibernated}
                         isResuming={hibernation.isResuming}
                         resumeFailed={hibernation.resumeFailed}

@@ -21,9 +21,9 @@ function showSaveIndicator(element: HTMLElement) {
     right: ${window.innerWidth - rect.right}px;
     font-size: 11px;
     font-weight: 500;
-    color: #059669;
-    background: #ecfdf5;
-    border: 1px solid #a7f3d0;
+    color: var(--color-success);
+    background: var(--color-success-bg);
+    border: 1px solid var(--color-success-border);
     padding: 2px 8px;
     border-radius: 4px;
     z-index: 10001;

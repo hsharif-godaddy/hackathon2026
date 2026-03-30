@@ -17,7 +17,6 @@ function formatErrorMessage(data: any): string {
 }
 
 function sendErrorToParent(errorMessage: string) {
-  console.log('Sending error message to parent from error-client:', errorMessage);
   try {
     safePostMessage(window.parent, {
       type: 'error-fix-request',
@@ -28,115 +27,44 @@ function sendErrorToParent(errorMessage: string) {
   }
 }
 
-function renderErrorOverlay(rawError: any) {
-  const root = document.getElementById('app') || document.body;
-  if (!root) return;
+let overlayElement: HTMLDivElement | null = null;
+// True once an HMR error has been sent — suppresses the generic dynamic-import error
+// that fires moments later from index.html's import().catch().
+let hasDetailedError = false;
 
-  const errorMessage = formatErrorMessage(rawError);
+function showInactiveOverlay() {
+  if (overlayElement) return; // Already showing
 
-  // Clear existing content safely
-  while (root.firstChild) {
-    root.removeChild(root.firstChild);
-  }
-
-  // Create container
-  const container = document.createElement('div');
-  container.style.cssText = `
-    height: 100vh;
+  const overlay = document.createElement('div');
+  overlay.id = 'airo-error-overlay';
+  overlay.style.cssText = `
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background-color: rgba(255, 255, 255, 0.7);
+    pointer-events: all;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    background-color: #ffffff;
-    padding: 2rem 1rem;
-    box-sizing: border-box;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   `;
 
-  // Create inner content wrapper
-  const innerWrapper = document.createElement('div');
-  innerWrapper.style.cssText = `
-    max-width: 56rem;
-    width: 100%;
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    max-height: 100%;
-    overflow: hidden;
-  `;
+  document.body.appendChild(overlay);
+  overlayElement = overlay;
+}
 
-  // Create heading
-  const heading = document.createElement('h1');
-  heading.style.cssText = `
-    font-size: 1.5rem;
-    font-weight: bold;
-    color: #dc2626;
-    margin-bottom: 1rem;
-    flex-shrink: 0;
-  `;
-  heading.textContent = 'Something went wrong';
-
-  // Create error message pre element
-  const pre = document.createElement('pre');
-  pre.style.cssText = `
-    color: #6b7280;
-    margin-bottom: 1.5rem;
-    background-color: #f3f4f6;
-    padding: 1rem;
-    border-radius: 0.375rem;
-    font-size: 0.875rem;
-    white-space: pre-wrap;
-    text-align: left;
-    max-width: 100%;
-    overflow-y: auto;
-    min-height: 0;
-    flex-shrink: 1;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-  `;
-  // Use textContent for safe text rendering - automatically escapes HTML
-  pre.textContent = errorMessage;
-
-  // Create button container
-  const buttonContainer = document.createElement('div');
-  buttonContainer.style.cssText = `
-    display: flex;
-    justify-content: center;
-    margin-top: 0.5rem;
-    flex-shrink: 0;
-  `;
-
-  // Create button
-  const button = document.createElement('button');
-  button.id = 'ask-airo-fix-btn';
-  button.style.cssText = `
-    background-color: #6b46c1;
-    color: #ffffff;
-    padding: 0.5rem 1rem;
-    border-radius: 0.375rem;
-    border: none;
-    cursor: pointer;
-    font-size: 0.875rem;
-    font-weight: 500;
-  `;
-  button.textContent = 'Ask Airo to Fix Code';
-  button.addEventListener('click', () => {
-    sendErrorToParent(errorMessage);
-  });
-
-  // Assemble the DOM structure
-  buttonContainer.appendChild(button);
-  innerWrapper.appendChild(heading);
-  innerWrapper.appendChild(pre);
-  innerWrapper.appendChild(buttonContainer);
-  container.appendChild(innerWrapper);
-  root.appendChild(container);
+function removeInactiveOverlay() {
+  if (overlayElement) {
+    overlayElement.remove();
+    overlayElement = null;
+  }
 }
 
 // Catch initial page load failures (import errors before HMR is connected)
 if (import.meta.env.MODE === 'development') {
   window.addEventListener('vite:initial-error', ((event: CustomEvent) => {
-    renderErrorOverlay(event.detail);
+    if (hasDetailedError) return; // HMR already sent a detailed error; ignore the generic import failure
+    showInactiveOverlay();
     sendErrorToParent(formatErrorMessage(event.detail));
   }) as EventListener);
 }
@@ -144,21 +72,23 @@ if (import.meta.env.MODE === 'development') {
 // Hook into Vite HMR for errors during development
 if (import.meta.env.MODE === 'development' && import.meta.hot) {
   let hasErrorOverlay = false;
-  let reloadScheduled = false;
 
   const handleHmrError = (data: any) => {
-    console.error('Vite compile error (standalone client):', data);
+    console.error('Vite compile error:', formatErrorMessage(data));
     hasErrorOverlay = true;
-    renderErrorOverlay(data);
+    hasDetailedError = true;
+    showInactiveOverlay();
+    sendErrorToParent(formatErrorMessage(data));
   };
 
   const handleAfterUpdate = () => {
-    if (hasErrorOverlay && !reloadScheduled) {
+    // Check both hasErrorOverlay (for HMR errors) and overlayElement (for initial-error,
+    // where hasErrorOverlay is not set because it's scoped to this block)
+    if (hasErrorOverlay || overlayElement) {
       hasErrorOverlay = false;
-      reloadScheduled = true;
+      hasDetailedError = false;
+      removeInactiveOverlay();
       safePostMessage(window.parent, { type: 'error-fix-resolved' });
-      // Defer reload to avoid interrupting the HMR event handler
-      setTimeout(() => window.location.reload(), 0);
     }
   };
 
@@ -174,7 +104,8 @@ if (import.meta.env.MODE === 'development' && import.meta.hot) {
   // Clean up listeners on module disposal to prevent accumulation
   import.meta.hot.dispose(() => {
     hasErrorOverlay = false;
-    reloadScheduled = false;
+    hasDetailedError = false;
+    removeInactiveOverlay();
     import.meta.hot!.off('vite:error', handleHmrError);
     import.meta.hot!.off('compile-error', handleHmrError);
     import.meta.hot!.off('vite:afterUpdate', handleAfterUpdate);

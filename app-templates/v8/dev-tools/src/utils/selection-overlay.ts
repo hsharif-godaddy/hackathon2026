@@ -28,7 +28,7 @@ export function showSelectionOverlay(el: HTMLElement): void {
   overlay.id = OVERLAY_ID;
   overlay.style.cssText = `
     position: fixed;
-    border: 3px solid #3b82f6;
+    border: 3px solid var(--color-interactive);
     border-radius: 6px;
     box-shadow: 0 0 12px rgba(59,130,246,0.5), inset 0 0 12px rgba(59,130,246,0.15);
     pointer-events: none;

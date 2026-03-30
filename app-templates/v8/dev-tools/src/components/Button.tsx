@@ -20,15 +20,16 @@ function Button({
 
   return (
     <button
+      data-airo-dev-tools
       type={type}
       onClick={onClick}
       disabled={isDisabled}
       style={{
-        backgroundColor: isPrimary ? '#6b46c1' : '#ffffff',
-        color: isPrimary ? 'white' : '#6b46c1',
+        backgroundColor: isPrimary ? 'var(--color-primary)' : 'var(--color-surface)',
+        color: isPrimary ? 'var(--color-surface)' : 'var(--color-primary)',
         padding: '0.5rem 1rem',
         borderRadius: '0.375rem',
-        border: isPrimary ? 'none' : '2px solid #6b46c1',
+        border: isPrimary ? 'none' : '2px solid var(--color-primary)',
         cursor: isDisabled ? 'not-allowed' : 'pointer',
         transition: 'all 0.2s ease-in-out',
         fontSize: '0.875rem',
@@ -41,19 +42,19 @@ function Button({
       onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
         if (isDisabled) return;
         if (isPrimary) {
-          e.currentTarget.style.backgroundColor = '#5a32b0';
+          e.currentTarget.style.backgroundColor = 'var(--color-primary-hover)';
         } else {
-          e.currentTarget.style.backgroundColor = '#f5f3ff';
-          e.currentTarget.style.borderColor = '#5a32b0';
+          e.currentTarget.style.backgroundColor = 'var(--color-primary-light)';
+          e.currentTarget.style.borderColor = 'var(--color-primary-hover)';
         }
       }}
       onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
         if (isDisabled) return;
         if (isPrimary) {
-          e.currentTarget.style.backgroundColor = '#6b46c1';
+          e.currentTarget.style.backgroundColor = 'var(--color-primary)';
         } else {
-          e.currentTarget.style.backgroundColor = '#ffffff';
-          e.currentTarget.style.borderColor = '#6b46c1';
+          e.currentTarget.style.backgroundColor = 'var(--color-surface)';
+          e.currentTarget.style.borderColor = 'var(--color-primary)';
         }
       }}
     >

@@ -75,8 +75,8 @@ function ToolbarButton({
     borderRadius: '6px',
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.4 : 1,
-    backgroundColor: selected ? '#3b82f6' : 'transparent',
-    color: selected ? '#fff' : '#374151'
+    backgroundColor: selected ? 'var(--color-interactive)' : 'transparent',
+    color: selected ? 'var(--color-surface)' : 'var(--color-text-secondary)'
   }
 
   const variantStyle: React.CSSProperties =
@@ -94,11 +94,11 @@ function ToolbarButton({
 
   const onMouseEnter = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (disabled) return
-    e.currentTarget.style.backgroundColor = selected ? '#3b82f6' : '#f3f4f6'
+    e.currentTarget.style.backgroundColor = selected ? 'var(--color-interactive)' : 'var(--color-gray-100)'
   }
 
   const onMouseLeave = (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.currentTarget.style.backgroundColor = selected ? '#3b82f6' : 'transparent'
+    e.currentTarget.style.backgroundColor = selected ? 'var(--color-interactive)' : 'transparent'
   }
 
   return (
@@ -548,11 +548,20 @@ export default function ElementEditor({
     fontSize: 'text-base',
     fontWeight: 'font-normal',
     fontStyle: 'font-not-italic',
-    color: '#374151',
+    color: 'var(--color-text-secondary)',
     backgroundColor: 'transparent',
     marginBottom: '',
     padding: ''
   })
+
+  const rgbToHex = (rgb: string): string => {
+    const match = rgb.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/)
+    if (!match) return rgb
+    const r = parseInt(match[1], 10)
+    const g = parseInt(match[2], 10)
+    const b = parseInt(match[3], 10)
+    return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`
+  }
 
   // Extract current styles and dev context from element
   useEffect(() => {
@@ -566,8 +575,8 @@ export default function ElementEditor({
           fontSize: classes.find(c => c.startsWith('text-') && (c.includes('sm') || c.includes('base') || c.includes('lg') || c.includes('xl'))) || 'text-base',
           fontWeight: classes.find(c => c.startsWith('font-') && c.includes('bold')) ? 'font-bold' : 'font-normal',
           fontStyle: classes.find(c => c.startsWith('italic')) ? 'italic' : 'font-not-italic',
-          color: computedStyle.color || '#374151',
-          backgroundColor: computedStyle.backgroundColor || 'transparent',
+          color: rgbToHex(computedStyle.color) || 'var(--color-text-secondary)',
+          backgroundColor: computedStyle.backgroundColor === 'rgba(0, 0, 0, 0)' ? 'transparent' : rgbToHex(computedStyle.backgroundColor) || 'transparent',
           marginBottom: classes.find(c => c.startsWith('mb-')) || '',
           padding: classes.find(c => c.startsWith('p-')) || ''
         })
@@ -759,6 +768,9 @@ export default function ElementEditor({
     { value: 'text-4xl', label: '36px' }
   ]
 
+  // Hex values used directly because updateStyle sets element.style on user content
+  // elements (e.g. <h1> inside #app), which are NOT descendants of [data-airo-dev-tools]
+  // where CSS variables are defined.
   const colors = [
     { value: '#111827', label: 'Black' },
     { value: '#4B5563', label: 'Gray' },
@@ -786,7 +798,7 @@ export default function ElementEditor({
   }
 
   const getCurrentColor = () => {
-    return currentStyles.color || '#374151'
+    return currentStyles.color || 'var(--color-text-secondary)'
   }
 
   const getCurrentBgColor = () => {
@@ -962,19 +974,19 @@ export default function ElementEditor({
                         fontSize: '12px',
                         borderRadius: '4px',
                         border: '1px solid',
-                        borderColor: currentStyles.fontSize === preset.value ? '#3b82f6' : '#d1d5db',
-                        backgroundColor: currentStyles.fontSize === preset.value ? '#eff6ff' : '#ffffff',
-                        color: currentStyles.fontSize === preset.value ? '#2563eb' : '#374151',
+                        borderColor: currentStyles.fontSize === preset.value ? 'var(--color-interactive)' : 'var(--color-border)',
+                        backgroundColor: currentStyles.fontSize === preset.value ? 'var(--color-interactive-bg)' : 'var(--color-surface)',
+                        color: currentStyles.fontSize === preset.value ? 'var(--color-interactive-hover)' : 'var(--color-text-secondary)',
                         cursor: 'pointer',
                         ...fontControlDisabledStyle
                       }}
                       onMouseEnter={(e) => {
                         if (currentStyles.fontSize !== preset.value) {
-                          e.currentTarget.style.backgroundColor = '#f9fafb'
+                          e.currentTarget.style.backgroundColor = 'var(--color-surface-hover)'
                         }
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = currentStyles.fontSize === preset.value ? '#eff6ff' : '#ffffff'
+                        e.currentTarget.style.backgroundColor = currentStyles.fontSize === preset.value ? 'var(--color-interactive-bg)' : 'var(--color-surface)'
                       }}
                       disabled={shouldDisableFontControls}
                     >
@@ -985,7 +997,7 @@ export default function ElementEditor({
 
                 {/* Fine-tune Slider */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '12px', color: '#6b7280', marginBottom: '4px' }}>Fine-tune</label>
+                  <label style={{ display: 'block', fontSize: '12px', color: 'var(--color-text-tertiary)', marginBottom: '4px' }}>Fine-tune</label>
                   <input
                     type="range"
                     min="0"
@@ -1003,10 +1015,10 @@ export default function ElementEditor({
                       borderRadius: '8px',
                       appearance: 'none',
                       cursor: 'pointer',
-                      background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${(fontSizes.findIndex(size => size.value === currentStyles.fontSize) / 7) * 100}%, #e5e7eb ${(fontSizes.findIndex(size => size.value === currentStyles.fontSize) / 7) * 100}%, #e5e7eb 100%)`
+                      background: `linear-gradient(to right, var(--color-interactive) 0%, var(--color-interactive) ${(fontSizes.findIndex(size => size.value === currentStyles.fontSize) / 7) * 100}%, var(--color-border-light) ${(fontSizes.findIndex(size => size.value === currentStyles.fontSize) / 7) * 100}%, var(--color-border-light) 100%)`
                     }}
                   />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--color-text-tertiary)', marginTop: '4px' }}>
                     <span>12px</span>
                     <span>36px</span>
                   </div>
@@ -1057,7 +1069,7 @@ export default function ElementEditor({
               width: '16px',
               height: '16px',
               borderRadius: '4px',
-              border: '1px solid #d1d5db',
+              border: '1px solid var(--color-border)',
               backgroundColor: getCurrentColor()
             }}></div>
           </ToolbarButton>
@@ -1095,11 +1107,11 @@ export default function ElementEditor({
                       width: '24px',
                       height: '24px',
                       borderRadius: '4px',
-                      border: '1px solid #d1d5db',
+                      border: '1px solid var(--color-border)',
                       backgroundColor: colorOption.value,
                       cursor: 'pointer',
                       transition: 'transform 0.1s',
-                      outline: currentStyles.color === colorOption.value ? '2px solid #3b82f6' : 'none',
+                      outline: currentStyles.color === colorOption.value ? '2px solid var(--color-interactive)' : 'none',
                       outlineOffset: '1px'
                     }}
                     onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
@@ -1126,7 +1138,7 @@ export default function ElementEditor({
               width: '16px',
               height: '16px',
               borderRadius: '4px',
-              border: '1px solid #d1d5db',
+              border: '1px solid var(--color-border)',
               backgroundColor: getCurrentBgColor()
             }}></div>
           </ToolbarButton>
@@ -1152,7 +1164,7 @@ export default function ElementEditor({
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', color: '#374151', marginBottom: '4px' }}>Background</label>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', color: 'var(--color-text-secondary)', marginBottom: '4px' }}>Background</label>
                   <div style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(8, 1fr)',
@@ -1166,16 +1178,16 @@ export default function ElementEditor({
                           width: '24px',
                           height: '24px',
                           borderRadius: '4px',
-                          border: '1px solid #d1d5db',
+                          border: '1px solid var(--color-border)',
                           backgroundColor: bg.value === 'transparent' ? 'white' : bg.value,
                           backgroundImage: bg.value === 'transparent' ?
-                            'linear-gradient(45deg, #f3f4f6 25%, transparent 25%), linear-gradient(-45deg, #f3f4f6 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f3f4f6 75%), linear-gradient(-45deg, transparent 75%, #f3f4f6 75%)' :
+                            'linear-gradient(45deg, var(--color-gray-100) 25%, transparent 25%), linear-gradient(-45deg, var(--color-gray-100) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, var(--color-gray-100) 75%), linear-gradient(-45deg, transparent 75%, var(--color-gray-100) 75%)' :
                             'none',
                           backgroundSize: bg.value === 'transparent' ? '8px 8px' : 'auto',
                           backgroundPosition: bg.value === 'transparent' ? '0 0, 0 4px, 4px -4px, -4px 0px' : 'auto',
                           cursor: 'pointer',
                           transition: 'transform 0.1s',
-                          outline: currentStyles.backgroundColor === bg.value ? '2px solid #3b82f6' : 'none',
+                          outline: currentStyles.backgroundColor === bg.value ? '2px solid var(--color-interactive)' : 'none',
                           outlineOffset: '1px'
                         }}
                         onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
@@ -1187,14 +1199,14 @@ export default function ElementEditor({
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', color: '#374151', marginBottom: '4px' }}>Margin</label>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', color: 'var(--color-text-secondary)', marginBottom: '4px' }}>Margin</label>
                   <select
                     value={currentStyles.marginBottom}
                     onChange={(e) => updateStyle('marginBottom', e.target.value)}
                     style={{
                       width: '100%',
                       fontSize: '12px',
-                      border: '1px solid #d1d5db',
+                      border: '1px solid var(--color-border)',
                       borderRadius: '4px',
                       padding: '4px 8px',
                       backgroundColor: 'white'
@@ -1208,14 +1220,14 @@ export default function ElementEditor({
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', color: '#374151', marginBottom: '4px' }}>Padding</label>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', color: 'var(--color-text-secondary)', marginBottom: '4px' }}>Padding</label>
                   <select
                     value={currentStyles.padding}
                     onChange={(e) => updateStyle('padding', e.target.value)}
                     style={{
                       width: '100%',
                       fontSize: '12px',
-                      border: '1px solid #d1d5db',
+                      border: '1px solid var(--color-border)',
                       borderRadius: '4px',
                       padding: '4px 8px',
                       backgroundColor: 'white'
@@ -1245,19 +1257,19 @@ export default function ElementEditor({
                 padding: '6px 12px',
                 fontSize: '12px',
                 fontWeight: '500',
-                color: '#059669',
-                backgroundColor: '#ecfdf5',
-                border: '1px solid #a7f3d0',
+                color: 'var(--color-success)',
+                backgroundColor: 'var(--color-success-bg)',
+                border: '1px solid var(--color-success-border)',
                 borderRadius: '6px',
                 cursor: 'pointer'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#d1fae5'
-                e.currentTarget.style.borderColor = '#6ee7b7'
+                e.currentTarget.style.backgroundColor = 'var(--color-success-bg-hover)'
+                e.currentTarget.style.borderColor = 'var(--color-success-border-hover)'
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#ecfdf5'
-                e.currentTarget.style.borderColor = '#a7f3d0'
+                e.currentTarget.style.backgroundColor = 'var(--color-success-bg)'
+                e.currentTarget.style.borderColor = 'var(--color-success-border)'
               }}
             >
               Edit Inline
@@ -1308,23 +1320,23 @@ export default function ElementEditor({
             padding: '6px 12px',
             fontSize: '12px',
             fontWeight: '500',
-            color: isCapturingScreenshot ? '#9ca3af' : '#3b82f6',
-            backgroundColor: isCapturingScreenshot ? '#f3f4f6' : '#eff6ff',
-            border: `1px solid ${isCapturingScreenshot ? '#d1d5db' : '#bfdbfe'}`,
+            color: isCapturingScreenshot ? 'var(--color-text-muted)' : 'var(--color-interactive)',
+            backgroundColor: isCapturingScreenshot ? 'var(--color-gray-100)' : 'var(--color-interactive-bg)',
+            border: `1px solid ${isCapturingScreenshot ? 'var(--color-border)' : 'var(--color-interactive-border)'}`,
             borderRadius: '6px',
             cursor: isCapturingScreenshot ? 'not-allowed' : 'pointer',
             opacity: isCapturingScreenshot ? disabledOpacity : 1
           }}
           onMouseEnter={(e) => {
             if (!isCapturingScreenshot) {
-              e.currentTarget.style.backgroundColor = '#dbeafe'
-              e.currentTarget.style.borderColor = '#93c5fd'
+              e.currentTarget.style.backgroundColor = 'var(--color-interactive-bg-hover)'
+              e.currentTarget.style.borderColor = 'var(--color-interactive-border-hover)'
             }
           }}
           onMouseLeave={(e) => {
             if (!isCapturingScreenshot) {
-              e.currentTarget.style.backgroundColor = '#eff6ff'
-              e.currentTarget.style.borderColor = '#bfdbfe'
+              e.currentTarget.style.backgroundColor = 'var(--color-interactive-bg)'
+              e.currentTarget.style.borderColor = 'var(--color-interactive-border)'
             }
           }}
         >
@@ -1358,19 +1370,19 @@ export default function ElementEditor({
                   padding: '6px 12px',
                   fontSize: '12px',
                   fontWeight: '500',
-                  color: '#059669',
-                  backgroundColor: '#ecfdf5',
-                  border: '1px solid #a7f3d0',
+                  color: 'var(--color-success)',
+                  backgroundColor: 'var(--color-success-bg)',
+                  border: '1px solid var(--color-success-border)',
                   borderRadius: '6px',
                   cursor: 'pointer'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#d1fae5'
-                  e.currentTarget.style.borderColor = '#6ee7b7'
+                  e.currentTarget.style.backgroundColor = 'var(--color-success-bg-hover)'
+                  e.currentTarget.style.borderColor = 'var(--color-success-border-hover)'
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#ecfdf5'
-                  e.currentTarget.style.borderColor = '#a7f3d0'
+                  e.currentTarget.style.backgroundColor = 'var(--color-success-bg)'
+                  e.currentTarget.style.borderColor = 'var(--color-success-border)'
                 }}
               >
                 <Image style={{ width: '14px', height: '14px' }} />
@@ -1424,23 +1436,23 @@ export default function ElementEditor({
                 padding: '6px 12px',
                 fontSize: '12px',
                 fontWeight: '500',
-                color: isCapturingScreenshot ? '#9ca3af' : '#8b5cf6',
-                backgroundColor: isCapturingScreenshot ? '#f3f4f6' : '#f5f3ff',
-                border: `1px solid ${isCapturingScreenshot ? '#d1d5db' : '#ddd6fe'}`,
+                color: isCapturingScreenshot ? 'var(--color-text-muted)' : 'var(--color-accent-purple)',
+                backgroundColor: isCapturingScreenshot ? 'var(--color-gray-100)' : 'var(--color-accent-purple-bg)',
+                border: `1px solid ${isCapturingScreenshot ? 'var(--color-border)' : 'var(--color-accent-purple-border)'}`,
                 borderRadius: '6px',
                 cursor: isCapturingScreenshot ? 'not-allowed' : 'pointer',
                 opacity: isCapturingScreenshot ? disabledOpacity : 1
               }}
               onMouseEnter={(e) => {
                 if (!isCapturingScreenshot) {
-                  e.currentTarget.style.backgroundColor = '#ede9fe'
-                  e.currentTarget.style.borderColor = '#c4b5fd'
+                  e.currentTarget.style.backgroundColor = 'var(--color-accent-purple-bg-hover)'
+                  e.currentTarget.style.borderColor = 'var(--color-accent-purple-border-hover)'
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isCapturingScreenshot) {
-                  e.currentTarget.style.backgroundColor = '#f5f3ff'
-                  e.currentTarget.style.borderColor = '#ddd6fe'
+                  e.currentTarget.style.backgroundColor = 'var(--color-accent-purple-bg)'
+                  e.currentTarget.style.borderColor = 'var(--color-accent-purple-border)'
                 }
               }}
             >
@@ -1451,7 +1463,7 @@ export default function ElementEditor({
         })()}
 
         {/* Divider */}
-        <div style={{ width: '1px', height: '24px', backgroundColor: '#d1d5db' }}></div>
+        <div style={{ width: '1px', height: '24px', backgroundColor: 'var(--color-border)' }}></div>
 
         {/* Close Button */}
         <ToolbarButton variant="icon" onClick={onClose}>

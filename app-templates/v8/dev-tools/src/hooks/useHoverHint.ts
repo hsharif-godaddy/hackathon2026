@@ -75,6 +75,7 @@ export function useHoverHint(
       // Safe: static SVG literal, not user-controlled input
       btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>`;
       btn.title = t("devtools_edit_with_ai", "Edit with AI");
+      btn.setAttribute("data-airo-dev-tools", "");
       btn.style.cssText = `
         position: fixed;
         top: ${rect.bottom - 13}px;
@@ -91,7 +92,7 @@ export function useHoverHint(
         border: none;
         border-radius: 7px;
         box-shadow: 0 1px 6px rgba(0,0,0,0.15), 0 0 0 1px rgba(255,255,255,0.2);
-        color: #3b82f6;
+        color: var(--color-interactive);
         cursor: pointer;
         z-index: 10000;
         pointer-events: auto;

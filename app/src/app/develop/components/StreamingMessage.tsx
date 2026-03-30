@@ -163,7 +163,7 @@ function UserMessage({ content, selectedAssets, referencedFiles }: { content: st
               <div
                 className="absolute bottom-0 left-0 right-0 h-6 pointer-events-none"
                 style={{
-                  background: 'linear-gradient(to top, #F5F7F8 0%, transparent 100%)'
+                  background: 'linear-gradient(to top, #dfdfe0 0%, transparent 100%)'
                 }}
               />
             )}
