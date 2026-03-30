@@ -22,9 +22,12 @@ import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
 import { useCodeSyncStore } from '@/stores/useCodeSyncStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useFileTreeStore } from '@/stores/useFileTreeStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { useSiteCreationStore } from '@/stores/useSiteCreationStore'
 import { BINARY_FILE_REGEX, IMAGE_FILE_REGEX, VIDEO_FILE_REGEX } from '@/utils/file-types'
+
+const EMPTY_ARRAY: never[] = [];
 
 // Dynamically import Monaco Editor to avoid SSR issues
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
@@ -86,9 +89,6 @@ function handleEditorWillMount(monaco: typeof import('monaco-editor')) {
   });
 }
 
-// Timing constants for file loading
-const RETRY_DELAY_MS = 5000     // Delay between retry attempts on failure
-
 interface OpenFile {
   path: string
   name: string
@@ -103,11 +103,8 @@ interface PreviewCodeProps {
 
 export default function PreviewCode({ appId }: PreviewCodeProps) {
   const t = useTranslations();
-  const [files, setFiles] = useState<FileItem[]>([])
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([])
   const [activeFile, setActiveFile] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
   const [recentlySaved, setRecentlySaved] = useState<string | null>(null)
   const [showMarkdownPreview, setShowMarkdownPreview] = useState(false)
@@ -141,114 +138,21 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   const serverState = getServerState(appId)
   const previewUrl = serverState?.url
 
-  // Refs to prevent duplicate loads and manage retry
-  // Initialize refs in a way that ensures they're properly reset on mount
-  const isLoadingRef = useRef(false)
-  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  // Subscribe to file tree store for shared state
+  const files = useFileTreeStore((state) => state.files[effectiveAppId] ?? EMPTY_ARRAY)
+  const isLoading = useFileTreeStore((state) => state.loading[effectiveAppId] ?? false)
+  const error = useFileTreeStore((state) => state.errors[effectiveAppId] ?? null)
+
+  // Refs for file loading and editing
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Monaco editor instance type from dynamic import
   const editorRef = useRef<any>(null)
   const pendingLineNumberRef = useRef<number | null>(null)
   const loadingFilesRef = useRef<Set<string>>(new Set())
   const processedChangesRef = useRef<Set<string>>(new Set())
   const changeTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
   const isMountedRef = useRef(true)
+  const effectiveAppIdRef = useRef<string | null>(effectiveAppId)
 
-  // Load real files from backend
-  // Note: This should only run after the initialization state machine has verified the app is ready.
-  // The loadingPhase guard prevents loading before the app is ready, which would cause errors.
-  const loadFiles = useCallback(async () => {
-    if (!effectiveAppId) return
-
-    // Guard: Don't attempt to load files until page initialization is complete
-    // This prevents race conditions when retry button is clicked before app is ready
-    if (loadingPhase !== 'ready') {
-      logger.info('code-editor.load-files.skipped', {
-        message: 'Skipping file load - page initialization not complete',
-        loadingPhase,
-        effectiveAppId
-      })
-      return
-    }
-
-    // Prevent duplicate simultaneous loads
-    if (isLoadingRef.current) return
-    isLoadingRef.current = true
-
-    // Clear any pending retry
-    if (retryTimeoutRef.current) {
-      clearTimeout(retryTimeoutRef.current)
-      retryTimeoutRef.current = null
-    }
-
-    setIsLoading(true)
-    setError(null)
-
-    try {
-      const result = await appService.getFiles(effectiveAppId, 5)
-
-      if (result.entries && result.entries.length > 0) {
-        const fileTree = buildFileTree(result.entries)
-        setFiles(fileTree)
-      } else {
-        setError(t('builder_code_init'))
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      if (errorMessage.includes('500') || errorMessage.includes('Failed to start app')) {
-        setError(t('builder_code_error_wait'))
-      } else {
-        setError(`${t('builder_code_error_failed')}: ${errorMessage}`)
-      }
-
-      // Schedule retry after delay (only if not already scheduled)
-      if (!retryTimeoutRef.current) {
-        retryTimeoutRef.current = setTimeout(() => {
-          retryTimeoutRef.current = null
-          isLoadingRef.current = false
-          loadFiles()
-        }, RETRY_DELAY_MS)
-      }
-    } finally {
-      setIsLoading(false)
-      // Keep isLoadingRef true during scheduled retries to prevent duplicate calls
-      // from useEffect re-runs. Only clear when no retry is pending.
-      if (!retryTimeoutRef.current) {
-        isLoadingRef.current = false
-      }
-    }
-  }, [effectiveAppId, loadingPhase, t])
-
-  // Convert flat file list to hierarchical tree structure
-  const buildFileTree = (entries: Array<{name: string; isDirectory: boolean; path: string; depth: number}>): FileItem[] => {
-    const tree: FileItem[] = []
-    const pathMap = new Map<string, FileItem>()
-
-    // Sort entries by path depth
-    const sortedEntries = entries.sort((a, b) => a.depth - b.depth)
-
-    for (const entry of sortedEntries) {
-      const item: FileItem = {
-        name: entry.name,
-        type: entry.isDirectory ? 'folder' : 'file',
-        path: entry.path,
-        extension: entry.isDirectory ? undefined : entry.name.split('.').pop(),
-        children: entry.isDirectory ? [] : undefined
-      }
-
-      pathMap.set(entry.path, item)
-
-      // Find parent directory
-      const parentPath = entry.path.split('/').slice(0, -1).join('/')
-      const parent = parentPath ? pathMap.get(parentPath) : null
-
-      if (parent && parent.children) {
-        parent.children.push(item)
-      } else {
-        tree.push(item)
-      }
-    }
-
-    return tree
-  }
 
   // Add a file to the tree incrementally
   const addFileToTree = useCallback((tree: FileItem[], filePath: string): FileItem[] => {
@@ -376,6 +280,11 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     }
   }, [effectiveAppId])
 
+  // Keep effectiveAppId ref in sync to avoid stale closure in cleanup
+  useEffect(() => {
+    effectiveAppIdRef.current = effectiveAppId
+  }, [effectiveAppId])
+
   // Master cleanup effect - ensures refs are reset on unmount
   useEffect(() => {
     isMountedRef.current = true
@@ -386,21 +295,21 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     return () => {
       isMountedRef.current = false
 
-      // Clear retry timeout
-      if (retryTimeoutRef.current) {
-        clearTimeout(retryTimeoutRef.current)
-        retryTimeoutRef.current = null
-      }
-
       // Clear all change timeouts
       changeTimeouts.forEach(timeout => clearTimeout(timeout))
       changeTimeouts.clear()
 
       // Reset all refs to initial state
-      isLoadingRef.current = false
       loadingFiles.clear()
       processedChanges.clear()
+
+      // Reset file tree store state for this app (use ref to avoid stale closure)
+      const currentAppId = effectiveAppIdRef.current
+      if (currentAppId) {
+        useFileTreeStore.getState().reset(currentAppId)
+      }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only run on mount/unmount
   }, [])
 
   useEffect(() => {
@@ -415,30 +324,23 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     // Only load files when the page initialization is complete
     // The initialization state machine ensures the app is registered and running
     // before setting loadingPhase to 'ready'
-    if (loadingPhase === 'ready') {
-      loadFiles()
+    // Use cache-first loading to avoid duplicate API calls
+    if (loadingPhase === 'ready' && effectiveAppId) {
+      useFileTreeStore.getState().loadFilesFromCacheOrFetch(effectiveAppId)
     }
 
     // Cleanup: cancel pending operations when effectiveAppId or loadingPhase changes
     return () => {
-      // Clear retry timeout
-      if (retryTimeoutRef.current) {
-        clearTimeout(retryTimeoutRef.current)
-        retryTimeoutRef.current = null
-      }
-
       // Clear all change timeouts
       changeTimeouts.forEach(timeout => clearTimeout(timeout))
       changeTimeouts.clear()
 
       // Clear loading state refs (only if still mounted, otherwise master cleanup handles it)
       if (isMountedRef.current) {
-        isLoadingRef.current = false
         loadingFiles.clear()
         processedChanges.clear()
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadFiles identity changes due to t(), but we only want to reload when effectiveAppId or loadingPhase changes
   }, [effectiveAppId, loadingPhase])
 
   // Handle file changes from agent operations
@@ -472,11 +374,13 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
           operation: change.operation
         })
 
-        // Update file tree incrementally
+        // Update file tree incrementally in the store
         if (change.operation === 'create' || change.operation === 'modify') {
-          setFiles(prevFiles => addFileToTree(prevFiles, filePath))
+          const currentFiles = useFileTreeStore.getState().files[effectiveAppId] ?? EMPTY_ARRAY
+          useFileTreeStore.getState().setFiles(effectiveAppId, addFileToTree(currentFiles, filePath))
         } else if (change.operation === 'delete') {
-          setFiles(prevFiles => removeFileFromTree(prevFiles, filePath))
+          const currentFiles = useFileTreeStore.getState().files[effectiveAppId] ?? EMPTY_ARRAY
+          useFileTreeStore.getState().setFiles(effectiveAppId, removeFileFromTree(currentFiles, filePath))
           // Calculate remaining files before state updates (prevents stale closure)
           const remainingFiles = openFiles.filter(f => f.path !== filePath)
           // Close the file if it's open
@@ -536,7 +440,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       changeTimeouts.forEach(timeout => clearTimeout(timeout))
       changeTimeouts.clear()
     }
-  }, [changeVersion, openFiles, activeFile, addFileToTree, removeFileFromTree, loadFileContent, addConflict, clearFileChange])
+  }, [changeVersion, openFiles, activeFile, effectiveAppId, addFileToTree, removeFileFromTree, loadFileContent, addConflict, clearFileChange])
 
   // Notify parent about unsaved changes
   useEffect(() => {
@@ -779,7 +683,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
           <div className="text-lg font-semibold mb-1">{t('builder_code_loading_project')}</div>
           <div className="text-sm mb-2">{error}</div>
           <button
-            onClick={loadFiles}
+            onClick={() => useFileTreeStore.getState().loadFiles(effectiveAppId)}
             disabled={isLoading}
             className="px-2 py-1 rounded-md disabled:opacity-50"
           >

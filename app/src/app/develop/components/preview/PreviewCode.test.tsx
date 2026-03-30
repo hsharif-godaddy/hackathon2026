@@ -14,14 +14,33 @@ vi.mock('@monaco-editor/react', () => ({
   default: () => <div data-testid="monaco-editor">Monaco Editor</div>,
 }));
 
-// Mock AppService - ensureAppIsRunning no longer needed as it's handled by initialization state machine
+// Mock AppService
 vi.mock('@/services/AppService', () => ({
   appService: {
-    getFiles: vi.fn(),
-    getFileContents: vi.fn(),
-    saveFile: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
   },
 }));
+
+// Mock useFileTreeStore
+const mockFileTreeState = {
+  files: {},
+  loading: {},
+  errors: {},
+  loadFiles: vi.fn(() => Promise.resolve()),
+  loadFilesFromCacheOrFetch: vi.fn(() => Promise.resolve()),
+  reset: vi.fn(),
+  setFiles: vi.fn(),
+  invalidate: vi.fn()
+};
+
+vi.mock('@/stores/useFileTreeStore', () => {
+  const store = Object.assign(
+    vi.fn((selector: any) => selector(mockFileTreeState)),
+    { getState: () => mockFileTreeState }
+  );
+  return { useFileTreeStore: store };
+});
 
 // Mock stores
 vi.mock('@/stores/useDevelopPageStore', () => ({
@@ -59,11 +78,13 @@ vi.mock('@/lib/request-context', () => ({
 describe('PreviewCode', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFileTreeState.files = {};
+    mockFileTreeState.loading = {};
+    mockFileTreeState.errors = {};
   });
 
   it('should render without crashing', async () => {
-    const { appService } = await import('@/services/AppService');
-    vi.mocked(appService.getFiles).mockResolvedValue({ entries: [] });
+    mockFileTreeState.files['test-app-123'] = [];
 
     renderWithProviders(<PreviewCode appId="test-app-123" />);
 
@@ -84,18 +105,14 @@ describe('PreviewCode', () => {
       })
     );
 
-    const { appService } = await import('@/services/AppService');
-    vi.mocked(appService.getFiles).mockResolvedValue({ entries: [] });
-
     renderWithProviders(<PreviewCode appId="test-app-123" />);
 
-    // getFiles should NOT be called when loadingPhase is not 'ready'
-    expect(appService.getFiles).not.toHaveBeenCalled();
+    // loadFiles action should NOT be called when loadingPhase is not 'ready'
+    expect(mockFileTreeState.loadFiles).not.toHaveBeenCalled();
   });
 
   it('should fetch files when loadingPhase transitions to ready', async () => {
     const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
-    const { appService } = await import('@/services/AppService');
 
     // Start with loading-app phase
     let currentLoadingPhase = 'loading-app';
@@ -109,12 +126,10 @@ describe('PreviewCode', () => {
       })
     );
 
-    vi.mocked(appService.getFiles).mockResolvedValue({ entries: [] });
-
     const { rerender } = renderWithProviders(<PreviewCode appId="test-app-123" />);
 
-    // Verify getFiles is NOT called when not ready
-    expect(appService.getFiles).not.toHaveBeenCalled();
+    // Verify loadFiles action is NOT called when not ready
+    expect(mockFileTreeState.loadFiles).not.toHaveBeenCalled();
 
     // Transition to ready phase
     currentLoadingPhase = 'ready';
@@ -131,9 +146,9 @@ describe('PreviewCode', () => {
     // Re-render to trigger the effect with new loadingPhase
     rerender(<PreviewCode appId="test-app-123" />);
 
-    // Now getFiles should be called
+    // Now loadFiles should be called
     await waitFor(() => {
-      expect(appService.getFiles).toHaveBeenCalledWith('test-app-123', 5);
+      expect(mockFileTreeState.loadFilesFromCacheOrFetch).toHaveBeenCalledWith('test-app-123');
     });
   });
 
@@ -158,7 +173,6 @@ describe('PreviewCode', () => {
   });
 
   it('should use appId when realAppId is null', async () => {
-    const { appService } = await import('@/services/AppService');
     const { useSiteCreationStore } = await import('@/stores/useSiteCreationStore');
     const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
 
@@ -178,18 +192,15 @@ describe('PreviewCode', () => {
       selector({ realAppId: null })
     );
 
-    vi.mocked(appService.getFiles).mockResolvedValue({ entries: [] });
-
     renderWithProviders(<PreviewCode appId="test-app-123" />);
 
     await waitFor(() => {
-      // Should call getFiles with appId (not realAppId)
-      expect(appService.getFiles).toHaveBeenCalledWith('test-app-123', 5);
+      // Should call loadFiles with appId (not realAppId)
+      expect(mockFileTreeState.loadFilesFromCacheOrFetch).toHaveBeenCalledWith('test-app-123');
     });
   });
 
   it('should use realAppId when available (temp to real ID transition)', async () => {
-    const { appService } = await import('@/services/AppService');
     const { useSiteCreationStore } = await import('@/stores/useSiteCreationStore');
     const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
 
@@ -209,18 +220,15 @@ describe('PreviewCode', () => {
       selector({ realAppId: 'real-app-xyz' })
     );
 
-    vi.mocked(appService.getFiles).mockResolvedValue({ entries: [] });
-
     renderWithProviders(<PreviewCode appId="temp-job-123" />);
 
     await waitFor(() => {
-      // Should call getFiles with realAppId (not temp appId)
-      expect(appService.getFiles).toHaveBeenCalledWith('real-app-xyz', 5);
+      // Should call loadFiles with realAppId (not temp appId)
+      expect(mockFileTreeState.loadFilesFromCacheOrFetch).toHaveBeenCalledWith('real-app-xyz');
     });
   });
 
   it('should cleanup refs when effectiveAppId changes', async () => {
-    const { appService } = await import('@/services/AppService');
     const { useSiteCreationStore } = await import('@/stores/useSiteCreationStore');
     const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
 
@@ -239,12 +247,10 @@ describe('PreviewCode', () => {
     const mockStore = vi.fn((selector: any) => selector({ realAppId: null }));
     vi.mocked(useSiteCreationStore).mockImplementation(mockStore);
 
-    vi.mocked(appService.getFiles).mockResolvedValue({ entries: [] });
-
     const { rerender } = renderWithProviders(<PreviewCode appId="temp-job-123" />);
 
     await waitFor(() => {
-      expect(appService.getFiles).toHaveBeenCalledWith('temp-job-123', 5);
+      expect(mockFileTreeState.loadFilesFromCacheOrFetch).toHaveBeenCalledWith('temp-job-123');
     });
 
     // Clear mock calls
@@ -258,7 +264,8 @@ describe('PreviewCode', () => {
 
     // Should call with new realAppId after cleanup
     await waitFor(() => {
-      expect(appService.getFiles).toHaveBeenCalledWith('real-app-xyz', 5);
+      expect(mockFileTreeState.loadFilesFromCacheOrFetch).toHaveBeenCalledWith('real-app-xyz');
     });
   });
+
 });

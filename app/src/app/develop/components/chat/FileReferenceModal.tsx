@@ -1,16 +1,16 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Box from '@ux/box';
 import Button from '@ux/button';
 import Modal from '@ux/modal';
 import Spinner from '@ux/spinner';
 import text from '@ux/text';
 
-import FileTree, { FileItem } from '@/app/develop/components/FileTree';
+import FileTree from '@/app/develop/components/FileTree';
 import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
-import { appService } from '@/services/AppService';
+import { useFileTreeStore } from '@/stores/useFileTreeStore';
 
 interface FileReferenceModalProps {
   isOpen: boolean;
@@ -19,6 +19,8 @@ interface FileReferenceModalProps {
   onFilesSelected: (filePaths: string[]) => void;
 }
 
+const EMPTY_ARRAY: never[] = [];
+
 export default function FileReferenceModal({
   isOpen,
   appId,
@@ -26,74 +28,19 @@ export default function FileReferenceModal({
   onFilesSelected
 }: FileReferenceModalProps) {
   const t = useTranslations();
-  const [files, setFiles] = useState<FileItem[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const isLoadingRef = useRef(false);
 
-  // Load files from backend
-  const loadFiles = useCallback(async () => {
-    if (!appId || isLoadingRef.current) return;
+  // Subscribe to file tree store for shared state
+  const files = useFileTreeStore((state) => state.files[appId] ?? EMPTY_ARRAY);
+  const isLoading = useFileTreeStore((state) => state.loading[appId] ?? false);
+  const error = useFileTreeStore((state) => state.errors[appId] ?? null);
 
-    isLoadingRef.current = true;
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const result = await appService.getFiles(appId, 5);
-
-      if (result.entries && result.entries.length > 0) {
-        const fileTree = buildFileTree(result.entries);
-        setFiles(fileTree);
-      } else {
-        setError('No files found');
-      }
-    } catch (error) {
-      logger.error('file-reference-modal.load-files.failed', {
-        appId,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      setError('Failed to load files');
-    } finally {
-      setIsLoading(false);
-      isLoadingRef.current = false;
-    }
-  }, [appId]);
-
+  // Load files when modal opens (cache-first, only fetches if needed)
   useEffect(() => {
-    loadFiles();
-  }, [loadFiles]);
-
-  // Build hierarchical file tree from flat list
-  const buildFileTree = (entries: Array<{name: string; isDirectory: boolean; path: string; depth: number}>): FileItem[] => {
-    const root: FileItem[] = [];
-    const pathMap = new Map<string, FileItem>();
-
-    entries.forEach(entry => {
-      const item: FileItem = {
-        name: entry.name,
-        type: entry.isDirectory ? 'folder' : 'file',
-        path: entry.path,
-        children: entry.isDirectory ? [] : undefined,
-        extension: entry.isDirectory ? undefined : entry.name.split('.').pop()
-      };
-
-      pathMap.set(entry.path, item);
-
-      const parentPath = entry.path.split('/').slice(0, -1).join('/');
-      if (parentPath && pathMap.has(parentPath)) {
-        const parent = pathMap.get(parentPath);
-        if (parent?.children) {
-          parent.children.push(item);
-        }
-      } else {
-        root.push(item);
-      }
-    });
-
-    return root;
-  };
+    if (isOpen && appId) {
+      useFileTreeStore.getState().loadFilesFromCacheOrFetch(appId);
+    }
+  }, [isOpen, appId]);
 
   const handleFileSelect = (path: string) => {
     const newSelected = new Set(selectedFiles);
@@ -146,20 +93,26 @@ export default function FileReferenceModal({
       }
     >
       <div className="w-full max-w-screen-sm flex flex-col min-h-[400px] max-h-[60vh]">
-        {isLoading && (
+        {isLoading && files.length === 0 && (
           <div className="flex items-center justify-center h-64">
             <Spinner size="md" />
           </div>
         )}
 
-        {error && (
+        {error && files.length === 0 && (
           <div className="text-center py-8 text-intents-ux-feedbackCritical-feedbackColor">
             {error}
           </div>
         )}
 
-        {!isLoading && !error && files.length > 0 && (
+        {/* Apps are initialized from boilerplate templates with multiple files, so empty state UI is not needed */}
+        {files.length > 0 && (
           <>
+            {error && (
+              <div className="mb-2 px-3 py-2 text-sm rounded-md bg-intents-ux-feedbackHighContrastCritical-feedbackColor/10 text-intents-ux-feedbackHighContrastCritical-feedbackColor">
+                {error}
+              </div>
+            )}
             <Box orientation="vertical" gap="md" className="flex-shrink-0">
               <text.p size={0}>
                 {t('builder_filereference_description')}
