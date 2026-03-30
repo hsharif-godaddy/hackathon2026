@@ -1,4 +1,5 @@
 import { createTool, type Tool } from '@airo/ai-lib'
+import { fqdnIsConnectedOrProvisioningOnSite, type SiteDomainForAttachCheck } from '@airo/shared'
 import { z } from 'zod'
 
 import { AppRepository } from '../../database/repositories/AppRepository.js'
@@ -33,7 +34,7 @@ const domainInputSchema = z.object({
  * domain({ action: 'attach', domain: 'mydomain.com' })
  */
 export const domainPurchaseAITool: Tool = createTool(
-    `MANDATORY: ALWAYS call this tool when the user mentions domains. NEVER respond with text instead.
+    `MANDATORY: ALWAYS call this tool when the user mentions domains. Never substitute calling this tool with a standalone prose reply about domains — call the tool first, then answer from its result.
 Even if this tool was already called earlier in the conversation, CALL IT AGAIN. Every request gets a fresh tool call.
 
 Unified domain tool for purchasing new domains or attaching existing ones to a project.
@@ -61,9 +62,11 @@ PUBLISH HANDLING (attach only):
 Pass domain when user specifies an exact domain (e.g. "I want to buy my-sweet-store.com").
 Pass brandName as the project/app name for general domain suggestions.
 
+The tool result message may list domains already on the app (from live site data). If it says a domain is already connected, reflect that to the user from the tool message — do not imply they must attach again.
+
 CRITICAL RULES:
 1. ALWAYS call this tool — even if it was called before in this conversation. The widget must be re-rendered every time.
-2. NEVER respond with text about domains — ONLY call this tool. No exceptions.
+2. After the tool returns, you may briefly paraphrase its result for the user (e.g. requiresPublish, domain already on the app, widget shown). Do not call the tool again solely to repeat the same status you already stated in your last reply.
 3. NEVER say "scroll up" or "I already showed the widget" — call the tool again.
 4. If user mentions a SPECIFIC DOMAIN, pass it as domain param.
 5. NEVER redirect to Settings — use this tool instead.
@@ -192,13 +195,11 @@ async function attach(
 
     const domain = input.domain?.trim() || undefined
 
-    // Store domain in memory so the publish tool can auto-attach later
-    if (domain) {
-        await storePurchasedDomain(appId, domain)
-    }
-
-    const published = await checkPublished(clientActionService, appId)
+    const { published, domains: siteDomains } = await getSiteContextForAttach(clientActionService, appId)
     if (!published) {
+        if (domain) {
+            await storePurchasedDomain(appId, domain)
+        }
         logger.info('domain.attach.requires-publish', {
             appId,
             domain: domain || 'not-provided',
@@ -211,8 +212,15 @@ async function attach(
         }
     }
 
-    // Auto-attach when we have a concrete FQDN and the site is published
     if (domain) {
+        if (fqdnIsConnectedOrProvisioningOnSite(siteDomains, domain)) {
+            logger.info('domain.attach.skip-already-on-app', { appId, domain })
+            return {
+                success: true,
+                message: `Domain ${domain} is already on this app (active or still provisioning). Confirm with the user — no attach step needed.`
+            }
+        }
+        await storePurchasedDomain(appId, domain)
         return autoAttach(clientActionService, appId, domain)
     }
 
@@ -220,6 +228,8 @@ async function attach(
         domain: 'not-provided',
         appId,
     })
+
+    const attachedSummary = formatSiteCustomDomainsSummary(siteDomains)
 
     return {
         success: true,
@@ -229,7 +239,9 @@ async function attach(
             brandName: domain || input.brandName,
             appId
         },
-        message: 'Domain attach widget rendered'
+        message: attachedSummary
+            ? `Domain attach widget rendered. Custom domains already on this app: ${attachedSummary}.`
+            : 'Domain attach widget rendered'
     }
 }
 
@@ -285,14 +297,21 @@ async function autoAttach(
     }
 }
 
+function formatSiteCustomDomainsSummary(domains: SiteDomainForAttachCheck[] | undefined): string {
+    if (!domains?.length) return ''
+    const rows = domains.filter((d) => d.domainType !== 'prefix')
+    if (!rows.length) return ''
+    return rows.map((d) => `${d.fqdn} (${d.status ?? 'unknown'})`).join('; ')
+}
+
 /**
- * Check if the app has been published.
- * Returns true if published or if status can't be determined (fail open).
+ * Published flag and domain list from the browser site store (getSiteData).
+ * If the call fails, published defaults true (fail open) to match prior checkPublished behavior.
  */
-async function checkPublished(
+async function getSiteContextForAttach(
     clientActionService: NonNullable<ReturnType<typeof getClientActionService>>,
     appId: string
-): Promise<boolean> {
+): Promise<{ published: boolean; domains?: SiteDomainForAttachCheck[] }> {
     try {
         const siteDataResult = await clientActionService.executeAction({
             action: 'getSiteData',
@@ -301,18 +320,20 @@ async function checkPublished(
         })
 
         if (siteDataResult.success && siteDataResult.result) {
-            const siteData = siteDataResult.result as { variants?: string[] }
-            return siteData.variants?.includes('publish') ?? false
+            const siteData = siteDataResult.result as { variants?: string[]; domains?: SiteDomainForAttachCheck[] }
+            return {
+                published: siteData.variants?.includes('publish') ?? false,
+                domains: siteData.domains,
+            }
         }
     } catch (error) {
-        logger.warn('domain.attach.publish-check-failed', {
+        logger.warn('domain.attach.site-context-failed', {
             appId,
             error: error instanceof Error ? error.message : String(error),
         })
     }
 
-    // Can't determine — allow to proceed
-    return true
+    return { published: true }
 }
 
 /**

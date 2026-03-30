@@ -1,5 +1,6 @@
 'use client'
 
+import { fqdnIsConnectedOrProvisioningOnSite } from '@airo/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Box from '@ux/box';
 import Button from '@ux/button';
@@ -198,13 +199,24 @@ export default function DomainAttachWidget({
       return;
     }
 
+    if (appId && !isAppDetailsFetched) {
+      return;
+    }
+
     const trimmedBrandName = brandName.trim();
     if (!trimmedBrandName) return;
 
     const fullDomain = reconstructDomain(trimmedBrandName, domains);
 
     if (fullDomain && isCustomerDomain(fullDomain, domains)) {
-      // Case 1: brandName matches owned domain -> Show confirmation
+      if (fqdnIsConnectedOrProvisioningOnSite(appDetails?.domains, fullDomain)) {
+        shipAnalyticsLog('domain.attach.widget.case1.skip_already_on_app', {
+          appId,
+          brandName,
+          matchedDomain: fullDomain
+        });
+        return;
+      }
       setMatchedOwnedDomain(fullDomain);
       setShowOwnedDomainConfirmation(true);
 
@@ -214,7 +226,14 @@ export default function DomainAttachWidget({
         matchedDomain: fullDomain
       });
     } else if (isDomainFormat(trimmedBrandName)) {
-      // Case 3: brandName is a domain but doesn't match owned -> Pre-fill external input
+      if (fqdnIsConnectedOrProvisioningOnSite(appDetails?.domains, trimmedBrandName)) {
+        shipAnalyticsLog('domain.attach.widget.case3.skip_already_on_app', {
+          appId,
+          brandName,
+          domain: trimmedBrandName
+        });
+        return;
+      }
       setCustomDomain(trimmedBrandName);
       setDebouncedDomain(trimmedBrandName);
 
@@ -226,7 +245,7 @@ export default function DomainAttachWidget({
     }
     // Case 2: brandName is not a domain or empty -> Show full widget (default behavior)
 
-  }, [brandName, domains, isDomainsFetched, appId, showOwnedDomainConfirmation, matchedOwnedDomain, customDomain]); // eslint-disable-line react-hooks/exhaustive-deps -- reconstructDomain is a stable inner function that doesn't depend on state
+  }, [appDetails?.domains, appId, brandName, customDomain, domains, isAppDetailsFetched, isDomainsFetched, matchedOwnedDomain, showOwnedDomainConfirmation]); // eslint-disable-line react-hooks/exhaustive-deps -- reconstructDomain is a stable inner function that doesn't depend on state
 
   function handleCustomDomainChange(value: string) {
     setCustomDomain(value);

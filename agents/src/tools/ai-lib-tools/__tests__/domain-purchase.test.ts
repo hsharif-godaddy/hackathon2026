@@ -234,7 +234,7 @@ describe('domain-purchase', function packageTests() {
         it('should auto-attach domain when app is published and domain is provided', async function autoAttach() {
             const mockExecuteAction = vi.fn().mockImplementation(({ action }) => {
                 if (action === 'getSiteData') {
-                    return Promise.resolve({ success: true, result: { variants: ['publish'] } })
+                    return Promise.resolve({ success: true, result: { variants: ['publish'], domains: [] } })
                 }
                 return Promise.resolve({ success: true })
             })
@@ -254,6 +254,39 @@ describe('domain-purchase', function packageTests() {
             expect(mockExecuteAction).toHaveBeenCalledWith(
                 expect.objectContaining({ action: 'attachDomain', params: { appId: 'app-123', domainName: 'mydomain.com' } })
             )
+        })
+
+        it('should skip attachDomain when domain is already active on site', async function skipDuplicateAttach() {
+            const mockExecuteAction = vi.fn().mockImplementation(({ action }) => {
+                if (action === 'getSiteData') {
+                    return Promise.resolve({
+                        success: true,
+                        result: {
+                            variants: ['publish'],
+                            domains: [{ fqdn: 'mydomain.com', domainType: 'custom', status: 'active' }],
+                        },
+                    })
+                }
+                return Promise.resolve({ success: true })
+            })
+            mockGetClientActionService.mockReturnValue({ executeAction: mockExecuteAction } as any)
+
+            const result = await execute(
+                { action: 'attach', domain: 'mydomain.com' },
+                {
+                    metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } },
+                    socketId: 'socket-123',
+                }
+            )
+
+            expect(result.success).toBe(true)
+            expect(result.widgetType).toBeUndefined()
+            expect(result.message).toContain('already on this app')
+            expect(mockExecuteAction).toHaveBeenCalledTimes(1)
+            expect(mockExecuteAction).toHaveBeenCalledWith(
+                expect.objectContaining({ action: 'getSiteData', params: { appId: 'app-123' } })
+            )
+            expect(mockSetMemory).not.toHaveBeenCalled()
         })
 
         it('should fall back to widget when auto-attach fails', async function autoAttachFallback() {
@@ -399,7 +432,10 @@ describe('domain-purchase', function packageTests() {
             mockGetClientActionService.mockReturnValue({
                 executeAction: vi.fn().mockResolvedValue({
                     success: true,
-                    result: { variants: ['publish'] }
+                    result: {
+                        variants: ['publish'],
+                        domains: [{ fqdn: 'existing.com', domainType: 'custom', status: 'active' }],
+                    },
                 })
             } as any)
 
@@ -413,6 +449,7 @@ describe('domain-purchase', function packageTests() {
 
             expect(result.success).toBe(true)
             expect(result.widgetData.brandName).toBe('My Project')
+            expect(result.message).toContain('existing.com')
             expect(mockSetMemory).not.toHaveBeenCalled()
         })
 

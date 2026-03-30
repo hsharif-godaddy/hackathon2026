@@ -197,6 +197,88 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
     });
   });
 
+  describe('Case 1 brand match vs app domains', function caseOneTests() {
+    it('should not show owned-domain confirmation when domain is already active on app', async function skipCase1() {
+      const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+      const { useAppDetails } = await import('@/hooks/useAppDetails');
+
+      const activeOnApp: AppDomain = {
+        fqdn: 'owned.com',
+        isPrimary: false,
+        status: DomainStatus.ACTIVE,
+        domainType: 'custom',
+      };
+
+      vi.mocked(useDomainsQuery).mockReturnValue({
+        data: [{ domain: 'owned.com', name: 'owned.com' }],
+        isLoading: false,
+        error: null,
+        isFetched: true,
+      } as any);
+
+      vi.mocked(useAppDetails).mockReturnValue({
+        data: {
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [activeOnApp],
+        },
+        isFetched: true,
+      } as any);
+
+      renderWithProviders(
+        <DomainAttachWidget appId="test-app-123" brandName="owned.com" />
+      );
+
+      await waitFor(function waitForMainWidget() {
+        expect(screen.queryByText('builder_domain_attach_confirm_title')).not.toBeInTheDocument();
+      });
+
+      expect(screen.getByText('builder_domain_attach_description')).toBeInTheDocument();
+    });
+
+    it('should not pre-fill external domain when brand is a non-owned domain already active on app', async function skipCase3() {
+      const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+      const { useAppDetails } = await import('@/hooks/useAppDetails');
+
+      const activeOnApp: AppDomain = {
+        fqdn: 'external-only.com',
+        isPrimary: false,
+        status: DomainStatus.ACTIVE,
+        domainType: 'custom',
+      };
+
+      vi.mocked(useDomainsQuery).mockReturnValue({
+        data: [],
+        isLoading: false,
+        error: null,
+        isFetched: true,
+      } as any);
+
+      vi.mocked(useAppDetails).mockReturnValue({
+        data: {
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [activeOnApp],
+        },
+        isFetched: true,
+      } as any);
+
+      renderWithProviders(
+        <DomainAttachWidget appId="test-app-123" brandName="external-only.com" />
+      );
+
+      await waitFor(function waitForExternalInput() {
+        const input = document.getElementById('external-domain-input');
+        expect(input).toBeTruthy();
+        expect(input).toHaveValue('');
+      });
+
+      expect(screen.getByText('builder_domain_attach_description')).toBeInTheDocument();
+    });
+  });
+
   describe('feature flag gating', function featureFlagTests() {
     it('should return null when domain attach feature flag is disabled', async function disabled() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
