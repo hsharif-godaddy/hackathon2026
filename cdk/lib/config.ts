@@ -99,7 +99,8 @@ const devConfig: Config = {
     'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops',
-    'arn:aws:iam::694282668781:role/airobuilde-custom-dev-gocode-spend-sync-role'
+    'arn:aws:iam::694282668781:role/airobuilde-custom-dev-gocode-spend-sync-role',
+    'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment9411GlobalEcsTaskRole438D3922'
   ],
   katanaEcsTaskRoleArn: [
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment5688GlobalEcsTaskRole6C689234',
@@ -224,7 +225,8 @@ const prodConfig: Config = {
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c36-onegroup',
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c37-onegroup',
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c38-onegroup',
-    'arn:aws:iam::644094189644:role/airobuilde-custom-prod-gocode-spend-sync-role'
+    'arn:aws:iam::644094189644:role/airobuilde-custom-prod-gocode-spend-sync-role',
+    'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment9535GlobalEcsTaskRoleAAF08999'
   ],
   katanaEcsTaskRoleArn: ['arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment6030GlobalEcsTaskRole99409837'],
   vpnIps: {},

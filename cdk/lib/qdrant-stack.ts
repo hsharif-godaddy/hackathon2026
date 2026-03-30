@@ -19,17 +19,22 @@ import config from "./config";
 /**
  * Qdrant Vector Database Stack
  *
- * Deploys a 3-node Qdrant cluster on ECS Fargate with:
- * - VPC-internal access via Service Discovery
- * - EFS for snapshot storage
- * - API key authentication via Secrets Manager
+ * Deploys a Qdrant cluster on ECS Fargate using a two-service model
+ * that mirrors the official Docker Compose cluster generator:
+ *   - Seed service (1 task): stable FQDN, starts with --uri
+ *   - Worker service (N-1 tasks): joins via --bootstrap to seed
+ *
+ * This avoids the leader-election race condition inherent in single-service
+ * deployments on ECS Fargate (no stable per-task hostnames like K8s).
  *
  * Only deployed for dev and prod environments.
  */
 export class QdrantStack extends GDStack {
   /** ECS cluster running Qdrant */
   public readonly cluster?: ecs.Cluster;
-  /** Fargate service running Qdrant nodes */
+  /** Fargate service for the seed node (bootstrap target) */
+  public readonly seedService?: ecs.FargateService;
+  /** Fargate service for worker nodes (join via seed) */
   public readonly service?: ecs.FargateService;
   /** EFS filesystem for snapshots */
   public readonly fileSystem?: efs.FileSystem;
@@ -97,6 +102,12 @@ export class QdrantStack extends GDStack {
       ec2.Peer.prefixList(vpnPrefixList.prefixListId),
       ec2.Port.tcp(6333),
       "Allow Qdrant REST API from VPN",
+    );
+
+    // Intra-cluster REST API (port 6333) - workers probe seed health
+    securityGroup.connections.allowInternally(
+      ec2.Port.tcp(6333),
+      "Intra-cluster REST API (worker-to-seed health probe)",
     );
 
     // Intra-cluster gRPC replication (port 6334)
@@ -350,90 +361,59 @@ export class QdrantStack extends GDStack {
       ],
     });
 
-    // Task Definition
-    // Note: Qdrant data is stored in ephemeral storage and replicated across nodes.
-    // EFS is mounted for snapshots only. For durability, rely on Raft replication
-    // (minimum 2/3 nodes healthy) and periodic snapshots to EFS.
-    // Using "QdrantTaskV2" to avoid orphaned IAM role conflicts from failed deployments
-    const taskDefinition = new ecs.FargateTaskDefinition(this, "QdrantTaskV2", {
-      family: `${config.envName}-qdrant`,
-      cpu: config.qdrant.cpu,
-      memoryLimitMiB: config.qdrant.memory,
-      ephemeralStorageGiB: config.qdrant.ephemeralStorageGiB,
-      executionRole, // Use our explicit execution role
-      runtimePlatform: {
-        cpuArchitecture: ecs.CpuArchitecture.ARM64,
-        operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
-      },
+    // =========================================================================
+    // Two-Service Model: Seed (1 task) + Workers (N-1 tasks)
+    // =========================================================================
+    // Mirrors the official Qdrant Docker Compose cluster generator:
+    //   Node 0 (seed):  ./qdrant --uri 'http://qdrant_node_0:6335'
+    //   Node N (worker): sleep && ./qdrant --bootstrap 'http://qdrant_node_0:6335'
+    //
+    // The seed has a dedicated Service Discovery name (qdrant-seed) so workers
+    // can reliably find it. This replaces the jitter/DNS/IP hacks that fail
+    // on ECS Fargate due to stale DNS and simultaneous task startup.
+    // =========================================================================
+
+    const seedFqdn = `qdrant-seed.${config.envName}.airo.local`;
+    const containerImage = ecs.ContainerImage.fromEcrRepository(repository, config.qdrant.imageTag);
+
+    // Shared IAM: execution role already created above. Create a shared task
+    // role so both task definitions get the same permissions.
+    const taskRole = new iam.Role(this, "QdrantTaskRole", {
+      roleName: `${config.envName}-qdrant-task-role`,
+      assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
     });
 
-    // Debug mode: use Qdrant image but with sleep entrypoint (no EFS, no health check)
-    // Set to true to test container image pull and secrets access without running Qdrant
-    const debugSleepMode = false;
-    // Set to false to use actual Qdrant container, true for noop sleep container
-    const useNoopContainer = false;
-    // Enable EFS for snapshots (disable to test Qdrant without EFS first)
-    const enableEfs = true;
-
-    // Add EFS volume to task definition (only when EFS is enabled)
-    if (!useNoopContainer && !debugSleepMode && enableEfs) {
-      taskDefinition.addVolume({
-        name: "qdrant-snapshots",
-        efsVolumeConfiguration: {
-          fileSystemId: fileSystem.fileSystemId,
-          rootDirectory: "/",
-          transitEncryption: "ENABLED",
-          authorizationConfig: {
-            accessPointId: accessPoint.accessPointId,
-            iam: "ENABLED",
+    // Grant execution role access to read API key secret with KMS decrypt
+    executionRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [apiKeySecret.secretArn],
+      }),
+    );
+    executionRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["kms:Decrypt"],
+        resources: ["*"],
+        conditions: {
+          StringEquals: {
+            "kms:ViaService": `secretsmanager.${cdk.Aws.REGION}.amazonaws.com`,
           },
         },
-      });
+      }),
+    );
 
-      // Grant task role access to EFS
-      fileSystem.grantRootAccess(taskDefinition.taskRole);
-    }
-
-    // Grant execution role access to read the secret with KMS decrypt
-    // Uses explicit policy to work with safeguard cross-account KMS key
-    if (!useNoopContainer || debugSleepMode) {
-      executionRole.addToPolicy(
-        new iam.PolicyStatement({
-          effect: iam.Effect.ALLOW,
-          actions: ["secretsmanager:GetSecretValue"],
-          resources: [apiKeySecret.secretArn],
-        }),
-      );
-      executionRole.addToPolicy(
-        new iam.PolicyStatement({
-          effect: iam.Effect.ALLOW,
-          actions: ["kms:Decrypt"],
-          resources: ["*"],
-          conditions: {
-            StringEquals: {
-              "kms:ViaService": `secretsmanager.${cdk.Aws.REGION}.amazonaws.com`,
-            },
-          },
-        }),
-      );
-    }
-
-    // Grant task role access to read TLS certificate secret (fetched at runtime by entrypoint)
-    // Note: Task role (not execution role) because the container fetches this at runtime
-    if (enableTls && !useNoopContainer && !debugSleepMode) {
-      taskDefinition.taskRole.addToPrincipalPolicy(
+    // Grant task role access to TLS cert secret (fetched at runtime by entrypoint)
+    if (enableTls) {
+      taskRole.addToPrincipalPolicy(
         new iam.PolicyStatement({
           effect: iam.Effect.ALLOW,
           actions: ["secretsmanager:GetSecretValue"],
           resources: [tlsCertSecret.secretArn],
         }),
       );
-      // KMS decrypt permission for Secrets Manager encrypted secrets
-      // Note: resources: ["*"] is required because Secrets Manager uses service-managed CMKs
-      // and the key ID is not known at deploy time. The policy is scoped by:
-      // - kms:ViaService: Only allows decrypt via Secrets Manager API calls
-      // - kms:CallerAccount: Only allows decrypt for secrets in the same account
-      taskDefinition.taskRole.addToPrincipalPolicy(
+      taskRole.addToPrincipalPolicy(
         new iam.PolicyStatement({
           effect: iam.Effect.ALLOW,
           actions: ["kms:Decrypt"],
@@ -448,78 +428,119 @@ export class QdrantStack extends GDStack {
       );
     }
 
-    // Container Definition
-    const container = taskDefinition.addContainer("qdrant", {
-      containerName: "qdrant",
-      image: useNoopContainer
-        ? ecs.ContainerImage.fromRegistry("public.ecr.aws/amazonlinux/amazonlinux:2023")
-        : ecs.ContainerImage.fromEcrRepository(repository, config.qdrant.imageTag),
-      // In debug mode, override entrypoint to sleep (Qdrant image uses custom entrypoint)
-      entryPoint: debugSleepMode ? ["/bin/bash", "-c"] : undefined,
-      command: useNoopContainer || debugSleepMode ? ["sleep", "infinity"] : undefined,
-      user: useNoopContainer ? undefined : "1000:1000",
-      environment: useNoopContainer || debugSleepMode
-        ? {}
-        : {
-            // Bind to all interfaces (not localhost) for external access
-            QDRANT__SERVICE__HOST: "0.0.0.0",
-            QDRANT__SERVICE__GRPC_PORT: "6334",
-            QDRANT__CLUSTER__ENABLED: "true",
-            QDRANT_CLUSTER_FQDN: qdrantFqdn,
-            // TLS configuration (entrypoint fetches cert and sets Qdrant TLS vars)
-            // Pass secret name - entrypoint can use name or ARN with Secrets Manager
-            QDRANT_ENABLE_TLS: enableTls ? "true" : "false",
-            ...(enableTls ? { QDRANT_TLS_SECRET_ARN: tlsCertSecretName } : {}),
-            AWS_REGION: cdk.Aws.REGION,
-          },
-      secrets: useNoopContainer
-        ? {}
-        : {
-            // Test secrets access even in debug mode
-            QDRANT__SERVICE__API_KEY: ecs.Secret.fromSecretsManager(apiKeySecret),
-          },
-      portMappings: [
-        { containerPort: 6333, protocol: ecs.Protocol.TCP, name: "qdrant-rest" },
-        { containerPort: 6334, protocol: ecs.Protocol.TCP, name: "qdrant-grpc" },
-        { containerPort: 6335, protocol: ecs.Protocol.TCP, name: "qdrant-cluster" },
-      ],
-      logging: ecs.LogDrivers.awsLogs({
-        streamPrefix: "qdrant",
-        logRetention: logs.RetentionDays.ONE_MONTH,
-      }),
-      healthCheck: useNoopContainer || debugSleepMode
-        ? undefined // No health check in noop or debug mode
-        : {
-            // Use HTTPS with -k (insecure) for self-signed certs when TLS is enabled
-            command: [
-              "CMD-SHELL",
-              enableTls
-                ? "curl -fk https://localhost:6333/healthz || exit 1"
-                : "curl -f http://localhost:6333/healthz || exit 1",
-            ],
-            interval: cdk.Duration.seconds(10), // Faster checks during testing
-            timeout: cdk.Duration.seconds(5),
-            retries: 1, // Fail fast during testing (increase for prod)
-            startPeriod: cdk.Duration.seconds(30), // Shorter startup grace period
-          },
+    // Shared environment variables for all Qdrant nodes
+    const sharedEnv: Record<string, string> = {
+      QDRANT__SERVICE__HOST: "0.0.0.0",
+      QDRANT__SERVICE__GRPC_PORT: "6334",
+      QDRANT__CLUSTER__ENABLED: "true",
+      QDRANT__STORAGE__COLLECTION__REPLICATION_FACTOR: "2",
+      QDRANT_SEED_FQDN: seedFqdn,
+      QDRANT_ENABLE_TLS: enableTls ? "true" : "false",
+      ...(enableTls ? { QDRANT_TLS_SECRET_ARN: tlsCertSecretName } : {}),
+      AWS_REGION: cdk.Aws.REGION,
+    };
+
+    const sharedSecrets = {
+      QDRANT__SERVICE__API_KEY: ecs.Secret.fromSecretsManager(apiKeySecret),
+    };
+
+    const portMappings: ecs.PortMapping[] = [
+      { containerPort: 6333, protocol: ecs.Protocol.TCP, name: "qdrant-rest" },
+      { containerPort: 6334, protocol: ecs.Protocol.TCP, name: "qdrant-grpc" },
+      { containerPort: 6335, protocol: ecs.Protocol.TCP, name: "qdrant-cluster" },
+    ];
+
+    const logging = ecs.LogDrivers.awsLogs({
+      streamPrefix: "qdrant",
+      logRetention: logs.RetentionDays.ONE_MONTH,
     });
 
-    // Mount EFS volume (only when EFS is enabled)
-    if (!useNoopContainer && !debugSleepMode && enableEfs) {
+    const healthCheckCommand = enableTls
+      ? "curl -fk https://localhost:6333/healthz || exit 1"
+      : "curl -f http://localhost:6333/healthz || exit 1";
+
+    // Grant EFS access once (both task defs share the same taskRole)
+    fileSystem.grantRootAccess(taskRole);
+
+    // Helper to create a task definition with EFS and role-specific env vars
+    const createTaskDef = (
+      id: string,
+      family: string,
+      role: "seed" | "worker",
+      startPeriodSecs: number,
+    ): ecs.FargateTaskDefinition => {
+      const taskDef = new ecs.FargateTaskDefinition(this, id, {
+        family,
+        cpu: config.qdrant.cpu,
+        memoryLimitMiB: config.qdrant.memory,
+        ephemeralStorageGiB: config.qdrant.ephemeralStorageGiB,
+        executionRole,
+        taskRole,
+        runtimePlatform: {
+          cpuArchitecture: ecs.CpuArchitecture.ARM64,
+          operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
+        },
+      });
+
+      // EFS volume for snapshots
+      taskDef.addVolume({
+        name: "qdrant-snapshots",
+        efsVolumeConfiguration: {
+          fileSystemId: fileSystem.fileSystemId,
+          rootDirectory: "/",
+          transitEncryption: "ENABLED",
+          authorizationConfig: {
+            accessPointId: accessPoint.accessPointId,
+            iam: "ENABLED",
+          },
+        },
+      });
+      const container = taskDef.addContainer("qdrant", {
+        containerName: "qdrant",
+        image: containerImage,
+        user: "1000:1000",
+        environment: {
+          ...sharedEnv,
+          QDRANT_NODE_ROLE: role,
+        },
+        secrets: sharedSecrets,
+        portMappings,
+        logging,
+        healthCheck: {
+          command: ["CMD-SHELL", healthCheckCommand],
+          interval: cdk.Duration.seconds(15),
+          timeout: cdk.Duration.seconds(5),
+          retries: 3,
+          startPeriod: cdk.Duration.seconds(startPeriodSecs),
+        },
+      });
+
       container.addMountPoints({
         sourceVolume: "qdrant-snapshots",
         containerPath: "/qdrant/snapshots",
         readOnly: false,
       });
-    }
 
-    // Fargate Service
-    const service = new ecs.FargateService(this, "QdrantService", {
+      return taskDef;
+    };
+
+    // Seed: starts immediately, short grace period
+    const seedTaskDef = createTaskDef(
+      "QdrantSeedTask", `${config.envName}-qdrant-seed`, "seed", 30,
+    );
+
+    // Workers: wait for seed, longer grace period
+    const workerTaskDef = createTaskDef(
+      "QdrantWorkerTask", `${config.envName}-qdrant`, "worker", 120,
+    );
+
+    // --- Seed Service (1 task, stable bootstrap target) ---
+    const seedService = new ecs.FargateService(this, "QdrantSeedService", {
       cluster,
-      serviceName: `${config.envName}-qdrant-service`,
-      taskDefinition,
-      desiredCount: config.qdrant.nodeCount,
-      minHealthyPercent: 67, // Maintain quorum (2/3 nodes) during rolling updates
+      serviceName: `${config.envName}-qdrant-seed`,
+      taskDefinition: seedTaskDef,
+      desiredCount: 1,
+      minHealthyPercent: 0, // Allow full replacement during deploys
       maxHealthyPercent: 200,
       vpcSubnets: this.gdTrustedLandingZone.networking.dxAppSubnets,
       securityGroups: [securityGroup],
@@ -527,20 +548,50 @@ export class QdrantStack extends GDStack {
       enableExecuteCommand: false,
       circuitBreaker: { enable: true, rollback: true },
     });
-    this.service = service;
+    this.seedService = seedService;
 
-    // Ensure TLS certificates are created before ECS service starts
-    if (tlsBootstrapTrigger) {
-      service.node.addDependency(tlsBootstrapTrigger);
-    }
-
-    // Enable Service Discovery
-    service.enableCloudMap({
-      name: "qdrant",
+    seedService.enableCloudMap({
+      name: "qdrant-seed",
       dnsRecordType: servicediscovery.DnsRecordType.A,
-      dnsTtl: cdk.Duration.seconds(30), // Balance DNS query load vs failover speed
+      dnsTtl: cdk.Duration.seconds(10),
       cloudMapNamespace: namespace,
     });
+
+    // --- Worker Service (N-1 tasks, join via seed) ---
+    if (config.qdrant.nodeCount < 2) {
+      throw new Error(
+        `qdrant.nodeCount must be >= 2 for a cluster (got ${config.qdrant.nodeCount}). ` +
+        `The seed service always runs 1 task; workers = nodeCount - 1.`,
+      );
+    }
+    const workerCount = config.qdrant.nodeCount - 1;
+    const workerService = new ecs.FargateService(this, "QdrantService", {
+      cluster,
+      serviceName: `${config.envName}-qdrant-service`,
+      taskDefinition: workerTaskDef,
+      desiredCount: workerCount,
+      minHealthyPercent: 50,
+      maxHealthyPercent: 200,
+      vpcSubnets: this.gdTrustedLandingZone.networking.dxAppSubnets,
+      securityGroups: [securityGroup],
+      assignPublicIp: false,
+      enableExecuteCommand: false,
+      circuitBreaker: { enable: true, rollback: true },
+    });
+    this.service = workerService;
+
+    workerService.enableCloudMap({
+      name: "qdrant",
+      dnsRecordType: servicediscovery.DnsRecordType.A,
+      dnsTtl: cdk.Duration.seconds(30),
+      cloudMapNamespace: namespace,
+    });
+
+    // Ensure TLS certificates are created before either service starts
+    if (tlsBootstrapTrigger) {
+      seedService.node.addDependency(tlsBootstrapTrigger);
+      workerService.node.addDependency(tlsBootstrapTrigger);
+    }
 
     // Outputs
     new cdk.CfnOutput(this, "QdrantEndpoint", {
