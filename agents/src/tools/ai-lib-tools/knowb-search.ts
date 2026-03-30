@@ -11,7 +11,7 @@ import { KnowBSearchTool } from '../knowb-search-tool.js';
  * Searches GoDaddy's knowledge base for documentation
  */
 export const knowBSearchAITool: Tool = createTool(
-  `Search GoDaddy's knowledge base for deployment and application documentation.
+  `Search the knowledge base for deployment and application documentation.
 
 Use this tool to find information about:
 - Deployment procedures and publishing
@@ -34,7 +34,7 @@ The search returns relevant documentation with similarity scores.`,
     scoreThreshold: z
       .number()
       .optional()
-      .default(0.35)
+      .default(0.67)
       .describe('Minimum similarity score threshold (0.0-1.0)'),
   }),
   async (input, context) => {

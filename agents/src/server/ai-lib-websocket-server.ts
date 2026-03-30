@@ -54,6 +54,9 @@ import type { AgentsAppContext } from '../types/websocket-context.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
 import { initializeContextRegistry } from '../services/initializeContextRegistry.js'
 import { KnowBDriver } from '../tools/ai-lib-tools/drivers/knowb-driver.js'
+import {
+  getKnowledgeServiceDriver,
+} from '../tools/ai-lib-tools/drivers/knowledge-service-driver.js'
 import { GitHookService } from '../services/git-hook-service.js'
 import { ClientActionService } from '../services/ClientActionService.js'
 import { hasUnbuiltRebuildPages } from '../tools/ai-lib-tools/suggested-response.js'
@@ -64,10 +67,11 @@ import { hasUnbuiltRebuildPages } from '../tools/ai-lib-tools/suggested-response
 const appRepo = new AppRepository()
 
 /**
- * Observed KnowB search function with automatic Langfuse tracing
- * Captures inputs, outputs, timings, and errors automatically
+ * RAG documentation search: uses knowledge-service when KNOWLEDGE_SERVICE_URL or
+ * KNOWLEDGE_PROXY_URL is set, otherwise falls back to KnowB. Both drivers share
+ * the same result interface.
  */
-async function searchKnowBDocumentation(params: {
+async function searchDocumentation(params: {
   query: string
   kbNodeIds: string[]
   maxResults: number
@@ -75,13 +79,13 @@ async function searchKnowBDocumentation(params: {
   appId?: string | undefined
   sessionId?: string | undefined
 }) {
-  const knowBDriver = new KnowBDriver()
+  const knowledgeDriver = getKnowledgeServiceDriver()
+  const usingKnowledgeService = !!knowledgeDriver
 
-  // Update observation with metadata about the retrieval operation
   updateActiveObservation({
     metadata: {
       retrievalType: 'semantic_search',
-      knowledgeBase: params.kbNodeIds.join(','),
+      retrievalBackend: usingKnowledgeService ? 'knowledge-service' : 'knowb',
       appId: params.appId,
       sessionId: params.sessionId,
       maxResults: params.maxResults,
@@ -89,15 +93,16 @@ async function searchKnowBDocumentation(params: {
     }
   })
 
-  const knowBResult = await knowBDriver.search({
+  const driver = knowledgeDriver ?? new KnowBDriver()
+
+  const result = await driver.search({
     query: params.query,
     kbNodeIds: params.kbNodeIds,
     maxResults: params.maxResults,
     scoreThreshold: params.scoreThreshold,
   })
 
-  if (!knowBResult.success || !knowBResult.results || knowBResult.results.length === 0) {
-    // Update observation with no results metadata
+  if (!result.success || !result.results || result.results.length === 0) {
     updateActiveObservation({
       metadata: {
         documentsRetrieved: 0,
@@ -107,30 +112,30 @@ async function searchKnowBDocumentation(params: {
     return null
   }
 
-  const docsContent = knowBDriver.formatResultsAsMarkdown(knowBResult.results)
+  const docsContent = driver.formatResultsAsMarkdown(result.results)
 
-  // Update observation with successful retrieval metadata
   updateActiveObservation({
     metadata: {
-      documentsRetrieved: knowBResult.results.length,
-      avgScore: knowBResult.results.reduce((sum, r) => sum + (r.score || 0), 0) / knowBResult.results.length,
-      allScoresAboveThreshold: knowBResult.results.every(r => (r.score || 0) >= params.scoreThreshold),
-      documentIds: knowBResult.results.map(r => r.kbNodeId).filter(Boolean)
+      documentsRetrieved: result.results.length,
+      avgScore: result.results.reduce((sum, r) => sum + (r.score || 0), 0) / result.results.length,
+      allScoresAboveThreshold: result.results.every(r => (r.score || 0) >= params.scoreThreshold),
+      documentIds: result.results.map(r => r.kbNodeId).filter(Boolean)
     }
   })
 
   return {
     content: docsContent,
-    results: knowBResult.results,
-    count: knowBResult.results.length
+    results: result.results,
+    count: result.results.length
   }
 }
 
 /**
- * Traced version of KnowB search with automatic Langfuse tracing
+ * Traced RAG search with automatic Langfuse tracing.
+ * Uses knowledge-service when configured, falls back to KnowB.
  */
-const tracedSearchKnowB = observe(searchKnowBDocumentation, {
-  name: 'KnowB Documentation Retrieval',
+const tracedSearchDocumentation = observe(searchDocumentation, {
+  name: 'Documentation Retrieval',
   asType: 'span'
 })
 
@@ -750,22 +755,22 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           // inserted 'after_history' to preserve caching of stable prefix content (system prompt,
           // template, memory summary, app context). Inserting query-dependent content in
           // 'before_history' would invalidate the cache on every request.
-          let knowBContextMessage: ContextMessage | null = null
+          let ragContextMessage: ContextMessage | null = null
           const userMessage = agentsAppContext.metadata?._userMessage as string | undefined
 
           if (userMessage && typeof userMessage === 'string' && userMessage.trim().length > 0) {
             try {
-              const retrievalResult = await tracedSearchKnowB({
+              const retrievalResult = await tracedSearchDocumentation({
                 query: userMessage,
                 kbNodeIds: ['/airo_info'],
-                maxResults: 3,
-                scoreThreshold: 0.35,
+                maxResults: 5,
+                scoreThreshold: 0.67,
                 appId: agentsAppContext.metadata?.appId,
                 sessionId: agentsAppContext.metadata?.sessionId
               })
 
               if (retrievalResult && retrievalResult.results && retrievalResult.results.length > 0) {
-                knowBContextMessage = {
+                ragContextMessage = {
                   // Use 'user' role for injected context - more natural conversation flow
                   // and avoids breaking user/assistant alternation pattern
                   role: 'user',
@@ -775,20 +780,20 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 }
               }
             } catch (error) {
-              logger.warn('websocket.context.knowb.error', {
+              logger.warn('websocket.context.rag.error', {
                 error: error instanceof Error ? error.message : String(error),
                 query: userMessage.substring(0, 100)
               })
-              // Continue without KnowB context if search fails
+              // Continue without RAG context if search fails
             }
           }
 
           logger.info('websocket.context.provider.success', {
             message: 'Built context messages',
-            messageCount: contextResult.contextMessages.length + (dynamicDataMessage ? 1 : 0) + (todoContextMessage ? 1 : 0) + (knowBContextMessage ? 1 : 0),
+            messageCount: contextResult.contextMessages.length + (dynamicDataMessage ? 1 : 0) + (todoContextMessage ? 1 : 0) + (ragContextMessage ? 1 : 0),
             hasDynamicData: !!dynamicDataMessage,
             hasTodoContext: !!todoContextMessage,
-            hasKnowBContext: !!knowBContextMessage
+            hasRagContext: !!ragContextMessage
           })
 
           // Collect all context messages
@@ -814,11 +819,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           // This order matches the architecture spec segments 6/7/8.
 
           // Add KnowB documentation context if present (Segment 6)
-          if (knowBContextMessage) {
+          if (ragContextMessage) {
             allMessages.push({
-              role: knowBContextMessage.role as 'user' | 'system',
-              content: knowBContextMessage.content,
-              insertionOrder: knowBContextMessage.insertionOrder
+              role: ragContextMessage.role as 'user' | 'system',
+              content: ragContextMessage.content,
+              insertionOrder: ragContextMessage.insertionOrder
             })
           }
 

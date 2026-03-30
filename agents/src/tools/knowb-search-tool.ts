@@ -1,14 +1,16 @@
 /**
  * KnowB Search Tool
  *
- * Searches GoDaddy's knowledge base API for deployment and application documentation
- * Uses KnowBDriver for connection handling, adds app context and formatted results
+ * Searches GoDaddy's knowledge base API for deployment and application documentation.
+ * Uses KnowledgeServiceDriver when configured (KNOWLEDGE_SERVICE_URL or KNOWLEDGE_PROXY_URL),
+ * falling back to KnowBDriver for backward compatibility.
  */
 import { Logger, log } from '../logging/index.js';
 import {
   knowBDriver,
   type KnowBSearchOptions as DriverSearchOptions,
 } from './ai-lib-tools/drivers/knowb-driver.js';
+import { getKnowledgeServiceDriver } from './ai-lib-tools/drivers/knowledge-service-driver.js';
 
 const logger = Logger.create({ service: 'knowb-search-tool' });
 
@@ -67,8 +69,9 @@ export class KnowBSearchTool {
       scoreThreshold: options.scoreThreshold,
     });
 
-    // Use the driver for the actual search
-    const driverResult = await knowBDriver.search({
+    // Use KnowledgeServiceDriver when configured, fall back to KnowBDriver
+    const driver = getKnowledgeServiceDriver() ?? knowBDriver;
+    const driverResult = await driver.search({
       query: options.query,
       kbNodeIds: options.kbNodeIds,
       maxResults: options.maxResults,

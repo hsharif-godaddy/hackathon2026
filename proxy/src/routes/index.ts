@@ -4,6 +4,7 @@ import multer from 'multer';
 import { validateGdToken } from '../auth/middleware';
 import gettyClient from '../clients/getty-client';
 import knowbClient from '../clients/knowb-client';
+import knowledgeServiceClient from '../clients/knowledge-service-client';
 import webScraperClient from '../clients/web-scraper-client';
 import { config } from '../config';
 import ssoValidationRoutes from './sso-validation';
@@ -15,6 +16,7 @@ import {
   GettySearchParams,
   KnowBSearchParams,
   KnowBUploadParams,
+  KnowledgeServiceSearchParams,
   WebScraperParams
 } from '../types';
 
@@ -971,6 +973,101 @@ router.post('/v1/knowb/upload',
   }
 );
 
+
+// Knowledge Service search endpoint
+router.post('/v1/knowledge/search',
+  validateGdToken,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const requestId = String(req.id ?? 'unknown');
+    const startTime = req.startTime ?? Date.now();
+
+    try {
+      const { query, topN, filters } = req.body as KnowledgeServiceSearchParams;
+
+      if (!query || typeof query !== 'string' || query.trim().length === 0) {
+        res.status(400).json({
+          error: {
+            message: 'Missing required parameter: query',
+            type: 'invalid_request_error'
+          }
+        });
+        return;
+      }
+
+      const params: KnowledgeServiceSearchParams = {
+        query: query.trim(),
+        ...(topN !== undefined && { topN }),
+        ...(filters !== undefined && { filters }),
+      };
+
+      const response = await knowledgeServiceClient.search(params, requestId);
+      const totalDuration = Date.now() - startTime;
+
+      logger.info('knowledge-service.search.completed', {
+        requestId,
+        method: req.method,
+        path: req.path,
+        query: { query: params.query.substring(0, 100), topN: params.topN },
+        userToken: req.userToken ? req.userToken.substring(0, 5) + '...' : 'unknown',
+        statusCode: response.statusCode,
+        searchDuration: response.duration ? `${response.duration}ms` : 'unknown',
+        totalDuration: `${totalDuration}ms`,
+        userAgent: req.get('User-Agent'),
+        ip: req.ip
+      });
+
+      res.set('Content-Type', 'application/json');
+      res.set('Cache-Control', 'no-cache');
+      res.status(response.statusCode);
+      try {
+        const jsonData = typeof response.data === 'string'
+          ? JSON.parse(response.data)
+          : response.data;
+        res.json(jsonData);
+      } catch {
+        logger.warn('knowledge-service.search.invalid-response', {
+          requestId,
+          statusCode: response.statusCode,
+          contentType: response.headers['content-type']
+        });
+        res.status(502).json({
+          error: {
+            message: 'Invalid response from upstream API',
+            type: 'upstream_error',
+            requestId
+          }
+        });
+      }
+
+    } catch (error) {
+      const err = error as { message: string; statusCode?: number; duration?: number };
+      const totalDuration = Date.now() - startTime;
+
+      logger.error('knowledge-service.search.failed', {
+        requestId,
+        method: req.method,
+        path: req.path,
+        body: req.body,
+        userToken: req.userToken ? req.userToken.substring(0, 5) + '...' : 'unknown',
+        error: err.message,
+        statusCode: err.statusCode,
+        searchDuration: err.duration ? `${err.duration}ms` : 'unknown',
+        totalDuration: `${totalDuration}ms`,
+        userAgent: req.get('User-Agent'),
+        ip: req.ip
+      });
+
+      const statusCode = err.statusCode ?? 503;
+      res.status(statusCode).json({
+        error: {
+          message: 'KnowledgeService API request failed',
+          type: 'upstream_error',
+          requestId
+        }
+      });
+    }
+  }
+);
 
 // Catch-all for unsupported routes
 router.use('*', (req: Request, res: Response) => {

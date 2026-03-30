@@ -33,6 +33,11 @@ export interface KnowBConfig {
   defaultScoreThreshold: number;
 }
 
+export interface KnowledgeServiceConfig {
+  upstream: string;
+  defaultTopN: number;
+}
+
 export interface SSOConfig {
   host: string;
   endpoint: string;
@@ -55,6 +60,7 @@ export interface AppConfig {
   getty: GettyConfig;
   webScraper: WebScraperConfig;
   knowb: KnowBConfig;
+  knowledgeService: KnowledgeServiceConfig;
   sso: SSOConfig;
   auth: AuthConfig;
   logging: LoggingConfig;
@@ -165,6 +171,16 @@ export interface KnowBSearchResponse {
   results: KnowBSearchResult[];
 }
 
+// Knowledge Service API types
+export interface KnowledgeServiceSearchParams {
+  query: string;
+  topN?: number;
+  filters?: {
+    docNames?: string[];
+    tags?: string[];
+  };
+}
+
 // Health check types
 export interface HealthStatus {
   status: 'healthy' | 'unhealthy' | 'degraded';
@@ -221,6 +237,7 @@ export interface EnvironmentVariables {
   WEB_SCRAPER_UPSTREAM?: string;
   WEB_SCRAPER_APP_KEY?: string;
   KNOWB_UPSTREAM?: string;
+  KNOWLEDGE_SERVICE_UPSTREAM?: string;
   SSO_HOST?: string;
   SSO_ENDPOINT?: string;
   SSO_REALM?: string;

@@ -124,7 +124,7 @@ export const allAILibTools: Record<string, Tool> = {
   memoryListKeys: memoryListKeysAITool,
   memory: memoryAITool,
   ragSearch: ragSearchAITool,
-  knowBSearch: knowBSearchAITool,
+  knowledgeSearch: knowBSearchAITool,
   widgetRender: widgetRenderAITool,
   colorScheme: colorSchemeAITool,
   domainPurchase: domainPurchaseAITool,
@@ -186,7 +186,7 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
     imageEditor: imageEditorAITool,
     iconsValidator: iconsValidatorAITool,
     ragSearch: ragSearchAITool,
-    knowBSearch: knowBSearchAITool,
+    knowledgeSearch: knowBSearchAITool,
     qrCode: qrCodeAITool,
   },
 

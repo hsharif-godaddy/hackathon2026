@@ -25,6 +25,13 @@ const getDefaultKnowBUpstream = (): string => {
     : 'https://knowb.api.int.test-godaddy.com';
 };
 
+// Knowledge Service upstream based on environment (Katana internal URLs)
+const getDefaultKnowledgeServiceUpstream = (): string => {
+  return isProduction
+    ? 'https://airobuilde-app-builder-knowledge-prod.airobuilde-prod.prod.onkatana.net'
+    : 'https://airobuilde-app-builder-knowledge-dev-private.airobuilde-dev-private.prod.onkatana.net';
+};
+
 // WebScraper upstream based on environment
 const getDefaultWebScraperUpstream = (): string => {
   return isProduction
@@ -63,6 +70,11 @@ const config: AppConfig = {
     defaultKbNodeIds: ['/airo_info'],
     defaultMaxResults: 5,
     defaultScoreThreshold: 0.35
+  },
+
+  knowledgeService: {
+    upstream: env.KNOWLEDGE_SERVICE_UPSTREAM ?? getDefaultKnowledgeServiceUpstream(),
+    defaultTopN: 5,
   },
 
   sso: {
@@ -121,6 +133,10 @@ function validateConfig(): boolean {
   console.log('[CONFIG] KnowB:', {
     upstream: config.knowb.upstream,
     source: env.KNOWB_UPSTREAM ? 'env variable' : `auto-detected (${environment})`
+  });
+  console.log('[CONFIG] KnowledgeService:', {
+    upstream: config.knowledgeService.upstream,
+    source: env.KNOWLEDGE_SERVICE_UPSTREAM ? 'env variable' : `auto-detected (${environment})`
   });
   console.log('[CONFIG] WebScraper:', {
     upstream: config.webScraper.upstream,
