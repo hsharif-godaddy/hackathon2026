@@ -140,19 +140,29 @@ type Monitor struct {
 	logMgr        logs.Logger
 	startTime     time.Time
 	restartCh     chan struct{} // Buffered channel for restart requests
-	httpClient    *http.Client  // Reused HTTP client for health checks
+	httpClient    *http.Client  // HTTP client for health checks (keep-alives disabled)
 }
 
 // NewMonitor creates a new health monitor with disabled status.
 // logMgr can be nil if logging is not needed.
 func NewMonitor(logMgr logs.Logger) *Monitor {
+	// Clone default transport to preserve proxy support, timeouts, and other defaults
+	transport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		// This should never happen as DefaultTransport is always *http.Transport,
+		// but we handle it defensively to satisfy static analysis
+		transport = &http.Transport{}
+	}
+	transport = transport.Clone()
+	transport.DisableKeepAlives = true // Each health check opens a fresh connection
+
 	return &Monitor{
 		result: HealthResult{
 			Status: HealthStatusDisabled,
 		},
 		enabled:    false,
 		logMgr:     logMgr,
-		httpClient: &http.Client{}, // Reuse client across health checks
+		httpClient: &http.Client{Transport: transport},
 	}
 }
 

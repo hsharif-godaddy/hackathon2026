@@ -33,6 +33,25 @@ func TestHealthMonitor_NewMonitor(t *testing.T) {
 	if hm.enabled {
 		t.Error("Expected health monitor to be disabled initially")
 	}
+
+	// Verify HTTP client transport configuration
+	if hm.httpClient == nil {
+		t.Fatal("Expected non-nil HTTP client")
+	}
+
+	transport, ok := hm.httpClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatal("Expected HTTP client transport to be *http.Transport")
+	}
+
+	if !transport.DisableKeepAlives {
+		t.Error("Expected HTTP client to have keep-alives disabled")
+	}
+
+	// Verify transport inherits defaults (proxy support)
+	if transport.Proxy == nil {
+		t.Error("Expected transport to inherit proxy configuration from default transport")
+	}
 }
 
 func TestHealthMonitor_Configure(t *testing.T) {
