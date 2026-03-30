@@ -225,25 +225,34 @@ export class QdrantStack extends GDStack {
     const tlsCertSecretName = `${config.envName}-qdrant-tls-cert`;
     const qdrantFqdn = `qdrant.${config.envName}.airo.local`;
 
-    // Create secrets for TLS certificates (Lambda will populate the values)
-    // Using DESTROY in dev for easy cleanup, RETAIN in prod
-    const tlsCaSecret = new secretsmanager.Secret(this, "QdrantTlsCaSecret", {
-      secretName: tlsCaSecretName,
-      description: "Self-signed CA certificate for Qdrant TLS",
-      removalPolicy:
-        config.envName === "dev"
-          ? cdk.RemovalPolicy.DESTROY
-          : cdk.RemovalPolicy.RETAIN,
-    });
+    // TLS secrets — create in dev, import existing in prod (survives stack rollbacks)
+    let tlsCaSecret: secretsmanager.ISecret;
+    let tlsCertSecret: secretsmanager.ISecret;
 
-    const tlsCertSecret = new secretsmanager.Secret(this, "QdrantTlsCertSecret", {
-      secretName: tlsCertSecretName,
-      description: "Server certificate for Qdrant TLS (signed by internal CA)",
-      removalPolicy:
-        config.envName === "dev"
-          ? cdk.RemovalPolicy.DESTROY
-          : cdk.RemovalPolicy.RETAIN,
-    });
+    if (config.envName === "dev") {
+      tlsCaSecret = new secretsmanager.Secret(this, "QdrantTlsCaSecret", {
+        secretName: tlsCaSecretName,
+        description: "Self-signed CA certificate for Qdrant TLS",
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      });
+      tlsCertSecret = new secretsmanager.Secret(this, "QdrantTlsCertSecret", {
+        secretName: tlsCertSecretName,
+        description: "Server certificate for Qdrant TLS (signed by internal CA)",
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      });
+    } else {
+      // In prod, secrets persist across stack rollbacks (RETAIN policy).
+      // Import them so CFN doesn't try to re-create existing secrets.
+      tlsCaSecret = secretsmanager.Secret.fromSecretNameV2(
+        this, "QdrantTlsCaSecret", tlsCaSecretName,
+      );
+      tlsCertSecret = secretsmanager.Secret.fromSecretNameV2(
+        this, "QdrantTlsCertSecret", tlsCertSecretName,
+      );
+    }
+
+    // Shared ARN prefix for TLS secret IAM policies
+    const secretArnPrefix = `arn:aws:secretsmanager:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:secret:`;
 
     // TLS Bootstrap Lambda - generates self-signed CA and server certificates
     // Triggered on deployment and weekly to check for renewal
@@ -269,7 +278,10 @@ export class QdrantStack extends GDStack {
             "secretsmanager:GetSecretValue",
             "secretsmanager:PutSecretValue",
           ],
-          resources: [tlsCaSecret.secretArn, tlsCertSecret.secretArn],
+          resources: [
+            `${secretArnPrefix}${tlsCaSecretName}-*`,
+            `${secretArnPrefix}${tlsCertSecretName}-*`,
+          ],
         }),
       );
       lambdaRole.addToPolicy(
@@ -410,7 +422,7 @@ export class QdrantStack extends GDStack {
         new iam.PolicyStatement({
           effect: iam.Effect.ALLOW,
           actions: ["secretsmanager:GetSecretValue"],
-          resources: [tlsCertSecret.secretArn],
+          resources: [`${secretArnPrefix}${tlsCertSecretName}-*`],
         }),
       );
       taskRole.addToPrincipalPolicy(
