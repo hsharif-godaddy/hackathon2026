@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { useIntl } from 'react-intl'
 import Button from '@ux/button'
 import MicIcon from '@ux/icon/mic'
@@ -13,6 +13,7 @@ import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/Asset
 import ChatAttachmentMenu, { UploadedFile } from '@/app/develop/components/chat/ChatAttachmentMenu'
 import type { SendMessageOptions } from '@/app/develop/components/chat/ChatContext'
 import UsageGauge from '@/app/develop/components/chat/usage-gauge/UsageGauge'
+import { useChatHistoryNavigation } from '@/app/develop/components/chat/useChatHistoryNavigation'
 import type { AiEditContext } from '@/app/develop/components/types'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -42,6 +43,7 @@ interface ChatInputProps {
   aiEditContext?: AiEditContext | null
   onClearAiEditContext?: () => void
   mediaLimitError?: string | null
+  userMessages?: string[]
 }
 
 export default function ChatInput({
@@ -66,6 +68,7 @@ export default function ChatInput({
   onClearReferencedFile,
   aiEditContext,
   onClearAiEditContext,
+  userMessages = [],
 }: ChatInputProps) {
   const t = useTranslations();
   const { locale } = useIntl();
@@ -73,6 +76,24 @@ export default function ChatInput({
   const canAddAsset = selectedAssets.length < maxAssets;
 
   const textBeforeListeningRef = useRef('')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const { handleArrowUp, handleArrowDown, resetNavigation, exitNavigationMode, navRevision } =
+    useChatHistoryNavigation({
+      userMessages,
+      inputValue,
+      onInputChange,
+      appId,
+      isDisabled: Boolean(isDisabled && !isStreaming),
+    })
+
+  // After each navigation, move cursor to end of textarea once React has committed the new value
+  useLayoutEffect(() => {
+    if (navRevision > 0 && textareaRef.current) {
+      const len = textareaRef.current.value.length
+      textareaRef.current.setSelectionRange(len, len)
+    }
+  }, [navRevision])
 
   const {
     isListening,
@@ -112,6 +133,7 @@ export default function ChatInput({
       resetTranscript()
     }
     onSendMessage()
+    resetNavigation()
   }
 
   function handlePaste(e: React.ClipboardEvent) {
@@ -154,7 +176,19 @@ export default function ChatInput({
     img.src = objectUrl
   }
 
-  const onKeyDown = (e: React.KeyboardEvent) => {
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'ArrowUp') {
+      if (textareaRef.current && handleArrowUp(textareaRef.current)) {
+        e.preventDefault()
+      }
+      return
+    }
+    if (e.key === 'ArrowDown') {
+      if (textareaRef.current && handleArrowDown(textareaRef.current)) {
+        e.preventDefault()
+      }
+      return
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       if (inputValue?.trim() && uploadingFiles.length === 0 && !(isStreaming && onStopGeneration)) {
@@ -253,11 +287,13 @@ export default function ChatInput({
           <div className="flex items-stretch space-x-1">
             <div className="flex-1">
               <textarea
+                ref={textareaRef}
                 id="chat-input-textarea"
                 data-testid="chat-input-textarea"
                 value={inputValue}
                 onChange={(e) => {
                   if (isListening) return
+                  exitNavigationMode()
                   onInputChange(e.target.value)
                 }}
                 onKeyDown={onKeyDown}

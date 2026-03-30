@@ -66,6 +66,10 @@ export default function ChatPane({
 }: ChatPaneProps) {
   const t = useTranslations();
   const messages = useMessages()
+  const userMessages = useMemo(
+    () => messages.filter(m => m.role === 'user' && m.content.trim()).map(m => m.content),
+    [messages]
+  )
   const activeStream = useActiveStream()
   const inputValue = useInputValue()
   const isLoading = useIsLoading()
@@ -741,6 +745,7 @@ export default function ChatPane({
             onClearReferencedFile={handleClearSingleReferencedFile}
             aiEditContext={safeAiEditContext}
             onClearAiEditContext={handleClearAiEditContext}
+            userMessages={userMessages}
           />
         </div>
       </ChatContext.Provider>
@@ -832,6 +837,7 @@ export default function ChatPane({
             onClearReferencedFile={handleClearSingleReferencedFile}
             aiEditContext={safeAiEditContext}
             onClearAiEditContext={handleClearAiEditContext}
+            userMessages={userMessages}
           />
         </div>
       </div>
