@@ -69,7 +69,7 @@ async function buildDevelopSystemPrompt(): Promise<string> {
 }
 
 interface ContextSection {
-  type: 'template' | 'app' | 'visual' | 'element' | 'conversation' | 'system_prompt' | 'unused'
+  type: 'template' | 'app' | 'app_stable' | 'app_secrets' | 'app_media_slots' | 'visual' | 'element' | 'conversation' | 'system_prompt' | 'unused'
   role: 'system' | 'user'
   content: string
   tokenCount: number
@@ -152,18 +152,40 @@ router.get('/context/:appId', validateAppIdParam, async (req: Request, res: Resp
           }))
         }
 
-        // 2. Get app context (directory listing) as separate section
+        // 2. Get app context (stable, secrets, media slots) as separate sections
         if (executionContext) {
-          const appContextMessage = await conversationContextManager['appContextManager'].generateContextMessage(executionContext)
-          if (appContextMessage) {
-            const appContextTokenResult = await countTokens(appContextMessage, TOKEN_COUNTING_MODEL)
-            const appContextTokenCount = typeof appContextTokenResult === 'object' ? appContextTokenResult.tokenCount : appContextTokenResult
+          const appContextResult = await conversationContextManager['appContextManager'].generateContextMessage(executionContext)
 
+          if (appContextResult.stableContext) {
+            const stableTokenResult = await countTokens(appContextResult.stableContext, TOKEN_COUNTING_MODEL)
+            const stableTokenCount = typeof stableTokenResult === 'object' ? stableTokenResult.tokenCount : stableTokenResult
             contextSections.push({
-              type: 'app',
+              type: 'app_stable',
               role: 'user',
-              content: appContextMessage,
-              tokenCount: appContextTokenCount
+              content: appContextResult.stableContext,
+              tokenCount: stableTokenCount
+            })
+          }
+
+          if (appContextResult.secretsContext) {
+            const secretsTokenResult = await countTokens(appContextResult.secretsContext, TOKEN_COUNTING_MODEL)
+            const secretsTokenCount = typeof secretsTokenResult === 'object' ? secretsTokenResult.tokenCount : secretsTokenResult
+            contextSections.push({
+              type: 'app_secrets',
+              role: 'user',
+              content: appContextResult.secretsContext,
+              tokenCount: secretsTokenCount
+            })
+          }
+
+          if (appContextResult.mediaSlotsContext) {
+            const mediaSlotsTokenResult = await countTokens(appContextResult.mediaSlotsContext, TOKEN_COUNTING_MODEL)
+            const mediaSlotsTokenCount = typeof mediaSlotsTokenResult === 'object' ? mediaSlotsTokenResult.tokenCount : mediaSlotsTokenResult
+            contextSections.push({
+              type: 'app_media_slots',
+              role: 'user',
+              content: appContextResult.mediaSlotsContext,
+              tokenCount: mediaSlotsTokenCount
             })
           }
         }

@@ -562,11 +562,11 @@ export class AILibContextManager {
         }
 
         try {
-            // Build app context
+            // Build app context (returns array with stable + dynamic parts)
             if (effectiveConfig.includeAppContext && context.appContext && context.metadata?.appId) {
-                const appContextMessage = await this.buildAppContextMessage(context)
-                if (appContextMessage) {
-                    messages.push(appContextMessage)
+                const appContextMessages = await this.buildAppContextMessage(context)
+                if (appContextMessages.length > 0) {
+                    messages.push(...appContextMessages)
                 }
             }
         } catch (error) {
@@ -640,9 +640,10 @@ export class AILibContextManager {
     }
 
     /**
-     * Build app context message using AppContextManager
+     * Build app context messages using AppContextManager
+     * Returns separate messages for stable (cached) and dynamic (after_history) context
      */
-    private async buildAppContextMessage(context: EnhancedAgentContext): Promise<ContextMessage | null> {
+    private async buildAppContextMessage(context: EnhancedAgentContext): Promise<ContextMessage[]> {
         try {
             const appId = context.metadata?.appId as string
             const contextLogger = appId ? log.forApp(appId) : logger
@@ -661,37 +662,68 @@ export class AILibContextManager {
                 metadataAppPath: executionContext.metadata?.appPath
             })
 
-            const appContextContent = await this.appContextManager.generateContextMessage(executionContext)
+            const appContextResult = await this.appContextManager.generateContextMessage(executionContext)
 
-            if (!appContextContent) {
-                contextLogger.debug('context.app.build.empty', {
-                    reason: 'AppContextManager returned null'
+            const messages: ContextMessage[] = []
+
+            // Stable context (package info, color scheme) goes in cached prefix
+            if (appContextResult.stableContext) {
+                messages.push({
+                    role: 'user',
+                    content: appContextResult.stableContext,
+                    type: 'app_context_stable',
+                    insertionOrder: 'before_history'
                 })
-                return null
+            }
+
+            // Dynamic contexts (secrets, media slots) go after history to prevent cache invalidation
+            if (appContextResult.secretsContext) {
+                messages.push({
+                    role: 'user',
+                    content: appContextResult.secretsContext,
+                    type: 'app_context_secrets',
+                    insertionOrder: 'after_history'
+                })
+            }
+
+            if (appContextResult.mediaSlotsContext) {
+                messages.push({
+                    role: 'user',
+                    content: appContextResult.mediaSlotsContext,
+                    type: 'app_context_media_slots',
+                    insertionOrder: 'after_history'
+                })
+            }
+
+            if (messages.length === 0) {
+                contextLogger.debug('context.app.build.empty', {
+                    reason: 'AppContextManager returned no content'
+                })
+                return []
             }
 
             contextLogger.info('context.app.build.success', {
-                contentLength: appContextContent.length
+                stableContextLength: appContextResult.stableContext?.length || 0,
+                secretsContextLength: appContextResult.secretsContext?.length || 0,
+                mediaSlotsContextLength: appContextResult.mediaSlotsContext?.length || 0,
+                totalMessages: messages.length
             })
 
             const contextLogging = getAgentConfig.contextLogging()
             if (contextLogging.appContextContent) {
                 contextLogger.debug('context.app.content', {
-                    content: appContextContent
+                    stableContext: appContextResult.stableContext,
+                    secretsContext: appContextResult.secretsContext,
+                    mediaSlotsContext: appContextResult.mediaSlotsContext
                 })
             }
 
-            return {
-                role: 'user',
-                content: appContextContent,
-                type: 'app_context',
-                insertionOrder: 'before_history' // Insert fresh context BEFORE conversation history
-            }
+            return messages
         } catch (error) {
             logger.error('context.app.build.failure', {
                 error: error instanceof Error ? error.message : String(error)
             })
-            return null
+            return []
         }
     }
 

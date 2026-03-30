@@ -10,11 +10,24 @@ import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-facto
 import { mediaManifestService, type MediaSlot } from './MediaManifestService.js';
 
 /**
+ * Result of app context generation, split into stable and dynamic parts for cache efficiency
+ */
+export interface AppContextResult {
+  /** Stable context (package info, color scheme) - goes in cached prefix (before_history) */
+  stableContext: string | null;
+  /** Dynamic secrets context - goes after history to prevent cache invalidation */
+  secretsContext: string | null;
+  /** Semi-dynamic media slots context - goes after history to prevent cache invalidation */
+  mediaSlotsContext: string | null;
+}
+
+/**
  * Service for managing app context information that should be injected into LLM conversations
  * Provides comprehensive project context including:
- * - Directory structure (max depth 3, up to 100 lines)
  * - Package.json information (up to 50 main dependencies, scripts, project details)
  * - Dependency installation status (checks package-lock.json vs package.json timestamps with 5s tolerance for WSL2)
+ * - Color scheme information
+ * - Secrets and media slots
  */
 export class AppContextManager {
   private directoryTool: DirectoryListingTool;
@@ -26,50 +39,23 @@ export class AppContextManager {
   /**
    * Generate context message that provides directory listing and package information to the LLM
    * @param context - The agent execution context containing app metadata
-   * @returns Promise<string | null> - Formatted context message or null if no context needed
+   * @returns Promise<AppContextResult> - Formatted context messages split by cache stability
    */
-  async generateContextMessage(context: AgentExecutionContext): Promise<string | null> {
+  async generateContextMessage(context: AgentExecutionContext): Promise<AppContextResult> {
     const appId = context.metadata?.appId as string;
     const appPath = context.metadata?.appPath as string;
 
     try {
       // Only generate context if we have an app context
       if (!appId || !appPath) {
-        return null;
+        return { stableContext: null, secretsContext: null, mediaSlotsContext: null };
       }
 
       appContextEvents.generateBegin(logger, { appId, directoryPath: appPath });
 
-      // Get directory listing with max depth of 3
-      const directoryResult = await this.directoryTool.listDirectory(appPath, {
-        path: '',
-        maxDepth: 4,
-        showHidden: false,
-        directoriesOnly: false
-      });
-
-      if (!directoryResult) {
-        appContextEvents.directoryFailure(logger, new Error('Directory listing returned null/undefined'), {
-          appId,
-          path: appPath,
-          maxDepth: 4
-        });
-        return null;
-      }
-
-      // Format the directory result as a tree string
-      const directoryListing = this.directoryTool.formatAsTree(directoryResult);
-
-      if (!directoryListing || typeof directoryListing !== 'string') {
-        appContextEvents.directoryFailure(logger, new Error(`Directory tree formatting failed - type: ${typeof directoryListing}, length: ${directoryListing?.length || 0}`), {
-          appId,
-          path: appPath,
-          maxDepth: 4
-        });
-        return null;
-      }
-
       // Fetch all context data in parallel (these are independent lookups)
+      // Note: Directory listing removed to prevent cache invalidation on file changes.
+      // Agents should use the directoryListing tool when they need to explore the file structure.
       const [packageInfo, colorSchemeInfo, secretsInfo, mediaSlotsInfo] = await Promise.all([
         this.getPackageInfo(context),
         this.getColorSchemeInfo(appId),
@@ -77,24 +63,23 @@ export class AppContextManager {
         this.getMediaSlotsInfo(appId),
       ]);
 
-      // Format directory listing and package info into context message
-      const formattedContext = this.formatAppContext(
-        directoryListing,
-        packageInfo,
-        colorSchemeInfo,
-        secretsInfo,
-        mediaSlotsInfo
-      );
+      // Format stable context (package info, color scheme) - cached prefix
+      const stableContext = this.formatStableContext(packageInfo, colorSchemeInfo);
+
+      // Format dynamic contexts (secrets, media slots) - after_history to prevent cache invalidation
+      // These methods return null when there's no content, avoiding boilerplate
+      const secretsContext = this.formatSecretsSection(secretsInfo);
+      const mediaSlotsContext = this.formatMediaSlotsSection(mediaSlotsInfo);
 
       // Log successful generation
       const generateData: any = {
         appId,
         directoryPath: appPath,
-        fileCount: directoryResult.fileCount,
-        directoryCount: directoryResult.directoryCount,
         dependencyCount: (packageInfo?.dependencies.length || 0) + (packageInfo?.devDependencies.length || 0),
         scriptCount: packageInfo?.scripts.length || 0,
-        contextSize: formattedContext.length
+        stableContextSize: stableContext?.length || 0,
+        secretsContextSize: secretsContext?.length || 0,
+        mediaSlotsContextSize: mediaSlotsContext?.length || 0
       };
 
       if (packageInfo?.name) {
@@ -109,12 +94,16 @@ export class AppContextManager {
 
       appContextEvents.generateSuccess(logger, generateData);
 
-      return formattedContext;
+      return {
+        stableContext,
+        secretsContext,
+        mediaSlotsContext
+      };
 
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       appContextEvents.generateFailure(logger, err, { appId, directoryPath: appPath });
-      return null;
+      return { stableContext: null, secretsContext: null, mediaSlotsContext: null };
     }
   }
 
@@ -342,26 +331,18 @@ export class AppContextManager {
   }
 
   /**
-   * Format directory listing and package info into a comprehensive context message
-   * @param directoryListing - Raw directory listing output
+   * Format stable context (package info, color scheme) that rarely changes
+   * Goes in cached prefix to maximize cache hits
    * @param packageInfo - Package information from package.json
    * @param colorSchemeInfo - Color scheme information from app plan
-   * @param secretsInfo - Secrets information from secrets management
-   * @param mediaSlotsInfo - Media slots information from manifest
-   * @returns Formatted context message
+   * @returns Formatted stable context message
    */
-  private formatAppContext(
-    directoryListing: string,
+  private formatStableContext(
     packageInfo: any,
-    colorSchemeInfo: any,
-    secretsInfo: any,
-    mediaSlotsInfo: Map<string, string> | null
+    colorSchemeInfo: any
   ): string {
-    const directorySection = this.formatDirectorySection(directoryListing);
     const packageSection = this.formatPackageSection(packageInfo);
     const colorSchemeSection = this.formatColorSchemeSection(colorSchemeInfo);
-    const secretsSection = this.formatSecretsSection(secretsInfo);
-    const mediaSlotsSection = this.formatMediaSlotsSection(mediaSlotsInfo);
 
     return `[Current Project Context]
 
@@ -369,13 +350,7 @@ ${packageSection}
 
 ${colorSchemeSection}
 
-${secretsSection}
-
-${mediaSlotsSection}
-
-${directorySection}
-
-Note: This is the current project context including dependencies, color scheme, secrets, media slots, and directory structure. You don't need to run additional directory listings unless you need to explore specific subdirectories in detail.`;
+Note: This is the current project context including dependencies and color scheme. Use the directoryListing tool to explore the file structure when you need to see what files exist or find specific files. Secrets and media slots may be provided separately if configured.`;
   }
 
   /**
@@ -412,9 +387,14 @@ Note: This is the current project context including dependencies, color scheme, 
   /**
    * Format secrets information into a compact section
    * @param secretsInfo - Array of secret names or null
-   * @returns Formatted secrets section
+   * @returns Formatted secrets section, or null if no secrets
    */
-  private formatSecretsSection(secretsInfo: string[] | null): string {
+  private formatSecretsSection(secretsInfo: string[] | null): string | null {
+    // Return null when there are no secrets to avoid sending boilerplate
+    if (!secretsInfo || secretsInfo.length === 0) {
+      return null;
+    }
+
     const timestamp = new Date().toISOString();
     let secretsContext = `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
     secretsContext += `🔐 LIVE SECRETS STATE - REFRESHED ON THIS MESSAGE (${timestamp})\n`;
@@ -424,17 +404,12 @@ Note: This is the current project context including dependencies, color scheme, 
     secretsContext += "⚠️  If a secret was mentioned earlier but is not in this list, it has been DELETED.\n";
     secretsContext += "⚠️  ONLY use secrets that appear in THIS list - ignore any from conversation history.\n\n";
 
-    if (!secretsInfo || secretsInfo.length === 0) {
-      secretsContext += "❌ NO SECRETS CURRENTLY CONFIGURED\n";
-      secretsContext += "   The user has not added any secrets yet, or all secrets have been deleted.\n";
-    } else {
-      secretsContext += `✅ CURRENTLY CONFIGURED SECRETS: ${secretsInfo.length}\n`;
-      const secretsList = secretsInfo.map((name, index) => `   ${index + 1}. ${name}`).join('\n');
-      secretsContext += secretsList + "\n";
-      secretsContext += "\n📝 How to use these secrets in backend code:" +
-      "\n   import { getSecret } from '#airo/secrets';" +
-      "\n   const value = getSecret('SECRET_NAME');\n";
-    }
+    secretsContext += `✅ CURRENTLY CONFIGURED SECRETS: ${secretsInfo.length}\n`;
+    const secretsList = secretsInfo.map((name, index) => `   ${index + 1}. ${name}`).join('\n');
+    secretsContext += secretsList + "\n";
+    secretsContext += "\n📝 How to use these secrets in backend code:" +
+    "\n   import { getSecret } from '#airo/secrets';" +
+    "\n   const value = getSecret('SECRET_NAME');\n";
 
     secretsContext += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
 
@@ -445,53 +420,29 @@ Note: This is the current project context including dependencies, color scheme, 
    * Format media slots information into a compact section
    * Lists existing slots so the agent knows what's already configured
    * @param mediaSlotsInfo - Map of slot names to media types, or null
-   * @returns Formatted media slots section
+   * @returns Formatted media slots section, or null if no slots
    */
-  private formatMediaSlotsSection(mediaSlotsInfo: Map<string, string> | null): string {
+  private formatMediaSlotsSection(mediaSlotsInfo: Map<string, string> | null): string | null {
+    // Return null when there are no media slots to avoid sending boilerplate
+    if (!mediaSlotsInfo || mediaSlotsInfo.size === 0) {
+      return null;
+    }
+
     let slotsContext = `\n[Media Slots]\n`;
     slotsContext += "When changing images/videos, UPDATE existing slots - don't create new ones.\n\n";
+    slotsContext += `Existing slots (${mediaSlotsInfo.size}):\n`;
 
-    if (!mediaSlotsInfo || mediaSlotsInfo.size === 0) {
-      slotsContext += "No media slots configured yet.\n";
-    } else {
-      slotsContext += `Existing slots (${mediaSlotsInfo.size}):\n`;
-      // Sort slots alphabetically for stable, scannable output
-      const sortedSlots = Array.from(mediaSlotsInfo.entries()).sort(
-        ([aName], [bName]) => aName.localeCompare(bName)
-      );
-      for (const [slotName, mediaType] of sortedSlots) {
-        slotsContext += `  - ${slotName} (${mediaType})\n`;
-      }
+    // Sort slots alphabetically for stable, scannable output
+    const sortedSlots = Array.from(mediaSlotsInfo.entries()).sort(
+      ([aName], [bName]) => aName.localeCompare(bName)
+    );
+    for (const [slotName, mediaType] of sortedSlots) {
+      slotsContext += `  - ${slotName} (${mediaType})\n`;
     }
 
     return slotsContext;
   }
 
-  /**
-   * Format directory listing into a compact section
-   * @param directoryListing - Raw directory listing output
-   * @returns Formatted directory section
-   */
-  private formatDirectorySection(directoryListing: string): string {
-    // Clean up the directory listing - remove excessive whitespace and format for compactness
-    const lines = directoryListing.split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0);
-
-    // Find the actual tree structure (skip any headers)
-    const treeStartIndex = lines.findIndex(line => line.includes('├') || line.includes('└') || line.includes('│'));
-    const treeLines = treeStartIndex >= 0 ? lines.slice(treeStartIndex) : lines;
-
-    // Limit to reasonable number of lines for context
-    const maxLines = 200;
-    const limitedLines = treeLines.slice(0, maxLines);
-    const truncated = treeLines.length > maxLines;
-
-    const compactListing = limitedLines.join('\n');
-
-    return `Directory Structure:
-${compactListing}${truncated ? '\n... (truncated for brevity)' : ''}`;
-  }
 
   /**
    * Format package.json information into a compact section

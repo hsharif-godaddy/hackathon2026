@@ -29,7 +29,11 @@ vi.mock('../ConversationHistoryLoader.js', async (importOriginal) => {
 });
 vi.mock('../AppContextManager.js', () => ({
   AppContextManager: vi.fn().mockImplementation(() => ({
-    generateContextMessage: vi.fn().mockResolvedValue(null),
+    generateContextMessage: vi.fn().mockResolvedValue({
+      stableContext: null,
+      secretsContext: null,
+      mediaSlotsContext: null
+    }),
   })),
 }));
 vi.mock('../TodoContextManager.js', () => ({
@@ -131,6 +135,38 @@ describe('ConversationContextManager', () => {
     expect(messages[3]).toEqual({ role: 'user', content: 'Current message' });
   });
 
+  it('should insert stable context before conversation history', async () => {
+    mockAppContextManager.generateContextMessage.mockResolvedValue({
+      stableContext: '[Current Project Context]\nstable content',
+      secretsContext: null,
+      mediaSlotsContext: null
+    });
+
+    mockHistoryLoader.loadMessagesWithSummarization.mockResolvedValue({
+      messages: [
+        { role: 'user', content: 'History message 1' },
+        { role: 'assistant', content: 'History message 2' },
+      ]
+    });
+
+    const executionContext = createExecutionContext();
+    const messages = await contextManager.buildMessages(
+      'System prompt',
+      'Current message',
+      'test-conv-123',
+      undefined,
+      executionContext
+    );
+
+    // system + stable context + 2 history + current = 5
+    expect(messages).toHaveLength(5);
+    expect(messages[0].role).toBe('system');
+    expect(messages[1].content).toContain('[Current Project Context]');
+    expect(messages[2]).toEqual({ role: 'user', content: 'History message 1' });
+    expect(messages[3]).toEqual({ role: 'assistant', content: 'History message 2' });
+    expect(messages[4]).toEqual({ role: 'user', content: 'Current message' });
+  });
+
   it('should include tool call messages from history', async () => {
     mockHistoryLoader.loadMessagesWithSummarization.mockResolvedValue({
       messages: [
@@ -179,7 +215,11 @@ describe('ConversationContextManager', () => {
   });
 
   it('should include app context when executionContext is provided', async () => {
-    mockAppContextManager.generateContextMessage.mockResolvedValue('[Current Project Structure]\nindex.html\nstyle.css');
+    mockAppContextManager.generateContextMessage.mockResolvedValue({
+      stableContext: '[Current Project Structure]\nindex.html\nstyle.css',
+      secretsContext: null,
+      mediaSlotsContext: null
+    });
 
     const executionContext = createExecutionContext();
     const messages = await contextManager.buildMessages(

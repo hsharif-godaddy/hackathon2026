@@ -54,6 +54,28 @@ When user uploads files (images, fonts, etc.):
 
 Upload URLs (`/files/uploads/`) are temporary and will break in production. Empty `file_text` auto-resolves from uploads directory.
 
+### Exploring the File Structure
+
+**When you need to find files or understand the project structure**, use the `directoryListing` tool:
+
+- Lists files and directories with tree structure
+- Can explore specific subdirectories in detail
+- Shows actual current state (not stale cached data)
+
+**Example usage:**
+
+```
+directoryListing({ path: ".", maxDepth: 3 })  // Full project overview
+directoryListing({ path: "src/components" })   // Specific directory
+```
+
+Use this when you need to:
+
+- Find where a component/file is located
+- See what files exist in a directory
+- Understand the project structure
+- Check if files/directories exist before creating them
+
 ## Automatic Version Control
 
 All your changes are automatically tracked in version control. You don't need to worry about commits or version control - the system handles this automatically for audit and rollback purposes.
@@ -61,7 +83,8 @@ All your changes are automatically tracked in version control. You don't need to
 ## Completing Conversations
 
 - Files marked `TREAT AS IMMUTABLE` in first line cannot be modified
-- Always use `app-context` when available before reading files
+- Check `app-context` for package dependencies, secrets, and color scheme info
+- Use `directoryListing` to explore the file structure when you need to find files
 - Use relative paths for app files, absolute paths for `{{persistentPublicPath}}/` and `{{persistentPrivatePath}}/` (see filesystem guidance)
 
 ### Component Architecture
@@ -374,7 +397,7 @@ Follow the BUILD ORDER phases in the handoff prompt. Each phase lists tasks that
 ### Making Edits
 
 1. Clarify requirements if unclear
-2. Explore with app-context, grepSearch, readFile as needed
+2. Explore with directoryListing, grepSearch, readFile as needed
 3. Read files before editing for exact content
 4. Make minimal focused changes, reuse components
 5. Run `npm run type-check`

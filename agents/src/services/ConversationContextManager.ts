@@ -111,15 +111,26 @@ export class ConversationContextManager {
       { role: 'system', content: systemPrompt.trim() }
     ];
 
+    // Get app context once (stable + dynamic parts)
+    let appContextResult;
+    if (executionContext) {
+      appContextResult = await this.appContextManager.generateContextMessage(executionContext);
+    }
+
+    // Add stable app context BEFORE conversation history (for caching)
+    if (appContextResult?.stableContext) {
+      messages.push({ role: 'user', content: appContextResult.stableContext });
+    }
+
     // Add conversation history (includes summary as cached user messages if present)
     messages.push(...historyMessages);
 
-    // Add app context (directory listing) before AI edit context if execution context is available
-    if (executionContext) {
-      const appContextMessage = await this.appContextManager.generateContextMessage(executionContext);
-      if (appContextMessage) {
-        messages.push({ role: 'user', content: appContextMessage });
-      }
+    // Add dynamic app contexts AFTER conversation history (to prevent cache invalidation)
+    if (appContextResult?.secretsContext) {
+      messages.push({ role: 'user', content: appContextResult.secretsContext });
+    }
+    if (appContextResult?.mediaSlotsContext) {
+      messages.push({ role: 'user', content: appContextResult.mediaSlotsContext });
     }
 
     // Add todo list context as a separate message (always, even if no list selected)
@@ -179,7 +190,7 @@ export class ConversationContextManager {
     }
 
     // Structured logging
-    const hasAppContext = executionContext && validatedMessages.some(msg => getMessageContent(msg).startsWith('[Current Project Structure]'));
+    const hasAppContext = executionContext && validatedMessages.some(msg => getMessageContent(msg).startsWith('[Current Project Context]'));
     const hasTodoContext = !!(executionContext && validatedMessages.some(msg => getMessageContent(msg).startsWith('[Current Todo List]')));
     conversationContextEvents.buildSuccess(logger, {
       conversationId,

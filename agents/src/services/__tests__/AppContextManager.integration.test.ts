@@ -49,38 +49,41 @@ describe('AppContextManager Integration', () => {
   describe('generateContextMessage', () => {
     it('should successfully generate context message with real app data', async () => {
       const result = await appContextManager.generateContextMessage(mockContext);
-      
+
       expect(result).toBeDefined();
-      expect(typeof result).toBe('string');
-      expect(result.length).toBeGreaterThan(0);
-      
-      console.log('\n📊 Generated context message:');
-      console.log('Length:', result.length);
-      console.log('Preview:', result.substring(0, 200) + '...');
+      expect(result.stableContext).toBeDefined();
+      expect(typeof result.stableContext).toBe('string');
+      expect(result.stableContext!.length).toBeGreaterThan(0);
+
+      console.log('\n📊 Generated context messages:');
+      console.log('Stable context length:', result.stableContext?.length || 0);
+      console.log('Secrets context length:', result.secretsContext?.length || 0);
+      console.log('Media slots context length:', result.mediaSlotsContext?.length || 0);
+      console.log('Stable preview:', result.stableContext?.substring(0, 200) + '...');
     });
 
-    it('should include package information in context', async () => {
+    it('should include package information in stable context', async () => {
       const result = await appContextManager.generateContextMessage(mockContext);
-      
-      expect(result).toBeDefined();
-      expect(result).toContain('[Current Project Context]');
-      
-      // Should NOT contain "Package Information: Not available" 
-      expect(result).not.toContain('Package Information: Not available');
-      
+
+      expect(result.stableContext).toBeDefined();
+      expect(result.stableContext).toContain('[Current Project Context]');
+
+      // Should NOT contain "Package Information: Not available"
+      expect(result.stableContext).not.toContain('Package Information: Not available');
+
       // Should contain actual package info (AppContextManager uses "Project:" format)
-      expect(result).toContain('Project:');
-      expect(result).toMatch(/Name: v8-app-template/);
+      expect(result.stableContext).toContain('Project:');
+      expect(result.stableContext).toMatch(/Name: v8-app-template/);
     });
 
-    it('should include directory structure in context', async () => {
+    it('should not include directory structure in context (removed for cache efficiency)', async () => {
       const result = await appContextManager.generateContextMessage(mockContext);
-      
-      expect(result).toBeDefined();
-      expect(result).toContain('Directory Structure:');
-      
-      // Should show some directories/files
-      expect(result).toMatch(/├──|└──/); // Tree structure characters
+
+      expect(result.stableContext).toBeDefined();
+      expect(result.stableContext).not.toContain('Directory Structure:');
+
+      // Should mention using directoryListing tool instead
+      expect(result.stableContext).toContain('directoryListing');
     });
 
     it('should handle package.json parsing correctly', async () => {
@@ -130,7 +133,8 @@ describe('AppContextManager Integration', () => {
       
       const result2 = await appContextManager.generateContextMessage(absoluteContext);
       expect(result2).toBeDefined();
-      expect(result2).not.toContain('Package Information: Not available');
+      expect(result2.stableContext).toBeDefined();
+      expect(result2.stableContext).not.toContain('Package Information: Not available');
     });
   });
 
@@ -142,7 +146,9 @@ describe('AppContextManager Integration', () => {
       };
 
       const result = await appContextManager.generateContextMessage(badContext);
-      expect(result).toBeNull();
+      expect(result.stableContext).toBeNull();
+      expect(result.secretsContext).toBeNull();
+      expect(result.mediaSlotsContext).toBeNull();
     });
 
     it('should handle missing package.json gracefully', async () => {
