@@ -5,8 +5,10 @@ import '@testing-library/jest-dom'
 
 import React from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 
+import { EXPERIMENT_IDS } from '@/config/experiments'
+import { useIsInCohort } from '@/hooks/useHivemind'
 import { mockAuthContext, mockParams, mockRouter, mockSearchParams } from '@/tests/mocks'
 import { renderWithProviders } from '@/tests/test-utils'
 import { SubscriptionPlan } from '@/types/credits'
@@ -160,6 +162,7 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: (id: string) => `eid-${id}`,
+  logImpressionEvent: vi.fn(() => vi.fn()),
 }))
 
 vi.mock('@/components/ui/InfoTooltip', () => ({
@@ -176,6 +179,8 @@ vi.mock('@/components/layout/PricingSection/PlanPriceDisplay', () => ({
   ),
 }))
 
+import { logImpressionEvent } from '@/utils/instrumentation'
+
 // Default to unauthenticated state
 let authContextOverrides = { isAuthenticated: false, isAuthDisabled: false, isLoading: false }
 
@@ -183,9 +188,14 @@ vi.mock('@/components/providers/AuthProvider', () => ({
   useAuthContext: () => mockAuthContext(authContextOverrides),
 }))
 
+vi.mock('@/hooks/useHivemind', () => ({
+  useIsInCohort: vi.fn(() => false),
+}));
+
 describe('PricingSection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(useIsInCohort).mockReturnValue(false)
     mockInViewValue = false
     sessionStorage.clear()
     authContextOverrides = { isAuthenticated: false, isAuthDisabled: false, isLoading: false }
@@ -197,6 +207,16 @@ describe('PricingSection', () => {
 
   afterEach(() => {
     mockInViewValue = false
+  })
+
+  describe('logImpressionEvent', () => {
+    it('should call logImpressionEvent when section enters view', async () => {
+      mockInViewValue = true
+      const { rerender } = renderWithProviders(<PricingSection />)
+      rerender(<PricingSection />)
+
+      expect(logImpressionEvent).toHaveBeenCalledWith('homepage.pricing.view')
+    })
   })
 
   describe('onPricingViewEnd', () => {
@@ -260,10 +280,32 @@ describe('PricingSection', () => {
       expect(screen.getByText('builder_pricing_ultimate_title')).toBeInTheDocument()
     })
 
-    it('should render Recommended badge on Professional plan', async () => {
+    it('should render Recommended badge on Professional plan (control cohort)', async () => {
+      vi.mocked(useIsInCohort).mockReturnValue(false)
       renderWithProviders(<PricingSection showHighTierPlans={true} />)
 
+      expect(useIsInCohort).toHaveBeenCalledWith(EXPERIMENT_IDS.recommendedPlan, 'treatment')
       expect(screen.getByText('builder_pricing_recommended')).toBeInTheDocument()
+      const professionalCard = screen.getByText('builder_pricing_professional_title').parentElement?.parentElement
+      expect(professionalCard).toBeTruthy()
+      expect(within(professionalCard!).getByText('builder_pricing_recommended')).toBeInTheDocument()
+      const ultimateCard = screen.getByText('builder_pricing_ultimate_title').parentElement?.parentElement
+      expect(ultimateCard).toBeTruthy()
+      expect(within(ultimateCard!).queryByText('builder_pricing_recommended')).not.toBeInTheDocument()
+    })
+
+    it('should render Recommended badge on Ultimate plan (treatment cohort)', async () => {
+      vi.mocked(useIsInCohort).mockReturnValue(true)
+      renderWithProviders(<PricingSection showHighTierPlans={true} />)
+
+      expect(useIsInCohort).toHaveBeenCalledWith(EXPERIMENT_IDS.recommendedPlan, 'treatment')
+      expect(screen.getByText('builder_pricing_recommended')).toBeInTheDocument()
+      const professionalCard = screen.getByText('builder_pricing_professional_title').parentElement?.parentElement
+      expect(professionalCard).toBeTruthy()
+      expect(within(professionalCard!).queryByText('builder_pricing_recommended')).not.toBeInTheDocument()
+      const ultimateCard = screen.getByText('builder_pricing_ultimate_title').parentElement?.parentElement
+      expect(ultimateCard).toBeTruthy()
+      expect(within(ultimateCard!).getByText('builder_pricing_recommended')).toBeInTheDocument()
     })
 
     it('should render PlanPriceDisplay for each paid plan', async () => {

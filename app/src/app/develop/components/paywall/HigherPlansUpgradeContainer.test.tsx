@@ -89,6 +89,8 @@ vi.mock('./cdsLoader', () => ({
     source: string;
     currentPlan?: string;
     overrideItc?: string;
+    /** Mirrors UPP `requestedPlanType` — Hivemind recommended tier shown in the paywall */
+    requestedPlanType?: SubscriptionPlan.Professional | SubscriptionPlan.Ultimate;
     onClose: () => void;
     upgradeCallback: (params: { planType?: SubscriptionPlan }) => void;
     upgradeDowngradeCallback: (params: { planType?: SubscriptionPlan }) => void;
@@ -106,6 +108,7 @@ vi.mock('./cdsLoader', () => ({
         <span data-testid="source">{props.source}</span>
         <span data-testid="current-plan">{props.currentPlan ?? ''}</span>
         <span data-testid="override-itc">{props.overrideItc ?? ''}</span>
+        <span data-testid="requested-plan-type">{props.requestedPlanType ?? ''}</span>
         <button data-testid="close-button" onClick={props.onClose}>Close</button>
         <button
           data-testid="upgrade-button"
@@ -214,6 +217,38 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
     expect(screen.getByTestId('source')).toHaveTextContent('app-builder-NES');
   });
 
+  describe('recommendedPlan → requestedPlanType (UPP recommended tier)', function recommendedPlanTests() {
+    it('passes professional when recommendedPlan is Professional (treatment off / default path)', function professionalRecommended() {
+      renderWithProviders(
+        <HigherPlansUpgradeContainer
+          onClose={mockOnClose}
+          recommendedPlan={SubscriptionPlan.Professional}
+        />
+      );
+
+      expect(screen.getByTestId('requested-plan-type')).toHaveTextContent(SubscriptionPlan.Professional);
+    });
+
+    it('passes ultimate when recommendedPlan is Ultimate (treatment cohort)', function ultimateRecommended() {
+      renderWithProviders(
+        <HigherPlansUpgradeContainer
+          onClose={mockOnClose}
+          recommendedPlan={SubscriptionPlan.Ultimate}
+        />
+      );
+
+      expect(screen.getByTestId('requested-plan-type')).toHaveTextContent(SubscriptionPlan.Ultimate);
+    });
+
+    it('passes empty requestedPlanType when recommendedPlan is omitted', function noRecommendedPlan() {
+      renderWithProviders(
+        <HigherPlansUpgradeContainer onClose={mockOnClose} />
+      );
+
+      expect(screen.getByTestId('requested-plan-type')).toBeEmptyDOMElement();
+    });
+  });
+
   it('passes entitlementId when grants are enabled', async function passesEntitlementId() {
     const { useSwitchboard } = await import('@/hooks/useSwitchboard');
     vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
@@ -267,6 +302,13 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
       'test-subscription-123', // subscriptionId for grant polling
       'initial-plan-monthly-grant-id' // initialPlanMonthlyGrantId for grant polling
     );
+    expect(logImpressionEvent).toHaveBeenCalledWith('plan.purchase_ultimate.success');
+    expect(shipAnalyticsLog).toHaveBeenCalledWith('plan.purchase_ultimate.in-app', expect.objectContaining({
+      source: 'test-source',
+      productId: expect.any(String),
+      fromPlan: 'professional',
+      toPlan: SubscriptionPlan.Ultimate,
+    }));
   });
 
   it('handles downgrade and triggers polling', async function handlesDowngrade() {
@@ -541,6 +583,14 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
       productId: expect.any(String),
       plan: SubscriptionPlan.Professional,
     });
+
+    expect(logImpressionEvent).toHaveBeenCalledWith('plan.purchase_professional.success');
+    expect(shipAnalyticsLog).toHaveBeenCalledWith('plan.purchase_professional.in-app', expect.objectContaining({
+      source: 'test-source',
+      productId: expect.any(String),
+      fromPlan: 'professional',
+      toPlan: SubscriptionPlan.Professional,
+    }));
     // Should NOT call handlePurchaseSuccess for renewals - no polling needed
     expect(mockHandlePurchaseSuccess).not.toHaveBeenCalled();
   });
@@ -574,6 +624,14 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
       productId: expect.any(String),
       plan: SubscriptionPlan.Starter,
     });
+
+    expect(logImpressionEvent).toHaveBeenCalledWith('plan.purchase_starter.success');
+    expect(shipAnalyticsLog).toHaveBeenCalledWith('plan.purchase_starter.in-app', expect.objectContaining({
+      source: 'test-source',
+      productId: expect.any(String),
+      fromPlan: 'professional',
+      toPlan: SubscriptionPlan.Starter,
+    }));
     // Should NOT call handlePurchaseSuccess for renewal of downgrade - no polling needed
     expect(mockHandlePurchaseSuccess).not.toHaveBeenCalled();
   });

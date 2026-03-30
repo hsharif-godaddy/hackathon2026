@@ -28,6 +28,8 @@ interface HigherPlansUpgradeContainerProps {
   onError?: (error: Error) => void
   source?: string
   itc?: string
+  /** Hivemind-driven recommended plan tier (e.g. 'professional' or 'ultimate') */
+  recommendedPlan?: SubscriptionPlan.Professional | SubscriptionPlan.Ultimate;
 }
 
 const HigherPlansUpgradeContainer = ({
@@ -37,6 +39,7 @@ const HigherPlansUpgradeContainer = ({
   onError,
   source,
   itc,
+  recommendedPlan,
 }: HigherPlansUpgradeContainerProps) => {
   const gasketData = useGasketData()
   const { getUserInfo } = useAuth()
@@ -61,6 +64,11 @@ const HigherPlansUpgradeContainer = ({
 
     logImpressionEvent('plan.purchase.success')()
     shipAnalyticsLog('airoplus.purchase.in-app', { source, productId, fromPlan: planBeforePurchase, toPlan: planAfterPurchase })
+
+    if (planType) {
+      logImpressionEvent(`plan.purchase_${planType}.success`)()
+      shipAnalyticsLog(`plan.purchase_${planType}.in-app`, { source, productId, fromPlan: planBeforePurchase, toPlan: planAfterPurchase })
+    }
 
     // Renewal: same plan before and after - no polling needed since plan won't change
     if (planBeforePurchase && planAfterPurchase && planBeforePurchase === planAfterPurchase) {
@@ -167,6 +175,7 @@ const HigherPlansUpgradeContainer = ({
         shopperId={shopperId}
         overrideItc={itc}
         accountId={entitlementId}
+        requestedPlanType={recommendedPlan}
         locale={gasketData?.intl?.locale || 'en-US'}
         app="airo-builder"
         source="app-builder-NES"

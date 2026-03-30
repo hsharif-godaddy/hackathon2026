@@ -17,6 +17,7 @@ const shipAnalyticsLogMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/gasket-config');
 vi.mock('@/hooks/useHivemind', () => ({
   useHivemind: () => ({ cohort: 'test-cohort', data: undefined, experiment: undefined }),
+  useIsInCohort: vi.fn(() => false),
 }));
 vi.mock('@/lib/logging', async (importOriginal) => {
   const mod = await importOriginal<typeof import('@/lib/logging')>();

@@ -18,6 +18,8 @@ import PageSection from '@/components/layout/PageSection'
 import PlanPriceDisplay from '@/components/layout/PricingSection/PlanPriceDisplay'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { InfoTooltip } from '@/components/ui/InfoTooltip'
+import { EXPERIMENT_IDS } from '@/config/experiments'
+import { useIsInCohort } from '@/hooks/useHivemind'
 import { usePricingOffers } from '@/hooks/usePricingOffers'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
 import { useSubscription } from '@/hooks/useSubscription'
@@ -27,7 +29,7 @@ import { PLAN_PUBLISH_LIMITS } from '@/lib/publish-limit'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { SubscriptionPlan } from '@/types/credits'
-import { generateClickEID } from '@/utils/instrumentation'
+import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
 
 // Session-scoped storage key for pending upgrade action
 const PENDING_UPGRADE_KEY = 'airo-pending-pricing-upgrade'
@@ -94,6 +96,14 @@ export default function PricingSection({ showHighTierPlans = false, onPricingVie
   const isInView = useInView(sectionRef, { amount: 0.1 })
   const visibleSinceRef = useRef<number | null>(null)
   const hasLoggedViewRef = useRef(false)
+  const hasLoggedPricingImpressionRef = useRef(false)
+
+  useEffect(() => {
+    if (isInView && !hasLoggedPricingImpressionRef.current) {
+      hasLoggedPricingImpressionRef.current = true
+      logImpressionEvent('homepage.pricing.view')()
+    }
+  }, [isInView])
 
   useEffect(() => {
     if (!onPricingViewEnd || hasLoggedViewRef.current) return
@@ -209,7 +219,11 @@ export default function PricingSection({ showHighTierPlans = false, onPricingVie
     ))
   }
 
+  const isInTreatment = useIsInCohort(EXPERIMENT_IDS.recommendedPlan, 'treatment')
+  const recommendedPlan = isInTreatment ? SubscriptionPlan.Ultimate : SubscriptionPlan.Professional;
+
   const paidCardStyles = "flex flex-col h-full bg-intents-ux-boxLowContrast-backgroundColor border border-intents-ux-box-borderColor rounded-2xl text-intents-ux-boxLowContrast-foregroundColor overflow-hidden"
+  const recommendedCardStyles = `${paidCardStyles} border-2 border-ring-ai relative overflow-visible shadow-[0_0_18px_rgba(139,92,246,0.8)]`
 
   return (
     <div ref={sectionRef}>
@@ -258,14 +272,16 @@ export default function PricingSection({ showHighTierPlans = false, onPricingVie
               </div>
             </div>
 
-            {/* Professional Plan - RECOMMENDED */}
-            <div className={`${paidCardStyles} border-2 border-ring-ai relative overflow-visible shadow-[0_0_18px_rgba(139,92,246,0.8)]`}>
-              <text.span
-                as="paragraph"
-                className="absolute -top-3 left-1/2 -translate-x-1/2 bg-ring-ai text-intents-ux-boxHighContrast-foregroundColor font-semibold px-4 py-1.5 rounded-full whitespace-nowrap shadow-lg z-10"
-                text={t('builder_pricing_recommended')}
-              />
-              <div className="p-4 flex flex-col h-full">
+            {/* Professional Plan */}
+            <div className={recommendedPlan === SubscriptionPlan.Professional ? recommendedCardStyles : paidCardStyles}>
+              {recommendedPlan === SubscriptionPlan.Professional && (
+                <text.span
+                  as="paragraph"
+                  className="absolute -top-3 left-1/2 -translate-x-1/2 bg-ring-ai text-intents-ux-boxHighContrast-foregroundColor font-semibold px-4 py-1.5 rounded-full whitespace-nowrap shadow-lg z-10"
+                  text={t('builder_pricing_recommended')}
+                />
+              )}
+              <div className={`p-4 flex flex-col h-full`}>
                 <text.h3 as="heading" size={0} className="mb-2" text={t('builder_pricing_professional_title')} />
                 <text.p size={1} className="mb-2 min-h-8" emphasis="passive" text={t('builder_pricing_professional_desc')} />
                 <PlanPriceDisplay planOffer={pricingData?.[SubscriptionPlan.Professional] ?? null} isLoading={isLoading} />
@@ -284,8 +300,15 @@ export default function PricingSection({ showHighTierPlans = false, onPricingVie
             </div>
 
             {/* Ultimate Plan */}
-            <div className={paidCardStyles}>
-              <div className="p-4 flex flex-col h-full">
+            <div className={recommendedPlan === SubscriptionPlan.Ultimate ? recommendedCardStyles : paidCardStyles}>
+              {recommendedPlan === SubscriptionPlan.Ultimate && (
+                <text.span
+                  as="paragraph"
+                  className="absolute -top-3 left-1/2 -translate-x-1/2 bg-ring-ai text-intents-ux-boxHighContrast-foregroundColor font-semibold px-4 py-1.5 rounded-full whitespace-nowrap shadow-lg z-10"
+                  text={t('builder_pricing_recommended')}
+                />
+              )}
+              <div className={`p-4 flex flex-col h-full`}>
                 <text.h3 as="heading" size={0} className="mb-2" text={t('builder_pricing_ultimate_title')} />
                 <text.p size={1} className="mb-2 min-h-8" emphasis="passive" text={t('builder_pricing_ultimate_desc')} />
                 <PlanPriceDisplay planOffer={pricingData?.[SubscriptionPlan.Ultimate] ?? null} isLoading={isLoading} />
