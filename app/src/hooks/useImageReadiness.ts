@@ -67,10 +67,11 @@ async function triggerReload(appId: string): Promise<void> {
  */
 export function useImageReadiness(
   hibernation: UseAppHibernationReturn,
-  appId: string | null
+  appId: string | null,
+  isCreateFlow = false
 ): UseImageReadinessReturn {
   const { data: isFeatureEnabled, isLoading: isFeatureLoading } = useSwitchboard('app-builder-app-on-demand-reload');
-  const canProceed = isFeatureEnabled === true && !hibernation.isHibernated && !hibernation.isResuming && !hibernation.resumeFailed;
+  const canProceed = isFeatureEnabled === true && !isCreateFlow && !hibernation.isHibernated && !hibernation.isResuming && !hibernation.resumeFailed;
 
   const startPollingForServer = useServerPollingStore((state) => state.startPollingForServer);
   const serverState = useServerPollingStore((state) =>
@@ -192,7 +193,9 @@ export function useImageReadiness(
     staleTime: 0,
   });
 
-  // React to poll results — state transitions happen here, not inside queryFn
+  // React to poll results — state transitions happen here, not inside queryFn.
+  // `serverWaitStartTimeRef` uses `??` to preserve any timestamp already set earlier
+  // in the polling-images phase, consistent with the `action === 'current'` case.
   useEffect(() => {
     if (phase !== 'polling-images' || !poll.data) return;
 
@@ -201,12 +204,12 @@ export function useImageReadiness(
     if (action === 'gave-up') {
       logger.warn('image-readiness.reloading.gave-up', { appId, polls: reloadingPollCountRef.current });
       logger.info('image-readiness.server-wait.start', { appId, reason: 'reloading-polls-exhausted' });
-      serverWaitStartTimeRef.current = Date.now();
+      serverWaitStartTimeRef.current = serverWaitStartTimeRef.current ?? Date.now();
       setPhase('waiting-server');
     } else if (action === 'timed-out') {
       logger.warn('image-readiness.reload.timeout', { appId });
       logger.info('image-readiness.server-wait.start', { appId, reason: 'reload-timeout' });
-      serverWaitStartTimeRef.current = Date.now();
+      serverWaitStartTimeRef.current = serverWaitStartTimeRef.current ?? Date.now();
       setPhase('waiting-server');
     } else if (action === 'current') {
       serverWaitStartTimeRef.current = serverWaitStartTimeRef.current ?? Date.now();
@@ -293,6 +296,11 @@ export function useImageReadiness(
 
   // Resume failed is handled by the hibernation layer; don't block
   if (hibernation.resumeFailed) {
+    return IMAGES_READY;
+  }
+
+  // Newly created apps already have the latest image; skip all status checks.
+  if (isCreateFlow) {
     return IMAGES_READY;
   }
 

@@ -96,8 +96,10 @@ function DevelopPageContent() {
   const appDetails = useAppDetails(appId);
   const hibernation = useAppHibernation(appDetails.data, appId, true);
 
-  // Image readiness - runs after hibernation resolves or immediately for non-hibernated apps
-  const imageReadiness = useImageReadiness(hibernation, appId);
+  // Image readiness - runs after hibernation resolves or immediately for non-hibernated apps.
+  // hasInitialPrompt is hydrated from sessionStorage on each RESET; it becomes false within
+  // the same page session once the initial prompt is sent and the sessionStorage keys clear.
+  const imageReadiness = useImageReadiness(hibernation, appId, init.context.hasInitialPrompt);
 
   // Log when resume completes - history will be loaded via WebSocket
   useEffect(() => {

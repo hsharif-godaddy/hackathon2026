@@ -130,6 +130,70 @@ describe('useImageReadiness', function useImageReadinessTests() {
     vi.clearAllMocks();
   });
 
+  describe('#create flow circuit-break', function createFlowTests() {
+    it('should return IMAGES_READY immediately without API calls when isCreateFlow is true', function skipOnCreate() {
+      const { result } = renderHook(
+        () => useImageReadiness(NOT_HIBERNATED, 'test-app-123', true),
+        { wrapper: createWrapper() }
+      );
+
+      expect(result.current.isReady).toBe(true);
+      expect(result.current.isChecking).toBe(false);
+      expect(result.current.isImageUpdating).toBe(false);
+      expect(result.current.error).toBeNull();
+      expect(appFetch).not.toHaveBeenCalled();
+    });
+
+    it('should return IMAGES_READY when isCreateFlow is true even with null appId', function skipOnCreateNullApp() {
+      const { result } = renderHook(
+        () => useImageReadiness(NOT_HIBERNATED, null, true),
+        { wrapper: createWrapper() }
+      );
+
+      expect(result.current.isReady).toBe(true);
+      expect(result.current.isChecking).toBe(false);
+      expect(appFetch).not.toHaveBeenCalled();
+    });
+
+    it('should return IMAGES_READY when isCreateFlow is true even during hibernation', function skipOnCreateHibernated() {
+      const { result } = renderHook(
+        () => useImageReadiness(HIBERNATED, 'test-app-123', true),
+        { wrapper: createWrapper() }
+      );
+
+      expect(result.current.isReady).toBe(true);
+      expect(result.current.isChecking).toBe(false);
+      expect(result.current.isImageUpdating).toBe(false);
+      expect(appFetch).not.toHaveBeenCalled();
+    });
+
+    // hasInitialPrompt can transition true → false within a page session: a RESET
+    // from useInitialization re-hydrates from sessionStorage, and once the initial
+    // prompt is sent the sessionStorage keys are cleared — a subsequent RESET yields
+    // hasInitialPrompt=false, resuming normal image readiness checks.
+    it('should start normal image check when isCreateFlow transitions from true to false', async function transitionToNormal() {
+      (appFetch as any).mockResolvedValueOnce(mockImageStatusResponse('current'));
+
+      const { result, rerender } = renderHook(
+        ({ createFlow }) => useImageReadiness(NOT_HIBERNATED, 'test-app-123', createFlow),
+        {
+          wrapper: createWrapper(),
+          initialProps: { createFlow: true },
+        }
+      );
+
+      expect(result.current.isReady).toBe(true);
+      expect(appFetch).not.toHaveBeenCalled();
+
+      rerender({ createFlow: false });
+
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalledWith('/api/sites/test-app-123/image-status');
+        expect(result.current.isReady).toBe(true);
+      });
+    });
+  });
+
   describe('#fast paths', function fastPathTests() {
     it('should short-circuit when status is current', async function shortCircuitCurrent() {
       (appFetch as any).mockResolvedValueOnce(mockImageStatusResponse('current'));
