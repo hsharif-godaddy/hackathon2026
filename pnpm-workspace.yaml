@@ -1,6 +1,7 @@
 packages:
   - "agents"
   - "app"
+  - "blog"
   - "packages/*"
   - "setup"
   - "cdk"

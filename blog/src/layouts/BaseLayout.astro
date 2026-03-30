@@ -1,0 +1,384 @@
+---
+import presentationCentral from '@ux/presentation-central';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = 'A blog built with Astro' } = Astro.props;
+
+let presentation: any = null;
+
+try {
+  const client = presentationCentral({
+    version: '3.0',
+    env: 'dev',
+    params: {
+      app: 'airo-blog',
+      market: 'en-us',
+      theme: 'godaddy:brand',
+      manifest: 'no-header'
+    },
+  });
+
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Request timed out after 5s')), 5000)
+  );
+
+  presentation = await Promise.race([client.request(), timeoutPromise]);
+} catch (err) {
+  console.error('Presentation Central error:', err);
+}
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script is:inline>
+      (function () {
+        var k = 'airo-blog-theme';
+        var s = localStorage.getItem(k);
+        var resolved =
+          s === 'light' ? 'light' : s === 'dark' ? 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.colorScheme = resolved;
+        document.documentElement.style.colorScheme = resolved;
+      })();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <title>{title}</title>
+
+    {/* Hints: preconnect, dns-prefetch, and preload */}
+    {presentation?.hints?.preconnect && <Fragment set:html={presentation.hints.preconnect} />}
+    {presentation?.hints?.dnsprefetch && <Fragment set:html={presentation.hints.dnsprefetch} />}
+    {presentation?.hints?.preload?.fonts && <Fragment set:html={presentation.hints.preload.fonts} />}
+    {presentation?.hints?.preload?.css && <Fragment set:html={presentation.hints.preload.css} />}
+    {presentation?.hints?.preload?.js && <Fragment set:html={presentation.hints.preload.js} />}
+
+    {/* CSS: iterate over all css entries (uxcore, theme, fonts, hcs) */}
+    {presentation?.css && Object.values(presentation.css).map((cssHtml: any) => (
+      <Fragment set:html={cssHtml} />
+    ))}
+
+    {/* Favicons */}
+    {presentation?.favicons && <Fragment set:html={presentation.favicons} />}
+
+    {/* Config scripts: setup must come first, then others */}
+    {presentation?.config?.setup && <Fragment set:html={presentation.config.setup} />}
+    {presentation?.config?.page && <Fragment set:html={presentation.config.page} />}
+    {presentation?.config?.trfq && <Fragment set:html={presentation.config.trfq} />}
+    {presentation?.config?.tealium && <Fragment set:html={presentation.config.tealium} />}
+    {presentation?.config?.hcs && <Fragment set:html={presentation.config.hcs} />}
+
+    <style is:global>
+      :root {
+        --color-bg: #ffffff;
+        --color-text: #111111;
+        --color-muted: #767676;
+        --color-accent: #00a4a6;
+        --color-accent-hover: #09757a;
+        --color-border: #e8eaeb;
+        --color-code-bg: #f5f5f5;
+        --max-width: 720px;
+        --font-sans: 'gdsherpa', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        --font-serif: 'gd-sage', Georgia, 'Times New Roman', serif;
+      }
+
+      html[data-color-scheme='dark'] {
+        --color-bg: #121214;
+        --color-text: #ececf1;
+        --color-muted: #9b9ba3;
+        --color-accent: #2dd4bf;
+        --color-accent-hover: #5eead4;
+        --color-border: #2e2e33;
+        --color-code-bg: #1e1e22;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: var(--font-sans);
+        background-color: var(--color-bg);
+        color: var(--color-text);
+        line-height: 1.6;
+        font-weight: 400;
+        min-height: 100vh;
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .site-shell {
+        flex: 1 0 auto;
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+      }
+
+      main.content-wrapper {
+        flex: 1 1 auto;
+      }
+
+      a {
+        color: var(--color-accent);
+        text-decoration: none;
+        transition: color 0.2s ease;
+      }
+
+      a:hover {
+        color: var(--color-accent-hover);
+      }
+
+      .site-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem 2rem;
+        border-bottom: 1px solid var(--color-border);
+      }
+
+      .site-header__end {
+        display: flex;
+        align-items: center;
+        gap: 1.25rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      .theme-toggle {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.125rem;
+        border: 1px solid var(--color-border);
+        border-radius: 9999px;
+        gap: 0.125rem;
+        background: var(--color-bg);
+      }
+
+      .theme-toggle__btn {
+        font-family: inherit;
+        font-size: 0.75rem;
+        font-weight: 500;
+        line-height: 1.25;
+        padding: 0.35rem 0.65rem;
+        border: none;
+        border-radius: 9999px;
+        cursor: pointer;
+        color: var(--color-muted);
+        background: transparent;
+        transition: color 0.15s ease, background-color 0.15s ease;
+      }
+
+      .theme-toggle__btn:hover {
+        color: var(--color-text);
+      }
+
+      .theme-toggle__btn[aria-pressed='true'] {
+        color: var(--color-text);
+        background: var(--color-border);
+      }
+
+      .site-logo {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.375rem;
+        background-color: #6f2b8c;
+        color: #fff;
+        font-weight: 500;
+        font-size: 0.875rem;
+        padding: 0.375rem 1rem;
+        border-radius: 9999px;
+        text-decoration: none;
+        transition: opacity 0.2s ease;
+      }
+
+      .site-logo:hover {
+        opacity: 0.85;
+        color: #fff;
+      }
+
+      .site-logo svg {
+        flex-shrink: 0;
+      }
+
+      .hero {
+        text-align: center;
+        padding: 4rem 2rem 3rem;
+      }
+
+      .hero h1 {
+        font-family: var(--font-serif);
+        font-size: 3rem;
+        font-weight: 400;
+        margin-bottom: 0.5rem;
+        letter-spacing: -0.02em;
+      }
+
+      .hero .tagline {
+        color: var(--color-muted);
+        font-size: 1rem;
+      }
+
+      .content-wrapper {
+        max-width: var(--max-width);
+        margin: 0 auto;
+        padding: 0 2rem;
+      }
+
+      .post-list {
+        list-style: none;
+        padding: 2rem 0;
+      }
+
+      .post-item {
+        text-align: center;
+        padding: 2.5rem 0;
+        border-bottom: 1px solid var(--color-border);
+      }
+
+      .post-item:last-child {
+        border-bottom: none;
+      }
+
+      .post-meta {
+        font-size: 0.875rem;
+        color: var(--color-muted);
+        margin-bottom: 0.75rem;
+      }
+
+      .post-meta .category {
+        color: var(--color-text);
+      }
+
+      .post-title {
+        font-family: var(--font-serif);
+        font-size: 1.75rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+        line-height: 1.3;
+      }
+
+      .post-title a {
+        color: var(--color-text);
+      }
+
+      .post-title a:hover {
+        color: var(--color-accent);
+      }
+
+      .post-excerpt {
+        color: var(--color-muted);
+        font-size: 0.9375rem;
+        line-height: 1.7;
+        margin-bottom: 1rem;
+        max-width: 600px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      .read-more {
+        font-size: 0.9375rem;
+        font-weight: 500;
+      }
+
+      /* Article styles */
+      article.post-content {
+        padding: 3rem 0;
+      }
+
+      article.post-content h1 {
+        font-family: var(--font-serif);
+        font-size: 2.5rem;
+        font-weight: 700;
+        text-align: center;
+        margin-bottom: 1rem;
+        line-height: 1.2;
+      }
+
+      article.post-content h2 {
+        font-family: var(--font-serif);
+        font-size: 1.75rem;
+        font-weight: 700;
+        margin: 2.5rem 0 1rem;
+      }
+
+      article.post-content h3 {
+        font-size: 1.25rem;
+        font-weight: 700;
+        margin: 2rem 0 0.75rem;
+      }
+
+      article.post-content p {
+        margin-bottom: 1.5rem;
+        line-height: 1.8;
+      }
+
+      article.post-content ul,
+      article.post-content ol {
+        margin: 1.5rem 0;
+        padding-left: 1.5rem;
+      }
+
+      article.post-content li {
+        margin-bottom: 0.5rem;
+        line-height: 1.7;
+      }
+
+      article.post-content blockquote {
+        border-left: 3px solid var(--color-accent);
+        padding-left: 1.5rem;
+        margin: 2rem 0;
+        color: var(--color-muted);
+        font-style: italic;
+      }
+
+      article.post-content code {
+        background: var(--color-code-bg);
+        padding: 0.2em 0.4em;
+        border-radius: 3px;
+        font-size: 0.9em;
+      }
+
+      article.post-content pre {
+        background: var(--color-code-bg);
+        padding: 1.5rem;
+        border-radius: 6px;
+        overflow-x: auto;
+        margin: 1.5rem 0;
+      }
+
+      article.post-content pre code {
+        background: none;
+        padding: 0;
+      }
+
+      .site-footer {
+        text-align: center;
+        padding: 3rem 2rem;
+        color: var(--color-muted);
+        font-size: 0.875rem;
+        border-top: 1px solid var(--color-border);
+        margin-top: 3rem;
+      }
+    </style>
+  </head>
+  <body>
+    {presentation?.components?.header && <Fragment set:html={presentation.components.header} />}
+    <div class="site-shell">
+      <slot />
+    </div>
+    {presentation?.components?.footer && <Fragment set:html={presentation.components.footer} />}
+    {presentation?.js && Object.values(presentation.js).map((jsHtml: any) => (
+      <Fragment set:html={jsHtml} />
+    ))}
+    {presentation?.hydrate && <Fragment set:html={presentation.hydrate} />}
+  </body>
+</html>

@@ -1,0 +1,139 @@
+name: AWS Deploy Blog
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "blog/**"
+      - "packages/eslint-config-airo/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+
+  workflow_dispatch:
+    inputs:
+      DEPLOY_TO_ENV:
+        description: "Environment to deploy the artifact"
+        required: true
+        default: "dev-private"
+        type: choice
+        options:
+          - "dev-private"
+          - "test"
+          - "prod"
+
+run-name: "[Env: ${{ github.event_name == 'push' && 'prod' || inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  continuous-integration:
+    name: "[Env: ${{ github.event_name == 'push' && 'prod' || inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }}"
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+
+    env:
+      DEPLOY_TO_ENV: ${{ github.event_name == 'push' && 'prod' || inputs.DEPLOY_TO_ENV }}
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - id: katana-app
+        name: Get Katana App Info
+        uses: gdcorp-actions/katana-get-app@v1
+        with:
+          path: /blog
+
+      - name: Get Artifactory Token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@88e9eba31c07e31beefa4cef5c0e93d1af9535d7 # v4.6.1
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+
+      - name: Setup Artifactory Creds
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "always-auth=true" > /tmp/.npmrc-secret
+          echo "progress=false" >> /tmp/.npmrc-secret
+          echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" >> /tmp/.npmrc-secret
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/:_authToken=${OIDC_TOKEN}" >> /tmp/.npmrc-secret
+
+      - name: Golden Container Registry Login
+        run: |
+          aws ecr get-login-password --region us-west-2 | docker login 764525110978.dkr.ecr.us-west-2.amazonaws.com -u AWS --password-stdin
+
+      - name: Cache Registry Login
+        run: |
+          set -e
+          unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+          export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
+          $(aws sts assume-role --role-arn arn:aws:iam::694282668781:role/GD-AWS-SSG-Deploy-Role --role-session-name GHASession --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" --output text))
+          aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 694282668781.dkr.ecr.us-west-2.amazonaws.com
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
+        with:
+          driver: docker-container
+
+      - name: Build Container
+        uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355 # v6.10.0
+        with:
+          context: .
+          file: blog/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: ${{ steps.katana-app.outputs.app }}:${{ github.sha }}
+          secret-files: |
+            npmrc=/tmp/.npmrc-secret
+          cache-from: type=registry,ref=694282668781.dkr.ecr.us-west-2.amazonaws.com/airo-builder/blog:cache
+          cache-to: type=registry,ref=694282668781.dkr.ecr.us-west-2.amazonaws.com/airo-builder/blog:cache,mode=max
+
+      - name: Cleanup Credentials
+        if: always()
+        run: rm -f /tmp/.npmrc-secret
+
+      - id: katana-publish
+        name: Publish Katana Artifact
+        uses: gdcorp-actions/katana-publish-artifact@v1
+        with:
+          namespace: ${{ steps.katana-app.outputs.namespace }}
+          app: ${{ steps.katana-app.outputs.app }}
+          image_name: ${{ steps.katana-app.outputs.app }}:${{ github.sha }}
+          artifact_kind: ecs
+          artifact_options_json: |
+            {
+              "protocol": "https",
+              "ports": [8443],
+              "healthcheckPath": "/",
+              "healthcheckGracePeriod": 30
+            }
+
+      - name: Promote to ${{ env.DEPLOY_TO_ENV }} Environment
+        uses: gdcorp-actions/katana-promote-artifact@v1
+        with:
+          namespace: ${{ steps.katana-app.outputs.namespace }}
+          app: ${{ steps.katana-app.outputs.app }}
+          environment: ${{ env.DEPLOY_TO_ENV }}
+          artifact_id: ${{ steps.katana-publish.outputs.artifact_id }}
+
+      - name: Publish Summary
+        run: |
+          {
+            printf '**Build Summary:**\n\n```\n'
+            echo "Artifact ID: ${{ steps.katana-publish.outputs.artifact_id }}"
+            echo "Deployed to: ${{ env.DEPLOY_TO_ENV }}"
+            echo "Image: ${{ steps.katana-publish.outputs.image_uri }}"
+            echo "Commit: ${{ github.sha }}"
+            echo "Branch: ${{ github.ref_name }}"
+            echo "Actor: ${{ github.actor }}"
+            printf '\n```\n\n'
+          } >> $GITHUB_STEP_SUMMARY
