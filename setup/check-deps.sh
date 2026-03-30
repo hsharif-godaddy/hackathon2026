@@ -63,11 +63,21 @@ check_nodejs() {
     fi
 }
 
-# Check that a Node.js version manager (mise or nvm) is installed.
+# Check that a Node.js version manager (mise, fnm, asdf, or nvm) is installed.
 # .envrc relies on one of these to load the correct Node.js version from .nvmrc.
 check_node_version_manager() {
     if command -v mise &> /dev/null; then
         print_status "mise is installed (Node.js version manager)"
+        return 0
+    fi
+
+    if command -v fnm &> /dev/null; then
+        print_status "fnm is installed (Node.js version manager)"
+        return 0
+    fi
+
+    if command -v asdf &> /dev/null; then
+        print_status "asdf is installed (Node.js version manager)"
         return 0
     fi
 
@@ -76,13 +86,21 @@ check_node_version_manager() {
         return 0
     fi
 
-    print_warning "No Node.js version manager found (mise or nvm)"
+    print_warning "No Node.js version manager found (mise, fnm, asdf, or nvm)"
     echo ""
-    print_info "The .envrc file uses mise or nvm to load the correct Node.js version from .nvmrc"
+    print_info "The .envrc file uses mise, fnm, asdf, or nvm to load the correct Node.js version from .nvmrc"
     echo ""
     echo "  Install mise (recommended):"
     echo "    brew install mise          # macOS"
     echo "    https://mise.jdx.dev/installing-mise.html  # other platforms"
+    echo ""
+    echo "  Or install fnm:"
+    echo "    brew install fnm           # macOS"
+    echo "    https://github.com/Schniz/fnm#installation"
+    echo ""
+    echo "  Or install asdf:"
+    echo "    brew install asdf          # macOS"
+    echo "    https://asdf-vm.com/guide/getting-started.html"
     echo ""
     echo "  Or install nvm:"
     echo "    https://github.com/nvm-sh/nvm#installing-and-updating"
@@ -328,10 +346,16 @@ show_nodejs_install_instructions() {
     echo "  mise (recommended):  brew install mise"
     echo "    https://mise.jdx.dev/installing-mise.html"
     echo ""
+    echo "  fnm:  brew install fnm"
+    echo "    https://github.com/Schniz/fnm#installation"
+    echo ""
+    echo "  asdf: brew install asdf"
+    echo "    https://asdf-vm.com/guide/getting-started.html"
+    echo ""
     echo "  nvm:"
     echo "    https://github.com/nvm-sh/nvm#installing-and-updating"
     echo ""
-    echo "  After installing, run: nvm install 22  (or mise install)"
+    echo "  After installing, run the appropriate install command for your manager"
     echo ""
     print_info "Note: Node.js 22.16.0+ is required to fix ERR_INVALID_URL_SCHEME bug"
     echo ""
@@ -449,7 +473,7 @@ show_direnv_install_instructions() {
     echo "  direnv allow"
     echo ""
     print_info "Once direnv is set up, it will automatically:"
-    echo "  - Load the correct Node.js version (22.16.0+) via mise or nvm"
+    echo "  - Load the correct Node.js version (22.16.0+) via mise, fnm, asdf, or nvm"
     echo "  - Ensure pnpm is installed"
     echo "  - Set up workspace protection for pnpm commands"
     echo ""
