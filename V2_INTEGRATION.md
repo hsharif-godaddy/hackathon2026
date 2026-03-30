@@ -537,7 +537,7 @@ Requires subscriptionId and systemId for deletion:
 
 ### Adapter Factory & Feature Flag
 
-**Factory**: `app/src/lib/control-plane/factory.ts`
+**Factory**: `app/src/lib/control-plane/adapter-factory.ts`
 
 Returns appropriate adapter based on environment variable:
 
@@ -1042,7 +1042,7 @@ ENABLE_AUTH=true                             # Enable authentication (false = by
 
 **Rollback**: Set flag to `false`, restart services, legacy adapter takes over
 
-**Implementation**: `app/src/lib/control-plane/factory.ts`
+**Implementation**: `app/src/lib/control-plane/adapter-factory.ts`
 
 ---
 

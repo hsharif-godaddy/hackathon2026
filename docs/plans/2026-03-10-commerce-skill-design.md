@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # Commerce Skill: Agent-to-Skill Rearchitecture
 
 Replace the Commerce Agent (sub-agent with handoffs and ~1,000 lines of prompts) with a Commerce Skill that runs within the Develop Agent. Deterministic workflows execute in code; the agent only handles user interaction and site customisation.

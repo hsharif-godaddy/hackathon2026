@@ -60,7 +60,7 @@ const agents = factory.defineAgents({
   myAgent: {
     name: "My Agent",
     system: "You are a helpful assistant...",
-    model: "gpt-4o",
+    model: await getModel("claude4"),
     tools: { weather: weatherTool },
     maxSteps: 5,
     stopAfterTools: ["weather"],

@@ -1,3 +1,7 @@
+---
+status: not-implemented
+---
+
 # Proposal: Integrate FileContextManager with Message Compression System
 
 ## Executive Summary

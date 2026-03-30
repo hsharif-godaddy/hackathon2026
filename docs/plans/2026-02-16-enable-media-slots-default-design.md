@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # Enable Media Slots by Default & Delete Old Media Search Tool
 
 **Date:** 2026-02-16

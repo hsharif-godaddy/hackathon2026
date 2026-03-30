@@ -59,7 +59,7 @@ graph TB
 
 ### Component Changes
 
-#### Airo Supervisor (renamed from dev-supervisor)
+#### dev-supervisor
 
 The supervisor will run on both preview and publish tasks, enabling:
 
@@ -98,7 +98,7 @@ sequenceDiagram
 
 #### Publish Task Startup Logic
 
-When the publish task starts (or restarts), the airo-supervisor determines what to serve by checking for an existing published version:
+When the publish task starts (or restarts), the dev-supervisor determines what to serve by checking for an existing published version:
 
 ```mermaid
 flowchart TD
@@ -484,7 +484,7 @@ The secrets-worker maintains full backwards compatibility:
 
 ### Supervisor Publish Endpoint
 
-The airo-supervisor on the publish task exposes a publish API:
+The dev-supervisor on the publish task exposes a publish API:
 
 ```http
 POST /publish
@@ -541,7 +541,7 @@ In every phase, this should be implemented in a completely backwards compatible 
 
 ### Phase 1: Supervisor Enhancement
 
-1. Rename `dev-supervisor` to `airo-supervisor`
+1. Enhance `dev-supervisor` with publish API
 2. Add publish API endpoint
 3. Implement dist loading from Ceph
 4. Add "Coming Soon" default page

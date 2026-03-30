@@ -45,30 +45,56 @@ pnpm add zod
 ### Basic Agent Setup
 
 ```typescript
-import { Agent, openaiModels } from "@airo/ai-lib";
+import { createAgentFactory, getModel } from "@airo/ai-lib";
+
+const factory = createAgentFactory();
 
 // Create a simple agent
-const model = openaiModels.gpt4o({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const model = await getModel("gpt4o");
 
-const agent = new Agent({
-  name: "Assistant",
-  systemPrompt: "You are a helpful AI assistant.",
-  model: model,
-  temperature: 0.7,
+const agents = factory.defineAgents({
+  assistant: {
+    name: "Assistant",
+    systemPrompt: "You are a helpful AI assistant.",
+    model: model,
+    temperature: 0.7,
+  },
 });
 
 // Generate a response
+const agent = agents.get("assistant");
 const result = await agent.generate("Hello, how are you?");
 console.log(result.content);
+```
+
+### With AWS Bedrock
+
+```typescript
+import { createAgentFactory, getModel } from "@airo/ai-lib";
+
+// Set AWS credentials in environment
+process.env.AWS_REGION = "us-west-2";
+process.env.AWS_PROFILE = "your-profile";
+
+const factory = createAgentFactory();
+const model = await getModel("sonnet4");
+
+const agents = factory.defineAgents({
+  claude: {
+    name: "Claude Assistant",
+    model: model,
+    systemPrompt: "You are Claude, an AI assistant.",
+  },
+});
+
+const result = await agents.get("claude").generate("Explain quantum computing");
 ```
 
 ## Core Concepts
 
 ### Agents
 
-Agents are the main interface for AI interactions:
+Agents are created via `AgentFactory.defineAgents()` and returned as `AgentWrapper` instances:
 
 ```typescript
 interface AgentConfig {
@@ -84,13 +110,21 @@ interface AgentConfig {
 
 ### Models
 
-The library supports multiple AI providers:
+The library uses a unified `getModel()` function that auto-routes to the correct provider:
 
 ```typescript
+import { getModel, getEmbeddingModel } from "@airo/ai-lib";
+
 // OpenAI models
-import { openaiModels } from "@airo/ai-lib";
-const gpt4 = openaiModels.gpt4o({ apiKey: "sk-..." });
-const gpt35 = openaiModels.gpt35Turbo({ apiKey: "sk-..." });
+const gpt4 = await getModel("gpt4o");
+const gptMini = await getModel("gpt4o-mini");
+
+// Claude models (via Bedrock or Anthropic)
+const sonnet = await getModel("sonnet4");
+const haiku = await getModel("haiku");
+
+// Embedding models
+const embedModel = await getEmbeddingModel("text-embedding-3-small");
 ```
 
 ### Tools
@@ -112,10 +146,12 @@ const weatherTool = createTool(
   },
 );
 
-const agent = new Agent({
-  name: "Weather Bot",
-  model: model,
-  tools: { weather: weatherTool },
+const agents = factory.defineAgents({
+  weatherBot: {
+    name: "Weather Bot",
+    model: await getModel("gpt4o"),
+    tools: { weather: weatherTool },
+  },
 });
 ```
 
@@ -124,7 +160,7 @@ const agent = new Agent({
 ### Simple Text Generation
 
 ```typescript
-import { Agent } from "@airo/ai-lib";
+const agent = agents.get("assistant");
 
 // Basic generation
 const result = await agent.generate("Write a haiku about coding");
@@ -166,7 +202,7 @@ if (result.toolCalls && result.toolCalls.length > 0) {
 ### File Processing
 
 ```typescript
-import { FileInput } from "@airo/ai-lib";
+import { processFiles, type FileInput } from "@airo/ai-lib";
 
 const files: FileInput[] = [
   {
@@ -179,70 +215,75 @@ const files: FileInput[] = [
   },
 ];
 
-const result = await agent.processFiles(files, "Summarize these documents");
-console.log(result.content);
-console.log("Processed files:", result.fileContext.files.length);
+const fileContext = await processFiles(files);
+console.log("Processed files:", fileContext.files.length);
+
+const result = await agent.generate("Summarize these documents", {
+  files: fileContext.files,
+});
+```
+
+### Embeddings
+
+```typescript
+import {
+  getEmbeddingModel,
+  cosineSimilarity,
+  findMostSimilar,
+} from "@airo/ai-lib";
+
+const embedModel = await getEmbeddingModel("text-embedding-3-small");
+
+const texts = [
+  "Machine learning is fascinating",
+  "AI will transform the world",
+  "The weather is nice today",
+];
+
+// Generate embeddings using the embedding model directly
+// ...
+
+// Find similarity
+const queryEmbedding = [
+  /* embedding vector */
+];
+const allEmbeddings = [
+  /* array of embedding vectors */
+];
+const similarTexts = findMostSimilar(queryEmbedding, allEmbeddings, texts, 2);
+console.log("Most similar:", similarTexts);
 ```
 
 ## Advanced Features
 
-### Provider Registry
-
-Configure providers globally:
-
-```typescript
-import {
-  providerRegistry,
-  configureProvider,
-  setDefaultProvider,
-} from "@airo/ai-lib";
-
-// Configure OpenAI provider
-configureProvider("gpt-4", {
-  type: "openai",
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: process.env.OPENAI_BASE_URL,
-});
-
-// Set default
-setDefaultProvider("gpt-4");
-
-// Now use string model IDs
-const agent = new Agent({
-  name: "Smart Agent",
-  model: "gpt-4", // Uses configured provider
-  systemPrompt: "You are helpful.",
-});
-```
-
 ### Agent Factory
 
-Create agents from configurations:
+Create and manage agents centrally:
 
 ```typescript
-import { createAgentFactory, AgentFactory } from "@airo/ai-lib";
+import { createAgentFactory, getModel } from "@airo/ai-lib";
 
 const factory = createAgentFactory({
-  defaultModel: "gpt-4",
   defaultTemperature: 0.7,
-  globalTools: {
-    search: searchTool,
-    calculator: calcTool,
+});
+
+// Define specialized agents
+const agents = factory.defineAgents({
+  coder: {
+    name: "Code Assistant",
+    systemPrompt: "You are an expert programmer.",
+    model: await getModel("gpt4o"),
+  },
+  writer: {
+    name: "Content Writer",
+    systemPrompt: "You write engaging content.",
+    model: await getModel("gpt4o-mini"),
+    temperature: 0.9,
   },
 });
 
-// Create specialized agents
-const coder = factory.createAgent({
-  name: "Code Assistant",
-  systemPrompt: "You are an expert programmer.",
-  tools: ["search"], // Subset of global tools
-});
-
-const writer = factory.createAgent({
-  name: "Content Writer",
-  systemPrompt: "You write engaging content.",
-  temperature: 0.9,
-});
+const coder = agents.get("coder");
+const writer = agents.get("writer");
 ```
 
 ### Custom Message Builders
@@ -266,36 +307,18 @@ const conversationBuilder = createConversationMessageBuilder(
   { maxHistory: 10 },
 );
 
-const agent = new Agent({
-  name: "Memory Agent",
-  model: model,
-  messageBuilder: conversationBuilder,
+const agents = factory.defineAgents({
+  memoryAgent: {
+    name: "Memory Agent",
+    model: await getModel("gpt4o"),
+    messageBuilder: conversationBuilder,
+  },
 });
 
 // Context persists across calls
+const agent = agents.get("memoryAgent");
 await agent.generate("My name is John");
 await agent.generate("What is my name?"); // Remembers "John"
-```
-
-### Streaming Agentic Runner
-
-For complex multi-step reasoning:
-
-```typescript
-import { createStreamingAgenticRunner } from "@airo/ai-lib";
-
-const runner = createStreamingAgenticRunner(agent, {
-  maxSteps: 5,
-  onStepStart: (step) => console.log(`Step ${step}: Starting...`),
-  onStepComplete: (step, result) =>
-    console.log(`Step ${step}: ${result.content}`),
-  onToolCall: (tool, input) => console.log(`Calling ${tool} with`, input),
-});
-
-const result = await runner.runStreamingLoopWithCallbacks(
-  "Research and write a summary about quantum computing",
-  { maxSteps: 3 },
-);
 ```
 
 ### WebSocket Integration
@@ -308,8 +331,8 @@ import { createWebSocketServer } from "@airo/ai-transport";
 const wsServer = createWebSocketServer({
   port: 8080,
   agents: {
-    assistant: agent,
-    coder: coder,
+    assistant: agents.get("assistant"),
+    coder: agents.get("coder"),
   },
   onConnection: (socket, agentId) => {
     console.log(`Client connected to ${agentId}`);
@@ -336,21 +359,52 @@ socket.on("agent:chunk", (chunk) => {
 ### OpenAI Setup
 
 ```typescript
-import { openaiModels } from "@airo/ai-lib";
+import { getModel } from "@airo/ai-lib";
 
-// Basic configuration
-const model = openaiModels.gpt4o({
-  apiKey: process.env.OPENAI_API_KEY,
+// Set OPENAI_API_KEY in environment, then:
+const model = await getModel("gpt4o");
+
+// Or with explicit config:
+const model = await getModel("gpt4o", {
+  openaiApiKey: "sk-...",
+  openaiBaseUrl: "https://your-proxy.com/v1",
+});
+```
+
+### AWS Bedrock Setup
+
+```typescript
+import { getModel } from "@airo/ai-lib";
+
+// Environment variables
+process.env.AWS_REGION = "us-west-2";
+process.env.AWS_PROFILE = "your-profile";
+
+// Or programmatic credentials
+const model = await getModel("sonnet4", {
+  awsRegion: "us-east-1",
+  awsAccessKeyId: "your-key",
+  awsSecretAccessKey: "your-secret",
 });
 
-// Custom configuration
-const model = openaiModels.gpt35Turbo({
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: "https://your-proxy.com/v1",
-  defaultQuery: {
-    timeout: 30000,
-  },
-});
+// Available Claude models via getModel():
+const sonnet4 = await getModel("sonnet4");
+const haiku = await getModel("haiku");
+const claude4 = await getModel("claude4");
+```
+
+### Checking Available Models
+
+```typescript
+import { getAvailableModels, isModelSupported } from "@airo/ai-lib";
+
+// List all available model short names
+const models = getAvailableModels();
+console.log(models); // ['gpt4o', 'gpt4o-mini', 'sonnet4', 'haiku', ...]
+
+// Check if a model name is supported
+console.log(isModelSupported("gpt4o")); // true
+console.log(isModelSupported("fake")); // false
 ```
 
 ## Error Handling
@@ -404,7 +458,11 @@ try {
 ### Retry Logic
 
 ```typescript
-async function generateWithRetry(agent: Agent, prompt: string, maxRetries = 3) {
+async function generateWithRetry(
+  agent: AgentWrapper,
+  prompt: string,
+  maxRetries = 3,
+) {
   for (let i = 0; i < maxRetries; i++) {
     try {
       return await agent.generate(prompt);
@@ -436,24 +494,30 @@ if (!process.env.OPENAI_API_KEY) {
 ### 2. Model Selection
 
 ```typescript
-// Production: Use specific model versions
-const model = openaiModels.gpt4o({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import { getModel } from "@airo/ai-lib";
+
+// Use short names — getModel() resolves the full model ID automatically
+const production = await getModel("sonnet4");
+const fast = await getModel("gpt4o-mini");
 ```
 
 ### 3. Resource Management
 
 ```typescript
-// Reuse agents and models
-const agentPool = new Map<string, Agent>();
+// Reuse agents — define once, use everywhere
+const factory = createAgentFactory();
+const agents = factory.defineAgents({
+  assistant: {
+    name: "Assistant",
+    model: await getModel("gpt4o"),
+    systemPrompt: "...",
+  },
+  coder: { name: "Coder", model: await getModel("gpt4o"), systemPrompt: "..." },
+});
 
-function getAgent(type: string): Agent {
-  if (!agentPool.has(type)) {
-    agentPool.set(type, createAgentForType(type));
-  }
-  return agentPool.get(type)!;
-}
+// Get agents by ID
+const assistant = agents.get("assistant");
+const coder = agents.get("coder");
 ```
 
 ### 4. Token Usage Monitoring
@@ -508,13 +572,25 @@ const parsed = ResponseSchema.parse(JSON.parse(result.content));
 
 ### Common Issues
 
-**"String model IDs require global provider setup"**
+**"Failed to generate Bedrock embeddings"**
 
 ```typescript
-// Fix: Configure provider registry
-import { configureProvider, setDefaultProvider } from "@airo/ai-lib";
-configureProvider("gpt-4", { type: "openai", apiKey: "..." });
-setDefaultProvider("gpt-4");
+// Fix: Check AWS credentials and region
+console.log("AWS Region:", process.env.AWS_REGION);
+console.log("AWS Profile:", process.env.AWS_PROFILE);
+
+// Test model support
+import { isModelSupported } from "@airo/ai-lib";
+console.log(isModelSupported("sonnet4")); // true
+```
+
+**"Cannot read properties of undefined (reading 'textStream')"**
+
+```typescript
+// Fix: Use getModel() to get a proper model instance
+import { getModel } from "@airo/ai-lib";
+const model = await getModel("sonnet4");
+// Don't use: const model = 'claude-3-5-sonnet' (string without provider)
 ```
 
 **TypeScript compilation errors**
@@ -574,33 +650,19 @@ const result = await monitor.measure("agent-generation", () =>
 
 ### Core Classes
 
-#### Agent
+#### AgentWrapper
 
 ```typescript
-class Agent {
-  constructor(config: AgentConfig);
-
-  async generate(input: string, context?: AgentContext): Promise<AgentResult>;
+class AgentWrapper {
+  generate(input: string, context?: AgentContext): Promise<AgentResult>;
   generateStream(
     input: string,
     context?: AgentContext,
   ): AsyncGenerator<string, AgentResult>;
-  async executeWithTools(
+  executeWithTools(
     input: string,
     context?: AgentContext,
   ): Promise<AgentResult & { toolExecutions: ToolExecutionResult[] }>;
-  async generateImage(
-    options: ImageGenerationOptions,
-  ): Promise<ImageGenerationResult>;
-  async generateEmbeddings(
-    values: string | string[],
-    options?: EmbeddingOptions,
-  ): Promise<EmbeddingsResult>;
-  async processFiles(
-    files: FileInput[],
-    prompt: string,
-    context?: AgentContext,
-  ): Promise<AgentResult & { fileContext: FileInputContext }>;
 
   getConfig(): AgentConfig;
   hasTools(): boolean;
@@ -612,14 +674,33 @@ class Agent {
 
 ```typescript
 class AgentFactory {
-  constructor(config: AgentFactoryConfig);
-
-  createAgent(config: Partial<AgentConfig>): Agent;
-  getDefaultModel(): LanguageModel;
-  setDefaultModel(model: LanguageModel): void;
-  registerGlobalTool(name: string, tool: any): void;
-  listAvailableTools(): string[];
+  constructor(config?: GlobalAgentConfig);
+  defineAgents<T>(configs: T): AgentsCollection;
 }
+
+function createAgentFactory(config?: GlobalAgentConfig): AgentFactory;
+```
+
+### Model Functions
+
+```typescript
+// Get a language model by short name
+function getModel(
+  modelName: string,
+  config?: ProviderConfig,
+): Promise<LanguageModel>;
+
+// Get an embedding model by short name
+function getEmbeddingModel(
+  modelName: string,
+  config?: ProviderConfig,
+): Promise<EmbeddingModel>;
+
+// List available model short names
+function getAvailableModels(): string[];
+
+// Check if a model name is supported
+function isModelSupported(modelName: string): boolean;
 ```
 
 ### Type Definitions
@@ -679,11 +760,6 @@ export function createTool<TInput, TOutput>(
   schema: z.ZodSchema<TInput>,
   execute: (input: TInput) => Promise<TOutput> | TOutput,
 ): Tool<TInput, TOutput>;
-
-// Provider management
-export function configureProvider(name: string, config: ProviderConfig): void;
-export function setDefaultProvider(name: string): void;
-export const providerRegistry: ProviderRegistry;
 ```
 
 ## Migration Guide
@@ -701,11 +777,17 @@ const result = await generateText({
 });
 
 // After (AI-Lib)
-import { Agent, openaiModels } from "@airo/ai-lib";
+import { createAgentFactory, getModel } from "@airo/ai-lib";
 
-const model = openaiModels.gpt4o({ apiKey: "..." });
-const agent = new Agent({ name: "Assistant", model });
-const result = await agent.generate("Hello");
+const factory = createAgentFactory();
+const agents = factory.defineAgents({
+  assistant: {
+    name: "Assistant",
+    model: await getModel("gpt4o"),
+    systemPrompt: "You are helpful.",
+  },
+});
+const result = await agents.get("assistant").generate("Hello");
 ```
 
 ### From Custom AI Wrappers
@@ -719,14 +801,17 @@ class MyAI {
 }
 
 // After (AI-Lib)
-import { Agent } from "@airo/ai-lib";
+import { createAgentFactory, getModel } from "@airo/ai-lib";
 
-const agent = new Agent({
-  name: "MyAI",
-  model: model,
-  systemPrompt: "Your existing system prompt",
+const factory = createAgentFactory();
+const agents = factory.defineAgents({
+  myAI: {
+    name: "MyAI",
+    model: await getModel("gpt4o"),
+    systemPrompt: "Your existing system prompt",
+  },
 });
-// Use agent.generate() instead of chat()
+// Use agents.get('myAI').generate() instead of chat()
 ```
 
 ---
@@ -739,5 +824,3 @@ For issues or questions:
 2. Review examples in `/examples` directory
 3. Enable debug mode for detailed logging
 4. Check TypeScript compilation with `pnpm run typecheck`
-
-The AI-Lib package provides a robust, type-safe foundation for AI applications with support for multiple providers, advanced features like streaming and tool execution, and comprehensive error handling.

@@ -1,3 +1,5 @@
+> **Note: This is an exploratory design exercise and does not reflect the current architecture. See root CLAUDE.md for the actual system design.**
+
 # Airo Standard Tech Stack
 
 ## Overview

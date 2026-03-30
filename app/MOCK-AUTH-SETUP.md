@@ -4,28 +4,37 @@ This document explains how the mock authentication system works for local develo
 
 ## Quick Setup
 
-1. **Enable Mock Login** (add to your `.env.local`):
+1. **Set AUTH_TYPE=mock in `app/.env`**:
+
    ```bash
-   NODE_ENV=development
+   AUTH_TYPE=mock
    NEXT_PUBLIC_USE_MOCK_LOGIN=true
    ```
 
+   **Important:** These values must be set in `app/.env`, not in `app/.env.local.dev`.
+   The `load-env.js` script uses `override: false`, so `.env` loads first and
+   later files cannot override its values. To switch back to SSO, change
+   `AUTH_TYPE=jwt` and `NEXT_PUBLIC_USE_MOCK_LOGIN=false` in `app/.env`.
+
 2. **Start the app**:
+
    ```bash
    pnpm run dev
    ```
 
-3. **Use Mock Login**: You'll see a "🚀 Mock Sign In" button instead of regular authentication.
+3. **Use Mock Login**: You'll see a "Mock Sign In" button instead of regular authentication.
 
 ## How it Works
 
 The mock system is designed to be minimal and non-intrusive:
 
 ### 1. Authentication Flow
+
 - **Client-Side**: Mock login UI components handle the login/logout experience
 - **Server-Side**: Auth validation API (`/api/auth/validate`) returns mock user data when feature flag is enabled
 
 ### 2. Integration Points
+
 - **Auth Validation**: `/api/auth/validate` handles mock authentication
 - **UI Components**: Mock login dialogs and user switchers
 - **Feature Flag**: `isFeatureEnabled.mockLogin()` controls when mock auth is active

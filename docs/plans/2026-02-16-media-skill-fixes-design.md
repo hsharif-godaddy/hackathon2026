@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # Media Skill Fixes Design
 
 **Date:** 2026-02-16

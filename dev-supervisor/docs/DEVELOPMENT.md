@@ -18,7 +18,7 @@ This guide provides comprehensive information for developing, testing, and contr
 
 **Required:**
 
-- Go 1.21 or later
+- Go 1.25 or later
 - Git
 
 **Optional (for full development experience):**
@@ -101,7 +101,7 @@ choco install golang
    - Handles start, stop, restart operations
    - Integrates with PID1 manager and port discovery
 
-2. **PID1 Manager** (`pid1_manager*.go`)
+2. **PID1 Manager** (`internal/process/manager*.go`)
    - Provides proper init process behavior in containers
    - Orphan reaping (Linux only)
    - Signal forwarding
@@ -165,12 +165,12 @@ Implementation Files:
 2. **PID 1 Orphan Reaping**
    - **Why Linux-only:** Uses `waitid()` syscall with specific flags
    - **Fallback behavior:** Not needed outside containers
-   - **Implementation:** `pid1_orphan_reaper_linux.go`
+   - **Implementation:** `internal/process/reaper_linux.go`
 
 3. **Process Signals**
    - **Why Linux-only:** Container-specific signal semantics
    - **Fallback behavior:** Go's cross-platform signal handling
-   - **Implementation:** `pid1_manager_unix.go`
+   - **Implementation:** `internal/process/manager_unix.go`
 
 #### Cross-Platform Features
 
@@ -256,8 +256,8 @@ go test -v ./... | grep "=== RUN"
 **Test Files:**
 
 - `internal/ports/discovery_linux_test.go` - Port discovery tests
-- `pid1_linux_test.go` - PID 1 orphan reaping tests
-- `integration_test.go` - Unix socket integration tests
+- `internal/processmanager/pid1_linux_test.go` - PID 1 orphan reaping tests
+- `cmd/dev-supervisor/integration_test.go` - Unix socket integration tests
 
 #### Tier 3: Docker Integration Tests
 

@@ -1,3 +1,7 @@
+---
+status: not-implemented
+---
+
 # File Cleanup: Clean Up Suspicious Files Instead of Reject
 
 **Goal:** Instead of rejecting uploads/pulls containing suspicious/junk files, clean them up automatically and notify users via warnings. Applies to both zip import AND git pull.

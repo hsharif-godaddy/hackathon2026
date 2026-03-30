@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # Logo Generation V2 Design
 
 ## Overview

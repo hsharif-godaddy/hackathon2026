@@ -344,36 +344,36 @@ When Nomad jobs are killed or restarted (due to resource constraints, node failu
 - File modifications not yet committed to git
 - Work-in-progress that exists only in the ephemeral volume
 
-### Solution: Airo-Supervisor SIGTERM Handling
+### Solution: dev-supervisor SIGTERM Handling
 
-The airo-supervisor component implements graceful shutdown handling to protect against data loss during Nomad job termination. When receiving a SIGTERM signal, the airo-supervisor performs an emergency commit of any uncommitted changes before allowing the container to shut down.
+The dev-supervisor component implements graceful shutdown handling to protect against data loss during Nomad job termination. When receiving a SIGTERM signal, the dev-supervisor performs an emergency commit of any uncommitted changes before allowing the container to shut down.
 
 ### Implementation Architecture
 
 ```mermaid
 sequenceDiagram
     participant Nomad
-    participant AiroSupervisor as Airo-Supervisor
+    participant DevSupervisor as dev-supervisor
     participant GitRepo as Git Repository
     participant Container as App Container
 
-    Nomad->>AiroSupervisor: SIGTERM (job kill/restart)
-    AiroSupervisor->>AiroSupervisor: Initiate graceful shutdown
-    AiroSupervisor->>GitRepo: git status --porcelain
+    Nomad->>DevSupervisor: SIGTERM (job kill/restart)
+    DevSupervisor->>DevSupervisor: Initiate graceful shutdown
+    DevSupervisor->>GitRepo: git status --porcelain
 
     alt Uncommitted Changes Detected
-        GitRepo-->>AiroSupervisor: Modified/untracked files found
-        AiroSupervisor->>GitRepo: git add .
-        AiroSupervisor->>GitRepo: git commit -m "Emergency commit before job termination"
-        AiroSupervisor->>AiroSupervisor: Log emergency commit details
+        GitRepo-->>DevSupervisor: Modified/untracked files found
+        DevSupervisor->>GitRepo: git add .
+        DevSupervisor->>GitRepo: git commit -m "Emergency commit before job termination"
+        DevSupervisor->>DevSupervisor: Log emergency commit details
     else No Changes
-        GitRepo-->>AiroSupervisor: Working directory clean
-        AiroSupervisor->>AiroSupervisor: Log clean shutdown
+        GitRepo-->>DevSupervisor: Working directory clean
+        DevSupervisor->>DevSupervisor: Log clean shutdown
     end
 
-    AiroSupervisor->>Container: Forward SIGTERM
+    DevSupervisor->>Container: Forward SIGTERM
     Container->>Container: Graceful application shutdown
-    AiroSupervisor->>Nomad: Exit with status 0
+    DevSupervisor->>Nomad: Exit with status 0
 ```
 
 ## AI Agent Integration

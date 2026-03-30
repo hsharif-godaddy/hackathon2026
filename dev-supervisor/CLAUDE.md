@@ -71,17 +71,19 @@ dev-supervisor/
 │   ├── dev-supervisor/         # Main binary (PID 1, API, proxy)
 │   └── airo-sandbox/           # Landlock sandbox wrapper binary
 ├── internal/
-│   ├── processmanager/         # Process lifecycle management
-│   ├── proxy/http/             # TLS reverse proxy, WebSocket, persistent assets
-│   ├── proxy/smtp/             # SMTP proxy with header injection (localhost:2525 only)
+│   ├── allocconfig/            # Config file loading (/alloc/config.json)
 │   ├── auth/                   # JWT middleware, JWKS validation
 │   ├── config/                 # Env-based configuration
 │   ├── health/                 # Health checks (command, HTTP, TCP)
 │   ├── logs/                   # Buffered log manager
+│   ├── middleware/             # Connection tracking, peer validation
 │   ├── ports/                  # Linux port discovery via /proc
+│   ├── process/                # Exit codes, zombie reaping
+│   ├── processmanager/         # Process lifecycle management
+│   ├── proxy/http/             # TLS reverse proxy, WebSocket, persistent assets
+│   ├── proxy/smtp/             # SMTP proxy with header injection (localhost:2525 only)
 │   ├── sandbox/                # Sandbox config, profiles, command wrapping
-│   ├── validation/             # Input validation (path traversal, env vars)
-│   └── process/                # Exit codes, zombie reaping
+│   └── validation/             # Input validation (path traversal, env vars)
 ├── docs/SANDBOX.md             # Sandbox architecture and configuration
 ├── Makefile
 ├── .golangci.yml

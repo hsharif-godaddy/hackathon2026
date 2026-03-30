@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # Implementation Plan: WAF Prompt Validation (Byte-Based)
 
 **Date**: 2026-02-23

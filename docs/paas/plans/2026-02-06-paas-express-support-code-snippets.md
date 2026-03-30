@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # PaaS Express Support - Code Snippets
 
 > **Reference:** This file contains implementation code snippets for the plan at [2026-02-06-paas-express-support.md](2026-02-06-paas-express-support.md)

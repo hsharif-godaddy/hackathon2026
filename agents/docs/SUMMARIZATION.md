@@ -147,11 +147,12 @@ Work alongside summarization to reduce token usage:
 #### Key Strategies
 
 - **AppContextRemovalStrategy**: Removes stale app context (directory structure, secrets)
+- **CssSuggestCompressionStrategy**: Compresses CSS suggestion outputs
+- **DuplicateFileReadStrategy**: Deduplicates repeated file reads
+- **MediaSearchSummaryStrategy**: Summarizes media search results
 - **SecretOperationCompressionStrategy**: Removes ephemeral secret operation messages
 - **TodoListRemovalStrategy**: Removes redundant todo list snapshots
-- **DuplicateFileReadStrategy**: Deduplicates repeated file reads
-- **FileEditCompressionStrategy**: Compresses verbose file edit results
-- **CssSuggestCompressionStrategy**: Compresses CSS suggestion outputs
+- **ToolResultCompressionStrategy**: Compresses verbose tool results
 
 ### 5. ConversationHistoryLoader
 

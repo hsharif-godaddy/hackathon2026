@@ -248,10 +248,24 @@ pnpm --filter @airo/agents dev
 
 Use `skill({ action: "list" })` to see all available skills with descriptions.
 
-Current skills:
+Current skills (16):
 
+- **authentication** - User authentication and login flows
 - **blog** - Install and activate the blog system (routes, pages, components)
 - **blog-writing** - Create blog post content for sites with blog system installed
+- **commerce** - GoDaddy Commerce product catalog and checkout integration
+- **commerce-one-time-payment** - One-time payment processing via Commerce API
+- **commerce-storefront** - Storefront setup and product display
+- **database** - SQL database operations for application data
+- **google-maps** - Google Maps integration and location features
+- **i18n** - Internationalization and multi-language support
+- **media** - Media management and image handling
+- **online-appointments** - Online appointment booking system
+- **seo** - Search engine optimization tools and metadata
+- **social-platform** - Social media platform connections
+- **social-posts** - Social media post creation and scheduling
+- **social-publish** - Social media content publishing
+- **stripe** - Stripe payment integration
 
 ## Technical Notes
 

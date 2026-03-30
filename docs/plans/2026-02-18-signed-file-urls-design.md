@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # Signed File URLs Design
 
 **Date:** 2026-02-18

@@ -44,13 +44,15 @@ When a user sends a message (`ai-lib-websocket-server.ts` → `experimental-webs
 
 ### Agents
 
-| Agent              | Purpose                           | Handoff targets                  |
-| ------------------ | --------------------------------- | -------------------------------- |
-| **InitialAgent**   | First-time app scaffolding        | —                                |
-| **DevelopAgent**   | Feature development, code changes | marketing, commerce (if enabled) |
-| **MarketingAgent** | SEO/marketing content             | —                                |
-| **CommerceAgent**  | E-commerce (feature-flagged)      | —                                |
-| **DesignAgent**    | UI/UX design                      | —                                |
+| Agent                 | Purpose                           | Handoff targets |
+| --------------------- | --------------------------------- | --------------- |
+| **InitialAgent**      | First-time app scaffolding        | develop         |
+| **DevelopAgent**      | Feature development, code changes | marketing       |
+| **MarketingAgent**    | SEO/marketing content             | develop         |
+| **DesignAgent**       | UI/UX design                      | develop         |
+| **PagePromptAgent**   | Page-level prompt generation      | —               |
+| **SiteAnalyzerAgent** | Site analysis                     | —               |
+| **ExampleAgent**      | Example/demo agent                | —               |
 
 Implementations: `src/agents/`. Factory: `src/agents/ai-lib-agents/index.ts`.
 
@@ -60,8 +62,14 @@ Prompts are built from composable markdown fragments via `createPromptBuilder()`
 
 ```
 src/prompts/
-├── develop/          # DevelopAgent fragments (core.md, font-theme.md, handoff.md, etc.)
-├── shared/           # Reusable across agents (communication.md, filesystem.md, security.md)
+├── color-scheme/           # Color scheme tool prompts
+├── design/                 # DesignAgent fragments
+├── develop/                # DevelopAgent fragments (core.md, font-theme.md, handoff.md, etc.)
+├── example/                # ExampleAgent fragments
+├── font-tool/              # Font tool prompts
+├── initial/                # InitialAgent fragments
+├── marketing/              # MarketingAgent fragments
+├── shared/                 # Reusable across agents (communication.md, filesystem.md, security.md)
 └── template-descriptions/  # Per-template context (v8.md, etc.)
 ```
 
@@ -71,11 +79,11 @@ Base class: `src/base/base-agent.ts` — `getSystemPrompt()` → `loadSystemProm
 
 ### Tool System
 
-~50 tools registered in `src/tools/ai-lib-tools/index.ts` (`allAILibTools`). Each agent declares which tools it uses in its config.
+44 tools registered in `src/tools/ai-lib-tools/index.ts` (`allAILibTools`). Each agent declares which tools it uses in its config.
 
-**Stop-after tools:** `handoff`, `suggestedResponse`, `media__generate_logo` — agent pauses for user confirmation.
+**Stop-after tools:** `handoff`, `suggestedResponse`, `media__generate_logo`, `requestSecrets` — agent pauses for user confirmation. Other agents may define different stop-after sets.
 
-**Skills system:** Dynamic tool loading via `skillToolManager`. Skills activated/deactivated per conversation. Tool names prefixed `skill__{skillName}`.
+**Skills system:** Dynamic tool loading via `skillToolManager`. Skills activated/deactivated per conversation. Tool names prefixed `skill__{skillName}`. 16 skills in `src/skills/`: authentication, blog, blog-writing, commerce, commerce-one-time-payment, commerce-storefront, database, google-maps, i18n, media, online-appointments, seo, social-platform, social-posts, social-publish, stripe. See `src/skills/README.md`.
 
 ### GitUtils Requirement
 
@@ -102,15 +110,23 @@ Key integration file: `src/server/ai-lib-websocket-server.ts` (extends ai-lib's 
 
 **SQLite** at `agents/data/agents.db`. Required because production deploys one agent per app — no shared DB.
 
-| Table                   | Purpose                                                |
-| ----------------------- | ------------------------------------------------------ |
-| `apps`                  | Application records (AAB only, may not exist for PaaS) |
-| `conversations`         | Chat conversations per app                             |
-| `conversation_messages` | Message history                                        |
-| `git_remote_config`     | Git repository config (AAB)                            |
-| `oauth_tokens`          | OAuth tokens                                           |
-| `token_usage`           | LLM token tracking                                     |
-| `file_context`          | RAG file context                                       |
+| Table                    | Purpose                                                |
+| ------------------------ | ------------------------------------------------------ |
+| `apps`                   | Application records (AAB only, may not exist for PaaS) |
+| `conversations`          | Chat conversations per app                             |
+| `conversation_messages`  | Message history                                        |
+| `conversation_summaries` | Incremental conversation summarization                 |
+| `file_context`           | RAG file context                                       |
+| `git_remote_config`      | Git repository config (AAB)                            |
+| `import_jobs`            | Zip/git import progress tracking                       |
+| `memory`                 | Hierarchical key-value storage per app                 |
+| `oauth_tokens`           | OAuth tokens                                           |
+| `running_processes`      | Dev server process tracking                            |
+| `share_tokens`           | Time-limited public preview access tokens              |
+| `social_associations`    | App-to-social-account connections                      |
+| `social_posts`           | Social media publish records                           |
+| `todo_items`             | Todo items within todo lists                           |
+| `todo_lists`             | Todo list projects per app                             |
 
 Repositories: `src/database/repositories/`.
 

@@ -1,3 +1,5 @@
+> **Note: This is an exploratory design exercise and does not reflect the current architecture. See root CLAUDE.md for the actual system design.**
+
 # Hosting & Infrastructure Features
 
 Airo AI Builder provides enterprise-grade hosting infrastructure designed to support applications from development through production. Our platform handles all the complexity of modern application deployment while providing the flexibility and scalability your applications need.

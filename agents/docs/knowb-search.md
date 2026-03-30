@@ -212,6 +212,4 @@ echo "SSO_JWT=your_token" >> .env
 
 ## Related Documentation
 
-- [Media Search Tool](./mediasearch.md) - Similar pattern for Getty Images
-- [RAG Tool](../src/tools/rag-tool.ts) - Local vector search
-- [Deployment Guide](../../docs/deployment.md) - General deployment info
+- [RAG Search Tool](./rag-search-tool.md) - Local vector search

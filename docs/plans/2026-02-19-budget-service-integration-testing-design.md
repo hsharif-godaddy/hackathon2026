@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # Budget Service Integration Testing Design
 
 **Date:** 2026-02-19

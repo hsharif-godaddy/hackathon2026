@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # POST /setup/execute Endpoint
 
 Add an HTTP endpoint to dev-supervisor that lets the agents service trigger deferred setup on demand, enabling the agent to ensure the preview container's filesystem is restored before performing git operations after a Nomad reschedule.

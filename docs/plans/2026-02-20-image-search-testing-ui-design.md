@@ -1,3 +1,7 @@
+---
+status: active
+---
+
 # Image Search Testing UI Design
 
 **Goal:** Add a testing UI for the image-search-service to the debug-console, with JOMAX (GoDaddy employee) token authentication support.

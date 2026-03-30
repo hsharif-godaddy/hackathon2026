@@ -244,14 +244,17 @@ OPENAI_API_KEY=your-api-key-here
 ## Best Practices
 
 1. **Use Specific Queries**: More specific queries yield better results
+
    - ✅ "modern minimalist healthcare app design"
    - ❌ "design"
 
 2. **Adjust Score Threshold**: Lower threshold for exploration, higher for precision
+
    - Exploration: `score_threshold: 0.5`
    - Precision: `score_threshold: 0.8`
 
 3. **Limit Results**: Request only what you need
+
    - Initial search: `limit: 5`
    - Detailed exploration: `limit: 10-20`
 
@@ -346,10 +349,3 @@ describe('RAG Search Tool', function tests() {
 2. Check Qdrant performance metrics
 3. Ensure embeddings are being cached
 4. Consider using a dedicated Qdrant instance
-
-## Related Documentation
-
-- [Qdrant Service](./qdrant-service.md)
-- [Memory Tool](./memory-tool.md)
-- [Design Agent](../agents/design-agent.md)
-- [Font RAG Scripts](../scripts/font-rag.md)

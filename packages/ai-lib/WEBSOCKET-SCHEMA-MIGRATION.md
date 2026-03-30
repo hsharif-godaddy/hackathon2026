@@ -1,3 +1,7 @@
+---
+status: completed
+---
+
 # WebSocket Schema Migration
 
 This document describes the migration from the old WebSocket message format to the new normalized event schema.

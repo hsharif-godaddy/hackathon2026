@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # Plan: Include Git Commit Hash in Complete Message
 
 ## Problem Statement

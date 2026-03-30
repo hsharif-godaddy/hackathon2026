@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # Budget Service Design
 
 **Date:** 2026-02-19

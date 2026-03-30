@@ -1,3 +1,7 @@
+---
+status: completed
+---
+
 # Unified Provider Migration
 
 This document describes the migration from the old provider system to the new unified provider helper.

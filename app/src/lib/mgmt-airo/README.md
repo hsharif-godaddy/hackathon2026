@@ -188,9 +188,9 @@ Mock the client in tests:
 
 ```typescript
 const mockClient = {
-  getActiveSubscription: jest.fn().mockResolvedValue({ id: "sub123" }),
-  getSystems: jest.fn().mockResolvedValue([{ id: "sys123" }]),
-  createApp: jest.fn().mockResolvedValue({ statusJobId: "job123" }),
+  getActiveSubscription: vi.fn().mockResolvedValue({ id: "sub123" }),
+  getSystems: vi.fn().mockResolvedValue([{ id: "sys123" }]),
+  createApp: vi.fn().mockResolvedValue({ statusJobId: "job123" }),
 };
 ```
 

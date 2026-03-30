@@ -88,7 +88,7 @@ curl --unix-socket /tmp/supervisor/dev-supervisor.sock \
 
 ### Prerequisites
 
-- Go 1.21 or later
+- Go 1.25 or later
 - golangci-lint (for linting)
 
 ### Commands
@@ -269,24 +269,32 @@ make test-docker    # Full integration tests
 
 ```
 dev-supervisor/
-├── main.go                        # Main application entry point
-├── api.go                         # HTTP API endpoint handlers
-├── internal/processmanager/        # Process lifecycle management
-├── command_executor.go            # Command execution functionality
-├── environment_manager.go         # Environment variable management
-├── logging.go                     # Logging configuration and management
-├── internal/                      # Internal packages
+├── cmd/
+│   ├── dev-supervisor/            # Main binary (PID 1, API, proxy)
+│   │   ├── main.go               # Application entry point
+│   │   ├── api.go                # HTTP API endpoint handlers
+│   │   ├── command_executor.go   # Command execution functionality
+│   │   ├── environment_manager.go # Environment variable management
+│   │   ├── logging.go            # Logging configuration and management
+│   │   ├── *_test.go             # Cross-platform test files
+│   │   └── *_linux_test.go       # Linux-specific test files
+│   └── airo-sandbox/              # Landlock sandbox wrapper binary
+├── internal/
+│   ├── allocconfig/               # Config file loading (/alloc/config.json)
 │   ├── auth/                      # JWT authentication
-│   ├── config/                    # Configuration management
+│   ├── config/                    # Env-based configuration
 │   ├── health/                    # Health monitoring
 │   ├── logs/                      # Log management
+│   ├── middleware/                 # Connection tracking, peer validation
 │   ├── ports/                     # Port discovery (Linux /proc, fallback)
-│   ├── process/                   # Process management utilities
-│   └── proxy/smtp/                # SMTP proxy
-├── *_test.go                      # Cross-platform test files
-├── *_linux_test.go                # Linux-specific test files
-├── integration_test.go            # Cross-platform integration tests
-├── docker_integration_test.go     # Docker integration test wrapper
+│   ├── process/                   # Exit codes, zombie reaping
+│   ├── processmanager/            # Process lifecycle management
+│   ├── proxy/
+│   │   ├── http/                  # TLS reverse proxy, WebSocket
+│   │   └── smtp/                  # SMTP proxy with header injection
+│   ├── sandbox/                   # Sandbox config, profiles, command wrapping
+│   └── validation/                # Input validation (path traversal, env vars)
+├── examples/                      # Example configuration files
 ├── test/
 │   ├── Dockerfile.integration     # Docker image for integration tests
 │   ├── docker-integration-tests.sh # Bash test suite for Docker

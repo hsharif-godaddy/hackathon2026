@@ -41,9 +41,12 @@ internal/
     jobs.go              # Job status polling
     secrets.go           # Secrets management
     stubs.go             # Static responses for domains, transfers, etc.
+  auth/
+    jwt.go               # JWT signing for agent registration
   docker/
     compose.go           # Docker compose YAML generation
     manager.go           # docker compose up/down execution
+    mysql.go             # MySQL container provisioning
     ports.go             # Port allocation
   store/
     db.go                # SQLite storage layer
@@ -61,6 +64,13 @@ Auth: No authentication is enforced. All requests use a default dev customer ID.
 ## Local Dev Logs
 
 All slog output is automatically written to `local-control-plane/dev.log` alongside stdout. The file is truncated on each restart. Use this log to troubleshoot issues — read it to see recent errors, startup failures, or unexpected behavior.
+
+## Prerequisites
+
+- Go 1.25
+- Docker (for container management)
+- gofumpt (`go install mvdan.cc/gofumpt@latest`) -- required for `make fmt` / `make fmt-fix`
+- golangci-lint (for `make lint`)
 
 ## Conventions
 

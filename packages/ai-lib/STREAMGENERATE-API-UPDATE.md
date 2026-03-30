@@ -1,3 +1,7 @@
+---
+status: completed
+---
+
 # StreamGenerate API Update
 
 ## 🔄 **Changes Made**

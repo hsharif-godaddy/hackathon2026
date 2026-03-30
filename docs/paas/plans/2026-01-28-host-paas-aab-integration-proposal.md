@@ -1,3 +1,7 @@
+---
+status: superseded
+---
+
 # Host-PaaS and AAB Integration - Design Proposal
 
 **Problem:** Host-PaaS bypasses AAB by calling V2 APIs directly during signup, resulting in no AAB database record. This creates two issues: (1) Transitioning apps from PaaS to AAB requires a defined migration process, and (2) Agent-token generation currently relies on AAB APIs that call V2 directly without local DB validation—if AAB later adds enhanced ownership checks against its own database, the flow will break for PaaS-created apps.

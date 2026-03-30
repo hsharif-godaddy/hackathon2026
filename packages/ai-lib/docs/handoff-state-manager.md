@@ -1,6 +1,6 @@
 # Handoff State Manager
 
-The `InMemoryHandoffStateManager` provides a default implementation for tracking which agent is currently handling each session. This is essential for the handoff tool to work properly in multi-agent applications.
+The `SessionStateManager` (created via `createSessionStateManager`) provides a default implementation for tracking which agent is currently handling each session. This is essential for the handoff tool to work properly in multi-agent applications.
 
 ## Overview
 
@@ -14,14 +14,14 @@ When agents use the handoff tool to switch control, the state manager:
 
 ```typescript
 import { 
-  createInMemoryHandoffStateManager,
+  createSessionStateManager,
   createHandoffTool,
   createAgentFactory,
   getModel
 } from '@airo/ai-lib'
 
 // Create state manager
-const stateManager = createInMemoryHandoffStateManager({
+const stateManager = createSessionStateManager({
   defaultAgentId: 'coordinator',
   sessionTimeout: 30 * 60 * 1000, // 30 minutes
   enableLogging: true
@@ -36,8 +36,8 @@ const agents = factory.defineAgents({
     model: await getModel('gpt4o'),
     tools: {
       handoff: createHandoffTool({
-        agents,
         sourceAgentId: 'coordinator',
+        validTargets: ['developer'],
         stateManager,
         sessionId: 'user-session-123'
       })
@@ -72,29 +72,32 @@ console.log(`Current agent: ${currentAgent}`) // 'developer'
 ## Configuration Options
 
 ```typescript
-interface InMemoryHandoffStateManagerConfig {
+interface SessionStateManagerConfig {
   /** Default agent ID for new sessions */
   defaultAgentId?: string
-  
+
   /** Session timeout in milliseconds (default: 1 hour) */
   sessionTimeout?: number
-  
+
   /** Whether to log handoff events (default: true) */
   enableLogging?: boolean
-  
+
   /** Callback when agent switches */
   onAgentSwitch?: (
     sessionId: string,
     fromAgentId: string,
     toAgentId: string,
-    reason?: string
+    prompt?: string
   ) => void
+
+  /** Callback when todo list is selected */
+  onTodoListSelect?: (sessionId: string, todoListId: string) => void
 }
 ```
 
 ## API Reference
 
-### `switchAgent(sessionId, targetAgentId, reason?)`
+### `switchAgent(sessionId, targetAgentId, prompt?)`
 
 Switch the active agent for a session.
 
@@ -132,7 +135,7 @@ const history = stateManager.getSessionHistory('session-123')
 //   {
 //     fromAgentId: 'coordinator',
 //     toAgentId: 'developer',
-//     reason: 'User needs coding help',
+//     prompt: 'User needs coding help',
 //     timestamp: Date
 //   }
 // ]
@@ -206,7 +209,7 @@ In a WebSocket application, you would typically:
 ```typescript
 import { createWebSocketServer } from '@airo/ai-transport'
 
-const stateManager = createInMemoryHandoffStateManager({
+const stateManager = createSessionStateManager({
   defaultAgentId: 'coordinator'
 })
 
@@ -216,8 +219,8 @@ const agents = factory.defineAgents({
     // ... config
     tools: {
       handoff: createHandoffTool({
-        agents,
         sourceAgentId: 'coordinator',
+        validTargets: ['developer'],
         stateManager,
         sessionId: socket.id // Use socket ID as session ID
       })
@@ -248,28 +251,28 @@ socket.on('chat_message', async (data) => {
 ### Enable Logging
 
 ```typescript
-const stateManager = createInMemoryHandoffStateManager({
+const stateManager = createSessionStateManager({
   enableLogging: true
 })
 
 // Logs will show:
-// 🔄 Handoff: coordinator → developer (session: session-123)
-//    Reason: User needs coding help
-// 📝 Created new session session-456 with agent: coordinator
-// 🧹 Cleaned up 3 expired sessions
+// Handoff: coordinator -> developer (session: session-123)
+//    Prompt: User needs coding help
+// Created new session session-456 with agent: coordinator
+// Cleaned up 3 expired sessions
 ```
 
 ### Custom Callbacks
 
 ```typescript
-const stateManager = createInMemoryHandoffStateManager({
-  onAgentSwitch: (sessionId, from, to, reason) => {
+const stateManager = createSessionStateManager({
+  onAgentSwitch: (sessionId, from, to, prompt) => {
     // Log to analytics
     analytics.track('agent_handoff', {
       session: sessionId,
       from,
       to,
-      reason
+      prompt
     })
     
     // Update UI
@@ -319,7 +322,7 @@ class RedisHandoffStateManager implements HandoffStateManager {
   async switchAgent(
     sessionId: string,
     targetAgentId: string,
-    reason?: string
+    prompt?: string
   ): Promise<boolean> {
     await this.redis.set(
       `session:${sessionId}:agent`,
@@ -327,13 +330,13 @@ class RedisHandoffStateManager implements HandoffStateManager {
       'EX',
       3600 // 1 hour expiry
     )
-    
+
     // Store history
     await this.redis.rpush(
       `session:${sessionId}:history`,
       JSON.stringify({
         targetAgentId,
-        reason,
+        prompt,
         timestamp: new Date().toISOString()
       })
     )
@@ -379,8 +382,8 @@ console.log('Available handoffs:', handoffs)
 
 // Verify state manager is passed to tool
 const tool = createHandoffTool({
-  agents,
   sourceAgentId: 'coordinator',
+  validTargets: ['developer'],
   stateManager, // Must be provided!
   sessionId: 'session-123'
 })

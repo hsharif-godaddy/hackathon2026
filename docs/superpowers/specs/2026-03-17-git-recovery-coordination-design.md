@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # Git Recovery Coordination Design
 
 ## Problem

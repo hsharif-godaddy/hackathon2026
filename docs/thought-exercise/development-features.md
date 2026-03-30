@@ -1,3 +1,5 @@
+> **Note: This is an exploratory design exercise and does not reflect the current architecture. See root CLAUDE.md for the actual system design.**
+
 # Development Features & Templates
 
 Airo AI Builder provides a standardized, best-in-class TypeScript/React/Node.js technology stack that eliminates the complexity of choosing and configuring technologies. Our curated tech stack leverages proven libraries and patterns, ensuring every application is built with modern best practices.

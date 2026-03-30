@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # Funnel Gap Logging: Homepage to Agent Response
 
 **Date:** 2026-03-20

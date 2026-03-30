@@ -1,3 +1,9 @@
+---
+status: archived
+---
+
+> Archived: See root CLAUDE.md for canonical architecture overview.
+
 # Airo AI Builder - Complete Architecture Documentation
 
 ## Table of Contents

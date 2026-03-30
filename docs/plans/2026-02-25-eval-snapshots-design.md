@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # Eval Snapshots Design
 
 Manual evaluation system for site builds. Captures a screenshot and conversation data after the first initial build of a new app, stores it in S3, and provides a browsing UI in the debug console.

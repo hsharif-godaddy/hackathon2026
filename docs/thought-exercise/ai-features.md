@@ -1,3 +1,5 @@
+> **Note: This is an exploratory design exercise and does not reflect the current architecture. See root CLAUDE.md for the actual system design.**
+
 # AI Integration Features
 
 Airo AI Builder doesn't just help you build applications—it empowers you to integrate cutting-edge AI capabilities directly into the applications you create. Our platform provides managed AI services and tools that make it easy to add intelligent features to any application.

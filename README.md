@@ -69,26 +69,18 @@ The setup utility will guide you through the full setup. Make sure to read all t
 
 ## 📁 Documentation Structure
 
-### Architecture
+### Thought Exercises (Exploratory)
 
-- [Platform Architecture](./docs/platform-architecture.md) - Core platform system architecture
-- [Hosting Architecture](./docs/hosting-architecture.md) - Production hosting infrastructure
-- [Architecture Diagrams](./docs/architecture-diagrams.md) - Visual system diagrams
+> These documents explore potential future capabilities. They are not committed designs.
 
-### Technology & Development
-
-- [Tech Stack](./docs/tech-stack.md) - Standardized TypeScript/React/Node.js stack
-- [Development Features](./docs/development-features.md) - Templates and development tools
-
-### Features & Capabilities
-
-- [Agent Features](./docs/agent-features.md) - Detailed breakdown of AI agents
-- [AI Features](./docs/ai-features.md) - AI integration for your applications
-- [Image Search Feature](./docs/image-search-feature.md) - Web image search capabilities
-- [Image Generation Feature](./docs/image-generation-feature.md) - AI-powered image creation
-- [Getty Images Feature](./docs/getty-images-feature.md) - Professional stock photo integration
-- [Hosting Features](./docs/hosting-features.md) - Infrastructure and deployment capabilities
-- [Security Features](./docs/security-features.md) - Security scanning and protection
+- [Platform Architecture](./docs/thought-exercise/platform-architecture.md) - Platform microservices concepts
+- [Architecture Diagrams](./docs/thought-exercise/architecture-diagrams.md) - Architecture diagrams
+- [Tech Stack](./docs/thought-exercise/tech-stack.md) - Tech stack philosophy
+- [Development Features](./docs/thought-exercise/development-features.md) - Standardized tech stack
+- [Agent Features](./docs/thought-exercise/agent-features.md) - Specialized AI agent suite
+- [AI Features](./docs/thought-exercise/ai-features.md) - Managed AI capabilities
+- [Hosting Features](./docs/thought-exercise/hosting-features.md) - Enterprise hosting features
+- [Security Features](./docs/thought-exercise/security-features.md) - AI security analyst
 
 ## 🎯 Target Use Cases
 

@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # Conversation Export Tool
 
 Export app conversations as human-readable markdown at two detail levels.

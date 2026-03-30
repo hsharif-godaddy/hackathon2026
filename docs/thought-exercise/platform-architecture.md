@@ -1,3 +1,5 @@
+> **Note: This is an exploratory design exercise and does not reflect the current architecture. See root CLAUDE.md for the actual system design.**
+
 # Airo AI Builder Platform Architecture
 
 This document describes the architecture of the Airo AI Builder platform - the system that enables customers to build and manage applications using AI agents.

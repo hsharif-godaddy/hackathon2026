@@ -1,3 +1,5 @@
+> **Note: This is an exploratory design exercise and does not reflect the current architecture. See root CLAUDE.md for the actual system design.**
+
 # Security Features
 
 Security is not an afterthought at Airo AI Builder—it's built into every layer of the platform. Our comprehensive security approach combines AI-powered analysis with industry-standard tools to ensure your applications are protected from vulnerabilities and threats.

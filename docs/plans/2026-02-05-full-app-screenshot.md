@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # Full App Screenshot Feature
 
 **Date:** 2026-02-05

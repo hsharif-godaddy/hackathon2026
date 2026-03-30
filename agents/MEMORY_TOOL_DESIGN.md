@@ -1,6 +1,6 @@
 # Memory Tool Design - IMPLEMENTATION COMPLETE
 
-✅ All components have been implemented and type-checked successfully.
+> **Note: Implementation diverged from this design.** The actual memory system uses SQLite (not markdown files in `.memory/`), with separate tools in `agents/src/tools/ai-lib-tools/memory.ts` and `agents/src/tools/ai-lib-tools/memory-tool.ts`. Storage is in the `memory` database table (hierarchical key-value). The schema/hook/observer system described below was not built.
 
 # Memory Tool Design
 

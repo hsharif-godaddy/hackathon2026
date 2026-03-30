@@ -111,7 +111,7 @@ The `ToolRenderer` component:
 2. Looks up if a custom renderer exists for that tool name
 3. Renders using custom renderer if found, otherwise uses `DefaultToolRenderer`
 
-## Future Features (Phase 2)
+## Planned (Phase 2)
 
 ### Auto-Disappearing Tools
 
@@ -198,7 +198,7 @@ Always handle:
 - Memoize expensive operations
 - Use virtualization for long lists
 
-## Examples of Future Custom Renderers
+## Planned (Phase 2): Custom Renderers
 
 ### Image Search Renderer
 

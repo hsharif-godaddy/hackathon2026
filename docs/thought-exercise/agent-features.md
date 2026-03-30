@@ -1,3 +1,5 @@
+> **Note: This is an exploratory design exercise and does not reflect the current architecture. See root CLAUDE.md for the actual system design.**
+
 # AI Agent Suite
 
 The heart of Airo AI Builder is our comprehensive suite of specialized AI agents, each designed to handle specific aspects of the application development lifecycle. These agents work together to ensure you're not just building a demo, but a real, production-ready application.

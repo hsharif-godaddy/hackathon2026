@@ -1,3 +1,7 @@
+---
+status: active
+---
+
 # Image Search Service Enhancements Design
 
 **Date:** 2026-02-26

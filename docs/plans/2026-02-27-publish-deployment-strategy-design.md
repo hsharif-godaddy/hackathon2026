@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # Design: Publish Deployment Strategy Pattern
 
 ## Problem Statement

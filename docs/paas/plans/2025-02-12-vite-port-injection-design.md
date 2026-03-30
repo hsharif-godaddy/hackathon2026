@@ -1,3 +1,7 @@
+---
+status: not-implemented
+---
+
 # Vite Port Injection Design
 
 **Date:** 2025-02-12

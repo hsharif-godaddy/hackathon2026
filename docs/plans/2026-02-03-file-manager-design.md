@@ -1,3 +1,7 @@
+---
+status: not-implemented
+---
+
 # File Manager Design
 
 **Date:** 2026-02-03

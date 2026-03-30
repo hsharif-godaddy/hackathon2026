@@ -1,3 +1,7 @@
+---
+status: active
+---
+
 # Go Agent Service Design
 
 Rewrite of the TypeScript agents service in Go to address memory spikes, observability gaps, and WebSocket/business logic coupling.

@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # Qdrant CDK Stack Design
 
 **Date:** 2026-02-18

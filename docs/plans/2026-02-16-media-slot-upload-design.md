@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # Media Slot Image Upload Design
 
 **Date:** 2026-02-16

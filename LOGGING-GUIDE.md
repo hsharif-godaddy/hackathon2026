@@ -75,8 +75,8 @@ export class MyService {
 appCreationEvents.begin(this.logger, {
   appId: 'abc123',
   name: 'my-app', 
-  templateVersion: 'v3',
-  baseDir: '/tmp/apps',
+  templateVersion: 'v8',
+  baseDir: '/tmp/airo-app-builder/{appId}',
   port: 3000
 });
 
@@ -84,8 +84,8 @@ appCreationEvents.begin(this.logger, {
 appCreationEvents.success(this.logger, {
   appId: 'abc123',
   name: 'my-app',
-  templateVersion: 'v3', 
-  baseDir: '/tmp/apps',
+  templateVersion: 'v8', 
+  baseDir: '/tmp/airo-app-builder/{appId}',
   port: 3000,
   duration: 1500
 });
@@ -94,8 +94,8 @@ appCreationEvents.success(this.logger, {
 appCreationEvents.failure(this.logger, error, {
   appId: 'abc123',
   name: 'my-app',
-  templateVersion: 'v3',
-  baseDir: '/tmp/apps', 
+  templateVersion: 'v8',
+  baseDir: '/tmp/airo-app-builder/{appId}', 
   port: 3000
 });
 ```
@@ -186,7 +186,7 @@ appProcessEvents.recoverSuccess(logger, {
 ```typescript
 appTemplateEvents.copyBegin(logger, { 
   appId, 
-  templateVersion: 'v3',
+  templateVersion: 'v8',
   operation: 'copy',
   path: '/app/path',
   templatePath: '/template/path'
@@ -194,7 +194,7 @@ appTemplateEvents.copyBegin(logger, {
 
 appTemplateEvents.copySuccess(logger, { 
   appId,
-  templateVersion: 'v3', 
+  templateVersion: 'v8', 
   operation: 'copy',
   path: '/app/path',
   templatePath: '/template/path'
@@ -284,6 +284,7 @@ export { myOperationEvents } from './helpers.js';
 - Use inconsistent lifecycle naming (`starting/started/finishing`)
 - Skip required domain context fields
 - Log sensitive information (passwords, API keys, etc.)
+- Use emojis in log output (event names, field values, or messages)
 
 ## Migration Guide
 
@@ -345,7 +346,7 @@ describe('My Service', () => {
 
 The logging system automatically adapts to different environments:
 
-- **Development**: Rich console output with colors, emojis, and expandable content
+- **Development**: Rich console output with colors and expandable content (no emojis)
 - **Production**: Structured JSON output suitable for log aggregation  
 - **Test**: Memory buffer with assertion helpers
 

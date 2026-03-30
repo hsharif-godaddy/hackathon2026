@@ -53,15 +53,15 @@ npm run setup
 ## Quick Start Code
 
 ```typescript
-import { AgentFactory, tools, openAIModels } from '@airo/ai-lib'
+import { createAgentFactory, getModel, tools } from '@airo/ai-lib'
 
 // Create agents (OpenAI support built-in!)
-const agentFactory = new AgentFactory()
+const agentFactory = createAgentFactory()
 const agents = agentFactory.defineAgents({
   assistant: {
     name: 'Assistant',
     systemPrompt: 'You are a helpful AI assistant.',
-    model: openAIModels.gpt4oMini(), // Auto-configured from .env
+    model: await getModel('gpt4o-mini'), // Auto-configured from .env
     tools: [tools.webSearch()]
   }
 })

@@ -39,18 +39,19 @@ if (options.token && options.repoUrl) {
 
 ## Services
 
-| Service              | Package        | Port | Notes                                                                           |
-| -------------------- | -------------- | ---- | ------------------------------------------------------------------------------- |
-| **agents/**          | `@airo/agents` | 4000 | Express API, AI agents, SQLite, WebSocket                                       |
-| **app/**             | `website`      | 3000 | Next.js BFF + builder UI                                                        |
-| **dev-supervisor/**  | Go binary      | —    | PID1, process lifecycle, HTTP proxy, JWT auth                                   |
-| **proxy/**           | `airo-proxy`   | —    | Getty Images API proxy                                                          |
-| **packages/shared/** | `@airo/shared` | —    | Shared types and pure utilities (grants, context-attachment, social, websocket) |
-| **packages/ai-lib/** | `@airo/ai-lib` | —    | AI SDK wrapper, consumed by agents                                              |
+| Service                  | Package        | Port | Notes                                                                           |
+| ------------------------ | -------------- | ---- | ------------------------------------------------------------------------------- |
+| **agents/**              | `@airo/agents` | 4000 | Express API, AI agents, SQLite, WebSocket                                       |
+| **app/**                 | `website`      | 3000 | Next.js BFF + builder UI                                                        |
+| **dev-supervisor/**      | Go binary      | —    | PID1, process lifecycle, HTTP proxy, JWT auth                                   |
+| **local-control-plane/** | Go binary      | 4100 | Local mgmt-airo API, SQLite + Docker                                            |
+| **proxy/**               | `airo-proxy`   | —    | Getty Images API proxy                                                          |
+| **packages/shared/**     | `@airo/shared` | —    | Shared types and pure utilities (grants, context-attachment, social, websocket) |
+| **packages/ai-lib/**     | `@airo/ai-lib` | —    | AI SDK wrapper, consumed by agents                                              |
 
 Additional: `app-templates/` (v8 template), `packages/design-extractor/` (PDF RAG), `setup/` (config utility), `e2e/` (E2E tests)
 
-See service-specific CLAUDE.md files: [agents/](agents/CLAUDE.md), [app/](app/CLAUDE.md), [dev-supervisor/](dev-supervisor/CLAUDE.md)
+See service-specific CLAUDE.md files: [agents/](agents/CLAUDE.md), [app/](app/CLAUDE.md), [dev-supervisor/](dev-supervisor/CLAUDE.md), [local-control-plane/](local-control-plane/CLAUDE.md)
 
 ## V4 Directory Structure
 
@@ -144,13 +145,14 @@ Use `./setup.sh` — don't create `.env` files manually.
 
 ## Additional Documentation
 
-- Architecture: `ARCHITECTURE_DOCUMENTATION.md`
+- Architecture (archived): `ARCHITECTURE_DOCUMENTATION.md`
 - WebSocket: `docs/client-websocket-architecture.md`
 - OAuth: `docs/oauth-architecture.md`
 - Testing: `app/TESTING.md`
 - Logging: `LOGGING-GUIDE.md`
 - Setup: `GETTING_STARTED.md`
 - Mock auth: `app/MOCK-AUTH-SETUP.md`
+- Documentation index: `docs/README.md`
 
 ## i18n Validation
 

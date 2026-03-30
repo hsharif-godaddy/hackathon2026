@@ -40,8 +40,8 @@ graph TB
     ING -->| Cilium | PREVIEW
     ING -->| Cilium | PUBLISH
 
-    AGENT -->|Controls via<br/>airo-supervisor| PREVIEW
-    AGENT -->|Controls via<br/>airo-supervisor| PUBLISH
+    AGENT -->|Controls via<br/>dev-supervisor| PREVIEW
+    AGENT -->|Controls via<br/>dev-supervisor| PUBLISH
 
     AGENT -.->|Mount| CEPH
     PREVIEW -.->|Mount| CEPH
@@ -107,7 +107,7 @@ graph TB
 - **Domain**: `{appId}.agent.{cell}.{domain}` (e.g., `abc123.agent.c4.test-airoapp.ai`)
 - **Capabilities**:
   - Restart application containers
-  - Execute tasks on dev containers via airo-supervisor socket (more details later in this document)
+  - Execute tasks on dev containers via dev-supervisor socket (more details later in this document)
   - Editing application files in the shared alloc directory
   - Service registration with ingress
 - **Ports**: 80/tcp
@@ -140,11 +140,11 @@ graph TB
 
 ## Secure Agent-to-Application Communication
 
-### airo-supervisor Socket Interface
+### dev-supervisor Socket Interface
 
-The Agent containers communicate securely with development and production application containers through a specialized Go-based supervisor service called `airo-supervisor`. This provides a secure, controlled interface for application lifecycle management without requiring elevated privileges or network-based communication.
+The Agent containers communicate securely with development and production application containers through a specialized Go-based supervisor service called `dev-supervisor`. This provides a secure, controlled interface for application lifecycle management without requiring elevated privileges or network-based communication.
 
-#### airo-supervisor Architecture Overview
+#### dev-supervisor Architecture Overview
 
 ```mermaid
 graph LR
@@ -153,14 +153,14 @@ graph LR
     end
 
     subgraph "Application Container"
-        subgraph "airo-supervisor (PID 1)"
-            DS[airo-supervisor<br/>Unix Socket]
+        subgraph "dev-supervisor (PID 1)"
+            DS[dev-supervisor<br/>Unix Socket]
             DS --> |manages| APP[Customer App Process<br/>Port 20000-20100]
         end
     end
 
     subgraph "Shared Socket Volume"
-        SOCK[Unix Domain Socket<br/>NOMAD_ALLOC_DIR/tmp/appId-airo-supervisor.sock]
+        SOCK[Unix Domain Socket<br/>NOMAD_ALLOC_DIR/tmp/appId-dev-supervisor.sock]
     end
 
     AC -->|HTTP over Unix Socket| SOCK
@@ -180,21 +180,21 @@ graph LR
 **Unix Domain Socket Communication**
 
 - **Transport**: HTTP API served over Unix domain sockets (not TCP)
-- **Socket Path**: `${NOMAD_ALLOC_DIR}/tmp/${appId}-airo-supervisor.sock` (app-specific)
+- **Socket Path**: `${NOMAD_ALLOC_DIR}/tmp/${appId}-dev-supervisor.sock` (app-specific)
 - **Permissions**: Socket permissions restrict access to container users
 - **Isolation**: No network traffic - communication stays within the host kernel
 - **Authentication**: File system permissions provide access control
 
 **Process Isolation**
 
-- **PID 1 Role**: airo-supervisor runs as the primary process in application containers
+- **PID 1 Role**: dev-supervisor runs as the primary process in application containers
 - **Process Management**: Controls customer application lifecycle without exposing system-level access
 - **Signal Handling**: Proper init process behavior with zombie reaping and signal forwarding
-- **Resource Isolation**: Application processes run under airo-supervisor's controlled environment
+- **Resource Isolation**: Application processes run under dev-supervisor's controlled environment
 
 #### API Capabilities
 
-The airo-supervisor exposes a RESTful HTTP API over the Unix socket with the following capabilities:
+The dev-supervisor exposes a RESTful HTTP API over the Unix socket with the following capabilities:
 
 **Process Lifecycle Management**
 
@@ -282,25 +282,25 @@ WS /logs/stream
 
 ```yaml
 # Nomad job configuration - uses allocation directory
-# Socket path: ${NOMAD_ALLOC_DIR}/tmp/${appId}-airo-supervisor.sock
+# Socket path: ${NOMAD_ALLOC_DIR}/tmp/${appId}-dev-supervisor.sock
 
 # Application container environment variable
 Env:
   {
-    DEV_SUPERVISOR_SOCKET_PATH: "${NOMAD_ALLOC_DIR}/tmp/${appId}-airo-supervisor.sock",
+    DEV_SUPERVISOR_SOCKET_PATH: "${NOMAD_ALLOC_DIR}/tmp/${appId}-dev-supervisor.sock",
   }
 # Both containers share the same allocation directory
-# Agent accesses socket via: ${NOMAD_ALLOC_DIR}/tmp/${appId}-airo-supervisor.sock
-# App container creates socket via airo-supervisor at the same path
+# Agent accesses socket via: ${NOMAD_ALLOC_DIR}/tmp/${appId}-dev-supervisor.sock
+# App container creates socket via dev-supervisor at the same path
 ```
 
 #### Security Benefits
 
 1. **No Network Exposure**: Communication occurs entirely through Unix domain sockets
 2. **File System Permissions**: Access controlled through standard Unix file permissions
-3. **Process Isolation**: airo-supervisor acts as a controlled gateway to application processes
+3. **Process Isolation**: dev-supervisor acts as a controlled gateway to application processes
 4. **Audit Trail**: All communication is logged and traceable
-5. **Resource Controls**: airo-supervisor enforces resource limits and policies
+5. **Resource Controls**: dev-supervisor enforces resource limits and policies
 6. **Crash Recovery**: Automatic process restart with configurable backoff policies
 
 ## Network Security Architecture

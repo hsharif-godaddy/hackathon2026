@@ -1,3 +1,7 @@
+---
+status: implemented
+---
+
 # Todo List Tool - Implementation Summary
 
 ## Overview

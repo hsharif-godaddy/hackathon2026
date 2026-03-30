@@ -1,3 +1,7 @@
+---
+status: not-implemented
+---
+
 # Chat History Pagination Design
 
 **Date:** 2026-02-09
