@@ -67,7 +67,7 @@ describe('token-counter', () => {
       expect(result.tokenCount).toBeGreaterThan(0)
     })
 
-    it('should count tokens for Bedrock Claude models', async () => {
+    it('should count tokens for Claude models using aliases', async () => {
       const result = await countTokens('Hello world', 'claude4')
 
       expect(result).toEqual({
@@ -237,9 +237,9 @@ describe('token-counter', () => {
       expect(isTokenCountingSupported('sonnet')).toBe(true)
     })
 
-    it('should return true for supported Bedrock models', () => {
+    it('should return true for supported Claude models', () => {
       expect(isTokenCountingSupported('claude-sonnet-4')).toBe(true)
-      expect(isTokenCountingSupported('global.anthropic.claude-sonnet-4-20250514-v1:0')).toBe(true)
+      expect(isTokenCountingSupported('claude-3-5-sonnet')).toBe(true)
     })
 
     it('should return false for unsupported models', () => {
@@ -264,8 +264,8 @@ describe('token-counter', () => {
       expect(getModelProvider('claude4')).toBe('anthropic')
     })
 
-    it('should return correct provider for Bedrock models', () => {
-      expect(getModelProvider('global.anthropic.claude-sonnet-4-20250514-v1:0')).toBe('bedrock-claude')
+    it('should return correct provider for Gemini models', () => {
+      expect(getModelProvider('gemini-3-flash-preview')).toBe('openai')
     })
 
     it('should handle unsupported models', () => {
@@ -285,10 +285,10 @@ describe('token-counter', () => {
       expect(result3.normalizedModelName).toBe('claude-sonnet-4')
     })
 
-    it('should handle provider preferences correctly', async () => {
-      // Different aliases might have different provider preferences
+    it('should handle provider correctly for Claude models', async () => {
+      // Claude models should use anthropic provider
       const result = await countTokens('test', 'claude4')
-      expect(['anthropic', 'bedrock-claude']).toContain(result.provider)
+      expect(result.provider).toBe('anthropic')
     })
   })
 

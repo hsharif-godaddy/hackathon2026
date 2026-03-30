@@ -154,71 +154,17 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
 }
 
 /**
- * Bedrock pricing (same base pricing as Anthropic direct API)
- * Note: Input pricing for Claude Sonnet 4 is the same on both platforms
- */
-const BEDROCK_PRICING: Record<string, ModelPricing> = {
-  'claude-sonnet-4-6': {
-    inputCostPer1K: 0.003,
-    outputCostPer1K: 0.015,
-    cachedInputReadCostPer1K: 0.0003,
-    cachedInputWriteCostPer1K: 0.00375,
-    currency: 'USD'
-  },
-  'claude-sonnet-4-5': {
-    inputCostPer1K: 0.003,
-    outputCostPer1K: 0.015,
-    cachedInputReadCostPer1K: 0.0003,
-    cachedInputWriteCostPer1K: 0.00375,
-    currency: 'USD'
-  },
-  'claude-haiku-4-5': {
-    inputCostPer1K: 0.001,
-    outputCostPer1K: 0.005,
-    cachedInputReadCostPer1K: 0.0001,
-    cachedInputWriteCostPer1K: 0.00125,
-    currency: 'USD'
-  },
-  'claude-sonnet-4': {
-    inputCostPer1K: 0.003,
-    outputCostPer1K: 0.015,
-    cachedInputReadCostPer1K: 0.0003,
-    cachedInputWriteCostPer1K: 0.00375,
-    currency: 'USD'
-  },
-  'claude-3-5-sonnet': {
-    inputCostPer1K: 0.003,
-    outputCostPer1K: 0.015,
-    currency: 'USD'
-  },
-  'claude-3-5-haiku': {
-    inputCostPer1K: 0.0008,
-    outputCostPer1K: 0.004,
-    cachedInputReadCostPer1K: 0.0003,
-    cachedInputWriteCostPer1K: 0.00375,
-    currency: 'USD'
-  },
-}
-
-
-/**
  * Get pricing information for a model
  */
 function getModelPricing(modelName: string): ModelPricing | null {
-  const modelInfo = normalizeModelName(modelName, true) // Prefer Bedrock for caching support
+  const modelInfo = normalizeModelName(modelName)
   const normalizedName = modelInfo.normalizedName
-  const provider = modelInfo.provider
-  
-  // Use Bedrock pricing for Bedrock models (includes caching discounts)
-  if (provider === 'bedrock-claude' && BEDROCK_PRICING[normalizedName]) {
-    return BEDROCK_PRICING[normalizedName]
-  }
-  
-  // Use regular pricing for other providers
+
+  // Use regular pricing for all models
   if (MODEL_PRICING[normalizedName]) {
     return MODEL_PRICING[normalizedName]
   }
-  
+
   return null
 }
 
@@ -229,7 +175,7 @@ export function calculateCostEstimate(
   usage: TokenUsage,
   modelName: string
 ): CostEstimate {
-  const modelInfo = normalizeModelName(modelName, true) // Prefer Bedrock for caching support
+  const modelInfo = normalizeModelName(modelName)
   const provider = modelInfo.provider
   const pricing = getModelPricing(modelName)
 
@@ -387,31 +333,20 @@ export function getAvailableModelsWithPricing(): Array<{
     supportsCaching: boolean
     currency: string
   }> = []
-  
-  // Add regular models
+
+  // Add all models
   for (const [name, pricing] of Object.entries(MODEL_PRICING)) {
     const modelInfo = normalizeModelName(name)
+    const supportsCaching = pricing.cachedInputReadCostPer1K !== undefined || pricing.cachedInputWriteCostPer1K !== undefined
     models.push({
       name,
       provider: modelInfo.provider,
       inputCostPer1K: pricing.inputCostPer1K,
       outputCostPer1K: pricing.outputCostPer1K,
-      supportsCaching: false,
+      supportsCaching,
       currency: pricing.currency
     })
   }
-  
-  // Add Bedrock models (with caching support)
-  for (const [name, pricing] of Object.entries(BEDROCK_PRICING)) {
-    models.push({
-      name: `${name} (Bedrock)`,
-      provider: 'bedrock-claude' as ModelProvider,
-      inputCostPer1K: pricing.inputCostPer1K,
-      outputCostPer1K: pricing.outputCostPer1K,
-      supportsCaching: pricing.cachedInputReadCostPer1K !== undefined || pricing.cachedInputWriteCostPer1K !== undefined,
-      currency: pricing.currency
-    })
-  }
-  
+
   return models.sort((a, b) => a.name.localeCompare(b.name))
 }

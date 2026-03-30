@@ -10,12 +10,10 @@ import {
   getFullModelName,
   getNormalizedModelName,
   getModelProvider,
-  modelSupportsCaching,
   getModelInfo,
   getLegacyModelMappings,
   MODELS,
-  ALIASES,
-  BEDROCK_MODELS
+  ALIASES
 } from '../model-normalization.js'
 
 describe('model-normalization', () => {
@@ -42,28 +40,6 @@ describe('model-normalization', () => {
       })
     })
 
-    it('should prefer Bedrock when preferBedrock is true', () => {
-      const result = normalizeModelName('claude4', true)
-      expect(result).toEqual({
-        normalizedName: 'claude-sonnet-4',
-        fullModelId: 'global.anthropic.claude-sonnet-4-20250514-v1:0',
-        provider: 'bedrock-claude',
-        isSupported: true,
-        originalName: 'claude4'
-      })
-    })
-
-    it('should handle full Bedrock ARN names', () => {
-      const bedrockArn = 'global.anthropic.claude-sonnet-4-20250514-v1:0'
-      const result = normalizeModelName(bedrockArn)
-      expect(result).toEqual({
-        normalizedName: 'claude-sonnet-4',
-        fullModelId: bedrockArn,
-        provider: 'bedrock-claude',
-        isSupported: true,
-        originalName: bedrockArn
-      })
-    })
 
     it('should handle canonical model names', () => {
       const result = normalizeModelName('claude-3-5-sonnet')
@@ -135,9 +111,6 @@ describe('model-normalization', () => {
       expect(isModelSupported('sonnet4')).toBe(true)
     })
 
-    it('should return true for Bedrock ARN names', () => {
-      expect(isModelSupported('us.anthropic.claude-3-5-sonnet-20240620-v1:0')).toBe(true)
-    })
 
     it('should return false for unsupported models', () => {
       expect(isModelSupported('unknown-model')).toBe(false)
@@ -160,9 +133,6 @@ describe('model-normalization', () => {
       expect(getFullModelName('claude4')).toBe('claude-sonnet-4')
     })
 
-    it('should return Bedrock ARN when preferBedrock is true', () => {
-      expect(getFullModelName('claude4', true)).toBe('global.anthropic.claude-sonnet-4-20250514-v1:0')
-    })
   })
 
   describe('getNormalizedModelName', () => {
@@ -189,40 +159,20 @@ describe('model-normalization', () => {
       expect(getModelProvider('sonnet')).toBe('anthropic')
     })
 
-    it('should return bedrock-claude when preferBedrock is true', () => {
-      expect(getModelProvider('claude4', true)).toBe('bedrock-claude')
-      expect(getModelProvider('claude-3-5-sonnet', true)).toBe('bedrock-claude')
-    })
 
     it('should return openai as fallback for unknown models', () => {
       expect(getModelProvider('unknown-model')).toBe('openai')
     })
   })
 
-  describe('modelSupportsCaching', () => {
-    it('should return true for Bedrock Claude models', () => {
-      expect(modelSupportsCaching('claude4')).toBe(true)
-      expect(modelSupportsCaching('claude-3-5-sonnet')).toBe(true)
-      expect(modelSupportsCaching('claude-3-5-haiku')).toBe(true)
-    })
-
-    it('should return false for OpenAI models', () => {
-      expect(modelSupportsCaching('gpt4o')).toBe(false)
-      expect(modelSupportsCaching('gpt-4-turbo')).toBe(false)
-    })
-
-    it('should return false for models not available on Bedrock', () => {
-      expect(modelSupportsCaching('claude-3-opus')).toBe(false)
-    })
-  })
 
   describe('getModelInfo', () => {
     it('should return complete model information', () => {
-      const info = getModelInfo('claude4', true)
+      const info = getModelInfo('claude4')
       expect(info).toEqual({
         normalizedName: 'claude-sonnet-4',
-        fullModelId: 'global.anthropic.claude-sonnet-4-20250514-v1:0',
-        provider: 'bedrock-claude',
+        fullModelId: 'claude-sonnet-4',
+        provider: 'anthropic',
         isSupported: true,
         originalName: 'claude4'
       })
@@ -234,14 +184,13 @@ describe('model-normalization', () => {
       const mappings = getLegacyModelMappings()
       expect(typeof mappings).toBe('object')
       expect(mappings['gpt4o']).toBe('gpt-4o')
-      expect(mappings['claude4']).toBe('global.anthropic.claude-sonnet-4-20250514-v1:0') // Prefers Bedrock
+      expect(mappings['claude4']).toBe('claude-sonnet-4')
     })
 
-    it('should prefer Bedrock for Claude models', () => {
+    it('should map Claude models to Anthropic provider', () => {
       const mappings = getLegacyModelMappings()
-      // Claude models should map to Bedrock ARNs when available
-      expect(mappings['claude-sonnet-4']).toBe('global.anthropic.claude-sonnet-4-20250514-v1:0')
-      expect(mappings['claude-3-5-sonnet']).toBe('us.anthropic.claude-3-5-sonnet-20240620-v1:0')
+      expect(mappings['claude-sonnet-4']).toBe('claude-sonnet-4')
+      expect(mappings['claude-3-5-sonnet']).toBe('claude-3-5-sonnet')
     })
   })
 
@@ -252,7 +201,7 @@ describe('model-normalization', () => {
         expect(typeof model.normalizedName).toBe('string')
         expect(model.normalizedName.length).toBeGreaterThan(0)
         // At least one provider should be defined
-        expect(model.openai || model.anthropic || model.bedrock).toBeTruthy()
+        expect(model.openai || model.anthropic).toBeTruthy()
       })
     })
 
@@ -264,13 +213,6 @@ describe('model-normalization', () => {
       })
     })
 
-    it('should have valid BEDROCK_MODELS structure', () => {
-      expect(typeof BEDROCK_MODELS).toBe('object')
-      expect(typeof BEDROCK_MODELS.claude4).toBe('string')
-      expect(typeof BEDROCK_MODELS.claude35).toBe('string')
-      expect(typeof BEDROCK_MODELS.claude3haiku).toBe('string')
-    })
-
     it('should ensure all aliases point to valid models', () => {
       Object.entries(ALIASES).forEach(([_, canonicalKey]) => {
         const model = MODELS[canonicalKey]
@@ -279,16 +221,6 @@ describe('model-normalization', () => {
       })
     })
 
-    it('should ensure Bedrock models exist for caching-capable models', () => {
-      const cachingModels = ['claude-sonnet-4', 'claude-3-5-sonnet', 'claude-3-5-haiku']
-      cachingModels.forEach(modelKey => {
-        const model = MODELS[modelKey]
-        expect(model).toBeDefined()
-        expect(model.bedrock).toBeDefined()
-        expect(typeof model.bedrock).toBe('string')
-        expect(model.bedrock?.length).toBeGreaterThan(0)
-      })
-    })
   })
 
   describe('edge cases', () => {

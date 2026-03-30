@@ -51,8 +51,8 @@ describe('AgentWrapper - Cache Point Preservation', () => {
     })
 
     const mockModel = {
-      provider: 'bedrock',
-      modelId: 'anthropic.claude-3-sonnet',
+      provider: 'anthropic',
+      modelId: 'claude-3-5-sonnet-20241022',
       doGenerate: vi.fn(),
       doStream: vi.fn()
     }
@@ -122,8 +122,8 @@ describe('AgentWrapper - Cache Point Preservation', () => {
     // Verify cachePoint was converted to providerOptions
     expect(messageWithCache.cachePoint).toBeUndefined() // Should be removed
     expect(messageWithCache.providerOptions).toBeDefined()
-    expect(messageWithCache.providerOptions.bedrock).toBeDefined()
-    expect(messageWithCache.providerOptions.bedrock.cachePoint).toBe('ephemeral')
+    expect(messageWithCache.providerOptions.anthropic).toBeDefined()
+    expect(messageWithCache.providerOptions.anthropic.cacheControl).toEqual({ type: 'ephemeral' })
   })
 
   it('should handle conversationMessages without cachePoint', async () => {
@@ -211,8 +211,8 @@ describe('AgentWrapper - Cache Point Preservation', () => {
 
     expect(contextMessage).toBeDefined()
     expect(contextMessage.providerOptions).toBeDefined()
-    expect(contextMessage.providerOptions.bedrock).toBeDefined()
-    expect(contextMessage.providerOptions.bedrock.cachePoint).toBe('ephemeral')
+    expect(contextMessage.providerOptions.anthropic).toBeDefined()
+    expect(contextMessage.providerOptions.anthropic.cacheControl).toEqual({ type: 'ephemeral' })
   })
 
   it('should handle mixed messages with and without cachePoint', async () => {
@@ -271,7 +271,7 @@ describe('AgentWrapper - Cache Point Preservation', () => {
       msg.content === 'Message 2 with cache'
     )
     expect(msg2.providerOptions).toBeDefined()
-    expect(msg2.providerOptions.bedrock.cachePoint).toBe('ephemeral')
+    expect(msg2.providerOptions.anthropic.cacheControl).toEqual({ type: 'ephemeral' })
     expect(msg2.cachePoint).toBeUndefined()
 
     // Verify message without cache has no providerOptions
@@ -812,9 +812,6 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
         providerOptions: {
           anthropic: {
             cacheControl: { type: 'ephemeral' as const }
-          },
-          bedrock: {
-            cachePoint: 'ephemeral' as const
           }
         }
       },
@@ -986,7 +983,6 @@ describe('AgentWrapper - advanceCacheBreakpoint via prepareStep', () => {
 
     const lastMsg = result.messages[result.messages.length - 1] as any
     expect(lastMsg.providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' })
-    expect(lastMsg.providerOptions?.bedrock?.cachePoint).toBe('ephemeral')
   })
 
   it('should preserve user message breakpoints (e.g. conversation summary)', async () => {
@@ -995,8 +991,7 @@ describe('AgentWrapper - advanceCacheBreakpoint via prepareStep', () => {
         role: 'user',
         content: '[CONVERSATION SUMMARY]',
         providerOptions: {
-          anthropic: { cacheControl: { type: 'ephemeral' } },
-          bedrock: { cachePoint: 'ephemeral' }
+          anthropic: { cacheControl: { type: 'ephemeral' } }
         }
       },
       { role: 'assistant', content: 'Response' },
@@ -1021,8 +1016,7 @@ describe('AgentWrapper - advanceCacheBreakpoint via prepareStep', () => {
         role: 'assistant',
         content: 'Previous response',
         providerOptions: {
-          anthropic: { cacheControl: { type: 'ephemeral' } },
-          bedrock: { cachePoint: 'ephemeral' }
+          anthropic: { cacheControl: { type: 'ephemeral' } }
         }
       },
       { role: 'user', content: 'New message' },

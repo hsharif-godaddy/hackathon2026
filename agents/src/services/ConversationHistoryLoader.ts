@@ -980,8 +980,7 @@ export class ConversationHistoryLoader {
           content: msg.content,
           ...(msg.cachePoint ? {
             providerOptions: {
-              anthropic: { cacheControl: { type: msg.cachePoint.type } },
-              bedrock: { cachePoint: msg.cachePoint.type }
+              anthropic: { cacheControl: { type: msg.cachePoint.type } }
             }
           } : {})
         };
@@ -1038,8 +1037,7 @@ export class ConversationHistoryLoader {
             content: contentParts,
             ...(msg.cachePoint ? {
               providerOptions: {
-                anthropic: { cacheControl: { type: msg.cachePoint.type } },
-                bedrock: { cachePoint: msg.cachePoint.type }
+                anthropic: { cacheControl: { type: msg.cachePoint.type } }
               }
             } : {})
           };
@@ -1054,8 +1052,7 @@ export class ConversationHistoryLoader {
           content,
           ...(msg.cachePoint ? {
             providerOptions: {
-              anthropic: { cacheControl: { type: msg.cachePoint.type } },
-              bedrock: { cachePoint: msg.cachePoint.type }
+              anthropic: { cacheControl: { type: msg.cachePoint.type } }
             }
           } : {})
         };
@@ -1074,8 +1071,7 @@ export class ConversationHistoryLoader {
           content: msg.content,
           ...(msg.cachePoint ? {
             providerOptions: {
-              anthropic: { cacheControl: { type: msg.cachePoint.type } },
-              bedrock: { cachePoint: msg.cachePoint.type }
+              anthropic: { cacheControl: { type: msg.cachePoint.type } }
             }
           } : {})
         };

@@ -150,8 +150,8 @@ describe('AgentWrapper integration with ToolLoopAgent settings', () => {
     contextMessages.forEach((msg, index) => {
       const expectedProviderOptions = msg.cachePoint
         ? {
-            bedrock: {
-              cachePoint: msg.cachePoint.type
+            anthropic: {
+              cacheControl: { type: msg.cachePoint.type }
             }
           }
         : undefined

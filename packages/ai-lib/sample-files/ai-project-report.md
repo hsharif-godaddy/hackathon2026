@@ -12,7 +12,7 @@ This comprehensive analysis evaluates the performance and impact of our AI-power
 ## Technical Implementation
 ### Architecture
 - Microservices-based design
-- AWS Bedrock integration
+- LLM integration
 - Real-time processing pipeline
 - Automated quality assurance
 

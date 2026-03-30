@@ -214,23 +214,6 @@ const prompt = await createPromptBuilder()
   .build({ user: { language: "spanish" } });
 ```
 
-### Caching with Large Prompts
-
-```typescript
-// For use with Bedrock prompt caching
-const context = [
-  {
-    role: "user",
-    content: await createPromptBuilder()
-      .file("./large-knowledge-base.md")
-      .file("./detailed-instructions.md")
-      .build(),
-    cachePoint: { type: "ephemeral" },
-  },
-];
-
-const result = await agent.streamGenerate(userMessage, { context });
-```
 
 ## 🏗️ **Custom Sections**
 
@@ -281,7 +264,7 @@ const agents = agentFactory.defineAgents({
   assistant: {
     name: "Smart Assistant",
     system: systemPrompt,
-    model: await getModel("claude4"),
+    model: await getModel("gpt4o"),
     tools: {
       /* your tools */
     },
@@ -289,7 +272,7 @@ const agents = agentFactory.defineAgents({
 });
 ```
 
-### Context Messages for Caching
+### Context Messages
 
 ```typescript
 const largeContext = await createPromptBuilder()
@@ -303,7 +286,6 @@ const result = await agent.streamGenerate(userQuestion, {
     {
       role: "user",
       content: largeContext,
-      cachePoint: { type: "ephemeral" }, // For Bedrock caching
     },
   ],
 });
@@ -332,7 +314,7 @@ try {
 
 1. **File Caching**: Files are read on each build - consider caching for repeated use
 2. **Async Conditions**: Use `await` in condition functions for async operations
-3. **Large Prompts**: Use with Bedrock caching for cost optimization
+3. **Large Prompts**: Consider context/session management for repeated prompts
 4. **Template Variables**: Prefer templates over string concatenation
 
 ## 🎯 **Best Practices**

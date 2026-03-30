@@ -53,7 +53,7 @@ export interface SkillToolProvider {
  */
 export interface GlobalAgentConfig {
   /** Default provider to use when not specified */
-  defaultProvider?: 'openai' | 'anthropic' | 'bedrock' | 'custom'
+  defaultProvider?: 'openai' | 'anthropic' | 'custom'
   /** Default model to use when not specified */
   defaultModel?: string | LanguageModel
   /** Global tools available to all agents */

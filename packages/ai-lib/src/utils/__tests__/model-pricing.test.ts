@@ -36,7 +36,7 @@ describe('model-pricing', () => {
       expect(estimate.cachedInputCost).toBeUndefined()
     })
 
-    it('should calculate costs with read caching for Bedrock models', () => {
+    it('should calculate costs with read caching for Anthropic models', () => {
       const usage: TokenUsage = {
         inputTokens: 1000,
         outputTokens: 500,
@@ -45,7 +45,7 @@ describe('model-pricing', () => {
       }
 
       const estimate = calculateCostEstimate(usage, 'claude-sonnet-4')
-      
+
       // Regular input: 800 tokens * 0.003 / 1000 = 0.0024
       expect(estimate.inputCost).toBeCloseTo(0.0024, 5)
       // Output: 500 * 0.015 / 1000 = 0.0075
@@ -60,7 +60,7 @@ describe('model-pricing', () => {
       expect(estimate.savingsPercentage).toBeCloseTo(5.14, 2)
     })
 
-    it('should calculate costs with write caching for Bedrock models', () => {
+    it('should calculate costs with write caching for Anthropic models', () => {
       const usage: TokenUsage = {
         inputTokens: 1000,
         outputTokens: 500,
@@ -69,7 +69,7 @@ describe('model-pricing', () => {
       }
 
       const estimate = calculateCostEstimate(usage, 'claude-sonnet-4')
-      
+
       // Regular input: 700 tokens * 0.003 / 1000 = 0.0021
       expect(estimate.inputCost).toBe(0.0021)
       // Output: 500 * 0.015 / 1000 = 0.0075
@@ -136,7 +136,7 @@ describe('model-pricing', () => {
       expect(estimate1.provider).toBe(estimate2.provider)
     })
 
-    it('should prefer Bedrock for caching-capable models', () => {
+    it('should use Anthropic pricing for Claude models', () => {
       const usage: TokenUsage = {
         inputTokens: 1000,
         outputTokens: 500,
@@ -145,9 +145,9 @@ describe('model-pricing', () => {
       }
 
       const estimate = calculateCostEstimate(usage, 'claude4')
-      
-      // Should use Bedrock pricing even though alias could map to Anthropic
-      expect(estimate.provider).toBe('bedrock-claude')
+
+      // Should use Anthropic pricing
+      expect(estimate.provider).toBe('anthropic')
       expect(estimate.cachedInputCost).toBeDefined()
     })
   })
@@ -247,7 +247,7 @@ describe('model-pricing', () => {
         savingsPercentage: 0.15,
         currency: 'USD',
         model: 'claude-sonnet-4',
-        provider: 'bedrock-claude'
+        provider: 'anthropic'
       }
 
       const usage: TokenUsage = {
@@ -258,7 +258,7 @@ describe('model-pricing', () => {
       }
 
       const lines = formatCostEstimate(estimate, usage)
-      
+
       expect(lines).toContain('📊 Cost Analysis for claude-sonnet-4:')
       expect(lines).toContain('   Cached input cost: $0.0001')
       expect(lines).toContain('     • Read: 200 tokens')
@@ -278,7 +278,7 @@ describe('model-pricing', () => {
         savingsPercentage: -1.09,
         currency: 'USD',
         model: 'claude-sonnet-4',
-        provider: 'bedrock-claude'
+        provider: 'anthropic'
       }
 
       const usage: TokenUsage = {
@@ -297,7 +297,7 @@ describe('model-pricing', () => {
   })
 
   describe('modelSupportsCaching', () => {
-    it('should return true for Bedrock Claude models with caching support', () => {
+    it('should return true for Anthropic Claude models with caching support', () => {
       expect(modelSupportsCaching('claude-sonnet-4')).toBe(true)
       expect(modelSupportsCaching('claude4')).toBe(true)
       expect(modelSupportsCaching('claude-3-5-haiku')).toBe(true)
@@ -309,7 +309,7 @@ describe('model-pricing', () => {
       expect(modelSupportsCaching('gpt-4-turbo')).toBe(false)
     })
 
-    it('should return false for Claude models not available on Bedrock', () => {
+    it('should return false for Claude models without caching support', () => {
       expect(modelSupportsCaching('claude-3-opus')).toBe(false)
     })
 
@@ -341,25 +341,24 @@ describe('model-pricing', () => {
       })
     })
 
-    it('should include both regular and Bedrock models', () => {
+    it('should include OpenAI and Anthropic models', () => {
       const models = getAvailableModelsWithPricing()
-      
+
       const openaiModels = models.filter(m => m.provider === 'openai')
       const anthropicModels = models.filter(m => m.provider === 'anthropic')
-      const bedrockModels = models.filter(m => m.provider === 'bedrock-claude')
-      
+
       expect(openaiModels.length).toBeGreaterThan(0)
       expect(anthropicModels.length).toBeGreaterThan(0)
-      expect(bedrockModels.length).toBeGreaterThan(0)
     })
 
-    it('should mark Bedrock models as supporting caching', () => {
+    it('should mark Anthropic Claude models with caching support correctly', () => {
       const models = getAvailableModelsWithPricing()
-      const bedrockModels = models.filter(m => m.provider === 'bedrock-claude')
-      
-      bedrockModels.forEach(model => {
-        if (model.name.includes('claude-sonnet-4') || 
-            model.name.includes('claude-3-5-haiku')) {
+      const anthropicModels = models.filter(m => m.provider === 'anthropic')
+
+      anthropicModels.forEach(model => {
+        if (model.name.includes('claude-sonnet-4') ||
+            model.name.includes('claude-3-5-haiku') ||
+            model.name.includes('claude-haiku-4-5')) {
           expect(model.supportsCaching).toBe(true)
         }
       })

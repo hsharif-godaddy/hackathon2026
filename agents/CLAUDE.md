@@ -89,7 +89,7 @@ Key methods: `addFiles`, `removeFiles`, `writeTree`, `commitTree`, `reset`, `pus
 
 - **AgentFactory** — multi-agent lifecycle, tool calling loops, streaming
 - **WebSocket server** — `experimental-websocket-server.ts` (base class extended by agents service)
-- **Provider abstraction** — OpenAI, Anthropic, Bedrock, Google
+- **Provider abstraction** — OpenAI, Anthropic, Google (Bedrock removed as of 2026-03-30)
 - **Message building** — history normalization, cache points
 
 **Integration via callbacks** (not hard coupling): `agentRouter`, `contextProvider`, `messageProvider`, `messagePersistence`. The agents service provides domain-specific implementations.

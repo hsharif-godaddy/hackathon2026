@@ -34,11 +34,6 @@
     "format": "prettier --write src",
     "format:check": "prettier --check src",
     "example:basic-openai": "npx tsx examples/basic-openai.ts",
-    "example:basic-bedrock": "npx tsx examples/basic-bedrock.ts",
-    "example:agentic-simple": "npx tsx examples/agentic-bedrock-simple.ts",
-    "example:agentic-full": "npx tsx examples/agentic-bedrock-full.ts",
-    "example:prompt-caching": "npx tsx examples/agentic-bedrock-prompt-caching.ts",
-    "example:file-upload": "npx tsx examples/agentic-bedrock-file-upload.ts",
     "example:websocket-single": "npx tsx examples/experimental-websocket-demo.ts single",
     "example:websocket-multi": "npx tsx examples/experimental-websocket-demo.ts multi",
     "example:prompt-builder": "npx tsx examples/prompt-builder-demo.ts",
@@ -54,10 +49,9 @@
     "example:s2s-caching": "npx tsx examples/s2s-token-caching-demo.ts",
     "example:s2s-concurrency": "npx tsx examples/s2s-concurrency-test.ts",
     "example:image-generation": "npx tsx examples/image-generation-demo.ts",
-    "setup": "echo 'Copy env.example to .env and fill in your API keys, then run npm run example:basic-openai or npm run example:basic-bedrock'"
+    "setup": "echo 'Copy env.example to .env and fill in your API keys, then run npm run example:basic-openai'"
   },
   "dependencies": {
-    "@ai-sdk/amazon-bedrock": "^4.0.83",
     "@ai-sdk/google": "^3.0.53",
     "@ai-sdk/openai": "^3.0.48",
     "@ai-sdk/openai-compatible": "^2.0.37",
@@ -65,9 +59,6 @@
     "@airo/ai-common": "workspace:*",
     "@airo/ai-grants": "workspace:*",
     "@airo/shared": "workspace:*",
-    "@aws-sdk/client-bedrock-runtime": "^3.890.0",
-    "@aws-sdk/client-sts": "3.679.0",
-    "@aws-sdk/credential-providers": "^3.888.0",
     "@langfuse/tracing": "^4.5.1",
     "ai": "^6.0.138",
     "ai-tokenizer": "^1.0.6",
@@ -86,6 +77,8 @@
   },
   "devDependencies": {
     "@airo/eslint-config": "workspace:*",
+    "@aws-sdk/client-sts": "3.679.0",
+    "@aws-sdk/credential-providers": "3.679.0",
     "@types/express": "^4.17.21",
     "@types/node": "^22.18.12",
     "@typescript-eslint/eslint-plugin": "^6.13.0",

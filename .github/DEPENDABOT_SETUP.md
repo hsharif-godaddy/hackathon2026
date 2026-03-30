@@ -15,7 +15,7 @@ This repository uses **Dependabot** to automatically check for dependency update
 Dependabot will:
 
 - ✅ **Scan weekly** - Every Monday morning (staggered times in UTC)
-- ✅ **Monitor all workspace packages** - root, agents, app, cdk, proxy, packages/ai-lib, packages/design-extractor, setup, bedrock-log-viewer, debug-console
+- ✅ **Monitor all workspace packages** - root, agents, app, cdk, proxy, packages/ai-lib, packages/design-extractor, setup, debug-console
 - ✅ **Check public npm packages only** - React, Next.js, AWS SDK, AI SDK, etc.
 - ✅ **Create grouped PRs** - Related updates bundled together
 - ✅ **Monitor GitHub Actions** - Also checks for workflow dependency updates

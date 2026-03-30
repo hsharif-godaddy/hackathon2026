@@ -10,7 +10,7 @@ import { llmMetadataContext, type LitellmMetadata } from '../providers/unified-p
 const logger = createLogger('embeddings')
 
 export interface EmbeddingModel {
-  provider: 'bedrock' | 'openai' | 'anthropic' | 'custom'
+  provider: 'openai' | 'anthropic' | 'custom'
   modelId: string
   instance?: any // The actual model instance from AI SDK
 }
@@ -36,8 +36,6 @@ export async function generateEmbeddings(
   // Wrap with metadata context if provided
   const generateFn = async () => {
     switch (modelInfo.provider) {
-      case 'bedrock':
-        return await generateBedrockEmbeddings(textsArray, modelInfo, options)
       case 'openai':
         return await generateOpenAIEmbeddings(textsArray, modelInfo, options)
       default:
@@ -58,37 +56,11 @@ export async function generateEmbeddings(
 function analyzeModel(model: any): EmbeddingModel {
   // If it's already our EmbeddingModel interface
   if (model && typeof model === 'object' && 'provider' in model) {
-    // But check if it's the AI SDK model with provider field, not our interface
-    if (model.provider === 'amazon-bedrock' && model.constructor?.name?.includes('Bedrock')) {
-      return {
-        provider: 'bedrock',
-        modelId: model.modelId || 'unknown',
-        instance: model
-      }
-    }
     return model as EmbeddingModel
   }
-  
+
   // Try to detect provider from model properties
   if (model && typeof model === 'object') {
-    // Check for Bedrock model (more comprehensive detection)
-    if (model.modelId?.includes('amazon.titan-embed') || 
-        model.modelId?.includes('cohere.embed') ||
-        model.modelId?.includes('titan-embed') ||
-        model.constructor?.name?.includes('Bedrock') ||
-        model.constructor?.name?.includes('BedrockEmbedding') ||
-        // Check if it came from our bedrock provider
-        model.provider === 'amazon-bedrock' ||
-        // Check for AI SDK Bedrock embedding model
-        (model.specificationVersion && model.provider === 'amazon-bedrock') ||
-        (model.specificationVersion && model.modelName?.includes('Titan'))) {
-      return {
-        provider: 'bedrock',
-        modelId: model.modelId || model.modelName || 'unknown',
-        instance: model
-      }
-    }
-    
     // Check for OpenAI model
     if (model.modelId?.includes('text-embedding') ||
         model.constructor?.name?.includes('OpenAI')) {
@@ -98,30 +70,10 @@ function analyzeModel(model: any): EmbeddingModel {
         instance: model
       }
     }
-    
-    // Additional bedrock detection for AI SDK models
-    if (model._settings && model._settings.modelId) {
-      if (model._settings.modelId.includes('amazon.titan-embed') ||
-          model._settings.modelId.includes('cohere.embed')) {
-        return {
-          provider: 'bedrock',
-          modelId: model._settings.modelId,
-          instance: model
-        }
-      }
-    }
   }
-  
+
   // If it's a string, try to detect from string
   if (typeof model === 'string') {
-    if (model.includes('amazon.titan-embed') || model.includes('cohere.embed')) {
-      return {
-        provider: 'bedrock',
-        modelId: model,
-        instance: null
-      }
-    }
-    
     if (model.includes('text-embedding')) {
       return {
         provider: 'openai',
@@ -130,92 +82,12 @@ function analyzeModel(model: any): EmbeddingModel {
       }
     }
   }
-  
+
   // Fallback to custom
   return {
     provider: 'custom',
     modelId: typeof model === 'string' ? model : 'unknown',
     instance: model
-  }
-}
-
-/**
- * Generate embeddings using AWS Bedrock (direct API calls)
- */
-async function generateBedrockEmbeddings(
-  texts: string[],
-  modelInfo: EmbeddingModel,
-  options: EmbeddingOptions
-): Promise<EmbeddingsResult> {
-  try {
-    // Import AWS SDK components
-    const { BedrockRuntimeClient, InvokeModelCommand } = await import('@aws-sdk/client-bedrock-runtime')
-    const { fromNodeProviderChain } = await import('@aws-sdk/credential-providers')
-    
-    // Create Bedrock client
-    const credentialOptions: any = {}
-    if (process.env.AWS_PROFILE) {
-      credentialOptions.profile = process.env.AWS_PROFILE
-    }
-    const credentials = fromNodeProviderChain(credentialOptions)
-    
-    const client = new BedrockRuntimeClient({
-      region: process.env.AWS_REGION || 'us-west-2',
-      credentials
-    })
-    
-    const embeddings: number[][] = []
-    let totalTokens = 0
-    
-    // Process each text individually (Bedrock embedding API limitation)
-    for (const text of texts) {
-      const requestBody = JSON.stringify({
-        inputText: text
-        // Note: amazon.titan-embed-text-v1 doesn't support dimensions parameter
-        // Only include dimensions for models that support it
-      })
-      
-      const command = new InvokeModelCommand({
-        modelId: modelInfo.modelId,
-        contentType: 'application/json',
-        accept: 'application/json',
-        body: requestBody
-      })
-      
-      const response = await client.send(command)
-      const responseBody = JSON.parse(new TextDecoder().decode(response.body))
-      
-      if (responseBody.embedding) {
-        embeddings.push(responseBody.embedding)
-        // Estimate token usage (rough approximation)
-        totalTokens += Math.ceil(text.length / 4)
-      } else {
-        throw new Error(`No embedding returned for text: ${text.substring(0, 50)}...`)
-      }
-    }
-    
-    // Transform to our standard format
-    const transformedEmbeddings = embeddings.map(embedding => ({
-      embedding,
-      dimensions: embedding.length
-    }))
-    
-    return {
-      embeddings: transformedEmbeddings,
-      usage: {
-        inputTokens: totalTokens,
-        outputTokens: 0,
-        totalTokens: totalTokens
-      },
-      metadata: {
-        model: modelInfo.modelId,
-        provider: 'bedrock',
-        ...options.metadata
-      }
-    }
-  } catch (error) {
-    logger.error('Bedrock embeddings error', error)
-    throw new Error(`Failed to generate Bedrock embeddings: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 

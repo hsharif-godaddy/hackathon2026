@@ -9,11 +9,6 @@ import { buildHybridContent } from '../utils/image-content-builder.js'
  * Matches the ProviderOptions shape used in agent-factory.ts.
  */
 interface ProviderOptions {
-  bedrock?: {
-    cachePoint?: string
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    [key: string]: any
-  }
   anthropic?: {
     cacheControl?: { type: string }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -33,7 +28,7 @@ type MessageWithCachePoint = ModelMessage & {
 
 /**
  * Convert cachePoint metadata to provider-specific options format.
- * Populates both Bedrock and Anthropic formats for cross-provider compatibility.
+ * Populates Anthropic format for prompt caching.
  */
 function applyCachePointToProviderOptions(
   cachePoint: { type: string },
@@ -41,10 +36,6 @@ function applyCachePointToProviderOptions(
 ): ProviderOptions {
   return {
     ...existingProviderOptions,
-    bedrock: {
-      ...(existingProviderOptions.bedrock || {}),
-      cachePoint: cachePoint.type,
-    },
     anthropic: {
       ...(existingProviderOptions.anthropic || {}),
       cacheControl: { type: cachePoint.type },

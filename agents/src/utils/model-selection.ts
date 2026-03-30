@@ -2,7 +2,7 @@
  * Model Selection Helper for Agents
  *
  * Provides intelligent model selection based on performance requirements
- * and available providers (Bedrock vs OpenAI)
+ * and available providers (Anthropic vs OpenAI)
  */
 
 import { stat, writeFile } from 'node:fs/promises'
@@ -115,41 +115,16 @@ export type ModelTier = 'full' | 'fast'
 const MODEL_MAPPINGS = {
   full: {
     // Always use Claude Sonnet for consistent experience
-    bedrock: 'sonnet',            // Claude Sonnet (latest)
-    openai: 'sonnet',             // Claude Sonnet through proxy/Anthropic
+    claude: 'sonnet',             // Claude Sonnet through proxy/Anthropic
     fallback: 'sonnet'            // Always Claude Sonnet
   },
   fast: {
     // Always use Claude Sonnet for consistent experience
-    bedrock: 'sonnet',             // Claude Sonnet (consistent experience)
-    openai: 'sonnet',              // Claude Sonnet through proxy/Anthropic
+    claude: 'sonnet',              // Claude Sonnet through proxy/Anthropic
     fallback: 'sonnet'             // Always Claude Sonnet
   }
 } as const
 
-/**
- * Check if Bedrock (AWS) is available by testing credentials
- */
-async function isBedrockAvailable(): Promise<boolean> {
-  try {
-    // Check if AWS credentials are available
-    const hasAwsCredentials = !!(
-      process.env.AWS_ACCESS_KEY_ID || 
-      process.env.AWS_PROFILE ||
-      process.env.AWS_REGION
-    )
-    
-    if (!hasAwsCredentials) {
-      return false
-    }
-    
-    // Test with a simple model info call - pass AWS region to force Bedrock provider detection
-    const modelInfo = getModelInfo('sonnet', { awsRegion: process.env.AWS_REGION || 'us-east-1' })
-    return modelInfo.provider === 'bedrock'
-  } catch {
-    return false
-  }
-}
 
 /**
  * Check if Anthropic is available
@@ -225,14 +200,12 @@ export async function getAgentModel(tier: ModelTier): Promise<LanguageModel> {
   }
 
   // Check provider availability
-  const bedrockAvailable = await isBedrockAvailable()
   const anthropicAvailable = isAnthropicAvailable()
   const openaiAvailable = isOpenAIAvailable()
 
   logger.info('model.selection.begin', {
     tier,
     providers: {
-      bedrockAvailable,
       anthropicAvailable,
       openaiAvailable
     }
@@ -240,17 +213,9 @@ export async function getAgentModel(tier: ModelTier): Promise<LanguageModel> {
 
   let selectedModel: string
 
-  if (bedrockAvailable) {
-    // Prefer Bedrock for better models and cost
-    selectedModel = config.bedrock
-    logger.info('model.provider.selected', {
-      provider: 'bedrock',
-      selectedModel,
-      tier
-    })
-  } else if (anthropicAvailable) {
-    // Second preference: Anthropic direct API
-    selectedModel = config.bedrock // Use Claude models through Anthropic API
+  if (anthropicAvailable) {
+    // Preference: Anthropic direct API
+    selectedModel = config.claude // Use Claude models through Anthropic API
     logger.info('model.provider.selected', {
       provider: 'anthropic',
       selectedModel,
@@ -258,7 +223,7 @@ export async function getAgentModel(tier: ModelTier): Promise<LanguageModel> {
     })
   } else if (openaiAvailable) {
     // Fallback to OpenAI
-    selectedModel = config.openai
+    selectedModel = config.claude
     logger.info('model.provider.selected', {
       provider: 'openai',
       selectedModel,
@@ -347,14 +312,12 @@ export async function getAgentModelWithName(tier: ModelTier): Promise<{model: an
   }
 
   // Check provider availability
-  const bedrockAvailable = await isBedrockAvailable()
   const anthropicAvailable = isAnthropicAvailable()
   const openaiAvailable = isOpenAIAvailable()
 
   logger.info('model.selection.with_name.begin', {
     tier,
     providers: {
-      bedrockAvailable,
       anthropicAvailable,
       openaiAvailable
     }
@@ -362,18 +325,9 @@ export async function getAgentModelWithName(tier: ModelTier): Promise<{model: an
 
   let selectedModel: string
 
-  if (bedrockAvailable) {
-    // Prefer Bedrock for better models and cost
-    selectedModel = config.bedrock
-    logger.info('model.provider.selected', {
-      provider: 'bedrock',
-      selectedModel,
-      tier,
-      operation: 'with_name'
-    })
-  } else if (anthropicAvailable) {
-    // Second preference: Anthropic direct API
-    selectedModel = config.bedrock // Use Claude models through Anthropic API
+  if (anthropicAvailable) {
+    // Preference: Anthropic direct API
+    selectedModel = config.claude // Use Claude models through Anthropic API
     logger.info('model.provider.selected', {
       provider: 'anthropic',
       selectedModel,
@@ -382,7 +336,7 @@ export async function getAgentModelWithName(tier: ModelTier): Promise<{model: an
     })
   } else if (openaiAvailable) {
     // Fallback to OpenAI
-    selectedModel = config.openai
+    selectedModel = config.claude
     logger.info('model.provider.selected', {
       provider: 'openai',
       selectedModel,
@@ -435,8 +389,7 @@ export function getModelRecommendations() {
     full: {
       description: 'Premium models for complex reasoning, coding, and analysis',
       models: {
-        bedrock: 'Claude Sonnet 4 - Latest and most capable',
-        openai: 'GPT-4o - High performance OpenAI model'
+        claude: 'Claude Sonnet - Latest and most capable'
       },
       useCases: [
         'Complex code generation and debugging',
@@ -448,8 +401,7 @@ export function getModelRecommendations() {
     fast: {
       description: 'Fast models for quick responses and simple tasks',
       models: {
-        bedrock: 'Claude 3.5 Haiku - Fast and efficient',
-        openai: 'GPT-4o Mini - Cost-effective and quick'
+        claude: 'Claude Haiku - Fast and efficient'
       },
       useCases: [
         'Quick questions and answers',
@@ -465,13 +417,11 @@ export function getModelRecommendations() {
  * Validate model configuration and provide setup guidance
  */
 export async function validateModelSetup() {
-  const bedrockAvailable = await isBedrockAvailable()
   const anthropicAvailable = isAnthropicAvailable()
   const openaiAvailable = isOpenAIAvailable()
   const overrideModel = getModelOverride()
 
   const status = {
-    bedrock: bedrockAvailable,
     anthropic: anthropicAvailable,
     openai: openaiAvailable,
     override: overrideModel,
@@ -483,20 +433,17 @@ export async function validateModelSetup() {
     status.recommendations.push(`🔧 Model override active: ${overrideModel} (via AI_MODEL_OVERRIDE)`)
   }
 
-  const totalProviders = [bedrockAvailable, anthropicAvailable, openaiAvailable].filter(Boolean).length
+  const totalProviders = [anthropicAvailable, openaiAvailable].filter(Boolean).length
 
   if (totalProviders === 0) {
     status.recommendations.push('❌ No AI providers configured. Run setup script to configure a provider.')
   } else if (totalProviders === 1) {
-    if (bedrockAvailable) {
-      status.recommendations.push('✅ Bedrock configured - optimal setup!')
-      status.recommendations.push('💡 Consider adding Anthropic or OpenAI as backup.')
-    } else if (anthropicAvailable) {
+    if (anthropicAvailable) {
       status.recommendations.push('✅ Anthropic configured - good setup!')
-      status.recommendations.push('💡 Consider adding AWS Bedrock for production.')
+      status.recommendations.push('💡 Consider adding OpenAI as backup.')
     } else {
       status.recommendations.push('✅ OpenAI configured - basic setup!')
-      status.recommendations.push('💡 Consider adding AWS Bedrock or Anthropic for Claude models.')
+      status.recommendations.push('💡 Consider adding Anthropic for Claude models.')
     }
   } else {
     status.recommendations.push(`✅ ${totalProviders} providers available - excellent setup!`)

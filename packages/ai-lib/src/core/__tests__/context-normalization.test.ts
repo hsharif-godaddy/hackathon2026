@@ -8,7 +8,7 @@ import {
 import type { ModelMessage } from 'ai'
 
 describe('normalizeContextMessages', () => {
-  it('converts cache points to Anthropic and Bedrock provider options', () => {
+  it('converts cache points to Anthropic provider options', () => {
     const messages = [
       {
         role: 'system' as const,
@@ -23,9 +23,6 @@ describe('normalizeContextMessages', () => {
     expect(
       (result[0] as any).providerOptions?.anthropic?.cacheControl
     ).toEqual({ type: 'ephemeral' })
-    expect((result[0] as any).providerOptions?.bedrock?.cachePoint).toBe(
-      'ephemeral'
-    )
   })
 
   it('passes through messages without cache points unchanged', () => {
@@ -310,8 +307,6 @@ describe('normalizeContextMessages — providerOptions', () => {
     expect(opts.anthropic.cacheControl).toEqual({ type: 'ephemeral' })
     // Existing option preserved
     expect(opts.anthropic.effort).toBe('medium')
-    // Bedrock also set
-    expect(opts.bedrock.cachePoint).toBe('ephemeral')
   })
 })
 

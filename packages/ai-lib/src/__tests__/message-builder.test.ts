@@ -81,7 +81,7 @@ describe('MessageBuilder', () => {
       expect(systemMessage.role).toBe('system')
       expect(systemMessage.content).toBe('You are helpful.')
       expect(systemMessage.providerOptions).toEqual({
-        bedrock: { cachePoint: { type: 'default' } }
+        anthropic: { cacheControl: { type: 'default' } }
       })
     })
 
@@ -129,7 +129,7 @@ describe('MessageBuilder', () => {
       expect(systemMessage.role).toBe('system')
       expect(systemMessage.content).toBe('You are helpful.')
       expect(systemMessage.providerOptions).toEqual({
-        bedrock: { cachePoint: { type: 'default' } }
+        anthropic: { cacheControl: { type: 'default' } }
       })
     })
 

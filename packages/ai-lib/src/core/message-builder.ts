@@ -187,7 +187,7 @@ export class CachingMessageBuilder implements MessageBuilder {
       messages.push({
         role: 'system',
         content: this.systemPrompt,
-        providerOptions: { bedrock: { cachePoint: { type: 'default' } } },
+        providerOptions: { anthropic: { cacheControl: { type: 'default' } } },
       } as ModelMessage)
     }
 
@@ -233,7 +233,7 @@ export class ConversationMessageBuilder implements MessageBuilder {
         messages.push({
           role: 'system',
           content: this.systemPrompt,
-          providerOptions: { bedrock: { cachePoint: { type: 'default' } } },
+          providerOptions: { anthropic: { cacheControl: { type: 'default' } } },
         } as ModelMessage)
       } else {
         messages.push({

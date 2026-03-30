@@ -128,10 +128,10 @@ async function main() {
     console.error('Please set PDF_PATH environment variable or place PDF at /tmp/design.pdf')
     process.exit(1)
   }
-  
-  if (!process.env.AWS_ACCESS_KEY_ID && !process.env.AWS_PROFILE && !process.env.OPENAI_API_KEY) {
+
+  if (!process.env.OPENAI_API_KEY) {
     console.error('No AI provider credentials found.')
-    console.error('Set AWS_ACCESS_KEY_ID/AWS_PROFILE for Bedrock or OPENAI_API_KEY for OpenAI')
+    console.error('Set OPENAI_API_KEY environment variable')
     process.exit(1)
   }
   

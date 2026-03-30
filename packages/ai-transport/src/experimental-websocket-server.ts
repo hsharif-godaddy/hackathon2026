@@ -2822,8 +2822,6 @@ export class WebSocketServer {
         providerName = 'anthropic'
       } else if (modelName.includes('gpt') || modelName.includes('openai')) {
         providerName = 'openai'
-      } else if (modelName.includes('bedrock')) {
-        providerName = 'bedrock'
       }
     } catch (error) {
       this.logger.warn(`Failed to get model info from agent config: ${error}`)

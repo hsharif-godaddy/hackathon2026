@@ -8,7 +8,7 @@
 /**
  * Supported model providers
  */
-export type ModelProvider = 'openai' | 'anthropic' | 'bedrock-claude'
+export type ModelProvider = 'openai' | 'anthropic'
 
 /**
  * Model normalization result
@@ -36,8 +36,6 @@ interface ModelDefinition {
   openai?: string
   /** Anthropic API model ID */
   anthropic?: string
-  /** Bedrock model ARN */
-  bedrock?: string
 }
 
 /**
@@ -85,33 +83,27 @@ const MODELS: Record<string, ModelDefinition> = {
   // Claude Models (available on multiple providers)
   'claude-sonnet-4-6': {
     normalizedName: 'claude-sonnet-4-6',
-    anthropic: 'claude-sonnet-4-6',
-    bedrock: 'global.anthropic.claude-sonnet-4-6'
+    anthropic: 'claude-sonnet-4-6'
   },
   'claude-sonnet-4-5': {
     normalizedName: 'claude-sonnet-4-5',
-    anthropic: 'claude-sonnet-4-5-20250929',
-    bedrock: 'global.anthropic.claude-sonnet-4-5-20250929-v1:0'
+    anthropic: 'claude-sonnet-4-5-20250929'
   },
   'claude-haiku-4-5': {
     normalizedName: 'claude-haiku-4-5',
-    anthropic: 'claude-haiku-4-5-20251001',
-    bedrock: 'us.anthropic.claude-haiku-4-5-20251001-v1:0'
+    anthropic: 'claude-haiku-4-5-20251001'
   },
   'claude-sonnet-4': {
     normalizedName: 'claude-sonnet-4',
-    anthropic: 'claude-sonnet-4',
-    bedrock: 'global.anthropic.claude-sonnet-4-20250514-v1:0'
+    anthropic: 'claude-sonnet-4'
   },
   'claude-3-5-sonnet': {
     normalizedName: 'claude-3-5-sonnet',
-    anthropic: 'claude-3-5-sonnet',
-    bedrock: 'us.anthropic.claude-3-5-sonnet-20240620-v1:0'
+    anthropic: 'claude-3-5-sonnet'
   },
   'claude-3-5-haiku': {
     normalizedName: 'claude-3-5-haiku',
-    anthropic: 'claude-3-5-haiku',
-    bedrock: 'us.anthropic.claude-3-5-haiku-20241022-v1:0'
+    anthropic: 'claude-3-5-haiku'
   },
   'claude-3-sonnet': {
     normalizedName: 'claude-3-sonnet',
@@ -167,32 +159,15 @@ const ALIASES: Record<string, string> = {
  * Normalize model name and determine provider information
  */
 export function normalizeModelName(
-  modelName: string, 
-  preferBedrock: boolean = false
+  modelName: string
 ): ModelInfo {
   const trimmed = modelName.trim()
   const lower = trimmed.toLowerCase()
-  
-  // Handle full Bedrock ARN-style names first (they take precedence)
-  if (lower.includes('anthropic.claude') || lower.includes('global.anthropic')) {
-    // Find model by matching Bedrock ARN
-    for (const [, model] of Object.entries(MODELS)) {
-      if (model.bedrock && lower.includes(model.bedrock.toLowerCase())) {
-        return {
-          normalizedName: model.normalizedName,
-          fullModelId: model.bedrock,
-          provider: 'bedrock-claude',
-          isSupported: true,
-          originalName: modelName
-        }
-      }
-    }
-  }
-  
+
   // Resolve alias to canonical model key
   const canonicalKey = ALIASES[lower] || lower
   const model = MODELS[canonicalKey]
-  
+
   if (!model) {
     // Default fallback for unrecognized models
     return {
@@ -203,17 +178,9 @@ export function normalizeModelName(
       originalName: modelName
     }
   }
-  
-  // Determine provider and full model ID based on availability and preference
-  if (preferBedrock && model.bedrock) {
-    return {
-      normalizedName: model.normalizedName,
-      fullModelId: model.bedrock,
-      provider: 'bedrock-claude',
-      isSupported: true,
-      originalName: modelName
-    }
-  } else if (model.anthropic) {
+
+  // Determine provider and full model ID based on availability
+  if (model.anthropic) {
     return {
       normalizedName: model.normalizedName,
       fullModelId: model.anthropic,
@@ -230,7 +197,7 @@ export function normalizeModelName(
       originalName: modelName
     }
   }
-  
+
   // Should not reach here but fallback just in case
   return {
     normalizedName: model.normalizedName,
@@ -257,21 +224,21 @@ export function isModelSupported(modelName: string): boolean {
   if (!modelName || typeof modelName !== 'string') {
     return false
   }
-  
+
   const lower = modelName.toLowerCase().trim()
   if (lower === '') {
     return false
   }
-  
+
   const canonicalKey = ALIASES[lower] || lower
-  return canonicalKey in MODELS || lower.includes('anthropic.claude')
+  return canonicalKey in MODELS
 }
 
 /**
  * Get the full model identifier from a short name
  */
-export function getFullModelName(shortName: string, preferBedrock: boolean = false): string {
-  const info = normalizeModelName(shortName, preferBedrock)
+export function getFullModelName(shortName: string): string {
+  const info = normalizeModelName(shortName)
   return info.fullModelId
 }
 
@@ -284,29 +251,20 @@ export function getNormalizedModelName(modelName: string): string {
 }
 
 /**
- * Get the provider for a given model name  
+ * Get the provider for a given model name
  */
-export function getModelProvider(modelName: string, preferBedrock: boolean = false): ModelProvider {
-  const info = normalizeModelName(modelName, preferBedrock)
+export function getModelProvider(modelName: string): ModelProvider {
+  const info = normalizeModelName(modelName)
   return info.provider
-}
-
-/**
- * Check if a model supports caching (Bedrock Claude models only)
- */
-export function modelSupportsCaching(modelName: string): boolean {
-  const info = normalizeModelName(modelName, true) // Prefer Bedrock for caching check
-  return info.provider === 'bedrock-claude'
 }
 
 /**
  * Get model information with detailed metadata
  */
 export function getModelInfo(
-  modelName: string, 
-  preferBedrock: boolean = false
+  modelName: string
 ): ModelInfo {
-  return normalizeModelName(modelName, preferBedrock)
+  return normalizeModelName(modelName)
 }
 
 /**
@@ -314,34 +272,28 @@ export function getModelInfo(
  */
 export function getLegacyModelMappings(): Record<string, string> {
   const mappings: Record<string, string> = {}
-  
+
   // Add canonical model names with their primary provider ID
   for (const [key, model] of Object.entries(MODELS)) {
-    // Prefer Bedrock for Claude models, otherwise use first available provider
-    if (model.bedrock) {
-      mappings[key] = model.bedrock
-    } else if (model.anthropic) {
+    if (model.anthropic) {
       mappings[key] = model.anthropic
     } else if (model.openai) {
       mappings[key] = model.openai
     }
   }
-  
+
   // Add all aliases with their resolved provider ID
   for (const [alias, canonicalKey] of Object.entries(ALIASES)) {
     const model = MODELS[canonicalKey]
     if (model) {
-      // Prefer Bedrock for Claude models, otherwise use first available provider
-      if (model.bedrock) {
-        mappings[alias] = model.bedrock
-      } else if (model.anthropic) {
+      if (model.anthropic) {
         mappings[alias] = model.anthropic
       } else if (model.openai) {
         mappings[alias] = model.openai
       }
     }
   }
-  
+
   return mappings
 }
 
@@ -361,14 +313,3 @@ export function supportsEffort(modelName: string): boolean {
  * Export model definitions for advanced usage
  */
 export { MODELS, ALIASES }
-
-/**
- * Legacy export for Bedrock model constants (for backward compatibility)
- */
-export const BEDROCK_MODELS = {
-  sonnet45: MODELS['claude-sonnet-4-5']?.bedrock || 'global.anthropic.claude-sonnet-4-5-20250929-v1:0',
-  haiku45: MODELS['claude-haiku-4-5']?.bedrock || 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
-  claude4: MODELS['claude-sonnet-4']?.bedrock || 'global.anthropic.claude-sonnet-4-20250514-v1:0',
-  claude35: MODELS['claude-3-5-sonnet']?.bedrock || 'us.anthropic.claude-3-5-sonnet-20240620-v1:0',
-  claude3haiku: MODELS['claude-3-5-haiku']?.bedrock || 'us.anthropic.claude-3-5-haiku-20241022-v1:0'
-} as const

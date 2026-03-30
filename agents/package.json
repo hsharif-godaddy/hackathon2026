@@ -51,7 +51,6 @@
     "benchmark:memory:gc": "NODE_OPTIONS='--expose-gc' tsx src/services/summarization/__benchmarks__/memory-benchmark.ts"
   },
   "dependencies": {
-    "@ai-sdk/amazon-bedrock": "^4.0.83",
     "@ai-sdk/anthropic": "^3.0.64",
     "@ai-sdk/devtools": "^0.0.8",
     "@ai-sdk/mcp": "^1.0.30",
@@ -62,7 +61,6 @@
     "@airo/ai-skills": "workspace:*",
     "@airo/ai-transport": "workspace:*",
     "@airo/shared": "workspace:*",
-    "@aws-sdk/credential-providers": "^3.888.0",
     "@babel/generator": "^7.28.0",
     "@babel/parser": "^7.28.0",
     "@babel/traverse": "^7.28.0",

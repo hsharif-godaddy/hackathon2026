@@ -53,8 +53,7 @@ Environment variables:
 - `RAG_FILE` - Path to RAG data file for style generation (default: `./output/design-trends-rag.json`)
 - `TEST_TREND` - Process only a single trend (e.g., `TEST_TREND="Diffused Worlds"` to test one trend)
 - `STYLE_NAME` - Process only a single style (e.g., `STYLE_NAME="Swiss/International Style"` to test one style)
-- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` - AWS Bedrock credentials
-- `OPENAI_API_KEY` - OpenAI credentials (alternative)
+- `OPENAI_API_KEY` - OpenAI credentials
 
 ### Test Mode
 

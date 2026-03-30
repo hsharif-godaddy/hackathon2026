@@ -10,7 +10,7 @@ Complete setup guide to run the AI builder locally.
 - pnpm (managed by Corepack via `.envrc`)
 - Go (for local control plane)
 - Docker (for MySQL container)
-- AI Provider API Key (GoCode recommended, or AWS Bedrock)
+- AI Provider API Key (GoCode recommended)
 - For running the test and prod environment locally: `Dev-Airo-Builders` AD group access
 
 ## Request Access
@@ -31,7 +31,7 @@ This will:
 
 1. ✅ Verify Node.js 22.16.0+, pnpm, and Go installation
 2. ✅ Check Docker environment and start MySQL container
-3. ✅ Configure AI provider (GoCode recommended, or AWS Bedrock)
+3. ✅ Configure AI provider (GoCode recommended)
 4. ✅ Set up authentication (JWT/SSO)
 5. ✅ Configure Getty Images proxy with AWS Secrets Manager
 6. ✅ Generate all required `.env` files
@@ -93,7 +93,7 @@ If you need to change your AI provider, authentication settings, or regenerate e
 
 3. **Follow the prompts to update:**
 
-   - AI Model Provider (GoCode, AWS Bedrock)
+   - AI Model Provider (GoCode)
    - Authentication Type (None, Mock, JWT/SSO) you must select JWT
    - AWS Profile (this is normally "default")
 

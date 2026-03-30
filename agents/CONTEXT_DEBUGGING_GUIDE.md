@@ -250,8 +250,8 @@ toolsAvailable: Object.keys(agentConfig.tools).length,
 toolNames: Object.keys(agentConfig.tools)
 ```
 
-### **🧠 Model Upgrade: Claude Sonnet 4**
-All agents now use **Claude Sonnet 4** (`bedrockModels.claudeSonnet4()`) for:
+### **🧠 Model Support**
+All agents use **GoCode** configured AI models for:
 - Better reasoning capabilities
 - Improved code generation
 - Enhanced context understanding
@@ -268,7 +268,7 @@ New `createAgentConfigWithLogging()` helper function:
 The logging now shows:
 - **Agent Name**: From actual config (not hardcoded)
 - **Tool Names**: Complete list of available tools
-- **Model Type**: Dynamically detected (BedrockLanguageModel, etc.)
+- **Model Type**: Dynamically detected
 - **Context Details**: Real-time context message analysis
 
 This ensures the debugging information is **always accurate** and **never gets out of sync** with the actual agent configurations! 🎉

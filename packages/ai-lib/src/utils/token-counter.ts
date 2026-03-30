@@ -147,10 +147,6 @@ export type SupportedModel =
   | 'claude-sonnet-4-5'
   | 'claude-sonnet-4-6'
   | 'claude-haiku-4-5'
-  // Bedrock Claude Models (full names)
-  | 'us.anthropic.claude-3-5-sonnet-20240620-v1:0'
-  | 'us.anthropic.claude-3-5-haiku-20241022-v1:0'
-  | 'global.anthropic.claude-sonnet-4-20250514-v1:0'
   // Gemini Models (via OpenAI-compatible provider)
   | 'gemini-3-flash-preview'
   | 'gemini-3-pro-preview'
@@ -209,7 +205,6 @@ async function getTokenizer(normalizedName: string, provider: ModelProvider): Pr
 
   switch (provider) {
     case 'anthropic':
-    case 'bedrock-claude':
       return getClaudeTokenizer()
     case 'openai':
     default:
@@ -233,9 +228,6 @@ async function getTokenizer(normalizedName: string, provider: ModelProvider): Pr
  * // Anthropic models
  * const result3 = await countTokens("Hello world", "claude-3-5-sonnet")
  * const result4 = await countTokens("Hello world", "sonnet4") // alias supported
- *
- * // Bedrock models (full ARN)
- * const result5 = await countTokens("Hello world", "us.anthropic.claude-3-5-sonnet-20240620-v1:0")
  * ```
  */
 export async function countTokens(text: string, modelName: string): Promise<TokenCountResult> {

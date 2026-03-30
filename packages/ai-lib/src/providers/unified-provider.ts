@@ -1,13 +1,12 @@
 /**
  * Unified Provider Helper
  *
- * Single provider function that handles both OpenAI and Bedrock with short names,
+ * Single provider function that handles both OpenAI and Anthropic with short names,
  * automatic environment variable validation, and proxy support.
  */
 
 import { createLogger, containsBudgetExceededPattern, llmMetadataContext, type LitellmMetadata } from '@airo/ai-common'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock'
 import type { LanguageModel } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 
@@ -53,16 +52,6 @@ export interface ProviderConfig {
   openaiApiKey?: string
   /** OpenAI base URL override (for proxy) */
   openaiBaseUrl?: string
-  /** AWS region override */
-  awsRegion?: string
-  /** AWS access key override */
-  awsAccessKeyId?: string
-  /** AWS secret key override */
-  awsSecretAccessKey?: string
-  /** AWS session token override */
-  awsSessionToken?: string
-  /** AWS profile override */
-  awsProfile?: string
   /** Anthropic API key override */
   anthropicApiKey?: string
   /** Anthropic base URL override (for proxy) */
@@ -98,24 +87,6 @@ function validateOpenAIConfig(config?: ProviderConfig): void {
 }
 
 /**
- * Check if AWS credentials are available
- */
-function hasAWSCredentials(config?: ProviderConfig): boolean {
-  // Check for explicit credentials
-  const hasExplicitCredentials = !!(config?.awsAccessKeyId || process.env.AWS_ACCESS_KEY_ID) &&
-                                !!(config?.awsSecretAccessKey || process.env.AWS_SECRET_ACCESS_KEY)
-
-  // Check for AWS profile
-  const hasProfile = !!(config?.awsProfile || process.env.AWS_PROFILE)
-
-  // Check for IAM role or web identity token (ECS/EKS environments)
-  const hasIAMRole = !!(process.env.AWS_ROLE_ARN || process.env.AWS_WEB_IDENTITY_TOKEN_FILE)
-
-  // Only return true if we have actual credentials or a profile, not just AWS_REGION
-  return hasExplicitCredentials || hasProfile || hasIAMRole
-}
-
-/**
  * Check if Anthropic credentials are available
  */
 function hasAnthropicCredentials(config?: ProviderConfig): boolean {
@@ -136,12 +107,6 @@ function getClaudeProxyType(modelName: string, config?: ProviderConfig): 'openai
   // If S2S auth is enabled, prefer Anthropic proxy (since we have GoCode endpoints)
   if (isS2SAuthEnabled()) {
     return 'anthropic'
-  }
-
-  // If AWS is available, use Bedrock directly (no proxy needed)
-  const hasAWS = hasAWSCredentials(config)
-  if (hasAWS) {
-    return null
   }
 
   // Check available proxy options
@@ -169,57 +134,20 @@ function shouldUseClaudeProxy(modelName: string, config?: ProviderConfig): boole
 }
 
 /**
- * Validate Bedrock configuration
- */
-function validateBedrockConfig(config?: ProviderConfig): void {
-  // Check for explicit credentials or AWS profile
-  const hasExplicitCredentials = (config?.awsAccessKeyId || process.env.AWS_ACCESS_KEY_ID) &&
-                                (config?.awsSecretAccessKey || process.env.AWS_SECRET_ACCESS_KEY)
-
-  const hasProfile = config?.awsProfile || process.env.AWS_PROFILE
-  const hasRegion = config?.awsRegion || process.env.AWS_REGION
-
-  if (!hasExplicitCredentials && !hasProfile) {
-    throw new Error(`AWS credentials are required for Bedrock. Either:
-1. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables
-2. Set AWS_PROFILE environment variable
-3. Configure AWS CLI with 'aws configure'
-4. Pass awsAccessKeyId/awsSecretAccessKey in config`)
-  }
-
-  // Only warn about region if no profile is configured (profile can provide region)
-  if (!hasRegion && !hasProfile) {
-    logger.warn('No AWS region specified and no profile configured. Using default: us-east-1')
-  }
-}
-
-/**
  * Determine provider type from model name, considering proxy routing
  */
-function getProviderType(modelName: string, config?: ProviderConfig): 'openai' | 'bedrock' | 'anthropic' {
+function getProviderType(modelName: string, config?: ProviderConfig): 'openai' | 'anthropic' {
   // Check if this Claude model should be routed through a proxy
   const proxyType = getClaudeProxyType(modelName, config)
   if (proxyType) {
     return proxyType
   }
 
-  // Check if AWS/Bedrock is available and prefer it when possible
-  const hasAwsCredentials = !!(
-    config?.awsAccessKeyId ||
-    config?.awsSecretAccessKey ||
-    config?.awsRegion ||
-    process.env.AWS_ACCESS_KEY_ID ||
-    process.env.AWS_PROFILE ||
-    process.env.AWS_REGION
-  )
-
-  // Use unified model normalization to determine provider - prefer Bedrock if AWS available
-  const modelInfo = normalizeModelName(modelName, hasAwsCredentials)
+  // Use unified model normalization to determine provider
+  const modelInfo = normalizeModelName(modelName)
 
   // Map unified provider types to legacy types
   switch (modelInfo.provider) {
-    case 'bedrock-claude':
-      return 'bedrock'
     case 'anthropic':
       return 'anthropic'
     case 'openai':
@@ -573,74 +501,6 @@ async function createOpenAIProvider(config?: ProviderConfig) {
   }
 }
 
-/**
- * Create Bedrock provider with configuration
- */
-async function createBedrockProvider(config?: ProviderConfig) {
-  // Only set region if explicitly provided
-  // Let AWS SDK handle region resolution from profiles automatically
-  const bedrockConfig: any = {}
-
-  const explicitRegion = config?.awsRegion || process.env.AWS_REGION
-  const hasProfile = config?.awsProfile || process.env.AWS_PROFILE
-
-  if (explicitRegion) {
-    // Use explicit region if provided
-    bedrockConfig.region = explicitRegion
-  } else if (!hasProfile) {
-    // Only set default region if no profile is configured
-    bedrockConfig.region = 'us-east-1'
-    logger.warn('No AWS region specified and no profile configured. Using default: us-east-1')
-  }
-  // If profile is configured but no explicit region, don't set region
-  // Let AWS SDK resolve region from profile configuration
-
-  // Check if explicit credentials are provided
-  const hasExplicitCredentials = (config?.awsAccessKeyId || process.env.AWS_ACCESS_KEY_ID) &&
-                                (config?.awsSecretAccessKey || process.env.AWS_SECRET_ACCESS_KEY)
-
-  if (hasExplicitCredentials) {
-    // Use explicit credentials
-    bedrockConfig.accessKeyId = config?.awsAccessKeyId || process.env.AWS_ACCESS_KEY_ID
-    bedrockConfig.secretAccessKey = config?.awsSecretAccessKey || process.env.AWS_SECRET_ACCESS_KEY
-
-    if (config?.awsSessionToken || process.env.AWS_SESSION_TOKEN) {
-      bedrockConfig.sessionToken = config?.awsSessionToken || process.env.AWS_SESSION_TOKEN
-    }
-  } else {
-    // Use AWS credential provider chain (supports profiles, IAM roles, etc.)
-    try {
-      const { fromNodeProviderChain } = await import('@aws-sdk/credential-providers')
-
-      const credentialOptions: any = {}
-
-      // Add profile if specified
-      const profile = config?.awsProfile || process.env.AWS_PROFILE
-      if (profile) {
-        credentialOptions.profile = profile
-      }
-
-      // Resolve credentials immediately to validate they work
-      const credentialProvider = fromNodeProviderChain(credentialOptions)
-      const resolvedCredentials = await credentialProvider()
-
-      // Set the resolved credentials
-      bedrockConfig.accessKeyId = resolvedCredentials.accessKeyId
-      bedrockConfig.secretAccessKey = resolvedCredentials.secretAccessKey
-
-      if (resolvedCredentials.sessionToken) {
-        bedrockConfig.sessionToken = resolvedCredentials.sessionToken
-      }
-
-      // seemingly this shouldn't be needed, but its not reading the region from the profile for me ...
-      bedrockConfig.region = config?.awsRegion || process.env.AWS_REGION || 'us-west-2'
-    } catch (credentialError) {
-      throw new Error(`Failed to resolve AWS credentials: ${credentialError instanceof Error ? credentialError.message : String(credentialError)}`)
-    }
-  }
-
-  return createAmazonBedrock(bedrockConfig)
-}
 
 /**
  * Unified model provider function
@@ -657,20 +517,10 @@ async function createBedrockProvider(config?: ProviderConfig) {
  *   openaiBaseUrl: 'https://proxy.example.com'
  * })
  *
- * // Claude through OpenAI proxy (when AWS not configured)
- * // Automatically routes to proxy if OPENAI_BASE_URL is set and AWS credentials are not available
- * const claudeViaProxy = await getModel('claude4')  // Uses OpenAI proxy
- *
- * // Bedrock models (when AWS is configured)
- * const claude = await getModel('claude4')  // Uses Bedrock when AWS credentials available
- * const claudeWithProfile = await getModel('sonnet4', {
- *   awsProfile: 'my-profile'  // Region will come from profile
- * })
- *
- * // Bedrock with explicit region
- * const claudeExplicit = await getModel('claude4', {
- *   awsRegion: 'us-west-2'
- * })
+ * // Claude models
+ * // Automatically routes to Anthropic API or proxy based on available credentials
+ * const claude = await getModel('claude4')
+ * const claudeViaProxy = await getModel('claude4')  // Uses proxy when configured
  * ```
  */
 export async function getModel(
@@ -700,16 +550,6 @@ export async function getModel(
       const provider = await createOpenAIProvider(config)
       return provider(modelNameToUse)
 
-    } else if (providerType === 'bedrock') {
-      // Validate Bedrock configuration
-      validateBedrockConfig(config)
-
-      // Use Bedrock model mapping
-      const fullModelName = MODEL_MAPPINGS[modelName as ModelShortName] || modelName
-
-      // Create Bedrock provider
-      const provider = await createBedrockProvider(config)
-      return provider(fullModelName)
     } else if (providerType === 'anthropic') {
       // Validate Anthropic configuration
       validateAnthropicConfig(config)
@@ -769,8 +609,6 @@ export function validateModelEnvironment(modelName: string, config?: ProviderCon
   try {
     if (providerType === 'openai') {
       validateOpenAIConfig(config)
-    } else if (providerType === 'bedrock') {
-      validateBedrockConfig(config)
     } else if (providerType === 'anthropic') {
       validateAnthropicConfig(config)
     }
@@ -906,15 +744,12 @@ type EmbeddingModelShortName = keyof typeof EMBEDDING_MODEL_MAPPINGS
  *
  * @example
  * ```typescript
- * // Get Titan embedding model (Bedrock)
- * const titanModel = await getEmbeddingModel('titan-embed-v2')
- *
  * // Get OpenAI embedding model
  * const openaiModel = await getEmbeddingModel('text-embedding-3-small')
  *
  * // Use with embeddings utility
  * import { generateEmbeddings } from '@airo/ai-lib'
- * const result = await generateEmbeddings(['text to embed'], titanModel)
+ * const result = await generateEmbeddings(['text to embed'], openaiModel)
  * ```
  */
 export async function getEmbeddingModel(
@@ -923,11 +758,7 @@ export async function getEmbeddingModel(
 ): Promise<any> {
   const fullModelName = EMBEDDING_MODEL_MAPPINGS[modelName as EmbeddingModelShortName] || modelName
 
-  if (fullModelName.startsWith('amazon.') || fullModelName.startsWith('cohere.')) {
-    validateBedrockConfig(config)
-    const provider = await createBedrockProvider(config)
-    return provider.embeddingModel(fullModelName)
-  } else if (fullModelName.startsWith('text-embedding')) {
+  if (fullModelName.startsWith('text-embedding')) {
     validateOpenAIConfig(config)
     const provider = await createOpenAIProvider(config)
     return provider.embeddingModel(fullModelName)

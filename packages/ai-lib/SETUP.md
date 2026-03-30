@@ -10,7 +10,6 @@ npm install @airo/ai-lib
 
 # For other providers, install as needed:
 npm install @ai-sdk/anthropic     # For Anthropic/Claude models
-npm install @ai-sdk/amazon-bedrock # For AWS Bedrock
 ```
 
 ## Step 2: Configure Environment
@@ -36,15 +35,6 @@ DEFAULT_MODEL=gpt-4o-mini
 DEFAULT_PROVIDER=anthropic
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
 DEFAULT_MODEL=claude-3-5-sonnet-20241022
-```
-
-**For AWS Bedrock:**
-```env
-DEFAULT_PROVIDER=bedrock
-AWS_REGION=us-west-2
-AWS_ACCESS_KEY_ID=your_aws_access_key_here
-AWS_SECRET_ACCESS_KEY=your_aws_secret_key_here
-DEFAULT_MODEL=us.anthropic.claude-3-5-sonnet-20241022-v1:0
 ```
 
 ## Step 3: Run Examples
@@ -88,7 +78,6 @@ console.log(response.content)
 For non-OpenAI providers, install the required package:
 ```bash
 npm install @ai-sdk/anthropic     # For Claude models
-npm install @ai-sdk/amazon-bedrock # For Bedrock models
 ```
 (OpenAI is already included!)
 

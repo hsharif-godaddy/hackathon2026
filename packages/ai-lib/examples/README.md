@@ -7,15 +7,10 @@ This directory contains organized examples demonstrating the capabilities of the
 ### Basic Examples
 
 - **`basic-openai.ts`** - Simple OpenAI usage with multiple agent types (general, creative, technical)
-- **`basic-bedrock.ts`** - Basic AWS Bedrock usage with Claude models (Sonnet 4, Haiku)
 - **`claude-proxy-demo.ts`** - Demonstrates automatic Claude proxy routing through OpenAI when AWS credentials are not available
 
 ### Agentic Examples (Advanced AI Reasoning)
 
-- **`agentic-bedrock-simple.ts`** - Simple agentic behavior with weather and travel tools
-- **`agentic-bedrock-full.ts`** - Advanced agentic features with context injection, conversation history, and multi-turn interactions
-- **`agentic-bedrock-prompt-caching.ts`** - Demonstrates prompt caching for cost optimization with large system prompts
-- **`agentic-bedrock-file-upload.ts`** - File processing and analysis with document comparison and content extraction
 - **`experimental-websocket-demo.ts`** - WebSocket server examples for real-time AI agent interactions
 
 ## 🚀 Quick Start
@@ -25,21 +20,13 @@ This directory contains organized examples demonstrating the capabilities of the
 1. **For OpenAI examples**:
    - Set `OPENAI_API_KEY` in your environment
    - Optionally set `OPENAI_BASE_URL` for proxy support
-2. **For Bedrock examples**: Configure AWS credentials (AWS CLI or environment variables)
-3. **Install dependencies**: `npm install` in the ai-lib package directory
+2. **Install dependencies**: `npm install` in the ai-lib package directory
 
 ### Run an Example
 
 ```bash
 # Basic examples
 npx tsx examples/basic-openai.ts
-npx tsx examples/basic-bedrock.ts
-
-# Agentic examples
-npx tsx examples/agentic-bedrock-simple.ts
-npx tsx examples/agentic-bedrock-full.ts
-npx tsx examples/agentic-bedrock-prompt-caching.ts
-npx tsx examples/agentic-bedrock-file-upload.ts
 
 # WebSocket server examples
 npm run example:websocket-single
@@ -73,7 +60,7 @@ const agents = factory.defineAgents({
   myAgent: {
     name: "My Agent",
     system: "You are a helpful assistant...",
-    model: await bedrockModels.claudeSonnet4(),
+    model: "gpt-4o",
     tools: { weather: weatherTool },
     maxSteps: 5,
     stopAfterTools: ["weather"],
@@ -107,7 +94,7 @@ const result = await agent.streamGenerate(prompt, {
 });
 ```
 
-### 4. Tool Creation (Bedrock Compatible)
+### 4. Tool Creation
 
 ```typescript
 const myTool = createTool(
@@ -123,16 +110,11 @@ const myTool = createTool(
 
 ## 📊 Example Comparison
 
-| Example            | Complexity | Features                                       | Best For                     |
-| ------------------ | ---------- | ---------------------------------------------- | ---------------------------- |
-| `basic-openai`     | Simple     | Multiple models, streaming, proxy support      | Getting started with OpenAI  |
-| `basic-bedrock`    | Simple     | Claude models, cost comparison                 | Getting started with Bedrock |
-| `agentic-simple`   | Medium     | Basic tools, autonomous reasoning              | Learning agentic concepts    |
-| `agentic-full`     | Advanced   | Context injection, conversation history        | Production apps              |
-| `prompt-caching`   | Advanced   | Cost optimization, large prompts               | High-volume applications     |
-| `file-upload`      | Advanced   | Document processing, multi-file analysis       | Document analysis systems    |
-| `websocket-single` | Medium     | Real-time WebSocket server, single agent       | Chat applications            |
-| `websocket-multi`  | Advanced   | Multi-agent WebSocket server, context handling | Complex chat systems         |
+| Example            | Complexity | Features                                       | Best For                    |
+| ------------------ | ---------- | ---------------------------------------------- | --------------------------- |
+| `basic-openai`     | Simple     | Multiple models, streaming, proxy support      | Getting started with OpenAI |
+| `websocket-single` | Medium     | Real-time WebSocket server, single agent       | Chat applications           |
+| `websocket-multi`  | Advanced   | Multi-agent WebSocket server, context handling | Complex chat systems        |
 
 ## 🔄 Claude Proxy Routing
 
@@ -219,7 +201,6 @@ This provides detailed logging of:
 ## 📚 Further Reading
 
 - [AI SDK 5 Documentation](https://sdk.vercel.ai/)
-- [AWS Bedrock Documentation](https://docs.aws.amazon.com/bedrock/)
 - [Migration Guide](../MIGRATION-TO-EXPERIMENTAL-AGENT.md)
 - [OpenAI API Documentation](https://platform.openai.com/docs)
 
@@ -228,7 +209,7 @@ This provides detailed logging of:
 If you encounter issues:
 
 1. Check your API keys and credentials
-2. Verify model access (especially for Bedrock)
+2. Verify model access
 3. Review the debug output
 4. Consult the migration guide for API changes
 

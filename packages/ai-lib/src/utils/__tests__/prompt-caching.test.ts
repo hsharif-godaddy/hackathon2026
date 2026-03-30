@@ -39,8 +39,7 @@ function cachedMessage(role: 'user' | 'assistant' | 'system', content: string): 
     role,
     content,
     providerOptions: {
-      anthropic: { cacheControl: { type: 'ephemeral' } },
-      bedrock: { cachePoint: 'ephemeral' }
+      anthropic: { cacheControl: { type: 'ephemeral' } }
     }
   } as any
 }

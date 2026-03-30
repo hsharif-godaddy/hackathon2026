@@ -53,7 +53,7 @@ const stream2 = await agent.streamGenerate("Follow-up question", {
 
 That's it! The system automatically:
 
-1. Detects if the model supports caching (Anthropic/Bedrock only)
+1. Detects if the model supports caching (Anthropic only)
 2. Marks system prompts for caching
 3. Marks early conversation history for caching
 4. Leaves recent messages uncached (they change frequently)
@@ -127,7 +127,6 @@ Request 3: [System] + [User1] + [Assistant1] + [User2] + [Assistant2] + [User3] 
 Currently supports:
 
 - ✅ Anthropic Claude (direct API)
-- ✅ AWS Bedrock (Anthropic models)
 - ❌ OpenAI (pass-through, no caching)
 - ❌ Other providers (pass-through, no caching)
 
@@ -310,7 +309,6 @@ if (usage.cachedInputTokens) {
 
 - [Vercel AI SDK: Dynamic Prompt Caching](https://ai-sdk.dev/cookbook/node/dynamic-prompt-caching)
 - [Anthropic: Prompt Caching](https://docs.anthropic.com/claude/docs/prompt-caching)
-- [AWS Bedrock: Prompt Caching](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html)
 
 ## Future Enhancements
 

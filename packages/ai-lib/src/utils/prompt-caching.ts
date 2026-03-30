@@ -16,7 +16,7 @@ const logger = createLogger('prompt-caching')
  * Provider-specific caching configuration
  */
 export interface CachingProviderOptions {
-  /** Anthropic/Bedrock uses 'ephemeral' for 5-minute cache */
+  /** Anthropic uses 'ephemeral' for 5-minute cache */
   anthropic?: { cacheControl: { type: 'ephemeral' } }
 }
 
@@ -46,15 +46,14 @@ const DEFAULT_STRATEGY: Required<CachingStrategy> = {
 
 /**
  * Detect if model supports prompt caching
- * Currently supports Anthropic models (via direct API or Bedrock)
+ * Currently supports Anthropic models
  */
 export function supportsPromptCaching(model: LanguageModel): boolean {
   // Handle string model IDs (valid per AI SDK)
   if (typeof model === 'string') {
     const modelStr = model.toLowerCase()
     return modelStr.includes('claude') ||
-           modelStr.includes('anthropic') ||
-           (modelStr.includes('bedrock') && modelStr.includes('anthropic'))
+           modelStr.includes('anthropic')
   }
 
   // Handle model objects
@@ -62,15 +61,12 @@ export function supportsPromptCaching(model: LanguageModel): boolean {
   const modelId = (modelAny.modelId || '').toLowerCase()
   const provider = (modelAny.provider || '').toLowerCase()
 
-  // Anthropic models directly or via Bedrock
+  // Anthropic models
   const isAnthropic = provider.includes('anthropic') ||
                       modelId.includes('claude') ||
                       modelId.includes('anthropic')
 
-  // Bedrock with Anthropic models
-  const isBedrockAnthropic = provider.includes('bedrock') && modelId.includes('anthropic')
-
-  return isAnthropic || isBedrockAnthropic
+  return isAnthropic
 }
 
 /**
@@ -117,7 +113,7 @@ export function addCacheControlToMessages(
   // prompt breakpoint (set via addCacheControlToSystemPrompt) also counts as 1.
   const existingBreakpoints = messages.filter(msg => {
     const providerOptions = (msg as any).providerOptions
-    return !!(providerOptions?.bedrock?.cachePoint || providerOptions?.anthropic?.cacheControl)
+    return !!(providerOptions?.anthropic?.cacheControl)
   }).length
 
   // Reserve 1 for the system prompt breakpoint set via addCacheControlToSystemPrompt
@@ -145,7 +141,7 @@ export function addCacheControlToMessages(
         return false
       }
       const providerOptions = (msg as any).providerOptions
-      return !!(providerOptions?.bedrock?.cachePoint || providerOptions?.anthropic?.cacheControl)
+      return !!(providerOptions?.anthropic?.cacheControl)
     })
 
     if (!hasCachedSystemMessage) {
@@ -175,8 +171,7 @@ export function addCacheControlToMessages(
 
     // Check if message already has caching configured
     const existingProviderOptions = (msg as any).providerOptions
-    if (existingProviderOptions?.bedrock?.cachePoint ||
-        existingProviderOptions?.anthropic?.cacheControl) {
+    if (existingProviderOptions?.anthropic?.cacheControl) {
       logger.debug('prompt_caching.skip.already_cached', {
         index,
         role: msg.role
@@ -199,11 +194,6 @@ export function addCacheControlToMessages(
       ...msg,
       providerOptions: {
         ...(existingProviderOptions || {}),
-        // Bedrock format
-        bedrock: {
-          ...(existingProviderOptions?.bedrock || {}),
-          cachePoint: cacheControl.type
-        },
         // Anthropic direct format
         anthropic: {
           ...(existingProviderOptions?.anthropic || {}),
@@ -325,10 +315,6 @@ export function addCacheControlToSystemPrompt(
       role: 'system' as const,
       content: systemPrompt,
       providerOptions: {
-        // Bedrock format
-        bedrock: {
-          cachePoint: cacheControl.type
-        },
         // Anthropic direct format
         anthropic: {
           cacheControl
@@ -349,10 +335,6 @@ export function addCacheControlToSystemPrompt(
       ...systemPrompt,
       providerOptions: {
         ...(systemPrompt.providerOptions || {}),
-        bedrock: {
-          ...(systemPrompt.providerOptions?.bedrock as Record<string, unknown> || {}),
-          cachePoint: cacheControl.type
-        },
         anthropic: {
           ...(systemPrompt.providerOptions?.anthropic as Record<string, unknown> || {}),
           cacheControl
@@ -377,10 +359,6 @@ export function addCacheControlToSystemPrompt(
           ...msg,
           providerOptions: {
             ...(msg.providerOptions || {}),
-            bedrock: {
-              ...(msg.providerOptions?.bedrock as Record<string, unknown> || {}),
-              cachePoint: cacheControl.type
-            },
             anthropic: {
               ...(msg.providerOptions?.anthropic as Record<string, unknown> || {}),
               cacheControl

@@ -7,7 +7,7 @@ A lightweight, type-safe wrapper around AI SDK 5 for building reusable AI agents
 - 🏭 **Factory Pattern**: Define all agents in one place, use them everywhere
 - 🔧 **AI SDK 5 Native**: Built on the latest AI SDK with agentic loop control
 - 🎯 **Type Safe**: Full TypeScript support with proper type inference
-- 🔌 **Multi-Provider**: Support for OpenAI, Anthropic, Bedrock, and custom providers
+- 🔌 **Multi-Provider**: Support for OpenAI, Anthropic, and custom providers
 - 🛠️ **Tool System**: Extensible tool system with built-in tools
 - 📡 **Streaming**: Full streaming support with custom data parts
 - ⚡ **Lightweight**: Minimal overhead, maximum flexibility
@@ -18,7 +18,7 @@ A lightweight, type-safe wrapper around AI SDK 5 for building reusable AI agents
 npm install @airo/ai-lib ai
 ```
 
-**OpenAI and AWS Bedrock support included out of the box!** 🎉
+**OpenAI support included out of the box!** 🎉
 
 For other providers, install as needed:
 
@@ -46,20 +46,14 @@ npm run example:setup
 ### 1. Set up providers (Easy Mode)
 
 ```typescript
-import { AgentFactory, tools, openAIModels, bedrockModels } from "@airo/ai-lib";
+import { AgentFactory, tools, openAIModels } from "@airo/ai-lib";
 
-// OpenAI and Bedrock models work out of the box
+// OpenAI models work out of the box
 const agents = agentFactory.defineAgents({
   openaiAgent: {
     name: "OpenAI Assistant",
     systemPrompt: "You are helpful.",
     model: openAIModels.gpt4oMini(), // Uses OPENAI_API_KEY
-  },
-
-  claudeAgent: {
-    name: "Claude Assistant",
-    systemPrompt: "You are Claude.",
-    model: bedrockModels.claudeSonnet4(), // Uses AWS credentials
   },
 });
 ```
@@ -88,27 +82,6 @@ setDefaultProvider("openai", {
   type: "openai",
   apiKey: process.env.OPENAI_API_KEY,
   baseURL: process.env.OPENAI_BASE_URL,
-});
-```
-
-### Advanced: Prompt Caching (Bedrock)
-
-AWS Bedrock supports prompt caching to reduce costs and improve performance:
-
-```typescript
-import { bedrockModels } from "@airo/ai-lib";
-
-const agents = agentFactory.defineAgents({
-  cachedAgent: {
-    name: "Cached Code Reviewer",
-    systemPrompt: "Your large system prompt here...", // Will be cached
-    model: bedrockModels.claudeSonnet4(),
-    providerOptions: {
-      anthropic: {
-        cacheControl: { type: "ephemeral" },
-      },
-    },
-  },
 });
 ```
 
@@ -395,7 +368,6 @@ See the `examples/` directory for more detailed examples:
 - `test-basic.ts` - Basic functionality test (no API calls)
 - `simple-openai.ts` - Simple OpenAI example with built-in helpers
 - `with-openai.ts` - Comprehensive OpenAI example with tools and streaming
-- `bedrock-claude.ts` - AWS Bedrock + Claude Sonnet 4 example with comparisons
 - `simple-prompt-caching.ts` - Simple prompt caching demo with performance metrics
 - `easy-setup.ts` - Auto-detect provider setup
 
@@ -411,8 +383,6 @@ npm run example:simple
 # Comprehensive OpenAI example with tools
 npm run example:openai
 
-# AWS Bedrock + Claude Sonnet 4 example (requires AWS credentials)
-npm run example:bedrock
 
 # Simple prompt caching demo with metrics (cost optimization)
 npm run example:caching

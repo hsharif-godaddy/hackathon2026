@@ -14,9 +14,7 @@ export interface CommerceSetupResult {
 }
 
 export interface ModelConfig {
-	provider: "aws-bedrock" | "gocode";
-	awsRegion?: string;
-	awsProfile?: string;
+	provider: "gocode";
 	gocodeApiKey?: string;
 	gocodeBaseUrl?: string;
 }
@@ -245,186 +243,13 @@ export class EnvGenerator {
 		return undefined;
 	}
 
-	private async checkExistingAWSProfile(): Promise<string | null> {
-		try {
-			const { execa } = await import("execa");
-
-			const ssoProfileName = await this.awsSSO.getProfile();
-			try {
-				await execa('aws', [
-					'sts', 'get-caller-identity',
-					'--profile', ssoProfileName,
-					'--query', 'Arn',
-					'--output', 'text'
-				]);
-				return ssoProfileName;
-			} catch {
-			}
-
-			try {
-				await execa('aws', [
-					'sts', 'get-caller-identity',
-					'--query', 'Arn',
-					'--output', 'text'
-				]);
-				return process.env.AWS_PROFILE || 'default';
-			} catch {
-			}
-
-			return null;
-		} catch {
-			return null;
-		}
-	}
 
 	async promptModelProvider(yesToAll: boolean = false): Promise<ModelConfig> {
 		console.log(chalk.cyan("\n🤖 AI Model Configuration"));
-
-		const defaultProvider = "gocode";
-		let provider = defaultProvider;
-
-		if (yesToAll) {
-			console.log(chalk.gray(`Automated mode: using ${defaultProvider.toUpperCase()} (recommended default)`));
-		} else {
-			const response = await inquirer.prompt([
-				{
-					type: "list",
-					name: "provider",
-					message: "Which AI model provider would you like to use?",
-					choices: [
-						{ name: "GoCode (Recommended)", value: "gocode" },
-						{ name: "AWS Bedrock (Legacy)", value: "aws-bedrock" },
-					],
-					default: defaultProvider
-				},
-			]);
-			provider = response.provider;
-		}
-
-		if (provider === "aws-bedrock") {
-			return await this.promptAWSBedrockConfig(yesToAll);
-		} else {
-			return await this.promptGoCodeConfig(yesToAll);
-		}
+		console.log(chalk.gray(`Using GoCode (recommended AI model provider)`));
+		return await this.promptGoCodeConfig(yesToAll);
 	}
 
-	private async promptAWSBedrockConfig(yesToAll: boolean = false): Promise<ModelConfig> {
-		console.log(chalk.yellow("\n🔧 AWS Bedrock Configuration"));
-		console.log("You'll need AWS credentials with Bedrock access.");
-		console.log("");
-
-		const defaultAwsRegion = "us-west-2";
-		const currentProfile = await this.checkExistingAWSProfile();
-
-		if (currentProfile) {
-			if (yesToAll) {
-				console.log(chalk.gray(`Automated mode: using existing AWS profile '${currentProfile}' with region ${defaultAwsRegion}`));
-				return {
-					provider: "aws-bedrock",
-					awsRegion: defaultAwsRegion,
-					awsProfile: currentProfile,
-				};
-			}
-
-			const { useExistingProfile } = await inquirer.prompt([
-				{
-					type: "confirm",
-					name: "useExistingProfile",
-					message: `Use existing AWS profile '${currentProfile}' for Bedrock?`,
-					default: true,
-				},
-			]);
-
-			if (useExistingProfile) {
-				const { awsRegion } = await inquirer.prompt([
-					{
-						type: "input",
-						name: "awsRegion",
-						message: "AWS Region (e.g., us-west-2):",
-						default: defaultAwsRegion,
-						validate: (input) => input.length > 0 || "AWS Region is required",
-					},
-				]);
-
-				return {
-					provider: "aws-bedrock",
-					awsRegion,
-					awsProfile: currentProfile,
-				};
-			}
-		}
-
-		if (yesToAll) {
-			const warningMsg = "AWS Bedrock selected but no AWS profile found. Configure AWS credentials manually in agents/.env if you want to use AWS Bedrock";
-			this.addWarning(warningMsg);
-			return {
-				provider: "aws-bedrock",
-				awsRegion: defaultAwsRegion,
-				awsProfile: undefined
-			};
-		}
-
-		const { setupSSO } = await inquirer.prompt([
-			{
-				type: "list",
-				name: "setupSSO",
-				message: "How would you like to configure AWS credentials?",
-				choices: [
-					{ name: "Set up AWS SSO profile (recommended)", value: "sso" },
-					{ name: "Use existing AWS credentials/profile", value: "existing" },
-				],
-				default: "sso",
-			},
-		]);
-
-		if (setupSSO === "sso") {
-			console.log(chalk.blue("\n🔧 Setting up AWS SSO for Bedrock access..."));
-			const ssoSuccess = await this.awsSSO.setup();
-
-			if (ssoSuccess) {
-				const profileName = await this.awsSSO.getProfile();
-				const { awsRegion } = await inquirer.prompt([
-					{
-						type: "input",
-						name: "awsRegion",
-						message: "AWS Region (e.g., us-west-2):",
-						default: "us-west-2",
-						validate: (input) => input.length > 0 || "AWS Region is required",
-					},
-				]);
-
-				return {
-					provider: "aws-bedrock",
-					awsRegion,
-					awsProfile: profileName,
-				};
-			} else {
-				console.log(chalk.red("❌ AWS SSO setup failed. Falling back to existing profile selection."));
-			}
-		}
-
-		const { awsProfile, awsRegion } = await inquirer.prompt([
-			{
-				type: "input",
-				name: "awsProfile",
-				message: "AWS Profile name (leave empty for default):",
-				default: "",
-			},
-			{
-				type: "input",
-				name: "awsRegion",
-				message: "AWS Region (e.g., us-west-2):",
-				default: "us-west-2",
-				validate: (input) => input.length > 0 || "AWS Region is required",
-			},
-		]);
-
-		return {
-			provider: "aws-bedrock",
-			awsRegion,
-			awsProfile: awsProfile || undefined,
-		};
-	}
 
 	private async promptGoCodeConfig(yesToAll: boolean = false): Promise<ModelConfig> {
 		console.log(chalk.yellow("\n🔧 GoCode Configuration"));
@@ -529,6 +354,38 @@ export class EnvGenerator {
 				authType: authType as "none" | "jwt",
 				useMockLogin: false
 			};
+		}
+	}
+
+	private async checkExistingAWSProfile(): Promise<string | null> {
+		try {
+			const { execa } = await import("execa");
+
+			const ssoProfileName = await this.awsSSO.getProfile();
+			try {
+				await execa('aws', [
+					'sts', 'get-caller-identity',
+					'--profile', ssoProfileName,
+					'--query', 'Arn',
+					'--output', 'text'
+				]);
+				return ssoProfileName;
+			} catch {
+			}
+
+			try {
+				await execa('aws', [
+					'sts', 'get-caller-identity',
+					'--query', 'Arn',
+					'--output', 'text'
+				]);
+				return process.env.AWS_PROFILE || 'default';
+			} catch {
+			}
+
+			return null;
+		} catch {
+			return null;
 		}
 	}
 
@@ -823,24 +680,7 @@ SHOW_USAGE_COST=${config.showUsageCost}
 # AI Model Configuration
 `;
 
-		if (config.modelConfig.provider === "aws-bedrock") {
-			envContent += `# AWS Bedrock Configuration
-OPENAI_API_KEY=""
-OPENAI_BASE_URL=""
-OPENAI_MODEL="anthropic.claude-3-sonnet-20240229-v1:0"
-
-# AWS Configuration
-AWS_REGION=${config.modelConfig.awsRegion}`;
-
-			if (config.modelConfig.awsProfile) {
-				envContent += `
-AWS_PROFILE=${config.modelConfig.awsProfile}`;
-			}
-
-			envContent += `
-`;
-		} else {
-			envContent += `# GoCode Configuration (Anthropic API compatibility)
+		envContent += `# GoCode Configuration (Anthropic API compatibility)
 DEFAULT_PROVIDER="anthropic"
 OPENAI_API_KEY="${config.modelConfig.gocodeApiKey}"
 OPENAI_BASE_URL="${config.modelConfig.gocodeBaseUrl}"
@@ -848,7 +688,6 @@ ANTHROPIC_API_KEY="${config.modelConfig.gocodeApiKey}"
 ANTHROPIC_BASE_URL="${config.modelConfig.gocodeBaseUrl}"
 ANTHROPIC_MODEL="claude-sonnet-4"
 `;
-		}
 
 		envContent += `
 # Authentication Configuration
@@ -1285,10 +1124,6 @@ SSO_HOST=${envConfig.ssoHost}
 
 		console.log(chalk.cyan("\n📋 Configuration Summary:"));
 		console.log(`AI Provider: ${config.modelConfig.provider}`);
-		if (config.modelConfig.provider === "aws-bedrock") {
-			console.log(`AWS Region: ${config.modelConfig.awsRegion}`);
-			console.log(`AWS Profile: ${config.modelConfig.awsProfile || 'default'}`);
-		}
 		console.log(`Template Directory: ${config.appTemplateDir}`);
 		console.log(`MySQL Host: ${config.mysqlRootHost}:${config.mysqlRootPort}`);
 		console.log(`MySQL User: ${config.mysqlRootUser}`);

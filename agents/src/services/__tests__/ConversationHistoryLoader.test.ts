@@ -984,7 +984,6 @@ describe('ConversationHistoryLoader', () => {
       const msg = result[0] as any;
       expect(msg.role).toBe('user');
       expect(msg.providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' });
-      expect(msg.providerOptions?.bedrock?.cachePoint).toBe('ephemeral');
     });
 
     it('should not add providerOptions when cachePoint is absent', () => {
@@ -1014,7 +1013,6 @@ describe('ConversationHistoryLoader', () => {
       const msg = result[0] as any;
       expect(msg.role).toBe('system');
       expect(msg.providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' });
-      expect(msg.providerOptions?.bedrock?.cachePoint).toBe('ephemeral');
     });
 
     it('should convert cachePoint on assistant messages to providerOptions', () => {
@@ -1032,7 +1030,6 @@ describe('ConversationHistoryLoader', () => {
       const msg = result[0] as any;
       expect(msg.role).toBe('assistant');
       expect(msg.providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' });
-      expect(msg.providerOptions?.bedrock?.cachePoint).toBe('ephemeral');
     });
   });
 });

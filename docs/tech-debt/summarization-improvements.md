@@ -92,7 +92,7 @@ With 99% compression and ~$0.032 per summarization, the cost savings on subseque
 
 ## Cost Analysis Framework
 
-### Bedrock Pricing (Claude Sonnet 4.5)
+### LLM Pricing (Claude Sonnet 4.5)
 
 | Token Type       | Cost per Million |
 | ---------------- | ---------------- |

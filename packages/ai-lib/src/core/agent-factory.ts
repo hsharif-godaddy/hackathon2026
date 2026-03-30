@@ -203,11 +203,6 @@ interface CachePointMetadata {
  * Provider-specific options with proper type structure
  */
 interface ProviderOptions {
-  bedrock?: {
-    cachePoint?: string
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    [key: string]: any
-  }
   anthropic?: {
     cacheControl?: { type: string }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -524,10 +519,6 @@ export class AgentWrapper {
           ...msg,
           providerOptions: {
             ...(msgAny.providerOptions || {}),
-            bedrock: {
-              ...(msgAny.providerOptions?.bedrock || {}),
-              cachePoint: 'ephemeral'
-            },
             anthropic: {
               ...(msgAny.providerOptions?.anthropic || {}),
               cacheControl: { type: 'ephemeral' }
@@ -545,15 +536,11 @@ export class AgentWrapper {
       // message (not a user question), so the user-role set stays at {summary}.
       if (hasBreakpoint && msgAny.role !== 'user') {
         const { cacheControl, ...restAnthropicOptions } = msgAny.providerOptions.anthropic
-        const { cachePoint, ...restBedrockOptions } = msgAny.providerOptions.bedrock || {}
         // Build new providerOptions from scratch — only include providers with remaining keys
-        const { anthropic: _a, bedrock: _b, ...otherProviderOptions } = msgAny.providerOptions || {}
+        const { anthropic: _a, ...otherProviderOptions } = msgAny.providerOptions || {}
         const newProviderOptions: Record<string, any> = { ...otherProviderOptions }
         if (Object.keys(restAnthropicOptions).length > 0) {
           newProviderOptions.anthropic = restAnthropicOptions
-        }
-        if (Object.keys(restBedrockOptions).length > 0) {
-          newProviderOptions.bedrock = restBedrockOptions
         }
         const { providerOptions: _dropped, ...msgWithoutProvider } = msgAny
         return {
