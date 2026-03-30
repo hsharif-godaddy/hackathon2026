@@ -24,6 +24,7 @@ var testedEnvVars = []string{
 	"AUTH_TYPE",
 	"SSO_HOST",
 	"SEARCH_TOP_N",
+	"SEARCH_MAX_CHUNKS_PER_DOC",
 	"SEARCH_PREFETCH_LIMIT",
 	"SEARCH_PREFETCH_THRESHOLD",
 	"SEARCH_FUSION_THRESHOLD",
@@ -100,8 +101,11 @@ func TestLoadConfig_Defaults_NoAuth(t *testing.T) {
 	if cfg.LLMModel != "gpt-4o-mini" {
 		t.Errorf("expected default LLM model gpt-4o-mini, got %s", cfg.LLMModel)
 	}
-	if cfg.SearchTopN != 5 {
-		t.Errorf("expected default search top N 5, got %d", cfg.SearchTopN)
+	if cfg.SearchTopN != 8 {
+		t.Errorf("expected default search top N 8, got %d", cfg.SearchTopN)
+	}
+	if cfg.SearchMaxChunksPerDoc != 3 {
+		t.Errorf("expected default max chunks per doc 3, got %d", cfg.SearchMaxChunksPerDoc)
 	}
 	if cfg.IngestBatchSize != 100 {
 		t.Errorf("expected default ingest batch size 100, got %d", cfg.IngestBatchSize)

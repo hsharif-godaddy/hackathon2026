@@ -15,7 +15,7 @@ import (
 	"github.com/airo-ai-builder/knowledge-service/pkg/models"
 )
 
-// Searcher orchestrates the search flow: embed → tokenize → hybrid search → dedup → format.
+// Searcher orchestrates the search flow: embed → tokenize → hybrid search → limit per doc → format.
 type Searcher struct {
 	embeddings *embeddings.Client
 	qdrant     *qdrantStorage.Client
@@ -54,11 +54,20 @@ func (s *Searcher) Search(ctx context.Context, req models.SearchRequest) (*model
 	// 2. Tokenize query for sparse search
 	sparseVector := ingest.Tokenize(req.Query)
 
-	// 3. Hybrid search
+	// 3. Hybrid search — over-fetch so limitPerDocName has enough candidates.
+	// If we only fetch topN, per-doc limiting can shrink the result set below topN.
+	maxPerDoc := s.cfg.SearchMaxChunksPerDoc
+	if maxPerDoc <= 0 {
+		maxPerDoc = 3
+	}
+	fetchLimit := topN * maxPerDoc
+	if fetchLimit > s.cfg.SearchPrefetchLimit {
+		fetchLimit = s.cfg.SearchPrefetchLimit
+	}
 	results, err := s.qdrant.HybridSearch(ctx, qdrantStorage.HybridSearchParams{
 		DenseVector:    denseVector,
 		SparseVector:   sparseVector,
-		Limit:          uint64(topN), //nolint:gosec // G115: topN is bounds-checked above (1..50)
+		Limit:          uint64(fetchLimit), //nolint:gosec // G115: fetchLimit is bounds-checked above
 		DocNamesFilter: req.Filters.DocNames,
 		TagsFilter:     req.Filters.Tags,
 	})
@@ -66,17 +75,17 @@ func (s *Searcher) Search(ctx context.Context, req models.SearchRequest) (*model
 		return nil, fmt.Errorf("hybrid search failed: %w", err)
 	}
 
-	// 4. Per-document dedup (keep highest-scoring chunk per docName)
-	deduped := dedupByDocName(results)
+	// 4. Limit chunks per document (keep top N per docName)
+	limited := limitPerDocName(results, maxPerDoc)
 
 	// 5. Trim to topN
-	if len(deduped) > topN {
-		deduped = deduped[:topN]
+	if len(limited) > topN {
+		limited = limited[:topN]
 	}
 
 	// 6. Format response
-	searchResults := make([]models.SearchResult, len(deduped))
-	for i, point := range deduped {
+	searchResults := make([]models.SearchResult, len(limited))
+	for i, point := range limited {
 		searchResults[i] = pointToSearchResult(point)
 	}
 
@@ -96,10 +105,14 @@ func (s *Searcher) Search(ctx context.Context, req models.SearchRequest) (*model
 	}, nil
 }
 
-// dedupByDocName keeps only the highest-scoring result per docName.
+// limitPerDocName keeps up to maxPerDoc highest-scoring results per docName.
 // Input is assumed to be sorted by score descending (Qdrant default).
-func dedupByDocName(points []*qdrant.ScoredPoint) []*qdrant.ScoredPoint {
-	seen := make(map[string]bool)
+// If maxPerDoc <= 0 it defaults to 1 (equivalent to the old dedup behavior).
+func limitPerDocName(points []*qdrant.ScoredPoint, maxPerDoc int) []*qdrant.ScoredPoint {
+	if maxPerDoc <= 0 {
+		maxPerDoc = 1
+	}
+	counts := make(map[string]int)
 	var result []*qdrant.ScoredPoint
 
 	for _, point := range points {
@@ -108,10 +121,10 @@ func dedupByDocName(points []*qdrant.ScoredPoint) []*qdrant.ScoredPoint {
 			result = append(result, point)
 			continue
 		}
-		if seen[docName] {
+		if counts[docName] >= maxPerDoc {
 			continue
 		}
-		seen[docName] = true
+		counts[docName]++
 		result = append(result, point)
 	}
 

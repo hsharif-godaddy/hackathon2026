@@ -18,34 +18,33 @@ func makeScoredPoint(docName string, score float32) *qdrant.ScoredPoint {
 	}
 }
 
-func TestDedupByDocName_NoDuplicates(t *testing.T) {
+func TestLimitPerDocName_NoDuplicates(t *testing.T) {
 	points := []*qdrant.ScoredPoint{
 		makeScoredPoint("doc-a", 0.9),
 		makeScoredPoint("doc-b", 0.8),
 		makeScoredPoint("doc-c", 0.7),
 	}
 
-	result := dedupByDocName(points)
+	result := limitPerDocName(points, 3)
 	if len(result) != 3 {
 		t.Errorf("expected 3 results, got %d", len(result))
 	}
 }
 
-func TestDedupByDocName_WithDuplicates(t *testing.T) {
+func TestLimitPerDocName_WithDuplicates_MaxOne(t *testing.T) {
 	points := []*qdrant.ScoredPoint{
 		makeScoredPoint("doc-a", 0.9),
 		makeScoredPoint("doc-b", 0.85),
-		makeScoredPoint("doc-a", 0.8), // duplicate
+		makeScoredPoint("doc-a", 0.8),
 		makeScoredPoint("doc-c", 0.7),
-		makeScoredPoint("doc-b", 0.6), // duplicate
+		makeScoredPoint("doc-b", 0.6),
 	}
 
-	result := dedupByDocName(points)
+	result := limitPerDocName(points, 1)
 	if len(result) != 3 {
 		t.Errorf("expected 3 results, got %d", len(result))
 	}
 
-	// Verify highest scores kept
 	if result[0].Score != 0.9 {
 		t.Errorf("expected first result score 0.9, got %f", result[0].Score)
 	}
@@ -54,10 +53,49 @@ func TestDedupByDocName_WithDuplicates(t *testing.T) {
 	}
 }
 
-func TestDedupByDocName_Empty(t *testing.T) {
-	result := dedupByDocName(nil)
+func TestLimitPerDocName_WithDuplicates_MaxThree(t *testing.T) {
+	points := []*qdrant.ScoredPoint{
+		makeScoredPoint("doc-a", 0.95),
+		makeScoredPoint("doc-a", 0.90),
+		makeScoredPoint("doc-a", 0.85),
+		makeScoredPoint("doc-a", 0.80), // 4th for doc-a, should be excluded
+		makeScoredPoint("doc-b", 0.75),
+	}
+
+	result := limitPerDocName(points, 3)
+	if len(result) != 4 {
+		t.Errorf("expected 4 results (3 from doc-a + 1 from doc-b), got %d", len(result))
+	}
+
+	// Verify doc-a has exactly 3 chunks
+	docACounts := 0
+	for _, p := range result {
+		if getPayloadString(p.Payload, "docName") == "doc-a" {
+			docACounts++
+		}
+	}
+	if docACounts != 3 {
+		t.Errorf("expected 3 chunks for doc-a, got %d", docACounts)
+	}
+}
+
+func TestLimitPerDocName_Empty(t *testing.T) {
+	result := limitPerDocName(nil, 3)
 	if len(result) != 0 {
 		t.Errorf("expected 0 results, got %d", len(result))
+	}
+}
+
+func TestLimitPerDocName_ZeroMaxDefaultsToOne(t *testing.T) {
+	points := []*qdrant.ScoredPoint{
+		makeScoredPoint("doc-a", 0.9),
+		makeScoredPoint("doc-a", 0.8),
+		makeScoredPoint("doc-b", 0.7),
+	}
+
+	result := limitPerDocName(points, 0)
+	if len(result) != 2 {
+		t.Errorf("expected 2 results (1 per doc), got %d", len(result))
 	}
 }
 

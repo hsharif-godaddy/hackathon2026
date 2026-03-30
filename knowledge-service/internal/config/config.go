@@ -43,6 +43,7 @@ type Config struct {
 
 	// Search defaults
 	SearchTopN              int
+	SearchMaxChunksPerDoc   int
 	SearchPrefetchLimit     int
 	SearchPrefetchThreshold float32
 	SearchFusionThreshold   float32
@@ -104,7 +105,8 @@ func LoadConfig() (*Config, error) {
 		GoCodeBaseURL: getEnvString("GOCODE_BASE_URL", ""),
 
 		// Search defaults
-		SearchTopN:              getEnvInt("SEARCH_TOP_N", 5),
+		SearchTopN:              getEnvInt("SEARCH_TOP_N", 8),
+		SearchMaxChunksPerDoc:   getEnvInt("SEARCH_MAX_CHUNKS_PER_DOC", 3),
 		SearchPrefetchLimit:     getEnvInt("SEARCH_PREFETCH_LIMIT", 20),
 		SearchPrefetchThreshold: getEnvFloat32("SEARCH_PREFETCH_THRESHOLD", 0.25),
 		SearchFusionThreshold:   getEnvFloat32("SEARCH_FUSION_THRESHOLD", 0.4),
