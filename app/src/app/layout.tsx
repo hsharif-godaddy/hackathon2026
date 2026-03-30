@@ -18,6 +18,7 @@ import { TranslationsProvider } from "@/components/providers/TranslationProvider
 import ConversationIdCookie from "@/components/security/ConversationIdCookie";
 import FrameBuster from "@/components/security/FrameBuster";
 import ReferralTracker from "@/components/tracking/ReferralTracker";
+import { EXPERIMENT_IDS } from "@/config/experiments";
 import { instrumentPageRequest } from "@/lib/apm-context";
 import { logger } from "@/lib/request-context";
 import { detectLocale, getServerIntl } from "@/lib/translations";
@@ -149,7 +150,8 @@ async function RootLayout({
     logger.error('translations.layout.load.failure', { error });
   }
 
-  // Trigger A/A experiment server-side
+  let homepageEngagementCohort: string | undefined;
+
   try {
     const headersObj: Record<string, string> = {};
     headersList.forEach((value, key) => {
@@ -157,6 +159,7 @@ async function RootLayout({
     });
     const cohorts = await gasket.actions.getExperimentCohorts({ headers: headersObj });
     const aaCohort = cohorts?.['aa-airo-builder'];
+    homepageEngagementCohort = cohorts?.[EXPERIMENT_IDS.homepageEngagement] as string | undefined;
 
     if (aaCohort) {
       logger.info('hivemind.experiment.triggered', {
@@ -182,11 +185,12 @@ async function RootLayout({
         <FullStoryProvider>
         <QueryClientProvider>
           <TranslationsProvider
+            homepageEngagementCohort={homepageEngagementCohort}
             locale={locale}
             messages={messages}
             packages={['@airo/app-builder']}
           >
-            <AuthProvider>
+            <AuthProvider homepageEngagementCohort={homepageEngagementCohort}>
               <SubscriptionCacheProvider>
                 <SessionTimeoutManager />
                 <AuthBoundary>

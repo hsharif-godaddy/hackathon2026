@@ -44,12 +44,12 @@ describe('useAnalytics', () => {
   });
 
   it('sends Hivemind cohort when present', function withCohort() {
-    mockUseHivemind.mockReturnValue({ cohort: 'treatment', data: {}, experiment: undefined });
+    mockUseHivemind.mockReturnValue({ cohort: 'light_homepage', data: {}, experiment: undefined });
     const { result } = renderHookWithProviders(() =>
       useAnalytics({ experimentId: EXPERIMENT_IDS.homepageEngagement }),
     );
     result.current.logAnalytics('homepage.view', {});
-    expect(shipAnalyticsLog).toHaveBeenCalledWith('homepage.view', { cohort: 'treatment' });
+    expect(shipAnalyticsLog).toHaveBeenCalledWith('homepage.view', { cohort: 'light_homepage' });
   });
 
   it('uses latest baseData after rerender', function baseDataRef() {
@@ -70,10 +70,10 @@ describe('useAnalytics', () => {
   });
 
   it('exposes cohort from hook', function cohortReturn() {
-    mockUseHivemind.mockReturnValue({ cohort: 'control', data: undefined, experiment: undefined });
+    mockUseHivemind.mockReturnValue({ cohort: 'original', data: undefined, experiment: undefined });
     const { result } = renderHookWithProviders(() =>
       useAnalytics({ experimentId: EXPERIMENT_IDS.homepageEngagement }),
     );
-    expect(result.current.cohort).toBe('control');
+    expect(result.current.cohort).toBe('original');
   });
 });

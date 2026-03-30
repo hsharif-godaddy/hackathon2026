@@ -1,7 +1,43 @@
+import os from 'node:os';
+import path from 'node:path';
+
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
-import path from 'node:path';
-import os from 'node:os';
+
+const SCSS_STUB_PREFIX = '\0vitest-scss-stub:';
+
+/**
+ * Next.js expects PostCSS plugin names as strings; Vite 6 rejects that when it loads
+ * postcss.config.mjs for imported `.scss`. Short-circuit SCSS to an empty module in tests.
+ */
+function vitestStubScss() {
+  return {
+    name: 'vitest-stub-scss',
+    enforce: 'pre' as const,
+    resolveId(id, importer) {
+      if (id.startsWith(SCSS_STUB_PREFIX)) {
+        return id;
+      }
+      const clean = id.split('?')[0];
+      if (!clean.endsWith('.scss')) {
+        return undefined;
+      }
+      const resolved = path.isAbsolute(clean)
+        ? clean
+        : importer
+          ? path.resolve(path.dirname(importer), clean)
+          : clean;
+      // Virtual id must not end in `.scss` or Vite's CSS pipeline still runs PostCSS on it.
+      const withoutExt = resolved.replace(/\.scss$/i, '');
+      return `${SCSS_STUB_PREFIX}${withoutExt}`;
+    },
+    load(id) {
+      if (id.startsWith(SCSS_STUB_PREFIX)) {
+        return 'export default {}';
+      }
+    },
+  };
+}
 
 /**
  * Vitest configuration
@@ -19,7 +55,7 @@ const availableCores = os.cpus().length;
 const optimalForks = Math.max(1, Math.min(3, Math.floor(availableCores / 2)));
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [vitestStubScss(), react()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

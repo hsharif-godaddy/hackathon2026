@@ -1,0 +1,46 @@
+@layer base {
+  [data-homepage-variation='light_homepage'] {
+    --homepage-example-chip-bg: #e4ddf5;
+    --homepage-example-chip-fg: #4a3d6b;
+    background: linear-gradient(165deg, #fafbfc 0%, #f5f7f8 40%, #eef1f4 100%);
+    --landing-accent: #a855f7;
+    --landing-feature-1: #ec4899;
+    --landing-feature-2: #8b5cf6;
+    --landing-feature-3: #06b6d4;
+    --landing-glow-1: #ec4899;
+    --landing-glow-2: #8b5cf6;
+    --landing-glow-3: #06b6d4;
+    --landing-glow-4: #d946ef;
+    --landing-glow-5: #ec4899;
+  }
+
+  [data-homepage-variation='light_homepage'] .glowing-input textarea::placeholder {
+    color: #9b8ab8;
+  }
+
+  [data-homepage-variation='light_homepage'] .glowing-input::before {
+    opacity: 0.58;
+    filter: blur(13px);
+  }
+
+  [data-homepage-variation='light_homepage'] .feature-icon {
+    opacity: 1;
+  }
+
+  html.is-safari [data-homepage-variation='light_homepage'] .glowing-input::before {
+    box-shadow:
+      0 0 20px 5px rgba(236, 72, 153, 0.42),
+      0 0 36px 8px rgba(139, 92, 246, 0.34),
+      0 0 48px 12px rgba(6, 182, 212, 0.28);
+  }
+
+  [data-homepage-variation='light_homepage'] [data-testid='homepage-suggestion-button'] {
+    background-color: var(--homepage-example-chip-bg, #e4ddf5) !important;
+    color: var(--homepage-example-chip-fg, #4a3d6b) !important;
+
+    span,
+    svg {
+      color: var(--homepage-example-chip-fg, #4a3d6b) !important;
+    }
+  }
+}

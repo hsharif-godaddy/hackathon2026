@@ -1,7 +1,7 @@
 'use client'
 
-import { fqdnIsConnectedOrProvisioningOnSite } from '@airo/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { fqdnIsConnectedOrProvisioningOnSite } from '@airo/shared';
 import Box from '@ux/box';
 import Button from '@ux/button';
 import CartIcon from '@ux/icon/cart';

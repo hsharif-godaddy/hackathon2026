@@ -17,7 +17,13 @@ function AuthProviderComponent(props: any) {
   return <>{children}</>;
 }
 
-function InnerAuthProvider({ children }: { children: ReactNode }) {
+function InnerAuthProvider({
+  children,
+  homepageEngagementCohort,
+}: {
+  children: ReactNode;
+  homepageEngagementCohort?: string | null;
+}) {
   const authData = useAuth();
   const { isLoading } = authData;
   const hasInitiallyLoaded = useRef(false);
@@ -30,7 +36,7 @@ function InnerAuthProvider({ children }: { children: ReactNode }) {
   // After initial auth completes, keep children mounted during heartbeat revalidations
   // to prevent tearing down websocket connections, form state, etc.
   if (isLoading && !hasInitiallyLoaded.current) {
-    return <LoadingComponent />
+    return <LoadingComponent homepageEngagementCohort={homepageEngagementCohort} />;
   }
 
   return (
@@ -41,7 +47,13 @@ function InnerAuthProvider({ children }: { children: ReactNode }) {
 }
 
 // Export the wrapped provider with proper typing
-export default function AuthProvider({ children }: { children: ReactNode }) {
+export default function AuthProvider({
+  children,
+  homepageEngagementCohort,
+}: {
+  children: ReactNode;
+  homepageEngagementCohort?: string | null;
+}) {
   const [authProvider, setAuthProvider] = useState<any>(null);
   const [isAuthProviderLoading, setIsAuthProviderLoading] = useState(true);
   const [serverAuthConfig, setServerAuthConfig] = useState<any>(null);
@@ -101,14 +113,16 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   // Show loading while auth provider is loading
   if (isAuthProviderLoading) {
-    return <LoadingComponent />
+    return <LoadingComponent homepageEngagementCohort={homepageEngagementCohort} />;
   }
 
   // Render with the appropriate provider
   const Provider = authProvider;
   return (
     <Provider>
-      <InnerAuthProvider>{children}</InnerAuthProvider>
+      <InnerAuthProvider homepageEngagementCohort={homepageEngagementCohort}>
+        {children}
+      </InnerAuthProvider>
     </Provider>
   );
 }
