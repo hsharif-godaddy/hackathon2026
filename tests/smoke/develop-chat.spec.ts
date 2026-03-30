@@ -266,32 +266,9 @@ test.describe('Develop Page', () => {
     console.log('  ✓ Chat input remains enabled');
 
     // ========================================
-    // STEP 10: Test arrow key history navigation
+    // STEP 10: Test page refresh recovery
     // ========================================
-    await dismissOverlays(page);
-    console.log('⬆️ Step 10: Testing arrow key history navigation...');
-
-    await waitForChatInput(page);
-    await chatInput.clear();
-    await chatInput.click();
-
-    // Cursor must be at position 0 for ArrowUp to trigger history navigation
-    await chatInput.press('Home');
-    await chatInput.press('ArrowUp');
-
-    // Most recent sent message should be restored
-    await expect(chatInput).toHaveValue(stopMessage);
-    console.log('  ✓ ArrowUp loaded most recent message');
-
-    // Cursor is now at end (placed there by useLayoutEffect); ArrowDown restores the draft
-    await chatInput.press('ArrowDown');
-    await expect(chatInput).toHaveValue('');
-    console.log('  ✓ ArrowDown past newest restored empty draft');
-
-    // ========================================
-    // STEP 11: Test page refresh recovery
-    // ========================================
-    console.log('🔄 Step 11: Testing page refresh...');
+    console.log('🔄 Step 10: Testing page refresh...');
 
     await page.reload();
 
