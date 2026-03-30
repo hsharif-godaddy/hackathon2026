@@ -44,8 +44,11 @@ func (h *UploadedMediaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Security: Block path traversal attempts
-	if strings.Contains(filename, "..") || strings.Contains(filename, "/") {
+	// Security: Block path traversal, absolute paths, and null bytes
+	// Note: Forward slashes for subdirectories are allowed (e.g., "pdfs/doc.pdf")
+	// Deployment invariant: All production systems are Unix-like (Linux/macOS), so we only
+	// need to check for Unix absolute paths (leading slash). Windows paths are not supported.
+	if strings.Contains(filename, "..") || strings.HasPrefix(filename, "/") || strings.Contains(filename, "\x00") {
 		slog.Warn("uploaded_media.path_traversal_attempt",
 			"url", r.URL.Path,
 			"filename", filename)
@@ -104,9 +107,10 @@ func (h *UploadedMediaHandler) findMediaFile(filename string) (string, os.FileIn
 		filePath := filepath.Join(dir, filename)
 		cleanPath := filepath.Clean(filePath)
 
-		// Validate path is still under the directory (prevent path traversal)
-		if !strings.HasPrefix(cleanPath, dir+string(filepath.Separator)) &&
-			cleanPath != filepath.Join(dir, filename) {
+		// Defense-in-depth: Validate path is still under the directory after normalization
+		// Use filepath.Rel to avoid edge cases with string prefix matching (e.g., /tmp/media vs /tmp/mediaevil)
+		rel, err := filepath.Rel(dir, cleanPath)
+		if err != nil || strings.HasPrefix(rel, "..") {
 			continue // Skip this directory, path escape attempt
 		}
 

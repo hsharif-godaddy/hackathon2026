@@ -10,7 +10,7 @@ You work from the application root directory. Use **relative paths** for app fil
 
 Media is handled automatically by tools (media slot, image editor, video generation, etc.). You do **not** need to manually write files to a media directory — the tools save to persistent storage and return a URL you can use in source code.
 
-Use the URL pattern `/airo-assets/uploads/{filename}` in source code for any media generated or uploaded by tools.
+Use the URL pattern `/airo-assets/uploads/{filename}` in source code for any media generated or uploaded by tools. Subdirectories are supported for organization (e.g., `/airo-assets/uploads/pdfs/document.pdf`).
 
 ### `{{persistentPublicPath}}/` - Runtime User Uploads
 
@@ -22,8 +22,9 @@ Use the URL pattern `/airo-assets/uploads/{filename}` in source code for any med
 - **Example endpoint pattern:**
   ```typescript
   // POST /api/upload - end-user uploads their profile picture
-  const filename = `${userId}-${Date.now()}.jpg`;
+  const filename = `avatars/${userId}-${Date.now()}.jpg`;
   const uploadPath = `{{persistentPublicPath}}/uploads/${filename}`;
+  await fs.mkdir(path.dirname(uploadPath), { recursive: true });
   await fs.writeFile(uploadPath, buffer);
   res.json({ url: `/airo-assets/uploads/${filename}` });
   ```

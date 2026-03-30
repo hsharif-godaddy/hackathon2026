@@ -3,6 +3,7 @@ package httpproxy_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,6 +61,26 @@ func TestUploadedMediaHandler(t *testing.T) {
 
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("expected status 400, got %d", rec.Code)
+		}
+	})
+
+	t.Run("blocks null bytes", func(t *testing.T) {
+		// Note: httptest.NewRequest rejects null bytes in URLs at the HTTP parsing layer,
+		// which is the first line of defense. This test verifies our handler also blocks
+		// them as defense-in-depth in case requests come from internal sources.
+		// We construct the request manually to bypass HTTP parsing validation.
+		req := &http.Request{
+			Method: http.MethodGet,
+			URL: &url.URL{
+				Path: "/airo-assets/uploads/file\x00.jpg",
+			},
+		}
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400 for null byte in filename, got %d", rec.Code)
 		}
 	})
 
@@ -153,7 +174,7 @@ func TestUploadedMediaHandler_EmptyPath(t *testing.T) {
 	}
 }
 
-func TestUploadedMediaHandler_SubdirectoryBlocked(t *testing.T) {
+func TestUploadedMediaHandler_SubdirectoryAllowed(t *testing.T) {
 	tmpDir := t.TempDir()
 	mediaDir := filepath.Join(tmpDir, "public", "media", "subdir")
 	if err := os.MkdirAll(mediaDir, 0755); err != nil {
@@ -168,15 +189,35 @@ func TestUploadedMediaHandler_SubdirectoryBlocked(t *testing.T) {
 
 	handler := httpproxy.NewUploadedMediaHandler([]string{filepath.Join(tmpDir, "public", "media")})
 
-	// Request with subdirectory path - should be blocked
+	// Request with subdirectory path - should now be allowed
 	req := httptest.NewRequest(http.MethodGet, "/airo-assets/uploads/subdir/test.jpg", nil)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
 
-	// Should return 400 because subdirectory paths are blocked for security
+	// Should return 200 because legitimate subdirectories are now allowed
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200 for subdirectory path, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Content-Type") != "image/jpeg" {
+		t.Errorf("expected Content-Type image/jpeg, got %s", rec.Header().Get("Content-Type"))
+	}
+}
+
+func TestUploadedMediaHandler_AbsolutePathBlocked(t *testing.T) {
+	tmpDir := t.TempDir()
+	handler := httpproxy.NewUploadedMediaHandler([]string{filepath.Join(tmpDir, "public", "media")})
+
+	// Double slash in URL: /airo-assets/uploads//etc/passwd
+	// After TrimPrefix("/airo-assets/uploads/"): /etc/passwd (absolute path)
+	// Should be blocked by primary security check
+	req := httptest.NewRequest(http.MethodGet, "/airo-assets/uploads//etc/passwd", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
 	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected status 400 for subdirectory path, got %d", rec.Code)
+		t.Errorf("expected status 400 for absolute path via double slash, got %d", rec.Code)
 	}
 }
 
