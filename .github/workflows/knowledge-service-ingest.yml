@@ -65,7 +65,7 @@ jobs:
           ENVIRONMENT: ${{ inputs.environment }}
         run: |
           if [ "$ENVIRONMENT" = "PROD" ]; then
-            echo "api_url=https://knowledge.api.int.godaddy.com" >> $GITHUB_OUTPUT
+            echo "api_url=https://airobuilde-app-builder-knowledge-prod.airobuilde-prod.prod.onkatana.net" >> $GITHUB_OUTPUT
             echo "sso_env=prod" >> $GITHUB_OUTPUT
           else
             echo "api_url=https://airobuilde-app-builder-knowledge-dev-private.airobuilde-dev-private.prod.onkatana.net" >> $GITHUB_OUTPUT
