@@ -17,6 +17,7 @@ import SubscriptionCacheProvider from "@/components/providers/SubscriptionCacheP
 import { TranslationsProvider } from "@/components/providers/TranslationProvider";
 import ConversationIdCookie from "@/components/security/ConversationIdCookie";
 import FrameBuster from "@/components/security/FrameBuster";
+import ItcInitializer from "@/components/tracking/ItcInitializer";
 import ReferralTracker from "@/components/tracking/ReferralTracker";
 import { EXPERIMENT_IDS } from "@/config/experiments";
 import { instrumentPageRequest } from "@/lib/apm-context";
@@ -180,6 +181,7 @@ async function RootLayout({
       <Suspense fallback={null}>
         <ConversationIdCookie />
         <ReferralTracker />
+        <ItcInitializer />
       </Suspense>
       <RumProvider>
         <FullStoryProvider>

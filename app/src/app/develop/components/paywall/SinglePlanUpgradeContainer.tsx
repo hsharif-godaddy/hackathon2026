@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useGasketData } from '@/hooks/useGasketData'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
+import { getItcOverride } from '@/lib/itc'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { waitForQueryUpdate } from '@/lib/query-utils'
 import { resetFocusOnModalClose } from '@/utils/focus'
@@ -146,7 +147,7 @@ const SinglePlanUpgradeContainer = ({
         locale={gasketData?.intl?.locale || 'en-US'}
         returnApp="airo-builder"
         source="app-builder"
-        itc={itc}
+        itc={getItcOverride() ?? itc}
         onClose={handleClose}
         onPurchaseSuccess={handleSuccess}
         onSuccessClick={handleSuccessClick}

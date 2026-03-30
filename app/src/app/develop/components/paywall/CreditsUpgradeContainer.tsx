@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useCreditPurchase } from '@/hooks/useCreditPurchase'
 import { useGasketData } from '@/hooks/useGasketData'
 import { getErrorMessage } from '@/lib/errors'
+import { getItcOverride } from '@/lib/itc'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { resetFocusOnModalClose } from '@/utils/focus'
@@ -135,7 +136,7 @@ const CreditsUpgradeContainer = ({
         productId={UPGRADE_PRODUCT_IDS.AIRO_BUILDER_CREDITS}
         entitlementId={entitlementId}
         source={source}
-        itc={itc}
+        itc={getItcOverride() ?? itc}
         onSuccess={handleSuccess}
         onClose={handleClose}
         onErrorClick={onErrorClick}

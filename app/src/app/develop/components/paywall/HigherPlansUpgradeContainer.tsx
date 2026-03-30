@@ -9,6 +9,7 @@ import { useGasketData } from '@/hooks/useGasketData'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useUpgradePurchase } from '@/hooks/useUpgradePurchase'
+import { getItcOverride } from '@/lib/itc'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { AiroSubscription } from '@/lib/mgmt-airo/types';
 import { isPlanUpgrade } from '@/lib/paywall/shared'
@@ -173,7 +174,7 @@ const HigherPlansUpgradeContainer = ({
         cds={gasketData?.cds}
         deps={UPGRADE_DEPS}
         shopperId={shopperId}
-        overrideItc={itc}
+        overrideItc={getItcOverride() ?? itc}
         accountId={entitlementId}
         requestedPlanType={recommendedPlan}
         locale={gasketData?.intl?.locale || 'en-US'}
