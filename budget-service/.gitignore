@@ -1,5 +1,6 @@
 # Binary output
 /server
+tmp/
 
 # IDE
 .idea/
@@ -10,6 +11,7 @@ coverage.out
 
 # Environment
 .env
+.env.local
 
 # Audit log
 audit.log

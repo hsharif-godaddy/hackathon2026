@@ -23,6 +23,12 @@ Credit budget management service for AAB.
    cp .env.example .env
    ```
 
+   Optional: copy to `.env.local` for machine-specific overrides (loaded by `make dev` instead of `.env` when present).
+
+   **`make dev`** loads `.env.local` if it exists, otherwise `.env`, then starts [Air](https://github.com/air-verse/air) (via `go run`; no global install). Files must use shell-assignable lines (`KEY=value`); comments (`# …`) are fine.
+
+   For **`go run ./cmd/server`** without Make, export variables yourself, e.g. `set -a && . ./.env && set +a && go run ./cmd/server`, or use a tool like [direnv](https://direnv.net/).
+
 2. Create database:
 
    ```bash
@@ -30,10 +36,19 @@ Credit budget management service for AAB.
    psql budget_service < migrations/001_create_budgets.sql
    ```
 
-3. Run service:
+3. Run the service (ensure PostgreSQL is reachable per `DATABASE_URL` in `.env`):
+
    ```bash
    go run ./cmd/server
    ```
+
+   Hot reload (after `.env` or `.env.local` is in place):
+
+   ```bash
+   make dev
+   ```
+
+   From the monorepo root: `make -f budget-service/Makefile dev` (working directory for Air and env files is always `budget-service/`).
 
 ### API Endpoints
 

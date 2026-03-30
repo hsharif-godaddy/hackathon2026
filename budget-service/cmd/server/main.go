@@ -21,8 +21,6 @@ import (
 const version = "0.1.0"
 
 func main() {
-	// Setup structured logging
-
 	logLevel := slog.LevelInfo
 	if os.Getenv("LOG_LEVEL") == "debug" {
 		logLevel = slog.LevelDebug

@@ -1,0 +1,16 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/main ./cmd/server"
+  entrypoint = "./tmp/main"
+  delay = 1000
+  exclude_dir = ["tmp", "dist", "vendor", "migrations"]
+  exclude_regex = ["_test\\.go$"]
+  send_interrupt = true
+
+[log]
+  time = false
+
+[misc]
+  clean_on_exit = true

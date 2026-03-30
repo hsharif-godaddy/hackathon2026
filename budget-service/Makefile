@@ -1,10 +1,25 @@
 # budget-service/Makefile
 
-.PHONY: build test test-integration test-repo test-scale test-production up down logs clean
+.PHONY: build dev test test-integration test-repo test-scale test-production up down logs clean
+
+_BUDGET_SVC_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
 # Build the service
 build:
 	go build -o dist/budget-service ./cmd/server
+
+# Live-reload dev server (go run Air; no global install). Air is not in go.sum; version pinned here only.
+# Sources .env.local if present, else .env (shell syntax: KEY=value lines; see README).
+AIR_VERSION ?= v1.64.5
+dev:
+	cd $(_BUDGET_SVC_DIR) && \
+	if [ -f .env.local ]; then \
+		set -a && . ./.env.local && set +a && go run github.com/air-verse/air@$(AIR_VERSION); \
+	elif [ -f .env ]; then \
+		set -a && . ./.env && set +a && go run github.com/air-verse/air@$(AIR_VERSION); \
+	else \
+		go run github.com/air-verse/air@$(AIR_VERSION); \
+	fi
 
 # Unit tests (no database required)
 test:
