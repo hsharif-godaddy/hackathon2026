@@ -204,6 +204,55 @@ func TestUploadedMediaHandler_SubdirectoryAllowed(t *testing.T) {
 	}
 }
 
+func TestUploadedMediaHandler_ArbitrarySubdirectoryViaBaseDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	assetsDir := filepath.Join(tmpDir, "public", "assets")
+	pdfsDir := filepath.Join(assetsDir, "pdfs")
+	if err := os.MkdirAll(pdfsDir, 0755); err != nil {
+		t.Fatalf("failed to create pdfs dir: %v", err)
+	}
+
+	// File in arbitrary subdirectory (not media/, images/, or uploads/)
+	testFile := filepath.Join(pdfsDir, "document.pdf")
+	if err := os.WriteFile(testFile, []byte("fake pdf content"), 0644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Handler with base directory first, then specific subdirs
+	// Only the base directory should find pdfs/ subdirectory
+	handler := httpproxy.NewUploadedMediaHandler([]string{
+		filepath.Join(tmpDir, "public", "assets"), // base (catches all subdirs)
+		filepath.Join(tmpDir, "public", "assets", "media"),
+		filepath.Join(tmpDir, "public", "assets", "images"),
+		filepath.Join(tmpDir, "public", "assets", "uploads"),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/airo-assets/uploads/pdfs/document.pdf", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf(
+			"expected status 200 for arbitrary subdirectory via base path, got %d: %s",
+			rec.Code,
+			rec.Body.String(),
+		)
+	}
+	if rec.Header().Get("Content-Type") != "application/pdf" {
+		t.Errorf("expected Content-Type application/pdf, got %s", rec.Header().Get("Content-Type"))
+	}
+
+	// Verify cache headers - pdfs/ is not content-hashed, should get shorter cache
+	cacheControl := rec.Header().Get("Cache-Control")
+	if !strings.Contains(cacheControl, "max-age=86400") {
+		t.Errorf("expected Cache-Control with max-age=86400 for non-hashed file, got %s", cacheControl)
+	}
+	if strings.Contains(cacheControl, "immutable") {
+		t.Errorf("expected no immutable cache for non-hashed file, got %s", cacheControl)
+	}
+}
+
 func TestUploadedMediaHandler_AbsolutePathBlocked(t *testing.T) {
 	tmpDir := t.TempDir()
 	handler := httpproxy.NewUploadedMediaHandler([]string{filepath.Join(tmpDir, "public", "media")})
@@ -270,4 +319,72 @@ func TestUploadedMediaHandler_UnknownMimeType(t *testing.T) {
 	if rec.Header().Get("Content-Type") != "application/octet-stream" {
 		t.Errorf("expected Content-Type application/octet-stream, got %s", rec.Header().Get("Content-Type"))
 	}
+}
+
+func TestUploadedMediaHandler_CacheHeadersForHashedVsNonHashed(t *testing.T) {
+	tmpDir := t.TempDir()
+	assetsDir := filepath.Join(tmpDir, "public", "assets")
+
+	// Create content-hashed file in media/ subdirectory
+	mediaDir := filepath.Join(assetsDir, "media")
+	if err := os.MkdirAll(mediaDir, 0755); err != nil {
+		t.Fatalf("failed to create media dir: %v", err)
+	}
+	hashedFile := filepath.Join(mediaDir, "hero-abc123.jpg")
+	if err := os.WriteFile(hashedFile, []byte("fake image"), 0644); err != nil {
+		t.Fatalf("failed to create hashed file: %v", err)
+	}
+
+	// Create non-hashed file in arbitrary subdirectory
+	pdfsDir := filepath.Join(assetsDir, "pdfs")
+	if err := os.MkdirAll(pdfsDir, 0755); err != nil {
+		t.Fatalf("failed to create pdfs dir: %v", err)
+	}
+	nonHashedFile := filepath.Join(pdfsDir, "document.pdf")
+	if err := os.WriteFile(nonHashedFile, []byte("fake pdf"), 0644); err != nil {
+		t.Fatalf("failed to create non-hashed file: %v", err)
+	}
+
+	handler := httpproxy.NewUploadedMediaHandler([]string{
+		filepath.Join(tmpDir, "public", "assets"),
+		filepath.Join(tmpDir, "public", "assets", "media"),
+		filepath.Join(tmpDir, "public", "assets", "images"),
+		filepath.Join(tmpDir, "public", "assets", "uploads"),
+	})
+
+	t.Run("content-hashed file gets immutable cache", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/airo-assets/uploads/media/hero-abc123.jpg", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", rec.Code)
+		}
+		cacheControl := rec.Header().Get("Cache-Control")
+		if !strings.Contains(cacheControl, "immutable") {
+			t.Errorf("expected immutable cache for content-hashed file, got %s", cacheControl)
+		}
+		if !strings.Contains(cacheControl, "max-age=31536000") {
+			t.Errorf("expected 1-year cache for content-hashed file, got %s", cacheControl)
+		}
+	})
+
+	t.Run("non-hashed file gets shorter cache", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/airo-assets/uploads/pdfs/document.pdf", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", rec.Code)
+		}
+		cacheControl := rec.Header().Get("Cache-Control")
+		if strings.Contains(cacheControl, "immutable") {
+			t.Errorf("expected no immutable cache for non-hashed file, got %s", cacheControl)
+		}
+		if !strings.Contains(cacheControl, "max-age=86400") {
+			t.Errorf("expected 24-hour cache for non-hashed file, got %s", cacheControl)
+		}
+	})
 }

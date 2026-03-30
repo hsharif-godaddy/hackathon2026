@@ -82,9 +82,17 @@ func (h *UploadedMediaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 		contentType = "application/octet-stream"
 	}
 
-	// Set cache headers (1 year, immutable since filename includes hash)
+	// Set cache headers based on file location
+	// Content-hashed files in media/, images/, uploads/ can use aggressive caching
+	// Arbitrary files (pdfs/, documents/, etc.) use shorter cache to allow updates
 	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	if h.isContentHashedPath(filename) {
+		// Content-addressed file: safe to cache indefinitely
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		// Non-hashed file: use shorter cache (matches PersistentAssetsHandler)
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 
 	slog.Debug("uploaded_media.serve", "path", cleanPath, "content_type", contentType)
@@ -97,6 +105,24 @@ func (h *UploadedMediaHandler) respondError(w http.ResponseWriter, msg string, s
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+// isContentHashedPath determines if a filename is in a known content-addressed location.
+// Returns true for:
+// - Flat files (no subdirectory): legacy content-hashed files like "hero-abc123.jpg"
+// - Files in media/, images/, uploads/ subdirectories: known content-hashed locations
+// Returns false for:
+// - Files in other subdirectories (pdfs/, documents/, etc.): may not be content-hashed
+func (h *UploadedMediaHandler) isContentHashedPath(filename string) bool {
+	// Flat files (no subdirectory) are content-hashed (legacy behavior)
+	if !strings.Contains(filename, "/") {
+		return true
+	}
+
+	// Files in known content-hashed subdirectories
+	return strings.HasPrefix(filename, "media/") ||
+		strings.HasPrefix(filename, "images/") ||
+		strings.HasPrefix(filename, "uploads/")
 }
 
 // findMediaFile searches for the media file in configured search paths.
@@ -114,15 +140,42 @@ func (h *UploadedMediaHandler) findMediaFile(filename string) (string, os.FileIn
 			continue // Skip this directory, path escape attempt
 		}
 
-		slog.Debug("uploaded_media.checking_path", "path", cleanPath)
-		info, err := os.Stat(cleanPath)
+		// Resolve symlinks to prevent escapes (matches PersistentAssetsHandler behavior)
+		resolved, err := filepath.EvalSymlinks(cleanPath)
+		if err != nil {
+			// File doesn't exist or symlink is broken, try next path
+			lastErr = err
+			continue
+		}
+
+		// Resolve the directory path as well to handle cases where the dir itself
+		// contains symlinks (e.g., /tmp -> /private/tmp on macOS)
+		resolvedDir, err := filepath.EvalSymlinks(dir)
+		if err != nil {
+			// Directory doesn't exist, skip to next path
+			lastErr = err
+			continue
+		}
+
+		// Verify resolved path is still under the resolved directory
+		if !strings.HasPrefix(resolved, resolvedDir+string(filepath.Separator)) &&
+			resolved != resolvedDir {
+			slog.Warn("uploaded_media.symlink_escape_attempt",
+				"requested", filename,
+				"resolved", resolved,
+				"allowed_dir", resolvedDir)
+			continue // Skip this directory, symlink escape attempt
+		}
+
+		slog.Debug("uploaded_media.checking_path", "path", resolved)
+		info, err := os.Stat(resolved)
 		if err == nil {
 			if i > 0 {
 				slog.Debug("uploaded_media.found_in_fallback",
 					"primary_path", h.searchPaths[0],
 					"found_in", dir)
 			}
-			return cleanPath, info, nil
+			return resolved, info, nil
 		}
 		lastErr = err
 	}
