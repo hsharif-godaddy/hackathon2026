@@ -20,18 +20,20 @@ vi.mock('../../database/repositories/AppRepository.js', () => ({
 }));
 
 vi.mock('../../utils/git.js', () => ({
-  GitUtils: {
+  GitUtils: vi.fn().mockImplementation(() => ({
     resolveCommitHash: vi.fn(),
     getCommitDetails: vi.fn(),
-    createArchive: vi.fn()
-  }
+    createArchive: vi.fn(),
+  })),
 }));
 
+const mockCreateForApp = vi.fn().mockReturnValue(null);
 vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
   DevSupervisorClientFactory: {
     getInstance: vi.fn(() => ({
       build: vi.fn()
-    }))
+    })),
+    createForApp: mockCreateForApp,
   }
 }));
 
@@ -51,6 +53,13 @@ vi.mock('./publish/strategies/index.js', () => ({
       this.name = 'BuildError';
     }
   }
+}));
+
+vi.mock('../ai-lib-websocket-server.js', () => ({
+  getGitHookService: vi.fn(() => ({
+    hasActiveBranch: vi.fn().mockReturnValue(false),
+    clearBranchTracking: vi.fn(),
+  })),
 }));
 
 vi.mock('../../logging/index.js', () => ({
@@ -74,6 +83,8 @@ vi.mock('../../logging/index.js', () => ({
 
 // Import after mocks
 const publishRouter = await import('./publish.js').then(m => m.default);
+import { getPublishStrategy } from './publish/strategies/index.js';
+import { getGitHookService } from '../ai-lib-websocket-server.js';
 
 describe('Publish Route Authorization', () => {
   let app: Express;
@@ -286,6 +297,78 @@ describe('Publish Route Authorization', () => {
 
       // Should succeed past permission check (404 is from app not found, not permission)
       expect(response.body.error).toBe('App not found');
+    });
+  });
+
+  describe('Branch tracking cleanup after publish', () => {
+    function createPublishApp() {
+      const publishApp = express();
+      publishApp.use(express.json());
+      publishApp.use((req, res, next) => {
+        (req as AuthenticatedRequest).agentContext = {
+          siteId: 'test-site',
+          canDownload: false,
+          canPublish: true,
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000)
+        };
+        next();
+      });
+      publishApp.use('/', publishRouter);
+      return publishApp;
+    }
+
+    beforeEach(() => {
+      // Set NOMAD_ALLOC_DIR to skip the unified-job publish supervisor path
+      process.env.NOMAD_ALLOC_DIR = '/fake-alloc';
+    });
+
+    afterEach(() => {
+      delete process.env.NOMAD_ALLOC_DIR;
+    });
+
+    function setupSuccessfulPublish(hasActiveBranch: boolean) {
+      const mockClearBranchTracking = vi.fn();
+      vi.mocked(getGitHookService).mockReturnValue({
+        hasActiveBranch: vi.fn().mockReturnValue(hasActiveBranch),
+        clearBranchTracking: mockClearBranchTracking,
+      } as any);
+
+      mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/test-app' });
+      mockCreateForApp.mockReturnValue({ exec: vi.fn() }); // dev-supervisor available
+      vi.mocked(getPublishStrategy).mockReturnValue({
+        key: 'default',
+        publish: vi.fn().mockResolvedValue({
+          commitHash: 'abc1234567890',
+          archivePath: '/dist/abc1234567890.tar.gz',
+        }),
+      } as any);
+
+      return mockClearBranchTracking;
+    }
+
+    it('clears branch tracking when app has active branch after publish', async () => {
+      const mockClearBranchTracking = setupSuccessfulPublish(true);
+
+      const testApp = createPublishApp();
+      await request(testApp)
+        .post('/apps/test-app-id/publish')
+        .send({})
+        .expect(200);
+
+      expect(mockClearBranchTracking).toHaveBeenCalledWith('test-app-id');
+    });
+
+    it('does not call clearBranchTracking when no active branch', async () => {
+      const mockClearBranchTracking = setupSuccessfulPublish(false);
+
+      const testApp = createPublishApp();
+      await request(testApp)
+        .post('/apps/test-app-id/publish')
+        .send({})
+        .expect(200);
+
+      expect(mockClearBranchTracking).not.toHaveBeenCalled();
     });
   });
 });

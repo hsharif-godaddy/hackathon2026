@@ -1,0 +1,74 @@
+# Regression test: uploading a replacement image twice must work
+# Bug: after first image replacement via edit mode, second replacement breaks completely.
+# Root cause: AST replacement replaces slot URL with direct upload URL, breaking slot indirection.
+
+name: Image Replace Twice
+description: |
+  Create a site with an image, replace the image in edit mode, then replace it
+  again. Verifies that the second image replacement works correctly.
+  Regression test for bug where uploading a second replacement image broke
+  the image completely, requiring deletion of image code to recover.
+
+startUrl: https://airo-builder.godaddy.com
+timeout: 600000 # 10 minutes
+maxSteps: 60
+stepsPerMessage: 15
+headed: false
+
+credentials:
+  username: ${TEST_USERNAME}
+  password: ${TEST_PASSWORD}
+
+sitePrompt:
+  prompt: |
+    Create a simple one-page landing page for a photography studio called "Lens & Light".
+    Include a large hero image at the top with a heading "Lens & Light Photography".
+    Below the hero, add a small gallery section with 3 placeholder images.
+    Use a clean dark theme.
+
+systemPrompt: |
+  ${common.developPageBase}
+
+  ${common.errorHandlingInstructions}
+
+  ${common.chatInstructions}
+
+  ${common.waitInstructions}
+
+  You need to test that image replacement works multiple times. Follow these steps:
+
+  STEP 1 - FIRST IMAGE REPLACEMENT:
+  Send this chat message: "Replace the hero image with a photo of a sunset over mountains"
+  Wait for the AI to process the request and the preview to update.
+  Verify that the hero image area changed.
+
+  STEP 2 - SECOND IMAGE REPLACEMENT (this is the critical test):
+  Send this chat message: "Actually, replace the hero image with a photo of an ocean beach instead"
+  Wait for the AI to process the request and the preview to update.
+  Verify that the hero image area changed again to show a beach/ocean image.
+
+  STEP 3 - VERIFY:
+  Check that the preview shows the beach/ocean image in the hero section (not the sunset).
+  This confirms that replacing an image a second time still works.
+
+goal: |
+  Complete the image replacement steps:
+  1. Send first replacement message (sunset mountains)
+  2. Verify the change appears in preview
+  3. Send second replacement message (ocean beach)
+  4. Verify the second change appears in preview
+
+  Success criteria:
+  - Both image replacement messages were sent and processed
+  - The preview updated after each replacement
+  - No error messages appeared during the replacements
+  - The final hero image reflects the second replacement (ocean/beach)
+
+  Report FAILURE if:
+  - The second replacement does not appear in the preview
+  - An error appears during image replacement
+  - The preview shows a broken image or the original placeholder
+  - The agent gets stuck in a loop trying to replace the image
+
+cleanup:
+  deleteAllSitesViaAPI: false

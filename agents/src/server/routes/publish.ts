@@ -11,6 +11,7 @@ import { requirePermission } from '../middleware/require-permission.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { getPublishStrategy, BuildError } from './publish/strategies/index.js';
 import type { PublishContext } from './publish/strategies/index.js';
+import { getGitHookService } from '../ai-lib-websocket-server.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
@@ -149,6 +150,16 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
       const result = await strategy.publish(publishContext);
       fullCommitHash = result.commitHash;
       archivePath = result.archivePath;
+
+      // Publish merges the feature branch to main via GitUtils directly,
+      // bypassing GitHookService. Clear stale branch tracking so subsequent
+      // messages create a fresh feature branch instead of referencing the
+      // deleted one.
+      const gitHookService = getGitHookService();
+      if (gitHookService.hasActiveBranch(id)) {
+        gitHookService.clearBranchTracking(id);
+        contextLogger.info('route.publish.branch_tracking_cleared', { appId: id });
+      }
     } catch (error) {
       if (error instanceof BuildError) {
         return res.status(400).json({

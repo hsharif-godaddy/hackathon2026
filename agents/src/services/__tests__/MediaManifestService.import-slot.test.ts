@@ -45,6 +45,7 @@ vi.mock("../GettyUploadService.js", () => ({
   },
 }));
 
+import { astImageEditor } from "../../tools/ast-image-editor.js";
 import { MediaManifestService } from "../MediaManifestService.js";
 
 describe("MediaManifestService - importSlot", () => {
@@ -273,5 +274,106 @@ describe("MediaManifestService - importSlot", () => {
 
     expect(result.success).toBe(true);
     expect(result.slotPath).toBe("pages/home/dog-photo");
+  });
+
+  describe("AST source update", () => {
+    it("calls astImageEditor.replaceImage with slot URL as newImageUrl", async () => {
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+      vi.mocked(fs.rename).mockResolvedValue(undefined);
+
+      await service.importSlot("test-app", {
+        imageUrl: "https://example.com/photo.jpg",
+        imageAlt: "Hero",
+        devContext: {
+          fileName: "src/pages/index.tsx",
+          componentName: "HeroSection",
+          lineNumber: 10,
+        },
+      });
+
+      expect(astImageEditor.replaceImage).toHaveBeenCalledWith(
+        "/tmp/test-app",
+        expect.objectContaining({
+          newImageUrl: "/airo-assets/images/pages/home/hero",
+        }),
+        "test-app"
+      );
+    });
+
+    it("passes original URL as currentUrl so AST editor can match source code", async () => {
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+      vi.mocked(fs.rename).mockResolvedValue(undefined);
+
+      // External URL — no local copy, normalizedUrl stays the same
+      await service.importSlot("test-app", {
+        imageUrl: "https://example.com/photo.jpg",
+        imageAlt: "Hero",
+        devContext: {
+          fileName: "src/pages/index.tsx",
+          componentName: "HeroSection",
+          lineNumber: 10,
+        },
+      });
+
+      // The source code has "https://example.com/photo.jpg" — AST editor
+      // needs this exact URL to find and replace the element
+      expect(astImageEditor.replaceImage).toHaveBeenCalledWith(
+        "/tmp/test-app",
+        expect.objectContaining({
+          imageInfo: expect.objectContaining({
+            currentUrl: "https://example.com/photo.jpg",
+          }),
+        }),
+        "test-app"
+      );
+    });
+
+    it("passes pre-copy URL as currentUrl when local file is copied to media dir", async () => {
+      const fakeImageBuffer = Buffer.from("fake-image-data");
+      vi.mocked(fs.readFile)
+        .mockResolvedValueOnce(JSON.stringify({}))      // manifest
+        .mockResolvedValueOnce(fakeImageBuffer as any);  // image file
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+      vi.mocked(fs.rename).mockResolvedValue(undefined);
+      vi.mocked(fs.access).mockResolvedValue(undefined); // file exists
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+
+      await service.importSlot("test-app", {
+        imageUrl: "https://localhost:5009/assets/photo.jpg",
+        imageAlt: "Test photo",
+        devContext: {
+          fileName: "src/pages/index.tsx",
+          componentName: "HeroSection",
+          lineNumber: 10,
+        },
+      });
+
+      // The source code has "/assets/photo.jpg" (or the full localhost URL).
+      // AST editor must receive a currentUrl that matches the source — NOT
+      // the post-copy /airo-assets/uploads/ URL which doesn't exist in source.
+      const replaceCall = vi.mocked(astImageEditor.replaceImage).mock.calls[0];
+      expect(replaceCall).toBeDefined();
+
+      const imageInfo = replaceCall[1].imageInfo;
+      // Must NOT be the copied upload URL
+      expect(imageInfo.currentUrl).not.toMatch(/^\/airo-assets\/uploads\//);
+      // Should be the normalized pathname that matches what's in source code
+      expect(imageInfo.currentUrl).toBe("/assets/photo.jpg");
+    });
+
+    it("skips AST update when devContext is not provided", async () => {
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+      vi.mocked(fs.rename).mockResolvedValue(undefined);
+
+      await service.importSlot("test-app", {
+        imageUrl: "https://example.com/photo.jpg",
+        devContext: undefined,
+      });
+
+      expect(astImageEditor.replaceImage).not.toHaveBeenCalled();
+    });
   });
 });

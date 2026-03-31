@@ -1,0 +1,73 @@
+# Regression test: edits must persist after publishing
+# Bug: after publish, edits appear saved but no git commit is created and changes are lost
+
+name: Edit After Publish
+description: |
+  Create a site, make an edit, publish, then make another edit.
+  Verifies that edits after publishing still persist and appear in the preview.
+  Regression test for bug where edit mode stopped working after publish.
+
+startUrl: https://airo-builder.godaddy.com
+timeout: 600000 # 10 minutes
+maxSteps: 60
+stepsPerMessage: 15
+headed: false
+
+credentials:
+  username: ${TEST_USERNAME}
+  password: ${TEST_PASSWORD}
+
+sitePrompt:
+  prompt: |
+    Create a simple one-page landing page for a coffee shop called "Bean Counter Coffee".
+    Include a hero section with the heading "Bean Counter Coffee" and a tagline "The best beans in town."
+    Add a simple menu section listing 3 drinks: Espresso, Latte, Cappuccino.
+    Keep it minimal with a clean white background.
+
+systemPrompt: |
+  ${common.developPageBase}
+
+  ${common.errorHandlingInstructions}
+
+  ${common.chatInstructions}
+
+  ${common.waitInstructions}
+
+  You need to test that edits work AFTER publishing. Follow these steps exactly:
+
+  STEP 1 - PRE-PUBLISH EDIT:
+  Send this chat message: "Add a footer with the text 'Visit us at 123 Main Street'"
+  Wait for the change to appear in the preview. Verify the footer text is visible.
+
+  STEP 2 - PUBLISH:
+  Find and click the Publish button in the header/toolbar area.
+  Wait for the publish process to complete (you should see a success message or the publish dialog closing).
+  If a publish dialog appears, confirm/proceed with the publish.
+
+  STEP 3 - POST-PUBLISH EDIT (this is the critical test):
+  After publish completes, send this chat message: "Change the tagline to 'Freshly roasted every morning'"
+  Wait for the change to appear in the preview.
+
+  STEP 4 - VERIFY:
+  Check that the preview shows the updated tagline "Freshly roasted every morning".
+  This confirms that edits after publishing still work and persist.
+
+goal: |
+  Complete all 4 steps in order:
+  1. Send pre-publish chat edit (add footer with "123 Main Street")
+  2. Click Publish and wait for it to complete
+  3. Send post-publish chat edit (change tagline to "Freshly roasted every morning")
+  4. Verify the post-publish edit appears in the preview
+
+  Success criteria:
+  - The publish completed successfully
+  - After publish, the chat edit was sent and processed
+  - The preview shows "Freshly roasted every morning" (the post-publish edit)
+
+  Report FAILURE if:
+  - The post-publish edit does not appear in the preview
+  - The chat seems unresponsive after publish
+  - An error appears when trying to edit after publish
+
+cleanup:
+  deleteAllSitesViaAPI: false

@@ -378,6 +378,11 @@ export class MediaManifestService {
         return { success: false, error: 'App not found' };
       }
 
+      // Preserve the pre-copy URL for AST matching — this is what the source
+      // code actually contains. After copyLocalFileToMedia, normalizedUrl
+      // becomes /airo-assets/uploads/... which won't match the source.
+      const sourceFileUrl = normalizedUrl;
+
       if (normalizedUrl.startsWith('/') && !normalizedUrl.startsWith('/airo-assets/')) {
         const uploadUrl = await copyLocalFileToMedia(app.path, normalizedUrl, slotPath);
         if (uploadUrl) {
@@ -415,7 +420,7 @@ export class MediaManifestService {
             },
             imageInfo: {
               type: options.imageType || 'img',
-              currentUrl: normalizedUrl,
+              currentUrl: sourceFileUrl,
             },
             newImageUrl: newSlotUrl,
           }, appId);

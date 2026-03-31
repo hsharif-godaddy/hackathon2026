@@ -26,6 +26,7 @@ import { FileEditTool } from '../../tools/file-edit.js';
 import { ASTStyleEditor } from '../../tools/ast-style-editor.js';
 import { ASTTextEditor } from '../../tools/ast-text-editor.js';
 import { astImageEditor } from '../../tools/ast-image-editor.js';
+import { mediaManifestService } from '../../services/MediaManifestService.js';
 
 import { ServerManagementTool } from '../../tools/server-management-tool.js';
 import { getNameSuggestionService } from '../../services/name-suggestion.js';
@@ -1007,6 +1008,46 @@ router.post('/:id/images/replace', async (req: Request, res: Response) => {
       imageType: imageInfo.type,
       newImageUrl,
     });
+
+    // If the current image uses a slot URL, update the manifest instead of
+    // rewriting the source code. This preserves the slot indirection layer
+    // so subsequent replacements continue to work through the manifest.
+    const SLOT_URL_PREFIX = '/airo-assets/images/';
+    if (imageInfo.currentUrl?.startsWith(SLOT_URL_PREFIX)) {
+      const slotName = imageInfo.currentUrl.slice(SLOT_URL_PREFIX.length);
+
+      contextLogger.info('route.apps.image-replace.slot-detected', {
+        slotName,
+        newImageUrl,
+      });
+
+      const updateResult = await mediaManifestService.updateSlot(id, slotName, {
+        newUrl: newImageUrl,
+        markUserModified: true,
+      });
+
+      if (updateResult.success) {
+        contextLogger.info('route.apps.image-replace.slot-updated', {
+          slotName,
+          commitHash: updateResult.commitHash,
+        });
+
+        return res.json({
+          success: true,
+          message: 'Slot image updated via manifest',
+          data: {
+            slotPath: slotName,
+            commitHash: updateResult.commitHash,
+          }
+        });
+      }
+
+      // Manifest update failed — fall through to AST replacement as fallback
+      contextLogger.warn('route.apps.image-replace.slot-update-failed', {
+        slotName,
+        error: updateResult.error,
+      });
+    }
 
     const replaceResult = await astImageEditor.replaceImage(app.path, {
       elementInfo,

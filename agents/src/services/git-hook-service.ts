@@ -482,6 +482,16 @@ export class GitHookService {
   }
 
   /**
+   * Clear branch tracking for an app.
+   * Called by the publish route after DefaultPublishStrategy merges the feature
+   * branch to main — publish uses GitUtils directly and doesn't go through
+   * handleConnectionEnd, so the stale tracking must be removed explicitly.
+   */
+  clearBranchTracking(appId: string): void {
+    this.appBranches.delete(appId);
+  }
+
+  /**
    * Track an in-flight handleConnectionEnd promise so shutdown can await it.
    * The promise is removed from the set when it settles.
    */

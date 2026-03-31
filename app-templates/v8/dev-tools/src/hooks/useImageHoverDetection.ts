@@ -17,8 +17,15 @@ export function useImageHoverDetection(
   editingStateRef: React.RefObject<{ editingElement: HTMLElement | null }>,
 ) {
   const [hoveredImage, setHoveredImage] = useState<HoveredImage | null>(null);
+  const hoveredImageRef = useRef<HoveredImage | null>(null);
   const showBarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideBarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Keep ref in sync with state so event handlers (closures) see current value
+  const updateHoveredImage = useCallback((value: HoveredImage | null) => {
+    hoveredImageRef.current = value;
+    setHoveredImage(value);
+  }, []);
 
   useEffect(() => {
     if (!isEditModeActive) return;
@@ -31,8 +38,42 @@ export function useImageHoverDetection(
 
       if (editingStateRef.current?.editingElement?.contains(target)) return;
 
-      const imageInfo = detectImage(target);
+      let imageInfo = detectImage(target);
+
+      // If the direct target isn't an image, walk up ancestors to find a
+      // parent with a background image. This handles overlaying elements
+      // (SVGs, decorative divs with pointer-events) that sit on top of a
+      // background-image container and intercept mouse events.
+      if (!imageInfo.isImage) {
+        let ancestor = target.parentElement;
+        while (ancestor && ancestor !== document.body) {
+          const ancestorInfo = detectImage(ancestor);
+          if (ancestorInfo.isImage && ancestorInfo.type === "background") {
+            imageInfo = ancestorInfo;
+            break;
+          }
+          ancestor = ancestor.parentElement;
+        }
+      }
+
       if (!imageInfo.isImage || !imageInfo.imageUrl) {
+        // If the bar is already showing and the mouse is still within the
+        // image's bounding rect (e.g., hovering over text, buttons, or an SVG
+        // divider that overlays the image), keep the bar visible.
+        if (hoveredImageRef.current) {
+          const rect = hoveredImageRef.current.element.getBoundingClientRect();
+          if (
+            e.clientX >= rect.left && e.clientX <= rect.right &&
+            e.clientY >= rect.top && e.clientY <= rect.bottom
+          ) {
+            if (hideBarTimerRef.current) {
+              clearTimeout(hideBarTimerRef.current);
+              hideBarTimerRef.current = null;
+            }
+            return;
+          }
+        }
+
         if (showBarTimerRef.current) {
           clearTimeout(showBarTimerRef.current);
           showBarTimerRef.current = null;
@@ -45,15 +86,21 @@ export function useImageHoverDetection(
         hideBarTimerRef.current = null;
       }
 
+      // If we're already showing the bar for this exact image element
+      // (e.g., mouse moved between overlay siblings), skip the delay.
+      const imgElement = imageInfo.imageElement!;
+      if (hoveredImageRef.current?.element === imgElement) {
+        return;
+      }
+
       if (showBarTimerRef.current) {
         clearTimeout(showBarTimerRef.current);
       }
 
       const slotPath = getMediaSlotPath(imageInfo.imageUrl);
-      const imgElement = imageInfo.imageElement!;
       showBarTimerRef.current = setTimeout(() => {
         showBarTimerRef.current = null;
-        setHoveredImage({
+        updateHoveredImage({
           element: imgElement,
           imageUrl: imageInfo.imageUrl!,
           isMediaSlot: slotPath !== null,
@@ -66,13 +113,27 @@ export function useImageHoverDetection(
       const relatedTarget = e.relatedTarget as HTMLElement | null;
       if (relatedTarget?.closest(".edit-mode-hover-bar")) return;
 
+      // If the mouse is moving to an element that's still visually within the
+      // hovered image's bounds (e.g., overlay gradient, SVG divider, hero text),
+      // don't dismiss the bar. Use the mouseout event coordinates which reflect
+      // where the mouse is heading.
+      if (hoveredImageRef.current && e.clientX && e.clientY) {
+        const rect = hoveredImageRef.current.element.getBoundingClientRect();
+        if (
+          e.clientX >= rect.left && e.clientX <= rect.right &&
+          e.clientY >= rect.top && e.clientY <= rect.bottom
+        ) {
+          return;
+        }
+      }
+
       if (showBarTimerRef.current) {
         clearTimeout(showBarTimerRef.current);
         showBarTimerRef.current = null;
       }
 
       hideBarTimerRef.current = setTimeout(() => {
-        setHoveredImage(null);
+        updateHoveredImage(null);
       }, 300);
     };
 
@@ -84,7 +145,7 @@ export function useImageHoverDetection(
       if (showBarTimerRef.current) clearTimeout(showBarTimerRef.current);
       if (hideBarTimerRef.current) clearTimeout(hideBarTimerRef.current);
     };
-  }, [isEditModeActive, editingStateRef]);
+  }, [isEditModeActive, editingStateRef, updateHoveredImage]);
 
   const handleBarMouseEnter = useCallback(() => {
     if (hideBarTimerRef.current) {
@@ -95,9 +156,9 @@ export function useImageHoverDetection(
 
   const handleBarMouseLeave = useCallback(() => {
     hideBarTimerRef.current = setTimeout(() => {
-      setHoveredImage(null);
+      updateHoveredImage(null);
     }, 300);
-  }, []);
+  }, [updateHoveredImage]);
 
   return {
     hoveredImage,
