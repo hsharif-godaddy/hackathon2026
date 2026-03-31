@@ -3,7 +3,7 @@ module github.com/gdcorp-partners/airo-app-builder/go-agent
 go 1.25.7
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.26.0
+	github.com/anthropics/anthropic-sdk-go v1.27.1
 	github.com/coder/websocket v1.8.14
 	github.com/stretchr/testify v1.11.1
 	modernc.org/sqlite v1.48.0
