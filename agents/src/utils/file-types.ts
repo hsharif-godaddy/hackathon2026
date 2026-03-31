@@ -5,6 +5,8 @@
  * Used for security validation and content handling across the agents service.
  */
 
+import { open } from 'node:fs/promises'
+
 /**
  * Source code file extensions that should not contain temporary upload URLs
  *
@@ -31,17 +33,21 @@ export const SOURCE_FILE_EXTENSIONS = [
  * Includes images, fonts, audio, video, and documents.
  * Used by file-edit.ts to detect binary files during auto-resolution.
  */
+export const IMAGE_FILE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico'] as const
+export const DOCUMENT_FILE_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'] as const
+export const OTHER_BINARY_EXTENSIONS = ['zip', 'tar', 'gz', 'rar', '7z', 'db', 'sqlite', 'sqlite3', 'bin', 'exe', 'dll', 'so'] as const
+
 export const BINARY_FILE_EXTENSIONS = [
-  // Images
-  'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'svg',
+  // Images (+ svg which is text but handled as binary for copy logic)
+  ...IMAGE_FILE_EXTENSIONS, 'svg',
   // Fonts
   'woff', 'woff2', 'ttf', 'otf', 'eot',
   // Audio
-  'mp3', 'wav',
+  'mp3', 'wav', 'ogg',
   // Video
-  'mp4', 'webm',
+  'mp4', 'webm', 'mov',
   // Documents
-  'pdf'
+  ...DOCUMENT_FILE_EXTENSIONS,
 ] as const
 
 /**
@@ -58,6 +64,28 @@ export const BINARY_FILE_REGEX = new RegExp(`\\.(${BINARY_FILE_EXTENSIONS.join('
  * SECURITY: Used to validate that /api/files/ URLs are not written to source files
  */
 export const SOURCE_FILE_REGEX = new RegExp(`\\.(${SOURCE_FILE_EXTENSIONS.join('|')})$`, 'i')
+
+/**
+ * Common text file extensions beyond source code.
+ * Combined with SOURCE_FILE_EXTENSIONS to skip binary sniffing for known text formats.
+ */
+const TEXT_FILE_EXTENSIONS = [
+  ...SOURCE_FILE_EXTENSIONS,
+  'json', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf',
+  'md', 'mdx', 'txt', 'csv', 'tsv', 'rst',
+  'xml', 'xsl', 'xslt', 'rss', 'atom', 'plist',
+  'sql', 'graphql', 'gql', 'prisma',
+  'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
+  'env', 'gitignore', 'gitattributes', 'editorconfig', 'eslintrc', 'prettierrc',
+  'dockerignore', 'hbs', 'ejs', 'njk', 'pug', 'jade', 'mustache',
+  'less', 'sass', 'styl', 'pcss',
+  'py', 'rb', 'go', 'rs', 'java', 'kt', 'swift', 'c', 'cpp', 'h', 'hpp', 'cs',
+  'php', 'pl', 'pm', 'r', 'lua', 'ex', 'exs', 'erl', 'hs', 'ml',
+  'tf', 'hcl', 'lock', 'log', 'map', 'snap',
+  'mjs', 'cjs', 'mts', 'cts', 'd.ts',
+] as const
+
+export const TEXT_FILE_REGEX = new RegExp(`\\.(${TEXT_FILE_EXTENSIONS.join('|')})$`, 'i')
 
 /**
  * Check if a file path is a source code file
@@ -87,4 +115,25 @@ export function isSourceFile(filePath: string): boolean {
 export function getFileExtension(filePath: string): string {
   const match = filePath.match(/\.([^.]+)$/i)
   return match?.[1]?.toLowerCase() ?? ''
+}
+
+const SNIFF_SIZE = 8192
+
+/**
+ * Detect binary content by checking for null bytes in the first 8KB.
+ * This is the same heuristic Git uses — text files virtually never
+ * contain 0x00, while binary files almost always do.
+ */
+export async function isBinaryFile(filePath: string): Promise<boolean> {
+  let fh
+  try {
+    fh = await open(filePath, 'r')
+    const buf = Buffer.alloc(SNIFF_SIZE)
+    const { bytesRead } = await fh.read(buf, 0, SNIFF_SIZE)
+    return buf.subarray(0, bytesRead).includes(0x00)
+  } catch {
+    return false
+  } finally {
+    await fh?.close()
+  }
 }

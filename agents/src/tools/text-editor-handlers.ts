@@ -1,9 +1,11 @@
-import { readFile, writeFile, mkdir, stat, readdir } from 'fs/promises';
-import { existsSync } from 'fs';
-import { dirname, basename } from 'path';
-import { createReadStream, createWriteStream } from 'fs';
-import { createInterface } from 'readline';
-import { rename, unlink } from 'fs/promises';
+import { readFile, writeFile, mkdir, stat, readdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { dirname, basename, extname } from 'node:path';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { createInterface } from 'node:readline';
+import { rename, unlink } from 'node:fs/promises';
+
+import { BINARY_FILE_REGEX, DOCUMENT_FILE_EXTENSIONS, IMAGE_FILE_EXTENSIONS, OTHER_BINARY_EXTENSIONS, TEXT_FILE_REGEX, isBinaryFile } from '../utils/file-types.js';
 
 /**
  * Success message prefixes returned by edit commands.
@@ -42,11 +44,33 @@ export async function handleView(
     throw new Error('File does not exist');
   }
 
-  // Check if directory
+  // Check if directory before binary detection — a directory named e.g. "assets.png/" should list contents
   const stats = await stat(fullPath);
   if (stats.isDirectory()) {
     const files = await readdir(fullPath);
     return `Directory contents:\n${files.join('\n')}`;
+  }
+
+  // Binary files produce garbled output when read as UTF-8, wasting massive tokens.
+  // SVG is excluded — it's XML text despite being in BINARY_FILE_REGEX (which is used for copy logic).
+  const ext = extname(fullPath).slice(1).toLowerCase();
+  if ((BINARY_FILE_REGEX.test(fullPath) && ext !== 'svg') || (OTHER_BINARY_EXTENSIONS as readonly string[]).includes(ext)) {
+    const name = basename(fullPath);
+
+    if ((IMAGE_FILE_EXTENSIONS as readonly string[]).includes(ext)) {
+      return `Cannot read ${name} — image files cannot be viewed as text. To use this image, reference it by its file path in code. If you need to know what the image looks like (colors, content, style), ask the user to describe it.`;
+    }
+    if ((DOCUMENT_FILE_EXTENSIONS as readonly string[]).includes(ext)) {
+      return `Cannot read ${name} — ${ext.toUpperCase()} document reading is not currently supported. Ask the user to paste the relevant content directly into the chat.`;
+    }
+    return `Cannot read ${name} — binary files cannot be viewed as text. To use this file, reference it by path in code.`;
+  }
+
+  // Fallback: sniff first 8KB for null bytes — only for files with unknown extensions
+  if (!BINARY_FILE_REGEX.test(fullPath) && !TEXT_FILE_REGEX.test(fullPath) && !(OTHER_BINARY_EXTENSIONS as readonly string[]).includes(ext)) {
+    if (await isBinaryFile(fullPath)) {
+      return `Cannot read ${basename(fullPath)} — file appears to be binary. Binary files cannot be viewed as text. To use this file, reference it by path in code.`;
+    }
   }
 
   // For view_range on large files, use streaming to avoid buffering

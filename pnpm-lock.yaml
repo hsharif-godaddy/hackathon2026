@@ -29,7 +29,7 @@ overrides:
   '@ux/card': 2500.7.2
   '@ux/checkbox': 2500.7.2
   '@ux/coachmark': 2500.7.2
-  '@ux/collapsible': 2500.11.1
+  '@ux/collapsible': 2500.7.2
   '@ux/disrupt': 2500.7.2
   '@ux/flyout': 2500.7.1
   '@ux/growl': 2500.7.2
@@ -613,8 +613,8 @@ importers:
         specifier: 2500.7.2
         version: 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/collapsible':
-        specifier: 2500.11.1
-        version: 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/date-input':
         specifier: ^2500.11.1
         version: 2500.11.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -7053,8 +7053,8 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/collapsible@2500.11.1':
-    resolution: {integrity: sha512-ueUMiQOAEYRFSLvzhpxl6nRo+33m24ai94iconYHPqNV5+6MJasqjEo2KmOkPcNyG6KZCW71VTj42Sz5+yMg0w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/collapsible/-/@ux/collapsible-2500.11.1.tgz}
+  '@ux/collapsible@2500.7.2':
+    resolution: {integrity: sha512-iwDnLq8iwS/+y7VT7eBO4RFaZovxq9Eg6ppnVjD7sETiSKhuskT5CSZHkSsIwImA9ILcvsvT4NwX27WqCuN+9w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/collapsible/-/@ux/collapsible-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -21833,7 +21833,7 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
 
-  '@ux/collapsible@2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/collapsible@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1

@@ -63,6 +63,49 @@ describe('text-editor-handlers', () => {
       const result = await handleView(join(testDir, 'single.txt'))
       expect(result).toBe('1: hello')
     })
+
+    it('should block image files with image-specific message', async () => {
+      writeFileSync(join(testDir, 'logo.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+      const result = await handleView(join(testDir, 'logo.png'))
+      expect(result).toContain('Cannot read logo.png')
+      expect(result).toContain('image files cannot be viewed as text')
+      expect(result).toContain('reference it by its file path')
+    })
+
+    it('should block document files with doc-specific message', async () => {
+      writeFileSync(join(testDir, 'report.pdf'), Buffer.from([0x25, 0x50, 0x44, 0x46]))
+      const result = await handleView(join(testDir, 'report.pdf'))
+      expect(result).toContain('Cannot read report.pdf')
+      expect(result).toContain('PDF document reading is not currently supported')
+    })
+
+    it('should block archive files with generic binary message', async () => {
+      writeFileSync(join(testDir, 'data.zip'), Buffer.from([0x50, 0x4b, 0x03, 0x04]))
+      const result = await handleView(join(testDir, 'data.zip'))
+      expect(result).toContain('Cannot read data.zip')
+      expect(result).toContain('binary files cannot be viewed as text')
+    })
+
+    it('should allow SVG files since they are readable XML text', async () => {
+      writeFileSync(join(testDir, 'icon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><circle r="10"/></svg>')
+      const result = await handleView(join(testDir, 'icon.svg'))
+      expect(result).toContain('<svg')
+      expect(result).not.toContain('Cannot read')
+    })
+
+    it('should block binary files with unknown extensions via null-byte sniffing', async () => {
+      writeFileSync(join(testDir, 'data.custom'), Buffer.from([0x00, 0x01, 0x02, 0xFF]))
+      const result = await handleView(join(testDir, 'data.custom'))
+      expect(result).toContain('file appears to be binary')
+      expect(result).not.toContain('\x00')
+    })
+
+    it('should allow text files with unknown extensions', async () => {
+      writeFileSync(join(testDir, 'config.toml'), '[server]\nport = 3000\n')
+      const result = await handleView(join(testDir, 'config.toml'))
+      expect(result).toContain('port = 3000')
+      expect(result).not.toContain('Cannot read')
+    })
   })
 
   describe('handleStrReplace', () => {

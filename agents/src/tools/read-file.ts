@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises';
-import { join, resolve, basename, relative } from 'node:path';
+import { join, resolve, basename, extname, relative } from 'node:path';
 import { existsSync } from 'node:fs';
 
+import { BINARY_FILE_REGEX, DOCUMENT_FILE_EXTENSIONS, IMAGE_FILE_EXTENSIONS, OTHER_BINARY_EXTENSIONS, TEXT_FILE_REGEX, isBinaryFile } from '../utils/file-types.js';
 import { translateDockerPath, deriveAssetsDir, validateNoEscapingSymlinks } from '../utils/path-helper.js';
 
 export interface ReadFileOptions {
@@ -104,12 +105,26 @@ export function isFileBlocked(filePath: string): { blocked: boolean; reason?: st
     };
   }
 
-  // Large binary or data files that are typically not useful for AI
-  const binaryExtensions = ['.zip', '.tar', '.gz', '.rar', '.7z', '.db', '.sqlite', '.sqlite3', '.bin', '.exe', '.dll', '.so'];
-  if (binaryExtensions.some(ext => fileName.endsWith(ext))) {
+  // Binary files (images, fonts, audio, video, PDF, archives, databases, executables)
+  // SVG is excluded — it's XML text despite being in BINARY_FILE_REGEX.
+  const ext = extname(fileName).slice(1).toLowerCase();
+  if ((BINARY_FILE_REGEX.test(fileName) && ext !== 'svg') || (OTHER_BINARY_EXTENSIONS as readonly string[]).includes(ext)) {
+
+    if ((IMAGE_FILE_EXTENSIONS as readonly string[]).includes(ext)) {
+      return {
+        blocked: true,
+        reason: `Cannot read image files as text. To use this image, reference it by its file path in code (e.g. src="${filePath}"). If you need to know what the image looks like (colors, content, style), ask the user to describe it.`
+      };
+    }
+    if ((DOCUMENT_FILE_EXTENSIONS as readonly string[]).includes(ext)) {
+      return {
+        blocked: true,
+        reason: `Cannot read ${ext.toUpperCase()} documents as text. Tell the user that document reading is not currently supported and ask them to paste the relevant content directly into the chat.`
+      };
+    }
     return {
       blocked: true,
-      reason: 'Binary files are not readable text and not useful for development tasks'
+      reason: 'Binary files are not readable as text. To use this file, reference it by its file path in code.'
     };
   }
 
@@ -214,6 +229,18 @@ export class ReadFileTool {
           content: '',
           totalLines: 0,
           error: 'File does not exist',
+        };
+      }
+
+      // Fallback: sniff first 8KB for null bytes — only for files with unknown extensions.
+      // Skips known binary (already blocked above) and known text extensions to avoid redundant I/O.
+      if (!BINARY_FILE_REGEX.test(normalizedPath) && !TEXT_FILE_REGEX.test(normalizedPath) && !(OTHER_BINARY_EXTENSIONS as readonly string[]).includes(extname(normalizedPath).slice(1).toLowerCase()) && await isBinaryFile(fullPath)) {
+        return {
+          success: false,
+          path: options.path,
+          content: '',
+          totalLines: 0,
+          error: 'File blocked: file appears to be binary. Binary files are not readable as text. To use this file, reference it by its file path in code.',
         };
       }
 
