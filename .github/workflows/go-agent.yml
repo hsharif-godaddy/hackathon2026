@@ -124,7 +124,7 @@ jobs:
             ./cmd/agent
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: go-agent-${{ matrix.goos }}-${{ matrix.goarch }}
           path: go-agent/dist/
