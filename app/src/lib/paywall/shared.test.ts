@@ -9,6 +9,7 @@ import {
   isPaidPlanForGrants,
   isPlanUpgrade,
   isProfessionalOrAbove,
+  landingItc,
   PAID_PLANS,
   PAYWALL_CONFIG,
   PAYWALL_ITC,
@@ -248,9 +249,28 @@ describe('paywall/shared', function paywallSharedTests() {
 
   describe('PAYWALL_ITC', function paywallItcTests() {
     it('should have correct ITC values', function correctItcValues() {
+      expect(PAYWALL_ITC.BUILD_A_THON_PROMPT_SUBMISSION).toBe(
+        'airo-build-a-thon-prompt-submission',
+      );
       expect(PAYWALL_ITC.PUBLISH).toBe('upp_airo_ai_builder_publish');
       expect(PAYWALL_ITC.UPGRADE).toBe('upp_airo_ai_builder_upgrade');
       expect(PAYWALL_ITC.CREDITS).toBe('upp_airo_ai_Builder_credit');
+    });
+  });
+
+  describe('#landingItc', function landingItcTests() {
+    it('should return campaign ITC for mapped useCase', function buildathon() {
+      expect(landingItc('airo-build-a-thon')).toBe(
+        PAYWALL_ITC.BUILD_A_THON_PROMPT_SUBMISSION,
+      );
+    });
+
+    it('should return null for unmapped useCase', function unmapped() {
+      expect(landingItc('games')).toBeNull();
+    });
+
+    it('should return null for empty useCase', function emptyUseCase() {
+      expect(landingItc('')).toBeNull();
     });
   });
 

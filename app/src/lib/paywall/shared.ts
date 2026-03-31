@@ -205,12 +205,15 @@ export const PAYWALL_TYPE = {
 } as const satisfies Record<string, PaywallType>;
 
 /**
- * Internal Tracking Codes (ITCs) for purchase attribution
+ * Internal Tracking Codes (ITCs) for purchase attribution.
  *
- * Centralized constants to avoid duplication and typos across call sites.
- * These are passed to the unified plans and pricing library for tracking.
+ * All ITC strings and landing-page campaign selection live here. Add a `PAYWALL_ITC`
+ * entry first, then a row in `LANDING_PAGE_ITC_BY_USE_CASE`. Landing YAML
+ * `route.useCase` is resolved via `landingItc` for `setItcOverride`.
  */
 export const PAYWALL_ITC = {
+  /** ITC for landing page / freemium signup (Airo Build-a-Thon campaign) */
+  BUILD_A_THON_PROMPT_SUBMISSION: 'airo-build-a-thon-prompt-submission',
   /** ITC for publish paywall (when publish is blocked) */
   PUBLISH: 'upp_airo_ai_builder_publish',
   /** ITC for upgrade buttons (chat gauge, header, budget exceeded, manage plan, etc.) */
@@ -218,6 +221,22 @@ export const PAYWALL_ITC = {
   /** ITC for buy credits buttons (capital 'B' in Builder is intentional per product team) */
   CREDITS: 'upp_airo_ai_Builder_credit',
 } as const;
+
+export type PaywallItcValue = (typeof PAYWALL_ITC)[keyof typeof PAYWALL_ITC];
+
+const LANDING_PAGE_ITC_BY_USE_CASE = new Map<string, PaywallItcValue>([
+  ['airo-build-a-thon', PAYWALL_ITC.BUILD_A_THON_PROMPT_SUBMISSION],
+]);
+
+/**
+ * Campaign ITC for landing page `route.useCase` (YAML / `LandingPageData.route`), for `setItcOverride`.
+ */
+export function landingItc(useCase: string): PaywallItcValue | null {
+  if (!useCase) {
+    return null;
+  }
+  return LANDING_PAGE_ITC_BY_USE_CASE.get(useCase) ?? null;
+}
 
 /**
  * Plan priority ranking for selecting the best subscription

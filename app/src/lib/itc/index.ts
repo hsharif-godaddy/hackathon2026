@@ -7,8 +7,9 @@
  * Usage:
  * 1. User visits app with `?itc=campaign_code` in URL
  * 2. ItcInitializer component (in root layout) captures and stores the ITC
- * 3. Components resolve ITCs via getEffectiveItc() or getItcOverride() ?? itc
- * 4. Stored ITC expires after 24 hours or is replaced by a new URL param
+ * 3. Landing pages may setItcOverride (e.g. via paywall/shared `landingItc`) for campaign LPs
+ * 4. Components resolve ITCs via getEffectiveItc() or getItcOverride() ?? itc
+ * 5. Stored ITC expires after 24 hours or is replaced by a new URL param
  *
  * @example
  * // In a component that triggers paywall:

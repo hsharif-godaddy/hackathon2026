@@ -15,6 +15,8 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { getErrorMessage } from '@/lib/errors'
 import { isFeatureEnabled } from '@/lib/features'
 import { appFetch } from '@/lib/gasket-config'
+import { setItcOverride } from '@/lib/itc'
+import { landingItc } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
 import { useAuthUIStore } from '@/stores/useAuthUIStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
@@ -63,6 +65,13 @@ function LandingPageContent({ data }: LandingPageProps) {
   useSafariClass()
 
   const slug = data.route.useCase
+
+  useEffect(() => {
+    const campaignItc = landingItc(slug)
+    if (campaignItc) {
+      setItcOverride(campaignItc)
+    }
+  }, [slug])
 
   useEffect(() => {
     logImpressionEvent(`landing-${slug}.page.view`)();
