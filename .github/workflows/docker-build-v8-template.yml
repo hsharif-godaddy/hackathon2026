@@ -39,7 +39,7 @@ jobs:
           echo "progress=false" >> app-templates/v8/.npmrc
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@v4.0.0
 
       - name: Install mkcert
         run: |
