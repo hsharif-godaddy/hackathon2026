@@ -31,7 +31,7 @@ jobs:
 
       - name: Get Artifactory Token
         id: jfrog
-        uses: jfrog/setup-jfrog-cli@f748a0599171a192a2668afee8d0497f7c1069df
+        uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c
         env:
           JF_URL: ${{ vars.JF_URL }}
         with:
