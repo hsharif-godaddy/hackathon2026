@@ -1292,6 +1292,104 @@ func TestGetImageStatusStub(t *testing.T) {
 	}
 }
 
+// --- CDN Purge Cache ---
+
+func TestPurgeCacheHandler(t *testing.T) {
+	srv := newTestServer(t)
+
+	req := httptest.NewRequest("POST", "/apps/app1/purge-cache", nil)
+	req = setMuxVars(req, map[string]string{"subId": "sub-1", "sysId": "sys-1", "appId": "app1"})
+
+	w := httptest.NewRecorder()
+	srv.PurgeCache(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+	if resp["statusJobId"] != "purge-job-app1" {
+		t.Errorf("expected statusJobId purge-job-app1, got %v", resp["statusJobId"])
+	}
+}
+
+func TestGetJobHandlerReturnsNotFoundForUnknownJob(t *testing.T) {
+	srv := newTestServer(t)
+
+	req := httptest.NewRequest("GET", "/jobs/unknown-job-id", nil)
+	req = setMuxVars(req, map[string]string{"jobId": "unknown-job-id"})
+
+	w := httptest.NewRecorder()
+	srv.GetJob(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestGetJobHandlerReturnsSuccessAfterDelay(t *testing.T) {
+	srv := newTestServer(t)
+	jobID := "purge-job-completed"
+
+	// Register a purge job with a start time far enough in the past
+	purgeJobStartTimesMu.Lock()
+	purgeJobStartTimes[jobID] = time.Now().UTC().Add(-purgeSimulatedDuration - time.Second)
+	purgeJobStartTimesMu.Unlock()
+
+	req := httptest.NewRequest("GET", "/jobs/"+jobID, nil)
+	req = setMuxVars(req, map[string]string{"jobId": jobID})
+
+	w := httptest.NewRecorder()
+	srv.GetJob(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+	if resp["id"] != jobID {
+		t.Errorf("expected id %s, got %v", jobID, resp["id"])
+	}
+	if resp["jobType"] != "airo-cdn-purge" {
+		t.Errorf("expected jobType airo-cdn-purge, got %v", resp["jobType"])
+	}
+	if resp["status"] != "success" {
+		t.Errorf("expected status success, got %v", resp["status"])
+	}
+	if _, ok := resp["completedAt"]; !ok {
+		t.Error("expected completedAt to be present")
+	}
+}
+
+func TestGetJobHandlerInProgressDuringSimulatedDelay(t *testing.T) {
+	srv := newTestServer(t)
+	jobID := "purge-job-delay-test"
+
+	// Simulate a purge to register the start time
+	purgeReq := httptest.NewRequest("POST", "/apps/delay-test/purge-cache", nil)
+	purgeReq = setMuxVars(purgeReq, map[string]string{"subId": "sub-1", "sysId": "sys-1", "appId": "delay-test"})
+	purgeW := httptest.NewRecorder()
+	srv.PurgeCache(purgeW, purgeReq)
+
+	// Immediately poll — should be in_progress
+	req := httptest.NewRequest("GET", "/jobs/"+jobID, nil)
+	req = setMuxVars(req, map[string]string{"jobId": jobID})
+
+	w := httptest.NewRecorder()
+	srv.GetJob(w, req)
+
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+	if resp["status"] != "in_progress" {
+		t.Errorf("expected in_progress during simulated delay, got %v", resp["status"])
+	}
+	if _, ok := resp["completedAt"]; ok {
+		t.Error("expected no completedAt during in_progress")
+	}
+}
+
 func TestGetCustomerHandler(t *testing.T) {
 	srv := newTestServer(t)
 

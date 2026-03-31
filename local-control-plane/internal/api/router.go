@@ -96,6 +96,10 @@ func NewRouter(db *store.DB, jwtService *auth.JWTService) *mux.Router {
 
 	// Jobs
 	v1.HandleFunc("/jobs/{jobId}/apps", srv.GetJobApps).Methods("GET")
+	v1.HandleFunc("/jobs/{jobId}", srv.GetJob).Methods("GET")
+
+	// CDN purge cache
+	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/purge-cache", srv.PurgeCache).Methods("POST")
 
 	// Transfers (stubs)
 	v1.HandleFunc("/apps/{appId}/transfer/initiate", srv.InitiateTransfer).Methods("POST")

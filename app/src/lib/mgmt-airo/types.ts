@@ -865,3 +865,29 @@ export interface AiroTransferListParams {
   limit?: number;
   offset?: number;
 }
+
+/**
+ * Purge cache response from POST .../purge-cache
+ */
+export interface AiroPurgeCacheResponse {
+  statusJobId: string;
+  message?: string;
+  error?: string;
+}
+
+/**
+ * Generic job status from GET /jobs/:jobId
+ */
+export interface AiroJob {
+  id: string;
+  jobType: string;
+  status: 'queued' | 'in_progress' | 'success' | 'failure';
+  ownerType?: string;
+  ownerId?: string;
+  customerId?: string;
+  errorMessage?: string;
+  resultData?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt?: string;
+  completedAt?: string;
+}

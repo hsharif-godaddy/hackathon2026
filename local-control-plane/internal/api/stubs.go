@@ -288,6 +288,72 @@ func (s *Server) ListTransfers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// CDN purge cache stubs
+
+// Tracks when each purge job was created so GetJob can simulate a delay
+var (
+	purgeJobStartTimes   = map[string]time.Time{}
+	purgeJobStartTimesMu sync.Mutex
+)
+
+const purgeSimulatedDuration = 6 * time.Second
+
+func (s *Server) PurgeCache(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	jobID := fmt.Sprintf("purge-job-%s", vars["appId"])
+
+	purgeJobStartTimesMu.Lock()
+	purgeJobStartTimes[jobID] = time.Now().UTC()
+	purgeJobStartTimesMu.Unlock()
+
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"statusJobId": jobID,
+		"message":     "Cache purge started (stub)",
+	})
+}
+
+func (s *Server) GetJob(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	jobID := vars["jobId"]
+	now := time.Now().UTC()
+
+	purgeJobStartTimesMu.Lock()
+	startTime, tracked := purgeJobStartTimes[jobID]
+	purgeJobStartTimesMu.Unlock()
+
+	if !tracked {
+		writeError(w, http.StatusNotFound, "job not found (stub)")
+		return
+	}
+
+	status := "success"
+	var completedAt *string
+	if now.Sub(startTime) < purgeSimulatedDuration {
+		status = "in_progress"
+	} else {
+		ts := now.Format(time.RFC3339)
+		completedAt = &ts
+
+		purgeJobStartTimesMu.Lock()
+		delete(purgeJobStartTimes, jobID)
+		purgeJobStartTimesMu.Unlock()
+	}
+
+	result := map[string]any{
+		"id":        jobID,
+		"jobType":   "airo-cdn-purge",
+		"status":    status,
+		"ownerType": "app",
+		"createdAt": startTime.Format(time.RFC3339),
+		"updatedAt": now.Format(time.RFC3339),
+	}
+	if completedAt != nil {
+		result["completedAt"] = *completedAt
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
 // Attribute stubs
 
 func (s *Server) GetAttribute(w http.ResponseWriter, r *http.Request) {

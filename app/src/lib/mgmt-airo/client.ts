@@ -24,11 +24,13 @@ import {
   type AiroGetCreditGrantsResponse,
   AiroHttpError,
   type AiroImageStatusResponse,
+  type AiroJob,
   type AiroJobStatus,
   type AiroMgmtClientConfig,
   type AiroModifyDomainsPayload,
   type AiroModifyDomainsResponse,
   type AiroPublishAppResponse,
+  type AiroPurgeCacheResponse,
   type AiroRawSecretsResponse,
   type AiroReloadImagesResponse,
   type AiroSignupPayload,
@@ -439,6 +441,43 @@ export class AiroMgmtClient {
       `/api/airo/v1/jobs/${jobId}/apps`,
       undefined,
       { logEvent: 'mgmt-airo.get-airo-job-apps' }
+    );
+  }
+
+  /**
+   * Initiate a CDN cache purge for an app.
+   *
+   * @param subscriptionId - Subscription ID
+   * @param systemId - System ID
+   * @param appId - Application ID
+   * @returns Response containing the statusJobId for polling
+   * @throws AiroHttpError with 409 if a purge is already in progress (body may contain statusJobId)
+   */
+  async purgeCache(
+    subscriptionId: string,
+    systemId: string,
+    appId: string
+  ): Promise<AiroPurgeCacheResponse> {
+    return this.request<AiroPurgeCacheResponse>(
+      'POST',
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/purge-cache`,
+      undefined,
+      { logEvent: 'mgmt-airo.purge-cache' }
+    );
+  }
+
+  /**
+   * Get the status of an async job (e.g. CDN purge, deployment).
+   *
+   * @param jobId - Job ID returned from an async operation
+   * @returns Job status object with id, status, and optional completedAt
+   */
+  async getJob(jobId: string): Promise<AiroJob> {
+    return this.request<AiroJob>(
+      'GET',
+      `/api/airo/v1/jobs/${jobId}`,
+      undefined,
+      { logEvent: 'mgmt-airo.get-job', noCache: true }
     );
   }
 

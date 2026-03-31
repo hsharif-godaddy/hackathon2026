@@ -30,6 +30,18 @@ vi.mock('@/hooks/usePaywallModal', () => ({
   })),
 }));
 
+vi.mock('@/hooks/usePurgeCache', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/usePurgeCache')>();
+  return {
+    ...actual,
+    usePurgeCache: vi.fn(() => ({
+      trigger: vi.fn(),
+      status: PurgeStatus.IDLE,
+      errorCode: null,
+    })),
+  };
+});
+
 vi.mock('@/app/develop/components/utils', () => ({
   useAppIdFromParams: vi.fn(() => 'test-app-123'),
 }));
@@ -41,6 +53,7 @@ vi.mock('@/utils/instrumentation', () => ({
 
 import { useDownloadApp } from '@/hooks/useDownloadApp';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
+import { PurgeErrorCode, PurgeStatus, usePurgeCache } from '@/hooks/usePurgeCache';
 import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation';
 
 describe('ProjectPanel', () => {
@@ -185,6 +198,111 @@ describe('ProjectPanel', () => {
 
       const downloadButton = screen.getByRole('button', { name: /builder_settings_project_download_button/i });
       expect(downloadButton).not.toBeDisabled();
+    });
+  });
+
+  describe('Purge Cache button', () => {
+    it('should render purge cache button', () => {
+      renderWithProviders(<ProjectPanel />);
+
+      expect(screen.getByRole('button', { name: /Purge Cache/i })).toBeInTheDocument();
+    });
+
+    it('should have correct EID attribute on purge cache button', () => {
+      renderWithProviders(<ProjectPanel />);
+
+      const purgeButton = screen.getByRole('button', { name: /Purge Cache/i });
+      expect(purgeButton).toHaveAttribute('data-eid', 'appbuilder.settings.project.purge_cache.click');
+    });
+
+    it('should call trigger when purge cache button is clicked', async () => {
+      const user = userEvent.setup();
+      const mockTrigger = vi.fn();
+
+      vi.mocked(usePurgeCache).mockReturnValue({
+        trigger: mockTrigger,
+        status: PurgeStatus.IDLE,
+        errorCode: null,
+      });
+
+      renderWithProviders(<ProjectPanel />);
+
+      await user.click(screen.getByRole('button', { name: /Purge Cache/i }));
+
+      await waitFor(() => {
+        expect(mockTrigger).toHaveBeenCalled();
+      });
+    });
+
+    it('should log analytics event when purge cache button is clicked', async () => {
+      const user = userEvent.setup();
+
+      renderWithProviders(<ProjectPanel />);
+
+      await user.click(screen.getByRole('button', { name: /Purge Cache/i }));
+
+      await waitFor(() => {
+        expect(logAiroHQEvent).toHaveBeenCalledWith({
+          category: 'click',
+          recommendation_task: 'builder_project_purge_cache',
+          recommendation_type: 'purge_cache',
+          recommendation_id: 'test-app-123',
+        });
+      });
+    });
+
+    it('should show purging state and disable button when starting', () => {
+      vi.mocked(usePurgeCache).mockReturnValue({
+        trigger: vi.fn(),
+        status: PurgeStatus.STARTING,
+        errorCode: null,
+      });
+
+      renderWithProviders(<ProjectPanel />);
+
+      const purgeButton = screen.getByRole('button', { name: /Purging/i });
+      expect(purgeButton).toBeDisabled();
+    });
+
+    it('should show purging state and disable button when polling', () => {
+      vi.mocked(usePurgeCache).mockReturnValue({
+        trigger: vi.fn(),
+        status: PurgeStatus.POLLING,
+        errorCode: null,
+      });
+
+      renderWithProviders(<ProjectPanel />);
+
+      const purgeButton = screen.getByRole('button', { name: /Purging/i });
+      expect(purgeButton).toBeDisabled();
+    });
+
+    it('should show success alert when purge succeeds', async () => {
+      vi.mocked(usePurgeCache).mockReturnValue({
+        trigger: vi.fn(),
+        status: PurgeStatus.SUCCESS,
+        errorCode: null,
+      });
+
+      renderWithProviders(<ProjectPanel />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent('Cache purged successfully');
+      });
+    });
+
+    it('should show error alert when purge fails', async () => {
+      vi.mocked(usePurgeCache).mockReturnValue({
+        trigger: vi.fn(),
+        status: PurgeStatus.FAILURE,
+        errorCode: PurgeErrorCode.JOB_FAILED,
+      });
+
+      renderWithProviders(<ProjectPanel />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent('Cache purge failed');
+      });
     });
   });
 });
