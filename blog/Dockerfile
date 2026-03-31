@@ -33,7 +33,7 @@ RUN apk add --no-cache openssl wget && \
 RUN mkdir -p /certs && \
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout /certs/key.pem -out /certs/cert.pem \
-    -subj "/C=US/ST=CA/L=San Francisco/O=Airo/CN=*"
+    -subj "/C=US/ST=CA/L=San Francisco/O=Airo/CN=*" && chown -R node:node /certs
 
 WORKDIR /app
 
