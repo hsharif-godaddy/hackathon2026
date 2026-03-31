@@ -1,24 +1,22 @@
 'use client'
 
-import '@/components/homepage-engagement-variations/light_homepage/light-homepage.scss'
-
 import clsx from 'clsx'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import HelpSection from '@/app/components/HelpSection'
 import InfraSection from '@/app/components/InfraSection'
-import StartSection from '@/app/components/StartSection'
 import { HeroSectionRef } from '@/app/components/types'
 import { UpgradeContainer } from '@/app/develop/components/paywall'
 import { MockLoginDialog } from '@/components/auth/MockLogin'
-import Header from '@/components/homepage-engagement-variations/light_homepage/Header'
-import HeroSection from '@/components/homepage-engagement-variations/light_homepage/HeroSection'
 import FAQSection from '@/components/layout/FAQSection'
 import FeaturesSection from '@/components/layout/Features'
+import Header from '@/components/layout/Header'
 import PricingSection from '@/components/layout/PricingSection'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { EXPERIMENT_IDS } from '@/config/experiments'
+import HeroSection from '@/experiments/homepage-engagement-variations/hero_content_improvement/HeroSection'
+import StartSection from '@/experiments/homepage-engagement-variations/hero_content_improvement/StartSection'
 import { useAnalytics } from '@/hooks/useAnalytics'
 import { useSafariClass } from '@/hooks/useSafariClass'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
@@ -40,7 +38,7 @@ interface HomeContentProps {
 
 type SubmitSource = 'example' | 'restored' | 'text'
 
-export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
+export function HeroContentImprovementHomePage({ serverFeatures }: HomeContentProps) {
   const t = useTranslations();
   const [promptText, setPromptText] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -472,9 +470,9 @@ export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
       <div
         className={clsx(
           'isolate relative w-full overflow-hidden',
-          'text-intents-ux-text-textColor',
+          'bg-gradient bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor',
         )}
-        data-homepage-variation="light_homepage"
+        data-homepage-variation="hero_content_improvement"
       >
         <div className="w-full h-full relative">
           <Header
@@ -494,25 +492,6 @@ export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
             onExampleClick={handleExampleClick}
           />
 
-          <InfraSection />
-
-          <FeaturesSection
-            features={[
-              {
-                title: t('builder_homepage_feature_prograde_title'),
-                description: t('builder_homepage_feature_prograde_description'),
-              },
-              {
-                title: t('builder_homepage_feature_security_title'),
-                description: t('builder_homepage_feature_security_description'),
-              },
-              {
-                title: t('builder_homepage_feature_future_title'),
-                description: t('builder_homepage_feature_future_description'),
-              }
-            ]}
-          />
-
           <StartSection />
 
           <FeaturesSection
@@ -528,6 +507,25 @@ export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
               {
                 title: t('builder_homepage_feature_publish_title'),
                 description: t('builder_homepage_feature_publish_description'),
+              }
+            ]}
+          />
+
+          <InfraSection />
+
+          <FeaturesSection
+            features={[
+              {
+                title: t('builder_homepage_feature_prograde_title'),
+                description: t('builder_homepage_feature_prograde_description'),
+              },
+              {
+                title: t('builder_homepage_feature_security_title'),
+                description: t('builder_homepage_feature_security_description'),
+              },
+              {
+                title: t('builder_homepage_feature_future_title'),
+                description: t('builder_homepage_feature_future_description'),
               }
             ]}
           />

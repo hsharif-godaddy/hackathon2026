@@ -1,5 +1,7 @@
 # Homepage engagement variations
 
+Location: `app/src/experiments/homepage-engagement-variations`. Import the public API from `@/experiments/homepage-engagement-variations` (e.g. `HomePageByCohort`, `COHORT_IDS`).
+
 This folder holds **parallel implementations** of the marketing homepage, keyed by **Hivemind cohort id**. The goal is to add or remove a variant by editing this tree and `homepage-by-cohort.ts`, without scattering `if (cohort === …)` logic through shared app components.
 
 ## Documentation layout
@@ -11,7 +13,7 @@ This folder holds **parallel implementations** of the marketing homepage, keyed 
 
 1. **One cohort id → one page component.** Register the mapping in `homepage-by-cohort.ts` (`homepageByCohort`). The Hivemind cohort string (e.g. `light_homepage`) must match the folder name and the `data-homepage-variation` attribute on the shell root.
 
-2. **Duplicate inside the cohort folder.** If the hero, header, or other pieces differ, copy the files you need into `app/src/components/homepage-engagement-variations/<cohort_id>/` and change behavior only in those copies. **Do not edit** shared `@/app/components` or `@/components/layout` originals for an experiment arm—keep production files unchanged until promotion merges the winning copy in.
+2. **Duplicate inside the cohort folder.** If the hero, header, or other pieces differ, copy the files you need into `app/src/experiments/homepage-engagement-variations/<cohort_id>/` and change behavior only in those copies. **Do not edit** shared `@/app/components` or `@/components/layout` originals for an experiment arm—keep production files unchanged until promotion merges the winning copy in.
 
 3. **Naming.** The **root** export may be cohort-specific (e.g. `LightHomepageHomePage`). **Child** components in that folder use normal names (`Header`, `HeroSection`, `DiscordLink`)—no cohort prefix on children.
 
@@ -23,7 +25,7 @@ This folder holds **parallel implementations** of the marketing homepage, keyed 
 
 ## How to add a new variant
 
-1. Create `app/src/components/homepage-engagement-variations/<cohort_id>/` (folder name **equals** Hivemind cohort id).
+1. Create `app/src/experiments/homepage-engagement-variations/<cohort_id>/` (folder name **equals** Hivemind cohort id).
 2. Copy from `original/` (and duplicate any shared components that must differ under the new folder).
 3. Export a single root component from `HomePage.tsx` with `data-homepage-variation="<cohort_id>"` on the outer shell.
 4. Add the SCSS file for that cohort and import it from its `HomePage.tsx`.
@@ -36,7 +38,7 @@ This folder holds **parallel implementations** of the marketing homepage, keyed 
 
 Same steps for every non-baseline variant:
 
-1. Delete `app/src/components/homepage-engagement-variations/<cohort_id>/` (including its `README.md`).
+1. Delete `app/src/experiments/homepage-engagement-variations/<cohort_id>/` (including its `README.md`).
 2. Remove the cohort’s entry from `homepageByCohort` in `homepage-by-cohort.ts` and remove its key from `COHORT_IDS` (and from `index.ts` exports if re-exported).
 3. Update `homepage-by-cohort.test.ts` (remove assertions and imports for that component).
 

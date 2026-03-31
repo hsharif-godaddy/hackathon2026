@@ -7,15 +7,15 @@ import Box from '@ux/box';
 import ChevronLeftIcon from '@ux/icon/chevron-left';
 import Tag from '@ux/tag';
 
-import DiscordLink from '@/components/homepage-engagement-variations/light_homepage/DiscordLink';
-import InviteFriends from '@/components/homepage-engagement-variations/light_homepage/InviteFriends';
-import UserMenu from '@/components/homepage-engagement-variations/light_homepage/UserMenu';
 import { AiroLogo } from '@/components/layout/AiroLogo';
 import AppPublish from '@/components/layout/AppPublish';
 import AppSelector from '@/components/layout/AppSelector';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
 import { HeaderProps } from '@/components/layout/types';
 import { useAuthContext } from '@/components/providers/AuthProvider';
+import DiscordLink from '@/experiments/homepage-engagement-variations/light_homepage/DiscordLink';
+import InviteFriends from '@/experiments/homepage-engagement-variations/light_homepage/InviteFriends';
+import UserMenu from '@/experiments/homepage-engagement-variations/light_homepage/UserMenu';
 import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { useTranslations } from '@/hooks/useTranslations';
 import { generateClickEID } from '@/utils/instrumentation';

@@ -1,7 +1,7 @@
 'use client'
 
-import { homepageComponentForCohort } from '@/components/homepage-engagement-variations/homepage-by-cohort'
 import { EXPERIMENT_IDS, INELIGIBLE_COHORT } from '@/config/experiments'
+import { homepageComponentForCohort } from '@/experiments/homepage-engagement-variations/homepage-by-cohort'
 import { useHivemind } from '@/hooks/useHivemind'
 import type { ServerFeatureFlags } from '@/lib/server-features'
 

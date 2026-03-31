@@ -7,6 +7,9 @@ export const EXPERIMENT_IDS = {
   recommendedPlan: 'aab_recommended_plan_uppdcx',
 } as const
 
+/** Hivemind cohort id for hero copy, value props, examples intro, and section order (matches `hero_content_improvement/` + `data-homepage-variation`). */
+export const HOMEPAGE_ENGAGEMENT_HERO_CONTENT_COHORT = 'hero_content_improvement' as const
+
 /** Hivemind cohort id for the light homepage engagement arm (matches `light_homepage/` + `data-homepage-variation`). */
 export const HOMEPAGE_ENGAGEMENT_LIGHT_COHORT = 'light_homepage' as const
 

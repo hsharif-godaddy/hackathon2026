@@ -4,7 +4,7 @@ import { Suspense } from 'react'
 import Box from '@ux/box'
 import Spinner from '@ux/spinner'
 
-import { HomePageByCohort } from '@/components/homepage-engagement-variations'
+import { HomePageByCohort } from '@/experiments/homepage-engagement-variations'
 import type { ServerFeatureFlags } from '@/lib/server-features'
 
 interface HomeContentProps {
