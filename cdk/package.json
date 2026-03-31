@@ -24,7 +24,7 @@
     "@aws-sdk/client-secrets-manager": "^3.1020.0",
     "@gd-safeguard/godaddy-constructs": "^11.0.1",
     "aws-cdk-lib": "^2.245.0",
-    "constructs": "^10.4.2",
+    "constructs": "^10.6.0",
     "esbuild": "^0.27.3"
   }
 }

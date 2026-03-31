@@ -955,13 +955,13 @@ importers:
         version: 3.1020.0
       '@gd-safeguard/godaddy-constructs':
         specifier: ^11.0.1
-        version: 11.1.0(@aws-cdk/app-staging-synthesizer-alpha@2.214.0-alpha.0(aws-cdk-lib@2.245.0(constructs@10.4.2))(constructs@10.4.2))(aws-cdk-lib@2.245.0(constructs@10.4.2))(constructs@10.4.2)
+        version: 11.1.0(@aws-cdk/app-staging-synthesizer-alpha@2.214.0-alpha.0(aws-cdk-lib@2.245.0(constructs@10.6.0))(constructs@10.6.0))(aws-cdk-lib@2.245.0(constructs@10.6.0))(constructs@10.6.0)
       aws-cdk-lib:
         specifier: ^2.245.0
-        version: 2.245.0(constructs@10.4.2)
+        version: 2.245.0(constructs@10.6.0)
       constructs:
-        specifier: ^10.4.2
-        version: 10.4.2
+        specifier: ^10.6.0
+        version: 10.6.0
       esbuild:
         specifier: ^0.27.3
         version: 0.27.3
@@ -8565,8 +8565,8 @@ packages:
   console-table-printer@2.15.0:
     resolution: {integrity: sha512-SrhBq4hYVjLCkBVOWaTzceJalvn5K1Zq5aQA6wXC/cYjI3frKWNPEMK3sZsJfNNQApvCQmgBcc13ZKmFj8qExw==}
 
-  constructs@10.4.2:
-    resolution: {integrity: sha512-wsNxBlAott2qg8Zv87q3eYZYgheb9lchtBfjHzzLHtXbttwSrHPs1NNQbBrmbb1YZvYg2+Vh0Dor76w4mFxJkA==}
+  constructs@10.6.0:
+    resolution: {integrity: sha512-TxHOnBO5zMo/G76ykzGF/wMpEHu257TbWiIxP9K0Yv/+t70UzgBQiTqjkAsWOPC6jW91DzJI0+ehQV6xDRNBuQ==}
 
   content-disposition@0.5.4:
     resolution: {integrity: sha512-FveZTNuGw04cxlAiWbzi6zTAL/lhehaWbTtgluJh4/E95DqMwTmha3KZN1aAWA8cFIhHzMZUvLevkw5Rqk+tSQ==}
@@ -14849,10 +14849,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@aws-cdk/app-staging-synthesizer-alpha@2.214.0-alpha.0(aws-cdk-lib@2.245.0(constructs@10.4.2))(constructs@10.4.2)':
+  '@aws-cdk/app-staging-synthesizer-alpha@2.214.0-alpha.0(aws-cdk-lib@2.245.0(constructs@10.6.0))(constructs@10.6.0)':
     dependencies:
-      aws-cdk-lib: 2.245.0(constructs@10.4.2)
-      constructs: 10.4.2
+      aws-cdk-lib: 2.245.0(constructs@10.6.0)
+      constructs: 10.6.0
 
   '@aws-cdk/asset-awscli-v1@2.2.263': {}
 
@@ -17408,11 +17408,11 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@gd-safeguard/godaddy-constructs@11.1.0(@aws-cdk/app-staging-synthesizer-alpha@2.214.0-alpha.0(aws-cdk-lib@2.245.0(constructs@10.4.2))(constructs@10.4.2))(aws-cdk-lib@2.245.0(constructs@10.4.2))(constructs@10.4.2)':
+  '@gd-safeguard/godaddy-constructs@11.1.0(@aws-cdk/app-staging-synthesizer-alpha@2.214.0-alpha.0(aws-cdk-lib@2.245.0(constructs@10.6.0))(constructs@10.6.0))(aws-cdk-lib@2.245.0(constructs@10.6.0))(constructs@10.6.0)':
     dependencies:
-      '@aws-cdk/app-staging-synthesizer-alpha': 2.214.0-alpha.0(aws-cdk-lib@2.245.0(constructs@10.4.2))(constructs@10.4.2)
-      aws-cdk-lib: 2.245.0(constructs@10.4.2)
-      constructs: 10.4.2
+      '@aws-cdk/app-staging-synthesizer-alpha': 2.214.0-alpha.0(aws-cdk-lib@2.245.0(constructs@10.6.0))(constructs@10.6.0)
+      aws-cdk-lib: 2.245.0(constructs@10.6.0)
+      constructs: 10.6.0
 
   '@godaddy/agent-observability-events@1.4.0':
     dependencies:
@@ -23132,12 +23132,12 @@ snapshots:
       '@fastify/error': 3.4.1
       fastq: 1.19.1
 
-  aws-cdk-lib@2.245.0(constructs@10.4.2):
+  aws-cdk-lib@2.245.0(constructs@10.6.0):
     dependencies:
       '@aws-cdk/asset-awscli-v1': 2.2.263
       '@aws-cdk/asset-node-proxy-agent-v6': 2.1.1
       '@aws-cdk/cloud-assembly-schema': 53.10.0
-      constructs: 10.4.2
+      constructs: 10.6.0
 
   aws-cdk@2.1029.2:
     optionalDependencies:
@@ -23793,7 +23793,7 @@ snapshots:
     dependencies:
       simple-wcswidth: 1.1.2
 
-  constructs@10.4.2: {}
+  constructs@10.6.0: {}
 
   content-disposition@0.5.4:
     dependencies:
@@ -24173,7 +24173,7 @@ snapshots:
 
   dom-helpers@5.2.1:
     dependencies:
-      '@babel/runtime': 7.29.2
+      '@babel/runtime': 7.28.4
       csstype: 3.1.3
 
   dom-serializer@2.0.0:
@@ -28427,7 +28427,7 @@ snapshots:
 
   polished@3.7.2:
     dependencies:
-      '@babel/runtime': 7.29.2
+      '@babel/runtime': 7.28.4
 
   polished@4.3.1:
     dependencies:
@@ -28677,7 +28677,7 @@ snapshots:
 
   react-clientside-effect@1.2.8(react@19.1.0):
     dependencies:
-      '@babel/runtime': 7.29.2
+      '@babel/runtime': 7.28.4
       react: 19.1.0
 
   react-dom@19.1.0(react@19.1.0):
@@ -28696,7 +28696,7 @@ snapshots:
 
   react-focus-lock@2.13.7(@types/react@19.1.13)(react@19.1.0):
     dependencies:
-      '@babel/runtime': 7.29.2
+      '@babel/runtime': 7.28.4
       focus-lock: 1.3.6
       prop-types: 15.8.1
       react: 19.1.0
