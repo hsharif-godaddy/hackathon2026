@@ -14,10 +14,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.18.12",
-    "aws-cdk": "^2.1029.1",
-    "esbuild": "^0.24.0",
+    "aws-cdk": "^2.1115.0",
     "ts-node": "^10.9.2",
-    "tsx": "^4.19.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.6.3"
   },
   "dependencies": {
@@ -25,6 +24,6 @@
     "@gd-safeguard/godaddy-constructs": "^11.0.1",
     "aws-cdk-lib": "^2.245.0",
     "constructs": "^10.6.0",
-    "esbuild": "^0.27.3"
+    "esbuild": "^0.27.4"
   }
 }
