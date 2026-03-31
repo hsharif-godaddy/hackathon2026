@@ -12,14 +12,13 @@ registries:
 
 updates:
   # Root workspace
+  # Dependabot will iterate from here
   - package-ecosystem: "npm"
     directory: "/"
     registries:
       - jfrog-npm
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "07:23"
+      interval: "daily"
     open-pull-requests-limit: 10
     groups:
       # Group AWS SDK updates together
@@ -61,169 +60,52 @@ updates:
         patterns:
           - "ai"
           - "@ai-sdk/*"
-
-  # Agents package
-  - package-ecosystem: "npm"
-    directory: "/agents"
-    registries:
-      - jfrog-npm
+  
+  # Monitor dev-supervisor
+  - package-ecosystem: "gomod"
+    directory: "/dev-supervisor"
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "08:17"
-    open-pull-requests-limit: 10
-    groups:
-      ai-sdk:
-        patterns:
-          - "ai"
-          - "@ai-sdk/*"
-      testing:
-        patterns:
-          - "jest"
-          - "@jest/*"
-          - "vitest"
-          - "@vitest/*"
-      code-quality:
-        patterns:
-          - "eslint"
-          - "@typescript-eslint/*"
-          - "typescript"
+      interval: "daily"
 
-  # App (website) package
-  - package-ecosystem: "npm"
-    directory: "/app"
-    registries:
-      - jfrog-npm
+  # Monitor go-agent
+  - package-ecosystem: "gomod"
+    directory: "/go-agent"
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:42"
-    open-pull-requests-limit: 10
-    groups:
-      react:
-        patterns:
-          - "react"
-          - "react-dom"
-          - "@types/react"
-          - "@types/react-dom"
-      nextjs:
-        patterns:
-          - "next"
-          - "@next/*"
-      prisma:
-        patterns:
-          - "prisma"
-          - "@prisma/*"
-      testing:
-        patterns:
-          - "jest"
-          - "@jest/*"
-          - "@testing-library/*"
-      code-quality:
-        patterns:
-          - "eslint"
-          - "@typescript-eslint/*"
-          - "prettier"
-          - "typescript"
+      interval: "daily"
 
-  # CDK package
-  - package-ecosystem: "npm"
-    directory: "/cdk"
-    registries:
-      - jfrog-npm
+  # Monitor local-control-plane
+  - package-ecosystem: "gomod"
+    directory: "/local-control-plane"
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:34"
-    open-pull-requests-limit: 10
-    groups:
-      aws-cdk:
-        patterns:
-          - "aws-cdk-lib"
-          - "@aws-cdk/*"
-          - "constructs"
+      interval: "daily"
 
-  # Proxy package
-  - package-ecosystem: "npm"
-    directory: "/proxy"
-    registries:
-      - jfrog-npm
+  # Monitor knowledge-service
+  - package-ecosystem: "gomod"
+    directory: "/knowledge-service"
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "10:51"
-    open-pull-requests-limit: 5
+      interval: "daily"
 
-  # AI Lib package
-  - package-ecosystem: "npm"
-    directory: "/packages/ai-lib"
-    registries:
-      - jfrog-npm
+  # Monitor image-search-service
+  - package-ecosystem: "gomod"
+    directory: "/image-search-service"
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "07:55"
-    open-pull-requests-limit: 5
-    groups:
-      ai-sdk:
-        patterns:
-          - "ai"
-          - "@ai-sdk/*"
-      testing:
-        patterns:
-          - "jest"
-          - "@jest/*"
-          - "vitest"
-          - "@vitest/*"
+      interval: "daily"
 
-  # Design Extractor package
-  - package-ecosystem: "npm"
-    directory: "/packages/design-extractor"
-    registries:
-      - jfrog-npm
+  # Monitor budget-service
+  - package-ecosystem: "gomod"
+    directory: "/budget-service"
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "08:48"
-    open-pull-requests-limit: 5
+      interval: "daily"
 
-  # Setup package
-  - package-ecosystem: "npm"
-    directory: "/setup"
-    registries:
-      - jfrog-npm
+  # Monitor packages/go-auth
+  - package-ecosystem: "gomod"
+    directory: "/packages/go-auth"
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:12"
-    open-pull-requests-limit: 5
-
-  # Bedrock Log Viewer package
-  - package-ecosystem: "npm"
-    directory: "/bedrock-log-viewer"
-    registries:
-      - jfrog-npm
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "10:06"
-    open-pull-requests-limit: 5
-
-  # Debug Console package
-  - package-ecosystem: "npm"
-    directory: "/debug-console"
-    registries:
-      - jfrog-npm
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:18"
-    open-pull-requests-limit: 5
+      interval: "daily"
 
   # Monitor GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "daily"
     open-pull-requests-limit: 10
