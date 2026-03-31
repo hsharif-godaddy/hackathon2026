@@ -29,7 +29,7 @@ overrides:
   '@ux/card': 2500.7.2
   '@ux/checkbox': 2500.7.2
   '@ux/coachmark': 2500.7.2
-  '@ux/collapsible': 2500.7.2
+  '@ux/collapsible': 2500.11.1
   '@ux/disrupt': 2500.7.2
   '@ux/flyout': 2500.7.1
   '@ux/growl': 2500.7.2
@@ -613,8 +613,8 @@ importers:
         specifier: 2500.7.2
         version: 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/collapsible':
-        specifier: 2500.7.2
-        version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.11.1
+        version: 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/date-input':
         specifier: ^2500.11.1
         version: 2500.11.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -7053,8 +7053,8 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/collapsible@2500.7.2':
-    resolution: {integrity: sha512-iwDnLq8iwS/+y7VT7eBO4RFaZovxq9Eg6ppnVjD7sETiSKhuskT5CSZHkSsIwImA9ILcvsvT4NwX27WqCuN+9w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/collapsible/-/@ux/collapsible-2500.7.2.tgz}
+  '@ux/collapsible@2500.11.1':
+    resolution: {integrity: sha512-ueUMiQOAEYRFSLvzhpxl6nRo+33m24ai94iconYHPqNV5+6MJasqjEo2KmOkPcNyG6KZCW71VTj42Sz5+yMg0w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/collapsible/-/@ux/collapsible-2500.11.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -7279,8 +7279,8 @@ packages:
   '@ux/react-bundle@1.1.1':
     resolution: {integrity: sha512-5qDZz0pt5K1KbfS7d1GszRMvuDOsFZnC/vfB3uTvdKjAZGB3l+y+Z+s/R19sfitELPccafvSkVtl//gtiWMmPw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/react-bundle/-/@ux/react-bundle-1.1.1.tgz}
 
-  '@ux/reveal@2500.7.1':
-    resolution: {integrity: sha512-YIvyyhrcmBrG3ABP14ekGfnLz7UWAtKtiZ0/pFjOZRbOT2UUtrBNTfcji+JM6SF6pD68deOI0kAztXYjmGNnJg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/reveal/-/@ux/reveal-2500.7.1.tgz}
+  '@ux/reveal@2500.9.0':
+    resolution: {integrity: sha512-5lfMH5YCF4z+9dxPQpWLTHxt/W3t39jJwHbraLERtOS4buIjtgKf4bHI9/XqcaDqjxexqXFM7X8yoEfqbz69uw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/reveal/-/@ux/reveal-2500.9.0.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -7314,6 +7314,15 @@ packages:
   '@ux/short-css-vars@2500.7.1':
     resolution: {integrity: sha512-/rrX71pQMOZDoqhuLfuwkcYebVs5f0lwCS8PlFfZz723Qgp+kOFVNb9IjHpqqPIqDCQrr0zJvjijxnV6UTcvRA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/short-css-vars/-/@ux/short-css-vars-2500.7.1.tgz}
     engines: {node: '>= 18'}
+
+  '@ux/sibling-set@2500.11.1':
+    resolution: {integrity: sha512-TDE1eTP9u1gD0Uzhs29c9E7mMkdC9PSv4sMMnwL4/L/h8eC8m/qSMwY+6zGTrfMNMzClszIALGC+iwHewwsKzQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/sibling-set/-/@ux/sibling-set-2500.11.1.tgz}
+    engines: {node: '>= 18'}
+    deprecated: This component has been deprecated since v2500. Please consider using the  component instead.
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
 
   '@ux/sibling-set@2500.8.1':
     resolution: {integrity: sha512-b6U/zC4ISuoLtSNLB6XgNgFkIBcGauDDc9Awz5IWNGtjZXTp1V2BUHayQK9CmVcMrTYjE5USytBLwRcg5vyKcA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/sibling-set/-/@ux/sibling-set-2500.8.1.tgz}
@@ -7352,8 +7361,8 @@ packages:
     resolution: {integrity: sha512-7lLi6rRW4xvIe/XIECGvCPwNKVnDX6se1n0gTmWAB3yblKfQP5xrgVcWOhA7VeobYrMRAE7YTRdNy013czq20w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/stylevars/-/@ux/stylevars-2400.11.0.tgz}
     engines: {node: '>= 18'}
 
-  '@ux/summary@2500.8.1':
-    resolution: {integrity: sha512-w7D2KP9IGIGChCzegmatpnL8j/Uyugzcij0SqhQgxCSziTZQkUAsq+dmX2EWzedWJHunA8DIK6PCdmRFlcL6kg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/summary/-/@ux/summary-2500.8.1.tgz}
+  '@ux/summary@2500.11.1':
+    resolution: {integrity: sha512-f1bZEtaXBtyJ2ShaJMuo2qlYr/wbmHVO8UU3xT9tPhY7u4/M2k1GIsetT0xTDt5QFQ5z80tLSYk2X+37rqfMmw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/summary/-/@ux/summary-2500.11.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -21824,13 +21833,13 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
 
-  '@ux/collapsible@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/collapsible@2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/component-utilities': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
-      '@ux/reveal': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/sibling-set': 2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/summary': 2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/reveal': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/sibling-set': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/summary': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -21928,7 +21937,7 @@ snapshots:
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
-      '@ux/sibling-set': 2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/sibling-set': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
@@ -22157,7 +22166,7 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@ux/reveal@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/reveal@2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       classnames: 2.5.1
       prop-types: 15.8.1
@@ -22209,6 +22218,16 @@ snapshots:
     dependencies:
       string-hash: 1.1.3
 
+  '@ux/sibling-set@2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      '@ux/intents': 2500.7.1
+      '@ux/label': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
   '@ux/sibling-set@2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/intents': 2500.7.1
@@ -22249,7 +22268,7 @@ snapshots:
       lodash.merge: 4.6.2
       polished: 3.7.2
 
-  '@ux/summary@2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/summary@2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
