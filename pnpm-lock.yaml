@@ -616,8 +616,8 @@ importers:
         specifier: 2500.7.2
         version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/date-input':
-        specifier: ^2500.9.0
-        version: 2500.9.0(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: ^2500.11.1
+        version: 2500.11.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/disrupt':
         specifier: 2500.7.2
         version: 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -7104,8 +7104,8 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/calendar@2500.9.0':
-    resolution: {integrity: sha512-WsTwByndoGjt9Vnim0rEyLLG1CFnK33EjIw6sIU8Zb1UGC5MaGPiGJeEnOGQlzIKPoNw917jeGDDQEZbuPud3A==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/calendar/-/@ux/calendar-2500.9.0.tgz}
+  '@ux/calendar@2500.11.1':
+    resolution: {integrity: sha512-r8HaEZOtdQ7B9r9D1UpDF1uuD+L1dABuTOXw0Wn2WOq4VVM6CMOaBZvYEN2jPaGqnpoEURCOfp6u12hUXlN1PQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/calendar/-/@ux/calendar-2500.11.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -7160,16 +7160,16 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/component-utilities@2500.7.1':
-    resolution: {integrity: sha512-dfRbMgUf+Ivtrytf99zcshm73x0f8lp2DS2xwNhZRoiX+uzr6lW1S5jNhIfjOl11/8Df3G9NTpOtstHzg/ev7g==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/component-utilities/-/@ux/component-utilities-2500.7.1.tgz}
+  '@ux/component-utilities@2500.11.1':
+    resolution: {integrity: sha512-REQ2kbYd28A6pxkdSZ2gfSgJ6K7wf5547P9k/cXNzAOythoNKwe7zNh0Lr6l10fFteejXsBTLiASnszc9YwNTA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/component-utilities/-/@ux/component-utilities-2500.11.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/component-utilities@2500.9.0':
-    resolution: {integrity: sha512-24c3iC05VdUnV16RHLj6GRVl0dl6f+dqPah/mM4GWVnpUAptXHuG4bpHGSKnxql+lfL3vZUiI48zts5l0ywCnw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/component-utilities/-/@ux/component-utilities-2500.9.0.tgz}
+  '@ux/component-utilities@2500.7.1':
+    resolution: {integrity: sha512-dfRbMgUf+Ivtrytf99zcshm73x0f8lp2DS2xwNhZRoiX+uzr6lW1S5jNhIfjOl11/8Df3G9NTpOtstHzg/ev7g==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/component-utilities/-/@ux/component-utilities-2500.7.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -7196,8 +7196,8 @@ packages:
     resolution: {integrity: sha512-qhF0Ed9ZpPBhiAPwOZe9npeYg00p6QxWBCTlQABgW7q81W5O0BDYyKCNlhC6cNELdWTAOzHhz9Bq18sojf7nJg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/data-version/-/@ux/data-version-2500.7.1.tgz}
     engines: {node: '>= 18'}
 
-  '@ux/date-input@2500.9.0':
-    resolution: {integrity: sha512-BiU5MFBUK6u83n3QrkR7V2YVbHPYn4e8vorqcLjidTs3U7SJAy5aTucNiRHuHuxxuuPOjmZEN6kjS1JDrIUpZw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/date-input/-/@ux/date-input-2500.9.0.tgz}
+  '@ux/date-input@2500.11.1':
+    resolution: {integrity: sha512-hL33lSgWyax6etxVP3yiOipn0pO/ioVs/6HAj1KkK1sim+BX3ORg88QmAq3mguvv3xLUtswBzK/yARqZe2uF1Q==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/date-input/-/@ux/date-input-2500.11.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -7232,16 +7232,16 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/field-frame@2500.8.1':
-    resolution: {integrity: sha512-ElS/H8oTFLEoscHuLIGdVQ/+SwyNvrqKRxgQS+Z7ZXg33gKh8FPk0M8P2tBGlIgrni2N2R4cJ5S03JENDrfchw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/field-frame/-/@ux/field-frame-2500.8.1.tgz}
+  '@ux/field-frame@2500.11.1':
+    resolution: {integrity: sha512-tdx4Ay7Lj+r8oLzxCbcwEegZSW7UmAEPRQ5jWWfnI6kdgle+liPJv10frkTEtShefI/6zpnJb/i0DSxq/OwS0w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/field-frame/-/@ux/field-frame-2500.11.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/field-frame@2500.9.0':
-    resolution: {integrity: sha512-sumyFLUYSrUJTL1+OybsCsSwpxw/PKzJfbXWPp3kIrJHZF5kFDjYNQZZOFO+ieWRBObF7ZUJAO2OOr/lw5jkLA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/field-frame/-/@ux/field-frame-2500.9.0.tgz}
+  '@ux/field-frame@2500.8.1':
+    resolution: {integrity: sha512-ElS/H8oTFLEoscHuLIGdVQ/+SwyNvrqKRxgQS+Z7ZXg33gKh8FPk0M8P2tBGlIgrni2N2R4cJ5S03JENDrfchw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/field-frame/-/@ux/field-frame-2500.8.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -7490,24 +7490,16 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
+  '@ux/text-entry@2500.11.1':
+    resolution: {integrity: sha512-N1dPF41ebUpT/b2Xbc5dmpgDN9mA3HRRynETvDxtlJsNzFLlKtnyPEpAQq/PWodoGvujHqP17fx2fX1Pc82+Qg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-entry/-/@ux/text-entry-2500.11.1.tgz}
+    engines: {node: '>= 18'}
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
   '@ux/text-entry@2500.7.1':
     resolution: {integrity: sha512-tVSfdR8oRGiSVOowhrEjoBayeH7T0iWGdzSD8eQeX3mzxziZ5msEcFMZzc92A+X1hZmj00GVpdM/x/XDd55BAQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-entry/-/@ux/text-entry-2500.7.1.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/text-entry@2500.8.1':
-    resolution: {integrity: sha512-djvdEmgoUJgS5I2EbswZ8xUZr+Gx3BR7xQsOiAkhHSfVAQMi+iIgtyrW7RdQ7jUPe4FpP0YfLmC+a78l5An7dw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-entry/-/@ux/text-entry-2500.8.1.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/text-entry@2500.9.0':
-    resolution: {integrity: sha512-vgwGVGByFTc/FIbHvqQCO5Vwg+QhDco3IobdpuDZQyAR8kLu7HJ+LKb9TWTO4X+wK3rZlL6M+1L33sQ6EmE3Aw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-entry/-/@ux/text-entry-2500.9.0.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -22009,11 +22001,11 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/calendar@2500.9.0(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/calendar@2500.11.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/component-utilities': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/menu': 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -22102,9 +22094,9 @@ snapshots:
       react-dom: 19.1.0(react@19.1.0)
       safe-stable-stringify: 2.5.0
 
-  '@ux/component-utilities@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/component-utilities@2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      breakdancer: 4.2.0(react@19.1.0)
+      breakdancer: 4.2.3(react@19.1.0)
       diagnostics: 2.0.2
       fn.name: 1.1.0
       prop-types: 15.8.1
@@ -22112,7 +22104,7 @@ snapshots:
       react-dom: 19.1.0(react@19.1.0)
       safe-stable-stringify: 2.5.0
 
-  '@ux/component-utilities@2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/component-utilities@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       breakdancer: 4.2.0(react@19.1.0)
       diagnostics: 2.0.2
@@ -22145,19 +22137,19 @@ snapshots:
     dependencies:
       semver: 7.7.3
 
-  '@ux/date-input@2500.9.0(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/date-input@2500.11.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/calendar': 2500.9.0(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/component-utilities': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/field-frame': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/calendar': 2500.11.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/field-frame': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/flyout': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/label': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text-entry': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text-entry': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       date-fns: 4.1.0
       prop-types: 15.8.1
@@ -22210,7 +22202,7 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/field-frame@2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/field-frame@2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/intents': 2500.7.1
       classnames: 2.5.1
@@ -22218,7 +22210,7 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/field-frame@2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/field-frame@2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/intents': 2500.7.1
       classnames: 2.5.1
@@ -22423,12 +22415,12 @@ snapshots:
   '@ux/search@2500.8.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/component-utilities': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/field-frame': 2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/field-frame': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/flyout': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/listbox': 2500.8.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text-entry': 2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text-entry': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       merge-refs: 2.0.0(@types/react@19.1.13)
       prop-types: 15.8.1
@@ -22557,7 +22549,18 @@ snapshots:
 
   '@ux/text-entry@2500.10.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/component-utilities': 2500.10.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/label': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
+  '@ux/text-entry@2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/label': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -22568,29 +22571,7 @@ snapshots:
 
   '@ux/text-entry@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/component-utilities': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.7.1
-      '@ux/label': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/text-entry@2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/component-utilities': 2500.9.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.7.1
-      '@ux/label': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/text-entry@2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/component-utilities': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/label': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)

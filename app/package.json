@@ -102,7 +102,7 @@
     "@ux/chip": "^2500.10.1",
     "@ux/coachmark": "^2500.7.2",
     "@ux/collapsible": "^2500.7.2",
-    "@ux/date-input": "^2500.9.0",
+    "@ux/date-input": "^2500.11.1",
     "@ux/disrupt": "^2500.7.2",
     "@ux/flyout": "^2500.7.1",
     "@ux/growl": "^2500.7.2",
