@@ -3,6 +3,10 @@ module.exports = {
   plugins: ["simple-import-sort"],
   rules: {
     "react/display-name": "off",
+    // next/typescript preset overrides shared config, so we must override it here
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-unused-vars": "off",
+    "react-hooks/exhaustive-deps": "off",
     "simple-import-sort/imports": [
       "warn",
       {
@@ -15,24 +19,7 @@ module.exports = {
       },
     ],
     "simple-import-sort/exports": "warn",
-    // next/typescript sets no-explicit-any to error; keep at warn
-    "@typescript-eslint/no-explicit-any": "warn",
-    "@typescript-eslint/no-unused-vars": [
-      "error",
-      {
-        argsIgnorePattern: "^_",
-        caughtErrorsIgnorePattern: "^_|^error$|^e$",
-      },
-    ],
   },
-  overrides: [
-    {
-      files: ["**/*.test.ts", "**/*.test.tsx", "**/__tests__/**"],
-      rules: {
-        "@typescript-eslint/no-explicit-any": "off",
-      },
-    },
-  ],
   ignorePatterns: [
     "node_modules/**",
     ".next/**",

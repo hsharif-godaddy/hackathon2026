@@ -27,6 +27,7 @@ async function customerOwnsEntitlement(
 ): Promise<boolean> {
   let after: string | undefined;
 
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     const projectsResponse = await ventureService.getCustomerProjects(customerId, after);
     const edges = projectsResponse?.projects?.edges ?? [];

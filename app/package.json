@@ -24,7 +24,7 @@
     "test:watch": "NODE_OPTIONS='--max-old-space-size=512' vitest",
     "test:ui": "NODE_OPTIONS='--max-old-space-size=512' vitest --ui",
     "test:coverage": "NODE_OPTIONS='--max-old-space-size=512' vitest run --coverage",
-    "lint": "next lint --max-warnings 6300",
+    "lint": "next lint --max-warnings 0",
     "lint:fix": "next lint --fix",
     "typecheck": "tsc --noEmit",
     "generate:landing-lookup": "tsx src/data/landing-pages/generate-lookup.ts",

@@ -694,7 +694,7 @@ function DevelopPageContent() {
         case 'CLEAR_AI_EDIT_CONTEXT':
           setAiEditContext(null)
           break
-        case 'REPLACE_IMAGE':
+        case 'REPLACE_IMAGE': {
           const replaceImageContext = {
             ...event.data.data,
             isImageReplacement: true
@@ -709,7 +709,8 @@ function DevelopPageContent() {
           setAiEditContext(replaceImageContext)
           setIsAssetManagerOpen(true)
           break
-        case 'SCROLL_POSITION_UPDATE':
+        }
+        case 'SCROLL_POSITION_UPDATE': {
           // Handle real-time scroll position updates from iframe and store for restoration
           const newScrollPos = {
             x: event.data.scrollX || 0,
@@ -717,6 +718,7 @@ function DevelopPageContent() {
           }
           lastIframeState.current.scrollPosition = newScrollPos
           break
+        }
         case 'VISUAL_CONTEXT_RESPONSE':
           // Handle visual context response which includes scroll position
           if (event.data.context && event.data.context.scroll_position) {
