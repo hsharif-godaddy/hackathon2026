@@ -517,8 +517,8 @@ importers:
         specifier: ^3.6.0
         version: 3.6.0
       '@godaddy/gasket-plugin-traffic':
-        specifier: ^3.5.0
-        version: 3.5.0
+        specifier: ^3.5.1
+        version: 3.5.1
       '@godaddy/gasket-plugin-uxp':
         specifier: ^3.6.0
         version: 3.6.0(@gasket/plugin-intl@7.6.2)(@gasket/plugin-logger@7.4.0)(encoding@0.1.13)
@@ -3409,6 +3409,9 @@ packages:
   '@gasket/core@7.7.2':
     resolution: {integrity: sha512-f2qLIB+hgHgID2QWmEfAGMml/w1D8YXsXrN5h+nUYqc4+YnlyfSEo2zr5RJ3/pGnvO4zQ1E4gkqBg4cT+FhQNQ==}
 
+  '@gasket/core@7.7.4':
+    resolution: {integrity: sha512-kbBZVg/4gRxrB1PRKQWNlttPOA6qRZiPsn7HIp8PGvNPyD7cyh/ib4LQNhwCR5xaetyXjef/Vrn0qUyTqwL75g==}
+
   '@gasket/data@7.5.5':
     resolution: {integrity: sha512-PYGcS9a+V1BvMV+MpHhKwpjYRNV44pCrYoxYyqsJPlFaWeyPvPxyyySmewP0Nb3LYVc0hPVJHil688X5q+mPRw==}
 
@@ -3465,6 +3468,9 @@ packages:
 
   '@gasket/utils@7.6.4':
     resolution: {integrity: sha512-JCWQGLQWOvzKWZYso98cVqDqL2txvfHUz+8iF+FgR2cCy1HHXzyQDknBIL6Cc9tese76TNHR3gYEwHzU/VnEjA==}
+
+  '@gasket/utils@7.6.6':
+    resolution: {integrity: sha512-xi6JFceEhRTdUUpQ4276BgOlSo62AI669p/2lvzUL4JH+lukU4dqXM50Foik3P3sB+S4z49pl5wW1Gd/w4nooA==}
 
   '@gd-internal/ssojwt@6.1.3':
     resolution: {integrity: sha512-rvOl/r924z5b6+b/E4ItBeFFME54LrGXSUgUJvoD/UXpboREBCvc+6DAN+r/c32hQ7FTUxgmSZHE2+yOuqI4AA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@gd-internal/ssojwt/-/@gd-internal/ssojwt-6.1.3.tgz}
@@ -3543,8 +3549,8 @@ packages:
     resolution: {integrity: sha512-FGX4M7AjX6E6qZu0lkTYqz5h7v4CMRC7cRyb5rtC2B+hCDiUHoy2eR8z+h0J80yXEueimFUg6blvnq35dnjgXg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/gasket-plugin-switchboard/-/@godaddy/gasket-plugin-switchboard-3.6.0.tgz}
     engines: {node: '>=20.0.0'}
 
-  '@godaddy/gasket-plugin-traffic@3.5.0':
-    resolution: {integrity: sha512-nE0yfbTj4bV+Y0BuwVX/Yn0LahwtD5eFRa6mBAKSk/kKNt2lys553nQBYy/6ZXxOiphuzAmkL1tZ61VZ/DlFdw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/gasket-plugin-traffic/-/@godaddy/gasket-plugin-traffic-3.5.0.tgz}
+  '@godaddy/gasket-plugin-traffic@3.5.1':
+    resolution: {integrity: sha512-056JF0ZwHq0m/ciucqD1uAz78aJOdA5ldrdyJYZTaugqnb3SNfny3e+x3+TS4/pKdSv6XizojoIm2hXDpJsXlA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/gasket-plugin-traffic/-/@godaddy/gasket-plugin-traffic-3.5.1.tgz}
 
   '@godaddy/gasket-plugin-uxp@3.6.0':
     resolution: {integrity: sha512-XDZorf9U/lt5EH9r2scQo6gFW1nxZjDLPRNaPDuuQSX5cOdoYftHukhjJofHLwKZBevCyb+1jWBh0Sc+Sz5aZw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/gasket-plugin-uxp/-/@godaddy/gasket-plugin-uxp-3.6.0.tgz}
@@ -12909,6 +12915,11 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
+  semver@7.7.4:
+    resolution: {integrity: sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA==}
+    engines: {node: '>=10'}
+    hasBin: true
+
   send@0.19.0:
     resolution: {integrity: sha512-dW41u5VfLXu8SJh5bwRmyYUbAoSB3c9uQh6L8h/KtsFREPWpbX1lrljJo186Jc4nmci/sGUZ9a0a0J2zgfq2hw==}
     engines: {node: '>= 0.8.0'}
@@ -17249,6 +17260,13 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@gasket/core@7.7.4':
+    dependencies:
+      '@gasket/utils': 7.6.6
+      debug: 4.4.3
+    transitivePeerDependencies:
+      - supports-color
+
   '@gasket/data@7.5.5':
     dependencies:
       '@gasket/request': 7.5.5
@@ -17356,6 +17374,16 @@ snapshots:
       diagnostics: 2.0.2
       is-plain-object: 5.0.0
       semver: 7.7.3
+
+  '@gasket/utils@7.6.6':
+    dependencies:
+      chalk: 4.1.2
+      concat-stream: 2.0.0
+      cross-spawn: 7.0.6
+      deepmerge: 4.3.1
+      diagnostics: 2.0.2
+      is-plain-object: 5.0.0
+      semver: 7.7.4
 
   '@gd-internal/ssojwt@6.1.3(@types/node@22.18.12)(bufferutil@4.1.0)':
     dependencies:
@@ -17524,12 +17552,12 @@ snapshots:
       '@switchboard/client': 2.5.3
       lodash: 4.17.21
 
-  '@godaddy/gasket-plugin-traffic@3.5.0':
+  '@godaddy/gasket-plugin-traffic@3.5.1':
     dependencies:
-      '@gasket/core': 7.7.2
+      '@gasket/core': 7.7.4
       '@gasket/request': 7.5.5
       '@opentelemetry/api': 1.9.0
-      '@opentelemetry/resources': 2.5.0(@opentelemetry/api@1.9.0)
+      '@opentelemetry/resources': 2.5.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/semantic-conventions': 1.39.0
       uuid: 8.3.2
     transitivePeerDependencies:
@@ -19436,33 +19464,33 @@ snapshots:
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/core': 2.2.0(@opentelemetry/api@1.9.0)
-      '@opentelemetry/resources': 2.5.0(@opentelemetry/api@1.9.0)
+      '@opentelemetry/resources': 2.5.1(@opentelemetry/api@1.9.0)
 
   '@opentelemetry/resource-detector-aws@2.11.0(@opentelemetry/api@1.9.0)':
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/core': 2.2.0(@opentelemetry/api@1.9.0)
-      '@opentelemetry/resources': 2.5.0(@opentelemetry/api@1.9.0)
+      '@opentelemetry/resources': 2.5.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/semantic-conventions': 1.39.0
 
   '@opentelemetry/resource-detector-azure@0.13.2(@opentelemetry/api@1.9.0)':
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/core': 2.2.0(@opentelemetry/api@1.9.0)
-      '@opentelemetry/resources': 2.5.0(@opentelemetry/api@1.9.0)
+      '@opentelemetry/resources': 2.5.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/semantic-conventions': 1.39.0
 
   '@opentelemetry/resource-detector-container@0.7.11(@opentelemetry/api@1.9.0)':
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/core': 2.2.0(@opentelemetry/api@1.9.0)
-      '@opentelemetry/resources': 2.5.0(@opentelemetry/api@1.9.0)
+      '@opentelemetry/resources': 2.5.1(@opentelemetry/api@1.9.0)
 
   '@opentelemetry/resource-detector-gcp@0.40.3(@opentelemetry/api@1.9.0)(encoding@0.1.13)':
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/core': 2.2.0(@opentelemetry/api@1.9.0)
-      '@opentelemetry/resources': 2.5.0(@opentelemetry/api@1.9.0)
+      '@opentelemetry/resources': 2.5.1(@opentelemetry/api@1.9.0)
       gcp-metadata: 6.1.1(encoding@0.1.13)
     transitivePeerDependencies:
       - encoding
@@ -19647,7 +19675,7 @@ snapshots:
   '@opentelemetry/sql-common@0.41.2(@opentelemetry/api@1.9.0)':
     dependencies:
       '@opentelemetry/api': 1.9.0
-      '@opentelemetry/core': 2.2.0(@opentelemetry/api@1.9.0)
+      '@opentelemetry/core': 2.5.1(@opentelemetry/api@1.9.0)
 
   '@opentelemetry/winston-transport@0.16.2':
     dependencies:
@@ -29324,6 +29352,8 @@ snapshots:
   semver@7.7.2: {}
 
   semver@7.7.3: {}
+
+  semver@7.7.4: {}
 
   send@0.19.0:
     dependencies:

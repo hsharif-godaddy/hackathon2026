@@ -69,7 +69,7 @@
     "@godaddy/gasket-plugin-security": "^3.4.0",
     "@godaddy/gasket-plugin-self-certs": "^3.3.10",
     "@godaddy/gasket-plugin-switchboard": "^3.6.0",
-    "@godaddy/gasket-plugin-traffic": "^3.5.0",
+    "@godaddy/gasket-plugin-traffic": "^3.5.1",
     "@godaddy/gasket-plugin-uxp": "^3.6.0",
     "@godaddy/gasket-plugin-visitor": "^3.7.1",
     "@godaddy/react-mintl": "^3.1.1",
