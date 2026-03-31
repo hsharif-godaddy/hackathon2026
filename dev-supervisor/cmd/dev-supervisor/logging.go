@@ -12,10 +12,29 @@ import (
 var logger *slog.Logger
 
 // newLoggerWithHandler creates a new logger with the given handler
-// and includes app_id from SITE_ID environment variable as a default field
+// and includes app_id from SITE_ID environment variable as a default field,
+// plus container metadata using ECS standard fields for production traceability
 func newLoggerWithHandler(handler slog.Handler) *slog.Logger {
 	siteID := os.Getenv("SITE_ID")
-	return slog.New(handler).With("app_id", siteID)
+	l := slog.New(handler).With("app_id", siteID)
+
+	// Add container metadata using ECS standard fields for production traceability
+	// Using container.image.tag and service.version for compatibility with Elastic tooling
+	if imageTag := os.Getenv("PREVIEW_APP_IMAGE_TAG"); imageTag != "" {
+		l = l.With(
+			"container.image.tag", imageTag,
+			"service.version", imageTag,
+			"service.name", "airo-preview",
+		)
+	} else if imageTag := os.Getenv("PUBLISH_APP_IMAGE_TAG"); imageTag != "" {
+		l = l.With(
+			"container.image.tag", imageTag,
+			"service.version", imageTag,
+			"service.name", "airo-publish",
+		)
+	}
+
+	return l
 }
 
 // getLogLevel returns the configured log level from environment variable

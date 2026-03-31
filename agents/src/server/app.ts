@@ -127,9 +127,12 @@ const apm = apmAgent.start({
   environment: process.env.NODE_ENV || 'development',
   active: isApmEnabled,
   // Global labels added to ALL data: transactions, spans, errors, AND metrics
-  // This ensures appId is available for filtering metrics by app
+  // Using ECS standard fields for container metadata
   globalLabels: {
     appId: process.env.SITE_ID || 'default-site',
+    'container.image.tag': process.env.AGENT_IMAGE_TAG || 'unknown',
+    'service.version': process.env.AGENT_IMAGE_TAG || 'unknown',
+    'service.name': 'airo-agent',
   },
   // Express specific configuration for route template support
   usePathAsTransactionName: true,

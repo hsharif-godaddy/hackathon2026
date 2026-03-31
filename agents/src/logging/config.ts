@@ -80,6 +80,10 @@ export function createConfigFromEnvironment(): LoggerConfig {
       version: process.env.npm_package_version || '1.0.0',
       environment: process.env.NODE_ENV || 'development',
       appId: process.env.SITE_ID || '',
+      // ECS standard fields for container metadata
+      'container.image.tag': process.env.AGENT_IMAGE_TAG || 'unknown',
+      'service.version': process.env.AGENT_IMAGE_TAG || 'unknown',
+      'service.name': 'airo-agent',
     },
   };
 
