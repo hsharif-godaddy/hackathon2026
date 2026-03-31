@@ -7,7 +7,7 @@ import Tag from '@ux/tag'
 import text from '@ux/text'
 
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
-import { completePartialJson } from '@/app/develop/components/tool-renderers/json-completion-utils'
+import { completePartialJson, isPathValueComplete } from '@/app/develop/components/tool-renderers/json-completion-utils'
 import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
 import ToolModal from '@/app/develop/components/tool-renderers/ToolModal'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -201,7 +201,10 @@ export default function TextEditorToolRenderer({
     try {
       const completed = completePartialJson(partialInput)
       if (completed) {
-        operation = parseTextEditorInput(JSON.parse(completed))
+        const parsedOp = parseTextEditorInput(JSON.parse(completed))
+        if (parsedOp && (!parsedOp.path || isPathValueComplete(partialInput, parsedOp.path))) {
+          operation = parsedOp
+        }
       }
     } catch { /* partial JSON not parseable yet */ }
   }

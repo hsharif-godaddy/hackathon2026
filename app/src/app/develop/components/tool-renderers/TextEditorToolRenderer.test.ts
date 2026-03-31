@@ -130,4 +130,28 @@ describe('TextEditorToolRenderer', () => {
       expect(result?.additions).toBe(0)
     })
   })
+
+  describe('partial path streaming (path-truncation guard)', () => {
+    it('should not crash and return null when path string is still open mid-segment', () => {
+      // Simulates the chunk arriving before path is complete: "src/pag is not a valid path yet
+      const partial = '{"command": "create", "path": "src/pag'
+      const result = estimateLineCountsFromPartial(partial)
+      // No line content yet — must not throw and must not return garbage counts
+      expect(result === null || (typeof result === 'object' && result.additions === 0 && result.deletions === 0)).toBe(true)
+    })
+
+    it('should return null when path is truncated at a directory separator', () => {
+      const partial = '{"command": "create", "path": "src/pages/'
+      const result = estimateLineCountsFromPartial(partial)
+      expect(result === null || (typeof result === 'object' && result.additions === 0)).toBe(true)
+    })
+
+    it('should return line count once path is complete and file_text is streaming', () => {
+      // Path is closed; file_text is still accumulating (\\n = JSON-escaped newline)
+      const partial = '{"command": "create", "path": "src/pages/brew-guides.tsx", "file_text": "line1\\nline2\\nline3'
+      const result = estimateLineCountsFromPartial(partial)
+      expect(result).not.toBeNull()
+      expect(result?.additions).toBeGreaterThan(0)
+    })
+  })
 })

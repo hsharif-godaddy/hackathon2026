@@ -1,7 +1,7 @@
 /* eslint-disable no-useless-escape */
 import { describe, expect, it } from 'vitest'
 
-import { completePartialJson } from './json-completion-utils'
+import { completePartialJson, isPathValueComplete } from './json-completion-utils'
 
 describe('json-completion-utils', function packageTests() {
   describe('#completePartialJson', function completeTests() {
@@ -169,6 +169,34 @@ describe('json-completion-utils', function packageTests() {
 
       // Should be parseable
       expect(() => JSON.parse(result!)).not.toThrow()
+    })
+  })
+
+  describe('#isPathValueComplete', function isPathValueCompleteTests() {
+    it('should return false when path string is still open mid-segment', function openString() {
+      expect(isPathValueComplete('{"command": "create", "path": "src/pag', 'src/pag')).toBe(false)
+    })
+
+    it('should return false when path is truncated at a directory separator', function truncatedAtSlash() {
+      expect(isPathValueComplete('{"command": "create", "path": "src/pages/', 'src/pages/')).toBe(false)
+    })
+
+    it('should return true when path string is properly closed', function closedString() {
+      expect(isPathValueComplete('{"command": "create", "path": "src/pages/brew-guides.tsx"', 'src/pages/brew-guides.tsx')).toBe(true)
+    })
+
+    it('should return true when path is closed but file_text is still streaming', function pathClosedContentPartial() {
+      const partial = '{"command": "create", "path": "src/pages/brew-guides.tsx", "file_text": "import { useState'
+      expect(isPathValueComplete(partial, 'src/pages/brew-guides.tsx')).toBe(true)
+    })
+
+    it('should return true for JSON serialised without space after colon', function noSpaceAfterColon() {
+      expect(isPathValueComplete('{"command":"create","path":"src/index.tsx"', 'src/index.tsx')).toBe(true)
+    })
+
+    it('should return false when extracted path does not match the closed value in the input', function mismatchedPath() {
+      // completePartialJson closed "src/pag — real final value will be "src/pages/brew.tsx"
+      expect(isPathValueComplete('{"command": "create", "path": "src/pag', 'src/pag')).toBe(false)
     })
   })
 })

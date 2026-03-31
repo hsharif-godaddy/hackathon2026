@@ -6,6 +6,16 @@
  */
 
 /**
+ * Check whether a `path` JSON string value was already closed in the original partial input.
+ * @param partialInput - The original (not yet completed) partial JSON string
+ * @param path - The path value extracted after JSON completion
+ * @returns True if the path string was already closed in the original partial input
+ */
+export function isPathValueComplete(partialInput: string, path: string): boolean {
+  return partialInput.includes(`"path": "${path}"`) || partialInput.includes(`"path":"${path}"`)
+}
+
+/**
  * Attempts to complete a partial JSON string by adding closing characters
  *
  * Handles:
