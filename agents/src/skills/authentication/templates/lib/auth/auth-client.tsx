@@ -7,7 +7,7 @@
 
 import { createAuthClient } from 'better-auth/react';
 import { ReactNode, useEffect, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 
 // Auth client - baseURL empty means relative to current origin
 export const authClient = createAuthClient({ baseURL: '' });
@@ -38,6 +38,7 @@ const SESSION_TIMEOUT_MS = 30000;
 // ProtectedRoute component with timeout handling
 export function ProtectedRoute({ children }: { children: ReactNode }) {
   const { data: session, isPending, error } = useSession();
+  const location = useLocation();
   const [timedOut, setTimedOut] = useState(false);
 
   useEffect(() => {
@@ -70,7 +71,8 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
   }
 
   if (error || !session) {
-    return <Navigate to="/login" replace />;
+    // Preserve intended destination so AuthPage can redirect back after login
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   return <>{children}</>;

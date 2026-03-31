@@ -9,10 +9,10 @@ When the user publishes:
 2. `dist/` output is archived as `{commitHash}.tar.gz` in `/dist`
 3. The `current` symlink updates to the new archive
 4. Archive extracts into the publish container's `/app`
-5. Publish container runs `node /app/dist/server.bundle.cjs` from `/app/dist`
+5. Publish container runs `node /app/dist/server.bundle.mjs` from `/app/dist`
    </publish_flow>
 
-The `build` script runs `vite build`, which builds the frontend into `dist/` and bundles the Express server into `dist/server.bundle.cjs`.
+The `build` script runs `vite build`, which builds the frontend into `dist/` and bundles the Express server into `dist/server.bundle.mjs`.
 
 <build_critical_files>
 These files control the build pipeline. Do not modify the build pipeline to fix build errors; fix the application code or dependencies instead.
@@ -40,6 +40,6 @@ Use the **Publish Status** tool to get the logs on the publish container.
 
 Review git history to see if a recent change broke publishing.
 
-The `server.bundle.cjs` output binds to a port already in use in preview, so running it directly will hang.
+The `server.bundle.mjs` output binds to a port already in use in preview, so running it directly will hang.
 
 If the cause is unclear after one check, direct the user to contact support rather than repeatedly re-publishing.

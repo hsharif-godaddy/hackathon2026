@@ -4,7 +4,7 @@
 
 import type { Request, Response } from 'express';
 
-import { auth } from '@/lib/auth/auth';
+import { getAuth } from '@/lib/auth/auth';
 import { toWebRequest, sendWebResponse } from '@/lib/auth/express-adapter';
 
 export default async function handler(req: Request, res: Response) {
@@ -12,7 +12,7 @@ export default async function handler(req: Request, res: Response) {
   console.log(JSON.stringify({ event: 'auth.oauth-callback.begin', provider }));
 
   try {
-    const webResponse = await auth.handler(toWebRequest(req));
+    const webResponse = await getAuth().handler(toWebRequest(req));
     await sendWebResponse(webResponse, res);
 
     if (webResponse.ok || webResponse.status === 302) {

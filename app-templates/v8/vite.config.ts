@@ -33,19 +33,16 @@ function serverBundlePlugin(): Plugin {
 				bundle: true,
 				platform: "node",
 				target: "node22",
-				format: "cjs",
-				outfile: path.resolve(__dirname, "dist", "server.bundle.cjs"),
+				format: "esm",
+				outfile: path.resolve(__dirname, "dist", "server.bundle.mjs"),
 				packages: "bundle",
 				sourcemap: true,
-				// import.meta.url is empty in CJS — provide a polyfill via banner/define
 				banner: {
-					js: 'var import_meta_url = require("url").pathToFileURL(__filename).href;',
-				},
-				define: {
-					"import.meta.url": "import_meta_url",
+					js: `import { createRequire } from 'module';
+const require = createRequire(import.meta.url);`,
 				},
 			});
-			console.log("Server bundle created at dist/server.bundle.cjs");
+			console.log("Server bundle created at dist/server.bundle.mjs");
 		},
 	};
 }

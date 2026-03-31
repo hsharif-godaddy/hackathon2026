@@ -424,7 +424,7 @@ describe('GitUtils', () => {
 
     describe('includeSource option', () => {
       describe('auto-detect (when includeSource not specified)', () => {
-        it('should auto-detect dist-only when dist/server.bundle.cjs exists', async () => {
+        it('should auto-detect dist-only when dist/server.bundle.mjs exists', async () => {
           const commitHash = 'abc1234';
 
           // Flow: dist check -> bundle check (exists) -> manifest check -> mkdir -> tar (dist only)
@@ -439,7 +439,7 @@ describe('GitUtils', () => {
 
           // Verify bundle check was called
           const bundleCheckCall = mockDevSupervisor.exec.mock.calls[1][0];
-          expect(bundleCheckCall.command).toContain('server.bundle.cjs');
+          expect(bundleCheckCall.command).toContain('server.bundle.mjs');
 
           // Verify tar only archives dist/ (no exclusions)
           const tarCallArgs = mockDevSupervisor.exec.mock.calls[4][0];
@@ -447,7 +447,7 @@ describe('GitUtils', () => {
           expect(tarCallArgs.command).not.toContain('--exclude');
         });
 
-        it('should auto-detect full-source when dist/server.bundle.cjs does not exist', async () => {
+        it('should auto-detect full-source when dist/server.bundle.mjs does not exist', async () => {
           const commitHash = 'abc1234';
 
           // Flow: dist check -> bundle check (not exists) -> mkdir -> tar (full source with exclusions)
@@ -484,7 +484,7 @@ describe('GitUtils', () => {
 
           // Verify no bundle check was called (first call after dist check is manifest check)
           const secondCall = mockDevSupervisor.exec.mock.calls[1][0];
-          expect(secondCall.command).not.toContain('server.bundle.cjs');
+          expect(secondCall.command).not.toContain('server.bundle.mjs');
 
           // Verify tar only archives dist/
           const tarCallArgs = mockDevSupervisor.exec.mock.calls[3][0];
@@ -507,7 +507,7 @@ describe('GitUtils', () => {
           // Verify no bundle check was called
           expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(3);
           const allCommands = mockDevSupervisor.exec.mock.calls.map(call => call[0].command);
-          const hasBundleCheck = allCommands.some(cmd => cmd.includes('server.bundle.cjs'));
+          const hasBundleCheck = allCommands.some(cmd => cmd.includes('server.bundle.mjs'));
           expect(hasBundleCheck).toBe(false);
 
           // Verify tar archives full source with exclusions

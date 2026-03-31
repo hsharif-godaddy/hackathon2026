@@ -2,7 +2,7 @@
 
 ## Problem Statement
 
-PaaS apps that don't produce a bundled server file (`dist/server.bundle.cjs`) fail to publish with the error:
+PaaS apps that don't produce a bundled server file (`dist/server.bundle.mjs`) fail to publish with the error:
 
 ```
 package.json not found. Archive may be corrupted or invalid.
@@ -10,14 +10,14 @@ package.json not found. Archive may be corrupted or invalid.
 
 **Root Cause:** The publish archive currently contains only the `dist/` folder. Production's `build-and-run.sh` has two code paths:
 
-- **Fast path:** If `dist/server.bundle.cjs` exists, run it directly
+- **Fast path:** If `dist/server.bundle.mjs` exists, run it directly
 - **Fallback path:** If not, run a full build from source using `package.json`
 
 The fallback path fails because `package.json` and source files are not included in the archive.
 
-**Note:** The local publish container script (`container-scripts/publish/run-app.sh`) does not implement this fallback behavior — it always assumes `dist/server.bundle.cjs` exists. Full-source archives work only in production environments.
+**Note:** The local publish container script (`container-scripts/publish/run-app.sh`) does not implement this fallback behavior — it always assumes `dist/server.bundle.mjs` exists. Full-source archives work only in production environments.
 
-**Context:** [PR #1641](https://github.com/gdcorp-partners/airo-app-builder/pull/1641) introduced the dist-only archive optimization, which works well for AAB apps using the v8 template (which produces `dist/server.bundle.cjs`). However, the optimization didn't account for PaaS apps that may not produce this bundled file. This proposal addresses that gap by detecting the build output and choosing the appropriate archive strategy.
+**Context:** [PR #1641](https://github.com/gdcorp-partners/airo-app-builder/pull/1641) introduced the dist-only archive optimization, which works well for AAB apps using the v8 template (which produces `dist/server.bundle.mjs`). However, the optimization didn't account for PaaS apps that may not produce this bundled file. This proposal addresses that gap by detecting the build output and choosing the appropriate archive strategy.
 
 ## Proposed Solution
 
@@ -25,8 +25,8 @@ Implement **auto-detection** in `createArchive()` to dynamically choose the arch
 
 | Condition                        | Archive Strategy | Rationale                                            |
 | -------------------------------- | ---------------- | ---------------------------------------------------- |
-| `dist/server.bundle.cjs` exists  | `dist/` only     | Fast path works - bundled server is self-contained   |
-| `dist/server.bundle.cjs` missing | Full source      | Fallback path needs source to run `build-and-run.sh` |
+| `dist/server.bundle.mjs` exists  | `dist/` only     | Fast path works - bundled server is self-contained   |
+| `dist/server.bundle.mjs` missing | Full source      | Fallback path needs source to run `build-and-run.sh` |
 
 **Key Design Decision:** Auto-detect by default, with explicit override capability.
 
@@ -47,7 +47,7 @@ export interface ArchiveOptions extends GitCommandOptions {
   /**
    * When true, includes full source code (for apps without bundled server).
    * When false, includes only dist/ folder (for apps with bundled server).
-   * When undefined (default), auto-detects based on dist/server.bundle.cjs presence.
+   * When undefined (default), auto-detects based on dist/server.bundle.mjs presence.
    */
   includeSource?: boolean;
 }
@@ -83,7 +83,7 @@ if (options.includeSource !== undefined) {
 } else {
   // Auto-detect based on bundled server presence
   const bundleCheckResult = await this.devSupervisor!.exec({
-    command: buildShellCommand(["test", "-f", "dist/server.bundle.cjs"]),
+    command: buildShellCommand(["test", "-f", "dist/server.bundle.mjs"]),
     working_dir: "/app",
     timeout: 5,
     capture_output: true,
@@ -163,14 +163,14 @@ const archiveResult = await gitUtils.createArchive(
 
 | App Type              | Build Output              | Auto-Detected Strategy | Production Behavior                     |
 | --------------------- | ------------------------- | ---------------------- | --------------------------------------- |
-| AAB v8 template       | `dist/server.bundle.cjs`  | dist/ only             | Fast path: runs bundled server directly |
-| PaaS with bundling    | `dist/server.bundle.cjs`  | dist/ only             | Fast path: runs bundled server directly |
+| AAB v8 template       | `dist/server.bundle.mjs`  | dist/ only             | Fast path: runs bundled server directly |
+| PaaS with bundling    | `dist/server.bundle.mjs`  | dist/ only             | Fast path: runs bundled server directly |
 | PaaS without bundling | `dist/app.js` (no bundle) | Full source            | Fallback: runs `build-and-run.sh`       |
 | Legacy AAB            | No server bundle          | Full source            | Fallback: runs `build-and-run.sh`       |
 
 ## Edge Cases
 
-1. **PaaS app with custom server.bundle.cjs location** - Detection checks exact path; custom locations won't match. Fallback to full source is safe.
+1. **PaaS app with custom server.bundle.mjs location** - Detection checks exact path; custom locations won't match. Fallback to full source is safe.
 
 2. **Empty dist/ after build** - Existing validation catches this before archive creation.
 
@@ -186,8 +186,8 @@ const archiveResult = await gitUtils.createArchive(
 
 **Auto-detect tests:**
 
-1. **Auto-detect dist-only** - When `dist/server.bundle.cjs` exists, verify dist-only archive
-2. **Auto-detect full-source** - When `dist/server.bundle.cjs` missing, verify full source archive
+1. **Auto-detect dist-only** - When `dist/server.bundle.mjs` exists, verify dist-only archive
+2. **Auto-detect full-source** - When `dist/server.bundle.mjs` missing, verify full source archive
 
 **Explicit override tests:**
 
@@ -251,4 +251,4 @@ The detection adds ~10ms overhead per publish. Full source archives are larger b
 
 - [PR #1641](https://github.com/gdcorp-partners/airo-app-builder/pull/1641): Original change that introduced dist-only archives
 - Production `build-and-run.sh`: Handles both fast path and fallback scenarios
-- v8 template: Standard AAB template that produces `dist/server.bundle.cjs`
+- v8 template: Standard AAB template that produces `dist/server.bundle.mjs`

@@ -121,11 +121,32 @@ socialProviders: {
 },
 ```
 
+### Optional: Session Lifetime
+
+BetterAuth defaults: sessions expire after **7 days**, refresh window resets after **1 day** of activity. Override if the user needs shorter/longer sessions:
+
+```typescript
+session: {
+  expiresIn: 60 * 60 * 24 * 7, // 7 days
+  updateAge: 60 * 60 * 24,      // extend on activity after 1 day
+},
+```
+
+### Custom Domains
+
+`auth.ts` trusts `.airoapp.ai` subdomains by default. If the user connects a custom domain, add it to `trustedOrigins`:
+
+```typescript
+if (hostname === 'their-custom-domain.com') return [origin];
+```
+
 ---
 
 ## Configure Routes
 
 **Important:** Login should be the landing page. Home and other routes should be protected.
+
+**Built-in redirect preservation:** `ProtectedRoute` automatically saves the page a user tried to visit and restores it after login — no extra code needed. OAuth sign-in also uses this destination as the `callbackURL`.
 
 ```typescript
 // Login as default landing page (redirect unauthenticated users here)
@@ -274,5 +295,19 @@ Based on user response, wrap routes with `ProtectedRoute`:
 { path: '/about', element: <About /> },
 { path: '/pricing', element: <Pricing /> },
 ```
+
+---
+
+## Known Behaviors & Edge Cases
+
+| Situation                                | What to do                                                                                                                                                                             |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auth works in preview but 500 in publish | `getAuth()` defers `betterAuth()` construction to the first request so secrets are available — verify `BETTER_AUTH_SECRET` is set and the publish build completed successfully |
+| `BETTER_AUTH_SECRET` not set             | Auth server throws on startup — always run `requestSecrets` before starting                                                                                                            |
+| OAuth redirect goes to wrong page        | `callbackURL` is set automatically by the template from the user's intended destination                                                                                                |
+| Session check times out (30s)            | User sees a retry button — check network or if `/api/auth/get-session` route is mounted                                                                                                |
+| User connects a custom domain            | Add hostname to `trustedOrigins` in `auth.ts` — BetterAuth blocks cross-origin requests by default                                                                                     |
+| Want shorter sessions (e.g. banking)     | Add `session.expiresIn` + `session.updateAge` to `auth.ts` (see Configure auth.ts above)                                                                                               |
+| OAuth token access after login           | Use `authClient.getAccessToken({ providerId: 'google' })` — handles refresh automatically                                                                                              |
 
 ---

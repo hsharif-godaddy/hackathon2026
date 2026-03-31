@@ -77,7 +77,7 @@ export interface GitArchiveResult {
 export interface ArchiveOptions extends GitCommandOptions {
   /**
    * Controls archive content strategy:
-   * - `undefined` (default): Auto-detects based on dist/server.bundle.cjs presence
+   * - `undefined` (default): Auto-detects based on dist/server.bundle.mjs presence
    * - `true`: Force full source (for apps without bundled server)
    * - `false`: Force dist-only (for apps with bundled server)
    *
@@ -541,15 +541,15 @@ export class GitUtils {
    * The output directory will be created if it doesn't exist.
    *
    * Archive strategy is auto-detected based on build output:
-   * - If dist/server.bundle.cjs exists → dist/ only (fast path)
-   * - If dist/server.bundle.cjs missing → full source (fallback path needs source)
+   * - If dist/server.bundle.mjs exists → dist/ only (fast path)
+   * - If dist/server.bundle.mjs missing → full source (fallback path needs source)
    *
    * Auto-detection can be overridden by explicitly setting includeSource option.
    *
    * @param repoPath - Path to the git repository
    * @param commitHash - The commit hash to archive (short or full)
    * @param outputDir - Directory to store the archive (default: DIST_DIR env var or '/publish/dist'). Will be created if it doesn't exist.
-   * @param options - Archive options. If includeSource is undefined, auto-detects based on dist/server.bundle.cjs
+   * @param options - Archive options. If includeSource is undefined, auto-detects based on dist/server.bundle.mjs
    * @returns GitArchiveResult with the archive path and commit hash
    * @throws Error if dev-supervisor is not available, dist/ folder doesn't exist, or command fails
    */
@@ -605,7 +605,7 @@ export class GitUtils {
 
   /**
    * Determine whether to include full source in archive.
-   * Auto-detects based on dist/server.bundle.cjs presence if not explicitly specified.
+   * Auto-detects based on dist/server.bundle.mjs presence if not explicitly specified.
    */
   private async shouldIncludeSource(explicitValue?: boolean): Promise<boolean> {
     if (explicitValue !== undefined) {
@@ -614,7 +614,7 @@ export class GitUtils {
 
     // Auto-detect: include source if bundled server NOT found
     const bundleCheckResult = await this.devSupervisor!.exec({
-      command: buildShellCommand(['test', '-f', 'dist/server.bundle.cjs']),
+      command: buildShellCommand(['test', '-f', 'dist/server.bundle.mjs']),
       working_dir: '/app',
       timeout: 5,
       capture_output: true

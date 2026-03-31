@@ -11,7 +11,7 @@
  */
 
 import { useState, FormEvent, ReactElement } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { signIn, signUp, useSession } from '@/lib/auth/auth-client';
 
 const PROVIDER_CONFIG: Record<string, { name: string; icon: ReactElement; bg: string; hover: string }> = {
@@ -77,6 +77,10 @@ interface AuthPageProps {
 
 export default function AuthPage({ mode, providers }: AuthPageProps) {
   const { data: session, isPending, error: sessionError } = useSession();
+  const navigate = useNavigate();
+  const location = useLocation();
+  // Restore the page the user tried to visit before being redirected to login
+  const from = (location.state as { from?: Location })?.from?.pathname || '/';
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -122,7 +126,7 @@ export default function AuthPage({ mode, providers }: AuthPageProps) {
         setError(result.error.message || 'Authentication failed');
         return;
       }
-      window.location.href = '/';
+      navigate(from, { replace: true });
     } catch {
       setError('An error occurred.');
     } finally {
@@ -134,7 +138,8 @@ export default function AuthPage({ mode, providers }: AuthPageProps) {
     setError('');
     setSocialLoading(provider);
     try {
-      await signIn.social({ provider });
+      // callbackURL tells BetterAuth where to redirect after successful OAuth
+      await signIn.social({ provider, callbackURL: window.location.origin + from });
     } catch {
       const config = PROVIDER_CONFIG[provider];
       setError(`Failed to sign in with ${config?.name || provider}`);

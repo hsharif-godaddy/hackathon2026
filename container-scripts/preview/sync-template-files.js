@@ -128,7 +128,8 @@ const SYNC_MANIFEST = [
       '4bec07f7c9c3412478c08afd333ece87', // 08a99145 - errorInterceptor removed (broken)
       'd26b3f1349b07a524c7df4df29c55883', // 4839907 - added watch.ignored
       '29ca0ea18a635f996d4716ad1d0f43b3', // Before closeBundle plugin and chunk splitting
-      '385752a8951868d101668ae3f5c9637b'  // fd075bd8 - closeBundle plugin, before resolve.dedupe
+      '385752a8951868d101668ae3f5c9637b', // fd075bd8 - closeBundle plugin, before resolve.dedupe
+      '23983daa85eb1afd36bd4e4c818f0d84'  // 13898857b - resolve.dedupe, before ESM bundle (still CJS)
     ],
     force: false
   },
@@ -157,9 +158,9 @@ const MIGRATIONS = [
       // 1. vite.config.ts was synced (contains the replacement serverBundlePlugin)
       // 2. src/server/configure.js was synced (uses import.meta.url for __dirname)
       // The old bundle.js patched express.static("client") → __dirname-based path at
-      // build time. The new configure.js resolves paths via import.meta.url instead,
-      // and serverBundlePlugin polyfills import.meta.url in CJS. Without both, removing
-      // bundle.js would break static file serving in production.
+      // build time. The new configure.js resolves paths via import.meta.url instead
+      // (works natively in the ESM bundle). Without both, removing bundle.js would
+      // break static file serving in production.
       const required = ['vite.config.ts', 'src/server/configure.js'];
       const missing = required.filter(f => !syncedFiles.has(f));
       if (missing.length > 0) {

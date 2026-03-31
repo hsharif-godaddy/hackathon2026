@@ -76,12 +76,23 @@ cd "$APP_DIR" || error_exit "Failed to change directory to $APP_DIR"
 log "Changed to app directory: $APP_DIR"
 
 # Detect if archive contains pre-built artifacts or needs to be built
-if [[ -f "${APP_DIR}/dist/server.bundle.cjs" ]]; then
-    log "Detected pre-built artifacts (server.bundle.cjs) - using fast path"
+# Check for ESM bundle first (current), then fall back to CJS (legacy archives)
+if [[ -f "${APP_DIR}/dist/server.bundle.mjs" ]]; then
+    log "Detected pre-built artifacts (server.bundle.mjs) - using fast path"
 
     load_customer_environment_variables
 
     # Create .env file and start application
+    create_env_file "${APP_DIR}/dist"
+
+    log "Starting application script ./server.bundle.mjs"
+    cd "${APP_DIR}/dist" || error_exit "Failed to change to directory: ${APP_DIR}/dist"
+    exec /usr/local/bin/node "${APP_DIR}/dist/server.bundle.mjs"
+elif [[ -f "${APP_DIR}/dist/server.bundle.cjs" ]]; then
+    log "Detected pre-built artifacts (server.bundle.cjs) - using legacy fast path"
+
+    load_customer_environment_variables
+
     create_env_file "${APP_DIR}/dist"
 
     log "Starting application script ./server.bundle.cjs"
