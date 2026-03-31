@@ -45,8 +45,8 @@ func newTestMiddleware(t *testing.T, claims *auth.JWTClaims) http.Handler {
 	return mw.Wrap(inner)
 }
 
-// findAuthCookie returns the active auth_idp cookie from the recorder's Set-Cookie headers.
-// Skips deletion entries (MaxAge < 0) so it returns the real partitioned cookie.
+// findAuthCookie returns the first active auth_idp cookie from the recorder's Set-Cookie headers.
+// Skips deletion entries (MaxAge < 0) so it returns the real cookie.
 func findAuthCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
 	t.Helper()
 	for _, c := range rec.Result().Cookies() {
@@ -55,6 +55,18 @@ func findAuthCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
 		}
 	}
 	return nil
+}
+
+// findAuthCookies returns all active auth_idp cookies (MaxAge >= 0).
+func findAuthCookies(t *testing.T, rec *httptest.ResponseRecorder) []*http.Cookie {
+	t.Helper()
+	var cookies []*http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "auth_idp" && c.MaxAge >= 0 {
+			cookies = append(cookies, c)
+		}
+	}
+	return cookies
 }
 
 // findAuthDeletionCookie returns the auth_idp deletion cookie (MaxAge < 0).
@@ -86,31 +98,45 @@ func TestAuthCookie_SetOnAuthorizationHeader(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 
-	c := findAuthCookie(t, rec)
-	if c == nil {
-		t.Fatal("auth_idp cookie not set")
+	cookies := findAuthCookies(t, rec)
+	if len(cookies) != 2 {
+		t.Fatalf("expected 2 active auth_idp cookies (unpartitioned + partitioned), got %d", len(cookies))
 	}
 
-	if !c.HttpOnly {
-		t.Error("expected HttpOnly to be true")
+	// First cookie: unpartitioned (for top-level navigation / PaaS flow)
+	unpart := cookies[0]
+	if !unpart.HttpOnly {
+		t.Error("unpartitioned cookie: expected HttpOnly to be true")
 	}
-	if !c.Secure {
-		t.Error("expected Secure to be true")
+	if !unpart.Secure {
+		t.Error("unpartitioned cookie: expected Secure to be true")
 	}
-	if c.SameSite != http.SameSiteNoneMode {
-		t.Errorf("expected SameSite=None, got %v", c.SameSite)
+	if unpart.SameSite != http.SameSiteLaxMode {
+		t.Errorf("unpartitioned cookie: expected SameSite=Lax, got %v", unpart.SameSite)
 	}
-	if !c.Partitioned {
-		t.Error("expected Partitioned to be true")
+	if unpart.Partitioned {
+		t.Error("unpartitioned cookie: expected Partitioned to be false")
 	}
 
-	// Verify that a deletion cookie is also sent to clear old unpartitioned cookies
+	// Second cookie: partitioned (for iframe embedding / AAB flow)
+	part := cookies[1]
+	if !part.HttpOnly {
+		t.Error("partitioned cookie: expected HttpOnly to be true")
+	}
+	if !part.Secure {
+		t.Error("partitioned cookie: expected Secure to be true")
+	}
+	if part.SameSite != http.SameSiteNoneMode {
+		t.Errorf("partitioned cookie: expected SameSite=None, got %v", part.SameSite)
+	}
+	if !part.Partitioned {
+		t.Error("partitioned cookie: expected Partitioned to be true")
+	}
+
+	// No deletion cookie should exist — we now set both variants
 	del := findAuthDeletionCookie(t, rec)
-	if del == nil {
-		t.Fatal("auth_idp deletion cookie not set (needed to clear old unpartitioned cookie)")
-	}
-	if del.Partitioned {
-		t.Error("deletion cookie must NOT be Partitioned (it targets the old unpartitioned cookie)")
+	if del != nil {
+		t.Error("auth_idp deletion cookie should NOT be set (both variants are now set directly)")
 	}
 }
 
@@ -233,7 +259,7 @@ func newShareMiddleware(t *testing.T, siteID string, sv *auth.ShareValidator) ht
 	return mw.Wrap(inner)
 }
 
-// findShareCookie returns the airo_share_token cookie from response, skipping deletion entries.
+// findShareCookie returns the first airo_share_token cookie from response, skipping deletion entries.
 func findShareCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
 	t.Helper()
 	for _, c := range rec.Result().Cookies() {
@@ -242,6 +268,18 @@ func findShareCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie 
 		}
 	}
 	return nil
+}
+
+// findShareCookies returns all active airo_share_token cookies.
+func findShareCookies(t *testing.T, rec *httptest.ResponseRecorder) []*http.Cookie {
+	t.Helper()
+	var cookies []*http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "airo_share_token" && c.MaxAge >= 0 && c.Value != "" {
+			cookies = append(cookies, c)
+		}
+	}
+	return cookies
 }
 
 // findShareDeletionCookies returns all airo_share_token deletion cookies (empty value or MaxAge < 0).
@@ -270,32 +308,48 @@ func TestShareCookie_SetOnQueryParam(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 
-	c := findShareCookie(t, rec)
-	if c == nil {
-		t.Fatal("airo_share_token cookie not set")
+	cookies := findShareCookies(t, rec)
+	if len(cookies) != 2 {
+		t.Fatalf("expected 2 active airo_share_token cookies (unpartitioned + partitioned), got %d", len(cookies))
 	}
 
-	if !c.HttpOnly {
-		t.Error("expected HttpOnly to be true")
+	// First cookie: unpartitioned (for top-level navigation / PaaS flow)
+	unpart := cookies[0]
+	if !unpart.HttpOnly {
+		t.Error("unpartitioned cookie: expected HttpOnly to be true")
 	}
-	if !c.Secure {
-		t.Error("expected Secure to be true")
+	if !unpart.Secure {
+		t.Error("unpartitioned cookie: expected Secure to be true")
 	}
-	if c.SameSite != http.SameSiteNoneMode {
-		t.Errorf("expected SameSite=None, got %v", c.SameSite)
+	if unpart.SameSite != http.SameSiteLaxMode {
+		t.Errorf("unpartitioned cookie: expected SameSite=Lax, got %v", unpart.SameSite)
 	}
-	if !c.Partitioned {
-		t.Error("expected Partitioned to be true")
+	if unpart.Partitioned {
+		t.Error("unpartitioned cookie: expected Partitioned to be false")
 	}
 
-	// Verify that a deletion cookie is also sent to clear old unpartitioned cookies
+	// Second cookie: partitioned (for iframe embedding / AAB flow)
+	part := cookies[1]
+	if !part.HttpOnly {
+		t.Error("partitioned cookie: expected HttpOnly to be true")
+	}
+	if !part.Secure {
+		t.Error("partitioned cookie: expected Secure to be true")
+	}
+	if part.SameSite != http.SameSiteNoneMode {
+		t.Errorf("partitioned cookie: expected SameSite=None, got %v", part.SameSite)
+	}
+	if !part.Partitioned {
+		t.Error("partitioned cookie: expected Partitioned to be true")
+	}
+
+	// No deletion cookie should exist — we now set both variants
 	delCookies := findShareDeletionCookies(t, rec)
-	if len(delCookies) == 0 {
-		t.Fatal("airo_share_token deletion cookie not set (needed to clear old unpartitioned cookie)")
-	}
-	del := delCookies[0]
-	if del.Partitioned {
-		t.Error("deletion cookie must NOT be Partitioned (it targets the old unpartitioned cookie)")
+	if len(delCookies) != 0 {
+		t.Errorf(
+			"airo_share_token deletion cookies should NOT be set (both variants are now set directly), got %d",
+			len(delCookies),
+		)
 	}
 }
 

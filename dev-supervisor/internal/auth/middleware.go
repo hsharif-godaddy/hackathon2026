@@ -129,34 +129,31 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 		// So we need to set a cookie on the preview app's domain when valid auth is received
 		if tokenFromHeader != "" {
 			// Only set cookie if token came from Authorization header (not from cookie itself to avoid loops)
-			// SameSite=None is required for cross-site iframe loads (builder on .dev-godaddy.com, preview on localhost)
-			// Partitioned (CHIPS) ensures the cookie works even when third-party cookies are blocked
-			// (e.g. incognito mode) by scoping it to the (top-level site, embedded site) pair
+			// SameSite=None (partitioned) is required for cross-site iframe loads (builder on .dev-godaddy.com, preview on localhost)
 			maxAge := CookieMaxAgeFromClaims(result.Claims)
 
-			// Delete the old unpartitioned cookie to prevent conflicts.
-			// Chrome treats Partitioned and non-Partitioned cookies with the same name as
-			// separate entries. If both exist, r.Cookie() returns the older unpartitioned one
-			// first (per RFC 6265 ordering), which may hold a stale token and fail validation.
+			// Unpartitioned cookie for top-level navigation (PaaS: user opens preview URL directly).
 			http.SetCookie(w, &http.Cookie{
 				Name:     "auth_idp",
-				Value:    "",
+				Value:    token,
 				Path:     "/",
-				MaxAge:   -1, // Delete
 				HttpOnly: true,
 				Secure:   true,
-				SameSite: http.SameSiteNoneMode,
+				SameSite: http.SameSiteLaxMode,
+				MaxAge:   maxAge,
 			})
 
+			// Partitioned (CHIPS) cookie for iframe embedding (AAB: builder embeds preview).
+			// Works even when third-party cookies are blocked (e.g. incognito).
 			http.SetCookie(w, &http.Cookie{
 				Name:        "auth_idp",
 				Value:       token,
 				Path:        "/",
 				HttpOnly:    true,
 				Secure:      true,
-				SameSite:    http.SameSiteNoneMode, // None required for cross-site iframe navigation
+				SameSite:    http.SameSiteNoneMode,
 				MaxAge:      maxAge,
-				Partitioned: true, // CHIPS: works with third-party cookies disabled
+				Partitioned: true,
 			})
 		}
 
@@ -258,28 +255,26 @@ func (m *JWTMiddleware) handleShareToken(
 	if source == "query_param" {
 		expiresAt := m.config.ShareValidator.GetTokenExpiration(shareToken)
 
-		// Delete the old unpartitioned cookie to prevent conflicts.
-		// Chrome treats Partitioned and non-Partitioned cookies with the same name as
-		// separate entries. If both exist, r.Cookie() returns the older unpartitioned one
-		// first (per RFC 6265 ordering), which may hold a stale token.
+		// Unpartitioned cookie for top-level navigation (PaaS flow).
 		http.SetCookie(w, &http.Cookie{
 			Name:     "airo_share_token",
-			Value:    "",
+			Value:    shareToken,
 			Path:     "/",
-			MaxAge:   -1, // Delete
 			HttpOnly: true,
 			Secure:   true,
-			SameSite: http.SameSiteNoneMode,
+			SameSite: http.SameSiteLaxMode,
+			Expires:  expiresAt,
 		})
 
+		// Partitioned (CHIPS) cookie for iframe embedding (AAB flow).
 		http.SetCookie(w, &http.Cookie{
 			Name:        "airo_share_token",
 			Value:       shareToken,
 			Path:        "/",
 			HttpOnly:    true,
 			Secure:      true,
-			SameSite:    http.SameSiteNoneMode, // None required for cross-site iframe navigation
-			Partitioned: true,                  // CHIPS: works with third-party cookies disabled
+			SameSite:    http.SameSiteNoneMode,
+			Partitioned: true,
 			Expires:     expiresAt,
 		})
 	}
