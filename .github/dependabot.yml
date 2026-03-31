@@ -9,6 +9,11 @@ registries:
 
 # npm updates use the JFrog virtual registry above (replaces-base). Requires Dependabot
 # access to that registry (e.g. JFrog OIDC for GitHub). Schedule times are UTC.
+#
+# open-pull-requests-limit: 0 turns off scheduled version-update PRs (patch/minor bumps).
+# Dependabot security updates (CVE-driven PRs) are controlled under repo Settings → Code
+# security; keep them enabled there if you still want those. This file stays so private
+# npm (registries) and per-ecosystem config apply when Dependabot opens a PR.
 
 updates:
   # Root workspace
@@ -23,7 +28,7 @@ updates:
           - "version-update:semver-major"
     schedule:
       interval: "daily"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 0
     groups:
       # Group AWS SDK updates together
       aws-sdk:
@@ -64,7 +69,38 @@ updates:
         patterns:
           - "ai"
           - "@ai-sdk/*"
-  
+
+  # app-templates: standalone npm (excluded from pnpm workspace; see pnpm-workspace.yaml)
+  - package-ecosystem: "npm"
+    directory: "/app-templates/v8"
+    registries:
+      - jfrog-npm
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 0
+    groups:
+      code-quality:
+        patterns:
+          - "eslint"
+          - "@typescript-eslint/*"
+          - "prettier"
+          - "typescript"
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      testing:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+          - "@testing-library/*"
+
   # Monitor dev-supervisor
   - package-ecosystem: "gomod"
     directory: "/dev-supervisor"
@@ -74,6 +110,7 @@ updates:
           - "version-update:semver-major"
     schedule:
       interval: "daily"
+    open-pull-requests-limit: 0
 
   # Monitor go-agent
   - package-ecosystem: "gomod"
@@ -84,6 +121,7 @@ updates:
           - "version-update:semver-major"
     schedule:
       interval: "daily"
+    open-pull-requests-limit: 0
 
   # Monitor local-control-plane
   - package-ecosystem: "gomod"
@@ -94,6 +132,7 @@ updates:
           - "version-update:semver-major"
     schedule:
       interval: "daily"
+    open-pull-requests-limit: 0
 
   # Monitor knowledge-service
   - package-ecosystem: "gomod"
@@ -104,6 +143,7 @@ updates:
           - "version-update:semver-major"
     schedule:
       interval: "daily"
+    open-pull-requests-limit: 0
 
   # Monitor image-search-service
   - package-ecosystem: "gomod"
@@ -114,6 +154,7 @@ updates:
           - "version-update:semver-major"
     schedule:
       interval: "daily"
+    open-pull-requests-limit: 0
 
   # Monitor budget-service
   - package-ecosystem: "gomod"
@@ -124,6 +165,7 @@ updates:
           - "version-update:semver-major"
     schedule:
       interval: "daily"
+    open-pull-requests-limit: 0
 
   # Monitor packages/go-auth
   - package-ecosystem: "gomod"
@@ -134,6 +176,7 @@ updates:
           - "version-update:semver-major"
     schedule:
       interval: "daily"
+    open-pull-requests-limit: 0
 
   # Monitor GitHub Actions
   - package-ecosystem: "github-actions"
@@ -144,4 +187,4 @@ updates:
           - "version-update:semver-major"
     schedule:
       interval: "daily"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 0
