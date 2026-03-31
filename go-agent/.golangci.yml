@@ -155,3 +155,9 @@ linters:
           - goconst
           - gosec
           - noctx
+      # The Anthropic SDK uses named string types (e.g. Model) that require
+      # explicit conversion from string. unconvert flags these as unnecessary
+      # on some Go versions (false positive).
+      - path: "internal/anthropic/"
+        linters:
+          - unconvert
