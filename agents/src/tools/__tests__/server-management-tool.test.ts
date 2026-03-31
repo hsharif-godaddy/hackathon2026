@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { ServerManagementTool } from '../server-management-tool.js';
+import { ServerManagementTool, HEALTH_POLL_INTERVAL_MS, HEALTH_POLL_MAX_ATTEMPTS } from '../server-management-tool.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import type { DevSupervisorClient } from '../../services/DevSupervisorClient.js';
 
@@ -19,6 +19,7 @@ describe('ServerManagementTool Unit Tests', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
 
     // Mock DevSupervisorClient
     mockDevSupervisor = {
@@ -37,6 +38,7 @@ describe('ServerManagementTool Unit Tests', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -163,24 +165,35 @@ describe('ServerManagementTool Unit Tests', () => {
   });
 
   describe('restartServer', () => {
-    it('should successfully restart the server', async () => {
-      mockDevSupervisor.restartProcess.mockResolvedValue(true);
+    it('should successfully restart the server when process reaches running state', async () => {
+      mockDevSupervisor.restartProcess.mockResolvedValue({ success: true });
+      mockDevSupervisor.getProcessStatus.mockResolvedValue({
+        pid: 12345,
+        command: 'npm start',
+        state: 'running',
+        start_time: new Date().toISOString(),
+      });
 
+      // First poll is immediate (no sleep), so no timer advance needed
       const result = await serverTool.restartServer({ reason: 'API changes' }, 'test-app');
 
       expect(result.success).toBe(true);
       expect(result.appId).toBe('test-app');
       expect(result.message).toContain('Server restarted successfully');
       expect(mockDevSupervisor.restartProcess).toHaveBeenCalledWith({ graceful: true });
+      expect(mockDevSupervisor.getProcessStatus).toHaveBeenCalled();
     });
 
-    it('should handle restart failures', async () => {
-      mockDevSupervisor.restartProcess.mockResolvedValue(false);
+    it('should handle restart failures with detailed error', async () => {
+      mockDevSupervisor.restartProcess.mockResolvedValue({
+        success: false,
+        error: 'HTTP 400: restart_failed: port 3000 still in use',
+      });
 
       const result = await serverTool.restartServer({ reason: 'Testing' }, 'test-app');
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Server restart operation failed');
+      expect(result.error).toBe('HTTP 400: restart_failed: port 3000 still in use');
     });
 
     it('should return not_found when app info is not available', async () => {
@@ -199,6 +212,75 @@ describe('ServerManagementTool Unit Tests', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Socket connection failed');
+    });
+
+    it('should wait for process to reach running state after polling through starting state', async () => {
+      mockDevSupervisor.restartProcess.mockResolvedValue({ success: true });
+      // First poll (immediate): starting, second poll (after sleep): running
+      mockDevSupervisor.getProcessStatus
+        .mockResolvedValueOnce({ state: 'starting', pid: 0, command: 'npm start', start_time: '' })
+        .mockResolvedValueOnce({ state: 'running', pid: 99999, command: 'npm start', start_time: new Date().toISOString() });
+
+      const promise = serverTool.restartServer({ reason: 'Testing' }, 'test-app');
+      await vi.advanceTimersByTimeAsync(HEALTH_POLL_INTERVAL_MS); // second poll after sleep
+      const result = await promise;
+
+      expect(result.success).toBe(true);
+      expect(mockDevSupervisor.getProcessStatus).toHaveBeenCalledTimes(2);
+    });
+
+    it('should return failure if process enters error state after restart', async () => {
+      mockDevSupervisor.restartProcess.mockResolvedValue({ success: true });
+      mockDevSupervisor.getProcessStatus.mockResolvedValue({
+        state: 'error',
+        pid: 0,
+        command: 'npm start',
+        start_time: '',
+        error: 'EADDRINUSE: port 3000 already in use',
+      });
+
+      // First poll is immediate - returns error state right away
+      const result = await serverTool.restartServer({ reason: 'Testing' }, 'test-app');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('EADDRINUSE: port 3000 already in use');
+      expect(result.message).toContain('failed to become healthy');
+    });
+
+    it('should return failure if health verification times out', async () => {
+      mockDevSupervisor.restartProcess.mockResolvedValue({ success: true });
+      // Always return 'starting' - never reaches 'running'
+      mockDevSupervisor.getProcessStatus.mockResolvedValue({
+        state: 'starting',
+        pid: 0,
+        command: 'npm start',
+        start_time: '',
+      });
+
+      const promise = serverTool.restartServer({ reason: 'Testing' }, 'test-app');
+      // First poll is immediate, remaining (HEALTH_POLL_MAX_ATTEMPTS - 1) polls need timer advances
+      for (let i = 1; i < HEALTH_POLL_MAX_ATTEMPTS; i++) {
+        await vi.advanceTimersByTimeAsync(HEALTH_POLL_INTERVAL_MS);
+      }
+      const result = await promise;
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Timeout waiting for process to reach running state');
+    });
+
+    it('should tolerate transient poll errors and continue polling', async () => {
+      mockDevSupervisor.restartProcess.mockResolvedValue({ success: true });
+      // First poll (immediate): transient error, second poll (after sleep): running
+      mockDevSupervisor.getProcessStatus
+        .mockRejectedValueOnce(new Error('Temporary connection error'))
+        .mockResolvedValueOnce({ state: 'running', pid: 12345, command: 'npm start', start_time: new Date().toISOString() });
+
+      const promise = serverTool.restartServer({ reason: 'Testing' }, 'test-app');
+      await vi.advanceTimersByTimeAsync(HEALTH_POLL_INTERVAL_MS); // second poll after sleep
+      const result = await promise;
+
+      expect(result.success).toBe(true);
+      expect(mockDevSupervisor.getProcessStatus).toHaveBeenCalledTimes(2);
     });
   });
 });

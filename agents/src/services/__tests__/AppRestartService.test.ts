@@ -261,7 +261,7 @@ describe('AppRestartService', () => {
 
   describe('restartDevServer', () => {
     it('should restart without command using graceful restart', async () => {
-      mockDevSupervisor.restartProcess.mockResolvedValue(true);
+      mockDevSupervisor.restartProcess.mockResolvedValue({ success: true });
 
       const result = await service.restartDevServer(testAppId);
 
@@ -303,12 +303,12 @@ describe('AppRestartService', () => {
     });
 
     it('should return error when restart fails', async () => {
-      mockDevSupervisor.restartProcess.mockResolvedValue(false);
+      mockDevSupervisor.restartProcess.mockResolvedValue({ success: false, error: 'HTTP 400: restart_failed: port 3000 still in use' });
 
       const result = await service.restartDevServer(testAppId);
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('Failed to restart dev server');
+      expect(result.error).toBe('HTTP 400: restart_failed: port 3000 still in use');
     });
 
     it('should return error when startProcess returns error state', async () => {

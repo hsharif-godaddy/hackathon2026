@@ -122,7 +122,7 @@ describe('ProjectImportService', () => {
       mockDevSupervisor = {
         exec: vi.fn(),
         stopProcess: vi.fn().mockResolvedValue(true),
-        restartProcess: vi.fn().mockResolvedValue(true),
+        restartProcess: vi.fn().mockResolvedValue({ success: true }),
         startProcess: vi.fn().mockResolvedValue({ state: 'running' }),
       };
 

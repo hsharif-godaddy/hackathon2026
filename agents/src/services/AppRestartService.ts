@@ -454,11 +454,12 @@ export class AppRestartService {
         return { success: true };
       }
 
-      const success = await devSupervisor.restartProcess({ graceful: true });
+      const restartResult = await devSupervisor.restartProcess({ graceful: true });
 
-      const result: { success: boolean; error?: string } = { success };
-      if (!success) result.error = 'Failed to restart dev server';
-      return result;
+      if (!restartResult.success) {
+        return { success: false, error: restartResult.error || 'Failed to restart dev server' };
+      }
+      return { success: true };
     } catch (error) {
       return {
         success: false,

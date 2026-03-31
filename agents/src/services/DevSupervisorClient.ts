@@ -6,6 +6,9 @@ import { getErrorMessage } from '../utils/error.js';
 import { validateHostPort } from '../utils/network-validation.js';
 import { buildCurlCommand } from '../utils/command-builder.js';
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const RESTART_REQUEST_TIMEOUT_MS = 60_000;
+
 export interface ExecOptions {
   /** The command to execute */
   command: string;
@@ -70,6 +73,13 @@ export interface ProcessStopOptions {
 export interface ProcessRestartOptions {
   /** Graceful restart (default: true) */
   graceful?: boolean;
+}
+
+export interface RestartResult {
+  /** Whether the restart succeeded */
+  success: boolean;
+  /** Error message if restart failed */
+  error?: string;
 }
 
 export interface LogOptions {
@@ -366,12 +376,13 @@ export class DevSupervisorClient {
     });
 
     try {
+      const execTimeoutSec = options.timeout || 30;
       const response = await this.makeRequest('POST', '/exec', {
         command: options.command,
         working_dir: options.working_dir,
-        timeout: options.timeout || 30,
+        timeout: execTimeoutSec,
         capture_output: options.capture_output !== false
-      });
+      }, (execTimeoutSec + 5) * 1000);
 
       // Log timeout separately from success for better observability
       if (response.timed_out) {
@@ -474,7 +485,7 @@ export class DevSupervisorClient {
   /**
    * Restart the current process
    */
-  async restartProcess(options: ProcessRestartOptions = {}): Promise<boolean> {
+  async restartProcess(options: ProcessRestartOptions = {}): Promise<RestartResult> {
     this.logger.info('dev_supervisor.process.restart.begin', {
       graceful: options.graceful
     });
@@ -482,15 +493,16 @@ export class DevSupervisorClient {
     try {
       await this.makeRequest('POST', '/process/restart', {
         graceful: options.graceful !== false
-      });
+      }, RESTART_REQUEST_TIMEOUT_MS);
 
       this.logger.info('dev_supervisor.process.restart.success', {});
-      return true;
+      return { success: true };
     } catch (error) {
+      const errorMessage = getErrorMessage(error);
       this.logger.error('dev_supervisor.process.restart.failure', {
-        error: getErrorMessage(error)
+        error: errorMessage
       });
-      return false;
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -669,12 +681,13 @@ export class DevSupervisorClient {
     });
 
     try {
+      const healthTimeoutSec = request.healthTimeoutSeconds || 60;
       const response = await this.makeRequest('POST', '/publish', {
         commitHash: request.commitHash,
         force: request.force || false,
         waitForHealthy: request.waitForHealthy || false,
-        healthTimeoutSeconds: request.healthTimeoutSeconds || 60
-      });
+        healthTimeoutSeconds: healthTimeoutSec
+      }, request.waitForHealthy ? (healthTimeoutSec + 30) * 1000 : undefined);
 
       this.logger.info('dev_supervisor.publish.success', {
         commitHash: request.commitHash,
@@ -788,7 +801,7 @@ export class DevSupervisorClient {
   async executeSetup(): Promise<SetupExecuteResponse> {
     this.logger.info('dev_supervisor.setup_execute.begin');
     try {
-      const response = await this.makeRequest('POST', '/setup/execute');
+      const response = await this.makeRequest('POST', '/setup/execute', undefined, 5 * 60 * 1000);
       this.logger.info('dev_supervisor.setup_execute.success', {
         status: response.status
       });
@@ -804,7 +817,7 @@ export class DevSupervisorClient {
   /**
    * Make HTTP request to dev-supervisor over Unix socket or TCP
    */
-  private makeRequest(method: string, path: string, data?: any): Promise<any> {
+  private makeRequest(method: string, path: string, data?: any, timeoutMs?: number): Promise<any> {
     return new Promise((resolve, reject) => {
       let options: http.RequestOptions;
 
@@ -813,7 +826,7 @@ export class DevSupervisorClient {
         const url = new URL(this.connectionPath);
         const port = parseInt(url.port) || 8080;
         const host = url.hostname || 'localhost';
-        
+
         options = {
           hostname: host,
           port: port,
@@ -837,15 +850,16 @@ export class DevSupervisorClient {
 
       const req = http.request(options, (res) => {
         let body = '';
-        
+
         res.on('data', (chunk) => {
           body += chunk;
         });
-        
+
         res.on('end', () => {
+          clearTimeout(timer);
           try {
             const response = body ? JSON.parse(body) : {};
-            
+
             if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
               resolve(response);
             } else {
@@ -859,6 +873,7 @@ export class DevSupervisorClient {
       });
 
       req.on('error', (error) => {
+        clearTimeout(timer);
         if ((error as any).code === 'ENOENT') {
           reject(new Error(`dev-supervisor not available at ${this.connectionPath}`));
         } else if ((error as any).code === 'ECONNREFUSED') {
@@ -868,10 +883,15 @@ export class DevSupervisorClient {
         }
       });
 
+      const timeout = timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+      const timer = setTimeout(() => {
+        req.destroy(new Error(`Request timeout after ${timeout}ms: ${method} ${path}`));
+      }, timeout);
+
       if (data) {
         req.write(JSON.stringify(data));
       }
-      
+
       req.end();
     });
   }

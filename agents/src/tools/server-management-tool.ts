@@ -1,6 +1,10 @@
 import { Logger } from '../logging/index.js';
 import { toolServerHealthEvents } from '../logging/events/index.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import type { DevSupervisorClient } from '../services/DevSupervisorClient.js';
+
+export const HEALTH_POLL_INTERVAL_MS = 2_000;
+export const HEALTH_POLL_MAX_ATTEMPTS = 15; // ~30s of polling; wall-clock may exceed this if individual status requests are slow
 
 export interface RestartServerOptions {
   /** Optional reason for restart (for logging) */
@@ -159,6 +163,57 @@ export class ServerManagementTool {
   }
 
   /**
+   * Poll dev supervisor until the process reaches a terminal state after restart.
+   */
+  private async waitForProcessRunning(
+    devSupervisor: DevSupervisorClient,
+    appId: string,
+  ): Promise<{ running: boolean; error?: string }> {
+    for (let attempt = 0; attempt < HEALTH_POLL_MAX_ATTEMPTS; attempt++) {
+      if (attempt > 0) {
+        await new Promise(resolve => setTimeout(resolve, HEALTH_POLL_INTERVAL_MS));
+      }
+
+      try {
+        const processInfo = await devSupervisor.getProcessStatus();
+
+        if (processInfo.state === 'running') {
+          return { running: true };
+        }
+
+        if (processInfo.state === 'error' || processInfo.state === 'stopped') {
+          this.logger.info('server.restart.health_poll', {
+            appId,
+            attempt: attempt + 1,
+            state: processInfo.state,
+            error: processInfo.error,
+          });
+          return {
+            running: false,
+            error: processInfo.error || `Process entered ${processInfo.state} state after restart`,
+          };
+        }
+
+        // 'starting' or 'stopping' - keep polling
+        this.logger.info('server.restart.health_poll', {
+          appId,
+          attempt: attempt + 1,
+          state: processInfo.state,
+        });
+      } catch (error) {
+        // Transient poll error - log and keep trying
+        this.logger.warn('server.restart.health_poll_error', {
+          appId,
+          attempt: attempt + 1,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
+
+    return { running: false, error: 'Timeout waiting for process to reach running state' };
+  }
+
+  /**
    * Restart the development server for a specific app via dev supervisor
    */
   async restartServer(options: RestartServerOptions, appId: string): Promise<RestartServerResult> {
@@ -190,39 +245,61 @@ export class ServerManagementTool {
       const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
       if (devSupervisor) {
         try {
-          // Use built-in restart process API
-          const restarted = await devSupervisor.restartProcess({ graceful: true });
-          
-          if (restarted) {
-            toolServerHealthEvents.restart(this.logger, {
-              toolName: 'server-management-tool',
-              appId,
-              port: appInfo.port,
-              isHealthy: true,
-            });
-            this.logger.info('server.restart.success', {
-              appId,
-              reason,
-              graceful: true,
-            });
-            return {
-              success: true,
-              appId,
-              message: `Server restarted successfully for app ${appId}`,
-            };
-          } else {
+          const restartResult = await devSupervisor.restartProcess({ graceful: true });
+
+          if (!restartResult.success) {
             this.logger.error('server.restart.failed', {
               appId,
               reason,
-              error: 'Server restart operation failed',
+              error: restartResult.error,
             });
             return {
               success: false,
               appId,
               message: `Failed to restart server for app ${appId}`,
-              error: 'Server restart operation failed',
+              error: restartResult.error || 'Server restart operation failed',
             };
           }
+
+          // Verify the process actually reaches running state
+          const health = await this.waitForProcessRunning(devSupervisor, appId);
+
+          if (!health.running) {
+            this.logger.error('server.restart.health_failed', {
+              appId,
+              reason,
+              error: health.error,
+            });
+            toolServerHealthEvents.restart(this.logger, {
+              toolName: 'server-management-tool',
+              appId,
+              port: appInfo.port,
+              isHealthy: false,
+            });
+            return {
+              success: false,
+              appId,
+              message: `Server restart initiated but process failed to become healthy for app ${appId}`,
+              error: health.error,
+            };
+          }
+
+          toolServerHealthEvents.restart(this.logger, {
+            toolName: 'server-management-tool',
+            appId,
+            port: appInfo.port,
+            isHealthy: true,
+          });
+          this.logger.info('server.restart.success', {
+            appId,
+            reason,
+            graceful: true,
+          });
+          return {
+            success: true,
+            appId,
+            message: `Server restarted successfully for app ${appId}`,
+          };
         } catch (error) {
           this.logger.error('server.restart.supervisor_error', {
             appId,
