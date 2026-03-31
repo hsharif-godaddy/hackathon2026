@@ -13,7 +13,7 @@ on:
           - "dev-private-ecs"
           - "test"
 
-run-name: "[Env: ${{ inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
+run-name: "[PROXY - ${{ inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
 
 permissions:
   id-token: write # required for artifactory token login
@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   continuous-integration:
-    name: "[Env: ${{ inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }}"
+    name: "[PROXY - ${{ inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }}"
     runs-on:
       labels:
         - airo-cicd-runners

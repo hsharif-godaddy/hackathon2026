@@ -10,7 +10,11 @@ on:
         type: choice
         options:
           - "app"
+          - "blog"
           - "budget-service"
+          - "debug-console"
+          - "image-search-service"
+          - "knowledge-service"
           - "proxy"
       environment:
         description: "Environment to promote to"
@@ -18,9 +22,9 @@ on:
         default: "test"
         type: choice
         options:
-          - "dev-private-ecs"
+          - "dev-private"
           - "test"
-          - "prod-ecs"
+          - "prod"
       artifact_id:
         description: "Artifact ID to promote (numeric only, from Katana UI)"
         required: true
@@ -44,13 +48,82 @@ jobs:
 
     steps:
       - name: Validate Artifact ID
+        env:
+          ARTIFACT_ID: ${{ inputs.artifact_id }}
         run: |
-          if ! [[ "${{ inputs.artifact_id }}" =~ ^[0-9]+$ ]]; then
+          if ! [[ "$ARTIFACT_ID" =~ ^[0-9]+$ ]]; then
             echo "❌ Error: Artifact ID must be numeric only"
-            echo "Provided value: ${{ inputs.artifact_id }}"
+            echo "Provided value: $ARTIFACT_ID"
             exit 1
           fi
-          echo "✅ Artifact ID validation passed: ${{ inputs.artifact_id }}"
+          echo "✅ Artifact ID validation passed: $ARTIFACT_ID"
+
+      - name: Get Component Specific Environment
+        id: resolve
+        env:
+          COMPONENT: ${{ inputs.component }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          COMPONENT_MAP: >-
+            {
+              "app": {
+                "dev-private": "dev-private-ecs",
+                "test": "test",
+                "prod": "prod-ecs"
+              },
+              "blog": {
+                "dev-private": "dev-private",
+                "test": "test",
+                "prod": "prod"
+              },
+              "budget-service": {
+                "dev-private": "dev-private",
+                "test": "test",
+                "prod": "prod"
+              },
+              "debug-console": {
+                "dev-private": "dev-private",
+                "prod": "prod"
+              },
+              "image-search-service": {
+                "dev-private": "dev-private"
+              },
+              "knowledge-service": {
+                "dev-private": "dev-private",
+                "prod": "prod"
+              },
+              "proxy": {
+                "dev-private": "dev-private-ecs",
+                "test": "test",
+                "prod": "prod-ecs"
+              }
+            }
+        run: |
+          COMPONENT_OBJ=$(echo "$COMPONENT_MAP" | jq --arg c "$COMPONENT" '.[$c]')
+          if [ "$COMPONENT_OBJ" = "null" ]; then
+            echo "Unknown component: $COMPONENT"
+            {
+              printf '## ❌ Unknown Component\n\n'
+              printf '**Component:** `%s`\n\n' "$COMPONENT"
+              printf '**Error:** Component not found in configuration.\n'
+            } >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          TARGET_ENV=$(echo "$COMPONENT_MAP" | jq -r --arg c "$COMPONENT" --arg e "$ENVIRONMENT" '.[$c][$e] // empty')
+          if [ -z "$TARGET_ENV" ]; then
+            AVAILABLE_ENVS=$(echo "$COMPONENT_OBJ" | jq -r 'keys | join(", ")')
+            echo "Mapping not found for $COMPONENT <> $ENVIRONMENT."
+            echo "The $COMPONENT component has only the following environments: $AVAILABLE_ENVS"
+            {
+              printf '## ❌ Invalid Environment Mapping\n\n'
+              printf '**Component:** `%s`\n\n' "$COMPONENT"
+              printf '**Requested Environment:** `%s`\n\n' "$ENVIRONMENT"
+              printf '**Available Environments:** `%s`\n\n' "$AVAILABLE_ENVS"
+              printf '**Error:** Mapping not found for the component <> environment combination.\n\n'
+            } >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          echo "TARGET_ENV=$TARGET_ENV" >> $GITHUB_OUTPUT
 
       - name: Checkout Codebase
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -68,13 +141,13 @@ jobs:
           path: /${{ inputs.component }}
 
       # Promote the artifact
-      - name: Promote ${{ inputs.component }} to ${{ inputs.environment }}
+      - name: ${{ inputs.component }} - Promote ${{ inputs.artifact_id }} to ${{ steps.resolve.outputs.TARGET_ENV }}
         id: promote
         uses: gdcorp-actions/katana-promote-artifact@v1
         with:
           namespace: ${{ steps.katana-app.outputs.namespace }}
           app: ${{ steps.katana-app.outputs.app }}
-          environment: ${{ inputs.environment }}
+          environment: ${{ steps.resolve.outputs.TARGET_ENV }}
           artifact_id: ${{ inputs.artifact_id }}
           retain_previous_count: 1
 
@@ -86,6 +159,7 @@ jobs:
           ARTIFACT_ID: ${{ inputs.artifact_id }}
           NAMESPACE: ${{ steps.katana-app.outputs.namespace }}
           APP: ${{ steps.katana-app.outputs.app }}
+          ACTOR: ${{ github.actor }}
         run: |
           echo "✅ Successfully promoted artifact"
           echo "Component: $COMPONENT"
@@ -100,7 +174,7 @@ jobs:
             echo "Promoted artifact ID: $ARTIFACT_ID"
             echo "To environment: $ENVIRONMENT"
             echo "Namespace: $NAMESPACE"
-            echo "Actor: ${{ github.actor }}"
+            echo "Actor: $ACTOR"
             printf '\n```\n\n'
           } >> $GITHUB_STEP_SUMMARY
 
@@ -125,7 +199,7 @@ jobs:
 
   trigger-e2e:
     name: Trigger E2E Tests
-    if: ${{ needs.promote.result == 'success' && inputs.environment == 'prod-ecs' && inputs.component == 'app' }}
+    if: ${{ needs.promote.result == 'success' && inputs.environment == 'prod' && inputs.component == 'app' }}
     needs: [promote]
     permissions:
       actions: write # Required to trigger other workflows
@@ -151,7 +225,7 @@ jobs:
 
   trigger-knowledge-base:
     name: Trigger Knowledge Base Update
-    if: ${{ needs.promote.result == 'success' && inputs.environment == 'prod-ecs' }}
+    if: ${{ needs.promote.result == 'success' && inputs.environment == 'prod' && inputs.component == 'app' }}
     needs: [promote]
     uses: ./.github/workflows/knowledge_base.yml
     with:

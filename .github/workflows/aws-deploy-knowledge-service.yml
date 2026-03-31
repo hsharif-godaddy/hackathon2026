@@ -21,7 +21,7 @@ on:
           - "dev-private"
           - "prod"
 
-run-name: "[Env: ${{ github.event_name == 'workflow_dispatch' && inputs.DEPLOY_TO_ENV || 'dev-private' }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
+run-name: "[KNOWLEDGE SERVICE - ${{ github.event_name == 'workflow_dispatch' && inputs.DEPLOY_TO_ENV || 'dev-private' }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
 
 permissions:
   id-token: write # required for artifactory token login
@@ -29,7 +29,7 @@ permissions:
 
 jobs:
   continuous-integration:
-    name: "[Env: ${{ github.event_name == 'workflow_dispatch' && inputs.DEPLOY_TO_ENV || 'dev-private' }}] branch: ${{ github.ref_name }}"
+    name: "[KNOWLEDGE SERVICE - ${{ github.event_name == 'workflow_dispatch' && inputs.DEPLOY_TO_ENV || 'dev-private' }}] branch: ${{ github.ref_name }}"
     runs-on:
       labels:
         - airo-cicd-runners

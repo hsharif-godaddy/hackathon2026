@@ -22,7 +22,7 @@ on:
           - "test"
           - "prod"
 
-run-name: "[Env: ${{ github.event_name == 'push' && 'prod' || inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
+run-name: "[BLOG - ${{ github.event_name == 'push' && 'prod' || inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
 
 permissions:
   id-token: write
@@ -30,7 +30,7 @@ permissions:
 
 jobs:
   continuous-integration:
-    name: "[Env: ${{ github.event_name == 'push' && 'prod' || inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }}"
+    name: "[BLOG - ${{ github.event_name == 'push' && 'prod' || inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }}"
     runs-on:
       labels:
         - airo-cicd-runners
