@@ -518,7 +518,7 @@ describe('GitUtils', () => {
       });
 
       describe('full source archive behavior', () => {
-        it('should exclude node_modules, .git, and .env files in full source archive', async () => {
+        it('should exclude node_modules and .git in full source archive', async () => {
           const commitHash = 'abc1234';
 
           // Flow: dist check -> mkdir -> tar (with exclusions)
@@ -533,7 +533,7 @@ describe('GitUtils', () => {
           const tarCallArgs = mockDevSupervisor.exec.mock.calls[2][0];
           expect(tarCallArgs.command).toMatch(/--exclude.*node_modules/);
           expect(tarCallArgs.command).toMatch(/--exclude.*\.git/);
-          expect(tarCallArgs.command).toMatch(/--exclude.*\.env/);
+          expect(tarCallArgs.command).not.toMatch(/--exclude.*\.env/);
         });
 
         it('should exclude untracked files in full source archive when git reports them', async () => {

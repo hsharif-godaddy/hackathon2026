@@ -704,9 +704,6 @@ export class GitUtils {
       'tar', '-czf', archivePath,
       '--exclude=node_modules',
       '--exclude=.git',
-      '--exclude=.env',
-      '--exclude=.env.*',
-      '--exclude=.env.local',
       ...untrackedExclusions.map(file => `--exclude=${file}`),
       '-C', '/app', '.'
     ];
