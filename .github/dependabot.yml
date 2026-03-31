@@ -17,6 +17,10 @@ updates:
     directory: "/"
     registries:
       - jfrog-npm
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
     schedule:
       interval: "daily"
     open-pull-requests-limit: 10
@@ -64,48 +68,80 @@ updates:
   # Monitor dev-supervisor
   - package-ecosystem: "gomod"
     directory: "/dev-supervisor"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
     schedule:
       interval: "daily"
 
   # Monitor go-agent
   - package-ecosystem: "gomod"
     directory: "/go-agent"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
     schedule:
       interval: "daily"
 
   # Monitor local-control-plane
   - package-ecosystem: "gomod"
     directory: "/local-control-plane"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
     schedule:
       interval: "daily"
 
   # Monitor knowledge-service
   - package-ecosystem: "gomod"
     directory: "/knowledge-service"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
     schedule:
       interval: "daily"
 
   # Monitor image-search-service
   - package-ecosystem: "gomod"
     directory: "/image-search-service"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
     schedule:
       interval: "daily"
 
   # Monitor budget-service
   - package-ecosystem: "gomod"
     directory: "/budget-service"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
     schedule:
       interval: "daily"
 
   # Monitor packages/go-auth
   - package-ecosystem: "gomod"
     directory: "/packages/go-auth"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
     schedule:
       interval: "daily"
 
   # Monitor GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
     schedule:
       interval: "daily"
     open-pull-requests-limit: 10
