@@ -92,7 +92,8 @@ Host directories are bind-mounted into containers at different paths:
 ```bash
 corepack enable                          # Enforces pnpm 10.17.0
 ./setup.sh                               # Automated setup (or: pnpm --filter airo-setup start)
-pnpm install && pnpm run dev             # agents:4000, app:3000
+pnpm install && pnpm run dev             # TUI: agents:4000, app:3000, control-plane:4100
+pnpm run dev:legacy                      # Without TUI: agents + app only
 pnpm typecheck / lint / test / build     # build/typecheck/lint use Turborepo (cached)
 ```
 

@@ -37,6 +37,11 @@ print_header() {
     echo ""
 }
 
+# Detect WSL2 environment (matches pattern in scripts/trust-dev-ca.sh)
+is_wsl2() {
+    [ -d "/mnt/c" ] && command -v powershell.exe &> /dev/null
+}
+
 # Check Node.js version
 check_nodejs() {
     print_info "Checking Node.js installation..."
@@ -234,6 +239,11 @@ check_make() {
 
 # Check /etc/hosts entry for local dev
 check_hosts_file() {
+    if is_wsl2; then
+        print_status "/etc/hosts check skipped (WSL2 — hosts managed by Windows)"
+        return 0
+    fi
+
     print_info "Checking /etc/hosts for local dev entry..."
 
     if grep -v '^\s*#' /etc/hosts 2>/dev/null | grep -q "local.gasket.dev-godaddy.com"; then
@@ -252,6 +262,11 @@ check_hosts_file() {
 
 # Check mkcert installation
 check_mkcert() {
+    if is_wsl2; then
+        print_status "mkcert check skipped (WSL2 — certificates managed by Windows)"
+        return 0
+    fi
+
     print_info "Checking mkcert installation..."
 
     if command -v mkcert &> /dev/null; then

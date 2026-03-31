@@ -1,0 +1,49 @@
+processes:
+  - name: App
+    command: pnpm run dev
+    dir: app
+    errorPatterns:
+      - "FATAL"
+      - "Module not found"
+      - "EADDRINUSE"
+    healthCheck:
+      url: https://local.gasket.dev-godaddy.com:8443/api/health
+      unhealthyInterval: 10s
+      healthyInterval: 60s
+      insecure: true
+
+  - name: Agents
+    command: pnpm run dev
+    dir: agents
+    errorPatterns:
+      - "FATAL"
+      - "UnhandledPromiseRejection"
+      - "EADDRINUSE"
+    healthCheck:
+      url: http://localhost:4000/health
+      unhealthyInterval: 10s
+      healthyInterval: 60s
+
+  - name: Control Plane
+    command: pnpm run dev:control-plane
+    dir: .
+    errorPatterns:
+      - "FATAL"
+      - "panic:"
+      - "bind: address already in use"
+    healthCheck:
+      url: http://localhost:4100/health
+      unhealthyInterval: 10s
+      healthyInterval: 60s
+
+hooks:
+  preStart:
+    - name: Check dependencies
+      command: bash setup/check-deps.sh --integrated
+      dir: .
+    - name: Install dependencies
+      command: pnpm install
+      dir: .
+    - name: Build packages
+      command: pnpm build
+      dir: .

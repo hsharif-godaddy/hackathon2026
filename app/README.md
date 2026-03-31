@@ -77,10 +77,10 @@ An AI-powered application development platform that combines artificial intellig
 pnpm install
 
 # Start development servers (requires OpenAI API key in agents/.env)
-pnpm run dev                 # Start both services concurrently
+pnpm run dev                 # TUI with all services (recommended)
 # Or start individually:
-pnpm run dev:agents         # Backend agents API (port 4000)
-pnpm run dev:app            # Main Next.js app (port 3000)
+pnpm run dev:agents          # Backend agents API (port 4000)
+pnpm run dev:app             # Main Next.js app (port 3000)
 
 # Build for production
 pnpm run build

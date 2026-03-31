@@ -8,13 +8,13 @@ Express API service providing AI agent orchestration, app lifecycle management, 
 # From repo root
 corepack enable
 pnpm install
-pnpm run dev          # Starts agents on :4000 and app on :3000
+pnpm run dev          # TUI with all services (agents, app, control plane)
 ```
 
 Or run agents alone:
 
 ```bash
-pnpm --filter @airo/agents dev
+pnpm run dev:agents
 ```
 
 ## Testing

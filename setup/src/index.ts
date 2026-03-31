@@ -695,7 +695,7 @@ async function fullSetup(yesToAll: boolean = false): Promise<void> {
     console.log(chalk.gray('   pnpm install  # Install all workspace dependencies'));
     console.log('');
     console.log('2. Start the services:');
-    console.log(chalk.gray('   pnpm run dev  # Start both services concurrently'));
+    console.log(chalk.gray('   pnpm run dev                 # TUI with all services (recommended)'));
     console.log(chalk.gray('   # Or start individually:'));
     console.log(chalk.gray('   pnpm run dev:agents          # Backend (port 4000)'));
     console.log(chalk.gray('   pnpm run dev:app             # Frontend (port 3000)'));

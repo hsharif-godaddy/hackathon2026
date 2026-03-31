@@ -115,12 +115,13 @@ The setup can automatically configure Getty Images integration:
 2. **Start Services**:
 
    ```bash
-   # Option 1: Start both services concurrently
+   # Recommended: TUI with all services
    pnpm run dev
 
-   # Option 2: Start services individually
-   pnpm run dev:agents  # Backend API (port 4000)
-   pnpm run dev:app     # Frontend App (port 3000)
+   # Or start individually:
+   pnpm run dev:agents          # Backend API (port 4000)
+   pnpm run dev:app             # Frontend App (port 3000)
+   pnpm run dev:control-plane   # Local Control Plane (port 4100)
    ```
 
 3. **Access Application**:

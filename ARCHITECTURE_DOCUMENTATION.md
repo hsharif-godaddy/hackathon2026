@@ -585,14 +585,13 @@ PRODUCTION_DOMAIN=""                # Domain = Production
 ### Starting the System
 
 ```bash
-# 1. Start Agents Service (required)
+# Recommended: TUI with all services
+pnpm run dev
+
+# Or start individually:
 cd agents && pnpm run dev    # Port 4000
-
-# 2. Start Main App (required)
 cd app && pnpm run dev       # Port 3000
-
-# 3. Install template dependencies (for new apps)
-cd app-templates/v8 && pnpm install
+pnpm run dev:control-plane   # Port 4100
 ```
 
 ### Creating a New App

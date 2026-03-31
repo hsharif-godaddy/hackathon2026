@@ -187,7 +187,15 @@ docker compose up app-mysql -d
 aws sso login --profile airobuild-dev-private-sso
 ```
 
-**Start 3 terminals:**
+**Start all services (recommended):**
+
+```bash
+pnpm run dev
+```
+
+This launches the **Dev Runner** — a single-terminal TUI that manages all three services (Agents, App, Local Control Plane) with tabbed log views, health checks, error detection, and search. See [dev-runner/README.md](dev-runner/README.md) for keybindings and features.
+
+**Alternative: Start services individually in separate terminals:**
 
 ```bash
 # Terminal 1 - Agents Backend (port 4000)
@@ -228,7 +236,8 @@ Logs are truncated on each restart. ANSI codes are stripped for readability. Use
 **Available run commands:**
 
 ```bash
-pnpm run dev              # Dev environment (local.dev) — uses local control plane
+pnpm run dev              # Dev environment (local.dev) — TUI with all services
+pnpm run dev:legacy       # Dev environment (local.dev) — agents + app only (no TUI)
 pnpm run local:test       # Test environment (local.test) — uses real control plane
 pnpm run local:prod       # Prod environment (local.prod) — uses real control plane
 ```
