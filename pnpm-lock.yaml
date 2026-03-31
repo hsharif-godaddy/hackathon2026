@@ -48,7 +48,7 @@ overrides:
   '@ux/tailwind-intents': 2500.7.1
   '@ux/text': 2500.7.1
   '@ux/text-input': 2500.7.2
-  '@ux/toggle-button': 2500.7.1
+  '@ux/toggle-button': 2500.11.1
   '@ux/tooltip': 2500.7.2
   basic-ftp: '>=5.2.0'
   fast-xml-parser: '>=5.3.5'
@@ -691,8 +691,8 @@ importers:
         specifier: ^2500.9.0
         version: 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/toggle-button':
-        specifier: 2500.7.1
-        version: 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.11.1
+        version: 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/tooltip':
         specifier: 2500.7.2
         version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -7431,8 +7431,8 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/thumb@2500.7.1':
-    resolution: {integrity: sha512-Rb1NO5NmyM7XWXVdV2k3IgDCFvSuIzD1omvfM+x5XN3yg2RRDV28ZVoRH84FotKQ7tW7BffItmU3Flt1R0iLXQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/thumb/-/@ux/thumb-2500.7.1.tgz}
+  '@ux/thumb@2500.9.0':
+    resolution: {integrity: sha512-+aL9Ul2CCtHyNa5trE8nAnyvycLqjmTjHYyrcmbKY6EaZVKSymhYYCxftaWfoO4WBNvMifs69CgJ7USMzKy80w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/thumb/-/@ux/thumb-2500.9.0.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -7447,8 +7447,8 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/toggle-button@2500.7.1':
-    resolution: {integrity: sha512-qeAdN5Yrb4iAb1JxysTg6oDKRQSGdpxmTTD43wOJX4xX+AvkWc9gZL11+0kpbtkbOkoGlVHClxOhiNSdcLMnzw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/toggle-button/-/@ux/toggle-button-2500.7.1.tgz}
+  '@ux/toggle-button@2500.11.1':
+    resolution: {integrity: sha512-EAZQdKOeMucOhFd+HCfSmP+wIMgAF9Cds27xFf9HSPLj0o+SJRDzyTxOGtW2kgUMwTQ59UFg1fIiCE0DnL+Rvg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/toggle-button/-/@ux/toggle-button-2500.11.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -7471,8 +7471,8 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/track@2500.7.1':
-    resolution: {integrity: sha512-BJAAob9zyOsxsZwPmQ1LyV51sXhUBKinsIUcKgshto8NbE0Iq2AQKLu2pPA7pzEgZKbjQ6Cy1I9hClCkHh2I0w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/track/-/@ux/track-2500.7.1.tgz}
+  '@ux/track@2500.11.1':
+    resolution: {integrity: sha512-1SrpGO1xY9BLrk6NHW1KKsW2guVHxO+oK82gENJmhXGNo9pMLlROt0C+fZqSPaoXky8Jbg78ZLyzd/EsmexQcg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/track/-/@ux/track-2500.11.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -22257,7 +22257,7 @@ snapshots:
 
   '@ux/text-entry@2500.10.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.10.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/label': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -22320,7 +22320,7 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/thumb@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/thumb@2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/intents': 2500.7.1
       classnames: 2.5.1
@@ -22335,13 +22335,13 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/toggle-button@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/toggle-button@2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/component-utilities': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/thumb': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/track': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/thumb': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/track': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -22368,7 +22368,7 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/track@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/track@2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/intents': 2500.7.1
       '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)

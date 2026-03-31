@@ -127,7 +127,7 @@
     "@ux/text-lockup": "^2500.9.0",
     "@ux/quantity-selector": "^2500.7.2",
     "@ux/time-picker": "^2500.9.0",
-    "@ux/toggle-button": "^2500.7.1",
+    "@ux/toggle-button": "^2500.11.1",
     "@ux/tooltip": "^2500.7.2",
     "@ux/tooltip-legacy": "^2400.15.1",
     "@venture/cds-loader": "0.0.56",
