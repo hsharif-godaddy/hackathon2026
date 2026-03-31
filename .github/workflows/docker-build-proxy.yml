@@ -54,7 +54,7 @@ jobs:
           echo "//gdartifactory1.jfrog.io/artifactory/api/npm/:_authToken=${OIDC_TOKEN}" >> proxy/.npmrc
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Assume Role and Login to ECR
         run: |
