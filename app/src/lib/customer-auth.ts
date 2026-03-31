@@ -85,7 +85,7 @@ export type CustomerRequestContext = CustomerAuthContext | UnauthenticatedCustom
 /**
  * Customer authentication using Gasket shopper tokens
  */
-export async function authenticateCustomer(request: NextRequest): Promise<CustomerRequestContext> {
+export async function authenticateCustomer(request: NextRequest, level?: 1 | 2 | 3): Promise<CustomerRequestContext> {
   try {
     // Handle mock authentication first
     if (isFeatureEnabled.mockLogin()) {
@@ -149,11 +149,9 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
     }
 
     // Use gd-auth for authentication (includes automatic heartbeat and expiration checking)
-    // gd-auth with use12HourExpiration=true and level=2 enforces:
-    // - VAT ≤ 5 minutes (only for basic/s2s, not e2s)
-    // - IAT ≤ 12 hours (per=true) or ≤ 1 hour (per=false)
-    // - e2s tokens: 2 hour expiration
-    const result = await gdAuthService.authenticate(token);
+    // Default level 2: IAT <= 30 days (persistent) or <= 12 hours (non-persistent)
+    // Level 3 (sensitive ops): HBI <= 12 hours (requires recent heartbeat)
+    const result = await gdAuthService.authenticate(token, level);
     if (!result.valid || !result.payload) {
       logger.warn('auth.gdauth.validate.failed', { reason: result.reason }, { tags: ['security'] });
       return {
@@ -187,6 +185,7 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
     const account = getOrCreateAccount(shopperId, customerId);
 
     const authType = result.payload.authType || 'basic';
+    const now = Math.floor(Date.now() / 1000);
     const user: CustomerUser = {
       shopperId,
       customerId: customerId || shopperId,
@@ -196,6 +195,15 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       authType,
       isE2S: authType === 'e2s' // Only true for e2s (care), NOT s2s (delegation) - s2s uses customer grants
     };
+
+    logger.info('auth.validated', {
+      message: 'Customer authenticated',
+      authType,
+      level: level ?? 2,
+      tokenAge: result.payload.iat ? now - result.payload.iat : undefined,
+      isPersistent: result.payload.per ?? undefined,
+      customerId
+    }, { tags: ['security'] });
 
     return {
       isAuthenticated: true,
@@ -222,8 +230,13 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
  * - Sets verified cid/appId labels after successful authentication
  * - The early unverified cid is for observability only, not a security signal
  */
+interface WithCustomerAuthOptions {
+  level?: 1 | 2 | 3;
+}
+
 export function withCustomerAuth<T extends unknown[]>(
-  handler: (request: NextRequest, context: CustomerAuthContext, ...args: T) => Promise<NextResponse>
+  handler: (request: NextRequest, context: CustomerAuthContext, ...args: T) => Promise<NextResponse>,
+  options?: WithCustomerAuthOptions
 ) {
   return async (request: NextRequest, ...args: T): Promise<NextResponse> => {
     // Start APM transaction for this API request
@@ -252,7 +265,7 @@ export function withCustomerAuth<T extends unknown[]>(
     }
 
     try {
-      const authContext = await authenticateCustomer(request);
+      const authContext = await authenticateCustomer(request, options?.level);
 
       if (!authContext.isAuthenticated) {
         const errorMessage = (authContext as UnauthenticatedCustomerContext).error;
@@ -296,6 +309,17 @@ export function withCustomerAuth<T extends unknown[]>(
       // Also try agent-level APIs as backup (may work if context is preserved)
       addApmContext(request, authContext);
       setApmUserContext(authContext.user.customerId);
+
+      // Log level 3 access for high-impact operation tracking
+      if (options?.level === 3) {
+        logger.info('auth.level3.access', {
+          message: 'Level 3 auth for sensitive operation',
+          route: urlPath,
+          method: request.method,
+          customerId: authContext.user.customerId,
+          authType: authContext.user.authType
+        }, { tags: ['security'] });
+      }
 
       // Run the handler within the request context
       const response = await RequestContextService.run(requestContext, () => {

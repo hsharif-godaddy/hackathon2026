@@ -130,7 +130,7 @@ export const authConfigs = {
     risk: 'low',
     type: SUPPORTED_AUTH_TYPES,
     allowHeartbeat: true,        // Enable automatic token refresh
-    use12HourExpiration: true    // Use longer token expiration
+    use12HourExpiration: true    // Maps to useNewExpiration in gd-auth 1.5.0+
   },
   // Admin access for administrative functions
   admin: {
@@ -138,7 +138,7 @@ export const authConfigs = {
     risk: 'medium',
     groups: ['admin', 'developer'],
     allowHeartbeat: true,
-    use12HourExpiration: true
+    use12HourExpiration: true    // Maps to useNewExpiration in gd-auth 1.5.0+
   },
   // High security for sensitive operations
   sensitive: {

@@ -167,6 +167,7 @@ export const POST = withCustomerAuth(
       );
     }
   },
+  { level: 3 },
 );
 
 /**
@@ -330,6 +331,7 @@ export const PUT = withCustomerAuth(
       );
     }
   },
+  { level: 3 },
 );
 
 /**
@@ -486,4 +488,5 @@ export const DELETE = withCustomerAuth(
       );
     }
   },
+  { level: 3 },
 );

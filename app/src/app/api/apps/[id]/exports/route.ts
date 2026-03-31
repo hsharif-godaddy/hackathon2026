@@ -267,4 +267,4 @@ export const POST = withCustomerAuth(async (
       exportId: null
     });
   }
-});
+}, { level: 3 });

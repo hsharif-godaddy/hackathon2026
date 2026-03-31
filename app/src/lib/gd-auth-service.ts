@@ -97,7 +97,9 @@ export class GdAuthService {
       type: authConfigs.user.realm,
       auths: authConfigs.user.type,
       allowHeartbeat: authConfigs.user.allowHeartbeat,
-      use12HourExpiration: authConfigs.user.use12HourExpiration,
+      // gd-auth 1.5.0 renamed use12HourExpiration to useNewExpiration;
+      // gasket-auth types still use the old name, so we map here
+      useNewExpiration: authConfigs.user.use12HourExpiration,
       fetchKey: require('gd-auth/src/fetch-key') // eslint-disable-line @typescript-eslint/no-require-imports
     });
   }
@@ -105,7 +107,7 @@ export class GdAuthService {
   /**
    * Authenticate token using gd-auth (handles heartbeat automatically)
    */
-  async authenticate(token: string): Promise<{ valid: boolean; payload?: any; reason?: string; authReason?: number }> {
+  async authenticate(token: string, level: 1 | 2 | 3 = 2): Promise<{ valid: boolean; payload?: any; reason?: string; authReason?: number }> {
     try {
       // If auth is disabled or not JWT mode, return mock success
       const envAuthType = process.env.AUTH_TYPE?.toLowerCase() || 'jwt';
@@ -125,12 +127,13 @@ export class GdAuthService {
         };
       }
 
-      // Use gd-auth for authentication with medium risk level (2)
-      // With use12HourExpiration=true, this enforces:
-      // - VAT ≤ 5 minutes for basic/s2s tokens (e2s tokens skip VAT check)
-      // - IAT ≤ 12 hours for per=true tokens, ≤ 1 hour for per=false
-      // - e2s tokens: 2 hour expiration (via verify())
-      const jwt = await this.gdAuth.authenticate(this.ssoHost, token, 2);
+      // Use gd-auth for authentication at the specified risk level
+      // With useNewExpiration=true (gd-auth 1.5.0), this enforces:
+      // - VAT <= 5 minutes for basic/s2s tokens (e2s tokens skip VAT check)
+      // - Level 1-2: IAT <= 30 days (per=true) or <= 12 hours (per=false)
+      // - Level 3: HBI <= 12 hours (requires recent heartbeat)
+      // - e2s tokens: fixed 2 hour expiration (no HBI claim)
+      const jwt = await this.gdAuth.authenticate(this.ssoHost, token, level);
 
       // Use gd-auth's built-in methods to extract shopper/customer info
       // These handle all auth types: basic, e2s, s2s, e2s2s, s2snpr, cert2s, etc.
@@ -219,7 +222,7 @@ export const gdAuthService = {
     return this.instance.extractTokenFromRequest(request);
   },
 
-  async authenticate(token: string) {
-    return this.instance.authenticate(token);
+  async authenticate(token: string, level?: 1 | 2 | 3) {
+    return this.instance.authenticate(token, level);
   }
 };

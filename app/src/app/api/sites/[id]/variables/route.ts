@@ -69,4 +69,4 @@ export const PATCH = withCustomerAuth(async (request: NextRequest, authContext: 
       { status: 500 }
     )
   }
-})
+}, { level: 3 })

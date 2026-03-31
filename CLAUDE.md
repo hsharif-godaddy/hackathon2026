@@ -131,7 +131,17 @@ See `LOGGING-GUIDE.md` for complete documentation.
 
 **Use gd-auth library for ALL JWT validation.** Never write custom token validation, expiration checks, or JWT decoding. The library handles all auth types (basic, e2s, s2s, and 9 delegation chain variants) and enforces correct expiration rules.
 
-Key rule: `use12HourExpiration: true` is required — it enforces IAT limits and correctly skips VAT validation for e2s tokens (which are not heartbeated).
+Key rule: `useNewExpiration: true` (gd-auth 1.5.0+) is the default - it enforces IAT limits and correctly skips VAT validation for e2s tokens (which are not heartbeated).
+
+**Expiration windows (useNewExpiration=true):**
+
+| Token type                   | Level 1-2        | Level 3          |
+| ---------------------------- | ---------------- | ---------------- |
+| Persistent (`per=true`)      | IAT <= 30 days   | HBI <= 12 hours  |
+| Non-persistent (`per=false`) | IAT <= 12 hours  | HBI <= 12 hours  |
+| e2s (impersonation)          | 2 hours (no HBI) | 2 hours (no HBI) |
+
+**Tiered auth levels:** Sensitive operations use `withCustomerAuth(handler, { level: 3 })` for stricter HBI-based expiration. Level 3 routes include: subscription renewal, auto-renew toggle, entitlement updates, app transfers, site deletion, deployments, secrets management, domain changes, unpublish, download, and database writes.
 
 Config: `app/src/lib/gd-auth-service.ts`. Auth types list: `app/src/lib/features.ts` (`authUtils.getSupportedAuthTypes()`).
 

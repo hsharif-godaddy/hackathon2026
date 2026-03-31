@@ -34,7 +34,7 @@ Gasket is GoDaddy's internal plugin-based framework that wraps Next.js. It uses 
 
 The BFF is Next.js App Router API routes at `src/app/api/`. It does NOT just proxy — it handles auth, paywall checks, feature flags, data transformation, and OpenTelemetry context.
 
-**Auth pattern:** All protected routes use `withCustomerAuth()` (`src/lib/customer-auth.ts`), which validates gd-auth JWT and extracts appId/customerId.
+**Auth pattern:** All protected routes use `withCustomerAuth()` (`src/lib/customer-auth.ts`), which validates gd-auth JWT and extracts appId/customerId. Sensitive operations use `withCustomerAuth(handler, { level: 3 })` for stricter HBI-based expiration (see [Tiered Auth Levels](#tiered-auth-levels) below).
 
 **Agent communication is NOT through the BFF.** The browser talks directly to agents (port 4000) using a Bearer token obtained from `POST /api/auth/agent-token`. See `src/lib/agent-fetch.ts` — it includes circuit breaker (rejects if SSO expired) and retry on 401.
 
@@ -48,6 +48,46 @@ The BFF is Next.js App Router API routes at `src/app/api/`. It does NOT just pro
 | `POST /api/auth/agent-token`     | JWT for agents service | JWT Service + paywall + switchboard |
 | `GET /api/apps/[id]/deployments` | Deployment history     | mgmt-airo API                       |
 | `GET /api/config`                | Feature flags + config | Returns flags                       |
+
+### Tiered Auth Levels
+
+gd-auth supports three authentication levels. Default is level 2; sensitive operations use level 3.
+
+| Level | Check | Expiration (persistent) | Expiration (non-persistent) |
+| ----- | ----- | ----------------------- | --------------------------- |
+| 1-2   | IAT   | <= 30 days              | <= 12 hours                 |
+| 3     | HBI   | <= 12 hours             | <= 12 hours                 |
+
+e2s (impersonation) tokens always use a fixed 2-hour expiration (no HBI claim).
+
+**Usage:** Pass `{ level: 3 }` as the second argument to `withCustomerAuth`:
+
+```typescript
+export const POST = withCustomerAuth(
+  async (request, authContext, routeContext) => {
+    // handler
+  },
+  { level: 3 },
+);
+```
+
+**Level 3 routes (require recent heartbeat):**
+
+- **Financial/billing:** `subscriptions/renew` POST, `ecomm-subscription/auto-renew` POST, `entitlements/[subscriptionId]/update` PUT
+- **Ownership/transfer:** `apps/[id]/transfer` POST+DELETE, `apps/[id]/transfer/cancel` POST, `transfer` POST (accept)
+- **Deployment/publishing:** `sites/[id]/deploy` POST, `apps/[id]/unpublish` POST
+- **Secrets:** `secrets/[appId]/sync` POST, `secrets/[appId]/variants/[variant]` POST
+- **Deletion:** `sites/[id]` DELETE, `sites` DELETE (bulk)
+- **DNS/domains:** `sites/[id]/domains` POST
+- **Data export:** `apps/[id]/download` POST, `apps/[id]/exports` POST
+- **Site config:** `sites/[id]/variables` PATCH
+- **Database writes:** `database/[appId]/tables/[tableName]/rows` POST, PUT, DELETE
+
+**Config:** `use12HourExpiration` in `gasket-config.ts` (client-side, consumed by `@godaddy/gasket-auth`) maps to `useNewExpiration` in `gd-auth-service.ts` (server-side, consumed by `gd-auth` 1.5.0+). The two libraries use different property names for the same feature.
+
+**Auth chain:** `withCustomerAuth(handler, { level })` -> `authenticateCustomer(request, level)` -> `gdAuthService.authenticate(token, level)` -> `gd-auth.authenticate(ssoHost, token, level)`
+
+**When a 401 occurs at level 3:** gd-auth throws with `ssoCode: 2` (HBI expired). The middleware returns a 401 with `authReason: 2`. The client-side `AuthBoundary` shows a re-auth prompt.
 
 ## Feature Flags
 

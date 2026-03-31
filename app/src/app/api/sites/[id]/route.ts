@@ -121,7 +121,7 @@ export const DELETE = withCustomerAuth(async (request: NextRequest, authContext:
       { status: 500 }
     );
   }
-});
+}, { level: 3 });
 
 // PATCH /api/sites/[id] - Update specific site
 export const PATCH = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext, { params }: { params: Promise<{ id: string }> }) => {

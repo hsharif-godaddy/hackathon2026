@@ -170,4 +170,4 @@ export const PUT = withCustomerAuth(async (request: NextRequest, authContext: Cu
     }
     return NextResponse.json({ error: 'Failed to update entitlement' }, { status: 500 });
   }
-});
+}, { level: 3 });

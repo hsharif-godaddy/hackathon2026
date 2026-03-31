@@ -35,4 +35,4 @@ export const POST = withCustomerAuth(async (
     });
     return NextResponse.json({ error: 'Failed to cancel transfer' }, { status: 500 });
   }
-});
+}, { level: 3 });

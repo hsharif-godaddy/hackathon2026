@@ -158,4 +158,4 @@ export const POST = withCustomerAuth(async (
       { status: error instanceof AiroHttpError ? error.status : 500 }
     );
   }
-});
+}, { level: 3 });

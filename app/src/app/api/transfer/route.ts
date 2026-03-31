@@ -46,7 +46,7 @@ export const POST = withCustomerAuth(async (
     });
     return NextResponse.json({ error: 'Failed to accept transfer' }, { status: 500 });
   }
-});
+}, { level: 3 });
 
 // GET /api/transfer — List transfers or get metadata by transferToken
 export const GET = withCustomerAuth(async (

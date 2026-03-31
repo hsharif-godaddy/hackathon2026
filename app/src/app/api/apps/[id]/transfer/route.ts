@@ -50,7 +50,7 @@ export const POST = withCustomerAuth(async (
     });
     return NextResponse.json({ error: 'Failed to initiate transfer' }, { status: 500 });
   }
-});
+}, { level: 3 });
 
 // GET /api/apps/:id/transfer — Get transfer metadata (initiator)
 export const GET = withCustomerAuth(async (
@@ -107,4 +107,4 @@ export const DELETE = withCustomerAuth(async (
     });
     return NextResponse.json({ error: 'Failed to cancel transfer' }, { status: 500 });
   }
-});
+}, { level: 3 });

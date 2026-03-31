@@ -160,4 +160,4 @@ export const DELETE = withCustomerAuth(async (request: NextRequest, authContext:
   } catch (error) {
     return handleControlPlaneError(error, 'sites.delete');
   }
-});
+}, { level: 3 });

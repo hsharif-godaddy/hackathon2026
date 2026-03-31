@@ -162,4 +162,4 @@ export const POST = withCustomerAuth(async (
 	} catch (error) {
 		return handleControlPlaneError(error, 'secrets.update');
 	}
-});
+}, { level: 3 });
