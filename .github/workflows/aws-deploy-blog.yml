@@ -113,7 +113,7 @@ jobs:
             {
               "protocol": "https",
               "ports": [8443],
-              "healthcheckPath": "/",
+              "healthcheckPath": "/healthz",
               "healthcheckGracePeriod": 30
             }
 

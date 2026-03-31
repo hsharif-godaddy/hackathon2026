@@ -43,12 +43,12 @@ function formatDate(date: Date): string {
               )}
             </p>
             <h2 class="post-title">
-              <a href={`/blog/${post.slug}/`}>{post.data.title}</a>
+              <a href={`${import.meta.env.BASE_URL}/${post.slug}/`}>{post.data.title}</a>
             </h2>
             {post.data.description && (
               <p class="post-excerpt">{post.data.description}</p>
             )}
-            <a href={`/blog/${post.slug}/`} class="read-more">Read more</a>
+            <a href={`${import.meta.env.BASE_URL}/${post.slug}/`} class="read-more">Read more</a>
           </li>
         ))}
       </ul>

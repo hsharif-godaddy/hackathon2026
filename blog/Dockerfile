@@ -38,6 +38,8 @@ RUN mkdir -p /certs && \
 WORKDIR /app
 
 COPY --from=builder --chown=node:node /workspace/blog/dist ./dist
+RUN mv ./dist/_astro ./dist/blog/_astro && \
+    echo 'ok' > ./dist/healthz
 
 USER node
 
@@ -46,6 +48,6 @@ ENV NODE_ENV=production
 EXPOSE 8443
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider --no-check-certificate https://127.0.0.1:8443/ || exit 1
+    CMD wget --no-verbose --tries=1 --spider --no-check-certificate https://127.0.0.1:8443/healthz || exit 1
 
 CMD ["serve", "dist", "-l", "8443", "--ssl-cert", "/certs/cert.pem", "--ssl-key", "/certs/key.pem"]
