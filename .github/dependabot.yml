@@ -1,14 +1,21 @@
 version: 2
 
-# Dependabot configuration for public npm dependencies only
-# Note: Internal GoDaddy packages (via Artifactory) are excluded due to security restrictions
-# Schedule times are in UTC
-# Dependabot uses public npm registry by default, ignoring .npmrc
+registries:
+  jfrog-npm:
+    type: npm-registry
+    url: "https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt"
+    jfrog-oidc-provider-name: github
+    replaces-base: true
+
+# npm updates use the JFrog virtual registry above (replaces-base). Requires Dependabot
+# access to that registry (e.g. JFrog OIDC for GitHub). Schedule times are UTC.
 
 updates:
   # Root workspace
   - package-ecosystem: "npm"
     directory: "/"
+    registries:
+      - jfrog-npm
     schedule:
       interval: "weekly"
       day: "monday"
@@ -58,6 +65,8 @@ updates:
   # Agents package
   - package-ecosystem: "npm"
     directory: "/agents"
+    registries:
+      - jfrog-npm
     schedule:
       interval: "weekly"
       day: "monday"
@@ -83,6 +92,8 @@ updates:
   # App (website) package
   - package-ecosystem: "npm"
     directory: "/app"
+    registries:
+      - jfrog-npm
     schedule:
       interval: "weekly"
       day: "monday"
@@ -118,6 +129,8 @@ updates:
   # CDK package
   - package-ecosystem: "npm"
     directory: "/cdk"
+    registries:
+      - jfrog-npm
     schedule:
       interval: "weekly"
       day: "monday"
@@ -133,6 +146,8 @@ updates:
   # Proxy package
   - package-ecosystem: "npm"
     directory: "/proxy"
+    registries:
+      - jfrog-npm
     schedule:
       interval: "weekly"
       day: "monday"
@@ -142,6 +157,8 @@ updates:
   # AI Lib package
   - package-ecosystem: "npm"
     directory: "/packages/ai-lib"
+    registries:
+      - jfrog-npm
     schedule:
       interval: "weekly"
       day: "monday"
@@ -162,6 +179,8 @@ updates:
   # Design Extractor package
   - package-ecosystem: "npm"
     directory: "/packages/design-extractor"
+    registries:
+      - jfrog-npm
     schedule:
       interval: "weekly"
       day: "monday"
@@ -171,6 +190,8 @@ updates:
   # Setup package
   - package-ecosystem: "npm"
     directory: "/setup"
+    registries:
+      - jfrog-npm
     schedule:
       interval: "weekly"
       day: "monday"
@@ -180,6 +201,8 @@ updates:
   # Bedrock Log Viewer package
   - package-ecosystem: "npm"
     directory: "/bedrock-log-viewer"
+    registries:
+      - jfrog-npm
     schedule:
       interval: "weekly"
       day: "monday"
@@ -189,6 +212,8 @@ updates:
   # Debug Console package
   - package-ecosystem: "npm"
     directory: "/debug-console"
+    registries:
+      - jfrog-npm
     schedule:
       interval: "weekly"
       day: "monday"
