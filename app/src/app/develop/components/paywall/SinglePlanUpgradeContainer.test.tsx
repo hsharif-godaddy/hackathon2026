@@ -248,8 +248,6 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
 
       expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['active-subscription'] });
       expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['paywall-feature-flags'] });
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['entitlements'] });
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects'] });
     });
 
     it('should log timeout when polling fails to detect plan change', async function pollingTimeout() {

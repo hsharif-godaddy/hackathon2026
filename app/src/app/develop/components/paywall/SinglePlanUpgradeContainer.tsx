@@ -93,8 +93,6 @@ const SinglePlanUpgradeContainer = ({
     // Invalidate other related queries
     queryClient.invalidateQueries({ queryKey: ['active-subscription'] })
     queryClient.invalidateQueries({ queryKey: ['paywall-feature-flags'] })
-    queryClient.invalidateQueries({ queryKey: ['entitlements'] })
-    queryClient.invalidateQueries({ queryKey: ['projects'] })
   }, [source, productId, queryClient])
 
   const handleError = useCallback((error: Error) => {

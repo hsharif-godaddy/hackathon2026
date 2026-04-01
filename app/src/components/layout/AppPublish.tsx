@@ -51,7 +51,6 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   // Secondary flags only needed once the publish button is confirmed enabled on the develop page.
   // AppPublish is always mounted in the header, so without this guard they fire on every page load.
   const publishFlagsEnabled = isPublishButtonEnabledFlag && isDevelopPage;
-  const { data: isAiroPlusPaywallEnabled } = useSwitchboard('appbuilder-airoplus-paywall', { enabled: publishFlagsEnabled });
   const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets', { enabled: publishFlagsEnabled });
 
   const isChatToolbar = location === 'develop.chat_toolbar';
@@ -509,11 +508,6 @@ export default function AppPublish({ location = 'develop' }: { location?: string
               {getPublishButtonText()}
             </Button>
 
-            {!isAiroPlusPaywallEnabled && (
-              <text.p emphasis='passive' size={0}>
-                {t('builder_publish_beta_message')}
-              </text.p>
-            )}
           </div>
         </PopoverContent>
       </Popover>

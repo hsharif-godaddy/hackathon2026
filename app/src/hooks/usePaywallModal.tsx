@@ -121,8 +121,6 @@ export function usePaywallModal({
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] }),
       queryClient.invalidateQueries({ queryKey: ['active-subscription'] }),
-      queryClient.invalidateQueries({ queryKey: ['entitlements'] }),
-      queryClient.invalidateQueries({ queryKey: ['projects'] }),
     ])
 
     // Execute optional post-purchase callback

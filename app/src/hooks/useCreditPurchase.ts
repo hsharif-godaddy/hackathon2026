@@ -59,7 +59,6 @@ export function useCreditPurchase(): UseCreditPurchaseResult {
   const invalidateQueries = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['subscriptions'] })
     queryClient.invalidateQueries({ queryKey: ['credit-grants'] })
-    queryClient.invalidateQueries({ queryKey: ['entitlements'] })
   }, [queryClient])
 
   const handlePurchaseSuccess = useCallback(async (

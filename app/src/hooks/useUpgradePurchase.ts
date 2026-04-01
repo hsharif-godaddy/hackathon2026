@@ -155,8 +155,6 @@ export function useUpgradePurchase(): UseUpgradePurchaseResult {
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] })
       queryClient.invalidateQueries({ queryKey: ['active-subscription'] })
       queryClient.invalidateQueries({ queryKey: ['paywall-feature-flags'] })
-      queryClient.invalidateQueries({ queryKey: ['entitlements'] })
-      queryClient.invalidateQueries({ queryKey: ['projects'] })
       queryClient.invalidateQueries({ queryKey: ['credit-grants'] })
     },
     onError: (error, { planBeforePurchase, isUpgrade }) => {

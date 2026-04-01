@@ -221,7 +221,6 @@ describe('CreditsUpgradeContainer', function creditsUpgradeContainerTests() {
 
       expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['subscriptions'] });
       expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['credit-grants'] });
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['entitlements'] });
     });
 
     it('should call onErrorClick when error button clicked', async function errorCallback() {
