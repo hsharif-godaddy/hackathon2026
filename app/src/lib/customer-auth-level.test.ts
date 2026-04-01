@@ -89,6 +89,48 @@ describe('authenticateCustomer level passthrough', () => {
   });
 });
 
+describe('authenticateCustomer authReason propagation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExtractToken.mockReturnValue('test-token');
+  });
+
+  it('should include authReason when gd-auth returns ssoCode', async () => {
+    mockAuthenticate.mockResolvedValue({
+      valid: false,
+      reason: 'Token is expired (ssoCode: 2)',
+      authReason: 2
+    });
+
+    const { authenticateCustomer } = await import('./customer-auth');
+    const request = new NextRequest('http://localhost/api/test', {
+      headers: { cookie: 'auth_idp=test-token' }
+    });
+
+    const result = await authenticateCustomer(request, 3);
+
+    expect(result.isAuthenticated).toBe(false);
+    expect(result).toHaveProperty('authReason', 2);
+  });
+
+  it('should omit authReason when gd-auth does not return ssoCode', async () => {
+    mockAuthenticate.mockResolvedValue({
+      valid: false,
+      reason: 'Invalid token'
+    });
+
+    const { authenticateCustomer } = await import('./customer-auth');
+    const request = new NextRequest('http://localhost/api/test', {
+      headers: { cookie: 'auth_idp=test-token' }
+    });
+
+    const result = await authenticateCustomer(request, 2);
+
+    expect(result.isAuthenticated).toBe(false);
+    expect(result).not.toHaveProperty('authReason');
+  });
+});
+
 describe('withCustomerAuth level option', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -122,5 +164,60 @@ describe('withCustomerAuth level option', () => {
     await wrappedHandler(request);
 
     expect(mockAuthenticate).toHaveBeenCalledWith('test-token', undefined);
+  });
+});
+
+describe('withCustomerAuth 401 response with authReason', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExtractToken.mockReturnValue('test-token');
+  });
+
+  it('should include authReason in 401 JSON when HBI expired', async () => {
+    mockAuthenticate.mockResolvedValue({
+      valid: false,
+      reason: 'Token is expired (ssoCode: 2)',
+      authReason: 2
+    });
+
+    const { withCustomerAuth } = await import('./customer-auth');
+    const handler = vi.fn().mockResolvedValue(new Response('ok'));
+
+    const wrappedHandler = withCustomerAuth(handler, { level: 3 });
+    const request = new NextRequest('http://localhost/api/test', {
+      headers: { cookie: 'auth_idp=test-token' }
+    });
+
+    const response = await wrappedHandler(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(body).toMatchObject({
+      error: 'Unauthorized',
+      requiresAuth: true,
+      authReason: 2
+    });
+  });
+
+  it('should omit authReason from 401 JSON when not provided by gd-auth', async () => {
+    mockAuthenticate.mockResolvedValue({
+      valid: false,
+      reason: 'No authentication token provided'
+    });
+
+    const { withCustomerAuth } = await import('./customer-auth');
+    const handler = vi.fn().mockResolvedValue(new Response('ok'));
+
+    const wrappedHandler = withCustomerAuth(handler);
+    const request = new NextRequest('http://localhost/api/test', {
+      headers: { cookie: 'auth_idp=test-token' }
+    });
+
+    const response = await wrappedHandler(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(body.error).toBe('Unauthorized');
+    expect(body).not.toHaveProperty('authReason');
   });
 });

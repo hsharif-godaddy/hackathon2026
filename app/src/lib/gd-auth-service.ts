@@ -97,8 +97,6 @@ export class GdAuthService {
       type: authConfigs.user.realm,
       auths: authConfigs.user.type,
       allowHeartbeat: authConfigs.user.allowHeartbeat,
-      // gd-auth 1.5.0 renamed use12HourExpiration to useNewExpiration;
-      // gasket-auth types still use the old name, so we map here
       useNewExpiration: authConfigs.user.use12HourExpiration,
       fetchKey: require('gd-auth/src/fetch-key') // eslint-disable-line @typescript-eslint/no-require-imports
     });

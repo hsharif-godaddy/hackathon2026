@@ -78,6 +78,7 @@ export interface UnauthenticatedCustomerContext {
   user: null;
   isAuthenticated: false;
   error: string;
+  authReason?: number;
 }
 
 export type CustomerRequestContext = CustomerAuthContext | UnauthenticatedCustomerContext;
@@ -153,11 +154,12 @@ export async function authenticateCustomer(request: NextRequest, level?: 1 | 2 |
     // Level 3 (sensitive ops): HBI <= 12 hours (requires recent heartbeat)
     const result = await gdAuthService.authenticate(token, level);
     if (!result.valid || !result.payload) {
-      logger.warn('auth.gdauth.validate.failed', { reason: result.reason }, { tags: ['security'] });
+      logger.warn('auth.gdauth.validate.failed', { reason: result.reason, authReason: result.authReason }, { tags: ['security'] });
       return {
         isAuthenticated: false,
         user: null,
-        error: result.reason || 'Invalid or expired token'
+        error: result.reason || 'Invalid or expired token',
+        ...(result.authReason !== undefined ? { authReason: result.authReason } : {})
       };
     }
 
@@ -268,14 +270,15 @@ export function withCustomerAuth<T extends unknown[]>(
       const authContext = await authenticateCustomer(request, options?.level);
 
       if (!authContext.isAuthenticated) {
-        const errorMessage = (authContext as UnauthenticatedCustomerContext).error;
+        const unauthContext = authContext as UnauthenticatedCustomerContext;
 
         transaction?.end('HTTP 401');
         return NextResponse.json(
           {
             error: 'Unauthorized',
-            message: errorMessage,
-            requiresAuth: true
+            message: unauthContext.error,
+            requiresAuth: true,
+            ...(unauthContext.authReason !== undefined ? { authReason: unauthContext.authReason } : {})
           },
           { status: 401 }
         );

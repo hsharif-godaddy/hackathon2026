@@ -736,8 +736,8 @@ importers:
         specifier: ^12.38.0
         version: 12.38.0(@emotion/is-prop-valid@0.8.8)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       gd-auth:
-        specifier: 1.4.1
-        version: 1.4.1
+        specifier: 1.5.0
+        version: 1.5.0
       gd-auth-client:
         specifier: ^2.1.1
         version: 2.1.1
@@ -9492,6 +9492,10 @@ packages:
     resolution: {integrity: sha512-hMc3myLV7EAGa32JzNRvwD+APkVxkKB6+Df9SA0HxrZdUAjwwNk8UfytsOz7sD09aIe3mWweT/Nw3Av/1Y6HhQ==}
     engines: {node: '>=8.8'}
 
+  gd-auth@1.5.0:
+    resolution: {integrity: sha512-4ENsJUMn/PmZhW8FSYzGJXRT6W6YGZPioGSdTmsh5L/wWpBcfPNoLH0fwD5LxIX/stYh92F2UP1StEPwoUBH7A==}
+    engines: {node: '>=8.8'}
+
   generate-function@2.3.1:
     resolution: {integrity: sha512-eeB5GfMNeevm/GRYq20ShmsaGcmI81kIX2K9XQx5miC8KdHaC6Jm0qQ8ZNeGOi7wYB8OsdxKs+Y2oVuTFuVwKQ==}
 
@@ -16601,7 +16605,7 @@ snapshots:
       '@gasket/fetch': 7.3.8(encoding@0.1.13)
       '@godaddy/gasket-plugin-visitor': 3.7.1
       '@godaddy/gd-auth-lib': 0.7.0
-      gd-auth: 1.4.1
+      gd-auth: 1.5.0
       lodash: 4.17.21
       path-to-regexp: 8.3.0
     transitivePeerDependencies:
@@ -19968,7 +19972,7 @@ snapshots:
       '@sso/brand-configs': 2.63.0
       '@sso/traffic': 1.1.6(react@19.1.0)
       browser-cookies: 1.2.0
-      gd-auth: 1.4.1
+      gd-auth: 1.5.0
       jwt-decode: 4.0.0
       libphonenumber-js: 1.12.31
       lodash: 4.17.21
@@ -23521,7 +23525,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-module-utils@2.12.1(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.9.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0)(eslint@8.57.1))(eslint@8.57.1):
+  eslint-module-utils@2.12.1(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.9.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.9.2))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1):
     dependencies:
       debug: 3.2.7
     optionalDependencies:
@@ -23557,7 +23561,7 @@ snapshots:
       doctrine: 2.1.0
       eslint: 8.57.1
       eslint-import-resolver-node: 0.3.9
-      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.9.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0)(eslint@8.57.1))(eslint@8.57.1)
+      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.9.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.9.2))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1)
       hasown: 2.0.2
       is-core-module: 2.16.1
       is-glob: 4.0.3
@@ -24291,6 +24295,13 @@ snapshots:
       - debug
 
   gd-auth@1.4.1:
+    dependencies:
+      follow-redirects: 1.15.11
+      rsa-pem-from-mod-exp: 0.8.4
+    transitivePeerDependencies:
+      - debug
+
+  gd-auth@1.5.0:
     dependencies:
       follow-redirects: 1.15.11
       rsa-pem-from-mod-exp: 0.8.4
