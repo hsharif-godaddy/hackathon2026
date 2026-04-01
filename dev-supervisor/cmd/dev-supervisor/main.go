@@ -206,6 +206,18 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("/publish", s.handlePublish).Methods("POST")
 	s.router.HandleFunc("/publish/status", s.handlePublishStatus).Methods("GET")
 	s.router.HandleFunc("/unpublish", s.handleUnpublish).Methods("POST")
+
+	// Filesystem operation endpoints
+	fsRouter := s.router.PathPrefix("/fs").Subrouter()
+	fsRouter.Use(fsMaxBodyMiddleware)
+	fsRouter.HandleFunc("/read", s.handleFsRead).Methods("POST")
+	fsRouter.HandleFunc("/write", s.handleFsWrite).Methods("POST")
+	fsRouter.HandleFunc("/stat", s.handleFsStat).Methods("POST")
+	fsRouter.HandleFunc("/readdir", s.handleFsReaddir).Methods("POST")
+	fsRouter.HandleFunc("/mkdir", s.handleFsMkdir).Methods("POST")
+	fsRouter.HandleFunc("/unlink", s.handleFsUnlink).Methods("POST")
+	fsRouter.HandleFunc("/rename", s.handleFsRename).Methods("POST")
+	fsRouter.HandleFunc("/exists", s.handleFsExists).Methods("POST")
 }
 
 func (s *Server) getConfiguredAddress() string {

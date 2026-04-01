@@ -6,6 +6,7 @@ package validation
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 )
@@ -226,6 +227,92 @@ func IsValidEnvVarName(name string) bool {
 	}
 
 	return true
+}
+
+// ValidateFilePath validates that a file path is safe for filesystem operations.
+// It rejects empty paths, null bytes, ".." traversal, and paths outside the
+// specified base directory. The resolved path is returned for use by callers.
+func ValidateFilePath(path string, baseDir string) (string, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", errors.New("path cannot be empty")
+	}
+
+	if strings.Contains(path, "\x00") {
+		return "", errors.New("path contains null bytes")
+	}
+
+	// Check for ".." as a path component (not just substring, so "foo..txt" is allowed)
+	if slices.Contains(strings.Split(path, "/"), "..") {
+		return "", errors.New("path contains directory traversal")
+	}
+
+	// Resolve to absolute path within baseDir
+	var resolved string
+	if filepath.IsAbs(path) {
+		resolved = filepath.Clean(path)
+	} else {
+		resolved = filepath.Clean(filepath.Join(baseDir, path))
+	}
+
+	// Ensure the resolved path is within baseDir
+	baseDirClean := filepath.Clean(baseDir)
+	if resolved != baseDirClean && !strings.HasPrefix(resolved, baseDirClean+"/") {
+		return "", fmt.Errorf("path escapes base directory %s", baseDirClean)
+	}
+
+	// Resolve symlinks to prevent sandbox escapes (e.g., /app/link -> /etc).
+	resolved, err := resolveSymlinksWithinBase(resolved, baseDirClean)
+	if err != nil {
+		return "", err
+	}
+
+	return resolved, nil
+}
+
+// resolveSymlinksWithinBase resolves symlinks and verifies the real path stays within baseDir.
+// For non-existent paths (write targets), it walks up ancestors to find the deepest existing
+// directory and resolves symlinks there - preventing escapes through symlinked intermediates
+// even when descendants don't exist yet.
+func resolveSymlinksWithinBase(resolved string, baseDirClean string) (string, error) {
+	realBase := baseDirClean
+	if rb, evalErr := filepath.EvalSymlinks(baseDirClean); evalErr == nil {
+		realBase = rb
+	}
+
+	// Fast path: full path exists, resolve directly
+	if realPath, evalErr := filepath.EvalSymlinks(resolved); evalErr == nil {
+		if !isWithinDir(realPath, realBase) {
+			return "", fmt.Errorf("path escapes base directory %s via symlink", baseDirClean)
+		}
+		return realPath, nil
+	}
+
+	if resolved == baseDirClean {
+		return resolved, nil
+	}
+
+	// Path doesn't exist. Walk up ancestors until we find one that exists,
+	// then resolve its symlinks. This catches cases like escape/newdir/file.txt
+	// where "escape" is a symlink out of the sandbox and "newdir" doesn't exist.
+	tail := filepath.Base(resolved)
+	ancestor := filepath.Dir(resolved)
+	for ancestor != baseDirClean && ancestor != "/" && ancestor != "." {
+		if realAnc, evalErr := filepath.EvalSymlinks(ancestor); evalErr == nil {
+			if !isWithinDir(realAnc, realBase) {
+				return "", fmt.Errorf("path escapes base directory %s via symlink", baseDirClean)
+			}
+			return filepath.Join(realAnc, tail), nil
+		}
+		tail = filepath.Join(filepath.Base(ancestor), tail)
+		ancestor = filepath.Dir(ancestor)
+	}
+
+	return resolved, nil
+}
+
+// isWithinDir checks if path is equal to or a child of dir.
+func isWithinDir(path string, dir string) bool {
+	return path == dir || strings.HasPrefix(path, dir+"/")
 }
 
 // SanitizeCommand performs basic command sanitization
