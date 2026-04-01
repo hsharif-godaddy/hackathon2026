@@ -864,9 +864,7 @@ export default function ChatPane({
         <SettingsPane />
       </div>
 
-      <ChatToolbar
-        isProcessing={isProcessing}
-      />
+      <ChatToolbar />
     </div>
     </ChatContext.Provider>
   )

@@ -20,6 +20,7 @@ import { useAppIdFromParams } from '@/app/develop/components/utils'
 import AppPublish from '@/components/layout/AppPublish'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
+import { useIsHistoryDisabled } from '@/hooks/useIsHistoryDisabled'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { cn } from '@/lib/utils'
@@ -28,7 +29,6 @@ import { useGitStore } from '@/stores/useGitStore'
 import { generateClickEID } from '@/utils/instrumentation'
 
 interface ChatToolbarProps {
-  isProcessing?: boolean
   className?: string
   onBeforeTabChange?: (tab: ChatTab) => void
   optimisticActiveTab?: ChatTab
@@ -36,7 +36,6 @@ interface ChatToolbarProps {
 }
 
 export default function ChatToolbar({
-    isProcessing = false,
     className = '',
     onBeforeTabChange,
     optimisticActiveTab,
@@ -55,14 +54,11 @@ export default function ChatToolbar({
   const displayActiveTab = optimisticActiveTab ?? activeChatTab
   const viewMode = useDevelopPageStore((state) => state.viewMode);
   const isSelectMode = useDevelopPageStore((state) => state.isSelectMode);
-  const isPublishing = useDevelopPageStore((state) =>
-    appId ? (state.publishStates?.[appId]?.isPublishing ?? false) : false
-  );
-  const isSelectingCommit = useGitStore((state) => state.isSelectingCommit);
   const returnToMain = useGitStore((state) => state.returnToMain);
   const setSelectedCommitHash = useGitStore((state) => state.setSelectedCommitHash);
+  const isHistoryDisabled = useIsHistoryDisabled(appId || '');
 
-  const { data: gitHistoryData, isFetching: isFetchingCommits } = useGitHistoryQuery({
+  const { data: gitHistoryData } = useGitHistoryQuery({
     appId: appId || '',
     enabled: !!appId
   })
@@ -164,7 +160,7 @@ export default function ChatToolbar({
               value={ChatTab.HISTORY}
               icon={<HistoryIcon className="size-2.5" />}
               label={t('builder_chat_toolbar_button_history')}
-              disabled={isProcessing || isFetchingCommits || isSelectingCommit || viewMode === ViewMode.CODE || isSelectMode || isPublishing}
+              disabled={isHistoryDisabled}
               data-eid={generateClickEID('develop.chat_toolbar.history')}
             />
             <SettingsMenu ref={settingsMenuRef} />

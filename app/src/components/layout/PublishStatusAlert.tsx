@@ -1,3 +1,4 @@
+// Intentionally retained as fallback if publish popover alerts prove insufficient.
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';

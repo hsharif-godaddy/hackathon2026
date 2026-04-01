@@ -9,6 +9,8 @@ interface IconButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElem
   active?: boolean
   separator?: boolean
   disabled?: boolean
+  size?: 'default' | 'sm'
+  inverted?: boolean
   dataEid?: string
   className?: string
   label?: string
@@ -25,6 +27,8 @@ const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconB
   active,
   separator,
   disabled,
+  size = 'default',
+  inverted = false,
   dataEid,
   className,
   label,
@@ -65,9 +69,14 @@ const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconB
     <button
       id={id}
       className={clsx(
-        "flex gap-0 items-center relative rounded-lg p-1.5 leading-none bg-intents-ux-box-backgroundColor transition-all duration-200", {
+        "flex gap-0 items-center relative leading-none transition-all duration-200", {
+          "bg-intents-ux-box-backgroundColor": !inverted,
+          "bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-boxLowContrast-foregroundColor": inverted,
+          "p-1.5 rounded-lg": size === 'default',
+          "p-[6px] rounded-md": size === 'sm',
           "mr-2 after:absolute after:-right-1.5 after:top-0 after:bottom-0 after:block after:content after:w-px after:bg-intents-ux-box-borderColor": separator,
-          "bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor shadow-md border-intents-ux-boxHighContrast-borderColor": active,
+          "bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor shadow-md border-intents-ux-boxHighContrast-borderColor": active && !inverted,
+          "bg-intents-ux-box-backgroundColor text-intents-ux-box-foregroundColor shadow-md": active && inverted,
           "opacity-25 pointer-events-none": disabled,
           "hover:shadow-md hover:cursor-pointer": !disabled && onClick,
         },
@@ -87,7 +96,9 @@ const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconB
       {icon}
       {label && (showLabelWhenActive || showLabelAlways) && (
         <span className={clsx(
-          "text-sm overflow-hidden whitespace-nowrap", {
+          "overflow-hidden whitespace-nowrap", {
+            "text-sm": size === 'default',
+            "text-xs": size === 'sm',
             "max-w-0 opacity-0 transition-all duration-200 ease-in-out": !active && !showLabelAlways,
             "max-w-xs opacity-100 mx-0.5 transition-all duration-400 ease-in-out": active || showLabelAlways
           }

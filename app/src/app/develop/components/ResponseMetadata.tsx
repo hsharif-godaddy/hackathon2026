@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useRef, useState } from 'react'
 import CheckIcon from '@ux/icon/checkmark'
-import ClipboardIcon from '@ux/icon/clipboard'
+import ClipboardIcon from '@ux/icon/copy'
 import OkIcon from '@ux/icon/ok'
 
 import { useTranslations } from '@/hooks/useTranslations'

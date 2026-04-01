@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Box from '@ux/box';
 import Button from '@ux/button';
 import CheckmarkIcon from '@ux/icon/checkmark';
-import ClipboardIcon from '@ux/icon/clipboard';
+import ClipboardIcon from '@ux/icon/copy';
 import Modal from '@ux/modal';
 import text from '@ux/text';
 import TextInput from '@ux/text-input';

@@ -2,8 +2,8 @@
 
 import { ReactNode } from 'react';
 import CalendarIcon from '@ux/icon/calendar';
-import ClipboardIcon from '@ux/icon/clipboard';
 import ContentIcon from '@ux/icon/content';
+import ClipboardIcon from '@ux/icon/copy';
 import DatabaseIcon from '@ux/icon/database';
 import GraphIcon from '@ux/icon/graph';
 import LinkIcon from '@ux/icon/link';

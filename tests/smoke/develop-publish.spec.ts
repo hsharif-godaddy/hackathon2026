@@ -4,11 +4,12 @@
  * Tests automatic publishing via AI agent:
  * 1. Creates an app with prompt to publish
  * 2. Waits for AI agent to auto-publish
- * 3. Verifies success via publish button state and success alert
+ * 3. Verifies success via publish button state and success Growl (background publish
+ *    leaves the popover closed, so publish-success-alert is not set in the popover)
  *
  * Strategy:
  * - AI agent handles publishing automatically
- * - No manual button clicks needed
+ * - No manual publish clicks needed
  */
 import { test, expect } from '@playwright/test';
 
@@ -67,14 +68,14 @@ test.describe('Publish Flow', () => {
     // ========================================
     console.log('✅ Step 3: Verifying publish success...');
 
-    // Wait for the "Published Successfully!" alert — proves deployment actually completed
-    await expect(page.getByTestId('publish-success-alert')).toBeVisible({ timeout: DEPLOYMENT_TIMEOUT_MS });
-    console.log('  ✓ Published Successfully alert visible');
-
     // Verify publish button is enabled and interactive after deploy
     const publishButton = page.locator('[data-eid*="header"][data-eid*="publish"]');
-    await expect(publishButton).not.toBeDisabled();
+    await expect(publishButton).not.toBeDisabled({ timeout: DEPLOYMENT_TIMEOUT_MS });
     console.log('  ✓ Publish button enabled');
+
+    // Success Growl uses id app-publish-success (@ux/growl title node) when popover was closed
+    await expect(page.locator('#app-publish-success')).toBeVisible({ timeout: DEPLOYMENT_TIMEOUT_MS });
+    console.log('  ✓ Publish success Growl visible');
 
     console.log('🎉 Publish flow test passed!');
   });

@@ -76,6 +76,11 @@ vi.mock('@/hooks/useSwitchboard', () => ({
 vi.mock('@/hooks/useGitHistory', () => ({
   useGitHistoryQuery: () => ({ isFetching: false }),
 }));
+
+let mockHistoryDisabled = false;
+vi.mock('@/hooks/useIsHistoryDisabled', () => ({
+  useIsHistoryDisabled: () => mockHistoryDisabled,
+}));
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((id) => id),
 }));
@@ -92,7 +97,6 @@ vi.mock('@/components/providers/AuthProvider', () => ({
 
 describe('ChatToolbar', () => {
   const defaultProps = {
-    isProcessing: false,
     onAssetSelect: vi.fn(),
     ventureId: 'venture-123',
   };
@@ -112,6 +116,7 @@ describe('ChatToolbar', () => {
     mockChatTabs.activeChatTab = ChatTab.CHAT;
     mockChatTabs.activeSettingsSection = SettingsSection.DOMAIN;
     mockGitStore.isSelectingCommit = false;
+    mockHistoryDisabled = false;
   });
 
   it('should render without crashing', () => {
@@ -190,8 +195,10 @@ describe('ChatToolbar', () => {
     expect(mediaButton).toHaveAttribute('aria-checked', 'true');
   });
 
-  it('should disable history button when processing', () => {
-    renderWithProviders(<ChatToolbar {...defaultProps} isProcessing={true} />);
+  it('should disable history button when useIsHistoryDisabled returns true', () => {
+    mockHistoryDisabled = true;
+
+    renderWithProviders(<ChatToolbar {...defaultProps} />);
 
     const historyButton = screen.getByLabelText('builder_chat_toolbar_button_history');
     expect(historyButton).toBeDisabled();
@@ -207,22 +214,13 @@ describe('ChatToolbar', () => {
     expect(buttons.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('should disable history button when selecting commit', () => {
-    mockGitStore.isSelectingCommit = true;
+  it('should enable history button when useIsHistoryDisabled returns false', () => {
+    mockHistoryDisabled = false;
 
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
     const historyButton = screen.getByLabelText('builder_chat_toolbar_button_history');
-    expect(historyButton).toBeDisabled();
-  });
-
-  it('should disable history button when publishing', () => {
-    mockDevelopStore.publishStates['app-123'].isPublishing = true;
-
-    renderWithProviders(<ChatToolbar {...defaultProps} />);
-
-    const historyButton = screen.getByLabelText('builder_chat_toolbar_button_history');
-    expect(historyButton).toBeDisabled();
+    expect(historyButton).not.toBeDisabled();
   });
 
   it('should render settings menu on mobile when settings enabled', () => {

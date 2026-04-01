@@ -1,44 +1,82 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useIntl } from 'react-intl';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { FormattedMessage } from 'react-intl';
 import Alert from '@ux/alert';
+import Box from '@ux/box';
 import Button from '@ux/button';
-import Collapsible from '@ux/collapsible';
+import Growl from '@ux/growl';
+import AlertIcon from '@ux/icon/alert';
+import CheckmarkIcon from '@ux/icon/checkmark';
+import ChevronRightIcon from '@ux/icon/chevron-right';
 import CloudUploadIcon from '@ux/icon/cloud-upload';
-import Tag from '@ux/tag';
+import HistoryIcon from '@ux/icon/history';
+import InlineEditIcon from '@ux/icon/inline-edit';
+import WindowNewIcon from '@ux/icon/window-new';
+import Spinner from '@ux/spinner';
 import text from '@ux/text';
+import TextInput from '@ux/text-input';
+import TextLockup from '@ux/text-lockup';
 
+import IconButton from '@/app/develop/components/IconButton';
 import { ChatTab, SettingsSection } from '@/app/develop/components/types';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
 import { useGitHistoryQuery } from '@/hooks/useGitHistory';
+import { useIsHistoryDisabled } from '@/hooks/useIsHistoryDisabled';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
 import { usePublishApp } from '@/hooks/usePublishApp';
 import { useSecretsDiff } from '@/hooks/useSecretsDiff';
+import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
-import { isPublishedApp } from '@/lib/publish-limit';
+import { getPublishLimit } from '@/lib/publish-limit';
 import { logger } from '@/lib/request-context';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { Separator } from '@/lib/shadcn/separator';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import { useIsLoading, useStreamingState } from '@/stores/useStreamingConversationStore';
+import { getPlanDisplayLabelKey } from '@/utils/credits';
+import { isAiroSubdomain, resolveSiteFqdn } from '@/utils/domain';
 import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
+import { timeAgo } from '@/utils/time';
+
+function PublishFailedRetryMessage({ onRetry }: { onRetry: () => void | Promise<void> }) {
+  return (
+    <FormattedMessage
+      id='builder_publish_failed_retry'
+      values={{
+        retry: (chunks) => (
+          <button
+            type='button'
+            className='underline cursor-pointer text-inherit'
+            onClick={() => void onRetry()}
+          >
+            {chunks}
+          </button>
+        ),
+      }}
+    />
+  );
+}
 
 export default function AppPublish({ location = 'develop' }: { location?: string }) {
-  const intl = useIntl();
   const t = useTranslations();
   const [open, setOpen] = useState(false);
+  const [publishResult, setPublishResult] = useState<'success' | 'failed' | null>(null);
+  const openRef = useRef(false);
+  const prevAppIdRef = useRef<string | null>(null);
+  const prevPublishingRef = useRef(false);
   const pathname = usePathname();
   const isDevelopPage = pathname?.includes('/develop');
   const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
+  const isHistoryDisabled = useIsHistoryDisabled(currentAppId || '');
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
   const clearPublishStatus = useDevelopPageStore((state) => state.clearPublishStatus);
@@ -46,8 +84,14 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
   // Switchboard flags
   // Coerce to boolean to prevent React Query errors when undefined
-  const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
-  const isPublishButtonEnabledFlag = isPublishButtonEnabled === true;
+  const {
+    data: isPublishButtonEnabled,
+    isError: isPublishSwitchboardError,
+  } = useSwitchboard('appbuilder-publish-button');
+  const isPublishButtonEnabledFlag =
+    isPublishButtonEnabled === true || isPublishSwitchboardError;
+  const publishBlockedBySwitchboard =
+    !isPublishSwitchboardError && !isPublishButtonEnabled;
   // Secondary flags only needed once the publish button is confirmed enabled on the develop page.
   // AppPublish is always mounted in the header, so without this guard they fire on every page load.
   const publishFlagsEnabled = isPublishButtonEnabledFlag && isDevelopPage;
@@ -66,29 +110,24 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     },
   });
 
+  const { data: subscription } = useSubscription();
+  const planName = subscription?.plan ? t(getPlanDisplayLabelKey(subscription.plan)) : '';
+  const publishLimit = getPublishLimit(subscription?.plan);
+
   // Get publish state for current app
   const isPublishing = useDevelopPageStore(
     (state) => currentAppId && state.publishStates[currentAppId]
       ? state.publishStates[currentAppId].isPublishing
       : false
   );
-
-  // Get last published commit hash from store (for local dev unpublished count)
-  // Falls back to localStorage if store value is null (e.g., after page refresh)
-  const storeLastPublishedCommitHash = useDevelopPageStore(
-    (state) => currentAppId && state.publishStates[currentAppId]
-      ? state.publishStates[currentAppId].lastPublishedCommitHash
-      : null
+  const publishError = useDevelopPageStore(
+    (state) => state.publishStates?.[currentAppId]?.publishError ?? false
   );
-  const lastPublishedCommitHash = useMemo(() => {
-    if (storeLastPublishedCommitHash) return storeLastPublishedCommitHash;
-    if (typeof window === 'undefined' || !currentAppId) return null;
-    return localStorage.getItem(`airo-last-published-commit-${currentAppId}`);
-  }, [storeLastPublishedCommitHash, currentAppId]);
 
   const publishMutation = usePublishApp();
 
   const site = useSiteStore((state) => currentAppId ? state.getSite(currentAppId) : null);
+  const fqdn = resolveSiteFqdn(site) || '';
 
   // Check if a conversation is in progress (AI is actively processing)
   const isConversationLoading = useIsLoading();
@@ -109,27 +148,22 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   });
 
   const {
-    data: gitHistoryData,
     isLoading: isLoadingGitHistory,
     refetch: refetchGitHistory,
   } = useGitHistoryQuery({
     appId: currentAppId || '',
     enabled: queryEnabled,
   });
-  const currentCommit = gitHistoryData?.currentCommit
 
   const mostRecentDeployment = deployments[0];
 
   // Check if deployment is in progress (not in terminal state)
   const isDeploymentInProgress = mostRecentDeployment &&
     ![DeploymentStatus.DEPLOYED, DeploymentStatus.FAILED].includes(mostRecentDeployment.status as DeploymentStatus);
-  // Use actual current commit (HEAD) instead of latest commit (commits[0])
-  // Falls back to commits[0] for backward compatibility with old backends
-  // Use memoizedGitCommits below after useMemo
-  const currentCommitHash = currentCommit || gitHistoryData?.commits?.[0]?.hash;
-  const isCurrentCommitDeployed = currentCommitHash &&
-    mostRecentDeployment?.gitHash === currentCommitHash &&
-    mostRecentDeployment?.status === DeploymentStatus.DEPLOYED;
+
+  const isPublishingOrDeploying = isPublishing || isDeploymentInProgress;
+
+  openRef.current = open;
 
   useEffect(() => {
     if (!queryEnabled || !currentAppId) return;
@@ -156,12 +190,26 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     }
   }, [mostRecentDeployment, isDeploymentInProgress, currentAppId, queryEnabled, setIsPublishing, setPublishError]);
 
+  useEffect(() => {
+    if (!currentAppId) {
+      prevAppIdRef.current = null;
+      return;
+    }
+    if (prevAppIdRef.current === currentAppId) return;
+    const hadPreviousApp = prevAppIdRef.current !== null;
+    prevAppIdRef.current = currentAppId;
+    if (hadPreviousApp) {
+      setPublishResult(null);
+      setOpen(false);
+    }
+  }, [currentAppId]);
+
   // Check if this is first-time publishing
   const isFirstTimePublishing = !hasBeenPublished(site);
 
   // Internal deploy function (called after QA gate passes or is skipped)
   const handleDeploy = useCallback(async () => {
-    setOpen(false);
+    setPublishResult(null);
 
     if (!currentAppId || !site?.agent_url) {
       logger.error('app-publish.deploy.error', {
@@ -205,21 +253,76 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     }
   }, [currentAppId, site, isFirstTimePublishing, setPublishError, setIsPublishing, clearPublishStatus, publishMutation]);
 
+  useEffect(() => {
+    const wasPublishing = prevPublishingRef.current;
+    prevPublishingRef.current = !!isPublishingOrDeploying;
+
+    if (!wasPublishing || isPublishingOrDeploying) return;
+
+    const failed = publishError || mostRecentDeployment?.status === DeploymentStatus.FAILED;
+    const succeeded = mostRecentDeployment?.status === DeploymentStatus.DEPLOYED;
+
+    if (!failed && !succeeded) return;
+
+    const outcome: 'success' | 'failed' = failed ? 'failed' : 'success';
+
+    if (openRef.current) {
+      setPublishResult(outcome);
+      return;
+    }
+
+    if (outcome === 'success') {
+      Growl.addGrowlMessage({
+        id: 'app-publish-success',
+        title: t('builder_publish_success_title'),
+        ...(fqdn
+          ? {
+              children: (
+                <Button
+                  design='inline'
+                  as='external'
+                  external={true}
+                  href={fqdn}
+                  text={t('builder_common_open_link')}
+                />
+              ),
+            }
+          : {}),
+        emphasis: 'success'
+      });
+      return;
+    }
+
+    Growl.addGrowlMessage({
+      id: 'app-publish-failed',
+      title: t('builder_publish_failed_title'),
+      children: (
+        <p>
+          <PublishFailedRetryMessage
+            onRetry={() => {
+              Growl.removeGrowlMessage('app-publish-failed');
+              void handleDeploy();
+            }}
+          />
+        </p>
+      ),
+      emphasis: 'critical',
+    });
+  }, [isPublishingOrDeploying, mostRecentDeployment?.status, publishError, fqdn, t, handleDeploy]);
+
   /**
    * Navigate to version history tab
    */
   const handleViewHistory = useCallback(() => {
-    setOpen(false);
+    // Keep popover open while viewing history
     setActiveChatTab(ChatTab.HISTORY);
-  }, [setOpen, setActiveChatTab]);
+  }, [setActiveChatTab]);
 
-  /**
-   * Navigate to secrets settings tab
-   */
-  const handleViewSecrets = useCallback(() => {
+  const handleViewDomain = useCallback(() => {
     setOpen(false);
-    setActiveSettingsSection(SettingsSection.SECRETS);
-  }, [setOpen, setActiveSettingsSection]);
+    setActiveSettingsSection(SettingsSection.DOMAIN);
+    setActiveChatTab(ChatTab.SETTINGS);
+  }, [setOpen, setActiveSettingsSection, setActiveChatTab]);
 
   // Register deployments refetch function in store for retry functionality
   useEffect(() => {
@@ -232,55 +335,13 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     }
   }, [currentAppId, refetch, setDeploymentsRefetch]);
 
-  // Calculate changes since last published
-  // Must be before early return to satisfy React hooks rules
   const lastDeployedCommit = deployments.find(d => d.status === DeploymentStatus.DEPLOYED);
-
-  // Memoize gitCommits array to avoid dependency changes on every render
-  const memoizedGitCommits = useMemo(() => gitHistoryData?.commits || [], [gitHistoryData?.commits]);
-
-  // Calculate unpublished count with multiple fallbacks:
-  // 1. If we have deployment record with gitHash, find its index in commits
-  // 2. If lastPublishedCommitHash matches any commit in history, use that index
-  // 3. If no match found, all commits are unpublished
-  const unpublishedCount = useMemo(() => {
-    if (!memoizedGitCommits.length) return 0;
-
-    // Production: use deployment record
-    if (lastDeployedCommit?.gitHash) {
-      const idx = memoizedGitCommits.findIndex(c => c.hash === lastDeployedCommit.gitHash);
-      return idx === -1 ? memoizedGitCommits.length : idx;
-    }
-
-    // Local dev: find the last published commit in history
-    if (lastPublishedCommitHash) {
-      const idx = memoizedGitCommits.findIndex(c => c.hash === lastPublishedCommitHash);
-      return idx === -1 ? memoizedGitCommits.length : idx;
-    }
-
-    // No publish record - all commits are unpublished
-    return memoizedGitCommits.length;
-  }, [memoizedGitCommits, lastDeployedCommit?.gitHash, lastPublishedCommitHash]);
-
   const lastDeployedDate = lastDeployedCommit?.updatedAt ? new Date(lastDeployedCommit.updatedAt) : null;
 
-  const { data: secretsDiff, refetch: refetchSecretsDiff } = useSecretsDiff({
+  const { refetch: refetchSecretsDiff } = useSecretsDiff({
     appId: currentAppId || '',
     enabled: queryEnabled && isSecretsEnabled === true,
   });
-
-  const unsyncedSecretsCount = (secretsDiff?.added.length ?? 0)
-    + (secretsDiff?.updated.length ?? 0)
-    + (secretsDiff?.deleted.length ?? 0);
-
-  // Check if the publish variant is currently active (not unpublished)
-  const isPublishVariantActive = site ? isPublishedApp(site) : false;
-
-  /** True when there are no code changes, no secret changes, AND the publish variant is active (show "no changes" info). */
-  const hasNoChangesToPublish = isCurrentCommitDeployed && unsyncedSecretsCount === 0 && isPublishVariantActive;
-
-  /** Combined count for summary line so "X changes since last publish" matches the Unpublished section. */
-  const totalChangesToPublish = unpublishedCount + unsyncedSecretsCount;
 
   if (!isDevelopPage) {
     return null;
@@ -291,60 +352,24 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   // - Paywall eligibility is being checked
   // - Publish limit is being checked
   // Note: Publishing, deployment, conversation in progress, and current commit deployed are now shown as warnings in the modal
-  const isButtonDisabled = isLoading || isLoadingGitHistory || isPaywallLoading || isPublishLimitLoading || !isPublishButtonEnabled || !currentAppId || !site?.agent_url;
+  const isButtonDisabled =
+    isLoading ||
+    isLoadingGitHistory ||
+    isPaywallLoading ||
+    isPublishLimitLoading ||
+    publishBlockedBySwitchboard ||
+    !currentAppId ||
+    !site?.agent_url;
 
   const publishWidget = isFirstTimePublishing ? 'app_first_publish' : 'app_publish';
 
-  const formattedDate = lastDeployedDate ? intl.formatDate(lastDeployedDate, {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
-  }) : '';
-
-  const changesTitle = (
-    <>
-      <text.h3 size={1}>{t('builder_publish_changes_title')}</text.h3>
-      {lastDeployedDate && (
-        <text.p size={0} emphasis='passive'>
-          {t('builder_publish_changes_since', { count: totalChangesToPublish, date: formattedDate })}
-        </text.p>
-      )}
-    </>
-  );
 
   // Determine which status alert to show (priority order)
   const getPublishStatusAlert = () => {
-    if (isPublishing) {
-      return (
-        <Alert emphasis="warning">
-          {t('builder_publish_in_progress_warning')}
-        </Alert>
-      );
-    }
-
-    if (isDeploymentInProgress) {
-      return (
-        <Alert emphasis="warning">
-          {t('builder_publish_deployment_in_progress_warning')}
-        </Alert>
-      );
-    }
-
     if (isConversationInProgress) {
       return (
         <Alert emphasis="warning">
           {t('builder_publish_conversation_warning')}
-        </Alert>
-      );
-    }
-
-    if (hasNoChangesToPublish) {
-      return (
-        <Alert emphasis="info">
-          {t('builder_publish_no_changes_info')}
         </Alert>
       );
     }
@@ -354,12 +379,8 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
   // Determine button text: "Publish" when there are code or secret changes to publish; "Republish" only when neither.
   const getPublishButtonText = () => {
-    if (isPublishing || isDeploymentInProgress) {
+    if (isPublishingOrDeploying) {
       return t('builder_publish_button_publishing');
-    }
-
-    if (hasNoChangesToPublish) {
-      return t('builder_publish_button_republish');
     }
 
     return t('builder_publish_button');
@@ -367,8 +388,8 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
   const handlePublish = async (shouldOpen: boolean) => {
     if (!shouldOpen) {
-      // Just close the popover
       setOpen(false);
+      setPublishResult(null);
       return;
     }
 
@@ -382,6 +403,20 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     });
   }
 
+  const getTriggerButtonIcon = () => {
+    if (isPublishingOrDeploying) {
+      // Spinner's rotation animation causes it to overflow the icon only button bounds, increasing its size.
+      return (
+        <div className='relative flex items-center justify-center'>
+          <Spinner size='sm' className='absolute' />
+        </div>
+      );
+    }
+    if (isChatToolbar) return <CloudUploadIcon className="!size-2.5" />;
+  };
+
+  const lastDeployedTimeAgo = lastDeployedDate ? timeAgo(lastDeployedDate) : null;
+
   return (
     <>
       <PaywallModal />
@@ -394,120 +429,164 @@ export default function AppPublish({ location = 'develop' }: { location?: string
             data-partial='componentAiro'
             data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
             disabled={isButtonDisabled}
-            icon={isChatToolbar ? <CloudUploadIcon className="!size-2.5" /> : undefined}
-            text={isChatToolbar ? undefined : getPublishButtonText()}
-            aria-label={isChatToolbar ? getPublishButtonText() : undefined}
+            icon={getTriggerButtonIcon()}
+            text={isChatToolbar || isPublishingOrDeploying ? undefined : getPublishButtonText()}
+            aria-label={getPublishButtonText()}
             className="!rounded-xmd !pt-0 !pb-0 !pl-1.5 !pr-1.5 sm:!p-1 !border-none md:!border-solid"
           />
         </PopoverTrigger>
-        <PopoverContent align='end' className='w-[400px] p-3'>
-          <div className='flex flex-col gap-2'>
-            {/* Collapsible Changes Header */}
-            <Collapsible
-              id='publish-changes'
-              title={changesTitle}
+        <PopoverContent align='end' className='w-[350px] p-3'>
+          <div className='flex flex-col gap-1'>
+            <TextLockup
+              title={t('builder_publish_popover_title')}
+              size='sm'
+              className='mb-1'
             >
-              <div className='mt-1 space-y-1'>
-                {(unpublishedCount > 0 || unsyncedSecretsCount > 0) && (
-                  <>
-                    <text.h5 size={0}>{t('builder_publish_unpublished_title')}</text.h5>
-                    {unpublishedCount > 0 && (
-                      <div className='flex items-center gap-0.5'>
-                        <Button design='inline' onClick={handleViewHistory}>
-                          {t('builder_publish_changes_count', { count: unpublishedCount })}
-                        </Button>
-                        <text.p>
-                          {deployments.length > 0
-                            ? t('builder_publish_since_current')
-                            : t('builder_publish_first_publish')
-                          }
-                        </text.p>
-                      </div>
-                    )}
-                    {unsyncedSecretsCount > 0 && (
-                      <div className='flex items-center gap-0.5'>
-                        <Button design='inline' onClick={handleViewSecrets}>
-                          {t('builder_publish_secrets_changes_count', { count: unsyncedSecretsCount })}
-                        </Button>
-                        <text.p>
-                          {deployments.length > 0
-                            ? t('builder_publish_secrets_since_current')
-                            : t('builder_publish_first_publish')
-                          }
-                        </text.p>
-                      </div>
-                    )}
-                  </>
-                )}
+              {isFirstTimePublishing && publishLimit !== null && publishLimit > 0 && (
+                <FormattedMessage
+                  id="builder_publish_plan_includes"
+                  values={{
+                    planName,
+                    limit: publishLimit,
+                  }}
+                />
+              )}
+            </TextLockup>
 
-                {deployments.length > 0 && (
-                  <div className='space-y-1'>
-                    {deployments.filter(d => d.status === DeploymentStatus.DEPLOYED).slice(0, 5).map((deployment, index) => {
-                      const deploymentDate = new Date(deployment.updatedAt);
-                      const isMostRecent = index === 0;
-
-                      // Calculate number of commits in this deployment
-                      // Find the index of this deployment's commit in the git history
-                      const deploymentCommitIndex = memoizedGitCommits.findIndex(c => c.hash === deployment.gitHash);
-
-                      // Find the index of the next older deployment's commit
-                      const nextDeployment = deployments.filter(d => d.status === DeploymentStatus.DEPLOYED)[index + 1];
-                      const nextDeploymentCommitIndex = nextDeployment
-                        ? memoizedGitCommits.findIndex(c => c.hash === nextDeployment.gitHash)
-                        : memoizedGitCommits.length;
-
-                      // Count commits between this deployment and the next older one
-                      const commitCount = deploymentCommitIndex >= 0 && nextDeploymentCommitIndex >= 0
-                        ? nextDeploymentCommitIndex - deploymentCommitIndex
-                        : 1;
-
-                      const deploymentFormattedDate = intl.formatDate(deploymentDate, {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        hour12: true
-                      });
-
-                      return (
-                        <div key={deployment.id} className='space-y-0.5'>
-                          <div className='flex items-center justify-between'>
-                            <text.h5 size={0} emphasis='passive'>
-                              {deploymentFormattedDate}
-                            </text.h5>
-                            {isMostRecent && (
-                              <Tag emphasis='info'>{t('builder_publish_current_tag')}</Tag>
-                            )}
-                          </div>
-                          <text.p size={0} emphasis='passive'>
-                            {t('builder_publish_changes_count', { count: commitCount })}
-                          </text.p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </Collapsible>
+            {lastDeployedDate && (
+              <button
+                type='button'
+                onClick={handleViewHistory}
+                aria-label={t('builder_publish_history')}
+                className='group flex w-full items-center justify-between gap-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40'
+                disabled={isHistoryDisabled}
+              >
+                <Box orientation='horizontal' inlineAlignChildren='center' gap='sm'>
+                  <HistoryIcon />
+                  <text.span as='label' size={-1}>
+                    {t('builder_common_last_publish')} • {t(lastDeployedTimeAgo.key, lastDeployedTimeAgo.values)}
+                  </text.span>
+                </Box>
+                <div
+                  className='p-1 rounded-md aspect-square group-hover:bg-intents-ux-actionHovered-backgroundColor group-hover:text-intents-ux-actionHovered-foregroundColor'
+                >
+                  <ChevronRightIcon />
+                </div>
+              </button>
+            )}
 
             {/* Status alert (shows most relevant state) */}
             {getPublishStatusAlert()}
 
+            {/* Domain Editing */}
+            {fqdn && (
+              <div className='flex flex-col gap-0.5'>
+                <text.label size={-1} htmlFor='AppPublishDomainEdit' as='label'>
+                  {t('builder_domain_title')}
+                </text.label>
+                <div className='relative'>
+                  <TextInput
+                    label={null}
+                    id='AppPublishDomainEdit'
+                    value={fqdn.replace(/^https?:\/\//, '')}
+                    visualSize='sm'
+                    readOnly
+                    disabled={isFirstTimePublishing}
+                    className='[&_#AppPublishDomainEdit]:!pr-[80px] [&_#AppPublishDomainEdit]:truncate'
+                  />
+                  {!isFirstTimePublishing && (
+                    <div className='absolute right-[5px] top-1/2 -translate-y-1/2 flex gap-0.5 items-center'>
+                      <IconButton
+                        icon={<InlineEditIcon className='size-2' />}
+                        onClick={handleViewDomain}
+                        label={t('builder_common_edit')}
+                        dataEid={generateClickEID(`${location}.header.publish_domain_edit`)}
+                        size='sm'
+                        inverted
+                        showLabelWhenActive={false}
+                      />
+                      <IconButton
+                        icon={<WindowNewIcon className='size-2' />}
+                        onClick={function openPublishDomain() {
+                          window.open(fqdn, '_blank', 'noopener,noreferrer');
+                        }}
+                        label={t('builder_common_open_link')}
+                        dataEid={generateClickEID(`${location}.header.publish_domain_copy`)}
+                        size='sm'
+                        inverted
+                        showLabelWhenActive={false}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Explanation that domain connect/edit relies on publishing */}
+            {isFirstTimePublishing && (
+              <text.p as='caption' size={-1} className='mt-1'>
+                {t('builder_publish_unpublished_domain_info')}
+              </text.p>
+            )}
+
             <Separator />
 
-            <Button
-              className='w-full'
-              design='primary'
-              size='sm'
-              data-partial='componentAiro'
-              data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
-              disabled={isButtonDisabled || isPublishing || isDeploymentInProgress || isConversationInProgress}
-              onClick={handleDeploy}
-            >
-              {getPublishButtonText()}
-            </Button>
+            {isAiroSubdomain(fqdn) && !isFirstTimePublishing && (
+              <Button
+                className='w-full'
+                design='control'
+                size='sm'
+                onClick={handleViewDomain}
+                text={t('builder_common_custom_domain_button')}
+              />
+            )}
 
+            {publishResult === null && (
+              <Button
+                className='w-full'
+                design='primary'
+                size='sm'
+                data-partial='componentAiro'
+                data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
+                disabled={isButtonDisabled || isPublishingOrDeploying || isConversationInProgress}
+                onClick={handleDeploy}
+                text={getPublishButtonText()}
+                icon={isPublishingOrDeploying ? <Spinner size='sm' /> : undefined}
+              />
+            )}
+
+            {publishResult === 'success' && (
+              <Box
+                data-testid='publish-success-alert'
+                orientation='horizontal'
+                blockAlignChildren='center'
+                inlineAlignChildren='center'
+                blockPadding='sm'
+                inlinePadding='sm'
+                gap='sm'
+              >
+                <CheckmarkIcon className='text-intents-ux-feedbackHighContrastSuccess-feedbackColor' />
+                <text.p as='action' size={-1}>
+                  {t('builder_publish_success_title')}
+                </text.p>
+              </Box>
+            )}
+
+            {publishResult === 'failed' && (
+              <Box
+                orientation='horizontal'
+                blockAlignChildren='center'
+                inlineAlignChildren='center'
+                blockPadding='sm'
+                inlinePadding='sm'
+                gap='sm'
+              >
+                <AlertIcon className='text-intents-ux-feedbackHighContrastCritical-feedbackColor' />
+                <text.span as='action' size={-1}>
+                  <PublishFailedRetryMessage onRetry={handleDeploy} />
+                </text.span>
+              </Box>
+            )}
           </div>
         </PopoverContent>
       </Popover>

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Box from "@ux/box";
 import CheckmarkIcon from '@ux/icon/checkmark';
-import ClipboardIcon from '@ux/icon/clipboard';
+import ClipboardIcon from '@ux/icon/copy';
 import Spinner from '@ux/spinner';
 import text from "@ux/text";
 

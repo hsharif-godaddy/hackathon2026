@@ -28,7 +28,6 @@ import { Feedback } from '@/components/feedback/Feedback'
 import { FEEDBACK_ID } from '@/components/feedback/utils'
 import PostPublishGoLiveModal from '@/components/layout/PostPublishGoLiveModal'
 import PublishLimitModal from '@/components/layout/PublishLimitModal'
-import PublishStatusAlert from '@/components/layout/PublishStatusAlert'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { buildDynamicApiUrl, dynamicApiConfigService } from '@/config/dynamic-api'
 import { WebSocketProvider } from '@/contexts/WebSocketContext'
@@ -1114,7 +1113,6 @@ function DevelopPageContent() {
                 ease: [0.4, 0, 0.2, 1]
               }}
             >
-              <PublishStatusAlert />
               <PostPublishGoLiveModal appId={appId} />
 
               {/* Content area - takes remaining space after banner */}
@@ -1201,7 +1199,6 @@ function DevelopPageContent() {
                 />
               ) : (
                 <>
-                  <PublishStatusAlert />
                   <PostPublishGoLiveModal appId={appId} />
 
                   {/* Content area - takes remaining space after banner */}
@@ -1288,7 +1285,6 @@ function DevelopPageContent() {
             </div>
             <ChatToolbar
               className="fixed bottom-1 left-0 right-0"
-              isProcessing={isProcessing}
               onBeforeTabChange={setOptimisticMobileTab}
               optimisticActiveTab={optimisticMobileTab}
               onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}

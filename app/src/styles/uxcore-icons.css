@@ -17,12 +17,12 @@
 @import "@ux/icon/circle/index.css";
 @import "@ux/icon/circle-filled/index.css";
 @import "@ux/icon/circle-half/index.css";
-@import "@ux/icon/clipboard/index.css";
 @import "@ux/icon/clock/index.css";
 @import "@ux/icon/cloud-upload/index.css";
 @import "@ux/icon/code/index.css";
 @import "@ux/icon/comments/index.css";
 @import "@ux/icon/content/index.css";
+@import "@ux/icon/copy/index.css";
 @import "@ux/icon/database/index.css";
 @import "@ux/icon/dashboard-filled/index.css";
 @import "@ux/icon/desktop/index.css";
@@ -43,6 +43,7 @@
 @import "@ux/icon/history/index.css";
 @import "@ux/icon/image/index.css";
 @import "@ux/icon/information/index.css";
+@import "@ux/icon/inline-edit/index.css";
 @import "@ux/icon/instagram/index.css";
 @import "@ux/icon/lightbulb/index.css";
 @import "@ux/icon/link/index.css";
