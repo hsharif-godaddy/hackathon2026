@@ -420,6 +420,11 @@ router.post(
       // Get the existing slot to verify it exists
       const slotResult = await mediaManifestService.getSlot(appId, slotName);
       if (!slotResult.success) {
+        logger.warn('route.media.upload.slot_not_found', {
+          appId,
+          slotName,
+          error: slotResult.error,
+        });
         return res.status(404).json({
           success: false,
           error: `Slot not found: ${slotName}`,
@@ -430,6 +435,7 @@ router.post(
       const appRepository = new AppRepository();
       const app = appRepository.findById(appId);
       if (!app) {
+        logger.warn('route.media.upload.app_not_found', { appId, slotName });
         return res.status(404).json({
           success: false,
           error: `App not found: ${appId}`,
@@ -454,7 +460,15 @@ router.post(
       const filename = `${sanitizedSlot}-${hash}.${ext}`;
 
       // Ensure persistent media directory exists
-      const mediaDir = path.join(getPersistentPublicDir(app.path), 'media');
+      const persistentDir = getPersistentPublicDir(app.path);
+      const mediaDir = path.join(persistentDir, 'media');
+      logger.debug('route.media.upload.write_file', {
+        appId,
+        slotName,
+        appPath: app.path,
+        mediaDir,
+        filename,
+      });
       await fs.mkdir(mediaDir, { recursive: true });
 
       // Build file path and verify it stays within media directory (defense in depth)
@@ -492,6 +506,12 @@ router.post(
       );
 
       if (!updateResult.success) {
+        logger.error('route.media.upload.manifest_update_failed', {
+          appId,
+          slotName,
+          uploadedUrl,
+          error: updateResult.error,
+        });
         // Clean up the written file on failure
         await fs.unlink(filePath).catch(() => {});
         return res.status(500).json({
@@ -517,6 +537,7 @@ router.post(
         appId: req.params.appId,
         slotName: req.params.slotName,
         error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
       });
 
       return res.status(500).json({
