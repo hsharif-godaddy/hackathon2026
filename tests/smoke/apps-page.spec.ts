@@ -14,7 +14,7 @@
 import { test, expect } from '@playwright/test';
 
 import { deleteAllSitesViaAPI } from '../helpers/api';
-import { handleSsoLogin, openUserMenu } from '../helpers/auth';
+import { handleSsoLogin, openUserMenu, ensureAuthenticated } from '../helpers/auth';
 import { LONG_TIMEOUT, CHAT_INPUT_TIMEOUT, DEFAULT_TIMEOUT, PREVIEW_TIMEOUT, getSpecPrefix } from '../helpers/constants';
 import { waitForDevelopPage } from '../helpers/ui';
 
@@ -177,6 +177,7 @@ test.describe('Apps Page & Navigation', () => {
     // STEP 8: Delete the app
     // ========================================
     console.log('🗑️ Step 8: Deleting app...');
+    await ensureAuthenticated(page);
     await page.goto('/apps');
     await page.getByTestId('app-card-edit-button').first().waitFor({ state: 'visible', timeout: 30000 });
 

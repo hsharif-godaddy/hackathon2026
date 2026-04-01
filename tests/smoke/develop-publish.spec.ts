@@ -13,7 +13,7 @@
 import { test, expect } from '@playwright/test';
 
 import { deleteAllSitesViaAPI } from '../helpers/api';
-import { handleSsoLogin } from '../helpers/auth';
+import { handleSsoLogin, ensureAuthenticated } from '../helpers/auth';
 import { LONG_TIMEOUT, DEPLOYMENT_TIMEOUT_MS, getSpecPrefix } from '../helpers/constants';
 import { waitForDevelopPage, waitForChatInput } from '../helpers/ui';
 
@@ -58,6 +58,9 @@ test.describe('Publish Flow', () => {
     // Wait for chat input to be available (AI finished processing)
     await waitForChatInput(page);
     console.log('  ✓ AI processing complete');
+
+    // Session may have expired during AI generation + publish
+    await ensureAuthenticated(page);
 
     // ========================================
     // STEP 3: Verify publish success

@@ -221,3 +221,55 @@ export async function openUserMenu(page: Page): Promise<void> {
 
   await userMenuButton.click({ force: true });
 }
+
+/**
+ * Dismiss the "Sign In Required" modal if present and re-authenticate.
+ * Returns true if modal was found and handled, false if no modal.
+ *
+ * The AuthBoundary modal appears when a BFF call returns 401 (session expired).
+ * It is non-dismissible -- the only way to proceed is to click "Sign In" and
+ * complete the SSO flow.
+ */
+export async function dismissAuthModalIfPresent(page: Page): Promise<boolean> {
+  const signInModal = page.getByRole('heading', { name: 'Sign In Required' });
+  const modalFound = await signInModal
+    .waitFor({ state: 'visible', timeout: SHORT_TIMEOUT })
+    .then(() => true)
+    .catch(() => false);
+
+  if (!modalFound) return false;
+
+  console.log('  Sign In Required modal detected, re-authenticating...');
+
+  // Click the Sign In button inside the modal
+  const modalSignIn = page.getByRole('button', { name: 'Sign In', exact: true });
+  await modalSignIn.click();
+
+  // Complete SSO login flow -- let errors propagate with clear context
+  try {
+    await handleSsoLogin(page);
+  } catch (err) {
+    throw new Error(`Re-authentication failed after Sign In Required modal: ${err instanceof Error ? err.message : err}`);
+  }
+
+  // Wait for modal to disappear (auth processed)
+  await signInModal.waitFor({ state: 'hidden', timeout: SSO_TIMEOUT });
+
+  console.log('  Re-authenticated successfully');
+  return true;
+}
+
+/**
+ * Handle the "Sign In Required" modal if it appeared during a long-running test step.
+ * This is a reactive check (modal-only), not a proactive session verification.
+ * If no modal is visible, this is a no-op and returns immediately.
+ *
+ * Call before page navigations or critical operations (delete, deploy, unpublish)
+ * that are likely to trigger 401s if the session expired during AI generation.
+ */
+export async function ensureAuthenticated(page: Page): Promise<void> {
+  const didReauth = await dismissAuthModalIfPresent(page);
+  if (didReauth) {
+    await verifyAuthenticated(page);
+  }
+}

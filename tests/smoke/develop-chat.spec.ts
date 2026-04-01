@@ -16,7 +16,7 @@
 import { test, expect } from '@playwright/test';
 
 import { deleteAllSitesViaAPI } from '../helpers/api';
-import { handleSsoLogin, openUserMenu } from '../helpers/auth';
+import { handleSsoLogin, openUserMenu, ensureAuthenticated } from '../helpers/auth';
 import { LONG_TIMEOUT, DEFAULT_TIMEOUT, PREVIEW_TIMEOUT, AI_RESPONSE_TIMEOUT_MS, CHAT_INPUT_TIMEOUT, getSpecPrefix } from '../helpers/constants';
 import { dismissOverlays, waitForDevelopPage, waitForChatInput } from '../helpers/ui';
 
@@ -107,6 +107,9 @@ test.describe('Develop Page', () => {
     // Wait for initial app generation to finish before interacting with preview
     await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
     console.log('  ✓ Initial app generation completed');
+
+    // Session may have expired during AI generation
+    await ensureAuthenticated(page);
 
     console.log('🖼️ Step 4: Testing preview controls...');
 
@@ -264,6 +267,9 @@ test.describe('Develop Page', () => {
     // Verify input is enabled (can type during and after streaming)
     await expect(chatInput).not.toBeDisabled();
     console.log('  ✓ Chat input remains enabled');
+
+    // Session may have expired during chat interactions
+    await ensureAuthenticated(page);
 
     // ========================================
     // STEP 10: Test page refresh recovery
