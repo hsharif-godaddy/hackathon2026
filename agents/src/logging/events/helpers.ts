@@ -728,7 +728,7 @@ export const toolMySqlEvents = {
  * Tool Log Reader logging helpers
  */
 export const toolLogReaderEvents = {
-  readBegin: (logger: ILogger, data: { toolName: string; appId?: string; source?: 'stdout' | 'stderr'; lines?: number; since?: string; format?: boolean }) => {
+  readBegin: (logger: ILogger, data: { toolName: string; appId?: string; target?: string; source?: 'stdout' | 'stderr'; lines?: number; since?: string; format?: boolean }) => {
     logger.info(AppEvents.tool.logReader.read.begin, {
       ...data,
       operation: 'read' as const,
@@ -739,7 +739,7 @@ export const toolLogReaderEvents = {
     logger.info(AppEvents.tool.logReader.read.success, data);
   },
 
-  readFailure: (logger: ILogger, error: Error, data: { toolName: string; appId?: string; operation: 'read' }) => {
+  readFailure: (logger: ILogger, error: Error, data: { toolName: string; appId?: string; target?: string; operation: 'read' }) => {
     log.error(logger, AppEvents.tool.logReader.read.failure, error, data);
   },
 

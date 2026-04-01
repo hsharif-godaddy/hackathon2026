@@ -9,10 +9,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ViewLogsTool } from '../view-logs-tool.js';
 import { DevSupervisorLogClient } from '../dev-supervisor-log-client.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
+import { AppRepository } from '../../database/repositories/AppRepository.js';
 
 // Mock the dependencies
 vi.mock('../dev-supervisor-log-client.js');
 vi.mock('../../utils/dev-supervisor-client-factory.js');
+vi.mock('../../database/repositories/AppRepository.js');
 
 describe('ViewLogsTool Unit Tests', () => {
   let viewLogsTool: ViewLogsTool;
@@ -72,8 +74,8 @@ describe('ViewLogsTool Unit Tests', () => {
       const result = await viewLogsTool.readLogs('test-app');
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Dev-supervisor not available');
-      expect(result.output).toContain('Development logs not available');
+      expect(result.error).toContain('Preview supervisor not available');
+      expect(result.output).toContain('Preview logs not available');
     });
   });
 
@@ -131,8 +133,8 @@ describe('ViewLogsTool Unit Tests', () => {
       const result = await viewLogsTool.readLogs('test-app');
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Dev-supervisor not available');
-      expect(result.output).toContain('Development logs not available');
+      expect(result.error).toContain('Preview supervisor not available');
+      expect(result.output).toContain('Preview logs not available');
     });
   });
 
@@ -249,7 +251,7 @@ describe('ViewLogsTool Unit Tests', () => {
       const result = await viewLogsTool.readLogs('test-app');
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Dev-supervisor not available');
+      expect(result.error).toContain('Preview supervisor not available');
     });
 
     it('should handle log client exceptions', async () => {
@@ -370,7 +372,75 @@ describe('ViewLogsTool Unit Tests', () => {
       const result = await viewLogsTool.readLogs('test-app');
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Dev-supervisor not available');
+      expect(result.error).toContain('Preview supervisor not available');
+    });
+  });
+
+  describe('Publish Target', () => {
+    let mockAppRepository: any;
+
+    beforeEach(() => {
+      mockLogClient.isAvailable.mockReturnValue(true);
+      mockLogClient.readLogs.mockResolvedValue({
+        success: true,
+        logs: [],
+        totalEntries: 0,
+        formatted: 'No logs'
+      });
+
+      // Mock AppRepository.findById for publish path
+      mockAppRepository = {
+        findById: vi.fn().mockReturnValue({
+          publishSupervisorPath: '/tmp/publish-supervisor.sock'
+        })
+      };
+      vi.mocked(AppRepository).mockImplementation(() => mockAppRepository);
+
+      // Re-create tool so it picks up the mocked AppRepository
+      viewLogsTool = new ViewLogsTool();
+    });
+
+    it('should read publish logs using publishSupervisorPath', async () => {
+      const result = await viewLogsTool.readLogs('test-app', { target: 'publish' });
+
+      expect(result.success).toBe(true);
+      expect(mockAppRepository.findById).toHaveBeenCalledWith('test-app');
+      expect(DevSupervisorLogClient).toHaveBeenCalledWith('/tmp/publish-supervisor.sock');
+    });
+
+    it('should fail when app has no publishSupervisorPath', async () => {
+      mockAppRepository.findById.mockReturnValue({ publishSupervisorPath: null });
+
+      const result = await viewLogsTool.readLogs('test-app', { target: 'publish' });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Publish supervisor not available');
+      expect(result.output).toContain('Publish logs not available');
+    });
+
+    it('should fail when app is not found', async () => {
+      mockAppRepository.findById.mockReturnValue(null);
+
+      const result = await viewLogsTool.readLogs('test-app', { target: 'publish' });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Publish supervisor not available');
+    });
+
+    it('should default to preview when no target specified', async () => {
+      const result = await viewLogsTool.readLogs('test-app');
+
+      expect(result.success).toBe(true);
+      expect(DevSupervisorClientFactory.getAppInfo).toHaveBeenCalledWith('test-app');
+      expect(mockAppRepository.findById).not.toHaveBeenCalled();
+    });
+
+    it('should use preview path when target is explicitly preview', async () => {
+      const result = await viewLogsTool.readLogs('test-app', { target: 'preview' });
+
+      expect(result.success).toBe(true);
+      expect(DevSupervisorClientFactory.getAppInfo).toHaveBeenCalledWith('test-app');
+      expect(mockAppRepository.findById).not.toHaveBeenCalled();
     });
   });
 

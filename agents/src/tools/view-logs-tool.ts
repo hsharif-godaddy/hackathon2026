@@ -6,6 +6,8 @@ import { AppRepository } from '../database/repositories/AppRepository.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 
 export interface DevLogsOptions {
+  /** Which app to read logs from: preview (default) or publish */
+  target?: 'preview' | 'publish';
   /** Number of recent log lines to retrieve (default: 50, max: 1000) */
   lines?: number;
   /** Filter logs by source: stdout (normal output) or stderr (errors) */
@@ -47,24 +49,40 @@ export class ViewLogsTool {
   /**
    * Initialize the tool with the current app context
    */
-  private async initializeForApp(appId: string): Promise<boolean> {
+  private initializeForApp(appId: string, target: 'preview' | 'publish' = 'preview'): boolean {
     try {
-      // Use the factory to get proper connection path (handles TCP vs Unix socket)
+      if (target === 'publish') {
+        const app = this.appRepository.findById(appId);
+        if (!app?.publishSupervisorPath) {
+          this.logger.warn('dev_logs.init.failure', {
+            appId,
+            target,
+            error: 'No publishSupervisorPath configured'
+          });
+          return false;
+        }
+        this.logClient = new DevSupervisorLogClient(app.publishSupervisorPath);
+        return this.logClient.isAvailable();
+      }
+
+      // Preview (default): use the factory to get proper connection path
       const appInfo = DevSupervisorClientFactory.getAppInfo(appId);
-      
+
       if (!appInfo || !appInfo.socketPath) {
         this.logger.warn('dev_logs.init.failure', {
           appId,
+          target,
           error: 'App not found or connection path not configured'
         });
         return false;
       }
-      
+
       this.logClient = new DevSupervisorLogClient(appInfo.socketPath);
       return this.logClient.isAvailable();
     } catch (error) {
       this.logger.warn('dev_logs.init.failure', {
         appId,
+        target,
         error: getErrorMessage(error)
       });
       return false;
@@ -77,26 +95,31 @@ export class ViewLogsTool {
   async readLogs(appId: string, options: DevLogsOptions = {}): Promise<DevLogsResult> {
     const startTime = Date.now();
     
-    const beginData: { toolName: string; appId?: string; source?: 'stdout' | 'stderr'; lines?: number; since?: string; format?: boolean } = {
+    const target = options.target || 'preview';
+
+    const beginData: { toolName: string; appId?: string; target?: string; source?: 'stdout' | 'stderr'; lines?: number; since?: string; format?: boolean } = {
       toolName: 'dev-logs',
       appId,
+      target,
     };
-    
+
     if (options.source) beginData.source = options.source;
     if (options.lines) beginData.lines = options.lines;
     if (options.since) beginData.since = options.since;
-    
+
     toolLogReaderEvents.readBegin(this.logger, beginData);
 
     try {
+
       // Initialize log reader for this app
-      const initialized = await this.initializeForApp(appId);
-      
+      const initialized = this.initializeForApp(appId, target);
+
       if (!initialized || !this.logClient) {
+        const label = target === 'publish' ? 'Publish' : 'Preview';
         return {
           success: false,
-          output: '🚫 **Development logs not available**\n\nThe development server may not be running, or log monitoring is not configured for this app.',
-          error: 'Dev-supervisor not available for this app'
+          output: `🚫 **${label} logs not available**\n\nThe ${label.toLowerCase()} server may not be running, or log monitoring is not configured for this app.`,
+          error: `${label} supervisor not available for this app`
         };
       }
 
@@ -121,6 +144,7 @@ export class ViewLogsTool {
         toolLogReaderEvents.readSuccess(this.logger, {
           toolName: 'dev-logs',
           appId,
+          target,
           operation: 'read',
           resultStats: {
             success: true,
@@ -171,6 +195,7 @@ export class ViewLogsTool {
       const successData: any = {
         toolName: 'dev-logs',
         appId,
+        target,
         operation: 'read',
         logOptions: readOptions,
         resultStats: {
@@ -199,6 +224,7 @@ export class ViewLogsTool {
       toolLogReaderEvents.readFailure(this.logger, error instanceof Error ? error : new Error(errorMessage), {
         toolName: 'dev-logs',
         appId,
+        target,
         operation: 'read'
       });
 

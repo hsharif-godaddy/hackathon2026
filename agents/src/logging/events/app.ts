@@ -455,6 +455,7 @@ export interface ToolMySqlData {
 export interface ToolLogReaderData {
   toolName: string;
   appId?: string;
+  target?: string;
   operation: 'read' | 'summary';
   logOptions?: {
     source?: 'stdout' | 'stderr';
