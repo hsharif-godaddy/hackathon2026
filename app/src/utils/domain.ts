@@ -2,6 +2,8 @@
  * Domain parsing and validation utilities
  */
 
+import { DomainStatus, DomainType, type SiteDomain } from '@/lib/control-plane/types';
+
 const AIRO_SUBDOMAINS = ['.airoapp.ai', '.test-airoapp.ai', '.dev-airoapp.ai'];
 
 /**
@@ -20,18 +22,22 @@ export function isAiroSubdomain(url: string): boolean {
 
 /**
  * Resolve the public FQDN for a site with fallback priority:
- *  1. Custom domain (domainType !== 'prefix')
- *  2. Prefix domain (domainType === 'prefix')
+ *  1. Custom domain (domainType !== prefix) — only if status is active
+ *  2. Prefix domain (domainType === prefix) — only if status is active
  *  3. published_url
  *
  * Always returns a full URL with https:// protocol, or empty string.
  */
 export function resolveSiteFqdn(site: {
-  domains?: { fqdn: string; domainType?: string }[];
+  domains?: SiteDomain[];
   published_url?: string | null;
 } | null | undefined): string {
-  const customDomain = site?.domains?.find(d => d.domainType !== 'prefix');
-  const prefixDomain = site?.domains?.find(d => d.domainType === 'prefix');
+  const customDomain = site?.domains?.find(
+    (d) => d.domainType !== DomainType.PREFIX && d.status === DomainStatus.ACTIVE
+  );
+  const prefixDomain = site?.domains?.find(
+    (d) => d.domainType === DomainType.PREFIX && d.status === DomainStatus.ACTIVE
+  );
   const raw = customDomain?.fqdn || prefixDomain?.fqdn || site?.published_url || '';
   if (!raw) return '';
   return raw.startsWith('http://') || raw.startsWith('https://') ? raw : `https://${raw}`;

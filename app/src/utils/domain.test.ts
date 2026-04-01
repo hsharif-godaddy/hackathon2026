@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { DomainStatus, DomainType, type SiteDomain } from '@/lib/control-plane/types';
 import {
   findCustomerDomain,
   getDnsRecords,
@@ -598,12 +599,24 @@ describe('isAiroSubdomain', () => {
   });
 });
 
+function makeSiteDomain(partial: Pick<SiteDomain, 'fqdn' | 'domainType' | 'status'>): SiteDomain {
+  return {
+    fqdn: partial.fqdn,
+    isPrimary: false,
+    domainType: partial.domainType,
+    prefix: '',
+    status: partial.status,
+    createdAt: '2020-01-01T00:00:00.000Z',
+    updatedAt: '2020-01-01T00:00:00.000Z',
+  };
+}
+
 describe('resolveSiteFqdn', () => {
   it('should prefer custom domain over prefix domain', () => {
     expect(resolveSiteFqdn({
       domains: [
-        { fqdn: 'prefix.airoapp.ai', domainType: 'prefix' },
-        { fqdn: 'custom.example.com', domainType: 'custom' },
+        makeSiteDomain({ fqdn: 'prefix.airoapp.ai', domainType: DomainType.PREFIX, status: DomainStatus.ACTIVE }),
+        makeSiteDomain({ fqdn: 'custom.example.com', domainType: DomainType.CUSTOM, status: DomainStatus.ACTIVE }),
       ],
       published_url: 'https://fallback.com',
     })).toBe('https://custom.example.com');
@@ -612,19 +625,50 @@ describe('resolveSiteFqdn', () => {
   it('should treat domain without domainType as custom and prefer it over prefix domain', () => {
     expect(resolveSiteFqdn({
       domains: [
-        { fqdn: 'prefix.airoapp.ai', domainType: 'prefix' },
-        { fqdn: 'custom-no-type.example.com' },
+        makeSiteDomain({ fqdn: 'prefix.airoapp.ai', domainType: DomainType.PREFIX, status: DomainStatus.ACTIVE }),
+        makeSiteDomain({ fqdn: 'custom-no-type.example.com', domainType: null, status: DomainStatus.ACTIVE }),
       ],
       published_url: 'https://fallback.com',
     })).toBe('https://custom-no-type.example.com');
   });
+
   it('should fall back to prefix domain when no custom domain', () => {
     expect(resolveSiteFqdn({
       domains: [
-        { fqdn: 'prefix.airoapp.ai', domainType: 'prefix' },
+        makeSiteDomain({ fqdn: 'prefix.airoapp.ai', domainType: DomainType.PREFIX, status: DomainStatus.ACTIVE }),
       ],
       published_url: 'https://fallback.com',
     })).toBe('https://prefix.airoapp.ai');
+  });
+
+  it('should use active prefix when custom domain is not active (e.g. error)', () => {
+    expect(resolveSiteFqdn({
+      published_url: 'https://wx8i3fw9rv.c37.airoapp.ai',
+      domains: [
+        makeSiteDomain({ fqdn: 'jadilah.c37.airoapp.ai', domainType: DomainType.PREFIX, status: DomainStatus.ACTIVE }),
+        makeSiteDomain({ fqdn: 'jadilah.shop', domainType: null, status: DomainStatus.ERROR }),
+      ],
+    })).toBe('https://jadilah.c37.airoapp.ai');
+  });
+
+  it('should ignore pending custom domain and use active prefix', () => {
+    expect(resolveSiteFqdn({
+      published_url: 'https://wx8i3fw9rv.c37.airoapp.ai',
+      domains: [
+        makeSiteDomain({ fqdn: 'prefix.c37.airoapp.ai', domainType: DomainType.PREFIX, status: DomainStatus.ACTIVE }),
+        makeSiteDomain({ fqdn: 'shop.example.com', domainType: null, status: DomainStatus.PENDING }),
+      ],
+    })).toBe('https://prefix.c37.airoapp.ai');
+  });
+
+  it('should fall back to published_url when no domain rows are active', () => {
+    expect(resolveSiteFqdn({
+      published_url: 'https://wx8i3fw9rv.c37.airoapp.ai',
+      domains: [
+        makeSiteDomain({ fqdn: 'prefix.c37.airoapp.ai', domainType: DomainType.PREFIX, status: DomainStatus.ERROR }),
+        makeSiteDomain({ fqdn: 'shop.example.com', domainType: null, status: DomainStatus.PENDING }),
+      ],
+    })).toBe('https://wx8i3fw9rv.c37.airoapp.ai');
   });
 
   it('should fall back to published_url when no domains', () => {
