@@ -153,8 +153,23 @@ func (s *Server) CreateBuilderPlan(w http.ResponseWriter, r *http.Request) {
 // Credit/budget stubs
 
 func (s *Server) GetCreditGrants(w http.ResponseWriter, r *http.Request) {
+	now := time.Now().UTC()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"grants": []any{},
+		"grants": []map[string]any{
+			{
+				"id":              "local-grant-001",
+				"subscriptionId":  "local-sub-001",
+				"type":            "plan-monthly",
+				"llmBudgetUserId": fmt.Sprintf("local-budget-user-%s", store.DefaultCustomerID),
+				"llmBudgetId":     "local-budget-001",
+				"creditsMax":      999999,
+				"creditsSpent":    0,
+				"isAvailable":     true,
+				"useBefore":       now.AddDate(0, 1, 0).Format(time.RFC3339),
+				"createdAt":       now.Format(time.RFC3339),
+				"updatedAt":       now.Format(time.RFC3339),
+			},
+		},
 	})
 }
 
