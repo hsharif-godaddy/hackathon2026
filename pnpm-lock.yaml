@@ -24,14 +24,14 @@ overrides:
   vite: 6.4.1
   vitest: 3.2.4
   '@ux/alert': 2500.7.2
-  '@ux/box': 2500.7.1
+  '@ux/box': 2500.9.0
   '@ux/button': 2500.7.2
   '@ux/card': 2500.7.2
   '@ux/checkbox': 2500.11.1
   '@ux/coachmark': 2500.7.2
   '@ux/collapsible': 2500.7.2
   '@ux/disrupt': 2500.7.2
-  '@ux/flyout': 2500.7.1
+  '@ux/flyout': 2500.11.1
   '@ux/growl': 2500.7.2
   '@ux/icon': 2500.7.2
   '@ux/intents': 2500.7.1
@@ -42,6 +42,7 @@ overrides:
   '@ux/select': 2500.7.2
   '@ux/select-input': 2500.7.2
   '@ux/skeleton': 2500.7.2
+  '@ux/space': 2500.9.0
   '@ux/spinner': 2500.7.1
   '@ux/table': 2500.7.2
   '@ux/tag': 2500.7.2
@@ -49,7 +50,7 @@ overrides:
   '@ux/text': 2500.7.1
   '@ux/text-input': 2500.7.2
   '@ux/toggle-button': 2500.7.1
-  '@ux/tooltip': 2500.7.2
+  '@ux/tooltip': 2500.11.1
   basic-ftp: '>=5.2.0'
   fast-xml-parser: '>=5.3.5'
 
@@ -595,8 +596,8 @@ importers:
         specifier: 2500.7.2
         version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/box':
-        specifier: 2500.7.1
-        version: 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.9.0
+        version: 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/button':
         specifier: 2500.7.2
         version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -622,8 +623,8 @@ importers:
         specifier: 2500.7.2
         version: 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/flyout':
-        specifier: 2500.7.1
-        version: 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.11.1
+        version: 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/growl':
         specifier: 2500.7.2
         version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -694,8 +695,8 @@ importers:
         specifier: 2500.7.1
         version: 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/tooltip':
-        specifier: 2500.7.2
-        version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.11.1
+        version: 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/tooltip-legacy':
         specifier: ^2400.15.1
         version: 2400.18.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -6760,8 +6761,8 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/box@2500.7.1':
-    resolution: {integrity: sha512-UEvbvCfH8HdcyGobuTUybKWeWe0WPGr1pb9CP5SkyY1h+MePjWT+6dFbnVU3tZZvohnOViF2nHc70y2mPxWU5Q==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/box/-/@ux/box-2500.7.1.tgz}
+  '@ux/box@2500.9.0':
+    resolution: {integrity: sha512-l8bajjRiZyEk+h4SFr3fHfjws3XH7jKhJq2lWTgejyTIuWmquSoIqMJYILpFXn8geVxi5a94hPjzRNUzjQePAA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/box/-/@ux/box-2500.9.0.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -6880,8 +6881,8 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/flyout@2500.7.1':
-    resolution: {integrity: sha512-FQQwGQA5f55P/oAMG36YupmgCk1r4Ejabto9zeZnmP5dd5B9af/72RPeCliRu4uk98xrO2bzQRgGmuw/0afcsQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/flyout/-/@ux/flyout-2500.7.1.tgz}
+  '@ux/flyout@2500.11.1':
+    resolution: {integrity: sha512-N4aW2OIetRwHMDwBgFs06tJynQR0/DwLCU+cihD/yCakjyLtNaBL4Mao7NTdadHq9a30S1QUc4NU9J5vX9zIkg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/flyout/-/@ux/flyout-2500.11.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -7047,8 +7048,8 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/space@2500.7.1':
-    resolution: {integrity: sha512-FHb6Mh6wI75YpQMEL7iItgUbaL3wG92Lvrvwl3qMz/BqvPKAsAElPHvEFZXvfwlQyBiMlkiNdCbB4hALWQgrIw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/space/-/@ux/space-2500.7.1.tgz}
+  '@ux/space@2500.9.0':
+    resolution: {integrity: sha512-5C6wax8u3h0V9zdPH9xYlnaoNd4jds0NVnO21iF9fGAqmXVfvuNtUkf3QnlocYNc9sOT9sJVojvzH+1G3XZzsA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/space/-/@ux/space-2500.9.0.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -7170,8 +7171,8 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/tooltip@2500.7.2':
-    resolution: {integrity: sha512-C3/AJ3UFXfV7tSXy5Bc3/AqysLcgxVbTK+H/sye60boLOKFahQSlSjAMtScRJup/kIGSMMFtokqY2C4+iD3yJA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/tooltip/-/@ux/tooltip-2500.7.2.tgz}
+  '@ux/tooltip@2500.11.1':
+    resolution: {integrity: sha512-K4FDzsMmBV0lCcfALnhlmM7C1X3Dv/MFw6bTFgJMiQ3ocyT8kTZF1h2PxNgzhS2I72lnKY4+PuBpP5VlH7rFEw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/tooltip/-/@ux/tooltip-2500.11.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -14326,7 +14327,7 @@ snapshots:
 
   '@airo-ux/loader@2.1.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.2)':
     dependencies:
-      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/text-lockup': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -20710,7 +20711,7 @@ snapshots:
 
   '@ux/alert@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
@@ -20720,10 +20721,10 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/box@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/box@2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/intents': 2500.7.1
-      '@ux/space': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/space': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -20741,7 +20742,7 @@ snapshots:
 
   '@ux/calendar@2500.11.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -20760,7 +20761,7 @@ snapshots:
 
   '@ux/card@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/corner-actions': 2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -20796,7 +20797,7 @@ snapshots:
 
   '@ux/coachmark@2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/disrupt': 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -20834,7 +20835,7 @@ snapshots:
 
   '@ux/corner-actions@2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       classnames: 2.5.1
       prop-types: 15.8.1
@@ -20847,12 +20848,12 @@ snapshots:
 
   '@ux/date-input@2500.11.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/calendar': 2500.11.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/field-frame': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/flyout': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/flyout': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/label': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -20880,7 +20881,7 @@ snapshots:
 
   '@ux/dialog@2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
@@ -20910,10 +20911,11 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/flyout@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/flyout@2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@floating-ui/react-dom': 1.3.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       classnames: 2.5.1
       prop-types: 15.8.1
@@ -20922,7 +20924,7 @@ snapshots:
 
   '@ux/growl@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/corner-actions': 2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/data-version': 2500.7.1
@@ -20973,7 +20975,7 @@ snapshots:
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/disrupt': 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/flyout': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/flyout': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       classnames: 2.5.1
       merge-refs: 2.0.0(@types/react@19.1.13)
@@ -20995,7 +20997,7 @@ snapshots:
 
   '@ux/modal@2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/corner-actions': 2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/dialog': 2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -21027,13 +21029,13 @@ snapshots:
 
   '@ux/popover@2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/corner-actions': 2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/flyout': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/flyout': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
-      '@ux/space': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/space': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text-lockup': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
@@ -21101,7 +21103,7 @@ snapshots:
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/field-frame': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/flyout': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/flyout': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/listbox': 2500.8.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text-entry': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -21153,13 +21155,13 @@ snapshots:
 
   '@ux/skeleton@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/space@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/space@2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/intents': 2500.7.1
       classnames: 2.5.1
@@ -21194,7 +21196,7 @@ snapshots:
 
   '@ux/table@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -21207,7 +21209,7 @@ snapshots:
     dependencies:
       '@ux/card': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/flyout': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/flyout': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -21245,7 +21247,7 @@ snapshots:
   '@ux/text-input@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/field-frame': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/flyout': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/flyout': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/label': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -21257,7 +21259,7 @@ snapshots:
 
   '@ux/text-lockup@2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -21312,10 +21314,10 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/tooltip@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/tooltip@2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/flyout': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/flyout': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       classnames: 2.5.1
       prop-types: 15.8.1
@@ -23525,7 +23527,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-module-utils@2.12.1(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.9.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.9.2))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1):
+  eslint-module-utils@2.12.1(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.9.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1):
     dependencies:
       debug: 3.2.7
     optionalDependencies:
@@ -23561,7 +23563,7 @@ snapshots:
       doctrine: 2.1.0
       eslint: 8.57.1
       eslint-import-resolver-node: 0.3.9
-      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.9.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.9.2))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1)
+      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.9.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1)
       hasown: 2.0.2
       is-core-module: 2.16.1
       is-glob: 4.0.3
