@@ -1,12 +1,10 @@
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import type { SpanProcessor } from "@opentelemetry/sdk-trace-node";
-import { GDEnvEnum, NodeEnvEnum } from '@godaddy/agent-observability-events';
+import { NodeEnvEnum } from '@godaddy/agent-observability-events';
 import { createAgentSpanProcessor } from '@godaddy/agent-otel-sdk';
 
 import { logger, toPinoLogger } from '../logging/index.js';
 import { resolveEnv } from '../utils/gd-env.js';
-
-const gdEnvMap = { dev: GDEnvEnum.Dev, test: GDEnvEnum.Test, prod: GDEnvEnum.Prod } as const;
 
 const nodeEnvMap = { dev: NodeEnvEnum.Development, test: NodeEnvEnum.Test, prod: NodeEnvEnum.Production } as const;
 
@@ -20,7 +18,6 @@ if (observabilityEnabled || langfuseConfigured) {
     spanProcessors.push(createAgentSpanProcessor({
       clientOptions: {
         nodeEnv: nodeEnvMap[resolveEnv()],
-        gdEnv: gdEnvMap[resolveEnv()],
         globalContext: {
           site: {
             privateLabelId: 1,
