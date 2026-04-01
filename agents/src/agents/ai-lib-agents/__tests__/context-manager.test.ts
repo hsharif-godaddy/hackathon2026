@@ -31,12 +31,31 @@ vi.mock('../../../services/ConversationContextManager.js', () => ({
   }
 }))
 
+const { appContextResult } = vi.hoisted(() => ({
+  appContextResult: {
+    value: null as { stableContext?: string; secretsContext?: string; mediaSlotsContext?: string } | null
+  }
+}))
+
+vi.mock('../../../services/AppContextManager.js', () => ({
+  AppContextManager: class {
+    generateContextMessage = vi.fn().mockImplementation(async () => appContextResult.value ?? {})
+  }
+}))
+
+vi.mock('../../../database/repositories/AppRepository.js', () => ({
+  AppRepository: class {
+    findById = vi.fn().mockReturnValue({ id: 'app-123', path: '/tmp/test-app' })
+  }
+}))
+
 describe('AILibContextManager', () => {
   beforeEach(() => {
     latestSummary.value = null
     pinnedSummaryId.value = null
     summaryStore.clear()
     getMessageById.mockClear()
+    appContextResult.value = null
   })
 
   it('injects summary as cached USER memory message (not system, for security)', async () => {
@@ -143,6 +162,82 @@ describe('AILibContextManager', () => {
         (msg) => msg.role === 'user' && msg.content.includes('# Memory')
       )
       expect(memoryMsg?.content).toContain('Fallback Summary')
+    })
+  })
+
+  describe('app context forwarding', () => {
+    it('forwards app_context_stable as after_history user message', async () => {
+      appContextResult.value = {
+        stableContext: 'Package: test-app\nColor: blue'
+      }
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' }, appContext: {} },
+        { includeTemplateDescription: false }
+      )
+
+      const stableMsg = result.contextMessages.find(
+        (msg) => msg.content.includes('Package: test-app')
+      )
+      expect(stableMsg).toBeDefined()
+      expect(stableMsg?.role).toBe('user')
+      expect(stableMsg?.insertionOrder).toBe('after_history')
+    })
+
+    it('forwards all three app context types', async () => {
+      appContextResult.value = {
+        stableContext: 'stable content',
+        secretsContext: 'secrets content',
+        mediaSlotsContext: 'media slots content'
+      }
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' }, appContext: {} },
+        { includeTemplateDescription: false }
+      )
+
+      const stable = result.contextMessages.find(m => m.content === 'stable content')
+      const secrets = result.contextMessages.find(m => m.content === 'secrets content')
+      const media = result.contextMessages.find(m => m.content === 'media slots content')
+
+      expect(stable).toBeDefined()
+      expect(secrets).toBeDefined()
+      expect(media).toBeDefined()
+
+      // All should be after_history to avoid cache invalidation
+      expect(stable?.insertionOrder).toBe('after_history')
+      expect(secrets?.insertionOrder).toBe('after_history')
+      expect(media?.insertionOrder).toBe('after_history')
+
+      // Ordering matters: stable before secrets before media_slots
+      // (matches buildAppContextMessage push order)
+      const stableIdx = result.contextMessages.indexOf(stable!)
+      const secretsIdx = result.contextMessages.indexOf(secrets!)
+      const mediaIdx = result.contextMessages.indexOf(media!)
+      expect(stableIdx).toBeLessThan(secretsIdx)
+      expect(secretsIdx).toBeLessThan(mediaIdx)
+    })
+
+    it('does not include app context when includeAppContext is false', async () => {
+      appContextResult.value = {
+        stableContext: 'should not appear'
+      }
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' }, appContext: {} },
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      const stableMsg = result.contextMessages.find(
+        (msg) => msg.content.includes('should not appear')
+      )
+      expect(stableMsg).toBeUndefined()
     })
   })
 })

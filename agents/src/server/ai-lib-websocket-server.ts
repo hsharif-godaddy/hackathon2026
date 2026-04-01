@@ -797,6 +797,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           })
 
           // Collect all context messages
+          // Map context messages into the allMessages array. before_history messages
+          // always carry explicit insertionOrder from AILibContextManager; the fallback
+          // is defensive for after_history items that might omit it.
           const allMessages: Array<{
             role: 'user' | 'system'
             content: string
@@ -809,14 +812,16 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             ...(msg.cachePoint && { cachePoint: msg.cachePoint })
           }))
 
-          // Add after_history messages in architecture-specified order (see docs/prompt-caching-architecture.md):
+          // Append additional after_history messages (see docs/prompt-caching-architecture.md).
+          // contextResult.contextMessages above already includes after_history items from
+          // AILibContextManager (app context, context attachments). These extra messages
+          // are added here because they're built outside the context manager:
           // Segment 6: KnowB Results (query-dependent, changes every request)
           // Segment 7: Todo Context (variable)
           // Segment 8: Dynamic Data (request-specific)
           //
           // All after_history content is outside the cache breakpoint (which lands on the
-          // last conversation history message), so ordering here doesn't affect caching.
-          // This order matches the architecture spec segments 6/7/8.
+          // last conversation history message), so ordering doesn't affect caching.
 
           // Add KnowB documentation context if present (Segment 6)
           if (ragContextMessage) {

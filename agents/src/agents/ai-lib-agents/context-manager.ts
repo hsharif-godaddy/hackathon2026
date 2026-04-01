@@ -148,16 +148,22 @@ export class AILibContextManager {
             })
         }
 
-        // Add app context as user message (project structure info)
+        // Forward app context messages (stable, secrets, media_slots) with their
+        // configured insertionOrder. All are 'after_history' to avoid invalidating
+        // the cached prefix when the agent edits files.
         // NOTE: Must be 'user' role because Anthropic requires all system messages to be
         // contiguous at the start. Memory (user) comes before this, so this must also be user.
-        const appContextMessages = contextMessages.filter(msg => msg.type === 'app_context')
-        if (appContextMessages.length > 0) {
-            conversationContextMessages.push({
-                role: 'user',
-                content: appContextMessages.map(msg => msg.content).join('\n\n'),
-                insertionOrder: 'before_history'
-            })
+        for (const msg of contextMessages) {
+            if (msg.type?.startsWith('app_context_')) {
+                conversationContextMessages.push({
+                    role: 'user',
+                    content: msg.content,
+                    // All app_context_* messages should carry explicit insertionOrder from
+                    // buildAppContextMessage(). Fallback is defensive only — if this fires,
+                    // it means a new app_context type was added without setting insertionOrder.
+                    insertionOrder: msg.insertionOrder || 'after_history',
+                })
+            }
         }
 
         // Process generic context attachments using the registry
@@ -391,13 +397,14 @@ export class AILibContextManager {
 
             const messages: ContextMessage[] = []
 
-            // Stable context (package info, color scheme) goes in cached prefix
+            // Stable context (package info, color scheme) placed after_history to avoid
+            // invalidating the cached prefix when the agent edits files (e.g., package.json)
             if (appContextResult.stableContext) {
                 messages.push({
                     role: 'user',
                     content: appContextResult.stableContext,
                     type: 'app_context_stable',
-                    insertionOrder: 'before_history'
+                    insertionOrder: 'after_history'
                 })
             }
 

@@ -13,7 +13,7 @@ import { mediaManifestService, type MediaSlot } from './MediaManifestService.js'
  * Result of app context generation, split into stable and dynamic parts for cache efficiency
  */
 export interface AppContextResult {
-  /** Stable context (package info, color scheme) - goes in cached prefix (before_history) */
+  /** Stable context (package info, color scheme) - placed after_history to avoid cache invalidation on file edits */
   stableContext: string | null;
   /** Dynamic secrets context - goes after history to prevent cache invalidation */
   secretsContext: string | null;
@@ -37,7 +37,7 @@ export class AppContextManager {
   }
 
   /**
-   * Generate context message that provides directory listing and package information to the LLM
+   * Generate context message that provides package information and color scheme to the LLM
    * @param context - The agent execution context containing app metadata
    * @returns Promise<AppContextResult> - Formatted context messages split by cache stability
    */
@@ -63,7 +63,7 @@ export class AppContextManager {
         this.getMediaSlotsInfo(appId),
       ]);
 
-      // Format stable context (package info, color scheme) - cached prefix
+      // Format stable context (package info, color scheme) - after_history to avoid cache invalidation
       const stableContext = this.formatStableContext(packageInfo, colorSchemeInfo);
 
       // Format dynamic contexts (secrets, media slots) - after_history to prevent cache invalidation
