@@ -5,7 +5,7 @@ import { customAlphabet } from 'nanoid';
 import { SocialPlatform } from '../../types/social.js';
 
 const nanoid = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 12);
-const logger = Logger.create({ service: 'social-association-repository' });
+const logger = Logger.create({ component: 'social-association-repository' });
 
 export interface CreateSocialAssociationParams {
   appId: string;

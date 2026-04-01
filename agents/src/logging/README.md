@@ -181,7 +181,7 @@ Logger.configure(LoggingPresets.test());
 Logger.configure({
   level: 'info',
   handlers: [new DevelopmentHandler()],
-  context: { service: 'my-service', version: '1.0.0' },
+  context: { component: 'my-service', version: '1.0.0' },
   enabledDomains: ['app', 'agent'],
   disabledDomains: ['perf']
 });

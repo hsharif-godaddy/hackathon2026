@@ -7,7 +7,7 @@ import { relative, resolve, sep } from 'node:path';
 
 import { Logger } from '../logging/index.js';
 
-const logger = Logger.create({ service: 'path-helper' });
+const logger = Logger.create({ component: 'path-helper' });
 
 /**
  * Translate Docker container paths to relative paths for the agent environment.

@@ -174,7 +174,7 @@ export class KnowBDriver {
   private static readonly DEFAULT_SCORE_THRESHOLD = 0.35;
 
   constructor() {
-    this.logger = Logger.create({ service: 'knowb-driver' });
+    this.logger = Logger.create({ component: 'knowb-driver' });
     this.tokenProvider = new KnowBTokenProvider();
 
     const apiUrl = getApiUrl();

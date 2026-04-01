@@ -9,7 +9,7 @@ import type { Database } from 'better-sqlite3';
 import { Logger } from '../logging/index.js';
 import { SocialPlatform, PostState } from '../types/social.js';
 
-const logger = Logger.create({ service: 'database-schema' });
+const logger = Logger.create({ component: 'database-schema' });
 
 // ==================================================================================
 // TypeScript Interface Definitions

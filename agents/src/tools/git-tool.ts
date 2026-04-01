@@ -126,7 +126,7 @@ export class GitTool {
   private devSupervisor: DevSupervisorClient | null;
   private gitRemoteTokenManager: GitRemoteTokenManager | null;
   private gitRemoteConfigRepo: GitRemoteConfigRepository;
-  private logger = Logger.create({ service: 'git-tool' });
+  private logger = Logger.create({ component: 'git-tool' });
 
   constructor(devSupervisor?: DevSupervisorClient) {
     this.devSupervisor = devSupervisor || null;

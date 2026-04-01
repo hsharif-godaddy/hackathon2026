@@ -3,7 +3,7 @@ import type { ShareToken } from '../schema.js';
 import { generateShareToken } from '../../utils/share-token-generator.js';
 import { Logger } from '../../logging/index.js';
 
-const logger = Logger.create({ service: 'share-token-repository' });
+const logger = Logger.create({ component: 'share-token-repository' });
 
 interface ShareTokenRow {
   token: string;

@@ -1,7 +1,7 @@
 import { AuthService, AuthRequiredError } from '../../../services/auth-service.js';
 import { Logger } from '../../../logging/index.js';
 
-const logger = Logger.create({ service: 'commerce.skill' });
+const logger = Logger.create({ component: 'commerce.skill' });
 
 /**
  * Extract customerId from the JWT `sub` claim.

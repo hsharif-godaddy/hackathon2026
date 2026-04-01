@@ -16,7 +16,7 @@ import { withCommerceAuth, type CommerceAuthResult } from './auth.js';
 import type { SkillToolDefinition, SkillHooks } from '@airo/ai-skills';
 import { ensureViteResolveDedupe } from '../../../services/vite-dedupe.js';
 
-const logger = Logger.create({ service: 'commerce.skill' });
+const logger = Logger.create({ component: 'commerce.skill' });
 
 export const hooks: SkillHooks = {
   onInstall: async ({ appPath }) => {

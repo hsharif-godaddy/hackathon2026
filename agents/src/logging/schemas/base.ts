@@ -12,7 +12,7 @@ export const LogContextSchema = z.object({
   userId: z.string().optional(),
   requestId: z.string().optional(),
   conversationId: z.string().optional(),
-  service: z.string().optional(),
+  component: z.string().optional(),
   version: z.string().optional(),
 }).passthrough(); // Allow additional properties
 

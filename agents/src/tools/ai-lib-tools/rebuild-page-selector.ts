@@ -8,7 +8,7 @@ import { Logger } from '../../logging/index.js'
 import { RebuildOrchestrationService } from '../../services/RebuildOrchestrationService.js'
 import type { RebuildWorkflowState, SitemapData } from '../../types/rebuild.js'
 
-const logger = Logger.create({ service: 'rebuild-page-selector-tool' })
+const logger = Logger.create({ component: 'rebuild-page-selector-tool' })
 const appRepo = new AppRepository()
 
 /**

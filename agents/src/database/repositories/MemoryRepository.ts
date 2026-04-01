@@ -6,7 +6,7 @@ import { toolMemoryEvents } from '../../logging/events/index.js';
 
 export class MemoryRepository {
   private db = getDatabase();
-  private logger = Logger.create({ service: 'memory-repository' });
+  private logger = Logger.create({ component: 'memory-repository' });
 
   private mapValueType(value: unknown): 'string' | 'number' | 'boolean' | 'object' | 'array' | 'null' {
     if (value === null) return 'null';

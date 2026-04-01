@@ -10,7 +10,7 @@ export interface LogContext {
   userId?: string;
   requestId?: string;
   conversationId?: string;
-  service?: string;
+  component?: string;
   version?: string;
   [key: string]: any;
 }

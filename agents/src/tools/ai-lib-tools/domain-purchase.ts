@@ -8,7 +8,7 @@ import { getClientActionService } from '../../server/ai-lib-websocket-server.js'
 import { validateDomainName } from '../../utils/domain-validation.js'
 import { MemoryTool } from '../memory-tool.js'
 
-const logger = Logger.create({ service: 'domain-tool' })
+const logger = Logger.create({ component: 'domain-tool' })
 const memoryTool = new MemoryTool()
 const appRepo = new AppRepository()
 

@@ -9,7 +9,7 @@ import { Logger } from '../../logging/index.js';
 import { getErrorMessage } from '../../utils/error.js';
 
 const router: IRouter = Router();
-const logger = Logger.create({ service: 'share-routes' });
+const logger = Logger.create({ component: 'share-routes' });
 
 /**
  * Resolve the preview base URL for an app from the database.

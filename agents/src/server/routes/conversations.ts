@@ -7,7 +7,7 @@ import { exportConversations } from '../../services/conversation-exporter.js';
 import type { ExportDetail } from '../../services/conversation-exporter.js';
 
 const router: RouterType = Router();
-const logger = Logger.create({ service: 'conversations-routes' });
+const logger = Logger.create({ component: 'conversations-routes' });
 
 /**
  * GET /api/conversations

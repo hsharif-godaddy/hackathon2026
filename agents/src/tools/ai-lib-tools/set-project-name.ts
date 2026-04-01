@@ -4,7 +4,7 @@ import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { FileEditTool } from '../file-edit.js'
 import { Logger } from '../../logging/index.js'
 
-const logger = Logger.create({ service: 'set-project-name-tool' })
+const logger = Logger.create({ component: 'set-project-name-tool' })
 
 /**
  * Escape HTML special characters to prevent XSS when inserting into HTML

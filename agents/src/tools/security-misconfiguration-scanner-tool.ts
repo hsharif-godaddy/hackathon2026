@@ -100,7 +100,7 @@ export class SecurityMisconfigurationScannerTool {
   private readonly DEFAULT_TIMEOUT = 90000; // 90 seconds
 
   constructor() {
-    this.logger = Logger.create({ service: 'security-misconfiguration-scanner-tool' });
+    this.logger = Logger.create({ component: 'security-misconfiguration-scanner-tool' });
     this.appRepository = new AppRepository();
   }
 

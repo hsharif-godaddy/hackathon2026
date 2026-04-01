@@ -12,7 +12,7 @@ const router: IRouter = Router();
 const appRepo = new AppRepository();
 const socialAssociationRepo = new SocialAssociationRepository();
 const socialPostRepo = new SocialPostRepository();
-const logger = Logger.create({ service: 'social-routes' });
+const logger = Logger.create({ component: 'social-routes' });
 
 // ============================================================================
 // Middleware & Helpers

@@ -5,7 +5,7 @@ import { Logger } from '../../logging/index.js';
 import type { AgentsAppContext } from '../../types/websocket-context.js';
 import type { ContextAttachment } from '@airo/shared/context-attachment';
 
-const logger = Logger.create({ service: 'social-connect' });
+const logger = Logger.create({ component: 'social-connect' });
 
 interface SocialConnectData {
   platforms: string[];

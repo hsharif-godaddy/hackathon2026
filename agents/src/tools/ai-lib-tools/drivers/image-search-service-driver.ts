@@ -56,7 +56,7 @@ export class ImageSearchServiceDriver implements MediaDriver {
 
   constructor() {
     this.baseUrl = process.env.IMAGE_SEARCH_SERVICE_URL || 'http://localhost:8080';
-    this.logger = Logger.create({ service: 'image-search-service-driver' });
+    this.logger = Logger.create({ component: 'image-search-service-driver' });
   }
 
   /**

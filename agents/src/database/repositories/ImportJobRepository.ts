@@ -79,7 +79,7 @@ export interface UpdateImportJobParams {
 
 export class ImportJobRepository {
   private db = getDatabase();
-  private logger = Logger.create({ service: 'import-job-repository' });
+  private logger = Logger.create({ component: 'import-job-repository' });
 
   /**
    * Map a database row to an ImportJob object

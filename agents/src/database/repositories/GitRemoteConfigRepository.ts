@@ -8,7 +8,7 @@ import { Logger } from '../../logging/index.js';
 import { customAlphabet } from 'nanoid';
 
 const nanoid = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 12);
-const logger = Logger.create({ service: 'git-remote-config-repository' });
+const logger = Logger.create({ component: 'git-remote-config-repository' });
 
 /**
  * Repository for managing git remote configurations

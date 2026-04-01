@@ -14,7 +14,7 @@ import { ImportJobStatus, type ValidationError } from '../../types/import.js';
 const router: Router = Router();
 const appRepository = new AppRepository();
 const gitRemoteConfigRepo = new GitRemoteConfigRepository();
-const logger = Logger.create({ service: 'git-remote-routes' });
+const logger = Logger.create({ component: 'git-remote-routes' });
 
 /**
  * Maps GitOps error codes to HTTP status codes

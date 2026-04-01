@@ -42,7 +42,7 @@ export class DevSupervisorLogClient {
   private logger: Logger;
 
   constructor(socketPath?: string) {
-    this.logger = Logger.create({ service: 'dev-supervisor-log-client' });
+    this.logger = Logger.create({ component: 'dev-supervisor-log-client' });
     
     // Only create dev-supervisor client if explicit socket path is provided
     if (socketPath) {

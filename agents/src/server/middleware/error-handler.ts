@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { Logger } from '../../logging/index.js';
 
-const logger = Logger.create({ service: 'error-handler' });
+const logger = Logger.create({ component: 'error-handler' });
 
 export interface ApiError extends Error {
   status?: number;

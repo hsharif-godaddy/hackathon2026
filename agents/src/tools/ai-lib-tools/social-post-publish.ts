@@ -6,7 +6,7 @@ import type { AgentsAppContext } from '../../types/websocket-context.js';
 import type { ContextAttachment } from '@airo/shared/context-attachment';
 import type { SocialPost } from '../../types/social-posts.js';
 
-const logger = Logger.create({ service: 'social-post-publish' });
+const logger = Logger.create({ component: 'social-post-publish' });
 
 interface PendingPublish {
   publishId?: string;

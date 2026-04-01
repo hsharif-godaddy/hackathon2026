@@ -9,7 +9,7 @@ import { ConversationRepository } from '../database/repositories/ConversationRep
 import { SummaryRepository } from '../database/repositories/SummaryRepository.js'
 import { Logger, log } from '../logging/index.js'
 
-const logger = Logger.create({ service: 'video-prompt-generation' })
+const logger = Logger.create({ component: 'video-prompt-generation' })
 
 export class VideoPromptGenerationService {
   private summaryRepo: SummaryRepository

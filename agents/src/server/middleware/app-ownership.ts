@@ -32,7 +32,7 @@ import { Logger } from '../../logging/index.js';
 import { BYPASS_SITE_IDS } from '../../services/features.js';
 import { ConversationRepository } from '../../database/repositories/ConversationRepository.js';
 
-const logger = Logger.create({ service: 'app-ownership-middleware' });
+const logger = Logger.create({ component: 'app-ownership-middleware' });
 
 /**
  * Core validation logic shared across all ownership validators

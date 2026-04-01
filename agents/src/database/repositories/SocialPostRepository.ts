@@ -5,7 +5,7 @@ import { customAlphabet } from 'nanoid';
 import { PostState } from '../../types/social.js';
 
 const nanoid = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 12);
-const logger = Logger.create({ service: 'social-post-repository' });
+const logger = Logger.create({ component: 'social-post-repository' });
 
 export interface CreateSocialPostParams {
   appId: string;

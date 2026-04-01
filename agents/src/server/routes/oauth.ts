@@ -4,7 +4,7 @@ import { AuthService, pkceStateStore } from '../../services/auth-service.js';
 import { Logger } from '../../logging/index.js';
 import { getSocketIO } from '../ai-lib-websocket-server.js';
 
-const logger = Logger.create({ service: 'oauth-router' });
+const logger = Logger.create({ component: 'oauth-router' });
 const router: IRouter = Router();
 
 const AUTO_CLOSE_COUNTDOWN_SECONDS = 10;

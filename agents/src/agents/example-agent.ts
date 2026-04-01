@@ -13,7 +13,7 @@ import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 import { getPersistentAssetPaths } from '../utils/persistent-assets.js'
 import { readFile } from 'fs/promises'
 
-const logger = Logger.create({ service: 'example-agent' })
+const logger = Logger.create({ component: 'example-agent' })
 
 /**
  * Example Agent - demonstrates the new AgentFactory architecture

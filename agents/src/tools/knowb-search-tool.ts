@@ -12,7 +12,7 @@ import {
 } from './ai-lib-tools/drivers/knowb-driver.js';
 import { getKnowledgeServiceDriver } from './ai-lib-tools/drivers/knowledge-service-driver.js';
 
-const logger = Logger.create({ service: 'knowb-search-tool' });
+const logger = Logger.create({ component: 'knowb-search-tool' });
 
 /**
  * Options for KnowB search (extends driver options with appId)

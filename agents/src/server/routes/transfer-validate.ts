@@ -16,7 +16,7 @@ import { getErrorMessage } from '../../utils/error.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 
 const router: IRouter = Router();
-const logger = Logger.create({ service: 'transfer-validate-routes' });
+const logger = Logger.create({ component: 'transfer-validate-routes' });
 
 router.use('/apps/:id/transfer/validate', validateAppOwnership);
 

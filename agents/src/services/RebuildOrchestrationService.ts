@@ -20,7 +20,7 @@ import { SitemapDiscoveryService, type SitemapDiscoveryResult } from './SitemapD
 import { WebsiteScraperDriver } from '../tools/ai-lib-tools/drivers/website-scraper-driver.js';
 import { PagePromptAgent } from '../agents/page-prompt-agent.js';
 
-const logger = Logger.create({ service: 'rebuild-orchestration-service' });
+const logger = Logger.create({ component: 'rebuild-orchestration-service' });
 
 /**
  * Maximum number of pages to discover and scrape from source site

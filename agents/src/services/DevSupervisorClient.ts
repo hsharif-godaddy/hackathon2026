@@ -334,7 +334,7 @@ export class DevSupervisorClient {
     }
     this.connectionPath = connectionPath;
     this.useTcp = connectionPath.startsWith('tcp://');
-    this.logger = Logger.create({ service: 'dev-supervisor-client' });
+    this.logger = Logger.create({ component: 'dev-supervisor-client' });
   }
 
   /**

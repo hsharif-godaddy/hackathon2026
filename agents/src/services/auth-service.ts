@@ -5,7 +5,7 @@ import { OAuthTokenRepository } from '../database/repositories/OAuthTokenReposit
 import { getSocketIO } from '../server/ai-lib-websocket-server.js';
 import { getNomadAllocConfig } from '../utils/nomad-config.js';
 
-const logger = Logger.create({ service: 'auth-service' });
+const logger = Logger.create({ component: 'auth-service' });
 
 export const OAuthScopes = [
   'commerce.store:read',

@@ -37,7 +37,7 @@ export interface RegisterAppResult {
 export class AppRepository {
   private db = getDatabase();
   private gitUtils = new GitUtils();
-  private logger = Logger.create({ service: 'app-repository' });
+  private logger = Logger.create({ component: 'app-repository' });
 
   private deploymentAdapter: any = null;
 

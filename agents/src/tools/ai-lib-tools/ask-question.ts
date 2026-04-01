@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import { Logger } from '../../logging/index.js'
 
-const logger = Logger.create({ service: 'ask-question-tool' })
+const logger = Logger.create({ component: 'ask-question-tool' })
 
 /**
  * Suggestion schema for question answers

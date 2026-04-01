@@ -19,7 +19,7 @@ const VITE_CONFIG_FILES = ['vite.config.js', 'vite.config.ts', 'vite.config.mjs'
 const traverse = _traverse.default || _traverse;
 const generate = _generate.default || _generate;
 
-const logger = Logger.create({ service: 'vite-config-modifier' });
+const logger = Logger.create({ component: 'vite-config-modifier' });
 
 export interface ViteConfigModifyResult {
   success: boolean;

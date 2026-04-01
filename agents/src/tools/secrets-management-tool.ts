@@ -26,7 +26,7 @@ export class SecretsManagementTool {
   private devSupervisor: DevSupervisorClient | null;
 
   constructor(devSupervisor?: DevSupervisorClient) {
-    this.logger = Logger.create({ service: 'secrets-management-tool' });
+    this.logger = Logger.create({ component: 'secrets-management-tool' });
     this.devSupervisor = devSupervisor || null;
   }
 

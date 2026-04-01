@@ -36,7 +36,7 @@ describe('Agent Handoff Callback', () => {
 
     // Get logger from mock
     const { Logger } = await import('../../logging/index.js')
-    logger = Logger.create({ service: 'test' })
+    logger = Logger.create({ component: 'test' })
   })
 
   // Helper to create the onAgentChanged callback

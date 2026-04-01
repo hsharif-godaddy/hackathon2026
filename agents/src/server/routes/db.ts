@@ -18,7 +18,7 @@ function sanitizeFilename(name: string): string {
 const router: IRouter = Router();
 const appRepo = new AppRepository();
 const mysqlUtils = new MySQLUtils();
-const logger = Logger.create({ service: 'db-routes' });
+const logger = Logger.create({ component: 'db-routes' });
 
 // SECURITY: Apply ownership validation to all database routes
 // Prevents cross-tenant access to database credentials and data

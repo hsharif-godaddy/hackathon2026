@@ -33,7 +33,7 @@ import { Logger, log } from '../../logging/index.js';
 import { ValidationErrorKey, type ValidationError } from '../../types/import.js';
 import type { DevSupervisorClient } from '../../services/DevSupervisorClient.js';
 
-const logger = Logger.create({ service: 'git-sync-validation-middleware' });
+const logger = Logger.create({ component: 'git-sync-validation-middleware' });
 
 /**
  * Validate Git URL format and security

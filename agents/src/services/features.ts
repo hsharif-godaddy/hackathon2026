@@ -5,7 +5,7 @@
 
 import { Logger } from '../logging/index.js';
 
-const logger = Logger.create({ service: 'features' });
+const logger = Logger.create({ component: 'features' });
 
 /**
  * Authentication types supported by the agents service

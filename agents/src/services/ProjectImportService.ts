@@ -91,7 +91,7 @@ interface PackageJsonInfo {
 }
 
 export class ProjectImportService {
-  private logger = Logger.create({ service: 'project-import' });
+  private logger = Logger.create({ component: 'project-import' });
   private importJobRepo = new ImportJobRepository();
   private appRepo = new AppRepository();
 

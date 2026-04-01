@@ -11,7 +11,7 @@ import { Logger } from '../logging/index.js'
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import type { SiteMetadata } from '../types/rebuild.js'
 
-const logger = Logger.create({ service: 'site-analyzer-agent' })
+const logger = Logger.create({ component: 'site-analyzer-agent' })
 
 async function buildSiteAnalyzerSystemPrompt(): Promise<string> {
   const promptBuilder = createPromptBuilder()

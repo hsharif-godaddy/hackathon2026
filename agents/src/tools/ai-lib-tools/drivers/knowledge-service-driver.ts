@@ -87,7 +87,7 @@ export class KnowledgeServiceDriver {
   private static readonly REQUEST_TIMEOUT_MS = 5_000;
 
   constructor(baseUrl: string, useProxy: boolean = false) {
-    this.logger = Logger.create({ service: 'knowledge-service-driver' });
+    this.logger = Logger.create({ component: 'knowledge-service-driver' });
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.useProxy = useProxy;
     this.logger.info('knowledge-service-driver.config.initialized', {

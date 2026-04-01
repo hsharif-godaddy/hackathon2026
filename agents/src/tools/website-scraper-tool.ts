@@ -7,7 +7,7 @@
 import { Logger } from '../logging/index.js';
 import { WebsiteScraperDriver } from './ai-lib-tools/drivers/website-scraper-driver.js';
 
-const logger = Logger.create({ service: 'website-scraper-tool' });
+const logger = Logger.create({ component: 'website-scraper-tool' });
 
 /**
  * MCP Tool types

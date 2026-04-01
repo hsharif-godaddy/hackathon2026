@@ -1,6 +1,6 @@
 import { Logger } from '../logging/index.js';
 
-const logger = Logger.create({ service: 'sitemap-discovery-service' });
+const logger = Logger.create({ component: 'sitemap-discovery-service' });
 
 /**
  * Discovered page information

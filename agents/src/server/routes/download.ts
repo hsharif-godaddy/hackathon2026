@@ -17,7 +17,7 @@ import { requirePermission } from '../middleware/require-permission.js';
 
 const router: Router = Router();
 const appRepo = new AppRepository();
-const logger = Logger.create({ service: 'download-routes' });
+const logger = Logger.create({ component: 'download-routes' });
 
 /**
  * Temporary directory for zip downloads

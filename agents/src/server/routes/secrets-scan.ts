@@ -6,7 +6,7 @@ import { removeUndefined } from '../../utils/remove-undefined.js';
 
 const router: IRouter = Router();
 const secretsScanner = new SecretsScannerTool();
-const logger = Logger.create({ service: 'secrets-scan-routes' });
+const logger = Logger.create({ component: 'secrets-scan-routes' });
 
 const secretsScanSchema = z.object({
   workingDir: z.string().optional(),

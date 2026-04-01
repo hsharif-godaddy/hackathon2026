@@ -3,7 +3,7 @@ import { fileURLToPath } from 'url'
 import { readFileSync, existsSync } from 'fs'
 import { Logger } from '../logging/index.js'
 
-const logger = Logger.create({ service: 'prompt-utils' })
+const logger = Logger.create({ component: 'prompt-utils' })
 
 /**
  * Prompt Utilities for Modular Agent System

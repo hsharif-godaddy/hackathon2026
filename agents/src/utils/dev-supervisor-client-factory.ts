@@ -7,7 +7,7 @@ import { Logger } from '../logging/index.js';
  * Handles socket path resolution, availability checking, and error handling
  */
 export class DevSupervisorClientFactory {
-  private static logger = Logger.create({ service: 'dev-supervisor-client-factory' });
+  private static logger = Logger.create({ component: 'dev-supervisor-client-factory' });
   private static appRepositoryInstance: AppRepository | null = null;
 
   /**

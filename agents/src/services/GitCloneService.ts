@@ -28,7 +28,7 @@ export interface GitCloneResult {
 }
 
 export class GitCloneService {
-  private logger = Logger.create({ service: 'git-clone' });
+  private logger = Logger.create({ component: 'git-clone' });
 
   /**
    * Clone a Git repository inside the container

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { env } from 'node:process';
 import { Logger } from '../logging/index.js';
 
-const logger = Logger.create({ service: 'nomad-config' });
+const logger = Logger.create({ component: 'nomad-config' });
 
 let cachedConfig: Record<string, { VALUE: string }> | null | undefined;
 

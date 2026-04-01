@@ -11,7 +11,7 @@ import { Logger } from '../logging/index.js'
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import type { AssetInfo, PageContent, SiteMetadata, StylePreferences, AssetManifest } from '../types/rebuild.js'
 
-const logger = Logger.create({ service: 'page-prompt-agent' })
+const logger = Logger.create({ component: 'page-prompt-agent' })
 
 async function buildPagePromptSystemPrompt(isFirstPage: boolean = true): Promise<string> {
   const promptBuilder = createPromptBuilder()

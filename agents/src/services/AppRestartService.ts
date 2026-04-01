@@ -74,7 +74,7 @@ export interface PaasConfig {
 }
 
 export class AppRestartService {
-  private logger = Logger.create({ service: 'app-restart' });
+  private logger = Logger.create({ component: 'app-restart' });
 
   /**
    * Perform a full restart cycle for an app

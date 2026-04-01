@@ -29,7 +29,7 @@ export abstract class BaseDriver {
   protected useProxy: boolean;
 
   constructor(config: BaseDriverConfig) {
-    this.logger = Logger.create({ service: config.serviceName });
+    this.logger = Logger.create({ component: config.serviceName });
 
     // Get base URL from GETTY_API_URL (shared proxy) or use default
     const baseUrl = process.env.GETTY_API_URL || config.defaultBaseUrl || '';

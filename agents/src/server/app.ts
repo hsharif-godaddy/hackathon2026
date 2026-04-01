@@ -7,7 +7,7 @@ import { Logger } from '../logging/index.js';
 
 const isApmEnabled = !!(process.env.ELASTIC_APM_SECRET_TOKEN && process.env.ELASTIC_APM_SERVER_URL);
 const serviceName = 'airo-agents';
-const logger = Logger.create({ service: 'airo-agents-server' });
+const logger = Logger.create({ component: 'airo-agents-server' });
 
 if (isApmEnabled) {
   logger.info('server.apm.enabled', {

@@ -11,7 +11,7 @@ import {
   WEBSITE_REBUILD_IMPORT_FAILED_USER_MESSAGE
 } from '../../types/rebuild.js'
 
-const logger = Logger.create({ service: 'website-rebuild-tool' })
+const logger = Logger.create({ component: 'website-rebuild-tool' })
 const appRepo = new AppRepository()
 
 /**

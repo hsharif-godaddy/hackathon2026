@@ -2,7 +2,7 @@ import * as t from '@babel/types';
 import { ASTEditorBase, BaseEditContext, BaseEditResult } from './ast-editor-base.js';
 import { Logger } from '../logging/index.js';
 
-const logger = Logger.create({ service: 'ast-text-editor' });
+const logger = Logger.create({ component: 'ast-text-editor' });
 
 export type TextEditContext = BaseEditContext;
 

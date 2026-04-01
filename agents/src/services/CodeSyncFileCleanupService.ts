@@ -19,7 +19,7 @@ let cachedPatterns: ZipImportLimits['cleanablePatterns'] | null = null;
 const SAFE_PATTERN_REGEX = /^[a-zA-Z0-9._/-]+$/;
 
 export class CodeSyncFileCleanupService {
-  private logger = Logger.create({ service: 'code-sync-file-cleanup' });
+  private logger = Logger.create({ component: 'code-sync-file-cleanup' });
 
   /**
    * Get cleanable patterns with caching to avoid repeated env var parsing.

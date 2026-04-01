@@ -49,7 +49,7 @@ import type {
   MediaObjectResponse
 } from './godaddy-commerce-types.js';
 
-const logger = Logger.create({ service: 'godaddy-commerce' });
+const logger = Logger.create({ component: 'godaddy-commerce' });
 
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 const MAX_RETRIES = 3;

@@ -21,7 +21,7 @@ import { isCapabilityEnabled } from '../../utils/capability-config.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
-const zipLogger = Logger.create({ service: 'zip-import-routes' });
+const zipLogger = Logger.create({ component: 'zip-import-routes' });
 
 // =============================================================================
 // SHARED ZIP IMPORT INFRASTRUCTURE

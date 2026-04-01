@@ -43,7 +43,7 @@ export class ServerManagementTool {
   private logger: Logger;
 
   constructor() {
-    this.logger = Logger.create({ service: 'server-management-tool' });
+    this.logger = Logger.create({ component: 'server-management-tool' });
   }
 
   /**

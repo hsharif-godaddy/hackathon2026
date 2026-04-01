@@ -14,7 +14,7 @@ import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 import { skills } from '../services/features.js'
 import { SkillLoaderTool, buildSkillsPromptSection } from '../tools/skill-loader-tool.js'
 
-const logger = Logger.create({ service: 'marketing-agent' })
+const logger = Logger.create({ component: 'marketing-agent' })
 
 async function buildMarketingSystemPrompt(): Promise<string> {
   const promptBuilder = createPromptBuilder()

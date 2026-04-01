@@ -142,7 +142,7 @@ export const CONFIG = {
  * Service for analyzing images and caching results in goknowb
  */
 export class ImageAnalysisService {
-  private logger = Logger.create({ service: "image-analysis-service" });
+  private logger = Logger.create({ component: "image-analysis-service" });
   private context?: ImageAnalysisContext;
 
   constructor(context?: ImageAnalysisContext) {

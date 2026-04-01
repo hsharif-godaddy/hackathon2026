@@ -18,7 +18,7 @@ import { getNomadAllocConfig } from '../utils/nomad-config.js';
  * - MUST cleanup credentials in finally block after every operation
  */
 export class GitRemoteTokenManager {
-  private logger = Logger.create({ service: 'git-remote-token-manager' });
+  private logger = Logger.create({ component: 'git-remote-token-manager' });
 
   constructor(private devSupervisor: DevSupervisorClient) {}
 

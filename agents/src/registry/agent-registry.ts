@@ -1,7 +1,7 @@
 import { IAgent, AgentConfig } from '../base/index.js';
 import { Logger } from '../logging/index.js';
 
-const logger = Logger.create({ service: 'agent-registry' });
+const logger = Logger.create({ component: 'agent-registry' });
 
 /**
  * Interface for agent constructor

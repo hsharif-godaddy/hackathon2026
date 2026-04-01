@@ -42,7 +42,7 @@ export class ViewLogsTool {
   private appRepository: AppRepository;
 
   constructor() {
-    this.logger = Logger.create({ service: 'view-logs-tool' });
+    this.logger = Logger.create({ component: 'view-logs-tool' });
     this.appRepository = new AppRepository();
   }
 

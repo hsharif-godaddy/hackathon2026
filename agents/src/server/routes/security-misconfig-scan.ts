@@ -10,7 +10,7 @@ import { removeUndefined } from '../../utils/remove-undefined.js';
 
 const router: IRouter = Router();
 const scanner = new SecurityMisconfigurationScannerTool();
-const logger = Logger.create({ service: 'security-misconfig-scan-routes' });
+const logger = Logger.create({ component: 'security-misconfig-scan-routes' });
 
 const securityMisconfigScanSchema = z.object({
   workingDir: z.string().optional(),

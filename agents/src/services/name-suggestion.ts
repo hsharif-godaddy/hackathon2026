@@ -5,7 +5,7 @@ import { generateText } from 'ai'
 
 import { Logger, log } from '../logging/index.js'
 
-const logger = Logger.create({ service: 'name-suggestion' })
+const logger = Logger.create({ component: 'name-suggestion' })
 
 export class NameSuggestionService {
   /**

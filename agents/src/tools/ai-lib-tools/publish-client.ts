@@ -15,7 +15,7 @@ import { executePublish } from '../publish-client-tool.js'
 import { MemoryTool } from '../memory-tool.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 
-const logger = Logger.create({ service: 'publish-client-tool' })
+const logger = Logger.create({ component: 'publish-client-tool' })
 const memoryTool = new MemoryTool()
 const appRepo = new AppRepository()
 

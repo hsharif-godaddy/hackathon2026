@@ -18,7 +18,7 @@ import { codeSyncFileCleanupService } from './CodeSyncFileCleanupService.js';
 import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
 
-const logger = Logger.create({ service: 'git-ops-service' });
+const logger = Logger.create({ component: 'git-ops-service' });
 
 /**
  * Base parameters for git sync operations

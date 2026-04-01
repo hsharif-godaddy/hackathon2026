@@ -10,7 +10,7 @@ import { createAgentTelemetryLogger } from '../utils/agent-logger.js';
 import { getPersistentPublicDir } from '../utils/persistent-assets.js';
 import type { AssetInfo, AssetManifest } from '../types/rebuild.js';
 
-const logger = Logger.create({ service: 'asset-processing-service' });
+const logger = Logger.create({ component: 'asset-processing-service' });
 
 /**
  * Asset download result

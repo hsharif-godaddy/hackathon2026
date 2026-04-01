@@ -63,7 +63,7 @@ type DevSupervisorClientFactory = (socketPath: string) => DevSupervisorClient;
  * with proper sanitization to remove sensitive information.
  */
 export class CustomerLogsService {
-  private logger = Logger.create({ service: 'customer-logs-service' });
+  private logger = Logger.create({ component: 'customer-logs-service' });
 
   constructor(
     private appRepository: AppRepository,

@@ -12,7 +12,7 @@ import { normalize, isAbsolute } from 'node:path';
 import { DevSupervisorClient } from './DevSupervisorClient.js';
 import { Logger } from '../logging/index.js';
 
-const logger = Logger.create({ service: 'express-port-injector' });
+const logger = Logger.create({ component: 'express-port-injector' });
 
 /**
  * Validate that entryFile is a safe relative path that doesn't escape the project root.

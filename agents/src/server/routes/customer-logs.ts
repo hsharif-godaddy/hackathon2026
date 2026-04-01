@@ -14,7 +14,7 @@ import { CustomerLogsService, type CustomerLogsRequest } from '../../services/cu
 import { LogSanitizer } from '../../services/log-sanitizer.js';
 import { Logger } from '../../logging/index.js';
 
-const logger = Logger.create({ service: 'customer-logs-routes' });
+const logger = Logger.create({ component: 'customer-logs-routes' });
 
 // Singleton instances for production use
 let _appRepo: AppRepository | null = null;

@@ -45,7 +45,7 @@ const fileEditTool = new FileEditTool();
 const astStyleEditor = new ASTStyleEditor();
 const astTextEditor = new ASTTextEditor();
 
-const logger = Logger.create({ service: 'apps-routes' });
+const logger = Logger.create({ component: 'apps-routes' });
 
 // Local dev runs agents on the host and preview in Docker. When SCREENSHOT_DIR is
 // not set, store screenshots in the app's agent directory so they don't end up in

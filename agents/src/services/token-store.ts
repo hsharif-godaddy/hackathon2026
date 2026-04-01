@@ -2,7 +2,7 @@ import { OAuthTokenRepository } from '../database/repositories/OAuthTokenReposit
 import { encryptToken, decryptToken } from './token-crypto.js';
 import { Logger } from '../logging/index.js';
 
-const logger = Logger.create({ service: 'token-store' });
+const logger = Logger.create({ component: 'token-store' });
 
 /**
  * Decrypted token record with plain text access and refresh tokens

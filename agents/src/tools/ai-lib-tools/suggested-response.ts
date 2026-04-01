@@ -7,7 +7,7 @@ import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { Logger } from '../../logging/index.js'
 import type { RebuildWorkflowState, SitemapData } from '../../types/rebuild.js'
 
-const logger = Logger.create({ service: 'suggested-response-tool' })
+const logger = Logger.create({ component: 'suggested-response-tool' })
 const appRepo = new AppRepository()
 
 /**

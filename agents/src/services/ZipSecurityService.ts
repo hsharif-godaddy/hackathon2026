@@ -30,7 +30,7 @@ const UNIX_MODE_MASK = 0xFFFF; // Mask to extract Unix file mode from external f
 const S_IFLNK = 0xA000; // Unix file type constant for symbolic links
 
 export class ZipSecurityService {
-  private logger = Logger.create({ service: 'zip-security' });
+  private logger = Logger.create({ component: 'zip-security' });
 
   /**
    * Main validation method

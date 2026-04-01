@@ -104,7 +104,7 @@ export class SecretsScannerTool {
   private cache: Map<string, { result: SecretsScannerResult; timestamp: number; commitHash: string }> = new Map();
 
   constructor() {
-    this.logger = Logger.create({ service: 'secrets-scanner-tool' });
+    this.logger = Logger.create({ component: 'secrets-scanner-tool' });
     this.appRepository = new AppRepository();
   }
 

@@ -11,7 +11,7 @@ import {
 } from './agent.interface.js';
 import { Logger } from '../logging/index.js';
 
-const logger = Logger.create({ service: 'base-agent' });
+const logger = Logger.create({ component: 'base-agent' });
 
 /**
  * Abstract base class that provides common functionality for all agents

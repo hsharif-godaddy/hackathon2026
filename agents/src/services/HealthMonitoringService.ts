@@ -43,7 +43,7 @@ export class HealthMonitoringService {
   private devSupervisor?: DevSupervisorClient | null;
 
   constructor(socketPath: string) {
-    this.logger = Logger.create({ service: 'health-monitoring' });
+    this.logger = Logger.create({ component: 'health-monitoring' });
     this.devSupervisor = createDevSupervisorClient(socketPath);
   }
 
