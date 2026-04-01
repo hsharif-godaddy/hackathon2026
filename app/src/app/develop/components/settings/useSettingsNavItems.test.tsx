@@ -4,6 +4,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SettingsSection } from '@/app/develop/components/types';
+import { SwitchboardAuthError } from '@/hooks/useSwitchboard';
 import { renderHookWithProviders } from '@/tests/test-utils';
 import { useSettingsNavItems } from './useSettingsNavItems';
 
@@ -16,23 +17,39 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: any) => selector(mockDevelopStore),
 }));
 
-vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: (feature: string) => {
-    if (feature === 'appbuilder-settings-project') return { data: true };
-    if (feature === 'appbuilder-settings-domain') return { data: true };
-    if (feature === 'appbuilder-settings-backups') return { data: true };
-    if (feature === 'appbuilder-settings-security') return { data: true };
-    if (feature === 'appbuilder-settings-secrets') return { data: true };
-    if (feature === 'appbuilder-settings-visualscan') return { data: false };
-    return { data: false };
-  },
-}));
+const mockSwitchboardResults: Record<string, { data: any; error: any }> = {};
+
+vi.mock('@/hooks/useSwitchboard', () => {
+  class SwitchboardAuthErrorImpl extends Error {
+    constructor(featureName: string) {
+      super(`Authentication required to fetch feature flag: ${featureName}`);
+      this.name = 'SwitchboardAuthError';
+    }
+  }
+  return {
+    SwitchboardAuthError: SwitchboardAuthErrorImpl,
+    useSwitchboard: (feature: string) => {
+      if (mockSwitchboardResults[feature]) return mockSwitchboardResults[feature];
+      if (feature === 'appbuilder-settings-project') return { data: true, error: null };
+      if (feature === 'appbuilder-settings-domain') return { data: true, error: null };
+      if (feature === 'appbuilder-settings-backups') return { data: true, error: null };
+      if (feature === 'appbuilder-settings-security') return { data: true, error: null };
+      if (feature === 'appbuilder-settings-secrets') return { data: true, error: null };
+      if (feature === 'appbuilder-settings-visualscan') return { data: false, error: null };
+      return { data: false, error: null };
+    },
+  };
+});
 
 describe('useSettingsNavItems', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDevelopStore.isMobile = false;
     localStorage.clear();
+    // Clear per-test overrides
+    for (const key of Object.keys(mockSwitchboardResults)) {
+      delete mockSwitchboardResults[key];
+    }
   });
 
   it('should return array of settings nav items', () => {
@@ -173,5 +190,69 @@ describe('useSettingsNavItems', () => {
 
     const projectItem = result.current.find(item => item.id === SettingsSection.PROJECT);
     expect(projectItem?.onClick).toBeUndefined();
+  });
+
+  describe('SwitchboardAuthError handling', () => {
+    it('should set needsAuth=true and disabled=false when switchboard returns auth error', () => {
+      mockSwitchboardResults['appbuilder-settings-project'] = {
+        data: undefined,
+        error: new SwitchboardAuthError('appbuilder-settings-project'),
+      };
+
+      const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+      const projectItem = result.current.find(item => item.id === SettingsSection.PROJECT);
+      expect(projectItem?.needsAuth).toBe(true);
+      expect(projectItem?.disabled).toBe(false);
+    });
+
+    it('should set needsAuth on multiple items with auth errors', () => {
+      mockSwitchboardResults['appbuilder-settings-domain'] = {
+        data: undefined,
+        error: new SwitchboardAuthError('appbuilder-settings-domain'),
+      };
+      mockSwitchboardResults['appbuilder-settings-secrets'] = {
+        data: undefined,
+        error: new SwitchboardAuthError('appbuilder-settings-secrets'),
+      };
+
+      const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+      const domainItem = result.current.find(item => item.id === SettingsSection.DOMAIN);
+      expect(domainItem?.needsAuth).toBe(true);
+      expect(domainItem?.disabled).toBe(false);
+
+      const secretsItem = result.current.find(item => item.id === SettingsSection.SECRETS);
+      expect(secretsItem?.needsAuth).toBe(true);
+      expect(secretsItem?.disabled).toBe(false);
+    });
+
+    it('should show conditional items with needsAuth when auth error occurs', () => {
+      mockSwitchboardResults['appbuilder-settings-social'] = {
+        data: undefined,
+        error: new SwitchboardAuthError('appbuilder-settings-social'),
+      };
+      mockSwitchboardResults['appbuilder-settings-marketing'] = {
+        data: undefined,
+        error: new SwitchboardAuthError('appbuilder-settings-marketing'),
+      };
+
+      const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+      const socialItem = result.current.find(item => item.id === SettingsSection.SOCIAL);
+      expect(socialItem).toBeDefined();
+      expect(socialItem?.needsAuth).toBe(true);
+
+      const marketingItem = result.current.find(item => item.id === SettingsSection.MARKETING);
+      expect(marketingItem).toBeDefined();
+      expect(marketingItem?.needsAuth).toBe(true);
+    });
+
+    it('should not set needsAuth when error is null', () => {
+      const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+      const projectItem = result.current.find(item => item.id === SettingsSection.PROJECT);
+      expect(projectItem?.needsAuth).toBeFalsy();
+    });
   });
 });

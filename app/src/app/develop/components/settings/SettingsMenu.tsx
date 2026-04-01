@@ -14,6 +14,7 @@ import {
   PopoverAnchor,
   PopoverContent,
 } from "@/lib/shadcn/popover";
+import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { generateClickEID } from '@/utils/instrumentation';
 
@@ -69,7 +70,10 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
               disabled={item.disabled}
               className="!justify-start"
               onClick={() => {
-                if (item.onClick) {
+                if (item.needsAuth) {
+                  useAuthUIStore.getState().setNeedsReauth('session_expired');
+                  setOpen(false);
+                } else if (item.onClick) {
                   item.onClick();
                   setOpen(false);
                 } else {

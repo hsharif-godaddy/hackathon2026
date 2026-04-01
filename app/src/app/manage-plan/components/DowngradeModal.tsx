@@ -9,6 +9,7 @@ import XIcon from '@ux/icon/x';
 import Modal from '@ux/modal';
 import text from '@ux/text';
 
+import { useCloseOnReauth } from '@/hooks/useCloseOnReauth';
 import { useTranslations } from '@/hooks/useTranslations';
 import { getRootDomain } from '@/utils/getRootDomain';
 import { generateClickEID } from '@/utils/instrumentation';
@@ -34,6 +35,7 @@ export default function DowngradeModal({
   error,
 }: DowngradeModalProps) {
   const t = useTranslations();
+  useCloseOnReauth(true, onClose);
   const rootDomain = getRootDomain() || 'godaddy.com';
   const renewalsUrl = `https://account.${rootDomain}/myrenewals`;
   const contactUsUrl = `https://www.${rootDomain}/contact-us`;

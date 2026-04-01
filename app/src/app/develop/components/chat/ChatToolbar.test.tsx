@@ -61,10 +61,16 @@ vi.mock('@/stores/useGitStore', () => ({
   useGitStore: (selector: any) => selector(mockGitStore),
 }));
 vi.mock('@/hooks/useSwitchboard', () => ({
+  SwitchboardAuthError: class SwitchboardAuthError extends Error {
+    constructor(featureName: string) {
+      super(`Authentication required to fetch feature flag: ${featureName}`);
+      this.name = 'SwitchboardAuthError';
+    }
+  },
   useSwitchboard: (feature: string) => {
-    if (feature === 'appbuilder-image-manager') return { data: true };
-    if (feature === 'appbuilder-settings') return { data: true };
-    return { data: false };
+    if (feature === 'appbuilder-image-manager') return { data: true, error: null };
+    if (feature === 'appbuilder-settings') return { data: true, error: null };
+    return { data: false, error: null };
   },
 }));
 vi.mock('@/hooks/useGitHistory', () => ({

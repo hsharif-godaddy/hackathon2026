@@ -12,6 +12,7 @@ import { Status } from "@/app/develop/components/types";
 import { useAppIdFromParams } from "@/app/develop/components/utils";
 import BigCard from "@/components/layout/BigCard";
 import { useAuth } from '@/hooks/useAuth';
+import { useCloseOnReauth } from '@/hooks/useCloseOnReauth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
 import { useDomainPolling } from '@/hooks/useDomainPolling';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
@@ -59,6 +60,7 @@ export default function DomainAttach() {
   const [customDomainError, setCustomDomainError] = useState<string | null>(null);
   const [debouncedDomain, setDebouncedDomain] = useState('');
   const [showAddConfirmation, setShowAddConfirmation] = useState(false);
+  useCloseOnReauth(showAddConfirmation, () => setShowAddConfirmation(false));
   const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const site = useSiteStore((state) => {

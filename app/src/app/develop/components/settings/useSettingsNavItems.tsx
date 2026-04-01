@@ -16,9 +16,11 @@ import Users3Icon from '@ux/icon/users3';
 
 import { SettingsSection } from '@/app/develop/components/types';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
-import { useSwitchboard } from '@/hooks/useSwitchboard';
+import { SwitchboardAuthError, useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+
+const isAuthError = (error: Error | null) => error instanceof SwitchboardAuthError;
 
 /**
  * Settings navigation item configuration
@@ -28,6 +30,7 @@ export interface SettingsNavItem {
   label: string;
   icon: ReactNode;
   disabled: boolean;
+  needsAuth?: boolean;
   onClick?: () => void;
 }
 
@@ -42,17 +45,17 @@ export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] 
   const t = useTranslations();
   const openFeedbackModal = useDevelopPageStore((state) => state.openFeedbackModal);
 
-  const { data: isProjectEnabled } = useSwitchboard('appbuilder-settings-project', { enabled });
-  const { data: isDomainEnabled } = useSwitchboard('appbuilder-settings-domain', { enabled });
-  const { data: isBackupsEnabled } = useSwitchboard('appbuilder-settings-backups', { enabled });
-  const { data: isSecurityEnabled } = useSwitchboard('appbuilder-settings-security', { enabled });
-  const { data: isShareLinksEnabled } = useSwitchboard('appbuilder-share-links', { enabled });
-  const { data: isTeamEnabled } = useSwitchboard('appbuilder-settings-team', { enabled });
-  const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan', { enabled });
-  const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets', { enabled });
-  const { data: isSocialEnabled } = useSwitchboard('appbuilder-settings-social', { enabled });
-  const { data: isAnalyticsEnabled } = useSwitchboard('appbuilder-settings-analytics', { enabled });
-  const { data: isMarketingEnabled } = useSwitchboard('appbuilder-settings-marketing', { enabled });
+  const project = useSwitchboard('appbuilder-settings-project', { enabled });
+  const domain = useSwitchboard('appbuilder-settings-domain', { enabled });
+  const backups = useSwitchboard('appbuilder-settings-backups', { enabled });
+  const security = useSwitchboard('appbuilder-settings-security', { enabled });
+  const shareLinks = useSwitchboard('appbuilder-share-links', { enabled });
+  const team = useSwitchboard('appbuilder-settings-team', { enabled });
+  const visualScan = useSwitchboard('appbuilder-settings-visualscan', { enabled });
+  const secrets = useSwitchboard('appbuilder-settings-secrets', { enabled });
+  const social = useSwitchboard('appbuilder-settings-social', { enabled });
+  const analytics = useSwitchboard('appbuilder-settings-analytics', { enabled });
+  const marketing = useSwitchboard('appbuilder-settings-marketing', { enabled });
 
   const handleFeedbackClick = () => {
     localStorage.removeItem(`airo-feedback-shown:${FEEDBACK_ID}`);
@@ -64,37 +67,43 @@ export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] 
       id: SettingsSection.PROJECT,
       label: t('builder_settings_nav_project'),
       icon: <SettingsIcon />,
-      disabled: isProjectEnabled !== true,
+      disabled: !isAuthError(project.error) && project.data !== true,
+      needsAuth: isAuthError(project.error),
     },
     {
       id: SettingsSection.DOMAIN,
       label: t('builder_settings_nav_domain'),
       icon: <LinkIcon />,
-      disabled: isDomainEnabled !== true,
+      disabled: !isAuthError(domain.error) && domain.data !== true,
+      needsAuth: isAuthError(domain.error),
     },
     {
       id: SettingsSection.BACKUPS,
       label: t('builder_settings_nav_backups'),
       icon: <RevertIcon />,
-      disabled: isBackupsEnabled !== true,
+      disabled: !isAuthError(backups.error) && backups.data !== true,
+      needsAuth: isAuthError(backups.error),
     },
     {
       id: SettingsSection.SECURITY,
       label: t('builder_settings_nav_security'),
       icon: <LockedIcon />,
-      disabled: isSecurityEnabled !== true,
+      disabled: !isAuthError(security.error) && security.data !== true,
+      needsAuth: isAuthError(security.error),
     },
-    ...(isShareLinksEnabled ? [{
+    ...(shareLinks.data || isAuthError(shareLinks.error) ? [{
       id: SettingsSection.SHARE,
       label: t('builder_settings_nav_share'),
       icon: <ShareIcon />,
       disabled: false,
+      needsAuth: isAuthError(shareLinks.error),
     }] : []),
     {
       id: SettingsSection.TEAM,
       label: t('builder_settings_nav_team'),
       icon: <Users3Icon />,
-      disabled: isTeamEnabled !== true,
+      disabled: !isAuthError(team.error) && team.data !== true,
+      needsAuth: isAuthError(team.error),
     },
     {
       id: SettingsSection.DATABASE,
@@ -106,31 +115,36 @@ export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] 
       id: SettingsSection.SECRETS,
       label: t('builder_settings_nav_secrets'),
       icon: <LockedIcon />,
-      disabled: isSecretsEnabled !== true,
+      disabled: !isAuthError(secrets.error) && secrets.data !== true,
+      needsAuth: isAuthError(secrets.error),
     },
-    ...(isSocialEnabled ? [{
+    ...(social.data || isAuthError(social.error) ? [{
       id: SettingsSection.SOCIAL,
       label: t('builder_settings_nav_social'),
       icon: <SocialIcon />,
-      disabled: isSocialEnabled !== true,
+      disabled: false,
+      needsAuth: isAuthError(social.error),
     }] : []),
-    ...(isVisualScanEnabled ? [{
+    ...(visualScan.data || isAuthError(visualScan.error) ? [{
       id: SettingsSection.VISUAL_SCAN,
       label: t('builder_settings_nav_visualscan'),
       icon: <ContentIcon />,
-      disabled: isVisualScanEnabled !== true,
+      disabled: false,
+      needsAuth: isAuthError(visualScan.error),
     }] : []),
     {
       id: SettingsSection.ANALYTICS,
       label: t('builder_settings_nav_analytics'),
       icon: <GraphIcon />,
-      disabled: isAnalyticsEnabled !== true,
+      disabled: !isAuthError(analytics.error) && analytics.data !== true,
+      needsAuth: isAuthError(analytics.error),
     },
-    ...(isMarketingEnabled ? [{
+    ...(marketing.data || isAuthError(marketing.error) ? [{
       id: SettingsSection.MARKETING,
       label: t('builder_settings_nav_marketing'),
       icon: <CalendarIcon />,
       disabled: false,
+      needsAuth: isAuthError(marketing.error),
     }] : []),
     {
       id: SettingsSection.FEEDBACK,

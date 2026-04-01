@@ -5,6 +5,13 @@ import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import { getRootDomain } from '@/utils/getRootDomain';
 
+export class SwitchboardAuthError extends Error {
+  constructor(featureName: string) {
+    super(`Authentication required to fetch feature flag: ${featureName}`);
+    this.name = 'SwitchboardAuthError';
+  }
+}
+
 /**
  * Local development feature flags
  * Override switchboard for local development when NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true
@@ -30,16 +37,25 @@ const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-settings-analytics': true,
 };
 
+interface FetchOptions {
+  throwOnAuth?: boolean;
+}
+
 /**
  * Fetch feature flag value from BFF API
  *
  * This is the non-React version for use in services and providers.
  * For React components, use the `useSwitchboard` hook instead.
  *
+ * By default fail-soft: returns false on any error (including 401).
+ * Pass `throwOnAuth: true` to throw SwitchboardAuthError on 401 -
+ * used by `useSwitchboard` so React Query can surface it to the UI.
+ *
  * @param featureName - Name of the feature flag to fetch
+ * @param options.throwOnAuth - Throw SwitchboardAuthError on 401 instead of returning false
  * @returns Promise with the feature flag value (boolean)
  */
-export async function fetchFeatureFlag(featureName: string): Promise<boolean> {
+export async function fetchFeatureFlag(featureName: string, options?: FetchOptions): Promise<boolean> {
   if (isFeatureEnabled.localFeatures() && featureName in LOCAL_FEATURE_OVERRIDES) {
     logger.info('switchboard.local_override', {
       featureName,
@@ -61,6 +77,11 @@ export async function fetchFeatureFlag(featureName: string): Promise<boolean> {
 
   const response = await appFetch(url, {}, { setAuthState: false });
 
+  if (response.status === 401 && options?.throwOnAuth) {
+    logger.warn('switchboard.fetch.auth_required', { featureName });
+    throw new SwitchboardAuthError(featureName);
+  }
+
   if (!response.ok) {
     logger.error('switchboard.fetch.failure', {
       featureName,
@@ -70,14 +91,15 @@ export async function fetchFeatureFlag(featureName: string): Promise<boolean> {
   }
 
   const data = await response.json();
-  // Assuming the API returns { enabled: boolean } or similar
   return data?.setting ?? false;
 }
 
 /**
  * Hook to fetch and manage a single feature flag from BFF API using React Query
  *
- * Provides automatic caching, request deduplication, and background refetching
+ * Provides automatic caching, request deduplication, and background refetching.
+ * Throws SwitchboardAuthError on 401 so the UI can surface auth-gated state
+ * (e.g. needsAuth on settings nav items).
  *
  * @param featureName - Name of the feature flag to fetch
  * @param options - Optional configuration
@@ -100,10 +122,13 @@ export function useSwitchboard(featureName: string, options: { enabled?: boolean
 
   return useQuery({
     queryKey: ['featureFlag', featureName],
-    queryFn: () => fetchFeatureFlag(featureName),
+    queryFn: () => fetchFeatureFlag(featureName, { throwOnAuth: true }),
     enabled: enabled && !!featureName,
     staleTime: 5 * 60 * 1000,
-    retry: 1,
+    retry: (failureCount, error) => {
+      if (error instanceof SwitchboardAuthError) return false;
+      return failureCount < 1;
+    },
     refetchOnWindowFocus: false,
   });
 }

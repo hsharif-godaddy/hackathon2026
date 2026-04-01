@@ -25,6 +25,7 @@ import AppThumbnail from '@/app/apps/AppThumbnail'
 import TransferInitiateDialog from '@/app/apps/components/TransferInitiateDialog'
 import UnpublishConfirmationModal from '@/components/layout/UnpublishConfirmationModal'
 import { useAppRename } from '@/hooks/useAppRename'
+import { useCloseOnReauth } from '@/hooks/useCloseOnReauth'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useUnpublishApp } from '@/hooks/useUnpublishApp'
@@ -72,6 +73,10 @@ export default function AppCard({ site }: { site: SiteInfo }) {
   const { data: isUnpublishEnabled } = useSwitchboard('appbuilder-unpublish')
   const { data: isTransferEnabled } = useSwitchboard('appbuilder-transfer-ownership')
   const unpublishMutation = useUnpublishApp()
+
+  useCloseOnReauth(isUnpublishModalOpen, () => setIsUnpublishModalOpen(false))
+  useCloseOnReauth(isRenameDialogOpen, () => setIsRenameDialogOpen(false))
+  useCloseOnReauth(alertState.type === 'delete', () => setAlertState({ siteId: null, type: null, message: '' }))
 
   const fetchTransferStatus = useCallback(async (signal?: AbortSignal) => {
     try {

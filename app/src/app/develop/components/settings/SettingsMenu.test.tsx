@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
 import { ChatTab, SettingsSection } from '@/app/develop/components/types';
+import { SwitchboardAuthError } from '@/hooks/useSwitchboard';
 import { renderWithProviders } from '@/tests/test-utils';
 import SettingsMenu from './SettingsMenu';
 
@@ -30,16 +31,36 @@ vi.mock('@/hooks/useChatTabs', () => ({
   useChatTabs: () => mockChatTabs,
 }));
 
-vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: (feature: string) => {
-    if (feature === 'appbuilder-settings-project') return { data: true };
-    if (feature === 'appbuilder-settings-domain') return { data: true };
-    if (feature === 'appbuilder-settings-backups') return { data: true };
-    if (feature === 'appbuilder-settings-security') return { data: true };
-    if (feature === 'appbuilder-settings-secrets') return { data: true };
-    if (feature === 'appbuilder-settings-visualscan') return { data: false };
-    return { data: false };
-  },
+const mockSwitchboardResults: Record<string, { data: any; error: any }> = {};
+
+vi.mock('@/hooks/useSwitchboard', () => {
+  class SwitchboardAuthError extends Error {
+    constructor(featureName: string) {
+      super(`Authentication required to fetch feature flag: ${featureName}`);
+      this.name = 'SwitchboardAuthError';
+    }
+  }
+  return {
+    SwitchboardAuthError,
+    useSwitchboard: (feature: string) => {
+      if (mockSwitchboardResults[feature]) return mockSwitchboardResults[feature];
+      if (feature === 'appbuilder-settings-project') return { data: true, error: null };
+      if (feature === 'appbuilder-settings-domain') return { data: true, error: null };
+      if (feature === 'appbuilder-settings-backups') return { data: true, error: null };
+      if (feature === 'appbuilder-settings-security') return { data: true, error: null };
+      if (feature === 'appbuilder-settings-secrets') return { data: true, error: null };
+      if (feature === 'appbuilder-settings-visualscan') return { data: false, error: null };
+      return { data: false, error: null };
+    },
+  };
+});
+
+const mockSetNeedsReauth = vi.fn();
+vi.mock('@/stores/useAuthUIStore', () => ({
+  useAuthUIStore: Object.assign(
+    () => ({}),
+    { getState: () => ({ setNeedsReauth: mockSetNeedsReauth }) },
+  ),
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
@@ -53,6 +74,9 @@ describe('SettingsMenu', () => {
     mockChatTabs.activeSettingsSection = SettingsSection.PROJECT;
     mockDevelopStore.isMobile = false;
     mockDevelopStore.openFeedbackModal.mockReset();
+    for (const key of Object.keys(mockSwitchboardResults)) {
+      delete mockSwitchboardResults[key];
+    }
   });
 
   it('should render without crashing', () => {
@@ -204,6 +228,52 @@ describe('SettingsMenu', () => {
 
     await waitFor(() => {
       expect(screen.queryByText('builder_settings_nav_feedback')).not.toBeInTheDocument();
+    });
+  });
+
+  it('should trigger reauth when clicking needsAuth item', async () => {
+    mockSwitchboardResults['appbuilder-settings-project'] = {
+      data: undefined,
+      error: new SwitchboardAuthError('appbuilder-settings-project'),
+    };
+
+    const { user } = renderWithProviders(<SettingsMenu />);
+
+    const trigger = screen.getByLabelText('builder_settings_title');
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_settings_nav_project')).toBeInTheDocument();
+    });
+
+    const projectButton = screen.getByText('builder_settings_nav_project');
+    await user.click(projectButton);
+
+    await waitFor(() => {
+      expect(mockSetNeedsReauth).toHaveBeenCalledWith('session_expired');
+    });
+  });
+
+  it('should close popover after clicking needsAuth item', async () => {
+    mockSwitchboardResults['appbuilder-settings-domain'] = {
+      data: undefined,
+      error: new SwitchboardAuthError('appbuilder-settings-domain'),
+    };
+
+    const { user } = renderWithProviders(<SettingsMenu />);
+
+    const trigger = screen.getByLabelText('builder_settings_title');
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_settings_nav_domain')).toBeInTheDocument();
+    });
+
+    const domainButton = screen.getByText('builder_settings_nav_domain');
+    await user.click(domainButton);
+
+    await waitFor(() => {
+      expect(screen.queryByText('builder_settings_nav_domain')).not.toBeInTheDocument();
     });
   });
 });

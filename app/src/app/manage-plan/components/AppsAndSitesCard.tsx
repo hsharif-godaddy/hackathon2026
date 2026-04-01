@@ -12,6 +12,7 @@ import text from '@ux/text';
 import AppSiteRow from '@/app/manage-plan/components/AppSiteRow';
 import { CollapsibleCardBody } from '@/app/manage-plan/components/CollapsibleCardBody';
 import UnpublishConfirmationModal from '@/components/layout/UnpublishConfirmationModal';
+import { useCloseOnReauth } from '@/hooks/useCloseOnReauth';
 import { useDomainDisconnectPolling, useMultipleDeploymentStatusPolling } from '@/hooks/useDeploymentStatusPolling';
 import { usePublishApp } from '@/hooks/usePublishApp';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
@@ -91,6 +92,12 @@ export default function AppsAndSitesCard({
   const [isExpanded, setIsExpanded] = useState(true);
   const [selectedApp, setSelectedApp] = useState<SiteInfo | null>(null);
   const [showUnpublishModal, setShowUnpublishModal] = useState(false);
+
+  useCloseOnReauth(showUnpublishModal, () => {
+    setShowUnpublishModal(false);
+    setSelectedApp(null);
+    unpublishMutation.reset();
+  });
 
   const [publishingApps, setPublishingApps] = useState<Set<string>>(new Set());
   const [unpublishingApps, setUnpublishingApps] = useState<Set<string>>(new Set());

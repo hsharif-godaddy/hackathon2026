@@ -5,6 +5,7 @@ import Button from '@ux/button';
 import { useSettingsNavItems } from '@/app/develop/components/settings/useSettingsNavItems';
 import { ChatTab, SettingsSection } from '@/app/develop/components/types';
 import { useChatTabs } from '@/hooks/useChatTabs';
+import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import { generateClickEID } from '@/utils/instrumentation';
 
 export default function SettingsPane() {
@@ -31,7 +32,9 @@ export default function SettingsPane() {
             disabled={item.disabled}
             className={`!justify-start ${activeSettingsSection === item.id ? '!bg-intents-ux-boxHighContrast-backgroundColor !text-intents-ux-boxHighContrast-foregroundColor [&_svg]:!text-intents-ux-boxHighContrast-foregroundColor' : ''}`}
             onClick={() => {
-              if (item.onClick) {
+              if (item.needsAuth) {
+                useAuthUIStore.getState().setNeedsReauth('session_expired');
+              } else if (item.onClick) {
                 item.onClick()
               } else {
                 handleNavigate(item.id)

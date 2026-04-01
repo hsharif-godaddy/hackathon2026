@@ -9,6 +9,7 @@ import text from '@ux/text'
 import TextInput from '@ux/text-input'
 
 import { TRANSFER_TOKEN_LENGTH, TRANSFER_TOKEN_PATTERN } from '@/app/apps/components/transfer-constants'
+import { useCloseOnReauth } from '@/hooks/useCloseOnReauth'
 import { useTranslations } from '@/hooks/useTranslations'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
@@ -28,6 +29,7 @@ const MAX_CONSECUTIVE_ERRORS = 5
 
 export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTransferDialogProps) {
   const t = useTranslations()
+  useCloseOnReauth(true, onClose)
   const refreshSites = useSitesStore((state) => state.refreshSites)
   const [step, setStep] = useState<AcceptStep>('input')
   const [transferToken, setTransferToken] = useState('')

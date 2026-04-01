@@ -6,6 +6,7 @@ import Modal from '@ux/modal';
 import SelectInput from '@ux/select-input';
 import TextInput from '@ux/text-input';
 
+import { useCloseOnReauth } from '@/hooks/useCloseOnReauth';
 import { useAddRow } from '@/hooks/useTableMutations';
 import { useTranslations } from '@/hooks/useTranslations';
 import { formatColumnName, formatColumnType, getGridClasses } from './utils';
@@ -35,6 +36,7 @@ export function AddRowDialog({
   schema,
 }: AddRowDialogProps) {
   const t = useTranslations();
+  useCloseOnReauth(isOpen, onClose);
   const [formData, setFormData] = useState<Record<string, string>>({});
 
   const addRow = useAddRow({

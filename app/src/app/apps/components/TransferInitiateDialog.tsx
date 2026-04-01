@@ -8,6 +8,7 @@ import Modal from '@ux/modal'
 import text from '@ux/text'
 import TextInput from '@ux/text-input'
 
+import { useCloseOnReauth } from '@/hooks/useCloseOnReauth'
 import { useTranslations } from '@/hooks/useTranslations'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
@@ -29,6 +30,7 @@ export default function TransferInitiateDialog({
   onTransferCreated
 }: TransferInitiateDialogProps) {
   const t = useTranslations()
+  useCloseOnReauth(true, onClose)
   const [step, setStep] = useState<DialogStep>('input')
   const [email, setEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
