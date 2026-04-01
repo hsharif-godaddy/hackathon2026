@@ -37,6 +37,8 @@ export default function WebsiteRebuildToolRenderer({
   const assets = (result as any)?.assets || []
   const homepagePrompt = (result as any)?.homepagePrompt || ''
   const errorMessage = (result as any)?.error || ''
+  const userMessage = (result as any)?.userMessage || t('builder_status_error')
+  const isUserFacingError = (result as any)?.isUserFacingError === true
   const isSuccess = (result as any)?.success === true
 
   // Extract domain from URL for display
@@ -118,11 +120,11 @@ export default function WebsiteRebuildToolRenderer({
       )}
 
       {/* Error info */}
-      {isError && errorMessage && (
+      {isError && (
         <Box orientation="horizontal" gap="sm" className="mt-1 pl-4">
           <XCircle className="w-3 h-3" />
           <text.p size={-1} emphasis="critical">
-            {errorMessage.length > 50 ? errorMessage.substring(0, 50) + '...' : errorMessage}
+            {userMessage}
           </text.p>
         </Box>
       )}
@@ -232,14 +234,16 @@ export default function WebsiteRebuildToolRenderer({
           )}
 
           {/* Error details */}
-          {errorMessage && (
+          {isError && (
             <Box gap="sm">
-              <text.p size={0} emphasis="critical">{t('builder_status_error')}</text.p>
-              <Box className="bg-muted border border-border p-2 rounded">
-                <text.p size={-1} emphasis="critical" className="font-mono whitespace-pre-wrap">
-                  {errorMessage}
-                </text.p>
-              </Box>
+              <text.p size={0} emphasis="critical">{userMessage}</text.p>
+              {errorMessage && !isUserFacingError && (
+                <Box className="bg-muted border border-border p-2 rounded">
+                  <text.p size={-1} emphasis="critical" className="font-mono whitespace-pre-wrap">
+                    {errorMessage}
+                  </text.p>
+                </Box>
+              )}
             </Box>
           )}
 

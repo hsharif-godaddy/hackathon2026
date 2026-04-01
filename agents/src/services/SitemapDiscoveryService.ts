@@ -158,7 +158,12 @@ export class SitemapDiscoveryService {
         });
       }
 
-      const uniquePages = this.deduplicatePages(pages).slice(0, this.maxPages);
+      const pagesWithSourceUrl: DiscoveredPage[] = [
+        { url: this.baseUrl, priority: 1.0, source: 'crawl' },
+        ...pages
+      ];
+
+      const uniquePages = this.deduplicatePages(pagesWithSourceUrl).slice(0, this.maxPages);
       const pagesWithBlogDetection = this.detectBlogPages(uniquePages);
 
       logger.info('sitemap-discovery.complete', {

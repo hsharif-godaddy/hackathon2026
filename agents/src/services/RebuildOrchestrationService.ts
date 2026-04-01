@@ -2,14 +2,17 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { Logger } from '../logging/index.js';
-import type {
-  RebuildWorkflowState,
-  StylePreferences,
-  SourceSiteData,
-  SiteMetadata,
-  PageContent,
-  SitemapData,
-  AssetManifest
+import {
+  asRebuildError,
+  createRebuildError,
+  type AssetManifest,
+  type PageContent,
+  type RebuildWorkflowState,
+  type SiteMetadata,
+  type SourceSiteData,
+  type SitemapData,
+  type StylePreferences,
+  WEBSITE_REBUILD_IMPORT_FAILED_USER_MESSAGE
 } from '../types/rebuild.js';
 import { AssetProcessingService } from './AssetProcessingService.js';
 import { SiteAnalyzerAgent } from '../agents/site-analyzer-agent.js';
@@ -265,6 +268,25 @@ export class RebuildOrchestrationService {
         await this.saveMetadata(metadata);
 
         await analyzer.cleanup();
+      } else {
+        logger.error('rebuild-orchestration.homepage-analysis-skipped', {
+          appId,
+          sourceUrl,
+          rootPath: state.rootPath,
+          successfulUrls: multiPageResult.pages.filter(p => p.success).map(p => p.url),
+          homepageCandidates: multiPageResult.pages.map(page => ({
+            url: page.url,
+            isHomepage: this.isHomepage(page.url, state.rootPath),
+            success: page.success,
+            hasContent: !!page.sanitizedContent,
+            error: page.error
+          }))
+        });
+        throw createRebuildError('Homepage could not be analyzed from scraped pages', {
+          code: 'import_failed',
+          userMessage: WEBSITE_REBUILD_IMPORT_FAILED_USER_MESSAGE,
+          isUserFacingError: true
+        });
       }
 
       if (multiPageResult.assets && multiPageResult.assets.length > 0) {
@@ -291,14 +313,19 @@ export class RebuildOrchestrationService {
         assetsFound: multiPageResult.assets?.length || 0
       });
     } catch (error) {
+      const rebuildError = asRebuildError(error);
+
       logger.error('rebuild-orchestration.scrape-error', {
         appId,
-        error: error instanceof Error ? error.message : String(error)
+        error: rebuildError.message,
+        errorCode: rebuildError.code
       });
 
       const state = await this.getStatus(appId);
       state.status = 'error';
-      state.error = error instanceof Error ? error.message : String(error);
+      state.error = rebuildError.message;
+      state.errorCode = rebuildError.code;
+      state.userMessage = rebuildError.userMessage;
       state.updatedAt = new Date().toISOString();
       await this.saveState(state);
     }

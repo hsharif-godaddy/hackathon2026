@@ -184,6 +184,8 @@ export interface RebuildWorkflowState {
   pagesBuilt: string[];
   currentPage: string | null;
   error?: string;
+  errorCode?: RebuildErrorCode;
+  userMessage?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -206,4 +208,69 @@ export interface PageBuildResult {
   pageSlug: string;
   prompt: string;
   error?: string;
+}
+
+/** Shown to users when rebuild scrape/analysis cannot produce importable site data */
+export const WEBSITE_REBUILD_IMPORT_FAILED_USER_MESSAGE =
+  "We couldn't import your site, please try again";
+
+export type RebuildErrorCode = 'import_failed';
+
+export class RebuildError extends Error {
+  code?: RebuildErrorCode;
+  userMessage?: string;
+  isUserFacingError: boolean;
+
+  constructor(
+    message: string,
+    options?: {
+      code?: RebuildErrorCode;
+      userMessage?: string;
+      isUserFacingError?: boolean;
+    }
+  ) {
+    super(message);
+    this.name = 'RebuildError';
+    this.code = options?.code;
+    this.userMessage = options?.userMessage;
+    this.isUserFacingError = options?.isUserFacingError ?? false;
+  }
+}
+
+export function createRebuildError(
+  message: string,
+  options?: {
+    code?: RebuildErrorCode;
+    userMessage?: string;
+    isUserFacingError?: boolean;
+  }
+): RebuildError {
+  return new RebuildError(message, options);
+}
+
+export function asRebuildError(error: unknown): RebuildError {
+  if (error instanceof RebuildError) {
+    return error;
+  }
+
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = typeof error.message === 'string' ? error.message : String(error.message);
+    const code = 'code' in error && error.code === 'import_failed' ? error.code : undefined;
+    const userMessage =
+      'userMessage' in error && typeof error.userMessage === 'string'
+        ? error.userMessage
+        : undefined;
+    const isUserFacingError =
+      'isUserFacingError' in error && typeof error.isUserFacingError === 'boolean'
+        ? error.isUserFacingError
+        : false;
+
+    return new RebuildError(message, {
+      code,
+      userMessage,
+      isUserFacingError
+    });
+  }
+
+  return new RebuildError(String(error));
 }

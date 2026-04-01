@@ -4,7 +4,12 @@ import { z } from 'zod'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { Logger } from '../../logging/index.js'
 import { RebuildOrchestrationService } from '../../services/RebuildOrchestrationService.js'
-import type { RebuildWorkflowState, StylePreferences } from '../../types/rebuild.js'
+import {
+  asRebuildError,
+  type RebuildWorkflowState,
+  type StylePreferences,
+  WEBSITE_REBUILD_IMPORT_FAILED_USER_MESSAGE
+} from '../../types/rebuild.js'
 
 const logger = Logger.create({ service: 'website-rebuild-tool' })
 const appRepo = new AppRepository()
@@ -38,7 +43,11 @@ async function waitForCompletion(
     }
 
     if (state.status === 'error') {
-      throw new Error(state.error || 'Rebuild failed')
+      throw asRebuildError({
+        message: state.error || 'Rebuild failed',
+        code: state.errorCode,
+        userMessage: state.userMessage
+      })
     }
 
     await new Promise(resolve => setTimeout(resolve, pollInterval))
@@ -167,22 +176,31 @@ This tool starts the website rebuild process:
         handoffTriggered: !!(stateManager && socketId)
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
+      const rebuildError = asRebuildError(error)
+      const userMessage =
+        rebuildError.userMessage ||
+        (rebuildError.code === 'import_failed'
+          ? WEBSITE_REBUILD_IMPORT_FAILED_USER_MESSAGE
+          : 'Something went wrong. Please try again.')
 
       logger.error('websiteRebuild.error', {
         appId,
         url: input.url,
-        error: errorMessage
+        error: rebuildError.message,
+        errorCode: rebuildError.code
       })
 
       return {
         success: false,
-        error: errorMessage,
+        error: rebuildError.message,
+        errorCode: rebuildError.code,
+        isUserFacingError: rebuildError.isUserFacingError,
+        userMessage,
         sourceUrl: input.url,
         status: 'error',
         pagesFound: initialState.scrapingProgress.total,
         pagesScraped: initialState.scrapingProgress.completed,
-        message: `Failed to analyze website: ${errorMessage}`
+        message: userMessage
       }
     }
   }
