@@ -34,6 +34,7 @@ export async function checkSwitchboardFlag(
       'appbuilder-share-links': true,
       'appbuilder-transfer-ownership': true,
       'appbuilder-higher-plans': true,
+      'appbuilder-github-integration': true,
     };
 
     if (featureName in localOverrides) {
