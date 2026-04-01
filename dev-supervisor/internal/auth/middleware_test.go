@@ -111,8 +111,8 @@ func TestAuthCookie_SetOnAuthorizationHeader(t *testing.T) {
 	if !unpart.Secure {
 		t.Error("unpartitioned cookie: expected Secure to be true")
 	}
-	if unpart.SameSite != http.SameSiteLaxMode {
-		t.Errorf("unpartitioned cookie: expected SameSite=Lax, got %v", unpart.SameSite)
+	if unpart.SameSite != http.SameSiteNoneMode {
+		t.Errorf("unpartitioned cookie: expected SameSite=None, got %v", unpart.SameSite)
 	}
 	if unpart.Partitioned {
 		t.Error("unpartitioned cookie: expected Partitioned to be false")
@@ -321,8 +321,8 @@ func TestShareCookie_SetOnQueryParam(t *testing.T) {
 	if !unpart.Secure {
 		t.Error("unpartitioned cookie: expected Secure to be true")
 	}
-	if unpart.SameSite != http.SameSiteLaxMode {
-		t.Errorf("unpartitioned cookie: expected SameSite=Lax, got %v", unpart.SameSite)
+	if unpart.SameSite != http.SameSiteNoneMode {
+		t.Errorf("unpartitioned cookie: expected SameSite=None, got %v", unpart.SameSite)
 	}
 	if unpart.Partitioned {
 		t.Error("unpartitioned cookie: expected Partitioned to be false")

@@ -735,6 +735,8 @@ export class GitUtils {
     return untrackedResult.stdout
       .split('\0')
       .map(file => file.replace(/\r?\n$/, ''))
+      // TODO: env file exception until we have a better solution for handling environment variables in source archives
+      .filter(file => !file.startsWith('.env'))
       .filter(file => file.length > 0);
   }
 

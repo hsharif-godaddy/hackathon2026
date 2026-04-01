@@ -568,6 +568,29 @@ describe('GitUtils', () => {
           expect(tarCallArgs.command).toContain('--exclude=trailing.txt ');
         });
 
+        it('should filter out .env files from untracked exclusions to keep them in the archive', async () => {
+          const commitHash = 'abc1234';
+
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }) // dist/ check
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }) // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '.env\u0000.env.local\u0000.env.production\u0000subdir/.env\u0000config.json\u0000', stderr: '' }) // list untracked
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
+
+          await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true, excludeUntracked: true });
+
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[3][0];
+          // .env files at the root (starting with .env) are filtered from the untracked exclusion list,
+          // so they will NOT have --exclude flags and will be included in the publish archive
+          expect(tarCallArgs.command).not.toContain('--exclude=.env');
+          expect(tarCallArgs.command).not.toContain('--exclude=.env.local');
+          expect(tarCallArgs.command).not.toContain('--exclude=.env.production');
+          // subdir/.env does NOT start with .env, so it remains in the exclusion list
+          expect(tarCallArgs.command).toContain('--exclude=subdir/.env');
+          // Non-.env untracked files should still be excluded
+          expect(tarCallArgs.command).toContain('--exclude=config.json');
+        });
+
         it('should continue archive creation when listing untracked files fails', async () => {
           const commitHash = 'abc1234';
 

@@ -129,7 +129,9 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 		// So we need to set a cookie on the preview app's domain when valid auth is received
 		if tokenFromHeader != "" {
 			// Only set cookie if token came from Authorization header (not from cookie itself to avoid loops)
-			// SameSite=None (partitioned) is required for cross-site iframe loads (builder on .dev-godaddy.com, preview on localhost)
+			// SameSite=None is required for cross-origin cookie access: both variants set it.
+		// Unpartitioned: for top-level navigation (user opens preview URL directly).
+		// Partitioned (CHIPS): for iframe embedding (builder on .dev-godaddy.com embeds preview on localhost).
 			maxAge := CookieMaxAgeFromClaims(result.Claims)
 
 			// Unpartitioned cookie for top-level navigation (PaaS: user opens preview URL directly).
@@ -139,7 +141,7 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 				Path:     "/",
 				HttpOnly: true,
 				Secure:   true,
-				SameSite: http.SameSiteLaxMode,
+				SameSite: http.SameSiteNoneMode,
 				MaxAge:   maxAge,
 			})
 
@@ -262,7 +264,7 @@ func (m *JWTMiddleware) handleShareToken(
 			Path:     "/",
 			HttpOnly: true,
 			Secure:   true,
-			SameSite: http.SameSiteLaxMode,
+			SameSite: http.SameSiteNoneMode,
 			Expires:  expiresAt,
 		})
 
