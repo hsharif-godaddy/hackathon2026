@@ -8,7 +8,6 @@ import Tag from '@ux/tag'
 
 import AppCard, { AppCardEmptyState } from '@/app/apps/AppCard'
 import AcceptTransferDialog from '@/app/apps/components/AcceptTransferDialog'
-import PendingTransfers from '@/app/apps/components/PendingTransfers'
 import { ProtectedRoute } from '@/components/auth'
 import { DevelopmentAdminSection } from '@/components/development'
 import AppInactivityAlert from '@/components/layout/AppInactivityAlert'
@@ -105,10 +104,6 @@ function SitesPageContent() {
           </Box>
         </div>
 
-        {isTransferEnabled && (
-          <PendingTransfers onAcceptTransfer={() => setIsAcceptTransferOpen(true)} />
-        )}
-
         {error && (
           <div className="mb-3 border rounded-lg p-2">
             <p className="mb-1">{error}</p>
@@ -122,7 +117,10 @@ function SitesPageContent() {
         )}
 
         <div className="grid gap-2 md:gap-3 md:grid-cols-2 xl:grid-cols-3">
-          <AppCardEmptyState />
+          <AppCardEmptyState
+            isTransferEnabled={isTransferEnabled}
+            onAcceptTransfer={() => setIsAcceptTransferOpen(true)}
+          />
           {totalSites > 0 && sites.map((site) => (
             <AppCard
               key={site.id}

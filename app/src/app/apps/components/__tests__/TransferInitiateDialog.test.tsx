@@ -42,75 +42,106 @@ describe('TransferInitiateDialog', function dialogTests() {
   it('should render the input form', function renderForm() {
     renderWithProviders(<TransferInitiateDialog {...defaultProps} />);
 
-    expect(screen.getByText('Transfer App')).toBeInTheDocument();
+    expect(screen.getByText(/Transfer \u201CMy Test App\u201D/)).toBeInTheDocument();
     expect(screen.getByRole('textbox')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Transfer' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Generate Code' })).toBeInTheDocument();
   });
 
-  it('should show error for empty shopper ID', async function emptyShopperError() {
+  it('should show error for empty email', async function emptyEmailError() {
     const { user } = renderWithProviders(<TransferInitiateDialog {...defaultProps} />);
 
     const input = screen.getByRole('textbox');
     await user.type(input, ' ');
     await user.clear(input);
 
-    const submitButton = screen.getByRole('button', { name: 'Transfer' });
+    const submitButton = screen.getByRole('button', { name: 'Generate Code' });
     expect(submitButton).toBeDisabled();
   });
 
-  it('should filter non-numeric characters from shopper ID input', async function filterNonNumeric() {
+  it('should show error for invalid email format', async function invalidEmailError() {
     const { user } = renderWithProviders(<TransferInitiateDialog {...defaultProps} />);
 
-    const input = screen.getByRole('textbox');
-    await user.type(input, 'abc123def456');
+    await user.type(screen.getByRole('textbox'), 'notanemail');
+    await user.click(screen.getByRole('button', { name: 'Generate Code' }));
 
-    expect(input).toHaveValue('123456');
+    await waitFor(() => {
+      expect(screen.getByText('Please enter a valid email address')).toBeInTheDocument();
+    });
+
+    expect(appFetch).not.toHaveBeenCalled();
   });
 
   it('should call API and show token on success', async function initiateSuccess() {
     vi.mocked(appFetch).mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ transferToken: 'abc123', status: 'initiated' }),
+      json: async () => ({ transferToken: 'abc123', status: 'initiated', expiresAt: '2026-04-02T12:00:00.000Z' }),
     } as Response);
 
     const { user } = renderWithProviders(<TransferInitiateDialog {...defaultProps} />);
 
     const input = screen.getByRole('textbox');
-    await user.type(input, '12345');
+    await user.type(input, 'ksutar@godaddy.com');
 
-    const submitButton = screen.getByRole('button', { name: 'Transfer' });
+    const submitButton = screen.getByRole('button', { name: 'Generate Code' });
     await user.click(submitButton);
 
     await waitFor(() => {
       expect(screen.getByText('abc123')).toBeInTheDocument();
     });
 
-    expect(defaultProps.onTransferCreated).toHaveBeenCalledWith('abc123');
+    // onTransferCreated is deferred until the user clicks Done
+    expect(defaultProps.onTransferCreated).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+
+    expect(defaultProps.onTransferCreated).toHaveBeenCalledWith('abc123', '2026-04-02T12:00:00.000Z');
   });
 
   it('should show error message on API failure', async function initiateError() {
     vi.mocked(appFetch).mockResolvedValue({
       ok: false,
       status: 400,
-      json: async () => ({ error: 'Target shopper not found' }),
+      json: async () => ({ error: 'Target email not found' }),
     } as Response);
 
     const { user } = renderWithProviders(<TransferInitiateDialog {...defaultProps} />);
 
-    await user.type(screen.getByRole('textbox'), '99999');
-    await user.click(screen.getByRole('button', { name: 'Transfer' }));
+    await user.type(screen.getByRole('textbox'), 'invalid@test.com');
+    await user.click(screen.getByRole('button', { name: 'Generate Code' }));
 
     await waitFor(() => {
-      expect(screen.getByText('Target shopper not found')).toBeInTheDocument();
+      expect(screen.getByText('Target email not found')).toBeInTheDocument();
     });
   });
 
-  it('should call onClose when cancel is clicked', async function cancelClose() {
+  it('should call onClose when modal close is clicked', async function closeModal() {
     const { user } = renderWithProviders(<TransferInitiateDialog {...defaultProps} />);
 
-    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await user.click(screen.getByTestId('modal-close'));
 
+    expect(defaultProps.onClose).toHaveBeenCalled();
+  });
+
+  it('should call onTransferCreated and onClose when modal X is clicked on token step', async function closeOnTokenStep() {
+    vi.mocked(appFetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ transferToken: 'abc123', status: 'initiated', expiresAt: '2026-04-02T12:00:00.000Z' }),
+    } as Response);
+
+    const { user } = renderWithProviders(<TransferInitiateDialog {...defaultProps} />);
+
+    await user.type(screen.getByRole('textbox'), 'ksutar@godaddy.com');
+    await user.click(screen.getByRole('button', { name: 'Generate Code' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('abc123')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('modal-close'));
+
+    expect(defaultProps.onTransferCreated).toHaveBeenCalledWith('abc123', '2026-04-02T12:00:00.000Z');
     expect(defaultProps.onClose).toHaveBeenCalled();
   });
 });

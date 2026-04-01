@@ -761,36 +761,7 @@ describe('AppCard', () => {
           return {
             ok: true,
             status: 200,
-            json: async () => ({ transferToken: 'abc123', status: 'initiated' }),
-          } as Response;
-        }
-        return { ok: true, json: async () => mockSite } as Response;
-      });
-
-      const { user } = renderWithProviders(<AppCard site={mockSite} />);
-
-      await waitFor(() => {
-        expect(screen.getByText('Transfer Pending')).toBeInTheDocument();
-      });
-
-      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
-      await user.click(actionsMenuButton);
-
-      await waitFor(() => {
-        expect(screen.getByText('Copy Code')).toBeInTheDocument();
-        expect(screen.getByText('Cancel Transfer')).toBeInTheDocument();
-      });
-
-      expect(screen.queryByText('Transfer')).not.toBeInTheDocument();
-    });
-
-    it('should show transfer pending tag when transfer is active', async function showPendingTag() {
-      vi.mocked(appFetch).mockImplementation(async (url: string) => {
-        if (typeof url === 'string' && url.includes('/transfer')) {
-          return {
-            ok: true,
-            status: 200,
-            json: async () => ({ transferToken: 'abc123', status: 'initiated' }),
+            json: async () => ({ transferToken: 'abc123', status: 'initiated', expiresAt: '2026-03-28T12:00:00.000Z' }),
           } as Response;
         }
         return { ok: true, json: async () => mockSite } as Response;
@@ -799,8 +770,33 @@ describe('AppCard', () => {
       renderWithProviders(<AppCard site={mockSite} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Transfer Pending')).toBeInTheDocument();
+        expect(screen.getByText('TRANSFER PENDING')).toBeInTheDocument();
       });
+
+      expect(screen.getByText('Copy Code')).toBeInTheDocument();
+      expect(screen.getByText('Cancel Transfer')).toBeInTheDocument();
+    });
+
+    it('should show transfer pending tag when transfer is active', async function showPendingTag() {
+      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+        if (typeof url === 'string' && url.includes('/transfer')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ transferToken: 'abc123', status: 'initiated', expiresAt: '2026-03-28T12:00:00.000Z' }),
+          } as Response;
+        }
+        return { ok: true, json: async () => mockSite } as Response;
+      });
+
+      renderWithProviders(<AppCard site={mockSite} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('TRANSFER PENDING')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText(mockSite.name)).toBeInTheDocument();
+      expect(screen.getByText(/Expires/)).toBeInTheDocument();
     });
 
     it('should show cancel transfer confirmation when cancel is clicked', async function showCancelConfirm() {
@@ -809,7 +805,7 @@ describe('AppCard', () => {
           return {
             ok: true,
             status: 200,
-            json: async () => ({ transferToken: 'abc123', status: 'initiated' }),
+            json: async () => ({ transferToken: 'abc123', status: 'initiated', expiresAt: '2026-03-28T12:00:00.000Z' }),
           } as Response;
         }
         return { ok: true, json: async () => mockSite } as Response;
@@ -818,14 +814,7 @@ describe('AppCard', () => {
       const { user } = renderWithProviders(<AppCard site={mockSite} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Transfer Pending')).toBeInTheDocument();
-      });
-
-      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
-      await user.click(actionsMenuButton);
-
-      await waitFor(() => {
-        expect(screen.getByText('Cancel Transfer')).toBeInTheDocument();
+        expect(screen.getByText('TRANSFER PENDING')).toBeInTheDocument();
       });
 
       await user.click(screen.getByText('Cancel Transfer'));

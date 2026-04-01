@@ -41,8 +41,6 @@ import {
   type AiroTransferAcceptResponse,
   type AiroTransferCancelResponse,
   type AiroTransferInitiateResponse,
-  type AiroTransferListParams,
-  type AiroTransferListResponse,
   type AiroTransferMetadata,
   type AiroUnpublishAppResponse,
   type AiroUpdateAppPayload,
@@ -1221,12 +1219,12 @@ export class AiroMgmtClient {
    */
   async initiateTransfer(
     appId: string,
-    targetShopperId: string
+    targetEmail: string
   ): Promise<AiroTransferInitiateResponse> {
     return this.request<AiroTransferInitiateResponse>(
       'POST',
       `/api/airo/v1/apps/${appId}/transfer/initiate`,
-      { targetShopperId },
+      { targetEmail },
       { logEvent: 'mgmt-airo.initiate-transfer' }
     );
   }
@@ -1293,25 +1291,4 @@ export class AiroMgmtClient {
     );
   }
 
-  /**
-   * List transfers with optional filters
-   *
-   * GET /api/airo/v1/transfer
-   */
-  async listTransfers(params?: AiroTransferListParams): Promise<AiroTransferListResponse> {
-    const queryParams = new URLSearchParams();
-    if (params?.appId) queryParams.set('appId', params.appId);
-    if (params?.targetCustomerId) queryParams.set('targetCustomerId', params.targetCustomerId);
-    if (params?.status) queryParams.set('status', params.status);
-    if (params?.limit) queryParams.set('limit', params.limit.toString());
-    if (params?.offset) queryParams.set('offset', params.offset.toString());
-
-    const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
-    return this.request<AiroTransferListResponse>(
-      'GET',
-      `/api/airo/v1/transfer${queryString}`,
-      undefined,
-      { logEvent: 'mgmt-airo.list-transfers' }
-    );
-  }
 }

@@ -185,7 +185,7 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
               label={t('builder_transfer_token_label', undefined, 'Transfer Code')}
               value={transferToken}
               onChange={(value) => {
-                setTransferToken(value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, TRANSFER_TOKEN_LENGTH))
+                setTransferToken(value.replace(/[^a-zA-Z0-9]/g, '').slice(0, TRANSFER_TOKEN_LENGTH))
                 setError(null)
               }}
               onKeyDown={(e) => {

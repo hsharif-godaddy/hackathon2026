@@ -5,13 +5,11 @@ import { AiroHttpError } from '@/lib/mgmt-airo';
 
 const mockAcceptTransfer = vi.fn();
 const mockGetTransferMetadataByToken = vi.fn();
-const mockListTransfers = vi.fn();
 
 vi.mock('@/lib/mgmt-airo', () => ({
   AiroMgmtClient: vi.fn().mockImplementation(() => ({
     acceptTransfer: mockAcceptTransfer,
     getTransferMetadataByToken: mockGetTransferMetadataByToken,
-    listTransfers: mockListTransfers,
   })),
   AiroHttpError: class extends Error {
     status: number;
@@ -173,7 +171,7 @@ describe('/api/transfer', function transferRouteTests() {
     });
   });
 
-  describe('GET - List transfers or get metadata', function getTests() {
+  describe('GET - Get transfer metadata', function getTests() {
     it('should return metadata when transferToken is provided', async function getMetadata() {
       const mockResponse = {
         appId: 'app-1',
@@ -197,110 +195,43 @@ describe('/api/transfer', function transferRouteTests() {
       expect(mockGetTransferMetadataByToken).toHaveBeenCalledWith('abc123');
     });
 
-    it('should list transfers when no transferToken', async function listTransfers() {
-      const mockResponse = {
-        transfers: [
-          {
-            id: 'tr-1',
-            appId: 'app-1',
-            transferToken: 'abc123',
-            status: 'initiated',
-            sourceCustomerId: 'cust-1',
-            targetCustomerId: 'cust-2',
-            createdAt: '2026-03-04T12:00:00.000Z',
-            expiresAt: '2026-03-07T12:00:00.000Z',
-            updatedAt: '2026-03-04T12:00:00.000Z',
-          },
-        ],
-        total: 1,
-        limit: 10,
-        offset: 0,
-      };
-      mockListTransfers.mockResolvedValue(mockResponse);
-
-      const { GET } = await import('../route');
-      const request = new NextRequest('http://localhost:3000/api/transfer?status=initiated');
-
-      const response = await GET(request);
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.transfers).toHaveLength(1);
-      expect(mockListTransfers).toHaveBeenCalledWith({
-        appId: undefined,
-        targetCustomerId: undefined,
-        status: 'initiated',
-        limit: undefined,
-        offset: undefined,
-      });
-    });
-
-    it('should pass all filter parameters', async function withFilters() {
-      mockListTransfers.mockResolvedValue({ transfers: [], total: 0, limit: 5, offset: 10 });
-
-      const { GET } = await import('../route');
-      const request = new NextRequest(
-        'http://localhost:3000/api/transfer?appId=app-1&status=initiated&limit=5&offset=10&targetCustomerId=cust-2'
-      );
-
-      await GET(request);
-
-      expect(mockListTransfers).toHaveBeenCalledWith({
-        appId: 'app-1',
-        targetCustomerId: 'cust-2',
-        status: 'initiated',
-        limit: 5,
-        offset: 10,
-      });
-    });
-
-    it('should pass targetCustomerId from auth context when direction=incoming', async function incomingDirection() {
-      mockListTransfers.mockResolvedValue({ transfers: [], total: 0, limit: 10, offset: 0 });
-
-      const { GET } = await import('../route');
-      const request = new NextRequest(
-        'http://localhost:3000/api/transfer?direction=incoming&status=initiated'
-      );
-
-      await GET(request);
-
-      expect(mockListTransfers).toHaveBeenCalledWith({
-        appId: undefined,
-        targetCustomerId: 'cust-123',
-        status: 'initiated',
-        limit: undefined,
-        offset: undefined,
-      });
-    });
-
-    it('should not set targetCustomerId when direction is not incoming', async function outgoingDirection() {
-      mockListTransfers.mockResolvedValue({ transfers: [], total: 0, limit: 10, offset: 0 });
-
-      const { GET } = await import('../route');
-      const request = new NextRequest('http://localhost:3000/api/transfer?status=initiated');
-
-      await GET(request);
-
-      expect(mockListTransfers).toHaveBeenCalledWith({
-        appId: undefined,
-        targetCustomerId: undefined,
-        status: 'initiated',
-        limit: undefined,
-        offset: undefined,
-      });
-    });
-
-    it('should proxy AiroHttpError for list', async function listError() {
-      mockListTransfers.mockRejectedValue(
-        new AiroHttpError(401, 'Unauthorized', 'Invalid token')
-      );
-
+    it('should return 400 when transferToken is missing', async function missingToken() {
       const { GET } = await import('../route');
       const request = new NextRequest('http://localhost:3000/api/transfer');
 
       const response = await GET(request);
+      const body = await response.json();
 
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(400);
+      expect(body.error).toBe('transferToken is required');
+    });
+
+    it('should proxy AiroHttpError', async function metadataError() {
+      mockGetTransferMetadataByToken.mockRejectedValue(
+        new AiroHttpError(404, 'Not Found', { error: 'TRANSFER_NOT_FOUND' })
+      );
+
+      const { GET } = await import('../route');
+      const request = new NextRequest(
+        'http://localhost:3000/api/transfer?transferToken=invalid'
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should return 500 for unexpected errors', async function unexpectedError() {
+      mockGetTransferMetadataByToken.mockRejectedValue(new Error('Network failure'));
+
+      const { GET } = await import('../route');
+      const request = new NextRequest(
+        'http://localhost:3000/api/transfer?transferToken=abc123'
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(500);
     });
   });
 });

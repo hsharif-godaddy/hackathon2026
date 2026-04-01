@@ -71,7 +71,7 @@ describe('AcceptTransferDialog', function dialogTests() {
 
     await user.type(screen.getByRole('textbox'), 'AB-C!1@2#3');
 
-    expect(screen.getByRole('textbox')).toHaveValue('abc123');
+    expect(screen.getByRole('textbox')).toHaveValue('ABC123');
   });
 
   it('should show processing step when status is processing', async function showProcessing() {

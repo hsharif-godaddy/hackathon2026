@@ -66,7 +66,7 @@ describe('/api/apps/[id]/transfer', function transferRouteTests() {
       const { POST } = await import('../route');
       const request = new NextRequest('http://localhost:3000/api/apps/app-1/transfer', {
         method: 'POST',
-        body: JSON.stringify({ targetShopperId: '12345' }),
+        body: JSON.stringify({ targetEmail: 'ksutar@godaddy.com' }),
         headers: { 'Content-Type': 'application/json' },
       });
 
@@ -75,10 +75,10 @@ describe('/api/apps/[id]/transfer', function transferRouteTests() {
 
       expect(response.status).toBe(201);
       expect(body.transferToken).toBe('abc123');
-      expect(mockInitiateTransfer).toHaveBeenCalledWith('app-1', '12345');
+      expect(mockInitiateTransfer).toHaveBeenCalledWith('app-1', 'ksutar@godaddy.com');
     });
 
-    it('should return 400 when targetShopperId is missing', async function missingShopperId() {
+    it('should return 400 when targetEmail is missing', async function missingEmail() {
       const { POST } = await import('../route');
       const request = new NextRequest('http://localhost:3000/api/apps/app-1/transfer', {
         method: 'POST',
@@ -90,7 +90,7 @@ describe('/api/apps/[id]/transfer', function transferRouteTests() {
       const body = await response.json();
 
       expect(response.status).toBe(400);
-      expect(body.error).toBe('targetShopperId is required');
+      expect(body.error).toBe('targetEmail is required');
     });
 
     it('should return 400 for invalid JSON body', async function invalidJson() {
@@ -116,7 +116,7 @@ describe('/api/apps/[id]/transfer', function transferRouteTests() {
       const { POST } = await import('../route');
       const request = new NextRequest('http://localhost:3000/api/apps/app-1/transfer', {
         method: 'POST',
-        body: JSON.stringify({ targetShopperId: '12345' }),
+        body: JSON.stringify({ targetEmail: 'ksutar@godaddy.com' }),
         headers: { 'Content-Type': 'application/json' },
       });
 
@@ -146,7 +146,7 @@ describe('/api/apps/[id]/transfer', function transferRouteTests() {
       const { POST } = await import('../route');
       const request = new NextRequest('http://localhost:3000/api/apps/app-1/transfer', {
         method: 'POST',
-        body: JSON.stringify({ targetShopperId: '12345' }),
+        body: JSON.stringify({ targetEmail: 'ksutar@godaddy.com' }),
         headers: { 'Content-Type': 'application/json' },
       });
 

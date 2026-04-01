@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
+import CopyIcon from '@ux/icon/copy'
 import Modal from '@ux/modal'
 import text from '@ux/text'
 import TextInput from '@ux/text-input'
@@ -16,7 +17,7 @@ interface TransferInitiateDialogProps {
   appId: string
   appName: string
   onClose: () => void
-  onTransferCreated: (transferToken: string) => void
+  onTransferCreated: (transferToken: string, expiresAt?: string) => void
 }
 
 type DialogStep = 'input' | 'token'
@@ -29,23 +30,24 @@ export default function TransferInitiateDialog({
 }: TransferInitiateDialogProps) {
   const t = useTranslations()
   const [step, setStep] = useState<DialogStep>('input')
-  const [shopperId, setShopperId] = useState('')
+  const [email, setEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [transferToken, setTransferToken] = useState<string | null>(null)
+  const [transferExpiresAt, setTransferExpiresAt] = useState<string | undefined>(undefined)
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState(false)
 
   const handleInitiate = async () => {
-    const trimmed = shopperId.trim()
+    const trimmed = email.trim()
 
     if (!trimmed) {
-      setError(t('builder_transfer_error_shopper_required', undefined, 'Shopper ID is required'))
+      setError(t('builder_transfer_error_email_required', undefined, 'Email is required'))
       return
     }
 
-    if (!/^\d+$/.test(trimmed)) {
-      setError(t('builder_transfer_error_shopper_invalid', undefined, 'Shopper ID must be numeric'))
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setError(t('builder_transfer_error_email_invalid', undefined, 'Please enter a valid email address'))
       return
     }
 
@@ -56,7 +58,7 @@ export default function TransferInitiateDialog({
       const response = await appFetch(`/api/apps/${appId}/transfer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetShopperId: trimmed })
+        body: JSON.stringify({ targetEmail: trimmed })
       })
 
       const data = await response.json()
@@ -67,8 +69,8 @@ export default function TransferInitiateDialog({
       }
 
       setTransferToken(data.transferToken)
+      setTransferExpiresAt(data.expiresAt)
       setStep('token')
-      onTransferCreated(data.transferToken)
     } catch (err) {
       logger.error('transfer.initiate.ui.error', {
         appId,
@@ -93,26 +95,42 @@ export default function TransferInitiateDialog({
     }
   }
 
+  const modalTitle = `${t('builder_transfer_initiate_title', undefined, 'Transfer')} \u201C${appName}\u201D`
+
   return (
     <Modal
-      title={t('builder_transfer_initiate_title', undefined, 'Transfer App')}
-      onClose={onClose}
+      title={modalTitle}
+      onClose={() => {
+        if (transferToken) onTransferCreated(transferToken, transferExpiresAt)
+        onClose()
+      }}
       centered
       focusLock={false}
     >
       {step === 'input' && (
-        <Box orientation="vertical" gap="md" className="max-w-md">
-          <text.p size={0} emphasis="passive">
-            {t('builder_transfer_initiate_description', { appName }, 'Enter the recipient\'s shopper ID to transfer {appName}.')}
-          </text.p>
+        <div className="text-left">
+          <Box orientation="vertical" gap="md">
+            <text.p size={0} emphasis="passive">
+              {t('builder_transfer_initiate_description', undefined, 'Start a transfer by entering the recipient\u2019s email. They must have a GoDaddy account linked to this email.')}
+            </text.p>
 
-          <Box orientation="vertical" gap="sm">
+            <ul className="list-disc pl-5 space-y-1">
+              <li><text.span size={0}>{t('builder_transfer_bullet_unpublish', undefined, 'The app will be unpublished')}</text.span></li>
+              <li><text.span size={0}>{t('builder_transfer_bullet_domain', undefined, 'Any connected domain will be disconnected')}</text.span></li>
+              <li><text.span size={0}>{t('builder_transfer_bullet_republish', undefined, 'The recipient will need to publish again')}</text.span></li>
+              <li><text.span size={0}>{t('builder_transfer_bullet_secrets', undefined, 'Any store secrets will be transferred')}</text.span></li>
+            </ul>
+
+            <text.p size={0} emphasis="passive">
+              {t('builder_transfer_initiate_description_2', undefined, 'We\u2019ll generate a transfer code for you to share with them.')}
+            </text.p>
+
             <TextInput
-              id="target-shopper-id"
-              label={t('builder_transfer_shopper_label', undefined, 'Recipient Shopper ID')}
-              value={shopperId}
+              id="target-email"
+              label={t('builder_transfer_email_label', undefined, 'Recipient\u2019s GoDaddy email')}
+              value={email}
               onChange={(value) => {
-                setShopperId(value.replace(/\D/g, ''))
+                setEmail(value)
                 setError(null)
               }}
               onKeyDown={(e) => {
@@ -122,69 +140,58 @@ export default function TransferInitiateDialog({
               }}
               errorMessage={error || undefined}
               disabled={isLoading}
-              visualSize="sm"
-              placeholder={t('builder_transfer_shopper_placeholder', undefined, 'Enter shopper ID')}
+              placeholder={t('builder_transfer_email_placeholder', undefined, 'Recipient\u2019s GoDaddy email')}
               multiline={false}
-              data-eid={generateClickEID('apps.transfer.shopper_input')}
+              data-eid={generateClickEID('apps.transfer.email_input')}
             />
-          </Box>
 
-          <Box orientation="horizontal" gap="sm" className="pt-4 justify-end">
-            <Button
-              onClick={onClose}
-              disabled={isLoading}
-              design="secondary"
-              size="sm"
-              text={t('builder_common_cancel', undefined, 'Cancel')}
-              data-eid={generateClickEID('apps.transfer.initiate_cancel')}
-            />
             <Button
               onClick={handleInitiate}
-              disabled={isLoading || !shopperId.trim()}
+              disabled={isLoading || !email.trim()}
               design="primary"
               size="sm"
-              text={isLoading ? t('builder_transfer_initiating', undefined, 'Transferring...') : t('builder_transfer_initiate_submit', undefined, 'Transfer')}
+              text={isLoading ? t('builder_transfer_initiating', undefined, 'Generating...') : t('builder_transfer_initiate_submit', undefined, 'Generate Code')}
               data-eid={generateClickEID('apps.transfer.initiate_submit')}
             />
           </Box>
-        </Box>
+        </div>
       )}
 
       {step === 'token' && transferToken && (
-        <Box orientation="vertical" gap="md" className="max-w-md">
-          <text.p size={0} emphasis="passive">
-            {t('builder_transfer_token_description', undefined, 'Share this code with the recipient. They will need it to accept the transfer.')}
-          </text.p>
+        <Box orientation="vertical" gap="md">
+          <Box orientation="vertical" gap="sm">
+            <text.p size={0} emphasis="passive">
+              {t('builder_transfer_token_description', undefined, 'Share this code with the recipient. They\u2019ll need it to accept the transfer.')}
+            </text.p>
+            <text.p size={0} emphasis="passive">
+              {t('builder_transfer_token_expiry_note', undefined, 'This code will expire in 72 hours.')}
+            </text.p>
+          </Box>
 
-          <Box orientation="vertical" gap="sm" className="items-center">
-            <div className="bg-intents-ux-box-backgroundColor border border-intents-ux-box-borderColor rounded-lg p-4 text-center w-full">
-              <text.p size={4} className="font-mono tracking-widest font-bold select-all">
-                {transferToken}
-              </text.p>
-            </div>
-
+          <div className="border border-intents-ux-box-borderColor rounded-lg p-4 flex items-center justify-between gap-4">
+            <text.p size={4} className="font-mono tracking-widest font-bold select-all">
+              {transferToken}
+            </text.p>
             <Button
               onClick={handleCopy}
-              design="secondary"
-              size="sm"
-              text={copied ? t('builder_transfer_token_copied', undefined, 'Copied!') : copyError ? t('builder_common_error', undefined, 'Error') : t('builder_transfer_token_copy', undefined, 'Copy Code')}
-              data-eid={generateClickEID('apps.transfer.copy_token')}
-            />
-          </Box>
-
-          <text.p size={-1} emphasis="passive" className="text-center">
-            {t('builder_transfer_token_expiry_note', undefined, 'This code expires in 72 hours.')}
-          </text.p>
-
-          <Box orientation="horizontal" gap="sm" className="pt-2 justify-end">
-            <Button
-              onClick={onClose}
               design="primary"
               size="sm"
-              text={t('builder_common_done', undefined, 'Done')}
-              data-eid={generateClickEID('apps.transfer.done')}
+              icon={<CopyIcon />}
+              text={copied ? t('builder_transfer_token_copied', undefined, 'Copied!') : copyError ? t('builder_common_error', undefined, 'Error') : t('builder_transfer_copy_code', undefined, 'Copy Code')}
+              data-eid={generateClickEID('apps.transfer.copy_token')}
             />
-          </Box>
+          </div>
+
+          <Button
+            onClick={() => {
+              if (transferToken) onTransferCreated(transferToken, transferExpiresAt)
+              onClose()
+            }}
+            design="primary"
+            size="sm"
+            text={t('builder_common_done', undefined, 'Done')}
+            data-eid={generateClickEID('apps.transfer.done')}
+          />
         </Box>
       )}
     </Modal>

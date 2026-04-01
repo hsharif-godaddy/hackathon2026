@@ -2,7 +2,7 @@
 
 ## Overview
 
-The App Transfer feature allows WDD designers (initiators) to hand off app ownership to clients (recipients) via a short-lived token. The initiator enters the client's shopper ID and receives a 6-character alphanumeric token; the client accepts by entering that token after signing in.
+The App Transfer feature allows WDD designers (initiators) to hand off app ownership to clients (recipients) via a short-lived token. The initiator enters the client's email address and receives a 6-character alphanumeric token; the client accepts by entering that token after signing in.
 
 All transfer state lives in mgmt-airo. No system-sent email is involved — the token is shared out-of-band by the initiator.
 
@@ -12,7 +12,7 @@ All transfer state lives in mgmt-airo. No system-sent email is involved — the 
 Initiator Browser                     Recipient Browser
       |                                      |
       |  POST /api/apps/:id/transfer         |
-      |  (targetShopperId)                   |
+      |  (targetEmail)                       |
       |-----> Next.js BFF -----> mgmt-airo   |
       |        (sso-jwt)         (JWT auth)  |
       |<----- { transferToken }              |
@@ -62,7 +62,7 @@ Initiator Browser                     Recipient Browser
 
 **Threat**: Attacker tricks an authenticated user into initiating or accepting a transfer.
 
-**BFF Mitigation**: All BFF routes require valid SSO JWT authentication. Transfer initiation requires a specific `targetShopperId` in the request body. Accept requires a valid token that the attacker would not possess.
+**BFF Mitigation**: All BFF routes require valid SSO JWT authentication. Transfer initiation requires a specific `targetEmail` in the request body. Accept requires a valid token that the attacker would not possess.
 
 ### 3. Client-Side Token Exposure
 
@@ -80,8 +80,8 @@ Initiator Browser                     Recipient Browser
 
 ### Input Sanitization
 
-- **Shopper ID input**: Real-time filtering strips non-numeric characters (`value.replace(/\D/g, '')`)
-- **Transfer token input**: Converts to lowercase and strips non-alphanumeric characters (`value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 6)`)
+- **Email input**: Validated against standard email format before submission
+- **Transfer token input**: Strips non-alphanumeric characters, preserving case (`value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6)`)
 
 ### State Management
 
@@ -92,7 +92,7 @@ Initiator Browser                     Recipient Browser
 ### Error Handling
 
 - API errors are surfaced to the user without exposing internal details
-- Cancel failures show explicit error messages in both `AppCard` and `PendingTransfers`
+- Cancel failures show explicit error messages in `AppCard`
 - Network errors during polling retry with a consecutive error limit (5 failures stops polling)
 - `refreshSites()` is called after successful cancel and accept to keep UI in sync
 
@@ -109,8 +109,6 @@ All mgmt-airo endpoints are accessed via the `AiroMgmtClient` (`app/src/lib/mgmt
 | `/api/apps/:id/transfer/cancel`    | POST   | `DELETE /api/airo/v1/apps/:appId/transfer`             | Cancel transfer                   |
 | `/api/transfer`                    | POST   | `POST /api/airo/v1/transfer/accept`                    | Accept transfer                   |
 | `/api/transfer?transferToken=xxx`  | GET    | `GET /api/airo/v1/transfer/metadata?transferToken=xxx` | Get transfer metadata (recipient) |
-| `/api/transfer?status=xxx`         | GET    | `GET /api/airo/v1/transfer`                            | List outgoing transfers           |
-| `/api/transfer?direction=incoming` | GET    | `GET /api/airo/v1/transfer?targetCustomerId=xxx`       | List incoming transfers           |
 
 ---
 
@@ -123,7 +121,7 @@ All mgmt-airo endpoints are accessed via the `AiroMgmtClient` (`app/src/lib/mgmt
 
 ```json
 {
-  "targetShopperId": "123456789"
+  "targetEmail": "recipient@example.com"
 }
 ```
 
@@ -139,7 +137,7 @@ All mgmt-airo endpoints are accessed via the `AiroMgmtClient` (`app/src/lib/mgmt
 }
 ```
 
-**Errors**: `400` (target shopper not found, validation failed, duplicate active transfer), `404` (app not found or not owned), `401` (unauthorized)
+**Errors**: `400` (target email not found, validation failed, duplicate active transfer), `404` (app not found or not owned), `401` (unauthorized)
 
 ---
 
@@ -260,50 +258,6 @@ All mgmt-airo endpoints are accessed via the `AiroMgmtClient` (`app/src/lib/mgmt
 **Errors**: `401`, `403` (not a party to this transfer), `404`
 
 ---
-
-### 6. List Transfers
-
-**BFF**: `GET /api/transfer`
-**mgmt-airo**: `GET /api/airo/v1/transfer`
-
-**Query Params**:
-
-| Param              | Type   | Description                                                                      |
-| ------------------ | ------ | -------------------------------------------------------------------------------- |
-| `appId`            | string | Filter to a specific app                                                         |
-| `targetCustomerId` | string | Filter by recipient (used for incoming transfers)                                |
-| `status`           | string | Filter: `initiated`, `processing`, `completed`, `cancelled`, `expired`, `failed` |
-| `limit`            | number | Page size (default: 10, max: 10)                                                 |
-| `offset`           | number | Pagination offset (default: 0)                                                   |
-
-The BFF maps `direction=incoming` to `targetCustomerId=<caller's customerId from JWT>`.
-
-**Response (200 OK)**:
-
-```json
-{
-  "transfers": [
-    {
-      "id": "abc1234567",
-      "appId": "app_xxx",
-      "transferToken": "a1b2c3",
-      "status": "initiated",
-      "sourceCustomerId": "src_cust_xxx",
-      "targetCustomerId": "tgt_cust_xxx",
-      "createdAt": "2026-03-04T12:00:00.000Z",
-      "expiresAt": "2026-03-07T12:00:00.000Z",
-      "updatedAt": "2026-03-04T12:00:00.000Z"
-    }
-  ],
-  "total": 3,
-  "limit": 10,
-  "offset": 0
-}
-```
-
-**Notes**: Results ordered by `createdAt` descending. `total` reflects count matching filters, not page size. `transferToken` is included so the initiator can re-share it.
-
-**Errors**: `401`, `400` (invalid filter values or limit > 10)
 
 ## Out of Scope
 

@@ -831,42 +831,6 @@ export interface AiroTransferCancelResponse {
 }
 
 /**
- * Individual transfer record in list response
- */
-export interface AiroTransferRecord {
-  id: string;
-  appId: string;
-  transferToken: string;
-  status: string;
-  sourceCustomerId: string;
-  targetCustomerId: string;
-  createdAt: string;
-  expiresAt: string;
-  updatedAt: string;
-}
-
-/**
- * Transfer list response from mgmt-airo
- */
-export interface AiroTransferListResponse {
-  transfers: AiroTransferRecord[];
-  total: number;
-  limit: number;
-  offset: number;
-}
-
-/**
- * Query parameters for listing transfers
- */
-export interface AiroTransferListParams {
-  appId?: string;
-  targetCustomerId?: string;
-  status?: string;
-  limit?: number;
-  offset?: number;
-}
-
-/**
  * Purge cache response from POST .../purge-cache
  */
 export interface AiroPurgeCacheResponse {

@@ -48,7 +48,7 @@ export const POST = withCustomerAuth(async (
   }
 }, { level: 3 });
 
-// GET /api/transfer — List transfers or get metadata by transferToken
+// GET /api/transfer — Get transfer metadata by transferToken
 export const GET = withCustomerAuth(async (
   request: NextRequest,
   authContext: CustomerAuthContext
@@ -59,30 +59,21 @@ export const GET = withCustomerAuth(async (
     }
 
     const { searchParams } = new URL(request.url);
-    const client = createClient(authContext.jwt);
     const transferToken = searchParams.get('transferToken');
 
-    if (transferToken) {
-      const data = await client.getTransferMetadataByToken(transferToken);
-      return NextResponse.json(data);
+    if (!transferToken) {
+      return NextResponse.json({ error: 'transferToken is required' }, { status: 400 });
     }
 
-    const direction = searchParams.get('direction');
-    const data = await client.listTransfers({
-      appId: searchParams.get('appId') || undefined,
-      targetCustomerId: direction === 'incoming' ? authContext.user.customerId : (searchParams.get('targetCustomerId') || undefined),
-      status: searchParams.get('status') || undefined,
-      limit: searchParams.get('limit') ? Number(searchParams.get('limit')) : undefined,
-      offset: searchParams.get('offset') ? Number(searchParams.get('offset')) : undefined,
-    });
+    const data = await createClient(authContext.jwt).getTransferMetadataByToken(transferToken);
     return NextResponse.json(data);
   } catch (error) {
     if (error instanceof AiroHttpError) {
       return NextResponse.json(error.body || { error: error.statusText }, { status: error.status });
     }
-    logger.error('transfer.list.error', {
+    logger.error('transfer.metadata.error', {
       error: error instanceof Error ? error.message : String(error)
     });
-    return NextResponse.json({ error: 'Failed to fetch transfers' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch transfer metadata' }, { status: 500 });
   }
 });

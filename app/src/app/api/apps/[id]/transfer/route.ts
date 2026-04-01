@@ -25,18 +25,18 @@ export const POST = withCustomerAuth(async (
       return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
     }
 
-    let body: { targetShopperId?: string };
+    let body: { targetEmail?: string };
     try {
       body = await request.json();
     } catch {
       return NextResponse.json({ error: 'Invalid JSON request body' }, { status: 400 });
     }
 
-    if (!body.targetShopperId) {
-      return NextResponse.json({ error: 'targetShopperId is required' }, { status: 400 });
+    if (!body.targetEmail) {
+      return NextResponse.json({ error: 'targetEmail is required' }, { status: 400 });
     }
 
-    const data = await createClient(authContext.jwt).initiateTransfer(id, body.targetShopperId);
+    const data = await createClient(authContext.jwt).initiateTransfer(id, body.targetEmail);
     logger.info('transfer.initiate.success', { appId: id, status: data.status });
     return NextResponse.json(data, { status: 201 });
   } catch (error) {
