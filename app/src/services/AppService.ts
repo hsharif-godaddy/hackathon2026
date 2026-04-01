@@ -303,6 +303,34 @@ export class AppService {
   }
 
   /**
+   * Edit the latest commit message on the main branch
+   */
+  async updateCommitMessage(appId: string, message: string, expectedHash?: string): Promise<{ success: boolean; newCommitHash: string }> {
+    const apiUrl = await buildDynamicAgentUrl(`apps/${appId}/git/commit-message`, appId)
+    const response = await agentFetch(apiUrl, {
+      siteId: appId,
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, expectedHash })
+    })
+
+    if (!response.ok) {
+      let errorMessage = `Failed to update commit message: ${response.status}`
+      try {
+        const data = await response.json() as { error?: unknown }
+        if (typeof data.error === 'string') {
+          errorMessage = data.error
+        }
+      } catch {
+        // Ignore JSON parsing errors and use the default message
+      }
+      throw new Error(errorMessage)
+    }
+
+    return response.json()
+  }
+
+  /**
    * Publish app by creating an archive and triggering deployment
    *
    * This method calls the app service's publish endpoint which:

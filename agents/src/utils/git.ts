@@ -206,6 +206,17 @@ export class GitUtils {
   }
 
   /**
+   * Amend the current HEAD commit message
+   */
+  async amendCommitMessage(
+    repoPath: string,
+    message: string,
+    options: GitCommandOptions = {}
+  ): Promise<GitCommandResult> {
+    return this.executeGitCommand(['commit', '--amend', '-m', message], repoPath, options);
+  }
+
+  /**
    * Create and commit initial commit with all files
    */
   async createInitialCommit(

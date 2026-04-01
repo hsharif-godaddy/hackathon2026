@@ -22,6 +22,11 @@ const mockGitStore = {
   setCommitSelectionError: vi.fn(),
 };
 
+const mockUpdateCommitMessageMutation = {
+  isPending: false,
+  mutateAsync: vi.fn(),
+};
+
 let mockHistory = {
   commits: [
     { hash: 'new-hash', message: 'New commit', author: 'A', date: '2024-01-01' },
@@ -82,6 +87,10 @@ vi.mock('@/lib/request-context', () => ({
   },
 }));
 
+vi.mock('@/hooks/useUpdateCommitMessageMutation', () => ({
+  useUpdateCommitMessageMutation: () => mockUpdateCommitMessageMutation,
+}));
+
 describe('VersionHistory', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -105,6 +114,11 @@ describe('VersionHistory', () => {
     mockGitStore.getSelectedCommitHash.mockImplementation(() => selectedCommitHash);
     mockGitStore.setSelectedCommitHash.mockImplementation((_appId: string, hash: string) => {
       selectedCommitHash = hash;
+    });
+    mockUpdateCommitMessageMutation.isPending = false;
+    mockUpdateCommitMessageMutation.mutateAsync.mockResolvedValue({
+      success: true,
+      newCommitHash: 'updated-hash',
     });
   });
 
@@ -210,6 +224,87 @@ describe('VersionHistory', () => {
       expect(mockGitStore.setSelectedCommitHash).not.toHaveBeenCalled();
     });
   });
+
+  it('allows editing only the latest commit message and saves on Enter', async () => {
+    mockHistory = {
+      ...mockHistory,
+      currentCommit: 'new-hash',
+    }
+
+    const { user } = renderWithProviders(<VersionHistory />);
+
+    const editButtons = screen.getAllByRole('button', { name: 'builder_common_edit' });
+    expect(editButtons).toHaveLength(1);
+
+    await user.click(editButtons[0]);
+
+    const input = screen.getByDisplayValue('New commit');
+    await user.clear(input);
+    await user.type(input, 'Renamed latest commit{enter}');
+
+    await waitFor(() => {
+      expect(mockUpdateCommitMessageMutation.mutateAsync).toHaveBeenCalledWith({
+        appId: 'app-123',
+        message: 'Renamed latest commit',
+        expectedHash: 'new-hash',
+      });
+    });
+  });
+
+  it('does not show edit action when latest commit is not current commit', async () => {
+    mockHistory = {
+      ...mockHistory,
+      currentCommit: 'old-hash',
+    }
+
+    renderWithProviders(<VersionHistory />);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'builder_common_edit' })).not.toBeInTheDocument()
+    })
+  })
+
+  it('cancels edit on blur without saving', async () => {
+    mockHistory = {
+      ...mockHistory,
+      currentCommit: 'new-hash',
+    }
+
+    const { user } = renderWithProviders(<VersionHistory />);
+    const editButton = screen.getByRole('button', { name: 'builder_common_edit' })
+    await user.click(editButton)
+
+    const input = screen.getByDisplayValue('New commit')
+    await user.clear(input)
+    await user.type(input, 'Blur should not save')
+    await user.tab()
+
+    await waitFor(() => {
+      expect(mockUpdateCommitMessageMutation.mutateAsync).not.toHaveBeenCalled()
+      expect(screen.queryByDisplayValue('Blur should not save')).not.toBeInTheDocument()
+    })
+  })
+
+  it('shows edit error and stays in edit mode when save fails', async () => {
+    mockHistory = {
+      ...mockHistory,
+      currentCommit: 'new-hash',
+    }
+    mockUpdateCommitMessageMutation.mutateAsync.mockRejectedValue(new Error('Commit amend failed'))
+
+    const { user } = renderWithProviders(<VersionHistory />);
+    await user.click(screen.getByRole('button', { name: 'builder_common_edit' }))
+
+    const input = screen.getByDisplayValue('New commit')
+    await user.clear(input)
+    await user.type(input, 'Will fail{enter}')
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_version_history_edit_error')).toBeInTheDocument()
+      expect(screen.getByText('Commit amend failed')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('Will fail')).toBeInTheDocument()
+    })
+  })
 
   it('loads next page and appends without duplicates', async () => {
     pageData['app-123:0'] = {

@@ -13,6 +13,7 @@ const appRepository = new AppRepository();
 const GIT_HISTORY_DEFAULT_COUNT = 30;
 const GIT_HISTORY_MAX_COUNT = 200;
 const GIT_HISTORY_MAX_OFFSET = 100_000;
+const COMMIT_MESSAGE_MAX_LENGTH = 500;
 
 function parseGitHistoryCount(value: unknown): number | null {
   if (value === undefined || value === '') {
@@ -115,6 +116,120 @@ router.get('/apps/:id/git/history', validateAppOwnership, async (req, res) => {
     return res.status(500).json({
       error: 'Failed to get commit history',
       details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+/**
+ * Amend the latest commit message on main branch
+ * SECURITY: Ownership validation prevents cross-tenant git amend operations
+ */
+router.patch('/apps/:id/git/commit-message', validateAppOwnership, async (req, res) => {
+  try {
+    const id = req.params.id!;
+    const rawMessage = req.body?.message;
+    const expectedHash: string | undefined = req.body?.expectedHash;
+    const contextLogger = log.forApp(id);
+
+    if (typeof rawMessage !== 'string' || !rawMessage.trim()) {
+      return res.status(400).json({ error: 'Commit message is required' });
+    }
+
+    const message = rawMessage.trim();
+    if (message.length > COMMIT_MESSAGE_MAX_LENGTH) {
+      return res.status(400).json({
+        error: `Commit message must be ${COMMIT_MESSAGE_MAX_LENGTH} characters or fewer`
+      });
+    }
+
+    const app = appRepository.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    const devSupervisor = DevSupervisorClientFactory.createForApp(id)
+    const gitUtils = new GitUtils(devSupervisor || undefined)
+
+    const currentBranch = await gitUtils.getCurrentBranch(app.path);
+    if (currentBranch !== 'main') {
+      contextLogger.warn('route.git.commit-message.invalid-branch', {
+        currentBranch,
+      });
+      return res.status(409).json({
+        error: 'Commit message can only be edited on the main branch',
+        currentBranch
+      });
+    }
+
+    const status = await gitUtils.getStatus(app.path);
+    if (status.stagedFiles > 0) {
+      contextLogger.warn('route.git.commit-message.staged-changes', {
+        stagedFiles: status.stagedFiles,
+      });
+      return res.status(409).json({
+        error: 'Cannot edit commit message while staged changes exist'
+      });
+    }
+
+    if (await gitUtils.hasRemote(app.path, 'origin')) {
+      contextLogger.warn('route.git.commit-message.remote-configured', {
+        branch: currentBranch,
+      });
+      return res.status(409).json({
+        error: 'Cannot edit commit message when an origin remote is configured (amend rewrites history)'
+      });
+    }
+
+    if (expectedHash) {
+      const currentHead = await gitUtils.getCurrentCommit(app.path);
+      if (currentHead !== expectedHash) {
+        contextLogger.warn('route.git.commit-message.stale-head', {
+          expectedHash: expectedHash.substring(0, 7),
+          actualHead: currentHead.substring(0, 7),
+        });
+        return res.status(409).json({
+          error: 'HEAD has moved since editing started — another commit may have been created',
+          expectedHash,
+          actualHead: currentHead,
+        });
+      }
+    }
+
+    const amendResult = await gitUtils.amendCommitMessage(app.path, message);
+    if (!amendResult.success) {
+      contextLogger.warn('route.git.commit-message.amend-failed', {
+        stderr: amendResult.stderr,
+      });
+      return res.status(400).json({
+        error: 'Failed to edit commit message'
+      });
+    }
+
+    let newCommitHash: string;
+    try {
+      newCommitHash = await gitUtils.getCurrentCommit(app.path);
+    } catch (error) {
+      contextLogger.warn('route.git.commit-message.get-hash-failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return res.status(500).json({
+        error: 'Amend succeeded but failed to retrieve new commit hash'
+      });
+    }
+
+    contextLogger.info('route.git.commit-message.success', {
+      commitHash: newCommitHash.substring(0, 7),
+    });
+
+    return res.json({
+      success: true,
+      newCommitHash
+    });
+  } catch (error) {
+    const contextLogger = log.forApp(req.params.id!);
+    log.error(contextLogger, 'route.git.commit-message.error', error as Error, {});
+    return res.status(500).json({
+      error: 'Failed to edit commit message'
     });
   }
 });
