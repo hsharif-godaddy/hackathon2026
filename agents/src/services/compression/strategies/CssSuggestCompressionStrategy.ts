@@ -21,6 +21,8 @@ import {
  */
 export class CssSuggestCompressionStrategy implements CompressionStrategy {
   readonly name = 'css-suggest-compression';
+  // Mutates tool result content rather than removing messages
+  readonly mutatesContent = true;
 
   /**
    * Check if this is a cssSuggest tool result

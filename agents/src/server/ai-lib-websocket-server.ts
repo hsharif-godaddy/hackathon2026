@@ -931,14 +931,13 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           // 2. Token exhaustion: Merged history exceeded context limits
           // 3. Authorization bypass: Conversation-level access controls were ignored
           //
-          // Note: For new conversations or when cross-conversation context is explicitly needed,
-          // use loadMessagesWithSummarization(appId, ...) in a dedicated recovery flow.
           // Normal message streams MUST be scoped to the active conversation.
           const llmMessages = await historyLoader.loadMessagesWithTokenLimitByConversationId(
             conversationId,  // Load ONLY this conversation's messages
             40000,
             modelName,
-            true
+            true,
+            appId  // Enables summary pin refresh + stable prefix compression
           );
 
           const formattedMessages = historyLoader.formatMessagesForAISDK(llmMessages, appId, agentName);

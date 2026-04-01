@@ -13,9 +13,13 @@ vi.mock('../../utils/token-counter.js', () => ({
 }));
 
 let latestSummary: any = null;
+const summaryStore = new Map<string, any>();
 vi.mock('../../database/repositories/SummaryRepository.js', () => ({
   SummaryRepository: class {
     findLatestForApp = vi.fn().mockImplementation(async () => latestSummary);
+    findById = vi.fn().mockImplementation(async (id: string) => {
+      return summaryStore.get(id) ?? null;
+    });
   }
 }));
 
@@ -25,6 +29,7 @@ describe('ConversationHistoryLoader', () => {
 
   beforeEach(() => {
     latestSummary = null;
+    summaryStore.clear();
     mockRepo = {
       findByAppAndAgent: vi.fn(),
       getMessagesForHistory: vi.fn(),
@@ -36,12 +41,8 @@ describe('ConversationHistoryLoader', () => {
     loader = new ConversationHistoryLoader(mockRepo);
   });
 
-  describe('loadDatabaseMessages', () => {
-    it('should load and sort messages from multiple conversations', async () => {
-      vi.mocked(mockRepo.findByAppAndAgent).mockResolvedValue([
-        { id: 'D5wI4wo3ThTl', appId: 'test-app', agentId: 'develop', createdAt: new Date(), updatedAt: new Date() }
-      ]);
-
+  describe('loadDatabaseMessagesByConversationId', () => {
+    it('should load and sort messages by conversation ID', async () => {
       const normalizedMessages = conversationFixture.map((msg: any) => ({
         id: msg.id,
         conversationId: msg.conversation_id,
@@ -65,20 +66,15 @@ describe('ConversationHistoryLoader', () => {
 
       vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue(normalizedMessages);
 
-      const result = await loader.loadDatabaseMessages('test-app', 'develop');
+      const result = await loader.loadDatabaseMessagesByConversationId('D5wI4wo3ThTl');
 
       expect(result).toHaveLength(4);
       expect(result[0].sender).toBe('user');
       expect(result[1].sender).toBe('agent');
-      expect(mockRepo.findByAppAndAgent).toHaveBeenCalledWith('test-app', 'develop');
       expect(mockRepo.getMessagesForHistory).toHaveBeenCalledWith('D5wI4wo3ThTl');
     });
 
     it('should sort messages chronologically (oldest first)', async () => {
-      vi.mocked(mockRepo.findByAppAndAgent).mockResolvedValue([
-        { id: 'conv1', appId: 'test-app', agentId: 'develop', createdAt: new Date(), updatedAt: new Date() }
-      ]);
-
       const messages = [
         { id: '3', conversationId: 'conv1', sender: 'user' as const, content: 'msg3', createdAt: new Date('2025-01-03') },
         { id: '1', conversationId: 'conv1', sender: 'user' as const, content: 'msg1', createdAt: new Date('2025-01-01') },
@@ -87,7 +83,7 @@ describe('ConversationHistoryLoader', () => {
 
       vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue(messages);
 
-      const result = await loader.loadDatabaseMessages('test-app', 'develop');
+      const result = await loader.loadDatabaseMessagesByConversationId('conv1');
 
       expect(result.map(m => m.id)).toEqual(['1', '2', '3']);
     });
@@ -334,122 +330,6 @@ describe('ConversationHistoryLoader', () => {
     });
   });
 
-  describe('loadMessagesWithSummarization', () => {
-    it('should inject summary as cacheable USER messages (not returned separately for security)', async () => {
-      // Mock messages AFTER the summary (only m2, since m1 is covered by summary)
-      vi.mocked(mockRepo.getMessagesAfterMessageId).mockResolvedValue([
-        {
-          id: 'm2',
-          conversationId: 'conv1',
-          sender: 'agent' as const,
-          content: 'hi there',
-          createdAt: new Date('2025-01-02')
-        }
-      ]);
-
-      latestSummary = {
-        id: 'sum1',
-        summaryText: '# Summary',
-        operationLog: 'Edited file A',
-        summaryTokenCount: 100,
-        originalTokenCount: 1000,
-        messageRangeStart: 'm1',
-        messageRangeEnd: 'm1'
-      };
-
-      const result = await loader.loadMessagesWithSummarization('test-app', 10000);
-
-      // SECURITY: Summary should NOT be returned separately (would go to system prompt)
-      // Instead it's injected as user messages to prevent prompt injection
-      expect(result.summary).toBeUndefined();
-
-      // Should have exactly 3 messages: operation log (user), summary (user), and remaining assistant message
-      expect(result.messages).toHaveLength(3);
-
-      // Find summary message - MUST be user role
-      const summaryMessage = result.messages.find((msg: any) =>
-        msg.role === 'user' &&
-        typeof msg.content === 'string' &&
-        msg.content.includes('[CONVERSATION SUMMARY]')
-      );
-      expect(summaryMessage).toBeDefined();
-      expect(summaryMessage?.content).toContain('# Summary');
-      // Conversation summary retains cache breakpoint — it's the last stable message
-      // before history and subsumes all prior context for prefix-based caching
-      expect((summaryMessage as any)?.cachePoint?.type).toBe('ephemeral');
-
-      // Find operation log message - MUST be user role
-      const operationLogMessage = result.messages.find((msg: any) =>
-        msg.role === 'user' &&
-        typeof msg.content === 'string' &&
-        msg.content.includes('[OPERATION LOG')
-      );
-      expect(operationLogMessage).toBeDefined();
-      expect(operationLogMessage?.content).toContain('Edited file A');
-      // Operation log does NOT have its own cache breakpoint — it's covered by the
-      // conversation summary breakpoint that follows it (prefix-based caching)
-      expect((operationLogMessage as any)?.cachePoint).toBeUndefined();
-    });
-
-    it('should fall back to loading all messages when summary reference is stale', async () => {
-      // Mock a stale summary - reference message no longer exists
-      vi.mocked(mockRepo.getMessagesAfterMessageId).mockResolvedValue([]);
-      vi.mocked(mockRepo.getMessageById).mockResolvedValue(null); // Reference missing!
-
-      vi.mocked(mockRepo.getByAppId).mockResolvedValue([
-        { id: 'conv1', appId: 'test-app', agentId: 'develop', createdAt: new Date(), updatedAt: new Date(), title: 'Test Conv' }
-      ]);
-
-      vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue([
-        {
-          id: 'm1',
-          conversationId: 'conv1',
-          sender: 'user' as const,
-          content: 'hello world',
-          createdAt: new Date('2025-01-01')
-        },
-        {
-          id: 'm2',
-          conversationId: 'conv1',
-          sender: 'agent' as const,
-          content: 'hi there',
-          createdAt: new Date('2025-01-02')
-        }
-      ]);
-
-      latestSummary = {
-        id: 'stale-sum',
-        summaryText: '# Stale Summary',
-        operationLog: 'Old operations',
-        summaryTokenCount: 100,
-        originalTokenCount: 1000,
-        messageRangeStart: 'deleted-msg-1',
-        messageRangeEnd: 'deleted-msg-2' // This message no longer exists
-      };
-
-      const result = await loader.loadMessagesWithSummarization('test-app', 10000);
-
-      // When summary is stale, should NOT include summary content
-      expect(result.summary).toBeUndefined();
-
-      const summaryMessage = result.messages.find((msg: any) =>
-        msg.role === 'user' &&
-        typeof msg.content === 'string' &&
-        msg.content.includes('[CONVERSATION SUMMARY]')
-      );
-      expect(summaryMessage).toBeUndefined();
-
-      // Should have loaded all messages instead
-      expect(mockRepo.getByAppId).toHaveBeenCalledWith('test-app');
-      expect(mockRepo.getMessagesForHistory).toHaveBeenCalledWith('conv1');
-
-      // Result should include the loaded messages
-      expect(result.messages).toHaveLength(2);
-      expect(result.messages[0]).toEqual({ role: 'user', content: 'hello world' });
-      expect(result.messages[1]).toEqual({ role: 'assistant', content: 'hi there' });
-    });
-  });
-
   describe('applyTokenLimit', () => {
     it('should keep all messages if under token limit', async () => {
       const messages: any[] = [
@@ -531,12 +411,8 @@ describe('ConversationHistoryLoader', () => {
     });
   });
 
-  describe('loadMessagesWithTokenLimit', () => {
-    it('should load and apply token limit in one operation', async () => {
-      vi.mocked(mockRepo.findByAppAndAgent).mockResolvedValue([
-        { id: 'conv1', appId: 'test-app', agentId: 'develop', createdAt: new Date(), updatedAt: new Date() }
-      ]);
-
+  describe('loadMessagesWithTokenLimitByConversationId', () => {
+    it('should load and apply token limit by conversation ID', async () => {
       const messages = [
         {
           id: 'msg1',
@@ -559,23 +435,30 @@ describe('ConversationHistoryLoader', () => {
 
       vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue(messages);
 
-      const result = await loader.loadMessagesWithTokenLimit('test-app', 'develop', 40000, 'claude4');
+      const result = await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, 'claude4');
 
       expect(result.length).toBeGreaterThan(0);
       expect(result[0].role).toBe('user');
       expect(result[1].role).toBe('assistant');
     });
 
-    it('should use default max tokens of 40000', async () => {
-      vi.mocked(mockRepo.findByAppAndAgent).mockResolvedValue([
-        { id: 'conv1', appId: 'test-app', agentId: 'develop', createdAt: new Date(), updatedAt: new Date() }
-      ]);
-
+    it('should refresh summary pin when appId is provided', async () => {
       vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue([]);
+      latestSummary = { id: 'sum-1', summaryText: '# Summary', summaryTokenCount: 100, originalTokenCount: 1000 };
+      summaryStore.set('sum-1', latestSummary);
 
-      await loader.loadMessagesWithTokenLimit('test-app', 'develop');
+      await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, undefined, true, 'test-app');
 
-      expect(mockRepo.findByAppAndAgent).toHaveBeenCalledWith('test-app', 'develop');
+      expect(loader.getPinnedSummaryId('test-app')).toBe('sum-1');
+    });
+
+    it('should not refresh summary pin when appId is omitted', async () => {
+      vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue([]);
+      latestSummary = { id: 'sum-1', summaryText: '# Summary', summaryTokenCount: 100, originalTokenCount: 1000 };
+
+      await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000);
+
+      expect(loader.getPinnedSummaryId('test-app')).toBeNull();
     });
   });
 
@@ -1030,6 +913,129 @@ describe('ConversationHistoryLoader', () => {
       const msg = result[0] as any;
       expect(msg.role).toBe('assistant');
       expect(msg.providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' });
+    });
+  });
+
+  describe('summary pinning via loadMessagesWithTokenLimitByConversationId', () => {
+    const summary1 = {
+      id: 'sum-1',
+      summaryText: '# Summary v1',
+      summaryTokenCount: 100,
+      originalTokenCount: 1000,
+      messageRangeStart: 'm1',
+      messageRangeEnd: 'm1'
+    };
+    const summary2 = {
+      id: 'sum-2',
+      summaryText: '# Summary v2',
+      summaryTokenCount: 150,
+      originalTokenCount: 1500,
+      messageRangeStart: 'm1',
+      messageRangeEnd: 'm3'
+    };
+
+    beforeEach(() => {
+      vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue([
+        { id: 'm2', conversationId: 'conv1', sender: 'agent' as const, content: 'hi', createdAt: new Date('2025-01-02') }
+      ]);
+    });
+
+    it('should pin summary on first load and reuse it on subsequent loads', async () => {
+      latestSummary = summary1;
+      summaryStore.set(summary1.id, summary1);
+      summaryStore.set(summary2.id, summary2);
+      await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, undefined, true, 'test-app');
+
+      // Switch the "latest" to v2 - simulates BackgroundSummarizer creating a new summary
+      latestSummary = summary2;
+      await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, undefined, true, 'test-app');
+
+      // Should still use v1 because it's pinned
+      expect(loader.getPinnedSummaryId('test-app')).toBe('sum-1');
+    });
+
+    it('should expose pinned summary ID via getPinnedSummaryId()', async () => {
+      expect(loader.getPinnedSummaryId('test-app')).toBeNull();
+
+      latestSummary = summary1;
+      summaryStore.set(summary1.id, summary1);
+      await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, undefined, true, 'test-app');
+
+      expect(loader.getPinnedSummaryId('test-app')).toBe('sum-1');
+    });
+
+    it('should refresh pin after MAX_PINNED_TURNS', async () => {
+      latestSummary = summary1;
+      summaryStore.set(summary1.id, summary1);
+      summaryStore.set(summary2.id, summary2);
+      // Exhaust the epoch
+      for (let i = 0; i < ConversationHistoryLoader.MAX_PINNED_TURNS; i++) {
+        await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, undefined, true, 'test-app');
+      }
+
+      // Now switch to v2 and load again - epoch should have expired
+      latestSummary = summary2;
+      await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, undefined, true, 'test-app');
+
+      expect(loader.getPinnedSummaryId('test-app')).toBe('sum-2');
+    });
+
+    it('should fall back to latest when pinned summary is deleted', async () => {
+      latestSummary = summary1;
+      summaryStore.set(summary1.id, summary1);
+      await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, undefined, true, 'test-app');
+
+      // Pin is set to sum-1, but now sum-1 is deleted and sum-2 is latest
+      summaryStore.delete(summary1.id);
+      summaryStore.set(summary2.id, summary2);
+      latestSummary = summary2;
+      // findById returns null for sum-1 because it was deleted from summaryStore
+      await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, undefined, true, 'test-app');
+
+      // Should fall back to latest (sum-2) and re-pin
+      expect(loader.getPinnedSummaryId('test-app')).toBe('sum-2');
+    });
+  });
+
+  describe('stable region compression via loadMessagesWithTokenLimitByConversationId', () => {
+    it('should track previousTurnMessageCount and pass as stableRegionEnd', async () => {
+      const compressSpy = vi.spyOn(loader.getCompressor(), 'compressMessages');
+
+      vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue([
+        { id: 'm1', conversationId: 'conv1', sender: 'user' as const, content: 'hello', createdAt: new Date('2025-01-01') },
+        { id: 'm2', conversationId: 'conv1', sender: 'agent' as const, content: 'hi there', createdAt: new Date('2025-01-02') }
+      ]);
+
+      // First call: no previous count, stableRegionEnd should be undefined
+      await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, undefined, true, 'test-app');
+      const firstCall = compressSpy.mock.calls[0];
+      expect(firstCall[2]).toBeUndefined(); // No stable region on first call
+
+      // Second call: should pass previous turn's post-token-limit count as stableRegionEnd
+      await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000, undefined, true, 'test-app');
+      const secondCall = compressSpy.mock.calls[1];
+      // stableRegionEnd should be min(previousCount, currentCount) = 2
+      expect(secondCall[2]).toBe(2);
+
+      compressSpy.mockRestore();
+    });
+
+    it('should not track stable region when appId is omitted', async () => {
+      const compressSpy = vi.spyOn(loader.getCompressor(), 'compressMessages');
+
+      vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue([
+        { id: 'm1', conversationId: 'conv1', sender: 'user' as const, content: 'hello', createdAt: new Date('2025-01-01') },
+        { id: 'm2', conversationId: 'conv1', sender: 'agent' as const, content: 'hi there', createdAt: new Date('2025-01-02') }
+      ]);
+
+      // Two calls without appId - stableRegionEnd should always be undefined
+      await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000);
+      await loader.loadMessagesWithTokenLimitByConversationId('conv1', 40000);
+
+      expect(compressSpy.mock.calls[0][2]).toBeUndefined();
+      expect(compressSpy.mock.calls[1][2]).toBeUndefined();
+
+      compressSpy.mockRestore();
     });
   });
 });

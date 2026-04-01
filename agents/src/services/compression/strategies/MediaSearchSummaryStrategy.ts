@@ -24,6 +24,8 @@ import {
 export class MediaSearchSummaryStrategy implements CompressionStrategy {
   readonly name = 'media-search-summary';
   readonly strategyType = 'removal' as const;
+  // Transforms tool results into summary text rather than removing messages entirely
+  readonly mutatesContent = true;
 
   private static readonly TOOL_NAME = 'mediaSearch';
 

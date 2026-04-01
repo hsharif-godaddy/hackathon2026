@@ -65,20 +65,6 @@ export interface OpenAIMessage {
  */
 export type LLMMessage = OpenAIMessage | AIToolMessage;
 
-export interface ConversationHistorySummary {
-  text: string;
-  operationLog?: string;
-  tokenCount: number;
-  originalTokenCount: number;
-  summaryId?: string;
-  messagesCovered?: number;
-  messagesRemaining?: number;
-}
-
-export interface ConversationHistoryWithSummary {
-  messages: LLMMessage[];
-  summary?: ConversationHistorySummary;
-}
 
 /**
  * Type guard for AI SDK v6 tool messages
@@ -134,6 +120,15 @@ export class ConversationHistoryLoader {
   private summaryRepo: SummaryRepository;
   private summarizationStrategy?: SummarizationStrategy;
 
+  // Summary pinning: prevent cache invalidation when BackgroundSummarizer creates new summaries
+  // Keyed by appId to avoid cross-app leakage when the same loader serves multiple apps
+  private pinnedSummaries = new Map<string, { summaryId: string; turnCount: number }>();
+  static readonly MAX_PINNED_TURNS = 5;
+
+  // Stable prefix tracking: previous turn's message count (post-token-limit) used as stableRegionEnd
+  // Keyed by appId to avoid cross-app leakage
+  private previousTurnMessageCount = new Map<string, number>();
+
   constructor(
     private conversationRepo: ConversationRepository,
     summarizationStrategy?: SummarizationStrategy
@@ -182,47 +177,61 @@ export class ConversationHistoryLoader {
   }
 
   /**
-   * Load all messages for an app/agent combination from database
-   * Uses getMessagesForHistory for consistent normalized format
-   * @param appId - ID of the app
-   * @param agentId - ID of the agent
-   * @returns Array of raw database messages sorted by timestamp (oldest first)
+   * Get the currently pinned summary ID for a given appId, if any.
+   * Used by AILibContextManager to ensure both summary loading paths use the same version.
    */
-  async loadDatabaseMessages(appId: string, agentId: string): Promise<DatabaseMessage[]> {
-    logger.debug('conversation.history.loader.load_begin', {
-      appId,
-      agentId,
-    });
+  getPinnedSummaryId(appId?: string): string | null {
+    if (!appId) {
+      // Backwards-compat: return first pin if no appId (single-app case)
+      const first = this.pinnedSummaries.values().next();
+      return first.done ? null : first.value.summaryId;
+    }
+    return this.pinnedSummaries.get(appId)?.summaryId ?? null;
+  }
 
-    const conversations = await this.conversationRepo.findByAppAndAgent(appId, agentId);
+  /**
+   * Get the pinned summary or fall back to latest. Manages a cache epoch that pins
+   * the summary for MAX_PINNED_TURNS turns to prevent cache invalidation when
+   * BackgroundSummarizer creates new summaries between turns.
+   */
+  async getPinnedOrLatestSummary(appId: string): Promise<ConversationSummary | null> {
+    const pin = this.pinnedSummaries.get(appId);
 
-    logger.debug('conversation.history.loader.conversations_found', {
-      appId,
-      agentId,
-      conversationsCount: conversations.length,
-    });
-
-    const allMessages: DatabaseMessage[] = [];
-
-    for (const conversation of conversations) {
-      const messages = await this.conversationRepo.getMessagesForHistory(conversation.id);
-      allMessages.push(
-        ...messages.map((msg) => ({
-          ...msg,
-          conversationId: conversation.id,
-        }))
-      );
+    // If we have a pin and haven't exceeded the epoch, try to reuse it
+    if (pin && pin.turnCount < ConversationHistoryLoader.MAX_PINNED_TURNS) {
+      const pinned = await this.summaryRepo.findById(pin.summaryId);
+      if (pinned) {
+        pin.turnCount++;
+        logger.debug('conversation.history.summary_pin.reused', {
+          appId,
+          pinnedSummaryId: pin.summaryId,
+          turnCount: pin.turnCount,
+        });
+        return pinned;
+      }
+      // Pinned summary was deleted - fall through to refresh
+      logger.warn('conversation.history.summary_pin.stale', {
+        appId,
+        pinnedSummaryId: pin.summaryId,
+      });
     }
 
-    allMessages.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    // Fetch latest and pin it
+    const latest = await this.summaryRepo.findLatestForApp(appId);
+    if (latest) {
+      const previousPinId = pin?.summaryId ?? null;
+      this.pinnedSummaries.set(appId, { summaryId: latest.id, turnCount: 1 });
+      logger.info('conversation.history.summary_pin.refreshed', {
+        appId,
+        newPinnedSummaryId: latest.id,
+        previousPinnedSummaryId: previousPinId,
+        reason: !previousPinId ? 'initial_pin' : pin && pin.turnCount >= ConversationHistoryLoader.MAX_PINNED_TURNS ? 'epoch_expired' : 'stale_pin',
+      });
+    } else {
+      this.pinnedSummaries.delete(appId);
+    }
 
-    logger.debug('conversation.history.loader.load_complete', {
-      appId,
-      agentId,
-      totalMessages: allMessages.length,
-    });
-
-    return allMessages;
+    return latest;
   }
 
   /**
@@ -546,301 +555,13 @@ export class ConversationHistoryLoader {
   }
 
   /**
-   * Load messages with compression and token limit applied
-   * This is the main entry point for conversation history loading
-   * @param appId - ID of the app
-   * @param agentId - ID of the agent
-   * @param maxTokens - Maximum tokens to include (default: 40000)
-   * @param modelName - Model name for accurate token counting
-   * @param enableCompression - Whether to apply compression (default: true)
-   * @returns Token-limited array of LLM messages
-   */
-  async loadMessagesWithTokenLimit(
-    appId: string,
-    agentId: string,
-    maxTokens: number = 40000,
-    modelName?: string,
-    enableCompression: boolean = true,
-    appPath?: string
-  ): Promise<LLMMessage[]> {
-    const dbMessages = await this.loadDatabaseMessages(appId, agentId);
-    let llmMessages = this.convertToLLMMessages(dbMessages);
-
-    if (enableCompression) {
-      const compressionResult = this.compressor.compressMessages(llmMessages);
-      llmMessages = compressionResult.messages;
-
-      logger.info('conversation.history.compression.applied', {
-        appId,
-        agentId,
-        originalMessages: compressionResult.stats.totalMessages,
-        compressedMessages: compressionResult.stats.compressedMessages,
-        originalLength: compressionResult.stats.originalTotalLength,
-        compressedLength: compressionResult.stats.compressedTotalLength,
-        compressionRatio: compressionResult.stats.compressionRatio,
-        savedBytes: compressionResult.stats.originalTotalLength - compressionResult.stats.compressedTotalLength,
-        strategiesUsed: compressionResult.stats.strategiesUsed,
-      });
-    }
-
-    return await this.applyTokenLimit(llmMessages, maxTokens, modelName);
-  }
-
-  /**
-   * Load messages with compression and token limit applied for a specific app
-   * This loads history across all conversations for the app, ensuring continuity
-   * @param appId - ID of the app
-   * @param maxTokens - Maximum tokens to include (default: 40000)
-   * @param modelName - Model name for accurate token counting
-   * @param enableCompression - Whether to apply compression (default: true)
-   * @returns Token-limited array of LLM messages
-   */
-  async loadMessagesWithTokenLimitByAppId(
-    appId: string,
-    maxTokens: number = 40000,
-    modelName?: string,
-    enableCompression: boolean = true
-  ): Promise<LLMMessage[]> {
-    const conversations = await this.conversationRepo.getByAppId(appId);
-
-    logger.debug('conversation.history.loader.load_by_app_begin', {
-      appId,
-      conversationsCount: conversations.length,
-    });
-
-    const allMessages: DatabaseMessage[] = [];
-
-    for (const conversation of conversations) {
-      const messages = await this.conversationRepo.getMessagesForHistory(conversation.id);
-      allMessages.push(
-        ...messages.map((msg) => ({
-          ...msg,
-          conversationId: conversation.id,
-        }))
-      );
-    }
-
-    allMessages.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-
-    logger.debug('conversation.history.loader.load_by_app_complete', {
-      appId,
-      totalMessages: allMessages.length,
-    });
-
-    let llmMessages = this.convertToLLMMessages(allMessages);
-
-    if (enableCompression) {
-      const compressionResult = this.compressor.compressMessages(llmMessages);
-      llmMessages = compressionResult.messages;
-
-      logger.info('conversation.history.compression.applied', {
-        appId,
-        originalMessages: compressionResult.stats.totalMessages,
-        compressedMessages: compressionResult.stats.compressedMessages,
-        originalLength: compressionResult.stats.originalTotalLength,
-        compressedLength: compressionResult.stats.compressedTotalLength,
-        compressionRatio: compressionResult.stats.compressionRatio,
-        savedBytes: compressionResult.stats.originalTotalLength - compressionResult.stats.compressedTotalLength,
-        strategiesUsed: compressionResult.stats.strategiesUsed,
-      });
-    }
-
-    return await this.applyTokenLimit(llmMessages, maxTokens, modelName);
-  }
-
-  /**
-   * Load messages with summarization, compression, and token limit applied
-   * Checks for existing summaries and replaces message ranges with summary messages
+   * Load messages with compression and token limit applied for a specific conversation.
+   * This is the primary entry point for conversation history loading in the websocket flow.
    *
-   * @param appId - ID of the app
-   * @param maxTokens - Maximum tokens to include (default: 40000)
-   * @param modelName - Model name for accurate token counting
-   * @param enableCompression - Whether to apply compression (default: true)
-   * @param enableSummarization - Whether to use summaries (default: true)
-   * @returns Token-limited array of LLM messages with summaries injected
-   */
-  async loadMessagesWithSummarization(
-    appId: string,
-    maxTokens: number = 40000,
-    modelName?: string,
-    enableCompression: boolean = true,
-    enableSummarization: boolean = true
-  ): Promise<ConversationHistoryWithSummary> {
-    logger.debug('conversation.history.loader.load_with_summarization.begin', {
-      appId,
-      enableSummarization,
-    });
-
-    // OPTIMIZATION: Check for summary FIRST before loading messages
-    // If summary exists, only load messages after the summary's end point
-    // This avoids loading potentially thousands of old messages from the database
-    let latestSummary: ConversationSummary | null = null;
-    let messagesAfterSummary: DatabaseMessage[] = [];
-
-    if (enableSummarization && this.summarizationStrategy) {
-      latestSummary = await this.summaryRepo.findLatestForApp(appId);
-
-      if (latestSummary) {
-        // Only load messages AFTER the summary's end point
-        messagesAfterSummary = await this.conversationRepo.getMessagesAfterMessageId(
-          appId,
-          latestSummary.messageRangeEnd
-        );
-
-        // STALE SUMMARY DETECTION: If no messages returned, verify the reference still exists
-        // This handles edge cases where conversation messages were deleted/migrated but summary remains
-        // The extra getMessageById call only happens when messagesAfterSummary is empty, which is
-        // the less common case (most loads have new messages since the last summary)
-        if (messagesAfterSummary.length === 0) {
-          const refExists = await this.conversationRepo.getMessageById(latestSummary.messageRangeEnd);
-          if (!refExists) {
-            // Reference message missing - summary is stale, fall back to loading all
-            logger.warn('conversation.history.loader.summary_ref_missing', {
-              appId,
-              summaryId: latestSummary.id,
-              messageRangeEnd: latestSummary.messageRangeEnd,
-            });
-            latestSummary = null;
-          }
-          // If refExists but no new messages, that's fine - we just have summary + 0 new messages
-        }
-
-        if (latestSummary) {
-          logger.debug('conversation.history.loader.summary_optimized_load', {
-            appId,
-            summaryId: latestSummary.id,
-            messagesAfterSummary: messagesAfterSummary.length,
-            skippedMessages: latestSummary.messageCount ?? 'unknown',
-          });
-        }
-      }
-    }
-
-    // Fall back to loading all messages if no valid summary
-    let allMessages: DatabaseMessage[];
-    if (latestSummary) {
-      // Use only messages after summary
-      allMessages = messagesAfterSummary;
-    } else {
-      // No summary - load all messages
-      const conversations = await this.conversationRepo.getByAppId(appId);
-      allMessages = [];
-
-      for (const conversation of conversations) {
-        const messages = await this.conversationRepo.getMessagesForHistory(conversation.id);
-        allMessages.push(
-          ...messages.map((msg) => ({
-            ...msg,
-            conversationId: conversation.id,
-          }))
-        );
-      }
-
-      logger.debug('conversation.history.loader.full_load', {
-        appId,
-        conversationsCount: conversations.length,
-        totalMessages: allMessages.length,
-      });
-    }
-
-    allMessages.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-
-    // Build LLM messages for conversation history
-    // Summary is injected as cacheable user messages (NOT system prompt) for security
-    // User-derived content should never be elevated to system prompt privilege
-    const llmMessages: LLMMessage[] = [];
-
-    if (latestSummary) {
-      // Add operation log first (if available) - provides cumulative record of all operations
-      // This survives compression and ensures the agent sees what files were touched
-      // SECURITY: Injected as user message to prevent prompt injection via system prompt
-      if (latestSummary.operationLog) {
-        llmMessages.push({
-          role: 'user',
-          content: `[OPERATION LOG - Cumulative record of all work done]\n${latestSummary.operationLog}`,
-          metadata: { isOperationLog: true },
-        });
-      }
-
-      // Add summary as user message with cache control
-      // SECURITY: User-derived summaries must remain as user messages, not system prompts
-      // System prompts have higher privilege and could enable prompt injection attacks
-      // The latest summary contains the full cumulative summary text. Incremental summarization
-      // updates this summary by including only new messages since the last summary, so the latest
-      // summary alone provides complete historical context without duplication.
-      llmMessages.push({
-        role: 'user',
-        content: `[CONVERSATION SUMMARY]\n${latestSummary.summaryText}`,
-        metadata: { isSummary: true },
-        cachePoint: { type: 'ephemeral' },
-      });
-
-      logger.debug('conversation.history.loader.summary_applied', {
-        appId,
-        summaryId: latestSummary.id,
-        summaryTokens: latestSummary.summaryTokenCount,
-        originalTokens: latestSummary.originalTokenCount,
-        messagesAfterSummary: allMessages.length,
-      });
-    }
-
-    // Add all messages (when no summary) or messages after summary (when summary exists)
-    // allMessages already contains only the relevant messages based on summary check above
-    for (const dbMsg of allMessages) {
-      const converted = this.convertToLLMMessages([dbMsg]);
-      llmMessages.push(...converted);
-    }
-
-    logger.debug('conversation.history.loader.load_with_summarization.complete', {
-      appId,
-      hasSummary: !!latestSummary,
-      totalMessages: allMessages.length,
-      llmMessagesCount: llmMessages.length,
-    });
-
-    let compressedMessages = llmMessages;
-
-    // Apply compression strategies based on summarization status
-    if (latestSummary) {
-      // When summarization is active, only run removal strategies for correctness
-      // (removes stale app context, todoList entries, etc.)
-      const removalResult = this.compressor.compressMessages(llmMessages, 'removal');
-      compressedMessages = removalResult.messages;
-
-      logger.info('conversation.history.removal_only.applied', {
-        appId,
-        reason: 'summarization_active',
-        originalMessages: removalResult.stats.totalMessages,
-        afterRemoval: removalResult.messages.length,
-        removedMessages: removalResult.stats.totalMessages - removalResult.messages.length,
-        strategiesUsed: removalResult.stats.strategiesUsed,
-      });
-    } else if (enableCompression) {
-      // When summarization is not active, run all compression strategies
-      const compressionResult = this.compressor.compressMessages(llmMessages);
-      compressedMessages = compressionResult.messages;
-
-      logger.info('conversation.history.compression.applied', {
-        appId,
-        originalMessages: compressionResult.stats.totalMessages,
-        compressedMessages: compressionResult.stats.compressedMessages,
-        originalLength: compressionResult.stats.originalTotalLength,
-        compressedLength: compressionResult.stats.compressedTotalLength,
-        compressionRatio: compressionResult.stats.compressionRatio,
-        savedBytes: compressionResult.stats.originalTotalLength - compressionResult.stats.compressedTotalLength,
-        strategiesUsed: compressionResult.stats.strategiesUsed,
-      });
-    }
-
-    const limitedMessages = await this.applyTokenLimit(compressedMessages, maxTokens, modelName);
-    // Summary is now injected as user messages in the history, not returned separately
-    // This prevents user-derived content from being elevated to system prompt privilege
-    return { messages: limitedMessages };
-  }
-
-  /**
-   * Load messages with compression and token limit applied for a specific conversation
-   * This should be used when you have a conversationId (e.g., during agent handoffs)
+   * When appId is provided, enables cache-aware features:
+   * - Summary pin refresh (ensures contextProvider reads a stable summary version)
+   * - Stable prefix compression (prevents mutation strategies from busting Anthropic cache)
+   *
    * @param conversationId - ID of the conversation
    * @param maxTokens - Maximum tokens to include (default: 40000)
    * @param modelName - Model name for accurate token counting
@@ -851,16 +572,33 @@ export class ConversationHistoryLoader {
     conversationId: string,
     maxTokens: number = 40000,
     modelName?: string,
-    enableCompression: boolean = true
+    enableCompression: boolean = true,
+    appId?: string
   ): Promise<LLMMessage[]> {
+    // When appId is available, refresh the summary pin so contextProvider reads a stable version.
+    // Note: on agent handoff, ai-transport reloads conversation history within the same user turn,
+    // which increments turnCount a second time. This is low impact (at worst loses 1 extra turn
+    // of pin life per handoff) and not worth guarding against.
+    if (appId) {
+      await this.getPinnedOrLatestSummary(appId);
+    }
+
     const dbMessages = await this.loadDatabaseMessagesByConversationId(conversationId);
     let llmMessages = this.convertToLLMMessages(dbMessages);
 
     if (enableCompression) {
-      const compressionResult = this.compressor.compressMessages(llmMessages);
+      // Use previous turn's message count as stable region boundary to prevent
+      // mutation strategies from changing prefix bytes and invalidating the Anthropic cache
+      const prevCount = appId ? (this.previousTurnMessageCount.get(appId) ?? 0) : 0;
+      const stableRegionEnd = prevCount > 0
+        ? Math.min(prevCount, llmMessages.length)
+        : undefined;
+
+      const compressionResult = this.compressor.compressMessages(llmMessages, undefined, stableRegionEnd);
       llmMessages = compressionResult.messages;
 
       logger.info('conversation.history.compression.applied', {
+        appId,
         conversationId,
         originalMessages: compressionResult.stats.totalMessages,
         compressedMessages: compressionResult.stats.compressedMessages,
@@ -869,17 +607,25 @@ export class ConversationHistoryLoader {
         compressionRatio: compressionResult.stats.compressionRatio,
         savedBytes: compressionResult.stats.originalTotalLength - compressionResult.stats.compressedTotalLength,
         strategiesUsed: compressionResult.stats.strategiesUsed,
+        stableRegionEnd,
       });
     }
 
-    return await this.applyTokenLimit(llmMessages, maxTokens, modelName);
+    const limitedMessages = await this.applyTokenLimit(llmMessages, maxTokens, modelName);
+
+    // Track post-token-limit count for next turn's stable region calculation
+    if (appId) {
+      this.previousTurnMessageCount.set(appId, limitedMessages.length);
+    }
+
+    return limitedMessages;
   }
 
   /**
    * Format LLM messages for AI SDK ConversationMessage format
    * AI SDK v6 supports ModelMessage union type including ToolModelMessage
    * Converts tool results to AI SDK v6 format with tool-result parts
-   * @param llmMessages - Array of LLM messages from loadMessagesWithTokenLimit
+   * @param llmMessages - Array of LLM messages from loadMessagesWithTokenLimitByConversationId
    * @param appId - App ID for logging
    * @param agentId - Agent ID for logging
    * @returns Array formatted for AI SDK with tool messages in v6 ModelMessage format

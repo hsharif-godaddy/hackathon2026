@@ -65,21 +65,21 @@ describe('Multi-Agent Conversation History Integration', () => {
     })
 
     const historyLoader = contextManager.getHistoryLoader()
-    const developMessages = await historyLoader.loadMessagesWithTokenLimit(testAppId, 'develop', 40000)
-    
+    const developMessages = await historyLoader.loadMessagesWithTokenLimitByConversationId(developConversationId, 40000)
+
     expect(developMessages.length).toBeGreaterThan(0)
     const developUserMessage = developMessages.find(m => m.role === 'user' && m.content.includes('login component'))
     const developAssistantMessage = developMessages.find(m => m.role === 'assistant' && m.content.includes('create a login component'))
-    
+
     expect(developUserMessage).toBeDefined()
     expect(developAssistantMessage).toBeDefined()
-    
-    const developHasDesignMessages = developMessages.some(m => 
+
+    const developHasDesignMessages = developMessages.some(m =>
       m.content.includes('modern button') || m.content.includes('gradients')
     )
     expect(developHasDesignMessages).toBe(false)
 
-    const designMessages = await historyLoader.loadMessagesWithTokenLimit(testAppId, 'design', 40000)
+    const designMessages = await historyLoader.loadMessagesWithTokenLimitByConversationId(designConversationId, 40000)
     
     expect(designMessages.length).toBeGreaterThan(0)
     const designUserMessage = designMessages.find(m => m.role === 'user' && m.content.includes('modern button'))
@@ -134,7 +134,7 @@ describe('Multi-Agent Conversation History Integration', () => {
     expect(agentMessage).toBeDefined()
   })
 
-  it('should handle multiple conversations for the same agent', async () => {
+  it('should load only the specified conversation when loading by conversation ID', async () => {
     const conversation1 = await conversationRepo.create(testAppId, 'develop', 'First Develop Chat')
     const conversation2 = await conversationRepo.create(testAppId, 'develop', 'Second Develop Chat')
 
@@ -145,7 +145,7 @@ describe('Multi-Agent Conversation History Integration', () => {
       await conversationRepo.addMessage(conversation1.id, 'agent', 'Response to first conversation', {
         metadata: { agentId: 'develop' }
       })
-      
+
       await conversationRepo.addMessage(conversation2.id, 'user', 'Second conversation message', {
         metadata: { agentId: 'develop' }
       })
@@ -154,15 +154,12 @@ describe('Multi-Agent Conversation History Integration', () => {
       })
 
       const historyLoader = contextManager.getHistoryLoader()
-      const allDevelopMessages = await historyLoader.loadMessagesWithTokenLimit(testAppId, 'develop', 40000)
-      
-      expect(allDevelopMessages.length).toBeGreaterThanOrEqual(4)
-      
-      const hasFirstConv = allDevelopMessages.some(m => m.content.includes('First conversation'))
-      const hasSecondConv = allDevelopMessages.some(m => m.content.includes('Second conversation'))
-      
-      expect(hasFirstConv).toBe(true)
-      expect(hasSecondConv).toBe(true)
+      const conv1Messages = await historyLoader.loadMessagesWithTokenLimitByConversationId(conversation1.id, 40000)
+
+      // Should only contain messages from conversation1
+      expect(conv1Messages.length).toBe(2)
+      expect(conv1Messages.some(m => m.content.includes('First conversation'))).toBe(true)
+      expect(conv1Messages.some(m => m.content.includes('Second conversation'))).toBe(false)
     } finally {
       const db = getDatabase()
       db.prepare('DELETE FROM conversation_messages WHERE conversation_id IN (?, ?)').run(conversation1.id, conversation2.id)

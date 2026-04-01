@@ -6,6 +6,7 @@ import { createPromptBuilder } from '@airo/ai-lib'
 import { getModularPromptPaths } from '../../utils/prompt-utils.js'
 import { validateAppOwnership } from '../middleware/app-ownership.js'
 import { getPersistentAssetPaths } from '../../utils/persistent-assets.js'
+import { AppContextManager } from '../../services/AppContextManager.js'
 import { readFile } from 'fs/promises'
 
 const router: Router = Router()
@@ -139,22 +140,27 @@ router.get('/context/:appId', validateAppIdParam, async (req: Request, res: Resp
 
         // Load individual components separately for better visualization
 
-        // 1. Get conversation history (actual chat messages) using compressed loader
+        // 1. Get conversation history (actual chat messages) using history loader
         const conversationId = enhancedContext.conversation.conversationId
         if (conversationId) {
-          const historyMessages = await conversationContextManager['loadConversationHistoryCompressed'](
+          const historyLoader = conversationContextManager.getHistoryLoader()
+          const historyMessages = await historyLoader.loadMessagesWithTokenLimitByConversationId(
             conversationId,
-            executionContext
+            40000,
+            undefined,
+            true,
+            appId
           )
-          conversationHistory = historyMessages.messages.map((msg: any) => ({
+          conversationHistory = historyMessages.map((msg: any) => ({
             role: msg.role as 'user' | 'assistant' | 'system',
-            content: msg.content
+            content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
           }))
         }
 
         // 2. Get app context (stable, secrets, media slots) as separate sections
         if (executionContext) {
-          const appContextResult = await conversationContextManager['appContextManager'].generateContextMessage(executionContext)
+          const appContextManager = new AppContextManager()
+          const appContextResult = await appContextManager.generateContextMessage(executionContext)
 
           if (appContextResult.stableContext) {
             const stableTokenResult = await countTokens(appContextResult.stableContext, TOKEN_COUNTING_MODEL)

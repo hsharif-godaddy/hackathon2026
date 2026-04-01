@@ -48,6 +48,13 @@ export interface CompressionStrategy {
   readonly strategyType?: CompressionStrategyType;
 
   /**
+   * Whether this strategy mutates message content (vs removing the message entirely).
+   * Mutation strategies are skipped for messages in the stable cached prefix region
+   * to prevent cache invalidation from content changes between turns.
+   */
+  readonly mutatesContent?: boolean;
+
+  /**
    * Optional: Pre-analyze all messages before compression
    * Used for strategies that need to see the full context (e.g., detecting duplicates)
    */
@@ -89,7 +96,7 @@ export class MessageCompressor {
    * @param strategyTypeFilter - Optional filter to only run strategies of a specific type
    * @returns Compressed messages with compression statistics
    */
-  compressMessages(messages: LLMMessage[], strategyTypeFilter?: CompressionStrategyType): {
+  compressMessages(messages: LLMMessage[], strategyTypeFilter?: CompressionStrategyType, stableRegionEnd?: number): {
     messages: LLMMessage[];
     stats: {
       totalMessages: number;
@@ -155,6 +162,9 @@ export class MessageCompressor {
          typeof message.content === 'string' &&
          message.content.startsWith('[OPERATION LOG'));
 
+      // Check if message is in the stable cached prefix region
+      const inStableRegion = stableRegionEnd !== undefined && i < stableRegionEnd;
+
       if (isSummary || isOperationLog) {
         logger.debug('compression.message.skipped', {
           messageIndex: i,
@@ -163,6 +173,13 @@ export class MessageCompressor {
         });
       } else {
         for (const strategy of activeStrategies) {
+          // Skip mutation strategies for messages in the stable cached prefix
+          // to prevent cache invalidation from content changes between turns.
+          // Removal strategies (which delete entire messages) still run - they're
+          // idempotent across turns (same messages get removed each time).
+          if (inStableRegion && strategy.mutatesContent) {
+            continue;
+          }
           if (strategy.canCompress(context)) {
             const result = strategy.compress(context);
             if (result !== undefined) {

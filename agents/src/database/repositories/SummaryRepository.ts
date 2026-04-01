@@ -10,6 +10,35 @@ export class SummaryRepository {
   private db = getDatabase();
 
   /**
+   * Map a database row to a ConversationSummary object
+   */
+  private mapRow(row: any): ConversationSummary {
+    const summary: ConversationSummary = {
+      id: row.id,
+      appId: row.app_id,
+      conversationId: row.conversation_id || undefined,
+      summaryText: row.summary_text,
+      messageRangeStart: row.message_range_start,
+      messageRangeEnd: row.message_range_end,
+      messageCount: row.message_count,
+      originalTokenCount: row.original_token_count,
+      summaryTokenCount: row.summary_token_count,
+      modelUsed: row.model_used,
+      createdAt: new Date(row.created_at),
+    };
+    if (row.operation_log) {
+      summary.operationLog = row.operation_log;
+    }
+    if (row.incremental_update_count !== null && row.incremental_update_count !== undefined) {
+      summary.incrementalUpdateCount = row.incremental_update_count;
+    }
+    if (row.last_full_summarization_at) {
+      summary.lastFullSummarizationAt = new Date(row.last_full_summarization_at);
+    }
+    return summary;
+  }
+
+  /**
    * Create a new conversation summary
    * 
    * @param summary - Summarization result to store
@@ -99,40 +128,24 @@ export class SummaryRepository {
       ORDER BY created_at ASC
     `);
     const rows = stmt.all(appId) as any[];
+    return rows.map(row => this.mapRow(row));
+  }
 
-    return rows.map(row => {
-      const summary: ConversationSummary = {
-        id: row.id,
-        appId: row.app_id,
-        conversationId: row.conversation_id || undefined,
-        summaryText: row.summary_text,
-        messageRangeStart: row.message_range_start,
-        messageRangeEnd: row.message_range_end,
-        messageCount: row.message_count,
-        originalTokenCount: row.original_token_count,
-        summaryTokenCount: row.summary_token_count,
-        modelUsed: row.model_used,
-        createdAt: new Date(row.created_at),
-      };
-      if (row.operation_log) {
-        summary.operationLog = row.operation_log;
-      }
-      if (row.incremental_update_count !== null && row.incremental_update_count !== undefined) {
-        summary.incrementalUpdateCount = row.incremental_update_count;
-      }
-      if (row.last_full_summarization_at) {
-        summary.lastFullSummarizationAt = new Date(row.last_full_summarization_at);
-      }
-      return summary;
-    });
+  /**
+   * Find a summary by its unique ID
+   */
+  async findById(summaryId: string): Promise<ConversationSummary | null> {
+    const stmt = this.db.prepare(`
+      SELECT * FROM conversation_summaries
+      WHERE id = ?
+      LIMIT 1
+    `);
+    const row = stmt.get(summaryId) as any;
+    return row ? this.mapRow(row) : null;
   }
 
   /**
    * Find summary by message range
-   * 
-   * @param startId - Start message ID
-   * @param endId - End message ID
-   * @returns Summary if found, null otherwise
    */
   async findByMessageRange(startId: string, endId: string): Promise<ConversationSummary | null> {
     const stmt = this.db.prepare(`
@@ -142,39 +155,11 @@ export class SummaryRepository {
       LIMIT 1
     `);
     const row = stmt.get(startId, endId) as any;
-
-    if (!row) return null;
-
-    const summary: ConversationSummary = {
-      id: row.id,
-      appId: row.app_id,
-      conversationId: row.conversation_id || undefined,
-      summaryText: row.summary_text,
-      messageRangeStart: row.message_range_start,
-      messageRangeEnd: row.message_range_end,
-      messageCount: row.message_count,
-      originalTokenCount: row.original_token_count,
-      summaryTokenCount: row.summary_token_count,
-      modelUsed: row.model_used,
-      createdAt: new Date(row.created_at),
-    };
-    if (row.operation_log) {
-      summary.operationLog = row.operation_log;
-    }
-    if (row.incremental_update_count !== null && row.incremental_update_count !== undefined) {
-      summary.incrementalUpdateCount = row.incremental_update_count;
-    }
-    if (row.last_full_summarization_at) {
-      summary.lastFullSummarizationAt = new Date(row.last_full_summarization_at);
-    }
-    return summary;
+    return row ? this.mapRow(row) : null;
   }
 
   /**
    * Find the latest summary for an app
-   * 
-   * @param appId - ID of the app
-   * @returns Latest summary if found, null otherwise
    */
   async findLatestForApp(appId: string): Promise<ConversationSummary | null> {
     const stmt = this.db.prepare(`
@@ -184,32 +169,7 @@ export class SummaryRepository {
       LIMIT 1
     `);
     const row = stmt.get(appId) as any;
-
-    if (!row) return null;
-
-    const summary: ConversationSummary = {
-      id: row.id,
-      appId: row.app_id,
-      conversationId: row.conversation_id || undefined,
-      summaryText: row.summary_text,
-      messageRangeStart: row.message_range_start,
-      messageRangeEnd: row.message_range_end,
-      messageCount: row.message_count,
-      originalTokenCount: row.original_token_count,
-      summaryTokenCount: row.summary_token_count,
-      modelUsed: row.model_used,
-      createdAt: new Date(row.created_at),
-    };
-    if (row.operation_log) {
-      summary.operationLog = row.operation_log;
-    }
-    if (row.incremental_update_count !== null && row.incremental_update_count !== undefined) {
-      summary.incrementalUpdateCount = row.incremental_update_count;
-    }
-    if (row.last_full_summarization_at) {
-      summary.lastFullSummarizationAt = new Date(row.last_full_summarization_at);
-    }
-    return summary;
+    return row ? this.mapRow(row) : null;
   }
 
   /**

@@ -13,6 +13,11 @@ import {
  */
 export class DuplicateFileReadStrategy implements CompressionStrategy {
   readonly name = 'duplicate-file-read';
+  // strategyType defaults to 'compression' - only runs when summarization is inactive.
+  // When summarization IS active, removal-only filtering excludes this strategy entirely.
+  // Mutates tool result content rather than removing messages - must be skipped
+  // in the stable cached prefix region to prevent cache invalidation
+  readonly mutatesContent = true;
 
   private fileReads = new Map<string, number[]>(); // filePath -> messageIndices
 

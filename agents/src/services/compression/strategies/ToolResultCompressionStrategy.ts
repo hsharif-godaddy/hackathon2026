@@ -25,9 +25,12 @@ const EDIT_TOOL_NAMES = ['str_replace_based_edit_tool', 'textEditor'];
  */
 export class ToolResultCompressionStrategy implements CompressionStrategy {
   readonly name = 'tool-result-compression';
-  // 'removal' ensures this runs even when summarization is active — old edit results
+  // 'removal' ensures this runs even when summarization is active - old edit results
   // are redundant regardless of summarization state
   readonly strategyType = 'removal' as const;
+  // Mutates tool result content rather than removing messages - must be skipped
+  // in the stable cached prefix region to prevent cache invalidation
+  readonly mutatesContent = true;
 
   private editRecords: EditRecord[] = [];
   /** Per-file: the message index of the most recent edit (success or failure) */
