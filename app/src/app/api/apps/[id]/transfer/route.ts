@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { agentFetch } from '@/lib/agent-fetch';
+import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
@@ -34,6 +36,47 @@ export const POST = withCustomerAuth(async (
 
     if (!body.targetEmail) {
       return NextResponse.json({ error: 'targetEmail is required' }, { status: 400 });
+    }
+
+    const adapter = getControlPlaneAdapter();
+    const site = await adapter.getSite(id, authContext.jwt);
+
+    if (!site) {
+      return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+    }
+
+    const agentBaseUrl = site.agent_url || process.env.AGENTS_SERVICE_URL || 'http://localhost:4000';
+
+    try {
+      const validateResponse = await agentFetch(
+        `${agentBaseUrl}/apps/${id}/transfer/validate`,
+        { siteId: id }
+      );
+      if (validateResponse.ok) {
+        const validation = await validateResponse.json();
+        if (!validation.canTransfer) {
+          logger.warn('transfer.initiate.blocked', { appId: id, gdCommerce: validation.gdCommerce });
+          return NextResponse.json(
+            { error: 'Transfer is unavailable for apps with GoDaddy Commerce integration' },
+            { status: 403 }
+          );
+        }
+      } else {
+        logger.error('transfer.validate.preflight.failure', { appId: id, status: validateResponse.status });
+        return NextResponse.json(
+          { error: 'Unable to verify transfer eligibility' },
+          { status: 503 }
+        );
+      }
+    } catch (error) {
+      logger.error('transfer.validate.preflight.error', {
+        appId: id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return NextResponse.json(
+        { error: 'Unable to verify transfer eligibility' },
+        { status: 503 }
+      );
     }
 
     const data = await createClient(authContext.jwt).initiateTransfer(id, body.targetEmail);

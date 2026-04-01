@@ -62,6 +62,8 @@ export default function AppCard({ site }: { site: SiteInfo }) {
   const [activeTransfer, setActiveTransfer] = useState<ActiveTransfer | null>(null)
   const [copied, setCopied] = useState(false)
   const [isUnpublishModalOpen, setIsUnpublishModalOpen] = useState(false)
+  const [transferValidating, setTransferValidating] = useState(false)
+  const [transferBlockedReason, setTransferBlockedReason] = useState<string | null>(null)
   const [newName, setNewName] = useState(site.name || '')
   const [renameError, setRenameError] = useState<string | null>(null)
 
@@ -165,6 +167,36 @@ export default function AppCard({ site }: { site: SiteInfo }) {
       setCancelTransferError(t('builder_transfer_error_cancel_failed', undefined, 'Failed to cancel transfer. Please try again.'))
     } finally {
       setActionLoading(null)
+    }
+  }
+
+  const handleTransferClick = async () => {
+    setTransferValidating(true)
+    setTransferBlockedReason(null)
+    try {
+      const response = await appFetch(`/api/apps/${site.id}/transfer/validate`)
+      if (!response.ok) {
+        logger.error('transfer.validate.ui.httpError', {
+          appId: site.id,
+          status: response.status,
+        })
+        setTransferBlockedReason(t('builder_transfer_validate_failed', undefined, 'Unable to verify transfer eligibility. Please try again.'))
+        return
+      }
+      const data = await response.json()
+      if (!data.canTransfer) {
+        setTransferBlockedReason(t('builder_transfer_blocked_commerce', undefined, 'Transfer is unavailable for apps with GoDaddy Commerce integration.'))
+        return
+      }
+      setIsTransferDialogOpen(true)
+    } catch (error) {
+      logger.error('transfer.validate.ui.error', {
+        appId: site.id,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      setTransferBlockedReason(t('builder_transfer_validate_failed', undefined, 'Unable to verify transfer eligibility. Please try again.'))
+    } finally {
+      setTransferValidating(false)
     }
   }
 
@@ -298,14 +330,15 @@ export default function AppCard({ site }: { site: SiteInfo }) {
     <MenuItem
       onClick={() => {
         if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
-        setIsTransferDialogOpen(true)
+        handleTransferClick()
       }}
       data-eid={generateClickEID('apps.app.transfer')}
       data-testid="app-card-transfer-button"
+      disabled={transferValidating}
     >
       <Box orientation="horizontal" gap="sm">
         <ShareIcon />
-        <text.span>{t('builder_transfer_menu_item', undefined, 'Transfer')}</text.span>
+        <text.span>{transferValidating ? t('builder_transfer_validating', undefined, 'Validating...') : t('builder_transfer_menu_item', undefined, 'Transfer')}</text.span>
       </Box>
     </MenuItem>
   )
@@ -524,39 +557,56 @@ export default function AppCard({ site }: { site: SiteInfo }) {
 
   return (
     <>
-      <MediaCard
-        as="button"
-        onClick={() => {
-          if (menuClosedRef.current) return;
-          router.push(`/develop/${site.id}?siteId=${site.id}`);
-        }}
-        data-eid={generateClickEID('apps.app.edit')}
-        data-testid="app-card-edit-button"
-        aria-label={t('builder_common_edit') + ' ' + site.name || t('builder_apps_alert_delete_untitled')}
-        className="sm:!flex-row touch-manipulation"
-        cornerActions={cornerActions}
-        title={title}
-        description={description}
-        media={media}
-        mediaBleed={false}
-        mediaStart={true}
-      >
-        {/* Delete Inline Alert */}
-        {alertState.siteId === site.id && alertState.type === 'delete' && (
-          <InlineAlert
-            message={alertState.message}
-            onConfirm={() => handleDeleteSite(site.id)}
-            onCancel={clearAlert}
-            confirmLabel={actionLoading === site.id ? t('builder_common_deleting') : t('builder_common_delete')}
-            isLoading={actionLoading === site.id}
-          />
-        )}
-        {cancelTransferError && (
-          <div className="px-3 pb-2">
-            <text.span size={-1} emphasis="critical">{cancelTransferError}</text.span>
+      <div>
+        <MediaCard
+          as="button"
+          onClick={(e) => {
+            if (menuClosedRef.current) return;
+            router.push(`/develop/${site.id}?siteId=${site.id}`);
+          }}
+          data-eid={generateClickEID('apps.app.edit')}
+          data-testid="app-card-edit-button"
+          aria-label={t('builder_common_edit') + ' ' + site.name || t('builder_apps_alert_delete_untitled')}
+          className={clsx("sm:!flex-row", transferBlockedReason && "!rounded-b-none")}
+          cornerActions={cornerActions}
+          title={title}
+          description={description}
+          media={media}
+          mediaBleed={false}
+          mediaStart={true}
+        >
+          {/* Delete Inline Alert */}
+          {alertState.siteId === site.id && alertState.type === 'delete' && (
+            <InlineAlert
+              message={alertState.message}
+              onConfirm={() => handleDeleteSite(site.id)}
+              onCancel={clearAlert}
+              confirmLabel={actionLoading === site.id ? t('builder_common_deleting') : t('builder_common_delete')}
+              isLoading={actionLoading === site.id}
+            />
+          )}
+          {/* Cancel Transfer Inline Alert */}
+          {alertState.siteId === site.id && alertState.type === 'cancel-transfer' && (
+            <InlineAlert
+              message={alertState.message}
+              onConfirm={handleCancelTransfer}
+              onCancel={clearAlert}
+              confirmLabel={actionLoading === 'cancel-transfer' ? t('builder_transfer_cancelling', undefined, 'Cancelling...') : t('builder_transfer_cancel_confirm_button', undefined, 'Cancel Transfer')}
+              isLoading={actionLoading === 'cancel-transfer'}
+            />
+          )}
+          {cancelTransferError && (
+            <div className="px-3 pb-2">
+              <text.span size={-1} emphasis="critical">{cancelTransferError}</text.span>
+            </div>
+          )}
+        </MediaCard>
+        {transferBlockedReason && (
+          <div className="border border-t-0 border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor rounded-b-xl px-4 py-2.5" data-testid="transfer-blocked-reason">
+            <text.span size={-1} emphasis="critical">{transferBlockedReason}</text.span>
           </div>
         )}
-      </MediaCard>
+      </div>
 
       {/* Transfer Dialog */}
       {isTransferEnabled && isTransferDialogOpen && (

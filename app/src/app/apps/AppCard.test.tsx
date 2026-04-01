@@ -15,6 +15,7 @@ import { renderWithProviders } from '@/tests/test-utils';
 import AppCard, { AppCardEmptyState } from './AppCard';
 
 vi.mock('@/lib/gasket-config');
+vi.mock('@/app/apps/components/TransferInitiateDialog', () => ({ default: () => null }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(() => ({ data: true, isLoading: false, error: null })),
@@ -820,6 +821,122 @@ describe('AppCard', () => {
       await user.click(screen.getByText('Cancel Transfer'));
 
       expect(screen.getByText(/Cancel transfer for/)).toBeInTheDocument();
+    });
+  });
+
+  describe('transfer validation flow', () => {
+    function mockTransferValidation(canTransfer: boolean, gdCommerce: boolean) {
+      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+        if (typeof url === 'string' && url.includes('/transfer/validate')) {
+          return { ok: true, json: async () => ({ canTransfer, gdCommerce }) } as Response;
+        }
+        if (typeof url === 'string' && url.includes('/transfer')) {
+          return { ok: false, status: 404, json: async () => ({}) } as Response;
+        }
+        return { ok: true, json: async () => mockSite } as Response;
+      });
+    }
+
+    it('should call validate endpoint when Transfer is clicked', async function callsValidate() {
+      mockTransferValidation(true, false);
+
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalled();
+      });
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('app-card-transfer-button')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByTestId('app-card-transfer-button'));
+
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalledWith(`/api/apps/${mockSite.id}/transfer/validate`);
+      });
+    });
+
+    it('should show blocked message when canTransfer is false', async function blockedByCommerce() {
+      mockTransferValidation(false, true);
+
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalled();
+      });
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('app-card-transfer-button')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByTestId('app-card-transfer-button'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('transfer-blocked-reason')).toBeInTheDocument();
+        expect(screen.getByText(/Transfer is unavailable/)).toBeInTheDocument();
+      });
+    });
+
+    it('should open transfer dialog when canTransfer is true', async function allowsTransfer() {
+      mockTransferValidation(true, false);
+
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalled();
+      });
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('app-card-transfer-button')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByTestId('app-card-transfer-button'));
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('transfer-blocked-reason')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should show error message when validate endpoint fails', async function validateFails() {
+      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+        if (typeof url === 'string' && url.includes('/transfer/validate')) {
+          return { ok: false, status: 500, json: async () => ({}) } as Response;
+        }
+        if (typeof url === 'string' && url.includes('/transfer')) {
+          return { ok: false, status: 404, json: async () => ({}) } as Response;
+        }
+        return { ok: true, json: async () => mockSite } as Response;
+      });
+
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalled();
+      });
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('app-card-transfer-button')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByTestId('app-card-transfer-button'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('transfer-blocked-reason')).toBeInTheDocument();
+        expect(screen.getByText(/Unable to verify transfer eligibility/)).toBeInTheDocument();
+      });
     });
   });
 });
