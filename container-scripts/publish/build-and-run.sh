@@ -48,7 +48,7 @@ log "Installing dependencies with $PACKAGE_MANAGER"
 if [[ $PACKAGE_MANAGER == "pnpm" ]]; then
     CI=true pnpm install --frozen-lockfile || error_exit "Failed to install dependencies with pnpm"
 else
-    CI=true NODE_ENV=development npm ci --no-fund --no-audit || error_exit "Failed to install dependencies with npm"
+    CI=true NODE_ENV=development npm install --legacy-peer-deps --no-fund --no-audit || error_exit "Failed to install dependencies with npm"
 fi
 log "Dependencies installed successfully"
 
