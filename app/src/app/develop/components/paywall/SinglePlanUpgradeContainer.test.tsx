@@ -15,8 +15,6 @@ const mockOnErrorClick = vi.fn();
 const mockInvalidateQueries = vi.fn();
 const mockRefetchQueries = vi.fn().mockResolvedValue(undefined);
 const mockGetQueryData = vi.fn();
-const mockUseSwitchboard = vi.fn();
-
 vi.mock('@/hooks/useGasketData', () => ({
   useGasketData: () => ({
     cds: 'mock-cds-url',
@@ -41,10 +39,6 @@ vi.mock('@tanstack/react-query', async () => {
     }),
   };
 });
-
-vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: () => mockUseSwitchboard(),
-}));
 
 vi.mock('@/hooks/useSubscription', () => ({
   useSubscription: () => ({
@@ -100,8 +94,6 @@ vi.mock('./cdsLoader', () => ({
 describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
-    mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false, error: null });
-    // Return plan for planBeforePurchase capture
     mockGetQueryData.mockReturnValue({ active: { plan: 'free' } });
     // Default: polling succeeds (plan changed)
     mockWaitForQueryUpdate.mockResolvedValue(true);
@@ -120,23 +112,7 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
       });
     });
 
-    it('should use AiroPlus productId when grants feature is disabled', async function airoPlusProductId() {
-      mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false, error: null });
-
-      renderWithProviders(
-        <SinglePlanUpgradeContainer
-          onClose={mockOnClose}
-        />
-      );
-
-      await waitFor(function checkProductId() {
-        expect(screen.getByTestId('product-id').textContent).toBe('AiroPlusAppBuilderProduct');
-      });
-    });
-
-    it('should use AiroBuilder productId when grants feature is enabled', async function airoBuilderProductId() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false, error: null });
-
+    it('should use AiroBuilder productId', async function airoBuilderProductId() {
       renderWithProviders(
         <SinglePlanUpgradeContainer
           onClose={mockOnClose}
@@ -148,9 +124,7 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
       });
     });
 
-    it('should pass entitlementId when grants feature is enabled', async function passEntitlementId() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false, error: null });
-
+    it('should pass entitlementId from subscription', async function passEntitlementId() {
       renderWithProviders(
         <SinglePlanUpgradeContainer
           onClose={mockOnClose}
@@ -159,20 +133,6 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
 
       await waitFor(function checkEntitlementId() {
         expect(screen.getByTestId('entitlement-id').textContent).toBe('test-entitlement-123');
-      });
-    });
-
-    it('should not pass entitlementId when grants feature is disabled', async function noEntitlementId() {
-      mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false, error: null });
-
-      renderWithProviders(
-        <SinglePlanUpgradeContainer
-          onClose={mockOnClose}
-        />
-      );
-
-      await waitFor(function checkNoEntitlementId() {
-        expect(screen.getByTestId('entitlement-id').textContent).toBe('');
       });
     });
 
@@ -312,7 +272,7 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
       await waitFor(function checkTimeoutLog() {
         expect(shipAnalyticsLog).toHaveBeenCalledWith('airoplus.purchase.polling-timeout', {
           source: 'test-source',
-          productId: 'AiroPlusAppBuilderProduct',
+          productId: 'AiroBuilderProduct',
           planBeforePurchase: 'free',
         });
       });
@@ -344,8 +304,6 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
       const { shipAnalyticsLog } = await import('@/lib/logging');
       const { logImpressionEvent } = await import('@/utils/instrumentation');
 
-      mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false, error: null });
-
       const { user } = renderWithProviders(
         <SinglePlanUpgradeContainer
           onClose={mockOnClose}
@@ -367,37 +325,8 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
 
       expect(shipAnalyticsLog).toHaveBeenCalledWith('airoplus.purchase.in-app', {
         source: 'test-source',
-        productId: 'AiroPlusAppBuilderProduct',
+        productId: 'AiroBuilderProduct',
         fromPlan: 'free',
-      });
-    });
-
-    it('should log analytics with AiroBuilder productId when grants enabled', async function logAnalyticsWithGrants() {
-      const { shipAnalyticsLog } = await import('@/lib/logging');
-
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false, error: null });
-
-      const { user } = renderWithProviders(
-        <SinglePlanUpgradeContainer
-          onClose={mockOnClose}
-          onSuccessClick={mockOnSuccessClick}
-          source="test-source"
-        />
-      );
-
-      await waitFor(function waitForModal() {
-        expect(screen.getByTestId('success-button')).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByTestId('success-button'));
-
-      // Wait for async handleSuccess to complete
-      await waitFor(function checkAnalytics() {
-        expect(shipAnalyticsLog).toHaveBeenCalledWith('airoplus.purchase.in-app', {
-          source: 'test-source',
-          productId: 'AiroBuilderProduct',
-          fromPlan: 'free',
-        });
       });
     });
 
@@ -405,7 +334,6 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
       const { shipAnalyticsLog } = await import('@/lib/logging');
       const { logImpressionEvent } = await import('@/utils/instrumentation');
 
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false, error: null });
       // First call returns 'free' (before purchase), second call returns 'starter' (after purchase)
       mockGetQueryData
         .mockReturnValueOnce({ active: { plan: 'free' } })

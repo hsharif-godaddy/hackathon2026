@@ -157,7 +157,6 @@ interface DevelopPageStore {
   // UI loading indicators
   isRestarting: boolean
   hasUnsavedChanges: boolean
-  isPollingEntitlements: boolean
 
   // Version history UI
   isVersionHistoryOpen: boolean
@@ -231,8 +230,6 @@ interface DevelopPageStore {
   setIsMobile: (isMobile: boolean) => void
   setIsVersionHistoryOpen: (open: boolean) => void
   setIsPreviewVisible: (visible: boolean) => void
-  setIsPollingEntitlements: (isPolling: boolean) => void
-
   // Tab setters
   setActiveChatTab: (tab: ChatTab) => void
   setActiveSettingsSection: (section: SettingsSection) => void
@@ -339,7 +336,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     isPreviewVisible: false,
     isRestarting: false,
     hasUnsavedChanges: false,
-    isPollingEntitlements: false,
     isVersionHistoryOpen: false,
 
     // Tab state (initialized from URL in useChatTabs)
@@ -401,7 +397,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setChatPaneWidth: (width) => set((state) => { state.chatPaneWidth = width }),
     setIsChatPaneCollapsed: (collapsed) => set((state) => { state.isChatPaneCollapsed = collapsed }),
     setHasUnsavedChanges: (hasChanges) => set((state) => { state.hasUnsavedChanges = hasChanges }),
-    setIsPollingEntitlements: (isPolling) => set((state) => { state.isPollingEntitlements = isPolling }),
     setIsMobile: (isMobile) => set((state) => {
       const wasMobileGoingToDesktop = state.isMobile === true && isMobile === false
       state.isMobile = isMobile

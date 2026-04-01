@@ -130,14 +130,9 @@ vi.mock('@/app/develop/components/utils', () => ({
 }));
 
 // Mock grants-related hooks and utilities
-const mockSwitchboardData = { data: false };
 const mockSubscriptionData = { data: undefined as { id: string } | undefined };
 const mockGrantsData = { data: undefined as any[] | undefined, isFetching: false };
 const mockActiveGrant = { result: undefined as any };
-
-vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: () => mockSwitchboardData,
-}));
 
 vi.mock('@/hooks/useSubscription', () => ({
   useSubscription: () => mockSubscriptionData,
@@ -200,7 +195,6 @@ describe('ChatPane', () => {
     mockStreamingStore.historyLoadingComplete = true;
 
     // Reset grants-related mocks
-    mockSwitchboardData.data = false;
     mockSubscriptionData.data = undefined;
     mockGrantsData.data = undefined;
     mockGrantsData.isFetching = false;
@@ -409,7 +403,7 @@ describe('ChatPane', () => {
 
     it('should disable input when budget exceeded and grants feature is disabled', () => {
       mockStreamingStore.messages = [{ budgetExceeded: true }];
-      mockSwitchboardData.data = false;
+
 
       renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
@@ -419,7 +413,7 @@ describe('ChatPane', () => {
 
     it('should disable input when budget exceeded, grants enabled, but no available credits', () => {
       mockStreamingStore.messages = [{ budgetExceeded: true }];
-      mockSwitchboardData.data = true;
+
       mockSubscriptionData.data = { id: 'sub-123' };
       mockGrantsData.data = [{ id: 'grant-1', creditsSpent: 100, creditsMax: 100 }];
       mockActiveGrant.result = undefined; // No active grant available
@@ -432,7 +426,7 @@ describe('ChatPane', () => {
 
     it('should NOT disable input when budget exceeded but grants show available credits', () => {
       mockStreamingStore.messages = [{ budgetExceeded: true }];
-      mockSwitchboardData.data = true;
+
       mockSubscriptionData.data = { id: 'sub-123' };
       mockGrantsData.data = [{ id: 'grant-1', creditsSpent: 50, creditsMax: 100 }];
       mockActiveGrant.result = { id: 'grant-1' }; // Active grant available
@@ -449,7 +443,7 @@ describe('ChatPane', () => {
       // so we default to disabled. This does NOT affect users who never hit
       // budget exceeded (budgetExceededFlag would be false).
       mockStreamingStore.messages = [{ budgetExceeded: true }];
-      mockSwitchboardData.data = true;
+
       mockSubscriptionData.data = { id: 'sub-123' };
       mockGrantsData.data = undefined; // Still loading
 
@@ -464,7 +458,7 @@ describe('ChatPane', () => {
       // during grants loading - the flag check comes first
       mockStreamingStore.messages = []; // No budget exceeded in history
       mockStreamingStore.activeStream = null;
-      mockSwitchboardData.data = true;
+
       mockSubscriptionData.data = { id: 'sub-123' };
       mockGrantsData.data = undefined; // Still loading
 
@@ -476,7 +470,7 @@ describe('ChatPane', () => {
 
     it('should disable input when grants enabled but grants array is empty', () => {
       mockStreamingStore.messages = [{ budgetExceeded: true }];
-      mockSwitchboardData.data = true;
+
       mockSubscriptionData.data = { id: 'sub-123' };
       mockGrantsData.data = [];
       mockActiveGrant.result = undefined;
@@ -490,7 +484,7 @@ describe('ChatPane', () => {
     it('should check active stream for budget exceeded flag', () => {
       mockStreamingStore.messages = [];
       mockStreamingStore.activeStream = { budgetExceeded: true };
-      mockSwitchboardData.data = false;
+
 
       renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
@@ -505,7 +499,7 @@ describe('ChatPane', () => {
         { content: 'Hello' },
         { content: 'Budget exceeded', budgetExceeded: true }, // Last message from history
       ];
-      mockSwitchboardData.data = true;
+
       mockSubscriptionData.data = { id: 'sub-123' };
       mockGrantsData.data = [{ id: 'grant-1', creditsSpent: 0, creditsMax: 100 }];
       mockActiveGrant.result = { id: 'grant-1' }; // Fresh grant available
@@ -520,7 +514,7 @@ describe('ChatPane', () => {
       // Simulates: user hit budget exceeded, purchased credits, grants refetched
       // The flag is still true from last message but grants now show credits
       mockStreamingStore.messages = [{ budgetExceeded: true }];
-      mockSwitchboardData.data = true;
+
       mockSubscriptionData.data = { id: 'sub-123' };
       // After purchase, grants data updates with new credit pack
       mockGrantsData.data = [
@@ -540,7 +534,7 @@ describe('ChatPane', () => {
       // but has never sent a message yet (no budget error in message history)
       mockStreamingStore.messages = [];
       mockStreamingStore.activeStream = null;
-      mockSwitchboardData.data = true;
+
       mockSubscriptionData.data = { id: 'sub-123' };
       mockGrantsData.data = [{ id: 'grant-1', creditsSpent: 100, creditsMax: 100 }];
       mockActiveGrant.result = undefined; // No active grant
@@ -555,7 +549,7 @@ describe('ChatPane', () => {
       // NEW: proactive check — user has grants enabled but no grants at all
       mockStreamingStore.messages = [];
       mockStreamingStore.activeStream = null;
-      mockSwitchboardData.data = true;
+
       mockSubscriptionData.data = { id: 'sub-123' };
       mockGrantsData.data = [];
       mockActiveGrant.result = undefined;
@@ -566,25 +560,11 @@ describe('ChatPane', () => {
       expect(chatInput).toHaveAttribute('data-budget-exceeded', 'true');
     });
 
-    it('should NOT disable input proactively when grants feature is disabled even if no grants found', () => {
-      // Grants feature off — proactive check must not trigger
-      mockStreamingStore.messages = [];
-      mockStreamingStore.activeStream = null;
-      mockSwitchboardData.data = false; // Feature disabled
-      mockGrantsData.data = []; // Would look exhausted if feature were on
-      mockActiveGrant.result = undefined;
-
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
-
-      const chatInput = screen.getByTestId('chat-input');
-      expect(chatInput).toHaveAttribute('data-budget-exceeded', 'false');
-    });
-
     it('should NOT disable input proactively while grants are still loading', () => {
       // Loading state safety — grants undefined means fetch in progress, do not block
       mockStreamingStore.messages = [];
       mockStreamingStore.activeStream = null;
-      mockSwitchboardData.data = true;
+
       mockSubscriptionData.data = { id: 'sub-123' };
       mockGrantsData.data = undefined; // Still fetching
 
@@ -599,7 +579,7 @@ describe('ChatPane', () => {
       // grantsLoaded=false (isFetching guard) but budgetExceededFlag still drives budgetExceeded=true.
       // The user hit the limit mid-session; a background refetch does not re-enable the input.
       mockStreamingStore.messages = [{ budgetExceeded: true }];
-      mockSwitchboardData.data = true;
+
       mockSubscriptionData.data = { id: 'sub-123' };
       mockGrantsData.data = [{ id: 'grant-1', creditsSpent: 100, creditsMax: 100 }]; // Stale exhausted
       mockGrantsData.isFetching = true; // Background refetch in progress
@@ -617,7 +597,7 @@ describe('ChatPane', () => {
       // isFetching=true means a background refetch is in progress — don't block until it resolves.
       mockStreamingStore.messages = [];
       mockStreamingStore.activeStream = null;
-      mockSwitchboardData.data = true;
+
       mockSubscriptionData.data = { id: 'sub-123' };
       mockGrantsData.data = [{ id: 'grant-1', creditsSpent: 100, creditsMax: 100 }]; // Stale: looks exhausted
       mockGrantsData.isFetching = true; // Background refetch in progress
@@ -629,24 +609,10 @@ describe('ChatPane', () => {
       expect(chatInput).toHaveAttribute('data-budget-exceeded', 'false');
     });
 
-    it('should NOT disable input proactively while switchboard feature flag is still loading', () => {
-      // When isGrantsEnabled is undefined (feature flag fetch in progress), the proactive
-      // check short-circuits to false — do not block the input.
-      mockStreamingStore.messages = [];
-      mockStreamingStore.activeStream = null;
-      mockSwitchboardData.data = undefined; // Feature flag still loading
-      mockGrantsData.data = []; // Would look exhausted if feature were on
-
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
-
-      const chatInput = screen.getByTestId('chat-input');
-      expect(chatInput).toHaveAttribute('data-budget-exceeded', 'false');
-    });
-
     it('should hide proactive banner after user dismisses it', async function dismissBanner() {
       mockStreamingStore.messages = [];
       mockStreamingStore.activeStream = null;
-      mockSwitchboardData.data = true;
+
       mockSubscriptionData.data = { id: 'sub-123' };
       mockGrantsData.data = [{ id: 'grant-1', creditsSpent: 100, creditsMax: 100 }];
       mockActiveGrant.result = undefined;
@@ -667,7 +633,7 @@ describe('ChatPane', () => {
     it('should keep chat enabled for e2s session even when budget is exceeded', function e2sBudgetBypass() {
       mockAuthContextState.authState = { authType: 'e2s' };
       mockStreamingStore.messages = [{ budgetExceeded: true }];
-      mockSwitchboardData.data = false;
+
 
       renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
@@ -678,7 +644,7 @@ describe('ChatPane', () => {
     it('should keep chat enabled for e2s2s session even when budget is exceeded', function e2s2sBudgetBypass() {
       mockAuthContextState.authState = { authType: 'e2s2s' };
       mockStreamingStore.messages = [{ budgetExceeded: true }];
-      mockSwitchboardData.data = false;
+
 
       renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
@@ -689,7 +655,7 @@ describe('ChatPane', () => {
     it('should keep chat enabled for e2s session even with exhausted grants', function e2sExhaustedGrants() {
       mockAuthContextState.authState = { authType: 'e2s' };
       mockStreamingStore.messages = [];
-      mockSwitchboardData.data = true;
+
       mockSubscriptionData.data = { id: 'sub-123' };
       mockGrantsData.data = [{ id: 'grant-1', creditsSpent: 100, creditsMax: 100 }];
       mockActiveGrant.result = undefined;
@@ -703,7 +669,7 @@ describe('ChatPane', () => {
     it('should still disable chat for basic auth sessions when budget is exceeded', function basicBudgetExceeded() {
       mockAuthContextState.authState = { authType: 'basic' };
       mockStreamingStore.messages = [{ budgetExceeded: true }];
-      mockSwitchboardData.data = false;
+
 
       renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 

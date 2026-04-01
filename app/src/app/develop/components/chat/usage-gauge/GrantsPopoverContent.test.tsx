@@ -76,7 +76,6 @@ const mockSubscription = (plan: SubscriptionPlan = SubscriptionPlan.Free, entitl
     isError: false,
     builderEntitlementId: entitlementId,
     isPurchaseDisabled: !entitlementId,
-    isGrantsEnabled: true,
     entitlementPollingTimedOut: false,
   });
 };

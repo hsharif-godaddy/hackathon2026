@@ -2,7 +2,7 @@
  * Publish Limit Configuration and Types
  *
  * This module contains constants and types for managing publish limits
- * based on subscription plans when the app-builder-grants feature flag is enabled.
+ * based on subscription plans.
  */
 
 import type { SiteInfo } from '@/lib/control-plane/types';

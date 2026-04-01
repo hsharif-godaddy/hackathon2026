@@ -9,23 +9,10 @@ import { screen, waitFor } from '@testing-library/react';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { renderWithProviders } from '@/tests/test-utils';
 import { GrantType, SubscriptionPlan } from '@/types/credits';
-import { WarningLevel } from '@/types/usage';
 import UsageGauge from './UsageGauge';
 
 const mockOpenUpgradeModal = vi.fn();
 const mockOpenCreditsModal = vi.fn();
-
-vi.mock('@/hooks/useDailyUsage', () => ({
-  useDailyUsage: vi.fn(() => ({
-    data: { percentage: 65 },
-    isLoading: false,
-    formattedResetTime: { dayKey: 'tomorrow', timeString: '4:10 PM' },
-  })),
-}));
-
-vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => ({ data: false, isLoading: false })),
-}));
 
 vi.mock('@/hooks/useSubscription', () => ({
   useSubscription: vi.fn(() => ({
@@ -57,7 +44,6 @@ vi.mock('@/hooks/useSubscriptionWithPolling', () => ({
     isError: false,
     builderEntitlementId: 'entitlement-123',
     isPurchaseDisabled: false,
-    isGrantsEnabled: true,
     entitlementPollingTimedOut: false,
   })),
 }));
@@ -91,6 +77,10 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
   }),
 }));
 
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: vi.fn(() => ({ data: true, isLoading: false, error: null })),
+}));
+
 vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
 }));
@@ -108,256 +98,18 @@ describe('UsageGauge', function usageGaugeTests() {
 
   describe('rendering', function renderingTests() {
     it('should render circular gauge', async function renderGauge() {
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
-
       const { container } = renderWithProviders(<UsageGauge appId="test-app" />);
 
       await waitFor(function waitForGauge() {
         expect(container.querySelector('svg')).toBeInTheDocument();
       });
     });
-
-    it('should render loading state when daily usage data is loading', async function loadingState() {
-      const { useDailyUsage } = await import('@/hooks/useDailyUsage');
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
-      vi.mocked(useDailyUsage).mockReturnValue({
-        data: null,
-        isLoading: true,
-        formattedResetTime: null,
-        warningLevel: WarningLevel.NONE,
-        refresh: vi.fn(),
-      } as unknown as ReturnType<typeof useDailyUsage>);
-
-      const { container } = renderWithProviders(<UsageGauge appId="test-app" />);
-
-      expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
-    });
-
-    it('should render loading state when daily usage data is null', async function nullDataState() {
-      const { useDailyUsage } = await import('@/hooks/useDailyUsage');
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
-      vi.mocked(useDailyUsage).mockReturnValue({
-        data: null,
-        isLoading: false,
-        formattedResetTime: null,
-        warningLevel: WarningLevel.NONE,
-        refresh: vi.fn(),
-      } as unknown as ReturnType<typeof useDailyUsage>);
-
-      const { container } = renderWithProviders(<UsageGauge appId="test-app" />);
-
-      expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
-    });
   });
 
-  describe('legacy mode (grants disabled)', function legacyModeTests() {
-    beforeEach(async function setupLegacyMode() {
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      const { useDailyUsage } = await import('@/hooks/useDailyUsage');
-
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'app-builder-grants') {
-          return { data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
-        }
-        // appbuilder-usage-purchase enabled by default
-        return { data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
-      });
-      vi.mocked(useDailyUsage).mockReturnValue({
-        data: { percentage: 65, resetTime: '2025-01-10T00:00:00Z' },
-        isLoading: false,
-        formattedResetTime: { dayKey: 'tomorrow', timeString: '4:10 PM' },
-        warningLevel: WarningLevel.NONE,
-        refresh: vi.fn(),
-      } as unknown as ReturnType<typeof useDailyUsage>);
-    });
-
-    it('should render trigger button with aria-label', async function renderTrigger() {
-      const { container } = renderWithProviders(<UsageGauge appId="test-app" />);
-
-      await waitFor(function waitForTrigger() {
-        const button = container.querySelector('button');
-        expect(button).toBeInTheDocument();
-        expect(button).toHaveAttribute('aria-label');
-      });
-    });
-
-    it('should open popover on hover', async function openPopover() {
-      const { user, container } = renderWithProviders(<UsageGauge appId="test-app" />);
-
-      await waitFor(function waitForButton() {
-        expect(container.querySelector('button')).toBeInTheDocument();
-      });
-
-      const button = container.querySelector('button')!;
-      await user.hover(button);
-
-      await waitFor(function waitForPopover() {
-        expect(screen.getByText('builder_usage_daily_title')).toBeInTheDocument();
-      });
-    });
-
-    it('should have tracking eid on trigger button', async function triggerHasTrackingEid() {
-      const { container } = renderWithProviders(<UsageGauge appId="test-app" />);
-
-      await waitFor(function waitForButton() {
-        expect(container.querySelector('button')).toBeInTheDocument();
-      });
-
-      const button = container.querySelector('button')!;
-      expect(button).toHaveAttribute('data-eid', 'appbuilder.usage_gauge.trigger.open.click');
-    });
-
-    it('should render upgrade and buy tokens buttons when purchase is enabled', async function renderButtons() {
-      const { user, container } = renderWithProviders(<UsageGauge appId="test-app" />);
-
-      await waitFor(function waitForButton() {
-        expect(container.querySelector('button')).toBeInTheDocument();
-      });
-
-      await user.hover(container.querySelector('button')!);
-
-      await waitFor(function waitForButtons() {
-        expect(screen.getByText('builder_usage_gauge_upgrade')).toBeInTheDocument();
-        expect(screen.getByText('builder_usage_gauge_buy_tokens')).toBeInTheDocument();
-      });
-    });
-
-    it('should not render purchase buttons when purchase is disabled', async function noButtons() {
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
-
-      const { user, container } = renderWithProviders(<UsageGauge appId="test-app" />);
-
-      await waitFor(function waitForButton() {
-        expect(container.querySelector('button')).toBeInTheDocument();
-      });
-
-      await user.hover(container.querySelector('button')!);
-
-      await waitFor(function waitForPopover() {
-        expect(screen.getByText('builder_usage_daily_title')).toBeInTheDocument();
-      });
-
-      expect(screen.queryByText('builder_usage_gauge_upgrade')).not.toBeInTheDocument();
-    });
-
-    it('should call openUpgradeModal when upgrade button is clicked', async function clickUpgrade() {
-      const { user, container } = renderWithProviders(<UsageGauge appId="test-app" />);
-
-      await waitFor(function waitForButton() {
-        expect(container.querySelector('button')).toBeInTheDocument();
-      });
-
-      await user.hover(container.querySelector('button')!);
-
-      await waitFor(function waitForButtons() {
-        expect(screen.getByText('builder_usage_gauge_upgrade')).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByText('builder_usage_gauge_upgrade'));
-
-      expect(mockOpenUpgradeModal).toHaveBeenCalledWith('usage_gauge.upgrade', PAYWALL_ITC.UPGRADE);
-    });
-
-    it('should call openUpgradeModal when buy tokens button is clicked (grants disabled)', async function clickBuyTokensWithoutGrants() {
-      const { user, container } = renderWithProviders(<UsageGauge appId="test-app" />);
-
-      await waitFor(function waitForButton() {
-        expect(container.querySelector('button')).toBeInTheDocument();
-      });
-
-      await user.hover(container.querySelector('button')!);
-
-      await waitFor(function waitForButtons() {
-        expect(screen.getByText('builder_usage_gauge_buy_tokens')).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByText('builder_usage_gauge_buy_tokens'));
-
-      expect(mockOpenUpgradeModal).toHaveBeenCalledWith('usage_gauge.buy_tokens', PAYWALL_ITC.UPGRADE);
-      expect(mockOpenCreditsModal).not.toHaveBeenCalled();
-    });
-
-    it('should close popover after clicking upgrade button', async function closePopoverAfterUpgrade() {
-      const { user, container } = renderWithProviders(<UsageGauge appId="test-app" />);
-
-      await waitFor(function waitForButton() {
-        expect(container.querySelector('button')).toBeInTheDocument();
-      });
-
-      await user.hover(container.querySelector('button')!);
-
-      await waitFor(function waitForButtons() {
-        expect(screen.getByText('builder_usage_gauge_upgrade')).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByText('builder_usage_gauge_upgrade'));
-
-      await waitFor(function waitForPopoverClosed() {
-        expect(screen.queryByText('builder_usage_daily_title')).not.toBeInTheDocument();
-      });
-    });
-
-    it('should log analytics when upgrade button is clicked', async function logUpgradeAnalytics() {
-      const { shipAnalyticsLog } = await import('@/lib/logging');
-
-      const { user, container } = renderWithProviders(<UsageGauge appId="test-app-123" />);
-
-      await waitFor(function waitForButton() {
-        expect(container.querySelector('button')).toBeInTheDocument();
-      });
-
-      await user.hover(container.querySelector('button')!);
-
-      await waitFor(function waitForButtons() {
-        expect(screen.getByText('builder_usage_gauge_upgrade')).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByText('builder_usage_gauge_upgrade'));
-
-      expect(shipAnalyticsLog).toHaveBeenCalledWith('usage_gauge.upgrade.clicked', expect.objectContaining({
-        appId: 'test-app-123',
-      }));
-    });
-
-    it('should log analytics when buy tokens button is clicked', async function logBuyTokensAnalytics() {
-      const { shipAnalyticsLog } = await import('@/lib/logging');
-
-      const { user, container } = renderWithProviders(<UsageGauge appId="test-app-456" />);
-
-      await waitFor(function waitForButton() {
-        expect(container.querySelector('button')).toBeInTheDocument();
-      });
-
-      await user.hover(container.querySelector('button')!);
-
-      await waitFor(function waitForButtons() {
-        expect(screen.getByText('builder_usage_gauge_buy_tokens')).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByText('builder_usage_gauge_buy_tokens'));
-
-      expect(shipAnalyticsLog).toHaveBeenCalledWith('usage_gauge.buy_tokens.clicked', expect.objectContaining({
-        appId: 'test-app-456',
-      }));
-    });
-  });
-
-  describe('grants mode (grants enabled)', function grantsModeTests() {
+  describe('grants mode', function grantsModeTests() {
     beforeEach(async function setupGrantsMode() {
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
       const { useSubscription } = await import('@/hooks/useSubscription');
       const { useCreditGrants } = await import('@/hooks/useCreditGrants');
-
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'app-builder-grants') {
-          return { data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
-        }
-        return { data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
-      });
 
       vi.mocked(useSubscription).mockReturnValue({
         data: {
@@ -536,11 +288,7 @@ describe('UsageGauge', function usageGaugeTests() {
       const { useSubscription } = await import('@/hooks/useSubscription');
       const { useSubscriptionWithPolling } = await import('@/hooks/useSubscriptionWithPolling');
 
-      // Mock appbuilder-higher-plans to false to test legacy behavior
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'app-builder-grants') {
-          return { data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
-        }
         if (flag === 'appbuilder-higher-plans') {
           return { data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
         }
@@ -585,7 +333,7 @@ describe('UsageGauge', function usageGaugeTests() {
         isError: false,
         builderEntitlementId: 'entitlement-123',
         isPurchaseDisabled: false,
-        isGrantsEnabled: true,
+
         entitlementPollingTimedOut: false,
       });
 
@@ -610,11 +358,7 @@ describe('UsageGauge', function usageGaugeTests() {
       const { useSubscription } = await import('@/hooks/useSubscription');
       const { useSubscriptionWithPolling } = await import('@/hooks/useSubscriptionWithPolling');
 
-      // Mock appbuilder-higher-plans to true
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
-        if (flag === 'app-builder-grants') {
-          return { data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
-        }
         if (flag === 'appbuilder-higher-plans') {
           return { data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>;
         }
@@ -659,7 +403,7 @@ describe('UsageGauge', function usageGaugeTests() {
         isError: false,
         builderEntitlementId: 'entitlement-123',
         isPurchaseDisabled: false,
-        isGrantsEnabled: true,
+
         entitlementPollingTimedOut: false,
       });
 
@@ -784,167 +528,5 @@ describe('UsageGauge', function usageGaugeTests() {
     });
   });
 
-  describe('threshold impressions', function thresholdImpressionTests() {
-    beforeEach(async function setupThresholdTests() {
-      mockLogImpressionEvent.mockClear();
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
-    });
-
-    it('should not fire threshold events on initial load', async function noInitialEvent() {
-      const { useDailyUsage } = await import('@/hooks/useDailyUsage');
-      vi.mocked(useDailyUsage).mockReturnValue({
-        data: { percentage: 90 },
-        isLoading: false,
-        formattedResetTime: null,
-        warningLevel: WarningLevel.WARNING,
-        refresh: vi.fn(),
-      } as unknown as ReturnType<typeof useDailyUsage>);
-
-      renderWithProviders(<UsageGauge appId="test-app" />);
-
-      await waitFor(function waitForRender() {
-        expect(screen.getByRole('button')).toBeInTheDocument();
-      });
-
-      // Initial load should NOT fire threshold events even though percentage is 90%
-      expect(mockLogImpressionEvent).not.toHaveBeenCalledWith('credits.threshold.warning');
-      expect(mockLogImpressionEvent).not.toHaveBeenCalledWith('credits.threshold.depleted');
-    });
-
-    it('should not fire threshold events while loading', async function noEventWhileLoading() {
-      const { useDailyUsage } = await import('@/hooks/useDailyUsage');
-      vi.mocked(useDailyUsage).mockReturnValue({
-        data: null,
-        isLoading: true,
-        formattedResetTime: null,
-        warningLevel: WarningLevel.NONE,
-        refresh: vi.fn(),
-      } as unknown as ReturnType<typeof useDailyUsage>);
-
-      const { container } = renderWithProviders(<UsageGauge appId="test-app" />);
-
-      // Should show loading state
-      expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
-
-      // Should not fire any threshold events during loading
-      expect(mockLogImpressionEvent).not.toHaveBeenCalledWith('credits.threshold.warning');
-      expect(mockLogImpressionEvent).not.toHaveBeenCalledWith('credits.threshold.depleted');
-    });
-
-    it('should fire warning event when crossing 80% threshold', async function fireWarningEvent() {
-      const { useDailyUsage } = await import('@/hooks/useDailyUsage');
-      const mockUseDailyUsage = vi.mocked(useDailyUsage);
-
-      // Start at 70%
-      mockUseDailyUsage.mockReturnValue({
-        data: { percentage: 70 },
-        isLoading: false,
-        formattedResetTime: null,
-        warningLevel: WarningLevel.NONE,
-        refresh: vi.fn(),
-      } as unknown as ReturnType<typeof useDailyUsage>);
-
-      const { rerender } = renderWithProviders(<UsageGauge appId="test-app" />);
-
-      await waitFor(function waitForRender() {
-        expect(screen.getByRole('button')).toBeInTheDocument();
-      });
-
-      // Clear mock to only capture subsequent calls
-      mockLogImpressionEvent.mockClear();
-
-      // Cross 80% threshold
-      mockUseDailyUsage.mockReturnValue({
-        data: { percentage: 85 },
-        isLoading: false,
-        formattedResetTime: null,
-        warningLevel: WarningLevel.WARNING,
-        refresh: vi.fn(),
-      } as unknown as ReturnType<typeof useDailyUsage>);
-
-      rerender(<UsageGauge appId="test-app" />);
-
-      await waitFor(function waitForWarningEvent() {
-        expect(mockLogImpressionEvent).toHaveBeenCalledWith('credits.threshold.warning');
-      });
-    });
-
-    it('should fire depleted event when crossing 100% threshold', async function fireDepletedEvent() {
-      const { useDailyUsage } = await import('@/hooks/useDailyUsage');
-      const mockUseDailyUsage = vi.mocked(useDailyUsage);
-
-      // Start at 90%
-      mockUseDailyUsage.mockReturnValue({
-        data: { percentage: 90 },
-        isLoading: false,
-        formattedResetTime: null,
-        warningLevel: WarningLevel.WARNING,
-        refresh: vi.fn(),
-      } as unknown as ReturnType<typeof useDailyUsage>);
-
-      const { rerender } = renderWithProviders(<UsageGauge appId="test-app" />);
-
-      await waitFor(function waitForRender() {
-        expect(screen.getByRole('button')).toBeInTheDocument();
-      });
-
-      // Clear mock to only capture subsequent calls
-      mockLogImpressionEvent.mockClear();
-
-      // Cross 100% threshold
-      mockUseDailyUsage.mockReturnValue({
-        data: { percentage: 100 },
-        isLoading: false,
-        formattedResetTime: null,
-        warningLevel: WarningLevel.CRITICAL,
-        refresh: vi.fn(),
-      } as unknown as ReturnType<typeof useDailyUsage>);
-
-      rerender(<UsageGauge appId="test-app" />);
-
-      await waitFor(function waitForDepletedEvent() {
-        expect(mockLogImpressionEvent).toHaveBeenCalledWith('credits.threshold.depleted');
-      });
-    });
-
-    it('should fire both warning and depleted events when jumping from below 80% to 100%', async function fireBothEvents() {
-      const { useDailyUsage } = await import('@/hooks/useDailyUsage');
-      const mockUseDailyUsage = vi.mocked(useDailyUsage);
-
-      // Start at 70% (below warning threshold)
-      mockUseDailyUsage.mockReturnValue({
-        data: { percentage: 70 },
-        isLoading: false,
-        formattedResetTime: null,
-        warningLevel: WarningLevel.NONE,
-        refresh: vi.fn(),
-      } as unknown as ReturnType<typeof useDailyUsage>);
-
-      const { rerender } = renderWithProviders(<UsageGauge appId="test-app" />);
-
-      await waitFor(function waitForRender() {
-        expect(screen.getByRole('button')).toBeInTheDocument();
-      });
-
-      // Clear mock to only capture subsequent calls
-      mockLogImpressionEvent.mockClear();
-
-      // Jump directly to 100% (skipping 80% warning threshold)
-      mockUseDailyUsage.mockReturnValue({
-        data: { percentage: 100 },
-        isLoading: false,
-        formattedResetTime: null,
-        warningLevel: WarningLevel.CRITICAL,
-        refresh: vi.fn(),
-      } as unknown as ReturnType<typeof useDailyUsage>);
-
-      rerender(<UsageGauge appId="test-app" />);
-
-      await waitFor(function waitForBothEvents() {
-        expect(mockLogImpressionEvent).toHaveBeenCalledWith('credits.threshold.warning');
-        expect(mockLogImpressionEvent).toHaveBeenCalledWith('credits.threshold.depleted');
-      });
-    });
-  });
 });
+

@@ -74,8 +74,8 @@ export function setAPM(apmAgent: APMAgent): void {
  * Single source of truth for all LLM calls in the system.
  *
  * Fallback hierarchy (in order of preference):
- * 1. Grant's llmBudgetUserId (when grants feature ON and grants available)
- * 2. subscriptionId (when grants feature OFF or no grants indexed)
+ * 1. Grant's llmBudgetUserId (when grants available)
+ * 2. subscriptionId (when no grants indexed for subscription)
  * 3. customerId (LAST RESORT - provides infinite budget, avoid if possible)
  *
  * @param context - Execution context with socketId and metadata
@@ -121,7 +121,7 @@ export function buildLitellmMetadataFromContext(
   // sets subscriptionId to the appropriate BudgetOverride value when needed.
 
   // Use session-managed grants if available (websocket context)
-  if (socketId && grantSessionManager.isFeatureEnabled(socketId)) {
+  if (socketId && grantSessionManager.hasGrants(socketId)) {
     const userId = grantSessionManager.getCurrentUserId(socketId, customerId)
 
     if (userId) {
@@ -166,59 +166,55 @@ export function buildLitellmMetadataFromContext(
     const rawSubscriptionId = subscriptionId.startsWith(SUBSCRIPTION_ID_PREFIX)
       ? subscriptionId.slice(SUBSCRIPTION_ID_PREFIX.length)
       : subscriptionId
-    const featureEnabledForSub = grantSessionManager.isFeatureEnabledBySubscription(rawSubscriptionId)
     logger.debug('grants.build_metadata.subscription_check', {
       appId,
       subscriptionId,
       rawSubscriptionId,
-      featureEnabledForSub,
       subscriptionCount: grantSessionManager.getSubscriptionCount(),
     })
 
-    if (featureEnabledForSub) {
-      const userId = grantSessionManager.getUserIdBySubscription(rawSubscriptionId)
-      const hasGrants = grantSessionManager.hasGrantsBySubscription(rawSubscriptionId)
-      logger.debug('grants.build_metadata.subscription_grant_lookup', {
+    const userId = grantSessionManager.getUserIdBySubscription(rawSubscriptionId)
+    const hasGrants = grantSessionManager.hasGrantsBySubscription(rawSubscriptionId)
+    logger.debug('grants.build_metadata.subscription_grant_lookup', {
+      appId,
+      subscriptionId,
+      rawSubscriptionId,
+      userId,
+      hasGrants,
+    })
+
+    if (userId) {
+      apm?.setLabel?.('litellm.user_type', 'grant_by_subscription')
+      const metadata = { user: userId, tags }
+      logger.debug('grants.build_metadata.result', {
+        appId,
+        socketId: null,
+        subscriptionId,
+        userType: 'grant_by_subscription',
+        userId,
+        tags,
+        source: options?.source ?? LlmCallSource.UserChat,
+      })
+      return metadata
+    }
+
+    // Subscription has grants but all exhausted
+    if (grantSessionManager.hasGrantsBySubscription(rawSubscriptionId)) {
+      logger.error('grants.build_metadata.subscription_exhausted', {
         appId,
         subscriptionId,
         rawSubscriptionId,
-        userId,
-        hasGrants,
+        customerId,
       })
-
-      if (userId) {
-        apm?.setLabel?.('litellm.user_type', 'grant_by_subscription')
-        const metadata = { user: userId, tags }
-        logger.debug('grants.build_metadata.result', {
-          appId,
-          socketId: null,
-          subscriptionId,
-          userType: 'grant_by_subscription',
-          userId,
-          tags,
-          source: options?.source ?? LlmCallSource.UserChat,
-        })
-        return metadata
-      }
-
-      // Subscription has grants but all exhausted
-      if (grantSessionManager.hasGrantsBySubscription(rawSubscriptionId)) {
-        logger.error('grants.build_metadata.subscription_exhausted', {
-          appId,
-          subscriptionId,
-          rawSubscriptionId,
-          customerId,
-        })
-        apm?.setLabel?.('litellm.user_type', 'exhausted_by_subscription')
-        return null
-      }
-
-      // No grants indexed for this subscription - fall through to subscriptionId fallback
-      logger.debug('grants.build_metadata.no_subscription_grants', {
-        appId,
-        subscriptionId,
-      })
+      apm?.setLabel?.('litellm.user_type', 'exhausted_by_subscription')
+      return null
     }
+
+    // No grants indexed for this subscription - fall through to subscriptionId fallback
+    logger.debug('grants.build_metadata.no_subscription_grants', {
+      appId,
+      subscriptionId,
+    })
   }
 
   // Fallback hierarchy: subscriptionId first, customerId as LAST RESORT
@@ -269,7 +265,7 @@ export function buildLitellmMetadataFromContext(
  * Use this for early error detection before attempting LLM calls
  *
  * @param context - Execution context
- * @returns true if grants feature is active AND all grants are exhausted
+ * @returns true if all grants are exhausted
  */
 export function isGrantsExhausted(
   context: ExecutionContext | Record<string, unknown> | undefined
@@ -278,13 +274,10 @@ export function isGrantsExhausted(
   const socketId = typedContext?.socketId
   if (!socketId) return false
 
-  // Feature not enabled - not exhausted (will use customerId)
-  if (!grantSessionManager.isFeatureEnabled(socketId)) return false
-
   // No grants in session - not exhausted (will use customerId as fallback)
   if (!grantSessionManager.hasGrants(socketId)) return false
 
-  // Feature enabled + has grants + no usable grant = exhausted
+  // Has grants + no usable grant = exhausted
   const metadata = typedContext?.metadata as ExecutionContextMetadata | undefined
   const customerId = metadata?.customerId
   return grantSessionManager.getCurrentUserId(socketId, customerId) === undefined

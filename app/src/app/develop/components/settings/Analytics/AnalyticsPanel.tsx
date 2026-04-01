@@ -35,7 +35,7 @@ export default function AnalyticsPanel() {
 
   const { handlePublish, isPublishDisabled, publishState } = usePublishForDomain(appId, site)
 
-  const { checkAndShowPaywall, PaywallModal, isPolling, isPaywallLoading, isPublishLimitLoading } = usePaywallModal({
+  const { checkAndShowPaywall, PaywallModal, isPaywallLoading, isPublishLimitLoading } = usePaywallModal({
     appId: appId ?? undefined,
     source: 'publish',
     itc: PAYWALL_ITC.PUBLISH,
@@ -61,7 +61,7 @@ export default function AnalyticsPanel() {
           description={t('builder_analytics_empty_desc')}
           ctaLabel={publishState.isPublishing ? t('builder_common_publishing') : t('builder_domain_publish_now')}
           onCtaClick={handlePublishWithPaywall}
-          ctaDisabled={isPublishDisabled || isPolling || isPaywallLoading || isPublishLimitLoading}
+          ctaDisabled={isPublishDisabled || isPaywallLoading || isPublishLimitLoading}
         />
       </Box>
     )

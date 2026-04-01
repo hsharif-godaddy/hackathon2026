@@ -26,7 +26,6 @@ type APMSpan = {
 interface SessionGrantState {
   grants: CreditGrant[]
   currentIndex: number
-  featureEnabled: boolean
   lastUpdated: number
 }
 
@@ -194,7 +193,7 @@ export class GrantSessionManager {
    * Stores grants by subscriptionId (primary) and maps socketId → subscriptionId.
    * This ensures multiple sockets for the same subscription share grant state.
    */
-  setGrants(sessionId: string, grants: CreditGrant[], featureEnabled: boolean): void {
+  setGrants(sessionId: string, grants: CreditGrant[]): void {
     const sortedGrants = [...grants].sort(
       (a, b) => new Date(a.useBefore).getTime() - new Date(b.useBefore).getTime()
     )
@@ -297,7 +296,6 @@ export class GrantSessionManager {
     const sessionState: SessionGrantState = {
       grants: sortedGrants,
       currentIndex,
-      featureEnabled,
       lastUpdated: Date.now(),
     }
 
@@ -306,13 +304,11 @@ export class GrantSessionManager {
 
     // APM instrumentation
     this.apm?.setLabel?.('grants.count', sortedGrants.length)
-    this.apm?.setLabel?.('grants.feature_enabled', featureEnabled)
 
     logger.info('grants.session.updated', {
       sessionId,
       subscriptionId,
       grantCount: sortedGrants.length,
-      featureEnabled,
       currentIndex,
     })
 
@@ -369,9 +365,8 @@ export class GrantSessionManager {
       const subscriptionId = this.sessionToSubscription.get(sessionId)
       const state = subscriptionId ? this.subscriptionSessions.get(subscriptionId) : undefined
 
-      // Feature disabled - use fallback (legacy behavior)
-      if (!state?.featureEnabled) {
-        span?.setLabel?.('result', 'feature_disabled')
+      if (!state) {
+        span?.setLabel?.('result', 'no_state')
         return fallbackCustomerId
       }
 
@@ -467,16 +462,6 @@ export class GrantSessionManager {
   }
 
   /**
-   * Check if grants feature is enabled for session (by socketId)
-   */
-  isFeatureEnabled(sessionId: string): boolean {
-    const subscriptionId = this.sessionToSubscription.get(sessionId)
-    return subscriptionId
-      ? (this.subscriptionSessions.get(subscriptionId)?.featureEnabled ?? false)
-      : false
-  }
-
-  /**
    * Get current grant's llmBudgetUserId by subscriptionId
    *
    * Used by background tasks (summarization, video generation, etc.)
@@ -495,12 +480,6 @@ export class GrantSessionManager {
       if (!state) {
         logger.debug('grants.subscription_lookup.not_found', { subscriptionId })
         span?.setLabel?.('result', 'not_found')
-        return undefined
-      }
-
-      // Feature disabled - grants exist but shouldn't be used
-      if (!state.featureEnabled) {
-        span?.setLabel?.('result', 'feature_disabled')
         return undefined
       }
 
@@ -531,14 +510,6 @@ export class GrantSessionManager {
     } finally {
       span?.end?.()
     }
-  }
-
-  /**
-   * Check if grants feature is enabled for a subscription
-   * Used by background tasks to determine if they should use grant-based billing
-   */
-  isFeatureEnabledBySubscription(subscriptionId: string): boolean {
-    return this.subscriptionSessions.get(subscriptionId)?.featureEnabled ?? false
   }
 
   /**

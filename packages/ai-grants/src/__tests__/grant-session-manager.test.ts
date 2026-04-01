@@ -32,10 +32,9 @@ describe('grant-session-manager', function tests() {
   describe('#setGrants', function setGrantsTests() {
     it('should store grants for a session', function store() {
       const grants = [createGrant()]
-      sessionManager.setGrants('session-1', grants, true)
+      sessionManager.setGrants('session-1', grants)
 
       expect(sessionManager.hasGrants('session-1')).toBe(true)
-      expect(sessionManager.isFeatureEnabled('session-1')).toBe(true)
     })
 
     it('should sort grants by useBefore date', function sort() {
@@ -51,7 +50,7 @@ describe('grant-session-manager', function tests() {
         }),
       ]
 
-      sessionManager.setGrants('session-1', grants, true)
+      sessionManager.setGrants('session-1', grants)
 
       const state = sessionManager.getState('session-1')
       expect(state?.grants[0]?.id).toBe('grant-earliest')
@@ -71,13 +70,13 @@ describe('grant-session-manager', function tests() {
         }),
       ]
 
-      sessionManager.setGrants('session-1', grants, true)
+      sessionManager.setGrants('session-1', grants)
 
       // Advance to grant-2
       sessionManager.advanceToNextGrant('session-1')
 
       // Update grants (same ids, different order input but will be sorted same)
-      sessionManager.setGrants('session-1', [...grants].reverse(), true)
+      sessionManager.setGrants('session-1', [...grants].reverse())
 
       const state = sessionManager.getState('session-1')
       expect(state?.currentIndex).toBe(1) // Should still be at grant-2
@@ -85,23 +84,16 @@ describe('grant-session-manager', function tests() {
   })
 
   describe('#getCurrentUserId', function getUserIdTests() {
-    it('should return fallback when feature is disabled', function disabled() {
-      sessionManager.setGrants('session-1', [createGrant()], false)
-
-      const userId = sessionManager.getCurrentUserId('session-1', 'customer-123')
-      expect(userId).toBe('customer-123')
-    })
-
     it('should return fallback when no grants in session', function noGrants() {
-      sessionManager.setGrants('session-1', [], true)
+      sessionManager.setGrants('session-1', [])
 
       const userId = sessionManager.getCurrentUserId('session-1', 'customer-123')
       expect(userId).toBe('customer-123')
     })
 
-    it('should return grant llmBudgetUserId when feature enabled and grant available', function grantUserId() {
+    it('should return grant llmBudgetUserId when grant available', function grantUserId() {
       const grant = createGrant({ llmBudgetUserId: 'airo-builder:grant:test-grant' })
-      sessionManager.setGrants('session-1', [grant], true)
+      sessionManager.setGrants('session-1', [grant])
 
       const userId = sessionManager.getCurrentUserId('session-1', 'customer-123')
       expect(userId).toBe('airo-builder:grant:test-grant')
@@ -112,7 +104,7 @@ describe('grant-session-manager', function tests() {
         createGrant({ id: 'grant-1', creditsSpent: 1500, creditsMax: 1500 }),
         createGrant({ id: 'grant-2', finalState: GrantFinalState.Consumed }),
       ]
-      sessionManager.setGrants('session-1', grants, true)
+      sessionManager.setGrants('session-1', grants)
 
       const userId = sessionManager.getCurrentUserId('session-1', 'customer-123')
       expect(userId).toBeUndefined()
@@ -133,7 +125,7 @@ describe('grant-session-manager', function tests() {
           llmBudgetUserId: 'airo-builder:grant:usable',
         }),
       ]
-      sessionManager.setGrants('session-1', grants, true)
+      sessionManager.setGrants('session-1', grants)
 
       const userId = sessionManager.getCurrentUserId('session-1', 'customer-123')
       expect(userId).toBe('airo-builder:grant:usable')
@@ -157,7 +149,7 @@ describe('grant-session-manager', function tests() {
           creditsMax: 1500,
         }),
       ]
-      sessionManager.setGrants('session-1', grants, true)
+      sessionManager.setGrants('session-1', grants)
 
       // First call: grant-1 is usable
       const firstUserId = sessionManager.getCurrentUserId('session-1', 'customer-123')
@@ -183,7 +175,7 @@ describe('grant-session-manager', function tests() {
           creditsMax: 1500,
         }),
       ]
-      sessionManager.setGrants('session-1', grants, true)
+      sessionManager.setGrants('session-1', grants)
 
       // First call: grant usable
       expect(sessionManager.getCurrentUserId('session-1', 'customer-123')).toBe('airo-builder:grant:1')
@@ -206,7 +198,7 @@ describe('grant-session-manager', function tests() {
 
     it('should return false when no more usable grants', function noMore() {
       const grants = [createGrant({ creditsSpent: 1500, creditsMax: 1500 })]
-      sessionManager.setGrants('session-1', grants, true)
+      sessionManager.setGrants('session-1', grants)
 
       expect(sessionManager.advanceToNextGrant('session-1')).toBe(false)
     })
@@ -225,7 +217,7 @@ describe('grant-session-manager', function tests() {
           llmBudgetUserId: 'airo-builder:grant:2',
         }),
       ]
-      sessionManager.setGrants('session-1', grants, true)
+      sessionManager.setGrants('session-1', grants)
 
       // First call returns grant-1
       expect(sessionManager.getCurrentUserId('session-1')).toBe('airo-builder:grant:1')
@@ -256,7 +248,7 @@ describe('grant-session-manager', function tests() {
           creditsMax: 1500,
         }),
       ]
-      sessionManager.setGrants('session-1', grants, true)
+      sessionManager.setGrants('session-1', grants)
 
       // Step 1: Get initial userId (would be used for LLM call)
       const initialUserId = sessionManager.getCurrentUserId('session-1')
@@ -286,7 +278,7 @@ describe('grant-session-manager', function tests() {
           creditsMax: 1500,
         }),
       ]
-      sessionManager.setGrants('session-1', grants, true)
+      sessionManager.setGrants('session-1', grants)
 
       // Get initial userId
       expect(sessionManager.getCurrentUserId('session-1')).toBe('airo-builder:grant:only')
@@ -324,7 +316,7 @@ describe('grant-session-manager', function tests() {
           llmBudgetUserId: 'airo-builder:grant:3',
         }),
       ]
-      sessionManager.setGrants('session-1', grants, true)
+      sessionManager.setGrants('session-1', grants)
 
       // Advance (should skip grant-2-exhausted)
       const advanced = sessionManager.advanceToNextGrant('session-1')
@@ -335,33 +327,18 @@ describe('grant-session-manager', function tests() {
     })
   })
 
-  describe('#isFeatureEnabled', function featureEnabledTests() {
-    it('should return false for nonexistent session', function nonexistent() {
-      expect(sessionManager.isFeatureEnabled('nonexistent')).toBe(false)
-    })
-
-    it('should return feature enabled state', function enabled() {
-      // Must provide grants with subscriptionId for state to be stored
-      sessionManager.setGrants('session-1', [createGrant({ subscriptionId: 'sub-1' })], true)
-      sessionManager.setGrants('session-2', [createGrant({ subscriptionId: 'sub-2' })], false)
-
-      expect(sessionManager.isFeatureEnabled('session-1')).toBe(true)
-      expect(sessionManager.isFeatureEnabled('session-2')).toBe(false)
-    })
-  })
-
   describe('#hasGrants', function hasGrantsTests() {
     it('should return false for nonexistent session', function nonexistent() {
       expect(sessionManager.hasGrants('nonexistent')).toBe(false)
     })
 
     it('should return false when grants array is empty', function empty() {
-      sessionManager.setGrants('session-1', [], true)
+      sessionManager.setGrants('session-1', [])
       expect(sessionManager.hasGrants('session-1')).toBe(false)
     })
 
     it('should return true when grants exist', function exists() {
-      sessionManager.setGrants('session-1', [createGrant()], true)
+      sessionManager.setGrants('session-1', [createGrant()])
       expect(sessionManager.hasGrants('session-1')).toBe(true)
     })
   })
@@ -372,12 +349,12 @@ describe('grant-session-manager', function tests() {
     })
 
     it('should return false for fresh session', function fresh() {
-      sessionManager.setGrants('session-1', [createGrant()], true)
+      sessionManager.setGrants('session-1', [createGrant()])
       expect(sessionManager.isStale('session-1')).toBe(false)
     })
 
     it('should return true for stale session', function stale() {
-      sessionManager.setGrants('session-1', [createGrant()], true)
+      sessionManager.setGrants('session-1', [createGrant()])
 
       // Manually make it stale by setting lastUpdated in the past
       const state = sessionManager.getState('session-1')
@@ -391,7 +368,7 @@ describe('grant-session-manager', function tests() {
 
   describe('#removeSession', function removeTests() {
     it('should remove session', function remove() {
-      sessionManager.setGrants('session-1', [createGrant()], true)
+      sessionManager.setGrants('session-1', [createGrant()])
       expect(sessionManager.hasGrants('session-1')).toBe(true)
 
       sessionManager.removeSession('session-1')
@@ -411,9 +388,9 @@ describe('grant-session-manager', function tests() {
 
     it('should track socket mappings and subscriptions separately', function count() {
       // Three sockets, but two share the same subscription
-      sessionManager.setGrants('session-1', [createGrant({ subscriptionId: 'sub-1' })], true)
-      sessionManager.setGrants('session-2', [createGrant({ subscriptionId: 'sub-1' })], true) // Same sub
-      sessionManager.setGrants('session-3', [createGrant({ subscriptionId: 'sub-2' })], true)
+      sessionManager.setGrants('session-1', [createGrant({ subscriptionId: 'sub-1' })])
+      sessionManager.setGrants('session-2', [createGrant({ subscriptionId: 'sub-1' })]) // Same sub
+      sessionManager.setGrants('session-3', [createGrant({ subscriptionId: 'sub-2' })])
 
       expect(sessionManager.getSocketCount()).toBe(3)
       expect(sessionManager.getSubscriptionCount()).toBe(2) // Only 2 unique subscriptions
@@ -439,8 +416,8 @@ describe('grant-session-manager', function tests() {
       ]
 
       // Two browser tabs (sockets) for same user/subscription
-      sessionManager.setGrants('socket-tab-1', grants, true)
-      sessionManager.setGrants('socket-tab-2', grants, true)
+      sessionManager.setGrants('socket-tab-1', grants)
+      sessionManager.setGrants('socket-tab-2', grants)
 
       // Both sockets start at grant-1
       expect(sessionManager.getCurrentUserId('socket-tab-1')).toBe('airo-builder:grant:1')
@@ -479,8 +456,8 @@ describe('grant-session-manager', function tests() {
         }),
       ]
 
-      sessionManager.setGrants('socket-user-1', grants1, true)
-      sessionManager.setGrants('socket-user-2', grants2, true)
+      sessionManager.setGrants('socket-user-1', grants1)
+      sessionManager.setGrants('socket-user-2', grants2)
 
       // Advance user 1
       sessionManager.advanceToNextGrant('socket-user-1')
@@ -496,18 +473,13 @@ describe('grant-session-manager', function tests() {
       expect(sessionManager.getUserIdBySubscription('nonexistent')).toBeUndefined()
     })
 
-    it('should return undefined when feature disabled', function disabled() {
-      sessionManager.setGrants('session-1', [createGrant({ subscriptionId: 'sub-1' })], false)
-      expect(sessionManager.getUserIdBySubscription('sub-1')).toBeUndefined()
-    })
-
     it('should return grant userId for valid subscription', function valid() {
       sessionManager.setGrants('session-1', [
         createGrant({
           subscriptionId: 'sub-1',
           llmBudgetUserId: 'airo-builder:grant:test',
         }),
-      ], true)
+      ])
 
       expect(sessionManager.getUserIdBySubscription('sub-1')).toBe('airo-builder:grant:test')
     })
@@ -519,7 +491,7 @@ describe('grant-session-manager', function tests() {
           creditsSpent: 1500,
           creditsMax: 1500,
         }),
-      ], true)
+      ])
 
       expect(sessionManager.getUserIdBySubscription('sub-1')).toBeUndefined()
     })
@@ -541,7 +513,7 @@ describe('grant-session-manager', function tests() {
         }),
       ]
 
-      sessionManager.setGrants('session-1', grants, true)
+      sessionManager.setGrants('session-1', grants)
 
       // Initial state
       expect(sessionManager.getUserIdBySubscription('sub-1')).toBe('airo-builder:grant:1')
@@ -554,27 +526,13 @@ describe('grant-session-manager', function tests() {
     })
   })
 
-  describe('#isFeatureEnabledBySubscription', function featureBySubTests() {
-    it('should return false for nonexistent subscription', function notFound() {
-      expect(sessionManager.isFeatureEnabledBySubscription('nonexistent')).toBe(false)
-    })
-
-    it('should return correct feature state by subscription', function state() {
-      sessionManager.setGrants('session-1', [createGrant({ subscriptionId: 'sub-enabled' })], true)
-      sessionManager.setGrants('session-2', [createGrant({ subscriptionId: 'sub-disabled' })], false)
-
-      expect(sessionManager.isFeatureEnabledBySubscription('sub-enabled')).toBe(true)
-      expect(sessionManager.isFeatureEnabledBySubscription('sub-disabled')).toBe(false)
-    })
-  })
-
   describe('#hasGrantsBySubscription', function hasGrantsBySubTests() {
     it('should return false for nonexistent subscription', function notFound() {
       expect(sessionManager.hasGrantsBySubscription('nonexistent')).toBe(false)
     })
 
     it('should return true when subscription has grants', function hasGrants() {
-      sessionManager.setGrants('session-1', [createGrant({ subscriptionId: 'sub-1' })], true)
+      sessionManager.setGrants('session-1', [createGrant({ subscriptionId: 'sub-1' })])
       expect(sessionManager.hasGrantsBySubscription('sub-1')).toBe(true)
     })
   })
@@ -605,7 +563,7 @@ describe('grant-session-manager', function tests() {
         }),
       ]
 
-      sessionManager.setGrants('session-1', initialGrants, true)
+      sessionManager.setGrants('session-1', initialGrants)
       sessionManager.advanceToNextGrant('session-1') // Now at grant-2
 
       expect(sessionManager.getCurrentUserId('session-1')).toBe('airo-builder:grant:2')
@@ -626,7 +584,7 @@ describe('grant-session-manager', function tests() {
         }),
       ]
 
-      sessionManager.setGrants('session-1', refreshedGrants, true)
+      sessionManager.setGrants('session-1', refreshedGrants)
 
       // Should reset to first usable grant (grant-1), not skip to grant-3
       expect(sessionManager.getCurrentUserId('session-1')).toBe('airo-builder:grant:1')
@@ -650,7 +608,7 @@ describe('grant-session-manager', function tests() {
         }),
       ]
 
-      sessionManager.setGrants('session-1', initialGrants, true)
+      sessionManager.setGrants('session-1', initialGrants)
       sessionManager.advanceToNextGrant('session-1') // Now at grant-2
 
       // Refresh: grant-2 removed, grant-1 now exhausted, new grant-3 added
@@ -670,7 +628,7 @@ describe('grant-session-manager', function tests() {
         }),
       ]
 
-      sessionManager.setGrants('session-1', refreshedGrants, true)
+      sessionManager.setGrants('session-1', refreshedGrants)
 
       // Should skip exhausted grant-1 and use grant-3
       expect(sessionManager.getCurrentUserId('session-1')).toBe('airo-builder:grant:3')
@@ -691,7 +649,7 @@ describe('grant-session-manager', function tests() {
         }),
       ]
 
-      sessionManager.setGrants('session-1', initialGrants, true)
+      sessionManager.setGrants('session-1', initialGrants)
       expect(sessionManager.getCurrentUserId('session-1')).toBe('airo-builder:grant:monthly')
 
       // Refresh: same grant now exhausted, but new credit pack added
@@ -715,7 +673,7 @@ describe('grant-session-manager', function tests() {
         }),
       ]
 
-      sessionManager.setGrants('session-1', refreshedGrants, true)
+      sessionManager.setGrants('session-1', refreshedGrants)
 
       // Should automatically switch to the new credit pack
       expect(sessionManager.getCurrentUserId('session-1')).toBe('airo-builder:grant:pack')
@@ -745,7 +703,7 @@ describe('grant-session-manager', function tests() {
         }),
       ]
 
-      sessionManager.setGrants('session-1', initialGrants, true)
+      sessionManager.setGrants('session-1', initialGrants)
 
       // Free is exhausted, so should be using credit pack
       expect(sessionManager.getCurrentUserId('session-1')).toBe('airo-builder:grant:credit-pack')
@@ -775,7 +733,7 @@ describe('grant-session-manager', function tests() {
         }),
       ]
 
-      sessionManager.setGrants('session-1', upgradeGrants, true)
+      sessionManager.setGrants('session-1', upgradeGrants)
 
       // Should switch to Starter (expires sooner at 30 days vs credit pack at 365 days)
       // even though credit pack is still usable
@@ -790,7 +748,7 @@ describe('grant-session-manager', function tests() {
   describe('#requestGrantRefreshAndWait', function refreshWaitTests() {
     it('should return false when no callback registered', async function noCallback() {
       const grants = [createGrant()]
-      sessionManager.setGrants('session-1', grants, true)
+      sessionManager.setGrants('session-1', grants)
 
       const result = await sessionManager.requestGrantRefreshAndWait('session-1', 200)
       expect(result).toBe(false)
@@ -826,7 +784,7 @@ describe('grant-session-manager', function tests() {
           creditsMax: 1500,
         }),
       ]
-      sessionManager.setGrants('session-1', initialGrants, true)
+      sessionManager.setGrants('session-1', initialGrants)
 
       // Start the wait
       const waitPromise = sessionManager.requestGrantRefreshAndWait('session-1', 5000)
@@ -849,7 +807,7 @@ describe('grant-session-manager', function tests() {
           creditsMax: 5000,
         }),
       ]
-      sessionManager.setGrants('session-1', newGrants, true)
+      sessionManager.setGrants('session-1', newGrants)
 
       // Wait should resolve with true
       const result = await waitPromise
@@ -864,7 +822,7 @@ describe('grant-session-manager', function tests() {
       })
 
       const grants = [createGrant()]
-      sessionManager.setGrants('session-1', grants, true)
+      sessionManager.setGrants('session-1', grants)
 
       // Start the wait with short timeout
       const result = await sessionManager.requestGrantRefreshAndWait('session-1', 200)
@@ -884,7 +842,7 @@ describe('grant-session-manager', function tests() {
           creditsMax: 1500,
         }),
       ]
-      sessionManager.setGrants('session-1', initialGrants, true)
+      sessionManager.setGrants('session-1', initialGrants)
 
       const waitPromise = sessionManager.requestGrantRefreshAndWait('session-1', 5000)
 
@@ -897,7 +855,7 @@ describe('grant-session-manager', function tests() {
           creditsMax: 5000,
         }),
       ]
-      sessionManager.setGrants('session-1', updatedGrants, true)
+      sessionManager.setGrants('session-1', updatedGrants)
 
       const result = await waitPromise
       expect(result).toBe(true)
@@ -916,7 +874,7 @@ describe('grant-session-manager', function tests() {
           creditsMax: 1500,
         }),
       ]
-      sessionManager.setGrants('session-1', grants, true)
+      sessionManager.setGrants('session-1', grants)
 
       // Start two concurrent waits
       const wait1 = sessionManager.requestGrantRefreshAndWait('session-1', 5000)
@@ -934,7 +892,7 @@ describe('grant-session-manager', function tests() {
           creditsMax: 5000,
         }),
       ]
-      sessionManager.setGrants('session-1', newGrants, true)
+      sessionManager.setGrants('session-1', newGrants)
 
       // Both waits should resolve to true
       const [result1, result2] = await Promise.all([wait1, wait2])
@@ -952,7 +910,7 @@ describe('grant-session-manager', function tests() {
           creditsMax: 1500,
         }),
       ]
-      sessionManager.setGrants('session-1', initialGrants, true)
+      sessionManager.setGrants('session-1', initialGrants)
 
       const waitPromise = sessionManager.requestGrantRefreshAndWait('session-1', 300)
 
@@ -964,7 +922,7 @@ describe('grant-session-manager', function tests() {
           creditsMax: 1500,
         }),
       ]
-      sessionManager.setGrants('session-1', newGrants, true)
+      sessionManager.setGrants('session-1', newGrants)
 
       // Should timeout because no usable grant
       const result = await waitPromise
@@ -981,7 +939,7 @@ describe('grant-session-manager', function tests() {
           creditsMax: 1500,
         }),
       ]
-      sessionManager.setGrants('session-1', grants, true)
+      sessionManager.setGrants('session-1', grants)
 
       // Start a wait
       const waitPromise = sessionManager.requestGrantRefreshAndWait('session-1', 5000)

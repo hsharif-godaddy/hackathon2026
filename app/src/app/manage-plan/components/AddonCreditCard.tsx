@@ -23,15 +23,14 @@ interface CreditPacksCardProps {
   activeGrantId?: string;
   locale?: string;
   onOpenPaywall: (source: string, type?: PaywallType, itc?: string) => void;
-  isGrantsEnabled: boolean;
-  /** Builder entitlement ID - required for credits purchase when grants enabled */
+  /** Builder entitlement ID - required for credits purchase */
   builderEntitlementId?: string;
 }
 
 /**
  * Credit packs card displaying purchased credit packs
  */
-export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeGrantId, locale, onOpenPaywall, isGrantsEnabled, builderEntitlementId }: CreditPacksCardProps) {
+export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeGrantId, locale, onOpenPaywall, builderEntitlementId }: CreditPacksCardProps) {
   const t = useTranslations();
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -40,9 +39,8 @@ export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeG
     totalCreditsMax: creditPacks.reduce((sum, pack) => sum + pack.creditsMax, 0),
   }), [creditPacks]);
 
-  const isNonPaidPlan = !isPaidPlanForGrants(subscriptionPlan, isGrantsEnabled);
-  // Disable buttons when grants enabled but entitlement not yet available (async subscription)
-  const isButtonDisabled = isGrantsEnabled && !builderEntitlementId;
+  const isNonPaidPlan = !isPaidPlanForGrants(subscriptionPlan);
+  const isButtonDisabled = !builderEntitlementId;
   const hasNoPlanAndNoCredits = creditPacks.length === 0 && isNonPaidPlan;
 
   if (hasNoPlanAndNoCredits || creditPacks.length === 0) {

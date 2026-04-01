@@ -42,7 +42,7 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
   const { data: upgradeBannerEnabled, isLoading: isUpgradeFeatureLoading } = useSwitchboard('appbuilder-airoplus-upgrade-banner')
   const { data: feedbackBannerEnabled, isLoading: isFeedbackFeatureLoading } = useSwitchboard('appbuilder-feedback-banner')
   const { data: suspendedBannerEnabled, isLoading: isSuspendedFeatureLoading } = useSwitchboard('appbuilder-suspended-nonpayment-banner')
-  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(appId || undefined)
+  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility()
   const { data: subscription } = useSubscription()
   const showFeedbackBannerFromStore = useDevelopPageStore((state) => state.showFeedbackBanner)
   const [isUpgradeBannerDismissed, setIsUpgradeBannerDismissed] = useState(true)
@@ -104,7 +104,7 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
     return (
       <>
         {sessionBanner}
-        <UpgradeBanner appId={appId} onDismiss={handleUpgradeBannerDismiss} />
+        <UpgradeBanner onDismiss={handleUpgradeBannerDismiss} />
       </>
     )
   }

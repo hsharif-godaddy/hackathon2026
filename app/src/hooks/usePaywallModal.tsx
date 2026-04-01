@@ -8,7 +8,6 @@ import { regenerateToken } from '@/lib/jwt-regeneration'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
-import { entitlementPollingService } from '@/services/EntitlementPollingService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useSiteStore } from '@/stores/useSiteStore'
 import { SubscriptionPlan } from '@/types/credits'
@@ -27,7 +26,6 @@ interface UsePaywallModalOptions {
 interface UsePaywallModalReturn {
   checkAndShowPaywall: (action: () => Promise<void>) => Promise<void>
   PaywallModal: () => JSX.Element | null
-  isPolling: boolean
   shouldShowPaywall: boolean
   isPaywallLoading: boolean
   /** Whether publish limit check is loading */
@@ -39,14 +37,13 @@ interface UsePaywallModalReturn {
  *
  * Encapsulates all the common paywall UI orchestration logic:
  * - Modal visibility state
- * - Account-level entitlements polling after purchase
  * - Switchboard flag checks
  * - Analytics logging
  * - Purchase success handling
  *
  * @example
  * ```tsx
- * const { checkAndShowPaywall, PaywallModal, isPolling } = usePaywallModal({
+ * const { checkAndShowPaywall, PaywallModal } = usePaywallModal({
  *   source: 'download',
  *   appId // Optional for logging
  * })
@@ -60,7 +57,7 @@ interface UsePaywallModalReturn {
  * return (
  *   <>
  *     <PaywallModal />
- *     <Button disabled={isPolling} onClick={handleDownload} />
+ *     <Button onClick={handleDownload} />
  *   </>
  * )
  * ```
@@ -81,13 +78,10 @@ export function usePaywallModal({
   } | null>(null)
   const [hasCompletedPurchase, setHasCompletedPurchase] = useState(false)
   const queryClient = useQueryClient()
-  const isPollingEntitlements = useDevelopPageStore((state) => state.isPollingEntitlements)
-  const setIsPollingEntitlements = useDevelopPageStore((state) => state.setIsPollingEntitlements)
   const { data: isAiroPlusPaywallEnabled } = useSwitchboard('appbuilder-airoplus-paywall')
   const { data: isPaywallEnabledInMarket } = useSwitchboard('appbuilder-airoplus-markets')
-  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants')
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
-  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(appId)
+  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility()
   const site = useSiteStore((state) => (appId ? state.getSite(appId) : null))
 
   // Publish limit check (only applies when source is 'publish')
@@ -101,34 +95,8 @@ export function usePaywallModal({
     isLoading: isPublishLimitLoading,
   } = usePublishLimitCheck({ currentAppId: appId, enabled: isPublishSource })
 
-  const logInAppPurchase = useCallback(
-    (subscriptionId: string, entitlementId: string) => {
-      shipAnalyticsLog('airoplus.purchase.success', {
-        appId,
-        subscriptionId,
-        entitlementId,
-        source: `${source}-paywall`,
-        appName: site?.name,
-      })
-    },
-    [appId, source, site?.name]
-  )
-
   const handlePurchaseSuccess = useCallback(async () => {
     setShowAiroPlusPaywall(false)
-
-    // Skip entitlements polling when grants are enabled - access is based on subscription plan only
-    // Use explicit === false check to avoid polling while flag is loading (undefined)
-    if (isGrantsEnabled === false) {
-      setIsPollingEntitlements(true)
-
-      const result = await entitlementPollingService.pollForAccountEntitlements()
-      setIsPollingEntitlements(false)
-
-      if (result.success && result.data) {
-        logInAppPurchase(result.data.subscriptionId, result.data.entitlementId)
-      }
-    }
 
     setHasCompletedPurchase(true)
 
@@ -161,7 +129,7 @@ export function usePaywallModal({
     if (onPurchaseSuccess) {
       await onPurchaseSuccess()
     }
-  }, [appId, isGrantsEnabled, logInAppPurchase, setIsPollingEntitlements, onPurchaseSuccess, queryClient])
+  }, [appId, onPurchaseSuccess, queryClient])
 
   const checkAndShowPaywall = useCallback(
     async (action: () => Promise<void>) => {
@@ -294,7 +262,6 @@ export function usePaywallModal({
   return {
     checkAndShowPaywall,
     PaywallModal,
-    isPolling: isPollingEntitlements,
     shouldShowPaywall: !hasCompletedPurchase && showPaywall,
     isPaywallLoading,
     isPublishLimitLoading,

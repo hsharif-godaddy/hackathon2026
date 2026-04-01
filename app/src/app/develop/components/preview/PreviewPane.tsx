@@ -99,8 +99,6 @@ export default function PreviewPane({
   const viewMode = useDevelopPageStore((state) => state.viewMode)
   const selectedDeviceId = useDevelopPageStore((state) => state.selectedDeviceId)
   const setPreviewViewMode = useDevelopPageStore((state) => state.setPreviewViewMode)
-  const isPollingEntitlements = useDevelopPageStore((state) => state.isPollingEntitlements)
-
   // Get device dimensions from preset
   const selectedDevice = getDevicePreset(selectedDeviceId)
   const isFullSize = previewViewMode === PreviewViewMode.DESKTOP || selectedDeviceId === 'full'
@@ -504,11 +502,6 @@ export default function PreviewPane({
 
   if (isImageReloading) {
     return <Tips buildingMessage={t('builder_preview_image_reloading_message')} />
-  }
-
-  if (isPollingEntitlements) {
-    // We don't want to show tips when polling entitlements
-    return <Tips buildingMessage={t('builder_preview_updating_suscription')} showTips={false} />
   }
 
   // Don't show building overlay here - it should overlay the iframe below, not replace it

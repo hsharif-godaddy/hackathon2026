@@ -17,7 +17,6 @@ vi.mock('@/hooks/useUsage', () => ({
     percentage: 92,
     warningLevel: 'warning',
     isLoading: false,
-    isGrantsEnabled: false,
   })),
 }));
 
@@ -73,7 +72,6 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
         percentage: 50,
         warningLevel: WarningLevel.CAUTION,
         isLoading: false,
-        isGrantsEnabled: false,
       });
 
       const { container } = renderWithProviders(<UsageWarningBanner appId="test-app" />);
@@ -90,7 +88,6 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
         percentage: 92,
         warningLevel: WarningLevel.WARNING,
         isLoading: false,
-        isGrantsEnabled: false,
       });
 
       const { user, container } = renderWithProviders(<UsageWarningBanner appId="test-app" />);
@@ -118,7 +115,6 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
         percentage: 92,
         warningLevel: WarningLevel.WARNING,
         isLoading: false,
-        isGrantsEnabled: false,
       });
       vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
 
@@ -141,7 +137,6 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
         percentage: 92,
         warningLevel: WarningLevel.WARNING,
         isLoading: false,
-        isGrantsEnabled: false,
       });
       vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
 
@@ -164,7 +159,6 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
         percentage: 92,
         warningLevel: WarningLevel.WARNING,
         isLoading: false,
-        isGrantsEnabled: false,
       });
 
       const { container } = renderWithProviders(<UsageWarningBanner appId="test-app" />);
@@ -188,7 +182,6 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
         percentage: 92,
         warningLevel: WarningLevel.WARNING,
         isLoading: false,
-        isGrantsEnabled: false,
       });
 
       const { container } = renderWithProviders(<UsageWarningBanner appId="test-app" />);
@@ -207,7 +200,6 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
         percentage: 92,
         warningLevel: WarningLevel.WARNING,
         isLoading: false,
-        isGrantsEnabled: false,
       });
 
       const { user, container } = renderWithProviders(<UsageWarningBanner appId="test-app" />);
@@ -229,7 +221,6 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
         percentage: 92,
         warningLevel: WarningLevel.WARNING,
         isLoading: false,
-        isGrantsEnabled: false,
       });
 
       shouldRenderLinkInMock = true;

@@ -25,7 +25,6 @@ const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-settings-team': true,
   'appbuilder-settings-marketing': true,
   'appbuilder-share-links': true,
-  'app-builder-grants': true,
   'app-builder-bypass-publish-limit': true, // allows unlimited app publishing
   'appbuilder-social-video-generation': true,
   'app-builder-app-on-demand-reload': true,

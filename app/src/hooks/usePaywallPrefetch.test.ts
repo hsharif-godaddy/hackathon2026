@@ -9,7 +9,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
 import { usePaywallPrefetch } from './usePaywallPrefetch';
-import { prefetchProjects } from './useProjects';
 import { prefetchSubscription } from './useSubscription';
 import { prefetchSwitchboard } from './useSwitchboard';
 
@@ -22,11 +21,6 @@ vi.mock('./useSwitchboard', () => ({
 vi.mock('./useSubscription', () => ({
   prefetchSubscription: vi.fn(),
   useSubscription: vi.fn(() => ({ data: null, isLoading: false, isError: false })),
-}));
-
-vi.mock('./useProjects', () => ({
-  prefetchProjects: vi.fn(),
-  useProjects: vi.fn(() => ({ data: [], isLoading: false, isError: false })),
 }));
 
 describe('usePaywallPrefetch', function hooks() {
@@ -47,20 +41,14 @@ describe('usePaywallPrefetch', function hooks() {
   }
 
   describe('#usePaywallPrefetch', function main() {
-    it('prefetches feature flags, subscription, and projects', async function prefetchAll() {
+    it('prefetches feature flags and subscription', async function prefetchAll() {
       renderHook(() => usePaywallPrefetch(), { wrapper });
 
       await waitFor(() => {
-        // Verify feature flags were prefetched
         expect(prefetchSwitchboard).toHaveBeenCalledWith(queryClient, 'appbuilder-airoplus-paywall');
         expect(prefetchSwitchboard).toHaveBeenCalledWith(queryClient, 'appbuilder-paywall-markets');
-        expect(prefetchSwitchboard).toHaveBeenCalledWith(queryClient, 'app-builder-grants');
 
-        // Verify subscription was prefetched
         expect(prefetchSubscription).toHaveBeenCalledWith(queryClient);
-
-        // Verify projects were prefetched (only when grants is disabled)
-        expect(prefetchProjects).toHaveBeenCalledWith(queryClient);
       });
     });
 
@@ -68,12 +56,11 @@ describe('usePaywallPrefetch', function hooks() {
       const { rerender } = renderHook(() => usePaywallPrefetch(), { wrapper });
 
       await waitFor(() => {
-        expect(prefetchSwitchboard).toHaveBeenCalledTimes(3); // Three flags: paywall, markets, grants
+        expect(prefetchSwitchboard).toHaveBeenCalledTimes(2);
       });
 
       const initialCallCount = vi.mocked(prefetchSwitchboard).mock.calls.length;
 
-      // Rerender should not trigger additional prefetch (useEffect with stable deps)
       rerender();
       rerender();
 
@@ -84,10 +71,8 @@ describe('usePaywallPrefetch', function hooks() {
       renderHook(() => usePaywallPrefetch(), { wrapper });
 
       await waitFor(() => {
-        // All prefetches should be called (they run in parallel within the effect)
         expect(prefetchSwitchboard).toHaveBeenCalled();
         expect(prefetchSubscription).toHaveBeenCalled();
-        expect(prefetchProjects).toHaveBeenCalled();
       });
     });
   });

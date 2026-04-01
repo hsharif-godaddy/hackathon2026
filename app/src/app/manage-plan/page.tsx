@@ -181,7 +181,6 @@ function ManagePlanContent() {
     isLoading: isSubscriptionLoading,
     isError: isSubscriptionError,
     builderEntitlementId,
-    isGrantsEnabled,
   } = useSubscriptionWithPolling();
 
   const {
@@ -254,7 +253,7 @@ function ManagePlanContent() {
   const currentPlan = getPlanFromSubscription(subscription);
   const paywallSourceId = paywallSource ?? "manage_plan";
 
-  const isPaidPlan = isPaidPlanForGrants(currentPlan, isGrantsEnabled ?? true);
+  const isPaidPlan = isPaidPlanForGrants(currentPlan);
   const planLabelKey = getPlanDisplayLabelKey(currentPlan);
   const planDisplayLabel = planLabelKey ? t(planLabelKey) : "";
 
@@ -534,7 +533,6 @@ function ManagePlanContent() {
                 openPaywall={openPaywall}
                 autoRenewStatus={autoRenewStatus}
                 onDowngradeClick={() => setShowSwitchToFreeModal(true)}
-                isGrantsEnabled={isGrantsEnabled ?? true}
                 isHigherPlansEnabled={!!isHigherPlansEnabled}
               />
               {currentPlan && (
@@ -544,7 +542,6 @@ function ManagePlanContent() {
                   activeGrantId={activeGrant?.id}
                   locale={locale}
                   onOpenPaywall={openPaywall}
-                  isGrantsEnabled={isGrantsEnabled ?? true}
                   builderEntitlementId={builderEntitlementId}
                 />
               )}

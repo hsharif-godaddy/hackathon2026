@@ -31,7 +31,6 @@ export const DevelopCreditsModal = memo(function DevelopCreditsModal({ appId }: 
   const {
     subscription,
     builderEntitlementId,
-    isGrantsEnabled,
   } = useSubscriptionWithPolling()
 
   const { data: grantsData } = useCreditGrants({
@@ -59,7 +58,7 @@ export const DevelopCreditsModal = memo(function DevelopCreditsModal({ appId }: 
     <>
       {isCreditPolling && <GrantPollingModal />}
 
-      {showCreditsModal && isGrantsEnabled && builderEntitlementId && subscription?.id && (
+      {showCreditsModal && builderEntitlementId && subscription?.id && (
         <CreditsUpgradeContainer
           entitlementId={builderEntitlementId}
           subscriptionId={subscription.id}

@@ -30,18 +30,17 @@ function markDismissedToday(): void {
 }
 
 interface UpgradeBannerProps {
-  appId: string | null
   onDismiss?: () => void
 }
 
-export default function UpgradeBanner({ appId, onDismiss }: UpgradeBannerProps) {
+export default function UpgradeBanner({ onDismiss }: UpgradeBannerProps) {
   const t = useTranslations()
   const [isDismissed, setIsDismissed] = useState(true)
   const [mounted, setMounted] = useState(false)
   const { data: featureEnabled, isLoading: isFeatureLoading } = useSwitchboard('appbuilder-airoplus-upgrade-banner')
   const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans')
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
-  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(appId || undefined)
+  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility()
   const { data: subscription } = useSubscription()
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : undefined
 

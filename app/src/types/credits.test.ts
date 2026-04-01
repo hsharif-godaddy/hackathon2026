@@ -41,30 +41,24 @@ describe('credits types', function creditsTypesTests() {
   });
 
   describe('isPaidPlanForGrants', function isPaidPlanForGrantsTests() {
-    it('should return true for Starter, Professional, Ultimate regardless of grants flag', function newPaidPlansAlwaysPaid() {
-      expect(isPaidPlanForGrants(SubscriptionPlan.Starter, true)).toBe(true);
-      expect(isPaidPlanForGrants(SubscriptionPlan.Starter, false)).toBe(true);
-      expect(isPaidPlanForGrants(SubscriptionPlan.Professional, true)).toBe(true);
-      expect(isPaidPlanForGrants(SubscriptionPlan.Professional, false)).toBe(true);
-      expect(isPaidPlanForGrants(SubscriptionPlan.Ultimate, true)).toBe(true);
-      expect(isPaidPlanForGrants(SubscriptionPlan.Ultimate, false)).toBe(true);
+    it('should return true for Starter, Professional, Ultimate', function newPaidPlansAlwaysPaid() {
+      expect(isPaidPlanForGrants(SubscriptionPlan.Starter)).toBe(true);
+      expect(isPaidPlanForGrants(SubscriptionPlan.Professional)).toBe(true);
+      expect(isPaidPlanForGrants(SubscriptionPlan.Ultimate)).toBe(true);
     });
 
-    it('should return true for AiroPlus only when grants is disabled', function airoPlusLegacyOnly() {
-      expect(isPaidPlanForGrants(SubscriptionPlan.AiroPlus, false)).toBe(true);
-      expect(isPaidPlanForGrants(SubscriptionPlan.AiroPlus, true)).toBe(false);
+    it('should return false for AiroPlus', function airoPlusNotPaid() {
+      expect(isPaidPlanForGrants(SubscriptionPlan.AiroPlus)).toBe(false);
     });
 
     it('should return false for Free and None plans', function freeAndNoneNotPaid() {
-      expect(isPaidPlanForGrants(SubscriptionPlan.Free, true)).toBe(false);
-      expect(isPaidPlanForGrants(SubscriptionPlan.Free, false)).toBe(false);
-      expect(isPaidPlanForGrants(SubscriptionPlan.None, true)).toBe(false);
-      expect(isPaidPlanForGrants(SubscriptionPlan.None, false)).toBe(false);
+      expect(isPaidPlanForGrants(SubscriptionPlan.Free)).toBe(false);
+      expect(isPaidPlanForGrants(SubscriptionPlan.None)).toBe(false);
     });
 
     it('should return false for null or undefined', function handlesNullish() {
-      expect(isPaidPlanForGrants(null, true)).toBe(false);
-      expect(isPaidPlanForGrants(undefined, false)).toBe(false);
+      expect(isPaidPlanForGrants(null)).toBe(false);
+      expect(isPaidPlanForGrants(undefined)).toBe(false);
     });
   });
 });

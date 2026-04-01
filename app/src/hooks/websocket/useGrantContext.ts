@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef } from 'react'
 import type { QueryObserverResult } from '@tanstack/react-query'
 
 import { useCreditGrants } from '@/hooks/useCreditGrants'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { logger } from '@/lib/request-context'
 import { useIsActivelyStreaming } from '@/stores/useStreamingConversationStore'
 import type { CreditGrant } from '@/types/credits'
@@ -54,11 +53,6 @@ function computeGrantHash(grants: CreditGrant[] | undefined): string {
  * result.data comes from the refetch promise, not the previous render's `grants`, and avoids waiting on isGrantsLoading.
  *
  * Does NOT send grants with every message - agent caches per session.
- *
- * IMPORTANT: When the feature flag is OFF, this hook is a no-op:
- * - No API calls to fetch grants
- * - No WebSocket events emitted
- * - No visibility change handlers registered
  */
 export function useGrantContext({
   controller,
@@ -68,17 +62,12 @@ export function useGrantContext({
   const lastSentHashRef = useRef<string | null>(null)
   const isInitialSendRef = useRef(true)
 
-  // Feature flag check - determines if grants feature is enabled
-  const { data: grantsEnabled = false, isLoading: isFlagLoading } = useSwitchboard('app-builder-grants')
-
-  // Only fetch grants when feature is enabled to avoid unnecessary API calls
-  // When flag is OFF, subscriptionId is undefined which disables the query
   const {
     data: grants,
     refetch: refetchGrants,
     isLoading: isGrantsLoading,
   } = useCreditGrants({
-    subscriptionId: grantsEnabled ? subscriptionId : undefined,
+    subscriptionId,
     syncSpend: true,
   })
 
@@ -89,18 +78,8 @@ export function useGrantContext({
     function send(force = false, grantsOverride?: CreditGrant[]) {
       if (!controller || !isConnected) return
 
-      if (isFlagLoading) return
-
       // Without grantsOverride, wait for query idle; refetch paths pass result.data so we are not blocked here.
       if (grantsOverride === undefined && isGrantsLoading) return
-
-      // Skip emission entirely when feature is disabled to avoid unnecessary traffic
-      if (!grantsEnabled) {
-        logger.debug('websocket.grant_context.skipped', {
-          reason: 'feature_disabled',
-        })
-        return
-      }
 
       const payloadGrants = grantsOverride ?? grants
       const grantHash = computeGrantHash(payloadGrants)
@@ -115,20 +94,19 @@ export function useGrantContext({
 
       logger.info('websocket.grant_context.send', {
         grantCount: payloadGrants?.length ?? 0,
-        featureEnabled: grantsEnabled,
         isInitial,
         forced: force,
       })
 
       controller.emitGrantContext({
         grants: payloadGrants ?? [],
-        featureEnabled: grantsEnabled,
+        featureEnabled: true,
         timestamp: Date.now(),
       })
 
       lastSentHashRef.current = grantHash
     },
-    [controller, isConnected, grants, grantsEnabled, isFlagLoading, isGrantsLoading]
+    [controller, isConnected, grants, isGrantsLoading]
   )
 
   // Refetch .then / setTimeout run later; keep a ref so they invoke the latest send, not a stale closure.
@@ -177,11 +155,9 @@ export function useGrantContext({
   )
 
   // Handle agent refresh requests via controller
-  // Only active when feature flag is enabled
   useEffect(
     function handleRefreshRequest() {
-      // Skip when feature is disabled - no grants to refresh
-      if (!grantsEnabled || !controller) return
+      if (!controller) return
 
       return controller.onGrantRefreshRequested(function onRefresh() {
         logger.info('websocket.grant_context.refresh_requested')
@@ -202,15 +178,13 @@ export function useGrantContext({
           })
       })
     },
-    [controller, emitAfterRefetch, grantsEnabled, refetchGrants]
+    [controller, emitAfterRefetch, refetchGrants]
   )
 
   // Re-send on visibility change (user returns to tab)
-  // Only active when feature flag is enabled
   useEffect(
     function handleVisibilityChange() {
-      // Skip when feature is disabled - no grants to sync
-      if (!grantsEnabled || !controller || !isConnected) return
+      if (!controller || !isConnected) return
 
       function onVisibilityChange() {
         if (document.visibilityState === 'visible') {
@@ -237,7 +211,7 @@ export function useGrantContext({
       document.addEventListener('visibilitychange', onVisibilityChange)
       return () => document.removeEventListener('visibilitychange', onVisibilityChange)
     },
-    [controller, emitAfterRefetch, grantsEnabled, isConnected, refetchGrants]
+    [controller, emitAfterRefetch, isConnected, refetchGrants]
   )
 
   // Refetch grants when stream completes (credits have been consumed)
@@ -250,14 +224,6 @@ export function useGrantContext({
     function handleStreamComplete() {
       const prevIsStreaming = prevIsStreamingRef.current
       prevIsStreamingRef.current = isStreaming
-
-      if (!grantsEnabled) {
-        if (streamCompleteTimeoutRef.current) {
-          clearTimeout(streamCompleteTimeoutRef.current)
-          streamCompleteTimeoutRef.current = null
-        }
-        return
-      }
 
       // Detect transition from streaming to not streaming (completion)
       if (prevIsStreaming === true && isStreaming === false) {
@@ -301,7 +267,7 @@ export function useGrantContext({
         }
       }
     },
-    [emitAfterRefetch, grantsEnabled, isStreaming]
+    [emitAfterRefetch, isStreaming]
   )
 
   // Reset on disconnect
@@ -330,15 +296,14 @@ export function useGrantContext({
         }
       }
 
-      // Skip when feature is disabled
-      if (!grantsEnabled || !subscriptionId) {
+      if (!subscriptionId) {
         clearRetryInterval()
         emptyGrantsRetryStartRef.current = null
         return
       }
 
       // Skip if we're still loading
-      if (isGrantsLoading || isFlagLoading) return
+      if (isGrantsLoading) return
 
       // If we have grants, stop retrying and reset timer
       if (grants && grants.length > 0) {
@@ -406,6 +371,6 @@ export function useGrantContext({
 
       return clearRetryInterval
     },
-    [grantsEnabled, subscriptionId, grants, isGrantsLoading, isFlagLoading]
+    [subscriptionId, grants, isGrantsLoading]
   )
 }

@@ -3,15 +3,14 @@
 import { useMemo } from 'react'
 
 import { useCreditGrants } from '@/hooks/useCreditGrants'
-import { TOAST_THRESHOLD, useDailyUsage } from '@/hooks/useDailyUsage'
 import { useSubscription } from '@/hooks/useSubscription'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { WarningLevel } from '@/types/usage'
 import { getEffectiveCreditsSpent } from '@/utils/credits'
 
 /** Warning level thresholds (percentage) */
 const CAUTION_THRESHOLD = 50
 const WARNING_THRESHOLD = 75
+const TOAST_THRESHOLD = 90
 const EXCEEDED_THRESHOLD = 100
 
 export interface UseUsageOptions {
@@ -24,30 +23,15 @@ export interface UseUsageResult {
   warningLevel: WarningLevel
   isWarningBannerActive: boolean
   isLoading: boolean
-  isGrantsEnabled: boolean
 }
 
-export function useUsage({ appId, enabled = true }: UseUsageOptions): UseUsageResult {
-  const { data: isGrantsEnabled, isLoading: isGrantsLoading } = useSwitchboard('app-builder-grants')
-
-  // Legacy daily usage (non-grants mode)
-  const {
-    data: legacyData,
-    isLoading: isLegacyLoading,
-    warningLevel: legacyWarningLevel,
-    isWarningBannerActive: legacyWarningActive,
-  } = useDailyUsage({
-    appId,
-    enabled: enabled && isGrantsEnabled === false
-  })
-
-  // Grants-based usage
+export function useUsage({ appId: _appId, enabled = true }: UseUsageOptions): UseUsageResult {
   const { data: subscription, isLoading: isSubscriptionLoading } = useSubscription()
   const { data: grants, isLoading: isGrantsDataLoading } = useCreditGrants({
-    subscriptionId: (enabled && isGrantsEnabled === true) ? subscription?.id : undefined,
+    subscriptionId: enabled ? subscription?.id : undefined,
   })
 
-  const isSubscriptionMissing = isGrantsEnabled === true && !isSubscriptionLoading && !subscription
+  const isSubscriptionMissing = enabled && !isSubscriptionLoading && !subscription
 
   const grantsResult = useMemo(() => {
     const totalCreditsSpent = grants?.reduce(
@@ -67,25 +51,12 @@ export function useUsage({ appId, enabled = true }: UseUsageOptions): UseUsageRe
     return { percentage, warningLevel, isWarningBannerActive }
   }, [grants])
 
-  const isLoading = isGrantsLoading || (isGrantsEnabled === true
-    ? (isSubscriptionLoading || isGrantsDataLoading || isSubscriptionMissing)
-    : isLegacyLoading)
-
-  if (isGrantsEnabled === true) {
-    return {
-      percentage: grantsResult.percentage,
-      warningLevel: grantsResult.warningLevel,
-      isWarningBannerActive: grantsResult.isWarningBannerActive,
-      isLoading,
-      isGrantsEnabled: true,
-    }
-  }
+  const isLoading = isSubscriptionLoading || isGrantsDataLoading || isSubscriptionMissing
 
   return {
-    percentage: legacyData?.percentage ?? 0,
-    warningLevel: legacyWarningLevel,
-    isWarningBannerActive: legacyWarningActive,
+    percentage: grantsResult.percentage,
+    warningLevel: grantsResult.warningLevel,
+    isWarningBannerActive: grantsResult.isWarningBannerActive,
     isLoading,
-    isGrantsEnabled: false,
   }
 }

@@ -94,7 +94,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -108,7 +108,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -124,7 +124,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -140,7 +140,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -154,7 +154,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={null as unknown as CreditGrant}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -168,7 +168,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -187,7 +187,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           activeGrantId="active-grant"
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -205,7 +205,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -219,7 +219,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -233,7 +233,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -249,7 +249,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant({ creditsMax: 150 })}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -263,7 +263,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant({ creditsMax: 150 })}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -278,7 +278,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -293,7 +293,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -308,7 +308,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -328,7 +328,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           activeGrantId="active-grant"
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -347,7 +347,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           activeGrantId="other-grant"
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -363,7 +363,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[createMockCreditPack()]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -377,7 +377,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[createMockCreditPack()]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -393,7 +393,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           openPaywall={mockOpenPaywall}
           autoRenewStatus={{ autoRenew: true }}
           onDowngradeClick={vi.fn()}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -407,7 +407,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -427,7 +427,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           openPaywall={mockOpenPaywall}
           autoRenewStatus={{ autoRenew: true }}
           onDowngradeClick={vi.fn()}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -443,7 +443,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           openPaywall={mockOpenPaywall}
           autoRenewStatus={{ autoRenew: false }}
           onDowngradeClick={vi.fn()}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -459,7 +459,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           openPaywall={mockOpenPaywall}
           autoRenewStatus={{ autoRenew: true }}
           onDowngradeClick={vi.fn()}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -474,7 +474,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[createMockCreditPack()]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -492,7 +492,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           openPaywall={mockOpenPaywall}
           autoRenewStatus={{ autoRenew: true }}
           onDowngradeClick={vi.fn()}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -507,7 +507,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[createMockCreditPack()]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -522,7 +522,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[createMockCreditPack()]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -539,7 +539,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           openPaywall={mockOpenPaywall}
           autoRenewStatus={{ autoRenew: true }}
           onDowngradeClick={vi.fn()}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -558,7 +558,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[createMockCreditPack()]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -574,7 +574,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[createMockCreditPack()]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -593,7 +593,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           openPaywall={mockOpenPaywall}
           autoRenewStatus={{ autoRenew: true }}
           onDowngradeClick={mockOnDowngradeClick}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -610,7 +610,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
           autoRenewStatus={{ autoRenew: true }}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -626,7 +626,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
           isHigherPlansEnabled={true}
         />
       );
@@ -641,7 +641,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
           isHigherPlansEnabled={true}
         />
       );
@@ -656,7 +656,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
           isHigherPlansEnabled={true}
         />
       );
@@ -671,7 +671,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
           isHigherPlansEnabled={true}
         />
       );
@@ -686,7 +686,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
           isHigherPlansEnabled={false}
         />
       );
@@ -701,7 +701,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
           isHigherPlansEnabled={true}
         />
       );
@@ -720,7 +720,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[createMockCreditPack()]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -734,7 +734,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[createMockCreditPack()]}
           openPaywall={mockOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 

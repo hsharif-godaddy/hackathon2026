@@ -21,7 +21,6 @@ vi.mock('@/hooks/useSubscriptionWithPolling', () => ({
   useSubscriptionWithPolling: vi.fn(() => ({
     subscription: { id: 'sub-123', builderEntitlementId: 'entitlement-123' },
     builderEntitlementId: 'entitlement-123',
-    isGrantsEnabled: true,
     isLoading: false,
     isError: false,
     isPurchaseDisabled: false,
@@ -193,34 +192,11 @@ describe('DevelopCreditsModal', function developCreditsModalTests() {
       });
     });
 
-    it('should not render when isGrantsEnabled is false', async function noGrantsEnabled() {
-      const { useSubscriptionWithPolling } = await import('@/hooks/useSubscriptionWithPolling');
-      vi.mocked(useSubscriptionWithPolling).mockReturnValueOnce({
-        subscription: { id: 'sub-123', builderEntitlementId: 'entitlement-123' } as any,
-        builderEntitlementId: 'entitlement-123',
-        isGrantsEnabled: false,
-        isLoading: false,
-        isError: false,
-        isPurchaseDisabled: false,
-        entitlementPollingTimedOut: false,
-        subscriptions: undefined,
-      });
-
-      setCreditsModalState();
-
-      renderWithProviders(<DevelopCreditsModal appId="app-123" />);
-
-      await waitFor(function checkNoModal() {
-        expect(screen.queryByTestId('credits-upgrade-container')).not.toBeInTheDocument();
-      });
-    });
-
     it('should not render when builderEntitlementId is missing', async function noEntitlementId() {
       const { useSubscriptionWithPolling } = await import('@/hooks/useSubscriptionWithPolling');
       vi.mocked(useSubscriptionWithPolling).mockReturnValueOnce({
         subscription: { id: 'sub-123' } as any,
         builderEntitlementId: undefined,
-        isGrantsEnabled: true,
         isLoading: false,
         isError: false,
         isPurchaseDisabled: true,
@@ -242,7 +218,6 @@ describe('DevelopCreditsModal', function developCreditsModalTests() {
       vi.mocked(useSubscriptionWithPolling).mockReturnValueOnce({
         subscription: undefined,
         builderEntitlementId: 'entitlement-123',
-        isGrantsEnabled: true,
         isLoading: false,
         isError: false,
         isPurchaseDisabled: false,

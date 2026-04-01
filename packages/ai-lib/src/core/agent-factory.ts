@@ -876,10 +876,9 @@ export class AgentWrapper {
     // For new accounts: wait for grants to be provisioned if feature is enabled but grants are empty
     // This handles the case where subscription is active but grants haven't been created yet
     if (socketId && retryCount === 0) {
-      const featureEnabled = grantSessionManager.isFeatureEnabled(socketId)
       const hasGrants = grantSessionManager.hasGrants(socketId)
 
-      if (featureEnabled && !hasGrants) {
+      if (!hasGrants) {
         logger.info('grants.awaiting_provisioning', {
           socketId,
           message: 'Grants feature enabled but no grants yet - waiting for provisioning',
@@ -899,7 +898,7 @@ export class AgentWrapper {
             message: 'Grants provisioning timeout - will proceed with customerId fallback',
           })
         }
-      } else if (featureEnabled && hasGrants && isGrantsExhausted(options?.executionContext)) {
+      } else if (hasGrants && isGrantsExhausted(options?.executionContext)) {
         // All cached grants exhausted - request refresh before giving up
         // User may have purchased a credit pack since grants were last synced
         logger.info('grants.exhausted_refreshing', {
@@ -1002,8 +1001,7 @@ export class AgentWrapper {
         if (error.stack) normalizedError.stack = error.stack
       }
       if (BudgetExceededError.isInstance(normalizedError)) {
-        // Check if grants feature is active for this session
-        if (!socketId || !grantSessionManager.isFeatureEnabled(socketId)) {
+        if (!socketId || !grantSessionManager.hasGrants(socketId)) {
           throw normalizedError // No grant fallback available
         }
 

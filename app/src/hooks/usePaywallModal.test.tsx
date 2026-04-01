@@ -15,8 +15,7 @@ vi.mock('@/lib/logging', () => ({
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: vi.fn((selector) => {
     const state = {
-      isPollingEntitlements: false,
-      setIsPollingEntitlements: vi.fn(),
+      openUpgradeModal: vi.fn(),
     };
     return selector ? selector(state) : state;
   }),
@@ -39,19 +38,6 @@ vi.mock('./usePaywallEligibility', () => ({
     isError: false,
     error: null,
   })),
-}));
-vi.mock('@/services/EntitlementPollingService', () => ({
-  entitlementPollingService: {
-    pollForAccountEntitlements: vi.fn(() =>
-      Promise.resolve({
-        success: true,
-        data: {
-          subscriptionId: 'sub-123',
-          entitlementId: 'ent-456',
-        },
-      })
-    ),
-  },
 }));
 vi.mock('@/lib/jwt-regeneration', () => ({
   regenerateToken: vi.fn(() => Promise.resolve()),
@@ -131,13 +117,11 @@ describe('usePaywallModal', () => {
 
       expect(result.current).toHaveProperty('checkAndShowPaywall');
       expect(result.current).toHaveProperty('PaywallModal');
-      expect(result.current).toHaveProperty('isPolling');
       expect(result.current).toHaveProperty('shouldShowPaywall');
       expect(result.current).toHaveProperty('isPaywallLoading');
 
       expect(typeof result.current.checkAndShowPaywall).toBe('function');
       expect(typeof result.current.PaywallModal).toBe('function');
-      expect(typeof result.current.isPolling).toBe('boolean');
       expect(typeof result.current.shouldShowPaywall).toBe('boolean');
       expect(typeof result.current.isPaywallLoading).toBe('boolean');
     });
@@ -157,7 +141,7 @@ describe('usePaywallModal', () => {
         { wrapper }
       );
 
-      expect(spy).toHaveBeenCalledWith('app-456');
+      expect(spy).toHaveBeenCalled();
     });
 
     it('should work without appId', async () => {
@@ -172,7 +156,7 @@ describe('usePaywallModal', () => {
         { wrapper }
       );
 
-      expect(spy).toHaveBeenCalledWith(undefined);
+      expect(spy).toHaveBeenCalled();
     });
   });
 });

@@ -20,9 +20,6 @@ export interface SwitchboardFlagsResult {
   paywall: boolean;
   /** Whether paywall is enabled in the current market */
   markets: boolean;
-  /** Whether app-builder-grants flag is enabled (new plan-based limits).
-   * Defaults to true on fetch failure for fail-closed behavior. */
-  grants: boolean;
   /** Whether app-builder-bypass-publish-limit flag is enabled allowing unlimited publishing.
    * Defaults to false on fetch failure for fail-closed behavior. */
   bypassPublishLimit: boolean;
@@ -128,19 +125,6 @@ export interface PaywallDataProvider {
    * @returns Promise with array of project edges
    */
   getProjects(): Promise<ProjectEdge[]>;
-
-  /**
-   * Check if app-builder-grants feature flag is enabled
-   *
-   * When enabled, the new grants-based access control is active and
-   * legacy entitlements/project matching should be skipped.
-   *
-   * Client: Calls useSwitchboard or fetches directly
-   * Server: Uses checkSwitchboardFlag
-   *
-   * @returns Promise with boolean indicating if grants feature is enabled
-   */
-  isGrantsEnabled(): Promise<boolean>;
 
   /**
    * Get published apps data for limit checking

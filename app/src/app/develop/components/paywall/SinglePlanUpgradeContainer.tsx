@@ -7,7 +7,6 @@ import ErrorBoundary from '@/components/ErrorBoundary'
 import { useAuth } from '@/hooks/useAuth'
 import { useGasketData } from '@/hooks/useGasketData'
 import { useSubscription } from '@/hooks/useSubscription'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { getItcOverride } from '@/lib/itc'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { waitForQueryUpdate } from '@/lib/query-utils'
@@ -42,15 +41,10 @@ const SinglePlanUpgradeContainer = ({
   const queryClient = useQueryClient()
   const shopperId = getUserInfo()?.shopperId
 
-  // Determine product ID based on feature flag
-  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants')
   const { data: subscription } = useSubscription()
-  const productId = isGrantsEnabled
-    ? UPGRADE_PRODUCT_IDS.AIRO_BUILDER
-    : UPGRADE_PRODUCT_IDS.AIRO_PLUS
+  const productId = UPGRADE_PRODUCT_IDS.AIRO_BUILDER
 
-  // Pass entitlementId when grants are enabled (for upgrade flow attribution)
-  const entitlementId = isGrantsEnabled ? subscription?.builderEntitlementId : undefined
+  const entitlementId = subscription?.builderEntitlementId
 
   const handleSuccess = useCallback(async () => {
     // Capture current plan from cache at purchase time (before polling updates it)

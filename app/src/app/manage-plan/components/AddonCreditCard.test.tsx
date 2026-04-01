@@ -60,7 +60,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
         <CreditPacksCard
           creditPacks={[createMockGrant()]}
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
       // Card starts expanded by default
@@ -76,7 +76,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
       ];
 
       renderWithProviders(
-        <CreditPacksCard creditPacks={packs} onOpenPaywall={mockOnOpenPaywall} isGrantsEnabled={true} />
+        <CreditPacksCard creditPacks={packs} onOpenPaywall={mockOnOpenPaywall} />
       );
       // Card starts expanded by default
 
@@ -96,7 +96,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={packs}
           activeGrantId="pack-1"
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
       // Card starts expanded by default
@@ -114,7 +114,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
       ];
 
       renderWithProviders(
-        <CreditPacksCard creditPacks={packs} onOpenPaywall={mockOnOpenPaywall} isGrantsEnabled={true} />
+        <CreditPacksCard creditPacks={packs} onOpenPaywall={mockOnOpenPaywall} />
       );
 
       // Collapse the card first (it starts expanded)
@@ -131,7 +131,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
         <CreditPacksCard
           creditPacks={[createMockGrant()]}
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -147,7 +147,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Free}
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -160,7 +160,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Free}
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -173,7 +173,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Free}
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -187,7 +187,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Free}
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -202,7 +202,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Free}
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
           builderEntitlementId="test-entitlement-123"
         />
       );
@@ -218,7 +218,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Free}
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
           builderEntitlementId="test-entitlement-123"
         />
       );
@@ -234,7 +234,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Free}
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -248,7 +248,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Free}
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -281,7 +281,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.None}
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -297,7 +297,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Starter}
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -312,7 +312,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Starter}
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -326,7 +326,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Starter}
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -341,7 +341,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.AiroPlus}
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -356,7 +356,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.AiroPlus}
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
 
@@ -373,7 +373,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[createMockGrant()]}
           subscriptionPlan={SubscriptionPlan.Free}
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
       // Card starts expanded by default
@@ -388,7 +388,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[createMockGrant()]}
           subscriptionPlan={SubscriptionPlan.Starter}
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
       // Card starts expanded by default
@@ -402,7 +402,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[createMockGrant()]}
           subscriptionPlan={SubscriptionPlan.AiroPlus}
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
       // Card starts expanded by default
@@ -418,7 +418,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[createMockGrant()]}
           locale="de-DE"
           onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={true}
+
         />
       );
       // Card starts expanded by default

@@ -247,7 +247,7 @@ async function handleBudgetExceededWithGrantFallback(
   if (!containsBudgetExceededPattern(bodyText)) return null
 
   const { socketId, customerId } = metadata._internal
-  if (!grantSessionManager.isFeatureEnabled(socketId)) return null
+  if (!grantSessionManager.hasGrants(socketId)) return null
 
   // Extract the userId from the failed request to detect concurrent advances
   let failedUserId: string | undefined

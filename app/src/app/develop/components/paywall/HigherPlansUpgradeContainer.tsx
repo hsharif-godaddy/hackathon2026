@@ -7,7 +7,6 @@ import ErrorBoundary from '@/components/ErrorBoundary'
 import { useAuth } from '@/hooks/useAuth'
 import { useGasketData } from '@/hooks/useGasketData'
 import { useSubscription } from '@/hooks/useSubscription'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useUpgradePurchase } from '@/hooks/useUpgradePurchase'
 import { getItcOverride } from '@/lib/itc'
 import { shipAnalyticsLog } from '@/lib/logging'
@@ -48,13 +47,10 @@ const HigherPlansUpgradeContainer = ({
   const shopperId = getUserInfo()?.shopperId
   const { handlePurchaseSuccess } = useUpgradePurchase()
 
-  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants')
   const { data: subscription } = useSubscription()
-  const productId = isGrantsEnabled
-    ? UPGRADE_PRODUCT_IDS.AIRO_BUILDER
-    : UPGRADE_PRODUCT_IDS.AIRO_PLUS
+  const productId = UPGRADE_PRODUCT_IDS.AIRO_BUILDER
 
-  const entitlementId = isGrantsEnabled ? subscription?.builderEntitlementId : undefined
+  const entitlementId = subscription?.builderEntitlementId
   const subscriptionId = subscription?.id
 
   const handleSuccess = useCallback(({ planType }: { planType?: SubscriptionPlan }) => {
@@ -90,7 +86,7 @@ const HigherPlansUpgradeContainer = ({
 
     // Capture the current plan-monthly grant ID at the moment of purchase
     let initialPlanMonthlyGrantId: string | undefined
-    if (isUpgrade && isGrantsEnabled && subscriptionId) {
+    if (isUpgrade && subscriptionId) {
       const cachedGrants = queryClient.getQueryData<CreditGrant[]>(['credit-grants', subscriptionId, true])
       const planMonthlyGrant = cachedGrants?.find(
         (g) => g.type === GrantType.PlanMonthly && g.isAvailable
@@ -132,7 +128,7 @@ const HigherPlansUpgradeContainer = ({
         })
       }
     })
-  }, [source, productId, queryClient, handlePurchaseSuccess, subscriptionId, isGrantsEnabled])
+  }, [source, productId, queryClient, handlePurchaseSuccess, subscriptionId])
 
   const handleError = useCallback((error: Error) => {
     shipAnalyticsLog('paywall.cds.load.error', {

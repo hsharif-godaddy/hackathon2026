@@ -17,7 +17,6 @@ vi.mock('@/hooks/useUsage', () => ({
     percentage: 0,
     warningLevel: 'none',
     isLoading: false,
-    isGrantsEnabled: false,
   })),
 }));
 
@@ -62,7 +61,7 @@ describe('ChatBanners', function chatBannersTests() {
         percentage: 92,
         warningLevel: WarningLevel.WARNING,
         isLoading: false,
-        isGrantsEnabled: false,
+
       });
       vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false } as ReturnType<typeof useSwitchboard>);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
@@ -85,7 +84,7 @@ describe('ChatBanners', function chatBannersTests() {
         percentage: 50,
         warningLevel: WarningLevel.CAUTION,
         isLoading: false,
-        isGrantsEnabled: false,
+
       });
       vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
@@ -108,7 +107,7 @@ describe('ChatBanners', function chatBannersTests() {
         percentage: 50,
         warningLevel: WarningLevel.CAUTION,
         isLoading: false,
-        isGrantsEnabled: false,
+
       });
 
       // Mock switchboard to return false for upgrade banner and true for feedback banner
@@ -142,7 +141,7 @@ describe('ChatBanners', function chatBannersTests() {
         percentage: 0,
         warningLevel: WarningLevel.NONE,
         isLoading: false,
-        isGrantsEnabled: false,
+
       });
 
       renderWithProviders(<ChatBanners appId="my-app-id" />);
@@ -157,7 +156,7 @@ describe('ChatBanners', function chatBannersTests() {
         percentage: 0,
         warningLevel: WarningLevel.NONE,
         isLoading: false,
-        isGrantsEnabled: false,
+
       });
 
       renderWithProviders(<ChatBanners appId={null} />);

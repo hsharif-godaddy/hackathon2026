@@ -8,8 +8,6 @@
 import { AIRO_OWNER_PRODUCTS, AiroMgmtClient, type AiroSubscription } from '@/lib/mgmt-airo';
 import { filterPublishedApps } from '@/lib/publish-limit';
 import { logger } from '@/lib/request-context';
-import { checkSwitchboardFlag } from '@/lib/switchboard/server';
-import { VentureService } from '@/lib/venture-service';
 import { SubscriptionPlan, SubscriptionStatus } from '@/types/credits';
 import { getPlanFromSubscription } from '@/utils/credits';
 import { getRootDomainFromHeaders } from '@/utils/getRootDomain';
@@ -20,7 +18,7 @@ import { PAYWALL_CONFIG, PLAN_PRIORITY, type ProjectEdge } from './shared';
  * Server-side implementation of paywall data provider
  *
  * This implementation:
- * - Uses AiroMgmtClient and VentureService directly (no API routes)
+ * - Uses AiroMgmtClient directly (no API routes)
  * - Parses request headers for root domain
  * - Uses explicit JWT tokens for authentication
  */
@@ -67,15 +65,13 @@ export class ServerPaywallProvider implements PaywallDataProvider {
 
     const paywallFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/${SWITCHBOARD_FLAGS.PAYWALL}?app=${SWITCHBOARD_APP}`;
     const marketsFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/${SWITCHBOARD_FLAGS.MARKETS}?app=${SWITCHBOARD_APP}`;
-    const grantsFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/app-builder-grants?app=${SWITCHBOARD_APP}`;
     const bypassFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/app-builder-bypass-publish-limit?app=${SWITCHBOARD_APP}`;
 
     const authHeaders = { 'Authorization': `sso-jwt ${this.jwt}` };
 
-    const [paywallResponse, marketsResponse, grantsResponse, bypassResponse] = await Promise.all([
+    const [paywallResponse, marketsResponse, bypassResponse] = await Promise.all([
       fetch(paywallFlagUrl, { headers: authHeaders }),
       fetch(marketsFlagUrl, { headers: authHeaders }),
-      fetch(grantsFlagUrl, { headers: authHeaders }).catch(() => null),
       fetch(bypassFlagUrl, { headers: authHeaders }).catch(() => null),
     ]);
 
@@ -106,9 +102,6 @@ export class ServerPaywallProvider implements PaywallDataProvider {
 
     let paywallFlag: boolean;
     let marketsFlag: boolean;
-    // Default to true (grants enabled) for fail-closed behavior
-    // If we can't verify grants status, assume it's enabled and enforce publish limits
-    let grantsFlagResult = true; // fail-closed: assume grants enabled
     let bypassFlagResult = false; // fail-closed: assume bypass disabled
 
     try {
@@ -137,17 +130,6 @@ export class ServerPaywallProvider implements PaywallDataProvider {
       );
     }
 
-    // Parse grants and bypass flags (optional, don't fail if unavailable)
-    if (grantsResponse?.ok) {
-      try {
-        const grantsData = await grantsResponse.json();
-        grantsFlagResult = grantsData.setting ?? false;
-      } catch {
-        // Parse error - keep as true (fail-closed for publish limits)
-        logger.warn('paywall.server-provider.grants-flag-parse.failure');
-      }
-    }
-
     if (bypassResponse?.ok) {
       try {
         const bypassData = await bypassResponse.json();
@@ -160,7 +142,6 @@ export class ServerPaywallProvider implements PaywallDataProvider {
     return {
       paywall: paywallFlag,
       markets: marketsFlag,
-      grants: grantsFlagResult,
       bypassPublishLimit: bypassFlagResult,
     };
   }
@@ -170,13 +151,6 @@ export class ServerPaywallProvider implements PaywallDataProvider {
    *
    * Gets the customer's subscription with plan information.
    * Prioritizes active paid subscriptions over free ones.
-   * When app-builder-grants flag is enabled:
-   * - Checks for free/starter plans
-   * - Auto-creates free plan if subscription exists but has no valid plan
-   *
-   * When app-builder-grants flag is disabled (legacy):
-   * - Only checks for airoPlus plans
-   * - Does not auto-create plans
    *
    * @returns Promise with account subscription data
    */
@@ -184,21 +158,16 @@ export class ServerPaywallProvider implements PaywallDataProvider {
     const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
     const client = new AiroMgmtClient({ baseUrl, jwt: this.jwt });
 
-    // Fetch grants flag and subscriptions in parallel (independent lookups)
-    const [isGrantsEnabled, subscriptions] = await Promise.all([
-      checkSwitchboardFlag('app-builder-grants', this.jwt, this.headers),
-      client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER),
-    ]);
+    const subscriptions = await client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER);
 
     logger.info('paywall.server-provider.get-account-subscription', {
       message: 'Fetched account subscription data',
-      grantsEnabled: isGrantsEnabled
     });
 
     // Prioritize subscriptions by plan type for selection
     // Order of precedence: starter > free > airoPlus > none
     // Note: This priority is for subscription selection, NOT access control.
-    // When grants is enabled, only Starter grants paid access (AiroPlus does not).
+    // Only Starter, Professional, Ultimate grant paid access (AiroPlus does not).
     let bestSubscription: (AiroSubscription & { plan: SubscriptionPlan }) | null = null;
 
     for (const subscription of subscriptions) {
@@ -334,52 +303,16 @@ export class ServerPaywallProvider implements PaywallDataProvider {
   }
 
   /**
-   * Check if app-builder-grants feature flag is enabled
-   *
-   * When enabled, access control is based solely on subscription plans
-   * and legacy entitlements/project matching should be skipped.
-   *
-   * @returns Promise with boolean indicating if grants feature is enabled
-   */
-  async isGrantsEnabled(): Promise<boolean> {
-    return checkSwitchboardFlag('app-builder-grants', this.jwt, this.headers);
-  }
-
-  /**
    * Get user's projects
    *
-   * Uses VentureService to fetch customer projects with billing information.
-   * TODO: This should be deprecated when grants is enabled pg project matching is no longer used for access control.
-   * When app-builder-grants is enabled, this returns empty as project lookups
-   * are no longer used for access control - only subscription plans matter.
-   *
-   * @returns Promise with array of project edges
+   * @returns Empty array, grants always enabled
    */
   async getProjects(): Promise<ProjectEdge[]> {
-    // When app-builder-grants is enabled, skip product-graph project lookups
-    // Access control is based solely on subscription plan (paid vs free)
-    const isGrantsEnabled = await this.isGrantsEnabled();
-
-    if (isGrantsEnabled) {
-      logger.info('paywall.server-provider.projects-skipped', {
-        customerId: this.customerId,
-        message: 'Project lookups disabled when app-builder-grants is enabled',
-      });
-      return [];
-    }
-
-    const ventureService = new VentureService(this.jwt);
-
-    try {
-      const projectsData = await ventureService.getCustomerProjects(this.customerId);
-      return projectsData?.projects?.edges || [];
-    } catch (error) {
-      logger.warn('paywall.server-provider.projects-error', {
-        customerId: this.customerId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return [];
-    }
+    logger.info('paywall.server-provider.projects-skipped', {
+      customerId: this.customerId,
+      message: 'Project lookups disabled, grants always enabled',
+    });
+    return [];
   }
 
   /**

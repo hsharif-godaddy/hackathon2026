@@ -23,7 +23,6 @@ import { useChatTabs } from '@/hooks/useChatTabs'
 import { useCreditGrants } from '@/hooks/useCreditGrants'
 import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
 import { useSubscription } from '@/hooks/useSubscription'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { appFetch } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
@@ -84,10 +83,9 @@ export default function ChatPane({
   const setBuildErrorContext = useSetBuildErrorContext()
   const setCurrentAppId = useSetCurrentAppId()
 
-  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants')
   const { data: subscription } = useSubscription()
   const { data: grants, isFetching: isGrantsFetching } = useCreditGrants({
-    subscriptionId: isGrantsEnabled ? subscription?.id : undefined,
+    subscriptionId: subscription?.id,
   })
 
   const { authState } = useAuthContext()
@@ -96,10 +94,10 @@ export default function ChatPane({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const isImpersonating = isEmployeeAuthType((authState as any)?.authType)
 
-  const hasAvailableCredits = isGrantsEnabled && grants && getActiveGrant(grants) !== undefined
+  const hasAvailableCredits = grants && getActiveGrant(grants) !== undefined
   // grantsLoaded is false while fetching (including background refetches of stale cache) to prevent
   // briefly blocking a user who purchased credits between page visits.
-  const grantsLoaded = isGrantsEnabled && grants !== undefined && !isGrantsFetching
+  const grantsLoaded = grants !== undefined && !isGrantsFetching
   // CRM skip / impersonation sessions always have chat enabled regardless of credits
   const budgetExceeded = !isImpersonating && !hasAvailableCredits && (grantsLoaded || budgetExceededFlag)
   const [isProactiveBannerDismissed, setIsProactiveBannerDismissed] = useState(false)

@@ -29,10 +29,10 @@ export function GrantsPopoverContent({
 }: GrantsPopoverContentProps) {
   const t = useTranslations()
   const rootDomain = getRootDomain() || 'godaddy.com'
-  const { subscription, isPurchaseDisabled, isGrantsEnabled } = useSubscriptionWithPolling()
+  const { subscription, isPurchaseDisabled } = useSubscriptionWithPolling()
   const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans')
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : undefined
-  const isFreePlan = !isPaidPlanForGrants(currentPlan, !!isGrantsEnabled)
+  const isFreePlan = !isPaidPlanForGrants(currentPlan)
   const showUpgrade = canUpgradePlan(currentPlan, isHigherPlansEnabled === true)
 
   // Calculate grant-based data

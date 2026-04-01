@@ -8,7 +8,6 @@
  * React Query for automatic caching and deduplication.
  */
 
-import { fetchFeatureFlag } from '@/hooks/useSwitchboard';
 import type { SiteInfo } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
 import { filterPublishedApps } from '@/lib/publish-limit';
@@ -54,13 +53,11 @@ export class ClientPaywallProvider implements PaywallDataProvider {
 
     const paywallFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/${SWITCHBOARD_FLAGS.PAYWALL}?app=${SWITCHBOARD_APP}`;
     const marketsFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/${SWITCHBOARD_FLAGS.MARKETS}?app=${SWITCHBOARD_APP}`;
-    const grantsFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/app-builder-grants?app=${SWITCHBOARD_APP}`;
     const bypassFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/app-builder-bypass-publish-limit?app=${SWITCHBOARD_APP}`;
 
-    const [paywallResponse, marketsResponse, grantsResponse, bypassResponse] = await Promise.all([
+    const [paywallResponse, marketsResponse, bypassResponse] = await Promise.all([
       appFetch(paywallFlagUrl, {}, { setAuthState: false }),
       appFetch(marketsFlagUrl, {}, { setAuthState: false }),
-      appFetch(grantsFlagUrl, {}, { setAuthState: false }).catch(() => null),
       appFetch(bypassFlagUrl, {}, { setAuthState: false }).catch(() => null),
     ]);
 
@@ -119,19 +116,7 @@ export class ClientPaywallProvider implements PaywallDataProvider {
       );
     }
 
-    // Parse grants and bypass flags (optional, don't fail if unavailable)
-    let grantsFlagResult = true; // fail-closed: assume grants enabled
     let bypassFlagResult = false; // fail-closed: assume bypass disabled
-
-    if (grantsResponse?.ok) {
-      try {
-        const grantsData = await grantsResponse.json();
-        grantsFlagResult = grantsData.setting ?? false;
-      } catch {
-        // Parse error - keep as true (fail-closed for publish limits)
-        logger.warn('paywall.client-provider.grants-flag-parse.failure');
-      }
-    }
 
     if (bypassResponse?.ok) {
       try {
@@ -145,7 +130,6 @@ export class ClientPaywallProvider implements PaywallDataProvider {
     return {
       paywall: paywallFlag,
       markets: marketsFlag,
-      grants: grantsFlagResult,
       bypassPublishLimit: bypassFlagResult,
     };
   }
@@ -230,8 +214,7 @@ export class ClientPaywallProvider implements PaywallDataProvider {
   /**
    * Get user's projects
    *
-   * Calls /api/projects to get the user's projects.
-   * When app-builder-grants is enabled, the API returns empty results.
+   * Calls /api/projects which returns empty results (grants always enabled).
    *
    * @returns Promise with array of project edges
    */
@@ -246,20 +229,6 @@ export class ClientPaywallProvider implements PaywallDataProvider {
 
     const data = await response.json();
     return data?.data?.projects?.edges || [];
-  }
-
-  /**
-   * Check if app-builder-grants feature flag is enabled
-   *
-   * When enabled, access control is based solely on subscription plans
-   * and legacy entitlements/project matching should be skipped.
-   *
-   * Uses the shared fetchFeatureFlag utility from useSwitchboard.
-   *
-   * @returns Promise with boolean indicating if grants feature is enabled
-   */
-  async isGrantsEnabled(): Promise<boolean> {
-    return fetchFeatureFlag('app-builder-grants');
   }
 
   /**

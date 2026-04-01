@@ -4,14 +4,12 @@ import { SubscriptionPlan } from '@/types/credits';
 import {
   canUpgradePlan,
   GRANTS_PAID_PLANS,
-  isMatchingProject,
   isPaidPlan,
   isPaidPlanForGrants,
   isPlanUpgrade,
   isProfessionalOrAbove,
   landingItc,
   PAID_PLANS,
-  PAYWALL_CONFIG,
   PAYWALL_ITC,
   PLAN_PRIORITY,
   PROFESSIONAL_AND_ABOVE_PLANS,
@@ -71,32 +69,24 @@ describe('paywall/shared', function paywallSharedTests() {
   });
 
   describe('isPaidPlanForGrants', function isPaidPlanForGrantsTests() {
-    it('should return true for Starter, Professional, Ultimate regardless of grants flag', function newPaidPlansAlwaysPaid() {
-      expect(isPaidPlanForGrants(SubscriptionPlan.Starter, true)).toBe(true);
-      expect(isPaidPlanForGrants(SubscriptionPlan.Starter, false)).toBe(true);
-      expect(isPaidPlanForGrants(SubscriptionPlan.Professional, true)).toBe(true);
-      expect(isPaidPlanForGrants(SubscriptionPlan.Professional, false)).toBe(true);
-      expect(isPaidPlanForGrants(SubscriptionPlan.Ultimate, true)).toBe(true);
-      expect(isPaidPlanForGrants(SubscriptionPlan.Ultimate, false)).toBe(true);
+    it('should return true for Starter, Professional, Ultimate', function newPaidPlansAlwaysPaid() {
+      expect(isPaidPlanForGrants(SubscriptionPlan.Starter)).toBe(true);
+      expect(isPaidPlanForGrants(SubscriptionPlan.Professional)).toBe(true);
+      expect(isPaidPlanForGrants(SubscriptionPlan.Ultimate)).toBe(true);
     });
 
-    it('should return true for AiroPlus only when grants is disabled', function airoPlusLegacyOnly() {
-      expect(isPaidPlanForGrants(SubscriptionPlan.AiroPlus, false)).toBe(true);
-      expect(isPaidPlanForGrants(SubscriptionPlan.AiroPlus, true)).toBe(false);
+    it('should return false for AiroPlus', function airoPlusNotPaid() {
+      expect(isPaidPlanForGrants(SubscriptionPlan.AiroPlus)).toBe(false);
     });
 
     it('should return false for Free and None plans', function freeAndNoneNotPaid() {
-      expect(isPaidPlanForGrants(SubscriptionPlan.Free, true)).toBe(false);
-      expect(isPaidPlanForGrants(SubscriptionPlan.Free, false)).toBe(false);
-      expect(isPaidPlanForGrants(SubscriptionPlan.None, true)).toBe(false);
-      expect(isPaidPlanForGrants(SubscriptionPlan.None, false)).toBe(false);
+      expect(isPaidPlanForGrants(SubscriptionPlan.Free)).toBe(false);
+      expect(isPaidPlanForGrants(SubscriptionPlan.None)).toBe(false);
     });
 
     it('should return false for null or undefined', function handlesNullish() {
-      expect(isPaidPlanForGrants(null, true)).toBe(false);
-      expect(isPaidPlanForGrants(null, false)).toBe(false);
-      expect(isPaidPlanForGrants(undefined, true)).toBe(false);
-      expect(isPaidPlanForGrants(undefined, false)).toBe(false);
+      expect(isPaidPlanForGrants(null)).toBe(false);
+      expect(isPaidPlanForGrants(undefined)).toBe(false);
     });
   });
 
@@ -124,52 +114,6 @@ describe('paywall/shared', function paywallSharedTests() {
       expect(PLAN_PRIORITY[SubscriptionPlan.None]).toBeLessThan(PLAN_PRIORITY[SubscriptionPlan.Free]);
       expect(PLAN_PRIORITY[SubscriptionPlan.None]).toBeLessThan(PLAN_PRIORITY[SubscriptionPlan.AiroPlus]);
       expect(PLAN_PRIORITY[SubscriptionPlan.None]).toBeLessThan(PLAN_PRIORITY[SubscriptionPlan.Starter]);
-    });
-  });
-
-  describe('isMatchingProject', function isMatchingProjectTests() {
-    it('should return true for matching Airo Plus project', function matchingProject() {
-      const node = {
-        group: PAYWALL_CONFIG.PROJECT_MATCH_CRITERIA.GROUP,
-        status: PAYWALL_CONFIG.PROJECT_MATCH_CRITERIA.STATUS,
-        billing: {
-          id: 'billing-123',
-          plan: PAYWALL_CONFIG.PROJECT_MATCH_CRITERIA.PLAN,
-        },
-      };
-      expect(isMatchingProject(node)).toBe(true);
-    });
-
-    it('should return false for non-matching group', function nonMatchingGroup() {
-      const node = {
-        group: 'other-group',
-        status: PAYWALL_CONFIG.PROJECT_MATCH_CRITERIA.STATUS,
-        billing: {
-          id: 'billing-123',
-          plan: PAYWALL_CONFIG.PROJECT_MATCH_CRITERIA.PLAN,
-        },
-      };
-      expect(isMatchingProject(node)).toBe(false);
-    });
-
-    it('should return false for non-matching status', function nonMatchingStatus() {
-      const node = {
-        group: PAYWALL_CONFIG.PROJECT_MATCH_CRITERIA.GROUP,
-        status: 'INACTIVE',
-        billing: {
-          id: 'billing-123',
-          plan: PAYWALL_CONFIG.PROJECT_MATCH_CRITERIA.PLAN,
-        },
-      };
-      expect(isMatchingProject(node)).toBe(false);
-    });
-
-    it('should return false for missing billing', function missingBilling() {
-      const node = {
-        group: PAYWALL_CONFIG.PROJECT_MATCH_CRITERIA.GROUP,
-        status: PAYWALL_CONFIG.PROJECT_MATCH_CRITERIA.STATUS,
-      };
-      expect(isMatchingProject(node)).toBe(false);
     });
   });
 

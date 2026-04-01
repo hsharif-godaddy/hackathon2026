@@ -30,10 +30,6 @@ vi.mock('@/hooks/useCreditGrants', () => ({
   useCreditGrants: () => mockUseCreditGrants(),
 }))
 
-vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => ({ data: true, isLoading: false })),
-}))
-
 vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsActivelyStreaming: () => streamingRef.current,
 }))
@@ -115,9 +111,7 @@ describe('useGrantContext', function useGrantContextTests() {
 
     const payload = emitGrantContext.mock.calls[0]![0] as {
       grants: CreditGrant[]
-      featureEnabled: boolean
     }
-    expect(payload.featureEnabled).toBe(true)
     expect(payload.grants).toHaveLength(1)
     expect(payload.grants[0]!.id).toBe('grant-refetch')
     expect(payload.grants[0]!.creditsSpent).toBe(5)

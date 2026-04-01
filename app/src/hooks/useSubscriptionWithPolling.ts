@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 
 import { logger } from '@/lib/request-context'
 import { useSubscription } from './useSubscription'
-import { useSwitchboard } from './useSwitchboard'
 
 /** Maximum time to poll for builderEntitlementId (2 minutes) */
 const MAX_ENTITLEMENT_POLLING_DURATION_MS = 2 * 60 * 1000
@@ -14,20 +13,17 @@ interface UseSubscriptionWithPollingResult {
   isLoading: boolean
   isError: boolean
   builderEntitlementId: string | undefined
-  /** Whether purchase buttons should be disabled (grants enabled but no entitlement yet) */
+  /** Whether purchase buttons should be disabled (no entitlement yet) */
   isPurchaseDisabled: boolean
-  /** Whether grants feature is enabled */
-  isGrantsEnabled: boolean | undefined
   /** Whether entitlement polling has timed out */
   entitlementPollingTimedOut: boolean
 }
 
 /**
- * Hook that wraps useSubscription with automatic polling when grants enabled
- * but builderEntitlementId not yet available (handles async subscription creation)
+ * Hook that wraps useSubscription with automatic polling when
+ * builderEntitlementId not yet available (handles async subscription creation)
  */
 export function useSubscriptionWithPolling(): UseSubscriptionWithPollingResult {
-  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants')
   const [needsPolling, setNeedsPolling] = useState(false)
   const [timedOut, setTimedOut] = useState(false)
   const pollingStartTime = useRef<number | null>(null)
@@ -43,9 +39,9 @@ export function useSubscriptionWithPolling(): UseSubscriptionWithPollingResult {
 
   const builderEntitlementId = subscription?.builderEntitlementId
 
-  // Enable/disable polling based on grants flag and entitlement availability
+  // Enable/disable polling based on entitlement availability
   useEffect(function updatePollingState() {
-    if (isGrantsEnabled === true && !builderEntitlementId && !isLoading && !timedOut) {
+    if (!builderEntitlementId && !isLoading && !timedOut) {
       if (!needsPolling) {
         // Start polling
         pollingStartTime.current = Date.now()
@@ -76,7 +72,7 @@ export function useSubscriptionWithPolling(): UseSubscriptionWithPollingResult {
       setNeedsPolling(false)
       pollingStartTime.current = null
     }
-  }, [isGrantsEnabled, builderEntitlementId, isLoading, needsPolling, timedOut, subscription?.id])
+  }, [builderEntitlementId, isLoading, needsPolling, timedOut, subscription?.id])
 
   return {
     subscription,
@@ -84,8 +80,7 @@ export function useSubscriptionWithPolling(): UseSubscriptionWithPollingResult {
     isLoading,
     isError,
     builderEntitlementId,
-    isPurchaseDisabled: isGrantsEnabled === true && !builderEntitlementId,
-    isGrantsEnabled,
+    isPurchaseDisabled: !builderEntitlementId,
     entitlementPollingTimedOut: timedOut,
   }
 }

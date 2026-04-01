@@ -17,7 +17,6 @@ const mockOpenUpgradeModal = vi.fn();
 const mockOpenCreditsModal = vi.fn();
 
 let mockSite: SiteInfo | null = null;
-const mockSwitchboardData = { data: true as boolean | undefined };
 const mockHigherPlansData = { data: false as boolean | undefined };
 const mockSubscriptionData = {
   data: { id: 'sub-1', builderEntitlementId: 'ent-1', plan: SubscriptionPlan.AiroPlus } as any,
@@ -34,7 +33,7 @@ vi.mock('@/utils/instrumentation', () => ({
 
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: (flag: string) =>
-    flag === 'appbuilder-higher-plans' ? mockHigherPlansData : mockSwitchboardData,
+    flag === 'appbuilder-higher-plans' ? mockHigherPlansData : { data: false },
 }));
 
 vi.mock('@/hooks/useSubscription', () => ({
@@ -69,7 +68,6 @@ describe('BudgetExceededBanner', function budgetExceededBannerTests() {
   beforeEach(function resetMocks() {
     vi.clearAllMocks();
     mockSite = null;
-    mockSwitchboardData.data = true;
     mockHigherPlansData.data = false;
     mockSubscriptionData.data = { id: 'sub-1', builderEntitlementId: 'ent-1', plan: SubscriptionPlan.AiroPlus };
     mockSubscriptionData.isLoading = false;
@@ -95,17 +93,6 @@ describe('BudgetExceededBanner', function budgetExceededBannerTests() {
       });
     });
 
-    it('should NOT render any action buttons when grants are disabled', async function noActionsWithoutGrants() {
-      mockSwitchboardData.data = false;
-      renderWithProviders(<BudgetExceededBanner />);
-
-      await waitFor(function assertNoButtons() {
-        expect(document.body).toBeTruthy();
-      });
-
-      expect(screen.queryByText('builder_usage_gauge_buy_tokens')).not.toBeInTheDocument();
-      expect(screen.queryByText('builder_usage_gauge_upgrade')).not.toBeInTheDocument();
-    });
   });
 
   describe('#upgradeButton', function upgradeButtonTests() {
@@ -189,17 +176,6 @@ describe('BudgetExceededBanner', function budgetExceededBannerTests() {
       });
     });
 
-    it('should show legacy reset time when grants feature is disabled', async function legacyResetTime() {
-      mockSwitchboardData.data = false;
-      renderWithProviders(<BudgetExceededBanner />);
-
-      await waitFor(function assertAlertRendered() {
-        expect(screen.getByText('builder_usage_limit_title')).toBeInTheDocument();
-      });
-
-      // Legacy path uses today/tomorrow keys, not no_reset_time
-      expect(screen.queryByText('builder_usage_limit_message_no_reset_time')).not.toBeInTheDocument();
-    });
   });
 
   describe('#onClose', function onCloseTests() {

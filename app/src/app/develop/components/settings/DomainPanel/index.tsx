@@ -35,7 +35,7 @@ export default function DomainPanel() {
     return state.loading[currentAppId] ?? false;
   });
 
-  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(currentAppId || undefined);
+  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility();
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal);
 
   const { handlePublish, isPublishDisabled, publishState } = usePublishForDomain(currentAppId, site);

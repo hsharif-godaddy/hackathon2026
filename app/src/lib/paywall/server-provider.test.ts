@@ -75,11 +75,9 @@ describe('ServerPaywallProvider', () => {
   });
 
   describe('checkSwitchboardFlags', () => {
-    // Helper to create mock responses for all 4 switchboard flags
     function mockSwitchboardFlags(options: {
       paywall?: { ok: boolean; status?: number; setting?: boolean };
       markets?: { ok: boolean; status?: number; setting?: boolean };
-      grants?: { ok: boolean; status?: number; setting?: boolean };
       bypass?: { ok: boolean; status?: number; setting?: boolean };
     }) {
       const createResponse = (opt?: { ok: boolean; status?: number; setting?: boolean }) => ({
@@ -91,7 +89,6 @@ describe('ServerPaywallProvider', () => {
       global.fetch = vi.fn()
         .mockResolvedValueOnce(createResponse(options.paywall))
         .mockResolvedValueOnce(createResponse(options.markets))
-        .mockResolvedValueOnce(createResponse(options.grants))
         .mockResolvedValueOnce(createResponse(options.bypass));
     }
 
@@ -99,36 +96,33 @@ describe('ServerPaywallProvider', () => {
       mockSwitchboardFlags({
         paywall: { ok: true, setting: true },
         markets: { ok: true, setting: true },
-        grants: { ok: true, setting: false },
         bypass: { ok: true, setting: false },
       });
 
       const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);
       const result = await provider.checkSwitchboardFlags('godaddy.com');
 
-      expect(result).toEqual({ paywall: true, markets: true, grants: false, bypassPublishLimit: false });
-      expect(global.fetch).toHaveBeenCalledTimes(4);
+      expect(result).toEqual({ paywall: true, markets: true, bypassPublishLimit: false });
+      expect(global.fetch).toHaveBeenCalledTimes(3);
     });
 
-    it('should return grants and bypass flags when enabled', async () => {
+    it('should return bypass flag when enabled', async () => {
       mockSwitchboardFlags({
         paywall: { ok: true, setting: true },
         markets: { ok: true, setting: true },
-        grants: { ok: true, setting: true },
         bypass: { ok: true, setting: true },
       });
 
       const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);
       const result = await provider.checkSwitchboardFlags('godaddy.com');
 
-      expect(result).toEqual({ paywall: true, markets: true, grants: true, bypassPublishLimit: true });
+      expect(result).toEqual({ paywall: true, markets: true, bypassPublishLimit: true });
     });
 
     it('should throw error when paywall flag fetch fails', async () => {
       mockSwitchboardFlags({
         paywall: { ok: false, status: 503 },
         markets: { ok: true, setting: true },
-        grants: { ok: true, setting: false },
         bypass: { ok: true, setting: false },
       });
 
@@ -143,7 +137,6 @@ describe('ServerPaywallProvider', () => {
       mockSwitchboardFlags({
         paywall: { ok: true, setting: true },
         markets: { ok: false, status: 404 },
-        grants: { ok: true, setting: false },
         bypass: { ok: true, setting: false },
       });
 
@@ -165,10 +158,6 @@ describe('ServerPaywallProvider', () => {
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ setting: true }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ setting: false }),
         })
         .mockResolvedValueOnce({
           ok: true,
@@ -195,21 +184,15 @@ describe('ServerPaywallProvider', () => {
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({}), // No setting field
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({}), // No setting field
         });
 
       const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);
       const result = await provider.checkSwitchboardFlags('godaddy.com');
 
-      expect(result).toEqual({ paywall: false, markets: false, grants: false, bypassPublishLimit: false });
+      expect(result).toEqual({ paywall: false, markets: false, bypassPublishLimit: false });
     });
 
-    it('should handle grants/bypass flag fetch failures with fail-closed defaults', async () => {
-      // grants and bypass use .catch(() => null) so failures are handled gracefully
-      // Network failures return true for grants (enforce limits) and false for bypass (no bypass)
+    it('should handle bypass flag fetch failure with fail-closed default', async () => {
       global.fetch = vi.fn()
         .mockResolvedValueOnce({
           ok: true,
@@ -219,16 +202,13 @@ describe('ServerPaywallProvider', () => {
           ok: true,
           json: async () => ({ setting: true }),
         })
-        .mockRejectedValueOnce(new Error('Network error')) // grants fails
         .mockRejectedValueOnce(new Error('Network error')); // bypass fails
 
       const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);
       const result = await provider.checkSwitchboardFlags('godaddy.com');
 
-      // Should still succeed with fail-closed defaults: grants=true (enforce limits), bypass=false
       expect(result.paywall).toBe(true);
       expect(result.markets).toBe(true);
-      expect(result.grants).toBe(true); // fail-closed: assume grants enabled
       expect(result.bypassPublishLimit).toBe(false); // fail-closed: assume bypass disabled
     });
   });

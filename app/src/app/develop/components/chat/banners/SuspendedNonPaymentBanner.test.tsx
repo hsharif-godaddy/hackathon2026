@@ -31,8 +31,8 @@ vi.mock('react-intl', async (importOriginal) => {
   };
 });
 
-const mockLogImpressionEvent = vi.fn(() => vi.fn());
-const mockLogClickEvent = vi.fn(() => vi.fn());
+const mockLogImpressionEvent = vi.fn((_name: string) => vi.fn());
+const mockLogClickEvent = vi.fn((_name: string) => vi.fn());
 
 vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: (name: string) => mockLogImpressionEvent(name),

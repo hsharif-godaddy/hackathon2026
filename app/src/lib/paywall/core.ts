@@ -11,7 +11,7 @@
 import { canPublishWithPlan, getPublishLimit } from '@/lib/publish-limit';
 import { logger } from '@/lib/request-context';
 import type { PaywallDataProvider, SwitchboardFlagsResult } from './providers';
-import { getEffectivePlan, isMatchingProject, isPaidPlanForGrants, type PaywallCheckResult, PaywallDenialReason } from './shared';
+import { getEffectivePlan, isPaidPlanForGrants, type PaywallCheckResult, PaywallDenialReason } from './shared';
 
 /**
  * Action types for paywall eligibility check
@@ -26,29 +26,11 @@ export enum PaywallAction {
  *
  * This is the main paywall eligibility check used by both client and server.
  *
- * When app-builder-grants is ENABLED (new grants-based system):
  * 1. Check if paywall is enabled via switchboard flags
  * 2. Get user's account-level subscription and check plan
- *    - Paid plan (Starter, Professional, Ultimate, AiroPlus) = access granted with plan limits
+ *    - Paid plan (Starter, Professional, Ultimate) = access granted with plan limits
  *    - Users with app-builder-bypass-publish-limit enabled get unlimited publishing
- *    - Non-paid plans (Free, None) = paywall
- *
- * When app-builder-grants is DISABLED (legacy system):
- * 1. Check if paywall is enabled via switchboard flags
- *    - If check fails (network error, service down), deny access (fail closed)
- *    - If paywall explicitly disabled by flags, allow access
- *
- * 2. Get user's account-level subscription
- *    - Check the plan field (none|free|starter|airoPlus)
- *    - Free and none plans require additional checks
- *    - Starter and airoPlus plans have access
- *
- * 3. Check if user has entitlements (legacy compatibility)
- *    - If yes, grant access
- *
- * 4. Fallback: Check for matching Airo Plus project via product-graph
- *    - If found, grant access
- *    - Otherwise, deny access
+ *    - Non-paid plans (Free, None, AiroPlus) = paywall
  *
  * @param provider - Environment-specific data provider
  * @param appId - Optional app ID for legacy compatibility
@@ -104,7 +86,6 @@ export async function checkPaywallEligibility(
         appId,
         isPaywallEnabled: flags.paywall,
         isPaywallEnabledInMarket: flags.markets,
-        isGrantsEnabled: flags.grants,
         isBypassEnabled: flags.bypassPublishLimit,
       });
     } catch (error) {
@@ -152,21 +133,12 @@ export async function checkPaywallEligibility(
     result.details.hasSubscription = true;
     result.details.subscriptionId = accountSubscription.id;
 
-    // Check if grants feature is enabled - this affects which plans are considered "paid"
-    // When grants is ON: only Starter is a paid plan (AiroPlus users need to upgrade)
-    // When grants is OFF: both Starter and AiroPlus are paid plans
-    const grantsEnabled = await provider.isGrantsEnabled();
-
-    // Check plan level for access using grants-aware function
-    const hasAccessByPlan = isPaidPlanForGrants(accountSubscription.plan, grantsEnabled);
+    const hasAccessByPlan = isPaidPlanForGrants(accountSubscription.plan);
     if (hasAccessByPlan) {
       result.details.hasSubscription = true;
       result.details.subscriptionId = accountSubscription.id;
 
-      // When grants flag is enabled, check publish limits for paid plans (only for publish action)
-      // flags.grants defaults to true on fetch failure (fail-closed), so limits are always enforced
-      // unless grants is explicitly disabled
-      if (action === PaywallAction.Publish && flags.grants && !flags.bypassPublishLimit) {
+      if (action === PaywallAction.Publish && !flags.bypassPublishLimit) {
 
         let publishedApps;
         try {
@@ -242,78 +214,8 @@ export async function checkPaywallEligibility(
       return result;
     }
 
-    // User does not have a paid plan - check if we should use legacy fallbacks
-    if (grantsEnabled) {
-      // When grants is enabled, non-paid plans (Free, None) require paywall
-      result.reason = 'Subscription upgrade required';
-      return result;
-    }
-
-    // Legacy path: Step 3 & 4 - Check entitlements and projects in parallel for faster response
-    // This is only used when app-builder-grants is disabled
-    const [entitlementResult, projectsResult] = await Promise.allSettled([
-      accountSubscription.id ? provider.getEntitlements(accountSubscription.id) : Promise.resolve(undefined),
-      provider.getProjects(),
-    ]);
-
-    // Check entitlements result
-    if (entitlementResult.status === 'fulfilled' && entitlementResult.value) {
-      result.details.hasEntitlements = true;
-      result.details.entitlementId = entitlementResult.value;
-      result.hasAccess = true;
-
-      logger.info('paywall.eligibility.access-granted', {
-        appId,
-        reason: 'user-has-entitlements',
-        subscriptionId: accountSubscription.id,
-        entitlementId: entitlementResult.value,
-      });
-
-      return result;
-    }
-
-    if (entitlementResult.status === 'rejected') {
-      logger.warn('paywall.eligibility.entitlements-error', {
-        appId,
-        subscriptionId: accountSubscription.id,
-        error: entitlementResult.reason instanceof Error ? entitlementResult.reason.message : String(entitlementResult.reason),
-      });
-    }
-
-    // Check projects result
-    if (projectsResult.status === 'fulfilled') {
-      const projects = projectsResult.value;
-      const matchingProject = projects.find((edge) => isMatchingProject(edge.node));
-
-      if (matchingProject?.node?.billing?.id) {
-        result.details.hasMatchingProject = true;
-        result.details.billingId = matchingProject.node.billing.id;
-        result.hasAccess = true;
-
-        logger.info('paywall.eligibility.access-granted', {
-          appId,
-          reason: 'user-has-matching-project',
-          subscriptionId: accountSubscription.id,
-          billingId: matchingProject.node.billing.id,
-        });
-
-        return result;
-      }
-    } else {
-      logger.warn('paywall.eligibility.projects-error', {
-        appId,
-        subscriptionId: accountSubscription.id,
-        error: projectsResult.reason instanceof Error ? projectsResult.reason.message : String(projectsResult.reason),
-      });
-    }
-
-    // No access found
-    logger.warn('paywall.eligibility.access-denied', {
-      appId,
-      subscriptionId: accountSubscription.id,
-      plan: accountSubscription.plan
-    });
-    result.reason = 'Airo Plus subscription required';
+    // User does not have a paid plan — require upgrade
+    result.reason = 'Subscription upgrade required';
     return result;
   } catch (error) {
     logger.error('paywall.eligibility.check-failed', {

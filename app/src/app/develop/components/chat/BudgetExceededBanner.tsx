@@ -18,17 +18,6 @@ import { getMonthlyPlanGrant, getPlanFromSubscription } from '@/utils/credits'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { hasBeenPublished } from '@/utils/site'
 
-function getNextResetInfo(): { date: Date; isTomorrow: boolean } {
-  const now = new Date()
-  const resetTime = new Date(now)
-  resetTime.setUTCHours(0, 10, 0, 0)
-  const isTomorrow = now >= resetTime
-  if (isTomorrow) {
-    resetTime.setUTCDate(resetTime.getUTCDate() + 1)
-  }
-  return { date: resetTime, isTomorrow }
-}
-
 /**
  * The "Usage Limit Reached" alert with Upgrade / Buy AI Credits actions.
  * Single source of truth used in two places:
@@ -45,17 +34,16 @@ export default function BudgetExceededBanner({ onClose }: BudgetExceededBannerPr
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
   const openCreditsModal = useDevelopPageStore((state) => state.openCreditsModal)
 
-  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants')
   const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans')
   const { data: subscription, isLoading: isSubscriptionLoading } = useSubscription()
   const { data: grants } = useCreditGrants({
-    subscriptionId: isGrantsEnabled ? subscription?.id : undefined,
+    subscriptionId: subscription?.id,
   })
 
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : SubscriptionPlan.None
   const isNotUltimatePlan = !isSubscriptionLoading && canUpgradePlan(currentPlan, isHigherPlansEnabled === true)
   const builderEntitlementId = subscription?.builderEntitlementId
-  const isPurchaseDisabled = isGrantsEnabled === true && !builderEntitlementId
+  const isPurchaseDisabled = !builderEntitlementId
 
   const site = useDevelopPageStore((state) => state.site)
   const hasPublishedApp = hasBeenPublished(site)
@@ -70,28 +58,17 @@ export default function BudgetExceededBanner({ onClose }: BudgetExceededBannerPr
     logImpressionEvent('chat.budgetExceeded.view', { "has_published_app": hasPublishedApp, "has_custom_domain": hasCustomDomain })()
   }, [hasPublishedApp, hasCustomDomain, site])
 
-  // When grants enabled: use the plan-monthly grant's useBefore date
-  // When grants disabled: use legacy "today at" / "tomorrow at" format
   const resetTime = useMemo(() => {
-    if (isGrantsEnabled) {
-      if (!grants) return undefined
-      const planGrant = getMonthlyPlanGrant(grants)
-      if (planGrant?.useBefore) {
-        const useByDate = new Date(planGrant.useBefore)
-        const date = intl.formatDate(useByDate, { month: 'long', day: 'numeric' })
-        const time = intl.formatDate(useByDate, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
-        return t('builder_usage_limit_reset_on_date', { date, time })
-      }
-      return undefined
+    if (!grants) return undefined
+    const planGrant = getMonthlyPlanGrant(grants)
+    if (planGrant?.useBefore) {
+      const useByDate = new Date(planGrant.useBefore)
+      const date = intl.formatDate(useByDate, { month: 'long', day: 'numeric' })
+      const time = intl.formatDate(useByDate, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+      return t('builder_usage_limit_reset_on_date', { date, time })
     }
-
-    // Legacy: "today at" / "tomorrow at" format
-    const { date, isTomorrow } = getNextResetInfo()
-    const time = intl.formatDate(date, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
-    return isTomorrow
-      ? t('builder_usage_limit_reset_tomorrow', { time })
-      : t('builder_usage_limit_reset_today', { time })
-  }, [intl, t, isGrantsEnabled, grants])
+    return undefined
+  }, [intl, t, grants])
 
   return (
     <StreamingAlertMessage
@@ -113,9 +90,9 @@ export default function BudgetExceededBanner({ onClose }: BudgetExceededBannerPr
           t('builder_usage_limit_message_no_reset_time')
         )
       }
-      actions={isGrantsEnabled && (
+      actions={(
         <div className="flex gap-2">
-          {/* When grants enabled: only show upgrade button if user can upgrade to a higher plan */}
+          {/* Only show upgrade button if user can upgrade to a higher plan */}
           {isNotUltimatePlan && (
             <Button
               design="primary"

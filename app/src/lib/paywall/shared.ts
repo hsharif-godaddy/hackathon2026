@@ -129,7 +129,7 @@ export interface ProjectEdge {
 }
 
 /**
- * Plans that grant paid-tier access (legacy - when grants is disabled)
+ * Legacy plan list (includes AiroPlus). Kept for isPaidPlan() function.
  *
  * Used throughout the codebase for feature gating and UI conditional rendering.
  * Add new paid plan types here when they are introduced.
@@ -142,9 +142,9 @@ export const PAID_PLANS = [
 ] as const;
 
 /**
- * Plans that grant paid-tier access when app-builder-grants is enabled
+ * Plans that grant paid-tier access (Starter, Professional, Ultimate)
  *
- * When grants is enabled, AiroPlus is NOT considered a paid plan.
+ * AiroPlus is NOT considered a paid plan.
  * Starter, Professional, and Ultimate grant access; AiroPlus users need to upgrade.
  */
 export const GRANTS_PAID_PLANS = [
@@ -174,22 +174,19 @@ export function isPaidPlan(plan: SubscriptionPlan | undefined | null): plan is P
 }
 
 /**
- * Check if a plan is a paid plan based on grants feature flag
+ * Check if a plan is a paid plan (grants-aware)
  *
- * When grants is enabled, only Starter is considered a paid plan.
- * When grants is disabled (legacy), both AiroPlus and Starter are paid plans.
+ * Only Starter, Professional, and Ultimate are paid plans.
+ * AiroPlus users need to upgrade.
  *
  * @param plan - Subscription plan to check
- * @param isGrantsEnabled - Whether app-builder-grants flag is enabled
- * @returns True if plan grants paid-tier access given the grants flag state
+ * @returns True if plan grants paid-tier access
  */
 export function isPaidPlanForGrants(
-  plan: SubscriptionPlan | undefined | null,
-  isGrantsEnabled: boolean
+  plan: SubscriptionPlan | undefined | null
 ): boolean {
   if (plan == null) return false;
-  const paidPlans = isGrantsEnabled ? GRANTS_PAID_PLANS : PAID_PLANS;
-  return (paidPlans as readonly SubscriptionPlan[]).includes(plan);
+  return (GRANTS_PAID_PLANS as readonly SubscriptionPlan[]).includes(plan);
 }
 
 /**
@@ -327,22 +324,6 @@ export function getEffectivePlan(
   hadAiroPlus: boolean | undefined
 ): SubscriptionPlan | undefined | null {
   return isLegacyAiroPlus(plan, hadAiroPlus) ? SubscriptionPlan.AiroPlus : plan;
-}
-
-/**
- * Check if a project matches Airo Plus criteria
- *
- * @param node - Project node to check
- * @returns True if project grants Airo Plus access
- */
-export function isMatchingProject(node: ProjectEdge['node']): boolean {
-  const { PROJECT_MATCH_CRITERIA } = PAYWALL_CONFIG;
-
-  return (
-    node.group === PROJECT_MATCH_CRITERIA.GROUP &&
-    node.status === PROJECT_MATCH_CRITERIA.STATUS &&
-    node.billing?.plan === PROJECT_MATCH_CRITERIA.PLAN
-  );
 }
 
 /**

@@ -4,7 +4,6 @@ import { createCorsOptionsHandler, withCorsHeaders } from '@/lib/cors';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { AIRO_OWNER_PRODUCTS, AIRO_PRODUCT_IDS, AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
-import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 import { SubscriptionStatus } from '@/types/credits';
 import { getPlanFromSubscription } from '@/utils/credits';
 
@@ -26,9 +25,6 @@ export const OPTIONS = createCorsOptionsHandler();
  *   data: {
  *     subscriptions: [...],  // All subscriptions with plan field
  *     active: {...},         // Best/active subscription
- *     meta: {
- *       grantsEnabled: boolean
- *     }
  *   }
  * }
  */
@@ -52,11 +48,7 @@ export const GET = withCustomerAuth(async (
       customerId: authContext.user.customerId,
     });
 
-    // Fetch grants flag and subscriptions in parallel (independent lookups)
-    const [isGrantsEnabled, subscriptions] = await Promise.all([
-      checkSwitchboardFlag('app-builder-grants', authContext.jwt, request.headers),
-      client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER),
-    ]);
+    const subscriptions = await client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER);
 
     logger.info('subscriptions.api.fetched', {
       count: subscriptions.length,
@@ -84,7 +76,6 @@ export const GET = withCustomerAuth(async (
     logger.info('subscriptions.api.success', {
       count: subscriptionsWithPlan.length,
       bestPlan: bestSubscription?.plan,
-      grantsEnabled: isGrantsEnabled,
       customerId: authContext.user.customerId
     });
 
@@ -92,10 +83,7 @@ export const GET = withCustomerAuth(async (
       success: true,
       data: {
         subscriptions: subscriptionsWithPlan,
-        active: bestSubscription,
-        meta: {
-          grantsEnabled: isGrantsEnabled
-        }
+        active: bestSubscription
       }
     }), origin);
 

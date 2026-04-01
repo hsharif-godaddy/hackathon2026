@@ -23,20 +23,17 @@ describe('checkPaywallEligibility', () => {
       getRootDomain: vi.fn(),
       checkSwitchboardFlags: vi.fn(),
       getAccountSubscription: vi.fn(),
-      getSubscription: vi.fn(),
-      getEntitlements: vi.fn(),
-      getProjects: vi.fn(),
-      isGrantsEnabled: vi.fn().mockResolvedValue(false), // Default to legacy behavior
       getPublishedApps: vi.fn().mockResolvedValue({ count: 0, publishedAppIds: [] }),
     } as any;
   });
 
   describe('Account-level subscription checks', () => {
-    it('should grant access for airoPlus plan', async () => {
+    it('should deny access for airoPlus plan', async () => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
+        bypassPublishLimit: false,
       });
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-123',
@@ -46,10 +43,8 @@ describe('checkPaywallEligibility', () => {
 
       const result = await checkPaywallEligibility(mockProvider);
 
-      expect(result.hasAccess).toBe(true);
-      expect(result.details.hasSubscription).toBe(true);
-      expect(result.details.subscriptionId).toBe('sub-123');
-      expect(mockProvider.getEntitlements).not.toHaveBeenCalled(); // Should not check entitlements for paid plans
+      expect(result.hasAccess).toBe(false);
+      expect(result.reason).toBe('Subscription upgrade required');
     });
 
     it('should grant access for starter plan', async () => {
@@ -57,6 +52,7 @@ describe('checkPaywallEligibility', () => {
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
+        bypassPublishLimit: false,
       });
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-starter',
@@ -71,48 +67,46 @@ describe('checkPaywallEligibility', () => {
       expect(result.details.subscriptionId).toBe('sub-starter');
     });
 
-    it('should deny access for free plan (legacy - grants disabled)', async () => {
+    it('should deny access for free plan', async () => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
+        bypassPublishLimit: false,
       });
-      mockProvider.isGrantsEnabled.mockResolvedValue(false);
+
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-free',
         plan: SubscriptionPlan.Free,
         status: 'active',
       });
-      mockProvider.getEntitlements.mockResolvedValue(undefined);
-      mockProvider.getProjects.mockResolvedValue([]);
 
       const result = await checkPaywallEligibility(mockProvider);
 
       expect(result.hasAccess).toBe(false);
-      expect(result.reason).toBe('Airo Plus subscription required');
+      expect(result.reason).toBe('Subscription upgrade required');
       expect(result.details.hasSubscription).toBe(true);
       expect(result.details.subscriptionId).toBe('sub-free');
     });
 
-    it('should deny access for none plan (legacy - grants disabled)', async () => {
+    it('should deny access for none plan', async () => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
+        bypassPublishLimit: false,
       });
-      mockProvider.isGrantsEnabled.mockResolvedValue(false);
+
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-none',
         plan: SubscriptionPlan.None,
         status: 'active',
       });
-      mockProvider.getEntitlements.mockResolvedValue(undefined);
-      mockProvider.getProjects.mockResolvedValue([]);
 
       const result = await checkPaywallEligibility(mockProvider);
 
       expect(result.hasAccess).toBe(false);
-      expect(result.reason).toBe('Airo Plus subscription required');
+      expect(result.reason).toBe('Subscription upgrade required');
     });
 
     it('should pass appId for logging when provided', async () => {
@@ -120,83 +114,29 @@ describe('checkPaywallEligibility', () => {
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
+        bypassPublishLimit: false,
       });
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-123',
-        plan: SubscriptionPlan.AiroPlus,
+        plan: SubscriptionPlan.Starter,
       });
 
       const result = await checkPaywallEligibility(mockProvider, 'app-456');
 
       expect(result.hasAccess).toBe(true);
-      // AppId should be used for logging but not affect the logic
       expect(mockProvider.getAccountSubscription).toHaveBeenCalled();
     });
   });
 
-  describe('Legacy entitlement checks for free plans (grants disabled)', () => {
-    it('should check entitlements for free plan and grant access if found', async () => {
+  describe('Grants behavior', () => {
+    it('should deny access for free plan', async () => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
+        bypassPublishLimit: false,
       });
-      mockProvider.isGrantsEnabled.mockResolvedValue(false);
-      mockProvider.getAccountSubscription.mockResolvedValue({
-        id: 'sub-free',
-        plan: SubscriptionPlan.Free,
-      });
-      mockProvider.getEntitlements.mockResolvedValue('ent-123');
 
-      const result = await checkPaywallEligibility(mockProvider);
-
-      expect(result.hasAccess).toBe(true);
-      expect(result.details.hasEntitlements).toBe(true);
-      expect(result.details.entitlementId).toBe('ent-123');
-      expect(mockProvider.getEntitlements).toHaveBeenCalledWith('sub-free');
-    });
-
-    it('should check matching project as fallback for free plan', async () => {
-      mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
-      mockProvider.checkSwitchboardFlags.mockResolvedValue({
-        paywall: true,
-        markets: true,
-      });
-      mockProvider.isGrantsEnabled.mockResolvedValue(false);
-      mockProvider.getAccountSubscription.mockResolvedValue({
-        id: 'sub-free',
-        plan: SubscriptionPlan.Free,
-      });
-      mockProvider.getEntitlements.mockResolvedValue(undefined);
-      mockProvider.getProjects.mockResolvedValue([
-        {
-          node: {
-            group: 'aigeneratedmedia',
-            status: 'ACTIVE',
-            billing: {
-              id: 'billing-456',
-              plan: 'logoImage',
-            },
-          },
-        },
-      ]);
-
-      const result = await checkPaywallEligibility(mockProvider);
-
-      expect(result.hasAccess).toBe(true);
-      expect(result.details.hasMatchingProject).toBe(true);
-      expect(result.details.billingId).toBe('billing-456');
-    });
-  });
-
-  describe('Grants enabled behavior (app-builder-grants ON)', () => {
-    it('should deny access for free plan without checking entitlements/projects', async () => {
-      mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
-      mockProvider.checkSwitchboardFlags.mockResolvedValue({
-        paywall: true,
-        markets: true,
-      });
-      mockProvider.isGrantsEnabled.mockResolvedValue(true);
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-free',
         plan: SubscriptionPlan.Free,
@@ -207,17 +147,16 @@ describe('checkPaywallEligibility', () => {
 
       expect(result.hasAccess).toBe(false);
       expect(result.reason).toBe('Subscription upgrade required');
-      expect(mockProvider.getEntitlements).not.toHaveBeenCalled();
-      expect(mockProvider.getProjects).not.toHaveBeenCalled();
     });
 
-    it('should deny access for none plan without checking entitlements/projects', async () => {
+    it('should deny access for none plan', async () => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
+        bypassPublishLimit: false,
       });
-      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-none',
         plan: SubscriptionPlan.None,
@@ -228,17 +167,16 @@ describe('checkPaywallEligibility', () => {
 
       expect(result.hasAccess).toBe(false);
       expect(result.reason).toBe('Subscription upgrade required');
-      expect(mockProvider.getEntitlements).not.toHaveBeenCalled();
-      expect(mockProvider.getProjects).not.toHaveBeenCalled();
     });
 
-    it('should grant access for Starter plan when grants enabled', async () => {
+    it('should grant access for Starter plan', async () => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
+        bypassPublishLimit: false,
       });
-      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-starter',
         plan: SubscriptionPlan.Starter,
@@ -249,20 +187,16 @@ describe('checkPaywallEligibility', () => {
 
       expect(result.hasAccess).toBe(true);
       expect(result.details.hasSubscription).toBe(true);
-      // Grants flag is checked to determine which plans are paid
-      expect(mockProvider.isGrantsEnabled).toHaveBeenCalled();
-      // Should not check entitlements or projects for paid plans
-      expect(mockProvider.getEntitlements).not.toHaveBeenCalled();
-      expect(mockProvider.getProjects).not.toHaveBeenCalled();
     });
 
-    it('should deny access for AiroPlus plan when grants enabled', async () => {
+    it('should deny access for AiroPlus plan', async () => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
+        bypassPublishLimit: false,
       });
-      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-airoplus',
         plan: SubscriptionPlan.AiroPlus,
@@ -271,11 +205,8 @@ describe('checkPaywallEligibility', () => {
 
       const result = await checkPaywallEligibility(mockProvider);
 
-      // When grants is ON, AiroPlus is NOT a paid plan
       expect(result.hasAccess).toBe(false);
       expect(result.reason).toBe('Subscription upgrade required');
-      expect(mockProvider.getEntitlements).not.toHaveBeenCalled();
-      expect(mockProvider.getProjects).not.toHaveBeenCalled();
     });
   });
 
@@ -285,6 +216,7 @@ describe('checkPaywallEligibility', () => {
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: false,
         markets: true,
+        bypassPublishLimit: false,
       });
 
       const result = await checkPaywallEligibility(mockProvider);
@@ -299,6 +231,7 @@ describe('checkPaywallEligibility', () => {
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: false,
+        bypassPublishLimit: false,
       });
 
       const result = await checkPaywallEligibility(mockProvider);
@@ -339,6 +272,7 @@ describe('checkPaywallEligibility', () => {
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
+        bypassPublishLimit: false,
       });
       mockProvider.getAccountSubscription.mockResolvedValue(undefined);
 
@@ -350,53 +284,13 @@ describe('checkPaywallEligibility', () => {
     });
   });
 
-  describe('Error handling (legacy - grants disabled)', () => {
-    it('should continue to entitlement check if error fetching subscription details', async () => {
-      mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
-      mockProvider.checkSwitchboardFlags.mockResolvedValue({
-        paywall: true,
-        markets: true,
-      });
-      mockProvider.isGrantsEnabled.mockResolvedValue(false);
-      mockProvider.getAccountSubscription.mockResolvedValue({
-        id: 'sub-free',
-        plan: SubscriptionPlan.Free,
-      });
-      mockProvider.getEntitlements.mockRejectedValue(new Error('API error'));
-      mockProvider.getProjects.mockResolvedValue([]);
-
-      const result = await checkPaywallEligibility(mockProvider);
-
-      expect(result.hasAccess).toBe(false);
-      expect(result.details.hasSubscription).toBe(true);
-      expect(result.details.hasEntitlements).toBe(false);
-    });
-
-    it('should continue to denial if projects check fails', async () => {
-      mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
-      mockProvider.checkSwitchboardFlags.mockResolvedValue({
-        paywall: true,
-        markets: true,
-      });
-      mockProvider.isGrantsEnabled.mockResolvedValue(false);
-      mockProvider.getAccountSubscription.mockResolvedValue({
-        id: 'sub-free',
-        plan: SubscriptionPlan.Free,
-      });
-      mockProvider.getEntitlements.mockResolvedValue(undefined);
-      mockProvider.getProjects.mockRejectedValue(new Error('API error'));
-
-      const result = await checkPaywallEligibility(mockProvider);
-
-      expect(result.hasAccess).toBe(false);
-      expect(result.details.hasMatchingProject).toBe(false);
-    });
-
+  describe('Error handling', () => {
     it('should fail closed on unexpected errors', async () => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
+        bypassPublishLimit: false,
       });
       mockProvider.getAccountSubscription.mockRejectedValue(
         new Error('Unexpected error')
@@ -410,63 +304,37 @@ describe('checkPaywallEligibility', () => {
   });
 
   describe('Complete flow integration', () => {
-    it('should check all steps in order for free plan (legacy - grants disabled)', async () => {
+    it('should check steps in order', async () => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
+        bypassPublishLimit: false,
       });
-      mockProvider.isGrantsEnabled.mockResolvedValue(false);
+
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-free',
         plan: SubscriptionPlan.Free,
       });
-      mockProvider.getEntitlements.mockResolvedValue(undefined);
-      mockProvider.getProjects.mockResolvedValue([]);
 
       await checkPaywallEligibility(mockProvider);
 
-      // Verify call order
       expect(mockProvider.getRootDomain).toHaveBeenCalledBefore(
         mockProvider.checkSwitchboardFlags as any
       );
       expect(mockProvider.checkSwitchboardFlags).toHaveBeenCalledBefore(
         mockProvider.getAccountSubscription as any
       );
-      expect(mockProvider.getAccountSubscription).toHaveBeenCalledBefore(
-        mockProvider.isGrantsEnabled as any
-      );
-      expect(mockProvider.isGrantsEnabled).toHaveBeenCalledBefore(
-        mockProvider.getEntitlements as any
-      );
     });
 
-    it('should skip entitlement checks for paid plans (legacy - grants disabled)', async () => {
+    it('should deny free plan with subscription upgrade required', async () => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
-      });
-      mockProvider.isGrantsEnabled.mockResolvedValue(false);
-      mockProvider.getAccountSubscription.mockResolvedValue({
-        id: 'sub-plus',
-        plan: SubscriptionPlan.AiroPlus,
+        bypassPublishLimit: false,
       });
 
-      await checkPaywallEligibility(mockProvider);
-
-      // With grants disabled, AiroPlus is a paid plan - skip entitlements/projects
-      expect(mockProvider.getEntitlements).not.toHaveBeenCalled();
-      expect(mockProvider.getProjects).not.toHaveBeenCalled();
-    });
-
-    it('should skip entitlement/project checks for free plan when grants enabled', async () => {
-      mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
-      mockProvider.checkSwitchboardFlags.mockResolvedValue({
-        paywall: true,
-        markets: true,
-      });
-      mockProvider.isGrantsEnabled.mockResolvedValue(true);
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-free',
         plan: SubscriptionPlan.Free,
@@ -475,21 +343,19 @@ describe('checkPaywallEligibility', () => {
       const result = await checkPaywallEligibility(mockProvider);
 
       expect(result.hasAccess).toBe(false);
-      expect(mockProvider.isGrantsEnabled).toHaveBeenCalled();
-      expect(mockProvider.getEntitlements).not.toHaveBeenCalled();
-      expect(mockProvider.getProjects).not.toHaveBeenCalled();
+      expect(result.reason).toBe('Subscription upgrade required');
     });
   });
 
-  describe('Professional and Ultimate plans (grants enabled)', () => {
-    it('should grant access for Professional plan when grants enabled', async () => {
+  describe('Professional and Ultimate plans', () => {
+    it('should grant access for Professional plan', async () => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
-        grants: true,
+        bypassPublishLimit: false,
       });
-      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-professional',
         plan: SubscriptionPlan.Professional,
@@ -506,14 +372,14 @@ describe('checkPaywallEligibility', () => {
       expect(result.details.hasSubscription).toBe(true);
     });
 
-    it('should grant access for Ultimate plan when grants enabled', async () => {
+    it('should grant access for Ultimate plan', async () => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
-        grants: true,
+        bypassPublishLimit: false,
       });
-      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-ultimate',
         plan: SubscriptionPlan.Ultimate,
@@ -534,7 +400,7 @@ describe('checkPaywallEligibility', () => {
   describe('Publish limits (grants enabled, bypassPublishLimit OFF)', () => {
     beforeEach(() => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
-      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+
     });
 
     describe('Starter plan (limit: 1 app)', () => {
@@ -542,7 +408,7 @@ describe('checkPaywallEligibility', () => {
         mockProvider.checkSwitchboardFlags.mockResolvedValue({
           paywall: true,
           markets: true,
-          grants: true,
+  
           bypassPublishLimit: false,
         });
         mockProvider.getAccountSubscription.mockResolvedValue({
@@ -564,7 +430,7 @@ describe('checkPaywallEligibility', () => {
         mockProvider.checkSwitchboardFlags.mockResolvedValue({
           paywall: true,
           markets: true,
-          grants: true,
+  
           bypassPublishLimit: false,
         });
         mockProvider.getAccountSubscription.mockResolvedValue({
@@ -589,7 +455,7 @@ describe('checkPaywallEligibility', () => {
         mockProvider.checkSwitchboardFlags.mockResolvedValue({
           paywall: true,
           markets: true,
-          grants: true,
+  
           bypassPublishLimit: false,
         });
         mockProvider.getAccountSubscription.mockResolvedValue({
@@ -614,7 +480,7 @@ describe('checkPaywallEligibility', () => {
         mockProvider.checkSwitchboardFlags.mockResolvedValue({
           paywall: true,
           markets: true,
-          grants: true,
+  
           bypassPublishLimit: false,
         });
         mockProvider.getAccountSubscription.mockResolvedValue({
@@ -636,7 +502,7 @@ describe('checkPaywallEligibility', () => {
         mockProvider.checkSwitchboardFlags.mockResolvedValue({
           paywall: true,
           markets: true,
-          grants: true,
+  
           bypassPublishLimit: false,
         });
         mockProvider.getAccountSubscription.mockResolvedValue({
@@ -663,7 +529,7 @@ describe('checkPaywallEligibility', () => {
         mockProvider.checkSwitchboardFlags.mockResolvedValue({
           paywall: true,
           markets: true,
-          grants: true,
+  
           bypassPublishLimit: false,
         });
         mockProvider.getAccountSubscription.mockResolvedValue({
@@ -685,7 +551,7 @@ describe('checkPaywallEligibility', () => {
         mockProvider.checkSwitchboardFlags.mockResolvedValue({
           paywall: true,
           markets: true,
-          grants: true,
+  
           bypassPublishLimit: false,
         });
         mockProvider.getAccountSubscription.mockResolvedValue({
@@ -712,7 +578,7 @@ describe('checkPaywallEligibility', () => {
         mockProvider.checkSwitchboardFlags.mockResolvedValue({
           paywall: true,
           markets: true,
-          grants: true,
+  
           bypassPublishLimit: false,
         });
         mockProvider.getAccountSubscription.mockResolvedValue({
@@ -737,7 +603,7 @@ describe('checkPaywallEligibility', () => {
         mockProvider.checkSwitchboardFlags.mockResolvedValue({
           paywall: true,
           markets: true,
-          grants: true,
+  
           bypassPublishLimit: false,
         });
         mockProvider.getAccountSubscription.mockResolvedValue({
@@ -761,7 +627,7 @@ describe('checkPaywallEligibility', () => {
         mockProvider.checkSwitchboardFlags.mockResolvedValue({
           paywall: true,
           markets: true,
-          grants: true,
+  
           bypassPublishLimit: false,
         });
         mockProvider.getAccountSubscription.mockResolvedValue({
@@ -788,7 +654,7 @@ describe('checkPaywallEligibility', () => {
         mockProvider.checkSwitchboardFlags.mockResolvedValue({
           paywall: true,
           markets: true,
-          grants: true,
+  
           bypassPublishLimit: false,
         });
         mockProvider.getAccountSubscription.mockResolvedValue({
@@ -813,7 +679,7 @@ describe('checkPaywallEligibility', () => {
         mockProvider.checkSwitchboardFlags.mockResolvedValue({
           paywall: true,
           markets: true,
-          grants: true,
+  
           bypassPublishLimit: false,
         });
         mockProvider.getAccountSubscription.mockResolvedValue({
@@ -842,10 +708,9 @@ describe('checkPaywallEligibility', () => {
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
-        grants: true,
         bypassPublishLimit: true, // Bypass enabled
       });
-      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-starter',
         plan: SubscriptionPlan.Starter,
@@ -863,14 +728,13 @@ describe('checkPaywallEligibility', () => {
   describe('getPublishedApps error handling (fail-closed)', () => {
     beforeEach(() => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
-      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+
     });
 
     it('should fail closed with specific message when getPublishedApps throws an error', async () => {
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
-        grants: true,
         bypassPublishLimit: false,
       });
       mockProvider.getAccountSubscription.mockResolvedValue({
@@ -892,7 +756,6 @@ describe('checkPaywallEligibility', () => {
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
-        grants: true,
         bypassPublishLimit: false,
       });
       mockProvider.getAccountSubscription.mockResolvedValue({
@@ -913,7 +776,6 @@ describe('checkPaywallEligibility', () => {
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
-        grants: true,
         bypassPublishLimit: false,
       });
       mockProvider.getAccountSubscription.mockResolvedValue({
@@ -934,14 +796,13 @@ describe('checkPaywallEligibility', () => {
   describe('PaywallAction.Download (bypasses publish limits)', () => {
     beforeEach(() => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
-      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+
     });
 
     it('should allow download for paid plan even at publish limit', async () => {
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
-        grants: true,
         bypassPublishLimit: false,
       });
       mockProvider.getAccountSubscription.mockResolvedValue({
@@ -967,7 +828,6 @@ describe('checkPaywallEligibility', () => {
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
-        grants: true,
         bypassPublishLimit: false,
       });
       mockProvider.getAccountSubscription.mockResolvedValue({
@@ -986,7 +846,6 @@ describe('checkPaywallEligibility', () => {
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
-        grants: true,
         bypassPublishLimit: false,
       });
       mockProvider.getAccountSubscription.mockResolvedValue({
@@ -1012,7 +871,7 @@ describe('checkPaywallEligibility', () => {
         mockProvider.checkSwitchboardFlags.mockResolvedValue({
           paywall: true,
           markets: true,
-          grants: true,
+  
           bypassPublishLimit: false,
         });
         mockProvider.getAccountSubscription.mockResolvedValue({
@@ -1028,66 +887,4 @@ describe('checkPaywallEligibility', () => {
     });
   });
 
-  describe('Legacy behavior (grants disabled)', () => {
-    beforeEach(() => {
-      mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
-      mockProvider.isGrantsEnabled.mockResolvedValue(false);
-    });
-
-    it('should allow download for AiroPlus when grants disabled', async () => {
-      mockProvider.checkSwitchboardFlags.mockResolvedValue({
-        paywall: true,
-        markets: true,
-        grants: false,
-      });
-      mockProvider.getAccountSubscription.mockResolvedValue({
-        id: 'sub-airoplus',
-        plan: SubscriptionPlan.AiroPlus,
-        status: 'active',
-      });
-
-      const result = await checkPaywallEligibility(mockProvider, 'app-1', PaywallAction.Download);
-
-      expect(result.hasAccess).toBe(true);
-    });
-
-    it('should allow publish for AiroPlus when grants disabled (no limit check)', async () => {
-      mockProvider.checkSwitchboardFlags.mockResolvedValue({
-        paywall: true,
-        markets: true,
-        grants: false,
-      });
-      mockProvider.getAccountSubscription.mockResolvedValue({
-        id: 'sub-airoplus',
-        plan: SubscriptionPlan.AiroPlus,
-        status: 'active',
-      });
-
-      const result = await checkPaywallEligibility(mockProvider, 'app-new', PaywallAction.Publish);
-
-      expect(result.hasAccess).toBe(true);
-      // Should not check published apps when grants is disabled
-      expect(mockProvider.getPublishedApps).not.toHaveBeenCalled();
-    });
-
-    it('should use legacy entitlement fallback for free plan when grants disabled', async () => {
-      mockProvider.checkSwitchboardFlags.mockResolvedValue({
-        paywall: true,
-        markets: true,
-        grants: false,
-      });
-      mockProvider.getAccountSubscription.mockResolvedValue({
-        id: 'sub-free',
-        plan: SubscriptionPlan.Free,
-        status: 'active',
-      });
-      mockProvider.getEntitlements.mockResolvedValue('ent-123');
-
-      const result = await checkPaywallEligibility(mockProvider, 'app-1');
-
-      expect(result.hasAccess).toBe(true);
-      expect(result.details.hasEntitlements).toBe(true);
-      expect(mockProvider.getEntitlements).toHaveBeenCalled();
-    });
-  });
 });

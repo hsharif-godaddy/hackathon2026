@@ -37,7 +37,6 @@ interface UsePublishLimitCheckResult extends PublishLimitResult {
 /**
  * Hook to check if a user can publish based on their subscription plan and current publish count
  *
- * When app-builder-grants is enabled:
  * - Legacy AiroPlus users (Starter plan with hadAiroPlus) = 9 apps
  * - New users are limited by plan:
  *   - Free = 0 apps (show paywall)
@@ -56,7 +55,6 @@ export function usePublishLimitCheck(
   const { currentAppId, enabled = true } = options;
 
   // Feature flags - only fetch when enabled
-  const { data: isGrantsEnabled, isLoading: isGrantsLoading } = useSwitchboard('app-builder-grants', { enabled });
   const { data: isBypassEnabled, isLoading: isBypassLoading } = useSwitchboard('app-builder-bypass-publish-limit', { enabled });
 
   // Subscription data - only fetch when enabled
@@ -67,19 +65,17 @@ export function usePublishLimitCheck(
     refetch: refetchSubscription,
   } = useSubscription();
 
-  // Published apps data - only fetch when enabled and grants feature is enabled
+  // Published apps data - only fetch when enabled
   const {
     publishedApps,
     count: publishedCount,
     isLoading: isPublishedAppsLoading,
     isError: isPublishedAppsError,
     refetch: refetchPublishedApps,
-  } = usePublishedApps({ enabled: enabled && isGrantsEnabled === true });
+  } = usePublishedApps({ enabled });
 
-  const isWaitingForSites = isGrantsEnabled === true && isPublishedAppsLoading;
-
-  const isLoading = enabled && (isGrantsLoading || isBypassLoading || isSubscriptionLoading || isWaitingForSites);
-  const isError = enabled && (isSubscriptionError || (isGrantsEnabled === true && isPublishedAppsError));
+  const isLoading = enabled && (isBypassLoading || isSubscriptionLoading || isPublishedAppsLoading);
+  const isError = enabled && (isSubscriptionError || isPublishedAppsError);
 
   const result = useMemo((): PublishLimitResult => {
     // Default result for loading/disabled state
@@ -90,11 +86,6 @@ export function usePublishLimitCheck(
       plan: subscription?.plan,
       publishedApps,
     };
-    // If grants feature is disabled, allow publishing (legacy behavior)
-    if (!isGrantsEnabled) {
-      return defaultResult;
-    }
-
     // If bypass flag is enabled, allow publishing
     if (isBypassEnabled) {
       return defaultResult;
@@ -142,7 +133,6 @@ export function usePublishLimitCheck(
       publishedApps,
     };
   }, [
-    isGrantsEnabled,
     isBypassEnabled,
     isPublishedAppsLoading,
     subscription,
@@ -153,9 +143,7 @@ export function usePublishLimitCheck(
 
   const refetch = () => {
     refetchSubscription();
-    if (isGrantsEnabled) {
-      refetchPublishedApps();
-    }
+    refetchPublishedApps();
   };
 
   return {

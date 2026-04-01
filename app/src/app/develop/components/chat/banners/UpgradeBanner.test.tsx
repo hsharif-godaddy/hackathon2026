@@ -88,7 +88,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
 
-      const { container } = renderWithProviders(<UpgradeBanner appId="test-app" />);
+      const { container } = renderWithProviders(<UpgradeBanner />);
 
       await waitFor(function waitForBanner() {
         expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).toBeInTheDocument();
@@ -126,7 +126,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
         refetch: vi.fn(),
       });
 
-      const { container } = renderWithProviders(<UpgradeBanner appId="test-app" />);
+      const { container } = renderWithProviders(<UpgradeBanner />);
 
       expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).not.toBeInTheDocument();
     });
@@ -138,7 +138,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false } as ReturnType<typeof useSwitchboard>);
 
-      const { container } = renderWithProviders(<UpgradeBanner appId="test-app" />);
+      const { container } = renderWithProviders(<UpgradeBanner />);
 
       expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).not.toBeInTheDocument();
     });
@@ -154,7 +154,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       const today = new Date().toLocaleDateString('en-CA');
       localStorage.setItem('airoplus_upgrade_banner_dismissed', today);
 
-      const { container } = renderWithProviders(<UpgradeBanner appId="test-app" />);
+      const { container } = renderWithProviders(<UpgradeBanner />);
 
       expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).not.toBeInTheDocument();
     });
@@ -166,7 +166,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
 
-      renderWithProviders(<UpgradeBanner appId="test-app" />);
+      renderWithProviders(<UpgradeBanner />);
 
       await waitFor(function waitForMessage() {
         // FormattedMessage renders the message ID when no translations are provided
@@ -183,7 +183,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
 
-      const { user, container } = renderWithProviders(<UpgradeBanner appId="test-app" />);
+      const { user, container } = renderWithProviders(<UpgradeBanner />);
 
       await waitFor(function waitForBanner() {
         expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).toBeInTheDocument();
@@ -204,7 +204,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
 
-      const { user } = renderWithMessages(<UpgradeBanner appId="test-app" />);
+      const { user } = renderWithMessages(<UpgradeBanner />);
 
       await waitFor(function waitForLink() {
         expect(screen.getByRole('link')).toBeInTheDocument();
@@ -224,7 +224,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
 
-      const { container } = renderWithProviders(<UpgradeBanner appId="test-app" />);
+      const { container } = renderWithProviders(<UpgradeBanner />);
 
       await waitFor(function waitForBanner() {
         expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).toBeInTheDocument();
@@ -240,7 +240,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
 
-      const { user, container } = renderWithProviders(<UpgradeBanner appId="test-app" />);
+      const { user, container } = renderWithProviders(<UpgradeBanner />);
 
       await waitFor(function waitForBanner() {
         expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).toBeInTheDocument();
@@ -259,7 +259,7 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
 
-      const { user } = renderWithMessages(<UpgradeBanner appId="test-app" />);
+      const { user } = renderWithMessages(<UpgradeBanner />);
 
       await waitFor(function waitForLink() {
         expect(screen.getByRole('link')).toBeInTheDocument();

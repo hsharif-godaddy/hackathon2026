@@ -64,6 +64,6 @@ export interface CreditGrant {
  */
 export interface GrantContextPayload {
   grants: CreditGrant[]
-  featureEnabled: boolean
+  featureEnabled?: boolean
   timestamp: number
 }

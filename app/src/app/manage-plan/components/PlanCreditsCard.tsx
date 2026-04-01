@@ -43,7 +43,6 @@ interface PlanCreditsCardProps {
     subscriptionId?: string;
   } | null;
   onDowngradeClick?: () => void;
-  isGrantsEnabled: boolean;
   isHigherPlansEnabled?: boolean;
 }
 
@@ -56,7 +55,6 @@ const PlanCreditsCard = ({
   openPaywall,
   autoRenewStatus,
   onDowngradeClick,
-  isGrantsEnabled,
   isHigherPlansEnabled = false,
 }: PlanCreditsCardProps) => {
   const t = useTranslations();
@@ -68,12 +66,10 @@ const PlanCreditsCard = ({
 
   const currentPlan = getPlanFromSubscription(subscription);
   const publishLimit = getPublishLimit(currentPlan);
-  // Disable buttons when grants enabled but entitlement not yet available (async subscription)
-  const isButtonDisabled =
-    isGrantsEnabled && !subscription.builderEntitlementId;
+  const isButtonDisabled = !subscription.builderEntitlementId;
   const planLabelKey = getPlanDisplayLabelKey(currentPlan);
   const planDisplayLabel = planLabelKey ? t(planLabelKey) : "";
-  const isPaidPlan = isPaidPlanForGrants(currentPlan, isGrantsEnabled);
+  const isPaidPlan = isPaidPlanForGrants(currentPlan);
   const isFreePlan = !isPaidPlan;
   const hasCreditsNoPlan = creditPacks.length > 0 && isFreePlan;
   const isActive = activeGrantId === planGrant.id;

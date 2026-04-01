@@ -23,7 +23,6 @@ vi.mock('@/hooks/usePaywallModal', () => ({
   usePaywallModal: vi.fn(() => ({
     checkAndShowPaywall: vi.fn((callback) => callback()),
     PaywallModal: () => null,
-    isPolling: false,
     shouldShowPaywall: false,
     isPaywallLoading: false,
     isPublishLimitLoading: false,
@@ -95,7 +94,6 @@ describe('ProjectPanel', () => {
       vi.mocked(usePaywallModal).mockReturnValue({
         checkAndShowPaywall: mockCheckAndShowPaywall,
         PaywallModal: () => null,
-        isPolling: false,
         shouldShowPaywall: false,
         isPaywallLoading: false,
         isPublishLimitLoading: false,
@@ -130,7 +128,6 @@ describe('ProjectPanel', () => {
       vi.mocked(usePaywallModal).mockReturnValue({
         checkAndShowPaywall: mockCheckAndShowPaywall,
         PaywallModal: () => null,
-        isPolling: false,
         shouldShowPaywall: false,
         isPaywallLoading: false,
         isPublishLimitLoading: false,
@@ -161,23 +158,6 @@ describe('ProjectPanel', () => {
       expect(downloadButton).toBeDisabled();
     });
 
-    it('should disable download button when polling after purchase', () => {
-      vi.mocked(usePaywallModal).mockReturnValue({
-        checkAndShowPaywall: vi.fn(),
-        PaywallModal: () => null,
-        isPolling: true,
-        shouldShowPaywall: false,
-        isPaywallLoading: false,
-        isPublishLimitLoading: false,
-      });
-
-      renderWithProviders(<ProjectPanel />);
-
-      // When polling, button text changes to downloading key
-      const downloadButton = screen.getByRole('button', { name: /builder_settings_project_download_downloading/i });
-      expect(downloadButton).toBeDisabled();
-    });
-
     it('should enable download button when not loading and has appId', () => {
       vi.mocked(useDownloadApp).mockReturnValue({
         download: vi.fn(),
@@ -188,7 +168,6 @@ describe('ProjectPanel', () => {
       vi.mocked(usePaywallModal).mockReturnValue({
         checkAndShowPaywall: vi.fn(),
         PaywallModal: () => null,
-        isPolling: false,
         shouldShowPaywall: false,
         isPaywallLoading: false,
         isPublishLimitLoading: false,

@@ -23,14 +23,9 @@ vi.mock('@/lib/request-context', () => ({
     debug: vi.fn(),
   },
 }));
-vi.mock('@/lib/switchboard/server', () => ({
-  checkSwitchboardFlag: vi.fn(),
-}));
-
 describe('GET /api/subscriptions', function describeRoute() {
   let mockClient: any;
   let GET: any;
-  let checkSwitchboardFlag: any;
 
   beforeEach(async function setup() {
     vi.clearAllMocks();
@@ -43,13 +38,6 @@ describe('GET /api/subscriptions', function describeRoute() {
     // Mock AiroMgmtClient constructor
     const { AiroMgmtClient } = await import('@/lib/mgmt-airo');
     vi.mocked(AiroMgmtClient as any).mockImplementation(() => mockClient);
-
-    // Get the checkSwitchboardFlag mock
-    const switchboardModule = await import('@/lib/switchboard/server');
-    checkSwitchboardFlag = switchboardModule.checkSwitchboardFlag;
-
-    // Default: feature flag disabled
-    vi.mocked(checkSwitchboardFlag).mockResolvedValue(false);
 
     // Import the route handler after mocks are set up
     const routeModule = await import('./route');
@@ -223,37 +211,4 @@ describe('GET /api/subscriptions', function describeRoute() {
     });
   });
 
-  describe('Meta information', function meta() {
-    it('should include grantsEnabled in meta when flag is enabled', async function grantsEnabled() {
-      const request = new NextRequest('http://localhost/api/subscriptions');
-      const authContext = createAuthContext('jwt-token');
-
-      vi.mocked(checkSwitchboardFlag).mockResolvedValue(true);
-
-      mockClient.getSubscriptions.mockResolvedValue([
-        createSubscription({ plan: SubscriptionPlan.Starter }),
-      ]);
-
-      const response = await GET(request, authContext);
-      const data = await response.json();
-
-      expect(data.data.meta.grantsEnabled).toBe(true);
-    });
-
-    it('should include grantsEnabled false in meta when flag is disabled', async function grantsDisabled() {
-      const request = new NextRequest('http://localhost/api/subscriptions');
-      const authContext = createAuthContext('jwt-token');
-
-      vi.mocked(checkSwitchboardFlag).mockResolvedValue(false);
-
-      mockClient.getSubscriptions.mockResolvedValue([
-        createSubscription({ plan: SubscriptionPlan.None }),
-      ]);
-
-      const response = await GET(request, authContext);
-      const data = await response.json();
-
-      expect(data.data.meta.grantsEnabled).toBe(false);
-    });
-  });
 });

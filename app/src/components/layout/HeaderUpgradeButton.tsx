@@ -34,10 +34,8 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal);
 
   const { data: featureEnabled, isLoading: isFeatureLoading } = useSwitchboard('appbuilder-airoplus-upgrade-button');
-  // Secondary flags only relevant once the upgrade button feature is confirmed enabled.
-  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants', { enabled: featureEnabled === true });
   const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans', { enabled: featureEnabled === true });
-  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(currentAppId || undefined);
+  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility();
   const { data: subscription } = useSubscription();
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : undefined;
 
@@ -55,7 +53,7 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
     });
   };
 
-  const isOnPaidPlan = isPaidPlanForGrants(currentPlan, !!isGrantsEnabled);
+  const isOnPaidPlan = isPaidPlanForGrants(currentPlan);
 
   const benefits = isOnPaidPlan
     ? [
@@ -65,7 +63,7 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
       ]
     : [
         t('builder_upgrade_benefit_code'),
-        isGrantsEnabled ? t('builder_upgrade_benefit_credits') : t('builder_upgrade_benefit_payments'),
+        t('builder_upgrade_benefit_credits'),
         t('builder_upgrade_benefit_publish'),
       ];
 
@@ -97,9 +95,7 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
           <text.h4 as='title' className='mb-1'>
             { isOnPaidPlan
               ? t('builder_upgrade_paid_plan_title')
-              : isGrantsEnabled
-                ? t('builder_upgrade_plans_popover_title')
-                : t('builder_upgrade_popover_title')
+              : t('builder_upgrade_plans_popover_title')
             }
           </text.h4>
           <ul className='flex flex-col gap-1 mb-3'>
@@ -118,7 +114,7 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
             data-partial='componentAiro'
             data-eid={generateClickEID(`${location}.header.upgrade_popover`)}
             onClick={handleUpgradeClick}
-            text={isGrantsEnabled ? t('builder_upgrade_plans_popover_cta') : t('builder_upgrade_popover_cta')}
+            text={t('builder_upgrade_plans_popover_cta')}
           />
         </div>
       </PopoverContent>

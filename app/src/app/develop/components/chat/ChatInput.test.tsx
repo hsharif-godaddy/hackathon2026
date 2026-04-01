@@ -15,6 +15,7 @@ const mockDevelopStore = {
   isAssetManagerOpen: false,
   setIsAssetManagerOpen: vi.fn(),
   openUpgradeModal: vi.fn(),
+  openCreditsModal: vi.fn(),
 };
 
 const mockUseSwitchboard = vi.hoisted(() => vi.fn((feature: string) => {
@@ -32,11 +33,17 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: mockUseSwitchboard,
 }));
-vi.mock('@/hooks/useDailyUsage', () => ({
-  useDailyUsage: () => ({
-    data: { percentage: 50, used: 50, limit: 100 },
-    isLoading: false,
-    formattedResetTime: { dayKey: 'today', timeString: '12:00 PM' },
+vi.mock('@/hooks/useSubscription', () => ({
+  useSubscription: () => ({ data: { id: 'sub-1', plan: 'starter' }, isLoading: false }),
+}));
+vi.mock('@/hooks/useCreditGrants', () => ({
+  useCreditGrants: () => ({ data: [{ creditsSpent: 50, creditsMax: 100 }], isLoading: false }),
+}));
+vi.mock('@/hooks/useSubscriptionWithPolling', () => ({
+  useSubscriptionWithPolling: () => ({
+    subscription: { id: 'sub-1', plan: 'starter', builderEntitlementId: 'ent-1' },
+    isPurchaseDisabled: false,
+    entitlementPollingTimedOut: false,
   }),
 }));
 vi.mock('@/hooks/useTranslations', () => ({

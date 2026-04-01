@@ -2005,7 +2005,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     ioInstance.on('connection', (socket: Socket) => {
       // ── Grant context listeners (always) ──────────────────────────────
       socket.on('grant_context', (data: GrantContextPayload) => {
-        if (!data.featureEnabled) {
+        if (data.featureEnabled === false) {
           logger.debug('websocket.grant_context.skipped', {
             socketId: socket.id,
             reason: 'feature_disabled',
@@ -2016,10 +2016,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         logger.info('websocket.grant_context.received', {
           socketId: socket.id,
           grantCount: data.grants.length,
-          featureEnabled: data.featureEnabled,
         })
 
-        grantSessionManager.setGrants(socket.id, data.grants, data.featureEnabled)
+        grantSessionManager.setGrants(socket.id, data.grants)
       })
 
       socket.on('request_grant_refresh_ack', () => {

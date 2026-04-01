@@ -35,7 +35,6 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const intl = useIntl();
   const t = useTranslations();
   const [open, setOpen] = useState(false);
-  const [entitlementsPollingFailed, setEntitlementsPollingFailed] = useState(false);
   const pathname = usePathname();
   const isDevelopPage = pathname?.includes('/develop');
   const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
@@ -58,14 +57,13 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const isChatToolbar = location === 'develop.chat_toolbar';
 
   // Use shared paywall modal hook (includes publish limit check)
-  const { checkAndShowPaywall, PaywallModal, isPolling, isPaywallLoading, isPublishLimitLoading } = usePaywallModal({
+  const { checkAndShowPaywall, PaywallModal, isPaywallLoading, isPublishLimitLoading } = usePaywallModal({
     appId: currentAppId,
     source: 'publish',
     itc: PAYWALL_ITC.PUBLISH,
     onPurchaseSuccess: async () => {
       // Open publish modal after successful purchase
       setOpen(true);
-      setEntitlementsPollingFailed(false);
     },
   });
 
@@ -291,12 +289,10 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
   // Button is disabled when:
   // - Initial loading (deployments or git history)
-  // - Polling entitlements after purchase
-  // - Entitlements polling failed
   // - Paywall eligibility is being checked
   // - Publish limit is being checked
   // Note: Publishing, deployment, conversation in progress, and current commit deployed are now shown as warnings in the modal
-  const isButtonDisabled = isLoading || isLoadingGitHistory || isPolling || entitlementsPollingFailed || isPaywallLoading || isPublishLimitLoading || !isPublishButtonEnabled || !currentAppId || !site?.agent_url;
+  const isButtonDisabled = isLoading || isLoadingGitHistory || isPaywallLoading || isPublishLimitLoading || !isPublishButtonEnabled || !currentAppId || !site?.agent_url;
 
   const publishWidget = isFirstTimePublishing ? 'app_first_publish' : 'app_publish';
 
@@ -377,8 +373,6 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       return;
     }
 
-    // Reset polling failure state when attempting to publish
-    setEntitlementsPollingFailed(false);
     // Refetch git history and secrets diff to ensure counts are accurate
     refetchGitHistory();
     void refetchSecretsDiff();

@@ -3,9 +3,7 @@
 import { memo, useEffect, useRef, useState } from 'react'
 
 import { useCreditGrants } from '@/hooks/useCreditGrants'
-import { useDailyUsage } from '@/hooks/useDailyUsage'
 import { useSubscription } from '@/hooks/useSubscription'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import CircularGauge from '@/lib/CircularGauge'
 import { shipAnalyticsLog } from '@/lib/logging'
@@ -15,7 +13,7 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { SubscriptionPlan } from '@/types/credits'
 import { getEffectiveCreditsSpent, getPlanFromSubscription } from '@/utils/credits'
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
-import { GrantsPopoverContent, LegacyPopoverContent } from '.'
+import { GrantsPopoverContent } from '.'
 
 /** Internal Tracking Codes for usage gauge */
 const USAGE_GAUGE_ITC = {
@@ -64,18 +62,10 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
 
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
   const openCreditsModal = useDevelopPageStore((state) => state.openCreditsModal)
-  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants')
 
-  // Daily usage for non-grants mode
-  const { data, isLoading, formattedResetTime: resetTimeData } = useDailyUsage({
-    appId,
-    enabled: !!appId && !isGrantsEnabled
-  })
-
-  // Subscription and grants for grants mode
   const { data: subscription, isLoading: isSubscriptionLoading } = useSubscription()
   const { data: grants, isLoading: isGrantsLoading } = useCreditGrants({
-    subscriptionId: isGrantsEnabled ? subscription?.id : undefined,
+    subscriptionId: subscription?.id,
   })
 
   useEffect(function logPopoverImpression() {
@@ -84,23 +74,13 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
     }
   }, [open])
 
-  const translatedResetTime = resetTimeData
-    ? t(`builder_usage_limit_reset_${resetTimeData.dayKey}`, { time: resetTimeData.timeString })
-    : null
-
-  const { data: purchaseEnabled } = useSwitchboard('appbuilder-usage-purchase')
-
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : SubscriptionPlan.None
 
   const totalCreditsSpent = grants?.reduce((sum, g) => sum + getEffectiveCreditsSpent(g.creditsSpent, g.creditsMax), 0) ?? 0
   const totalCreditsMax = grants?.reduce((sum, g) => sum + g.creditsMax, 0) ?? 0
-  const grantsPercentage = totalCreditsMax > 0 ? (totalCreditsSpent / totalCreditsMax) * 100 : 0
-  const percentage = isGrantsEnabled ? grantsPercentage : (data ? Math.min(data.percentage, 100) : 0)
+  const percentage = totalCreditsMax > 0 ? (totalCreditsSpent / totalCreditsMax) * 100 : 0
 
-  // Loading state - compute before threshold effect to gate it
-  const showLoading = isGrantsEnabled
-    ? (isSubscriptionLoading || isGrantsLoading)
-    : (isLoading || !data)
+  const showLoading = isSubscriptionLoading || isGrantsLoading
 
   useEffect(function trackCreditThresholds() {
     // Don't track thresholds until data is ready to avoid false crossings on initial load
@@ -133,17 +113,6 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
     openCreditsModal('usage_gauge.buy_credits', USAGE_GAUGE_ITC.CREDITS)
     setOpen(false)
     shipAnalyticsLog('usage_gauge.buy_credits.clicked', { appId, percentage, plan: currentPlan })
-  }
-
-  const handleBuyTokensClick = () => {
-    // When grants feature is on, open credits modal; otherwise fall back to upgrade modal
-    if (isGrantsEnabled) {
-      openCreditsModal('usage_gauge.buy_tokens', USAGE_GAUGE_ITC.CREDITS)
-    } else {
-      openUpgradeModal('usage_gauge.buy_tokens', USAGE_GAUGE_ITC.UPGRADE)
-    }
-    setOpen(false)
-    shipAnalyticsLog('usage_gauge.buy_tokens.clicked', { appId, percentage })
   }
 
   if (showLoading) {
@@ -180,26 +149,16 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
         align="start"
         side="top"
         sideOffset={8}
-        className={isGrantsEnabled ? 'w-48 p-3' : 'w-40 p-3'}
+        className="w-48 p-3"
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        {isGrantsEnabled ? (
-          <GrantsPopoverContent
-            grants={grants}
-            onUpgradeClick={handleUpgradeClick}
-            onBuyCreditsClick={handleBuyCreditsClick}
-          />
-        ) : (
-          <LegacyPopoverContent
-            percentage={percentage}
-            translatedResetTime={translatedResetTime}
-            purchaseEnabled={!!purchaseEnabled}
-            onUpgradeClick={handleUpgradeClick}
-            onBuyTokensClick={handleBuyTokensClick}
-          />
-        )}
+        <GrantsPopoverContent
+          grants={grants}
+          onUpgradeClick={handleUpgradeClick}
+          onBuyCreditsClick={handleBuyCreditsClick}
+        />
       </PopoverContent>
     </Popover>
   )

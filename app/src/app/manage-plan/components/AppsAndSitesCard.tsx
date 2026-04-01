@@ -65,7 +65,6 @@ export default function AppsAndSitesCard({
   const t = useTranslations();
   const router = useRouter();
   const { data: isUnpublishEnabled } = useSwitchboard('appbuilder-unpublish');
-  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants');
   const unpublishMutation = useUnpublishApp();
   const publishMutation = usePublishApp();
   const fetchAllSites = useSitesStore((state) => state.fetchAllSites);
@@ -75,7 +74,7 @@ export default function AppsAndSitesCard({
   const publishLimit = getPublishLimit(effectivePlanForLimits);
   const planLabelKey = subscriptionPlan ? getPlanDisplayLabelKey(subscriptionPlan) : null;
   const planName = planLabelKey ? t(planLabelKey) : '';
-  const isPaidPlan = isPaidPlanForGrants(subscriptionPlan, isGrantsEnabled);
+  const isPaidPlan = isPaidPlanForGrants(subscriptionPlan);
 
   const canUpgradeForMorePublishes =
     effectivePlanForLimits &&

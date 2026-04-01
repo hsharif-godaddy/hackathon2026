@@ -69,7 +69,7 @@ describe('build-metadata', function tests() {
     })
 
     it('should use grant userId when feature enabled and grants available', function useGrant() {
-      grantSessionManager.setGrants('test-session', [createGrant()], true)
+      grantSessionManager.setGrants('test-session', [createGrant()])
 
       const context = {
         socketId: 'test-session',
@@ -90,27 +90,8 @@ describe('build-metadata', function tests() {
       expect(result?.tags).toContain('source:user-chat')
     })
 
-    it('should fallback to customerId when feature disabled', function featureDisabled() {
-      grantSessionManager.setGrants('test-session', [createGrant()], false)
-
-      const context = {
-        socketId: 'test-session',
-        metadata: {
-          appId: 'app-1',
-          customerId: 'customer-123',
-        },
-      }
-
-      const result = buildLitellmMetadataFromContext(context, {
-        source: LlmCallSource.UserChat,
-      })
-
-      expect(result).toBeDefined()
-      expect(result?.user).toBe('customer-123')
-    })
-
     it('should fallback to customerId when no grants available', function noGrants() {
-      grantSessionManager.setGrants('test-session', [], true)
+      grantSessionManager.setGrants('test-session', [])
 
       const context = {
         socketId: 'test-session',
@@ -130,7 +111,7 @@ describe('build-metadata', function tests() {
 
     it('should return null when all grants exhausted', function exhausted() {
       const exhaustedGrant = createGrant({ creditsSpent: 1500, creditsMax: 1500 })
-      grantSessionManager.setGrants('test-session', [exhaustedGrant], true)
+      grantSessionManager.setGrants('test-session', [exhaustedGrant])
 
       const context = {
         socketId: 'test-session',
@@ -191,27 +172,21 @@ describe('build-metadata', function tests() {
       expect(isGrantsExhausted(context)).toBe(false)
     })
 
-    it('should return false when feature disabled', function disabled() {
-      grantSessionManager.setGrants('test-session', [], false)
-      const context = { socketId: 'test-session', metadata: { appId: 'app-1' } }
-      expect(isGrantsExhausted(context)).toBe(false)
-    })
-
     it('should return false when session has no grants', function noGrants() {
-      grantSessionManager.setGrants('test-session', [], true)
+      grantSessionManager.setGrants('test-session', [])
       const context = { socketId: 'test-session', metadata: { appId: 'app-1' } }
       expect(isGrantsExhausted(context)).toBe(false)
     })
 
     it('should return false when usable grant exists', function usable() {
-      grantSessionManager.setGrants('test-session', [createGrant()], true)
+      grantSessionManager.setGrants('test-session', [createGrant()])
       const context = { socketId: 'test-session', metadata: { appId: 'app-1' } }
       expect(isGrantsExhausted(context)).toBe(false)
     })
 
     it('should return true when all grants exhausted', function allExhausted() {
       const exhaustedGrant = createGrant({ creditsSpent: 1500, creditsMax: 1500 })
-      grantSessionManager.setGrants('test-session', [exhaustedGrant], true)
+      grantSessionManager.setGrants('test-session', [exhaustedGrant])
 
       const context = { socketId: 'test-session', metadata: { appId: 'app-1' } }
       expect(isGrantsExhausted(context)).toBe(true)
@@ -239,7 +214,7 @@ describe('build-metadata', function tests() {
   describe('Care agent bypass (E2S)', function careAgentTests() {
     it('should bypass grants for care agent sessions', function bypass() {
       // Even with grants enabled, care agent should use its own identifier
-      grantSessionManager.setGrants('care-session', [createGrant()], true)
+      grantSessionManager.setGrants('care-session', [createGrant()])
 
       const context = {
         socketId: 'care-session',
@@ -263,7 +238,7 @@ describe('build-metadata', function tests() {
   describe('Test accounts bypass (switchboard flag)', function testAccountsTests() {
     it('should bypass grants for test accounts sessions', function bypass() {
       // Even with grants enabled, test accounts should use its own identifier
-      grantSessionManager.setGrants('test-accounts-session', [createGrant()], true)
+      grantSessionManager.setGrants('test-accounts-session', [createGrant()])
 
       const context = {
         socketId: 'test-accounts-session',
@@ -329,7 +304,7 @@ describe('build-metadata', function tests() {
           subscriptionId: 'sub-customer-race',
           llmBudgetUserId: 'airo-builder:grant:customer-grant',
         }),
-      ], true)
+      ])
 
       // Customer-triggered background task: subscriptionId is customer's (NOT a BudgetOverride value)
       const context = {
@@ -358,7 +333,7 @@ describe('build-metadata', function tests() {
           subscriptionId: 'sub-background',
           llmBudgetUserId: 'airo-builder:grant:background',
         }),
-      ], true)
+      ])
 
       // Background task has subscriptionId but no socketId
       const context = {
@@ -386,7 +361,7 @@ describe('build-metadata', function tests() {
           creditsSpent: 1500,
           creditsMax: 1500,
         }),
-      ], true)
+      ])
 
       const context = {
         metadata: {
@@ -427,27 +402,6 @@ describe('build-metadata', function tests() {
   })
 
   describe('SubscriptionId fallback', function subscriptionFallbackTests() {
-    it('should fallback to subscriptionId when feature disabled', function featureOff() {
-      grantSessionManager.setGrants('test-session', [createGrant()], false)
-
-      const context = {
-        socketId: 'test-session',
-        metadata: {
-          appId: 'app-1',
-          subscriptionId: 'sub-123',
-          customerId: 'customer-456',
-        },
-      }
-
-      const result = buildLitellmMetadataFromContext(context, {
-        source: LlmCallSource.UserChat,
-      })
-
-      expect(result).toBeDefined()
-      // Should use prefixed subscriptionId, not customerId
-      expect(result?.user).toBe('airo-build:sid:sub-123')
-    })
-
     it('should add prefix to subscriptionId if not already prefixed', function addPrefix() {
       const context = {
         metadata: {
