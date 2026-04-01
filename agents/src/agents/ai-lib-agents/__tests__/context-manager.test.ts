@@ -63,7 +63,7 @@ describe('AILibContextManager', () => {
     )
 
     expect(memoryMessage).toBeDefined()
-    expect(memoryMessage?.cachePoint).toBeUndefined()
+    expect(memoryMessage?.cachePoint).toEqual({ type: 'ephemeral' })
     expect(memoryMessage?.content).toContain('# Summary')
     // Operation log is NOT included here — it's injected separately by
     // ConversationHistoryLoader to avoid duplicating content in the prompt

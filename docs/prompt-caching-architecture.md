@@ -98,6 +98,21 @@ Segment                    Stability        Cache Point    Reason
 - Cache point on LAST message means entire prefix is cached
 - New requests only add the new user message after cache boundary
 
+**Intermediate Breakpoint (within Conversation History):**
+
+- Anthropic's cache lookback walks at most 20 blocks backward from each breakpoint
+- With long conversations (90+ messages from tool call expansion), the gap between
+  the memory summary breakpoint (~position 3) and the last message far exceeds 20 blocks
+- An intermediate breakpoint is placed within ~18 content blocks of the memory summary breakpoint
+- This creates a "stepping stone": the intermediate's lookback finds the memory entry,
+  and subsequent turns' last-message lookback finds the previous turn's last-message entry
+- Without this, first-request-per-turn only caches the system prompt (~37% hit rate)
+- With this, first-request-per-turn caches system prompt + early conversation (~42-52% hit rate)
+- The gap between intermediate and last-message breakpoints can still exceed 20 blocks
+  in long conversations (200+ blocks from tool call expansion), which is an accepted
+  limitation of the 4-breakpoint budget. Full prefix caching requires either fewer
+  content blocks per tool call or more breakpoint slots.
+
 **KnowB and beyond (Segments 6-9):**
 
 - **CRITICAL:** These MUST be placed AFTER the cache boundary (last history message)
@@ -128,11 +143,12 @@ This is why:
 
 ### Cache Breakpoint Limits
 
-Anthropic allows maximum 4 cache breakpoints per request. Our strategy uses 2-3:
+Anthropic allows maximum 4 cache breakpoints per request. Our strategy uses 4:
 
-1. **Memory Summary** - slow-changing summarized history
-2. **Last History Message** - append-only conversation
-3. (Optional) **System Prompt** - if ai-lib auto-caching is enabled
+1. **System Prompt** - auto-cached by ai-lib (`addCacheControlToSystemPrompt`)
+2. **Memory Summary** - slow-changing summarized history (set in context-manager.ts)
+3. **Intermediate** - stepping stone within conversation history (set in prompt-caching.ts)
+4. **Last History Message** - append-only conversation (set in prompt-caching.ts)
 
 ## Security Considerations
 

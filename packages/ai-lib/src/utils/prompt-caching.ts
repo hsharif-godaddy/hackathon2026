@@ -24,9 +24,11 @@ export interface CachingProviderOptions {
  * Caching strategy configuration
  */
 export interface CachingStrategy {
-  /** Enable caching for system prompts (recommended) */
+  /** Reserve a breakpoint slot for the system prompt (set via addCacheControlToSystemPrompt).
+   *  When true, remainingSlots is reduced by 1 to avoid exceeding Anthropic's 4-breakpoint limit.
+   *  Callers using addCacheControlToSystemPrompt externally MUST keep this true. */
   cacheSystemPrompts?: boolean
-  /** Maximum cache breakpoints to use (Anthropic limit: 4, default: 2) */
+  /** Maximum NEW breakpoints this function may add (Anthropic total limit: 4, default: 3) */
   maxBreakpoints?: number
   /** Provider-specific options */
   providerOptions?: CachingProviderOptions
@@ -34,11 +36,12 @@ export interface CachingStrategy {
 
 /**
  * Default caching strategy
- * Uses conservative 2 breakpoints: system prompt + conversation history
+ * Budget: 4 total (Anthropic limit) = 1 system (reserved) + 1 memory (pre-set) + up to 2 new here
+ * maxBreakpoints: 3 caps new breakpoints, but remainingSlots (4 - existing - system) usually yields 2
  */
 const DEFAULT_STRATEGY: Required<CachingStrategy> = {
   cacheSystemPrompts: true,
-  maxBreakpoints: 2, // System + conversation (stay well under Anthropic's limit of 4)
+  maxBreakpoints: 3, // Cap for this function; effective limit is min(3, remainingSlots)
   providerOptions: {
     anthropic: { cacheControl: { type: 'ephemeral' } }
   }
@@ -70,16 +73,23 @@ export function supportsPromptCaching(model: LanguageModel): boolean {
 }
 
 /**
- * Add cache control to messages dynamically
+ * Add cache control to conversation messages dynamically
  *
- * CORRECT Strategy (per Anthropic docs and Vercel AI SDK cookbook):
- * 1. Place breakpoint on system prompt (if enabled)
- * 2. Place breakpoint on the FINAL message before new user input
- * 3. This caches everything UP TO that final message
- * 4. Each subsequent request extends the cache by moving the breakpoint forward
+ * Strategy (per Anthropic docs and Vercel AI SDK cookbook):
+ * 1. Place breakpoint on the LAST message (highest priority - caches full prefix)
+ * 2. Place an intermediate "stepping stone" breakpoint within the lookback window
+ *    of the nearest existing breakpoint (e.g., memory summary) to bridge long gaps
+ * 3. Each subsequent request extends the cache by moving breakpoints forward
+ *
+ * System prompt caching is handled separately by addCacheControlToSystemPrompt().
  *
  * IMPORTANT: Anthropic has a hard limit of 4 cache breakpoints per request.
- * We use at most 2 by default (system + conversation) to stay well under the limit.
+ * Typical budget: 1 system (external) + 1 memory summary (pre-set) + 2 here = 4.
+ * When existing breakpoints consume slots, this function adds fewer breakpoints.
+ *
+ * NOTE: With only 4 breakpoints total, gaps >20 blocks between the intermediate
+ * and last-message breakpoints are expected in long conversations (200+ blocks).
+ * This is an accepted limitation - additional intermediates would require more slots.
  *
  * @param messages - Array of messages to process (should NOT include the new user message)
  * @param model - Language model (used to detect provider)
@@ -111,6 +121,10 @@ export function addCacheControlToMessages(
   // ConversationHistoryLoader summaries or context attachments). These count
   // toward Anthropic's hard limit of 4 breakpoints per request. The system
   // prompt breakpoint (set via addCacheControlToSystemPrompt) also counts as 1.
+  //
+  // NOTE: This only checks providerOptions.anthropic.cacheControl. Pipeline messages
+  // using cachePoint (e.g., memory summary in context-manager.ts) are converted to
+  // providerOptions by normalizeContextMessages() BEFORE reaching this function.
   const existingBreakpoints = messages.filter(msg => {
     const providerOptions = (msg as any).providerOptions
     return !!(providerOptions?.anthropic?.cacheControl)
@@ -133,30 +147,65 @@ export function addCacheControlToMessages(
   // Identify breakpoint positions (limited by remaining slots)
   const breakpoints: number[] = []
 
-  // Breakpoint 1: System prompt (if enabled and exists)
-  // Skip if a system message is already explicitly cached.
-  if (config.cacheSystemPrompts) {
-    const hasCachedSystemMessage = messages.some(msg => {
-      if (msg.role !== 'system') {
-        return false
-      }
-      const providerOptions = (msg as any).providerOptions
-      return !!(providerOptions?.anthropic?.cacheControl)
-    })
+  // Anthropic's cache lookback walks at most 20 blocks backward from each breakpoint.
+  // With long conversation histories (90+ messages), the gap between existing breakpoints
+  // (e.g., memory summary at position ~3) and the last message can far exceed 20 blocks,
+  // causing cache misses. We place intermediate "stepping stone" breakpoints so each
+  // lookback window can chain to the previous cached entry.
+  const LOOKBACK_WINDOW = 20
 
-    if (!hasCachedSystemMessage) {
-      const systemIndex = messages.findIndex(m => m.role === 'system')
-      if (systemIndex >= 0) {
-        breakpoints.push(systemIndex)
-      }
+  // Find the position of the last existing breakpoint (e.g., memory summary's ephemeral
+  // cache point). We'll place our intermediate breakpoint within LOOKBACK_WINDOW of it.
+  let lastExistingBreakpointIndex = -1
+  messages.forEach((msg, index) => {
+    const providerOptions = (msg as any).providerOptions
+    if (providerOptions?.anthropic?.cacheControl) {
+      lastExistingBreakpointIndex = index
     }
+  })
+
+  logger.debug('prompt_caching.breakpoint_analysis', {
+    totalMessages: messages.length,
+    existingBreakpoints,
+    lastExistingBreakpointIndex,
+    remainingSlots
+  })
+
+  // Priority ordering: last-message first, intermediate second. When only 1 slot
+  // remains, slice(0, maxNewBreakpoints) keeps the last-message breakpoint and
+  // drops the intermediate, since caching the full prefix is more valuable.
+  // Skip if already cached (e.g., within-turn retry) to avoid wasting a slot.
+  const lastMessageIndex = messages.length - 1
+  const lastMsgProviderOptions = (messages[lastMessageIndex] as any)?.providerOptions
+  if (lastMessageIndex >= 0 && !lastMsgProviderOptions?.anthropic?.cacheControl) {
+    breakpoints.push(lastMessageIndex)
   }
 
-  // Breakpoint 2: The FINAL message before new input
-  // This is the key insight - mark the last message, and everything up to it gets cached
-  const lastMessageIndex = messages.length - 1
-  if (lastMessageIndex >= 0 && !breakpoints.includes(lastMessageIndex)) {
-    breakpoints.push(lastMessageIndex)
+  // Place an intermediate breakpoint if the gap between the anchor point and the last
+  // message exceeds the lookback window. The anchor is the last existing breakpoint
+  // (e.g., memory summary) or position 0 if none exists (unsummarized conversations).
+  //
+  // IMPORTANT: Anthropic's lookback counts content BLOCKS, not messages. A message with
+  // array content (e.g., text + 3 tool calls) counts as multiple blocks. We count blocks
+  // from the anchor forward to find the right message index for the intermediate.
+  const anchorIndex = lastExistingBreakpointIndex >= 0 ? lastExistingBreakpointIndex : 0
+  if (lastMessageIndex - anchorIndex > 1) {
+    // Count content blocks from anchor to find where the lookback window ends
+    const MAX_BLOCKS = LOOKBACK_WINDOW - 2 // Leave 2-block margin for safety
+    let blockCount = 0
+    let intermediateIndex = -1
+    for (let i = anchorIndex + 1; i < lastMessageIndex; i++) {
+      const content = messages[i]?.content
+      blockCount += Array.isArray(content) ? content.length : 1
+      if (blockCount >= MAX_BLOCKS) {
+        intermediateIndex = i
+        break
+      }
+    }
+
+    if (intermediateIndex > anchorIndex && !breakpoints.includes(intermediateIndex)) {
+      breakpoints.push(intermediateIndex)
+    }
   }
 
   // Enforce remaining slots (respect both configured maxBreakpoints and Anthropic's limit)

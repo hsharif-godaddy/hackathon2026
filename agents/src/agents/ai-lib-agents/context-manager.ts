@@ -143,7 +143,8 @@ export class AILibContextManager {
             conversationContextMessages.push({
                 role: 'user',
                 content: memoryContent,
-                insertionOrder: 'before_history'
+                insertionOrder: 'before_history',
+                cachePoint: { type: 'ephemeral' }
             })
         }
 

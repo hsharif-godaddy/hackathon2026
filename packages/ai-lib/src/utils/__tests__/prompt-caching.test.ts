@@ -124,6 +124,153 @@ describe('addCacheControlToMessages', () => {
       expect(lastMsg.providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' })
     })
   })
+
+  describe('intermediate breakpoint placement', () => {
+    // Generate N filler messages to simulate long conversation histories
+    function fillerMessages(count: number): ModelMessage[] {
+      return Array.from({ length: count }, (_, i) => ({
+        role: i % 2 === 0 ? 'user' : 'assistant',
+        content: `message ${i}`
+      } as any))
+    }
+
+    it('should place intermediate breakpoint when gap exceeds lookback window', () => {
+      // 1 existing breakpoint at position 0, then 30 messages = gap of 30 > 20
+      const messages: ModelMessage[] = [
+        cachedMessage('user', 'memory summary'),
+        ...fillerMessages(30)
+      ]
+
+      const result = addCacheControlToMessages(messages, model, { cacheSystemPrompts: false })
+
+      // Intermediate should be at position 0 + 20 - 2 = 18
+      const intermediate = result[18] as any
+      expect(intermediate.providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' })
+
+      // Last message should also have breakpoint
+      const lastMsg = result[result.length - 1] as any
+      expect(lastMsg.providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' })
+    })
+
+    it('should not place intermediate when gap is within lookback window', () => {
+      // 1 existing breakpoint at position 0, then 15 messages = gap of 15 < 20
+      const messages: ModelMessage[] = [
+        cachedMessage('user', 'memory summary'),
+        ...fillerMessages(15)
+      ]
+
+      const result = addCacheControlToMessages(messages, model, { cacheSystemPrompts: false })
+
+      // Only the last message should have a new breakpoint (no intermediate needed)
+      const newBreakpoints = result
+        .map((msg, i) => ({ msg, i }))
+        .filter(({ msg, i }) => {
+          const po = (msg as any).providerOptions?.anthropic?.cacheControl
+          return po && i !== 0 // exclude the pre-existing one at position 0
+        })
+
+      expect(newBreakpoints).toHaveLength(1)
+      expect(newBreakpoints[0].i).toBe(result.length - 1)
+    })
+
+    it('should place intermediate within lookback range of existing breakpoint', () => {
+      // Existing breakpoint at position 2 (after 2 uncached messages), then 80 messages
+      const messages: ModelMessage[] = [
+        { role: 'system', content: 'template' } as any,
+        { role: 'user', content: 'app context' } as any,
+        cachedMessage('user', 'memory summary'),
+        ...fillerMessages(80)
+      ]
+
+      const result = addCacheControlToMessages(messages, model, { cacheSystemPrompts: false })
+
+      // Intermediate should be at position 2 + 20 - 2 = 20
+      const intermediate = result[20] as any
+      expect(intermediate.providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' })
+
+      // Gap from existing (pos 2) to intermediate (pos 20) = 18, within 20-block lookback
+      expect(20 - 2).toBeLessThan(20)
+    })
+
+    it('should place intermediate even without existing breakpoints (unsummarized conversations)', () => {
+      // No existing breakpoints, 40 simple messages (1 block each) — anchor falls back to position 0
+      const messages: ModelMessage[] = fillerMessages(40)
+
+      const result = addCacheControlToMessages(messages, model, { cacheSystemPrompts: false })
+
+      // Block count reaches 18 at message index 18 (1 block per simple message, anchor at 0)
+      const intermediate = result[18] as any
+      expect(intermediate.providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' })
+
+      // Last message should also have breakpoint
+      const lastMsg = result[result.length - 1] as any
+      expect(lastMsg.providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' })
+    })
+
+    it('should count content blocks not messages for intermediate placement', () => {
+      // Messages with array content (multiple blocks per message) should trigger
+      // earlier intermediate placement to stay within the 20-block lookback window
+      const messages: ModelMessage[] = [
+        cachedMessage('user', 'memory summary'),
+        // Each message has 3 content blocks (text + 2 tool calls)
+        ...Array.from({ length: 30 }, (_, i) => ({
+          role: i % 2 === 0 ? 'assistant' : 'user',
+          content: [
+            { type: 'text', text: `msg ${i}` },
+            { type: 'tool-call', toolCallId: `tc${i}a`, toolName: 'a', input: {} },
+            { type: 'tool-call', toolCallId: `tc${i}b`, toolName: 'b', input: {} }
+          ]
+        } as any))
+      ]
+
+      const result = addCacheControlToMessages(messages, model, { cacheSystemPrompts: false })
+
+      // With 3 blocks per message, 18 blocks reached at message index 6
+      // (anchor at 0, iterate from 1: positions 1-6 = 6 messages * 3 blocks = 18)
+      const intermediate = result[6] as any
+      expect(intermediate.providerOptions?.anthropic?.cacheControl).toEqual({ type: 'ephemeral' })
+    })
+
+    it('should not push already-cached last message into breakpoints array', () => {
+      // When the last message is already cached (e.g., within-turn retry),
+      // it should not be added to the breakpoints array. This prevents
+      // wasting a slot that counts toward maxNewBreakpoints.
+      const messages: ModelMessage[] = [
+        cachedMessage('user', 'memory summary'),
+        ...fillerMessages(10),
+        cachedMessage('assistant', 'already cached last message')
+      ]
+
+      const result = addCacheControlToMessages(messages, model, { cacheSystemPrompts: false })
+
+      // The already-cached last message should be returned unchanged (not re-tagged)
+      const lastMsg = result[result.length - 1] as any
+      expect(lastMsg).toBe(messages[messages.length - 1])
+
+      // No new breakpoints should be added - the last message is already cached
+      // and serves as the anchor, leaving no gap for an intermediate
+      const newBreakpoints = result.filter((msg, i) => {
+        const po = (msg as any).providerOptions?.anthropic?.cacheControl
+        return po && msg !== messages[i] // only count newly-added cache control
+      })
+      expect(newBreakpoints).toHaveLength(0)
+    })
+
+    it('should respect breakpoint slot limits with existing breakpoints', () => {
+      // 3 existing breakpoints + 1 system reserved = 4, no room for intermediate
+      const messages: ModelMessage[] = [
+        cachedMessage('user', 'a'),
+        cachedMessage('user', 'b'),
+        cachedMessage('user', 'c'),
+        ...fillerMessages(30)
+      ]
+
+      const result = addCacheControlToMessages(messages, model, { cacheSystemPrompts: true })
+
+      // 3 existing + 1 system reserved = 4, no remaining slots
+      expect(result).toBe(messages)
+    })
+  })
 })
 
 describe('logCachingStats', () => {
