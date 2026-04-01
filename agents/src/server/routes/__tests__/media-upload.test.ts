@@ -31,22 +31,6 @@ vi.mock('../../../database/repositories/AppRepository.js', () => ({
   })),
 }))
 
-vi.mock('../../../services/ImageProcessingService.js', () => ({
-  imageProcessingService: {
-    validateImageType: vi.fn((mimeType: string) => {
-      const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
-      return allowed.includes(mimeType)
-    }),
-    processImage: vi.fn().mockResolvedValue({
-      buffer: Buffer.from('processed'),
-      width: 100,
-      height: 100,
-      format: 'jpeg',
-      originalWidth: 100,
-      originalHeight: 100,
-    }),
-  },
-}))
 
 vi.mock('fs/promises', () => ({
   default: {
@@ -102,6 +86,21 @@ describe('POST /media/:appId/slots/:slotName/upload', () => {
 
     expect(response.status).toBe(400)
     expect(response.body.error).toContain('10MB')
+  })
+
+  it('should reject files with valid MIME type but invalid magic bytes', async () => {
+    // Send random bytes claiming to be JPEG
+    const fakeImage = Buffer.from('This is not a real image file at all')
+
+    const response = await request(app)
+      .post('/media/test-app/slots/hero/upload')
+      .attach('image', fakeImage, {
+        filename: 'fake.jpg',
+        contentType: 'image/jpeg',
+      })
+
+    expect(response.status).toBe(400)
+    expect(response.body.error).toContain('does not match')
   })
 
   it('should accept valid image upload', async () => {
@@ -249,4 +248,5 @@ describe('POST /media/:appId/slots/:slotName/upload', () => {
       'components/hero/section'
     )
   })
+
 })

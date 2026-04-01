@@ -14,13 +14,43 @@ import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs/promises';
 import { mediaManifestService } from '../../services/MediaManifestService.js';
-import { imageProcessingService } from '../../services/ImageProcessingService.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { logger } from '../../logging/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { getPersistentPublicDir } from '../../utils/persistent-assets.js';
 
 const router: IRouter = Router();
+
+// Allowed image MIME types → file extensions
+const ALLOWED_IMAGE_TYPES: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+};
+
+// Magic byte signatures for image validation
+const IMAGE_SIGNATURES: Array<{ mime: string; bytes: number[] }> = [
+  { mime: 'image/jpeg', bytes: [0xFF, 0xD8, 0xFF] },
+  { mime: 'image/png', bytes: [0x89, 0x50, 0x4E, 0x47] },
+  { mime: 'image/webp', bytes: [0x52, 0x49, 0x46, 0x46] }, // RIFF header (bytes 8-11 checked separately)
+  { mime: 'image/gif', bytes: [0x47, 0x49, 0x46, 0x38] },  // GIF8
+];
+
+function validateImageMagicBytes(buffer: Buffer, mimeType: string): boolean {
+  const sig = IMAGE_SIGNATURES.find(s => s.mime === mimeType);
+  if (!sig) return false;
+  if (buffer.length < sig.bytes.length) return false;
+  if (!sig.bytes.every((byte, i) => buffer[i] === byte)) return false;
+
+  // WebP is a RIFF container — verify bytes 8-11 are "WEBP" to distinguish from WAV/AVI
+  if (mimeType === 'image/webp') {
+    if (buffer.length < 12) return false;
+    return buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50;
+  }
+
+  return true;
+}
 
 // Configure multer for memory storage with 10MB limit
 const upload = multer({
@@ -361,11 +391,23 @@ router.post(
         });
       }
 
-      // Validate image type
-      if (!imageProcessingService.validateImageType(file.mimetype)) {
+      // Validate MIME type and magic bytes to prevent arbitrary content uploads
+      if (!ALLOWED_IMAGE_TYPES[file.mimetype]) {
         return res.status(400).json({
           success: false,
           error: 'Only JPEG, PNG, WebP, and GIF images are supported',
+        });
+      }
+
+      if (!validateImageMagicBytes(file.buffer, file.mimetype)) {
+        logger.warn('route.media.upload.magic_bytes_mismatch', {
+          appId,
+          slotName,
+          mimetype: file.mimetype,
+        }, { tags: ['security'] });
+        return res.status(400).json({
+          success: false,
+          error: 'File content does not match declared image type',
         });
       }
 
@@ -394,12 +436,10 @@ router.post(
         });
       }
 
-      // Process the image (resize, optimize, strip metadata)
-      const processed = await imageProcessingService.processImage(file.buffer, {
-        maxWidth: 2048,
-        maxHeight: 2048,
-        quality: 85,
-      });
+      // Write the uploaded buffer directly — the client already compresses to
+      // 1MB / 2048px and strips EXIF via browser-image-compression (canvas).
+      // Re-encoding through sharp would cause double lossy compression for
+      // JPEGs with no additional benefit.
 
       // Generate filename: {sanitized-slot}-{hash}.{ext}
       const sanitizedSlot = slotName
@@ -407,10 +447,10 @@ router.post(
         .replace(/[^a-zA-Z0-9-]/g, '');
       const hash = crypto
         .createHash('sha256')
-        .update(processed.buffer)
+        .update(file.buffer)
         .digest('hex')
         .slice(0, 8);
-      const ext = processed.format === 'jpeg' ? 'jpg' : processed.format;
+      const ext = ALLOWED_IMAGE_TYPES[file.mimetype];
       const filename = `${sanitizedSlot}-${hash}.${ext}`;
 
       // Ensure persistent media directory exists
@@ -437,7 +477,7 @@ router.post(
 
       // Atomic write: write to temp file first, then rename
       const tempPath = `${filePath}.tmp.${Date.now()}`;
-      await fs.writeFile(tempPath, processed.buffer);
+      await fs.writeFile(tempPath, file.buffer);
       await fs.rename(tempPath, filePath);
 
       // Build the URL (using airo-assets proxy pattern)
@@ -464,8 +504,7 @@ router.post(
         appId,
         slotName,
         uploadedUrl,
-        originalSize: file.size,
-        processedSize: processed.buffer.length,
+        size: file.size,
       });
 
       return res.json({
