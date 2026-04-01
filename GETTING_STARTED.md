@@ -310,10 +310,18 @@ MGMT_AIRO_BASE_URL=https://mgmt.woosaas.godaddy.com
 
 #### Important Notes
 
+**Grants and subscriptions require `local:test`:**
+
+The local control plane (`pnpm run dev`) returns hardcoded stub data for grants (from [`stubs.go`](local-control-plane/internal/api/stubs.go)) and subscriptions (from [`subscriptions.go`](local-control-plane/internal/api/subscriptions.go)). The grant stub returns a single mock grant (`local-grant-001`) with 999999 credits, which is enough to unblock LLM calls but does not reflect real subscription state, expiration, or multi-grant behavior.
+
+The grant system is always-on (the `app-builder-grants` feature flag OFF branches were removed in PR #2342). This means the frontend always fetches grants via [`app/src/hooks/useCreditGrants.ts`](app/src/hooks/useCreditGrants.ts), sends them to the agent via [`app/src/hooks/websocket/useGrantContext.ts`](app/src/hooks/websocket/useGrantContext.ts), and uses them for budget enforcement in [`app/src/hooks/useUsage.ts`](app/src/hooks/useUsage.ts). With stub data, the usage gauge, budget exceeded banner, and paywall flows may not behave correctly.
+
+**Use `pnpm run local:test` for any work involving grants, subscriptions, or billing.** This connects to the real control plane (mgmt-airo) which returns actual grant and subscription data for your test account.
+
 **Control Plane Architecture:**
 
-- **Dev** (`pnpm run dev`): Uses the local control plane at `http://localhost:4100` with local agents at `http://localhost:4000`.
-- **Test/Prod** (`pnpm run local:test`, `pnpm run local:prod`): Uses the real control plane with remote agents.
+- **Dev** (`pnpm run dev`): Uses the local control plane at `http://localhost:4100` with local agents at `http://localhost:4000`. Grant data from [`stubs.go`](local-control-plane/internal/api/stubs.go), subscription data from [`subscriptions.go`](local-control-plane/internal/api/subscriptions.go). The BFF routes to local-control-plane via [`V2ControlPlaneAdapter`](app/src/lib/control-plane/v2-control-plane-adapter.ts) using `MGMT_AIRO_BASE_URL=http://localhost:4100`.
+- **Test/Prod** (`pnpm run local:test`, `pnpm run local:prod`): Uses the real control plane (mgmt-airo) with remote agents. Grants and subscriptions are real.
 
 **Cross-Environment Apps:**
 
