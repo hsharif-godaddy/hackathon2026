@@ -1,19 +1,37 @@
 ---
 import presentationCentral from '@ux/presentation-central';
+import { presentationEnv } from '@/utils/env';
 
 interface Props {
   title: string;
   description?: string;
+  canonicalPath?: string;
+  ogType?: 'article' | 'website';
+  ogImagePath?: string;
+  jsonLd?: Record<string, unknown> | Record<string, unknown>[];
 }
 
-const { title, description = 'A blog built with Astro' } = Astro.props;
+const {
+  title,
+  description = 'The GoDaddy Airo AI Builder blog.',
+  canonicalPath,
+  ogType = 'website',
+  ogImagePath = `${import.meta.env.BASE_URL}/images/og-default.svg`,
+  jsonLd,
+} = Astro.props;
+
+const fallbackOrigin = new URL(Astro.url.origin);
+const siteUrl = Astro.site ?? fallbackOrigin;
+const canonicalUrl = new URL(canonicalPath ?? Astro.url.pathname, siteUrl).toString();
+const ogImageUrl = new URL(ogImagePath, siteUrl).toString();
+const jsonLdEntries = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 
 let presentation: any = null;
 
 try {
   const client = presentationCentral({
     version: '3.0',
-    env: 'dev',
+    env: presentationEnv,
     params: {
       app: 'airo-blog',
       market: 'en-us',
@@ -48,7 +66,30 @@ try {
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
+    <meta name="robots" content="index,follow" />
+    <link rel="canonical" href={canonicalUrl} />
+    <link
+      rel="alternate"
+      type="application/rss+xml"
+      title="Inside Airo Builder RSS Feed"
+      href={new URL(`${import.meta.env.BASE_URL}/rss.xml`, siteUrl).toString()}
+    />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:site_name" content="Inside Airo Builder" />
+    <meta property="og:type" content={ogType} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:image" content={ogImageUrl} />
+    <meta property="og:image:alt" content="Inside Airo Builder social card with GoDaddy and Airo Builder branding" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImageUrl} />
     <title>{title}</title>
+    {jsonLdEntries.map((entry) => (
+      <script type="application/ld+json" set:html={JSON.stringify(entry)} />
+    ))}
 
     {/* Hints: preconnect, dns-prefetch, and preload */}
     {presentation?.hints?.preconnect && <Fragment set:html={presentation.hints.preconnect} />}
@@ -152,6 +193,17 @@ try {
         justify-content: flex-end;
       }
 
+      .discord-link {
+        display: inline-flex;
+        align-items: center;
+        color: var(--color-muted);
+        transition: color 0.2s ease;
+      }
+
+      .discord-link:hover {
+        color: var(--color-text);
+      }
+
       .theme-toggle {
         display: inline-flex;
         align-items: center;
@@ -234,7 +286,6 @@ try {
       }
 
       .post-list {
-        list-style: none;
         padding: 2rem 0;
       }
 
@@ -275,13 +326,33 @@ try {
       }
 
       .post-excerpt {
-        color: var(--color-muted);
+        color: var(--color-text);
         font-size: 0.9375rem;
         line-height: 1.7;
         margin-bottom: 1rem;
         max-width: 600px;
         margin-left: auto;
         margin-right: auto;
+      }
+
+      .post-hero {
+        display: block;
+        margin: 1.5rem 0;
+      }
+
+      .post-hero figure {
+        margin: 0;
+        border-radius: 1.25rem;
+        overflow: hidden;
+        background: var(--color-code-bg);
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+      }
+
+      .post-hero img {
+        display: block;
+        width: 100%;
+        height: auto;
+        object-fit: cover;
       }
 
       .read-more {

@@ -1,12 +1,88 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Redirecting…</title>
-    <meta http-equiv="refresh" content="0;url=/blog/" />
-    <link rel="canonical" href="/blog/" />
-  </head>
-  <body>
-    <p><a href="/blog/">Continue to Inside Airo Builder</a></p>
-  </body>
-</html>
+---
+import { getCollection } from 'astro:content';
+
+import SiteFooter from '@/components/SiteFooter.astro';
+import SiteHeader from '@/components/SiteHeader.astro';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { onlyPublished } from '@/utils/published';
+
+const posts = onlyPublished(await getCollection('blog')).sort(
+  (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()
+);
+const websiteJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Blog',
+  description: 'The GoDaddy Airo AI Builder blog.',
+  inLanguage: 'en-US',
+  name: 'Inside Airo Builder',
+  publisher: {
+    '@type': 'Organization',
+    name: 'GoDaddy Airo Builder',
+  },
+  url: new URL(`${import.meta.env.BASE_URL}/`, Astro.site ?? new URL(Astro.url.origin)).toString(),
+};
+
+function formatDate(date: Date): string {
+  return date.toLocaleDateString('en-US', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+---
+
+<BaseLayout
+  title="Inside Airo Builder"
+  description="The GoDaddy Airo AI Builder blog."
+  canonicalPath={`${import.meta.env.BASE_URL}/`}
+  jsonLd={websiteJsonLd}
+>
+  <SiteHeader />
+
+  <section class="hero">
+    <h1>Inside Airo Builder</h1>
+    <p class="tagline">The GoDaddy Airo AI Builder blog</p>
+  </section>
+
+  <main class="content-wrapper">
+    {posts.length > 0 ? (
+      <div class="post-list">
+        {posts.map((post) => (
+          <article class="post-item">
+            <header>
+              <p class="post-meta">
+                <time datetime={post.data.pubDate.toISOString()}>
+                  {formatDate(post.data.pubDate)}
+                </time>
+                {post.data.category && (
+                  <>
+                    {' · '}
+                    <span class="category">{post.data.category}</span>
+                  </>
+                )}
+              </p>
+              <h2 class="post-title">
+                <a href={`${import.meta.env.BASE_URL}/${post.slug}/`}>{post.data.title}</a>
+              </h2>
+            </header>
+            {post.data.heroImage && (
+              <a href={`${import.meta.env.BASE_URL}/${post.slug}/`} class="post-hero">
+                <figure>
+                  <img src={`${import.meta.env.BASE_URL}${post.data.heroImage}`} alt="" loading="lazy" />
+                </figure>
+              </a>
+            )}
+            {post.data.description && (
+              <p class="post-excerpt">{post.data.description}</p>
+            )}
+            <a href={`${import.meta.env.BASE_URL}/${post.slug}/`} class="read-more">Read more</a>
+          </article>
+        ))}
+      </div>
+    ) : (
+      <p class="empty-state">No posts yet. Check back soon!</p>
+    )}
+  </main>
+
+  <SiteFooter />
+</BaseLayout>

@@ -1,63 +1,12 @@
----
-import { getCollection } from 'astro:content';
-
-import SiteHeader from '@/components/SiteHeader.astro';
-import BaseLayout from '@/layouts/BaseLayout.astro';
-import { onlyPublished } from '@/utils/published';
-
-const posts = onlyPublished(await getCollection('blog')).sort(
-  (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()
-);
-
-function formatDate(date: Date): string {
-  return date.toLocaleDateString('en-US', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-}
----
-
-<BaseLayout title="Inside Airo Builder">
-  <SiteHeader />
-
-  <section class="hero">
-    <h1>Inside Airo Builder</h1>
-    <p class="tagline">The GoDaddy Airo AI Builder blog</p>
-  </section>
-
-  <main class="content-wrapper">
-    {posts.length > 0 ? (
-      <ul class="post-list">
-        {posts.map((post) => (
-          <li class="post-item">
-            <p class="post-meta">
-              <time datetime={post.data.pubDate.toISOString()}>
-                {formatDate(post.data.pubDate)}
-              </time>
-              {post.data.category && (
-                <>
-                  {' · '}
-                  <span class="category">{post.data.category}</span>
-                </>
-              )}
-            </p>
-            <h2 class="post-title">
-              <a href={`${import.meta.env.BASE_URL}/${post.slug}/`}>{post.data.title}</a>
-            </h2>
-            {post.data.description && (
-              <p class="post-excerpt">{post.data.description}</p>
-            )}
-            <a href={`${import.meta.env.BASE_URL}/${post.slug}/`} class="read-more">Read more</a>
-          </li>
-        ))}
-      </ul>
-    ) : (
-      <p class="empty-state">No posts yet. Check back soon!</p>
-    )}
-  </main>
-
-  <footer class="site-footer">
-    <p>&copy; {new Date().getFullYear()} GoDaddy. All rights reserved.</p>
-  </footer>
-</BaseLayout>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Redirecting…</title>
+    <meta http-equiv="refresh" content={`0;url=${import.meta.env.BASE_URL}/`} />
+    <link rel="canonical" href={`${import.meta.env.BASE_URL}/`} />
+  </head>
+  <body>
+    <p><a href={`${import.meta.env.BASE_URL}/`}>Continue to Inside Airo Builder</a></p>
+  </body>
+</html>

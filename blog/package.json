@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@astrojs/mdx": "^4.3.0",
+    "@astrojs/rss": "^4.0.18",
     "@godaddy/atlas": "^1.2.3",
     "@ux/presentation-central": "^4.1.0",
     "astro": "^5.7.10"

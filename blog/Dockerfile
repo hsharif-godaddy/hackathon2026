@@ -21,6 +21,9 @@ COPY blog/ ./blog/
 
 WORKDIR /workspace/blog
 
+ARG PUBLIC_DEPLOY_ENV=prod
+ENV PUBLIC_DEPLOY_ENV=${PUBLIC_DEPLOY_ENV}
+
 RUN pnpm build
 
 FROM 764525110978.dkr.ecr.us-west-2.amazonaws.com/node:22-alpine
