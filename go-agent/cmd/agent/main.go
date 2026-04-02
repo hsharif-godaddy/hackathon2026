@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -55,7 +56,15 @@ func main() {
 	// Tool registry.
 	toolReg := tool.NewRegistry()
 	registerNativeTools(toolReg)
-	registerBridgeTools(toolReg, cfg.BridgeSocketPath, logger)
+
+	// Start the TS bridge process and discover its tools.
+	bridge, err := startBridge(cfg, logger)
+	if err != nil {
+		logger.Warn("bridge.start.skipped", "error", err)
+	} else {
+		defer func() { _ = bridge.Stop() }()
+		registerBridgeTools(toolReg, bridge.SocketPath(), logger)
+	}
 
 	// Prompt loader. Resolves relative to the binary's directory so it
 	// works regardless of the process working directory.
@@ -165,6 +174,30 @@ func registerBridgeTools(reg *tool.Registry, socketPath string, logger *slog.Log
 		reg.Register(bt)
 	}
 	logger.Info("bridge.discovery.success", "toolCount", len(tools))
+}
+
+func startBridge(cfg *config.Config, logger *slog.Logger) (*toolbridge.BridgeProcess, error) {
+	// Resolve DB_PATH to absolute so the bridge (which runs from BridgeDir)
+	// accesses the same SQLite file as the Go agent.
+	dbPath, err := filepath.Abs(cfg.DatabasePath)
+	if err != nil {
+		return nil, fmt.Errorf("resolving database path: %w", err)
+	}
+
+	// Resolve BridgeDir to absolute for the same reason — the default is
+	// relative ("../ts-bridge") and only works from go-agent/.
+	bridgeDir, err := filepath.Abs(cfg.BridgeDir)
+	if err != nil {
+		return nil, fmt.Errorf("resolving bridge dir: %w", err)
+	}
+
+	return toolbridge.Start(context.Background(), toolbridge.BridgeProcessConfig{
+		BridgeDir:    bridgeDir,
+		SocketPath:   cfg.BridgeSocketPath,
+		Env:          []string{"DB_PATH=" + dbPath},
+		StartTimeout: 30 * time.Second,
+		Logger:       logger,
+	})
 }
 
 func healthHandler(db *sql.DB) http.HandlerFunc {

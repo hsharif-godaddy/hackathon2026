@@ -33,7 +33,24 @@ func startUnixServer(t *testing.T, handler http.Handler) *http.Client {
 
 func TestBridgeTool_Execute_Success(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /tools/legacyTool", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("POST /tools/legacyTool", func(w http.ResponseWriter, r *http.Request) {
+		var req bridgeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Verify the input is preserved correctly.
+		assert.JSONEq(t, `{"key":"value"}`, string(req.Input))
+
+		// Verify context fields are forwarded.
+		if assert.NotNil(t, req.Context) {
+			assert.Equal(t, "app-123", req.Context.AppID)
+			assert.Equal(t, "sess-1", req.Context.SessionID)
+			assert.Equal(t, "conv-1", req.Context.ConversationID)
+			assert.Equal(t, "user-1", req.Context.UserID)
+		}
+
 		w.Header().Set("Content-Type", "application/x-ndjson")
 		fmt.Fprintln(w, `{"chunk":"Hello "}`)
 		fmt.Fprintln(w, `{"chunk":"World"}`)
@@ -47,11 +64,51 @@ func TestBridgeTool_Execute_Success(t *testing.T) {
 		client: client,
 	}
 
+	ctx := tool.WithScope(context.Background(), tool.RequestScope{
+		AppID:          "app-123",
+		SessionID:      "sess-1",
+		ConversationID: "conv-1",
+		UserID:         "user-1",
+	})
+
+	out := &tool.BufferedStream{}
+	err := bt.Execute(ctx, json.RawMessage(`{"key":"value"}`), out)
+
+	require.NoError(t, err)
+	assert.Equal(t, "Hello World", out.String())
+}
+
+func TestBridgeTool_Execute_NoScope(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /tools/noScopeTool", func(w http.ResponseWriter, r *http.Request) {
+		var req bridgeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Input should be present.
+		assert.JSONEq(t, `{"key":"value"}`, string(req.Input))
+		// Context should be absent when no scope is set.
+		assert.Nil(t, req.Context)
+
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		fmt.Fprintln(w, `{"chunk":"ok"}`)
+	})
+
+	client := startUnixServer(t, mux)
+
+	bt := &BridgeTool{
+		name:   "noScopeTool",
+		schema: json.RawMessage(`{}`),
+		client: client,
+	}
+
 	out := &tool.BufferedStream{}
 	err := bt.Execute(context.Background(), json.RawMessage(`{"key":"value"}`), out)
 
 	require.NoError(t, err)
-	assert.Equal(t, "Hello World", out.String())
+	assert.Equal(t, "ok", out.String())
 }
 
 func TestBridgeTool_Execute_StreamingChunks(t *testing.T) {

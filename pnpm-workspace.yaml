@@ -11,4 +11,5 @@ packages:
   - "agentic-qa-langfuse"
   - "langfuse-trace-analyzer"
   - "design-rag"
+  - "ts-bridge"
   - "!app-templates/**"

@@ -33,6 +33,21 @@ type ndjsonLine struct {
 	Error string `json:"error,omitempty"`
 }
 
+// bridgeRequest is the envelope sent to the TS bridge, wrapping the tool input
+// with optional context metadata.
+type bridgeRequest struct {
+	Input   json.RawMessage `json:"input"`
+	Context *bridgeContext  `json:"context,omitempty"`
+}
+
+// bridgeContext carries per-request context forwarded to the TS bridge.
+type bridgeContext struct {
+	AppID          string `json:"appId"`
+	SessionID      string `json:"sessionId,omitempty"`
+	ConversationID string `json:"conversationId,omitempty"`
+	UserID         string `json:"userId,omitempty"`
+}
+
 // toolDescriptor is the JSON shape returned by GET /tools for each tool.
 type toolDescriptor struct {
 	Name        string          `json:"name"`
@@ -49,10 +64,25 @@ func (t *BridgeTool) InputSchema() json.RawMessage { return t.schema }
 // both the OutputStream (via WriteError) and returned as a Go error, so callers
 // can inspect either channel.
 func (t *BridgeTool) Execute(ctx context.Context, input json.RawMessage, output tool.OutputStream) error {
+	reqBody := bridgeRequest{Input: input}
+	if scope, err := tool.ScopeFrom(ctx); err == nil {
+		reqBody.Context = &bridgeContext{
+			AppID:          scope.AppID,
+			SessionID:      scope.SessionID,
+			ConversationID: scope.ConversationID,
+			UserID:         scope.UserID,
+		}
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("marshaling bridge request: %w", err)
+	}
+
 	req, err := http.NewRequestWithContext(
 		ctx, http.MethodPost,
 		"http://ts-bridge/tools/"+url.PathEscape(t.name),
-		bytes.NewReader(input),
+		bytes.NewReader(body),
 	)
 	if err != nil {
 		return fmt.Errorf("creating bridge request: %w", err)

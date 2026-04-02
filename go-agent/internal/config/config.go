@@ -16,6 +16,7 @@ type Config struct {
 	DatabasePath     string // SQLite database path. Default: "data/agents.db".
 	AppRootPath      string // Root path for app workspaces. Default: "/tmp/airo-app-builder".
 	BridgeSocketPath string // Unix socket for TS bridge. Default: "/tmp/ts-bridge.sock".
+	BridgeDir        string // Directory containing the ts-bridge package. Default: "../ts-bridge".
 	LogLevel         string // Log level (debug, info, warn, error). Default: "info".
 	MultiTenant      bool   // Enable multi-tenant mode. Default: false.
 }
@@ -39,6 +40,7 @@ func Load() (*Config, error) {
 		DatabasePath:     envOr("DATABASE_PATH", "data/agents.db"),
 		AppRootPath:      envOr("APP_ROOT_PATH", "/tmp/airo-app-builder"),
 		BridgeSocketPath: envOr("TS_BRIDGE_SOCKET_PATH", "/tmp/ts-bridge.sock"),
+		BridgeDir:        envOr("TS_BRIDGE_DIR", "../ts-bridge"),
 		LogLevel:         envOr("LOG_LEVEL", "info"),
 		MultiTenant:      envBool("MULTI_TENANT"),
 	}

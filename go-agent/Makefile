@@ -4,11 +4,19 @@ DIST_DIR := dist
 
 export GOTOOLCHAIN := go1.25.7
 
-.PHONY: build run ensure-air test lint fmt fmt-fix vet check check-ci clean
+.PHONY: build run ensure-air dev bridge-deps test lint fmt fmt-fix vet check check-ci clean
 
 build:
 	@mkdir -p $(DIST_DIR)
 	go build -ldflags="-w -s -X main.Version=$(VERSION)" -o $(DIST_DIR)/$(BINARY_NAME) ./cmd/agent
+
+# Start Go agent with TS bridge (for local development)
+dev: build bridge-deps
+	TS_BRIDGE_DIR=$(shell cd .. && pwd)/ts-bridge ./dist/go-agent
+
+# Ensure TS bridge dependencies are built
+bridge-deps:
+	cd .. && pnpm --filter @airo/agents run build:deps
 
 run: ensure-air
 	LOG_LEVEL=$${LOG_LEVEL:-debug} air

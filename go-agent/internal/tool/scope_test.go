@@ -13,6 +13,9 @@ func TestScopeRoundTrip(t *testing.T) {
 		AppID:          "app-123",
 		AppRoot:        "/tmp/app",
 		SupervisorAddr: "unix:/var/run/supervisor.sock",
+		SessionID:      "sess-1",
+		ConversationID: "conv-1",
+		UserID:         "user-1",
 	}
 
 	ctx := WithScope(context.Background(), scope)

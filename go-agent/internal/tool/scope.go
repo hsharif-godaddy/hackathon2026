@@ -14,6 +14,9 @@ type RequestScope struct {
 	AppID          string
 	AppRoot        string
 	SupervisorAddr string // "unix:/var/run/supervisor.sock" or "http://localhost:8080"
+	SessionID      string // Optional: forwarded to TS bridge for context propagation
+	ConversationID string // Optional: forwarded to TS bridge for context propagation
+	UserID         string // Optional: forwarded to TS bridge for context propagation
 }
 
 type scopeKey struct{}
