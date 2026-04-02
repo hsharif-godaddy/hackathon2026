@@ -768,6 +768,26 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     }
   }, [state.context.hasSeenFirstFileEdit, activeStream, send])
 
+  // EFFECT: Reset failsafe timeout on agent activity
+  // When the agent is actively working (new tool calls, new text segments), reset the 5-min
+  // failsafe so it only fires after 5 minutes of *inactivity*, not 5 minutes total.
+  // We track segments.length because it changes on both new tool calls AND new text content,
+  // covering long-running tools and streaming text that don't change toolCalls.length.
+  const lastActivitySegmentCountRef = useRef(0)
+  const isWaitingForFirstEdit = state.matches({ ready: 'waitingForFirstEdit' })
+  useEffect(() => {
+    if (!isWaitingForFirstEdit) {
+      lastActivitySegmentCountRef.current = 0
+      return
+    }
+
+    const segmentCount = activeStream?.segments?.length ?? 0
+    if (segmentCount > 0 && segmentCount !== lastActivitySegmentCountRef.current) {
+      lastActivitySegmentCountRef.current = segmentCount
+      send({ type: 'AGENT_ACTIVITY' })
+    }
+  }, [isWaitingForFirstEdit, activeStream?.segments?.length, send])
+
   // EFFECT: When stream completes with incomplete tools only (e.g. token limit),
   // transition to active so the "Building your App" overlay hides and the user sees the preview.
   // For other cases (error, no tools) we keep old behaviour: overlay stays until 5-min timeout.

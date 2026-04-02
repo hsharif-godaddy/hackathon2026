@@ -96,6 +96,8 @@ export type InitializationMachineEvent =
   | { type: 'FIRST_FILE_EDIT_SEEN' }
   // Stream finished but no successful file edit (e.g. due to incomplete tool calls like token limit) - hide building overlay
   | { type: 'STREAM_COMPLETE_WITHOUT_FIRST_EDIT' }
+  // Agent is actively working (new tool calls, streaming) - resets failsafe timeout
+  | { type: 'AGENT_ACTIVITY' }
 
   // Error recovery
   | { type: 'FATAL_ERROR'; error: string }
@@ -413,6 +415,7 @@ export const initializationMachine = setup({
         waitingForFirstEdit: {
           // Safety timeout to prevent infinite hang (Issue 4.2)
           // If agent crashes or never responds, transition to active after timeout
+          // The timeout resets on AGENT_ACTIVITY (re-enter resets the `after` delay)
           after: {
             [FIRST_EDIT_TIMEOUT_MS]: {
               target: 'active',
@@ -428,6 +431,12 @@ export const initializationMachine = setup({
             STREAM_COMPLETE_WITHOUT_FIRST_EDIT: {
               target: 'active',
               actions: ['logTransition'],
+            },
+            // Agent is actively working - re-enter to reset the failsafe timeout
+            // Intentionally no logTransition: fires on every new segment and would spam logs
+            AGENT_ACTIVITY: {
+              target: 'waitingForFirstEdit',
+              reenter: true,
             },
           },
         },

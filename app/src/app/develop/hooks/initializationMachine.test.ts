@@ -4,7 +4,7 @@
  * Tests state transitions in isolation without React
  */
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createActor } from 'xstate'
 
 import { getPhaseFromState, getSubPhaseFromState, initializationMachine } from './initializationMachine'
@@ -218,6 +218,73 @@ describe('initializationMachine', () => {
       expect(getSubPhaseFromState(actor.getSnapshot())).toBe('active')
       // Should NOT mark first file edit seen (we only hid overlay for incomplete case)
       expect(actor.getSnapshot().context.hasSeenFirstFileEdit).toBe(false)
+    })
+
+    it('should stay in waitingForFirstEdit on AGENT_ACTIVITY (resets failsafe timer)', () => {
+      const actor = createActor(initializationMachine, {
+        input: { appId: null, isJobId: false, hasInitialPrompt: false },
+      })
+      actor.start()
+
+      actor.send({ type: 'START_CHECKING_CREATION', appId: 'job-123', isJobId: true })
+      actor.send({ type: 'START_CREATING', jobId: 'job-123', initialPromptText: 'Test' })
+      actor.send({ type: 'CREATION_SUCCEEDED', realAppId: 'app-456' })
+      actor.send({ type: 'PAGE_DATA_LOADED' })
+      actor.send({ type: 'HISTORY_LOADED', hasHistory: false })
+      actor.send({ type: 'WEBSOCKET_CONNECTED' })
+      actor.send({ type: 'PROMPT_SENT' })
+
+      expect(getSubPhaseFromState(actor.getSnapshot())).toBe('waitingForFirstEdit')
+
+      // Agent activity should keep us in waitingForFirstEdit (re-enter resets the after delay)
+      actor.send({ type: 'AGENT_ACTIVITY' })
+      expect(getSubPhaseFromState(actor.getSnapshot())).toBe('waitingForFirstEdit')
+      expect(actor.getSnapshot().context.hasSeenFirstFileEdit).toBe(false)
+
+      // Can still transition to active via FIRST_FILE_EDIT_SEEN
+      actor.send({ type: 'FIRST_FILE_EDIT_SEEN' })
+      expect(getSubPhaseFromState(actor.getSnapshot())).toBe('active')
+    })
+
+    describe('with fake timers', () => {
+      beforeEach(() => vi.useFakeTimers())
+      afterEach(() => vi.useRealTimers())
+
+      it('should reset the 5-min failsafe timer on AGENT_ACTIVITY', () => {
+        const actor = createActor(initializationMachine, {
+          input: { appId: null, isJobId: false, hasInitialPrompt: false },
+        })
+        actor.start()
+
+        actor.send({ type: 'START_CHECKING_CREATION', appId: 'job-123', isJobId: true })
+        actor.send({ type: 'START_CREATING', jobId: 'job-123', initialPromptText: 'Test' })
+        actor.send({ type: 'CREATION_SUCCEEDED', realAppId: 'app-456' })
+        actor.send({ type: 'PAGE_DATA_LOADED' })
+        actor.send({ type: 'HISTORY_LOADED', hasHistory: false })
+        actor.send({ type: 'WEBSOCKET_CONNECTED' })
+        actor.send({ type: 'PROMPT_SENT' })
+
+        expect(getSubPhaseFromState(actor.getSnapshot())).toBe('waitingForFirstEdit')
+
+        // Advance 4 minutes (just under the 5-min timeout)
+        vi.advanceTimersByTime(4 * 60 * 1000)
+        expect(getSubPhaseFromState(actor.getSnapshot())).toBe('waitingForFirstEdit')
+
+        // Agent activity at 4 minutes — should reset the timer
+        actor.send({ type: 'AGENT_ACTIVITY' })
+        expect(getSubPhaseFromState(actor.getSnapshot())).toBe('waitingForFirstEdit')
+
+        // Advance another 4 minutes (8 min total, but only 4 since last activity)
+        vi.advanceTimersByTime(4 * 60 * 1000)
+        expect(getSubPhaseFromState(actor.getSnapshot())).toBe('waitingForFirstEdit')
+
+        // Advance 1 more minute (5 min since last activity) — failsafe should fire
+        vi.advanceTimersByTime(1 * 60 * 1000)
+        expect(getSubPhaseFromState(actor.getSnapshot())).toBe('active')
+        expect(actor.getSnapshot().context.hasSeenFirstFileEdit).toBe(true)
+
+        actor.stop()
+      })
     })
   })
 
