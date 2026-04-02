@@ -72,7 +72,7 @@
     "@godaddy/gasket-plugin-traffic": "^3.5.1",
     "@godaddy/gasket-plugin-uxp": "^3.7.3",
     "@godaddy/gasket-plugin-visitor": "^3.7.1",
-    "@godaddy/react-mintl": "^3.1.1",
+    "@godaddy/react-mintl": "^3.2.0",
     "@godaddy/user-analytics-js": "^4.0.1",
     "@heroicons/react": "^2.2.0",
     "@microsoft/fetch-event-source": "^2.0.1",

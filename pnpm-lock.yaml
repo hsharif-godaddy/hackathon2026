@@ -527,8 +527,8 @@ importers:
         specifier: ^3.7.1
         version: 3.7.1
       '@godaddy/react-mintl':
-        specifier: ^3.1.1
-        version: 3.1.2(prop-types@15.8.1)(react@19.1.0)
+        specifier: ^3.2.0
+        version: 3.2.0(prop-types@15.8.1)(react@19.1.0)
       '@godaddy/user-analytics-js':
         specifier: ^4.0.1
         version: 4.0.1(react@19.1.0)
@@ -3426,11 +3426,14 @@ packages:
   '@godaddy/quickcert@1.0.1':
     resolution: {integrity: sha512-+yK9K0Q/taZM10HakGN1WR7rir0/OgJu3qVPfnQ7Yv5dPEQsWxnqZztL1xAY8KjY8v3quwU61UIix8IuFPlJ/w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/quickcert/-/@godaddy/quickcert-1.0.1.tgz}
 
-  '@godaddy/react-mintl@3.1.2':
-    resolution: {integrity: sha512-bMpP56otNEhkndmDXm02bryAAytm3b2DL8ZHWgd7JFYqY7OTaErcNyig5IIaHQccDVEh/1UKFji9WfXM3E7OPA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/react-mintl/-/@godaddy/react-mintl-3.1.2.tgz}
+  '@godaddy/react-mintl@3.2.0':
+    resolution: {integrity: sha512-jLqXqNwlhM0bz/BXqJxglaxhdTKP9xBV7PoW/Oe7rj4R5oDuzKZ7cl+6jZ6EHdbZL8eKMN0Kyj3tlewXD04POw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/react-mintl/-/@godaddy/react-mintl-3.2.0.tgz}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
+    peerDependenciesMeta:
+      prop-types:
+        optional: true
 
   '@godaddy/user-analytics-js@4.0.1':
     resolution: {integrity: sha512-5hes3jTO09gFZNqQPCYRsTRLXvGa2+uq+u/HWB7aHnRx/3xNZg7KqbOpzY+LTv6FTI/sbw8yh587Ob7u0IIV5Q==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/user-analytics-js/-/@godaddy/user-analytics-js-4.0.1.tgz}
@@ -16789,10 +16792,11 @@ snapshots:
       asn1js: 3.0.5
       pkijs: 3.0.16
 
-  '@godaddy/react-mintl@3.1.2(prop-types@15.8.1)(react@19.1.0)':
+  '@godaddy/react-mintl@3.2.0(prop-types@15.8.1)(react@19.1.0)':
     dependencies:
-      prop-types: 15.8.1
       react: 19.1.0
+    optionalDependencies:
+      prop-types: 15.8.1
 
   '@godaddy/user-analytics-js@4.0.1(react@19.1.0)':
     dependencies:
@@ -19653,7 +19657,7 @@ snapshots:
 
   '@site/buttons@6.3.13(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@godaddy/react-mintl': 3.1.2(prop-types@15.8.1)(react@19.1.0)
+      '@godaddy/react-mintl': 3.2.0(prop-types@15.8.1)(react@19.1.0)
       '@linaria/core': 3.0.0-beta.13
       '@linaria/react': 3.0.0-beta.13(react@19.1.0)
       '@site/common-styles': 2.3.9
