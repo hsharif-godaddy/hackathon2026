@@ -307,7 +307,7 @@ export default function ChatInput({
           </div>
 
           <div className="flex items-center justify-between pt-1">
-            <div className="flex items-center gap-0.5">
+            <div className="flex items-center gap-1">
               {appId && onFilesUploaded && (
                 <ChatAttachmentMenu
                   appId={appId}

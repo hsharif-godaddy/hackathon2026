@@ -1,5 +1,6 @@
 'use client'
 
+import clsx from 'clsx'
 import { memo, useEffect, useRef, useState } from 'react'
 
 import { useCreditGrants } from '@/hooks/useCreditGrants'
@@ -28,37 +29,7 @@ interface UsageGaugeProps {
 export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
   const t = useTranslations()
   const [open, setOpen] = useState(false)
-  const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const previousPercentageRef = useRef<number | null>(null)
-
-  const handleMouseEnter = () => {
-    if (closeTimeoutRef.current) {
-      clearTimeout(closeTimeoutRef.current)
-      closeTimeoutRef.current = null
-    }
-    setOpen(true)
-  }
-
-  const handleMouseLeave = () => {
-    if (closeTimeoutRef.current) {
-      clearTimeout(closeTimeoutRef.current)
-      closeTimeoutRef.current = null
-    }
-    closeTimeoutRef.current = setTimeout(() => {
-      setOpen(false)
-      closeTimeoutRef.current = null
-    }, 200)
-  }
-
-  // Cleanup timeout on unmount to prevent setState on unmounted component
-  useEffect(() => {
-    return () => {
-      if (closeTimeoutRef.current) {
-        clearTimeout(closeTimeoutRef.current)
-        closeTimeoutRef.current = null
-      }
-    }
-  }, [])
 
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
   const openCreditsModal = useDevelopPageStore((state) => state.openCreditsModal)
@@ -127,18 +98,18 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
-          className="relative w-5 h-5 flex items-center justify-center cursor-pointer focus:outline-none rounded-full group"
+          className={clsx(
+            'relative flex items-center justify-center cursor-pointer rounded-full transition-all duration-200 hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            open && 'scale-105'
+          )}
           onMouseDown={(e) => e.preventDefault()}
-          onClick={() => setOpen(!open)}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
           data-eid={generateClickEID('usage_gauge.trigger.open')}
           aria-label={t('builder_usage_gauge_aria_label', { percentage: String(Math.round(percentage)) })}
         >
-          <div className="transition-transform group-hover:scale-110">
+          <div>
             <CircularGauge
               value={percentage}
-              size={20}
+              size={22}
               strokeWidth={4}
             />
           </div>
@@ -150,8 +121,6 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
         side="top"
         sideOffset={8}
         className="w-48 p-3"
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <GrantsPopoverContent

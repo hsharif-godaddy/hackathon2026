@@ -161,7 +161,7 @@ describe('UsageGauge', function usageGaugeTests() {
         expect(container.querySelector('button')).toBeInTheDocument();
       });
 
-      await user.hover(container.querySelector('button')!);
+      await user.click(container.querySelector('button')!);
 
       await waitFor(function waitForGrantsPopover() {
         expect(screen.getByText('builder_usage_gauge_total_title')).toBeInTheDocument();
@@ -176,7 +176,7 @@ describe('UsageGauge', function usageGaugeTests() {
         expect(container.querySelector('button')).toBeInTheDocument();
       });
 
-      await user.hover(container.querySelector('button')!);
+      await user.click(container.querySelector('button')!);
 
       await waitFor(function waitForCredits() {
         // Check for total credits title
@@ -194,7 +194,7 @@ describe('UsageGauge', function usageGaugeTests() {
         expect(container.querySelector('button')).toBeInTheDocument();
       });
 
-      await user.hover(container.querySelector('button')!);
+      await user.click(container.querySelector('button')!);
 
       await waitFor(function waitForManagePlanButton() {
         const managePlanButton = screen.getByText('builder_usage_gauge_manage_plan').closest('a');
@@ -212,7 +212,7 @@ describe('UsageGauge', function usageGaugeTests() {
         expect(container.querySelector('button')).toBeInTheDocument();
       });
 
-      await user.hover(container.querySelector('button')!);
+      await user.click(container.querySelector('button')!);
 
       await waitFor(function waitForMonthlyCredits() {
         expect(screen.getByText('builder_usage_gauge_monthly_credits')).toBeInTheDocument();
@@ -226,7 +226,7 @@ describe('UsageGauge', function usageGaugeTests() {
         expect(container.querySelector('button')).toBeInTheDocument();
       });
 
-      await user.hover(container.querySelector('button')!);
+      await user.click(container.querySelector('button')!);
 
       await waitFor(function waitForUpgradeButton() {
         expect(screen.getByText('builder_usage_gauge_upgrade_plan')).toBeInTheDocument();
@@ -240,7 +240,7 @@ describe('UsageGauge', function usageGaugeTests() {
         expect(container.querySelector('button')).toBeInTheDocument();
       });
 
-      await user.hover(container.querySelector('button')!);
+      await user.click(container.querySelector('button')!);
 
       await waitFor(function waitForBuyCreditsButton() {
         expect(screen.getByText('builder_usage_gauge_buy_credits')).toBeInTheDocument();
@@ -254,7 +254,7 @@ describe('UsageGauge', function usageGaugeTests() {
         expect(container.querySelector('button')).toBeInTheDocument();
       });
 
-      await user.hover(container.querySelector('button')!);
+      await user.click(container.querySelector('button')!);
 
       await waitFor(function waitForUpgradeButton() {
         expect(screen.getByText('builder_usage_gauge_upgrade_plan')).toBeInTheDocument();
@@ -272,7 +272,7 @@ describe('UsageGauge', function usageGaugeTests() {
         expect(container.querySelector('button')).toBeInTheDocument();
       });
 
-      await user.hover(container.querySelector('button')!);
+      await user.click(container.querySelector('button')!);
 
       await waitFor(function waitForBuyCreditsButton() {
         expect(screen.getByText('builder_usage_gauge_buy_credits')).toBeInTheDocument();
@@ -343,7 +343,7 @@ describe('UsageGauge', function usageGaugeTests() {
         expect(container.querySelector('button')).toBeInTheDocument();
       });
 
-      await user.hover(container.querySelector('button')!);
+      await user.click(container.querySelector('button')!);
 
       await waitFor(function waitForBuyCreditsButton() {
         expect(screen.getByText('builder_usage_gauge_buy_credits')).toBeInTheDocument();
@@ -413,7 +413,7 @@ describe('UsageGauge', function usageGaugeTests() {
         expect(container.querySelector('button')).toBeInTheDocument();
       });
 
-      await user.hover(container.querySelector('button')!);
+      await user.click(container.querySelector('button')!);
 
       await waitFor(function waitForUpgradeButton() {
         expect(screen.getByText('builder_usage_gauge_upgrade_plan')).toBeInTheDocument();
@@ -494,7 +494,7 @@ describe('UsageGauge', function usageGaugeTests() {
         expect(container.querySelector('button')).toBeInTheDocument();
       });
 
-      await user.hover(container.querySelector('button')!);
+      await user.click(container.querySelector('button')!);
 
       await waitFor(function waitForAddonCredits() {
         expect(screen.getByText('builder_usage_gauge_addon_credits')).toBeInTheDocument();
@@ -512,7 +512,7 @@ describe('UsageGauge', function usageGaugeTests() {
       const triggerButton = container.querySelector('button');
       expect(triggerButton).toHaveAttribute('data-eid', 'appbuilder.usage_gauge.trigger.open.click');
 
-      await user.hover(triggerButton!);
+      await user.click(triggerButton!);
 
       await waitFor(function waitForUpgradeButton() {
         expect(screen.getByText('builder_usage_gauge_upgrade_plan')).toBeInTheDocument();
