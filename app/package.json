@@ -125,7 +125,7 @@
     "@ux/tailwind-intents": "^2500.7.1",
     "@ux/text": "^2500.7.1",
     "@ux/text-input": "^2500.7.2",
-    "@ux/text-lockup": "^2500.9.0",
+    "@ux/text-lockup": "^2500.11.0",
     "@ux/time-picker": "^2500.11.1",
     "@ux/toggle-button": "^2500.11.1",
     "@ux/tooltip": "^2500.11.1",

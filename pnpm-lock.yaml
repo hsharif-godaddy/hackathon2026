@@ -686,8 +686,8 @@ importers:
         specifier: 2500.7.2
         version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text-lockup':
-        specifier: ^2500.9.0
-        version: 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: ^2500.11.0
+        version: 2500.11.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/time-picker':
         specifier: ^2500.11.1
         version: 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -7056,8 +7056,8 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/text-lockup@2500.9.0':
-    resolution: {integrity: sha512-7SxVvSgkvntskYmmKs6A4UV8HfChZS6mlmDT7n0e+C5Dey7sQ8TpaBjL9Dup0YfdsEDpxk/BP2e8d1rSnJwWvw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-lockup/-/@ux/text-lockup-2500.9.0.tgz}
+  '@ux/text-lockup@2500.11.0':
+    resolution: {integrity: sha512-4ZsxNBDcYluwEcrD82HfVV+KNVvbZaysANCVntf2zHM13XIx/K6p/r3ghrkXd4Fwvcb04JkoKmYljtGHYNSj7A==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-lockup/-/@ux/text-lockup-2500.11.0.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -14262,7 +14262,7 @@ snapshots:
       '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
-      '@ux/text-lockup': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text-lockup': 2500.11.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
       react-intl: 7.1.14(react@19.1.0)(typescript@5.9.2)
@@ -20602,7 +20602,7 @@ snapshots:
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
-      '@ux/text-lockup': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text-lockup': 2500.11.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -20654,7 +20654,7 @@ snapshots:
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/tag': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text-lockup': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text-lockup': 2500.11.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -20819,7 +20819,7 @@ snapshots:
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text-lockup': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text-lockup': 2500.11.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
@@ -20891,7 +20891,7 @@ snapshots:
       '@ux/disrupt': 2500.11.0(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
-      '@ux/text-lockup': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text-lockup': 2500.11.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -20923,7 +20923,7 @@ snapshots:
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/space': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text-lockup': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text-lockup': 2500.11.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -21144,7 +21144,7 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/text-lockup@2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/text-lockup@2500.11.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
