@@ -38,7 +38,7 @@ overrides:
   '@ux/menu': 2500.7.2
   '@ux/modal': 2500.7.2
   '@ux/pagination': 2500.7.2
-  '@ux/radio': 2500.7.1
+  '@ux/radio': 2500.9.0
   '@ux/select': 2500.7.2
   '@ux/select-input': 2500.7.2
   '@ux/skeleton': 2500.7.2
@@ -650,8 +650,8 @@ importers:
         specifier: ^2500.7.2
         version: 2500.11.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/radio':
-        specifier: 2500.7.1
-        version: 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.9.0
+        version: 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/select':
         specifier: 2500.7.2
         version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -7006,8 +7006,8 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/radio@2500.7.1':
-    resolution: {integrity: sha512-mUZIyV6ghTRw8Jej3Do8EF7RcR2Oowg8HF+Tt1w76hVH+Hldi1Uj3/jS13bMwtHTC0rV9PN0lwnu8YaMzca0yA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/radio/-/@ux/radio-2500.7.1.tgz}
+  '@ux/radio@2500.9.0':
+    resolution: {integrity: sha512-JVcnhdsVoAAbG742wz7GuT03cE7cE/0RbMNyzjUdfLt8yslYxq6b0sk5TdEQE1dlQBRlQOjFnJi7v7DpZhT/wg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/radio/-/@ux/radio-2500.9.0.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -21114,7 +21114,7 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/radio@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/radio@2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/intents': 2500.7.1
       '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)

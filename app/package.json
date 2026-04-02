@@ -113,7 +113,7 @@
     "@ux/modal": "^2500.7.2",
     "@ux/pagination": "^2500.7.2",
     "@ux/quantity-selector": "^2500.7.2",
-    "@ux/radio": "^2500.7.1",
+    "@ux/radio": "^2500.9.0",
     "@ux/select": "^2500.7.2",
     "@ux/select-input": "^2500.7.2",
     "@ux/sibling-set": "^2500.7.2",
