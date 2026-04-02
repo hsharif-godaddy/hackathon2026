@@ -55,6 +55,8 @@ export interface RenderedContext {
   role?: 'user' | 'system'
   insertionOrder?: 'before_history' | 'after_history'
   cachePoint?: { type: 'ephemeral' }
+  /** Base64 data URLs (e.g. "data:image/jpeg;base64,...") for vision inputs */
+  assetImages?: string[]
 }
 
 /**

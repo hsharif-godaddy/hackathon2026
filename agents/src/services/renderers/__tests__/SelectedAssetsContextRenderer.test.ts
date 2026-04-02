@@ -3,7 +3,12 @@ import { SelectedAssetsContextRenderer } from '../SelectedAssetsContextRenderer.
 import type { ContextAttachment } from '@airo/shared/context-attachment'
 
 vi.mock('../../helpers/ContextFormatter.js', () => ({
-  readUploadedFileContent: vi.fn()
+  readUploadedFileContent: vi.fn(),
+  readAgentUploadAsBase64: vi.fn()
+}))
+
+vi.mock('../../../utils/image-resize.js', () => ({
+  resizeForVision: vi.fn()
 }))
 
 vi.mock('../../../logging/index.js', () => ({
@@ -15,8 +20,12 @@ vi.mock('../../../logging/index.js', () => ({
 }))
 
 import { readUploadedFileContent } from '../../helpers/ContextFormatter.js'
+import { readAgentUploadAsBase64 } from '../../helpers/ContextFormatter.js'
+import { resizeForVision } from '../../../utils/image-resize.js'
 
 const mockedReadUploadedFileContent = vi.mocked(readUploadedFileContent)
+const mockedReadAgentUploadAsBase64 = vi.mocked(readAgentUploadAsBase64)
+const mockedResizeForVision = vi.mocked(resizeForVision)
 
 describe('SelectedAssetsContextRenderer', () => {
   let renderer: SelectedAssetsContextRenderer
@@ -24,6 +33,8 @@ describe('SelectedAssetsContextRenderer', () => {
   beforeEach(() => {
     renderer = new SelectedAssetsContextRenderer()
     vi.clearAllMocks()
+    // Default: resizeForVision is a pass-through (image already within limits)
+    mockedResizeForVision.mockImplementation(async (buf, mime) => ({ buffer: buf, mimeType: mime }))
   })
 
   describe('canHandle', () => {
@@ -370,6 +381,173 @@ describe('SelectedAssetsContextRenderer', () => {
       expect(result).not.toBeNull()
       expect(result!.role).toBe('user')
       expect(result!.insertionOrder).toBe('after_history')
+    })
+
+    describe('vision: assetImages for uploaded images', () => {
+      it('populates assetImages for a non-SVG uploaded IMAGE', async () => {
+        const fakeBase64 = Buffer.from('fake-jpeg-data').toString('base64')
+        const dataUrl = `data:image/jpeg;base64,${fakeBase64}`
+        mockedReadAgentUploadAsBase64.mockResolvedValue(dataUrl)
+        mockedResizeForVision.mockResolvedValue({
+          buffer: Buffer.from('fake-jpeg-data'),
+          mimeType: 'image/jpeg'
+        })
+
+        const attachment: ContextAttachment<any[]> = {
+          type: 'selected_assets',
+          data: [{
+            mediaType: 'IMAGE',
+            sourceType: 'upload',
+            imageUrl: 'http://localhost:4000/files/uploads/app123/app123_123_file1.jpg',
+            filename: 'hero.jpg',
+            contentType: 'image/jpeg',
+            size: 204800
+          }]
+        }
+
+        const result = await renderer.render(attachment, 'place this image')
+        expect(result).not.toBeNull()
+        expect(result!.assetImages).toHaveLength(1)
+        expect(result!.assetImages![0]).toMatch(/^data:image\/jpeg;base64,/)
+        expect(mockedReadAgentUploadAsBase64).toHaveBeenCalledWith(
+          'http://localhost:4000/files/uploads/app123/app123_123_file1.jpg'
+        )
+        expect(mockedResizeForVision).toHaveBeenCalled()
+      })
+
+      it('does not populate assetImages for an SVG upload (contentType)', async () => {
+        const attachment: ContextAttachment<any[]> = {
+          type: 'selected_assets',
+          data: [{
+            mediaType: 'IMAGE',
+            sourceType: 'upload',
+            imageUrl: 'http://localhost:4000/files/uploads/app123/logo.svg',
+            filename: 'logo.svg',
+            contentType: 'image/svg+xml',
+            size: 1024
+          }]
+        }
+
+        const result = await renderer.render(attachment, 'place this svg')
+        expect(result).not.toBeNull()
+        expect(result!.assetImages).toBeUndefined()
+        expect(mockedReadAgentUploadAsBase64).not.toHaveBeenCalled()
+      })
+
+      it('does not populate assetImages for an SVG upload (filename extension)', async () => {
+        const attachment: ContextAttachment<any[]> = {
+          type: 'selected_assets',
+          data: [{
+            mediaType: 'IMAGE',
+            sourceType: 'upload',
+            imageUrl: 'http://localhost:4000/files/uploads/app123/logo.svg',
+            filename: 'logo.svg',
+            contentType: 'image/octet-stream',
+            size: 1024
+          }]
+        }
+
+        const result = await renderer.render(attachment, 'place this svg')
+        expect(result).not.toBeNull()
+        expect(result!.assetImages).toBeUndefined()
+        expect(mockedReadAgentUploadAsBase64).not.toHaveBeenCalled()
+      })
+
+      it('does not populate assetImages for a stock (non-upload) IMAGE', async () => {
+        const attachment: ContextAttachment<any[]> = {
+          type: 'selected_assets',
+          data: [{
+            mediaType: 'IMAGE',
+            sourceType: 'stock',
+            imageUrl: 'https://media.gettyimages.com/photos/abc.jpg',
+            filename: 'photo.jpg',
+            contentType: 'image/jpeg',
+            size: 204800
+          }]
+        }
+
+        const result = await renderer.render(attachment, 'use stock image')
+        expect(result).not.toBeNull()
+        expect(result!.assetImages).toBeUndefined()
+        expect(mockedReadAgentUploadAsBase64).not.toHaveBeenCalled()
+      })
+
+      it('skips image but still returns text context when readAgentUploadAsBase64 returns null', async () => {
+        mockedReadAgentUploadAsBase64.mockResolvedValue(null)
+
+        const attachment: ContextAttachment<any[]> = {
+          type: 'selected_assets',
+          data: [{
+            mediaType: 'IMAGE',
+            sourceType: 'upload',
+            imageUrl: 'http://localhost:4000/files/uploads/app123/missing.jpg',
+            filename: 'missing.jpg',
+            contentType: 'image/jpeg',
+            size: 1024
+          }]
+        }
+
+        const result = await renderer.render(attachment, 'place this image')
+        expect(result).not.toBeNull()
+        expect(result!.content).toContain('AUTO-RESOLUTION ENABLED')
+        expect(result!.assetImages).toBeUndefined()
+      })
+
+      it('skips image but still returns text context when readAgentUploadAsBase64 throws', async () => {
+        mockedReadAgentUploadAsBase64.mockRejectedValue(new Error('disk read error'))
+
+        const attachment: ContextAttachment<any[]> = {
+          type: 'selected_assets',
+          data: [{
+            mediaType: 'IMAGE',
+            sourceType: 'upload',
+            imageUrl: 'http://localhost:4000/files/uploads/app123/broken.jpg',
+            filename: 'broken.jpg',
+            contentType: 'image/jpeg',
+            size: 1024
+          }]
+        }
+
+        const result = await renderer.render(attachment, 'place this image')
+        expect(result).not.toBeNull()
+        expect(result!.content).toContain('AUTO-RESOLUTION ENABLED')
+        expect(result!.assetImages).toBeUndefined()
+      })
+
+      it('collects assetImages for multiple uploaded images in one attachment', async () => {
+        const fakeBase64 = Buffer.from('fake').toString('base64')
+        mockedReadAgentUploadAsBase64.mockResolvedValue(`data:image/jpeg;base64,${fakeBase64}`)
+        mockedResizeForVision.mockResolvedValue({
+          buffer: Buffer.from('fake'),
+          mimeType: 'image/jpeg'
+        })
+
+        const attachment: ContextAttachment<any[]> = {
+          type: 'selected_assets',
+          data: [
+            {
+              mediaType: 'IMAGE',
+              sourceType: 'upload',
+              imageUrl: 'http://localhost:4000/files/uploads/app123/img1.jpg',
+              filename: 'img1.jpg',
+              contentType: 'image/jpeg',
+              size: 1024
+            },
+            {
+              mediaType: 'IMAGE',
+              sourceType: 'upload',
+              imageUrl: 'http://localhost:4000/files/uploads/app123/img2.png',
+              filename: 'img2.png',
+              contentType: 'image/png',
+              size: 1024
+            }
+          ]
+        }
+
+        const result = await renderer.render(attachment, 'place these images')
+        expect(result).not.toBeNull()
+        expect(result!.assetImages).toHaveLength(2)
+      })
     })
   })
 

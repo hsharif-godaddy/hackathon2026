@@ -49,6 +49,7 @@ import {
   useStreamingConversationStore,
 } from '@/stores/useStreamingConversationStore'
 import { getActiveGrant } from '@/utils/credits'
+import { MAX_TOTAL_ASSETS } from '@/utils/file-upload-validation'
 import { logAiroHQEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 
@@ -220,7 +221,7 @@ export default function ChatPane({
   const safeBuildErrorContext = (currentAppId === appId) ? buildErrorContext : null
 
   // Calculate maxAssets based on image replacement mode
-  const maxAssets = safeAiEditContext?.isImageReplacement ? 1 : 4
+  const maxAssets = safeAiEditContext?.isImageReplacement ? 1 : MAX_TOTAL_ASSETS
 
   // Clear selected assets when entering image replacement mode
   useEffect(() => {
@@ -448,6 +449,29 @@ export default function ChatPane({
     sendMessage: handleSendMessage
   }), [handleSendMessage])
 
+  useEffect(function cleanupUploadErrorTimer() {
+    return () => {
+      if (uploadErrorTimeoutRef.current) {
+        clearTimeout(uploadErrorTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  const handleUploadError = useCallback((errorMessage?: string) => {
+    logger.error('chat-pane.upload-error', { errorMessage })
+    setUploadingFiles([])
+    if (errorMessage) {
+      setUploadError(errorMessage)
+      if (uploadErrorTimeoutRef.current) {
+        clearTimeout(uploadErrorTimeoutRef.current)
+      }
+      uploadErrorTimeoutRef.current = setTimeout(() => {
+        setUploadError(null)
+        uploadErrorTimeoutRef.current = null
+      }, 8000)
+    }
+  }, [])
+
   // Handle asset selection from AssetManager
   const handleAssetSelect = useCallback((items: AssetManagerItem[]) => {
     logger.debug('chat-pane.asset-select', { itemCount: items?.length })
@@ -528,23 +552,41 @@ export default function ChatPane({
 
         void tryAstReplacement()
       } else {
-        // Normal mode: allow multiple images (append with duplicate checking)
+        // Normal mode: allow multiple images (append with duplicate checking, capped at MAX_TOTAL_ASSETS)
         logger.debug('chat-pane.asset-select.manual', { appId })
+
+        // Check before updating — functional updater runs async so we can't rely on it for side effects
+        const existingUrls = new Set(selectedAssets.map(asset => asset.imageUrl))
+        const newUniqueItems = items.filter(item => !existingUrls.has(item.imageUrl))
+        if (selectedAssets.length + newUniqueItems.length > MAX_TOTAL_ASSETS) {
+          // Use setUploadError directly — handleUploadError also clears uploadingFiles which
+          // would wipe in-progress upload indicators unrelated to this limit violation
+          setUploadError(t('builder_chatfiles_error_max_attachments', { count: MAX_TOTAL_ASSETS }))
+          if (uploadErrorTimeoutRef.current) {
+            clearTimeout(uploadErrorTimeoutRef.current)
+          }
+          uploadErrorTimeoutRef.current = setTimeout(() => {
+            setUploadError(null)
+            uploadErrorTimeoutRef.current = null
+          }, 8000)
+        }
+
+        // Intentional partial-accept: assets that fit within the limit are still added
+        // even when the total would exceed MAX_TOTAL_ASSETS. The error banner above informs
+        // the user, and setSelectedAssets slices to the limit below.
         setSelectedAssets((prevAssets) => {
           // Create a Set of existing asset URLs to check for duplicates
-          const existingUrls = new Set(prevAssets.map(asset => asset.imageUrl))
+          const prevUrls = new Set(prevAssets.map(asset => asset.imageUrl))
 
-          // Filter out duplicates from new items
-          const newItems = items.filter(item => !existingUrls.has(item.imageUrl))
-
-          // Combine existing and new items
-          return [...prevAssets, ...newItems]
+          // Filter out duplicates from new items, then cap at limit
+          const newItems = items.filter(item => !prevUrls.has(item.imageUrl))
+          return [...prevAssets, ...newItems].slice(0, MAX_TOTAL_ASSETS)
         })
       }
     } else {
       logger.debug('chat-pane.asset-select.empty', { appId })
     }
-  }, [appId, sendMessage, handleClearAiEditContext])
+  }, [appId, sendMessage, handleClearAiEditContext, t, selectedAssets])
 
   // Handle upload start - show placeholders immediately
   const handleUploadStart = useCallback((files: File[]) => {
@@ -556,29 +598,6 @@ export default function ChatPane({
     }))
 
     setUploadingFiles(uploadingPlaceholders)
-  }, [])
-
-  useEffect(function cleanupUploadErrorTimer() {
-    return () => {
-      if (uploadErrorTimeoutRef.current) {
-        clearTimeout(uploadErrorTimeoutRef.current)
-      }
-    }
-  }, [])
-
-  const handleUploadError = useCallback((errorMessage?: string) => {
-    logger.error('chat-pane.upload-error', { errorMessage })
-    setUploadingFiles([])
-    if (errorMessage) {
-      setUploadError(errorMessage)
-      if (uploadErrorTimeoutRef.current) {
-        clearTimeout(uploadErrorTimeoutRef.current)
-      }
-      uploadErrorTimeoutRef.current = setTimeout(() => {
-        setUploadError(null)
-        uploadErrorTimeoutRef.current = null
-      }, 8000)
-    }
   }, [])
 
   // Handle screenshot capture from chat input

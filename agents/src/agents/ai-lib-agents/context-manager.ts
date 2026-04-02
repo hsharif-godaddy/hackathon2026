@@ -28,6 +28,7 @@ type AttachmentContextMessage = {
   content: string
   insertionOrder?: 'before_history' | 'after_history'
   cachePoint?: { type: 'ephemeral' }
+  assetImages?: string[]
 }
 
 /**
@@ -175,6 +176,21 @@ export class AILibContextManager {
                     context
                 )
                 conversationContextMessages.push(...attachmentMessages)
+
+                // Collect vision inputs (base64 images) from attachment renderers
+                const allAssetImages: string[] = []
+                for (const msg of attachmentMessages) {
+                    if (msg.assetImages && msg.assetImages.length > 0) {
+                        allAssetImages.push(...msg.assetImages)
+                    }
+                }
+                if (allAssetImages.length > 0) {
+                    formattedContexts.push({
+                        type: 'selected_assets_context',
+                        content: '',
+                        assetImages: allAssetImages
+                    })
+                }
             } catch (error) {
                 logger.error('context.attachments.processing.error', {
                     error: error instanceof Error ? error.message : String(error),
@@ -349,7 +365,8 @@ export class AILibContextManager {
                         role: rendered.role || 'user',
                         content: rendered.content,
                         insertionOrder: rendered.insertionOrder || 'after_history',
-                        ...(rendered.cachePoint && { cachePoint: rendered.cachePoint })
+                        ...(rendered.cachePoint && { cachePoint: rendered.cachePoint }),
+                        ...(rendered.assetImages && rendered.assetImages.length > 0 && { assetImages: rendered.assetImages })
                     })
 
                     contextLogger.debug('context.attachment.rendered', {

@@ -188,13 +188,7 @@ describe('ChatMessageBuilder', () => {
         content: 'Test',
         appId: 'app-123',
         sessionId: 'session-456',
-        selectedAssets: [{
-          mediaType: 'IMAGE',
-          sourceType: 'upload',
-          filename: 'photo.png',
-          contentType: 'image/png',
-          size: 1024,
-        }],
+        selectedAssets: [{}],
       }
 
       const result = builder.build(params)

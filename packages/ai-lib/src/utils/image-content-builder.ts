@@ -59,7 +59,7 @@ export function buildImageContentBlock(file: ProcessedFile): ImageContentBlock |
 
   return {
     type: 'image',
-    image: `data:${mediaType};base64,${file.base64Content}`,
+    image: file.base64Content,
     mediaType
   }
 }

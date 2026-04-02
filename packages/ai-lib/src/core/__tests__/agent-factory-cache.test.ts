@@ -603,11 +603,11 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
     expect(textBlock).toBeDefined()
     expect(textBlock.text).toBe('What is in this image?')
 
-    // Should contain an image block with base64 data
+    // Should contain an image block with base64 data (without data URL prefix)
     const imageBlock = (userMessage.content as any[]).find((block: any) => block.type === 'image')
     expect(imageBlock).toBeDefined()
-    expect(imageBlock.image).toContain('data:image/png;base64,')
-    expect(imageBlock.image).toContain(mockFile.base64Content)
+    expect(imageBlock.image).toBe(mockFile.base64Content)
+    expect(imageBlock.mediaType).toBe('image/png')
   })
 
   it('should NOT cache first user message on initial request (first turn)', async () => {
@@ -923,7 +923,9 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
     expect(contentBlocks.length).toBeGreaterThan(1)
     const imageBlock = contentBlocks.find((block: any) => block.type === 'image')
     expect(imageBlock).toBeDefined()
-    expect(imageBlock.image).toContain('data:image/png;base64,')
+    expect(imageBlock.mediaType).toBe('image/png')
+    expect(typeof imageBlock.image).toBe('string')
+    expect(imageBlock.image.length).toBeGreaterThan(0)
   })
 })
 

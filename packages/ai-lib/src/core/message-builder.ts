@@ -149,7 +149,8 @@ export class SimpleMessageBuilder implements MessageBuilder {
       if (file.base64Content && file.metadata.mimeType?.startsWith('image/')) {
         messageContent.push({
           type: 'image',
-          image: `data:${file.metadata.mimeType};base64,${file.base64Content}`
+          image: file.base64Content,
+          mediaType: file.metadata.mimeType
         })
       }
     })

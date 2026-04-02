@@ -21,6 +21,12 @@ vi.mock('../../../database/repositories/index.js', () => ({
   }
 }))
 
+vi.mock('../../../services/ContextAttachmentRegistry.js', () => ({
+  contextAttachmentRegistry: {
+    render: vi.fn()
+  }
+}))
+
 vi.mock('../../../services/ConversationContextManager.js', () => ({
   ConversationContextManager: class {
     getHistoryLoader() {
@@ -30,6 +36,9 @@ vi.mock('../../../services/ConversationContextManager.js', () => ({
     }
   }
 }))
+
+import { contextAttachmentRegistry } from '../../../services/ContextAttachmentRegistry.js'
+const mockedRegistryRender = vi.mocked(contextAttachmentRegistry.render)
 
 const { appContextResult } = vi.hoisted(() => ({
   appContextResult: {
@@ -55,6 +64,7 @@ describe('AILibContextManager', () => {
     pinnedSummaryId.value = null
     summaryStore.clear()
     getMessageById.mockClear()
+    mockedRegistryRender.mockClear()
     appContextResult.value = null
   })
 
@@ -93,6 +103,67 @@ describe('AILibContextManager', () => {
       (msg) => msg.role === 'system' && msg.content.includes('# Memory')
     )
     expect(systemMemoryMessage).toBeUndefined()
+  })
+
+  describe('vision: assetImages in formattedContexts', () => {
+    it('populates formattedContexts with assetImages from a selected_assets attachment', async () => {
+      const manager = new AILibContextManager()
+      const fakeBase64 = `data:image/jpeg;base64,${Buffer.from('fake').toString('base64')}`
+
+      mockedRegistryRender.mockResolvedValue({
+        role: 'user' as const,
+        content: 'Asset context text',
+        insertionOrder: 'after_history' as const,
+        assetImages: [fakeBase64]
+      })
+
+      const context = {
+        metadata: { appId: 'test-app' },
+        contextAttachments: [{
+          type: 'selected_assets',
+          data: [{
+            mediaType: 'IMAGE',
+            sourceType: 'upload',
+            imageUrl: 'http://localhost:4000/files/uploads/test-app/img.jpg',
+            filename: 'img.jpg',
+            contentType: 'image/jpeg',
+            size: 1024
+          }],
+          persistence: 'ephemeral' as const,
+          renderStrategy: 'before_prompt' as const
+        }]
+      }
+
+      const result = await manager.buildContextMessages('', context as any)
+      expect(result.formattedContexts).toBeDefined()
+      const imageContexts = result.formattedContexts!.filter(f => f.assetImages && f.assetImages.length > 0)
+      expect(imageContexts).toHaveLength(1)
+      expect(imageContexts[0]!.assetImages).toContain(fakeBase64)
+    })
+
+    it('does not add to formattedContexts when no assetImages in rendered attachment', async () => {
+      const manager = new AILibContextManager()
+
+      mockedRegistryRender.mockResolvedValue({
+        role: 'user' as const,
+        content: 'Some context',
+        insertionOrder: 'after_history' as const
+        // no assetImages
+      })
+
+      const context = {
+        metadata: { appId: 'test-app' },
+        contextAttachments: [{
+          type: 'selected_assets',
+          data: [{ mediaType: 'IMAGE', sourceType: 'stock', imageUrl: 'https://example.com/img.jpg' }],
+          persistence: 'ephemeral' as const
+        }]
+      }
+
+      const result = await manager.buildContextMessages('', context as any)
+      const imageContexts = (result.formattedContexts ?? []).filter(f => f.assetImages && f.assetImages.length > 0)
+      expect(imageContexts).toHaveLength(0)
+    })
   })
 
   describe('summary pinning in context-manager', () => {

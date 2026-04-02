@@ -1,6 +1,7 @@
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 export const MAX_FILE_SIZE_MB = MAX_FILE_SIZE / (1024 * 1024);
 export const MAX_FILES_PER_UPLOAD = 5;
+export const MAX_TOTAL_ASSETS = 10; // Max total attachments per message
 export const UPLOAD_TIMEOUT_MS = 60_000; // 60 seconds
 export const UPLOAD_TIMEOUT_SECONDS = UPLOAD_TIMEOUT_MS / 1000;
 

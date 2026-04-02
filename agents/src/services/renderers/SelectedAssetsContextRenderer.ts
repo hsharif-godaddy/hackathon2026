@@ -1,6 +1,7 @@
 import type { ContextAttachment, ContextAttachmentRenderer, RenderedContext } from '@airo/shared/context-attachment'
 import { logger } from '../../logging/index.js'
-import { readUploadedFileContent } from '../helpers/ContextFormatter.js'
+import { readUploadedFileContent, readAgentUploadAsBase64 } from '../helpers/ContextFormatter.js'
+import { resizeForVision } from '../../utils/image-resize.js'
 
 interface SelectedAsset {
   mediaType: 'IMAGE' | 'VIDEO' | 'PDF' | 'FILE'
@@ -25,6 +26,12 @@ interface SelectedAsset {
 export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<SelectedAsset[]> {
   canHandle(type: string): boolean {
     return type === 'selected_assets'
+  }
+
+  private isSvg(asset: SelectedAsset): boolean {
+    if (asset.contentType === 'image/svg+xml') return true
+    if (asset.filename && asset.filename.toLowerCase().endsWith('.svg')) return true
+    return false
   }
 
   async render(
@@ -124,6 +131,39 @@ export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<
 
       const formattedAssets = (await Promise.all(formattedAssetPromises)).join('\n\n')
 
+      // Collect base64 vision inputs for uploaded raster images
+      // Fetch all uploaded raster images for vision processing
+      // NOTE: No cap on image count - individual file upload limits (10MB) provide sufficient
+      // protection. Users can select as many images as needed for context. Each image costs
+      // ~1.6k tokens (~$0.005) at 1568px, which is acceptable for the use case.
+      const assetImages: string[] = []
+      for (const asset of assets) {
+        if (
+          asset.mediaType === 'IMAGE' &&
+          asset.sourceType === 'upload' &&
+          asset.imageUrl &&
+          !this.isSvg(asset)
+        ) {
+          try {
+            const dataUrl = await readAgentUploadAsBase64(asset.imageUrl)
+            if (dataUrl) {
+              const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/)
+              if (match && match[1] && match[2]) {
+                const inputMime = match[1]
+                const inputBuffer = Buffer.from(match[2], 'base64')
+                const { buffer: resized, mimeType: outputMime } = await resizeForVision(inputBuffer, inputMime)
+                assetImages.push(`data:${outputMime};base64,${resized.toString('base64')}`)
+              }
+            }
+          } catch (err) {
+            logger.warn('context.attachment.selected_assets.image_fetch_failed', {
+              filename: asset.filename,
+              error: err instanceof Error ? err.message : String(err)
+            })
+          }
+        }
+      }
+
       const content = `### Selected Assets from Asset Manager
 
 ${formattedAssets}
@@ -133,7 +173,8 @@ The user's message refers to using or integrating the above selected asset(s).`
       return {
         role: 'user',
         content,
-        insertionOrder: 'after_history'
+        insertionOrder: 'after_history',
+        ...(assetImages.length > 0 && { assetImages })
       }
     } catch (error) {
       logger.error('context.attachment.render.selected_assets.error', {
