@@ -292,8 +292,10 @@ export function useStreamingWebSocket() {
         return
       }
 
-      const hasContent = Boolean(options.content?.trim())
-      if (!hasContent) {
+      const hasText = Boolean(options.content?.trim())
+      const hasReferencedFiles = (options.customContext?.referencedFiles?.length ?? 0) > 0
+      const hasSelectedAssets = (options.selectedAssets?.length ?? 0) > 0
+      if (!hasText && !hasReferencedFiles && !hasSelectedAssets) {
         const error = new WebSocketError(WebSocketErrorCode.MESSAGE_EMPTY, {
           context: { appId: activeAppId }
         })

@@ -821,7 +821,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
   /**
    * Check for uncommitted changes in the app repository and commit them
    * This is used as a safety net to prevent lost work when websocket disconnects or errors occur
-   * 
+   *
    * @returns The commit hash if a commit was created, null otherwise
    */
   private async checkAndCommitChanges(appId: string, reason: string): Promise<string | null> {

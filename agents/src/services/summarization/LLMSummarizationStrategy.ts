@@ -12,6 +12,11 @@ import type { SummarizationContext, SummarizationResult, SummarizationStrategy }
 import { type LLMMessage, isOpenAIMessage, isAIToolMessage, getMessageContent } from '../ConversationHistoryLoader.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { filterInactiveSkillInstructions } from './SkillInstructionFilter.js';
+import {
+  MAX_ASSISTANT_TOOL_MESSAGE_CONTENT_LENGTH,
+  MAX_USER_MESSAGE_CONTENT_LENGTH,
+  truncateContent,
+} from './summarization-guards.js';
 
 /**
  * LLM-based summarization strategy using AI SDK
@@ -323,7 +328,7 @@ Merge new info. Remove completed items from Pending.`;
    * @param operationLog - Cumulative operation log from all messages
    * @returns User prompt text
    */
-  private buildUserPrompt(
+  protected buildUserPrompt(
     messages: LLMMessage[],
     existingSummary?: string,
     operationLog?: string
@@ -336,11 +341,13 @@ Merge new info. Remove completed items from Pending.`;
     }
 
     for (const msg of messages) {
-      const content = getMessageContent(msg);
-
-      if (msg.role === 'user' && content) {
-        parts.push(`User: ${content}`);
+      if (msg.role === 'user') {
+        const content = truncateContent(getMessageContent(msg), MAX_USER_MESSAGE_CONTENT_LENGTH);
+        if (content) {
+          parts.push(`User: ${content}`);
+        }
       } else if (msg.role === 'assistant') {
+        const content = truncateContent(getMessageContent(msg), MAX_ASSISTANT_TOOL_MESSAGE_CONTENT_LENGTH);
         if (content) {
           parts.push(`Assistant: ${content}`);
         }
@@ -353,7 +360,10 @@ Merge new info. Remove completed items from Pending.`;
         }
       } else if (msg.role === 'tool') {
         // Handle tool results - extract meaningful content
-        const toolContent = this.extractToolResultContent(msg);
+        const toolContent = truncateContent(
+          this.extractToolResultContent(msg),
+          MAX_ASSISTANT_TOOL_MESSAGE_CONTENT_LENGTH
+        );
         if (toolContent) {
           parts.push(`Result: ${toolContent}`);
         }

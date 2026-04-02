@@ -320,7 +320,7 @@ describe('StreamingWebSocketController', () => {
       })
     })
 
-    it('should do nothing if content is empty', async () => {
+    it('should do nothing if content is empty and there is no attachment context', async () => {
       await controller.sendMessage({
         content: '',
         visualContext: null,
@@ -328,6 +328,23 @@ describe('StreamingWebSocketController', () => {
 
       expect(mockMessageBuilder.build).not.toHaveBeenCalled()
       expect(mockSocket.emit).not.toHaveBeenCalled()
+    })
+
+    it('should send when content is empty but referenced files are present', async () => {
+      const referencedFiles = [{ path: 'pasted.txt', content: 'large paste body' }]
+      await controller.sendMessage({
+        content: '',
+        visualContext: null,
+        customContext: { referencedFiles },
+      })
+
+      expect(mockActions.startNewStream).toHaveBeenCalledWith('', undefined, referencedFiles)
+      expect(mockMessageBuilder.build).toHaveBeenCalled()
+      expect(mockSocket.emit).toHaveBeenCalledWith(
+        'chat_message',
+        expect.anything(),
+        expect.any(Function)
+      )
     })
 
     it('should reject sendMessage when not authenticated', async () => {

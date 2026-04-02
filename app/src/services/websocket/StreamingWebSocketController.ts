@@ -384,7 +384,10 @@ export class StreamingWebSocketController extends EventEmitter {
   }): Promise<void> {
     const { content } = params
 
-    if (!content.trim() || !this.currentAppId) {
+    const hasText = Boolean(content.trim())
+    const hasReferencedFiles = (params.customContext?.referencedFiles?.length ?? 0) > 0
+    const hasSelectedAssets = (params.selectedAssets?.length ?? 0) > 0
+    if ((!hasText && !hasReferencedFiles && !hasSelectedAssets) || !this.currentAppId) {
       return
     }
 

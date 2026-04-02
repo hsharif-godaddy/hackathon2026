@@ -183,6 +183,39 @@ describe('ChatInput', () => {
     expect(sendButton).not.toBeDisabled();
   });
 
+  it('should enable send button when input is empty but referenced files are present', () => {
+    renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue=""
+        referencedFiles={[{ path: 'src/pasted.txt', content: 'pasted body' }]}
+      />
+    );
+
+    const sendButton = screen.getByRole('button', { name: 'builder_chatinput_send' });
+    expect(sendButton).not.toBeDisabled();
+  });
+
+  it('should call onSendMessage via Enter when input is empty but referenced files are present', async function sendWithRefsOnly() {
+    const onSendMessage = vi.fn();
+    const { user } = renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue=""
+        onSendMessage={onSendMessage}
+        referencedFiles={[{ path: 'src/pasted.txt', content: 'pasted body' }]}
+      />
+    );
+
+    const textarea = screen.getByRole('textbox');
+    await user.click(textarea);
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => {
+      expect(onSendMessage).toHaveBeenCalled();
+    });
+  });
+
   it('should render stop button instead of send button when streaming', () => {
     renderWithProviders(
       <ChatInput {...defaultProps} inputValue="Test" isStreaming={true} onStopGeneration={vi.fn()} />
@@ -517,6 +550,50 @@ describe('ChatInput', () => {
 
       expect(screen.getByPlaceholderText('builder_chatinput_budget_exceeded')).toBeInTheDocument();
       expect(screen.queryByPlaceholderText('builder_chatinput_processing')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('large paste detection', () => {
+    it('should call onLargePasteDetected when pasting >4000 chars', async function detectLargePaste() {
+      const onLargePasteDetected = vi.fn();
+      renderWithProviders(
+        <ChatInput {...defaultProps} onLargePasteDetected={onLargePasteDetected} />
+      );
+
+      const textarea = screen.getByRole('textbox');
+      const largeText = 'x'.repeat(4001);
+      const pasteEvent = new Event('paste', { bubbles: true, cancelable: true }) as any;
+      pasteEvent.clipboardData = { getData: () => largeText };
+      textarea.dispatchEvent(pasteEvent);
+
+      expect(onLargePasteDetected).toHaveBeenCalledWith(largeText);
+    });
+
+    it('should allow normal paste when content is at or under 4000 chars', function allowSmallPaste() {
+      const onLargePasteDetected = vi.fn();
+      renderWithProviders(
+        <ChatInput {...defaultProps} onLargePasteDetected={onLargePasteDetected} />
+      );
+
+      const textarea = screen.getByRole('textbox');
+      const smallText = 'x'.repeat(4000);
+      const pasteEvent = new Event('paste', { bubbles: true, cancelable: true }) as any;
+      pasteEvent.clipboardData = { getData: () => smallText };
+      textarea.dispatchEvent(pasteEvent);
+
+      expect(onLargePasteDetected).not.toHaveBeenCalled();
+    });
+
+    it('should allow normal paste when onLargePasteDetected is not provided', function noHandler() {
+      renderWithProviders(<ChatInput {...defaultProps} />);
+
+      const textarea = screen.getByRole('textbox');
+      const largeText = 'x'.repeat(10000);
+      const pasteEvent = new Event('paste', { bubbles: true, cancelable: true }) as any;
+      pasteEvent.clipboardData = { getData: () => largeText };
+      const prevented = !textarea.dispatchEvent(pasteEvent);
+
+      expect(prevented).toBe(false);
     });
   });
 

@@ -5,14 +5,21 @@ import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, screen, waitFor } from '@testing-library/react';
+import Growl from '@ux/growl';
 
 import { ChatTab } from '@/app/develop/components/types';
 import { renderWithProviders } from '@/tests/test-utils';
 import ChatPane from './ChatPane';
 
+vi.mock('@ux/growl', () => ({
+  default: {
+    addGrowlMessage: vi.fn(),
+  },
+}));
+
 // Mock child components
 vi.mock('@/app/develop/components/chat/ChatInput', () => ({
-  default: ({ onSendMessage, inputValue, onInputChange, isBudgetExceeded, isDisabled }: any) => (
+  default: ({ onSendMessage, inputValue, onInputChange, isBudgetExceeded, isDisabled, onLargePasteDetected, referencedFiles }: any) => (
     <div data-testid="chat-input" data-budget-exceeded={isBudgetExceeded} data-disabled={isDisabled}>
       <input
         value={inputValue}
@@ -21,6 +28,16 @@ vi.mock('@/app/develop/components/chat/ChatInput', () => ({
         disabled={isDisabled}
       />
       <button onClick={onSendMessage}>Send</button>
+      {onLargePasteDetected && (
+        <>
+          <button data-testid="simulate-large-paste" onClick={() => onLargePasteDetected('x'.repeat(6000))}>Paste</button>
+          <button data-testid="simulate-empty-paste" onClick={() => onLargePasteDetected('')}>Empty paste</button>
+          <button data-testid="simulate-whitespace-paste" onClick={() => onLargePasteDetected('   \n  ')}>Whitespace paste</button>
+        </>
+      )}
+      {referencedFiles?.map((f: any) => (
+        <span key={f.path} data-testid="referenced-file">{f.path}</span>
+      ))}
     </div>
   ),
 }));
@@ -630,6 +647,56 @@ describe('ChatPane', () => {
       await user.click(screen.getByRole('button', { name: 'Close' }));
 
       expect(screen.queryByTestId('budget-exceeded-banner')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('large paste detection', () => {
+    it('should convert large paste to referenced file attachment', async function convertPaste() {
+      const { user } = renderWithProviders(
+        <ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />
+      );
+
+      await user.click(screen.getByTestId('simulate-large-paste'));
+
+      await waitFor(function assertFileAdded() {
+        const files = screen.getAllByTestId('referenced-file');
+        expect(files).toHaveLength(1);
+        expect(files[0].textContent).toMatch(/^pasted-content-.*\.txt$/);
+      });
+
+      expect(Growl.addGrowlMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'chat-large-paste-attachment',
+          emphasis: 'info',
+          lifetime: 5000,
+        })
+      );
+    });
+
+    it('should ignore empty large-paste callback without attachment or growl', async function emptyPaste() {
+      const { user } = renderWithProviders(
+        <ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />
+      );
+
+      await user.click(screen.getByTestId('simulate-empty-paste'));
+
+      await waitFor(function assertNoFile() {
+        expect(screen.queryAllByTestId('referenced-file')).toHaveLength(0);
+      });
+      expect(Growl.addGrowlMessage).not.toHaveBeenCalled();
+    });
+
+    it('should ignore whitespace-only large-paste callback', async function whitespacePaste() {
+      const { user } = renderWithProviders(
+        <ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />
+      );
+
+      await user.click(screen.getByTestId('simulate-whitespace-paste'));
+
+      await waitFor(function assertNoFile() {
+        expect(screen.queryAllByTestId('referenced-file')).toHaveLength(0);
+      });
+      expect(Growl.addGrowlMessage).not.toHaveBeenCalled();
     });
   });
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { useIntl } from 'react-intl'
 import Button from '@ux/button'
 import MicIcon from '@ux/icon/mic'
@@ -19,6 +19,8 @@ import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { generateClickEID } from '@/utils/instrumentation'
+
+const MAX_INLINE_PASTE_LENGTH = 4_000
 
 interface ChatInputProps {
   appId?: string | null
@@ -42,6 +44,7 @@ interface ChatInputProps {
   onClearReferencedFile?: (index: number) => void
   aiEditContext?: AiEditContext | null
   onClearAiEditContext?: () => void
+  onLargePasteDetected?: (content: string) => void
   mediaLimitError?: string | null
   userMessages?: string[]
 }
@@ -68,6 +71,7 @@ export default function ChatInput({
   onClearReferencedFile,
   aiEditContext,
   onClearAiEditContext,
+  onLargePasteDetected,
   userMessages = [],
 }: ChatInputProps) {
   const t = useTranslations();
@@ -136,10 +140,25 @@ export default function ChatInput({
     resetNavigation()
   }
 
+  const handleLargeTextPaste = useCallback(function handleLargeTextPaste(e: React.ClipboardEvent) {
+    if (!onLargePasteDetected) return
+    const text = e.clipboardData.getData('text/plain')
+    if (text.length <= MAX_INLINE_PASTE_LENGTH) return
+
+    e.preventDefault()
+    onLargePasteDetected(text)
+  }, [onLargePasteDetected])
+
   function handlePaste(e: React.ClipboardEvent) {
+    handleLargeTextPaste(e)
+    if (e.defaultPrevented) return
+
     if (isDisabled || isBudgetExceeded) return
 
-    const imageItem = Array.from(e.clipboardData.items).find(
+    const items = e.clipboardData?.items
+    if (!items?.length) return
+
+    const imageItem = Array.from(items).find(
       item => item.type.startsWith('image/')
     )
 
@@ -191,7 +210,11 @@ export default function ChatInput({
     }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      if (inputValue?.trim() && uploadingFiles.length === 0 && !(isStreaming && onStopGeneration)) {
+      if (
+        (inputValue?.trim() || referencedFiles.length > 0) &&
+        uploadingFiles.length === 0 &&
+        !(isStreaming && onStopGeneration)
+      ) {
         handleSend()
       }
     }
@@ -296,8 +319,8 @@ export default function ChatInput({
                   exitNavigationMode()
                   onInputChange(e.target.value)
                 }}
-                onKeyDown={onKeyDown}
                 onPaste={handlePaste}
+                onKeyDown={onKeyDown}
                 placeholder={isBudgetExceeded ? t('builder_chatinput_budget_exceeded') : (isDisabled && !isStreaming) ? t('builder_chatinput_processing') : t('builder_chatinput_ask_airo')}
                 rows={3}
                 disabled={(isDisabled && !isStreaming) || isListening || isBudgetExceeded}
@@ -356,7 +379,12 @@ export default function ChatInput({
                   data-testid="chat-send-button"
                   onClick={handleSend}
                   data-eid={generateClickEID('develop.prompt.send')}
-                  disabled={!inputValue?.trim() || (isDisabled && !isStreaming) || isBudgetExceeded || uploadingFiles.length > 0}
+                  disabled={
+                    (!inputValue?.trim() && referencedFiles.length === 0) ||
+                    (isDisabled && !isStreaming) ||
+                    isBudgetExceeded ||
+                    uploadingFiles.length > 0
+                  }
                   aria-label={t('builder_chatinput_send')}
                   design="primary"
                   icon={<SendIcon />}

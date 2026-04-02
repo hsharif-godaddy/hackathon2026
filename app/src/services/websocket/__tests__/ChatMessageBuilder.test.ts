@@ -608,4 +608,26 @@ describe('ChatMessageBuilder', () => {
       expect(attachment?.metadata?.source).toBe('custom-context')
     })
   })
+
+  describe('referenced files (large paste path)', () => {
+    it('keeps wire message body separate from pasted blob in referenced_files attachment', () => {
+      const huge = 'z'.repeat(50_000)
+      const params: BuildMessageParams = {
+        content: 'Please review the attached paste.',
+        appId: 'app-123',
+        sessionId: 'session-456',
+        customContext: {
+          referencedFiles: [{ path: 'pasted-content.txt', content: huge }],
+        },
+      }
+
+      const result = builder.build(params)
+
+      expect(result.message).toBe('Please review the attached paste.')
+      expect(result.message).not.toContain(huge)
+      const ref = result.context?.contextAttachments?.find((a) => a.type === 'referenced_files')
+      expect(ref).toBeDefined()
+      expect(ref?.data).toEqual([{ path: 'pasted-content.txt', content: huge }])
+    })
+  })
 })

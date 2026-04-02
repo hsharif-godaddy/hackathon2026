@@ -90,6 +90,39 @@ export function redactSkillOutput(toolName: string, output: unknown): unknown {
   }
 }
 
+/** Defense-in-depth cap for one user turn over chat WebSocket (message + context attachment strings). */
+const MAX_INCOMING_WEBSOCKET_CHAT_CHARS = 100_000
+
+/**
+ * Recursive sum of string lengths in nested objects/arrays. Counts every string field on
+ * attachments (type, persistence, renderStrategy, source, etc.), not only payload content.
+ */
+function stringPayloadLength(value: unknown): number {
+  if (value === null || value === undefined) return 0
+  if (typeof value === 'string') return value.length
+  if (typeof value === 'number' || typeof value === 'boolean') return 0
+  if (Array.isArray(value)) {
+    let n = 0
+    for (const item of value) n += stringPayloadLength(item)
+    return n
+  }
+  if (typeof value === 'object') {
+    let n = 0
+    for (const v of Object.values(value as Record<string, unknown>)) n += stringPayloadLength(v)
+    return n
+  }
+  return 0
+}
+
+function contextAttachmentsPayloadLength(context: Record<string, unknown> | undefined): number {
+  if (!context) return 0
+  const raw = context.contextAttachments
+  if (!Array.isArray(raw)) return 0
+  let n = 0
+  for (const att of raw) n += stringPayloadLength(att)
+  return n
+}
+
 /**
  * WebSocket Server Configuration for AgentFactory
  */
@@ -1848,6 +1881,15 @@ export class WebSocketServer {
       // Validate message
       if (!data.message || typeof data.message !== 'string') {
         throw new Error('Invalid message: message field is required and must be a string')
+      }
+
+      const contextPayload =
+        data.context && typeof data.context === 'object' && !Array.isArray(data.context)
+          ? (data.context as Record<string, unknown>)
+          : undefined
+      const incomingCharTotal = data.message.length + contextAttachmentsPayloadLength(contextPayload)
+      if (incomingCharTotal > MAX_INCOMING_WEBSOCKET_CHAT_CHARS) {
+        throw new Error('Message exceeds maximum length limit')
       }
 
       // 1. Determine initial agent (check state manager first for handoffs)

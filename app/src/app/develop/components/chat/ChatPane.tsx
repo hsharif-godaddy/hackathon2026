@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isEmployeeAuthType } from '@airo/shared/auth'
+import Growl from '@ux/growl'
 
 import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/AssetTypes'
 import ChatBanners from '@/app/develop/components/chat/banners/ChatBanners'
@@ -317,6 +318,33 @@ export default function ChatPane({
     setReferencedFiles((prev) => prev.filter((_, i) => i !== index))
   }, [])
 
+  // Handle large paste: convert to a referenced-file context attachment
+  const handleLargePasteDetected = useCallback((content: string) => {
+    if (!content?.trim()) {
+      return
+    }
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)
+    setReferencedFiles((prev) => [
+      ...prev,
+      { path: `pasted-content-${timestamp}.txt`, content }
+    ])
+    logger.info('chat-pane.large-paste-converted', {
+      appId,
+      contentLength: content.length,
+    })
+    Growl.addGrowlMessage({
+      id: 'chat-large-paste-attachment',
+      title: t('builder_chat_large_paste_growl_title', undefined, 'Large content added as attachment'),
+      children: t(
+        'builder_chat_large_paste_growl_description',
+        undefined,
+        'Your paste was attached as a file below. You can add a short message, then send.'
+      ),
+      emphasis: 'info',
+      lifetime: 5000,
+    })
+  }, [appId, t])
+
   // Handle clearing build error context
   const handleClearBuildErrorContext = useCallback(() => {
     setBuildErrorContext(null)
@@ -332,7 +360,7 @@ export default function ChatPane({
       hasSendMessageFunction: !!sendMessage
     })
 
-    if (messageToSend?.trim()) {
+    if (messageToSend?.trim() || referencedFiles.length > 0) {
       logAiroHQEvent({
         category: 'click',
         recommendation_task: 'builder_develop_prompt_submit',
@@ -743,6 +771,7 @@ export default function ChatPane({
             onClearReferencedFile={handleClearSingleReferencedFile}
             aiEditContext={safeAiEditContext}
             onClearAiEditContext={handleClearAiEditContext}
+            onLargePasteDetected={handleLargePasteDetected}
             userMessages={userMessages}
           />
         </div>
@@ -835,6 +864,7 @@ export default function ChatPane({
             onClearReferencedFile={handleClearSingleReferencedFile}
             aiEditContext={safeAiEditContext}
             onClearAiEditContext={handleClearAiEditContext}
+            onLargePasteDetected={handleLargePasteDetected}
             userMessages={userMessages}
           />
         </div>
