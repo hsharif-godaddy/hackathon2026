@@ -193,8 +193,8 @@ importers:
         specifier: ^1.3.0
         version: 1.3.0(@opentelemetry/api@1.9.0)
       '@godaddy/goknowb-client':
-        specifier: ^1.0.8
-        version: 1.0.8
+        specifier: ^1.0.9
+        version: 1.0.9
       '@langfuse/otel':
         specifier: ^4.5.1
         version: 4.5.1(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.6.1(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.1(@opentelemetry/api@1.9.0))
@@ -1059,8 +1059,8 @@ importers:
         specifier: workspace:*
         version: link:../packages/ai-lib
       '@godaddy/goknowb-client':
-        specifier: ^1.0.6
-        version: 1.0.8
+        specifier: ^1.0.9
+        version: 1.0.9
       commander:
         specifier: ^12.1.0
         version: 12.1.0
@@ -3410,8 +3410,8 @@ packages:
     resolution: {integrity: sha512-TVvuoG5OCGNCUwgukK08aNy1xeJjbyEOidkJ0kOArlZPBekZYMehiNwahNG4q9zXgvBbWWt4eSD+f9gSTqpW/Q==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/gd-auth-lib/-/@godaddy/gd-auth-lib-0.7.0.tgz}
     engines: {node: '>=14.0.0'}
 
-  '@godaddy/goknowb-client@1.0.8':
-    resolution: {integrity: sha512-fEFPZa0wyd78P6H6vbmbikCYZC/E7Y97eaRCMwNB2g3lG2KcQTTohzXGoWMvVnbGRptVJhdWzos0zMH6WFt/Ug==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/goknowb-client/-/@godaddy/goknowb-client-1.0.8.tgz}
+  '@godaddy/goknowb-client@1.0.9':
+    resolution: {integrity: sha512-S1MGciLiutZdlxQslCo6b1kYjSo9AMPhZr8h11ybwgh9m082PhTAnD9Q3FBYAZDdYH7+Q//s65Fs52SVboJ/BQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/goknowb-client/-/@godaddy/goknowb-client-1.0.9.tgz}
 
   '@godaddy/internal-ips@2.3.1':
     resolution: {integrity: sha512-MYKXQ20eZBdcKvR7VRD0NM7HxSM+7yFk2ZbBFUanPKs+Ip4Zgfdc5uH9bnisfqDeHWlUEDRY6y27t5sEtDwZJA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/internal-ips/-/@godaddy/internal-ips-2.3.1.tgz}
@@ -7703,6 +7703,9 @@ packages:
   axios@1.12.2:
     resolution: {integrity: sha512-vMJzPewAlRyOgxV2dU0Cuz2O8zzzx9VYtbJOaBgXFeLc4IV/Eg50n4LowmehOOR61S8ZMpc2K5Sa7g6A4jfkUw==}
 
+  axios@1.14.0:
+    resolution: {integrity: sha512-3Y8yrqLSwjuzpXuZ0oIYZ/XGgLwUIBU3uLvbcpb0pidD9ctpShJd43KSlEEkVQg6DS0G9NKyzOvBfUtDKEyHvQ==}
+
   axobject-query@4.1.0:
     resolution: {integrity: sha512-qIj0G9wZbMGNLjLmg1PT6v2mE9AH2zlnADJD/2tC6E00hgmhUOfEB6greHPAfLRSufHqROIUTkw6E+M3lH0PTQ==}
     engines: {node: '>= 0.4'}
@@ -11960,6 +11963,10 @@ packages:
 
   proxy-from-env@1.1.0:
     resolution: {integrity: sha512-D+zkORCbA9f1tdWRK0RaCR3GPv50cMxcrz4X8k5LTSUD1Dkw47mKJEZQNunItRTkWwgtaUSo1RVFRIG9ZXiFYg==}
+
+  proxy-from-env@2.1.0:
+    resolution: {integrity: sha512-cJ+oHTW1VAEa8cJslgmUZrc+sjRKgAKl3Zyse6+PV38hZe/V6Z14TbCuXcan9F9ghlz4QrFr2c92TNF82UkYHA==}
+    engines: {node: '>=10'}
 
   pruddy-error@2.0.2:
     resolution: {integrity: sha512-cEMUxXtU7iD+he5Hh1Jr3RHdTvAID2/VHBpC2TDLWP7UmbvZmR4/B50mQK7lguZhqcBTwdtsN9JI8diVTWedNw==}
@@ -16761,9 +16768,9 @@ snapshots:
     dependencies:
       detect-libc: 2.1.2
 
-  '@godaddy/goknowb-client@1.0.8':
+  '@godaddy/goknowb-client@1.0.9':
     dependencies:
-      axios: 1.12.2
+      axios: 1.14.0
       form-data: 4.0.5
     transitivePeerDependencies:
       - debug
@@ -17392,7 +17399,7 @@ snapshots:
       '@module-federation/third-party-dts-extractor': 0.14.3
       adm-zip: 0.5.16
       ansi-colors: 4.1.3
-      axios: 1.12.2
+      axios: 1.14.0
       chalk: 3.0.0
       fs-extra: 9.1.0
       isomorphic-ws: 5.0.0(ws@8.18.0(bufferutil@4.1.0))
@@ -21431,7 +21438,7 @@ snapshots:
       '@babel/cli': 7.28.3(@babel/core@7.28.5)
       '@babel/core': 7.28.5
       '@babel/plugin-proposal-optional-chaining': 7.21.0(@babel/core@7.28.5)
-      axios: 1.12.2
+      axios: 1.14.0
       lodash.camelcase: 4.3.0
     transitivePeerDependencies:
       - debug
@@ -22123,6 +22130,14 @@ snapshots:
       follow-redirects: 1.15.11
       form-data: 4.0.5
       proxy-from-env: 1.1.0
+    transitivePeerDependencies:
+      - debug
+
+  axios@1.14.0:
+    dependencies:
+      follow-redirects: 1.15.11
+      form-data: 4.0.5
+      proxy-from-env: 2.1.0
     transitivePeerDependencies:
       - debug
 
@@ -27484,6 +27499,8 @@ snapshots:
       - supports-color
 
   proxy-from-env@1.1.0: {}
+
+  proxy-from-env@2.1.0: {}
 
   pruddy-error@2.0.2:
     dependencies:

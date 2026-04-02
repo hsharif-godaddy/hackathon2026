@@ -67,7 +67,7 @@
     "@babel/types": "^7.28.0",
     "@godaddy/agent-observability-events": "^1.4.0",
     "@godaddy/agent-otel-sdk": "^1.3.0",
-    "@godaddy/goknowb-client": "^1.0.8",
+    "@godaddy/goknowb-client": "^1.0.9",
     "@langfuse/otel": "^4.5.1",
     "@langfuse/tracing": "^4.5.1",
     "@opentelemetry/api": "^1.9.0",
