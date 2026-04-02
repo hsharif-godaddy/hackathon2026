@@ -638,8 +638,8 @@ importers:
         specifier: 2500.7.2
         version: 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/message-overlay':
-        specifier: ^2500.9.1
-        version: 2500.9.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: ^2500.11.0
+        version: 2500.11.0(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/modal':
         specifier: 2500.7.2
         version: 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -6963,8 +6963,8 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/message-overlay@2500.9.1':
-    resolution: {integrity: sha512-MVU3xUPpFOY5MvFtaAplkn2liN3RsdsHNc4aBZYczHaZ5Dbq9Cen8pjcLgkr7h4J/HdgF/3UWDbLhmSD4hLVgw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/message-overlay/-/@ux/message-overlay-2500.9.1.tgz}
+  '@ux/message-overlay@2500.11.0':
+    resolution: {integrity: sha512-x0HjgvdKAJZCuB69OAMSuS9QsNZtW56OfbFgiBElrIhASlIH/fAtqXfQJV6aGtnXY+1Dm2pYHrE5zjmm5YFC9Q==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/message-overlay/-/@ux/message-overlay-2500.11.0.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -21041,7 +21041,7 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
 
-  '@ux/message-overlay@2500.9.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/message-overlay@2500.11.0(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/disrupt': 2500.11.0(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1

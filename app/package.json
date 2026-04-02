@@ -109,7 +109,7 @@
     "@ux/icon": "^2500.7.2",
     "@ux/intents": "^2500.7.1",
     "@ux/menu": "^2500.7.2",
-    "@ux/message-overlay": "^2500.9.1",
+    "@ux/message-overlay": "^2500.11.0",
     "@ux/modal": "^2500.7.2",
     "@ux/pagination": "^2500.7.2",
     "@ux/quantity-selector": "^2500.7.2",
