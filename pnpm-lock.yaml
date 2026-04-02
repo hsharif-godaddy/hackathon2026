@@ -292,8 +292,8 @@ importers:
         specifier: ^5.1.7
         version: 5.1.7
       openai:
-        specifier: ^5.12.2
-        version: 5.22.0(ws@8.19.0(bufferutil@4.1.0))(zod@4.3.6)
+        specifier: ^6.0.0
+        version: 6.33.0(ws@8.19.0(bufferutil@4.1.0))(zod@4.3.6)
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
@@ -714,7 +714,7 @@ importers:
         version: 2.1.0(@opentelemetry/api-logs@0.208.0)(@opentelemetry/api@1.9.0)(@opentelemetry/instrumentation@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/resources@2.6.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.1(@opentelemetry/api@1.9.0))
       '@xstate/react':
         specifier: ^6.1.0
-        version: 6.1.0(@types/react@19.1.13)(react@19.1.0)(xstate@5.25.0)
+        version: 6.1.0(@types/react@19.1.13)(react@19.1.0)(xstate@5.30.0)
       browser-image-compression:
         specifier: ^2.0.2
         version: 2.0.2
@@ -827,8 +827,8 @@ importers:
         specifier: ^11.1.0
         version: 11.1.0
       xstate:
-        specifier: ^5.25.0
-        version: 5.25.0
+        specifier: ^5.28.0
+        version: 5.30.0
       yaml:
         specifier: ^2.7.1
         version: 2.8.1
@@ -1197,8 +1197,8 @@ importers:
         specifier: ^2.1.1
         version: 2.1.1
       openai:
-        specifier: ^5.22.0
-        version: 5.22.0(ws@8.19.0(bufferutil@4.1.0))(zod@4.3.6)
+        specifier: ^6.0.0
+        version: 6.33.0(ws@8.19.0(bufferutil@4.1.0))(zod@4.3.6)
       zod:
         specifier: ^4.3.6
         version: 4.3.6
@@ -6130,7 +6130,7 @@ packages:
     engines: {node: '>=12'}
 
   '@testing-library/dom@10.4.1':
-    resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@testing-library/dom/-/testing-library-dom-10.4.1.tgz}
+    resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==}
     engines: {node: '>=18'}
 
   '@testing-library/jest-dom@6.9.1':
@@ -11451,12 +11451,12 @@ packages:
       zod:
         optional: true
 
-  openai@5.22.0:
-    resolution: {integrity: sha512-uSsYZ+vw9JxUwnMTcT9bj5sGM5qY/4du2BIf1KSqDRZF9nhSlJYsBLPRwBZTOW+HNyjwGviR0SsoDPv5lpPrBw==}
+  openai@6.33.0:
+    resolution: {integrity: sha512-xAYN1W3YsDXJWA5F277135YfkEk6H7D3D6vWwRhJ3OEkzRgcyK8z/P5P9Gyi/wB4N8kK9kM5ZjprfvyHagKmpw==}
     hasBin: true
     peerDependencies:
       ws: ^8.18.0
-      zod: ^3.23.8
+      zod: ^3.25 || ^4.0
     peerDependenciesMeta:
       ws:
         optional: true
@@ -13926,8 +13926,8 @@ packages:
     engines: {node: '>= 0.10.0'}
     hasBin: true
 
-  xstate@5.25.0:
-    resolution: {integrity: sha512-yyWzfhVRoTHNLjLoMmdwZGagAYfmnzpm9gPjlX2MhJZsDojXGqRxODDOi4BsgGRKD46NZRAdcLp6CKOyvQS0Bw==}
+  xstate@5.30.0:
+    resolution: {integrity: sha512-mIzIuMjtYVkqXq9dUzYQoag7b/dF1CBS/yhliuPLfR0FwKPC18HiUivb/crcqY2gknhR8gJEhnppLg6ubQ0gGw==}
 
   xtend@4.0.2:
     resolution: {integrity: sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ==}
@@ -21479,13 +21479,13 @@ snapshots:
       '@webassemblyjs/ast': 1.14.1
       '@xtuc/long': 4.2.2
 
-  '@xstate/react@6.1.0(@types/react@19.1.13)(react@19.1.0)(xstate@5.25.0)':
+  '@xstate/react@6.1.0(@types/react@19.1.13)(react@19.1.0)(xstate@5.30.0)':
     dependencies:
       react: 19.1.0
       use-isomorphic-layout-effect: 1.2.1(@types/react@19.1.13)(react@19.1.0)
       use-sync-external-store: 1.6.0(react@19.1.0)
     optionalDependencies:
-      xstate: 5.25.0
+      xstate: 5.30.0
     transitivePeerDependencies:
       - '@types/react'
 
@@ -26855,7 +26855,7 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
-  openai@5.22.0(ws@8.19.0(bufferutil@4.1.0))(zod@4.3.6):
+  openai@6.33.0(ws@8.19.0(bufferutil@4.1.0))(zod@4.3.6):
     optionalDependencies:
       ws: 8.19.0(bufferutil@4.1.0)
       zod: 4.3.6
@@ -29764,7 +29764,7 @@ snapshots:
       commander: 2.20.3
       cssfilter: 0.0.10
 
-  xstate@5.25.0: {}
+  xstate@5.30.0: {}
 
   xtend@4.0.2: {}
 

@@ -1,78 +1,118 @@
 #!/bin/bash
 
-# Simple Dynamic License Checker
-# Dynamically detects internal packages and runs license check
+# License checker using pnpm licenses list.
+# Validates all workspace dependencies against an allowlist of SPDX licenses.
+# Internal/private packages (GoDaddy, UX, etc.) are excluded by scope prefix.
+#
+# For non-pnpm projects (e.g. v8-template), falls back to license-checker.
 set -e
 
-# Install license-checker if not already available
-if ! command -v license-checker &> /dev/null; then
-  echo "📦 Installing license-checker..."
-  npm install -g license-checker
+# Allowed SPDX licenses (including common compound expressions)
+ALLOWED_LICENSES=(
+  "0BSD"
+  "Apache-2.0"
+  "BSD"
+  "BSD-2-Clause"
+  "BSD-3-Clause"
+  "BlueOak-1.0.0"
+  "CC-BY-4.0"
+  "CC0-1.0"
+  "ISC"
+  "MIT"
+  "MIT AND ISC"
+  "MIT-0"
+  "MPL-2.0"
+  "Python-2.0"
+  "Unlicence"
+  "Unlicense"
+  "WTFPL"
+  "WTFPL OR ISC"
+  "(AFL-2.1 OR BSD-3-Clause)"
+  "(BSD-2-Clause OR MIT OR Apache-2.0)"
+  "(BSD-3-Clause OR GPL-2.0)"
+  "(MIT OR Apache-2.0)"
+  "(MIT OR CC0-1.0)"
+  "(MIT OR WTFPL)"
+  "(MPL-2.0 OR Apache-2.0)"
+)
+
+# Internal package prefixes - these use private/custom licenses and are trusted.
+INTERNAL_PREFIX_REGEX='^(@airo/|@airo-ux/|@gd-|@godaddy/|@px/|@signals/|@site/|@sso/|@switchboard/|@ux/|@venture/|@wsb/|gd-auth)'
+
+# Packages with missing/incorrect license metadata in package.json.
+# Actual licenses verified manually from LICENSE files in each package.
+KNOWN_EXCEPTIONS=(
+  "@ai-sdk/devtools"          # Apache-2.0 (LICENSE file present, missing package.json field)
+  "@browserbasehq/sdk"        # Apache-2.0 (LICENSE file present, missing package.json field)
+  "@img/sharp-libvips-darwin-arm64"  # LGPL-3.0-or-later (platform binary, dynamically linked)
+  "@img/sharp-libvips-linux-arm64"
+  "@img/sharp-libvips-linux-x64"
+  "@img/sharp-libvips-linuxmusl-arm64"
+  "@img/sharp-libvips-linuxmusl-x64"
+  "only"                      # MIT (TJ Holowaychuk, missing metadata)
+  "stackframe"                # Unlicense (public domain, LICENSE file present)
+)
+
+# --- Find workspace root ---
+# CI runs this script from subdirectories (e.g. agents/, app/).
+# pnpm licenses list must run from the workspace root (where pnpm-lock.yaml lives).
+WORKSPACE_ROOT=""
+if [ -f pnpm-lock.yaml ]; then
+  WORKSPACE_ROOT="."
+elif [ -f ../pnpm-lock.yaml ]; then
+  WORKSPACE_ROOT=".."
 fi
 
-# Define allowed licenses globally
-ALLOWED_LICENSES="MIT;Apache-2.0;0BSD;BSD-3-Clause;BSD-2-Clause;ISC;BlueOak-1.0.0;Python-2.0;Unlicense;CC0-1.0;CC-BY-4.0;MPL-2.0"
-
-# Dynamically detect and exclude internal packages (@airo-ux/*, @godaddy/*, @ux/*, gd-*)
-echo "🔍 Detecting internal packages to exclude..."
-
-# Get the list of dependencies as JSON using pnpm
-DEP_JSON=$(pnpm list --depth=0 --json 2>/dev/null)
-
-# Extract internal packages (@airo-ux/*, @godaddy/*, @ux/*, gd-*) and their versions using jq
-# Include both dependencies and devDependencies
-INTERNAL_DEPS=$(echo "$DEP_JSON" | jq -r '.[0].dependencies // {} | to_entries[] | select(.key | test("^@airo-ux|^@godaddy|^@ux|^gd-|^@venture")) | "\(.key)@\(.value.version)"')
-INTERNAL_DEV_DEPS=$(echo "$DEP_JSON" | jq -r '.[0].devDependencies // {} | to_entries[] | select(.key | test("^@airo-ux|^@godaddy|^@ux|^gd-|^@venture")) | "\(.key)@\(.value.version)"')
-
-# Combine dependencies and devDependencies
-INTERNAL_LIST=$(echo -e "$INTERNAL_DEPS\n$INTERNAL_DEV_DEPS" | grep -v '^$' || true)
-
-# Join the package list with semicolons
-if [ -n "$INTERNAL_LIST" ]; then
-  INTERNAL_PACKAGES=$(echo "$INTERNAL_LIST" | paste -sd ";" -)
-else
-  INTERNAL_PACKAGES=""
+# --- Fallback for non-pnpm projects (e.g. v8-template) ---
+if [ -z "$WORKSPACE_ROOT" ]; then
+  echo "🔍 No pnpm lockfile found, using license-checker fallback..."
+  if ! command -v license-checker &> /dev/null; then
+    npm install -g license-checker
+  fi
+  ALLOWED_SEMICOLON=$(printf '%s;' "${ALLOWED_LICENSES[@]}")
+  ALLOWED_SEMICOLON="${ALLOWED_SEMICOLON%;}"
+  license-checker --onlyAllow "$ALLOWED_SEMICOLON" --depth 0 --summary
+  license-checker --onlyAllow "$ALLOWED_SEMICOLON" --depth 0 --out licenses-report.txt
+  exit $?
 fi
 
-# Package-specific manual exclusions (including transitive internal dependencies)
-# Also set check depth (0 = direct dependencies only, no limit = all transitive deps)
-if [ "$MATRIX_PACKAGE" = "root" ]; then
-  MANUAL_EXCLUSIONS="airo-app-builder-root@1.0.0;gd-auth-client@2.1.1"
-  CHECK_DEPTH=""
-elif [ "$MATRIX_PACKAGE" = "agents" ]; then
-  MANUAL_EXCLUSIONS="@airo/agents@0.1.0;tslib@2.8.1;gd-auth@1.4.1;gd-auth-client@2.1.1;@godaddy/agent-observability-events@1.4.0;@godaddy/goknowb-client@1.0.8;@godaddy/agent-otel-sdk@1.3.0;@signals/otel-sdk@0.2.0"
-  CHECK_DEPTH=""
-elif [[ "$MATRIX_PACKAGE" == app* ]]; then
-  MANUAL_EXCLUSIONS="website@0.1.0;@wsb/image-manager-loader@1.3.0;@godaddy/agent-observability-events@1.4.0;@godaddy/agent-otel-sdk@1.3.0;@signals/otel-sdk@0.2.0;@px/checkouts@1.7.2;@site/buttons@6.3.13;@site/domain-services@4.5.15"
-  CHECK_DEPTH=""
-elif [ "$MATRIX_PACKAGE" = "v8-template" ]; then
-  MANUAL_EXCLUSIONS=""
-  CHECK_DEPTH="--depth 0"  # Only check direct dependencies for v8-template
-else
-  MANUAL_EXCLUSIONS="gd-auth-client@2.1.1;@godaddy/agent-observability-events@1.4.0;@godaddy/agent-otel-sdk@1.3.0;@signals/otel-sdk@0.2.0"
-  CHECK_DEPTH=""
+# --- pnpm path ---
+echo "🔍 Checking licenses..."
+
+LICENSE_JSON=$(pnpm --dir "$WORKSPACE_ROOT" licenses list --json 2>/dev/null)
+
+# Build jq arrays
+EXCEPTIONS_JQ=$(printf '%s\n' "${KNOWN_EXCEPTIONS[@]}" | jq -R . | jq -s .)
+ALLOWED_JQ=$(printf '%s\n' "${ALLOWED_LICENSES[@]}" | jq -R . | jq -s .)
+
+# Find violations: packages with disallowed licenses that aren't internal or known exceptions
+VIOLATIONS=$(echo "$LICENSE_JSON" | jq -r \
+  --argjson allowed "$ALLOWED_JQ" \
+  --argjson exceptions "$EXCEPTIONS_JQ" '
+  to_entries[]
+  | select(.key as $license | $allowed | index($license) | not)
+  | .value[]
+  | select(.name | test("'"$INTERNAL_PREFIX_REGEX"'") | not)
+  | select(.name as $name | $exceptions | index($name) | not)
+  | "\(.name)@\(.versions[0]) - license: \(.license // "Unknown")"
+')
+
+if [ -n "$VIOLATIONS" ]; then
+  echo ""
+  echo "❌ License violations found:"
+  echo "$VIOLATIONS"
+  echo ""
+  echo "Allowed licenses: ${ALLOWED_LICENSES[*]}"
+  exit 1
 fi
 
-# Combine internal packages with manual exclusions
-if [ -n "$INTERNAL_PACKAGES" ] && [ -n "$MANUAL_EXCLUSIONS" ]; then
-  EXCLUSIONS="${INTERNAL_PACKAGES};${MANUAL_EXCLUSIONS}"
-elif [ -n "$INTERNAL_PACKAGES" ]; then
-  EXCLUSIONS="$INTERNAL_PACKAGES"
-elif [ -n "$MANUAL_EXCLUSIONS" ]; then
-  EXCLUSIONS="$MANUAL_EXCLUSIONS"
-else
-  EXCLUSIONS=""
-fi
+# Write report for CI artifact upload
+echo "$LICENSE_JSON" | jq -r '
+  to_entries[] | "\(.key):\n" + (.value[] | "  \(.name)@\(.versions[0])") + "\n"
+' > licenses-report.txt
 
-echo "🚫 Excluding packages: $EXCLUSIONS"
-echo "✅ Allowed licenses: $ALLOWED_LICENSES"
-echo "🔍 Check depth: ${CHECK_DEPTH:-all dependencies}"
-
-# Run license checker
-if [ -n "$EXCLUSIONS" ]; then
-  license-checker --onlyAllow "$ALLOWED_LICENSES" --excludePackages "$EXCLUSIONS" $CHECK_DEPTH --summary
-  license-checker --onlyAllow "$ALLOWED_LICENSES" --excludePackages "$EXCLUSIONS" $CHECK_DEPTH --out licenses-report.txt
-else
-  license-checker --onlyAllow "$ALLOWED_LICENSES" $CHECK_DEPTH --summary
-  license-checker --onlyAllow "$ALLOWED_LICENSES" $CHECK_DEPTH --out licenses-report.txt
-fi
+# Summary
+TOTAL=$(echo "$LICENSE_JSON" | jq '[.[][]] | length')
+INTERNAL_FILTER='(.name | test("'"$INTERNAL_PREFIX_REGEX"'"))'
+INTERNAL_COUNT=$(echo "$LICENSE_JSON" | jq '[.[][] | select('"$INTERNAL_FILTER"')] | length')
+echo "✅ All licenses OK ($TOTAL packages checked, $INTERNAL_COUNT internal excluded)"

@@ -72,10 +72,11 @@ updates:
           - "@ai-sdk/*"
 
   # app-templates: standalone npm (excluded from pnpm workspace; see pnpm-workspace.yaml)
+  # No registries — v8 template uses only public npm packages. Using JFrog here
+  # causes Artifactory resolved URLs in the lockfile, which break CI on runners
+  # without JFrog auth.
   - package-ecosystem: "npm"
     directory: "/app-templates/v8"
-    registries:
-      - jfrog-npm
     ignore:
       - dependency-name: "*"
         update-types:

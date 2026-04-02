@@ -69,11 +69,10 @@ jobs:
           fi
           echo "pnpm version $ACTUAL_VERSION matches expected version"
 
-      - name: Verify v8 template lockfile is up-to-date
+      - name: Verify lockfile and install v8 template dependencies
         working-directory: ./app-templates/v8
         run: |
-          echo "Checking if v8 template lockfile is current..."
-          npm ci
+          npm install --package-lock-only
           if ! git diff --quiet package-lock.json; then
             echo "ERROR: v8 template package-lock.json is out of date"
             echo "Please run: cd app-templates/v8 && npm install"
@@ -82,12 +81,6 @@ jobs:
             git diff package-lock.json
             exit 1
           fi
-          echo "v8 template lockfile is up-to-date"
-
-      - name: Install v8 template dependencies
-        working-directory: ./app-templates/v8
-        run: |
-          echo "Installing v8 template"
           npm ci
 
       - name: Check v8 template license compliance
@@ -95,8 +88,6 @@ jobs:
         run: |
           echo "Checking v8 template license compliance using script..."
           ../../scripts/license-check.sh
-        env:
-          MATRIX_PACKAGE: v8-template
         continue-on-error: false
 
       - name: Upload v8 template license report
