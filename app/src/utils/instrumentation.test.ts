@@ -191,6 +191,7 @@ describe('instrumentation utilities', () => {
             product: 'product',
             section: 'section',
             widget: 'widget',
+            action: 'hover',
           },
         },
         targets: ['fullstory'],

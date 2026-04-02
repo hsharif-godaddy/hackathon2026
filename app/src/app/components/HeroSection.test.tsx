@@ -129,8 +129,31 @@ describe('HeroSection', () => {
         expect(mockLogEngagementMetric).toHaveBeenCalledWith(
           'homepage.prompt.focus',
           expect.objectContaining({ msFromPageLoad: expect.any(Number) }),
-        );
+          expect.anything(),
+        )
       });
+    });
+
+    it('invokes analytics once with action eid on first prompt textarea focus', async function promptInputFocus() {
+      renderWithProviders(<HeroSection {...defaultProps} />);
+      const input = screen.getByTestId('homepage-prompt-input');
+
+      fireEvent.focus(input);
+
+      expect(mockLogEngagementMetric).toHaveBeenCalledTimes(1);
+      expect(mockLogEngagementMetric).toHaveBeenCalledWith(
+        'homepage.prompt.focus',
+        expect.objectContaining({ msFromPageLoad: expect.any(Number) }),
+        {
+          kind: 'action',
+          eid: 'homepage.prompt.input',
+          action: 'focus',
+        },
+      );
+      mockLogEngagementMetric.mockClear();
+
+      fireEvent.focus(input);
+      expect(mockLogEngagementMetric).not.toHaveBeenCalled();
     });
 
     it('logs homepage.prompt.first_input on first change', async function firstInputMetric() {

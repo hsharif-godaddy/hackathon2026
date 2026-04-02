@@ -36,7 +36,7 @@ interface HomeContentProps {
   serverFeatures: ServerFeatureFlags
 }
 
-type SubmitSource = 'example' | 'restored' | 'text'
+type SubmitSource = 'example' | 'text'
 
 export function OriginalHomePage({ serverFeatures }: HomeContentProps) {
   const t = useTranslations();
@@ -63,7 +63,7 @@ export function OriginalHomePage({ serverFeatures }: HomeContentProps) {
   promptTextRef.current = promptText
 
   const { isAuthenticated, isAuthDisabled, isLoading: authIsLoading } = useAuthContext()
-  const { logAnalytics } = useAnalytics({
+  const { cohort, logAnalytics } = useAnalytics({
     experimentId: EXPERIMENT_IDS.homepageEngagement,
     baseData: { isAuthenticated },
   })
@@ -87,11 +87,24 @@ export function OriginalHomePage({ serverFeatures }: HomeContentProps) {
 
   const logHomepagePricingView = useCallback(
     ({ viewDurationMs }: { viewDurationMs: number }) => {
-      logAnalytics('homepage.pricing.view', {
-        msFromPageLoad: Math.round(performance.now()),
-        promptState: promptText.trim().length > 0 ? 'has_content' : 'empty',
-        viewDurationMs,
-      })
+      const promptState = promptText.trim().length > 0 ? 'has_content' : 'empty'
+      const msFromPageLoad = Math.round(performance.now())
+      logAnalytics(
+        'homepage.pricing.view',
+        {
+          msFromPageLoad,
+          promptState,
+          viewDurationMs,
+        },
+        {
+          kind: 'impression',
+          eid: 'homepage.pricing.view',
+          impressionProps: {
+            promptState,
+            viewDurationMs,
+          },
+        },
+      )
     },
     [logAnalytics, promptText],
   )
@@ -108,10 +121,18 @@ export function OriginalHomePage({ serverFeatures }: HomeContentProps) {
     if (ssoCloseReason === 'success') {
       authGateShownAtRef.current = null
     } else if (ssoCloseReason === 'dismiss' && authGateShownAtRef.current != null) {
-      logAnalytics('homepage.auth_gate.dismissed', {
-        msFromShown: Math.round(Date.now() - authGateShownAtRef.current),
-        promptLength: promptTextRef.current.length,
-      })
+      logAnalytics(
+        'homepage.auth_gate.dismissed',
+        {
+          msFromShown: Math.round(Date.now() - authGateShownAtRef.current),
+          promptLength: promptTextRef.current.length,
+        },
+        {
+          kind: 'action',
+          eid: 'homepage.auth.gate',
+          action: 'custom',
+        },
+      )
       authGateShownAtRef.current = null
     }
     clearSsoCloseReason()
@@ -123,13 +144,13 @@ export function OriginalHomePage({ serverFeatures }: HomeContentProps) {
     }
     homepageViewRecordedRef.current = true
     logAnalytics('homepage.view')
-    logImpressionEvent('homepage.page.view')();
+    logImpressionEvent('homepage.page.view', { cohort })();
     logAiroHQEvent({
       category: 'impression',
       recommendation_task: 'builder_homepage_viewed',
       recommendation_type: 'navigation'
     })();
-  }, [authIsLoading, logAnalytics])
+  }, [authIsLoading, cohort, logAnalytics])
 
   useEffect(() => {
     function updateScrollMilestones() {
@@ -145,11 +166,19 @@ export function OriginalHomePage({ serverFeatures }: HomeContentProps) {
           scrollMilestonesLoggedRef.current.add(50)
           scrollMilestonesLoggedRef.current.add(75)
           scrollMilestonesLoggedRef.current.add(100)
-          logAnalytics('homepage.scroll.milestone', {
-            depth: 100,
-            msFromPageLoad,
-            promptHasContent,
-          })
+          logAnalytics(
+            'homepage.scroll.milestone',
+            {
+              depth: 100,
+              msFromPageLoad,
+              promptHasContent,
+            },
+            {
+              kind: 'action',
+              eid: 'homepage.depth.complete',
+              action: 'scroll',
+            },
+          )
         }
         return
       }
@@ -158,7 +187,22 @@ export function OriginalHomePage({ serverFeatures }: HomeContentProps) {
       for (const depth of [25, 50, 75, 100] as const) {
         if (percent >= depth && !scrollMilestonesLoggedRef.current.has(depth)) {
           scrollMilestonesLoggedRef.current.add(depth)
-          logAnalytics('homepage.scroll.milestone', { depth, msFromPageLoad, promptHasContent })
+          const options =
+            depth === 25
+              ? {
+                  kind: 'action' as const,
+                  eid: 'homepage.depth.start',
+                  action: 'scroll' as const,
+                }
+              : depth === 100
+                ? {
+                    kind: 'action' as const,
+                    eid: 'homepage.depth.complete',
+                    action: 'scroll' as const,
+                  }
+                : undefined
+
+          logAnalytics('homepage.scroll.milestone', { depth, msFromPageLoad, promptHasContent }, options)
         }
       }
     }
@@ -294,9 +338,17 @@ export function OriginalHomePage({ serverFeatures }: HomeContentProps) {
         // Save the prompt to localStorage before showing login
         savePromptForRetry(promptToUse, 'login');
 
-        logAnalytics('homepage.auth_gate.shown', {
-          submitSource,
-        })
+        logAnalytics(
+          'homepage.auth_gate.shown',
+          {
+            submitSource,
+          },
+          {
+            kind: 'action',
+            eid: 'homepage.auth.gate',
+            action: 'load',
+          },
+        )
         authGateShownAtRef.current = Date.now()
         signIn({ onShowMockLogin: () => setShowMockLogin(true) });
         setIsLoading(false);
@@ -324,9 +376,17 @@ export function OriginalHomePage({ serverFeatures }: HomeContentProps) {
           // Save the prompt to localStorage before showing login
           savePromptForRetry(promptToUse, 'session-refresh');
 
-          logAnalytics('homepage.auth_gate.shown', {
-            submitSource,
-          })
+          logAnalytics(
+            'homepage.auth_gate.shown',
+            {
+              submitSource,
+            },
+            {
+              kind: 'action',
+              eid: 'homepage.auth.gate',
+              action: 'load',
+            },
+          )
           authGateShownAtRef.current = Date.now()
           signIn({ onShowMockLogin: () => setShowMockLogin(true) });
           setIsLoading(false);
@@ -430,7 +490,6 @@ export function OriginalHomePage({ serverFeatures }: HomeContentProps) {
       const validated = validateAndClampPrompt(savedPrompt)
       setPromptText(validated.text)
       localStorage.removeItem('airo-pending-prompt')
-      submitSourceRef.current = 'restored'
       logAnalytics('homepage.auth_prompt.restored')
 
       if (validated.wasClipped) {

@@ -54,7 +54,14 @@ describe('FAQSection', () => {
       expect(mockLogEngagementMetric).toHaveBeenCalledWith(
         'homepage.faq.view',
         expect.objectContaining({ msFromPageLoad: expect.any(Number) }),
-      );
+        {
+          kind: 'impression',
+          eid: 'homepage.faq.view',
+          impressionProps: expect.objectContaining({
+            msFromPageLoad: expect.any(Number),
+          }),
+        },
+      )
     });
   });
 

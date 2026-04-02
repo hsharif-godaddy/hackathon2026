@@ -320,9 +320,16 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   }), [typeText])
 
   const scrollToNextSection = useCallback(() => {
-    logAnalytics('homepage.hero.scroll_cta_click', {
-      msFromPageLoad: Math.round(performance.now()),
-    })
+    logAnalytics(
+      'homepage.hero.scroll_cta_click',
+      {
+        msFromPageLoad: Math.round(performance.now()),
+      },
+      {
+        kind: 'click',
+        eid: 'homepage.hero.scroll_cta',
+      },
+    )
     const nextSection = document.getElementById('infra-section');
 
     // Calculate target position with fallback
@@ -463,9 +470,17 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                   setIsFocused(true)
                   if (!hasLoggedFocusRef.current) {
                     hasLoggedFocusRef.current = true
-                    logAnalytics('homepage.prompt.focus', {
-                      msFromPageLoad: Math.round(performance.now()),
-                    })
+                    logAnalytics(
+                      'homepage.prompt.focus',
+                      {
+                        msFromPageLoad: Math.round(performance.now()),
+                      },
+                      {
+                        kind: 'action',
+                        eid: 'homepage.prompt.input',
+                        action: 'focus',
+                      },
+                    )
                   }
                 }}
                 onBlur={() => {

@@ -33,11 +33,12 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/',
 }));
 vi.mock('@/utils/instrumentation', () => ({
-  logImpressionEvent: vi.fn(() => vi.fn()),
-  logActionEvent: vi.fn(() => vi.fn()),
-  logErrorEvent: vi.fn(() => vi.fn()),
   generateClickEID: vi.fn((eid: string) => eid),
+  logActionEvent: vi.fn(() => vi.fn()),
   logAiroHQEvent: vi.fn(() => vi.fn()),
+  logClickEvent: vi.fn(() => vi.fn()),
+  logErrorEvent: vi.fn(() => vi.fn()),
+  logImpressionEvent: vi.fn(() => vi.fn()),
 }));
 vi.mock('@/lib/features', () => ({
   isFeatureEnabled: {
@@ -108,7 +109,7 @@ describe('Home Page', () => {
     renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true, showHighTierPlans: false }} />);
 
     await waitFor(() => {
-      expect(logImpressionEvent).toHaveBeenCalledWith('homepage.page.view');
+      expect(logImpressionEvent).toHaveBeenCalledWith('homepage.page.view', { cohort: 'test-cohort' });
     });
   });
 
@@ -293,14 +294,20 @@ describe('Home Page', () => {
     });
 
     it('should render FAQ section for unauthenticated users', async () => {
-      const mockUnauthContext = vi.fn(() => mockAuthContext({ isAuthenticated: false, isAuthDisabled: false }));
-      vi.mocked(await import('@/components/providers/AuthProvider')).useAuthContext = mockUnauthContext as any;
+      const mod = await import('@/components/providers/AuthProvider')
+      const originalUseAuthContext = mod.useAuthContext
+      try {
+        const mockUnauthContext = vi.fn(() => mockAuthContext({ isAuthenticated: false, isAuthDisabled: false }))
+        vi.mocked(mod).useAuthContext = mockUnauthContext as any
 
-      renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true, showHighTierPlans: false }} />);
+        renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true, showHighTierPlans: false }} />)
 
-      await waitFor(() => {
-        expect(screen.getByTestId('faq-section')).toBeInTheDocument();
-      });
+        await waitFor(() => {
+          expect(screen.getByTestId('faq-section')).toBeInTheDocument()
+        })
+      } finally {
+        vi.mocked(mod).useAuthContext = originalUseAuthContext as any
+      }
     });
   });
 });

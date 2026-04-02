@@ -107,9 +107,20 @@ export default function FAQSection() {
       return
     }
     hasLoggedViewRef.current = true
-    logAnalytics('homepage.faq.view', {
-      msFromPageLoad: Math.round(performance.now()),
-    })
+    const msFromPageLoad = Math.round(performance.now())
+    logAnalytics(
+      'homepage.faq.view',
+      {
+        msFromPageLoad,
+      },
+      {
+        kind: 'impression',
+        eid: 'homepage.faq.view',
+        impressionProps: {
+          msFromPageLoad,
+        },
+      },
+    )
   }, [isFaqSectionInView, logAnalytics])
 
   function handleToggle(index: number, opened: boolean) {

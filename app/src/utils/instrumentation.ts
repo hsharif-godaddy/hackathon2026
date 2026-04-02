@@ -19,7 +19,7 @@ const DEFAULT_AREA = 'appbuilder';
 
 interface EventActionProps {
   eid: string;
-  action?: 'blur' | 'drag' | 'focus' | 'hover' | 'load' | 'scroll';
+  action?: 'blur' | 'drag' | 'focus' | 'hover' | 'load' | 'scroll' | 'custom';
 }
 
 interface EventElementProps {
@@ -27,6 +27,7 @@ interface EventElementProps {
   product?: string;
   section: string;
   widget: string;
+  action?: EventActionProps['action'];
 }
 
 interface EventElementData {
@@ -137,8 +138,9 @@ export const logActionEvent = ({
           area: DEFAULT_AREA,
           product,
           section,
-          widget
-        }
+          widget,
+          action,
+        },
       },
       targets: ['fullstory']
     }
