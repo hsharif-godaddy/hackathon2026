@@ -30,7 +30,7 @@ overrides:
   '@ux/checkbox': 2500.11.1
   '@ux/coachmark': 2500.7.2
   '@ux/collapsible': 2500.7.2
-  '@ux/disrupt': 2500.7.2
+  '@ux/disrupt': 2500.11.0
   '@ux/flyout': 2500.11.1
   '@ux/growl': 2500.7.2
   '@ux/icon': 2500.7.2
@@ -620,8 +620,8 @@ importers:
         specifier: ^2500.11.1
         version: 2500.11.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/disrupt':
-        specifier: 2500.7.2
-        version: 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.11.0
+        version: 2500.11.0(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/flyout':
         specifier: 2500.11.1
         version: 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -6865,8 +6865,8 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/disrupt@2500.7.2':
-    resolution: {integrity: sha512-0LlQLyoGMAvSvazUpAyomoe0daPCxUa3+a/7KrUhtfIv3/vths49dWoGeDZeKGUSMd0hATVOVClz8NCw8JS0Mw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/disrupt/-/@ux/disrupt-2500.7.2.tgz}
+  '@ux/disrupt@2500.11.0':
+    resolution: {integrity: sha512-qtfBwSlOD5/imV7ZUtmXxusAN+r9KCSfIH+b6XSVxvows/rQ9HW4ObjQkaRF1ccOorw0FDrOf+OWFMgqdXDY/w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/disrupt/-/@ux/disrupt-2500.11.0.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -20800,7 +20800,7 @@ snapshots:
       '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/disrupt': 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/disrupt': 2500.11.0(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/popover': 2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -20892,7 +20892,7 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/disrupt@2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/disrupt@2500.11.0(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/intents': 2500.7.1
       classnames: 2.5.1
@@ -20974,7 +20974,7 @@ snapshots:
     dependencies:
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/disrupt': 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/disrupt': 2500.11.0(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/flyout': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       classnames: 2.5.1
@@ -20987,7 +20987,7 @@ snapshots:
 
   '@ux/message-overlay@2500.9.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/disrupt': 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/disrupt': 2500.11.0(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -21001,7 +21001,7 @@ snapshots:
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/corner-actions': 2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/dialog': 2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/disrupt': 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/disrupt': 2500.11.0(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/text-lockup': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
