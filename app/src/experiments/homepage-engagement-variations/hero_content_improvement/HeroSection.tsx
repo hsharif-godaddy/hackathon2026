@@ -9,6 +9,7 @@ import SendIcon from '@ux/icon/send'
 import Spinner from '@ux/spinner'
 import { text } from '@ux/text'
 
+import TemplateSelector from '@/app/components/TemplateSelector'
 import type { HeroSectionProps, HeroSectionRef } from '@/app/components/types'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { EXPERIMENT_IDS } from '@/config/experiments'
@@ -30,6 +31,8 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   error,
   setError,
   onExampleClick,
+  selectedTemplate = 'default',
+  onTemplateChange,
 }, ref) => {
   const t = useTranslations();
   const { isAuthenticated } = useAuthContext()
@@ -577,6 +580,9 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
               </div>
             </Box>
           </div>
+          {onTemplateChange && (
+            <TemplateSelector selectedTemplate={selectedTemplate} onTemplateChange={onTemplateChange} />
+          )}
           <div
             className={clsx(
               'grid transition-all duration-300 ease-in-out',

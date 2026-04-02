@@ -940,7 +940,8 @@ function DevelopPageContent() {
         try {
           await ws.actions.send({
             content: messageToSend,
-            aiEditContext: null
+            aiEditContext: null,
+            templateId: init.ui.templateId ?? undefined,
           })
           pendingAutoSendRef.current = null
           init.actions.markInitialPromptSent()
@@ -959,6 +960,7 @@ function DevelopPageContent() {
   }, [
     init.ui.shouldAutoSendPrompt,
     init.ui.autoSendPromptText,
+    init.ui.templateId,
     searchParams,
     autoSendInitialMessage,
     ws.actions.send,

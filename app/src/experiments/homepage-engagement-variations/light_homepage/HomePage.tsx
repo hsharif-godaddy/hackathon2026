@@ -22,6 +22,7 @@ import HeroSection from '@/experiments/homepage-engagement-variations/light_home
 import { useAnalytics } from '@/hooks/useAnalytics'
 import { useSafariClass } from '@/hooks/useSafariClass'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { getErrorMessage } from '@/lib/errors'
 import { isFeatureEnabled } from '@/lib/features'
@@ -43,6 +44,8 @@ type SubmitSource = 'example' | 'text'
 export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
   const t = useTranslations();
   const [promptText, setPromptText] = useState("")
+  const [selectedTemplate, setSelectedTemplate] = useState('default')
+  const { data: isTemplateSelectorEnabled } = useSwitchboard('appbuilder-template-selector')
   const [isLoading, setIsLoading] = useState(false)
   const [isRedirecting, setIsRedirecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -414,6 +417,10 @@ export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
       sessionStorage.setItem(`in-creation-flow-${siteData.id}`, 'true')
       sessionStorage.setItem(`initial-prompt-text-${siteData.id}`, promptToUse)
 
+      if (selectedTemplate !== 'default') {
+        sessionStorage.setItem(`initial-template-${siteData.id}`, selectedTemplate)
+      }
+
       // Immediately redirect to /develop/{siteId} - deployment polling will happen there
       // If the response includes type='job', add query param to indicate this is a temporary job ID
       // The develop page will poll until it gets the real app ID
@@ -477,7 +484,7 @@ export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [authIsLoading, isAuthDisabled, isAuthenticated, isLoading, isRedirecting, logAnalytics, router, savePromptForRetry, signIn, t])
+  }, [authIsLoading, isAuthDisabled, isAuthenticated, isLoading, isRedirecting, logAnalytics, router, savePromptForRetry, selectedTemplate, signIn, t])
 
   // Restore prompt from localStorage after login and clear it
   useEffect(() => {
@@ -551,6 +558,10 @@ export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
             error={error}
             setError={setHeroError}
             onExampleClick={handleExampleClick}
+            {...(isTemplateSelectorEnabled && {
+              selectedTemplate,
+              onTemplateChange: setSelectedTemplate,
+            })}
           />
 
           <InfraSection />

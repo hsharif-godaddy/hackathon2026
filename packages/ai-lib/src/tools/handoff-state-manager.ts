@@ -89,6 +89,8 @@ interface SessionState {
   lastHandoffPrompt?: string
   /** App ID this session is associated with (for clearing sessions when app changes) */
   appId?: string
+  /** Template ID for customizing the initial agent prompt */
+  templateId?: string
 }
 
 /**
@@ -371,15 +373,18 @@ export class SessionStateManager implements HandoffStateManager {
    * @param sessionId - Session identifier
    * @returns Metadata object with appId if available
    */
-  getSessionMetadata(sessionId: string): { appId?: string } | undefined {
+  getSessionMetadata(sessionId: string): { appId?: string; templateId?: string } | undefined {
     const session = this.sessions.get(sessionId)
     if (!session) return undefined
 
-    // Only include appId if it's defined
+    const metadata: { appId?: string; templateId?: string } = {}
     if (session.appId) {
-      return { appId: session.appId }
+      metadata.appId = session.appId
     }
-    return {}
+    if (session.templateId) {
+      metadata.templateId = session.templateId
+    }
+    return metadata
   }
 
   /**
@@ -388,11 +393,14 @@ export class SessionStateManager implements HandoffStateManager {
    * @param sessionId - Session identifier
    * @param metadata - Metadata to set
    */
-  setSessionMetadata(sessionId: string, metadata: { appId?: string }): void {
+  setSessionMetadata(sessionId: string, metadata: { appId?: string; templateId?: string }): void {
     const session = this.sessions.get(sessionId)
     if (session) {
       if (metadata.appId) {
         session.appId = metadata.appId
+      }
+      if (metadata.templateId) {
+        session.templateId = metadata.templateId
       }
       session.lastActivityAt = new Date()
     }

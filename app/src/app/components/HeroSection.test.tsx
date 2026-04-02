@@ -67,6 +67,8 @@ describe('HeroSection', () => {
     error: null,
     setError: vi.fn(),
     onExampleClick: vi.fn(),
+    selectedTemplate: 'default',
+    onTemplateChange: vi.fn(),
   };
 
   beforeEach(() => {
@@ -297,6 +299,43 @@ describe('HeroSection', () => {
       renderWithProviders(<HeroSection {...defaultProps} error={null} />);
 
       expect(screen.queryByText('builder_status_error')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('template selector', () => {
+    it('should render template selector with radiogroup when onTemplateChange provided', () => {
+      renderWithProviders(<HeroSection {...defaultProps} />);
+
+      const radiogroup = screen.getByRole('radiogroup');
+      expect(radiogroup).toBeInTheDocument();
+      const radios = screen.getAllByRole('radio');
+      expect(radios).toHaveLength(3);
+    });
+
+    it('should not render template selector when onTemplateChange is undefined', () => {
+      renderWithProviders(<HeroSection {...defaultProps} onTemplateChange={undefined} />);
+
+      expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+    });
+
+    it('should mark default template as checked', () => {
+      renderWithProviders(<HeroSection {...defaultProps} selectedTemplate="default" />);
+
+      const radios = screen.getAllByRole('radio');
+      expect(radios[0]).toHaveAttribute('aria-checked', 'true');
+      expect(radios[1]).toHaveAttribute('aria-checked', 'false');
+      expect(radios[2]).toHaveAttribute('aria-checked', 'false');
+    });
+
+    it('should call onTemplateChange when clicking a template', async () => {
+      const onTemplateChange = vi.fn();
+      const { user } = renderWithProviders(
+        <HeroSection {...defaultProps} onTemplateChange={onTemplateChange} />
+      );
+
+      const radios = screen.getAllByRole('radio');
+      await user.click(radios[1]);
+      expect(onTemplateChange).toHaveBeenCalledWith('business-plan');
     });
   });
 });

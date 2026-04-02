@@ -23,6 +23,8 @@ export interface HeroSectionProps {
   error: string | null
   setError: (error: string | null) => void
   onExampleClick?: (prompt: string) => void
+  selectedTemplate?: string
+  onTemplateChange?: (template: string) => void
 }
 
 export interface HeroSectionRef {

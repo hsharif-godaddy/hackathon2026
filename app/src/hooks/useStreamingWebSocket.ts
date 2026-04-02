@@ -78,6 +78,9 @@ export interface SendMessageOptions {
 
   /** Custom context for extensions */
   customContext?: CustomContext
+
+  /** Template ID for custom initial agent prompts */
+  templateId?: string
 }
 
 /**
@@ -337,6 +340,7 @@ export function useStreamingWebSocket() {
           todoListContext: options.todoListContext,
           isActionRequest: options.isActionRequest,
           customContext: options.customContext,
+          templateId: options.templateId,
         })
       } catch (error) {
         // Convert to structured error with context

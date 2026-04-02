@@ -85,6 +85,18 @@ function isRebuildModePrompt(initialJobId: string | null, appId: string | null):
   return false
 }
 
+function getStoredTemplateId(initialJobId: string | null, appId: string | null): string | null {
+  if (typeof window === 'undefined') return null
+  if (initialJobId) {
+    const tmpl = sessionStorage.getItem(`initial-template-${initialJobId}`)
+    if (tmpl) return tmpl
+  }
+  if (appId) {
+    return sessionStorage.getItem(`initial-template-${appId}`)
+  }
+  return null
+}
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -153,6 +165,7 @@ export interface InitializationUIState {
   // Auto-send
   shouldAutoSendPrompt: boolean
   autoSendPromptText: string | null
+  templateId: string | null
 
   // Error handling
   hasError: boolean
@@ -339,6 +352,7 @@ function computeUIState(
 
     shouldAutoSendPrompt,
     autoSendPromptText: context.initialPromptText,
+    templateId: getStoredTemplateId(context.initialJobId, context.appId),
 
     hasError,
     errorMessage: creationError || 'Initialization failed',
@@ -855,9 +869,11 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
         sessionStorage.removeItem(`initial-prompt-pending-${initialJobId}`)
         sessionStorage.removeItem(`in-creation-flow-${initialJobId}`)
         sessionStorage.removeItem(`initial-prompt-text-${initialJobId}`)
+        sessionStorage.removeItem(`initial-template-${initialJobId}`)
       }
       if (appId) {
         sessionStorage.removeItem(`initial-prompt-text-${appId}`)
+        sessionStorage.removeItem(`initial-template-${appId}`)
       }
     },
 

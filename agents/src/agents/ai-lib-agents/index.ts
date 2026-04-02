@@ -21,6 +21,7 @@ import {
   MarketingAgent,
   ExampleAgent
 } from '../index.js'
+import { getTemplateIds } from '../template-registry.js'
 import type { EnhancedAgentContext } from './types.js'
 import { skillToolManager } from '../../tools/skill-tool-manager.js'
 import { AgentContextPipeline } from './agent-context-pipeline.js'
@@ -64,6 +65,12 @@ export async function createUnifiedAgentFactory(options?: {
   const developConfig = await createDevelopAgent()
   const marketingConfig = await createMarketingAgent()
   const initialConfig = await createInitialAgent(stateManager)
+
+  // Pre-create template-specific initial agent variants
+  const templateInitialConfigs: Record<string, AgentConfig> = {}
+  for (const templateId of getTemplateIds()) {
+    templateInitialConfigs[`initial-${templateId}`] = await createInitialAgent(stateManager, templateId)
+  }
 
   // Create handoff tools BEFORE defining agents (using only agent IDs)
   // Extract valid targets from handoffs configuration
@@ -109,11 +116,16 @@ export async function createUnifiedAgentFactory(options?: {
   marketingConfig.contextPipeline = contextPipeline
   initialConfig.contextPipeline = contextPipeline
 
+  for (const config of Object.values(templateInitialConfigs)) {
+    config.contextPipeline = contextPipeline
+  }
+
   // Build agent definitions conditionally
   const agentDefinitions: Record<string, AgentConfig> = {
     initial: initialConfig,
     develop: developConfig,
     marketing: marketingConfig,
+    ...templateInitialConfigs,
   }
 
   // Now define agents with handoff tools already included

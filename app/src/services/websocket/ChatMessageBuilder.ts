@@ -51,6 +51,7 @@ export interface BuildMessageParams<
   buildErrorContext?: BuildError | null
   isActionRequest?: boolean
   customContext?: CustomContext
+  templateId?: string
 }
 
 export class ChatMessageBuilder {
@@ -225,7 +226,8 @@ export class ChatMessageBuilder {
         appId: params.appId,
         userId: 'current-user',
         sessionId: params.sessionId,
-        userTimezone: ChatMessageBuilder.cachedTimezone
+        userTimezone: ChatMessageBuilder.cachedTimezone,
+        ...(params.templateId && { templateId: params.templateId }),
       },
 
       conversation: {

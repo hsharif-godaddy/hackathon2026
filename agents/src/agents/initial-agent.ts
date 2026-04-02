@@ -4,10 +4,12 @@ import {
   createHandoffTool,
   type SessionStateManager,
 } from '@airo/ai-lib'
+import { existsSync } from 'fs'
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
+import { getTemplate } from './template-registry.js'
 
 /**
  * Initial Agent - Creates single-page preview plans for new apps
@@ -15,27 +17,51 @@ import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
  * This agent is only used for brand new apps with no conversation history.
  * It creates a minimal todo list for a single-page preview and hands off to develop agent.
  *
- * Prompt structure:
+ * Prompt structure (default):
  * - core.md: Core role, workflow, and rules
  * - attributes.md: Attribute discovery for personalization
  * - guidelines.md: Detailed planning instructions
  * - examples.md: Pattern demonstrations
  * - security.md: Content restrictions
+ *
+ * When a templateId is provided, prompt files are loaded from
+ * agents/src/prompts/initial/templates/<templateId>/ instead.
  */
+
+const OPTIONAL_PROMPT_FILES = ['attributes.md', 'guidelines.md', 'examples.md']
 
 /**
  * Build the system prompt for the Initial Agent
  */
-async function buildInitialSystemPrompt(): Promise<string> {
+async function buildInitialSystemPrompt(templateId?: string): Promise<string> {
   const promptBuilder = createPromptBuilder()
   const paths = getModularPromptPaths(import.meta.url)
 
-  // Order: Identity → Voice → Technical details
-  promptBuilder.file(paths.getAgentFile('initial', 'core.md'))
+  if (templateId) {
+    // Template mode: load from templates/<templateId>/
+    const templateDir = `initial/templates/${templateId}`
+    promptBuilder.file(paths.getAgentFile(templateDir, 'core.md'))
+
+    for (const file of OPTIONAL_PROMPT_FILES) {
+      const filePath = paths.getAgentFile(templateDir, file)
+      if (existsSync(filePath)) {
+        promptBuilder.file(filePath)
+      }
+    }
+  } else {
+    // Default mode: existing behavior
+    // Order: Identity → Voice → Technical details
+    promptBuilder.file(paths.getAgentFile('initial', 'core.md'))
+    promptBuilder.file(paths.getSharedFile('communication.md'))
+    promptBuilder.file(paths.getAgentFile('initial', 'attributes.md'))
+    promptBuilder.file(paths.getAgentFile('initial', 'guidelines.md'))
+    promptBuilder.file(paths.getAgentFile('initial', 'examples.md'))
+    promptBuilder.file(paths.getSharedFile('security.md'))
+    return await promptBuilder.build()
+  }
+
+  // Template mode: shared files appended after template-specific files
   promptBuilder.file(paths.getSharedFile('communication.md'))
-  promptBuilder.file(paths.getAgentFile('initial', 'attributes.md'))
-  promptBuilder.file(paths.getAgentFile('initial', 'guidelines.md'))
-  promptBuilder.file(paths.getAgentFile('initial', 'examples.md'))
   promptBuilder.file(paths.getSharedFile('security.md'))
 
   return await promptBuilder.build()
@@ -43,16 +69,26 @@ async function buildInitialSystemPrompt(): Promise<string> {
 
 /**
  * Create the Initial Agent configuration
+ * @param stateManager - Optional session state manager for handoff support
+ * @param templateId - Optional template ID to use a custom system prompt
  */
 export async function createInitialAgent(
-  stateManager?: SessionStateManager
+  stateManager?: SessionStateManager,
+  templateId?: string
 ): Promise<AgentConfig> {
-  const systemPrompt = await buildInitialSystemPrompt()
+  if (templateId && !getTemplate(templateId)) {
+    throw new Error(`Unknown template: ${templateId}`)
+  }
+
+  const systemPrompt = await buildInitialSystemPrompt(templateId)
   const { model, modelName } = await getAgentModelWithName('fast')
+
+  const agentId = templateId ? `initial-${templateId}` : 'initial'
+  const agentName = templateId ? `Initial (${templateId})` : 'Initial'
 
   const handoffTool = stateManager
     ? createHandoffTool({
-        sourceAgentId: 'initial',
+        sourceAgentId: agentId,
         validTargets: ['develop'],
         stateManager
       })
@@ -70,8 +106,8 @@ export async function createInitialAgent(
   }
 
   return {
-    id: 'initial',
-    name: 'Initial',
+    id: agentId,
+    name: agentName,
     system: systemPrompt,
     model,
     modelName,
@@ -96,7 +132,7 @@ export async function createInitialAgent(
         effort: 'low',
       },
     },
-    logger: createAgentTelemetryLogger('initial'),
+    logger: createAgentTelemetryLogger(agentId),
 
     // Enable prompt caching for cost savings
     enablePromptCaching: true,

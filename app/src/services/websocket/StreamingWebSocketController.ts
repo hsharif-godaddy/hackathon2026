@@ -381,6 +381,7 @@ export class StreamingWebSocketController extends EventEmitter {
     todoListContext?: TodoContext
     isActionRequest?: boolean
     customContext?: CustomContext
+    templateId?: string
   }): Promise<void> {
     const { content } = params
 
@@ -453,6 +454,7 @@ export class StreamingWebSocketController extends EventEmitter {
         buildErrorContext,
         isActionRequest: params.isActionRequest,
         customContext: params.customContext,
+        templateId: params.templateId,
       }
 
       const chatMessage = this.deps.messageBuilder.build(messageParams)

@@ -27,9 +27,9 @@ export interface HandoffStateManager {
   /** Get the current agent for a session */
   getCurrentAgent?: (sessionId: string) => string | undefined
   /** Set metadata on the session (e.g., appId association) */
-  setSessionMetadata?: (sessionId: string, metadata: { appId?: string }) => void
+  setSessionMetadata?: (sessionId: string, metadata: { appId?: string; templateId?: string }) => void
   /** Retrieve metadata stored for the session */
-  getSessionMetadata?: (sessionId: string) => { appId?: string } | undefined
+  getSessionMetadata?: (sessionId: string) => { appId?: string; templateId?: string } | undefined
   /** Get the prompt from the last handoff (if any) */
   getLastHandoffPrompt?: (sessionId: string) => string | undefined
   /** Clear the last handoff prompt after it's been used */

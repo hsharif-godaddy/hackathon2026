@@ -35,6 +35,7 @@ const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-analytics': true,
   'appbuilder-settings-analytics': true,
   'appbuilder-github-integration': true,
+  'appbuilder-template-selector': true,
 };
 
 interface FetchOptions {

@@ -15,6 +15,7 @@ import {
 } from '@airo/ai-transport'
 import { grantSessionManager, type GrantContextPayload, BudgetOverride } from '@airo/ai-grants'
 import { auth, AuthType, BYPASS_SITE_IDS } from '../services/features.js'
+import { getTemplateIds } from '../agents/template-registry.js'
 import { isEmployeeAuthType, type AuthType as TokenAuthType, type ProductType } from '@airo/shared/auth'
 import apm from 'elastic-apm-node'
 import { observe, updateActiveObservation } from '@langfuse/tracing'
@@ -1150,28 +1151,37 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const isNewApp = conversations.length === 0
 
         if (isNewApp) {
+          const rawTemplateId = metadata?.templateId
+          const templateId = typeof rawTemplateId === 'string' && getTemplateIds().includes(rawTemplateId)
+            ? rawTemplateId
+            : undefined
+          const agentId = templateId ? `initial-${templateId}` : 'initial'
+
           logger.info('websocket.agent_router.initial_selected', {
             socketId,
             appId,
+            templateId: templateId || null,
+            agentId,
             message: 'New app detected, routing to initial agent and setting session state'
           })
 
           // Set the initial agent in session state so subsequent messages continue with it
           // This ensures the initial agent receives follow-up messages (like attribute answers)
           // until it explicitly hands off to develop agent
-          stateManager.switchAgent(socketId, 'initial').catch(error => {
+          stateManager.switchAgent(socketId, agentId).catch(error => {
             logger.error('websocket.agent_router.session_state_error', {
               socketId,
               appId,
+              templateId: templateId || null,
               error: error instanceof Error ? error.message : String(error),
               message: 'Failed to set initial agent in session state'
             })
           })
 
-          // Also set the appId in session metadata for tracking
-          stateManager.setSessionMetadata?.(socketId, { appId })
+          // Also set the appId and templateId in session metadata for tracking/observability
+          stateManager.setSessionMetadata?.(socketId, { appId, templateId })
 
-          return 'initial'
+          return agentId
         }
 
         logger.debug('websocket.agent_router.develop_selected', {

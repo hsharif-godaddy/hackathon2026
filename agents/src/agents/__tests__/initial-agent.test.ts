@@ -123,5 +123,23 @@ describe('initial-agent', function initialAgentTests() {
 
       expect(config.timeout).toEqual({ stepMs: 300_000 });
     });
+
+    it('should create agent with template-specific id when templateId is provided', async function templateId() {
+      const config = await createInitialAgent(undefined, 'business-plan');
+
+      expect(config.id).toBe('initial-business-plan');
+      expect(config.name).toBe('Initial (business-plan)');
+    });
+
+    it('should throw for unknown templateId', async function unknownTemplate() {
+      await expect(createInitialAgent(undefined, 'nonexistent')).rejects.toThrow('Unknown template: nonexistent');
+    });
+
+    it('should keep default id when no templateId is provided', async function defaultId() {
+      const config = await createInitialAgent();
+
+      expect(config.id).toBe('initial');
+      expect(config.name).toBe('Initial');
+    });
   });
 });
