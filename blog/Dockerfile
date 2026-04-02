@@ -40,9 +40,9 @@ RUN mkdir -p /certs && \
 
 WORKDIR /app
 
-COPY --from=builder --chown=node:node /workspace/blog/dist ./dist
-RUN mv ./dist/_astro ./dist/blog/_astro && \
-    echo 'ok' > ./dist/healthz
+RUN mkdir -p dist/blog
+COPY --from=builder --chown=node:node /workspace/blog/dist/. ./dist/blog/
+RUN echo 'ok' > ./dist/healthz
 
 USER node
 
