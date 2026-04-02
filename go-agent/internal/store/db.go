@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	// Register the pure-Go SQLite driver so database/sql can open "sqlite" databases.
 	_ "modernc.org/sqlite"
@@ -17,6 +19,12 @@ var ErrNotFound = errors.New("not found")
 // migrations. The schema is compatible with the TypeScript agent's database
 // (agents/src/database/schema.ts) so both can share the same DB file.
 func Open(path string) (*sql.DB, error) {
+	if dir := filepath.Dir(path); dir != "." {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			return nil, fmt.Errorf("creating database directory %q for %q: %w", dir, path, err)
+		}
+	}
+
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)

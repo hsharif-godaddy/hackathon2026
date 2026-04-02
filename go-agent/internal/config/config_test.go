@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -50,6 +52,34 @@ func TestLoad_MissingAPIKey(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrMissingRequired)
 	assert.Contains(t, err.Error(), "ANTHROPIC_API_KEY")
+}
+
+func TestLoad_DotEnvFile(t *testing.T) {
+	dir := t.TempDir()
+
+	envContent := "ANTHROPIC_API_KEY=from-dotenv\nPORT=9999\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o644))
+
+	t.Chdir(dir)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+
+	assert.Equal(t, "from-dotenv", cfg.AnthropicAPIKey)
+	assert.Equal(t, "9999", cfg.Port)
+}
+
+func TestLoad_MalformedDotEnvReturnsError(t *testing.T) {
+	dir := t.TempDir()
+
+	// godotenv rejects lines with unmatched single quotes
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("BAD='unterminated\n"), 0o644))
+
+	t.Chdir(dir)
+
+	_, err := Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "loading .env")
 }
 
 func TestLoad_MultiTenantFalseByDefault(t *testing.T) {

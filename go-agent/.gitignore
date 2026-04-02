@@ -1,3 +1,5 @@
 dist/
+tmp/
+data/
 coverage.out
 coverage.html

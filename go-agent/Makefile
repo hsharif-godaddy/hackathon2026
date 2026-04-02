@@ -4,11 +4,17 @@ DIST_DIR := dist
 
 export GOTOOLCHAIN := go1.25.7
 
-.PHONY: build test lint fmt fmt-fix vet check check-ci clean
+.PHONY: build run ensure-air test lint fmt fmt-fix vet check check-ci clean
 
 build:
 	@mkdir -p $(DIST_DIR)
 	go build -ldflags="-w -s -X main.Version=$(VERSION)" -o $(DIST_DIR)/$(BINARY_NAME) ./cmd/agent
+
+run: ensure-air
+	LOG_LEVEL=$${LOG_LEVEL:-debug} air
+
+ensure-air:
+	@which air > /dev/null 2>&1 || (echo "Installing air..."; go install github.com/air-verse/air@latest)
 
 test:
 	go test -race -count=1 ./...

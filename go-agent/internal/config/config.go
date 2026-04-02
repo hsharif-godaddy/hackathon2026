@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+
+	"github.com/joho/godotenv"
 )
 
 // Config holds the environment-based configuration for the Go agent.
@@ -24,6 +26,13 @@ var ErrMissingRequired = errors.New("missing required config")
 // Load reads configuration from environment variables, applies defaults,
 // and validates required fields.
 func Load() (*Config, error) {
+	// Load .env file if present; only ignore file-not-found errors.
+	if err := godotenv.Load(); err != nil {
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("loading .env: %w", err)
+		}
+	}
+
 	cfg := &Config{
 		Port:             envOr("PORT", "4000"),
 		AnthropicAPIKey:  os.Getenv("ANTHROPIC_API_KEY"),
