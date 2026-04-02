@@ -378,82 +378,76 @@ export class SkillLoaderTool {
         }
       }
 
+      // Install npm dependencies from skill.md frontmatter (before templates,
+      // so skills with only dependencies and no templates still work)
+      const dependencyResults = await this.installDependencies(skill, appPath, appId);
+
       // Use helper to safely construct paths (validates internally)
       const templatesDir = this.getSkillPath(skill, 'templates');
 
-      // Check if skill and templates exist
-      try {
-        await fs.access(templatesDir);
-      } catch {
-        this.logger.warn('skill.install.no_templates', { skill });
-        return {
-          success: false,
-          skill,
-          error: `Skill '${skill}' has no templates directory`
-        };
-      }
-
-      // Get all template files
-      const templates = await this.loadTemplateFiles(templatesDir, '');
-
-      if (templates.length === 0) {
-        this.logger.warn('skill.install.empty_templates', { skill });
-        return {
-          success: false,
-          skill,
-          error: `Skill '${skill}' has no template files`
-        };
-      }
-
+      // Load and install template files if they exist
       const installedFiles: string[] = [];
       let filesSkipped = 0;
+      let hasTemplates = false;
 
-      // Copy each template file to destination
-      for (const template of templates) {
-        const destPath = this.getDestinationPath(skill, template.path, appPath);
-
-        try {
-          // Skip existing files unless overwrite is explicitly requested
-          if (config.overwrite !== true) {
-            try {
-              await fs.access(destPath);
-              this.logger.info('skill.install.skip_existing', {
-                skill,
-                path: destPath
-              });
-              filesSkipped++;
-              continue;
-            } catch {
-              // File doesn't exist, proceed with install
-            }
-          }
-
-          // Ensure destination directory exists
-          const destDir = path.dirname(destPath);
-          await fs.mkdir(destDir, { recursive: true });
-
-          // Write file
-          await fs.writeFile(destPath, template.content, 'utf-8');
-          installedFiles.push(destPath);
-
-          this.logger.info('skill.install.file_copied', {
-            skill,
-            from: template.path,
-            to: destPath
-          });
-        } catch (error) {
-          this.logger.error('skill.install.file_failed', {
-            skill,
-            path: template.path,
-            destPath,
-            error: error instanceof Error ? error.message : String(error)
-          });
-          // Continue with other files even if one fails
-        }
+      try {
+        await fs.access(templatesDir);
+        hasTemplates = true;
+      } catch {
+        this.logger.info('skill.install.no_templates', { skill });
       }
 
-      // Install npm dependencies from skill.md frontmatter
-      const dependencyResults = await this.installDependencies(skill, appPath, appId);
+      if (hasTemplates) {
+        const templates = await this.loadTemplateFiles(templatesDir, '');
+
+        if (templates.length === 0) {
+          this.logger.info('skill.install.empty_templates', { skill });
+        }
+
+        // Copy each template file to destination
+        for (const template of templates) {
+          const destPath = this.getDestinationPath(skill, template.path, appPath);
+
+          try {
+            // Skip existing files unless overwrite is explicitly requested
+            if (config.overwrite !== true) {
+              try {
+                await fs.access(destPath);
+                this.logger.info('skill.install.skip_existing', {
+                  skill,
+                  path: destPath
+                });
+                filesSkipped++;
+                continue;
+              } catch {
+                // File doesn't exist, proceed with install
+              }
+            }
+
+            // Ensure destination directory exists
+            const destDir = path.dirname(destPath);
+            await fs.mkdir(destDir, { recursive: true });
+
+            // Write file
+            await fs.writeFile(destPath, template.content, 'utf-8');
+            installedFiles.push(destPath);
+
+            this.logger.info('skill.install.file_copied', {
+              skill,
+              from: template.path,
+              to: destPath
+            });
+          } catch (error) {
+            this.logger.error('skill.install.file_failed', {
+              skill,
+              path: template.path,
+              destPath,
+              error: error instanceof Error ? error.message : String(error)
+            });
+            // Continue with other files even if one fails
+          }
+        }
+      }
       const failedDeps = dependencyResults.filter(r => !r.success).length;
 
       this.logger.info('skill.install.success', {

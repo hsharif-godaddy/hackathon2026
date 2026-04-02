@@ -18,7 +18,6 @@ func DevelopAgent() run.AgentConfig {
 				"develop/font-theme.md",
 				"develop/handoff.md",
 				"develop/backend.md",
-				"develop/email.md",
 				"develop/secrets.md",
 				"shared/communication.md",
 				"shared/filesystem.md",

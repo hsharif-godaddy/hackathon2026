@@ -109,7 +109,6 @@ if (featureAgents.isEnabled('commerce')) {
 }
 
 promptBuilder
-  .file(join(developDir, 'email.md'))
   .file(join(developDir, 'deployment.md'))
   .file(join(developDir, 'decision-matrix.md'))
   .file(join(developDir, 'approach.md'))

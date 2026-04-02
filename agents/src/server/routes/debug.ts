@@ -59,7 +59,6 @@ async function buildDevelopSystemPrompt(): Promise<string> {
     .file(paths.getAgentFile('develop', 'font-theme.md'))
     .file(paths.getAgentFile('develop', 'handoff.md'))
     .file(paths.getAgentFile('develop', 'backend.md'))
-    .file(paths.getAgentFile('develop', 'email.md'))
     .file(paths.getAgentFile('develop', 'secrets.md'))
     .file(paths.getSharedFile('publishing.md'))
     .file(paths.getSharedFile('security.md'))
