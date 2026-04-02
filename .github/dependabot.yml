@@ -28,7 +28,8 @@ updates:
           - "version-update:semver-major"
     schedule:
       interval: "daily"
-    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
     groups:
       # Group AWS SDK updates together
       aws-sdk:
@@ -81,7 +82,8 @@ updates:
           - "version-update:semver-major"
     schedule:
       interval: "daily"
-    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
     groups:
       code-quality:
         patterns:
@@ -110,7 +112,8 @@ updates:
           - "version-update:semver-major"
     schedule:
       interval: "daily"
-    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
 
   # Monitor go-agent
   - package-ecosystem: "gomod"
@@ -121,7 +124,8 @@ updates:
           - "version-update:semver-major"
     schedule:
       interval: "daily"
-    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
 
   # Monitor local-control-plane
   - package-ecosystem: "gomod"
@@ -132,7 +136,8 @@ updates:
           - "version-update:semver-major"
     schedule:
       interval: "daily"
-    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
 
   # Monitor knowledge-service
   - package-ecosystem: "gomod"
@@ -143,7 +148,8 @@ updates:
           - "version-update:semver-major"
     schedule:
       interval: "daily"
-    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
 
   # Monitor image-search-service
   - package-ecosystem: "gomod"
@@ -154,7 +160,8 @@ updates:
           - "version-update:semver-major"
     schedule:
       interval: "daily"
-    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
 
   # Monitor budget-service
   - package-ecosystem: "gomod"
@@ -165,7 +172,8 @@ updates:
           - "version-update:semver-major"
     schedule:
       interval: "daily"
-    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
 
   # Monitor packages/go-auth
   - package-ecosystem: "gomod"
@@ -176,7 +184,8 @@ updates:
           - "version-update:semver-major"
     schedule:
       interval: "daily"
-    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
 
   # Monitor GitHub Actions
   - package-ecosystem: "github-actions"
@@ -187,4 +196,5 @@ updates:
           - "version-update:semver-major"
     schedule:
       interval: "daily"
-    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
