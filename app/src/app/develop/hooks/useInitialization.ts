@@ -7,7 +7,6 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { cleanupSiteCreationStore, useSiteCreationStore } from '@/stores/useSiteCreationStore'
 import type { Site } from '@/stores/useSitesStore'
 import {
-  useHistoryLoadingComplete,
   useStreamingConversationStore,
 } from '@/stores/useStreamingConversationStore'
 import { AppErrorCode } from '@/types/error-codes'
@@ -98,7 +97,6 @@ export type InitializationPhase =
   | 'checking-creation'
   | 'creating'
   | 'initializing-page'
-  | 'loading-history'
   | 'ready'
   | 'error'
 
@@ -285,7 +283,6 @@ function computeUIState(
     state.matches('checkingCreation') ||
     state.matches('creating') ||
     (state.matches('initializingPage') && context.hasInitialPrompt) ||
-    (state.matches('loadingHistory') && context.hasInitialPrompt) ||
     (state.matches({ ready: 'waitingForWebSocket' }) && context.hasInitialPrompt && !context.initialPromptSent) ||
     (state.matches('error') && context.hasInitialPrompt)
 
@@ -305,9 +302,7 @@ function computeUIState(
       // During ready phase with WebSocket coordination
       state.matches({ ready: 'waitingForWebSocket' }) ||
       state.matches({ ready: 'websocketConnected' }) ||
-      state.matches({ ready: 'waitingForFirstEdit' }) ||
-      // During loadingHistory phase (before ready)
-      state.matches('loadingHistory')
+      state.matches({ ready: 'waitingForFirstEdit' })
     )
 
   // Auto-send logic
@@ -364,7 +359,6 @@ function mapMachinePhaseToUIPhase(machinePhase: string): InitializationPhase {
     'checkingCreation': 'checking-creation',
     'creating': 'creating',
     'initializingPage': 'initializing-page',
-    'loadingHistory': 'loading-history',
     'ready': 'ready',
     'error': 'error',
   }
@@ -495,8 +489,6 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     isActiveCreationSession.current = false
   }, [appId])
 
-  // Timeout for history loading
-  const historyLoadingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   // Last assistant message id we sent STREAM_COMPLETE_WITHOUT_FIRST_EDIT for (avoid duplicate sends)
   const streamCompleteWithoutEditSentForRef = useRef<string | null>(null)
 
@@ -510,7 +502,6 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
 
   // Page data
   const site = useDevelopPageStore((state) => state.site)
-  const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
   const initializePage = useDevelopPageStore((state) => state.initializePage)
 
   // Streaming/WebSocket
@@ -519,8 +510,6 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   const isStreamingMessage = useStreamingConversationStore((state) => state.isLoading)
   const messages = useStreamingConversationStore((state) => state.messages)
   const activeStream = useStreamingConversationStore((state) => state.activeStream)
-  const historyLoadingComplete = useHistoryLoadingComplete()
-
   // -------------------------------------------------------------------------
   // DERIVED STATE (Context)
   // -------------------------------------------------------------------------
@@ -706,97 +695,6 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       })
   }, [state, appId, realAppId, initializePage, send])
 
-  // EFFECT: Wait for history loading to complete
-  useEffect(() => {
-    const phase = getPhaseFromState(state)
-    if (phase !== 'loadingHistory' || !historyLoadingComplete) return
-
-    const effectiveAppId = realAppId || appId
-
-    logger.debug('initialization.history.complete', {
-      appId: effectiveAppId,
-      message: 'WebSocket history loading complete'
-    })
-
-    // Clear timeout
-    if (historyLoadingTimeoutRef.current) {
-      clearTimeout(historyLoadingTimeoutRef.current)
-      historyLoadingTimeoutRef.current = null
-    }
-
-    if (initializingAppIdRef.current !== effectiveAppId) {
-      return
-    }
-
-    send({ type: 'HISTORY_LOADED', hasHistory: messages.length > 0 })
-  }, [state, historyLoadingComplete, appId, realAppId, messages.length, send])
-
-  // EFFECT: Set timeout for history loading (30 seconds)
-  useEffect(() => {
-    const phase = getPhaseFromState(state)
-    if (phase !== 'loadingHistory' || !appId || loadingPhase !== 'ready') return
-
-    const effectiveAppId = realAppId || appId
-
-    // Clear any existing timeout
-    if (historyLoadingTimeoutRef.current) {
-      clearTimeout(historyLoadingTimeoutRef.current)
-    }
-
-    // Set 30-second timeout
-    historyLoadingTimeoutRef.current = setTimeout(() => {
-      logger.warn('initialization.history.timeout', {
-        appId: effectiveAppId,
-        message: 'History loading timed out after 30s, proceeding without history'
-      })
-
-      if (initializingAppIdRef.current !== effectiveAppId) {
-        return
-      }
-
-      useStreamingConversationStore.setState({ historyLoadingComplete: true })
-      send({ type: 'HISTORY_TIMEOUT' })
-    }, 30000)
-
-    return () => {
-      if (historyLoadingTimeoutRef.current) {
-        clearTimeout(historyLoadingTimeoutRef.current)
-        historyLoadingTimeoutRef.current = null
-      }
-    }
-  }, [state, appId, realAppId, loadingPhase, send])
-
-  // EFFECT: Handle WebSocket errors during history loading
-  useEffect(() => {
-    const phase = getPhaseFromState(state)
-    if (phase !== 'loadingHistory' || !webSocketError) return
-
-    const effectiveAppId = realAppId || appId
-
-    logger.error('initialization.history.websocket_error', {
-      appId: effectiveAppId,
-      errorType: webSocketError.type,
-      message: 'WebSocket error during history loading, proceeding without history'
-    })
-
-    // Clear timeout
-    if (historyLoadingTimeoutRef.current) {
-      clearTimeout(historyLoadingTimeoutRef.current)
-      historyLoadingTimeoutRef.current = null
-    }
-
-    if (initializingAppIdRef.current !== effectiveAppId) {
-      return
-    }
-
-    if (webSocketError.type === 'APP_NOT_FOUND') {
-      return
-    }
-
-    useStreamingConversationStore.setState({ historyLoadingComplete: true })
-    send({ type: 'HISTORY_TIMEOUT' })
-  }, [state, webSocketError, appId, realAppId, send])
-
   // EFFECT: Track WebSocket connection state
   useEffect(() => {
     const phase = getPhaseFromState(state)
@@ -912,12 +810,6 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     return () => {
       if (isJobId) {
         cleanupSiteCreationStore()
-      }
-
-      // Clear history loading timeout
-      if (historyLoadingTimeoutRef.current) {
-        clearTimeout(historyLoadingTimeoutRef.current)
-        historyLoadingTimeoutRef.current = null
       }
     }
   }, [isJobId])

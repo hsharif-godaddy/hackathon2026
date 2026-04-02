@@ -563,11 +563,12 @@ export class StreamingWebSocketController extends EventEmitter {
   }
 
   /**
-   * Load more history messages (pagination)
-   * Emits load_more_history WebSocket event to fetch older messages
-   * Returns true if sent successfully, false if not connected
+   * Emits load_history WebSocket event.
+   * Without cursor: initial load (history_message* → history_loaded).
+   * With cursor: pagination (history_message* → history_complete).
+   * Returns true if sent successfully, false if not connected or no conversationId.
    */
-  loadMoreHistory(params: { cursor: string; limit?: number }): boolean {
+  loadHistory(params: { cursor?: string; limit?: number } = {}): boolean {
     const socket = this.supervisor.getSocket()
     if (!socket?.connected || !this.currentAppId) {
       return false
@@ -575,22 +576,22 @@ export class StreamingWebSocketController extends EventEmitter {
 
     const conversationId = getConversationIdFromCookie(this.currentAppId)
     if (!conversationId) {
-      logger.warn('websocket.load_more_history.no_conversation', {
+      logger.warn('websocket.load_history.no_conversation', {
         appId: this.currentAppId
       })
       return false
     }
 
-    logger.debug('websocket.load_more_history.emit', {
+    logger.debug('websocket.load_history', {
       appId: this.currentAppId,
       conversationId,
       cursor: params.cursor,
       limit: params.limit ?? 20
     })
 
-    socket.emit('load_more_history', {
+    socket.emit('load_history', {
       conversationId,
-      cursor: params.cursor,
+      ...(params.cursor && { cursor: params.cursor }),
       limit: params.limit ?? 20
     })
 

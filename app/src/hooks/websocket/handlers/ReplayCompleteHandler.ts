@@ -61,8 +61,9 @@ export class ReplayCompleteHandler implements MessageHandler {
       context.helpers.maybeSendRecoveryAck(context.socket, true)
 
       // Check if the stream should be finalized now that replay is complete.
-      // HistoryCompleteHandler may have already run but couldn't finalize because
-      // replayComplete was false at that time. Now that replay is done, re-evaluate.
+      // history_loaded arrives after this point (client emits load_history from
+      // handleRecoveryFinalized, which fires after the ack exchange). So if the stream
+      // is complete and activeStream was set before replay, finalize it now.
       const updatedPending = context.refs.pendingRecoveryAck.current
       if (!updatedPending) {
         // Ack was already sent and cleared — check if stream needs finalization

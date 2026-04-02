@@ -3,8 +3,8 @@
  */
 import '@testing-library/jest-dom';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, screen } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
 import StreamingMessageList from './StreamingMessageList';
@@ -24,10 +24,13 @@ vi.mock('./ThinkingIndicator', () => ({
   default: () => <div data-testid="thinking-indicator" />,
 }));
 
+// Module-level so individual tests can control return value (true = socket connected/sent).
+const mockLoadHistory = vi.fn(() => true);
+
 vi.mock('@/contexts/WebSocketContext', () => ({
   useWebSocketContext: () => ({
     sendMessage: vi.fn(),
-    loadMoreHistory: vi.fn(() => false),
+    loadHistory: mockLoadHistory,
   }),
 }));
 
@@ -58,7 +61,9 @@ const mockStreamingStore = {
   historyHasMore: false,
   historyNextCursor: null as string | null,
   historyLoadingMore: false,
-  setHistoryLoadingMore: vi.fn(),
+  // Mutating setters so timer-triggered store writes are reflected on the next render.
+  setHistoryLoadingMore: vi.fn((value: boolean) => { mockStreamingStore.historyLoadingMore = value }),
+  setHistoryLoadingComplete: vi.fn((value: boolean) => { mockStreamingStore.historyLoadingComplete = value }),
   activeStream: null,
 };
 
@@ -102,14 +107,21 @@ describe('StreamingMessageList', function packageTests() {
     vi.clearAllMocks();
     mockStreamingStore.isLoading = false;
     mockStreamingStore.historyLoadingComplete = true;
+    mockStreamingStore.historyLoadingMore = false;
+    mockStreamingStore.historyHasMore = false;
+    mockStreamingStore.historyNextCursor = null;
     mockStreamingStore.currentAppId = 'test-app-123';
     mockAppIdFromParams = 'test-app-123';
     mockDevelopPageStore.loadingPhase = 'ready';
+    // Re-wire mutating setters after clearAllMocks resets them to no-ops.
+    mockStreamingStore.setHistoryLoadingMore.mockImplementation((v: boolean) => { mockStreamingStore.historyLoadingMore = v });
+    mockStreamingStore.setHistoryLoadingComplete.mockImplementation((v: boolean) => { mockStreamingStore.historyLoadingComplete = v });
+    mockLoadHistory.mockReturnValue(true);
   });
 
   describe('empty state', function emptyState() {
     it('should show skeleton loaders when page is loading', function showSkeletonOnPageLoad() {
-      mockDevelopPageStore.loadingPhase = 'loading-history';
+      mockDevelopPageStore.loadingPhase = 'initializing-page';
 
       const { container } = renderWithProviders(<StreamingMessageList allMessages={[]} />);
 
@@ -141,7 +153,7 @@ describe('StreamingMessageList', function packageTests() {
     });
 
     it('should show skeleton loaders during initialization phases', function showSkeletonDuringInit() {
-      const phases = ['idle', 'checking-creation', 'creating', 'initializing-page', 'loading-history'];
+      const phases = ['idle', 'checking-creation', 'creating', 'initializing-page'];
 
       phases.forEach((phase) => {
         mockDevelopPageStore.loadingPhase = phase as any;
@@ -479,9 +491,9 @@ describe('StreamingMessageList', function packageTests() {
     it('should not assign startTime when a non-user non-assistant role blocks the backward search', function unknownRole() {
       const messages = [
         { id: 'u1', role: 'user' as const, content: 'Hello', timestamp: new Date('2024-01-01T10:00:00Z') },
-        { id: 's1', role: 'system' as const, content: 'System notice', timestamp: new Date() },
+        { id: 's1', role: 'system', content: 'System notice', timestamp: new Date() },
         { id: 'a1', role: 'assistant' as const, content: 'Response', timestamp: new Date() },
-      ]
+      ] as any[]
 
       renderWithProviders(<StreamingMessageList allMessages={messages} />)
 
@@ -492,7 +504,7 @@ describe('StreamingMessageList', function packageTests() {
   })
 
   describe('history loading gate', function historyLoadingGate() {
-    it('should show skeleton loaders when historyLoadingComplete is false even with messages present', function showSkeletonUntilHistoryLoaded() {
+    it('should show full-screen skeleton and hide messages when historyLoadingComplete is false with messages present', function showSkeletonAndHideMessagesWhileHistoryLoads() {
       mockStreamingStore.historyLoadingComplete = false;
 
       const messages = [
@@ -502,32 +514,35 @@ describe('StreamingMessageList', function packageTests() {
 
       const { container } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
 
-      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
+      // Messages are hidden until history is fully loaded — prevents flash of top-of-chat
       expect(screen.queryByTestId('message-msg-1')).not.toBeInTheDocument();
       expect(screen.queryByTestId('message-msg-2')).not.toBeInTheDocument();
+      // Full-screen skeleton shown instead
+      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
     });
 
-    it('should render messages once historyLoadingComplete becomes true', function renderAfterHistoryLoaded() {
+    it('should show skeleton when historyLoadingComplete is false and no messages exist', function showSkeletonUntilFirstHistoryArrives() {
       mockStreamingStore.historyLoadingComplete = false;
+
+      const { container } = renderWithProviders(<StreamingMessageList allMessages={[]} />);
+
+      // No messages yet — the empty-state skeleton covers the screen
+      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
+      expect(screen.queryByText('builder_messages_empty_title')).not.toBeInTheDocument();
+    });
+
+    it('should hide loading indicator when historyLoadingComplete is true', function hideLoadingIndicatorWhenDone() {
+      mockStreamingStore.historyLoadingComplete = true;
 
       const messages = [
         { id: 'msg-1', role: 'user' as const, content: 'Hello', timestamp: new Date() },
         { id: 'msg-2', role: 'assistant' as const, content: 'Hi!', timestamp: new Date() },
       ];
 
-      const { container, rerender } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
+      const { container } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
 
-      // Initially shows skeleton
-      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
-      expect(screen.queryByTestId('message-msg-1')).not.toBeInTheDocument();
-
-      // Simulate history loading completing
-      mockStreamingStore.historyLoadingComplete = true;
-      rerender(<StreamingMessageList allMessages={messages} />);
-
-      expect(container.querySelector('.ux-skeleton')).not.toBeInTheDocument();
       expect(screen.getByTestId('message-msg-1')).toBeInTheDocument();
-      expect(screen.getByTestId('message-msg-2')).toBeInTheDocument();
+      expect(container.querySelector('.ux-skeleton')).not.toBeInTheDocument();
     });
   });
 
@@ -596,6 +611,146 @@ describe('StreamingMessageList', function packageTests() {
       // Should show skeleton loaders during transition, not the empty state
       expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
       expect(screen.queryByText('No messages yet.')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('initial load retry', function initialLoadRetry() {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      mockStreamingStore.historyLoadingComplete = false;
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('should keep skeleton while retrying and clear it when a retry succeeds', async function retrySucceeds() {
+      const messages = [
+        { id: 'msg-1', role: 'user' as const, content: 'Hello', timestamp: new Date() },
+      ];
+
+      const { container, rerender } = renderWithProviders(<StreamingMessageList allMessages={[]} />);
+
+      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
+      expect(screen.queryByText('builder_messages_load_failed_title')).not.toBeInTheDocument();
+
+      // Advance past the first 15s safety timeout → retry 1 fires, loadHistory called again.
+      await act(async () => { vi.advanceTimersByTime(15_001) });
+
+      // Skeleton still visible — historyLoadingComplete is still false (server not yet responded).
+      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
+      expect(screen.queryByText('builder_messages_load_failed_title')).not.toBeInTheDocument();
+
+      // Simulate the 2nd attempt succeeding: server emits history_loaded → handler sets complete.
+      mockStreamingStore.historyLoadingComplete = true;
+      rerender(<StreamingMessageList allMessages={messages} />);
+
+      // Skeleton gone, message visible, no error banner.
+      expect(container.querySelector('.ux-skeleton')).not.toBeInTheDocument();
+      expect(screen.getByTestId('message-msg-1')).toBeInTheDocument();
+      expect(screen.queryByText('builder_messages_load_failed_title')).not.toBeInTheDocument();
+    });
+
+    it('should show error message after all retries are exhausted', async function allRetriesExhausted() {
+      const { container } = renderWithProviders(<StreamingMessageList allMessages={[]} />);
+
+      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
+
+      // Each retry timeout is 15s and is only scheduled AFTER React flushes the
+      // previous re-render, so we must advance in separate act() steps.
+      // Cycle 1 (t=15s): retryCount 0→1, new 15s timeout scheduled
+      await act(async () => { vi.advanceTimersByTime(15_001) });
+      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
+
+      // Cycle 2 (t=30s): retryCount 1→2, new 15s timeout scheduled
+      await act(async () => { vi.advanceTimersByTime(15_001) });
+      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
+
+      // Cycle 3 (t=45s): retryCount 2 >= MAX → setHistoryLoadFailed(true) + force complete
+      await act(async () => { vi.advanceTimersByTime(15_001) });
+
+      // Skeleton gone, error message visible instead of "No messages yet".
+      expect(container.querySelector('.ux-skeleton')).not.toBeInTheDocument();
+      expect(screen.getByText('builder_messages_load_failed_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_messages_load_failed_subtitle')).toBeInTheDocument();
+      expect(screen.queryByText('builder_messages_empty_title')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('pagination failure handling', function paginationFailure() {
+    const messages = [
+      { id: 'msg-1', role: 'user' as const, content: 'Hello', timestamp: new Date() },
+      { id: 'msg-2', role: 'assistant' as const, content: 'Hi!', timestamp: new Date() },
+    ];
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      mockStreamingStore.historyLoadingComplete = true;
+      mockStreamingStore.historyHasMore = true;
+      mockStreamingStore.historyNextCursor = 'cursor-abc';
+      mockStreamingStore.historyLoadingMore = true;
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('should show "Try again" banner when pagination times out', async function paginationTimeout() {
+      const { container } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
+
+      // Pagination skeleton shows while loading.
+      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
+      expect(screen.queryByText('builder_messages_pagination_failed')).not.toBeInTheDocument();
+
+      // Advance past the 10s pagination safety timeout.
+      await act(async () => { vi.advanceTimersByTime(10_001) });
+
+      // Skeleton gone, banner with "Try again" button appears.
+      expect(container.querySelector('.ux-skeleton')).not.toBeInTheDocument();
+      expect(screen.getByText('builder_messages_pagination_failed')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'builder_common_try_again' })).toBeInTheDocument();
+    });
+
+    it('should re-emit load_history with cursor when "Try again" is clicked', async function retryEmitsSocket() {
+      renderWithProviders(<StreamingMessageList allMessages={messages} />);
+
+      await act(async () => { vi.advanceTimersByTime(10_001) });
+
+      expect(screen.getByText('builder_messages_pagination_failed')).toBeInTheDocument();
+      mockLoadHistory.mockClear();
+
+      // fireEvent is synchronous and safe with fake timers; userEvent uses internal
+      // setTimeouts that never resolve when fake timers are active.
+      fireEvent.click(screen.getByRole('button', { name: 'builder_common_try_again' }));
+
+      // loadHistory must be called with the preserved cursor — not cleared on error.
+      expect(mockLoadHistory).toHaveBeenCalledWith({ cursor: 'cursor-abc', limit: 20 });
+    });
+
+    it('should clear banner and show messages when retry succeeds', async function retrySucceeds() {
+      const { container, rerender } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
+
+      await act(async () => { vi.advanceTimersByTime(10_001) });
+
+      expect(screen.getByText('builder_messages_pagination_failed')).toBeInTheDocument();
+
+      // Click "Try again" — onClick mutates mockStreamingStore.historyLoadingMore=true but
+      // there are no Zustand subscriptions in the mock, so the component won't re-render
+      // on its own. Wrap the rerender in act() so React also flushes the effect that
+      // resets paginationLoadFailed and the resulting state update.
+      fireEvent.click(screen.getByRole('button', { name: 'builder_common_try_again' }));
+      await act(async () => { rerender(<StreamingMessageList allMessages={messages} />) });
+
+      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
+      expect(screen.queryByText('builder_messages_pagination_failed')).not.toBeInTheDocument();
+
+      // Simulate success: server responds → historyLoadingMore false, banner stays cleared.
+      mockStreamingStore.historyLoadingMore = false;
+      rerender(<StreamingMessageList allMessages={messages} />);
+
+      expect(container.querySelector('.ux-skeleton')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_messages_pagination_failed')).not.toBeInTheDocument();
+      expect(screen.getByTestId('message-msg-1')).toBeInTheDocument();
     });
   });
 });

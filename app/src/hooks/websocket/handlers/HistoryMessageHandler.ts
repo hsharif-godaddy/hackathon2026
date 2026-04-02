@@ -66,21 +66,27 @@ export class HistoryMessageHandler implements MessageHandler {
 
     const store = useStreamingConversationStore.getState()
 
-    // Detect if this is a load-more batch (check first message for isLoadMore flag)
-    const isLoadMore = batch[0]?.isLoadMore === true
+    // Detect if this is a pagination batch (server stamps isPagination on history_message events)
+    const isPagination = batch[0]?.isPagination === true
 
-    // Determine mode based on whether this is load-more or initial/recovery
+    // Determine mode based on whether this is pagination or initial/recovery
     let mode: 'replace' | 'append' | 'prepend'
-    if (isLoadMore) {
-      mode = 'prepend' // Load more: prepend older messages
+    if (isPagination) {
+      mode = 'prepend' // Pagination: prepend older messages above existing ones
     } else {
-      // Initial load or recovery - use existing logic
-      // CRITICAL: Check if this is the first batch of THIS recovery session
-      // Use explicit flag instead of messages.length, because the store may be
-      // pre-populated by initialization or previous app visits
+      // Initial history load (via load_history event):
+      // - If no messages and no activeStream: replace (first load, empty chat)
+      // - If messages exist OR activeStream is set: prepend (history slots in above current content)
+      //   This handles the case where a user sent a message before history arrived
+      const hasExistingContent = store.messages.length > 0 || !!store.activeStream
       const historyReceivedRef = context.refs.historyReceivedForRecovery
-      const isFirstBatch = historyReceivedRef ? !historyReceivedRef.current : store.messages.length === 0
-      mode = isFirstBatch ? 'replace' : 'append'
+      const alreadyReceivedHistory = historyReceivedRef ? historyReceivedRef.current : false
+
+      if (hasExistingContent || alreadyReceivedHistory) {
+        mode = 'prepend'
+      } else {
+        mode = 'replace'
+      }
     }
 
     // Use unified history persistence action
@@ -92,13 +98,13 @@ export class HistoryMessageHandler implements MessageHandler {
         appId: store.currentAppId,
         rawMessages: batch,
         mode,
-        detectInProgress: !isLoadMore // Only detect in-progress for initial load
+        detectInProgress: !isPagination // Only detect in-progress for initial load
       })
 
       // Check if an in-progress message was detected and activeStream was set
       // Send STREAM_STARTED to transition machine to streaming state (Tier 1 lifecycle)
-      // Only for non-loadMore batches (in-progress detection is disabled for load-more)
-      if (!isLoadMore) {
+      // Only for non-pagination batches (in-progress detection is disabled for pagination)
+      if (!isPagination) {
         const currentStore = useStreamingConversationStore.getState()
         if (!prevActiveStream && currentStore.activeStream) {
           const conversationId = context.refs.pendingRecoveryAck?.current?.conversationId

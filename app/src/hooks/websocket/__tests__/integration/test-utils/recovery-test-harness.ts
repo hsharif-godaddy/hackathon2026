@@ -47,6 +47,9 @@ export function createInitialStoreState() {
       disconnectSocketId: null as string | null,
       escalationTimeoutId: null as ReturnType<typeof setTimeout> | null,
     },
+    historyLoadRequested: false,
+    historyLoadingComplete: false,
+    setHistoryLoadRequested: vi.fn((requested: boolean) => { state.historyLoadRequested = requested }),
     // Store actions - implementations defined inline for reliable state changes
     startConnectionRetry(socketId: string) {
       state.connectionRetry.isRetrying = true

@@ -203,6 +203,7 @@ export interface StreamingConversationState {
   lastError: Error | null
 
   // History loading state (for WebSocket history streaming)
+  historyLoadRequested: boolean
   historyLoadingComplete: boolean
 
   // History pagination state
@@ -257,6 +258,7 @@ export interface StreamingConversationState {
   startStream: (conversationId: string, messageId: string) => void
 
   // History loading actions
+  setHistoryLoadRequested: (requested: boolean) => void
   setHistoryLoadingComplete: (complete: boolean) => void
 
   // History pagination actions
@@ -431,6 +433,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     retryCount: 0
   },
   lastError: null,
+  historyLoadRequested: false,
   historyLoadingComplete: false,
   historyHasMore: true, // Assume there might be more until we know
   historyNextCursor: null,
@@ -1016,6 +1019,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
           disconnectSocketId: null,
           escalationTimeoutId: null
         },
+        historyLoadRequested: false,
         historyLoadingComplete: false,
         // Reset pagination when switching apps
         historyHasMore: true,
@@ -1064,6 +1068,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   },
 
   // History loading actions
+  setHistoryLoadRequested: (requested) => set({ historyLoadRequested: requested }),
   setHistoryLoadingComplete: (complete) => set({ historyLoadingComplete: complete }),
 
   // History pagination actions
@@ -1198,6 +1203,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         escalationTimeoutId: null
       },
       serverCapabilities: null,
+      historyLoadRequested: false,
       historyLoadingComplete: false
     });
   },

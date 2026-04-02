@@ -393,7 +393,6 @@ export class WebSocketServer {
         stateManager: this.stateManager,
         eventChannel: this.eventChannel,
         logger: this.logger,
-        ...(config.historyProvider && { historyProvider: config.historyProvider }),
         ...(config.getLatestConversationForApp && { getLatestConversationForApp: config.getLatestConversationForApp })
       },
       {
@@ -470,37 +469,41 @@ export class WebSocketServer {
         this.sendAvailableAgents(socket)
       })
 
-      // Handle load more history request (pagination)
-      // Registered early so it's available after recovery paths that return early
-      socket.on('load_more_history', async (data: {
-        cursor: string
-        limit?: number
-        conversationId: string
-      }) => {
-        this.logger.debug('load_more_history requested', {
+      // Unified history handler: initial load and pagination.
+      // cursor absent → initial load:  history_message* → history_loaded
+      // cursor present → pagination:   history_message* → history_complete
+      //
+      // Server timeout is intentionally shorter than the client retry timeout
+      // (StreamingMessageList: 15_000ms) so the client always receives history_loaded
+      // with an error before it fires its own retry. This keeps the retry cycle clean:
+      // server times out → emits error → client retries → new request starts fresh.
+      const LOAD_HISTORY_TIMEOUT_MS = 15_000 - 3_000 // 3s shorter than client retry
+
+      socket.on('load_history', async (data: { conversationId: string; cursor?: string; limit?: number }) => {
+        const isPagination = !!data.cursor
+        const completionEvent = isPagination ? 'history_complete' : 'history_loaded'
+
+        this.logger.debug('load_history requested', {
           socketId,
           conversationId: data.conversationId,
           cursor: data.cursor,
-          limit: data.limit
+          limit: data.limit,
+          isPagination
         })
 
         if (!this.config.historyProvider) {
-          this.logger.warn('load_more_history failed: no historyProvider configured', { socketId })
+          this.logger.warn('load_history failed: no historyProvider configured', { socketId })
           socket.emit('message', {
-            type: 'history_complete',
+            type: completionEvent,
             content: '',
-            data: {
-              messageCount: 0,
-              hasMore: false,
-              nextCursor: null,
-              error: 'History provider not configured',
-              isLoadMore: true
-            }
+            data: { messageCount: 0, hasMore: false, nextCursor: null, error: 'History provider not configured' }
           })
           return
         }
 
-        // Get appId from state manager first, fall back to socket auth
+        // Capture after the guard so TypeScript narrows the type inside the async IIFE below
+        const historyProvider = this.config.historyProvider
+
         const stateData = this.stateManager.getStateData(socketId)
         let appId = stateData?.context?.appId
         if (!appId) {
@@ -511,83 +514,94 @@ export class WebSocketServer {
         }
 
         if (!appId) {
-          this.logger.warn('load_more_history failed: no appId', { socketId })
+          this.logger.warn('load_history failed: no appId', { socketId })
           socket.emit('message', {
-            type: 'history_complete',
+            type: completionEvent,
             content: '',
-            data: {
-              messageCount: 0,
-              hasMore: false,
-              nextCursor: null,
-              error: 'App context not found',
-              isLoadMore: true
-            }
+            data: { messageCount: 0, hasMore: false, nextCursor: null, error: 'App context not found' }
           })
           return
         }
 
+        let timeoutHandle: NodeJS.Timeout | undefined
         try {
-          const historyResult = await this.config.historyProvider.loadHistory(
-            data.conversationId,
-            appId,
-            { before: data.cursor, limit: data.limit ?? 20 }
-          )
+          const historyResult = await Promise.race([
+            historyProvider.loadHistory(
+              data.conversationId,
+              appId,
+              data.cursor ? { before: data.cursor, limit: data.limit ?? 20 } : { limit: data.limit ?? 20 }
+            ),
+            new Promise<never>((_, reject) => {
+              timeoutHandle = setTimeout(
+                () => reject(new Error(`load_history timed out after ${LOAD_HISTORY_TIMEOUT_MS}ms`)),
+                LOAD_HISTORY_TIMEOUT_MS
+              )
+            })
+          ])
 
-          const messages = Array.isArray(historyResult)
-            ? historyResult
-            : historyResult.messages
+          const messages = Array.isArray(historyResult) ? historyResult : historyResult.messages
           const paginationInfo = Array.isArray(historyResult)
-            ? { hasMore: false, nextCursor: null }
-            : { hasMore: historyResult.hasMore, nextCursor: historyResult.nextCursor }
+            ? { hasMore: false, nextCursor: null, total: messages.length }
+            : { hasMore: historyResult.hasMore, nextCursor: historyResult.nextCursor, total: historyResult.total ?? messages.length }
 
-          let historySequence = -2000
+          // If the event channel has no pending messages the stream is authoritative complete.
+          // Clear stale metadata.inProgress so the client doesn't falsely detect an active
+          // stream from a crashed/stopped agent. Skip the check for pagination requests
+          // since they load older history that can't contain an in-progress stream.
+          const streamCompleted = !isPagination && (() => {
+            const meta = this.eventChannel.getMetadata(data.conversationId)
+            return !meta || (meta.pendingMessageIds?.length ?? 0) === 0
+          })()
+
+          let historySequence = -1000
           for (const msg of messages) {
+            const outMsg = streamCompleted && msg.metadata?.['inProgress']
+              ? { ...msg, metadata: { ...msg.metadata, inProgress: false } }
+              : msg
             socket.emit('message', {
               type: 'history_message',
               content: '',
-              data: {
-                ...msg,
-                sequence: historySequence--,
-                isLoadMore: true
-              }
+              data: { ...outMsg, sequence: historySequence--, ...(isPagination && { isPagination }) }
             })
           }
 
           socket.emit('message', {
-            type: 'history_complete',
+            type: completionEvent,
             content: '',
             data: {
               messageCount: messages.length,
               hasMore: paginationInfo.hasMore,
               nextCursor: paginationInfo.nextCursor,
-              isLoadMore: true
+              total: paginationInfo.total
             }
           })
 
-          this.logger.debug('load_more_history completed', {
+          this.logger.debug('load_history completed', {
             socketId,
             conversationId: data.conversationId,
             messageCount: messages.length,
-            hasMore: paginationInfo.hasMore
+            hasMore: paginationInfo.hasMore,
+            isPagination
           })
         } catch (error) {
-          this.logger.error('load_more_history failed', {
+          this.logger.error('load_history failed', {
             socketId,
             conversationId: data.conversationId,
             error: error instanceof Error ? error.message : String(error)
           })
 
           socket.emit('message', {
-            type: 'history_complete',
+            type: completionEvent,
             content: '',
             data: {
               messageCount: 0,
               hasMore: false,
               nextCursor: null,
-              error: error instanceof Error ? error.message : 'Failed to load history',
-              isLoadMore: true
+              error: error instanceof Error ? error.message : 'Failed to load history'
             }
           })
+        } finally {
+          if (timeoutHandle !== undefined) clearTimeout(timeoutHandle)
         }
       })
 
@@ -772,25 +786,8 @@ export class WebSocketServer {
     await this.config.onConnection?.(socketId)
 
     this.sendAvailableAgents(socket)
-
-    // Fresh connections have no history to replay — signal client to proceed immediately
-    socket.emit('message', {
-      type: 'history_complete',
-      content: '',
-      data: { messageCount: 0 }
-    } as WebSocketMessage)
-
   }
 
-  // Extracts appId from any auth shape (direct, JWT agentContext, or JWT decoded).
-  // Mirrors extractAppId() in connection-recovery-manager.ts — keep in sync.
-  private extractAuthAppId(authData: Record<string, any> | null | undefined): string | undefined {
-    if (!authData) return undefined
-    if (typeof authData.appId === 'string') return authData.appId
-    if (typeof authData.agentContext?.appId === 'string') return authData.agentContext.appId
-    if (typeof authData.decoded?.appId === 'string') return authData.decoded.appId
-    return undefined
-  }
 
   private async runManualRecovery(socket: Socket, previousSocketId: string): Promise<void> {
     await this.recoveryManager.handleManualRecovery(socket, previousSocketId, {
@@ -816,11 +813,7 @@ export class WebSocketServer {
       previousSocketId: auth.previousSocketId,
       hasConversationId: !!auth.conversationId
     })
-    await this.recoveryManager.sendStreamCompletedStatus(
-      socket,
-      auth.conversationId,
-      this.extractAuthAppId(auth)
-    )
+    await this.recoveryManager.sendStreamCompletedStatus(socket, auth.conversationId)
   }
 
   // Tab-closure recovery: client lost the ephemeral socketId but has a durable conversationId cookie.

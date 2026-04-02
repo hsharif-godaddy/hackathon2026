@@ -85,10 +85,6 @@ export type InitializationMachineEvent =
   | { type: 'PAGE_DATA_LOADED' }
   | { type: 'PAGE_DATA_FAILED'; error: string }
 
-  // History loading
-  | { type: 'HISTORY_LOADED'; hasHistory: boolean }
-  | { type: 'HISTORY_TIMEOUT' }
-
   // WebSocket coordination
   | { type: 'WEBSOCKET_CONNECTED' }
   | { type: 'WEBSOCKET_DISCONNECTED' }
@@ -356,28 +352,12 @@ export const initializationMachine = setup({
     initializingPage: {
       on: {
         PAGE_DATA_LOADED: {
-          target: 'loadingHistory',
+          target: 'ready',
           actions: ['logTransition'],
         },
         PAGE_DATA_FAILED: {
           target: 'error',
           actions: ['setError', 'logError'],
-        },
-      },
-    },
-
-    // -------------------------------------------------------------------------
-    // LOADING HISTORY - Loading conversation history
-    // -------------------------------------------------------------------------
-    loadingHistory: {
-      on: {
-        HISTORY_LOADED: {
-          target: 'ready',
-          actions: ['logTransition'],
-        },
-        HISTORY_TIMEOUT: {
-          target: 'ready',
-          actions: ['logTransition'],
         },
       },
     },

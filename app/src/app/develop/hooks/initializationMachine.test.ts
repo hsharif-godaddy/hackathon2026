@@ -222,7 +222,7 @@ describe('initializationMachine', () => {
   })
 
   describe('History Loading', () => {
-    it('should transition on HISTORY_LOADED', () => {
+    it('should transition directly to ready on PAGE_DATA_LOADED', () => {
       const actor = createActor(initializationMachine, {
         input: { appId: null, isJobId: false, hasInitialPrompt: false },
       })
@@ -230,22 +230,6 @@ describe('initializationMachine', () => {
 
       actor.send({ type: 'SKIP_TO_PAGE_INIT', appId: 'app-123' })
       actor.send({ type: 'PAGE_DATA_LOADED' })
-      expect(getPhaseFromState(actor.getSnapshot())).toBe('loadingHistory')
-
-      actor.send({ type: 'HISTORY_LOADED', hasHistory: true })
-      expect(getPhaseFromState(actor.getSnapshot())).toBe('ready')
-    })
-
-    it('should transition on HISTORY_TIMEOUT', () => {
-      const actor = createActor(initializationMachine, {
-        input: { appId: null, isJobId: false, hasInitialPrompt: false },
-      })
-      actor.start()
-
-      actor.send({ type: 'SKIP_TO_PAGE_INIT', appId: 'app-123' })
-      actor.send({ type: 'PAGE_DATA_LOADED' })
-
-      actor.send({ type: 'HISTORY_TIMEOUT' })
       expect(getPhaseFromState(actor.getSnapshot())).toBe('ready')
     })
   })
@@ -573,10 +557,9 @@ describe('initializationMachine', () => {
       })
       actor.start()
 
-      // Navigate to loadingHistory
       actor.send({ type: 'SKIP_TO_PAGE_INIT', appId: 'app-123' })
       actor.send({ type: 'PAGE_DATA_LOADED' })
-      expect(getPhaseFromState(actor.getSnapshot())).toBe('loadingHistory')
+      expect(getPhaseFromState(actor.getSnapshot())).toBe('ready')
 
       // RESET (simulating navigation away)
       actor.send({ type: 'RESET' })
@@ -737,49 +720,18 @@ describe('initializationMachine', () => {
   })
 
   describe('Edge Cases: History Loading', () => {
-    it('should handle race between HISTORY_TIMEOUT and HISTORY_LOADED', () => {
+    it('should be in ready state immediately after PAGE_DATA_LOADED (no loadingHistory gate)', () => {
       const actor = createActor(initializationMachine, {
         input: { appId: null, isJobId: false, hasInitialPrompt: false },
       })
       actor.start()
 
-      // Navigate to loadingHistory
       actor.send({ type: 'SKIP_TO_PAGE_INIT', appId: 'app-123' })
       actor.send({ type: 'PAGE_DATA_LOADED' })
-      expect(getPhaseFromState(actor.getSnapshot())).toBe('loadingHistory')
-
-      // HISTORY_TIMEOUT arrives first
-      actor.send({ type: 'HISTORY_TIMEOUT' })
       expect(getPhaseFromState(actor.getSnapshot())).toBe('ready')
 
-      // Late HISTORY_LOADED arrives (should be ignored)
+      // HISTORY_LOADED/HISTORY_TIMEOUT are no-ops — history loads asynchronously in the background
       actor.send({ type: 'HISTORY_LOADED', hasHistory: true })
-      expect(getPhaseFromState(actor.getSnapshot())).toBe('ready')
-    })
-
-    it('should handle HISTORY_LOADED with hasHistory: true', () => {
-      const actor = createActor(initializationMachine, {
-        input: { appId: null, isJobId: false, hasInitialPrompt: false },
-      })
-      actor.start()
-
-      actor.send({ type: 'SKIP_TO_PAGE_INIT', appId: 'app-123' })
-      actor.send({ type: 'PAGE_DATA_LOADED' })
-      actor.send({ type: 'HISTORY_LOADED', hasHistory: true })
-
-      expect(getPhaseFromState(actor.getSnapshot())).toBe('ready')
-    })
-
-    it('should handle HISTORY_LOADED with hasHistory: false', () => {
-      const actor = createActor(initializationMachine, {
-        input: { appId: null, isJobId: false, hasInitialPrompt: false },
-      })
-      actor.start()
-
-      actor.send({ type: 'SKIP_TO_PAGE_INIT', appId: 'app-123' })
-      actor.send({ type: 'PAGE_DATA_LOADED' })
-      actor.send({ type: 'HISTORY_LOADED', hasHistory: false })
-
       expect(getPhaseFromState(actor.getSnapshot())).toBe('ready')
     })
   })
@@ -918,9 +870,6 @@ describe('initializationMachine', () => {
       recordState() // initializingPage
 
       actor.send({ type: 'PAGE_DATA_LOADED' })
-      recordState() // loadingHistory
-
-      actor.send({ type: 'HISTORY_LOADED', hasHistory: false })
       recordState() // ready/waitingForWebSocket
 
       actor.send({ type: 'WEBSOCKET_CONNECTED' })
@@ -937,7 +886,6 @@ describe('initializationMachine', () => {
         'checkingCreation',
         'creating',
         'initializingPage',
-        'loadingHistory',
         'ready',
         'ready',
         'ready',
@@ -945,7 +893,6 @@ describe('initializationMachine', () => {
       ])
 
       expect(subPhases).toEqual([
-        null,
         null,
         null,
         null,
@@ -975,12 +922,9 @@ describe('initializationMachine', () => {
       recordState() // initializingPage
 
       actor.send({ type: 'PAGE_DATA_LOADED' })
-      recordState() // loadingHistory
+      recordState() // ready (no loadingHistory gate — history loads async in background)
 
-      actor.send({ type: 'HISTORY_LOADED', hasHistory: false })
-      recordState() // ready
-
-      expect(phases).toEqual(['idle', 'initializingPage', 'loadingHistory', 'ready'])
+      expect(phases).toEqual(['idle', 'initializingPage', 'ready'])
       expect(getSubPhaseFromState(actor.getSnapshot())).toBe('active')
     })
   })

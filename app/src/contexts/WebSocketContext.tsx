@@ -14,7 +14,7 @@ import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
 interface WebSocketContextValue {
   // Type must match the sendMessage signature returned by useStreamingWebSocket
   sendMessage: (options: SendMessageOptions) => Promise<void>
-  loadMoreHistory: (params: { cursor: string; limit?: number }) => boolean
+  loadHistory: (params?: { cursor?: string; limit?: number }) => boolean
 }
 
 const WebSocketContext = createContext<WebSocketContextValue | null>(null)
@@ -22,15 +22,15 @@ const WebSocketContext = createContext<WebSocketContextValue | null>(null)
 export function WebSocketProvider({
   children,
   sendMessage,
-  loadMoreHistory
+  loadHistory
 }: {
   children: React.ReactNode
   // Type must match the sendMessage signature returned by useStreamingWebSocket
   sendMessage: (options: SendMessageOptions) => Promise<void>
-  loadMoreHistory: (params: { cursor: string; limit?: number }) => boolean
+  loadHistory: (params?: { cursor?: string; limit?: number }) => boolean
 }) {
   return (
-    <WebSocketContext.Provider value={{ sendMessage, loadMoreHistory }}>
+    <WebSocketContext.Provider value={{ sendMessage, loadHistory }}>
       {children}
     </WebSocketContext.Provider>
   )

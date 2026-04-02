@@ -40,13 +40,21 @@ describe('RecoveryStatusHandler', () => {
     const clearActiveStream = vi.fn()
     const setStreamingState = vi.fn()
     const setIsLoading = vi.fn()
-    const context = createMockMessageContext()
+    const context = createMockMessageContext({
+      helpers: {
+        ...createMockMessageContext().helpers,
+        getConversationIdFromCookie: vi.fn().mockReturnValue('conv-1'),
+      },
+    })
 
     mockStore.getState.mockReturnValue({
       currentAppId: 'app-123',
       activeStream: { id: 'stream-1', content: 'test content' },
       streamingState: 'streaming',
       connectionRetry: { isRetrying: true },
+      historyLoadRequested: false,
+      historyLoadingComplete: false,
+      setHistoryLoadRequested: vi.fn(),
       clearConnectionRetry,
       clearActiveStream,
       setStreamingState,
@@ -67,34 +75,37 @@ describe('RecoveryStatusHandler', () => {
 
     await handler.handle(data, context)
 
-    // When historyStreaming: true, history arrives via history_message events
-    // so no messages are set directly here
     expect(clearActiveStream).toHaveBeenCalled()
-    // Machine event STREAM_COMPLETE is sent (Tier 1), adapter will sync state
     expect(context.machine.send).toHaveBeenCalledWith({ type: 'STREAM_COMPLETE' })
     expect(clearConnectionRetry).toHaveBeenCalled()
     expect(context.helpers.clearRetryState).toHaveBeenCalled()
-    // Note: We no longer clear the stored socket ID to enable recovery on page reload
+    expect(context.socket.emit).toHaveBeenCalledWith('load_history', { conversationId: 'conv-1' })
   })
 
-  it('preserves activeStream by finalizing when history not included', async () => {
+  it('clears activeStream and transitions machine when stream completed with no buffered events', async () => {
     const clearConnectionRetry = vi.fn()
     const clearActiveStream = vi.fn()
     const setStreamingState = vi.fn()
     const setIsLoading = vi.fn()
-    const context = createMockMessageContext()
-
-    const activeStreamData = {
-      id: 'stream-1',
-      content: 'Important assistant response that should not be lost',
-      segments: [{ id: 'seg-1', type: 'text', content: 'test' }],
-      toolCalls: [],
-    }
+    const context = createMockMessageContext({
+      helpers: {
+        ...createMockMessageContext().helpers,
+        getConversationIdFromCookie: vi.fn().mockReturnValue('conv-1'),
+      },
+    })
 
     mockStore.getState.mockReturnValue({
       currentAppId: 'app-123',
-      activeStream: activeStreamData,
+      activeStream: {
+        id: 'stream-1',
+        content: 'Assistant response',
+        segments: [{ id: 'seg-1', type: 'text', content: 'test' }],
+        toolCalls: [],
+      },
       connectionRetry: { isRetrying: false },
+      historyLoadRequested: false,
+      historyLoadingComplete: false,
+      setHistoryLoadRequested: vi.fn(),
       clearConnectionRetry,
       clearActiveStream,
       setStreamingState,
@@ -108,23 +119,42 @@ describe('RecoveryStatusHandler', () => {
       data: {
         streamCompleted: true,
         conversationId: 'conv-1',
-        // No historyStreaming flag means history is not available
       },
     }
 
     await handler.handle(data, context)
 
-    // Should NOT call clearActiveStream - that would lose data
-    expect(clearActiveStream).not.toHaveBeenCalled()
-    // Should flush buffers before finalizing (prevents buffered data loss)
-    expect(context.actions.flushToolDeltaBufferImmediate).toHaveBeenCalled()
-    // Should call finalizeStream to preserve the in-memory response
-    // finalizeStream sets streamingState: 'idle' and isLoading: false internally
-    expect(context.actions.finalizeStream).toHaveBeenCalledWith({})
-    // Flush must happen before finalize
-    const flushMock = context.actions.flushToolDeltaBufferImmediate as unknown as ReturnType<typeof vi.fn>
-    const finalizeMock = context.actions.finalizeStream as unknown as ReturnType<typeof vi.fn>
-    expect(flushMock.mock.invocationCallOrder[0]).toBeLessThan(finalizeMock.mock.invocationCallOrder[0])
+    expect(clearActiveStream).toHaveBeenCalled()
+    expect(context.actions.finalizeStream).not.toHaveBeenCalled()
+    expect(context.actions.flushToolDeltaBufferImmediate).not.toHaveBeenCalled()
+    expect(context.machine.send).toHaveBeenCalledWith({ type: 'STREAM_COMPLETE' })
+    expect(context.helpers.clearRetryState).toHaveBeenCalled()
+    expect(clearConnectionRetry).not.toHaveBeenCalled()
+    expect(context.socket.emit).toHaveBeenCalledWith('load_history', { conversationId: 'conv-1' })
+  })
+
+  it('emits load_history from cookie when recovery finalizes and history not yet loaded', async () => {
+    const context = createMockMessageContext({
+      helpers: {
+        ...createMockMessageContext().helpers,
+        getConversationIdFromCookie: vi.fn().mockReturnValue('conv-123'),
+      },
+    })
+
+    mockStore.getState.mockReturnValue({
+      currentAppId: 'app-123',
+      historyLoadRequested: false,
+      historyLoadingComplete: false,
+      setHistoryLoadRequested: vi.fn(),
+    })
+
+    await handler.handle(
+      { type: 'recovery_status', content: '', data: { isRecovering: false, eventsReplayed: 0 } },
+      context
+    )
+
+    expect(context.socket.emit).toHaveBeenCalledWith('load_history', { conversationId: 'conv-123' })
+    expect(context.machine.send).toHaveBeenCalledWith({ type: 'CATCHUP_COMPLETE' })
   })
 
   it('prepares buffered event replay and sets pending ack with WebSocket history', async () => {

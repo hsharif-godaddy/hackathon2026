@@ -271,12 +271,16 @@ describe('ChatPane', () => {
   });
 
   describe('input disabled during recovery', () => {
-    it('should disable input when historyLoadingComplete is false', () => {
+    it('should not disable input when only historyLoadingComplete is false', () => {
+      // History loads asynchronously in the background — user must be free to type
+      // immediately. historyLoadingComplete no longer gates the input.
       mockStreamingStore.historyLoadingComplete = false;
+      mockStreamingStore.isLoading = false;
+      mockStreamingStore.isActivelyStreaming = false;
       renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       const chatInput = screen.getByTestId('chat-input');
-      expect(chatInput).toHaveAttribute('data-disabled', 'true');
+      expect(chatInput).toHaveAttribute('data-disabled', 'false');
     });
 
     it('should enable input when historyLoadingComplete is true and not streaming', () => {

@@ -34,6 +34,7 @@ export const RECOVERY_CONTROL_MESSAGE_TYPES = [
   'catchup_status',
   'catchup_complete',
   'history_message',
+  'history_loaded',
   'history_complete',
 ] as const;
 

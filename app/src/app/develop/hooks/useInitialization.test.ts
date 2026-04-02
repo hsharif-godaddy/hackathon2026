@@ -20,13 +20,12 @@ describe('useInitialization', function hookTests() {
         'checking-creation',
         'creating',
         'initializing-page',
-        'loading-history',
         'ready',
         'error'
       ];
-      
+
       // This test documents the expected phases
-      expect(phases.length).toBe(7);
+      expect(phases.length).toBe(6);
     });
   });
 

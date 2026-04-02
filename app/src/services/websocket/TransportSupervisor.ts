@@ -24,6 +24,7 @@ import {
   ConversationInfoHandler,
   ErrorHandler,
   HistoryCompleteHandler,
+  HistoryLoadedHandler,
   HistoryMessageHandler,
   MessageHandlerRegistry,
   RecoveryStatusHandler,
@@ -400,6 +401,7 @@ export class TransportSupervisor extends EventEmitter {
     registry.register(new ConversationInfoHandler())
     registry.register(new RecoveryStatusHandler())
     registry.register(new HistoryMessageHandler())
+    registry.register(new HistoryLoadedHandler())
     registry.register(new HistoryCompleteHandler())
     registry.register(new ReplayCompleteHandler())
     registry.register(new CatchupStatusHandler())

@@ -1,8 +1,6 @@
 import type { Socket } from 'socket.io'
 import type {
   StreamingEvent,
-  HistoryProvider,
-  PersistedMessage,
   ConversationContext,
   EventMetadata
 } from './interfaces.js'
@@ -104,7 +102,6 @@ export interface ConnectionRecoveryManagerDependencies {
   stateManager: ConnectionStateManager
   eventChannel: ConversationEventChannel
   logger?: RecoveryManagerLogger
-  historyProvider?: HistoryProvider
   getLatestConversationForApp?: (appId: string) => Promise<string | null>
 }
 
@@ -122,7 +119,6 @@ export class ConnectionRecoveryManager {
   private readonly eventChannel: ConversationEventChannel
   private readonly config: ConnectionRecoveryManagerConfig
   private readonly logger: RecoveryManagerLogger
-  private readonly historyProvider?: HistoryProvider
   private readonly getLatestConversationForApp?: (appId: string) => Promise<string | null>
 
   constructor(
@@ -133,9 +129,6 @@ export class ConnectionRecoveryManager {
     this.eventChannel = dependencies.eventChannel
     this.config = config
     this.logger = dependencies.logger ?? createLogger('recovery')
-    if (dependencies.historyProvider) {
-      this.historyProvider = dependencies.historyProvider
-    }
     if (dependencies.getLatestConversationForApp) {
       this.getLatestConversationForApp = dependencies.getLatestConversationForApp
     }
@@ -267,15 +260,12 @@ export class ConnectionRecoveryManager {
     // Find disconnected stream by conversationId
     const entry = this.stateManager.findDisconnectedByConversationId(conversationId)
 
-    // Extract appId from auth for sendStreamCompletedStatus
-    const appId = extractAppId(auth)
-
     if (!entry) {
       this.logger.warn('recovery.conversation.no_stream_found', {
         socketId,
         conversationId
       })
-      await this.sendStreamCompletedStatus(socket, conversationId, appId)
+      await this.sendStreamCompletedStatus(socket, conversationId)
       return
     }
 
@@ -287,7 +277,7 @@ export class ConnectionRecoveryManager {
         socketId,
         conversationId
       })
-      await this.sendStreamCompletedStatus(socket, conversationId, appId)
+      await this.sendStreamCompletedStatus(socket, conversationId)
       return
     }
 
@@ -332,9 +322,6 @@ export class ConnectionRecoveryManager {
     const socketId = socket.id
     const auth = socket.handshake.auth || {}
 
-    // Extract appId for history loading (needed for sendStreamCompletedStatus on validation failure)
-    const appId = extractAppId(auth)
-
     // Security validation
     if (!validateAppId(conversationId, auth)) {
       this.logger.warn('recovery.initial.app_mismatch', {
@@ -342,8 +329,7 @@ export class ConnectionRecoveryManager {
         conversationId
       })
       // Send stream completed status to unblock client initialization
-      // Even though validation failed, we still send history_complete to prevent hanging
-      await this.sendStreamCompletedStatus(socket, conversationId, appId)
+      await this.sendStreamCompletedStatus(socket, conversationId)
       return
     }
 
@@ -380,8 +366,7 @@ export class ConnectionRecoveryManager {
       })
     }
 
-    // appId already extracted above for validation failure handling
-
+    const appId = extractAppId(auth)
     const abortController = new AbortController()
 
     // Create full state data
@@ -475,46 +460,9 @@ export class ConnectionRecoveryManager {
    */
   async sendStreamCompletedStatus(
     socket: Socket,
-    conversationId?: string,
-    appId?: string
+    conversationId?: string
   ): Promise<void> {
-    let fullHistory: PersistedMessage[] = []
-    let historyStreaming = false
-    let paginationInfo = { hasMore: false, nextCursor: null as string | null, total: 0 }
-
-    if (conversationId && appId && this.historyProvider) {
-      try {
-        // Load raw database messages (not summarized LLM context)
-        // Initial load: most recent 5 messages
-        const historyResult = await this.historyProvider.loadHistory(
-          conversationId,
-          appId,
-          { limit: 20 }
-        )
-        // Handle both paginated and legacy array responses
-        fullHistory = Array.isArray(historyResult) ? historyResult : historyResult.messages
-        paginationInfo = Array.isArray(historyResult)
-          ? { hasMore: false, nextCursor: null, total: fullHistory.length }
-          : { hasMore: historyResult.hasMore, nextCursor: historyResult.nextCursor, total: historyResult.total ?? fullHistory.length }
-        historyStreaming = fullHistory.length > 0
-
-        this.logger.debug('recovery.history_fetched_completed', {
-          conversationId,
-          appId,
-          messageCount: fullHistory.length,
-          hasMore: paginationInfo.hasMore,
-          total: paginationInfo.total
-        })
-      } catch (error) {
-        this.logger.warn('recovery.history_fetch_failed_completed', {
-          conversationId,
-          appId,
-          error: error instanceof Error ? error.message : String(error)
-        })
-      }
-    }
-
-    // Send recovery status
+    // Send recovery status — client will emit load_history to fetch history independently
     socket.emit('message', {
       type: 'recovery_status',
       content: '',
@@ -523,54 +471,9 @@ export class ConnectionRecoveryManager {
         hasBufferedEvents: false,
         bufferedEventCount: 0,
         streamCompleted: true,
-        conversationId,
-        historyStreaming,
-        historyMessageCount: fullHistory.length
+        conversationId
       }
     } as WebSocketMessage)
-
-    // Stream history messages — clear stale inProgress metadata since stream is completed
-    if (historyStreaming && fullHistory.length > 0) {
-      let historySequence = -1000 // Use negative sequences for history to avoid collision
-      for (const msg of fullHistory) {
-        const cleanedMsg = this.clearStaleInProgress(msg)
-        socket.emit('message', {
-          type: 'history_message',
-          content: '',
-          data: {
-            ...cleanedMsg,
-            sequence: historySequence-- // Assign sequence for deduplication
-          }
-        } as WebSocketMessage)
-      }
-    }
-
-    // Always send history_complete (even when empty) for consistent client-side handling
-    socket.emit('message', {
-      type: 'history_complete',
-      content: '',
-      data: {
-        messageCount: fullHistory.length,
-        hasMore: paginationInfo.hasMore,
-        nextCursor: paginationInfo.nextCursor,
-        total: paginationInfo.total
-      }
-    } as WebSocketMessage)
-  }
-
-  /**
-   * Clear stale metadata.inProgress from a history message.
-   * Called when the server knows the stream is completed but the DB
-   * may still have inProgress: true from a crashed/stopped agent.
-   */
-  private clearStaleInProgress(msg: PersistedMessage): PersistedMessage {
-    if (msg.metadata?.inProgress) {
-      return {
-        ...msg,
-        metadata: { ...msg.metadata, inProgress: false }
-      }
-    }
-    return msg
   }
 
   // ===== Private Recovery Flow =====
@@ -603,77 +506,17 @@ export class ConnectionRecoveryManager {
     )
     const replayMetadata = this.eventChannel.getMetadata(context.conversationId)
 
-    // NEW: Fetch full conversation history via historyProvider
-    let fullHistory: PersistedMessage[] = []
-    let historyIncluded = false
-    let paginationInfo = { hasMore: false, nextCursor: null as string | null, total: 0 }
-
-    // Track in-progress message IDs at outer scope so the event replay filter can use them.
-    // These messages have partial DB content in history; events keep the stream alive.
+    // Track in-progress message IDs so the event replay filter can use them.
+    // These messages have partial DB content; events keep the stream alive.
     const pendingMessageIdsFromMetadata = replayMetadata?.pendingMessageIds ?? []
     const inProgressMessageIds = new Set<string>(pendingMessageIdsFromMetadata)
 
-    // Extract appId from stateData context
-    const appId = stateData?.context?.appId
-
-    if (this.historyProvider && appId) {
-      try {
-        // Load raw messages from database (not summarized LLM context)
-        // Initial load: most recent 5 messages
-        const historyResult = await this.historyProvider.loadHistory(
-          context.conversationId,
-          appId,
-          { limit: 20 }
-        )
-        // Handle both paginated and legacy array responses
-        const rawMessages = Array.isArray(historyResult) ? historyResult : historyResult.messages
-        paginationInfo = Array.isArray(historyResult)
-          ? { hasMore: false, nextCursor: null, total: rawMessages.length }
-          : { hasMore: historyResult.hasMore, nextCursor: historyResult.nextCursor, total: historyResult.total ?? rawMessages.length }
-
-        // Pass all messages through as-is, including in-progress ones.
-        // The DB content from updateAgentTurn is the best snapshot we have.
-        // Buffered events (if any) will continue streaming on top of this content.
-        fullHistory = rawMessages
-
-        historyIncluded = true
-
-        this.logger.debug('recovery.history_fetched', {
-          conversationId: context.conversationId,
-          appId,
-          messageCount: fullHistory.length,
-          willReplayEvents: events.length > 0,
-          replayEventCount: events.length,
-          replayFromSequence,
-          recoveryMode: context.mode,
-          inProgressMessageCount: inProgressMessageIds.size,
-          pendingMetadataCount: pendingMessageIdsFromMetadata.length,
-          hasMore: paginationInfo.hasMore,
-          total: paginationInfo.total
-        })
-      } catch (error) {
-        this.logger.warn('recovery.history_fetch_failed', {
-          conversationId: context.conversationId,
-          appId,
-          error: error instanceof Error ? error.message : String(error)
-        })
-        // Continue without history - client can still work with buffered events
-      }
-    } else {
-      this.logger.debug('recovery.no_history_provider', {
-        conversationId: context.conversationId,
-        hasProvider: !!this.historyProvider,
-        hasAppId: !!appId
-      })
-    }
-
     // Check for buffer loss — only meaningful for conversation recovery where the client
     // has prior state and expects a contiguous event sequence. For manual/initial recovery,
-    // the client rebuilds from DB history + replay, so "missing" events between the old
-    // lastDeliveredSequence and the buffer start are already covered by history.
+    // the client will load history via load_history event, so missing events are covered.
     let lossDetected = false
     let lostEventCount = 0
-    if (!clientHasNoState || !historyIncluded) {
+    if (!clientHasNoState) {
       const expectedNextSequence = context.lastDeliveredSequence + 1
       const lossInfo = this.getBufferLossInfo(
         context.conversationId,
@@ -696,36 +539,22 @@ export class ConnectionRecoveryManager {
       ? events[events.length - 1]!.sequence
       : preReplaySequence
 
-    // Filter out persisted events for COMPLETED messages (their content is already
-    // in history). Without this, the client would append replay chunks to content
-    // that's already populated from history, causing text duplication/stuttering.
-    //
-    // For IN-PROGRESS messages, only replay non-persisted (tail) events.
-    // History already includes their DB snapshot (from updateAgentTurn), so replaying
-    // persisted events would duplicate content. Only the non-persisted tail events
-    // (buffered since the last DB write) need to be appended.
-    const eventsToReplay = historyIncluded
-      ? events.filter(e => {
-          const messageId = e.data?.messageId as string | undefined
-          // For in-progress messages, only replay non-persisted events.
-          // DB snapshot content is already in fullHistory; replaying persisted
-          // events on top would duplicate text.
-          if (messageId && inProgressMessageIds.has(messageId)) return !e.persisted
-          // No messageId — can't determine which message owns this event, replay to be safe
-          if (!messageId) return true
-          // Filter out persisted events for completed messages
-          return !e.persisted
-        })
-      : events
+    // Filter out persisted events for COMPLETED messages.
+    // For IN-PROGRESS messages, only replay non-persisted (tail) events —
+    // the client will load the DB snapshot via load_history.
+    const eventsToReplay = events.filter(e => {
+      const messageId = e.data?.messageId as string | undefined
+      if (messageId && inProgressMessageIds.has(messageId)) return !e.persisted
+      if (!messageId) return true
+      return !e.persisted
+    })
 
     const coalescedReplay = coalesceEvents(eventsToReplay)
 
     // The server's event channel is the authority on whether a stream is still active.
-    // If no messages are pending, the agent has completed (or crashed and was cleaned up).
-    // The DB may still have stale inProgress: true metadata, but that's not authoritative.
     const streamCompleted = inProgressMessageIds.size === 0
 
-    // Send recovery status - history will be streamed separately
+    // Send recovery status — client will emit load_history independently
     socket.emit('message', {
       type: 'recovery_status',
       content: 'Recovering connection...',
@@ -740,40 +569,7 @@ export class ConnectionRecoveryManager {
         requiresAck: true,
         lastSequence: replayLastSequence,
         lossDetected,
-        lostEventCount,
-        historyStreaming: historyIncluded && fullHistory.length > 0,
-        historyMessageCount: fullHistory.length
-      }
-    } as WebSocketMessage)
-
-    // Stream history messages
-    if (historyIncluded && fullHistory.length > 0) {
-      let historySequence = -1000 // Use negative sequences for history to avoid collision
-      for (const msg of fullHistory) {
-        // When stream is completed, clear stale inProgress metadata so the client
-        // doesn't falsely detect an active stream from crashed/stopped agent data
-        const cleanedMsg = streamCompleted ? this.clearStaleInProgress(msg) : msg
-        socket.emit('message', {
-          type: 'history_message',
-          content: '',
-          data: {
-            ...cleanedMsg,
-            sequence: historySequence-- // Assign sequence for deduplication
-          }
-        } as WebSocketMessage)
-      }
-    }
-
-    // Always send history_complete (even when empty) for consistent client-side handling
-    // This simplifies client logic - can just wait for one event type instead of three scenarios
-    socket.emit('message', {
-      type: 'history_complete',
-      content: '',
-      data: {
-        messageCount: fullHistory.length,
-        hasMore: paginationInfo.hasMore,
-        nextCursor: paginationInfo.nextCursor,
-        total: paginationInfo.total
+        lostEventCount
       }
     } as WebSocketMessage)
 

@@ -1014,7 +1014,7 @@ function DevelopPageContent() {
   };
 
   return (
-    <WebSocketProvider sendMessage={ws.actions.send} loadMoreHistory={ws.actions.loadMore}>
+    <WebSocketProvider sendMessage={ws.actions.send} loadHistory={ws.actions.loadHistory}>
       <div
         className={cn("absolute inset-0 flex flex-col overflow-hidden bg-develop-bg", {
           "ios-fixed-container": isMobile

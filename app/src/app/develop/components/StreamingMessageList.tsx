@@ -5,7 +5,6 @@ import Box from '@ux/box'
 import Button from '@ux/button'
 import ChevronDownIcon from '@ux/icon/chevron-down'
 import Skeleton from '@ux/skeleton'
-import Spinner from '@ux/spinner'
 
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useWebSocketContext } from '@/contexts/WebSocketContext'
@@ -65,7 +64,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   const historyLoadingMore = useStreamingConversationStore((s) => s.historyLoadingMore)
   const setHistoryLoadingMore = useStreamingConversationStore((s) => s.setHistoryLoadingMore)
 
-  const { loadMoreHistory } = useWebSocketContext()
+  const { loadHistory } = useWebSocketContext()
   const isConnected = useWebSocketState().connected
 
   // Keep refs in sync so handleScroll reads latest values without dependency churn
@@ -197,13 +196,13 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
         setHistoryLoadingMore(true)
         paginationAnchorRef.current = { scrollHeight, messageCount: allMessages.length }
 
-        if (!loadMoreHistory({ cursor: historyNextCursor, limit: 20 })) {
+        if (!loadHistory({ cursor: historyNextCursor, limit: 20 })) {
           setHistoryLoadingMore(false)
           paginationAnchorRef.current = null
         }
       }
     }, 100)
-  }, [loadMoreHistory, allMessages.length])
+  }, [loadHistory, allMessages.length])
 
   // Reliable scroll to bottom function
   const scrollToBottom = useCallback((smooth = true, immediate = false) => {
@@ -377,9 +376,14 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
     prevIsStreamingRef.current = isStreaming
   }, [isStreaming, playBeep])
 
-  // Restore scroll position after prepending older messages (pagination)
+  // Restore scroll position after prepending older messages (pagination).
   // Only fires when loading finishes AND the message count grew beyond the anchor
-  // (ignores new live messages appended at the end)
+  // (ignores new live messages appended at the end).
+  //
+  // We nudge the viewport up by PEEK_PX so the bottom edge of the newly-prepended
+  // messages is visible — the user sees "something arrived above" without being
+  // yanked to the top of the list.
+  const PAGINATION_PEEK_PX = 80
   useEffect(() => {
     const anchor = paginationAnchorRef.current
     if (!anchor || historyLoadingMore) return
@@ -388,41 +392,69 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
       const container = containerRef.current
       const delta = container ? container.scrollHeight - anchor.scrollHeight : 0
       if (container && delta > 0) {
-        container.scrollTop += delta
+        container.scrollTop = Math.max(0, container.scrollTop + delta - PAGINATION_PEEK_PX)
       }
     }
     paginationAnchorRef.current = null
   }, [historyLoadingMore, allMessages.length])
 
-  // Safety timeout: reset historyLoadingMore if response never arrives
-  // (WebSocket drop mid-flight, server error without isLoadMore flag, or network timeout)
+  // Safety timeout: re-fire load_history if historyLoadingComplete is still false after 15s.
+  // Covers two cases: (1) server returned history_loaded with an error field — handler leaves
+  // historyLoadingComplete false so we retry here; (2) network drop mid-flight — history_loaded
+  // never arrived, reconnect + agents_available will also retry, but this is a belt-and-braces
+  // guard. After 2 retries the skeleton is cleared; user interaction is unaffected throughout.
+  //
+  // historyRetryCount uses useState (not useRef) so each increment re-triggers this effect and
+  // schedules a fresh timeout — a ref update alone wouldn't re-run the effect after each retry.
+  const MAX_HISTORY_RETRIES = 2
+  const [historyRetryCount, setHistoryRetryCount] = useState(0)
+  // Distinguishes "retry cap exhausted" from "fresh conversation with 0 messages".
+  // A fresh conversation never hits this path — its history_loaded arrives with 0 messages
+  // and the handler sets historyLoadingComplete=true directly, leaving retryCount at 0.
+  const [historyLoadFailed, setHistoryLoadFailed] = useState(false)
   useEffect(() => {
-    if (!historyLoadingMore) return
+    if (historyLoadingComplete) {
+      if (historyRetryCount !== 0) setHistoryRetryCount(0)
+      // historyLoadFailed is intentionally NOT reset here: both setHistoryLoadFailed(true) and
+      // setHistoryLoadingComplete(true) are dispatched in the same batch when the retry cap is
+      // hit, so by the time this branch runs historyLoadFailed is already true — resetting it
+      // here would wipe the flag before the error message can render. The flag resets on remount.
+      return
+    }
+    if (!isConnected) return
 
     const timeout = setTimeout(() => {
+      if (historyRetryCount < MAX_HISTORY_RETRIES) {
+        loadHistory()
+        setHistoryRetryCount(c => c + 1)
+      } else {
+        setHistoryLoadFailed(true)
+        useStreamingConversationStore.getState().setHistoryLoadingComplete(true)
+      }
+    }, 15_000)
+
+    return () => clearTimeout(timeout)
+  }, [historyLoadingComplete, historyRetryCount, isConnected, loadHistory])
+
+  // Tracks a failed pagination load so the inline error banner can be shown.
+  // Parallel to historyLoadFailed but scoped to pagination — resets when a new
+  // load starts so the banner clears automatically on retry.
+  const [paginationLoadFailed, setPaginationLoadFailed] = useState(false)
+
+  // Safety timeout: reset historyLoadingMore if history_complete never arrives
+  // (WebSocket drop mid-flight, server error, or network timeout)
+  useEffect(() => {
+    if (!historyLoadingMore) return
+    if (paginationLoadFailed) setPaginationLoadFailed(false)
+
+    const timeout = setTimeout(() => {
+      setPaginationLoadFailed(true)
       setHistoryLoadingMore(false)
     }, 10_000)
 
     return () => clearTimeout(timeout)
-  }, [historyLoadingMore, setHistoryLoadingMore])
+  }, [historyLoadingMore, paginationLoadFailed, setHistoryLoadingMore])
 
-  // Auto-load more history when content doesn't fill the container (no scrollbar = no scroll events)
-  useEffect(() => {
-    if (!historyHasMore || historyLoadingMore || !historyNextCursor || !isConnected) return
-
-    const container = containerRef.current
-    if (!container) return
-
-    if (container.scrollHeight <= container.clientHeight) {
-      setHistoryLoadingMore(true)
-      paginationAnchorRef.current = { scrollHeight: container.scrollHeight, messageCount: allMessages.length }
-
-      if (!loadMoreHistory({ cursor: historyNextCursor, limit: 20 })) {
-        setHistoryLoadingMore(false)
-        paginationAnchorRef.current = null
-      }
-    }
-  }, [historyHasMore, historyLoadingMore, historyNextCursor, isConnected, allMessages.length, loadMoreHistory, setHistoryLoadingMore])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -476,7 +508,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   // Show loading state during app transitions to prevent showing stale messages
   const isAppTransitioning = currentAppId !== appIdFromParams
 
-  if (allMessages.length === 0 || isAppTransitioning || !historyLoadingComplete) {
+  if (allMessages.length === 0 || isAppTransitioning || (isInitialLoad && !historyLoadingComplete)) {
     const isPageLoading = loadingPhase !== 'ready'
     const showSpinner = isLoadingMessages || isPageLoading || isAppTransitioning || !historyLoadingComplete
 
@@ -540,6 +572,13 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
               </Box>
             </Box>
           </Box>
+        ) : historyLoadFailed ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="opacity-50 text-center">
+              <p>{t('builder_messages_load_failed_title', undefined, "Couldn't load conversation history")}</p>
+              <p>{t('builder_messages_load_failed_subtitle', undefined, 'You can continue - new messages will appear here')}</p>
+            </div>
+          </div>
         ) : (
           <div className="flex items-center justify-center h-full">
             <div className="opacity-50 text-center">
@@ -555,11 +594,82 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
 
   return (
     <div ref={containerRef} data-testid="chat-transcript" className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden px-2 md:px-0 pt-3 md:pt-1 gap-1" onScroll={handleScroll}>
-      {/* Loading indicator for pagination */}
+      {/* Skeleton while initial history loads — matches the empty-state skeleton treatment */}
+      {!historyLoadingComplete && (
+        <Box orientation="vertical" gap="lg" className="pt-2 pb-1">
+          <Box orientation="horizontal" gap="sm" inlineAlignChildren="start">
+            <Skeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
+            <Box orientation="vertical" gap="sm" className="flex-1">
+              <Skeleton width="280px" height="16px" />
+              <Skeleton width="320px" height="16px" />
+              <Skeleton width="240px" height="16px" />
+            </Box>
+          </Box>
+          <Box orientation="horizontal" gap="sm" inlineAlignChildren="end">
+            <div className="flex-1" />
+            <Box orientation="vertical" gap="sm" className="max-w-[80%]">
+              <Skeleton width="200px" height="16px" />
+            </Box>
+          </Box>
+          <Box orientation="horizontal" gap="sm" inlineAlignChildren="start">
+            <Skeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
+            <Box orientation="vertical" gap="sm" className="flex-1">
+              <Skeleton width="260px" height="16px" />
+              <Skeleton width="300px" height="16px" />
+            </Box>
+          </Box>
+        </Box>
+      )}
+
+      {/* Skeleton while paginating — consistent with initial-load skeleton treatment */}
       {historyLoadingMore && (
-        <div className="flex justify-center items-center py-3 gap-2">
-          <Spinner size="sm" />
-          <span className="text-sm opacity-60">{t('builder_messages_loading_older', undefined, 'Loading older messages...')}</span>
+        <Box orientation="vertical" gap="lg" className="pt-2 pb-1">
+          <Box orientation="horizontal" gap="sm" inlineAlignChildren="start">
+            <Skeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
+            <Box orientation="vertical" gap="sm" className="flex-1">
+              <Skeleton width="280px" height="16px" />
+              <Skeleton width="320px" height="16px" />
+              <Skeleton width="240px" height="16px" />
+            </Box>
+          </Box>
+          <Box orientation="horizontal" gap="sm" inlineAlignChildren="end">
+            <div className="flex-1" />
+            <Box orientation="vertical" gap="sm" className="max-w-[80%]">
+              <Skeleton width="200px" height="16px" />
+            </Box>
+          </Box>
+          <Box orientation="horizontal" gap="sm" inlineAlignChildren="start">
+            <Skeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
+            <Box orientation="vertical" gap="sm" className="flex-1">
+              <Skeleton width="260px" height="16px" />
+              <Skeleton width="300px" height="16px" />
+            </Box>
+          </Box>
+        </Box>
+      )}
+
+      {/* Inline error banner when pagination times out — existing messages stay visible below */}
+      {paginationLoadFailed && !historyLoadingMore && (
+        <div className="flex items-center justify-between px-3 py-2 text-sm opacity-60">
+          <span>{t('builder_messages_pagination_failed', undefined, 'Could not load older messages')}</span>
+          <Button
+            design="inline"
+            size="small"
+            onClick={() => {
+              if (!historyNextCursor) return
+              setHistoryLoadingMore(true)
+              paginationAnchorRef.current = {
+                scrollHeight: containerRef.current?.scrollHeight ?? 0,
+                messageCount: allMessages.length
+              }
+              if (!loadHistory({ cursor: historyNextCursor, limit: 20 })) {
+                setHistoryLoadingMore(false)
+                paginationAnchorRef.current = null
+              }
+            }}
+          >
+            {t('builder_common_try_again', undefined, 'Try again')}
+          </Button>
         </div>
       )}
 

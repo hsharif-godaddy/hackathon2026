@@ -53,7 +53,11 @@ const createStreamingStoreState = () => ({
   startStream: vi.fn(),
   setError: mockSetError,  // Use shared mock for assertions
   setRecoveryState: vi.fn(),
-  setRetryState: vi.fn()
+  setRetryState: vi.fn(),
+  clearActiveStream: vi.fn(),
+  historyLoadingComplete: false,
+  historyLoadRequested: false,
+  setHistoryLoadRequested: vi.fn()
 })
 
 let streamingStoreState = createStreamingStoreState()
@@ -300,7 +304,7 @@ describe('useStreamingWebSocket', () => {
       expect(result.current).toHaveProperty('stream');
       expect(typeof result.current.actions.send).toBe('function');
       expect(typeof result.current.actions.stop).toBe('function');
-      expect(typeof result.current.actions.loadMore).toBe('function');
+      expect(typeof result.current.actions.loadHistory).toBe('function');
     });
 
     it('should return initial connection state', async () => {
