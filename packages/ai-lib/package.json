@@ -59,7 +59,7 @@
     "@airo/ai-common": "workspace:*",
     "@airo/ai-grants": "workspace:*",
     "@airo/shared": "workspace:*",
-    "@langfuse/tracing": "^4.5.1",
+    "@langfuse/tracing": "^4.6.1",
     "ai": "^6.0.141",
     "ai-tokenizer": "^1.0.6",
     "dotenv": "^16.4.7",
