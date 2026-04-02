@@ -80,7 +80,7 @@
         "@sso/deck>react-intl": "7",
         "@ux/tailwind-intents>tailwindcss": "4",
         "ai-tokenizer>ai": "6",
-        "agentic-qa>openai>zod": "4"
+        "openai>zod": "4"
       }
     },
     "overrides": {
