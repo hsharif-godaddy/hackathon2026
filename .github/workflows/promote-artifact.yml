@@ -29,6 +29,11 @@ on:
         description: "Artifact ID to promote (numeric only, from Katana UI)"
         required: true
         type: string
+      skip_e2e:
+        description: "Skip E2E tests (used by release manager which triggers E2E separately)"
+        required: false
+        type: boolean
+        default: false
 
 run-name: "[${{ inputs.component }}] Promoting ${{ inputs.artifact_id }} to ${{ inputs.environment }} | actor: ${{ github.actor }}"
 
@@ -199,7 +204,7 @@ jobs:
 
   trigger-e2e:
     name: Trigger E2E Tests
-    if: ${{ needs.promote.result == 'success' && inputs.environment == 'prod' && inputs.component == 'app' }}
+    if: ${{ needs.promote.result == 'success' && inputs.environment == 'prod' && inputs.component == 'app' && !inputs.skip_e2e }}
     needs: [promote]
     permissions:
       actions: write # Required to trigger other workflows
