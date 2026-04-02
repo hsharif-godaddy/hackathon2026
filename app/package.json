@@ -107,7 +107,7 @@
     "@ux/flyout": "^2500.11.1",
     "@ux/growl": "^2500.7.2",
     "@ux/icon": "^2500.7.2",
-    "@ux/intents": "^2500.7.1",
+    "@ux/intents": "^2500.9.0",
     "@ux/menu": "^2500.7.2",
     "@ux/message-overlay": "^2500.11.0",
     "@ux/modal": "^2500.7.2",
