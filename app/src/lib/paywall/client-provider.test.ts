@@ -72,14 +72,10 @@ describe('ClientPaywallProvider', () => {
       expect(result).toEqual({ paywall: true, markets: true, bypassPublishLimit: false });
       expect(appFetch).toHaveBeenCalledTimes(3);
       expect(appFetch).toHaveBeenCalledWith(
-        'https://bff.pcx.godaddy.com/api/config/feature/appbuilder-airoplus-paywall?app=airo-app-builder',
-        {},
-        { setAuthState: false }
+        'https://bff.pcx.godaddy.com/api/config/feature/appbuilder-airoplus-paywall?app=airo-app-builder'
       );
       expect(appFetch).toHaveBeenCalledWith(
-        'https://bff.pcx.godaddy.com/api/config/feature/appbuilder-airoplus-markets?app=airo-app-builder',
-        {},
-        { setAuthState: false }
+        'https://bff.pcx.godaddy.com/api/config/feature/appbuilder-airoplus-markets?app=airo-app-builder'
       );
     });
 
@@ -228,7 +224,7 @@ describe('ClientPaywallProvider', () => {
       );
     });
 
-    it('should handle 401 unauthorized errors', async () => {
+    it('should handle 401 unauthorized errors from markets endpoint', async () => {
       mockSwitchboardFlags({
         paywall: { ok: true, setting: true },
         markets: { ok: false, status: 401 },
@@ -238,9 +234,40 @@ describe('ClientPaywallProvider', () => {
 
       const provider = new ClientPaywallProvider();
 
+      // 401s throw "Authentication required" - appFetch separately sets needsReauth for AuthBoundary
       await expect(provider.checkSwitchboardFlags('godaddy.com')).rejects.toThrow(
-        'Switchboard flag fetch failed: appbuilder-airoplus-markets (status: 401)'
+        'Authentication required'
       );
+    });
+
+    it('should handle 401 unauthorized errors from paywall endpoint', async () => {
+      mockSwitchboardFlags({
+        paywall: { ok: false, status: 401 },
+        markets: { ok: true, setting: true },
+
+        bypass: { ok: true, setting: false },
+      });
+
+      const provider = new ClientPaywallProvider();
+
+      await expect(provider.checkSwitchboardFlags('godaddy.com')).rejects.toThrow(
+        'Authentication required'
+      );
+    });
+
+    it('should treat bypass 401 as failure and return false (optional flag)', async () => {
+      mockSwitchboardFlags({
+        paywall: { ok: true, setting: true },
+        markets: { ok: true, setting: true },
+
+        bypass: { ok: false, status: 401 },
+      });
+
+      const provider = new ClientPaywallProvider();
+      const result = await provider.checkSwitchboardFlags('godaddy.com');
+
+      // Bypass fails gracefully to false, other flags succeed
+      expect(result).toEqual({ paywall: true, markets: true, bypassPublishLimit: false });
     });
 
     it('should handle bypass flag fetch failure with fail-closed default', async () => {

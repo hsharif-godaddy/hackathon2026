@@ -56,12 +56,22 @@ export class ClientPaywallProvider implements PaywallDataProvider {
     const bypassFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/app-builder-bypass-publish-limit?app=${SWITCHBOARD_APP}`;
 
     const [paywallResponse, marketsResponse, bypassResponse] = await Promise.all([
-      appFetch(paywallFlagUrl, {}, { setAuthState: false }),
-      appFetch(marketsFlagUrl, {}, { setAuthState: false }),
+      appFetch(paywallFlagUrl),
+      appFetch(marketsFlagUrl),
       appFetch(bypassFlagUrl, {}, { setAuthState: false }).catch(() => null),
     ]);
 
-    // Fail closed: Throw error if flag fetch fails
+    // Handle 401 separately: appFetch already set needsReauth, AuthBoundary will prompt login.
+    // Throw a typed error so callers can distinguish auth failures from service failures.
+    if (paywallResponse.status === 401 || marketsResponse.status === 401) {
+      logger.warn('paywall.client-provider.flag-fetch.auth-required', {
+        paywallStatus: paywallResponse.status,
+        marketsStatus: marketsResponse.status,
+      });
+      throw new Error('Authentication required');
+    }
+
+    // Fail closed: Throw error if flag fetch fails for non-auth reasons
     // This ensures we show "service unavailable" rather than "you need to pay"
     // The error will be caught by core.ts and return proper "unable to verify" message
     if (!paywallResponse.ok) {
