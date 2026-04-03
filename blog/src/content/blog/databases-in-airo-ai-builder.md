@@ -3,6 +3,7 @@ title: "Everything You Can Do with Databases in Airo AI Builder | No-Code Guide"
 description: "Learn how to use the built-in database in Airo AI Builder. Store customer data, manage bookings, track inventory, build admin dashboards, and more. No SQL, no external tools, no coding."
 pubDate: 2026-04-02
 category: "How-To"
+heroImage: "/images/image_ieoe31ieoe31ieoe.png"
 ---
 
 ## Your App Needs a Database. You Don't Need to Know SQL.

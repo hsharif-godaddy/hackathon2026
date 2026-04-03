@@ -3,6 +3,7 @@ title: "Everything New in Airo AI Builder: March 2026 | Full Changelog"
 description: "A full rundown of what shipped in Airo AI Builder during March 2026: redesigned editor, built-in analytics, new pricing plans, smarter AI agent, faster builds, and more."
 pubDate: 2026-04-02
 category: "How-To"
+heroImage: "/images/image_9p9jrp9p9jrp9p9j.png"
 ---
 
 ## TL;DR

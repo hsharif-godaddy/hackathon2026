@@ -31,6 +31,7 @@ messages-*
 test-results/
 playwright-report/
 *.png
+!blog/public/images/*.png
 *.webm
 *.mp4
 app/test-results/

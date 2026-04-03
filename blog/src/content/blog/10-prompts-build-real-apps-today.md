@@ -3,6 +3,7 @@ title: "10 Prompts You Can Copy to Build Real Apps Today | Airo AI Builder"
 description: "Ready-to-use prompts for Airo AI Builder. Copy, paste, and customize these 10 prompts to build a restaurant site, booking app, portfolio, online store, client dashboard, and more. No coding needed."
 pubDate: 2026-04-02
 category: "How-To"
+heroImage: "/images/image_1sufzt1sufzt1suf.png"
 ---
 
 # 10 Prompts You Can Copy to Build Real Apps Today

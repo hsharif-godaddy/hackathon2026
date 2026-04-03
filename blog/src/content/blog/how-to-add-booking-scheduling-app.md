@@ -3,6 +3,7 @@ title: "How to Add Booking and Scheduling to Your App | No-Code Guide"
 description: "Learn how to build a booking and scheduling system with no coding using Airo AI Builder. Step-by-step prompts for appointment slots, calendar views, confirmations, and admin management."
 pubDate: 2026-04-02
 category: "How-To"
+heroImage: "/images/image_5fan4r5fan4r5fan.png"
 ---
 
 # How to Add Booking and Scheduling to Your App with Airo AI Builder
