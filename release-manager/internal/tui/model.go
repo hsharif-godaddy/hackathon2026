@@ -61,6 +61,7 @@ type Model struct {
 	dryRun      bool
 	autoApprove bool
 	noSlack     bool
+	noRelease   bool
 	forceLock   bool
 	branch      string
 	ctx         context.Context
@@ -107,7 +108,7 @@ type Model struct {
 	err             error
 }
 
-func NewModel(cfg *config.Config, runner gh.Runner, dryRun bool, branch string, autoApprove bool, noSlack bool, forceLock bool, failStages []string) Model {
+func NewModel(cfg *config.Config, runner gh.Runner, dryRun bool, branch string, autoApprove bool, noSlack bool, noRelease bool, forceLock bool, failStages []string) Model {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	var operator string
@@ -143,6 +144,7 @@ func NewModel(cfg *config.Config, runner gh.Runner, dryRun bool, branch string, 
 		dryRun:      dryRun,
 		autoApprove: autoApprove,
 		noSlack:     noSlack,
+		noRelease:   noRelease,
 		forceLock:   forceLock,
 		branch:      branch,
 		ctx:         ctx,

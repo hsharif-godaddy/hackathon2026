@@ -157,6 +157,34 @@ func TestPostCancelledContext(t *testing.T) {
 	n.Post(ctx, "test")
 }
 
+func TestPermalinkWithTimestamp(t *testing.T) {
+	n := New("xoxb-test-token", "C09AR7XDLDT")
+	n.ts = "1775231376.691499"
+
+	got := n.Permalink()
+	want := "https://godaddy.slack.com/archives/C09AR7XDLDT/p1775231376691499"
+	if got != want {
+		t.Errorf("Permalink() = %q, want %q", got, want)
+	}
+}
+
+func TestPermalinkNoTimestamp(t *testing.T) {
+	n := New("xoxb-test-token", "C12345")
+
+	got := n.Permalink()
+	if got != "" {
+		t.Errorf("Permalink() = %q, want empty string when no message posted", got)
+	}
+}
+
+func TestPermalinkNilNotifier(t *testing.T) {
+	var n *Notifier
+	got := n.Permalink()
+	if got != "" {
+		t.Errorf("Permalink() on nil = %q, want empty string", got)
+	}
+}
+
 func TestFetchCredentialsInvalidSecret(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

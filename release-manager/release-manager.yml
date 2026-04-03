@@ -6,6 +6,10 @@ lock:
   ssm_parameter: /airo/release-manager/deploy-lock
   aws_profile: airobuild-dev-private-sso
 
+release:
+  repo: gdcorp-partners/airo-app-builder
+  enabled: true
+
 pipeline:
   environments:
     test:

@@ -50,6 +50,7 @@ func TestDryRunnerDelegatesReadOps(t *testing.T) {
 	statusCalled := false
 	logsCalled := false
 	listCalled := false
+	listReleasesCalled := false
 
 	real := &mockRunner{
 		versionFn: func(_ context.Context) (string, error) {
@@ -115,6 +116,35 @@ func TestDryRunnerDelegatesReadOps(t *testing.T) {
 	}
 	if !compareCalled {
 		t.Error("Compare not delegated")
+	}
+
+	real.listReleasesFn = func(_ context.Context, _ string, _ int) ([]ReleaseEntry, error) {
+		listReleasesCalled = true
+		return []ReleaseEntry{{TagName: "v2026.04.03.1"}}, nil
+	}
+	dry.ListReleases(ctx, "org/repo", 10)
+	if !listReleasesCalled {
+		t.Error("ListReleases not delegated")
+	}
+}
+
+func TestDryRunnerCreateReleaseDraftNotDelegated(t *testing.T) {
+	realCalled := false
+	real := &mockRunner{
+		createReleaseFn: func(_ context.Context, _, _, _, _, _ string) (string, error) {
+			realCalled = true
+			return "", nil
+		},
+	}
+
+	dry := &DryRunner{Real: real}
+	// DryRunner.CreateRelease calls execute directly (with --draft),
+	// not Real.CreateRelease. The command will fail because org/repo
+	// doesn't exist, but Real should still not be called.
+	_, _ = dry.CreateRelease(context.Background(), "org/repo", "v2026.04.03.1", "abc123", "v2026.04.03.1", "body")
+
+	if realCalled {
+		t.Error("DryRunner.CreateRelease should not call Real.CreateRelease")
 	}
 }
 

@@ -14,6 +14,7 @@ type Config struct {
 	Pipeline PipelineConfig `yaml:"pipeline"`
 	Slack    SlackConfig    `yaml:"slack"`
 	Lock     LockConfig     `yaml:"lock"`
+	Release  ReleaseConfig  `yaml:"release"`
 }
 
 type SlackConfig struct {
@@ -24,6 +25,11 @@ type SlackConfig struct {
 type LockConfig struct {
 	SSMParameter string `yaml:"ssm_parameter"`
 	AWSProfile   string `yaml:"aws_profile"`
+}
+
+type ReleaseConfig struct {
+	Repo    string `yaml:"repo"`
+	Enabled bool   `yaml:"enabled"`
 }
 
 // DeployWorkflow represents a unique repo+workflow pair for active-run checking.
@@ -238,6 +244,11 @@ func (c *Config) Repos() []string {
 			seen[s.Repo] = true
 			repos = append(repos, s.Repo)
 		}
+	}
+
+	if r := c.Release.Repo; r != "" && c.Release.Enabled && !seen[r] {
+		seen[r] = true
+		repos = append(repos, r)
 	}
 
 	return repos

@@ -40,29 +40,61 @@ func (m Model) slackUpdateCmd(finished bool) tea.Cmd {
 	}
 }
 
-// exitCleanupCmd runs final Slack update and lock release in a background
-// goroutine, then sends exitCleanupDoneMsg to trigger tea.Quit. This avoids
-// blocking the Bubble Tea event loop during cleanup I/O.
-func (m Model) exitCleanupCmd(sendSlack bool) tea.Cmd {
+// exitCleanupCmd runs final Slack update, optional GitHub release creation,
+// and lock release in a background goroutine, then sends exitCleanupDoneMsg
+// to trigger tea.Quit. This avoids blocking the Bubble Tea event loop
+// during cleanup I/O.
+func (m Model) exitCleanupCmd(sendSlack bool, createRelease bool) tea.Cmd {
 	n := m.slack
+	p := m.pipeline
 	lockCfg := m.config.Lock
 	lockHeld := m.lockHeld
+	releaseCfg := m.config.Release
+
+	wantRelease := createRelease && !m.noRelease && releaseCfg.Enabled && releaseCfg.Repo != ""
 
 	var slackText string
-	if sendSlack && n != nil && len(m.pipeline.Stages()) > 0 {
+	if ((sendSlack && n != nil) || wantRelease) && len(p.Stages()) > 0 {
 		slackText = m.slackMessage(true)
 	}
 
-	if slackText == "" && (!lockHeld || lockCfg.SSMParameter == "") {
+	if slackText == "" && !wantRelease && (!lockHeld || lockCfg.SSMParameter == "") {
 		return tea.Quit
 	}
 
 	return func() tea.Msg {
-		if slackText != "" {
-			n.Update(context.Background(), slackText)
+		ctx := context.Background()
+
+		if wantRelease && slackText == "" {
+			logger.Log("release.skip: no message content available for release body")
+		}
+		if wantRelease && slackText != "" {
+			tag, err := p.GenerateReleaseTag(ctx)
+			if err != nil {
+				logger.Log("release.error: generating tag: %s", err)
+			} else {
+				releaseText := slackText
+				if i := strings.Index(releaseText, "\n"); i >= 0 {
+					releaseText = strings.TrimLeft(releaseText[i+1:], "\n")
+				}
+				body := pipeline.MrkdwnToMarkdown(releaseText)
+				if permalink := n.Permalink(); permalink != "" {
+					body += fmt.Sprintf("\n\n---\n[Slack thread](%s)", permalink)
+				}
+				releaseURL, err := p.CreateRelease(ctx, tag, tag, body)
+				if err != nil {
+					logger.Log("release.error: creating release: %s", err)
+				} else {
+					slackText += fmt.Sprintf("\n\n:label: <%s|%s>", releaseURL, tag)
+				}
+			}
+		}
+
+		if slackText != "" && n != nil {
+			n.Update(ctx, slackText)
 		}
 		if lockHeld && lockCfg.SSMParameter != "" {
-			lock.Release(context.Background(), lockCfg.SSMParameter, lockCfg.AWSProfile)
+			lock.Release(ctx, lockCfg.SSMParameter, lockCfg.AWSProfile)
 		}
 		return exitCleanupDoneMsg{}
 	}
@@ -84,7 +116,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.phase = phaseAborted
 			m.statusMessage = "Aborted by user"
 			logger.Log("USER: aborted via %s", msg.String())
-			return m, m.exitCleanupCmd(true)
+			return m, m.exitCleanupCmd(true, false)
 		}
 
 	case slackCredentialsMsg:
@@ -169,7 +201,7 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 			m.statusMessage = "Aborted: rollback values not confirmed"
 			m.form = nil
 			logger.Log("snapshot: user declined rollback values — aborting")
-			return m, m.exitCleanupCmd(false)
+			return m, m.exitCleanupCmd(false, false)
 		}
 		m.form = nil
 		logger.Log("snapshot: user confirmed rollback values")
@@ -182,7 +214,7 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 			m.statusMessage = "Aborted: deployment declined"
 			m.form = nil
 			logger.Log("release-notes: user declined deployment — aborting")
-			return m, m.exitCleanupCmd(false)
+			return m, m.exitCleanupCmd(false, false)
 		}
 		m.form = nil
 		m.phase = phaseRunning
@@ -198,7 +230,7 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 			m.statusMessage = "Aborted: production deploy declined"
 			m.form = nil
 			logger.Log("gate: user declined deploy to %s — aborting", m.envOrder[m.currentEnvIdx+1])
-			return m, m.exitCleanupCmd(true)
+			return m, m.exitCleanupCmd(true, false)
 		}
 		m.form = nil
 		m.currentEnvIdx++
@@ -267,7 +299,7 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 		case "abort":
 			m.phase = phaseAborted
 			m.statusMessage = "Aborted by user"
-			return m, m.exitCleanupCmd(true)
+			return m, m.exitCleanupCmd(true, false)
 		}
 
 	case phaseComplete:
@@ -281,7 +313,7 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(
 			printAbove(successMessageStyle.Render(fmt.Sprintf("Release complete! (%s)", m.elapsed()))),
-			m.exitCleanupCmd(true),
+			m.exitCleanupCmd(true, true),
 		)
 
 	case phaseRollbackConfirm:
@@ -435,7 +467,7 @@ func (m Model) handleSnapshotResult(msg snapshotResultMsg) (tea.Model, tea.Cmd) 
 		logger.Log("snapshot: FAILED — %s", msg.err)
 		return m, tea.Batch(
 			printAbove(failedMessageStyle.Render(m.statusMessage)),
-			m.exitCleanupCmd(false),
+			m.exitCleanupCmd(false, false),
 		)
 	}
 
@@ -533,7 +565,7 @@ func (m Model) advanceEnvironment() (tea.Model, tea.Cmd) {
 		if m.autoApprove {
 			return m, tea.Batch(
 				printAbove(successMessageStyle.Render(fmt.Sprintf("Release complete! (%s)", m.elapsed()))),
-				m.exitCleanupCmd(true),
+				m.exitCleanupCmd(true, true),
 			)
 		}
 		cmd := m.buildCompleteForm()
@@ -902,7 +934,7 @@ func (m Model) handleRollbackDone(msg rollbackDoneMsg) (tea.Model, tea.Cmd) {
 		logger.Log("rollback: FAILED — rollback had errors")
 		return m, tea.Batch(
 			printAbove(failedMessageStyle.Render(m.statusMessage)),
-			m.exitCleanupCmd(true),
+			m.exitCleanupCmd(true, false),
 		)
 	}
 	m.phase = phaseComplete
@@ -910,7 +942,7 @@ func (m Model) handleRollbackDone(msg rollbackDoneMsg) (tea.Model, tea.Cmd) {
 	logger.Log("rollback: completed successfully")
 	return m, tea.Batch(
 		printAbove(successMessageStyle.Render(fmt.Sprintf("Rollback complete! (%s)", m.elapsed()))),
-		m.exitCleanupCmd(true),
+		m.exitCleanupCmd(true, false),
 	)
 }
 

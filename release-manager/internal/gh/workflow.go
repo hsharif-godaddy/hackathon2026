@@ -53,6 +53,11 @@ type RunListEntry struct {
 	CreatedAt  string `json:"createdAt"`
 }
 
+// ReleaseEntry represents an entry from gh release list.
+type ReleaseEntry struct {
+	TagName string `json:"tagName"`
+}
+
 // Runner defines the interface for executing gh CLI commands.
 // The real implementation calls gh, while dry-run provides read-only behavior.
 type Runner interface {
@@ -61,6 +66,9 @@ type Runner interface {
 	Logs(ctx context.Context, repo string, runID int64) (string, error)
 	ListRuns(ctx context.Context, repo, workflow string, status string, limit int) ([]RunListEntry, error)
 	Compare(ctx context.Context, repo, base, head string) (*CompareResult, error)
+	ListReleases(ctx context.Context, repo string, limit int) ([]ReleaseEntry, error)
+	CreateRelease(ctx context.Context, repo, tag, target, title, body string) (url string, err error)
+	ResolveCommit(ctx context.Context, repo, ref string) (fullSHA string, err error)
 	Version(ctx context.Context) (string, error)
 	AuthStatus(ctx context.Context) error
 	CheckRepoAccess(ctx context.Context, repo string) error
@@ -176,6 +184,46 @@ func (r *LiveRunner) CheckRepoAccess(ctx context.Context, repo string) error {
 		return fmt.Errorf("no access to %s: %w", repo, err)
 	}
 	return nil
+}
+
+func (r *LiveRunner) ListReleases(ctx context.Context, repo string, limit int) ([]ReleaseEntry, error) {
+	output, err := execute(ctx, "release", "list",
+		"--repo", repo,
+		"--json", "tagName",
+		"-L", fmt.Sprintf("%d", limit),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("listing releases for %s: %w", repo, err)
+	}
+
+	var entries []ReleaseEntry
+	if err := json.Unmarshal([]byte(output), &entries); err != nil {
+		return nil, fmt.Errorf("parsing release list: %w", err)
+	}
+	return entries, nil
+}
+
+func (r *LiveRunner) CreateRelease(ctx context.Context, repo, tag, target, title, body string) (string, error) {
+	args := []string{"release", "create", tag,
+		"--repo", repo,
+		"--target", target,
+		"--title", title,
+		"--notes", body,
+	}
+
+	output, err := execute(ctx, args...)
+	if err != nil {
+		return "", fmt.Errorf("creating release %s in %s: %w", tag, repo, err)
+	}
+	return strings.TrimSpace(output), nil
+}
+
+func (r *LiveRunner) ResolveCommit(ctx context.Context, repo, ref string) (string, error) {
+	output, err := execute(ctx, "api", fmt.Sprintf("repos/%s/commits/%s", repo, ref), "--jq", ".sha")
+	if err != nil {
+		return "", fmt.Errorf("resolving commit %s in %s: %w", ref, repo, err)
+	}
+	return strings.TrimSpace(output), nil
 }
 
 func execute(ctx context.Context, args ...string) (string, error) {

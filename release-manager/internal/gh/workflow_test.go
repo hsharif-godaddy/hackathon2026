@@ -259,14 +259,17 @@ func TestParseRunURL(t *testing.T) {
 
 // mockRunner implements Runner for testing WaitForCompletion and DryRunner.
 type mockRunner struct {
-	triggerFn       func(ctx context.Context, repo, workflow, ref string, inputs map[string]string) (string, error)
-	statusFn        func(ctx context.Context, repo string, runID int64) (*RunStatus, error)
-	logsFn          func(ctx context.Context, repo string, runID int64) (string, error)
-	listRunsFn      func(ctx context.Context, repo, workflow, status string, limit int) ([]RunListEntry, error)
-	versionFn       func(ctx context.Context) (string, error)
-	authStatusFn    func(ctx context.Context) error
-	checkRepoFn     func(ctx context.Context, repo string) error
-	compareFn       func(ctx context.Context, repo, base, head string) (*CompareResult, error)
+	triggerFn        func(ctx context.Context, repo, workflow, ref string, inputs map[string]string) (string, error)
+	statusFn         func(ctx context.Context, repo string, runID int64) (*RunStatus, error)
+	logsFn           func(ctx context.Context, repo string, runID int64) (string, error)
+	listRunsFn       func(ctx context.Context, repo, workflow, status string, limit int) ([]RunListEntry, error)
+	versionFn        func(ctx context.Context) (string, error)
+	authStatusFn     func(ctx context.Context) error
+	checkRepoFn      func(ctx context.Context, repo string) error
+	compareFn        func(ctx context.Context, repo, base, head string) (*CompareResult, error)
+	listReleasesFn    func(ctx context.Context, repo string, limit int) ([]ReleaseEntry, error)
+	createReleaseFn   func(ctx context.Context, repo, tag, target, title, body string) (string, error)
+	resolveCommitFn   func(ctx context.Context, repo, ref string) (string, error)
 }
 
 func (m *mockRunner) Trigger(ctx context.Context, repo, workflow, ref string, inputs map[string]string) (string, error) {
@@ -323,6 +326,27 @@ func (m *mockRunner) CheckRepoAccess(ctx context.Context, repo string) error {
 		return m.checkRepoFn(ctx, repo)
 	}
 	return nil
+}
+
+func (m *mockRunner) ListReleases(ctx context.Context, repo string, limit int) ([]ReleaseEntry, error) {
+	if m.listReleasesFn != nil {
+		return m.listReleasesFn(ctx, repo, limit)
+	}
+	return nil, nil
+}
+
+func (m *mockRunner) CreateRelease(ctx context.Context, repo, tag, target, title, body string) (string, error) {
+	if m.createReleaseFn != nil {
+		return m.createReleaseFn(ctx, repo, tag, target, title, body)
+	}
+	return "", nil
+}
+
+func (m *mockRunner) ResolveCommit(ctx context.Context, repo, ref string) (string, error) {
+	if m.resolveCommitFn != nil {
+		return m.resolveCommitFn(ctx, repo, ref)
+	}
+	return ref + "0000000000000000000000000000000000", nil
 }
 
 func TestWaitForCompletionImmediate(t *testing.T) {

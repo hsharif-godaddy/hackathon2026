@@ -166,6 +166,21 @@ func (n *Notifier) Update(ctx context.Context, text string) {
 	logger.Log("slack.updated: ts=%s", ts)
 }
 
+// Permalink returns a direct link to the Slack message, or empty if no
+// message has been posted yet.
+func (n *Notifier) Permalink() string {
+	if n == nil {
+		return ""
+	}
+	n.mu.Lock()
+	ts := n.ts
+	n.mu.Unlock()
+	if ts == "" {
+		return ""
+	}
+	return fmt.Sprintf("https://godaddy.slack.com/archives/%s/p%s", n.channelID, strings.ReplaceAll(ts, ".", ""))
+}
+
 func (n *Notifier) call(ctx context.Context, url string, body []byte) (*apiResponse, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {

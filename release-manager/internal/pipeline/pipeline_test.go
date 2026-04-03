@@ -13,14 +13,17 @@ import (
 
 // mockRunner implements gh.Runner for testing.
 type mockRunner struct {
-	triggerFn  func(ctx context.Context, repo, workflow, ref string, inputs map[string]string) (string, error)
-	statusFn   func(ctx context.Context, repo string, runID int64) (*gh.RunStatus, error)
-	logsFn     func(ctx context.Context, repo string, runID int64) (string, error)
-	listRunsFn func(ctx context.Context, repo, workflow, status string, limit int) ([]gh.RunListEntry, error)
-	compareFn  func(ctx context.Context, repo, base, head string) (*gh.CompareResult, error)
-	versionFn  func(ctx context.Context) (string, error)
-	authFn     func(ctx context.Context) error
-	repoFn     func(ctx context.Context, repo string) error
+	triggerFn        func(ctx context.Context, repo, workflow, ref string, inputs map[string]string) (string, error)
+	statusFn         func(ctx context.Context, repo string, runID int64) (*gh.RunStatus, error)
+	logsFn           func(ctx context.Context, repo string, runID int64) (string, error)
+	listRunsFn       func(ctx context.Context, repo, workflow, status string, limit int) ([]gh.RunListEntry, error)
+	compareFn        func(ctx context.Context, repo, base, head string) (*gh.CompareResult, error)
+	versionFn        func(ctx context.Context) (string, error)
+	authFn           func(ctx context.Context) error
+	repoFn           func(ctx context.Context, repo string) error
+	listReleasesFn    func(ctx context.Context, repo string, limit int) ([]gh.ReleaseEntry, error)
+	createReleaseFn   func(ctx context.Context, repo, tag, target, title, body string) (string, error)
+	resolveCommitFn   func(ctx context.Context, repo, ref string) (string, error)
 }
 
 func (m *mockRunner) Trigger(ctx context.Context, repo, workflow, ref string, inputs map[string]string) (string, error) {
@@ -77,6 +80,27 @@ func (m *mockRunner) CheckRepoAccess(ctx context.Context, repo string) error {
 		return m.repoFn(ctx, repo)
 	}
 	return nil
+}
+
+func (m *mockRunner) ListReleases(ctx context.Context, repo string, limit int) ([]gh.ReleaseEntry, error) {
+	if m.listReleasesFn != nil {
+		return m.listReleasesFn(ctx, repo, limit)
+	}
+	return nil, nil
+}
+
+func (m *mockRunner) CreateRelease(ctx context.Context, repo, tag, target, title, body string) (string, error) {
+	if m.createReleaseFn != nil {
+		return m.createReleaseFn(ctx, repo, tag, target, title, body)
+	}
+	return "https://github.com/org/repo/releases/tag/" + tag, nil
+}
+
+func (m *mockRunner) ResolveCommit(ctx context.Context, repo, ref string) (string, error) {
+	if m.resolveCommitFn != nil {
+		return m.resolveCommitFn(ctx, repo, ref)
+	}
+	return ref, nil
 }
 
 func testConfig() *config.Config {

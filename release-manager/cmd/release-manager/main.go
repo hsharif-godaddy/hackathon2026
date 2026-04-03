@@ -23,6 +23,7 @@ func main() {
 	flag.BoolVar(dryRun, "n", false, "Shorthand for --dry-run")
 	autoApprove := flag.Bool("auto-approve", false, "Skip interactive confirmations (combine with --dry-run)")
 	noSlack := flag.Bool("no-slack", false, "Disable Slack notifications")
+	noRelease := flag.Bool("no-release", false, "Skip GitHub release creation on successful deploy")
 	forceLock := flag.Bool("force-lock", false, "Break through an existing deploy lock")
 	branch := flag.String("branch", "main", "Branch to build from (resolves {{branch}} templates)")
 	flag.Var(&failStages, "fail-stage", "Simulate failure for a stage ID in dry-run (repeatable)")
@@ -67,7 +68,7 @@ func main() {
 		runner = &gh.DryRunner{Real: &gh.LiveRunner{}}
 	}
 
-	model := tui.NewModel(cfg, runner, *dryRun, *branch, *autoApprove, *noSlack, *forceLock, failStages)
+	model := tui.NewModel(cfg, runner, *dryRun, *branch, *autoApprove, *noSlack, *noRelease, *forceLock, failStages)
 	p := tea.NewProgram(model)
 	if _, err := p.Run(); err != nil {
 		logger.Log("program: error: %v", err)
