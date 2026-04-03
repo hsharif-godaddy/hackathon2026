@@ -4,6 +4,7 @@ import { INELIGIBLE_COHORT } from '@/config/experiments'
 import { useHivemind } from '@/hooks/useHivemind'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logActionEvent, logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
+import { getVisitorIdFromCookie } from '@/utils/visitor-id'
 
 export interface UseAnalyticsOptions {
   experimentId: string
@@ -28,10 +29,12 @@ export function useAnalytics({ experimentId, baseData = {} }: UseAnalyticsOption
 
   const logAnalytics = useCallback(
     (event: string, data: Record<string, unknown> = {}, options?: AnalyticsEidOptions) => {
+      const visitorId = getVisitorIdFromCookie()
       shipAnalyticsLog(event, {
         ...baseDataRef.current,
         ...data,
         cohort: cohortValue,
+        ...(visitorId !== undefined ? { visitorId } : {}),
       })
 
       if (!options?.kind) {

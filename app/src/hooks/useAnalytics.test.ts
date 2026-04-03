@@ -1,8 +1,8 @@
-import '@testing-library/jest-dom';
-
 /**
  * @vitest-environment jsdom
  */
+import '@testing-library/jest-dom';
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EXPERIMENT_IDS, INELIGIBLE_COHORT } from '@/config/experiments';
@@ -21,9 +21,14 @@ vi.mock('@/hooks/useHivemind', () => ({
   useHivemind: (...args: unknown[]) => mockUseHivemind(...args),
 }));
 
+function clearVisitorCookie() {
+  document.cookie = 'visitor=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
+}
+
 describe('useAnalytics', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearVisitorCookie();
   });
 
   it('sends ineligible when Hivemind has no cohort', function noCohort() {
@@ -75,5 +80,18 @@ describe('useAnalytics', () => {
       useAnalytics({ experimentId: EXPERIMENT_IDS.homepageEngagement }),
     );
     expect(result.current.cohort).toBe('original');
+  });
+
+  it('includes visitorId in ship log when visitor cookie has vid', function shipVisitorId() {
+    document.cookie = 'visitor=vid%3Dship-vid-id; path=/';
+    mockUseHivemind.mockReturnValue({ cohort: 'light_homepage', data: {}, experiment: undefined });
+    const { result } = renderHookWithProviders(() =>
+      useAnalytics({ experimentId: EXPERIMENT_IDS.homepageEngagement }),
+    );
+    result.current.logAnalytics('homepage.view', {});
+    expect(shipAnalyticsLog).toHaveBeenCalledWith('homepage.view', {
+      cohort: 'light_homepage',
+      visitorId: 'ship-vid-id',
+    });
   });
 });

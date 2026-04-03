@@ -1,8 +1,8 @@
-import '@testing-library/jest-dom';
-
 /**
  * @vitest-environment jsdom
  */
+import '@testing-library/jest-dom';
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
@@ -201,6 +201,7 @@ describe('Home Page', () => {
 
     it('logs submit_attempt and redirect.develop on quick-create success', async function redirectSuccess() {
       vi.mocked(appFetch).mockResolvedValue(mockResponse({ id: 'site-1', type: 'app' }, 200) as any);
+      const { logImpressionEvent } = await import('@/utils/instrumentation');
 
       renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />);
       await typePromptAndSubmit('Build me an app');
@@ -223,6 +224,9 @@ describe('Home Page', () => {
             isAuthenticated: true,
           }),
         );
+        expect(logImpressionEvent).toHaveBeenCalledWith('homepage.redirect.develop', {
+          cohort: 'test-cohort',
+        });
       });
     });
 

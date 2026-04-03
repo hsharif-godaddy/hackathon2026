@@ -434,7 +434,14 @@ export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
         idType: siteData.type,
         redirectUrl
       })
-      logAnalytics('homepage.redirect.develop', { submitSource })
+      logAnalytics(
+        'homepage.redirect.develop',
+        { submitSource },
+        {
+          kind: 'impression',
+          eid: 'homepage.redirect.develop',
+        },
+      )
 
       pendingHomepageErrorRef.current = null
       router.push(redirectUrl)
