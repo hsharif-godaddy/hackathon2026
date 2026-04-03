@@ -1,6 +1,5 @@
 'use client'
 
-import Button from '@ux/button'
 import AlertIcon from '@ux/icon/alert'
 import Modal from '@ux/modal'
 import text from '@ux/text'
@@ -9,29 +8,29 @@ import { useTranslations } from '@/hooks/useTranslations'
 
 interface PaywallErrorModalProps {
   onClose: () => void
-  onRetry?: () => void
 }
 
 /**
- * Error modal shown when CDS fails to load
+ * Error modal shown when CDS/UPP fails to load
  */
-export function PaywallErrorModal({ onClose, onRetry }: PaywallErrorModalProps) {
+export function PaywallErrorModal({ onClose }: PaywallErrorModalProps) {
   const t = useTranslations()
 
   return (
     <Modal
-      title={t('builder_common_something_went_wrong')}
+      title=""
       onClose={onClose}
       centered
+      aria-labelledby="paywall-error-title"
     >
-      <div className="flex flex-col items-center gap-3">
-        <AlertIcon className="w-8 h-8 text-intents-ux-critical-textColor" />
-        <text.p>{t('builder_paywall_load_error')}</text.p>
-        {onRetry && (
-          <Button design="primary" size="md" onClick={onRetry}>
-            {t('builder_common_try_again', undefined, 'Try again')}
-          </Button>
-        )}
+      <div className="flex flex-col items-center gap-2 -mt-6">
+        <AlertIcon className="w-10 h-10" />
+        <text.h2 id="paywall-error-title" as="title" size={2} className="text-center">
+          {t('builder_paywall_error_title')}
+        </text.h2>
+        <text.p className="text-center">
+          {t('builder_paywall_error_description')}
+        </text.p>
       </div>
     </Modal>
   )

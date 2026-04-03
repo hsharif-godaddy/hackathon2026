@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { useAuth } from '@/hooks/useAuth'
@@ -15,7 +15,9 @@ import { logImpressionEvent } from '@/utils/instrumentation'
 import { ComponentLoader } from './cdsLoader'
 import { UPGRADE_DEPS, UPGRADE_PRODUCT_IDS } from './constants'
 import { PaywallErrorFallback } from './PaywallErrorFallback'
-import { PaywallLoadingModal } from './PaywallLoadingModal'
+import { PaywallLoadingModal, PaywallLoadingModalVariant } from './PaywallLoadingModal'
+
+const COMPONENT_NAME = 'CreditsUpgradeContainer'
 
 interface CreditsUpgradeContainerProps {
   onClose: () => void
@@ -55,6 +57,19 @@ const CreditsUpgradeContainer = ({
   const { getUserInfo } = useAuth()
   const shopperId = getUserInfo()?.shopperId
   const { handlePurchaseSuccess, invalidateQueries } = useCreditPurchase()
+  const hasLoggedImpressionRef = useRef(false)
+
+  useEffect(() => {
+    if (!hasLoggedImpressionRef.current) {
+      hasLoggedImpressionRef.current = true
+      shipAnalyticsLog('paywall.credits.modal.shown', {
+        source,
+        productId: UPGRADE_PRODUCT_IDS.AIRO_BUILDER_CREDITS,
+        entitlementId,
+        component: COMPONENT_NAME,
+      })
+    }
+  }, [source, entitlementId])
 
   const handleSuccess = useCallback(async (basketId: string, details: { unitsAdded: number; newTotalBalance: number }) => {
     logImpressionEvent('credits.purchase.success')()
@@ -96,7 +111,8 @@ const CreditsUpgradeContainer = ({
       source,
       productId: UPGRADE_PRODUCT_IDS.AIRO_BUILDER_CREDITS,
       error: error.message,
-      component: 'CreditsUpgradeContainer',
+      errorType: 'load',
+      component: COMPONENT_NAME,
     })
     onError?.(error)
   }, [source, onError])
@@ -107,8 +123,23 @@ const CreditsUpgradeContainer = ({
   }, [onClose])
 
   const loadingComponent = useMemo(() => (
-    <PaywallLoadingModal onClose={handleClose} />
-  ), [handleClose])
+    <PaywallLoadingModal
+      onClose={handleClose}
+      variant={PaywallLoadingModalVariant.Credits}
+      source={source}
+      component={COMPONENT_NAME}
+    />
+  ), [handleClose, source])
+
+  const renderErrorFallback = useCallback((error: Error) => (
+    <PaywallErrorFallback
+      error={error}
+      onClose={handleClose}
+      source={source}
+      productId={UPGRADE_PRODUCT_IDS.AIRO_BUILDER_CREDITS}
+      component={COMPONENT_NAME}
+    />
+  ), [handleClose, source])
 
   // Early return if entitlementId is missing - cannot purchase credits without it
   if (!entitlementId) {
@@ -117,12 +148,14 @@ const CreditsUpgradeContainer = ({
 
   return (
     <ErrorBoundary
-      fallback={(error, reset) => (
+      fallback={(error) => (
         <PaywallErrorFallback
           error={error}
-          reset={reset}
           onClose={handleClose}
           onError={handleError}
+          source={source}
+          productId={UPGRADE_PRODUCT_IDS.AIRO_BUILDER_CREDITS}
+          component={COMPONENT_NAME}
         />
       )}
     >
@@ -140,7 +173,9 @@ const CreditsUpgradeContainer = ({
         onSuccess={handleSuccess}
         onClose={handleClose}
         onErrorClick={onErrorClick}
+        onLoadError={handleError}
         LoadingComponent={loadingComponent}
+        renderErrorFallback={renderErrorFallback}
       />
     </ErrorBoundary>
   )

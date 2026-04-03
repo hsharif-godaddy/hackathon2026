@@ -10,9 +10,8 @@ import { PaywallErrorModal } from './PaywallErrorModal'
 
 // Mock UX components
 vi.mock('@ux/modal', () => ({
-  default: ({ children, title, onClose, centered }: any) => (
-    <div data-testid="modal" data-centered={centered} role="dialog">
-      <div data-testid="modal-title">{title}</div>
+  default: ({ children, onClose, centered, 'aria-labelledby': ariaLabelledby }: any) => (
+    <div data-testid="modal" data-centered={centered} data-aria-labelledby={ariaLabelledby} role="dialog">
       <button onClick={onClose} aria-label="close">Close</button>
       {children}
     </div>
@@ -21,7 +20,8 @@ vi.mock('@ux/modal', () => ({
 
 vi.mock('@ux/text', () => ({
   default: {
-    p: ({ children }: any) => <p data-testid="text-p">{children}</p>,
+    h2: ({ children, className, id }: any) => <h2 data-testid="text-h2" className={className} id={id}>{children}</h2>,
+    p: ({ children, className }: any) => <p data-testid="text-p" className={className}>{children}</p>,
   },
 }))
 
@@ -31,24 +31,11 @@ vi.mock('@ux/icon/alert', () => ({
   ),
 }))
 
-vi.mock('@ux/button', () => ({
-  default: ({ children, onClick, design, size }: any) => (
-    <button
-      data-testid="retry-button"
-      data-design={design}
-      data-size={size}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  ),
-}))
-
 vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string, _values?: unknown, defaultMessage?: string) => {
     const translations: Record<string, string> = {
-      builder_common_something_went_wrong: 'Something went wrong',
-      builder_paywall_load_error: 'We couldn\'t load the purchase options.',
+      builder_paywall_error_title: 'Unable to load',
+      builder_paywall_error_description: "We couldn't load the purchase options. Please close and try again later.",
     }
     return translations[key] || defaultMessage || key
   },
@@ -62,8 +49,8 @@ describe('PaywallErrorModal', function paywallErrorModalTests() {
     // Modal should be rendered
     expect(screen.getByTestId('modal')).toBeInTheDocument()
 
-    // Title should be visible
-    expect(screen.getByTestId('modal-title')).toHaveTextContent('Something went wrong')
+    // Title should be visible (now inside the modal body, not as modal title)
+    expect(screen.getByTestId('text-h2')).toHaveTextContent('Unable to load')
 
     // Error message should be visible
     expect(screen.getByTestId('text-p')).toHaveTextContent(/couldn't load the purchase options/i)
@@ -76,12 +63,12 @@ describe('PaywallErrorModal', function paywallErrorModalTests() {
     expect(screen.getByTestId('alert-icon')).toBeInTheDocument()
   })
 
-  it('should render alert icon with critical styling', function alertIconStyling() {
+  it('should render alert icon with size styling', function alertIconStyling() {
     const mockOnClose = vi.fn()
     render(<PaywallErrorModal onClose={mockOnClose} />)
 
     const icon = screen.getByTestId('alert-icon')
-    expect(icon).toHaveClass('text-intents-ux-critical-textColor')
+    expect(icon).toHaveClass('w-10', 'h-10')
   })
 
   it('should call onClose when close button is clicked', function closeModal() {
@@ -101,34 +88,28 @@ describe('PaywallErrorModal', function paywallErrorModalTests() {
     expect(screen.getByTestId('modal')).toHaveAttribute('data-centered', 'true')
   })
 
-  it('should render retry button when onRetry is provided', function renderRetryButton() {
+  it('should render title centered', function titleCentered() {
     const mockOnClose = vi.fn()
-    const mockOnRetry = vi.fn()
-
-    render(<PaywallErrorModal onClose={mockOnClose} onRetry={mockOnRetry} />)
-
-    const retryButton = screen.getByTestId('retry-button')
-    expect(retryButton).toBeInTheDocument()
-    expect(retryButton).toHaveTextContent('Try again')
-  })
-
-  it('should call onRetry when retry button is clicked', function callOnRetry() {
-    const mockOnClose = vi.fn()
-    const mockOnRetry = vi.fn()
-
-    render(<PaywallErrorModal onClose={mockOnClose} onRetry={mockOnRetry} />)
-
-    const retryButton = screen.getByTestId('retry-button')
-    retryButton.click()
-
-    expect(mockOnRetry).toHaveBeenCalledTimes(1)
-  })
-
-  it('should not render retry button when onRetry is not provided', function noRetryButton() {
-    const mockOnClose = vi.fn()
-
     render(<PaywallErrorModal onClose={mockOnClose} />)
 
-    expect(screen.queryByTestId('retry-button')).not.toBeInTheDocument()
+    expect(screen.getByTestId('text-h2')).toHaveClass('text-center')
+  })
+
+  it('should render description centered', function descriptionStyling() {
+    const mockOnClose = vi.fn()
+    render(<PaywallErrorModal onClose={mockOnClose} />)
+
+    expect(screen.getByTestId('text-p')).toHaveClass('text-center')
+  })
+
+  it('should have accessible labeling via aria-labelledby', function accessibleLabeling() {
+    const mockOnClose = vi.fn()
+    render(<PaywallErrorModal onClose={mockOnClose} />)
+
+    const modal = screen.getByTestId('modal')
+    expect(modal).toHaveAttribute('data-aria-labelledby', 'paywall-error-title')
+
+    const title = screen.getByTestId('text-h2')
+    expect(title).toHaveAttribute('id', 'paywall-error-title')
   })
 })

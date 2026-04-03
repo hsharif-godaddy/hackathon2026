@@ -1,20 +1,28 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import Box from '@ux/box'
 import Modal from '@ux/modal'
 import Skeleton from '@ux/skeleton'
 import Spinner from '@ux/spinner'
 
+import { shipAnalyticsLog } from '@/lib/logging'
+
 /** Variants for PaywallLoadingModal layouts */
 export enum PaywallLoadingModalVariant {
   Default = 'default',
   HigherPlans = 'higher-plans',
+  Credits = 'credits',
 }
 
 interface PaywallLoadingModalProps {
   onClose: () => void
   /** Variant for different modal layouts */
   variant?: PaywallLoadingModalVariant
+  /** Source identifier for analytics */
+  source?: string
+  /** Component name for analytics */
+  component?: string
 }
 
 /**
@@ -49,7 +57,28 @@ function SkeletonPlanCard() {
 /**
  * Loading modal shown while CDS library loads
  */
-export function PaywallLoadingModal({ onClose, variant = PaywallLoadingModalVariant.Default }: PaywallLoadingModalProps) {
+export function PaywallLoadingModal({
+  onClose,
+  variant = PaywallLoadingModalVariant.Default,
+  source,
+  component,
+}: PaywallLoadingModalProps) {
+  const hasLoggedRef = useRef(false)
+
+  // Log when loading modal is shown to user
+  useEffect(() => {
+    if (!hasLoggedRef.current) {
+      hasLoggedRef.current = true
+      shipAnalyticsLog(`paywall.loading.${variant}.shown`, {
+        source,
+        component,
+        variant,
+      })
+    }
+  }, [variant, source, component])
+
+  // HigherPlans shows skeleton plan cards; Default and Credits use the same spinner
+  // (Credits modal content is similar in size to Default, so no custom skeleton needed)
   if (variant === PaywallLoadingModalVariant.HigherPlans) {
     return (
       <Modal

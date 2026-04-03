@@ -3,10 +3,17 @@
  */
 import '@testing-library/jest-dom'
 
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 
 import { PaywallLoadingModal, PaywallLoadingModalVariant } from './PaywallLoadingModal'
+
+// Mock logging
+vi.mock('@/lib/logging', () => ({
+  shipAnalyticsLog: vi.fn(),
+}))
+
+import { shipAnalyticsLog } from '@/lib/logging'
 
 // Mock UX components
 vi.mock('@ux/modal', () => ({
@@ -38,6 +45,10 @@ vi.mock('@ux/skeleton', () => ({
 }))
 
 describe('PaywallLoadingModal', function paywallLoadingModalTests() {
+  beforeEach(function setup() {
+    vi.clearAllMocks()
+  })
+
   it('should render a modal with spinner', function renderModal() {
     const mockOnClose = vi.fn()
     render(<PaywallLoadingModal onClose={mockOnClose} />)
@@ -122,6 +133,86 @@ describe('PaywallLoadingModal', function paywallLoadingModalTests() {
       render(<PaywallLoadingModal onClose={mockOnClose} variant={PaywallLoadingModalVariant.HigherPlans} />)
 
       expect(screen.getByTestId('modal')).toHaveAttribute('data-stretch', 'true')
+    })
+  })
+
+  describe('observability logging', function loggingTests() {
+    it('should log loading shown event on mount with default variant', function logDefaultShown() {
+      const mockOnClose = vi.fn()
+      render(
+        <PaywallLoadingModal
+          onClose={mockOnClose}
+          source="test-source"
+          component="TestComponent"
+        />
+      )
+
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('paywall.loading.default.shown', {
+        source: 'test-source',
+        component: 'TestComponent',
+        variant: 'default',
+      })
+    })
+
+    it('should log loading shown event with higher-plans variant', function logHigherPlansShown() {
+      const mockOnClose = vi.fn()
+      render(
+        <PaywallLoadingModal
+          onClose={mockOnClose}
+          variant={PaywallLoadingModalVariant.HigherPlans}
+          source="test-source"
+          component="HigherPlansUpgradeContainer"
+        />
+      )
+
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('paywall.loading.higher-plans.shown', {
+        source: 'test-source',
+        component: 'HigherPlansUpgradeContainer',
+        variant: 'higher-plans',
+      })
+    })
+
+    it('should log loading shown event with credits variant', function logCreditsShown() {
+      const mockOnClose = vi.fn()
+      render(
+        <PaywallLoadingModal
+          onClose={mockOnClose}
+          variant={PaywallLoadingModalVariant.Credits}
+          source="test-source"
+          component="CreditsUpgradeContainer"
+        />
+      )
+
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('paywall.loading.credits.shown', {
+        source: 'test-source',
+        component: 'CreditsUpgradeContainer',
+        variant: 'credits',
+      })
+    })
+
+    it('should only log shown event once on re-renders', function logOnceOnRerender() {
+      const mockOnClose = vi.fn()
+      const { rerender } = render(
+        <PaywallLoadingModal
+          onClose={mockOnClose}
+          source="test-source"
+          component="TestComponent"
+        />
+      )
+
+      expect(shipAnalyticsLog).toHaveBeenCalledTimes(1)
+
+      // Re-render with same props
+      rerender(
+        <PaywallLoadingModal
+          onClose={mockOnClose}
+          source="test-source"
+          component="TestComponent"
+        />
+      )
+
+      // Should still only have logged once
+      expect(shipAnalyticsLog).toHaveBeenCalledTimes(1)
     })
   })
 })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import ErrorBoundary from '@/components/ErrorBoundary'
@@ -45,6 +45,20 @@ const SinglePlanUpgradeContainer = ({
   const productId = UPGRADE_PRODUCT_IDS.AIRO_BUILDER
 
   const entitlementId = subscription?.builderEntitlementId
+  const hasLoggedImpressionRef = useRef(false)
+
+  // Log modal shown impression
+  useEffect(() => {
+    if (!hasLoggedImpressionRef.current) {
+      hasLoggedImpressionRef.current = true
+      shipAnalyticsLog('paywall.upgrade.modal.shown', {
+        source,
+        productId,
+        entitlementId,
+        component: 'SinglePlanUpgradeContainer',
+      })
+    }
+  }, [source, productId, entitlementId])
 
   const handleSuccess = useCallback(async () => {
     // Capture current plan from cache at purchase time (before polling updates it)
@@ -100,6 +114,7 @@ const SinglePlanUpgradeContainer = ({
       source,
       productId,
       error: error.message,
+      errorType: 'load',
       component: 'SinglePlanUpgradeContainer',
     })
     onError?.(error)
@@ -119,12 +134,14 @@ const SinglePlanUpgradeContainer = ({
 
   return (
     <ErrorBoundary
-      fallback={(error, reset) => (
+      fallback={(error) => (
         <PaywallErrorFallback
           error={error}
-          reset={reset}
           onClose={handleClose}
           onError={handleError}
+          source={source}
+          productId={productId}
+          component="SinglePlanUpgradeContainer"
         />
       )}
     >
@@ -144,11 +161,27 @@ const SinglePlanUpgradeContainer = ({
         onPurchaseSuccess={handleSuccess}
         onSuccessClick={handleSuccessClick}
         onErrorClick={onErrorClick}
+        onLoadError={handleError}
         secondaryCTA={{
           skipDefaultBehavior: true,
           onClick: handleClose
         }}
-        LoadingComponent={<PaywallLoadingModal onClose={handleClose} />}
+        LoadingComponent={
+          <PaywallLoadingModal
+            onClose={handleClose}
+            source={source}
+            component="SinglePlanUpgradeContainer"
+          />
+        }
+        renderErrorFallback={(error) => (
+          <PaywallErrorFallback
+            error={error}
+            onClose={handleClose}
+            source={source}
+            productId={productId}
+            component="SinglePlanUpgradeContainer"
+          />
+        )}
       />
     </ErrorBoundary>
   )

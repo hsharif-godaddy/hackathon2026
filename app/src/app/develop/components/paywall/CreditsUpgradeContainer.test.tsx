@@ -49,13 +49,17 @@ vi.mock('@/utils/propTypes', () => ({
   ensurePropTypes: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('./PaywallLoadingModal', () => ({
-  PaywallLoadingModal: ({ onClose }: { onClose: () => void }) => (
-    <div data-testid="paywall-loading-modal">
-      <button data-testid="loading-close-button" onClick={onClose}>Close</button>
-    </div>
-  ),
-}));
+vi.mock('./PaywallLoadingModal', async () => {
+  const actual = await vi.importActual<typeof import('./PaywallLoadingModal')>('./PaywallLoadingModal');
+  return {
+    ...actual,
+    PaywallLoadingModal: ({ onClose }: { onClose: () => void }) => (
+      <div data-testid="paywall-loading-modal">
+        <button data-testid="loading-close-button" onClick={onClose}>Close</button>
+      </div>
+    ),
+  };
+});
 
 vi.mock('./cdsLoader', () => ({
   ComponentLoader: (props: any) => {

@@ -96,7 +96,7 @@ vi.mock('./cdsLoader', () => ({
     upgradeDowngradeCallback: (params: { planType?: SubscriptionPlan }) => void;
     onPostUpgradeSuccessClick?: () => void;
     errorCallback?: () => void;
-    onError?: (error: Error) => void;
+    onLoadError?: (error: Error) => void;
   }) => {
     return (
       <div data-testid="higher-plans-modal">
@@ -136,7 +136,7 @@ vi.mock('./cdsLoader', () => ({
         </button>
         <button
           data-testid="on-error-button"
-          onClick={() => props.onError?.(new Error('Test error'))}
+          onClick={() => props.onLoadError?.(new Error('Test error'))}
         >
           On Error
         </button>

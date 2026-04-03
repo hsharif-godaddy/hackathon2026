@@ -11,7 +11,7 @@ import ChatPaneLoader, { ImageReloadLoaderPhase, ResumeLoaderPhase } from '@/app
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
 import DevelopHeader from '@/app/develop/components/layout/Header'
 import MediaPanel from '@/app/develop/components/media/MediaPanel'
-import { DevelopCreditsModal, RenewalPollingModal, UpgradeContainer, UpgradePollingModal } from '@/app/develop/components/paywall'
+import { DevelopCreditsModal, PaywallErrorFallback, RenewalPollingModal, UpgradeContainer, UpgradePollingModal } from '@/app/develop/components/paywall'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
@@ -24,6 +24,7 @@ import { type PendingError,useErrorFixState } from '@/app/develop/hooks/useError
 import { useEvalSnapshotCapture } from '@/app/develop/hooks/useEvalSnapshotCapture'
 import { useInitialization } from '@/app/develop/hooks/useInitialization'
 import { ProtectedRoute } from '@/components/auth'
+import ErrorBoundary from '@/components/ErrorBoundary'
 import { Feedback } from '@/components/feedback/Feedback'
 import { FEEDBACK_ID } from '@/components/feedback/utils'
 import PostPublishGoLiveModal from '@/components/layout/PostPublishGoLiveModal'
@@ -153,6 +154,8 @@ function DevelopPageContent() {
   const upgradeModalSource = useDevelopPageStore((state) => state.upgradeModalSource);
   const upgradeModalItc = useDevelopPageStore((state) => state.upgradeModalItc);
   const closeUpgradeModal = useDevelopPageStore((state) => state.closeUpgradeModal);
+  const creditsModalSource = useDevelopPageStore((state) => state.creditsModalSource);
+  const closeCreditsModal = useDevelopPageStore((state) => state.closeCreditsModal);
   const isUpgradePolling = useIsUpgradePolling();
   const isRenewalPolling = useIsRenewalPolling();
   const publishLimitModalState = useDevelopPageStore((state) =>
@@ -1312,25 +1315,39 @@ function DevelopPageContent() {
         {isUpgradePolling && <UpgradePollingModal />}
         {isRenewalPolling && <RenewalPollingModal />}
 
-        {showUpgradeModal && (
-          <UpgradeContainer
-            source={upgradeModalSource ?? 'unknown'}
-            itc={upgradeModalItc ?? undefined}
-            onSuccessClick={closeUpgradeModal}
-            onClose={() => {
-              const source = upgradeModalSource ?? 'unknown'
-              closeUpgradeModal()
-              shipAnalyticsLog(`${source}.dismissed`, { appId })
-            }}
-            onErrorClick={() => {
-              const source = upgradeModalSource ?? 'unknown'
-              closeUpgradeModal()
-              shipAnalyticsLog(`${source}.error`, { appId })
-            }}
-          />
-        )}
+        <ErrorBoundary
+          fallback={(error) => (
+            <PaywallErrorFallback
+              error={error}
+              onClose={() => {
+                closeUpgradeModal()
+                closeCreditsModal()
+              }}
+              source={upgradeModalSource ?? creditsModalSource ?? 'paywall'}
+              component="PaywallErrorBoundary"
+            />
+          )}
+        >
+          {showUpgradeModal && (
+            <UpgradeContainer
+              source={upgradeModalSource ?? 'unknown'}
+              itc={upgradeModalItc ?? undefined}
+              onSuccessClick={closeUpgradeModal}
+              onClose={() => {
+                const source = upgradeModalSource ?? 'unknown'
+                closeUpgradeModal()
+                shipAnalyticsLog(`${source}.dismissed`, { appId })
+              }}
+              onErrorClick={() => {
+                const source = upgradeModalSource ?? 'unknown'
+                closeUpgradeModal()
+                shipAnalyticsLog(`${source}.error`, { appId })
+              }}
+            />
+          )}
 
-        {appId && <DevelopCreditsModal appId={appId} />}
+          {appId && <DevelopCreditsModal appId={appId} />}
+        </ErrorBoundary>
 
         {showPublishLimitModal && publishLimitData && appId && (
           <PublishLimitModal

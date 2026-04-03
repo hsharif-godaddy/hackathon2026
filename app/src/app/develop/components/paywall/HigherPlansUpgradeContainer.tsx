@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import ErrorBoundary from '@/components/ErrorBoundary'
@@ -20,6 +20,8 @@ import { ComponentLoader } from './cdsLoader'
 import { UPGRADE_DEPS, UPGRADE_PRODUCT_IDS } from './constants'
 import { PaywallErrorFallback } from './PaywallErrorFallback'
 import { PaywallLoadingModal, PaywallLoadingModalVariant } from './PaywallLoadingModal'
+
+const COMPONENT_NAME = 'HigherPlansUpgradeContainer'
 
 interface HigherPlansUpgradeContainerProps {
   onClose: () => void
@@ -52,6 +54,19 @@ const HigherPlansUpgradeContainer = ({
 
   const entitlementId = subscription?.builderEntitlementId
   const subscriptionId = subscription?.id
+  const hasLoggedImpressionRef = useRef(false)
+
+  useEffect(() => {
+    if (!hasLoggedImpressionRef.current) {
+      hasLoggedImpressionRef.current = true
+      shipAnalyticsLog('paywall.higherPlans.modal.shown', {
+        source,
+        productId,
+        entitlementId,
+        component: COMPONENT_NAME,
+      })
+    }
+  }, [source, productId, entitlementId])
 
   const handleSuccess = useCallback(({ planType }: { planType?: SubscriptionPlan }) => {
     const cachedData = queryClient.getQueryData<{ active?: AiroSubscription }>(['subscriptions'])
@@ -135,7 +150,8 @@ const HigherPlansUpgradeContainer = ({
       source,
       productId,
       error: error.message,
-      component: 'HigherPlansUpgradeContainer',
+      errorType: 'load',
+      component: COMPONENT_NAME,
     })
     onError?.(error)
   }, [source, productId, onError])
@@ -152,12 +168,14 @@ const HigherPlansUpgradeContainer = ({
 
   return (
     <ErrorBoundary
-      fallback={(error, reset) => (
+      fallback={(error) => (
         <PaywallErrorFallback
           error={error}
-          reset={reset}
           onClose={handleClose}
           onError={handleError}
+          source={source}
+          productId={productId}
+          component={COMPONENT_NAME}
         />
       )}
     >
@@ -181,8 +199,24 @@ const HigherPlansUpgradeContainer = ({
         upgradeDowngradeCallback={handleSuccess}
         onPostUpgradeSuccessClick={handleSuccessClick}
         errorCallback={onErrorClick}
-        onError={handleError}
-        LoadingComponent={<PaywallLoadingModal onClose={handleClose} variant={PaywallLoadingModalVariant.HigherPlans} />}
+        onLoadError={handleError}
+        LoadingComponent={
+          <PaywallLoadingModal
+            onClose={handleClose}
+            variant={PaywallLoadingModalVariant.HigherPlans}
+            source={source}
+            component={COMPONENT_NAME}
+          />
+        }
+        renderErrorFallback={(error) => (
+          <PaywallErrorFallback
+            error={error}
+            onClose={handleClose}
+            source={source}
+            productId={productId}
+            component={COMPONENT_NAME}
+          />
+        )}
         // used for breaking cache between conversions
         currentPlan={subscription?.downgradedPlan ?? subscription?.plan}
       />
