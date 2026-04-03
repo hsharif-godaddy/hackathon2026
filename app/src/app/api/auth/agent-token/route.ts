@@ -118,6 +118,22 @@ function resolvePaywallResult(
  * @param customerId - Customer ID for logging
  * @returns Flag value, or false on rejection (fail closed)
  */
+function resolveSubscriptionId(
+  result: PromiseSettledResult<{ subscription_id?: string }>,
+  siteId: string,
+  customerId: string,
+): string | undefined {
+  if (result.status === 'rejected') {
+    logger.warn('agent-token.subscription-lookup-failed', {
+      siteId,
+      customerId,
+      error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+    });
+    return undefined;
+  }
+  return result.value?.subscription_id;
+}
+
 function resolveBooleanFlag(
   result: PromiseSettledResult<boolean>,
   logEvent: string,
@@ -177,6 +193,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       body.owningProduct = trimmed as ProductType;
     }
 
+    const adapter = getControlPlaneAdapter();
     const siteAccessStart = Date.now();
     const siteValidationCacheHit = getSiteValidationFromCache(user.customerId, body.siteId, body.owningProduct);
 
@@ -187,11 +204,13 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     let canPublish = false;
     let canPurchaseDomain = false;
     let useTestBudget = false;
+    let budgetServiceEnabled = false;
+    let subscriptionId: string | undefined;
 
     if (siteValidationCacheHit) {
-      // Cache hit: skip site validation, run paywall + switchboard in parallel
+      // Cache hit: skip site validation, run paywall + switchboard + subscription lookup in parallel
       const parallelStart = Date.now();
-      const [paywallResult, domainPurchaseResult, testBudgetResult] = await Promise.allSettled([
+      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, siteInfoResult] = await Promise.allSettled([
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
           body.siteId,
@@ -199,16 +218,20 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         ),
         checkSwitchboardFlag('appbuilder-domain-purchase', authContext.jwt || '', request.headers),
         checkSwitchboardFlag('appbuilder-test-budget', authContext.jwt || '', request.headers),
+        checkSwitchboardFlag('app-builder-budget-service', authContext.jwt || '', request.headers),
+        adapter.getSite(body.siteId, authContext.jwt || '', body.owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
       ({ canDownload, canPublish } = resolvePaywallResult(paywallResult, body.siteId, user.customerId));
       canPurchaseDomain = resolveBooleanFlag(domainPurchaseResult, 'agent-token.domain-purchase-flag-check-failed', body.siteId, user.customerId);
       useTestBudget = resolveBooleanFlag(testBudgetResult, 'agent-token.test-budget-flag-check-failed', body.siteId, user.customerId);
+      budgetServiceEnabled = resolveBooleanFlag(budgetServiceResult, 'agent-token.budget-service-flag-check-failed', body.siteId, user.customerId);
+      subscriptionId = resolveSubscriptionId(siteInfoResult, body.siteId, user.customerId);
     } else {
-      // Cache miss: run site validation, paywall, and switchboard all in parallel
+      // Cache miss: run site validation, paywall, switchboard, and subscription lookup all in parallel
       const parallelStart = Date.now();
-      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult] = await Promise.allSettled([
+      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, siteInfoResult] = await Promise.allSettled([
         validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct),
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
@@ -217,6 +240,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         ),
         checkSwitchboardFlag('appbuilder-domain-purchase', authContext.jwt || '', request.headers),
         checkSwitchboardFlag('appbuilder-test-budget', authContext.jwt || '', request.headers),
+        checkSwitchboardFlag('app-builder-budget-service', authContext.jwt || '', request.headers),
+        adapter.getSite(body.siteId, authContext.jwt || '', body.owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
@@ -232,6 +257,14 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       ({ canDownload, canPublish } = resolvePaywallResult(paywallResult, body.siteId, user.customerId));
       canPurchaseDomain = resolveBooleanFlag(domainPurchaseResult, 'agent-token.domain-purchase-flag-check-failed', body.siteId, user.customerId);
       useTestBudget = resolveBooleanFlag(testBudgetResult, 'agent-token.test-budget-flag-check-failed', body.siteId, user.customerId);
+      budgetServiceEnabled = resolveBooleanFlag(budgetServiceResult, 'agent-token.budget-service-flag-check-failed', body.siteId, user.customerId);
+      subscriptionId = resolveSubscriptionId(siteInfoResult, body.siteId, user.customerId);
+    }
+
+    // Fail-safe: disable budget service and fall back to legacy grants
+    if (budgetServiceEnabled && !subscriptionId) {
+      logger.warn('agent-token.budget-service.missing-subscription-id', { siteId: body.siteId, customerId: user.customerId });
+      budgetServiceEnabled = false;
     }
 
     timing.siteAccessMs = Date.now() - siteAccessStart;
@@ -252,6 +285,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       authType: user.authType || 'basic',
       isE2S: user.isE2S ?? false,
       useTestBudget,
+      budgetServiceEnabled,
+      subscriptionId,
       product
     };
 

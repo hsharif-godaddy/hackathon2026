@@ -35,6 +35,7 @@ export async function checkSwitchboardFlag(
       'appbuilder-transfer-ownership': true,
       'appbuilder-higher-plans': true,
       'appbuilder-github-integration': true,
+      'app-builder-budget-service': false, // opt-in: requires running Budget Service
     };
 
     if (featureName in localOverrides) {

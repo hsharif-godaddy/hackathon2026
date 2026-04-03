@@ -200,6 +200,8 @@ describe('agent-token', function packageTests() {
         authType: 'basic',
         isE2S: false,
         useTestBudget: false,
+        budgetServiceEnabled: false,
+        subscriptionId: undefined,
         product: 'AiroAppBuilder'
       });
     });
@@ -345,7 +347,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBe(expiresInSeconds);
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false, product: 'AiroAppBuilder' },
+          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false, budgetServiceEnabled: false, subscriptionId: undefined, product: 'AiroAppBuilder' },
           expiresInSeconds
         );
         expect(mockJWTService.getToken).not.toHaveBeenCalled();
@@ -419,6 +421,8 @@ describe('agent-token', function packageTests() {
           authType: 'e2s',
           isE2S: true,
           useTestBudget: false,
+          budgetServiceEnabled: false,
+          subscriptionId: undefined,
           product: 'AiroAppBuilder'
         });
       });
@@ -448,6 +452,8 @@ describe('agent-token', function packageTests() {
           authType: 's2s',
           isE2S: false,
           useTestBudget: false,
+          budgetServiceEnabled: false,
+          subscriptionId: undefined,
           product: 'AiroAppBuilder'
         });
       });
@@ -496,6 +502,114 @@ describe('agent-token', function packageTests() {
           expect.objectContaining({
             useTestBudget: true,
             canPurchaseDomain: true
+          })
+        );
+      });
+
+      it('should pass budgetServiceEnabled and subscriptionId when flag is on and site has subscription', async function budgetServiceEnabled() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
+          Promise.resolve(flag === 'app-builder-budget-service')
+        );
+        mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({
+            budgetServiceEnabled: true,
+            subscriptionId: 'sub-123'
+          })
+        );
+      });
+
+      it('should fall back to budgetServiceEnabled=false when getSite rejects', async function budgetServiceGetSiteRejects() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
+          Promise.resolve(flag === 'app-builder-budget-service')
+        );
+        mockControlPlaneAdapter.getSite.mockRejectedValue(new Error('control plane error'));
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({
+            budgetServiceEnabled: false,
+            subscriptionId: undefined
+          })
+        );
+      });
+
+      it('should fall back to budgetServiceEnabled=false when getSite rejects (cache-hit path)', async function budgetServiceGetSiteRejectsCacheHit() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
+          Promise.resolve(flag === 'app-builder-budget-service')
+        );
+
+        // First request: populate the site validation cache with a successful getSite
+        mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
+        const request1 = createMockRequest({ siteId: MOCK_SITE_ID });
+        await POST(request1);
+
+        // Second request: getSite now rejects, but cache-hit path is used (skips appExists)
+        mockControlPlaneAdapter.getSite.mockRejectedValue(new Error('control plane error'));
+        const request2 = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response2 = await POST(request2);
+
+        expect(response2.status).toBe(200);
+        // Verify cache-hit path was taken: appExists should only have been called once (first request)
+        expect(mockControlPlaneAdapter.appExists).toHaveBeenCalledTimes(1);
+        expect(mockJWTService.getToken).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            budgetServiceEnabled: false,
+            subscriptionId: undefined
+          })
+        );
+      });
+
+      it('should fall back to budgetServiceEnabled=false when subscriptionId is missing', async function budgetServiceMissingSubscription() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
+          Promise.resolve(flag === 'app-builder-budget-service')
+        );
+        mockControlPlaneAdapter.getSite.mockResolvedValue({});
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({
+            budgetServiceEnabled: false,
+            subscriptionId: undefined
           })
         );
       });

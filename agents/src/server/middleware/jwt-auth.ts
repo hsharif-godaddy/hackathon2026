@@ -30,6 +30,8 @@ export interface AgentContext {
   isE2S: boolean; // deprecated: use authType === 'e2s' instead. Only true for e2s (care), NOT s2s (delegation)
   authType?: TokenAuthType; // Authentication type
   useTestBudget?: boolean; // Bypass grants and use test-accounts budget
+  budgetServiceEnabled?: boolean; // Use Budget Service flow instead of legacy grants
+  subscriptionId?: string; // Subscription ID for Budget Service API calls
   product: ProductType;    // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
   exp: number;
   iat: number;
@@ -183,7 +185,7 @@ export class JWTAuthMiddleware {
 
         // Extract context from JWT claims
         const claims = validationResult.claims;
-        (req as AuthenticatedRequest).agentContext = {
+        const agentContext: AgentContext = {
           siteId: claims.siteId,
           canDownload: claims.canDownload ?? false,
           canPublish: claims.canPublish ?? false,
@@ -191,10 +193,21 @@ export class JWTAuthMiddleware {
           isE2S: claims.isE2S ?? false,
           authType: claims.authType ?? 'basic',
           useTestBudget: claims.useTestBudget ?? false,
+          budgetServiceEnabled: claims.budgetServiceEnabled ?? false,
+          subscriptionId: claims.subscriptionId,
           product: coerceProductType(claims.product),
           exp: claims.exp,
           iat: claims.iat
         };
+
+        if (agentContext.budgetServiceEnabled && !agentContext.subscriptionId) {
+          logger.warn('jwt-auth.budget-service.missing-subscription-id', {
+            siteId: agentContext.siteId,
+          });
+          agentContext.budgetServiceEnabled = false;
+        }
+
+        (req as AuthenticatedRequest).agentContext = agentContext;
 
         next();
         return;

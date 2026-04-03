@@ -546,7 +546,7 @@ export class StreamingWebSocketController extends EventEmitter {
    * Emit grant context to the agent
    * Returns true if sent successfully, false if not connected
    */
-  emitGrantContext(payload: { grants: unknown[]; featureEnabled: boolean; timestamp: number }): boolean {
+  emitGrantContext(payload: { grants: unknown[]; timestamp: number }): boolean {
     return this.supervisor.emitGrantContext(payload)
   }
 

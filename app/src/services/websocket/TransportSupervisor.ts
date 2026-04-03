@@ -188,7 +188,7 @@ export class TransportSupervisor extends EventEmitter {
    * Emit grant context to the agent
    * Used by grant synchronization to send grants without exposing raw socket
    */
-  emitGrantContext(payload: { grants: unknown[]; featureEnabled: boolean; timestamp: number }): boolean {
+  emitGrantContext(payload: { grants: unknown[]; timestamp: number }): boolean {
     if (!this.socket?.connected) return false
     this.socket.emit('grant_context', payload)
     return true

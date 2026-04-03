@@ -35,6 +35,7 @@ const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-analytics': true,
   'appbuilder-settings-analytics': true,
   'appbuilder-github-integration': true,
+  'app-builder-budget-service': false, // opt-in: requires running Budget Service
   'appbuilder-template-selector': true,
 };
 

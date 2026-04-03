@@ -30,6 +30,10 @@
     "./auth": {
       "types": "./dist/auth/index.d.ts",
       "import": "./dist/auth/index.js"
+    },
+    "./budget": {
+      "types": "./dist/budget/index.d.ts",
+      "import": "./dist/budget/index.js"
     }
   },
   "typesVersions": {
@@ -48,6 +52,9 @@
       ],
       "auth": [
         "dist/auth/index.d.ts"
+      ],
+      "budget": [
+        "dist/budget/index.d.ts"
       ]
     }
   },

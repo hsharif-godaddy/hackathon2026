@@ -16,7 +16,7 @@ const EMPTY_GRANTS_MAX_RETRY_DURATION_MS = 5 * 60 * 1000
  * Abstracts the underlying transport for grant synchronization
  */
 export interface GrantContextController {
-  emitGrantContext(payload: { grants: unknown[]; featureEnabled: boolean; timestamp: number }): boolean
+  emitGrantContext(payload: { grants: unknown[]; timestamp: number }): boolean
   onGrantRefreshRequested(callback: () => void): () => void
 }
 
@@ -100,7 +100,6 @@ export function useGrantContext({
 
       controller.emitGrantContext({
         grants: payloadGrants ?? [],
-        featureEnabled: true,
         timestamp: Date.now(),
       })
 

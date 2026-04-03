@@ -14,6 +14,10 @@
     "./react": {
       "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.js"
+    },
+    "./budget": {
+      "types": "./dist/budget/index.d.ts",
+      "import": "./dist/budget/index.js"
     }
   },
   "files": [

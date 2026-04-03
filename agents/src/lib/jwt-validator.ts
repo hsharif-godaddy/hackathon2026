@@ -113,6 +113,8 @@ export interface JWTClaims {
   authType?: AuthType; // Authentication type: basic (normal), e2s (care/employee impersonation), s2s (shopper delegation)
   isE2S?: boolean; // DEPRECATED: Use authType === 'e2s' instead. Only true for e2s (care), NOT s2s (delegation)
   useTestBudget?: boolean; // When true, bypass grants and use test-accounts budget (switchboard: appbuilder-test-budget)
+  budgetServiceEnabled?: boolean; // When true, use Budget Service flow instead of legacy grants
+  subscriptionId?: string; // Subscription ID for Budget Service API calls
   product?: ProductType; // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
 }
 

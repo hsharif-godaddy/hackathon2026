@@ -21,6 +21,8 @@ export interface CreateTokenOptions {
   authType?: AuthType;
   isE2S: boolean; // Backward compatibility
   useTestBudget?: boolean; // Bypass grants and use test-accounts budget
+  budgetServiceEnabled?: boolean; // Use Budget Service flow instead of legacy grants
+  subscriptionId?: string; // Subscription ID for Budget Service API calls
   product?: ProductType; // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
 }
 
@@ -169,6 +171,8 @@ export class JWTService {
       authType: options.authType || 'basic',
       isE2S: options.isE2S,
       useTestBudget: options.useTestBudget ?? false,
+      budgetServiceEnabled: options.budgetServiceEnabled ?? false,
+      subscriptionId: options.subscriptionId,
       product: options.product || 'AiroAppBuilder'
     };
 
@@ -231,7 +235,7 @@ export class JWTService {
    */
   private getCacheKey(options: CreateTokenOptions): string {
     const authType = options.authType || 'basic';
-    return `${options.siteId}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.product || 'AiroAppBuilder'}`;
+    return `${options.siteId}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.product || 'AiroAppBuilder'}`;
   }
 
   /**

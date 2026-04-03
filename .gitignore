@@ -36,6 +36,7 @@ playwright-report/
 *.mp4
 app/test-results/
 app/playwright-report/
+.playwright-cli/
 
 # Design Extractor Output
 packages/design-extractor/output/

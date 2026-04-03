@@ -2020,14 +2020,6 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     ioInstance.on('connection', (socket: Socket) => {
       // ── Grant context listeners (always) ──────────────────────────────
       socket.on('grant_context', (data: GrantContextPayload) => {
-        if (data.featureEnabled === false) {
-          logger.debug('websocket.grant_context.skipped', {
-            socketId: socket.id,
-            reason: 'feature_disabled',
-          })
-          return
-        }
-
         logger.info('websocket.grant_context.received', {
           socketId: socket.id,
           grantCount: data.grants.length,
@@ -2605,3 +2597,4 @@ export function getSocketIO() {
 export function getGitHookService() {
   return gitHookService;
 }
+
