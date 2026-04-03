@@ -370,7 +370,7 @@ func (m Model) handlePreflightDone() (tea.Model, tea.Cmd) {
 			m.phase = phaseAborted
 			m.statusMessage = "Preflight checks failed"
 			logger.Log("preflight: FAILED — aborting")
-			return m, tea.Batch(printCmd, tea.Quit)
+			return m, tea.Sequence(printCmd, tea.Quit)
 		}
 	}
 
@@ -417,7 +417,7 @@ func (m Model) handleLockAcquire(msg lockAcquireMsg) (tea.Model, tea.Cmd) {
 		m.phase = phaseAborted
 		m.statusMessage = fmt.Sprintf("Failed to acquire deploy lock: %s", msg.err)
 		logger.Log("lock: FAILED — %s", msg.err)
-		return m, tea.Batch(
+		return m, tea.Sequence(
 			printAbove(failedMessageStyle.Render(m.statusMessage)),
 			tea.Quit,
 		)

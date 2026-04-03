@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/airo-ai-builder/release-manager/internal/config"
@@ -228,5 +229,38 @@ func TestHandleRollbackGroupDoneDuplicateIsNoop(t *testing.T) {
 	}
 	if cmd != nil {
 		t.Fatalf("duplicate msg should return nil cmd, got %v", cmd)
+	}
+}
+
+func TestPreflightStringRequiredFailureShowsHint(t *testing.T) {
+	m := Model{
+		preflight: []preflightCheck{
+			{Name: "gh CLI installed", Done: true, Passed: true, Required: true},
+			{Name: "aws CLI authenticated", Done: true, Passed: false, Required: true, Error: "Token expired", Hint: "run: aws sso login --profile test"},
+		},
+	}
+
+	output := m.preflightString()
+
+	for _, want := range []string{"aws CLI authenticated", "Token expired", "run: aws sso login --profile test"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("expected %q in output, got:\n%s", want, output)
+		}
+	}
+}
+
+func TestPreflightStringOptionalFailureShowsHint(t *testing.T) {
+	m := Model{
+		preflight: []preflightCheck{
+			{Name: "Slack notifications", Done: true, Passed: false, Required: false, Error: "secret not found", Hint: "run: aws sso login --profile test"},
+		},
+	}
+
+	output := m.preflightString()
+
+	for _, want := range []string{"disabled", "secret not found", "run: aws sso login --profile test"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("expected %q in output, got:\n%s", want, output)
+		}
 	}
 }

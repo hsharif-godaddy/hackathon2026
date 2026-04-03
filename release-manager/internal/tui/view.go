@@ -106,23 +106,22 @@ func (m Model) renderPreflight(sb *strings.Builder) {
 				check.Name,
 			))
 			if check.Error != "" {
-				sb.WriteString(fmt.Sprintf("    %s\n",
-					lipgloss.NewStyle().Foreground(colorParsing).Render(check.Error),
-				))
+				sb.WriteString(fmt.Sprintf("    %s\n", preflightWarnStyle.Render(check.Error)))
 			}
 			if check.Hint != "" {
-				sb.WriteString(fmt.Sprintf("    %s\n",
-					mutedStyle.Render(check.Hint),
-				))
+				sb.WriteString(fmt.Sprintf("    %s\n", mutedStyle.Render(check.Hint)))
 			}
 		} else {
 			sb.WriteString(fmt.Sprintf("  %s %s\n",
 				preflightFailStyle.Render("✗"),
 				check.Name,
 			))
-			sb.WriteString(fmt.Sprintf("    %s\n",
-				lipgloss.NewStyle().Foreground(colorFailed).Render(check.Error),
-			))
+			if check.Error != "" {
+				sb.WriteString(fmt.Sprintf("    %s\n", preflightFailStyle.Render(check.Error)))
+			}
+			if check.Hint != "" {
+				sb.WriteString(fmt.Sprintf("    %s\n", mutedStyle.Render(check.Hint)))
+			}
 		}
 	}
 }
