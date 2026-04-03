@@ -40,18 +40,21 @@ func (p *Pipeline) GenerateReleaseTag(ctx context.Context) (string, error) {
 }
 
 // CreateRelease creates a GitHub release using the configured repo.
-// The target commitish is extracted from the agent image tag's ext hash
-// and resolved to a full SHA (the GitHub API rejects short hashes).
+// Targets the pinned commit SHA from FetchReleaseNotes so the release
+// matches the exact commit that was deployed. Falls back to the ext hash
+// from the snapshot or the branch name if no commit was pinned.
 func (p *Pipeline) CreateRelease(ctx context.Context, tag, title, body string) (string, error) {
-	target := gh.ExtractExtHash(p.Snapshot.AgentImageTag)
-	if target == "" {
-		target = p.Branch
-	}
-
-	if fullSHA, err := p.Runner.ResolveCommit(ctx, p.Config.Release.Repo, target); err == nil {
-		target = fullSHA
-	} else {
-		logger.Log("release.warn: could not resolve %s to full SHA, using as-is: %s", target, err)
+	target := p.Values()["commit"]
+	if target == "" || target == p.Branch {
+		target = gh.ExtractExtHash(p.Snapshot.AgentImageTag)
+		if target == "" {
+			target = p.Branch
+		}
+		if fullSHA, err := p.Runner.ResolveCommit(ctx, p.Config.Release.Repo, target); err == nil {
+			target = fullSHA
+		} else {
+			logger.Log("release.warn: could not resolve %s to full SHA, using as-is: %s", target, err)
+		}
 	}
 
 	url, err := p.Runner.CreateRelease(ctx, p.Config.Release.Repo, tag, target, title, body)

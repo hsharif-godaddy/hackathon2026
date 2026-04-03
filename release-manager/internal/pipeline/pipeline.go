@@ -146,7 +146,7 @@ func New(cfg *config.Config, runner gh.Runner, dryRun bool, branch string, failS
 		DryRun:     dryRun,
 		Branch:     branch,
 		FailStages: fs,
-		values:     map[string]string{"branch": branch},
+		values:     map[string]string{"branch": branch, "commit": branch},
 	}
 }
 
@@ -748,8 +748,11 @@ func (p *Pipeline) FetchRollbackSnapshot(ctx context.Context) error {
 	return nil
 }
 
-// FetchReleaseNotes compares the last production ext hash against the target
-// branch and returns merged PRs extracted from commit messages.
+// FetchReleaseNotes resolves the target branch to a specific commit SHA,
+// then compares the last production ext hash against that pinned SHA.
+// The resolved SHA is stored in values["commit"] so all downstream stages
+// build from the exact commit shown in the release notes. If resolution
+// fails, falls back to comparing against the branch name and logs a warning.
 func (p *Pipeline) FetchReleaseNotes(ctx context.Context) ([]ReleaseNote, string, error) {
 	extHash := gh.ExtractExtHash(p.Snapshot.AgentImageTag)
 	if extHash == "" {
@@ -761,12 +764,22 @@ func (p *Pipeline) FetchReleaseNotes(ctx context.Context) ([]ReleaseNote, string
 		return nil, "", fmt.Errorf("no artifact repo configured for release notes")
 	}
 
-	result, err := p.Runner.Compare(ctx, repo, extHash, p.Branch)
+	head := p.Branch
+	commitSHA, err := p.Runner.ResolveCommit(ctx, repo, p.Branch)
+	if err != nil {
+		logger.Log("release-notes: WARNING could not pin %s to commit SHA: %s (deploying branch tip)", p.Branch, err)
+	} else {
+		head = commitSHA
+		p.SetValue("commit", commitSHA)
+		logger.Log("release-notes: pinned %s to %s", p.Branch, commitSHA)
+	}
+
+	result, err := p.Runner.Compare(ctx, repo, extHash, head)
 	if err != nil {
 		return nil, "", err
 	}
 
-	logger.Log("release-notes: comparing %s...%s in %s — %d commits", extHash, p.Branch, repo, len(result.Commits))
+	logger.Log("release-notes: comparing %s...%s in %s — %d commits", extHash, head, repo, len(result.Commits))
 
 	return ParseReleaseNotes(result.Commits), result.HTMLURL, nil
 }

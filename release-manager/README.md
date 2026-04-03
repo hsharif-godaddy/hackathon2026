@@ -59,31 +59,40 @@ pipeline:
 
 ### Stage fields
 
-| Field               | Description                                                                 |
-| ------------------- | --------------------------------------------------------------------------- |
-| `id`                | Unique stage identifier (used by `--fail-stage`)                            |
-| `name`              | Display name in TUI and Slack                                               |
-| `group`             | Stages with the same group run in parallel                                  |
-| `type`              | Set to `checklist` for manual verification steps                            |
-| `repo`              | GitHub `owner/repo`                                                         |
-| `workflow`          | GitHub Actions workflow filename                                            |
-| `ref`               | Git ref to trigger the workflow on; supports `{{branch}}` template          |
-| `active_run_filter` | Only block on active runs whose `displayTitle` contains this string         |
-| `inputs`            | Workflow inputs; supports `{{env.stage.output}}` and `{{branch}}` templates |
-| `outputs`           | Parsed from run logs via regex (`from: run-log`, `pattern`, `job_match`)    |
-| `matrix`            | List of input sets to run the same workflow multiple times in parallel      |
-| `items`             | Checklist items (for `type: checklist` stages)                              |
+| Field               | Description                                                                          |
+| ------------------- | ------------------------------------------------------------------------------------ |
+| `id`                | Unique stage identifier (used by `--fail-stage`)                                     |
+| `name`              | Display name in TUI and Slack                                                        |
+| `group`             | Stages with the same group run in parallel                                           |
+| `type`              | Set to `checklist` for manual verification steps                                     |
+| `repo`              | GitHub `owner/repo`                                                                  |
+| `workflow`          | GitHub Actions workflow filename                                                     |
+| `ref`               | Git ref to trigger the workflow on; supports `{{commit}}` and `{{branch}}` templates |
+| `active_run_filter` | Only block on active runs whose `displayTitle` contains this string                  |
+| `inputs`            | Workflow inputs; supports `{{env.stage.output}}`, `{{commit}}`, and `{{branch}}`     |
+| `outputs`           | Parsed from run logs via regex (`from: run-log`, `pattern`, `job_match`)             |
+| `matrix`            | List of input sets to run the same workflow multiple times in parallel               |
+| `items`             | Checklist items (for `type: checklist` stages)                                       |
 
 ## Pipeline Flow
 
 1. **Preflight checks** — validates gh CLI, authentication, repo access, AWS CLI auth, active deploy workflows, and deploy lock
 2. **Deploy lock** — acquires an SSM Parameter Store lock to prevent concurrent deploys
 3. **Rollback snapshot** — fetches current production state from GitHub for verification
-4. **Release notes** — lists merged PRs since the last production deploy (comparing the ext commit hash from the previous image tag against the target branch)
+4. **Release notes + commit pinning** — resolves the target branch to a specific commit SHA, then lists merged PRs since the last production deploy. The pinned SHA is stored and used by all subsequent stages, ensuring deterministic builds even if the branch advances during the deploy.
 5. **Test deployment** — deploys app + builds images in parallel, then E2E tests + manual checklist
 6. **Production gate** — confirmation prompt before prod deploy
 7. **Production deployment** — promotes images, then promotes app + upserts pre-prov in parallel, then E2E + prod checklist
 8. **Completion** — offers Done or Rollback options
+
+## Commit SHA Pinning
+
+The target branch (e.g. `main`) is resolved to a specific commit SHA at the start of the release notes phase. This pinned SHA is used for all downstream workflow triggers via the `{{commit}}` template variable. This prevents two classes of bugs:
+
+- **Stale release notes** — if the operator waits before approving, new commits on `main` won't cause a mismatch between what was reviewed and what gets deployed
+- **Non-deterministic parallel builds** — the `build-images` stage triggers three image builds in parallel; without pinning, a new commit landing mid-build could cause one image to be built from a different commit than the others
+
+The pinned commit is displayed in the TUI release notes view and included in Slack notifications. The `{{commit}}` value defaults to the branch name if resolution fails, preserving backward compatibility. Rollback steps intentionally use `{{branch}}` since they invoke deployment workflows with known-good artifact IDs/image tags and benefit from using the latest workflow definition.
 
 ## Failure Handling
 

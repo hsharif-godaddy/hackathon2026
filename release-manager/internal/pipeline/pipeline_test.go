@@ -158,6 +158,9 @@ func TestNew(t *testing.T) {
 	if vals["branch"] != "main" {
 		t.Errorf("values[branch] = %q, want %q", vals["branch"], "main")
 	}
+	if vals["commit"] != "main" {
+		t.Errorf("values[commit] = %q, want %q (default to branch)", vals["commit"], "main")
+	}
 }
 
 func TestNewNoFailStages(t *testing.T) {
@@ -697,6 +700,62 @@ func TestRunStagePassesResolvedRef(t *testing.T) {
 
 	if capturedRef != "feature-branch" {
 		t.Errorf("ref = %q, want %q", capturedRef, "feature-branch")
+	}
+}
+
+func TestRunStagePassesCommitRef(t *testing.T) {
+	var capturedRef string
+	runner := &mockRunner{
+		triggerFn: func(_ context.Context, _, _, ref string, _ map[string]string) (string, error) {
+			capturedRef = ref
+			return "https://github.com/org/app/actions/runs/12345", nil
+		},
+		statusFn: func(_ context.Context, _ string, _ int64) (*gh.RunStatus, error) {
+			return &gh.RunStatus{Status: "completed", Conclusion: "success"}, nil
+		},
+	}
+
+	cfg := testConfig()
+	cfg.Pipeline.Environments["test"].Stages[0].Ref = "{{commit}}"
+
+	pinnedSHA := "abc123def456789012345678901234567890abcd"
+	p := New(cfg, runner, false, "main", nil)
+	p.SetValue("commit", pinnedSHA)
+	p.BuildStages("test")
+
+	if err := p.RunStage(context.Background(), 0); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if capturedRef != pinnedSHA {
+		t.Errorf("ref = %q, want pinned commit %q", capturedRef, pinnedSHA)
+	}
+}
+
+func TestRunStageCommitDefaultsToBranch(t *testing.T) {
+	var capturedRef string
+	runner := &mockRunner{
+		triggerFn: func(_ context.Context, _, _, ref string, _ map[string]string) (string, error) {
+			capturedRef = ref
+			return "https://github.com/org/app/actions/runs/12345", nil
+		},
+		statusFn: func(_ context.Context, _ string, _ int64) (*gh.RunStatus, error) {
+			return &gh.RunStatus{Status: "completed", Conclusion: "success"}, nil
+		},
+	}
+
+	cfg := testConfig()
+	cfg.Pipeline.Environments["test"].Stages[0].Ref = "{{commit}}"
+
+	p := New(cfg, runner, false, "feature-branch", nil)
+	p.BuildStages("test")
+
+	if err := p.RunStage(context.Background(), 0); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if capturedRef != "feature-branch" {
+		t.Errorf("ref = %q, want %q (commit should default to branch)", capturedRef, "feature-branch")
 	}
 }
 
@@ -1320,7 +1379,17 @@ func TestParseReleaseNotesEmpty(t *testing.T) {
 }
 
 func TestFetchReleaseNotesSuccess(t *testing.T) {
+	fullSHA := "abc123def456789012345678901234567890abcd"
 	runner := &mockRunner{
+		resolveCommitFn: func(_ context.Context, repo, ref string) (string, error) {
+			if repo != "org/app" {
+				t.Errorf("ResolveCommit: unexpected repo: %s", repo)
+			}
+			if ref != "main" {
+				t.Errorf("ResolveCommit: unexpected ref: %s", ref)
+			}
+			return fullSHA, nil
+		},
 		compareFn: func(_ context.Context, repo, base, head string) (*gh.CompareResult, error) {
 			if repo != "org/app" {
 				t.Errorf("unexpected repo: %s", repo)
@@ -1328,11 +1397,11 @@ func TestFetchReleaseNotesSuccess(t *testing.T) {
 			if base != "4ba7665" {
 				t.Errorf("unexpected base: %s", base)
 			}
-			if head != "main" {
-				t.Errorf("unexpected head: %s", head)
+			if head != fullSHA {
+				t.Errorf("Compare head = %q, want pinned SHA %q", head, fullSHA)
 			}
 			return &gh.CompareResult{
-				HTMLURL: "https://github.com/org/app/compare/4ba7665...main",
+				HTMLURL: "https://github.com/org/app/compare/4ba7665..." + fullSHA,
 				Commits: []gh.CompareCommit{
 					{SHA: "aaa", Message: "New feature (#7)", Author: "dev"},
 				},
@@ -1360,8 +1429,11 @@ func TestFetchReleaseNotesSuccess(t *testing.T) {
 	if len(notes) != 1 || notes[0].Number != 7 {
 		t.Errorf("unexpected notes: %+v", notes)
 	}
-	if htmlURL != "https://github.com/org/app/compare/4ba7665...main" {
-		t.Errorf("unexpected URL: %s", htmlURL)
+	if want := "https://github.com/org/app/compare/4ba7665..." + fullSHA; htmlURL != want {
+		t.Errorf("htmlURL = %q, want %q", htmlURL, want)
+	}
+	if p.Values()["commit"] != fullSHA {
+		t.Errorf("values[commit] = %q, want %q", p.Values()["commit"], fullSHA)
 	}
 }
 
@@ -1408,5 +1480,48 @@ func TestFetchReleaseNotesCompareError(t *testing.T) {
 	_, _, err := p.FetchReleaseNotes(context.Background())
 	if err == nil {
 		t.Fatal("expected error from Compare failure")
+	}
+}
+
+func TestFetchReleaseNotesFallsBackOnResolveError(t *testing.T) {
+	runner := &mockRunner{
+		resolveCommitFn: func(_ context.Context, _, _ string) (string, error) {
+			return "", fmt.Errorf("network timeout")
+		},
+		compareFn: func(_ context.Context, _, _, head string) (*gh.CompareResult, error) {
+			if head != "main" {
+				t.Errorf("Compare head = %q, want %q (should fall back to branch)", head, "main")
+			}
+			return &gh.CompareResult{
+				HTMLURL: "https://github.com/org/app/compare/def...main",
+				Commits: []gh.CompareCommit{
+					{SHA: "aaa", Message: "Fix bug (#42)", Author: "dev"},
+				},
+			}, nil
+		},
+	}
+
+	cfg := &config.Config{
+		Pipeline: config.PipelineConfig{
+			Rollback: config.RollbackConfig{
+				Sources: config.RollbackSources{
+					ArtifactID: config.RollbackSource{Repo: "org/app"},
+				},
+			},
+		},
+	}
+
+	p := New(cfg, runner, false, "main", nil)
+	p.Snapshot.AgentImageTag = "pi-abc-ext-def"
+
+	notes, _, err := p.FetchReleaseNotes(context.Background())
+	if err != nil {
+		t.Fatalf("expected graceful fallback, got error: %v", err)
+	}
+	if len(notes) != 1 || notes[0].Number != 42 {
+		t.Errorf("unexpected notes: %+v", notes)
+	}
+	if got := p.Values()["commit"]; got != "main" {
+		t.Errorf("values[commit] = %q, want %q (should stay as branch on resolve error)", got, "main")
 	}
 }

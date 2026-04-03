@@ -174,6 +174,7 @@ func (m Model) renderReleaseNotes(sb *strings.Builder) {
 	if len(m.releaseNotes) == 0 {
 		sb.WriteString("\n" + sectionStyle.Render("Release Notes") + "\n")
 		sb.WriteString("  " + mutedStyle.Render("No PRs found between last production deploy and "+m.branch) + "\n")
+		m.renderPinnedCommit(sb)
 		return
 	}
 
@@ -194,6 +195,22 @@ func (m Model) renderReleaseNotes(sb *strings.Builder) {
 	if m.releaseNotesURL != "" {
 		sb.WriteString(fmt.Sprintf("\n  %s %s\n", snapshotLabelStyle.Render("Full diff:"), stageURLStyle.Render(m.releaseNotesURL)))
 	}
+	m.renderPinnedCommit(sb)
+}
+
+func (m Model) renderPinnedCommit(sb *strings.Builder) {
+	commit := m.pipeline.Values()["commit"]
+	if commit == "" || commit == m.branch {
+		sb.WriteString(fmt.Sprintf("  %s %s\n",
+			preflightWarnStyle.Render("⚠"),
+			mutedStyle.Render("Commit pinning failed — deploying branch tip")))
+		return
+	}
+	short := commit
+	if len(short) > 7 {
+		short = short[:7]
+	}
+	sb.WriteString(fmt.Sprintf("  %s %s\n", snapshotLabelStyle.Render("Pinned to:"), snapshotValueStyle.Render(short+" ("+m.branch+")")))
 }
 
 func (m Model) releaseNotesString() string {
@@ -364,6 +381,13 @@ func (m Model) slackMessage(finished bool) string {
 	var sb strings.Builder
 
 	header := ":rocket: *" + m.operator + "* is deploying `" + m.branch + "`"
+	if commit := m.pipeline.Values()["commit"]; commit != "" && commit != m.branch {
+		short := commit
+		if len(short) > 7 {
+			short = short[:7]
+		}
+		header += " (`" + short + "`)"
+	}
 	if m.dryRun {
 		header += " (DRY RUN)"
 	}

@@ -101,7 +101,8 @@ func TestGenerateReleaseTagListError(t *testing.T) {
 	}
 }
 
-func TestCreateReleaseUsesExtHash(t *testing.T) {
+func TestCreateReleaseUsesPinnedCommit(t *testing.T) {
+	pinnedSHA := "abc123def456789012345678901234567890abcd"
 	var capturedTarget string
 	runner := &mockRunner{
 		createReleaseFn: func(_ context.Context, _, _, target, _, _ string) (string, error) {
@@ -110,6 +111,7 @@ func TestCreateReleaseUsesExtHash(t *testing.T) {
 		},
 	}
 	p := New(releaseConfig(), runner, false, "main", nil)
+	p.SetValue("commit", pinnedSHA)
 	p.Snapshot.AgentImageTag = "pi-abc1234-ext-def5678"
 
 	url, err := p.CreateRelease(context.Background(), "v2026.04.03.1", "v2026.04.03.1", "body")
@@ -117,11 +119,36 @@ func TestCreateReleaseUsesExtHash(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if capturedTarget != "def5678" {
-		t.Errorf("target = %q, want %q (ext hash from image tag)", capturedTarget, "def5678")
+	if capturedTarget != pinnedSHA {
+		t.Errorf("target = %q, want pinned SHA %q", capturedTarget, pinnedSHA)
 	}
 	if !strings.Contains(url, "releases/tag") {
 		t.Errorf("url = %q, expected release URL", url)
+	}
+}
+
+func TestCreateReleaseFallsBackToExtHash(t *testing.T) {
+	resolvedSHA := "def5678" + strings.Repeat("0", 33)
+	var capturedTarget string
+	runner := &mockRunner{
+		resolveCommitFn: func(_ context.Context, _, _ string) (string, error) {
+			return resolvedSHA, nil
+		},
+		createReleaseFn: func(_ context.Context, _, _, target, _, _ string) (string, error) {
+			capturedTarget = target
+			return "https://github.com/org/repo/releases/tag/v1", nil
+		},
+	}
+	p := New(releaseConfig(), runner, false, "main", nil)
+	p.Snapshot.AgentImageTag = "pi-abc1234-ext-def5678"
+
+	_, err := p.CreateRelease(context.Background(), "v2026.04.03.1", "v2026.04.03.1", "body")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if capturedTarget != resolvedSHA {
+		t.Errorf("target = %q, want %q (resolved ext hash)", capturedTarget, resolvedSHA)
 	}
 }
 
