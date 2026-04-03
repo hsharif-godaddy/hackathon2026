@@ -1,0 +1,4 @@
+dist/
+logs/
+/release-manager
+release-manager.local.yml

@@ -1,0 +1,200 @@
+slack:
+  secret_name: releases_slack_bot_token
+  aws_profile: airobuild-dev-private-sso
+
+lock:
+  ssm_parameter: /airo/release-manager/deploy-lock
+  aws_profile: airobuild-dev-private-sso
+
+pipeline:
+  environments:
+    test:
+      stages:
+        # --- App deploy + image build run in parallel ---
+        - id: deploy-app
+          name: Deploy App to Test
+          group: deploy
+          repo: gdcorp-partners/airo-app-builder
+          workflow: aws-deploy-app.yml
+          ref: "{{branch}}"
+          inputs:
+            DEPLOY_TO_ENV: test
+          outputs:
+            artifact_id:
+              from: run-log
+              pattern: "Artifact ID: (\\d+)"
+
+        - id: build-images
+          name: Build Container Images
+          group: deploy
+          repo: gdcorp-commerce/pioneer-infra
+          workflow: combined-airo-app-build.yml
+          inputs:
+            environment: c1-dev-private-us-west-2
+            airo-app-builder-branch: "{{branch}}"
+            node-version: "22"
+            build-image: "true"
+            publish-image: "true"
+            preprov-management-action: "Upsert + Reload Pre-Prov"
+            preprov-variant: preview
+          outputs:
+            agent_image_tag:
+              from: run-log
+              job_match: "build-airo-app-builder-agent.*Send Notifications"
+              pattern: "MOST_SPECIFIC_IMMUTABLE_TAG_SUFFIX=(pi-[a-f0-9]+-ext-[a-f0-9]+)"
+            preview_image_tag:
+              from: run-log
+              job_match: "build-airo-app-builder-preview.*Send Notifications"
+              pattern: "MOST_SPECIFIC_IMMUTABLE_TAG_SUFFIX=(pi-[a-f0-9]+-ext-[a-f0-9]+)"
+            publish_image_tag:
+              from: run-log
+              job_match: "build-airo-app-builder-publish.*Send Notifications"
+              pattern: "MOST_SPECIFIC_IMMUTABLE_TAG_SUFFIX=(pi-[a-f0-9]+-ext-[a-f0-9]+)"
+
+        # --- E2E + manual checklist run in parallel after deploy group finishes ---
+        - id: e2e-test
+          name: E2E Tests
+          group: validate
+          repo: gdcorp-partners/airo-app-builder
+          workflow: playwright-e2e.yml
+          ref: "{{branch}}"
+          inputs:
+            environment: test
+
+        - id: checklist-test
+          name: Manual Checklist
+          group: validate
+          type: checklist
+          items:
+            - "Verify the health & version of the katana app: https://airo-builder.test-godaddy.com/api/health"
+            - "Verify the katana app loads at test URL: https://airo-builder.test-godaddy.com/"
+            - "Create a new app and verify it builds the site"
+            - "Publish the app and verify it goes live"
+            - "Verify the app id in nomad c4 has the correct image versions"
+            - "Verify an existing app upgrades correctly and the agent is working"
+            - "Verify any new features in the release notes are working"
+
+    prod:
+      requires: test
+      stages:
+        # --- Promote images first (fast, upsert-reload-preprov depends on this) ---
+        - id: promote-images
+          name: Promote Images to Prod
+          repo: gdcorp-commerce/pioneer-infra
+          workflow: docker-promote.yml
+          active_run_filter: "airo-builder"
+          matrix:
+            - inputs:
+                environment: c1-dev-private-us-west-2
+                source-repository-name: airo-builder/agent
+                image-tag: "{{test.build-images.agent_image_tag}}"
+            - inputs:
+                environment: c1-dev-private-us-west-2
+                source-repository-name: airo-builder/preview
+                image-tag: "{{test.build-images.preview_image_tag}}"
+            - inputs:
+                environment: c1-dev-private-us-west-2
+                source-repository-name: airo-builder/publish
+                image-tag: "{{test.build-images.publish_image_tag}}"
+
+        # --- Promote app + upsert/reload pre-prov run in parallel ---
+        - id: promote-app
+          name: Promote App to Prod
+          group: deploy-prod
+          repo: gdcorp-partners/airo-app-builder
+          workflow: promote-artifact.yml
+          ref: "{{branch}}"
+          inputs:
+            component: app
+            environment: prod
+            artifact_id: "{{test.deploy-app.artifact_id}}"
+            skip_e2e: "true"
+
+        - id: upsert-reload-preprov
+          name: Upsert + Reload Pre-Prov
+          group: deploy-prod
+          repo: gdcorp-commerce/pioneer-infra
+          workflow: airo-preprov-management-unified.yml
+          inputs:
+            action: "Upsert + Reload Pre-Prov"
+            environment: mgmt-prod-us-west-2
+            agentImageTag: "{{test.build-images.agent_image_tag}}"
+            previewImageTag: "{{test.build-images.preview_image_tag}}"
+            publishImageTag: "{{test.build-images.publish_image_tag}}"
+            compositionId: ai-builder
+            compositionVersion: v4
+            appTemplateName: default
+            batchConcurrency: "5"
+
+        # --- E2E + manual checklist run in parallel ---
+        - id: e2e-prod
+          name: E2E Tests (Prod)
+          group: validate-prod
+          repo: gdcorp-partners/airo-app-builder
+          workflow: playwright-e2e.yml
+          ref: "{{branch}}"
+          inputs:
+            environment: prod
+
+        - id: checklist-prod
+          name: Manual Checklist
+          group: validate-prod
+          type: checklist
+          items:
+            - "Verify the health & version of the katana app: https://airo-builder.godaddy.com/api/health"
+            - "Verify the katana app loads at prod URL: https://airo-builder.godaddy.com/"
+            - "Create a new app and verify it builds the site"
+            - "Publish the app and verify it goes live"
+            - "Verify the app id in prod nomad has the correct image versions"
+            - "Verify an existing app upgrades correctly and the agent is working"
+            - "Verify any new features in the release notes are working"
+
+  dry_run:
+    # Dry run queries last successful runs and exercises real log parsing.
+    # No placeholders needed.
+
+  rollback:
+    sources:
+      artifact_id:
+        repo: gdcorp-partners/airo-app-builder
+        workflow: promote-artifact.yml
+        filter: "displayTitle contains '[app]' and 'prod'"
+        extract_pattern: "Promoting (\\d+) to prod"
+      image_tags:
+        repo: gdcorp-commerce/pioneer-infra
+        workflow: airo-preprov-management-unified.yml
+        filter: "displayTitle contains 'PROD'"
+        extract_from: run-log
+        job_match: "Upsert Template Images"
+        patterns:
+          agent_image_tag: 'AGENT_TAG="(pi-[a-f0-9]+-ext-[a-f0-9]+)"'
+          preview_image_tag: 'PREVIEW_TAG="(pi-[a-f0-9]+-ext-[a-f0-9]+)"'
+          publish_image_tag: 'PUBLISH_TAG="(pi-[a-f0-9]+-ext-[a-f0-9]+)"'
+
+    steps:
+      - id: rollback-app
+        name: Rollback App
+        group: rollback
+        repo: gdcorp-partners/airo-app-builder
+        workflow: promote-artifact.yml
+        ref: "{{branch}}"
+        inputs:
+          component: app
+          environment: prod
+          artifact_id: "{{previous_good.artifact_id}}"
+
+      - id: rollback-images
+        name: Rollback Images
+        group: rollback
+        repo: gdcorp-commerce/pioneer-infra
+        workflow: airo-preprov-management-unified.yml
+        inputs:
+          action: "Upsert + Reload Pre-Prov"
+          environment: mgmt-prod-us-west-2
+          agentImageTag: "{{previous_good.agent_image_tag}}"
+          previewImageTag: "{{previous_good.preview_image_tag}}"
+          publishImageTag: "{{previous_good.publish_image_tag}}"
+          compositionId: ai-builder
+          compositionVersion: v4
+          appTemplateName: default
+          batchConcurrency: "5"
