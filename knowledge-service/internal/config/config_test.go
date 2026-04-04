@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"slices"
 	"testing"
 )
 
@@ -92,11 +93,8 @@ func TestLoadConfig_Defaults_NoAuth(t *testing.T) {
 	if cfg.QdrantTLSSkipVerify {
 		t.Errorf("expected QdrantTLSSkipVerify to be false by default")
 	}
-	if cfg.EmbeddingModel != "text-embedding-3-small" {
-		t.Errorf("expected default embedding model text-embedding-3-small, got %s", cfg.EmbeddingModel)
-	}
-	if cfg.EmbeddingDimension != 1536 {
-		t.Errorf("expected default embedding dimension 1536, got %d", cfg.EmbeddingDimension)
+	if cfg.EmbeddingModel != "text-embedding-3-large" {
+		t.Errorf("expected default embedding model text-embedding-3-large, got %s", cfg.EmbeddingModel)
 	}
 	if cfg.LLMModel != "gpt-4o-mini" {
 		t.Errorf("expected default LLM model gpt-4o-mini, got %s", cfg.LLMModel)
@@ -197,5 +195,140 @@ func TestLoadConfig_JWTWithSSOHost_Succeeds(t *testing.T) {
 	}
 	if cfg.SSOHost != "sso.godaddy.com" {
 		t.Errorf("expected SSOHost sso.godaddy.com, got %s", cfg.SSOHost)
+	}
+}
+
+var newRAGEnvVars = []string{
+	"EMBEDDING_DIMENSION_FAST",
+	"EMBEDDING_DIMENSION_PRECISE",
+	"SEARCH_LLM_ENHANCED",
+	"SEARCH_QUERY_REWRITE_MODEL",
+	"SEARCH_QUERY_REWRITE_MAX_TOKENS",
+	"SEARCH_QUERY_REWRITE_TIMEOUT_MS",
+	"SEARCH_MULTI_QUERY_COUNT",
+	"SEARCH_HNSW_EF",
+	"SEARCH_FUSION_LIMIT",
+	"SEARCH_OVERSAMPLING",
+	"SEARCH_CONFIDENCE_THRESHOLD",
+	"SEARCH_CALIBRATION_MIDPOINT",
+	"SEARCH_CALIBRATION_STEEPNESS",
+}
+
+func TestLoadConfig_NewRAGDefaults(t *testing.T) {
+	allVars := slices.Concat(testedEnvVars, newRAGEnvVars)
+	restore := saveEnvVars(allVars)
+	defer restore()
+
+	for _, key := range allVars {
+		_ = os.Unsetenv(key)
+	}
+
+	_ = os.Setenv("AUTH_TYPE", "none")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.EmbeddingDimensionFast != 256 {
+		t.Errorf("expected EmbeddingDimensionFast 256, got %d", cfg.EmbeddingDimensionFast)
+	}
+	if cfg.EmbeddingDimensionPrecise != 1024 {
+		t.Errorf("expected EmbeddingDimensionPrecise 1024, got %d", cfg.EmbeddingDimensionPrecise)
+	}
+	if cfg.SearchLLMEnhanced {
+		t.Errorf("expected SearchLLMEnhanced false by default")
+	}
+	if cfg.SearchQueryRewriteModel != "gpt-4o-mini" {
+		t.Errorf("expected SearchQueryRewriteModel gpt-4o-mini, got %s", cfg.SearchQueryRewriteModel)
+	}
+	if cfg.SearchQueryRewriteMaxTokens != 150 {
+		t.Errorf("expected SearchQueryRewriteMaxTokens 150, got %d", cfg.SearchQueryRewriteMaxTokens)
+	}
+	if cfg.SearchQueryRewriteTimeoutMs != 2000 {
+		t.Errorf("expected SearchQueryRewriteTimeoutMs 2000, got %d", cfg.SearchQueryRewriteTimeoutMs)
+	}
+	if cfg.SearchMultiQueryCount != 3 {
+		t.Errorf("expected SearchMultiQueryCount 3, got %d", cfg.SearchMultiQueryCount)
+	}
+	if cfg.SearchHnswEf != 256 {
+		t.Errorf("expected SearchHnswEf 256, got %d", cfg.SearchHnswEf)
+	}
+	if cfg.SearchFusionLimit != 50 {
+		t.Errorf("expected SearchFusionLimit 50, got %d", cfg.SearchFusionLimit)
+	}
+	if cfg.SearchOversampling != 2.5 {
+		t.Errorf("expected SearchOversampling 2.5, got %f", cfg.SearchOversampling)
+	}
+	if cfg.SearchConfidenceThreshold != 0.2 {
+		t.Errorf("expected SearchConfidenceThreshold 0.2, got %f", cfg.SearchConfidenceThreshold)
+	}
+	if cfg.SearchCalibrationMidpoint != 0.30 {
+		t.Errorf("expected SearchCalibrationMidpoint 0.30, got %f", cfg.SearchCalibrationMidpoint)
+	}
+	if cfg.SearchCalibrationSteepness != 6.0 {
+		t.Errorf("expected SearchCalibrationSteepness 6.0, got %f", cfg.SearchCalibrationSteepness)
+	}
+}
+
+func TestLoadConfig_NewRAGOverrides(t *testing.T) {
+	allVars := slices.Concat(testedEnvVars, newRAGEnvVars)
+	restore := saveEnvVars(allVars)
+	defer restore()
+
+	for _, key := range allVars {
+		_ = os.Unsetenv(key)
+	}
+
+	_ = os.Setenv("AUTH_TYPE", "none")
+	_ = os.Setenv("EMBEDDING_DIMENSION_FAST", "512")
+	_ = os.Setenv("EMBEDDING_DIMENSION_PRECISE", "2048")
+	_ = os.Setenv("SEARCH_LLM_ENHANCED", "true")
+	_ = os.Setenv("SEARCH_QUERY_REWRITE_MODEL", "gpt-4o")
+	_ = os.Setenv("SEARCH_QUERY_REWRITE_MAX_TOKENS", "100")
+	_ = os.Setenv("SEARCH_QUERY_REWRITE_TIMEOUT_MS", "1000")
+	_ = os.Setenv("SEARCH_FUSION_LIMIT", "60")
+	_ = os.Setenv("SEARCH_OVERSAMPLING", "3.0")
+	_ = os.Setenv("SEARCH_CONFIDENCE_THRESHOLD", "0.6")
+	_ = os.Setenv("SEARCH_CALIBRATION_MIDPOINT", "0.7")
+	_ = os.Setenv("SEARCH_CALIBRATION_STEEPNESS", "15.0")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.EmbeddingDimensionFast != 512 {
+		t.Errorf("expected EmbeddingDimensionFast 512, got %d", cfg.EmbeddingDimensionFast)
+	}
+	if cfg.EmbeddingDimensionPrecise != 2048 {
+		t.Errorf("expected EmbeddingDimensionPrecise 2048, got %d", cfg.EmbeddingDimensionPrecise)
+	}
+	if !cfg.SearchLLMEnhanced {
+		t.Errorf("expected SearchLLMEnhanced true")
+	}
+	if cfg.SearchQueryRewriteModel != "gpt-4o" {
+		t.Errorf("expected SearchQueryRewriteModel gpt-4o, got %s", cfg.SearchQueryRewriteModel)
+	}
+	if cfg.SearchQueryRewriteMaxTokens != 100 {
+		t.Errorf("expected SearchQueryRewriteMaxTokens 100, got %d", cfg.SearchQueryRewriteMaxTokens)
+	}
+	if cfg.SearchQueryRewriteTimeoutMs != 1000 {
+		t.Errorf("expected SearchQueryRewriteTimeoutMs 1000, got %d", cfg.SearchQueryRewriteTimeoutMs)
+	}
+	if cfg.SearchFusionLimit != 60 {
+		t.Errorf("expected SearchFusionLimit 60, got %d", cfg.SearchFusionLimit)
+	}
+	if cfg.SearchOversampling != 3.0 {
+		t.Errorf("expected SearchOversampling 3.0, got %f", cfg.SearchOversampling)
+	}
+	if cfg.SearchConfidenceThreshold != 0.6 {
+		t.Errorf("expected SearchConfidenceThreshold 0.6, got %f", cfg.SearchConfidenceThreshold)
+	}
+	if cfg.SearchCalibrationMidpoint != 0.7 {
+		t.Errorf("expected SearchCalibrationMidpoint 0.7, got %f", cfg.SearchCalibrationMidpoint)
+	}
+	if cfg.SearchCalibrationSteepness != 15.0 {
+		t.Errorf("expected SearchCalibrationSteepness 15.0, got %f", cfg.SearchCalibrationSteepness)
 	}
 }

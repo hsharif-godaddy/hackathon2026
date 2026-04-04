@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -75,6 +76,7 @@ func (c *Client) BaseURL() string {
 // when passing GoCode S2S auth to OpenAI-compatible SDK clients.
 func (c *Client) HTTPClient() *http.Client {
 	return &http.Client{
+		Timeout:   30 * time.Second,
 		Transport: &s2sTransport{tokens: c, base: http.DefaultTransport},
 	}
 }

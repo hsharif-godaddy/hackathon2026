@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"hash/fnv"
+	"math"
 	"strings"
 	"unicode"
 
@@ -60,7 +61,9 @@ func Tokenize(text string) *models.SparseVector {
 	values := make([]float32, 0, len(tf))
 	for idx, freq := range tf {
 		indices = append(indices, idx)
-		values = append(values, freq)
+		// Sublinear TF scaling: dampens the impact of high-frequency terms
+		// so that a term appearing 10x isn't 10x more important than 1x.
+		values = append(values, float32(1.0+math.Log(float64(freq))))
 	}
 
 	return &models.SparseVector{

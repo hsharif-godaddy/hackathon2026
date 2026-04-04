@@ -16,7 +16,7 @@ import (
 // changes to how chunks are built and embedded (e.g. sectionPath prepend, new
 // tokenizer behaviour). Bump it whenever the embedding pipeline changes in a way
 // that makes stored vectors incompatible with freshly-computed ones.
-const pipelineFeatureVersion = "v2"
+const pipelineFeatureVersion = "v3"
 
 // CheckVersion compares the current pipeline configuration against the version
 // stored in a sentinel file from the previous run. If they differ — meaning the
@@ -56,11 +56,13 @@ func CheckVersion(cfg *config.Config) {
 // computeVersion returns a short hash that uniquely identifies the pipeline
 // configuration that affects stored embeddings and sparse vectors.
 func computeVersion(cfg *config.Config) string {
-	raw := fmt.Sprintf("%s|%d|%d|%d|%s",
+	raw := fmt.Sprintf("%s|%d|%d|%d|%d|%d|%s",
 		cfg.EmbeddingModel,
-		cfg.EmbeddingDimension,
+		cfg.EmbeddingDimensionFast,
+		cfg.EmbeddingDimensionPrecise,
 		cfg.IngestMaxChunkSize,
 		cfg.IngestChunkOverlap,
+		cfg.LLMMaxTokens,
 		pipelineFeatureVersion,
 	)
 	sum := sha256.Sum256([]byte(raw))

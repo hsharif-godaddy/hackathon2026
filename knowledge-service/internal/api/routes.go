@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -36,10 +37,12 @@ func (s *Server) setupRoutes() {
 	// JWT-protected routes (search)
 	searchRoutes := api.PathPrefix("").Subrouter()
 	searchRoutes.Use(s.authMiddleware.Authenticate)
+	searchRoutes.Use(deadlineMiddleware(time.Duration(s.config.HTTPSearchTimeout) * time.Second))
 	searchRoutes.HandleFunc("/search", s.handleSearch).Methods(http.MethodPost)
 
 	// JWT-protected routes (ingest) — requires an AWS IAM token (service-to-service only)
 	ingestRoutes := api.PathPrefix("").Subrouter()
 	ingestRoutes.Use(s.authMiddleware.AuthenticateWithKind("awsiam"))
 	ingestRoutes.HandleFunc("/ingest", s.handleIngest).Methods(http.MethodPost)
+	ingestRoutes.HandleFunc("/collection/reset", s.handleDropCollection).Methods(http.MethodPost)
 }

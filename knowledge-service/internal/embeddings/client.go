@@ -15,9 +15,10 @@ import (
 
 // Client provides methods for generating text embeddings using OpenAI's API.
 type Client struct {
-	openaiClient openai.Client
-	model        string
-	dimension    int
+	openaiClient  openai.Client
+	model         string
+	dimension     int
+	dimensionFast int
 }
 
 // New creates a new embeddings client with the provided configuration.
@@ -35,15 +36,88 @@ func New(cfg *config.Config, httpClient *http.Client) *Client {
 	}
 
 	return &Client{
-		openaiClient: openai.NewClient(opts...),
-		model:        cfg.EmbeddingModel,
-		dimension:    cfg.EmbeddingDimension,
+		openaiClient:  openai.NewClient(opts...),
+		model:         cfg.EmbeddingModel,
+		dimension:     cfg.EmbeddingDimensionPrecise,
+		dimensionFast: cfg.EmbeddingDimensionFast,
 	}
 }
 
 // Dimension returns the expected embedding dimension.
 func (c *Client) Dimension() int {
 	return c.dimension
+}
+
+// DimensionFast returns the fast (truncated) embedding dimension.
+func (c *Client) DimensionFast() int {
+	return c.dimensionFast
+}
+
+// truncateEmbedding returns the first targetDim elements of the embedding.
+// If the embedding is shorter than targetDim, it is returned as-is.
+func truncateEmbedding(embedding []float32, targetDim int) []float32 {
+	if len(embedding) <= targetDim {
+		return embedding
+	}
+	return embedding[:targetDim]
+}
+
+// EmbeddingPair holds both a fast (low-dimension) and precise (high-dimension) embedding.
+type EmbeddingPair struct {
+	Fast    []float32
+	Precise []float32
+}
+
+// GenerateDual creates both a fast and precise embedding for a single text input.
+func (c *Client) GenerateDual(ctx context.Context, text string) (*EmbeddingPair, error) {
+	resp, err := c.openaiClient.Embeddings.New(ctx, openai.EmbeddingNewParams{
+		Input: openai.EmbeddingNewParamsInputUnion{
+			OfArrayOfStrings: []string{text},
+		},
+		Model: c.model,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create embedding: %w", err)
+	}
+	if len(resp.Data) == 0 {
+		return nil, errors.New("empty embedding response")
+	}
+
+	full := toFloat32(resp.Data[0].Embedding)
+	return &EmbeddingPair{
+		Fast:    normalizeEmbedding(truncateEmbedding(full, c.dimensionFast)),
+		Precise: normalizeEmbedding(truncateEmbedding(full, c.dimension)),
+	}, nil
+}
+
+// GenerateBatchDual creates both fast and precise embeddings for multiple text inputs.
+func (c *Client) GenerateBatchDual(ctx context.Context, texts []string) ([]*EmbeddingPair, error) {
+	if len(texts) == 0 {
+		return nil, nil
+	}
+
+	resp, err := c.openaiClient.Embeddings.New(ctx, openai.EmbeddingNewParams{
+		Input: openai.EmbeddingNewParamsInputUnion{
+			OfArrayOfStrings: texts,
+		},
+		Model: c.model,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create batch embeddings: %w", err)
+	}
+	if len(resp.Data) != len(texts) {
+		return nil, fmt.Errorf("embedding count mismatch: got %d, want %d", len(resp.Data), len(texts))
+	}
+
+	pairs := make([]*EmbeddingPair, len(resp.Data))
+	for i, data := range resp.Data {
+		full := toFloat32(data.Embedding)
+		pairs[i] = &EmbeddingPair{
+			Fast:    normalizeEmbedding(truncateEmbedding(full, c.dimensionFast)),
+			Precise: normalizeEmbedding(truncateEmbedding(full, c.dimension)),
+		}
+	}
+	return pairs, nil
 }
 
 // Generate creates an embedding vector for a single text input.

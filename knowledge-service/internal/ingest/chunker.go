@@ -177,7 +177,9 @@ func splitByHeaders(content string) []section {
 	return sections
 }
 
-// mergeSections merges sections shorter than minChars into the previous section.
+// mergeSections merges sections shorter than minChars into adjacent sections.
+// Short sections merge backward into the previous section. If the first section
+// is undersized (e.g. a lone H1 header), it merges forward into the next section.
 func mergeSections(sections []section, minChars int) []section {
 	if len(sections) == 0 {
 		return nil
@@ -195,6 +197,13 @@ func mergeSections(sections []section, minChars int) []section {
 		} else {
 			merged = append(merged, sections[i])
 		}
+	}
+
+	// If the first section is still undersized after backward merges (e.g. a lone
+	// H1 header like "# Media Manager"), merge it forward into the next section.
+	if len(merged) > 1 && len([]rune(merged[0].content)) < minChars {
+		merged[1].content = merged[0].content + "\n\n" + merged[1].content
+		merged = merged[1:]
 	}
 
 	return merged

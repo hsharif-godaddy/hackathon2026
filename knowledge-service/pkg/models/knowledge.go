@@ -14,7 +14,8 @@ type Chunk struct {
 	Tags              []string
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
-	DenseVector       []float32
+	DenseVector       []float32 // precise (1024d)
+	DenseFastVector   []float32 // fast (256d)
 	SparseVector      *SparseVector
 }
 

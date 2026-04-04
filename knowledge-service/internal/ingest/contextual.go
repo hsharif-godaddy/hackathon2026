@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"log/slog"
+	"strings"
 
 	"github.com/airo-ai-builder/knowledge-service/internal/llm"
 	"github.com/airo-ai-builder/knowledge-service/pkg/models"
@@ -21,17 +22,28 @@ func NewContextualRetriever(llmClient *llm.Client) *ContextualRetriever {
 }
 
 // EnrichChunk generates a contextual prefix for a chunk using the LLM.
+// fullDocument is the complete document content so the LLM can situate the chunk.
 // Sets chunk.ContextualContent = prefix + "\n" + content
 // Sets chunk.ContextualHash = sha256hex(contextualContent)
 // Returns true if enrichment was successful, false if skipped or failed.
-func (cr *ContextualRetriever) EnrichChunk(ctx context.Context, chunk *models.Chunk) (bool, error) {
-	prefix, err := cr.llm.GenerateContext(ctx, chunk.DocName, chunk.Content)
+func (cr *ContextualRetriever) EnrichChunk(ctx context.Context, chunk *models.Chunk, fullDocument string) (bool, error) {
+	prefix, err := cr.llm.GenerateContext(ctx, chunk.DocName, fullDocument, chunk.Content)
 	if err != nil {
 		slog.Warn("ingest.contextual.failed",
 			"docName", chunk.DocName,
 			"chunkIndex", chunk.ChunkIndex,
 			"error", err)
 		// Fall back to content without prefix
+		chunk.ContextualContent = chunk.Content
+		chunk.ContextualHash = chunk.ContentHash
+		return false, nil
+	}
+
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		slog.Warn("ingest.contextual.empty_prefix",
+			"docName", chunk.DocName,
+			"chunkIndex", chunk.ChunkIndex)
 		chunk.ContextualContent = chunk.Content
 		chunk.ContextualHash = chunk.ContentHash
 		return false, nil

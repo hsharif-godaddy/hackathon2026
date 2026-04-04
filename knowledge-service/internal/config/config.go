@@ -24,10 +24,9 @@ type Config struct {
 	QdrantTLSSkipVerify bool
 
 	// OpenAI (Embeddings)
-	OpenAIAPIKey       string
-	OpenAIBaseURL      string
-	EmbeddingModel     string
-	EmbeddingDimension int
+	OpenAIAPIKey   string
+	OpenAIBaseURL  string
+	EmbeddingModel string
 
 	// LLM (Contextual Retrieval)
 	LLMModel     string
@@ -46,8 +45,27 @@ type Config struct {
 	SearchMaxChunksPerDoc   int
 	SearchPrefetchLimit     int
 	SearchPrefetchThreshold float32
-	SearchFusionThreshold   float32
-	SearchFormulaBoost      float32
+
+	// Embedding dimensions (multi-vector)
+	EmbeddingDimensionFast    int
+	EmbeddingDimensionPrecise int
+
+	// LLM-enhanced search (HyDE + multi-query, single toggle)
+	SearchLLMEnhanced           bool
+	SearchQueryRewriteModel     string
+	SearchQueryRewriteMaxTokens int
+	SearchQueryRewriteTimeoutMs int
+	SearchMultiQueryCount       int
+
+	// Search HNSW
+	SearchHnswEf int
+
+	// Search fusion / scoring
+	SearchFusionLimit          int
+	SearchOversampling         float32
+	SearchConfidenceThreshold  float32
+	SearchCalibrationMidpoint  float32
+	SearchCalibrationSteepness float32
 
 	// Ingest
 	IngestBatchSize    int
@@ -60,9 +78,10 @@ type Config struct {
 	TLSKeyPath  string
 
 	// HTTP Server timeouts
-	HTTPReadTimeout  int
-	HTTPWriteTimeout int
-	HTTPIdleTimeout  int
+	HTTPReadTimeout   int
+	HTTPWriteTimeout  int
+	HTTPIdleTimeout   int
+	HTTPSearchTimeout int
 
 	// Rate limiting
 	RateLimitEnabled bool
@@ -87,14 +106,13 @@ func LoadConfig() (*Config, error) {
 		QdrantTLSSkipVerify: getEnvBool("QDRANT_TLS_SKIP_VERIFY", false),
 
 		// OpenAI (Embeddings)
-		OpenAIAPIKey:       getEnvString("OPENAI_API_KEY", ""),
-		OpenAIBaseURL:      getEnvString("OPENAI_BASE_URL", ""),
-		EmbeddingModel:     getEnvString("EMBEDDING_MODEL", "text-embedding-3-small"),
-		EmbeddingDimension: getEnvInt("EMBEDDING_DIMENSION", 1536),
+		OpenAIAPIKey:   getEnvString("OPENAI_API_KEY", ""),
+		OpenAIBaseURL:  getEnvString("OPENAI_BASE_URL", ""),
+		EmbeddingModel: getEnvString("EMBEDDING_MODEL", "text-embedding-3-large"),
 
 		// LLM (Contextual Retrieval)
 		LLMModel:     getEnvString("LLM_MODEL", "gpt-4o-mini"),
-		LLMMaxTokens: getEnvInt("LLM_MAX_TOKENS", 100),
+		LLMMaxTokens: getEnvInt("LLM_MAX_TOKENS", 200),
 
 		// Auth
 		AuthType: getEnvString("AUTH_TYPE", "jwt"),
@@ -107,25 +125,45 @@ func LoadConfig() (*Config, error) {
 		// Search defaults
 		SearchTopN:              getEnvInt("SEARCH_TOP_N", 8),
 		SearchMaxChunksPerDoc:   getEnvInt("SEARCH_MAX_CHUNKS_PER_DOC", 3),
-		SearchPrefetchLimit:     getEnvInt("SEARCH_PREFETCH_LIMIT", 20),
-		SearchPrefetchThreshold: getEnvFloat32("SEARCH_PREFETCH_THRESHOLD", 0.25),
-		SearchFusionThreshold:   getEnvFloat32("SEARCH_FUSION_THRESHOLD", 0.4),
-		SearchFormulaBoost:      getEnvFloat32("SEARCH_FORMULA_BOOST", 0.05),
+		SearchPrefetchLimit:     getEnvInt("SEARCH_PREFETCH_LIMIT", 100),
+		SearchPrefetchThreshold: getEnvFloat32("SEARCH_PREFETCH_THRESHOLD", 0.15),
+
+		// Embedding dimensions (multi-vector)
+		EmbeddingDimensionFast:    getEnvInt("EMBEDDING_DIMENSION_FAST", 256),
+		EmbeddingDimensionPrecise: getEnvInt("EMBEDDING_DIMENSION_PRECISE", 1024),
+
+		// LLM-enhanced search (HyDE + multi-query, single toggle)
+		SearchLLMEnhanced:           getEnvBool("SEARCH_LLM_ENHANCED", false),
+		SearchQueryRewriteModel:     getEnvString("SEARCH_QUERY_REWRITE_MODEL", "gpt-4o-mini"),
+		SearchQueryRewriteMaxTokens: getEnvInt("SEARCH_QUERY_REWRITE_MAX_TOKENS", 150),
+		SearchQueryRewriteTimeoutMs: getEnvInt("SEARCH_QUERY_REWRITE_TIMEOUT_MS", 2000),
+		SearchMultiQueryCount:       getEnvInt("SEARCH_MULTI_QUERY_COUNT", 3),
+
+		// Search HNSW
+		SearchHnswEf: getEnvInt("SEARCH_HNSW_EF", 256),
+
+		// Search fusion / scoring
+		SearchFusionLimit:          getEnvInt("SEARCH_FUSION_LIMIT", 50),
+		SearchOversampling:         getEnvFloat32("SEARCH_OVERSAMPLING", 2.5),
+		SearchConfidenceThreshold:  getEnvFloat32("SEARCH_CONFIDENCE_THRESHOLD", 0.2),
+		SearchCalibrationMidpoint:  getEnvFloat32("SEARCH_CALIBRATION_MIDPOINT", 0.30),
+		SearchCalibrationSteepness: getEnvFloat32("SEARCH_CALIBRATION_STEEPNESS", 6.0),
 
 		// Ingest
 		IngestBatchSize:    getEnvInt("INGEST_BATCH_SIZE", 100),
-		IngestMinChunkSize: getEnvInt("INGEST_MIN_CHUNK_SIZE", 100),
-		IngestMaxChunkSize: getEnvInt("INGEST_MAX_CHUNK_SIZE", 1500),
-		IngestChunkOverlap: getEnvInt("INGEST_CHUNK_OVERLAP", 150),
+		IngestMinChunkSize: getEnvInt("INGEST_MIN_CHUNK_SIZE", 400),
+		IngestMaxChunkSize: getEnvInt("INGEST_MAX_CHUNK_SIZE", 3200),
+		IngestChunkOverlap: getEnvInt("INGEST_CHUNK_OVERLAP", 320),
 
 		// TLS
 		TLSCertPath: getEnvString("SERVER_CERT_PATH", ""),
 		TLSKeyPath:  getEnvString("SERVER_KEY_PATH", ""),
 
 		// HTTP Server timeouts (seconds)
-		HTTPReadTimeout:  getEnvInt("HTTP_READ_TIMEOUT", 30),
-		HTTPWriteTimeout: getEnvInt("HTTP_WRITE_TIMEOUT", 60),
-		HTTPIdleTimeout:  getEnvInt("HTTP_IDLE_TIMEOUT", 120),
+		HTTPReadTimeout:   getEnvInt("HTTP_READ_TIMEOUT", 30),
+		HTTPWriteTimeout:  getEnvInt("HTTP_WRITE_TIMEOUT", 60),
+		HTTPIdleTimeout:   getEnvInt("HTTP_IDLE_TIMEOUT", 120),
+		HTTPSearchTimeout: getEnvInt("HTTP_SEARCH_TIMEOUT", 15),
 
 		// Rate limiting
 		RateLimitEnabled: getEnvBool("RATE_LIMIT_ENABLED", false),
@@ -171,7 +209,7 @@ func getEnvFloat32(key string, defaultValue float32) float32 {
 	return defaultValue
 }
 
-func getEnvBool(key string, defaultValue bool) bool {
+func getEnvBool(key string, defaultValue bool) bool { //nolint:unparam // defaultValue is always false today but the signature should stay generic
 	if value := os.Getenv(key); value != "" {
 		if boolVal, err := strconv.ParseBool(value); err == nil {
 			return boolVal

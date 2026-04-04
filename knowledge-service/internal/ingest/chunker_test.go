@@ -89,6 +89,30 @@ This is a much longer section that has plenty of content to stand on its own wit
 	}
 }
 
+func TestChunkMarkdown_SmallFirstChunkMergesForward(t *testing.T) {
+	// A lone H1 header (< minChars) should merge forward into the next section,
+	// not remain as a standalone chunk with just "# Media Manager".
+	content := `# Media Manager
+
+## Current Status
+
+Full media support is now available with multiple options for adding images, videos, and other media to your application.`
+
+	chunks := ChunkMarkdown("media_manager", content, nil, 100, 0, 0)
+
+	if len(chunks) != 1 {
+		t.Fatalf("expected 1 chunk (header merged forward), got %d", len(chunks))
+	}
+
+	// The merged chunk should contain both the H1 header and the H2 content
+	if !strings.Contains(chunks[0].Content, "# Media Manager") {
+		t.Error("expected merged chunk to contain H1 header")
+	}
+	if !strings.Contains(chunks[0].Content, "Full media support") {
+		t.Error("expected merged chunk to contain H2 content")
+	}
+}
+
 func TestChunkMarkdown_NoHeaders(t *testing.T) {
 	content := "Just some plain text without any headers.\nMultiple lines of content."
 	chunks := ChunkMarkdown("plain", content, nil, 10, 0, 0)

@@ -1,11 +1,14 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/gorilla/mux"
 )
 
 // responseWriter wraps http.ResponseWriter to capture status code.
@@ -39,6 +42,21 @@ func loggingMiddleware(next http.Handler) http.Handler {
 			"userAgent", sanitizeLogValue(r.UserAgent()),
 		)
 	})
+}
+
+// deadlineMiddleware sets a context deadline on every request so that
+// downstream calls (embedding API, Qdrant, LLM rewrite) are cancelled
+// if the overall request takes too long. Without this, goroutines can
+// leak when upstream services hang because http.Server.WriteTimeout
+// kills the connection but does NOT cancel r.Context().
+func deadlineMiddleware(timeout time.Duration) mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx, cancel := context.WithTimeout(r.Context(), timeout)
+			defer cancel()
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }
 
 // sanitizeLogValue strips control characters (newlines, CR, tabs, ANSI escapes)

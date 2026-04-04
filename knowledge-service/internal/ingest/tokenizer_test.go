@@ -1,6 +1,7 @@
 package ingest
 
 import (
+	"math"
 	"testing"
 
 	"github.com/kljensen/snowball"
@@ -27,11 +28,12 @@ func TestTokenize_BasicText(t *testing.T) {
 	}
 
 	helloHash := hashToken(stem("hello"))
+	expectedTF := float64(1.0 + math.Log(2.0)) // sublinear TF for count=2
 	found := false
 	for i, idx := range result.Indices {
 		if idx == helloHash {
-			if result.Values[i] != 2 {
-				t.Errorf("expected hello frequency 2, got %f", result.Values[i])
+			if math.Abs(float64(result.Values[i])-expectedTF) > 0.01 {
+				t.Errorf("expected hello sublinear TF ~%.3f, got %f", expectedTF, result.Values[i])
 			}
 			found = true
 			break

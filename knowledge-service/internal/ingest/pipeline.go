@@ -63,7 +63,7 @@ func (p *Pipeline) IngestDocument(ctx context.Context, doc models.IngestDocument
 	existingByHash := invertPointMap(existingPoints)
 
 	// 3. Contextual enrichment for chunks that need processing
-	changedChunks, err := p.enrichSelected(ctx, doc.Name, chunks, existingByHash, force, result)
+	changedChunks, err := p.enrichSelected(ctx, doc.Name, doc.Content, chunks, existingByHash, force, result)
 	if err != nil {
 		return nil, err
 	}
@@ -80,6 +80,7 @@ func (p *Pipeline) IngestDocument(ctx context.Context, doc models.IngestDocument
 		"docName", doc.Name,
 		"chunks", len(chunks),
 		"created", result.ChunksCreated,
+		"enriched", result.ChunksEnriched,
 		"skipped", result.ChunksSkipped,
 		"deleted", result.ChunksDeleted,
 		"durationMs", time.Since(start).Milliseconds())
@@ -117,7 +118,7 @@ func selectChunks(chunks []*models.Chunk, existingByHash map[string]string, forc
 
 // enrichSelected runs contextual enrichment on chunks that need processing,
 // updating result counters and logging skip diagnostics.
-func (p *Pipeline) enrichSelected(ctx context.Context, docName string, chunks []*models.Chunk, existingByHash map[string]string, force bool, result *models.IngestResult) ([]*models.Chunk, error) {
+func (p *Pipeline) enrichSelected(ctx context.Context, docName, fullDocument string, chunks []*models.Chunk, existingByHash map[string]string, force bool, result *models.IngestResult) ([]*models.Chunk, error) {
 	toProcess := selectChunks(chunks, existingByHash, force, &result.ChunksSkipped)
 
 	if result.ChunksSkipped > 0 {
@@ -129,12 +130,14 @@ func (p *Pipeline) enrichSelected(ctx context.Context, docName string, chunks []
 
 	enriched := make([]*models.Chunk, 0, len(toProcess))
 	for _, chunk := range toProcess {
-		ok, err := p.contextual.EnrichChunk(ctx, chunk)
+		ok, err := p.contextual.EnrichChunk(ctx, chunk, fullDocument)
 		if err != nil {
 			return nil, fmt.Errorf("contextual enrichment failed for chunk %d: %w", chunk.ChunkIndex, err)
 		}
-		if !ok {
-			slog.Debug("ingest.contextual.fallback", "docName", docName, "chunkIndex", chunk.ChunkIndex)
+		if ok {
+			result.ChunksEnriched++
+		} else {
+			slog.Warn("ingest.contextual.fallback", "docName", docName, "chunkIndex", chunk.ChunkIndex)
 		}
 		enriched = append(enriched, chunk)
 		result.ChunksCreated++
@@ -151,9 +154,6 @@ func (p *Pipeline) embedAndUpsert(ctx context.Context, chunks []*models.Chunk) e
 
 	texts := make([]string, len(chunks))
 	for i, c := range chunks {
-		// Prepend sectionPath so the dense embedding captures document
-		// hierarchy (e.g. "Deployment > Publishing Sites") in addition to
-		// the contextual prefix and raw content.
 		if c.SectionPath != "" {
 			texts[i] = c.SectionPath + "\n" + c.ContextualContent
 		} else {
@@ -161,13 +161,14 @@ func (p *Pipeline) embedAndUpsert(ctx context.Context, chunks []*models.Chunk) e
 		}
 	}
 
-	vectors, err := p.embeddings.GenerateBatch(ctx, texts)
+	pairs, err := p.embeddings.GenerateBatchDual(ctx, texts)
 	if err != nil {
 		return fmt.Errorf("batch embedding failed: %w", err)
 	}
 
 	for i, chunk := range chunks {
-		chunk.DenseVector = vectors[i]
+		chunk.DenseVector = pairs[i].Precise
+		chunk.DenseFastVector = pairs[i].Fast
 		chunk.SparseVector = Tokenize(chunk.ContextualContent)
 	}
 

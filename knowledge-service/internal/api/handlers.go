@@ -88,6 +88,23 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+func (s *Server) handleDropCollection(w http.ResponseWriter, r *http.Request) {
+	if err := s.qdrant.DropCollection(r.Context()); err != nil {
+		slog.Error("collection.drop.failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to drop collection", "DROP_ERROR")
+		return
+	}
+
+	// Recreate with new schema immediately so the service is ready for re-ingest.
+	if err := s.qdrant.EnsureCollection(r.Context()); err != nil {
+		slog.Error("collection.recreate.failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "collection dropped but recreation failed", "RECREATE_ERROR")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "message": "collection dropped and recreated"})
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

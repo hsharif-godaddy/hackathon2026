@@ -90,8 +90,19 @@ func (s *Server) Initialize(ctx context.Context) error {
 	// LLM client — uses S2S auth when gocode is configured, API key otherwise
 	s.llmClient = llm.New(s.config, s.gocodeHTTP)
 
+	// Query rewriter — uses its own LLM model (fast/cheap) separate from enrichment
+	var rewriter *search.QueryRewriter
+	if s.config.SearchLLMEnhanced {
+		rewriterLLM := llm.NewWithModel(s.config, s.gocodeHTTP, s.config.SearchQueryRewriteModel)
+		rewriter = search.NewQueryRewriter(
+			rewriterLLM,
+			s.config.SearchQueryRewriteTimeoutMs,
+			s.config.SearchQueryRewriteMaxTokens,
+		)
+	}
+
 	// Search orchestrator
-	s.searcher = search.New(s.config, s.embeddings, s.qdrant)
+	s.searcher = search.New(s.config, s.embeddings, s.qdrant, rewriter)
 
 	// Ingestion pipeline
 	s.pipeline = ingest.NewPipeline(s.config, s.embeddings, s.llmClient, s.qdrant)

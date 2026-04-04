@@ -110,10 +110,12 @@ func TestToFloat32(t *testing.T) {
 
 func TestClient_New(t *testing.T) {
 	cfg := &config.Config{
-		OpenAIAPIKey:       "test-api-key",
-		OpenAIBaseURL:      "",
-		EmbeddingModel:     "text-embedding-3-small",
-		EmbeddingDimension: 1536,
+		OpenAIAPIKey:   "test-api-key",
+		OpenAIBaseURL:  "",
+		EmbeddingModel: "text-embedding-3-small",
+
+		EmbeddingDimensionPrecise: 1024,
+		EmbeddingDimensionFast:    256,
 	}
 
 	client := New(cfg, nil)
@@ -122,22 +124,52 @@ func TestClient_New(t *testing.T) {
 		t.Fatal("New() returned nil client")
 	}
 
-	if client.Dimension() != 1536 {
-		t.Errorf("Dimension() = %d, want 1536", client.Dimension())
+	if client.Dimension() != 1024 {
+		t.Errorf("Dimension() = %d, want 1024", client.Dimension())
+	}
+
+	if client.DimensionFast() != 256 {
+		t.Errorf("DimensionFast() = %d, want 256", client.DimensionFast())
 	}
 }
 
 func TestClient_New_WithCustomBaseURL(t *testing.T) {
 	cfg := &config.Config{
-		OpenAIAPIKey:       "test-api-key",
-		OpenAIBaseURL:      "https://custom.openai.proxy/v1",
-		EmbeddingModel:     "text-embedding-3-small",
-		EmbeddingDimension: 1536,
+		OpenAIAPIKey:   "test-api-key",
+		OpenAIBaseURL:  "https://custom.openai.proxy/v1",
+		EmbeddingModel: "text-embedding-3-small",
+
+		EmbeddingDimensionPrecise: 1024,
+		EmbeddingDimensionFast:    256,
 	}
 
 	client := New(cfg, nil)
 
 	if client == nil {
 		t.Fatal("New() returned nil client")
+	}
+}
+
+func TestTruncateEmbedding(t *testing.T) {
+	full := []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8}
+
+	truncated := truncateEmbedding(full, 4)
+	if len(truncated) != 4 {
+		t.Fatalf("expected length 4, got %d", len(truncated))
+	}
+	for i := range 4 {
+		if truncated[i] != full[i] {
+			t.Errorf("index %d: got %f, want %f", i, truncated[i], full[i])
+		}
+	}
+
+	same := truncateEmbedding(full, 8)
+	if len(same) != 8 {
+		t.Errorf("expected length 8, got %d", len(same))
+	}
+
+	larger := truncateEmbedding(full, 16)
+	if len(larger) != 8 {
+		t.Errorf("expected length 8, got %d", len(larger))
 	}
 }

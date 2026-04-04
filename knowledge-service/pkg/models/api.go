@@ -15,18 +15,25 @@ type SearchFilters struct {
 
 // SearchResult is a single chunk in search results.
 type SearchResult struct {
-	DocName     string  `json:"docName"`
-	SectionPath string  `json:"sectionPath"`
-	Content     string  `json:"content"`
-	Score       float32 `json:"score"`
-	ChunkIndex  int     `json:"chunkIndex"`
+	DocName           string  `json:"docName"`
+	SectionPath       string  `json:"sectionPath"`
+	Content           string  `json:"content"`
+	ContextualContent string  `json:"contextualContent,omitempty"`
+	Context           string  `json:"context,omitempty"`
+	Score             float32 `json:"score"`
+	RawScore          float32 `json:"rawScore"`
+	Confidence        string  `json:"confidence"`
+	ChunkIndex        int     `json:"chunkIndex"`
 }
 
 // SearchMeta provides metadata about the search operation.
 type SearchMeta struct {
 	Total            int    `json:"total"`
 	Query            string `json:"query"`
+	HyDE             string `json:"hyde,omitempty"`
+	MultiQueryCount  int    `json:"multiQueryCount,omitempty"`
 	SearchDurationMs int64  `json:"searchDurationMs"`
+	Filtered         int    `json:"filtered,omitempty"`
 }
 
 // SearchResponse is the full response for /api/v1/search.
@@ -53,11 +60,12 @@ type IngestDocument struct {
 
 // IngestResult is the result of ingesting a single document.
 type IngestResult struct {
-	DocName       string `json:"docName"`
-	ChunksCreated int    `json:"chunksCreated"`
-	ChunksSkipped int    `json:"chunksSkipped"`
-	ChunksDeleted int    `json:"chunksDeleted"`
-	Status        string `json:"status"`
+	DocName        string `json:"docName"`
+	ChunksCreated  int    `json:"chunksCreated"`
+	ChunksSkipped  int    `json:"chunksSkipped"`
+	ChunksDeleted  int    `json:"chunksDeleted"`
+	ChunksEnriched int    `json:"chunksEnriched"`
+	Status         string `json:"status"`
 }
 
 // IngestResponse is the full response for /api/v1/ingest.

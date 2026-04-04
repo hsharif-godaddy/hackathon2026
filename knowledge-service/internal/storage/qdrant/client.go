@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -59,6 +60,16 @@ func (c *Client) Close() error {
 	return c.client.Close()
 }
 
+// DropCollection deletes the collection and all its data.
+// The collection will be recreated with the correct schema on the next call to EnsureCollection.
+func (c *Client) DropCollection(ctx context.Context) error {
+	if err := c.client.DeleteCollection(ctx, c.collection); err != nil {
+		return fmt.Errorf("failed to delete collection %q: %w", c.collection, err)
+	}
+	slog.Info("qdrant.collection.dropped", "collection", c.collection)
+	return nil
+}
+
 // HealthCheck tests Qdrant connectivity by checking if the collection exists.
 func (c *Client) HealthCheck(ctx context.Context) error {
 	_, err := c.client.CollectionExists(ctx, c.collection)
@@ -69,7 +80,8 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 }
 
 // EnsureCollection creates the collection if it doesn't exist.
-// Uses named vectors: "dense" (1536-dim cosine) and "sparse" (IDF modifier, dot product).
+// Uses named vectors: "dense_fast" (256-dim cosine, HNSW), "dense_precise" (1024-dim cosine, on_disk),
+// and "sparse" (IDF modifier).
 func (c *Client) EnsureCollection(ctx context.Context) error {
 	exists, err := c.client.CollectionExists(ctx, c.collection)
 	if err != nil {
@@ -81,19 +93,24 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 		return nil
 	}
 
-	dim := uint64(c.cfg.EmbeddingDimension) //nolint:gosec // G115: bounded by config defaults (positive int)
+	dimFast := uint64(c.cfg.EmbeddingDimensionFast)       //nolint:gosec // G115: bounded by config defaults (positive int)
+	dimPrecise := uint64(c.cfg.EmbeddingDimensionPrecise) //nolint:gosec // G115: bounded by config defaults (positive int)
 
 	err = c.client.CreateCollection(ctx, &qdrant.CreateCollection{
 		CollectionName: c.collection,
 		VectorsConfig: qdrant.NewVectorsConfigMap(map[string]*qdrant.VectorParams{
-			"dense": {
-				Size:     dim,
+			"dense_fast": {
+				Size:     dimFast,
+				Distance: qdrant.Distance_Cosine,
+				HnswConfig: &qdrant.HnswConfigDiff{
+					M:           qdrant.PtrOf(uint64(32)),
+					EfConstruct: qdrant.PtrOf(uint64(256)),
+				},
+			},
+			"dense_precise": {
+				Size:     dimPrecise,
 				Distance: qdrant.Distance_Cosine,
 				OnDisk:   qdrant.PtrOf(true),
-				HnswConfig: &qdrant.HnswConfigDiff{
-					M:           qdrant.PtrOf(uint64(16)),
-					EfConstruct: qdrant.PtrOf(uint64(100)),
-				},
 			},
 		}),
 		SparseVectorsConfig: qdrant.NewSparseVectorsConfig(map[string]*qdrant.SparseVectorParams{
@@ -103,6 +120,7 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 		}),
 		QuantizationConfig: qdrant.NewQuantizationScalar(&qdrant.ScalarQuantization{
 			Type:      qdrant.QuantizationType_Int8,
+			Quantile:  qdrant.PtrOf(float32(0.99)),
 			AlwaysRam: qdrant.PtrOf(true),
 		}),
 		OptimizersConfig: &qdrant.OptimizersConfigDiff{
@@ -121,7 +139,7 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 	}
 
 	// Create payload indexes
-	keywordIndexes := []string{"docName", "tags", "contentHash"}
+	keywordIndexes := []string{"docName", "tags", "contentHash", "sectionPath"}
 	for _, field := range keywordIndexes {
 		_, indexErr := c.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
 			CollectionName: c.collection,
@@ -133,7 +151,7 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 		}
 	}
 
-	// Integer index for chunkIndex (formula boost)
+	// Integer index for chunkIndex
 	_, err = c.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
 		CollectionName: c.collection,
 		FieldName:      "chunkIndex",
@@ -159,59 +177,47 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 
 // HybridSearchParams holds parameters for a hybrid search query.
 type HybridSearchParams struct {
-	DenseVector    []float32
-	SparseVector   *models.SparseVector
-	Limit          uint64
-	DocNamesFilter []string
-	TagsFilter     []string
+	DenseFastVector    []float32
+	DensePreciseVector []float32
+	SparseVector       *models.SparseVector
+	Limit              uint64
+	DocNamesFilter     []string
+	TagsFilter         []string
 }
 
-// HybridSearch performs a hybrid dense+sparse search with RRF fusion, optionally
-// followed by Qdrant formula reranking that boosts introductory chunks (chunkIndex == 0).
+// HybridSearch performs a multi-stage hybrid search using weighted RRF fusion:
 //
-// When SearchFormulaBoost > 0 (default 0.05), the pipeline is:
-//
-//	dense + sparse → [RRF prefetch] → formula(score + boost*(chunkIndex==0))
-//
-// This rewards overview/introduction chunks that are broadly representative,
-// helping reduce false positives where a deep implementation chunk scores high
-// purely because it shares keywords with the query.
+//	Stage 1: dense_fast + sparse prefetch (inner candidates)
+//	Stage 2: Weighted RRF fusion (k=1, dense 3x over sparse)
+//	Stage 3: Rescore with dense_precise (final ranking)
 func (c *Client) HybridSearch(ctx context.Context, params HybridSearchParams) ([]*qdrant.ScoredPoint, error) {
-	prefetchLimit := uint64(c.cfg.SearchPrefetchLimit) //nolint:gosec // G115: bounded by config defaults (positive int)
+	prefetchLimit := uint64(c.cfg.SearchPrefetchLimit) //nolint:gosec // G115: bounded by config
+	fusionLimit := uint64(c.cfg.SearchFusionLimit)     //nolint:gosec // G115: bounded by config
 	prefetchThreshold := c.cfg.SearchPrefetchThreshold
-	fusionThreshold := c.cfg.SearchFusionThreshold
-	formulaBoost := c.cfg.SearchFormulaBoost
+	oversampling := float64(c.cfg.SearchOversampling)
 
-	// Over-fetch to give dedup enough candidates. topN*3 is too low for small
-	// topN values (e.g. topN=3 → only 9 candidates for RRF). Floor at 30,
-	// capped at maxOverFetch to prevent uint64 overflow on large inputs.
-	// Guard multiplication first: if params.Limit > maxOverFetch/10 the
-	// product would overflow uint64 before the cap check could fire.
-	const maxOverFetch = uint64(1000)
-	var overFetchLimit uint64
-	if params.Limit > maxOverFetch/10 {
-		overFetchLimit = maxOverFetch
-	} else {
-		overFetchLimit = params.Limit * 10
-	}
-	if overFetchLimit < 30 {
-		overFetchLimit = 30
-	}
-
-	// Build filter conditions (applied at the innermost prefetch level)
 	filter := c.buildSearchFilter(params.DocNamesFilter, params.TagsFilter)
 
-	// Dense prefetch
-	densePrefetch := &qdrant.PrefetchQuery{
-		Query:          qdrant.NewQueryDense(params.DenseVector),
-		Using:          qdrant.PtrOf("dense"),
-		Limit:          qdrant.PtrOf(prefetchLimit),
-		ScoreThreshold: qdrant.PtrOf(prefetchThreshold),
-		Filter:         filter,
+	hnswEf := uint64(c.cfg.SearchHnswEf) //nolint:gosec // G115: bounded by config
+
+	// Stage 1: dense_fast + sparse prefetch
+	innerPrefetches := []*qdrant.PrefetchQuery{
+		{
+			Query:          qdrant.NewQueryDense(params.DenseFastVector),
+			Using:          qdrant.PtrOf("dense_fast"),
+			Limit:          qdrant.PtrOf(prefetchLimit),
+			ScoreThreshold: qdrant.PtrOf(prefetchThreshold),
+			Filter:         filter,
+			Params: &qdrant.SearchParams{
+				HnswEf: qdrant.PtrOf(hnswEf),
+				Quantization: &qdrant.QuantizationSearchParams{
+					Rescore:      qdrant.PtrOf(true),
+					Oversampling: qdrant.PtrOf(oversampling),
+				},
+			},
+		},
 	}
 
-	// Sparse prefetch
-	innerPrefetches := []*qdrant.PrefetchQuery{densePrefetch}
 	if params.SparseVector != nil && len(params.SparseVector.Indices) > 0 {
 		innerPrefetches = append(innerPrefetches, &qdrant.PrefetchQuery{
 			Query:          qdrant.NewQuerySparse(params.SparseVector.Indices, params.SparseVector.Values),
@@ -222,65 +228,146 @@ func (c *Client) HybridSearch(ctx context.Context, params HybridSearchParams) ([
 		})
 	}
 
-	// When formula boost is configured, use two-level query:
-	//   [dense, sparse] → RRF prefetch → formula main query
-	if formulaBoost > 0 {
-		rrfPrefetch := &qdrant.PrefetchQuery{
-			Prefetch: innerPrefetches,
-			Query:    qdrant.NewQueryFusion(qdrant.Fusion_RRF),
-			Limit:    qdrant.PtrOf(overFetchLimit),
-		}
-
-		// Formula: $score + formulaBoost * (chunkIndex == 0)
-		// Introductory chunks (index 0) get a small lift.  All other chunks are
-		// evaluated purely on their RRF score.  Defaults prevent a missing
-		// chunkIndex payload from accidentally receiving the bonus.
-		scoreFormula := qdrant.NewQueryFormula(&qdrant.Formula{
-			Expression: qdrant.NewExpressionSum(&qdrant.SumExpression{
-				Sum: []*qdrant.Expression{
-					qdrant.NewExpressionVariable("$score"),
-					qdrant.NewExpressionMult(&qdrant.MultExpression{
-						Mult: []*qdrant.Expression{
-							qdrant.NewExpressionConstant(formulaBoost),
-							qdrant.NewExpressionCondition(qdrant.NewMatchInt("chunkIndex", 0)),
-						},
-					}),
-				},
-			}),
-			// Default chunkIndex to 1 so mid-document chunks get no bonus when
-			// the payload field happens to be absent.
-			Defaults: map[string]*qdrant.Value{
-				"chunkIndex": {Kind: &qdrant.Value_IntegerValue{IntegerValue: 1}},
-			},
-		})
-
-		results, err := c.client.Query(ctx, &qdrant.QueryPoints{
-			CollectionName: c.collection,
-			Prefetch:       []*qdrant.PrefetchQuery{rrfPrefetch},
-			Query:          scoreFormula,
-			Limit:          qdrant.PtrOf(overFetchLimit),
-			ScoreThreshold: qdrant.PtrOf(fusionThreshold),
-			WithPayload:    qdrant.NewWithPayload(true),
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to execute hybrid search with formula reranking: %w", err)
-		}
-		return results, nil
+	// Stage 2: Weighted RRF fusion → Stage 3: Rescore with dense_precise
+	// Weights must match the number of prefetches: [dense_fast, sparse] when both present.
+	rrfWeights := []float32{3.0}
+	if len(innerPrefetches) > 1 {
+		rrfWeights = append(rrfWeights, 1.0)
+	}
+	rrfPrefetch := &qdrant.PrefetchQuery{
+		Prefetch: innerPrefetches,
+		Query:    qdrant.NewQueryRRF(&qdrant.Rrf{K: qdrant.PtrOf(uint32(1)), Weights: rrfWeights}),
+		Limit:    qdrant.PtrOf(fusionLimit),
 	}
 
-	// Fallback: plain RRF without formula reranking
 	results, err := c.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: c.collection,
-		Prefetch:       innerPrefetches,
-		Query:          qdrant.NewQueryFusion(qdrant.Fusion_RRF),
-		Limit:          qdrant.PtrOf(overFetchLimit),
-		ScoreThreshold: qdrant.PtrOf(fusionThreshold),
+		Prefetch:       []*qdrant.PrefetchQuery{rrfPrefetch},
+		Query:          qdrant.NewQueryDense(params.DensePreciseVector),
+		Using:          qdrant.PtrOf("dense_precise"),
+		Limit:          qdrant.PtrOf(params.Limit),
 		WithPayload:    qdrant.NewWithPayload(true),
+		Params: &qdrant.SearchParams{
+			HnswEf: qdrant.PtrOf(hnswEf),
+			Quantization: &qdrant.QuantizationSearchParams{
+				Rescore: qdrant.PtrOf(true),
+			},
+		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute hybrid search: %w", err)
+		return nil, fmt.Errorf("failed to execute multi-stage hybrid search: %w", err)
 	}
 	return results, nil
+}
+
+// FetchAdjacentContent retrieves content of chunks adjacent to the given chunkIndex
+// within the same document. Returns the combined content of (chunkIndex-1, chunkIndex, chunkIndex+1).
+func (c *Client) FetchAdjacentContent(ctx context.Context, docName string, chunkIndex int) string {
+	scrollResult, err := c.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: c.collection,
+		Filter: &qdrant.Filter{
+			Must: []*qdrant.Condition{
+				qdrant.NewMatchKeyword("docName", docName),
+				qdrant.NewRange("chunkIndex", &qdrant.Range{
+					Gte: qdrant.PtrOf(float64(chunkIndex - 1)),
+					Lte: qdrant.PtrOf(float64(chunkIndex + 1)),
+				}),
+			},
+		},
+		Limit:       qdrant.PtrOf(uint32(3)),
+		WithPayload: qdrant.NewWithPayloadInclude("content", "chunkIndex"),
+	})
+	if err != nil {
+		slog.Warn("qdrant.adjacent.fetch.failed", "docName", docName, "chunkIndex", chunkIndex, "error", err)
+		return ""
+	}
+
+	// Sort by chunkIndex and join content
+	type indexed struct {
+		index   int
+		content string
+	}
+	chunks := make([]indexed, 0, len(scrollResult))
+	for _, point := range scrollResult {
+		idx := getIntValue(point.Payload, "chunkIndex")
+		content := getStringValue(point.Payload, "content")
+		if content != "" && idx != chunkIndex {
+			chunks = append(chunks, indexed{index: idx, content: content})
+		}
+	}
+
+	// Build context: before + after
+	var before, after string
+	for _, c := range chunks {
+		if c.index < chunkIndex {
+			before = c.content
+		} else if c.index > chunkIndex {
+			after = c.content
+		}
+	}
+
+	var parts []string
+	if before != "" {
+		parts = append(parts, before)
+	}
+	if after != "" {
+		parts = append(parts, after)
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, "\n\n---\n\n")
+}
+
+// FetchSectionContent retrieves all chunks from the same document section
+// (matching sectionPath) to provide full-section context. Falls back to
+// FetchAdjacentContent when sectionPath is empty.
+func (c *Client) FetchSectionContent(ctx context.Context, docName, sectionPath string, chunkIndex int) string {
+	if sectionPath == "" {
+		return c.FetchAdjacentContent(ctx, docName, chunkIndex)
+	}
+
+	scrollResult, err := c.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: c.collection,
+		Filter: &qdrant.Filter{
+			Must: []*qdrant.Condition{
+				qdrant.NewMatchKeyword("docName", docName),
+				qdrant.NewMatchKeyword("sectionPath", sectionPath),
+			},
+		},
+		Limit:       qdrant.PtrOf(uint32(20)),
+		WithPayload: qdrant.NewWithPayloadInclude("content", "chunkIndex"),
+	})
+	if err != nil {
+		slog.Warn("qdrant.section.fetch.failed", "docName", docName, "sectionPath", sectionPath, "error", err)
+		return c.FetchAdjacentContent(ctx, docName, chunkIndex)
+	}
+
+	type indexed struct {
+		index   int
+		content string
+	}
+	siblings := make([]indexed, 0, len(scrollResult))
+	for _, point := range scrollResult {
+		idx := getIntValue(point.Payload, "chunkIndex")
+		content := getStringValue(point.Payload, "content")
+		if content != "" && idx != chunkIndex {
+			siblings = append(siblings, indexed{index: idx, content: content})
+		}
+	}
+
+	if len(siblings) == 0 {
+		return ""
+	}
+
+	slices.SortFunc(siblings, func(a, b indexed) int { return a.index - b.index })
+
+	parts := make([]string, len(siblings))
+	for i, s := range siblings {
+		parts[i] = s.content
+	}
+	return strings.Join(parts, "\n\n---\n\n")
 }
 
 // BatchUpsert inserts or updates chunks in Qdrant.
@@ -291,7 +378,7 @@ func (c *Client) BatchUpsert(ctx context.Context, chunks []*models.Chunk) error 
 
 	points := make([]*qdrant.PointStruct, 0, len(chunks))
 	for _, chunk := range chunks {
-		if chunk.DenseVector == nil || chunk.ContentHash == "" {
+		if chunk.DenseVector == nil || chunk.DenseFastVector == nil || chunk.ContentHash == "" {
 			continue
 		}
 
@@ -304,7 +391,8 @@ func (c *Client) BatchUpsert(ctx context.Context, chunks []*models.Chunk) error 
 
 		// Set named vectors
 		namedVectors := map[string]*qdrant.Vector{
-			"dense": qdrant.NewVectorDense(chunk.DenseVector),
+			"dense_fast":    qdrant.NewVectorDense(chunk.DenseFastVector),
+			"dense_precise": qdrant.NewVectorDense(chunk.DenseVector),
 		}
 		if chunk.SparseVector != nil && len(chunk.SparseVector.Indices) > 0 {
 			namedVectors["sparse"] = qdrant.NewVectorSparse(chunk.SparseVector.Indices, chunk.SparseVector.Values)
