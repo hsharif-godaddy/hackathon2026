@@ -31,6 +31,10 @@ The search returns relevant documentation with similarity scores.`,
       .optional()
       .default(5)
       .describe('Maximum number of results to return (1-10)'),
+    // KnowB uses AWS Bedrock embeddings with a different score distribution than
+    // the Knowledge Service (which uses text-embedding-3-large via GoCode). KnowB
+    // scores cluster in a narrower 0.35-0.51 range, so 0.67 intentionally acts as
+    // a strict filter. Knowledge Service uses 0.50 (see knowledge-service-driver.ts).
     scoreThreshold: z
       .number()
       .optional()

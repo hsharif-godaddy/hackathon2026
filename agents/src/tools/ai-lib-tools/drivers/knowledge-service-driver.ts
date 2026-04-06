@@ -83,7 +83,7 @@ export class KnowledgeServiceDriver {
   private static readonly S2S_TOKEN_TTL_MS = 55 * 60 * 1000; // 55 min (tokens valid 1h)
 
   private static readonly DEFAULT_TOP_N = 5;
-  private static readonly DEFAULT_SCORE_THRESHOLD = 0.67;
+  private static readonly DEFAULT_SCORE_THRESHOLD = 0.50;
   private static readonly REQUEST_TIMEOUT_MS = 5_000;
 
   constructor(baseUrl: string, useProxy: boolean = false) {

@@ -765,7 +765,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 query: userMessage,
                 kbNodeIds: ['/airo_info'],
                 maxResults: 5,
-                scoreThreshold: 0.67,
+                scoreThreshold: 0.50,
                 appId: agentsAppContext.metadata?.appId,
                 sessionId: agentsAppContext.metadata?.sessionId
               })
