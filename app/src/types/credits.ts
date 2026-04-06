@@ -42,6 +42,10 @@ export enum SubscriptionStatus {
  */
 export enum SubscriptionSuspendReason {
   NonPayment = 'NON_PAYMENT',
+  Legal = 'LEGAL',
+  Policy = 'POLICY',
+  Fraud = 'FRAUD',
+  PolicyOverage = 'POLICY_OVERAGE',
 }
 
 /**

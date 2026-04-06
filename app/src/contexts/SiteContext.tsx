@@ -11,6 +11,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 
 import { type DynamicApiConfig, dynamicApiConfigService } from '@/config/dynamic-api'
 import { useSubscriptionCache } from '@/hooks/useSubscriptionCache'
+import { SiteStatus } from '@/lib/control-plane/types'
 import { logger } from '@/lib/request-context'
 import { sitePollingService } from '@/services/SitePollingService'
 
@@ -173,7 +174,7 @@ export function SiteProvider({ children, initialSiteId }: SiteProviderProps) {
           return true
         }
 
-        if (siteStatus.status === 'failed') {
+        if (siteStatus.status === SiteStatus.Failed) {
           logger.error('site.readiness.failed', { siteId })
           return false
         }

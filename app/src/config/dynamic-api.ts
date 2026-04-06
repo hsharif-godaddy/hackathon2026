@@ -4,6 +4,7 @@
  * Provides site-specific API configuration by fetching agent URLs from the sites database
  * Fallbacks to static configuration when no site context is available
  */
+import { SiteStatus } from '@/lib/control-plane/types'
 import { logger } from '@/lib/request-context'
 import { AppErrorCode } from '@/types/error-codes'
 
@@ -41,8 +42,13 @@ export class DynamicApiConfigService {
       const site = await siteStore.fetchSite(siteId)
 
       if (site) {
-        // Accept 'running' or 'creating' status (V2 apps have agent URLs even while creating)
-        if (site?.agent_url && (site.status === 'running' || site.status === 'creating')) {
+        // running/creating: normal. suspended: publish/compliance may block deploy only; agent stays up for chat.
+        if (
+          site?.agent_url &&
+          (site.status === SiteStatus.Running ||
+            site.status === SiteStatus.Creating ||
+            site.status === SiteStatus.Suspended)
+        ) {
           // Site has agent URL, use dynamic configuration
           // WebSocket/Socket.IO connects to base agent URL
           const config: DynamicApiConfig = {
@@ -131,14 +137,14 @@ export class DynamicApiConfigService {
 
           if (site) {
 
-            if (site?.agent_url && site.status === 'running') {
+            if (site?.agent_url && [SiteStatus.Running, SiteStatus.Suspended].includes(site.status)) {
               const config = await this.getConfigForSite(siteId)
               logger.info('dynamic-api.agent-url.available', { message: 'Agent URL became available for site', siteId })
               resolve(config)
               return
             }
 
-            if (site?.status === 'failed') {
+            if (site?.status === SiteStatus.Failed) {
               logger.warn('dynamic-api.polling.failure', { message: 'Site deployment failed, stopping poll', siteId })
               resolve(null)
               return

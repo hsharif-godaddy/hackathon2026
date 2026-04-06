@@ -2,7 +2,7 @@ import React from 'react'
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 
-import { SiteInfo } from '@/lib/control-plane/types'
+import { SiteInfo, SiteStatus } from '@/lib/control-plane/types'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { AppErrorCode } from '@/types/error-codes'
@@ -208,7 +208,7 @@ export const useSitesStore = create<SitesStore>()(
     // Stop all running sites
     stopAllSites: async (): Promise<boolean> => {
       const { allSites } = get()
-      const runningSites = allSites.filter(site => site.status === 'running')
+      const runningSites = allSites.filter(site => site.status === SiteStatus.Running)
 
       if (runningSites.length === 0) {
         return true
@@ -229,15 +229,15 @@ export const useSitesStore = create<SitesStore>()(
         // Update site statuses to stopped
         set((state) => {
           state.allSites.forEach(site => {
-            if (site.status === 'running') {
-              site.status = 'stopped'
+            if (site.status === SiteStatus.Running) {
+              site.status = SiteStatus.Stopped
             }
           })
 
           // Update sitesById as well
           Object.values(state.sitesById).forEach(site => {
-            if (site.status === 'running') {
-              site.status = 'stopped'
+            if (site.status === SiteStatus.Running) {
+              site.status = SiteStatus.Stopped
             }
           })
         })
@@ -405,7 +405,7 @@ export const useSitesStore = create<SitesStore>()(
 
     // Computed getters
     getRunningSites: () => {
-      return get().allSites.filter(site => site.status === 'running')
+      return get().allSites.filter(site => site.status === SiteStatus.Running)
     },
 
     getTotalSites: () => {
@@ -413,7 +413,7 @@ export const useSitesStore = create<SitesStore>()(
     },
 
     getRunningCount: () => {
-      return get().allSites.filter(site => site.status === 'running').length
+      return get().allSites.filter(site => site.status === SiteStatus.Running).length
     },
 
     // Clear error state

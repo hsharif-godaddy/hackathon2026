@@ -1,5 +1,6 @@
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
 import { usePublishApp } from '@/hooks/usePublishApp';
+import { usePublishComplianceGate } from '@/hooks/usePublishComplianceGate';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import type { Site } from '@/stores/useSitesStore';
@@ -28,6 +29,9 @@ import { useIsLoading, useStreamingState } from '@/stores/useStreamingConversati
  * ```
  */
 export function usePublishForDomain(currentAppId: string | null, site: Site | null) {
+  const { isBlocked: isPublishComplianceBlocked } = usePublishComplianceGate(site, {
+    enabled: !!currentAppId && !!site,
+  });
   const publishMutation = usePublishApp();
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
@@ -62,6 +66,10 @@ export function usePublishForDomain(currentAppId: string | null, site: Site | nu
   };
 
   const handlePublish = async () => {
+    if (isPublishComplianceBlocked) {
+      return;
+    }
+
     if (!currentAppId || !site?.agent_url) {
       if (currentAppId) {
         setPublishError(currentAppId, true);
@@ -87,10 +95,11 @@ export function usePublishForDomain(currentAppId: string | null, site: Site | nu
   // - A conversation is in progress (AI is actively processing)
   // Note: No need to check if current commit is deployed since this hook
   // is only used for unpublished sites (first-time publish scenario)
-  const isPublishDisabled = isLoadingDeployments || 
-    publishState.isPublishing || 
-    isDeploymentInProgress || 
-    isConversationInProgress;
+  const isPublishDisabled = isLoadingDeployments ||
+    publishState.isPublishing ||
+    isDeploymentInProgress ||
+    isConversationInProgress ||
+    isPublishComplianceBlocked;
 
   return {
     handlePublish,

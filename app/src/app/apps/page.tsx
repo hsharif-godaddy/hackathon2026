@@ -14,6 +14,7 @@ import AppInactivityAlert from '@/components/layout/AppInactivityAlert'
 import Header from '@/components/layout/Header'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { SiteStatus } from '@/lib/control-plane/types'
 import { logger } from '@/lib/request-context'
 import { useSitesStore } from '@/stores/useSitesStore'
 import { logImpressionEvent } from '@/utils/instrumentation'
@@ -32,7 +33,7 @@ function SitesPageContent() {
   const refreshSites = useSitesStore((state) => state.refreshSites)
 
   const totalSites = sites ? sites.length : 0
-  const runningCount = sites ? sites.filter(site => site.status === 'running').length : 0
+  const runningCount = sites ? sites.filter(site => site.status === SiteStatus.Running).length : 0
 
   useEffect(() => {
     logImpressionEvent('apps.page.view')();

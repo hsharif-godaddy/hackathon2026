@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { getControlPlaneAdapter } from '@/lib/control-plane'
+import { SiteStatus } from '@/lib/control-plane/types'
 import {
   createCustomerAuthError,
   type CustomerAuthContext,
@@ -32,7 +33,7 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
 
     // Map sites to the server shape expected by the client
     const servers = sites
-      .filter(site => site.status === 'running' && (site.preview_url || site.agent_url))
+      .filter(site => site.status === SiteStatus.Running && (site.preview_url || site.agent_url))
       .map(site => {
         const containerUrl = site.preview_url || site.agent_url
         const url = containerUrl ? new URL(containerUrl) : null

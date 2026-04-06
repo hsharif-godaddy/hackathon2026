@@ -162,7 +162,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         return {
           success: true,
           siteId: response.statusJobId,
-          status: 'creating',
+          status: SiteStatus.Creating,
           created_at: createdAt,
           name: generatedTitle,
           account_id: params.accountId,
@@ -196,7 +196,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       return {
         success: true,
         siteId: response.statusJobId,
-        status: 'creating',
+        status: SiteStatus.Creating,
         created_at: createdAt,
         name: generatedTitle,
         account_id: params.accountId,
@@ -216,7 +216,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
-        status: 'failed'
+        status: SiteStatus.Failed
       };
     }
   }
@@ -281,7 +281,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         return {
           id: siteId,
           name: 'Provisioning...',
-          status: 'creating',
+          status: SiteStatus.Creating,
           account_id: customerId || 'unknown',
           created_at: new Date(),
           updated_at: new Date()
@@ -329,7 +329,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
           return {
             id: jobApp.id, // Use real app ID, not job ID
             name: 'Provisioning...',
-            status: 'creating',
+            status: SiteStatus.Creating,
             account_id: 'unknown',
             created_at: new Date(),
             updated_at: new Date()
@@ -339,7 +339,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
           return {
             id: siteId,
             name: 'Provisioning...',
-            status: 'creating',
+            status: SiteStatus.Creating,
             account_id: 'unknown',
             created_at: new Date(),
             updated_at: new Date()
@@ -816,7 +816,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
           site: {
             id: siteId,
             name: 'Creating...',
-            status: 'creating',
+            status: SiteStatus.Creating,
             account_id: 'pending',
             created_at: new Date(),
             updated_at: new Date()
@@ -837,7 +837,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       }
 
       // Check if app is already running/active - V2 deploys automatically
-      if (site.status === 'running' || site.status === 'created') {
+      if (site.status === SiteStatus.Running || site.status === SiteStatus.Created) {
         return {
           success: true,
           site,
@@ -1040,13 +1040,13 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       }
 
       if (updates.status) {
-        const statusMap: Record<string, string> = {
-          'init': 'provisioning',
-          'creating': 'provisioning',
-          'running': 'active',
-          'failed': 'error'
+        const statusMap: Partial<Record<SiteStatus, string>> = {
+          [SiteStatus.Init]: 'provisioning',
+          [SiteStatus.Creating]: 'provisioning',
+          [SiteStatus.Running]: 'active',
+          [SiteStatus.Failed]: 'error'
         };
-        patchPayload.status = statusMap[updates.status] || updates.status;
+        patchPayload.status = statusMap[updates.status] ?? updates.status;
       }
 
       if (Object.keys(patchPayload).length === 0) {
@@ -1244,12 +1244,13 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
    */
   private mapAppStatus(appStatus: string | null): SiteStatus {
     switch (appStatus) {
-      case 'pending': return 'creating';
-      case 'provisioning': return 'creating';
-      case 'active': return 'running';
-      case 'error': return 'failed';
+      case 'pending': return SiteStatus.Creating;
+      case 'provisioning': return SiteStatus.Creating;
+      case 'active': return SiteStatus.Running;
+      case 'suspended': return SiteStatus.Suspended;
+      case 'error': return SiteStatus.Failed;
       case null:
-      default: return 'init';
+      default: return SiteStatus.Init;
     }
   }
 

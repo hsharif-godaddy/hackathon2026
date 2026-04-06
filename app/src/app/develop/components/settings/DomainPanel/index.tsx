@@ -16,7 +16,7 @@ import { useDevelopPageStore } from "@/stores/useDevelopPageStore";
 import { useSiteStore } from "@/stores/useSiteStore";
 import RidingArrow from '@/svgs/riding-arrow';
 import { generateClickEID } from '@/utils/instrumentation';
-import { hasBeenPublished } from '@/utils/site';
+import { canAccessDomainManagement } from '@/utils/site';
 import { usePublishForDomain } from './usePublishForDomain';
 
 export default function DomainPanel() {
@@ -39,7 +39,7 @@ export default function DomainPanel() {
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal);
 
   const { handlePublish, isPublishDisabled, publishState } = usePublishForDomain(currentAppId, site);
-  const isPublished = hasBeenPublished(site);
+  const canManageDomains = canAccessDomainManagement(site);
 
   if (isDomainAttachLoading || isProjectDomainLoading || isSiteLoading || isPaywallLoading) {
     return (
@@ -50,8 +50,8 @@ export default function DomainPanel() {
     );
   }
 
-  // Show upgrade screen for free users who haven't published
-  if (!isSiteLoading && !isPublished && !isPaywallLoading && showPaywall && (isDomainAttachEnabled || isProjectDomainEnabled)) {
+  // Show upgrade screen for free users who haven't published (no domains to clean up)
+  if (!isSiteLoading && !canManageDomains && !isPaywallLoading && showPaywall && (isDomainAttachEnabled || isProjectDomainEnabled)) {
     return (
       <Box
         className="bg-intents-ux-box-backgroundColor rounded-lg p-6"
@@ -82,8 +82,8 @@ export default function DomainPanel() {
     );
   }
 
-  // Show single empty state if site hasn't been published yet (for paid users)
-  if (!isSiteLoading && !isPublished && (isDomainAttachEnabled || isProjectDomainEnabled)) {
+  // First-time publish prompt when nothing is published and no custom domains remain
+  if (!isSiteLoading && !canManageDomains && (isDomainAttachEnabled || isProjectDomainEnabled)) {
     return (
       <Box gap="lg" className="@container">
         <EmptyStateCard

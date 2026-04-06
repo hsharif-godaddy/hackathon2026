@@ -26,12 +26,15 @@ import TransferInitiateDialog from '@/app/apps/components/TransferInitiateDialog
 import UnpublishConfirmationModal from '@/components/layout/UnpublishConfirmationModal'
 import { useAppRename } from '@/hooks/useAppRename'
 import { useCloseOnReauth } from '@/hooks/useCloseOnReauth'
+import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useUnpublishApp } from '@/hooks/useUnpublishApp'
-import { SiteInfo } from '@/lib/control-plane/types'
+import { SiteInfo, SiteStatus } from '@/lib/control-plane/types'
 import { appFetch } from '@/lib/gasket-config'
+import { shouldOfferUnpublish } from '@/lib/publish-limit'
 import { logger } from '@/lib/request-context'
+import { shouldShowAppNonCompliantOrAccountComplianceTag } from '@/lib/subscription'
 import { useSitesStore } from '@/stores/useSitesStore'
 import { formatDate } from '@/utils/common'
 import { generateClickEID } from '@/utils/instrumentation'
@@ -74,6 +77,8 @@ export default function AppCard({ site }: { site: SiteInfo }) {
   const { mutate: renameApp, isPending: isRenamePending } = useAppRename()
   const { data: isUnpublishEnabled } = useSwitchboard('appbuilder-unpublish')
   const { data: isTransferEnabled } = useSwitchboard('appbuilder-transfer-ownership')
+  const { data: subscription } = useSubscription()
+  const { data: suspendedComplianceBannerEnabled } = useSwitchboard('appbuilder-suspended-compliance-banner')
   const unpublishMutation = useUnpublishApp()
 
   useCloseOnReauth(isUnpublishModalOpen, () => setIsUnpublishModalOpen(false))
@@ -387,7 +392,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
               </Box>
             </MenuItem>
           )}
-          {isUnpublishEnabled && hasBeenPublished(site) && (
+          {isUnpublishEnabled && shouldOfferUnpublish(site) && (
             <MenuItem
               onClick={() => setIsUnpublishModalOpen(true)}
               data-eid={generateClickEID('apps.app.unpublish')}
@@ -399,7 +404,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
               </Box>
             </MenuItem>
           )}
-          {site.status === 'running' && site.preview_url && (
+          {site.status === SiteStatus.Running && site.preview_url && (
             <MenuItem
               onClick={() => window.open(site.preview_url, '_blank', 'noopener,noreferrer')}
               data-eid={generateClickEID('apps.app.view')}
@@ -457,16 +462,26 @@ export default function AppCard({ site }: { site: SiteInfo }) {
     </text.span>
   )
 
+  const suspendedTag =
+    shouldShowAppNonCompliantOrAccountComplianceTag(
+      site,
+      subscription,
+      suspendedComplianceBannerEnabled
+    ) && (
+      <Tag emphasis="critical">{t('builder_status_suspended')}</Tag>
+    )
+
   const publishedTag = hasBeenPublished(site) && (
     <Tag emphasis="highlight">{t('builder_status_published')}</Tag>
   )
 
-  const errorTag = (site.status === 'error' || site.status === 'failed') && (
+  const errorTag = (site.status === SiteStatus.Error || site.status === SiteStatus.Failed) && (
     <Tag emphasis="critical">{t('builder_status_error')}</Tag>
   )
 
-  const statusTags = (publishedTag || errorTag) && (
+  const statusTags = (suspendedTag || publishedTag || errorTag) && (
     <Box data-partial="componentAiro" orientation="horizontal" gap="sm" wrap>
+      {suspendedTag}
       {publishedTag}
       {errorTag}
     </Box>

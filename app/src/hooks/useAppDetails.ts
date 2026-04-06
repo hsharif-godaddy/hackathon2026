@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
+import type { SiteStatus } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 
@@ -25,9 +26,53 @@ export interface AppDomain {
 export interface AppDetailsResponse {
   id: string;
   name: string;
-  status: string;
+  status: SiteStatus;
   domains?: AppDomain[];
+  variants?: string[];
+  variantsWithLifecycle?: Array<{
+    variant: string;
+    status: string;
+  }>;
   [key: string]: any;
+}
+
+export function appDetailsQueryKey(siteId: string, includeCdn = false) {
+  return ['app-details', siteId, includeCdn] as const;
+}
+
+export async function fetchAppDetails(
+  siteId: string,
+  includeCdn = false
+): Promise<AppDetailsResponse> {
+  logger.debug('app-details.fetch.start', {
+    message: 'Fetching app details',
+    siteId,
+    includeCdn,
+  });
+
+  const params = includeCdn ? '?includeCdn=true' : '';
+  const response = await appFetch(`/api/sites/${siteId}${params}`);
+
+  if (!response.ok) {
+    const errorMessage = `Failed to fetch app details: ${response.status}`;
+    logger.error('app-details.fetch.failure', {
+      message: errorMessage,
+      siteId,
+      status: response.status,
+    });
+    throw new Error(errorMessage);
+  }
+
+  const data: AppDetailsResponse = await response.json();
+
+  logger.info('app-details.fetch.success', {
+    message: 'App details fetched successfully',
+    siteId,
+    hasDomains: !!data.domains?.length,
+    domainCount: data.domains?.length || 0,
+  });
+
+  return data;
 }
 
 /**
@@ -70,42 +115,8 @@ export function useAppDetails(
   const { enabled = true, refetchInterval, includeCdn = false } = options;
 
   return useQuery({
-    queryKey: ['app-details', siteId, includeCdn],
-    queryFn: async (): Promise<AppDetailsResponse> => {
-      if (!siteId) {
-        throw new Error('Site ID is required');
-      }
-
-      logger.debug('app-details.fetch.start', {
-        message: 'Fetching app details',
-        siteId,
-        includeCdn,
-      });
-
-      const params = includeCdn ? '?includeCdn=true' : '';
-      const response = await appFetch(`/api/sites/${siteId}${params}`);
-
-      if (!response.ok) {
-        const errorMessage = `Failed to fetch app details: ${response.status}`;
-        logger.error('app-details.fetch.failure', {
-          message: errorMessage,
-          siteId,
-          status: response.status,
-        });
-        throw new Error(errorMessage);
-      }
-
-      const data: AppDetailsResponse = await response.json();
-
-      logger.info('app-details.fetch.success', {
-        message: 'App details fetched successfully',
-        siteId,
-        hasDomains: !!data.domains?.length,
-        domainCount: data.domains?.length || 0,
-      });
-
-      return data;
-    },
+    queryKey: appDetailsQueryKey(siteId!, includeCdn),
+    queryFn: () => fetchAppDetails(siteId!, includeCdn),
     enabled: enabled && !!siteId,
     refetchInterval: typeof refetchInterval === 'function'
       ? (query) => refetchInterval(query.state.data)

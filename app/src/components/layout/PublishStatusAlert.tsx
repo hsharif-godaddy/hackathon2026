@@ -12,9 +12,11 @@ import { Feedback } from '@/components/feedback/Feedback';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { usePublishApp } from '@/hooks/usePublishApp';
+import { usePublishComplianceGate } from '@/hooks/usePublishComplianceGate';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
+import { PublishComplianceBlockReason } from '@/lib/subscription';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore';
@@ -72,6 +74,8 @@ export default function PublishStatusAlert() {
 
   // Get site to extract FQDN for success alert
   const site = useSiteStore((state) => currentAppId ? state.getSite(currentAppId) : null);
+  const { isBlocked: isPublishComplianceBlocked, blockReason: publishComplianceBlockReason } =
+    usePublishComplianceGate(site, { enabled: !!currentAppId });
 
   const publishMutation = usePublishApp();
 
@@ -81,6 +85,11 @@ export default function PublishStatusAlert() {
         message: 'Cannot retry: no app ID available',
         appId: currentAppId,
       });
+      return;
+    }
+
+    if (isPublishComplianceBlocked) {
+      logger.warn('publish-alert.try-again.blocked-compliance', { appId: currentAppId });
       return;
     }
 
@@ -116,7 +125,7 @@ export default function PublishStatusAlert() {
       setPublishError(currentAppId, true);
       setIsPublishing(currentAppId, false);
     }
-  }, [currentAppId, deploymentsRefetch, publishMutation, clearPublishStatus, setIsPublishing, setPublishError]);
+  }, [currentAppId, deploymentsRefetch, isPublishComplianceBlocked, publishMutation, clearPublishStatus, setIsPublishing, setPublishError]);
 
   const handleDismiss = useCallback(() => {
     if (!currentAppId) return;
@@ -331,7 +340,9 @@ export default function PublishStatusAlert() {
           title={t('builder_publish_build_failed_title')}
           actions={
             <div className='flex gap-1'>
-              <Button design='secondary' onClick={handleTryAgain} text={t('builder_publish_error_button_try_again')} />
+              {!isPublishComplianceBlocked && (
+                <Button design='secondary' onClick={handleTryAgain} text={t('builder_publish_error_button_try_again')} />
+              )}
               <Button design='primary' onClick={handleFixBuildError} text={t('builder_publish_error_button_fix')} />
             </div>
           }
@@ -355,9 +366,17 @@ export default function PublishStatusAlert() {
           emphasis='critical'
           onClose={handleDismiss}
           title={t('builder_publish_failed_title')}
-          actions={<Button design='primary' onClick={handleTryAgain} text={t('builder_publish_error_button_try_again')} />}
+          actions={
+            isPublishComplianceBlocked ? undefined : (
+              <Button design='primary' onClick={handleTryAgain} text={t('builder_publish_error_button_try_again')} />
+            )
+          }
         >
-          {t('builder_publish_failed_message')}
+          {isPublishComplianceBlocked
+            ? publishComplianceBlockReason === PublishComplianceBlockReason.SiteSuspended
+              ? t('builder_manageplan_apps_publish_blocked_suspended')
+              : t('builder_manageplan_apps_publish_blocked_subscription')
+            : t('builder_publish_failed_message')}
         </Alert>
       </div>
     );

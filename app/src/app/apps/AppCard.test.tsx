@@ -21,6 +21,17 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(() => ({ data: true, isLoading: false, error: null })),
 }));
 
+vi.mock('@/hooks/useSubscription', () => ({
+  useSubscription: vi.fn(() => ({
+    data: undefined,
+    subscriptions: [],
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  })),
+}));
+
 const mockRouterInstance = mockRouter();
 vi.mock('next/navigation', () => ({
   useRouter: () => mockRouterInstance,

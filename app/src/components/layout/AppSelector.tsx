@@ -11,6 +11,7 @@ import text from '@ux/text';
 import AppItem, { AppItemNew, AppItemSeeAll } from '@/components/layout/AppItem';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useTranslations } from '@/hooks/useTranslations';
+import { SiteStatus } from '@/lib/control-plane/types';
 import {
   Popover,
   PopoverContent,
@@ -68,8 +69,8 @@ export default function AppSelector({ location }: { location?: string }) {
   // Sort sites by updated_at (most recent first)
   const sortedSites = [...sites].sort((a, b) => {
     // First priority: running status
-    const aIsRunning = a.status === 'running';
-    const bIsRunning = b.status === 'running';
+    const aIsRunning = a.status === SiteStatus.Running;
+    const bIsRunning = b.status === SiteStatus.Running;
 
     if (aIsRunning && !bIsRunning) return -1;
     if (!aIsRunning && bIsRunning) return 1;

@@ -34,7 +34,10 @@ const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-edit-mode': true,
   'appbuilder-analytics': true,
   'appbuilder-settings-analytics': true,
+  'appbuilder-suspended-compliance-banner': true,
+  'appbuilder-suspended-nonpayment-banner': true,
   'appbuilder-github-integration': true,
+  'appbuilder-unpublish': true,
   'app-builder-budget-service': false, // opt-in: requires running Budget Service
   'appbuilder-template-selector': true,
 };

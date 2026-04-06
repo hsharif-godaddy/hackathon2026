@@ -4,6 +4,7 @@
  * Resolves job IDs to app IDs by checking the API response
  * Uses multiple indicators to determine if an ID is a real app ID
  */
+import { SiteStatus } from '@/lib/control-plane/types'
 import { logger } from '@/lib/request-context'
 import { IAppIdAdapter } from './IAppIdAdapter'
 
@@ -38,7 +39,7 @@ export class ApiAppIdAdapter implements IAppIdAdapter {
         if (site.id && (
             (site.id !== id) || // Different ID (job → app transition)
             site.agent_url ||   // Has agent URL (ready for file operations)
-            site.status === 'running' // Site is running
+            site.status === SiteStatus.Running // Site is running
         )) {
           // Only log if we're actually changing the ID
           if (site.id !== id) {

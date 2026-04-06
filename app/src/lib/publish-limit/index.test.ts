@@ -7,6 +7,7 @@ import {
   getPublishLimit,
   isPublishedApp,
   PLAN_PUBLISH_LIMITS,
+  shouldOfferUnpublish,
 } from './index';
 
 describe('publish-limit', () => {
@@ -128,6 +129,33 @@ describe('publish-limit', () => {
     it('should return false when no variants info available', () => {
       const app = {};
       expect(isPublishedApp(app)).toBe(false);
+    });
+  });
+
+  describe('shouldOfferUnpublish', () => {
+    it('should return true when publish variant is active', () => {
+      const app = {
+        variantsWithLifecycle: [{ variant: 'publish', status: 'active' }],
+      };
+      expect(shouldOfferUnpublish(app)).toBe(true);
+    });
+
+    it('should return true when publish variant is inactive', () => {
+      const app = {
+        variantsWithLifecycle: [{ variant: 'publish', status: 'inactive' }],
+      };
+      expect(shouldOfferUnpublish(app)).toBe(true);
+    });
+
+    it('should return false when no publish variant', () => {
+      const app = {
+        variantsWithLifecycle: [{ variant: 'preview', status: 'active' }],
+      };
+      expect(shouldOfferUnpublish(app)).toBe(false);
+    });
+
+    it('should return true for legacy variants with publish', () => {
+      expect(shouldOfferUnpublish({ variants: ['publish'] })).toBe(true);
     });
   });
 

@@ -61,7 +61,19 @@ export interface SiteVariant {
   lastActivityTime?: string;
 }
 
-export type SiteStatus = 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error';
+/**
+ * Site status states
+ */
+export enum SiteStatus {
+  Init = 'init',
+  Creating = 'creating',
+  Created = 'created',
+  Running = 'running',
+  Failed = 'failed',
+  Stopped = 'stopped',
+  Error = 'error',
+  Suspended = 'suspended',
+}
 
 /**
  * Options for deploying a site

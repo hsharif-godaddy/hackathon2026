@@ -6,6 +6,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
+import { DomainStatus, DomainType } from '@/lib/control-plane/types';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { createMockSite, mockInstrumentation } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
@@ -295,6 +296,42 @@ describe('DomainPanel', function domainPanelTests() {
       renderWithProviders(<DomainPanel />);
 
       // Should NOT show upgrade or publish screens
+      expect(screen.queryByText('builder_domain_upgrade_title')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_domain_publish_required_title')).not.toBeInTheDocument();
+    });
+
+    it('should show domain management when inactive publish but custom domain remains', async function showDomainMgmtWithCustomDomain() {
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+      const { useSiteStore } = await import('@/stores/useSiteStore');
+
+      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false });
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
+        const mockSite = createMockSite({
+          variantsWithLifecycle: [{ variant: 'publish', status: 'inactive' }],
+          variants: [],
+          domains: [
+            {
+              fqdn: 'custom.example.com',
+              isPrimary: false,
+              domainType: DomainType.CUSTOM,
+              prefix: '',
+              status: DomainStatus.ACTIVE,
+              createdAt: '',
+              updatedAt: '',
+            },
+          ],
+        });
+        const state = {
+          getSite: vi.fn(() => mockSite),
+          loading: {},
+        };
+        return selector(state);
+      });
+
+      renderWithProviders(<DomainPanel />);
+
       expect(screen.queryByText('builder_domain_upgrade_title')).not.toBeInTheDocument();
       expect(screen.queryByText('builder_domain_publish_required_title')).not.toBeInTheDocument();
     });

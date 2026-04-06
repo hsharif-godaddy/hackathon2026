@@ -39,6 +39,13 @@ vi.mock('@/hooks/usePublishApp', () => ({
     mutateAsync: vi.fn().mockResolvedValue({ result: 'success', commitHash: 'abc123' }),
   }),
 }));
+vi.mock('@/hooks/usePublishComplianceGate', () => ({
+  usePublishComplianceGate: () => ({
+    isBlocked: false,
+    blockReason: null,
+    blockMessage: null,
+  }),
+}));
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: any) => selector(mockDevelopStore),
 }));
@@ -64,6 +71,7 @@ vi.mock('@/lib/request-context', () => ({
   logger: {
     info: vi.fn(),
     error: vi.fn(),
+    warn: vi.fn(),
   },
 }));
 const mockSetActiveSettingsSection = vi.fn();

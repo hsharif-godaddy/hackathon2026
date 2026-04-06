@@ -1,10 +1,22 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { dynamicApiConfigService } from '@/config/dynamic-api';
+import {
+  appDetailsQueryKey,
+  type AppDetailsResponse,
+  fetchAppDetails,
+} from '@/hooks/useAppDetails';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
+import { useTranslations } from '@/hooks/useTranslations';
 import { appFetch } from '@/lib/gasket-config';
 import { regenerateToken } from '@/lib/jwt-regeneration';
+import type { AiroSubscription } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
+import {
+  getPublishComplianceBlockReason,
+  isPublishBlockedByComplianceRules,
+  PublishComplianceBlockReason
+} from '@/lib/subscription';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSitesStore } from '@/stores/useSitesStore';
 import { useSiteStore } from '@/stores/useSiteStore';
@@ -135,6 +147,7 @@ async function handleLocalDevPublishSuccess(
  * ```
  */
 export function usePublishApp() {
+  const t = useTranslations();
   const queryClient = useQueryClient();
   const setLastPublishedCommitHash = useDevelopPageStore((state) => state.setLastPublishedCommitHash);
   const setDeploymentInProgressId = useDevelopPageStore((state) => state.setDeploymentInProgressId);
@@ -147,6 +160,26 @@ export function usePublishApp() {
 
   return useMutation<PublishResult, Error, PublishParams>({
     mutationFn: async ({ appId }) => {
+      await queryClient.invalidateQueries({ queryKey: ['app-details', appId] });
+      const site = await queryClient.fetchQuery<AppDetailsResponse>({
+        queryKey: appDetailsQueryKey(appId),
+        queryFn: () => fetchAppDetails(appId),
+      });
+      const cachedSubs = queryClient.getQueryData<{
+        subscriptions: AiroSubscription[];
+        active: AiroSubscription | null;
+      }>(['subscriptions']);
+      const subscription = cachedSubs?.active ?? undefined;
+      const complianceFlag =
+        queryClient.getQueryData<boolean>(['featureFlag', 'appbuilder-suspended-compliance-banner']) === true;
+      if (isPublishBlockedByComplianceRules(site, subscription, complianceFlag)) {
+        const blockReason = getPublishComplianceBlockReason(site, subscription, complianceFlag);
+        throw new Error(
+          blockReason === PublishComplianceBlockReason.SiteSuspended
+            ? t('builder_manageplan_apps_publish_blocked_suspended')
+            : t('builder_manageplan_apps_publish_blocked_subscription')
+        );
+      }
 
       if (isSecretsSyncEnabled) {
         try {

@@ -43,6 +43,7 @@ describe('AppSiteRow', function appSiteRowTests() {
     isPaidPlan: true,
     isAtPublishLimit: false,
     canUpgrade: true,
+    isPublishingBlocked: false,
     onPublishClick: vi.fn(),
     onUnpublishClick: vi.fn(),
   };
@@ -116,6 +117,20 @@ describe('AppSiteRow', function appSiteRowTests() {
       );
 
       expect(screen.queryByRole('button', { name: 'builder_manageplan_apps_unpublish' })).not.toBeInTheDocument();
+    });
+
+    it('should render Unpublish when inactive publish but unpublishAvailable is true', function unpublishWhenInactivePublish() {
+      renderWithProviders(
+        <AppSiteRow
+          {...defaultProps}
+          isPublished={false}
+          unpublishAvailable={true}
+          isUnpublishEnabled={true}
+        />
+      );
+
+      expect(screen.queryByText('builder_manageplan_apps_published')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'builder_manageplan_apps_unpublish' })).toBeInTheDocument();
     });
 
     it('should call onUnpublishClick when Unpublish button is clicked', function callsOnUnpublish() {
@@ -546,6 +561,63 @@ describe('AppSiteRow', function appSiteRowTests() {
       );
 
       expect(screen.getByRole('button', { name: 'builder_manageplan_apps_publish' })).not.toBeDisabled();
+    });
+  });
+
+  describe('publishing blocked', function publishingBlockedTests() {
+    it('should disable publish button when isPublishingBlocked is true', function publishButtonDisabledWhenBlocked() {
+      renderWithProviders(
+        <AppSiteRow
+          {...defaultProps}
+          isPublished={false}
+          isPublishingBlocked={true}
+        />
+      );
+
+      const publishButton = screen.getByRole('button', { name: 'builder_manageplan_apps_publish' });
+      expect(publishButton).toBeDisabled();
+    });
+
+    it('should enable publish button when isPublishingBlocked is false', function publishButtonEnabledWhenNotBlocked() {
+      renderWithProviders(
+        <AppSiteRow
+          {...defaultProps}
+          isPublished={false}
+          isPublishingBlocked={false}
+        />
+      );
+
+      const publishButton = screen.getByRole('button', { name: 'builder_manageplan_apps_publish' });
+      expect(publishButton).not.toBeDisabled();
+    });
+
+    it('should disable publish button when both isAtPublishLimit and isPublishingBlocked are true', function publishButtonDisabledWithBothConditions() {
+      renderWithProviders(
+        <AppSiteRow
+          {...defaultProps}
+          isPublished={false}
+          isAtPublishLimit={true}
+          isPublishingBlocked={true}
+        />
+      );
+
+      const publishButton = screen.getByRole('button', { name: 'builder_manageplan_apps_publish' });
+      expect(publishButton).toBeDisabled();
+    });
+
+    it('should show disabled Publish instead of Upgrade when publishing is blocked for a free user', function blockedOverridesUpgrade() {
+      renderWithProviders(
+        <AppSiteRow
+          {...defaultProps}
+          isPublished={false}
+          isPaidPlan={false}
+          isPublishingBlocked={true}
+          onOpenPaywall={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByRole('button', { name: 'builder_manageplan_apps_upgrade_to_publish' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'builder_manageplan_apps_publish' })).toBeDisabled();
     });
   });
 });

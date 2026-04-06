@@ -1,6 +1,7 @@
 import { vi } from 'vitest';
 
 import type { SiteInfo, SiteVariant } from '@/lib/control-plane/types';
+import { SiteStatus } from '@/lib/control-plane/types';
 
 /**
  * Create a mock SiteVariant
@@ -69,14 +70,14 @@ export function mockURLMethods() {
  * @returns Complete SiteInfo mock object
  *
  * @example
- * const site = createMockSite({ name: 'My App', status: 'running' });
+ * const site = createMockSite({ name: 'My App', status: SiteStatus.Running });
  * const siteWithVariants = createMockSite({ variants: ['preview', 'publish'] });
  */
 export function createMockSite(overrides: Partial<SiteInfo> = {}): SiteInfo {
   return {
     id: 'test-site-123',
     name: 'Test Application',
-    status: 'running',
+    status: SiteStatus.Running,
     account_id: 'test-account-123',
     initial_prompt: 'Build a todo app',
     created_at: new Date('2024-01-01T00:00:00.000Z'),

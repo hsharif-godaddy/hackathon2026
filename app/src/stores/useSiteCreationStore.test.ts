@@ -57,6 +57,7 @@ vi.mock('@/services/SitePollingService', () => ({
   },
 }));
 
+import { SiteStatus } from '@/lib/control-plane/types';
 import { useSiteCreationStore } from './useSiteCreationStore';
 
 describe('useSiteCreationStore', () => {
@@ -83,14 +84,14 @@ describe('useSiteCreationStore', () => {
   it('does not trigger a second deploy for legacy jobs already creating', async () => {
     fetchSite.mockResolvedValue({
       id: 'dev-job-site-456',
-      status: 'creating',
+      status: SiteStatus.Creating,
       account_id: 'account-123',
       created_at: '2026-03-12T00:00:00.000Z',
       updated_at: '2026-03-12T00:00:00.000Z',
     });
     checkSiteStatus.mockResolvedValue({
       siteId: 'dev-job-site-456',
-      status: 'creating',
+      status: SiteStatus.Creating,
       agent_url: null,
       backend_url: null,
       preview_url: null,

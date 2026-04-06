@@ -27,6 +27,7 @@ import { useGitHistoryQuery } from '@/hooks/useGitHistory';
 import { useIsHistoryDisabled } from '@/hooks/useIsHistoryDisabled';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
 import { usePublishApp } from '@/hooks/usePublishApp';
+import { usePublishComplianceGate } from '@/hooks/usePublishComplianceGate';
 import { useSecretsDiff } from '@/hooks/useSecretsDiff';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
@@ -37,6 +38,7 @@ import { getPublishLimit } from '@/lib/publish-limit';
 import { logger } from '@/lib/request-context';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { Separator } from '@/lib/shadcn/separator';
+import { PublishComplianceBlockReason } from '@/lib/subscription';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import { useIsLoading, useStreamingState } from '@/stores/useStreamingConversationStore';
@@ -127,6 +129,8 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const publishMutation = usePublishApp();
 
   const site = useSiteStore((state) => currentAppId ? state.getSite(currentAppId) : null);
+  const { isBlocked: isPublishComplianceBlocked, blockReason: publishComplianceBlockReason } =
+    usePublishComplianceGate(site, { enabled: publishFlagsEnabled });
   const fqdn = resolveSiteFqdn(site) || '';
 
   // Check if a conversation is in progress (AI is actively processing)
@@ -211,6 +215,11 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const handleDeploy = useCallback(async () => {
     setPublishResult(null);
 
+    if (isPublishComplianceBlocked) {
+      logger.warn('app-publish.deploy.blocked-compliance', { appId: currentAppId, publishComplianceBlockReason });
+      return;
+    }
+
     if (!currentAppId || !site?.agent_url) {
       logger.error('app-publish.deploy.error', {
         appId: currentAppId,
@@ -251,7 +260,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       setPublishError(currentAppId, true);
       setIsPublishing(currentAppId, false);
     }
-  }, [currentAppId, site, isFirstTimePublishing, setPublishError, setIsPublishing, clearPublishStatus, publishMutation]);
+  }, [currentAppId, site, isFirstTimePublishing, isPublishComplianceBlocked, publishComplianceBlockReason, setPublishError, setIsPublishing, clearPublishStatus, publishMutation]);
 
   useEffect(() => {
     const wasPublishing = prevPublishingRef.current;
@@ -359,7 +368,8 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     isPublishLimitLoading ||
     publishBlockedBySwitchboard ||
     !currentAppId ||
-    !site?.agent_url;
+    !site?.agent_url ||
+    isPublishComplianceBlocked;
 
   const publishWidget = isFirstTimePublishing ? 'app_first_publish' : 'app_publish';
 
@@ -370,6 +380,16 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       return (
         <Alert emphasis="warning">
           {t('builder_publish_conversation_warning')}
+        </Alert>
+      );
+    }
+
+    if (isPublishComplianceBlocked) {
+      return (
+        <Alert emphasis="critical">
+          {publishComplianceBlockReason === PublishComplianceBlockReason.SiteSuspended
+            ? t('builder_manageplan_apps_publish_blocked_suspended')
+            : t('builder_manageplan_apps_publish_blocked_subscription')}
         </Alert>
       );
     }

@@ -11,7 +11,11 @@
  * Environment Variables:
  * - PORT: The port to listen on (default: 8081)
  * - SERVER_PORT: Alternative port variable (for compatibility)
- * - SUSPENDED: Set to "true" to show a suspended site message
+ * - SUSPENDED: Set to "true" to show a suspended site message (injected by the
+ *   publish workload). Do not enable for subscription NON_PAYMENT suspension:
+ *   that path is part of normal downgrade-to-free; customers should not see
+ *   this branded suspension page for NON_PAYMENT. Use for compliance/legal/
+ *   policy/fraud/overage suspensions only (platform must pass reason-aware flags).
  * - STATUS_PAGE_TITLE: Custom title override (used in both <title> and <h1>)
  * - STATUS_PAGE_MESSAGE: Custom message override
  */

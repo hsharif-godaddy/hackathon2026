@@ -15,13 +15,19 @@ import UnpublishConfirmationModal from '@/components/layout/UnpublishConfirmatio
 import { useCloseOnReauth } from '@/hooks/useCloseOnReauth';
 import { useDomainDisconnectPolling, useMultipleDeploymentStatusPolling } from '@/hooks/useDeploymentStatusPolling';
 import { usePublishApp } from '@/hooks/usePublishApp';
+import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { useUnpublishApp } from '@/hooks/useUnpublishApp';
 import type { SiteInfo } from '@/lib/control-plane/types';
 import { DomainStatus, DomainType } from '@/lib/control-plane/types';
 import { getEffectivePlan, isPaidPlanForGrants, PAYWALL_ITC, type PaywallType } from '@/lib/paywall/shared';
-import { getPublishLimit, isPublishedApp } from '@/lib/publish-limit';
+import { getPublishLimit, isPublishedApp, shouldOfferUnpublish } from '@/lib/publish-limit';
+import {
+  getPublishComplianceBlockReason,
+  isPublishBlockedByComplianceRules,
+  PublishComplianceBlockReason,
+} from '@/lib/subscription';
 import { useSitesStore } from '@/stores/useSitesStore';
 import { SubscriptionPlan } from '@/types/credits';
 import { getPlanDisplayLabelKey } from '@/utils/credits';
@@ -65,9 +71,11 @@ export default function AppsAndSitesCard({
   const t = useTranslations();
   const router = useRouter();
   const { data: isUnpublishEnabled } = useSwitchboard('appbuilder-unpublish');
+  const { data: suspendedComplianceBannerEnabled, isLoading: isSuspendedComplianceFeatureLoading } = useSwitchboard('appbuilder-suspended-compliance-banner');
   const unpublishMutation = useUnpublishApp();
   const publishMutation = usePublishApp();
   const fetchAllSites = useSitesStore((state) => state.fetchAllSites);
+  const { data: subscription } = useSubscription();
 
   const effectivePlanForLimits = getEffectivePlan(subscriptionPlan, hadAiroPlus);
 
@@ -87,6 +95,33 @@ export default function AppsAndSitesCard({
   );
 
   const isAtPublishLimit = publishLimit !== null && publishedCount >= publishLimit;
+
+  const complianceSubscriptionRulesEnabled =
+    !isSuspendedComplianceFeatureLoading && suspendedComplianceBannerEnabled === true;
+
+  const isAppBlockedForPublishing = useCallback(
+    (site: SiteInfo) =>
+      isPublishBlockedByComplianceRules(site, subscription, complianceSubscriptionRulesEnabled),
+    [subscription, complianceSubscriptionRulesEnabled]
+  );
+
+  const getPublishBlockedRowMessage = useCallback(
+    (site: SiteInfo) => {
+      const reason = getPublishComplianceBlockReason(
+        site,
+        subscription,
+        complianceSubscriptionRulesEnabled
+      );
+      if (!reason) {
+        return undefined;
+      }
+      if (reason === PublishComplianceBlockReason.SiteSuspended) {
+        return t('builder_manageplan_apps_publish_blocked_suspended');
+      }
+      return t('builder_manageplan_apps_publish_blocked_subscription');
+    },
+    [complianceSubscriptionRulesEnabled, subscription, t]
+  );
 
   const [isExpanded, setIsExpanded] = useState(true);
   const [selectedApp, setSelectedApp] = useState<SiteInfo | null>(null);
@@ -268,6 +303,18 @@ export default function AppsAndSitesCard({
   const handlePublishClick = async (siteId: string) => {
     // Clear any previous error when clicking the button
     clearAppError(siteId);
+
+    // Find the site to check for suspension
+    const site = sites.find(s => s.id === siteId);
+    if (!site) {
+      setAppError(siteId, t('builder_common_error_generic'));
+      return;
+    }
+
+    if (isAppBlockedForPublishing(site)) {
+      return;
+    }
+
     setPublishingApps((prev) => new Set(prev).add(siteId));
 
     try {
@@ -439,27 +486,36 @@ export default function AppsAndSitesCard({
             )}
 
             <div className="flex flex-col flex-1 min-h-0 overflow-y-auto pr-1 max-h-48">
-              {sites.map((site) =>
-                <AppSiteRow
-                  key={site.id}
-                  disabled={publishingApps.has(site.id) || unpublishingApps.has(site.id) || disconnectingDomainApps.has(site.id)}
-                  site={site}
-                  isPublished={isPublishedApp(site)}
-                  publishedUrl={getDisplayUrl(site)}
-                  isPublishing={publishingApps.has(site.id)}
-                  isUnpublishing={unpublishingApps.has(site.id)}
-                  isDisconnectingDomain={disconnectingDomainApps.has(site.id)}
-                  isUnpublishEnabled={isUnpublishEnabled ?? false}
-                  isPaidPlan={isPaidPlan}
-                  isAtPublishLimit={isAtPublishLimit}
-                  canUpgrade={canUpgradeForMorePublishes ?? false}
-                  error={appErrors.get(site.id)}
-                  onPublishClick={handlePublishClick}
-                  onUnpublishClick={handleUnpublishClick}
-                  onOpenPaywall={onOpenPaywall}
-                  onRowClick={(siteId) => router.push(`/develop/${siteId}`)}
-                />
-              )}
+              {sites.map((site) => {
+                const published = isPublishedApp(site);
+                const offerUnpublish = shouldOfferUnpublish(site);
+                return (
+                  <AppSiteRow
+                    key={site.id}
+                    disabled={publishingApps.has(site.id) || unpublishingApps.has(site.id) || disconnectingDomainApps.has(site.id)}
+                    site={site}
+                    isPublished={published}
+                    unpublishAvailable={offerUnpublish}
+                    publishedUrl={getDisplayUrl(site)}
+                    isPublishing={publishingApps.has(site.id)}
+                    isUnpublishing={unpublishingApps.has(site.id)}
+                    isDisconnectingDomain={disconnectingDomainApps.has(site.id)}
+                    isUnpublishEnabled={isUnpublishEnabled ?? false}
+                    isPaidPlan={isPaidPlan}
+                    isAtPublishLimit={isAtPublishLimit}
+                    canUpgrade={canUpgradeForMorePublishes ?? false}
+                    isPublishingBlocked={isAppBlockedForPublishing(site)}
+                    error={
+                      appErrors.get(site.id) ??
+                      (!published && !offerUnpublish ? getPublishBlockedRowMessage(site) : undefined)
+                    }
+                    onPublishClick={handlePublishClick}
+                    onUnpublishClick={handleUnpublishClick}
+                    onOpenPaywall={onOpenPaywall}
+                    onRowClick={(siteId) => router.push(`/develop/${siteId}`)}
+                  />
+                );
+              })}
             </div>
           </>
         </CollapsibleCardBody>

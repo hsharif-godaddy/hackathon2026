@@ -7,14 +7,24 @@
 
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
+import {
+  appDetailsQueryKey,
+  type AppDetailsResponse,
+  fetchAppDetails,
+} from '@/hooks/useAppDetails'
 import { appFetch } from '@/lib/gasket-config'
 import { regenerateToken } from '@/lib/jwt-regeneration'
+import type { AiroSubscription } from '@/lib/mgmt-airo/types'
 import { ClientPaywallProvider } from '@/lib/paywall/client-provider'
 import { checkPaywallEligibility, PaywallAction } from '@/lib/paywall/core'
 import { PAYWALL_ITC, PaywallDenialReason } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
+import {
+  getPublishComplianceBlockReason,
+  isPublishBlockedByComplianceRules,
+  PublishComplianceBlockReason,
+} from '@/lib/subscription'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { useSiteStore } from '@/stores/useSiteStore'
 import { logAiroHQEvent } from '@/utils/instrumentation'
 import { hasBeenPublished } from '@/utils/site'
 import type { ClientActionExecutor } from './types'
@@ -69,10 +79,46 @@ export const publishAction: ClientActionExecutor = async (params) => {
       throw new Error(reason || 'You need an Airo Plus subscription to publish. Upgrade to continue.')
     }
 
+    const qc = getQueryClient()
+    let appDetails: AppDetailsResponse | undefined
+    if (qc) {
+      try {
+        await qc.invalidateQueries({ queryKey: ['app-details', appId] })
+        appDetails = await qc.fetchQuery<AppDetailsResponse>({
+          queryKey: appDetailsQueryKey(appId),
+          queryFn: () => fetchAppDetails(appId),
+        })
+      } catch (error) {
+        logger.warn('websocket.client-action.publish.app-details-for-compliance-failed', {
+          appId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+    if (!appDetails) {
+      try {
+        appDetails = await fetchAppDetails(appId)
+      } catch (error) {
+        logger.error('websocket.client-action.publish.app-details-unavailable', {
+          appId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        throw new Error('Failed to load app details for publish')
+      }
+    }
+    const subCache = qc?.getQueryData<{ active: AiroSubscription | null }>(['subscriptions'])
+    const subscription = subCache?.active ?? undefined
+    const complianceFlag =
+      qc?.getQueryData<boolean>(['featureFlag', 'appbuilder-suspended-compliance-banner']) === true
+    if (isPublishBlockedByComplianceRules(appDetails, subscription, complianceFlag)) {
+      const blockReason = getPublishComplianceBlockReason(appDetails, subscription, complianceFlag)
+      logger.warn('publish-action.blocked-compliance', { appId, blockReason })
+      throw new Error('Publish blocked: compliance suspension')
+    }
+
     // Log publish analytics event (matches UI behavior)
     try {
-      const site = useSiteStore.getState().getSite(appId)
-      const isFirstTimePublishing = !hasBeenPublished(site)
+      const isFirstTimePublishing = !hasBeenPublished(appDetails)
       const airoHQTask = isFirstTimePublishing
         ? 'builder_project_first_published'
         : 'builder_project_published'

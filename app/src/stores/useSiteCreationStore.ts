@@ -3,6 +3,7 @@ import { devtools } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 
 import { agentFetch } from '@/lib/agent-fetch'
+import { SiteStatus } from '@/lib/control-plane/types'
 import { appFetch } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
@@ -12,7 +13,7 @@ import { useSiteStore } from './useSiteStore'
 export interface Site {
   id: string
   name?: string
-  status: 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error'
+  status: SiteStatus
   agent_url?: string
   backend_url?: string
   preview_url?: string
@@ -149,7 +150,11 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
 
           // Quick-create starts deployment in the background and returns a job ID.
           // Treat "creating" as already in progress so we don't trigger a second deploy.
-          if (siteData.status === 'running' || siteData.status === 'created' || siteData.status === 'creating') {
+          if (
+            siteData.status === SiteStatus.Running ||
+            siteData.status === SiteStatus.Created ||
+            siteData.status === SiteStatus.Creating
+          ) {
             set((state) => {
               state.phase = 'polling'
               state.error = null
@@ -345,7 +350,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         // 3. Services are healthy (siteStatus.ready)
         // 4. Registration succeeded (siteStatus.registrationComplete)
         // 5. We have a real app ID, not a job ID (!isJobId)
-        if (finalSiteData.status === 'running' && finalSiteData.agent_url && finalSiteData.preview_url &&
+        if (finalSiteData.status === SiteStatus.Running && finalSiteData.agent_url && finalSiteData.preview_url &&
             siteStatus.ready && siteStatus.registrationComplete && !isJobId) {
           // Stop polling and mark as complete
           get()._stopPolling()
@@ -357,7 +362,11 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         // Check if agent is ready (has agent_url and status is 'running' or 'creating')
         // Apps can have agent URLs even in 'creating' status during provisioning.
         // IMPORTANT: Don't stop polling for job IDs even if they have URLs - wait for real app ID
-        if ((finalSiteData.status === 'running' || finalSiteData.status === 'creating') && finalSiteData.agent_url && !isJobId) {
+        if (
+          (finalSiteData.status === SiteStatus.Running || finalSiteData.status === SiteStatus.Creating) &&
+          finalSiteData.agent_url &&
+          !isJobId
+        ) {
           get()._stopPolling()
           set((state) => {
             state.phase = 'verifying-agent'
@@ -387,7 +396,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
               get()._startPolling()
             }, 10000)
           }
-        } else if (finalSiteData.status === 'failed') {
+        } else if (finalSiteData.status === SiteStatus.Failed) {
           get()._stopPolling()
           set((state) => {
             state.error = 'Site deployment failed'

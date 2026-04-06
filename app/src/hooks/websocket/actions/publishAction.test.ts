@@ -6,6 +6,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { SiteStatus } from '@/lib/control-plane/types'
 import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { publishAction } from './publishAction'
 import { createMockMessageContext } from '../handlers/__tests__/testUtils'
@@ -62,12 +63,6 @@ vi.mock('@/config/dynamic-api', () => ({
   },
 }))
 
-vi.mock('@/stores/useSiteStore', () => ({
-  useSiteStore: {
-    getState: vi.fn(),
-  },
-}))
-
 vi.mock('@/utils/instrumentation', () => ({
   logAiroHQEvent: vi.fn(),
 }))
@@ -83,7 +78,7 @@ import { regenerateToken } from '@/lib/jwt-regeneration'
 import { checkPaywallEligibility } from '@/lib/paywall/core'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { useSiteStore } from '@/stores/useSiteStore'
+import { SubscriptionStatus, SubscriptionSuspendReason } from '@/types/credits'
 import { logAiroHQEvent } from '@/utils/instrumentation'
 import { hasBeenPublished } from '@/utils/site'
 
@@ -112,6 +107,21 @@ describe('publishAction', () => {
     // Default query client
     mockQueryClient = {
       invalidateQueries: vi.fn().mockResolvedValue(undefined),
+      fetchQuery: vi.fn().mockResolvedValue({
+        id: 'app-123',
+        name: 'Test Site',
+        status: SiteStatus.Running,
+        variants: ['publish'],
+      }),
+      getQueryData: vi.fn((key: unknown[]) => {
+        if (key[0] === 'featureFlag' && key[1] === 'appbuilder-suspended-compliance-banner') {
+          return false
+        }
+        if (key[0] === 'subscriptions') {
+          return { active: null, subscriptions: [] }
+        }
+        return undefined
+      }),
     }
 
     vi.mocked(getQueryClient).mockReturnValue(mockQueryClient)
@@ -145,14 +155,28 @@ describe('publishAction', () => {
     // Mock global fetch for agent service calls
     global.fetch = vi.fn()
 
-    // Default site store - mock site with publish variant (not first time)
-    vi.mocked(useSiteStore.getState).mockReturnValue({
-      getSite: vi.fn().mockReturnValue({
-        id: 'app-123',
-        name: 'Test Site',
-        variants: ['publish'], // Site has been published before
-      }),
-    } as any)
+    const defaultFetchedSite = {
+      id: 'app-123',
+      name: 'Test Site',
+      status: SiteStatus.Running,
+      variants: ['publish'],
+    }
+
+    vi.mocked(appFetch).mockImplementation(async (url: string) => {
+      if (url.startsWith('/api/sites/app-123')) {
+        return {
+          ok: true,
+          json: async () => defaultFetchedSite,
+        } as Response
+      }
+      if (url.includes('/secrets')) {
+        return {
+          ok: true,
+          json: async () => ({}),
+        } as Response
+      }
+      return { ok: false, status: 404, json: async () => ({}) } as Response
+    })
 
     // Default has been published - false for first-time publishing
     vi.mocked(hasBeenPublished).mockReturnValue(false)
@@ -302,6 +326,58 @@ describe('publishAction', () => {
     })
   })
 
+  describe('site suspension', () => {
+    it('should block publish when site is suspended', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      vi.mocked(mockQueryClient.fetchQuery).mockResolvedValue({
+        id: 'app-123',
+        status: SiteStatus.Suspended,
+        variants: ['preview'],
+      })
+
+      await expect(publishAction(params, context)).rejects.toThrow(
+        'Publish blocked: compliance suspension'
+      )
+
+      expect(global.fetch).not.toHaveBeenCalledWith(
+        expect.stringContaining('/publish'),
+        expect.anything()
+      )
+    })
+
+    it('should block publish when subscription is non-compliant and compliance flag is on', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      vi.mocked(mockQueryClient.getQueryData).mockImplementation((key: unknown[]) => {
+        if (key[0] === 'featureFlag' && key[1] === 'appbuilder-suspended-compliance-banner') {
+          return true
+        }
+        if (key[0] === 'subscriptions') {
+          return {
+            active: {
+              status: SubscriptionStatus.Suspended,
+              reason: SubscriptionSuspendReason.Legal,
+            },
+            subscriptions: [],
+          }
+        }
+        return undefined
+      })
+
+      await expect(publishAction(params, context)).rejects.toThrow(
+        'Publish blocked: compliance suspension'
+      )
+
+      expect(global.fetch).not.toHaveBeenCalledWith(
+        expect.stringContaining('/publish'),
+        expect.anything()
+      )
+    })
+  })
+
   describe('state management - initial', () => {
     it('should clear publish status before starting', async () => {
       const context = createMockMessageContext()
@@ -378,8 +454,19 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      // Mock appFetch for secrets sync
+      // Mock appFetch for app details (fallback) and secrets sync
       vi.mocked(appFetch).mockImplementation(async (url: string) => {
+        if (url.startsWith('/api/sites/app-123')) {
+          return {
+            ok: true,
+            json: async () => ({
+              id: 'app-123',
+              name: 'Test Site',
+              status: SiteStatus.Running,
+              variants: ['publish'],
+            }),
+          } as Response
+        }
         if (url.includes('secrets')) {
           return {
             ok: true,
@@ -410,8 +497,19 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      // Mock appFetch to throw error for secrets sync
+      // Mock appFetch for app details and secrets sync
       vi.mocked(appFetch).mockImplementation(async (url: string) => {
+        if (url.startsWith('/api/sites/app-123')) {
+          return {
+            ok: true,
+            json: async () => ({
+              id: 'app-123',
+              name: 'Test Site',
+              status: SiteStatus.Running,
+              variants: ['publish'],
+            }),
+          } as Response
+        }
         if (url.includes('secrets')) {
           throw new Error('Sync failed')
         }
@@ -432,8 +530,19 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      // Mock appFetch to return error status for secrets sync
+      // Mock appFetch for app details and secrets sync
       vi.mocked(appFetch).mockImplementation(async (url: string) => {
+        if (url.startsWith('/api/sites/app-123')) {
+          return {
+            ok: true,
+            json: async () => ({
+              id: 'app-123',
+              name: 'Test Site',
+              status: SiteStatus.Running,
+              variants: ['publish'],
+            }),
+          } as Response
+        }
         if (url.includes('secrets')) {
           return {
             ok: false,
@@ -461,6 +570,7 @@ describe('publishAction', () => {
       vi.mocked(appService.getGitHistory).mockResolvedValue({
         currentCommit: 'fetched-hash',
         commits: [],
+        hasMore: false,
       })
 
       vi.mocked(global.fetch).mockResolvedValue({
@@ -496,6 +606,7 @@ describe('publishAction', () => {
       vi.mocked(appService.getGitHistory).mockResolvedValue({
         currentCommit: 'abc123',
         commits: [],
+        hasMore: false,
       })
 
       const mockResult = {
@@ -792,10 +903,29 @@ describe('publishAction', () => {
         },
       })
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+        if (url.startsWith('/api/sites/app-123')) {
+          return {
+            ok: true,
+            json: async () => ({
+              id: 'app-123',
+              name: 'Test Site',
+              status: SiteStatus.Running,
+              variants: ['publish'],
+            }),
+          } as Response
+        }
+        return {
+          ok: false,
+          status: 500,
+          json: async () => ({ error: 'Server error' }),
+        } as Response
+      })
+
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: false,
         status: 500,
-        json: async () => ({ error: 'Server error' }),
+        json: async () => ({ error: 'API error' }),
       } as Response)
 
       await expect(publishAction(params, context)).rejects.toThrow()
@@ -815,10 +945,29 @@ describe('publishAction', () => {
         publishStates: {},
       })
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+        if (url.startsWith('/api/sites/app-123')) {
+          return {
+            ok: true,
+            json: async () => ({
+              id: 'app-123',
+              name: 'Test Site',
+              status: SiteStatus.Running,
+              variants: ['publish'],
+            }),
+          } as Response
+        }
+        return {
+          ok: false,
+          status: 500,
+          json: async () => ({ error: 'Server error' }),
+        } as Response
+      })
+
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: false,
         status: 500,
-        json: async () => ({ error: 'Server error' }),
+        json: async () => ({ error: 'API error' }),
       } as Response)
 
       await expect(publishAction(params, context)).rejects.toThrow()
@@ -930,7 +1079,9 @@ describe('publishAction', () => {
       await publishAction(params, context)
 
       expect(mockStoreActions.setDeploymentInProgressId).not.toHaveBeenCalled()
-      expect(mockQueryClient.invalidateQueries).not.toHaveBeenCalled()
+      expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({
+        queryKey: ['app-details', 'app-123'],
+      })
       expect(mockStoreActions.setIsPublishing).toHaveBeenCalledWith('app-123', false)
       expect(mockStoreActions.setPublishSuccess).toHaveBeenCalledWith('app-123', true)
     })
@@ -985,6 +1136,7 @@ describe('publishAction', () => {
       vi.mocked(appService.getGitHistory).mockResolvedValue({
         currentCommit: 'abc123',
         commits: [],
+        hasMore: false,
       })
 
       // Mock secrets sync
@@ -1023,6 +1175,7 @@ describe('publishAction', () => {
       vi.mocked(appService.getGitHistory).mockResolvedValue({
         currentCommit: 'abc123',
         commits: [],
+        hasMore: false,
       })
 
       // Mock secrets sync
@@ -1063,6 +1216,7 @@ describe('publishAction', () => {
       vi.mocked(appService.getGitHistory).mockResolvedValue({
         currentCommit: 'abc123',
         commits: [],
+        hasMore: false,
       })
 
       // Mock secrets sync
@@ -1093,10 +1247,22 @@ describe('publishAction', () => {
       vi.mocked(appService.getGitHistory).mockResolvedValue({
         currentCommit: 'fetched-hash',
         commits: [],
+        hasMore: false,
       })
 
-      // Mock appFetch for secrets sync (still uses appFetch)
+      // Mock appFetch for app details and secrets sync
       vi.mocked(appFetch).mockImplementation(async (url: string) => {
+        if (url.startsWith('/api/sites/app-123')) {
+          return {
+            ok: true,
+            json: async () => ({
+              id: 'app-123',
+              name: 'Test Site',
+              status: SiteStatus.Running,
+              variants: ['publish'],
+            }),
+          } as Response
+        }
         if (url.includes('secrets')) {
           return { ok: true, json: async () => ({}) } as Response
         }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { getControlPlaneAdapter } from '@/lib/control-plane/adapter-factory'
+import { SiteStatus } from '@/lib/control-plane/types';
 import {
   type CustomerAuthContext,
   withCustomerAuth} from '@/lib/customer-auth'
@@ -34,11 +35,15 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
       const url = new URL(containerUrl)
       const port = parseInt(url.port) || (site.preview_url ? 5000 : 4000)
 
+      // Suspended blocks publish only; preview may still be served — polling needs status running for isReady.
+      const previewServed =
+        site.status === SiteStatus.Running || site.status === SiteStatus.Suspended
+
       const server = {
         appId: site.id,
         port: port,
         url: containerUrl,
-        status: site.status === 'running' ? ('running' as const) : ('starting' as const),
+        status: previewServed ? ('running' as const) : ('starting' as const),
         lastActivity: site.updated_at
       }
 

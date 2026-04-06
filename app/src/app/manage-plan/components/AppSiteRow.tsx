@@ -13,6 +13,8 @@ interface AppSiteRowProps {
   disabled: boolean;
   site: SiteInfo;
   isPublished: boolean;
+  /** When set, controls unpublish visibility; defaults to matching isPublished */
+  unpublishAvailable?: boolean;
   publishedUrl: string | null;
   isPublishing: boolean;
   isUnpublishing: boolean;
@@ -21,6 +23,8 @@ interface AppSiteRowProps {
   isPaidPlan: boolean;
   isAtPublishLimit: boolean;
   canUpgrade: boolean;
+  /** When true, publishing is blocked due to suspension */
+  isPublishingBlocked?: boolean;
   error?: string;
   onPublishClick: (siteId: string) => void;
   onUnpublishClick: (site: SiteInfo) => void;
@@ -35,6 +39,7 @@ export default function AppSiteRow({
   disabled,
   site,
   isPublished,
+  unpublishAvailable,
   publishedUrl,
   isPublishing,
   isUnpublishing,
@@ -43,6 +48,7 @@ export default function AppSiteRow({
   isPaidPlan,
   isAtPublishLimit,
   canUpgrade,
+  isPublishingBlocked = false,
   error,
   onPublishClick,
   onUnpublishClick,
@@ -50,6 +56,7 @@ export default function AppSiteRow({
   onRowClick,
 }: AppSiteRowProps) {
   const t = useTranslations();
+  const showUnpublishAction = (unpublishAvailable ?? isPublished) && isUnpublishEnabled;
 
   return (
     <div
@@ -114,7 +121,7 @@ export default function AppSiteRow({
             data-partial="componentAiro"
             text={t('builder_unpublish_disconnecting_domain')}
           />
-        ) : isPublished && isUnpublishEnabled ? (
+        ) : showUnpublishAction ? (
           <Button
             className="w-full md:w-auto"
             design="secondary"
@@ -129,7 +136,7 @@ export default function AppSiteRow({
             }
             onClick={() => onUnpublishClick(site)}
           />
-        ) : !isPublished && (!isPaidPlan || (isAtPublishLimit && canUpgrade)) && onOpenPaywall ? (
+        ) : !isPublished && !isPublishingBlocked && (!isPaidPlan || (isAtPublishLimit && canUpgrade)) && onOpenPaywall ? (
           <Button
             className="w-full md:w-auto"
             design="primary"
@@ -145,7 +152,7 @@ export default function AppSiteRow({
             className="w-full md:w-auto"
             design="primary"
             size="sm"
-            disabled={disabled || isAtPublishLimit}
+            disabled={disabled || isAtPublishLimit || isPublishingBlocked}
             data-partial="componentAiro"
             data-eid={generateClickEID('manageplan.buttons.publish_app')}
             text={

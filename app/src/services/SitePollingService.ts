@@ -1,10 +1,11 @@
 import { agentFetch } from '@/lib/agent-fetch';
+import { SiteStatus } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 
-export interface SiteStatus {
+export interface SitePollingSnapshot {
   siteId: string;
-  status: 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error';
+  status: SiteStatus;
   agent_url: string | null;
   backend_url: string | null;
   preview_url: string | null;
@@ -19,7 +20,7 @@ export interface CreateAppResult {
   app?: {
     id: string;
     name?: string;
-    status: string;
+    status: SiteStatus;
   };
   aiGeneratedName?: string;
   nameSuggested?: boolean;
@@ -42,7 +43,7 @@ export class SitePollingService {
   async pollForReadinessAndCreateApp(
     siteId: string,
     _initialPrompt: string,
-    onStatusUpdate?: (status: SiteStatus, attempt: number) => void
+    onStatusUpdate?: (status: SitePollingSnapshot, attempt: number) => void
   ): Promise<CreateAppResult> {
     return new Promise((resolve, reject) => {
       let attempts = 0;
@@ -80,7 +81,7 @@ export class SitePollingService {
         // All services must be healthy to proceed
         const allServicesReady = agentHealthy && frontendHealthy;
 
-        const siteStatus: SiteStatus = {
+        const siteStatus: SitePollingSnapshot = {
           siteId: site.id,
           status: site.status, // Keep existing status from database
           agent_url: site.agent_url,
@@ -104,10 +105,10 @@ export class SitePollingService {
               const appExists = await this.checkAppExists(siteId, site.agent_url);
 
               if (appExists) {
-                await this.updateSiteStatus(siteId, 'running');
+                await this.updateSiteStatus(siteId, SiteStatus.Running);
                 resolve({
                   success: true,
-                  app: { id: siteId, status: 'running' }
+                  app: { id: siteId, status: SiteStatus.Running }
                 });
                 return;
               }
@@ -115,14 +116,14 @@ export class SitePollingService {
               // In V2 mode, app creation is handled during site creation.
               // If we got here and services are ready but app doesn't exist,
               // the agent should auto-register on startup.
-              await this.updateSiteStatus(siteId, 'running');
+              await this.updateSiteStatus(siteId, SiteStatus.Running);
               resolve({
                 success: true,
-                app: { id: siteId, status: 'running' }
+                app: { id: siteId, status: SiteStatus.Running }
               });
             } catch (createError) {
               logger.error('polling.create-app.failed', { appId: siteId, error: createError });
-              await this.updateSiteStatus(siteId, 'failed');
+              await this.updateSiteStatus(siteId, SiteStatus.Failed);
               reject(createError);
             }
             return;
@@ -132,7 +133,7 @@ export class SitePollingService {
           if (attempts < this.maxAttempts) {
             setTimeout(poll, this.pollInterval);
           } else {
-            await this.updateSiteStatus(siteId, 'failed');
+            await this.updateSiteStatus(siteId, SiteStatus.Failed);
             reject(new Error('Services health polling timed out'));
           }
 
@@ -140,7 +141,7 @@ export class SitePollingService {
           logger.error('polling.error', { appId: siteId, error });
 
           if (attempts >= this.maxAttempts) {
-            await this.updateSiteStatus(siteId, 'failed');
+            await this.updateSiteStatus(siteId, SiteStatus.Failed);
             reject(error);
           } else {
             // Try again after delay
@@ -217,7 +218,7 @@ export class SitePollingService {
   /**
    * Update site status via API
    */
-  private async updateSiteStatus(siteId: string, status: string): Promise<void> {
+  private async updateSiteStatus(siteId: string, status: SiteStatus): Promise<void> {
     try {
       const response = await appFetch(`/api/sites/${siteId}`, {
         method: 'PATCH',
@@ -230,7 +231,7 @@ export class SitePollingService {
       if (response.ok) {
         // Update the global site store cache to reflect status change in the UI
         const { useSiteStore } = await import('@/stores/useSiteStore');
-        useSiteStore.getState().updateSite(siteId, { status: status as any });
+        useSiteStore.getState().updateSite(siteId, { status });
       }
     } catch (error) {
       logger.warn('polling.update-site-status.failed', { error: error instanceof Error ? error.message : String(error) });
@@ -240,7 +241,7 @@ export class SitePollingService {
   /**
    * Check site status once (no polling) - directly checks agent URL from UI
    */
-  async checkSiteStatus(siteId: string): Promise<SiteStatus> {
+  async checkSiteStatus(siteId: string): Promise<SitePollingSnapshot> {
     // Get site data using centralized store to prevent duplicate requests
     const { useSiteStore } = await import('@/stores/useSiteStore');
     const siteStore = useSiteStore.getState();
@@ -274,12 +275,12 @@ export class SitePollingService {
     const allServicesReady = agentHealthy && frontendHealthy;
 
     // In V2 mode, agent registers automatically on startup
-    const registrationComplete = site.status === 'running';
+    const registrationComplete = site.status === SiteStatus.Running;
 
     // Auto-update status to "running" if services are ready
-    if (site.status === 'created' && allServicesReady && site.agent_url && site.preview_url) {
-      await this.updateSiteStatus(siteId, 'running');
-      site.status = 'running'; // Update local object for return
+    if (site.status === SiteStatus.Created && allServicesReady && site.agent_url && site.preview_url) {
+      await this.updateSiteStatus(siteId, SiteStatus.Running);
+      site.status = SiteStatus.Running; // Update local object for return
     }
 
     return {
