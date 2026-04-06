@@ -18,6 +18,9 @@ if (observabilityEnabled || langfuseConfigured) {
     spanProcessors.push(createAgentSpanProcessor({
       clientOptions: {
         nodeEnv: nodeEnvMap[resolveEnv()],
+        // Use public event bus URLs 
+        // dxEnabled endpoints are not reachable from on-prem Nomad cells.
+        eventBusOptions: { dxEnabled: false },
         globalContext: {
           site: {
             privateLabelId: 1,
