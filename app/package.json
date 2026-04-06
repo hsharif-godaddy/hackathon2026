@@ -100,7 +100,7 @@
     "@ux/card": "^2500.7.2",
     "@ux/checkbox": "^2500.11.1",
     "@ux/chip": "^2500.10.1",
-    "@ux/coachmark": "^2500.7.2",
+    "@ux/coachmark": "^2500.11.0",
     "@ux/collapsible": "^2500.11.1",
     "@ux/date-input": "^2500.11.1",
     "@ux/disrupt": "^2500.11.0",
