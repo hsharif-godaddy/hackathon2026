@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   claude-review:
-    if: github.event.pull_request.draft == false
+    if: github.event.pull_request.draft == false && github.event.sender.type != 'Bot'
     uses: gdcorp-actions/gd-claude-code-action/.github/workflows/secure-claude-code.yml@v2
     with:
       runner_group: ${{ vars.CLAUDE_RUNNER_GROUP }}
