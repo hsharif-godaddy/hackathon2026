@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
 import Button from '@ux/button'
 import CheckboxFilledIcon from '@ux/icon/checkbox-filled'
@@ -11,6 +11,7 @@ import RefreshIcon from '@ux/icon/refresh'
 import Skeleton from '@ux/skeleton'
 import Tag from '@ux/tag'
 
+import type { SlotUploadItem } from '@/app/develop/components/media/UploadedImagesSection'
 import { UploadedImagesSection } from '@/app/develop/components/media/UploadedImagesSection'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
 import { useMediaManifest } from '@/hooks/useMediaManifest'
@@ -76,19 +77,39 @@ export function MediaSlotDetail({
   const { refetch: refetchManifest } = useMediaManifest({ appId, enabled })
 
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null)
+  const [selectedUploadFile, setSelectedUploadFile] = useState<{ filename: string; signedUrl?: string } | null>(null)
   const [isSwapping, setIsSwapping] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [alternativesOpen, setAlternativesOpen] = useState(true)
   const [uploadsOpen, setUploadsOpen] = useState(true)
+  const [uploadsRefreshKey, setUploadsRefreshKey] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(function resetStateOnSlotChange() {
     setSelectedUrl(null)
+    setSelectedUploadFile(null)
     setUploadError(null)
     setAlternativesOpen(true)
     setUploadsOpen(true)
   }, [slotName])
+
+  // Clear upload selection when a Getty image is selected, and vice versa
+  const handleSelectGettyImage = useCallback((url: string) => {
+    setSelectedUrl(url)
+    setSelectedUploadFile(null)
+  }, [])
+
+  const handleSelectUploadImage = useCallback((file: { filename: string; signedUrl?: string }) => {
+    setSelectedUploadFile(file)
+    setSelectedUrl(null)
+  }, [])
+
+  // Select a persistent slot upload (from alternatives) — uses the same swap flow as Getty
+  const handleSelectSlotUpload = useCallback((url: string) => {
+    setSelectedUrl(url)
+    setSelectedUploadFile(null)
+  }, [])
 
   const getServerState = useServerPollingStore((state) => state.getServerState)
   const previewBaseUrl = getServerState(appId)?.url || null
@@ -139,9 +160,9 @@ export function MediaSlotDetail({
 
       logger.info('media_slot_detail.swap_success', { appId, slotName, newUrl: effectiveUrl })
       reloadPreviewSlot(slotName)
-      setSelectedUrl(null)
       await refetch()
       await refetchManifest()
+      setSelectedUrl(null)
     } catch (err) {
       logger.error('media_slot_detail.swap_failed', {
         appId,
@@ -204,10 +225,18 @@ export function MediaSlotDetail({
           throw new Error(errorData.error || `${t('builder_mediaslot_error_failed')}: ${response.status}`)
         }
 
+        const result = await response.json()
+
         logger.info('media_slot_detail.upload_success', { appId, slotName })
         logImpressionEvent('uploads.mediaslot.success')()
         reloadPreviewSlot(slotName)
-        onDone?.()
+        setUploadsRefreshKey((k) => k + 1)
+        await refetch()
+        await refetchManifest()
+        // Clear selection after data is fresh — effectiveSelectedFilename
+        // derives from uploadSources so the checkmark lands correctly
+        setSelectedUrl(null)
+        setSelectedUploadFile(null)
       } catch (err) {
         logger.error('media_slot_detail.upload_failed', {
           appId,
@@ -220,7 +249,7 @@ export function MediaSlotDetail({
         setIsUploading(false)
       }
     },
-    [appId, slotName, onDone, reloadPreviewSlot, t]
+    [appId, slotName, reloadPreviewSlot, refetch, refetchManifest, t]
   )
 
   const handleSelectFromUploads = useCallback(
@@ -238,52 +267,33 @@ export function MediaSlotDetail({
 
         const baseAgentUrl = apiConfig.agentUrl.replace(`/apps/${appId}`, '')
 
-        let fileResponse: Response | undefined
-
-        if (file.signedUrl) {
-          fileResponse = await fetch(`${baseAgentUrl}${file.signedUrl}`)
-          if (!fileResponse.ok) {
-            logger.debug('media_slot_detail.signed_url_fallback', {
-              appId,
-              filename: file.filename,
-              status: fileResponse.status,
-            })
-            fileResponse = undefined
-          }
-        }
-
-        if (!fileResponse) {
-          fileResponse = await fetch(`${baseAgentUrl}/files/uploads/${appId}/${file.filename}`, {
-            headers: { Authorization: `Bearer ${tokenResult.token}` },
-          })
-        }
-
-        if (!fileResponse.ok) {
-          throw new Error('Failed to fetch uploaded file')
-        }
-
-        const blob = await fileResponse.blob()
-        const formData = new FormData()
-        formData.append('image', blob, file.filename)
-
-        const uploadResponse = await fetch(
-          `${baseAgentUrl}/media/${appId}/slots/${slotName}/upload`,
+        // Server-side copy: tell the agent to copy the chat upload to the media slot
+        // directly, avoiding the browser roundtrip (fetch blob → re-upload) that caused
+        // 500 errors when blobs arrived corrupted or empty.
+        const response = await fetch(
+          `${baseAgentUrl}/media/${appId}/slots/${slotName}/apply-upload`,
           {
             method: 'POST',
-            headers: { Authorization: `Bearer ${tokenResult.token}` },
-            body: formData,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${tokenResult.token}`,
+            },
+            body: JSON.stringify({ filename: file.filename }),
           }
         )
 
-        if (!uploadResponse.ok) {
-          const errorData = await uploadResponse.json().catch(() => ({ error: 'Upload failed' }))
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Upload failed' }))
           throw new Error(errorData.error || 'Upload failed')
         }
 
         logger.info('media_slot_detail.upload_from_chat_success', { appId, slotName, filename: file.filename })
         logImpressionEvent('uploads.mediaslot.success')()
         reloadPreviewSlot(slotName)
-        onDone?.()
+        await refetch()
+        await refetchManifest()
+        setSelectedUploadFile(null)
+        setSelectedUrl(null)
       } catch (err) {
         logger.error('media_slot_detail.upload_from_chat_failed', {
           appId,
@@ -296,20 +306,35 @@ export function MediaSlotDetail({
         setIsUploading(false)
       }
     },
-    [appId, slotName, onDone, reloadPreviewSlot, t]
+    [appId, slotName, reloadPreviewSlot, refetch, refetchManifest, t]
   )
 
   const allImages = slot ? [...new Set([slot.currentUrl, ...slot.alternatives])] : []
   const gettyImages = allImages.filter((url) => !isUploadUrl(url)).sort()
-  const slotUploadedImages = allImages.filter(isUploadUrl).sort()
 
-  const excludeFilenames = useMemo(
-    () => new Set(slot?.uploadSourceFilenames ?? []),
-    [slot]
-  )
+  // Build slot upload items for UploadedImagesSection dedup display.
+  // Includes currentUrl + alternatives. The dedup logic in UploadedImagesSection
+  // hides any that have a matching active chat upload (no duplicates).
+  const slotUploads: SlotUploadItem[] = slot
+    ? allImages
+        .filter(isUploadUrl)
+        .map((url) => ({
+          url,
+          displayUrl: previewBaseUrl ? `${previewBaseUrl}${url}` : url,
+          sourceFilename: slot.uploadSources?.[url],
+        }))
+    : []
+
+  // When slot.currentUrl is an upload and no explicit selection, derive the
+  // matching chat upload filename from uploadSources so the checkmark shows.
+  const currentUploadFilename = (!selectedUploadFile && !selectedUrl && slot?.currentUrl && isUploadUrl(slot.currentUrl))
+    ? slot.uploadSources?.[slot.currentUrl]
+    : undefined
 
   const effectiveSelectedUrl = selectedUrl ?? slot?.currentUrl ?? null
-  const isCurrentImage = effectiveSelectedUrl === slot?.currentUrl
+  const effectiveSelectedFilename = selectedUploadFile?.filename ?? currentUploadFilename ?? null
+  const isCurrentImage = !selectedUploadFile && effectiveSelectedUrl === slot?.currentUrl
+  const hasSelection = selectedUploadFile || !isCurrentImage
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -372,13 +397,13 @@ export function MediaSlotDetail({
                 data-eid={generateClickEID("develop.media_slot_detail.upload")}
               />
               <Button
-                onClick={handleSwapImage}
+                onClick={selectedUploadFile ? () => handleSelectFromUploads(selectedUploadFile) : handleSwapImage}
                 design="primary"
-                icon={<RefreshIcon className={`w-4 h-4 ${isSwapping ? 'animate-spin' : ''}`} />}
-                disabled={isCurrentImage || isSwapping}
+                icon={<RefreshIcon className={`w-4 h-4 ${(isSwapping || isUploading) ? 'animate-spin' : ''}`} />}
+                disabled={!hasSelection || isSwapping || isUploading}
                 className="flex-1"
                 size="sm"
-                text={isSwapping ? t('builder_mediaslot_swapping') : t('builder_mediaslot_use_image')}
+                text={(isSwapping || isUploading) ? t('builder_mediaslot_swapping') : t('builder_mediaslot_use_image')}
                 data-eid={generateClickEID("develop.media_slot_detail.use")}
               />
             </div>
@@ -408,10 +433,10 @@ export function MediaSlotDetail({
                 {alternativesOpen && (
                   <ImageGrid
                     images={gettyImages}
-                    selectedUrl={effectiveSelectedUrl}
+                    selectedUrl={selectedUploadFile ? null : effectiveSelectedUrl}
                     slotName={slotName}
                     previewBaseUrl={previewBaseUrl}
-                    onSelect={setSelectedUrl}
+                    onSelect={handleSelectGettyImage}
                   />
                 )}
               </div>
@@ -431,24 +456,17 @@ export function MediaSlotDetail({
                 )}
               </button>
               {uploadsOpen && (
-                <div className="flex flex-col gap-2">
-                  {slotUploadedImages.length > 0 && (
-                    <ImageGrid
-                      images={slotUploadedImages}
-                      selectedUrl={effectiveSelectedUrl}
-                      slotName={slotName}
-                      previewBaseUrl={previewBaseUrl}
-                      onSelect={setSelectedUrl}
-                    />
-                  )}
-                  <UploadedImagesSection
-                    appId={appId}
-                    onSelectImage={handleSelectFromUploads}
-                    isDisabled={isUploading}
-                    layout="grid"
-                    excludeFilenames={excludeFilenames}
-                  />
-                </div>
+                <UploadedImagesSection
+                  appId={appId}
+                  onSelectImage={handleSelectUploadImage}
+                  isDisabled={isUploading}
+                  layout="grid"
+                  selectedFilename={effectiveSelectedFilename}
+                  refreshKey={uploadsRefreshKey}
+                  slotUploads={slotUploads}
+                  selectedSlotUploadUrl={selectedUploadFile ? null : effectiveSelectedUrl}
+                  onSelectSlotUpload={handleSelectSlotUpload}
+                />
               )}
             </div>
           </div>
@@ -482,6 +500,8 @@ interface ImageGridProps {
 }
 
 function ImageGrid({ images, selectedUrl, slotName, previewBaseUrl, onSelect }: ImageGridProps) {
+  if (images.length === 0) return null
+
   return (
     <div className="grid grid-cols-3 gap-2">
       {images.map(function renderImage(url) {
@@ -502,6 +522,7 @@ function ImageGrid({ images, selectedUrl, slotName, previewBaseUrl, onSelect }: 
               src={getSlotImageUrl(slotName, url, previewBaseUrl)}
               alt=""
               className="w-full h-full object-cover"
+              onError={(e) => { e.currentTarget.style.display = 'none' }}
             />
             {isSelected && (
               <>

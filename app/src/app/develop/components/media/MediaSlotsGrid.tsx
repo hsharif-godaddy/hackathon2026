@@ -90,6 +90,7 @@ export function MediaSlotsGrid({
                 alt={formatSlotName(name)}
                 className="w-full h-full object-cover"
                 loading="lazy"
+                onError={(e) => { e.currentTarget.style.display = 'none' }}
               />
             </div>
             <span className="text-sm text-intents-ux-textSubtle-textColor truncate w-full">

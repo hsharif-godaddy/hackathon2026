@@ -43,8 +43,8 @@ export interface MediaSlot {
   gettyId?: string;
   /** Getty image IDs for alternative images (parallel to alternatives array) */
   alternativeGettyIds?: string[];
-  /** Original filenames of chat uploads applied to this slot (for dedup with file storage) */
-  uploadSourceFilenames?: string[];
+  /** Maps upload URLs to original chat upload filenames for dedup display */
+  uploadSources?: Record<string, string>;
 }
 
 /**

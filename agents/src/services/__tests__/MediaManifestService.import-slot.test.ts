@@ -214,7 +214,7 @@ describe("MediaManifestService - importSlot", () => {
     expect(slot.lastUpdated).toBeDefined();
   });
 
-  it("appends counter when slot path already exists", async () => {
+  it("returns existing slot when same element re-imported (dedup by path + sourceRef)", async () => {
     const existingManifest = {
       "pages/about/hero-banner": {
         mediaType: "image",
@@ -224,11 +224,10 @@ describe("MediaManifestService - importSlot", () => {
         userModified: false,
         createdAt: "2026-01-01T00:00:00.000Z",
         lastUpdated: "2026-01-01T00:00:00.000Z",
+        sourceRef: "src/pages/about.tsx:50",
       },
     };
     vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(existingManifest));
-    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-    vi.mocked(fs.rename).mockResolvedValue(undefined);
 
     const result = await service.importSlot("test-app", {
       imageUrl: "https://example.com/assets/hero-banner.jpg",
@@ -240,7 +239,102 @@ describe("MediaManifestService - importSlot", () => {
     });
 
     expect(result.success).toBe(true);
+    expect(result.slotPath).toBe("pages/about/hero-banner");
+    expect(fs.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("creates separate slot when different element shares same derived path", async () => {
+    const existingManifest = {
+      "pages/about/hero-banner": {
+        mediaType: "image",
+        currentUrl: "https://old.com/img.jpg",
+        searchQuery: "",
+        alternatives: [],
+        userModified: false,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        lastUpdated: "2026-01-01T00:00:00.000Z",
+        sourceRef: "src/pages/about.tsx:10",
+      },
+    };
+    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(existingManifest));
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.rename).mockResolvedValue(undefined);
+
+    const result = await service.importSlot("test-app", {
+      imageUrl: "https://example.com/assets/hero-banner.jpg",
+      devContext: {
+        fileName: "src/pages/about.tsx",
+        componentName: "unknown",
+        lineNumber: 200,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    // Different element (line 200 vs 10) → gets counter suffix
     expect(result.slotPath).toBe("pages/about/hero-banner-2");
+  });
+
+  it("returns existing slot when same URL + same sourceRef (dedup by URL)", async () => {
+    const existingManifest = {
+      "pages/home/hero": {
+        mediaType: "image",
+        currentUrl: "https://example.com/photo.jpg",
+        searchQuery: "",
+        alternatives: ["https://example.com/photo.jpg"],
+        userModified: false,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        lastUpdated: "2026-01-01T00:00:00.000Z",
+        sourceRef: "src/pages/about.tsx:99",
+      },
+    };
+    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(existingManifest));
+
+    const result = await service.importSlot("test-app", {
+      imageUrl: "https://example.com/photo.jpg",
+      imageAlt: "Different alt text",
+      devContext: {
+        fileName: "src/pages/about.tsx",
+        componentName: "unknown",
+        lineNumber: 99,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.slotPath).toBe("pages/home/hero");
+    expect(fs.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("creates separate slot when same URL but different sourceRef", async () => {
+    const existingManifest = {
+      "pages/home/hero": {
+        mediaType: "image",
+        currentUrl: "https://example.com/photo.jpg",
+        searchQuery: "",
+        alternatives: ["https://example.com/photo.jpg"],
+        userModified: false,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        lastUpdated: "2026-01-01T00:00:00.000Z",
+        sourceRef: "src/pages/index.tsx:10",
+      },
+    };
+    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(existingManifest));
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.rename).mockResolvedValue(undefined);
+
+    const result = await service.importSlot("test-app", {
+      imageUrl: "https://example.com/photo.jpg",
+      imageAlt: "Photo",
+      devContext: {
+        fileName: "src/pages/about.tsx",
+        componentName: "unknown",
+        lineNumber: 50,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    // Different source element → gets its own slot
+    expect(result.slotPath).toBe("pages/about/photo");
+    expect(fs.writeFile).toHaveBeenCalled();
   });
 
   it("uses fallback path when dev context is missing", async () => {

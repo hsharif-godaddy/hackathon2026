@@ -1,7 +1,8 @@
 "use client";
 
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import CheckboxFilledIcon from '@ux/icon/checkbox-filled';
 
 import { dynamicApiConfigService } from "@/config/dynamic-api";
 import { regenerateToken } from "@/lib/jwt-regeneration";
@@ -16,12 +17,30 @@ interface UploadedFile {
   signedUrl?: string;
 }
 
+/** Slot upload that may need to be shown as a fallback when the chat copy expires */
+export interface SlotUploadItem {
+  /** Persistent upload URL (e.g., /airo-assets/uploads/pages-home-hero-abc.jpg) */
+  url: string;
+  /** Display URL for the img src (proxied through preview) */
+  displayUrl: string;
+  /** Original chat upload filename — used to dedup against active chat uploads */
+  sourceFilename?: string;
+}
+
 interface UploadedImagesSectionProps {
   appId: string;
   onSelectImage: (file: UploadedFile) => void;
   isDisabled?: boolean;
   layout?: 'horizontal' | 'grid';
-  excludeFilenames?: Set<string>;
+  selectedFilename?: string | null;
+  /** Increment to trigger a refetch (e.g., after a device upload) */
+  refreshKey?: number;
+  /** Slot upload URLs to show as fallback when chat copies expire */
+  slotUploads?: SlotUploadItem[];
+  /** Currently selected slot upload URL (for highlight) */
+  selectedSlotUploadUrl?: string | null;
+  /** Called when a slot upload is selected */
+  onSelectSlotUpload?: (url: string) => void;
 }
 
 // Extend UploadedFile with computed full signed URL for rendering
@@ -34,7 +53,11 @@ export function UploadedImagesSection({
   onSelectImage,
   isDisabled,
   layout = 'horizontal',
-  excludeFilenames,
+  selectedFilename,
+  refreshKey,
+  slotUploads,
+  selectedSlotUploadUrl,
+  onSelectSlotUpload,
 }: UploadedImagesSectionProps) {
   const [uploads, setUploads] = useState<UploadedFileWithFullUrl[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -91,11 +114,11 @@ export function UploadedImagesSection({
     }
   }, [appId]);
 
-  // Reset refetch guard when appId changes
+  // Reset refetch guard and re-fetch when appId or refreshKey changes
   useEffect(() => {
     hasRefetchedForErrorRef.current = false;
     fetchUploads();
-  }, [fetchUploads]);
+  }, [fetchUploads, refreshKey]);
 
   // When a thumbnail fails to load (e.g. expired signed URL returning 404),
   // refetch the file list once to get fresh signed URLs.
@@ -111,10 +134,6 @@ export function UploadedImagesSection({
     fetchUploads();
   }, [fetchUploads, appId]);
 
-  const visibleUploads = useMemo(
-    () => excludeFilenames ? uploads.filter((f) => !excludeFilenames.has(f.filename)) : uploads,
-    [uploads, excludeFilenames]
-  );
 
   if (isLoading) {
     return (
@@ -128,39 +147,109 @@ export function UploadedImagesSection({
     return null; // Silently hide on error
   }
 
-  if (visibleUploads.length === 0) {
+  // Compute slot uploads that don't have a matching active chat upload (dedup).
+  // These are persistent fallbacks shown when the original chat upload has expired.
+  // Only show slot uploads as fallbacks when:
+  // 1. They have a sourceFilename mapping (we know which chat upload produced them)
+  // 2. That chat upload is no longer in the active list (expired/deleted)
+  // Without sourceFilename, we can't dedup → don't show (avoids duplicates)
+  const chatFilenames = new Set(uploads.map((f) => f.filename));
+  const dedupedSlotUploads = (slotUploads || []).filter(
+    (su) => su.sourceFilename && !chatFilenames.has(su.sourceFilename)
+  );
+
+  const hasAnyUploads = uploads.length > 0 || dedupedSlotUploads.length > 0;
+
+  if (!hasAnyUploads) {
     return null; // Don't show section if no uploads
   }
 
-  // Grid layout - used in tabbed view
+  // Grid layout - used in tabbed view (matches ImageGrid 3-col styling + selection)
   if (layout === 'grid') {
     return (
-      <div className="grid grid-cols-2 gap-2 content-start">
-        {visibleUploads.map((file) => (
-          <button
-            key={file.id}
-            type="button"
-            onClick={() => onSelectImage(file)}
-            disabled={isDisabled}
-            className={`rounded-md hover:opacity-80 transition-opacity ${
-              isDisabled ? "opacity-50 cursor-not-allowed" : ""
-            }`}
-          >
-            {file.fullSignedUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
+      <div className="grid grid-cols-3 gap-2">
+        {uploads.map((file) => {
+          const isSelected = selectedFilename === file.filename;
+          return (
+            <button
+              key={file.id}
+              type="button"
+              onClick={() => onSelectImage(file)}
+              disabled={isDisabled}
+              aria-pressed={isSelected}
+              className={`relative aspect-square rounded-md overflow-hidden transition-opacity ${
+                isSelected ? '' : 'hover:opacity-80'
+              } ${isDisabled ? "opacity-50 cursor-not-allowed" : ""}`}
+            >
+              {file.fullSignedUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={file.fullSignedUrl}
+                  alt={file.originalName}
+                  onError={handleImageError}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-xs text-intents-ux-textSubtle-textColor truncate px-1 block p-2 bg-intents-ux-boxLowContrast-backgroundColor rounded-md">
+                  {file.originalName}
+                </span>
+              )}
+              {isSelected && (
+                <>
+                  <div
+                    className="absolute inset-0 rounded-md pointer-events-none"
+                    style={{
+                      backgroundColor: 'rgba(128, 90, 213, 0.2)',
+                      boxShadow: 'inset 0 0 0 3px black',
+                    }}
+                  />
+                  <span className="absolute bottom-1 right-1 w-3 h-3">
+                    <div className="w-2 h-2 absolute bottom-0.5 right-0.5" style={{ backgroundColor: 'var(--background)' }} />
+                    <CheckboxFilledIcon className="w-3 h-3 absolute inset-0 text-black" />
+                  </span>
+                </>
+              )}
+            </button>
+          );
+        })}
+        {dedupedSlotUploads.map((su) => {
+          const isSelected = selectedSlotUploadUrl === su.url;
+          return (
+            <button
+              key={su.url}
+              type="button"
+              onClick={() => onSelectSlotUpload?.(su.url)}
+              disabled={isDisabled}
+              aria-pressed={isSelected}
+              className={`relative aspect-square rounded-md overflow-hidden transition-opacity ${
+                isSelected ? '' : 'hover:opacity-80'
+              } ${isDisabled ? "opacity-50 cursor-not-allowed" : ""}`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={file.fullSignedUrl}
-                alt={file.originalName}
-                onError={handleImageError}
-                className="w-full object-contain rounded-md bg-intents-ux-boxLowContrast-backgroundColor p-2"
+                src={su.displayUrl}
+                alt=""
+                onError={(e) => { e.currentTarget.style.display = 'none' }}
+                className="w-full h-full object-cover"
               />
-            ) : (
-              <span className="text-xs text-intents-ux-textSubtle-textColor truncate px-1 block p-2 bg-intents-ux-boxLowContrast-backgroundColor rounded-md">
-                {file.originalName}
-              </span>
-            )}
-          </button>
-        ))}
+              {isSelected && (
+                <>
+                  <div
+                    className="absolute inset-0 rounded-md pointer-events-none"
+                    style={{
+                      backgroundColor: 'rgba(128, 90, 213, 0.2)',
+                      boxShadow: 'inset 0 0 0 3px black',
+                    }}
+                  />
+                  <span className="absolute bottom-1 right-1 w-3 h-3">
+                    <div className="w-2 h-2 absolute bottom-0.5 right-0.5" style={{ backgroundColor: 'var(--background)' }} />
+                    <CheckboxFilledIcon className="w-3 h-3 absolute inset-0 text-black" />
+                  </span>
+                </>
+              )}
+            </button>
+          );
+        })}
       </div>
     );
   }
@@ -180,11 +269,11 @@ export function UploadedImagesSection({
         ) : (
           <ChevronRight className="w-4 h-4" />
         )}
-        Your Uploads ({visibleUploads.length})
+        Your Uploads ({uploads.length})
       </button>
       {isExpanded && (
         <div id="uploads-list" className="flex gap-2 overflow-x-auto pb-1 mt-2">
-          {visibleUploads.map((file) => (
+          {uploads.map((file) => (
             <button
               key={file.id}
               type="button"

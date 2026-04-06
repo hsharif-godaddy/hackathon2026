@@ -48,7 +48,7 @@ vi.mock('@/utils/postMessage', () => ({
 
 const mockUploadedImagesSection = vi.fn();
 vi.mock('@/app/develop/components/media/UploadedImagesSection', () => ({
-  UploadedImagesSection: (props: { onSelectImage: (file: { filename: string }) => void; excludeFilenames?: Set<string> }) => {
+  UploadedImagesSection: (props: { onSelectImage: (file: { filename: string }) => void; appId: string; isDisabled?: boolean; layout?: string; selectedFilename?: string | null }) => {
     mockUploadedImagesSection(props);
     return (
       <div data-testid="uploaded-images-section">
@@ -178,11 +178,7 @@ describe('MediaSlotDetail', () => {
     });
   });
 
-  it('handles select from uploads flow', async () => {
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      ok: true,
-      blob: async () => new Blob(['test'], { type: 'image/jpeg' }),
-    });
+  it('handles select-then-confirm flow for uploads via apply-upload', async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ success: true }),
@@ -192,63 +188,45 @@ describe('MediaSlotDetail', () => {
       <MediaSlotDetail appId={mockAppId} slotName={mockSlotName} onDone={mockOnDone} />
     );
 
+    // Step 1: Click upload image to SELECT it (not upload yet)
     const selectUploadBtn = screen.getByText('Select Uploaded Image');
     await user.click(selectUploadBtn);
 
+    // Step 2: Click "Use this image" to confirm and trigger apply-upload
+    const useButton = screen.getByText('builder_mediaslot_use_image');
+    await user.click(useButton);
+
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
-        'https://agent.example.com/files/uploads/app-123/test.jpg',
-        expect.any(Object)
-      );
-      expect(global.fetch).toHaveBeenCalledWith(
-        'https://agent.example.com/media/app-123/slots/hero/image/upload',
+        'https://agent.example.com/media/app-123/slots/hero/image/apply-upload',
         expect.objectContaining({
           method: 'POST',
+          body: JSON.stringify({ filename: 'test.jpg' }),
         })
       );
-      expect(mockOnDone).toHaveBeenCalled();
+      // After successful apply-upload, user stays on slot detail (no onDone navigation)
+      expect(mockOnDone).not.toHaveBeenCalled();
       expect(mockLogImpressionEvent).toHaveBeenCalledWith('uploads.mediaslot.success');
     });
   });
 
-  it('passes current slot uploadSourceFilenames as excludeFilenames to UploadedImagesSection', async () => {
-    vi.mocked(useMediaSlot).mockReturnValue({
-      slot: {
-        currentUrl: '/airo-assets/uploads/hero-abc123.jpg',
-        alternatives: ['/img1.jpg'],
-        mediaType: 'image',
-        searchQuery: null,
-        uploadSourceFilenames: ['pexels-photo.jpg', 'my-upload.png'],
-      },
-      isLoading: false,
-      error: null,
-      refetch: mockRefetch,
-    } as unknown as ReturnType<typeof useMediaSlot>);
-
-    renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
-
-    await waitFor(() => {
-      expect(mockUploadedImagesSection).toHaveBeenCalledWith(
-        expect.objectContaining({
-          excludeFilenames: new Set(['pexels-photo.jpg', 'my-upload.png']),
-        })
-      );
-    });
-  });
-
-  it('handles select from uploads error', async () => {
+  it('handles apply-upload error', async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: false,
-      status: 404,
+      json: async () => ({ error: 'Upload file not found' }),
     });
 
     const { user } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
 
+    // Select upload, then confirm
     const selectUploadBtn = screen.getByText('Select Uploaded Image');
     await user.click(selectUploadBtn);
 
+    const useButton = screen.getByText('builder_mediaslot_use_image');
+    await user.click(useButton);
+
     await waitFor(() => {
-      expect(screen.getByText('Failed to fetch uploaded file')).toBeInTheDocument();
+      expect(screen.getByText('Upload file not found')).toBeInTheDocument();
       expect(mockLogImpressionEvent).toHaveBeenCalledWith('uploads.mediaslot.failed');
     });
   });

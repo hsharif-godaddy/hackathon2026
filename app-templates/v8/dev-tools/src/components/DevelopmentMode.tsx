@@ -76,6 +76,7 @@ export default function DevelopmentMode() {
     function reloadMediaSlot(slotPath: string) {
       const timestamp = Date.now()
       const slotUrlPattern = `/airo-assets/images/${slotPath}`
+      let updatedCount = 0
 
       // Reload <img> elements
       document.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
@@ -83,6 +84,7 @@ export default function DevelopmentMode() {
           const url = new URL(img.src)
           url.searchParams.set('_t', String(timestamp))
           img.src = url.toString()
+          updatedCount++
         }
       })
 
@@ -95,9 +97,17 @@ export default function DevelopmentMode() {
             const url = new URL(urlMatch[1], window.location.origin)
             url.searchParams.set('_t', String(timestamp))
             el.style.backgroundImage = `url("${url.toString()}")`
+            updatedCount++
           }
         }
       })
+
+      // If no elements were found the slot URL isn't in the DOM yet — the source
+      // code AST update hasn't hot-reloaded yet. Fall back to a full page reload
+      // so the preview reflects the new image without the user having to refresh.
+      if (updatedCount === 0) {
+        window.location.reload()
+      }
     }
 
     // Track visible area of all observed sections for accurate detection

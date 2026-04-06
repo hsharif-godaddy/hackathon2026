@@ -58,8 +58,12 @@ export interface MediaSlot {
   gettyId?: string;
   /** Getty image IDs for alternative images (parallel to alternatives array) */
   alternativeGettyIds?: string[];
-  /** Original filenames of chat uploads applied to this slot (for client-side dedup) */
-  uploadSourceFilenames?: string[];
+  /** Source element reference (fileName:lineNumber) for import dedup — distinguishes
+   *  different elements that share the same URL or derived slot path */
+  sourceRef?: string;
+  /** Maps upload URLs to original chat upload filenames for dedup display.
+   *  Key: persistent upload URL (/airo-assets/uploads/...), Value: original chat filename */
+  uploadSources?: Record<string, string>;
 }
 
 /**
@@ -357,18 +361,56 @@ export class MediaManifestService {
       }
 
       const manifest = result.manifest;
+
+      // Normalize localhost URLs to local paths FIRST for dedup checks
+      let normalizedUrl = normalizeImageUrl(options.imageUrl);
+
+      // Build a source reference from devContext to distinguish different elements
+      // that share the same URL or derived slot path (e.g., same logo in header + footer)
+      const sourceRef = options.devContext
+        ? `${options.devContext.fileName}:${options.devContext.lineNumber}`
+        : undefined;
+
+      // Dedup 1: If any existing slot has this exact source URL AND was imported
+      // from the same source element, return it. The sourceRef check prevents
+      // merging distinct elements that happen to share a URL.
+      const existingByUrl = Object.entries(manifest).find(
+        ([_, slot]) => slot.currentUrl === normalizedUrl && (!slot.sourceRef || slot.sourceRef === sourceRef)
+      );
+
+      if (existingByUrl) {
+        logger.info('media_manifest.import_slot.duplicate_prevented', {
+          appId,
+          existingSlotPath: existingByUrl[0],
+          imageUrl: options.imageUrl.substring(0, 200),
+          reason: 'url_and_source_match',
+        });
+        return { success: true, slotPath: existingByUrl[0] };
+      }
+
       let slotPath = deriveSlotPath(options.devContext, options.imageAlt, options.imageUrl);
 
-      if (manifest[slotPath]) {
+      // Dedup 2: If the derived path exists, check sourceRef to distinguish
+      // re-import of the same element vs a different element with the same path.
+      const existingSlot = manifest[slotPath];
+      if (existingSlot) {
+        if (!existingSlot.sourceRef || existingSlot.sourceRef === sourceRef) {
+          // Same element re-imported, or old slot without sourceRef (backward compat)
+          logger.info('media_manifest.import_slot.duplicate_prevented', {
+            appId,
+            existingSlotPath: slotPath,
+            imageUrl: options.imageUrl.substring(0, 200),
+            reason: 'path_and_source_match',
+          });
+          return { success: true, slotPath };
+        }
+        // Different element with same derived path — use counter suffix
         let counter = 2;
         while (manifest[`${slotPath}-${counter}`]) {
           counter++;
         }
         slotPath = `${slotPath}-${counter}`;
       }
-
-      // Normalize localhost URLs to local paths
-      let normalizedUrl = normalizeImageUrl(options.imageUrl);
 
       // If the URL is a local path (e.g. /assets/photo.jpg), copy the file into
       // public/media/ so the image-slot handler can serve it via /airo-assets/uploads/.
@@ -397,6 +439,7 @@ export class MediaManifestService {
         searchQuery: '',
         alternatives: [normalizedUrl],
         userModified: false,
+        sourceRef,
         createdAt: now,
         lastUpdated: now,
       };
@@ -548,12 +591,17 @@ export class MediaManifestService {
           newCurrentUrl = options.newUrl;
           newAlternatives = [...new Set(allUrls)].filter((url) => url !== options.newUrl);
           newCurrentGettyId = undefined;
-          
+
+          // Build URL→GettyID map to maintain alignment after dedup
           const altGettyIds = existingSlot.alternativeGettyIds || [];
-          const paddedAltGettyIds = altGettyIds.length >= existingSlot.alternatives.length
-            ? altGettyIds
-            : [...altGettyIds, ...Array<string>(existingSlot.alternatives.length - altGettyIds.length).fill('')];
-          newAlternativeGettyIds = [existingSlot.gettyId || '', ...paddedAltGettyIds];
+          const urlToGettyId = new Map<string, string>();
+          urlToGettyId.set(existingSlot.currentUrl, existingSlot.gettyId || '');
+          existingSlot.alternatives.forEach((url, i) => {
+            if (!urlToGettyId.has(url)) {
+              urlToGettyId.set(url, altGettyIds[i] || '');
+            }
+          });
+          newAlternativeGettyIds = newAlternatives.map((url) => urlToGettyId.get(url) || '');
         } else {
           return {
             success: false,
@@ -561,22 +609,21 @@ export class MediaManifestService {
           };
         }
       } else {
-        // Swap: new URL becomes current, remove ALL occurrences from alternatives
-        newCurrentUrl = allUrls[urlIndex]!;
-        newAlternatives = [...new Set(allUrls.filter((url) => url !== newCurrentUrl))];
-
-        // Build Getty ID arrays (current + alternatives, same order as allUrls)
-        // Pad alternativeGettyIds to match alternatives length to prevent misalignment
+        // Swap: new URL becomes current, remove ALL occurrences from alternatives.
+        // Use a URL→GettyID map to maintain alignment after deduplication.
         const altGettyIds = existingSlot.alternativeGettyIds || [];
-        const paddedAltGettyIds = altGettyIds.length >= existingSlot.alternatives.length
-          ? altGettyIds
-          : [...altGettyIds, ...Array<string>(existingSlot.alternatives.length - altGettyIds.length).fill('')];
-        const allGettyIds = [
-          existingSlot.gettyId || '',
-          ...paddedAltGettyIds,
-        ];
-        newCurrentGettyId = allGettyIds[urlIndex] || undefined;
-        newAlternativeGettyIds = allGettyIds.filter((_, i) => i !== urlIndex);
+        const urlToGettyId = new Map<string, string>();
+        urlToGettyId.set(existingSlot.currentUrl, existingSlot.gettyId || '');
+        existingSlot.alternatives.forEach((url, i) => {
+          if (!urlToGettyId.has(url)) {
+            urlToGettyId.set(url, altGettyIds[i] || '');
+          }
+        });
+
+        newCurrentUrl = allUrls[urlIndex]!;
+        newCurrentGettyId = urlToGettyId.get(newCurrentUrl) || undefined;
+        newAlternatives = [...new Set(allUrls.filter((url) => url !== newCurrentUrl))];
+        newAlternativeGettyIds = newAlternatives.map((url) => urlToGettyId.get(url) || '');
       }
 
       // If the newly-active image has a Getty ID, upload it to CDN and report usage
@@ -600,8 +647,8 @@ export class MediaManifestService {
         userModified: options.markUserModified ?? true,
         lastUpdated: new Date().toISOString(),
         gettyId: newCurrentGettyId,
-        alternativeGettyIds: newAlternativeGettyIds.some(Boolean)
-          ? newAlternativeGettyIds.filter(Boolean)
+        alternativeGettyIds: newAlternativeGettyIds.some((id) => id)
+          ? newAlternativeGettyIds
           : undefined,
       };
 
@@ -696,39 +743,39 @@ export class MediaManifestService {
         };
       }
 
+      // Build URL→GettyID map from current state for alignment-safe operations
+      const altGettyIds = existingSlot.alternativeGettyIds || [];
+      const urlToGettyId = new Map<string, string>();
+      urlToGettyId.set(existingSlot.currentUrl, existingSlot.gettyId || '');
+      existingSlot.alternatives.forEach((url, i) => {
+        if (!urlToGettyId.has(url)) {
+          urlToGettyId.set(url, altGettyIds[i] || '');
+        }
+      });
+
       // Move current URL to alternatives (if it's not already the uploaded URL)
       let newAlternatives: string[];
-      let newCurrentGettyId: string | undefined;
-      let newAlternativeGettyIds: string[] | undefined;
 
       if (existingSlot.currentUrl !== uploadedUrl) {
         newAlternatives = [existingSlot.currentUrl, ...existingSlot.alternatives];
-        
-        // Shift Getty IDs as well to maintain alignment
-        const altGettyIds = existingSlot.alternativeGettyIds || [];
-        const paddedAltGettyIds = altGettyIds.length >= existingSlot.alternatives.length
-          ? altGettyIds
-          : [...altGettyIds, ...Array<string>(existingSlot.alternatives.length - altGettyIds.length).fill('')];
-          
-        const allGettyIds = [existingSlot.gettyId || '', ...paddedAltGettyIds];
-        
-        newCurrentGettyId = undefined; // Uploaded image has no Getty ID
-        newAlternativeGettyIds = allGettyIds;
       } else {
         newAlternatives = existingSlot.alternatives;
-        newCurrentGettyId = existingSlot.gettyId;
-        newAlternativeGettyIds = existingSlot.alternativeGettyIds;
       }
 
       // Deduplicate alternatives (repeated uploads/swaps can cause duplicates)
       const deduplicatedAlternatives = [...new Set(newAlternatives)]
         .filter((url) => url !== uploadedUrl);
 
-      // Track source filenames for client-side dedup with chat uploads
-      const existingSources = existingSlot.uploadSourceFilenames || [];
-      const updatedSources = sourceFilename && sourceFilename !== 'blob'
-        ? [...new Set([...existingSources, sourceFilename])]
-        : existingSources.length > 0 ? existingSources : undefined;
+      // Rebuild Getty IDs aligned with deduped alternatives
+      const newAlternativeGettyIds = deduplicatedAlternatives.map(
+        (url) => urlToGettyId.get(url) || ''
+      );
+
+      // Track which chat upload produced this persistent URL
+      const updatedUploadSources = { ...(existingSlot.uploadSources || {}) };
+      if (sourceFilename) {
+        updatedUploadSources[uploadedUrl] = sourceFilename;
+      }
 
       // Update slot with uploaded URL as current
       const updatedSlot: MediaSlot = {
@@ -737,11 +784,13 @@ export class MediaManifestService {
         alternatives: deduplicatedAlternatives,
         userModified: true,
         lastUpdated: new Date().toISOString(),
-        gettyId: newCurrentGettyId,
-        alternativeGettyIds: newAlternativeGettyIds?.some(Boolean) 
-          ? newAlternativeGettyIds.filter(Boolean)
+        gettyId: undefined, // Uploaded image has no Getty ID
+        alternativeGettyIds: newAlternativeGettyIds.some((id) => id)
+          ? newAlternativeGettyIds
           : undefined,
-        uploadSourceFilenames: updatedSources,
+        uploadSources: Object.keys(updatedUploadSources).length > 0
+          ? updatedUploadSources
+          : undefined,
       };
 
       manifest[slotName] = updatedSlot;

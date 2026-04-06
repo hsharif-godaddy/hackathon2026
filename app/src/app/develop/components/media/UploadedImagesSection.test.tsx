@@ -47,7 +47,7 @@ describe('UploadedImagesSection', () => {
   });
 
   describe('#grid layout', () => {
-    it('renders all uploads when no excludeFilenames provided', async () => {
+    it('renders all uploads in grid', async () => {
       mockFetchSuccess([
         makeFile('photo-a.jpg', 'Photo A', '/signed/photo-a.jpg'),
         makeFile('photo-b.jpg', 'Photo B', '/signed/photo-b.jpg'),
@@ -60,48 +60,6 @@ describe('UploadedImagesSection', () => {
       await waitFor(() => {
         expect(screen.getByAltText('Photo A')).toBeInTheDocument();
         expect(screen.getByAltText('Photo B')).toBeInTheDocument();
-      });
-    });
-
-    it('filters out filenames in excludeFilenames', async () => {
-      mockFetchSuccess([
-        makeFile('photo-a.jpg', 'Photo A', '/signed/photo-a.jpg'),
-        makeFile('photo-b.jpg', 'Photo B', '/signed/photo-b.jpg'),
-        makeFile('photo-c.jpg', 'Photo C', '/signed/photo-c.jpg'),
-      ]);
-
-      renderWithProviders(
-        <UploadedImagesSection
-          appId={mockAppId}
-          onSelectImage={mockOnSelectImage}
-          layout="grid"
-          excludeFilenames={new Set(['photo-a.jpg', 'photo-c.jpg'])}
-        />
-      );
-
-      await waitFor(() => {
-        expect(screen.queryByAltText('Photo A')).not.toBeInTheDocument();
-        expect(screen.getByAltText('Photo B')).toBeInTheDocument();
-        expect(screen.queryByAltText('Photo C')).not.toBeInTheDocument();
-      });
-    });
-
-    it('renders null when all uploads are excluded', async () => {
-      mockFetchSuccess([
-        makeFile('photo-a.jpg', 'Photo A', '/signed/photo-a.jpg'),
-      ]);
-
-      const { container } = renderWithProviders(
-        <UploadedImagesSection
-          appId={mockAppId}
-          onSelectImage={mockOnSelectImage}
-          layout="grid"
-          excludeFilenames={new Set(['photo-a.jpg'])}
-        />
-      );
-
-      await waitFor(() => {
-        expect(container.firstChild).toBeNull();
       });
     });
 
@@ -158,7 +116,7 @@ describe('UploadedImagesSection', () => {
   });
 
   describe('#horizontal layout', () => {
-    it('shows correct count excluding filtered filenames', async () => {
+    it('shows correct upload count', async () => {
       mockFetchSuccess([
         makeFile('photo-a.jpg', 'Photo A', '/signed/photo-a.jpg'),
         makeFile('photo-b.jpg', 'Photo B', '/signed/photo-b.jpg'),
@@ -170,29 +128,11 @@ describe('UploadedImagesSection', () => {
           appId={mockAppId}
           onSelectImage={mockOnSelectImage}
           layout="horizontal"
-          excludeFilenames={new Set(['photo-a.jpg'])}
         />
       );
 
       await waitFor(() => {
-        expect(screen.getByText('Your Uploads (2)')).toBeInTheDocument();
-      });
-    });
-
-    it('renders null when all uploads are excluded', async () => {
-      mockFetchSuccess([makeFile('photo-a.jpg', 'Photo A', '/signed/photo-a.jpg')]);
-
-      const { container } = renderWithProviders(
-        <UploadedImagesSection
-          appId={mockAppId}
-          onSelectImage={mockOnSelectImage}
-          layout="horizontal"
-          excludeFilenames={new Set(['photo-a.jpg'])}
-        />
-      );
-
-      await waitFor(() => {
-        expect(container.firstChild).toBeNull();
+        expect(screen.getByText('Your Uploads (3)')).toBeInTheDocument();
       });
     });
   });

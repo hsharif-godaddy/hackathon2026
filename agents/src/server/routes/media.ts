@@ -14,6 +14,8 @@ import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs/promises';
 import { mediaManifestService } from '../../services/MediaManifestService.js';
+import { imageProcessingService } from '../../services/ImageProcessingService.js';
+import { fileUploadService } from '../../services/FileUploadService.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { logger } from '../../logging/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
@@ -344,6 +346,149 @@ function handleMulterError(
 }
 
 /**
+ * POST /media/:appId/slots/:slotName/apply-upload
+ * Apply a chat-uploaded file to a media slot (server-side copy, no browser roundtrip)
+ */
+router.post(
+  '/:appId/slots/:slotName(*)/apply-upload',
+  uploadRateLimiter,
+  async (req: Request, res: Response) => {
+    try {
+      const appId = req.params.appId;
+      const slotName = req.params.slotName;
+      const { filename } = req.body;
+
+      if (!appId || !slotName || !filename) {
+        return res.status(400).json({
+          success: false,
+          error: 'App ID, slot name, and filename are required',
+        });
+      }
+
+      if (slotName.includes('..') || slotName.startsWith('/') || slotName.includes('\0')) {
+        return res.status(400).json({ success: false, error: 'Invalid slot name' });
+      }
+
+      if (filename.includes('..') || filename.includes('/') || filename.includes('\0')) {
+        return res.status(400).json({ success: false, error: 'Invalid filename' });
+      }
+
+      // Validate the slot exists
+      const slotResult = await mediaManifestService.getSlot(appId, slotName);
+      if (!slotResult.success) {
+        return res.status(404).json({ success: false, error: `Slot not found: ${slotName}` });
+      }
+
+      // Find the chat upload file on disk
+      const uploadedFiles = await fileUploadService.listUploadedFiles(appId);
+      const matchingFile = uploadedFiles.find(f => f.filename === filename);
+
+      if (!matchingFile) {
+        return res.status(404).json({ success: false, error: 'Upload file not found' });
+      }
+
+      const appUploadsDir = fileUploadService.getAppUploadsDir(appId);
+      let sourceFilePath: string | null = null;
+
+      try {
+        await fs.access(appUploadsDir);
+        const uploadIds = await fs.readdir(appUploadsDir);
+        for (const uploadId of uploadIds) {
+          const candidatePath = fileUploadService.getFilePath(appId, uploadId, filename);
+          try {
+            await fs.access(candidatePath);
+            sourceFilePath = candidatePath;
+            break;
+          } catch {
+            // file not in this upload directory, try next
+          }
+        }
+      } catch {
+        // appUploadsDir doesn't exist
+      }
+
+      if (!sourceFilePath) {
+        return res.status(404).json({ success: false, error: 'Upload file not found on disk' });
+      }
+
+      // Read and process the image
+      const fileBuffer = await fs.readFile(sourceFilePath);
+      const processed = await imageProcessingService.processImage(fileBuffer, {
+        maxWidth: 2048,
+        maxHeight: 2048,
+        quality: 85,
+      });
+
+      // Generate filename and write to persistent media directory
+      const appRepository = new AppRepository();
+      const app = appRepository.findById(appId);
+      if (!app) {
+        return res.status(404).json({ success: false, error: `App not found: ${appId}` });
+      }
+
+      const sanitizedSlot = slotName.replace(/\//g, '-').replace(/[^a-zA-Z0-9-]/g, '');
+      const hash = crypto.createHash('sha256').update(processed.buffer).digest('hex').slice(0, 8);
+      const ext = processed.format === 'jpeg' ? 'jpg' : processed.format;
+      const mediaFilename = `${sanitizedSlot}-${hash}.${ext}`;
+
+      // mediaFilename is derived from sanitizedSlot (alphanumeric+dash only) and a content
+      // hash — no raw user input reaches path.join. Defense-in-depth check below confirms
+      // the resolved path stays inside mediaDir.
+      const mediaDir = path.join(getPersistentPublicDir(app.path), 'media'); // nosemgrep: path-traversal
+      await fs.mkdir(mediaDir, { recursive: true });
+
+      const filePath = path.join(mediaDir, mediaFilename); // nosemgrep: path-traversal
+      const resolvedMediaDir = path.resolve(mediaDir); // nosemgrep: path-traversal
+      const resolvedFilePath = path.resolve(filePath); // nosemgrep: path-traversal
+      if (!resolvedFilePath.startsWith(resolvedMediaDir + path.sep)) {
+        return res.status(400).json({ success: false, error: 'Invalid file path' });
+      }
+
+      const tempPath = `${filePath}.tmp.${Date.now()}`; // nosemgrep: path-traversal
+      await fs.writeFile(tempPath, processed.buffer); // nosemgrep: path-traversal
+      await fs.rename(tempPath, filePath); // nosemgrep: path-traversal
+
+      const uploadedUrl = `/airo-assets/uploads/${mediaFilename}`;
+
+      const updateResult = await mediaManifestService.updateSlotWithUpload(
+        appId,
+        slotName,
+        uploadedUrl,
+        filename // Track which chat upload produced this persistent URL
+      );
+
+      if (!updateResult.success) {
+        await fs.unlink(filePath).catch(() => {}); // nosemgrep: path-traversal
+        return res.status(500).json({
+          success: false,
+          error: updateResult.error || 'Failed to update manifest',
+        });
+      }
+
+      logger.info('route.media.apply_upload.success', { appId, slotName, uploadedUrl, sourceFilename: filename });
+
+      return res.json({
+        success: true,
+        uploadedUrl,
+        slot: updateResult.slot,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('route.media.apply_upload.error', {
+        appId: req.params.appId,
+        slotName: req.params.slotName,
+        error: errorMessage,
+      });
+
+      return res.status(500).json({
+        success: false,
+        error: `Failed to apply upload: ${errorMessage}`,
+      });
+    }
+  }
+);
+
+/**
  * POST /media/:appId/slots/:slotName/upload
  * Upload an image to a media slot
  */
@@ -497,12 +642,28 @@ router.post(
       // Build the URL (using airo-assets proxy pattern)
       const uploadedUrl = `/airo-assets/uploads/${filename}`;
 
-      // Update manifest: new URL becomes current, old current goes to alternatives
+      // Also save to chat uploads so the image appears in "Your Uploads" section.
+      // Non-fatal — the persistent media write already succeeded.
+      let chatUploadFilename: string | undefined;
+      try {
+        const chatResult = await fileUploadService.processUpload(appId, [file]);
+        if (chatResult.files?.length > 0) {
+          chatUploadFilename = chatResult.files[0]?.filename;
+        }
+      } catch (chatErr) {
+        logger.debug('route.media.upload.chat_copy_skipped', {
+          appId,
+          error: chatErr instanceof Error ? chatErr.message : String(chatErr),
+        });
+      }
+
+      // Update manifest: new URL becomes current, old current goes to alternatives.
+      // Pass chatUploadFilename so the slot tracks which chat upload produced this URL.
       const updateResult = await mediaManifestService.updateSlotWithUpload(
         appId,
         slotName,
         uploadedUrl,
-        file.originalname
+        chatUploadFilename
       );
 
       if (!updateResult.success) {
@@ -525,24 +686,27 @@ router.post(
         slotName,
         uploadedUrl,
         size: file.size,
+        chatUploadFilename,
       });
 
       return res.json({
         success: true,
         uploadedUrl,
+        chatUploadFilename,
         slot: updateResult.slot,
       });
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error('route.media.upload.error', {
         appId: req.params.appId,
         slotName: req.params.slotName,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage,
         stack: error instanceof Error ? error.stack : undefined,
       });
 
       return res.status(500).json({
         success: false,
-        error: 'Failed to upload image',
+        error: `Failed to upload image: ${errorMessage}`,
       });
     }
   }
