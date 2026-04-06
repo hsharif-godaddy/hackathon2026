@@ -371,6 +371,9 @@ func (m Model) handlePreflightResult(msg preflightResultMsg) (tea.Model, tea.Cmd
 	if m.preflight[msg.idx].Name == "aws CLI authenticated" && !msg.passed && m.config.Lock.AWSProfile != "" {
 		m.preflight[msg.idx].Hint = fmt.Sprintf("run: aws sso login --profile %s", m.config.Lock.AWSProfile)
 	}
+	if strings.HasPrefix(m.preflight[msg.idx].Name, "access to ") && !msg.passed {
+		m.preflight[msg.idx].Hint = "request JOMAX AD group for the org, then ask a repo admin for write access"
+	}
 
 	if msg.passed {
 		if msg.err != "" {
@@ -712,7 +715,7 @@ func checkRepoAccess(runner gh.Runner, ctx context.Context, repos []string) tea.
 		r := repo
 		cmds = append(cmds, func() tea.Msg {
 			if err := runner.CheckRepoAccess(ctx, r); err != nil {
-				return preflightResultMsg{idx: idx, passed: false, err: fmt.Sprintf("No access. Verify: gh api repos/%s --jq .id", r)}
+				return preflightResultMsg{idx: idx, passed: false, err: err.Error()}
 			}
 			return preflightResultMsg{idx: idx, passed: true}
 		})

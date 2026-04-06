@@ -179,9 +179,16 @@ func (r *LiveRunner) AuthStatus(ctx context.Context) error {
 }
 
 func (r *LiveRunner) CheckRepoAccess(ctx context.Context, repo string) error {
-	_, err := execute(ctx, "api", fmt.Sprintf("repos/%s", repo), "--jq", ".id")
+	output, err := execute(ctx, "api", fmt.Sprintf("repos/%s", repo), "--jq", ".permissions.push")
 	if err != nil {
 		return fmt.Errorf("no access to %s: %w", repo, err)
+	}
+	return verifyPush(output, repo)
+}
+
+func verifyPush(output, repo string) error {
+	if strings.TrimSpace(output) != "true" {
+		return fmt.Errorf("read-only access to %s (write required to dispatch workflows)", repo)
 	}
 	return nil
 }

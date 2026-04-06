@@ -560,3 +560,54 @@ func TestDryRunnerCompare(t *testing.T) {
 		t.Errorf("expected 1 commit, got %d", len(result.Commits))
 	}
 }
+
+func TestVerifyPush(t *testing.T) {
+	tests := []struct {
+		name    string
+		output  string
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:   "write access",
+			output: "true\n",
+		},
+		{
+			name:   "write access no newline",
+			output: "true",
+		},
+		{
+			name:    "read-only access",
+			output:  "false\n",
+			wantErr: true,
+			errMsg:  "read-only access",
+		},
+		{
+			name:    "null permissions",
+			output:  "null\n",
+			wantErr: true,
+			errMsg:  "read-only access",
+		},
+		{
+			name:    "empty output",
+			output:  "",
+			wantErr: true,
+			errMsg:  "read-only access",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := verifyPush(tt.output, "org/repo")
+			if tt.wantErr && err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.wantErr && !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("expected error containing %q, got %q", tt.errMsg, err.Error())
+			}
+		})
+	}
+}
