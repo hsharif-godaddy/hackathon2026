@@ -671,8 +671,8 @@ importers:
         specifier: 2500.7.2
         version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/tabs':
-        specifier: ^2500.9.1
-        version: 2500.9.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: ^2500.11.0
+        version: 2500.11.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/tag':
         specifier: 2500.7.2
         version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -7076,8 +7076,8 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/tabs@2500.9.1':
-    resolution: {integrity: sha512-1A1RhXlOLTIe4x3l39YFgeEyydaYSRmAtbkiVpaZMR9+LRCJ0jf2jzuv+yWkffgQDSiIqkd8WSO/MlZxCJAWVA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/tabs/-/@ux/tabs-2500.9.1.tgz}
+  '@ux/tabs@2500.11.0':
+    resolution: {integrity: sha512-vzxjyOTIuqQQB3G1SPGw2n2V5G1qKFpFcgwgXSnwC6/yXzmritzs7u79cR4WT7BDxIhRLQ/82bsy7Z+YysRtiw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/tabs/-/@ux/tabs-2500.11.0.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -21224,7 +21224,7 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/tabs@2500.9.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/tabs@2500.11.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/card': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/component-utilities': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
