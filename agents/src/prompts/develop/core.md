@@ -453,13 +453,13 @@ The rebuild workflow creates a `.source-site/` directory containing:
 - `sitemap.json` - List of discovered pages
 - `site-metadata.json` - Analyzed site information (colors, fonts, content)
 - `assets/` - Downloaded images and assets
-- Assets are copied to persistent storage and served via `/images/[filename]` or `/other/[filename]` URLs
+- Assets are copied to persistent storage and served via `/assets/images/[filename]` or `/assets/other/[filename]` URLs
 - `workflow-state.json` - Tracks which pages have been built
 
 ### Building Rebuild Pages
 
 1. **Follow the provided prompt** - The rebuild prompt contains specific instructions for layout, content, and design
-2. **Use source assets** - Images from the original site are available at `/images/[filename]` or `/other/[filename]`
+2. **Use source assets** - Images from the original site are available at `/assets/images/[filename]` or `/assets/other/[filename]`
 3. **Maintain design consistency** - Follow the analyzed color scheme and typography from site-metadata
 4. **Build one page at a time** - Focus on the current page, don't try to build multiple pages at once
 

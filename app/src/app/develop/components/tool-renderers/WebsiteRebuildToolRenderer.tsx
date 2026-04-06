@@ -212,7 +212,7 @@ export default function WebsiteRebuildToolRenderer({
                       </Tag>
                       <Box gap="sm" className="flex-1 min-w-0">
                         <text.p size={-1} emphasis="passive" className="truncate" title={asset.url}>
-                          {asset.localPath?.replace('.source-site/assets/', '/source-assets/') || asset.url}
+                          {asset.localPath?.replace('.source-site/assets/', '/assets/') || asset.url}
                         </text.p>
                         {asset.dimensions && (
                           <text.p size={-2} emphasis="passive">

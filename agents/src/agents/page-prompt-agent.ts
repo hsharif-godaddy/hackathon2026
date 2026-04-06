@@ -120,9 +120,9 @@ When referencing assets:
 - Use the actual file paths provided in the asset manifest
 - Specify which imported image should be used for each section
 - **If the new design needs additional images** (e.g., new sections, decorative elements, or if imported images don't fit the new design), instruct the develop agent to search for appropriate stock images
-- Example: "Use /images/abc123.jpg for the hero section"
+- Example: "Use /assets/images/abc123.jpg for the hero section"
 - Example: "Search for a modern office interior image for the About section background"
-- Imported images from the source site use paths like /images/ or /other/ (not /source-assets/)"`)
+- Imported images from the source site use paths like /assets/images/ or /assets/other/"`)
 
   // Homepage structure requirements only for first page
   if (isFirstPage) {
@@ -213,7 +213,7 @@ Generate a single, cohesive prompt that:
 - **ALWAYS quote actual content from the source page** - this is about optimization, not creation
 - Be specific, not generic
 - **PREFER imported images over searching**, but allow stock image searches when the new design needs additional visuals
-- Reference real assets by their public path (e.g., /source-assets/images/filename.jpg)
+- Reference real assets by their public path (e.g., /assets/images/filename.jpg)
 - When "Let Airo Decide" is chosen, YOU make the design decisions - don't pass that to the develop agent
 - Keep the prompt focused and actionable
 - **ALWAYS include explicit instructions for BOTH header AND footer** - the footer is essential and should not be omitted
@@ -236,7 +236,7 @@ Generate a focused, content-centric prompt that:
 - **ALWAYS quote actual content from the source page** - this is about optimization, not creation
 - Be specific, not generic
 - **PREFER imported images over searching**, but allow stock image searches when the new design needs additional visuals
-- Reference real assets by their public path (e.g., /source-assets/images/filename.jpg)
+- Reference real assets by their public path (e.g., /assets/images/filename.jpg)
 - Keep the prompt focused on THIS PAGE'S CONTENT ONLY
 - The page will automatically use the existing header, footer, colors, and fonts from the homepage build
 - **DO NOT include ANY instructions about headers, footers, colors, fonts, or project setup**`)
@@ -340,8 +340,8 @@ export class PagePromptAgent {
       .slice(0, 25)
       .map(a => {
         const publicPath = a.localPath
-          .replace('.source-site/assets/', '/')
           .replace(/\\/g, '/')
+          .replace(/^\.source-site\/assets\//, '/assets/')
 
         // Include dimensions and size category
         const dims = a.dimensions
@@ -758,8 +758,8 @@ Create a striking, attention-grabbing design.
 
     for (const asset of assets.slice(0, 30)) {
       const publicPath = asset.localPath
-        .replace('.source-site/assets/', '/')
         .replace(/\\/g, '/')
+        .replace(/^\.source-site\/assets\//, '/assets/')
 
       const dims = asset.dimensions
         ? `${asset.dimensions.width}x${asset.dimensions.height}`

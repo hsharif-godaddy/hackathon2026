@@ -787,8 +787,8 @@ Respond ONLY with valid JSON in this exact format:
       for (const image of images) {
         // Convert local path to public URL path
         const publicPath = image.localPath
-          .replace('.source-site/assets/', '/')
-          .replace(/\\/g, '/');
+          .replace(/\\/g, '/')
+          .replace(/^\.source-site\/assets\//, '/assets/');
 
         markdown += `### ${path.basename(image.localPath)}\n\n`;
         markdown += `**Original URL:** ${image.url}\n\n`;
