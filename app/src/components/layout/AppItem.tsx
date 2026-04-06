@@ -64,7 +64,7 @@ export function AppItemNew({ location }: { location?: string }) {
   const router = useRouter();
   return (
     <button
-      onClick={() => router.push(`/`)}
+      onClick={() => router.push('/apps?create=true')}
       className="hover:cursor-pointer group text-left leading-tight"
       data-eid={generateClickEID(`${location}.apps_menu.new`)}
     >

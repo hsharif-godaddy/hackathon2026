@@ -29,6 +29,18 @@ vi.mock('@/components/layout/AppInactivityAlert', () => ({
   default: () => <div>AppInactivityAlert</div>,
 }));
 
+vi.mock('@/app/apps/components/CreateAppPrompt', () => ({
+  default: () => <div data-testid="create-app-prompt">CreateAppPrompt</div>,
+}));
+
+vi.mock('@/app/apps/components/PendingTransfers', () => ({
+  default: ({ onAcceptTransfer }: { onAcceptTransfer?: () => void }) => (
+    <div data-testid="pending-transfers">
+      <button data-testid="incoming-accept-button" onClick={onAcceptTransfer}>Accept</button>
+    </div>
+  ),
+}));
+
 vi.mock('@/app/apps/components/AcceptTransferDialog', () => ({
   default: ({ onClose }: { onClose: () => void }) => (
     <div data-testid="accept-transfer-dialog">
@@ -108,13 +120,13 @@ describe('Sites Page', () => {
   });
 
   describe('renders empty state', () => {
-    it('should show empty state card when no sites', () => {
+    it('should show create app prompt when no sites', function emptyPrompt() {
       renderWithProviders(<Sites />);
 
-      expect(screen.getByText('builder_apps_empty_create')).toBeInTheDocument();
+      expect(screen.getByTestId('create-app-prompt')).toBeInTheDocument();
     });
 
-    it('should show 0 apps total tag', () => {
+    it('should show 0 apps total tag', function zeroCount() {
       renderWithProviders(<Sites />);
 
       expect(screen.getByText('builder_apps_count')).toBeInTheDocument();
