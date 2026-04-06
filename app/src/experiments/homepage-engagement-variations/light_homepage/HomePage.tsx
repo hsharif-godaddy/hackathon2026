@@ -20,6 +20,7 @@ import { EXPERIMENT_IDS } from '@/config/experiments'
 import Header from '@/experiments/homepage-engagement-variations/light_homepage/Header'
 import HeroSection from '@/experiments/homepage-engagement-variations/light_homepage/HeroSection'
 import { useAnalytics } from '@/hooks/useAnalytics'
+import { useAuthGateTracking } from '@/hooks/useAuthGateTracking'
 import { useSafariClass } from '@/hooks/useSafariClass'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -31,7 +32,6 @@ import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import type { ServerFeatureFlags } from '@/lib/server-features'
 import { validateAndClampPrompt } from '@/lib/waf-validation'
-import { useAuthUIStore } from '@/stores/useAuthUIStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 
@@ -115,33 +115,7 @@ export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
   )
 
   useSafariClass()
-
-  const ssoCloseReason = useAuthUIStore((s) => s.ssoCloseReason)
-  const clearSsoCloseReason = useAuthUIStore((s) => s.clearSsoCloseReason)
-
-  useEffect(() => {
-    if (ssoCloseReason == null) {
-      return
-    }
-    if (ssoCloseReason === 'success') {
-      authGateShownAtRef.current = null
-    } else if (ssoCloseReason === 'dismiss' && authGateShownAtRef.current != null) {
-      logAnalytics(
-        'homepage.auth_gate.dismissed',
-        {
-          msFromShown: Math.round(Date.now() - authGateShownAtRef.current),
-          promptLength: promptTextRef.current.length,
-        },
-        {
-          kind: 'action',
-          eid: 'homepage.auth.gate',
-          action: 'custom',
-        },
-      )
-      authGateShownAtRef.current = null
-    }
-    clearSsoCloseReason()
-  }, [clearSsoCloseReason, logAnalytics, ssoCloseReason])
+  useAuthGateTracking(logAnalytics, { authGateShownAtRef, promptTextRef })
 
   useEffect(() => {
     if (authIsLoading || homepageViewRecordedRef.current) {
