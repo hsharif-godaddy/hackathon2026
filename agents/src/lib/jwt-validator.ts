@@ -115,6 +115,8 @@ export interface JWTClaims {
   useTestBudget?: boolean; // When true, bypass grants and use test-accounts budget (switchboard: appbuilder-test-budget)
   budgetServiceEnabled?: boolean; // When true, use Budget Service flow instead of legacy grants
   subscriptionId?: string; // Subscription ID for Budget Service API calls
+  enableAssessmentAgent?: boolean; // When true, enable assessment agent for prompt classification (switchboard: appbuilder-assessment-agent)
+  enableAssessmentOverride?: boolean; // When true, apply budget override from assessment (switchboard: appbuilder-assessment-override). Requires enableAssessmentAgent.
   product?: ProductType; // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
 }
 

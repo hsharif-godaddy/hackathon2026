@@ -523,6 +523,24 @@ export class ConversationRepository {
   }
 
   /**
+   * Get the most recent user message for a conversation
+   * Used for multi-turn context in assessment (e.g., "fix my button" before "it doesn't work")
+   *
+   * @param conversationId - The conversation ID
+   * @returns The last user message content, or null if none exists
+   */
+  async getLastUserMessage(conversationId: string): Promise<string | null> {
+    const stmt = this.db.prepare(`
+      SELECT content FROM conversation_messages
+      WHERE conversation_id = ? AND sender = 'user'
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+    const row = stmt.get(conversationId) as { content: string } | undefined;
+    return row?.content ?? null;
+  }
+
+  /**
    * Get messages for a conversation with cursor-based pagination
    * Returns messages in chronological order (oldest first within the page)
    *

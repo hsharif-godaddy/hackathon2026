@@ -206,11 +206,13 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     let useTestBudget = false;
     let budgetServiceEnabled = false;
     let subscriptionId: string | undefined;
+    let enableAssessmentAgent = false;
+    let enableAssessmentOverride = false;
 
     if (siteValidationCacheHit) {
       // Cache hit: skip site validation, run paywall + switchboard + subscription lookup in parallel
       const parallelStart = Date.now();
-      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, siteInfoResult] = await Promise.allSettled([
+      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult] = await Promise.allSettled([
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
           body.siteId,
@@ -220,6 +222,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-test-budget', authContext.jwt || '', request.headers),
         checkSwitchboardFlag('app-builder-budget-service', authContext.jwt || '', request.headers),
         adapter.getSite(body.siteId, authContext.jwt || '', body.owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER),
+        checkSwitchboardFlag('appbuilder-assessment-agent', authContext.jwt || '', request.headers),
+        checkSwitchboardFlag('appbuilder-assessment-override', authContext.jwt || '', request.headers),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
@@ -228,10 +232,12 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       useTestBudget = resolveBooleanFlag(testBudgetResult, 'agent-token.test-budget-flag-check-failed', body.siteId, user.customerId);
       budgetServiceEnabled = resolveBooleanFlag(budgetServiceResult, 'agent-token.budget-service-flag-check-failed', body.siteId, user.customerId);
       subscriptionId = resolveSubscriptionId(siteInfoResult, body.siteId, user.customerId);
+      enableAssessmentAgent = resolveBooleanFlag(assessmentAgentResult, 'agent-token.assessment-agent-flag-check-failed', body.siteId, user.customerId);
+      enableAssessmentOverride = resolveBooleanFlag(assessmentOverrideResult, 'agent-token.assessment-override-flag-check-failed', body.siteId, user.customerId);
     } else {
       // Cache miss: run site validation, paywall, switchboard, and subscription lookup all in parallel
       const parallelStart = Date.now();
-      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, siteInfoResult] = await Promise.allSettled([
+      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult,  budgetServiceResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult] = await Promise.allSettled([
         validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct),
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
@@ -242,6 +248,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-test-budget', authContext.jwt || '', request.headers),
         checkSwitchboardFlag('app-builder-budget-service', authContext.jwt || '', request.headers),
         adapter.getSite(body.siteId, authContext.jwt || '', body.owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER),
+        checkSwitchboardFlag('appbuilder-assessment-agent', authContext.jwt || '', request.headers),
+        checkSwitchboardFlag('appbuilder-assessment-override', authContext.jwt || '', request.headers),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
@@ -259,6 +267,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       useTestBudget = resolveBooleanFlag(testBudgetResult, 'agent-token.test-budget-flag-check-failed', body.siteId, user.customerId);
       budgetServiceEnabled = resolveBooleanFlag(budgetServiceResult, 'agent-token.budget-service-flag-check-failed', body.siteId, user.customerId);
       subscriptionId = resolveSubscriptionId(siteInfoResult, body.siteId, user.customerId);
+      enableAssessmentAgent = resolveBooleanFlag(assessmentAgentResult, 'agent-token.assessment-agent-flag-check-failed', body.siteId, user.customerId);
+      enableAssessmentOverride = resolveBooleanFlag(assessmentOverrideResult, 'agent-token.assessment-override-flag-check-failed', body.siteId, user.customerId);
     }
 
     // Fail-safe: disable budget service and fall back to legacy grants
@@ -266,6 +276,9 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       logger.warn('agent-token.budget-service.missing-subscription-id', { siteId: body.siteId, customerId: user.customerId });
       budgetServiceEnabled = false;
     }
+    // Enforce dependency: enableAssessmentOverride requires enableAssessmentAgent
+    // If agent is disabled, override can't function (classification is short-circuited)
+    enableAssessmentOverride = enableAssessmentAgent && enableAssessmentOverride;
 
     timing.siteAccessMs = Date.now() - siteAccessStart;
     timing.siteAccessCacheHit = siteValidationCacheHit ? 1 : 0;
@@ -287,6 +300,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       useTestBudget,
       budgetServiceEnabled,
       subscriptionId,
+      enableAssessmentAgent,
+      enableAssessmentOverride,
       product
     };
 

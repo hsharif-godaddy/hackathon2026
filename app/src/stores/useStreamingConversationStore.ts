@@ -89,6 +89,7 @@ export interface StreamingMessage {
   errorCode?: number               // HTTP status code
   retryAttempts?: number           // Number of retry attempts for retry errors
   retryReason?: string             // Reason for retry failure (e.g., 'maxRetriesExceeded', 'errorNotRetryable')
+  usedFreeGrants?: boolean         // True if task used free grants (publish/domain/fix task budget)
   selectedAssets?: any[]           // Attached files/assets (only for user messages, kept for type compatibility)
   referencedFiles?: Array<{ path: string; content: string }> // Referenced code files (only for user messages, kept for type compatibility)
   metadata?: {
@@ -121,6 +122,7 @@ export interface ChatMessage {
   errorCode?: number               // HTTP status code
   retryAttempts?: number           // Number of retry attempts for retry errors
   retryReason?: string             // Reason for retry failure (e.g., 'maxRetriesExceeded', 'errorNotRetryable')
+  usedFreeGrants?: boolean         // True if task used free grants (publish/domain/fix task budget)
   selectedAssets?: any[]           // Attached files/assets for user messages
   referencedFiles?: Array<{ path: string; content: string }> // Referenced code files for user messages
   metadata?: {
@@ -381,6 +383,11 @@ export const normalizeConversationMessages = (
       maxStepsReached: msg.maxStepsReached ?? (
         typeof msg.metadata?.maxStepsReached === 'boolean'
           ? msg.metadata.maxStepsReached
+          : undefined
+      ),
+      usedFreeGrants: msg.usedFreeGrants ?? (
+        typeof msg.metadata?.usedFreeGrants === 'boolean'
+          ? msg.metadata.usedFreeGrants
           : undefined
       ),
       upstreamError: msg.upstreamError,
@@ -917,6 +924,9 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       })
     }
 
+    // Extract usedFreeGrants from metadata (comes from complete event)
+    const usedFreeGrants = metadata?.usedFreeGrants ?? activeStream.usedFreeGrants
+
     logger.debug('streaming-store.stream.finalize', {
       messageId: activeStream.id,
       contentLength: activeStream.content.length,
@@ -925,7 +935,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       maxStepsReached: activeStream.maxStepsReached,
       outputTokenLimitReached,
       upstreamError: activeStream.upstreamError,
-      budgetExceeded: activeStream.budgetExceeded
+      budgetExceeded: activeStream.budgetExceeded,
+      usedFreeGrants,
     })
 
     // Convert streaming message to completed message
@@ -942,6 +953,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       userStopped: userStopped || undefined,
       upstreamError: activeStream.upstreamError,
       budgetExceeded: activeStream.budgetExceeded,
+      usedFreeGrants,
       ...(activeStream.error && { error: activeStream.error }),
       ...(activeStream.errorType && { errorType: activeStream.errorType }),
       ...(activeStream.errorCode !== undefined && { errorCode: activeStream.errorCode }),

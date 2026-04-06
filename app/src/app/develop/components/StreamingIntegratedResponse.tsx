@@ -334,6 +334,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
         <ResponseMetadata
           duration={message.timestamp.getTime() - startTime.getTime()}
           content={getFullResponseText()}
+          usedFreeGrants={message.usedFreeGrants}
         />
       )}
     </div>

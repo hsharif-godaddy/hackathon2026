@@ -32,6 +32,8 @@ export interface AgentContext {
   useTestBudget?: boolean; // Bypass grants and use test-accounts budget
   budgetServiceEnabled?: boolean; // Use Budget Service flow instead of legacy grants
   subscriptionId?: string; // Subscription ID for Budget Service API calls
+  enableAssessmentAgent?: boolean; // Enable assessment agent for prompt classification
+  enableAssessmentOverride?: boolean; // Apply budget override from assessment (requires enableAssessmentAgent)
   product: ProductType;    // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
   exp: number;
   iat: number;
@@ -195,6 +197,8 @@ export class JWTAuthMiddleware {
           useTestBudget: claims.useTestBudget ?? false,
           budgetServiceEnabled: claims.budgetServiceEnabled ?? false,
           subscriptionId: claims.subscriptionId,
+          enableAssessmentAgent: claims.enableAssessmentAgent ?? false,
+          enableAssessmentOverride: claims.enableAssessmentOverride ?? false,
           product: coerceProductType(claims.product),
           exp: claims.exp,
           iat: claims.iat

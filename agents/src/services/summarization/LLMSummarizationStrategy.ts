@@ -4,7 +4,7 @@ import { propagateAttributes } from '@langfuse/tracing';
 import { generateText, type LanguageModel } from 'ai';
 import { logCachingStats } from '@airo/ai-lib';
 import { llmMetadataContext, type LitellmMetadata } from '@airo/ai-common';
-import { buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-grants';
+import { buildLitellmMetadataFromContext, BudgetOverride, LlmCallSource, type ExecutionContext } from '@airo/ai-grants';
 import { getAgentModelWithName } from '../../utils/model-selection.js';
 import { countTokens } from '../../utils/token-counter.js';
 import { logger } from '../../logging/index.js';
@@ -159,9 +159,9 @@ export class LLMSummarizationStrategy implements SummarizationStrategy {
     const app = LLMSummarizationStrategy.appRepo.findById(appId);
     const customerId = app?.customerId;
 
-    // If budget override is set from triggering session, use it directly
-    // This ensures E2S/test-budget sessions use the correct budget for background tasks
-    const subscriptionId = context.budgetOverride ?? app?.subscriptionId;
+    // Always use dedicated summarization budget for background tasks
+    // This ensures summarization costs are tracked separately from customer grants
+    const subscriptionId = BudgetOverride.SummarizationTask;
 
     // Build execution context for grant-aware metadata
     // Include subscriptionId so buildLitellmMetadataFromContext can use subscription-based grant lookup

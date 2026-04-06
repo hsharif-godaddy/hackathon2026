@@ -26,6 +26,7 @@ export enum LlmCallSource {
   ServiceNameSuggestion = 'service:name-suggestion',
   ServiceSummarization = 'service:summarization',
   ServiceEmbeddings = 'service:embeddings',
+  AgentAssessment = 'agent:assessment',
 }
 
 /**

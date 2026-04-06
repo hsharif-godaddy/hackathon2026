@@ -71,6 +71,7 @@ export interface FinalizeStreamData {
   usage?: unknown
   totalSteps?: number
   finishReason?: string
+  usedFreeGrants?: boolean
 }
 
 /**

@@ -41,6 +41,7 @@ export interface AgentConversationMessagePayload {
   tool_calls?: AgentToolCallPayload[]
   metadata?: Record<string, unknown>
   maxStepsReached?: boolean
+  usedFreeGrants?: boolean
   upstreamError?: boolean
   budgetExceeded?: boolean
   error?: string

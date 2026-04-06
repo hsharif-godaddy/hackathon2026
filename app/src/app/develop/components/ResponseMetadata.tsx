@@ -1,5 +1,6 @@
 'use client'
 
+import clsx from 'clsx'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useRef, useState } from 'react'
 import CheckIcon from '@ux/icon/checkmark'
@@ -12,6 +13,7 @@ import { logger } from '@/lib/request-context'
 interface ResponseMetadataProps {
   duration: number
   content: string
+  usedFreeGrants?: boolean
 }
 
 /**
@@ -31,11 +33,16 @@ interface ResponseMetadataProps {
  * />
  * ```
  */
-export default function ResponseMetadata({ duration, content }: ResponseMetadataProps) {
+export default function ResponseMetadata({ duration, content, usedFreeGrants }: ResponseMetadataProps) {
   const t = useTranslations()
   const [copiedToClipboard, setCopiedToClipboard] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  const completedText = usedFreeGrants
+    ? t('builder_chat_completed_free')
+    : t('builder_chat_completed')
+
 
   /**
    * Format duration in milliseconds to human-readable string
@@ -93,7 +100,10 @@ export default function ResponseMetadata({ duration, content }: ResponseMetadata
 
   return (
     <button
-      className="group flex items-center justify-between mt-1.5 text-xs text-foreground/50 cursor-pointer w-full"
+      className={clsx(
+        'group flex items-center justify-between mt-1.5 text-xs cursor-pointer w-full',
+        usedFreeGrants ? 'text-intents-ux-feedbackHighContrastSuccess-feedbackColor' : 'text-foreground/50'
+      )}
       onClick={handleCopyResponse}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={handleMouseLeave}
@@ -101,8 +111,11 @@ export default function ResponseMetadata({ duration, content }: ResponseMetadata
     >
       <div className="flex gap-1 items-center">
         <OkIcon className="w-2 h-2" />
-        <div className="flex gap-0.5 items-center overflow-hidden group-hover:text-foreground">
-          {t('builder_chat_completed')}
+        <div className={clsx(
+          'flex gap-0.5 items-center overflow-hidden',
+          !usedFreeGrants && 'group-hover:text-foreground'
+        )}>
+          {completedText}
           <AnimatePresence>
             {isHovered && (
               <motion.span

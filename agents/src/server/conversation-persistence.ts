@@ -595,6 +595,9 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
 
     const activeConversation = this.activeConversations.get(context.socketId)
 
+    // Get usedFreeGrants from context (set by beforeMessageComplete callback)
+    const usedFreeGrants = (context as { usedFreeGrants?: boolean }).usedFreeGrants ?? false
+
     if (activeConversation?.agentMessageId) {
       await this.conversationRepo.updateMessage(activeConversation.agentMessageId, {
         content: accumulatedContent,
@@ -604,7 +607,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           agentId: context.agentName,
           finalResult: result,
           streamingEvents: streamingEvents.length,
-          inProgress: false
+          inProgress: false,
+          usedFreeGrants
         }
       })
       contextLogger.info('conversation.agent_response.updated', {
@@ -617,7 +621,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         metadata: {
           agentId: context.agentName,
           finalResult: result,
-          streamingEvents: streamingEvents.length
+          streamingEvents: streamingEvents.length,
+          usedFreeGrants
         }
       })
       contextLogger.info('conversation.agent_response.saved', {})

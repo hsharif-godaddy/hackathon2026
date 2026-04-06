@@ -9,6 +9,13 @@ import { logger } from '@airo/ai-common'
 export enum BudgetOverride {
   CareAgent = 'airo-builder:care-agent',
   TestAccounts = 'airo-builder:test-accounts',
+  // Task-specific budgets for assessment agent overrides
+  AssessAgent = 'airo-builder:assess-agent',
+  PublishTask = 'airo-builder:publish-task',
+  DomainTask = 'airo-builder:domain-task',
+  FixTask = 'airo-builder:fix-task',
+  // Background task budgets
+  SummarizationTask = 'airo-builder:summarization-task',
 }
 
 /**

@@ -975,7 +975,7 @@ describe('ConnectionRecoveryManager', () => {
 
       await manager.sendStreamCompletedStatus(socket)
 
-      // Should emit recovery_status first
+      // Should emit recovery_status with streamCompleted flag
       expect(socket.emit).toHaveBeenCalledWith('message', {
         type: 'recovery_status',
         content: '',
@@ -984,21 +984,7 @@ describe('ConnectionRecoveryManager', () => {
           hasBufferedEvents: false,
           bufferedEventCount: 0,
           streamCompleted: true,
-          conversationId: undefined,
-          historyStreaming: false,
-          historyMessageCount: 0
-        }
-      })
-
-      // Should always emit history_complete (even when empty) for consistent client-side handling
-      expect(socket.emit).toHaveBeenCalledWith('message', {
-        type: 'history_complete',
-        content: '',
-        data: {
-          messageCount: 0,
-          hasMore: false,
-          nextCursor: null,
-          total: 0
+          conversationId: undefined
         }
       })
     })

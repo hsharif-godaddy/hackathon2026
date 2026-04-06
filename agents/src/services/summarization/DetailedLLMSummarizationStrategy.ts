@@ -4,7 +4,7 @@ import { basename } from 'node:path';
 import { propagateAttributes } from '@langfuse/tracing';
 import { generateText } from 'ai';
 import { llmMetadataContext, type LitellmMetadata } from '@airo/ai-common';
-import { buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-grants';
+import { buildLitellmMetadataFromContext, BudgetOverride, LlmCallSource, type ExecutionContext } from '@airo/ai-grants';
 import type { LLMMessage } from '../ConversationHistoryLoader.js';
 import { isOpenAIMessage, isAIToolMessage, getMessageContent } from '../ConversationHistoryLoader.js';
 import { getAgentModelWithName } from '../../utils/model-selection.js';
@@ -365,9 +365,9 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
     const app = DetailedLLMSummarizationStrategy.appRepo.findById(appId);
     const customerId = app?.customerId;
 
-    // If budget override is set from triggering session, use it directly
-    // This ensures E2S/test-budget sessions use the correct budget for background tasks
-    const subscriptionId = context.budgetOverride ?? app?.subscriptionId;
+    // Always use dedicated summarization budget for background tasks
+    // This ensures summarization costs are tracked separately from customer grants
+    const subscriptionId = BudgetOverride.SummarizationTask;
 
     logger.info('summarization.detailed_llm.app_lookup', {
       appId,

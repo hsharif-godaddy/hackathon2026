@@ -501,6 +501,20 @@ async function initialize() {
     wsServer = websocketSetup.wsServer;
     logger.info('server.websocket.init.success', { phase: 3 });
 
+    // Pre-initialize embedding classifier for assessment agent (avoids cold start on first prompt)
+    logger.info('server.embedding_classifier.init.begin', {});
+    try {
+      const { getEmbeddingClassifier } = await import('../agents/assessment-agent/embedding-classifier.js');
+      const classifier = getEmbeddingClassifier();
+      await classifier.initialize();
+      logger.info('server.embedding_classifier.init.success', { ready: classifier.isReady() });
+    } catch (error) {
+      logger.warn('server.embedding_classifier.init.failed', {
+        error: error instanceof Error ? error.message : String(error),
+        note: 'Assessment agent will initialize on first use',
+      });
+    }
+
     // Start file cleanup service
     logger.info('server.cleanup.start.begin', {});
     fileCleanupService.start();

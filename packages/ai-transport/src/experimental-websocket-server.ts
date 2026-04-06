@@ -2604,8 +2604,9 @@ export class WebSocketServer {
     }
 
     // Complete persistence FIRST (includes git commits) before sending complete event
-    // Store commit hash if persistence layer provides it via context
+    // Store commit hash and free grants flag if persistence layer provides it via context
     let commitHash: string | null = null
+    let usedFreeGrants = false
     const conversation = this.getConversation(socketId)
     if (conversation) {
       await this.config.messagePersistence.completeConversation(
@@ -2619,6 +2620,11 @@ export class WebSocketServer {
         (conversation.context as { commitHash?: string | null }).commitHash ??
         (processedContext as { commitHash?: string | null }).commitHash ??
         null
+
+      usedFreeGrants =
+        (conversation.context as { usedFreeGrants?: boolean }).usedFreeGrants ??
+        (processedContext as { usedFreeGrants?: boolean }).usedFreeGrants ??
+        false
 
       // Don't delete conversation - keep it active for next user message
       // Only cleanup happens on disconnect or error
@@ -2634,6 +2640,7 @@ export class WebSocketServer {
       agentId: agentName,
       duration,
       commitHash, // null if no commit, hash string if commit was created
+      usedFreeGrants, // true if task used free grants (publish/domain/fix task budget)
       messageId: handoffConversation?.context?.agentMessageId,
       ...(finishReason && { finishReason }),
     }, agentName)

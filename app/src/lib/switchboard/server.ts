@@ -36,6 +36,8 @@ export async function checkSwitchboardFlag(
       'appbuilder-higher-plans': true,
       'appbuilder-github-integration': true,
       'app-builder-budget-service': false, // opt-in: requires running Budget Service
+      'appbuilder-assessment-agent': true,
+      'appbuilder-assessment-override': true,
     };
 
     if (featureName in localOverrides) {

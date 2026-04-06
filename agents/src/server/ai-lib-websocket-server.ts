@@ -61,6 +61,7 @@ import {
 import { GitHookService } from '../services/git-hook-service.js'
 import { ClientActionService } from '../services/ClientActionService.js'
 import { hasUnbuiltRebuildPages } from '../tools/ai-lib-tools/suggested-response.js'
+import { getAssessmentAgent, type AssessmentOutcome } from '../agents/assessment-agent/index.js'
 
 /**
  * Shared AppRepository instance to avoid repeated initialization
@@ -166,6 +167,17 @@ const PRUNE_THRESHOLD_SIZE = 1000
 // Tracks initial-prompt metadata per socket for funnel events in onMessageComplete/onError
 // Populated in onMessageStart, consumed and cleaned up in onMessageComplete/onError/onDisconnection
 const initialPromptMetadata = new Map<string, { isInitialPrompt: boolean; customerId?: string; agentName?: string; startTime: number }>();
+
+// Track assessment outcomes per socket for surfacing in completion
+// Populated in onMessageStart, consumed in onMessageComplete, cleaned up in onDisconnection
+const assessmentOutcomes = new Map<string, AssessmentOutcome>()
+
+// Track pending budget overrides from assessment to apply in context provider
+// Populated in onMessageStart, consumed in contextProvider, cleaned up in onDisconnection
+const pendingBudgetOverrides = new Map<string, string>()
+
+// Cache last user message per socket for assessment multi-turn context
+const lastUserMessageCache = new Map<string, string>()
 
 /**
  * Socket.IO server instance for emitting events
@@ -607,8 +619,27 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                   subscriptionId: BudgetOverride.TestAccounts
                 })
               } else {
-                // Regular auth: use the app's subscriptionId
-                agentsAppContext.metadata.subscriptionId = app.subscriptionId
+                // Check for assessment-based budget override (task-specific budgets)
+                const pendingOverride = socketId ? pendingBudgetOverrides.get(socketId) : undefined
+                if (pendingOverride) {
+                  // Assessment agent determined this is a special task (publish/domain/fix)
+                  agentsAppContext.metadata.subscriptionId = pendingOverride
+                  pendingBudgetOverrides.delete(socketId!) // Consume override - only apply once per message
+                  logger.info('context.assessment_budget_override', {
+                    appId,
+                    socketId,
+                    subscriptionId: pendingOverride,
+                  })
+                } else {
+                  // Regular auth: use the app's subscriptionId
+                  agentsAppContext.metadata.subscriptionId = app.subscriptionId
+                  logger.info('context.regular_subscription', {
+                    appId,
+                    socketId,
+                    subscriptionId: app.subscriptionId,
+                    source: 'app_record',
+                  })
+                }
               }
               agentsAppContext.metadata.customerId = app.customerId
 
@@ -1568,6 +1599,98 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           });
         }
 
+        // Assessment Agent: Classify prompt to determine if task-specific budget override should apply
+        // BLOCKING: Must complete before main agent execution to override grants
+        // Get Switchboard flags from JWT context (takes precedence over env var)
+        // - enableAssessmentAgent: Run classification and log results (for monitoring)
+        // - enableAssessmentOverride: Actually apply budget override (requires enableAssessmentAgent)
+        const socket = getSocket(socketId)
+        const enableAssessmentAgent = socket?.handshake?.auth?.agentContext?.enableAssessmentAgent
+        const enableAssessmentOverride = socket?.handshake?.auth?.agentContext?.enableAssessmentOverride
+
+        logger.info('assessment.feature_flag', {
+          appId: siteId,
+          socketId,
+          enableAssessmentAgent,
+          enableAssessmentOverride,
+          hasAgentContext: !!socket?.handshake?.auth?.agentContext,
+        })
+
+        // Only run assessment classification if feature flag is enabled
+        if (enableAssessmentAgent) {
+          const assessmentAgent = getAssessmentAgent()
+
+          // Get previous user message for multi-turn context
+          // Helps classify follow-ups (e.g., "it doesn't work" after "fix my button")
+          // Try cache first, fall back to DB on miss (reconnect scenario)
+          let previousUserMessage = lastUserMessageCache.get(socketId)
+
+          if (previousUserMessage) {
+            logger.debug('assessment.previous_message.from_cache', {
+              appId: siteId,
+              socketId,
+              previousMessagePreview: previousUserMessage.substring(0, 50),
+            })
+          } else if (conversationId && conversationId !== 'default') {
+            const conversationRepo = new ConversationRepository()
+            previousUserMessage = (await conversationRepo.getLastUserMessage(conversationId)) ?? undefined
+
+            if (previousUserMessage) {
+              logger.debug('assessment.previous_message.from_db', {
+                appId: siteId,
+                conversationId,
+                previousMessagePreview: previousUserMessage.substring(0, 50),
+              })
+            }
+          }
+
+          const assessmentOutcome = await assessmentAgent.classify(message, {
+            appId: siteId,
+            customerId,
+            socketId,
+            enabledOverride: enableAssessmentAgent,
+            previousUserMessage,
+          })
+
+          // Store for later use in onMessageComplete
+          assessmentOutcomes.set(socketId, assessmentOutcome)
+
+          // Cache current message for next request's multi-turn context
+          lastUserMessageCache.set(socketId, message)
+
+          // Queue budget override for application in contextProvider
+          // Only apply if both:
+          // 1. Assessment determined override should apply (overrideApplied)
+          // 2. Override feature flag is enabled (enableAssessmentOverride)
+          if (assessmentOutcome.overrideApplied && assessmentOutcome.appliedBudget && enableAssessmentOverride) {
+            pendingBudgetOverrides.set(socketId, assessmentOutcome.appliedBudget)
+
+            logger.info('grants.assessment.override.pending', {
+              appId: siteId,
+              customerId,
+              socketId,
+              taskType: assessmentOutcome.result?.taskType,
+              confidence: assessmentOutcome.result?.confidence,
+              appliedBudget: assessmentOutcome.appliedBudget,
+              durationMs: assessmentOutcome.durationMs,
+              reason: assessmentOutcome.reason,
+            })
+          } else if (assessmentOutcome.overrideApplied && assessmentOutcome.appliedBudget && !enableAssessmentOverride) {
+            // Log that override would have been applied but is disabled (dry run mode)
+            logger.info('grants.assessment.override.dry_run', {
+              appId: siteId,
+              customerId,
+              socketId,
+              taskType: assessmentOutcome.result?.taskType,
+              confidence: assessmentOutcome.result?.confidence,
+              wouldApplyBudget: assessmentOutcome.appliedBudget,
+              durationMs: assessmentOutcome.durationMs,
+              reason: assessmentOutcome.reason,
+              enableAssessmentOverride,
+            })
+          }
+        }
+
         // Store metadata for funnel events in onMessageComplete/onError
         // These callbacks don't receive per-message data from ai-transport
         initialPromptMetadata.set(socketId, {
@@ -1578,14 +1701,21 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         });
       },
 
-      // Pre-completion callback for git operations
+      // Pre-completion callback for git operations and free grants flag
       beforeMessageComplete: async (socketId: string, context: Record<string, unknown>) => {
         const typedContext = context as AgentsAppContext
         const siteId = typedContext?.metadata?.appId
 
+        // Get assessment outcome for free grants flag (before cleanup in onMessageComplete)
+        // Only report usedFreeGrants if override was actually applied (not dry run)
+        const assessmentOutcome = assessmentOutcomes.get(socketId)
+        const socket = getSocket(socketId)
+        const enableAssessmentOverride = socket?.handshake?.auth?.agentContext?.enableAssessmentOverride ?? false
+        const usedFreeGrants = (assessmentOutcome?.overrideApplied && enableAssessmentOverride) ?? false
+
         if (!siteId) {
           logger.debug('websocket.before_complete.no_app_id', { socketId })
-          return { commitHash: null }
+          return { commitHash: null, usedFreeGrants }
         }
 
         try {
@@ -1594,7 +1724,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           logger.debug('websocket.before_complete.begin', {
             socketId,
             appId: siteId,
-            conversationId
+            conversationId,
+            usedFreeGrants,
           })
 
           // Execute git squash merge and get commit hash
@@ -1609,10 +1740,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             socketId,
             appId: siteId,
             conversationId,
-            commitHash: commitHash ? commitHash.substring(0, 7) : 'none'
+            commitHash: commitHash ? commitHash.substring(0, 7) : 'none',
+            usedFreeGrants,
           })
 
-          return { commitHash }
+          return { commitHash, usedFreeGrants }
 
         } catch (error) {
           logger.error('websocket.before_complete.error', {
@@ -1620,7 +1752,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             appId: siteId,
             error: error instanceof Error ? error.message : String(error)
           })
-          return { commitHash: null }
+          return { commitHash: null, usedFreeGrants }
         }
       },
 
@@ -1654,6 +1786,24 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           initialPromptMetadata.delete(socketId);
         }
 
+        // Log free grants usage (flag is now included in complete event via beforeMessageComplete)
+        const assessmentOutcome = assessmentOutcomes.get(socketId)
+        const socket = getSocket(socketId)
+        const enableAssessmentOverride = socket?.handshake?.auth?.agentContext?.enableAssessmentOverride ?? false
+
+        if (assessmentOutcome?.overrideApplied && enableAssessmentOverride && appId) {
+          logger.info('grants.assessment.free_task_completed', {
+            appId,
+            customerId: promptMeta?.customerId,
+            taskType: assessmentOutcome?.result?.taskType,
+            appliedBudget: assessmentOutcome?.appliedBudget,
+            durationMs: assessmentOutcome?.durationMs,
+          })
+        }
+        // Clean up per-message socket state
+        assessmentOutcomes.delete(socketId)
+        pendingBudgetOverrides.delete(socketId)
+
         if (appId) {
           const contextLogger = log.forApp(appId);
           contextLogger.info('websocket.request.site_completed', {});
@@ -1682,6 +1832,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         }
 
         initialPromptMetadata.delete(socketId);
+
+        // Clean up assessment tracking
+        assessmentOutcomes.delete(socketId)
+        pendingBudgetOverrides.delete(socketId)
+        lastUserMessageCache.delete(socketId)
 
         logger.info('websocket.connection.disconnected', {
           message: 'WebSocket client disconnected',
@@ -1817,6 +1972,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         if (promptMeta) {
           initialPromptMetadata.delete(socketId);
         }
+
+        // Clean up assessment tracking (prevent stale overrides on next message)
+        assessmentOutcomes.delete(socketId)
+        pendingBudgetOverrides.delete(socketId)
 
         // Git hook: Squash merge to main on error (if we have appId)
         if (appId) {
@@ -2220,6 +2379,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         isE2S: boolean;
         authType?: TokenAuthType;
         useTestBudget?: boolean;
+        enableAssessmentAgent?: boolean;
+        enableAssessmentOverride?: boolean;
         product: ProductType;
         exp: number;
         iat: number;
@@ -2247,6 +2408,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         isE2S: validationResult.claims?.isE2S ?? false,
         authType: validationResult.claims?.authType ?? 'basic',
         useTestBudget: validationResult.claims?.useTestBudget ?? false,
+        enableAssessmentAgent: validationResult.claims?.enableAssessmentAgent ?? false,
+        enableAssessmentOverride: validationResult.claims?.enableAssessmentOverride ?? false,
         product: coerceProductType(validationResult.claims?.product),
         exp: validationResult.claims?.exp || 0,
         iat: validationResult.claims?.iat || 0
@@ -2316,6 +2479,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             isE2S: refreshResult.claims?.isE2S ?? false,
             authType: refreshResult.claims?.authType ?? 'basic',
             useTestBudget: refreshResult.claims?.useTestBudget ?? false,
+            enableAssessmentAgent: refreshResult.claims?.enableAssessmentAgent ?? false,
+            enableAssessmentOverride: refreshResult.claims?.enableAssessmentOverride ?? false,
             product: coerceProductType(refreshResult.claims?.product),
             exp: refreshResult.claims?.exp || 0,
             iat: refreshResult.claims?.iat || 0

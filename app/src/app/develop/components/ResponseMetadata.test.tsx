@@ -164,4 +164,63 @@ describe('ResponseMetadata', () => {
     copyButton = screen.getByRole('button', { name: /builder_chat_completed/i });
     expect(copyButton).toBeInTheDocument();
   });
+
+  describe('usedFreeGrants', () => {
+    it('should render free grants text when usedFreeGrants is true', () => {
+      renderWithProviders(
+        <ResponseMetadata duration={1000} content="Test" usedFreeGrants={true} />
+      );
+
+      expect(screen.getByText(/builder_chat_completed_free/i)).toBeInTheDocument();
+    });
+
+    it('should render regular completed text when usedFreeGrants is false', () => {
+      renderWithProviders(
+        <ResponseMetadata duration={1000} content="Test" usedFreeGrants={false} />
+      );
+
+      expect(screen.getByText(/builder_chat_completed/i)).toBeInTheDocument();
+      expect(screen.queryByText(/builder_chat_completed_free/i)).not.toBeInTheDocument();
+    });
+
+    it('should apply success color class when usedFreeGrants is true', () => {
+      renderWithProviders(
+        <ResponseMetadata duration={1000} content="Test" usedFreeGrants={true} />
+      );
+
+      const button = screen.getByRole('button');
+      expect(button).toHaveClass('text-intents-ux-feedbackHighContrastSuccess-feedbackColor');
+      expect(button).not.toHaveClass('text-foreground/50');
+    });
+
+    it('should apply default color class when usedFreeGrants is false', () => {
+      renderWithProviders(
+        <ResponseMetadata duration={1000} content="Test" usedFreeGrants={false} />
+      );
+
+      const button = screen.getByRole('button');
+      expect(button).toHaveClass('text-foreground/50');
+      expect(button).not.toHaveClass('text-intents-ux-feedbackHighContrastSuccess-feedbackColor');
+    });
+
+    it('should not apply hover text color change when usedFreeGrants is true', () => {
+      const { container } = renderWithProviders(
+        <ResponseMetadata duration={1000} content="Test" usedFreeGrants={true} />
+      );
+
+      // The inner div should not have group-hover:text-foreground class
+      const innerDiv = container.querySelector('.flex.gap-0\\.5');
+      expect(innerDiv).not.toHaveClass('group-hover:text-foreground');
+    });
+
+    it('should apply hover text color change when usedFreeGrants is false', () => {
+      const { container } = renderWithProviders(
+        <ResponseMetadata duration={1000} content="Test" usedFreeGrants={false} />
+      );
+
+      // The inner div should have group-hover:text-foreground class
+      const innerDiv = container.querySelector('.flex.gap-0\\.5');
+      expect(innerDiv).toHaveClass('group-hover:text-foreground');
+    });
+  });
 });

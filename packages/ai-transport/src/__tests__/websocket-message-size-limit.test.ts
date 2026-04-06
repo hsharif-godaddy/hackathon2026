@@ -148,7 +148,10 @@ describe('WebSocketServer - message size limits', () => {
       defaultAgent: 'test-agent',
     });
 
-    const contentLen = 99_970
+    // stringPayloadLength counts ALL strings in attachment: type (16), path (1), content,
+    // persistence (9), renderStrategy (13), metadata.source (14) = ~53 overhead
+    // Plus message 'hi' (2). Stay under 100k: 100_000 - 55 = 99_945 max for content
+    const contentLen = 99_900
     await messageHandler({
       message: 'hi',
       agentId: 'test-agent',

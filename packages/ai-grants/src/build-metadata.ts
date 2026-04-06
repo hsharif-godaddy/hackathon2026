@@ -116,6 +116,27 @@ export function buildLitellmMetadataFromContext(
     return { user: BudgetOverride.TestAccounts, tags }
   }
 
+  // Task-specific budget overrides (Assessment Agent and background tasks)
+  // These bypass grants and use dedicated budgets
+  const taskBudgetOverrides = [
+    BudgetOverride.AssessAgent,
+    BudgetOverride.PublishTask,
+    BudgetOverride.DomainTask,
+    BudgetOverride.FixTask,
+    BudgetOverride.SummarizationTask,
+  ]
+  if (subscriptionId && taskBudgetOverrides.includes(subscriptionId as BudgetOverride)) {
+    logger.info('grants.build_metadata.task_budget_override', {
+      appId,
+      socketId,
+      subscriptionId,
+      budgetOverride: subscriptionId,
+      tags,
+      source: options?.source ?? LlmCallSource.UserChat,
+    })
+    return { user: subscriptionId, tags }
+  }
+
   // Budget billing is determined entirely by the explicit subscriptionId in context.
   // The triggering code (WebSocket server for sessions, trigger point for background tasks)
   // sets subscriptionId to the appropriate BudgetOverride value when needed.

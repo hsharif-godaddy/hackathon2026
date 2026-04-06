@@ -415,18 +415,24 @@ describe('WebSocketServer - Error Handling', () => {
         newestTimestamp: new Date()
       })
 
-      // Set up disconnected connection state
+      // Set up disconnected connection state with lastDeliveredSequence: 10
+      // Buffer starts at firstSequence: 50, so events 11-49 are lost
       createDisconnectedConnectionState(stateManager, 'loss-socket-id', 'loss-conv-id', 'test-agent', 10)
+      // Add appId to context to pass site validation (must match siteId in socket auth)
+      stateManager.updateConnection('loss-socket-id', { context: { socketId: 'loss-socket-id', agentName: 'test-agent', appId: 'test-site' } })
 
       vi.spyOn(eventChannel, 'getEventsSince').mockReturnValue([])
 
+      // Use conversation recovery (conversationId cookie) instead of manual recovery (previousSocketId)
+      // Buffer loss detection only runs for conversation recovery because manual recovery
+      // reloads full history anyway (clientHasNoState = true for manual)
       const lossSocket = {
         id: 'loss-socket-new',
         emit: vi.fn(),
         on: vi.fn(),
         once: vi.fn(),
         off: vi.fn(),
-        handshake: { auth: { previousSocketId: 'loss-socket-id' } },
+        handshake: { auth: { conversationId: 'loss-conv-id', siteId: 'test-site' } },
         volatile: { emit: vi.fn() }
       }
 
