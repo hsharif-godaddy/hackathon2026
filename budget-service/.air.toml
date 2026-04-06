@@ -5,7 +5,7 @@ tmp_dir = "tmp"
   cmd = "go build -o ./tmp/main ./cmd/server"
   entrypoint = "./tmp/main"
   delay = 1000
-  exclude_dir = ["tmp", "dist", "vendor", "migrations"]
+  exclude_dir = ["tmp", "bin", "vendor"]
   exclude_regex = ["_test\\.go$"]
   send_interrupt = true
 

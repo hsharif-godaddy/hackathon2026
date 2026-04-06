@@ -1,105 +1,95 @@
-// internal/config/config.go
+// Package config reads env for cmd/server.
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
+// Config is process env for the HTTP server and DB pool.
 type Config struct {
-	// Service
-	Port            int
-	LogLevel        string
-	ShutdownTimeout time.Duration
+	Addr             string
+	LocalAuthDisable bool
+	SSOHost          string
 
-	// HTTP Server
-	HTTPReadTimeout  time.Duration
-	HTTPWriteTimeout time.Duration
-	HTTPIdleTimeout  time.Duration
-
-	// Server TLS (Katana ELB backend HTTPS)
-	TLSCertPath string
-	TLSKeyPath  string
-
-	// Database
 	DatabaseURL       string
 	DBMaxOpenConns    int
 	DBMaxIdleConns    int
 	DBConnMaxLifetime time.Duration
 
-	// Auth
-	AuthMode               string // "test" or "jwt" (default: jwt)
-	AuthJWKSURL            string // JWKS endpoint for production JWT validation
-	AuthTestSigningKey     string // HMAC key for test mode JWT signing/validation
-	AuthAdminAllowlist     string // Comma-separated CNAMEs/IAM identities
-	AuthAdminAllowlistFile string // Path to JSON file with additional identities
+	TLSCertPath string
+	TLSKeyPath  string
 
-	// Logging
-	AuditLogPath string
-	AuditLogSync bool
+	HTTPReadTimeout  time.Duration
+	HTTPWriteTimeout time.Duration
+	HTTPIdleTimeout  time.Duration
 
-	// Alerts
-	AlertWarningThreshold  int
-	AlertCriticalThreshold int
+	AuthLogLevel string
 }
 
-func LoadConfig() *Config {
-	return &Config{
-		Port:                   getEnvInt("PORT", 8080),
-		LogLevel:               getEnvString("LOG_LEVEL", "info"),
-		ShutdownTimeout:        getEnvDuration("SHUTDOWN_TIMEOUT", 30*time.Second),
-		HTTPReadTimeout:        getEnvDuration("HTTP_READ_TIMEOUT", 30*time.Second),
-		HTTPWriteTimeout:       getEnvDuration("HTTP_WRITE_TIMEOUT", 60*time.Second),
-		HTTPIdleTimeout:        getEnvDuration("HTTP_IDLE_TIMEOUT", 120*time.Second),
-		TLSCertPath:            getEnvString("SERVER_CERT_PATH", ""),
-		TLSKeyPath:             getEnvString("SERVER_KEY_PATH", ""),
-		DatabaseURL:            getEnvString("DATABASE_URL", ""),
-		DBMaxOpenConns:         getEnvInt("DB_MAX_OPEN_CONNS", 25),
-		DBMaxIdleConns:         getEnvInt("DB_MAX_IDLE_CONNS", 5),
-		DBConnMaxLifetime:      getEnvDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
-		AuthMode:               getEnvString("AUTH_MODE", "jwt"),
-		AuthJWKSURL:            getEnvString("AUTH_JWKS_URL", ""),
-		AuthTestSigningKey:     getEnvString("AUTH_TEST_SIGNING_KEY", ""),
-		AuthAdminAllowlist:     getEnvString("AUTH_ADMIN_ALLOWLIST", ""),
-		AuthAdminAllowlistFile: getEnvString("AUTH_ADMIN_ALLOWLIST_FILE", ""),
-		AuditLogPath:           getEnvString("AUDIT_LOG_PATH", "/var/log/budget-service/audit.log"),
-		AuditLogSync:           getEnvBool("AUDIT_LOG_SYNC", true),
-		AlertWarningThreshold:  getEnvInt("ALERT_WARNING_THRESHOLD", 20),
-		AlertCriticalThreshold: getEnvInt("ALERT_CRITICAL_THRESHOLD", 10),
+// Load reads env and checks LOCAL_AUTH_DISABLE / SSO_HOST / TLS pair consistency.
+func Load() (Config, error) {
+	cfg := Config{
+		Addr:              getEnv("BUDGET_SERVICE_ADDR", ":8080"),
+		LocalAuthDisable:  getEnvBool("LOCAL_AUTH_DISABLE"),
+		SSOHost:           os.Getenv("SSO_HOST"),
+		DatabaseURL:       os.Getenv("DATABASE_URL"),
+		DBMaxOpenConns:    getEnvInt("DB_MAX_OPEN_CONNS", 25),
+		DBMaxIdleConns:    getEnvInt("DB_MAX_IDLE_CONNS", 5),
+		DBConnMaxLifetime: getEnvDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
+		TLSCertPath:       os.Getenv("SERVER_CERT_PATH"),
+		TLSKeyPath:        os.Getenv("SERVER_KEY_PATH"),
+		HTTPReadTimeout:   getEnvDuration("HTTP_READ_TIMEOUT", 30*time.Second),
+		HTTPWriteTimeout:  getEnvDuration("HTTP_WRITE_TIMEOUT", 60*time.Second),
+		HTTPIdleTimeout:   getEnvDuration("HTTP_IDLE_TIMEOUT", 120*time.Second),
+		AuthLogLevel:      getEnv("AUTH_LOG_LEVEL", "info"),
 	}
-}
-
-func getEnvString(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
+	if !cfg.LocalAuthDisable && cfg.SSOHost == "" {
+		return Config{}, fmt.Errorf("SSO_HOST is required unless LOCAL_AUTH_DISABLE is true")
 	}
-	return defaultValue
+	if (cfg.TLSCertPath != "") != (cfg.TLSKeyPath != "") {
+		return Config{}, fmt.Errorf("SERVER_CERT_PATH and SERVER_KEY_PATH must both be set or both empty")
+	}
+	return cfg, nil
 }
 
-func getEnvInt(key string, defaultValue int) int {
-	if value := os.Getenv(key); value != "" {
-		if intValue, err := strconv.Atoi(value); err == nil {
-			return intValue
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
 		}
 	}
-	return defaultValue
+	return fallback
 }
 
-func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
-	if value := os.Getenv(key); value != "" {
-		if duration, err := time.ParseDuration(value); err == nil {
-			return duration
+func getEnvDuration(key string, fallback time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
 		}
 	}
-	return defaultValue
+	return fallback
 }
 
-func getEnvBool(key string, defaultValue bool) bool {
-	if value := os.Getenv(key); value != "" {
-		if boolValue, err := strconv.ParseBool(value); err == nil {
-			return boolValue
-		}
+func getEnvBool(key string) bool {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return false
 	}
-	return defaultValue
+	switch strings.ToLower(v) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }

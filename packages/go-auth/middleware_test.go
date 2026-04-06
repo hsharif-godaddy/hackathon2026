@@ -84,3 +84,29 @@ func TestAuthenticateWithKind_MissingToken_Returns401(t *testing.T) {
 		t.Fatalf("expected 401, got %d", rr.Code)
 	}
 }
+
+func TestAuthenticateCert_NoneMode_Passthrough(t *testing.T) {
+	m := goauth.NewMiddleware("none", "")
+	handler := m.AuthenticateCert(okHandler())
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/cert-auth-check", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+}
+
+func TestAuthenticateCert_MissingToken_Returns401(t *testing.T) {
+	m := goauth.NewMiddleware("jwt", "sso.dev-godaddy.com")
+	handler := m.AuthenticateCert(okHandler())
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/cert-auth-check", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rr.Code)
+	}
+}

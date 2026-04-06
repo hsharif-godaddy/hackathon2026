@@ -7,9 +7,6 @@ USER root
 
 WORKDIR /app
 
-# Install git required by go mod download for VCS-hosted private dependencies
-RUN apk add --no-cache git
-
 # Copy packages/go-auth to satisfy the replace directive in go.mod:
 #   replace .../packages/go-auth => ../packages/go-auth
 # With WORKDIR=/app, that resolves to /packages/go-auth inside the container.
@@ -18,22 +15,34 @@ COPY packages/go-auth /packages/go-auth
 # Copy go mod files first for better caching
 COPY budget-service/go.mod budget-service/go.sum ./
 
-# Use GHEC-SA token mounted as a secret to authenticate private gdcorp-golang modules.
-# The git config is written and removed within the same RUN step so the token
-# is never persisted in any image layer. The subshell ensures cleanup runs even
-# if go mod download fails.
-RUN --mount=type=secret,id=ghec_token \
-    TOKEN=$(cat /run/secrets/ghec_token) && \
-    git config --global --add "url.https://x-access-token:${TOKEN}@github.com/gdcorp-golang/.insteadOf" "https://github.com/gdcorp-golang/" && \
-    { GOPRIVATE=github.com/gdcorp-golang/* go mod download; rc=$?; \
-      git config --global --remove-section "url.https://x-access-token:${TOKEN}@github.com/gdcorp-golang/"; \
-      exit $rc; }
+# Use JFrog OIDC token mounted as a secret to fetch private gdcorp-golang modules
+# from JFrog Artifactory go-virt virtual repository. The token is scoped to this
+# RUN command and never persisted in any image layer.
+RUN --mount=type=secret,id=jfrog_token \
+    JFROG_TOKEN=$(cat /run/secrets/jfrog_token) \
+    GOPROXY="https://:${JFROG_TOKEN}@gdartifactory1.jfrog.io/artifactory/api/go/go-virt" \
+    GOPRIVATE= \
+    GONOPROXY=none \
+    GONOSUMDB="github.com/gdcorp-golang/*" \
+    GOFLAGS="-mod=mod" \
+    go mod download
 
-# Copy service source code
-COPY budget-service/ .
+# Production sources only: cmd/server + internal (skip e2e, docs, migrations, scripts,
+# docker-compose, dev CLIs under cmd/, local certs/env, etc.)
+COPY budget-service/cmd/server ./cmd/server
+COPY budget-service/internal ./internal
 
-# Build the binary with optimizations for smaller, reproducible builds
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/server ./cmd/server
+# Build the binary with optimizations for smaller, reproducible builds.
+# JFrog token is required to resolve any go.sum entries for private modules
+# discovered during compilation of local replace dependencies (packages/go-auth).
+RUN --mount=type=secret,id=jfrog_token \
+    JFROG_TOKEN=$(cat /run/secrets/jfrog_token) \
+    GOPROXY="https://:${JFROG_TOKEN}@gdartifactory1.jfrog.io/artifactory/api/go/go-virt" \
+    GOPRIVATE= \
+    GONOPROXY=none \
+    GONOSUMDB="github.com/gdcorp-golang/*" \
+    GOFLAGS="-mod=mod" \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/server ./cmd/server
 
 # Runtime stage - using GoDaddy golden container image
 # Alpine 3.22 EOL: 2027-07-30
@@ -77,7 +86,7 @@ ENV AUDIT_LOG_PATH=/var/log/budget-service/audit.log
 
 # Health check - start-period aligned with Katana healthcheckGracePeriod (60s)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider --no-check-certificate https://localhost:8080/api/v1/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider --no-check-certificate https://localhost:8080/health || exit 1
 
 # Run the server
 CMD ["/app/server"]

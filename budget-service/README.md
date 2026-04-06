@@ -1,117 +1,136 @@
 # budget-service
 
-Credit budget management service for AAB.
+HTTP API for budgets, LLM sessions, session spend lines, session reports (reconciliation), products, and outbound webhooks.
 
-## Documentation
+- **Spec (flow, numbers, routes):** [`docs/budget-service-spec.md`](docs/budget-service-spec.md)
+- **Auth:** [`packages/go-auth`](../packages/go-auth). By default `/api/v1/*` uses **`AuthenticateAWSIAMService`** — AWS IAM, Cert, or Cert2S JWT via **`Authorization: Bearer`** or **`Authorization: sso-jwt`**. The middleware does **not** read the **`auth_idp`** cookie. Set **`LOCAL_AUTH_DISABLE=true`** (local only) to skip JWT validation.
+- **Database:** Optional. If `DATABASE_URL` is unset, `Store` is nil: `/health` reports DB unconfigured; budget/product/webhook handlers return 503 on write paths.
+- **Local E2E:** [docs/local-e2e.md](docs/local-e2e.md) — Docker profile `e2e` (webhook sink), `make e2e-local`, optional `make dev-budget-ui` (proxied CRUD UI). Not used in production.
 
-- [Architecture](docs/ARCHITECTURE.md) - System design, components, data flow
-- [Database Schema](docs/SCHEMA.md) - Tables, columns, indexes, constraints
-- [Logging](docs/LOGGING.md) - HTTP access logs, audit logs, log formats
+## API summary
 
-## Development
+| Method                    | Path                                                            | Notes                                          |
+| ------------------------- | --------------------------------------------------------------- | ---------------------------------------------- |
+| `GET`, `HEAD`             | `/health`                                                       | No auth                                        |
+| `GET`                     | `/api/v1/auth-check`                                            | Auth probe                                     |
+| `GET`, `POST`             | `/api/v1/products`                                              |                                                |
+| `DELETE`                  | `/api/v1/products/{productKey}`                                 | 409 if active budgets reference product        |
+| `POST`                    | `/api/v1/webhooks`                                              | Register webhook                               |
+| `GET`, `DELETE`           | `/api/v1/webhooks/{webhookId}`                                  | DELETE archives row to `webhooks_history`      |
+| `POST`                    | `/api/v1/budgets`                                               |                                                |
+| `GET`, `PATCH`, `DELETE`  | `/api/v1/budgets/{budgetId}`                                    | DELETE 409 if open sessions or session reports |
+| `POST`, `PATCH`, `DELETE` | `/api/v1/budgets/{budgetId}/budget-items`, `.../{budgetItemId}` |                                                |
+| `POST`                    | `/api/v1/budgets/{budgetId}/sessions`                           |                                                |
+| `GET`, `PATCH`            | `/api/v1/budgets/{budgetId}/sessions/{sessionId}`               | GET 404 when session reconciled / closed       |
+| `POST`, `GET`             | `.../sessions/{sessionId}/reports`, `.../reports/{reportId}`    |                                                |
 
-### Prerequisites
+**Money in JSON:** `creditsTotal`, `cost`, costs in report lines, etc. are strings in responses (6 decimal places). Requests often accept **string or number** for those fields (`flexAmount`). **`costToCreditRatio`** is **USD per credit** (same as stored **`credit_spend_ratio`**); **credits used** = `budget_cost_usd / credit_spend_ratio` (see `internal/credits`).
 
-- Go 1.25+
-- PostgreSQL 15+
-
-### Setup
-
-1. Copy environment file:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-   Optional: copy to `.env.local` for machine-specific overrides (loaded by `make dev` instead of `.env` when present).
-
-   **`make dev`** loads `.env.local` if it exists, otherwise `.env`, then starts [Air](https://github.com/air-verse/air) (via `go run`; no global install). Files must use shell-assignable lines (`KEY=value`); comments (`# …`) are fine.
-
-   For **`go run ./cmd/server`** without Make, export variables yourself, e.g. `set -a && . ./.env && set +a && go run ./cmd/server`, or use a tool like [direnv](https://direnv.net/).
-
-2. Create database:
-
-   ```bash
-   createdb budget_service
-   psql budget_service < migrations/001_create_budgets.sql
-   ```
-
-3. Run the service (ensure PostgreSQL is reachable per `DATABASE_URL` in `.env`):
-
-   ```bash
-   go run ./cmd/server
-   ```
-
-   Hot reload (after `.env` or `.env.local` is in place):
-
-   ```bash
-   make dev
-   ```
-
-   From the monorepo root: `make -f budget-service/Makefile dev` (working directory for Air and env files is always `budget-service/`).
-
-### API Endpoints
-
-| Endpoint                                         | Method | Auth         | Purpose         |
-| ------------------------------------------------ | ------ | ------------ | --------------- |
-| `/api/v1/health`                                 | GET    | None         | Health check    |
-| `/api/v1/budgets`                                | POST   | Admin        | Create budget   |
-| `/api/v1/budgets/{budgetId}`                     | PUT    | Admin        | Update budget   |
-| `/api/v1/budgets/{budgetId}`                     | DELETE | Admin        | Delete budget   |
-| `/api/v1/subscriptions/{subscriptionId}/budgets` | GET    | Subscription | Get budgets     |
-| `/api/v1/subscriptions/{subscriptionId}/spend`   | POST   | Subscription | Spend credits   |
-| `/api/v1/subscriptions/{subscriptionId}/release` | POST   | Subscription | Release credits |
-
-## Authentication
-
-The service supports two authentication modes configured via `AUTH_MODE`:
-
-### Environment Variables
-
-| Variable                    | Description                                        | Default |
-| --------------------------- | -------------------------------------------------- | ------- |
-| `AUTH_MODE`                 | `test` (HMAC) or `jwt` (JWKS)                      | `jwt`   |
-| `AUTH_JWKS_URL`             | JWKS endpoint URL (required in jwt mode)           | -       |
-| `AUTH_TEST_SIGNING_KEY`     | HMAC signing key (required in test mode)           | -       |
-| `AUTH_ADMIN_ALLOWLIST`      | Comma-separated admin CNAMEs/IAM identities        | -       |
-| `AUTH_ADMIN_ALLOWLIST_FILE` | Path to JSON file with additional admin identities | -       |
-
-### Test Mode
-
-For integration testing without external dependencies:
+## Run
 
 ```bash
-AUTH_MODE=test AUTH_TEST_SIGNING_KEY=your-secret-key go test ./...
+cd budget-service
+# Server loads `.env` from cwd (process env wins).
+go run ./cmd/server
+# or
+make build && ./bin/budget-service
+# or hot reload (sources `.env.local` or `.env` for the air parent process)
+make dev
 ```
 
-### Admin Allowlist File Format
+### Private modules (JFrog Artifactory)
 
-```json
-{
-  "allowed": ["admin1.example.com", "iam:service-account"]
-}
-```
+`github.com/gdcorp-golang/*` resolves through GoDaddy’s Artifactory Go virtual repo (`go-virt`), same as [`Dockerfile`](Dockerfile) builds. To match **`go.sum`** checksums, use that proxy (not a direct Git fetch) and skip the public sum DB for those paths.
 
-### Auth Types
-
-- **Subscription**: JWT with `subscriptionId` claim. Token's subscriptionId must match URL parameter.
-- **Admin**: JWT with `cname` or `iam` claim. Identity must be in allowlist (env var or file).
-
-### Testing
+**Recommended — persist for all `go` commands on this machine** (writes `go env GOENV`, usually under your user config dir; no shell variable expansion, so embed the token in `GOPROXY`):
 
 ```bash
-go test ./...
+go env -w GOPROXY='https://:YOUR_JFROG_TOKEN@gdartifactory1.jfrog.io/artifactory/api/go/go-virt,direct'
+go env -w GONOPROXY=none
+go env -w GONOSUMDB='github.com/gdcorp-golang/*'
+go env -u GOPRIVATE
 ```
 
-### Building
+Use a real JFrog identity token for `YOUR_JFROG_TOKEN`. If you previously set `GOPRIVATE` for `gdcorp-golang`, clear it (`go env -u GOPRIVATE`); leaving it set can pull different zips than CI and cause **checksum mismatch** against `go.sum`.
+
+Inspect or clear: `go env GOPROXY GONOPROXY GOPRIVATE GONOSUMDB`, `go env -u GOPROXY`, etc.
+
+**Shell alternative:** export the same variables in `~/.zshrc` (or source a gitignored file). **`make dev`** sources **`.env.local`** or **`.env`** for the Air parent process (handy for `GOPROXY` and related vars). **`make build`**, **`make test`**, and **`make dev-budget-ui`** do not load `.env` — export vars in the shell or prefix the command. The **`go`** toolchain does not read `.env` by itself; `go env -w` or exported env applies to every module download.
+
+## Testing JWT locally
+
+Server: `SSO_HOST` (unless `LOCAL_AUTH_DISABLE=true`), then `go run ./cmd/server`.
 
 ```bash
-go build ./cmd/server
+curl -sS -H "Authorization: Bearer YOUR_JWT" "http://localhost:8080/api/v1/auth-check"
 ```
 
-### Docker
+With **`AUTH_LOG_LEVEL=debug`**, look for **`branch=sso_service_bearer`** / **`sso_service_sso_jwt`** and **`domain=sso_service`**.
+
+### Cert JWT (`cmd/mint-cert-jwt`)
+
+PEM cert/key under **`./.certs/`** (gitignored). **`SSO_HOST`** must match the server.
+
+- **`CERT_PEM_PATH`**, **`CERT_KEY_PATH`**
 
 ```bash
-docker build -t budget-service .
-docker run -p 8080:8080 --env-file .env budget-service
+cd budget-service
+TOKEN="$(go run ./cmd/mint-cert-jwt)"
+curl -sS -H "Authorization: Bearer $TOKEN" "http://localhost:8080/api/v1/auth-check"
 ```
+
+`gdmock`-signed tokens do not validate against real **`gdsso`**.
+
+### IAM JWT (`cmd/mint-iam-jwt`)
+
+Run from **`budget-service`** so **`.env`** loads (`godotenv`). Required: **`SSO_HOST`**. Optional: **`IAM_ROLE_ARN`** (`sts:AssumeRole` before exchange), **`AWS_PROFILE`**.
+
+```bash
+aws sso login --profile airobuild-dev-private-sso
+export AWS_PROFILE=airobuild-dev-private-sso
+# JFrog / module proxy: configure once via go env -w (see "Private modules" above).
+
+TOKEN="$(go run ./cmd/mint-iam-jwt)"
+curl -sS -H "Authorization: Bearer $TOKEN" "http://localhost:8080/api/v1/auth-check"
+```
+
+**`IAM_ROLE_ARN`** must be an **IAM role ARN**, not an `sts:...assumed-role/...` session ARN.
+
+## Environment
+
+| Variable                              | Default | Notes                                                  |
+| ------------------------------------- | ------- | ------------------------------------------------------ |
+| `BUDGET_SERVICE_ADDR`                 | `:8080` | Listen address                                         |
+| `LOCAL_AUTH_DISABLE`                  | —       | `true`/`1`/`yes`/`on` skips JWT (local dev only)       |
+| `AUTH_LOG_LEVEL`                      | `info`  | `debug` → more `go-auth` slog                          |
+| `SSO_HOST`                            | —       | Required when auth enabled; e.g. `sso.dev-godaddy.com` |
+| `IAM_ROLE_ARN`                        | —       | **`mint-iam-jwt` only**                                |
+| `AWS_PROFILE`                         | —       | **`mint-iam-jwt`** / AWS CLI                           |
+| `CERT_PEM_PATH`, `CERT_KEY_PATH`      | —       | **`mint-cert-jwt` only**                               |
+| `DATABASE_URL`                        | —       | If unset, no Store                                     |
+| `DB_MAX_OPEN_CONNS`                   | `25`    |                                                        |
+| `DB_MAX_IDLE_CONNS`                   | `5`     |                                                        |
+| `DB_CONN_MAX_LIFETIME`                | `5m`    | Go duration                                            |
+| `SERVER_CERT_PATH`, `SERVER_KEY_PATH` | —       | Both or neither → TLS                                  |
+| `HTTP_READ_TIMEOUT`                   | `30s`   |                                                        |
+| `HTTP_WRITE_TIMEOUT`                  | `60s`   |                                                        |
+| `HTTP_IDLE_TIMEOUT`                   | `120s`  |                                                        |
+
+## Postgres
+
+`make up` starts Postgres (`budget` / `budget_test` on `localhost:5432`). On **first** container init, `docker-entrypoint-initdb.d` runs [`migrations/001_init.sql`](migrations/001_init.sql).
+
+**Existing volumes** with an older schema: apply `001_init.sql` changes manually with `psql`, or reset the volume (`make down -v` then `make up`).
+
+**Seed:** `make data` runs `seed/seed_test_data.sql` inside the container (requires `make up`).
+
+**Integration:** set `TEST_DATABASE_URL`, apply [`migrations/001_init.sql`](migrations/001_init.sql), optional `make data`. Example: `TestGoCodeSpendMathOverHTTP` in `internal/api/budget_handlers_test.go`.
+
+## Makefile
+
+Targets: `up`, `down`, `logs` (Postgres), `data` (seed), `dev` (Air), `build`, `test`, `clean`, `e2e-up`, `e2e-down`, `e2e-local`, `dev-budget-ui`. See [`Makefile`](Makefile) and [docs/local-e2e.md](docs/local-e2e.md).
+
+## Related
+
+- Other `go-auth` helpers (`AuthenticateCert`, etc.) live in `packages/go-auth` for other apps.
+- Older service: `budget-service/`.

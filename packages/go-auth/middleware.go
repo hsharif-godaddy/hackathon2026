@@ -11,9 +11,11 @@ import (
 
 // Middleware provides HTTP middleware for GoDaddy SSO JWT authentication.
 type Middleware struct {
-	authenticate        func(http.Handler) http.Handler
-	authenticateIAMOnly func(http.Handler) http.Handler
-	authType            string
+	authenticate          func(http.Handler) http.Handler
+	authenticateIAMOnly   func(http.Handler) http.Handler
+	authenticateCertOnly  func(http.Handler) http.Handler
+	authenticateAWSIAMSvc func(http.Handler) http.Handler
+	authType              string
 }
 
 // NewMiddleware creates auth middleware backed by gdcorp-golang/auth.
@@ -23,9 +25,12 @@ func NewMiddleware(authType, ssoHost string) *Middleware {
 	m := &Middleware{authType: authType}
 
 	if authType == "none" {
+		slog.Debug("goauth.init", "auth_type", "none", "message", "sso_and_iam_handlers_disabled")
 		noop := func(next http.Handler) http.Handler { return next }
 		m.authenticate = noop
 		m.authenticateIAMOnly = noop
+		m.authenticateCertOnly = noop
+		m.authenticateAWSIAMSvc = noop
 		return m
 	}
 
@@ -40,6 +45,8 @@ func NewMiddleware(authType, ssoHost string) *Middleware {
 		}
 		m.authenticate = reject
 		m.authenticateIAMOnly = reject
+		m.authenticateCertOnly = reject
+		m.authenticateAWSIAMSvc = reject
 		return m
 	}
 
@@ -60,10 +67,16 @@ func NewMiddleware(authType, ssoHost string) *Middleware {
 		m.authenticate = authenticate
 	}
 
-	// AuthenticateWithKind("awsiam"): accepts only AWS IAM tokens (for ingest)
+	// AuthenticateWithKind("awsiam"): accepts only AWS IAM tokens (e.g. agents, mint-iam-jwt).
+	// Same extractors as service SSO so Bearer and sso-jwt work; wrong kind still fails validation.
 	iamOnly, err := gdhttp.NewHandler(
 		validator,
 		gdhttp.WithRequirements(gdhttp.Active(gdtoken.Low), gdhttp.Kind(gdtoken.AWSIAMKind)),
+		gdhttp.WithTokenExtractors(
+			gdhttp.ModeDistinct,
+			gdhttp.NewHeaderExtractor("Authorization", "Bearer"),
+			gdhttp.NewHeaderExtractor("Authorization", "sso-jwt"),
+		),
 	)
 	if err != nil {
 		slog.Error("goauth.init.iam_handler_failed", "error", err)
@@ -72,11 +85,59 @@ func NewMiddleware(authType, ssoHost string) *Middleware {
 		m.authenticateIAMOnly = iamOnly
 	}
 
+	// AWS IAM, Cert, and Cert2S for service callers (Bearer or sso-jwt): GoCode auth-client, cert-based S2S, etc.
+	iamSvc, err := gdhttp.NewHandler(
+		validator,
+		gdhttp.WithRequirements(
+			gdhttp.Active(gdtoken.Low),
+			gdhttp.Or(
+				gdhttp.Kind(gdtoken.AWSIAMKind),
+				gdhttp.Kind(gdtoken.CertKind),
+				gdhttp.Kind(gdtoken.Cert2SDelegationKind),
+			),
+		),
+		gdhttp.WithTokenExtractors(
+			gdhttp.ModeDistinct,
+			gdhttp.NewHeaderExtractor("Authorization", "Bearer"),
+			gdhttp.NewHeaderExtractor("Authorization", "sso-jwt"),
+		),
+	)
+	if err != nil {
+		slog.Error("goauth.init.iam_service_handler_failed", "error", err)
+		m.authenticateAWSIAMSvc = reject
+	} else {
+		m.authenticateAWSIAMSvc = iamSvc
+	}
+
+	certOnly, err := gdhttp.NewHandler(
+		validator,
+		gdhttp.WithRequirements(
+			gdhttp.Active(gdtoken.Low),
+			gdhttp.Or(
+				gdhttp.Kind(gdtoken.CertKind),
+				gdhttp.Kind(gdtoken.Cert2SDelegationKind),
+			),
+		),
+		gdhttp.WithTokenExtractors(
+			gdhttp.ModeDistinct,
+			gdhttp.NewHeaderExtractor("Authorization", "Bearer"),
+			gdhttp.NewHeaderExtractor("Authorization", "sso-jwt"),
+			gdhttp.NewCookieExtractor("auth_idp"),
+		),
+	)
+	if err != nil {
+		slog.Error("goauth.init.cert_handler_failed", "error", err)
+		m.authenticateCertOnly = reject
+	} else {
+		m.authenticateCertOnly = certOnly
+	}
+
+	slog.Debug("goauth.init", "auth_type", authType, "sso_host", ssoHost)
 	return m
 }
 
 // Authenticate returns HTTP middleware that validates any GoDaddy SSO token.
-// Expects: Authorization: sso-jwt <token>
+// Default extractors: Authorization: sso-jwt <token> and auth_idp cookie (see gdhttp.NewHandler).
 // Returns 401 for missing or invalid tokens.
 func (m *Middleware) Authenticate(next http.Handler) http.Handler {
 	return m.authenticate(next)
@@ -98,4 +159,16 @@ func (m *Middleware) AuthenticateWithKind(tokenKind string) func(http.Handler) h
 			})
 		}
 	}
+}
+
+// AuthenticateAWSIAMService validates service SSO JWTs from Authorization: Bearer (GoCode S2S)
+// or Authorization: sso-jwt. Allowed kinds: AWS IAM, Cert, Cert2S delegation (see gdtoken).
+func (m *Middleware) AuthenticateAWSIAMService(next http.Handler) http.Handler {
+	return m.authenticateAWSIAMSvc(next)
+}
+
+// AuthenticateCert requires a certificate-class SSO JWT (Cert or Cert2S delegation).
+// Token extractors: Authorization Bearer, Authorization sso-jwt, auth_idp cookie (first match wins, ModeDistinct).
+func (m *Middleware) AuthenticateCert(next http.Handler) http.Handler {
+	return m.authenticateCertOnly(next)
 }

@@ -1,110 +1,113 @@
-// cmd/server/main.go
+// Command server is the budget-service HTTP entrypoint.
 package main
 
 import (
 	"context"
 	"database/sql"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"os"
-	"os/signal"
-	"syscall"
+	"strings"
 	"time"
 
+	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/api"
+	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/config"
+	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/store"
+	goauth "github.com/gdcorp-partners/airo-app-builder/packages/go-auth"
+	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
-
-	"github.com/airo-ai-builder/budget-service/internal/api"
-	"github.com/airo-ai-builder/budget-service/internal/config"
-	"github.com/airo-ai-builder/budget-service/internal/logging"
 )
 
-const version = "0.1.0"
-
 func main() {
-	logLevel := slog.LevelInfo
-	if os.Getenv("LOG_LEVEL") == "debug" {
-		logLevel = slog.LevelDebug
-	}
+	dotenvErr := godotenv.Load()
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: logLevel,
-	}))
-	slog.SetDefault(logger)
-
-	slog.Info("service.starting", "version", version)
-
-	// Load configuration
-	cfg := config.LoadConfig()
-
-	// Parse database hostname for logging
-	dbHost := "unknown"
-	if dbURL, err := url.Parse(cfg.DatabaseURL); err == nil && dbURL.Host != "" {
-		dbHost = dbURL.Hostname()
-	}
-
-	// Connect to database
-	connectStart := time.Now()
-	db, err := sql.Open("postgres", cfg.DatabaseURL)
+	cfg, err := config.Load()
 	if err != nil {
-		slog.Error("database.connect.failed", "error", err, "host", dbHost)
+		slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})).
+			Error("config.load", "error", err)
 		os.Exit(1)
 	}
-	defer db.Close()
-
-	// Configure connection pool for high-volume workload (>1000 req/sec target)
-	// MaxOpenConns: allows parallel queries while limiting DB resource usage
-	// MaxIdleConns: keeps warm connections for quick response times
-	// ConnMaxLifetime: prevents stale connections and balances load across replicas
-	db.SetMaxOpenConns(cfg.DBMaxOpenConns)
-	db.SetMaxIdleConns(cfg.DBMaxIdleConns)
-	db.SetConnMaxLifetime(cfg.DBConnMaxLifetime)
-
-	// Best-effort ping so the process can bind and /api/v1/health can report DB status.
-	ctx := context.Background()
-	if err := db.PingContext(ctx); err != nil {
-		slog.Warn("database.ping.initial.failed", "error", err, "host", dbHost)
-	} else {
-		slog.Info("database.connected", "host", dbHost, "connectTime", time.Since(connectStart).String())
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: authSlogLevel(cfg.AuthLogLevel),
+	})))
+	if dotenvErr != nil {
+		slog.Debug("budget_service.dotenv", "message", "no .env file or read error", "error", dotenvErr)
 	}
 
-	// Initialize audit logger
-	auditLog, err := logging.NewAuditLogger(cfg.AuditLogPath, cfg.AuditLogSync)
-	if err != nil {
-		slog.Error("audit.logger.init.failed", "error", err)
-		os.Exit(1)
-	}
-
-	// Create server
-	server := api.NewServer(cfg, version, db, auditLog)
-
-	// Start server in goroutine
-	errChan := make(chan error, 1)
-	go func() {
-		if err := server.Start(); err != nil {
-			errChan <- err
+	var sqlDB *sql.DB
+	var st *store.Store
+	if cfg.DatabaseURL != "" {
+		// Pool + ping; failed ping still starts (degraded /health).
+		dbHost := "unknown"
+		if u, err := url.Parse(cfg.DatabaseURL); err == nil && u.Host != "" {
+			dbHost = u.Hostname()
 		}
-	}()
-
-	// Wait for shutdown signal
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	select {
-	case err := <-errChan:
-		slog.Error("server.start.failed", "error", err)
-		os.Exit(1)
-	case sig := <-sigChan:
-		slog.Info("shutdown.signal.received", "signal", sig.String())
+		connectStart := time.Now()
+		sqlDB, err = sql.Open("postgres", cfg.DatabaseURL)
+		if err != nil {
+			slog.Error("database.connect.failed", "error", err, "host", dbHost)
+			os.Exit(1)
+		}
+		defer sqlDB.Close()
+		sqlDB.SetMaxOpenConns(cfg.DBMaxOpenConns)
+		sqlDB.SetMaxIdleConns(cfg.DBMaxIdleConns)
+		sqlDB.SetConnMaxLifetime(cfg.DBConnMaxLifetime)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		pingErr := sqlDB.PingContext(ctx)
+		cancel()
+		if pingErr != nil {
+			slog.Warn("database.ping.initial.failed", "error", pingErr, "host", dbHost)
+		} else {
+			slog.Info("database.connected", "host", dbHost, "elapsed", time.Since(connectStart).String())
+		}
+		st = store.New(sqlDB)
+	} else {
+		// Handlers use requireStore for writes; /health reports unconfigured.
+		slog.Info("database.disabled", "message", "DATABASE_URL not set; /health reports database unconfigured")
 	}
 
-	// Graceful shutdown
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
-	defer cancel()
+	authType := "jwt"
+	if cfg.LocalAuthDisable {
+		authType = "none"
+	}
+	authMW := goauth.NewMiddleware(authType, cfg.SSOHost)
+	srv := &api.Server{Store: st}
+	handler := api.NewRouter(srv, authMW)
 
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		slog.Error("server.shutdown.failed", "error", err)
-		os.Exit(1)
+	httpSrv := &http.Server{
+		Addr:         cfg.Addr,
+		Handler:      handler,
+		ReadTimeout:  cfg.HTTPReadTimeout,
+		WriteTimeout: cfg.HTTPWriteTimeout,
+		IdleTimeout:  cfg.HTTPIdleTimeout,
 	}
 
-	slog.Info("service.stopped")
+	var listenErr error
+	// App TLS when SERVER_CERT_PATH and SERVER_KEY_PATH are both set.
+	if cfg.TLSCertPath != "" && cfg.TLSKeyPath != "" {
+		slog.Info("budget_service.listen.tls", "addr", cfg.Addr, "localAuthDisable", cfg.LocalAuthDisable, "certPath", cfg.TLSCertPath)
+		listenErr = httpSrv.ListenAndServeTLS(cfg.TLSCertPath, cfg.TLSKeyPath)
+	} else {
+		slog.Info("budget_service.listen", "addr", cfg.Addr, "localAuthDisable", cfg.LocalAuthDisable)
+		listenErr = httpSrv.ListenAndServe()
+	}
+	// Ignore ErrServerClosed until graceful shutdown exists.
+	if listenErr != nil && listenErr != http.ErrServerClosed {
+		slog.Error("http.server", "error", listenErr)
+		os.Exit(1)
+	}
+}
+
+func authSlogLevel(s string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }

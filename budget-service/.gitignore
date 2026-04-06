@@ -1,17 +1,5 @@
-# Binary output
-/server
-tmp/
-
-# IDE
-.idea/
-.vscode/
-
-# Test coverage
-coverage.out
-
-# Environment
-.env
-.env.local
-
-# Audit log
-audit.log
+/bin/
+/tmp/
+# Local PEMs for cmd/mint-cert-jwt (CloudUI cert + key); not committed
+.certs
+.cursor

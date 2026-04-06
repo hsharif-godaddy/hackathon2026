@@ -1,4 +1,8 @@
-# budget-service/docker-compose.yml
+# Matches budget-service postgres so DATABASE_URL can be:
+# postgres://budget:budget@localhost:5432/budget_test?sslmode=disable
+#
+# First init: runs migrations/001_init.sql via docker-entrypoint-initdb.d. Seed: `make data` (see seed/).
+# Existing volumes keep old data; to re-init, `make down` then `make up`, then `make data`.
 services:
   postgres:
     image: postgres:15-alpine
@@ -14,17 +18,13 @@ services:
       timeout: 5s
       retries: 10
     volumes:
-      - ./migrations:/docker-entrypoint-initdb.d:ro
+      - ./migrations/001_init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
 
-  budget-service:
-    build: .
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgres://budget:budget@postgres:5432/budget_test?sslmode=disable
-      PORT: 8080
-      LOG_LEVEL: info
-      AUDIT_LOG_PATH: /var/log/budget-service/audit.log
+  # Local E2E only (docker compose --profile e2e up -d). Budget service on host POSTs webhooks to host:9999.
+  webhook-sink:
+    profiles: [e2e]
+    build:
+      context: ./e2e/webhook-sink
+      dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "9999:9090"

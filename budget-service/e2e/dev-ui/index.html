@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>budget-service dev UI</title>
+  <style>
+    :root {
+      --bg: #e8ecf2;
+      --surface: #ffffff;
+      --border: #d8dee9;
+      --text: #1e293b;
+      --muted: #64748b;
+      --accent: #3d5a80;
+      --accent-hover: #2c4760;
+      --code-bg: #f1f5f9;
+      --code-text: #334155;
+      --radius: 10px;
+      --shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      font-size: 15px;
+      line-height: 1.45;
+      color: var(--text);
+      background: var(--bg);
+      min-height: 100vh;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(300px, 420px);
+      gap: 1.5rem;
+      align-items: start;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 1.25rem 1.5rem 2rem;
+    }
+
+    @media (max-width: 960px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+      .panel-out {
+        position: static;
+        max-height: none;
+        order: -1;
+      }
+      .panel-out pre.json-block {
+        max-height: 35vh;
+      }
+    }
+
+    .panel-main {
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+      padding: 1.25rem 1.5rem 1.75rem;
+    }
+
+    .panel-out {
+      position: sticky;
+      top: 1rem;
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+      padding: 1rem 1.1rem;
+      max-height: calc(100vh - 2rem);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .page-title {
+      margin: 0 0 0.35rem;
+      font-size: 1.35rem;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+    }
+
+    .hint {
+      margin: 0 0 1.25rem;
+      color: var(--muted);
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+
+    h2 {
+      margin: 1.35rem 0 0.65rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.35rem;
+    }
+
+    h2:first-of-type {
+      margin-top: 0;
+    }
+
+    .out-heading {
+      margin: 0 0 0.45rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .out-section {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .out-section + .out-section {
+      padding-top: 0.65rem;
+      border-top: 1px solid var(--border);
+    }
+
+    label {
+      display: block;
+      margin: 0.5rem 0 0.2rem;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      padding: 0.45rem 0.6rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.875rem;
+      background: #fafbfc;
+      color: var(--text);
+    }
+
+    input:focus,
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(61, 90, 128, 0.15);
+      background: var(--surface);
+    }
+
+    textarea {
+      min-height: 4.5rem;
+      font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+      font-size: 0.8125rem;
+      line-height: 1.4;
+      resize: vertical;
+    }
+
+    button {
+      margin: 0.35rem 0.5rem 0 0;
+      padding: 0.4rem 0.85rem;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #f8fafc;
+      border-color: #c5cdd8;
+    }
+
+    button:active {
+      background: #eef2f6;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem 0;
+      align-items: center;
+      margin-top: 0.25rem;
+    }
+
+    .panel-out pre.json-block {
+      margin: 0;
+      flex: 1;
+      min-height: 120px;
+      max-height: calc((100vh - 8rem) / 2);
+      overflow: auto;
+      padding: 0.85rem 1rem;
+      font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+      font-size: 0.75rem;
+      line-height: 1.5;
+      background: var(--code-bg);
+      color: var(--code-text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .panel-out pre.json-block.empty {
+      color: var(--muted);
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <main class="panel-main">
+      <h1 class="page-title">Budget service · dev UI</h1>
+      <p class="hint">Local E2E only. Traffic goes through this host’s proxy to the budget API. Optional JWT on proxied calls. Request and response are shown separately in the right column.</p>
+
+      <h2>Config</h2>
+      <label for="jwt">JWT (optional — saved in sessionStorage)</label>
+      <input id="jwt" type="password" autocomplete="off" placeholder="empty when LOCAL_AUTH_DISABLE=true" />
+      <div class="row">
+        <button type="button" id="btnHealth">GET /health</button>
+        <button type="button" id="btnAuthCheck">GET /api/v1/auth-check</button>
+        <button type="button" id="btnSaveJwt">Save JWT</button>
+      </div>
+
+      <h2>Product</h2>
+      <label for="productKey">productKey</label>
+      <input id="productKey" value="dev-ui-product" />
+      <button type="button" id="btnPostProduct">POST /api/v1/products</button>
+
+      <h2>Budget</h2>
+      <p class="hint"><code>costToCreditRatio</code> = USD per credit (<code>credits_used = budget_cost / costToCreditRatio</code>). Example: <code>0.1</code> ⇒ $1 ⇒ 10 credits.</p>
+      <label for="budgetPost">POST body (JSON)</label>
+      <textarea id="budgetPost">{"productKey":"dev-ui-product","items":[{"creditsTotal":"150.000000","costToCreditRatio":"0.1"}]}</textarea>
+      <div class="row">
+        <button type="button" id="btnPostBudget">POST /api/v1/budgets</button>
+        <button type="button" id="btnGetBudget">GET /api/v1/budgets/{id}</button>
+      </div>
+      <label for="budgetId">budgetId (GET / PATCH)</label>
+      <input id="budgetId" placeholder="from POST response" />
+
+      <h2>Budget items (PATCH)</h2>
+      <label for="budgetPatch">PATCH body</label>
+      <textarea id="budgetPatch">{"items":[{"creditsTotal":"100.000000","costToCreditRatio":"0.066666"}]}</textarea>
+      <button type="button" id="btnPatchBudget">PATCH /api/v1/budgets/{id}</button>
+
+      <h2>Single budget item</h2>
+      <label for="budgetItemId">budgetItemId</label>
+      <input id="budgetItemId" placeholder="from GET budget or POST …/budget-items" />
+      <button type="button" id="btnGetBudgetItem">GET /api/v1/budgets/{id}/budget-items/{budgetItemId}</button>
+
+      <h2>Session</h2>
+      <label for="sessionPost">POST body</label>
+      <textarea id="sessionPost">{}</textarea>
+      <button type="button" id="btnPostSession">POST /api/v1/budgets/{id}/sessions</button>
+      <label for="sessionId">sessionId</label>
+      <input id="sessionId" placeholder="from POST session" />
+
+      <h2>GoCode (PATCH session lines)</h2>
+      <label for="sessionPatch">PATCH body</label>
+      <textarea id="sessionPatch">{"sessionItems":[{"cost":"2.000000","callRequestId":"dev-ui-1"}]}</textarea>
+      <button type="button" id="btnPatchSession">PATCH session</button>
+      <button type="button" id="btnGetSession">GET session</button>
+
+      <h2>Webhook</h2>
+      <label for="webhookUrl">Callback URL</label>
+      <input id="webhookUrl" value="http://127.0.0.1:9999/hook" />
+      <button type="button" id="btnPostWebhook">POST /api/v1/webhooks</button>
+      <label for="webhookId">webhookId (GET / DELETE)</label>
+      <input id="webhookId" />
+      <div class="row">
+        <button type="button" id="btnGetWebhook">GET webhook</button>
+        <button type="button" id="btnDelWebhook">DELETE webhook</button>
+      </div>
+
+      <h2>Report</h2>
+      <label for="reportPost">POST body</label>
+      <textarea id="reportPost">{"reportItems":[{"budgetCost":"2.000000","productCost":"1.000000","label":"dev-ui"}]}</textarea>
+      <button type="button" id="btnPostReport">POST …/reports</button>
+      <label for="reportId">reportId</label>
+      <input id="reportId" />
+      <button type="button" id="btnGetReport">GET …/reports/{id}</button>
+    </main>
+
+    <aside class="panel-out" aria-label="HTTP request and response">
+      <div class="out-section">
+        <h2 class="out-heading">Request</h2>
+        <pre id="outRequest" class="json-block empty">Run a request — the outgoing HTTP request appears here.</pre>
+      </div>
+      <div class="out-section">
+        <h2 class="out-heading">Response</h2>
+        <pre id="outResponse" class="json-block empty">Run a request — the API response (status + body) appears here.</pre>
+      </div>
+    </aside>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
