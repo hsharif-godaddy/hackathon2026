@@ -120,7 +120,7 @@ describe('AppItemNew', () => {
     expect(screen.getByText('builder_apps_empty_create')).toBeInTheDocument();
   });
 
-  it('should navigate to dashboard with create param when clicked', async function navigate() {
+  it('should navigate to homepage when clicked', async () => {
     mockPush.mockClear();
 
     const { user } = renderWithProviders(<AppItemNew />);
@@ -129,7 +129,7 @@ describe('AppItemNew', () => {
     await user.click(button);
 
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith('/apps?create=true');
+      expect(mockPush).toHaveBeenCalledWith('/');
     });
   });
 

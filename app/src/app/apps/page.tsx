@@ -8,8 +8,6 @@ import Tag from '@ux/tag'
 
 import AppCard, { AppCardEmptyState } from '@/app/apps/AppCard'
 import AcceptTransferDialog from '@/app/apps/components/AcceptTransferDialog'
-import CreateAppPrompt from '@/app/apps/components/CreateAppPrompt'
-import PendingTransfers from '@/app/apps/components/PendingTransfers'
 import { ProtectedRoute } from '@/components/auth'
 import { DevelopmentAdminSection } from '@/components/development'
 import AppInactivityAlert from '@/components/layout/AppInactivityAlert'
@@ -95,7 +93,6 @@ function SitesPageContent() {
       />
 
       <main className="max-w-7xl mx-auto px-2 sm:px-3 lg:px-4 pt-4 pb-8">
-        <CreateAppPrompt />
         <AppInactivityAlert />
         <div className="mb-4 flex items-center justify-between" data-testid="apps-page-title">
           <Box orientation="horizontal" gap="md">
