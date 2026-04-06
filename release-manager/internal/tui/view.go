@@ -413,7 +413,6 @@ func (m Model) slackMessage(finished bool) string {
 	}
 
 	stages := m.pipeline.Stages()
-	values := m.pipeline.Values()
 	currentEnv := ""
 	for _, sr := range stages {
 		if sr.Env == "rollback" {
@@ -422,7 +421,7 @@ func (m Model) slackMessage(finished bool) string {
 		if sr.Env != currentEnv {
 			currentEnv = sr.Env
 			sb.WriteString(fmt.Sprintf("\n*%s*\n", strings.ToUpper(currentEnv)))
-			m.renderSlackDeployValues(&sb, currentEnv, values)
+			m.renderSlackDeployValues(&sb, currentEnv, stages)
 		}
 		m.renderSlackStage(&sb, sr)
 	}
@@ -481,23 +480,31 @@ func (m Model) renderSlackStage(sb *strings.Builder, sr *pipeline.StageRun) {
 }
 
 // renderSlackDeployValues shows artifact/image values for environments after
-// the first (which produces intermediate outputs). Finds values by key suffix
-// so renaming environments or stages in the YAML doesn't break rendering.
-func (m Model) renderSlackDeployValues(sb *strings.Builder, env string, values map[string]string) {
+// the first. The first env (test) produces these values; subsequent envs
+// (prod) consume them. Values are collected from all non-rollback stage
+// outputs regardless of env, since the build stage in test is the only
+// stage expected to produce image tags. If multiple stages emit the same
+// output key, the last stage in pipeline order wins deterministically.
+func (m Model) renderSlackDeployValues(sb *strings.Builder, env string, stages []*pipeline.StageRun) {
 	if len(m.envOrder) > 0 && env == m.envOrder[0] {
 		return
 	}
 	var artifact, agent, preview, publish string
-	for k, v := range values {
-		switch {
-		case strings.HasSuffix(k, ".artifact_id"):
-			artifact = v
-		case strings.HasSuffix(k, ".agent_image_tag"):
-			agent = v
-		case strings.HasSuffix(k, ".preview_image_tag"):
-			preview = v
-		case strings.HasSuffix(k, ".publish_image_tag"):
-			publish = v
+	for _, sr := range stages {
+		if sr.Env == "rollback" {
+			continue
+		}
+		for k, v := range sr.Outputs {
+			switch k {
+			case "artifact_id":
+				artifact = v
+			case "agent_image_tag":
+				agent = v
+			case "preview_image_tag":
+				preview = v
+			case "publish_image_tag":
+				publish = v
+			}
 		}
 	}
 	if artifact != "" {

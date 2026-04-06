@@ -249,6 +249,123 @@ func TestPreflightStringRequiredFailureShowsHint(t *testing.T) {
 	}
 }
 
+func TestRenderSlackDeployValuesUsesStageOutputs(t *testing.T) {
+	stages := []*pipeline.StageRun{
+		{
+			Env:     "test",
+			Outputs: map[string]string{"artifact_id": "195147"},
+		},
+		{
+			Env: "test",
+			Outputs: map[string]string{
+				"agent_image_tag":   "pi-abc-ext-def",
+				"preview_image_tag": "pi-abc-ext-def",
+				"publish_image_tag": "pi-abc-ext-def",
+			},
+		},
+		{
+			Env:     "test",
+			Outputs: map[string]string{},
+		},
+		{
+			Env:     "prod",
+			Outputs: map[string]string{"artifact_id": "200000"},
+		},
+	}
+
+	m := Model{envOrder: []string{"test", "prod"}}
+	var sb strings.Builder
+	m.renderSlackDeployValues(&sb, "prod", stages)
+	output := sb.String()
+
+	for _, want := range []string{
+		"artifact: `200000`",
+		"agent: `pi-abc-ext-def`",
+		"preview: `pi-abc-ext-def`",
+		"publish: `pi-abc-ext-def`",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("expected %q in output, got:\n%s", want, output)
+		}
+	}
+	if strings.Contains(output, "195147") {
+		t.Errorf("prod stage should override test artifact_id, got:\n%s", output)
+	}
+}
+
+func TestRenderSlackDeployValuesSkipsFirstEnv(t *testing.T) {
+	stages := []*pipeline.StageRun{
+		{
+			Env: "test",
+			Outputs: map[string]string{
+				"agent_image_tag": "pi-abc-ext-def",
+			},
+		},
+	}
+
+	m := Model{envOrder: []string{"test", "prod"}}
+	var sb strings.Builder
+	m.renderSlackDeployValues(&sb, "test", stages)
+
+	if sb.Len() != 0 {
+		t.Errorf("expected no output for first env, got:\n%s", sb.String())
+	}
+}
+
+func TestRenderSlackDeployValuesSkipsRollbackStages(t *testing.T) {
+	stages := []*pipeline.StageRun{
+		{
+			Env: "test",
+			Outputs: map[string]string{
+				"agent_image_tag":   "pi-new-ext-new",
+				"preview_image_tag": "pi-new-ext-new",
+				"publish_image_tag": "pi-new-ext-new",
+			},
+		},
+		{
+			Env: "rollback",
+			Outputs: map[string]string{
+				"agent_image_tag":   "pi-old-ext-old",
+				"preview_image_tag": "pi-old-ext-old",
+				"publish_image_tag": "pi-old-ext-old",
+			},
+		},
+	}
+
+	m := Model{envOrder: []string{"test", "prod"}}
+	var sb strings.Builder
+	m.renderSlackDeployValues(&sb, "prod", stages)
+	output := sb.String()
+
+	if strings.Contains(output, "pi-old-ext-old") {
+		t.Errorf("rollback stage outputs should be excluded, got:\n%s", output)
+	}
+	if !strings.Contains(output, "pi-new-ext-new") {
+		t.Errorf("expected new image tag in output, got:\n%s", output)
+	}
+}
+
+func TestRenderSlackDeployValuesNoOutputsNoLine(t *testing.T) {
+	stages := []*pipeline.StageRun{
+		{
+			Env:     "test",
+			Outputs: map[string]string{},
+		},
+		{
+			Env:     "prod",
+			Outputs: map[string]string{},
+		},
+	}
+
+	m := Model{envOrder: []string{"test", "prod"}}
+	var sb strings.Builder
+	m.renderSlackDeployValues(&sb, "prod", stages)
+
+	if sb.Len() != 0 {
+		t.Errorf("expected no output when no stages have values, got:\n%s", sb.String())
+	}
+}
+
 func TestPreflightStringOptionalFailureShowsHint(t *testing.T) {
 	m := Model{
 		preflight: []preflightCheck{
