@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  BudgetExceededError,
   isTransientBadRequest,
   containsBudgetExceededPattern,
   NON_RETRYABLE_400_PATTERNS,
@@ -74,6 +75,26 @@ describe('errors', () => {
       expect(containsBudgetExceededPattern('rate limit exceeded')).toBe(false)
       expect(containsBudgetExceededPattern('quota exceeded')).toBe(false)
       expect(containsBudgetExceededPattern('')).toBe(false)
+    })
+  })
+
+  describe('BudgetExceededError.fromBudgetCheck', () => {
+    it('creates error with budget-service-pre-check source', () => {
+      const err = BudgetExceededError.fromBudgetCheck('sub-123')
+      expect(err).toBeInstanceOf(BudgetExceededError)
+      expect(err.statusCode).toBe(402)
+      expect(err.message).toBe('Your AI usage budget has been reached.')
+      expect(JSON.parse(err.responseBody)).toEqual({
+        budgetId: 'sub-123',
+        source: 'budget-service-pre-check',
+      })
+    })
+
+    it('is detected by isInstance', () => {
+      const err = BudgetExceededError.fromBudgetCheck('b-1')
+      expect(BudgetExceededError.isInstance(err)).toBe(true)
+      expect(err.isBudgetExceeded).toBe(true)
+      expect(err.errorType).toBe('BUDGET_EXCEEDED')
     })
   })
 

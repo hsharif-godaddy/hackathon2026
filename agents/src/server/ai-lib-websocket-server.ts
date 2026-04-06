@@ -14,6 +14,8 @@ import {
   type PersistedMessage,
 } from '@airo/ai-transport'
 import { grantSessionManager, type GrantContextPayload, BudgetOverride } from '@airo/ai-grants'
+import { getBudgetServiceClient } from '../services/budget-service-instance.js'
+import { performBudgetPreCheck } from './budget-pre-check.js'
 import { auth, AuthType, BYPASS_SITE_IDS } from '../services/features.js'
 import { getTemplateIds } from '../agents/template-registry.js'
 import { isEmployeeAuthType, type AuthType as TokenAuthType, type ProductType } from '@airo/shared/auth'
@@ -585,6 +587,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 isE2S?: boolean
                 authType?: TokenAuthType
                 useTestBudget?: boolean
+                budgetServiceEnabled?: boolean
+                subscriptionId?: string
               } | undefined
               // Use authType to distinguish employee sessions (e2s, e2s2s, etc.) from delegate (s2s)
               const isEmployeeSession = isEmployeeAuthType(agentContext?.authType)
@@ -642,6 +646,16 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 }
               }
               agentsAppContext.metadata.customerId = app.customerId
+
+              // Budget Service flag: propagate to metadata for pre-execution check.
+              // Skip for employee/test sessions (not subject to budget limits).
+              // Use JWT subscriptionId (not app DB) since the app record can be stale.
+              if (agentContext?.budgetServiceEnabled && !isEmployeeSession && !useTestBudget) {
+                agentsAppContext.metadata.budgetServiceEnabled = true
+                if (agentContext.subscriptionId) {
+                  agentsAppContext.metadata.subscriptionId = agentContext.subscriptionId
+                }
+              }
 
               // NOTE: SSO JWT is NOT passed through context for security reasons.
               // MCP tools that need user authentication use ClientActionService to proxy
@@ -1586,6 +1600,24 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           messagePreview: message.substring(0, 50) + (message.length > 50 ? '...' : ''),
           agentName
         });
+
+        // Budget Service pre-execution check + session creation
+        const budgetResult = await performBudgetPreCheck(
+          {
+            budgetServiceEnabled: typedContext?.metadata?.budgetServiceEnabled,
+            subscriptionId: typedContext?.metadata?.subscriptionId as string | undefined,
+            appId: siteId,
+          },
+          { getClient: getBudgetServiceClient, logger },
+        )
+        if (budgetResult) {
+          // Store on processedContext; experimental-websocket-server copies to
+          // conversation.context (survives handoffs)
+          context!.budgetService = {
+            budgetId: budgetResult.budgetId,
+            sessionId: budgetResult.sessionId,
+          }
+        }
 
         // Funnel event: Log initial prompt processing with timing metric
         if (isInitialPrompt) {

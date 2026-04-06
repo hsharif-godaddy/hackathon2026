@@ -6,6 +6,7 @@ import {
   toBudgetUpdatePayload,
 } from '../types.js'
 import type { BudgetItem, BudgetResponse } from '@airo/shared/budget'
+import type { ReportResponse } from '../report-types.js'
 
 const makeBudgetItem = (overrides?: Partial<BudgetItem>): BudgetItem => ({
   budgetItemId: 'bi-1',
@@ -127,29 +128,82 @@ describe('budget view types', () => {
   })
 
   describe('toBudgetUpdatePayload', () => {
-    it('builds payload from budget response', () => {
+    it('builds payload from report response and budget response', () => {
+      const reportResponse: ReportResponse = {
+        reportId: 'rpt-1',
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        productKey: 'airo-builder',
+        budgetCostTotal: 5,
+        productCostTotal: 0,
+        creditsAvailable: 95,
+        reportItems: [
+          {
+            budgetCost: 5,
+            productCost: 0,
+            category: 'airo-builder:general',
+            budgetItems: [{ budgetItemId: 'bi-1', creditsUsed: 3.33 }],
+          },
+        ],
+      }
       const budgetResponse = makeBudgetResponse({
-        creditsUsed: '55.000000',
+        creditsUsed: '55.000000', // updated after report
       })
 
-      const payload = toBudgetUpdatePayload(budgetResponse)
+      const payload = toBudgetUpdatePayload(reportResponse, budgetResponse)
 
       expect(payload.customerRemaining).toBe(95) // 150 - 55
       expect(payload.refreshRequired).toBe(false)
       expect(payload.budgets).toHaveLength(1)
+      expect(payload.assignment.customer[0]!.budgetItemId).toBe('bi-1')
+      expect(payload.assignment.customer[0]!.amount).toBe(3.33)
     })
 
-    it('handles empty items', () => {
-      const budgetResponse = makeBudgetResponse({
-        creditsTotal: '0',
-        creditsUsed: '0',
-        items: [],
-      })
+    it('flattens multi-item report into customer deductions', () => {
+      const reportResponse: ReportResponse = {
+        reportId: 'rpt-1',
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        productKey: 'airo-builder',
+        budgetCostTotal: 3,
+        productCostTotal: 0,
+        creditsAvailable: 100,
+        reportItems: [
+          {
+            budgetCost: 3,
+            productCost: 0,
+            category: 'airo-builder:general',
+            budgetItems: [
+              { budgetItemId: 'bi-1', creditsUsed: 2 },
+              { budgetItemId: 'bi-2', creditsUsed: 1 },
+            ],
+          },
+        ],
+      }
+      const budgetResponse = makeBudgetResponse()
 
-      const payload = toBudgetUpdatePayload(budgetResponse)
+      const payload = toBudgetUpdatePayload(reportResponse, budgetResponse)
 
+      expect(payload.assignment.customer).toHaveLength(2)
+    })
+
+    it('handles empty reportItems', () => {
+      const reportResponse: ReportResponse = {
+        reportId: 'rpt-1',
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        productKey: 'airo-builder',
+        budgetCostTotal: 0,
+        productCostTotal: 0,
+        creditsAvailable: 150,
+        reportItems: [],
+      }
+      const budgetResponse = makeBudgetResponse()
+
+      const payload = toBudgetUpdatePayload(reportResponse, budgetResponse)
+
+      expect(payload.assignment.customer).toEqual([])
       expect(payload.refreshRequired).toBe(false)
-      expect(payload.budgets).toEqual([])
     })
   })
 

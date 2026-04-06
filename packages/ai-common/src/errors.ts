@@ -201,6 +201,19 @@ export class BudgetExceededError extends Error {
   }
 
   /**
+   * Create a BudgetExceededError from a pre-execution budget check.
+   * Used when Budget Service reports insufficient credits (distinct from
+   * LiteLLM-originated budget errors during streaming).
+   */
+  static fromBudgetCheck(budgetId: string): BudgetExceededError {
+    return new BudgetExceededError(
+      'Your AI usage budget has been reached.',
+      402,
+      JSON.stringify({ budgetId, source: 'budget-service-pre-check' })
+    );
+  }
+
+  /**
    * Type guard to check if an error is a BudgetExceededError
    *
    * Checks both instanceof and duck-typing (isBudgetExceeded property)

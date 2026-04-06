@@ -1876,6 +1876,12 @@ export class WebSocketServer {
     // Capture conversationId early for cleanup in finally block
     // This ensures we can unsubscribe even if the conversation is deleted in catch
     let conversationIdForCleanup: string | undefined
+    // Budget session lifecycle: captured for finally-block report creation (Unit 6)
+    // Local vars survive even if catch block clears conversation.context
+    let budgetSessionBudgetId: string | undefined
+    let budgetSessionSessionId: string | undefined
+    // eslint-disable-next-line prefer-const -- Unit 6 sets this to true after report creation
+    let budgetReportFiled = false
 
     try {
       // Validate message
@@ -1980,6 +1986,21 @@ export class WebSocketServer {
       // 5. Call message start handler (await to ensure invocation tracking is set up before LLM calls)
       await this.config.onMessageStart?.(socketId, data.message, agentName, processedContext)
 
+      // 5b. Thread budget state to conversation.context (persists across handoffs)
+      // Budget state is set by onMessageStart when app-builder-budget-service flag is enabled.
+      // processedContext is replaced on each handoff; conversation.context is not
+      const budgetState = processedContext?.budgetService as
+        | { budgetId: string; sessionId: string }
+        | undefined
+      if (budgetState) {
+        budgetSessionBudgetId = budgetState.budgetId
+        budgetSessionSessionId = budgetState.sessionId
+        const budgetConversation = this.getConversation(socketId)
+        if (budgetConversation) {
+          budgetConversation.context.budgetService = budgetState
+        }
+      }
+
       // 6. Create abort controller and register with state manager
       // Capture signal locally so abort checks remain valid even if
       // cleanupConversation removes the state manager entry before
@@ -2038,6 +2059,14 @@ export class WebSocketServer {
         // This ensures todo list context and other dynamic state is current
         if (iterationCount > 1) {
           processedContext = await this.processContext(data, socketId)
+
+          // Restore budget state after handoff
+          // processedContext is fully replaced by processContext(); restore from conversation.context
+          const handoffConv = this.getConversation(socketId)
+          const persistedBudget = handoffConv?.context?.budgetService
+          if (persistedBudget) {
+            processedContext.budgetService = persistedBudget
+          }
 
           // Reload conversation history for the new agent
           // This is critical - the new agent needs the full conversation history
@@ -2193,11 +2222,23 @@ export class WebSocketServer {
         errorType = 'APP_NOT_FOUND';
         statusCode = 404;
       }
-      // Check if it's a BudgetExceededError (already converted in stream handler)
+      // Check if it's a BudgetExceededError (from LiteLLM stream or pre-execution budget check)
       else if (BudgetExceededError.isInstance(error)) {
         errorMessage = error.message;
         errorType = 'BUDGET_EXCEEDED';
         statusCode = error.statusCode;
+      }
+      // Any BudgetService* error (unavailable, timeout, auth, 5xx, 4xx) — surface as unavailable.
+      // Prevents raw BMS API paths from leaking to the client.
+      else if (error instanceof Error && (
+        error.name === 'BudgetServiceUnavailableError' ||
+        error.name === 'BudgetServiceTimeoutError' ||
+        error.name === 'BudgetServiceAuthError' ||
+        error.name === 'BudgetServiceError'
+      )) {
+        errorMessage = 'Budget service temporarily unavailable';
+        errorType = 'BUDGET_SERVICE_UNAVAILABLE';
+        statusCode = 503;
       }
       // Check if it's AI SDK's RetryError
       else if (RetryError.isInstance(error)) {
@@ -2219,7 +2260,9 @@ export class WebSocketServer {
         errorType,
         statusCode,
         socketId,
-        agentName
+        agentName,
+        originalError: error instanceof Error ? error.message : undefined,
+        originalErrorName: error instanceof Error ? error.name : undefined,
       });
 
       // Construct error metadata object explicitly
@@ -2279,6 +2322,16 @@ export class WebSocketServer {
         this.stateManager.transitionTo(effectiveSocketId, 'cleaned')
       }
     } finally {
+      // Budget session cleanup: if session created but no report filed, log for debugging.
+      // Unit 6 replaces this with actual report creation.
+      if (budgetSessionSessionId && !budgetReportFiled) {
+        this.logger.debug('budget.session.cleanup', {
+          socketId,
+          budgetId: budgetSessionBudgetId,
+          sessionId: budgetSessionSessionId,
+        })
+      }
+
       // Clean up stream tracking via state manager
       // State manager handles socket ID migration cleanup internally
       const effectiveSocketIdForCleanup = this.stateManager.getEffectiveSocketId(socketId)

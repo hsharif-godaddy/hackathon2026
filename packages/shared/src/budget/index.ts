@@ -8,4 +8,7 @@ export type {
   BudgetUpdateSuccess,
   BudgetUpdateRefreshRequired,
   BudgetSummary,
+  CostAssignment,
+  CustomerDeduction,
+  GodaddyDeduction,
 } from './types.js'

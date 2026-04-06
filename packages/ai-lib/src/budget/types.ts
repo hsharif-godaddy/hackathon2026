@@ -11,6 +11,7 @@ import type {
   BudgetUpdateSuccess,
   BudgetSummary,
 } from '@airo/shared/budget'
+import type { ReportResponse } from './report-types.js'
 
 // ── Decimal helpers ──
 
@@ -49,12 +50,23 @@ export function toCreditStatusResponse(raw: BudgetResponse): CreditStatusRespons
 // ── budget_update WebSocket event ──
 
 export function toBudgetUpdatePayload(
+  reportResponse: ReportResponse,
   budgetResponse: BudgetResponse
 ): BudgetUpdateSuccess {
   return {
     refreshRequired: false,
     customerRemaining: computeRemaining(budgetResponse.creditsTotal, budgetResponse.creditsUsed),
     budgets: budgetResponse.items.map(toBudgetSummary),
+    // Only customer deductions included. GoCode handles GoDaddy attribution
+    // server-side; assignment.godaddy/overflow reserved for a future pass.
+    assignment: {
+      customer: reportResponse.reportItems.flatMap((ri) =>
+        ri.budgetItems.map((bi) => ({
+          budgetItemId: bi.budgetItemId,
+          amount: bi.creditsUsed,
+        }))
+      ),
+    },
   }
 }
 

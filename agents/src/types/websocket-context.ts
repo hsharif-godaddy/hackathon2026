@@ -13,6 +13,8 @@ import type { ClientActionService } from '../services/ClientActionService.js'
 export interface AgentsAppContext extends BaseAgentsAppContext {
   metadata?: BaseAgentsAppContext['metadata'] & {
     clientActionService?: ClientActionService
+    budgetServiceEnabled?: boolean
+    subscriptionId?: string
   }
 }
 

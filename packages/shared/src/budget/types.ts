@@ -61,6 +61,7 @@ export interface BudgetUpdateSuccess {
   readonly refreshRequired: false
   readonly customerRemaining: number
   readonly budgets: readonly BudgetSummary[]
+  readonly assignment: CostAssignment
 }
 
 export interface BudgetUpdateRefreshRequired {
@@ -73,3 +74,18 @@ export interface BudgetSummary {
   readonly expiration: string | null
 }
 
+export interface CostAssignment {
+  readonly customer: readonly CustomerDeduction[]
+  readonly godaddy?: GodaddyDeduction
+  readonly overflow?: { readonly amount: number }
+}
+
+export interface CustomerDeduction {
+  readonly budgetItemId: string
+  readonly amount: number
+}
+
+export interface GodaddyDeduction {
+  readonly category: string
+  readonly amount: number
+}
