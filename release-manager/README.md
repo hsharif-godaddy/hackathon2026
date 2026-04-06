@@ -67,7 +67,7 @@ pipeline:
 | `type`              | Set to `checklist` for manual verification steps                                     |
 | `repo`              | GitHub `owner/repo`                                                                  |
 | `workflow`          | GitHub Actions workflow filename                                                     |
-| `ref`               | Git ref to trigger the workflow on; supports `{{commit}}` and `{{branch}}` templates |
+| `ref`               | Git ref to trigger the workflow on; use `{{branch}}` — GitHub rejects commit SHAs for `workflow_dispatch` |
 | `active_run_filter` | Only block on active runs whose `displayTitle` contains this string                  |
 | `inputs`            | Workflow inputs; supports `{{env.stage.output}}`, `{{commit}}`, and `{{branch}}`     |
 | `outputs`           | Parsed from run logs via regex (`from: run-log`, `pattern`, `job_match`)             |
@@ -87,12 +87,23 @@ pipeline:
 
 ## Commit SHA Pinning
 
-The target branch (e.g. `main`) is resolved to a specific commit SHA at the start of the release notes phase. This pinned SHA is used for all downstream workflow triggers via the `{{commit}}` template variable. This prevents two classes of bugs:
+The target branch (e.g. `main`) is resolved to a specific commit SHA at the start of the release notes phase. This pinned SHA is available via the `{{commit}}` template variable and prevents two classes of bugs:
 
 - **Stale release notes** — if the operator waits before approving, new commits on `main` won't cause a mismatch between what was reviewed and what gets deployed
 - **Non-deterministic parallel builds** — the `build-images` stage triggers three image builds in parallel; without pinning, a new commit landing mid-build could cause one image to be built from a different commit than the others
 
-The pinned commit is displayed in the TUI release notes view and included in Slack notifications. The `{{commit}}` value defaults to the branch name if resolution fails, preserving backward compatibility. Rollback steps intentionally use `{{branch}}` since they invoke deployment workflows with known-good artifact IDs/image tags and benefit from using the latest workflow definition.
+The pinned commit is displayed in the TUI release notes view and included in Slack notifications. The `{{commit}}` value defaults to the branch name if resolution fails, preserving backward compatibility.
+
+### Usage: inputs vs. ref
+
+`{{commit}}` must only be used in workflow **inputs**, never as the `ref` field. GitHub's `workflow_dispatch` API only accepts branch or tag names as `ref` — passing a raw commit SHA returns HTTP 422.
+
+| Field | Use | Example |
+|-------|-----|---------|
+| `ref` | Always `{{branch}}` | Triggers the workflow on the branch |
+| `inputs` | Can use `{{commit}}` | Workflow checks out the exact pinned SHA |
+
+For example, `deploy-app` passes the pinned SHA as a `sha` input to `aws-deploy-app.yml`, which uses it for checkout and Docker image tagging. `build-images` passes it as `airo-app-builder-branch`. Rollback steps use `{{branch}}` for both `ref` and inputs since they deploy known-good artifacts and benefit from the latest workflow definition.
 
 ## Failure Handling
 

@@ -12,6 +12,11 @@ on:
           - "dev-private-ecs"
           - "test"
           - "NA"
+      sha:
+        description: "Commit SHA to build (defaults to branch tip)"
+        required: false
+        type: string
+        default: ""
 
 run-name: "[APP - ${{ inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
 
@@ -30,6 +35,8 @@ jobs:
     steps:
       - name: Checkout Codebase
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: ${{ inputs.sha || github.sha }}
 
       # Retrieve Katana application info with the katana-get-app GitHub Action
       - id: katana-app
@@ -84,7 +91,7 @@ jobs:
           file: app/Dockerfile
           platforms: linux/amd64
           load: true
-          tags: ${{ steps.katana-app.outputs.app }}:${{ github.sha }}
+          tags: ${{ steps.katana-app.outputs.app }}:${{ inputs.sha || github.sha }}
           secret-files: |
             npmrc=/tmp/.npmrc-secret
           cache-from: type=registry,ref=694282668781.dkr.ecr.us-west-2.amazonaws.com/airo-builder/app:cache
@@ -104,7 +111,7 @@ jobs:
         with:
           namespace: ${{ steps.katana-app.outputs.namespace }}
           app: ${{ steps.katana-app.outputs.app }}
-          image_name: ${{ steps.katana-app.outputs.app }}:${{ github.sha }}
+          image_name: ${{ steps.katana-app.outputs.app }}:${{ inputs.sha || github.sha }}
           artifact_kind: ecs
           artifact_options_json: |
             {
@@ -132,7 +139,7 @@ jobs:
             echo "Artifact ID: ${{ steps.katana-publish.outputs.artifact_id }}"
             echo "Deployed to: ${{ inputs.DEPLOY_TO_ENV }}"
             echo "Image: ${{ steps.katana-publish.outputs.image_uri }}"
-            echo "Commit: ${{ github.sha }}"
+            echo "Commit: ${{ inputs.sha || github.sha }}"
             echo "Branch: ${{ github.ref_name }}"
             echo "Actor: ${{ github.actor }}"
             printf '\n```\n\n'

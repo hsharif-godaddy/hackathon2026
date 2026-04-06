@@ -20,9 +20,10 @@ pipeline:
           group: deploy
           repo: gdcorp-partners/airo-app-builder
           workflow: aws-deploy-app.yml
-          ref: "{{commit}}"
+          ref: "{{branch}}"
           inputs:
             DEPLOY_TO_ENV: test
+            sha: "{{commit}}"
           outputs:
             artifact_id:
               from: run-log
@@ -61,7 +62,7 @@ pipeline:
           group: validate
           repo: gdcorp-partners/airo-app-builder
           workflow: playwright-e2e.yml
-          ref: "{{commit}}"
+          ref: "{{branch}}"
           inputs:
             environment: test
 
@@ -107,7 +108,7 @@ pipeline:
           group: deploy-prod
           repo: gdcorp-partners/airo-app-builder
           workflow: promote-artifact.yml
-          ref: "{{commit}}"
+          ref: "{{branch}}"
           inputs:
             component: app
             environment: prod
@@ -136,7 +137,7 @@ pipeline:
           group: validate-prod
           repo: gdcorp-partners/airo-app-builder
           workflow: playwright-e2e.yml
-          ref: "{{commit}}"
+          ref: "{{branch}}"
           inputs:
             environment: prod
 
