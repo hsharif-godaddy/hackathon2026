@@ -404,8 +404,8 @@ importers:
   app:
     dependencies:
       '@airo-ux/loader':
-        specifier: ^2.1.0
-        version: 2.1.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.2)
+        specifier: ^2.1.1
+        version: 2.1.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.2)
       '@airo/shared':
         specifier: workspace:*
         version: link:../packages/shared
@@ -1751,8 +1751,8 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@airo-ux/loader@2.1.0':
-    resolution: {integrity: sha512-K8XBXL9/UgyvXsNC+5phXTdCZeL7uelNVxhAA5vIk3pAAXJFVV6ioSPdgrJCKKTs1yaxwJP91U5LbLn6/EKW8Q==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@airo-ux/loader/-/@airo-ux/loader-2.1.0.tgz}
+  '@airo-ux/loader@2.1.1':
+    resolution: {integrity: sha512-cfeWd9ifTUYOkta9l+Lfccumc8sE0PBmX36uaw/qaQoAlDFqmAlQHBOzzU3eWOb1nfVKncx3GdKhO/ERH+gDOg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@airo-ux/loader/-/@airo-ux/loader-2.1.1.tgz}
     peerDependencies:
       react: 19.1.0
       react-dom: 19.1.0
@@ -14372,7 +14372,7 @@ snapshots:
       zod: 4.3.6
     optional: true
 
-  '@airo-ux/loader@2.1.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.2)':
+  '@airo-ux/loader@2.1.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.2)':
     dependencies:
       '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
