@@ -130,7 +130,7 @@ export default function ResizableDivider({
   return (
     <div
       ref={dividerRef}
-      className="absolute top-2 bottom-2 w-0.5 bg-transparent cursor-col-resize flex-shrink-0 z-10 rounded-lg transition-colors duration-400 hover:bg-border"
+      className="absolute top-2 bottom-2 z-10 w-0.5 bg-transparent cursor-col-resize flex-shrink-0 rounded-lg transition-colors duration-400 hover:bg-border"
       onMouseDown={handleMouseDown}
       style={style}
     />

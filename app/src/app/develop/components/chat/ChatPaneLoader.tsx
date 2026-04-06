@@ -51,7 +51,7 @@ export default function ChatPaneLoader({
 
   if (error) {
     return (
-      <div className="absolute inset-0 z-50 flex items-center justify-center bg-intents-ux-boxLowContrast-backgroundColor">
+      <div className="absolute inset-0 flex items-center justify-center bg-intents-ux-boxLowContrast-backgroundColor">
         <div className="text-center p-3 max-w-md">
           <h2 className="text-xl font-bold mb-1">{t('builder_chatpane_setup_failed')}</h2>
           <p className="mb-3 text-sm">{error}</p>
@@ -75,7 +75,7 @@ export default function ChatPaneLoader({
   }
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-intents-ux-boxLowContrast-backgroundColor">
+    <div className="absolute inset-0 flex items-center justify-center bg-intents-ux-boxLowContrast-backgroundColor">
       <div className="text-center w-full px-3">
         <Box gap="lg">
           <div className="h-16 w-full mb-3 flex flex-col justify-end overflow-hidden">

@@ -715,7 +715,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
 
       {/* New messages indicator - shows when user is scrolled up and new messages arrive */}
       {showNewMessageIndicator && (
-        <div className="sticky bottom-2 flex justify-center z-10">
+        <div className="sticky bottom-2 flex justify-center">
           <Button
             design="primary"
             size="sm"

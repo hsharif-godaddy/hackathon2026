@@ -428,20 +428,20 @@ export default function ChatPane({
         })
 
         // Clear contexts only for user input sends
-      if (safeAiEditContext) {
-        handleClearAiEditContext()
-      }
-      if (selectedAssets.length > 0) {
-        handleClearSelectedAsset()
-      }
-      if (referencedFiles.length > 0) {
-        handleClearReferencedFiles()
-      }
-      if (safeBuildErrorContext) {
-        handleClearBuildErrorContext()
+        if (safeAiEditContext) {
+          handleClearAiEditContext()
+        }
+        if (selectedAssets.length > 0) {
+          handleClearSelectedAsset()
+        }
+        if (referencedFiles.length > 0) {
+          handleClearReferencedFiles()
+        }
+        if (safeBuildErrorContext) {
+          handleClearBuildErrorContext()
+        }
       }
     }
-  }
   }, [inputValue, sendMessage, currentAppId, appId, setCurrentAppId, safeAiEditContext, selectedAssets, referencedFiles, safeBuildErrorContext, handleClearAiEditContext, handleClearSelectedAsset, handleClearReferencedFiles, handleClearBuildErrorContext, isCreateFlowSession, messages])
 
   // Create stable context value - reuses handleSendMessage
@@ -800,121 +800,125 @@ export default function ChatPane({
 
   return (
     <ChatContext.Provider value={chatContextValue}>
-    <div className="flex-1 flex flex-col h-full p-0 md:pl-2 md:pb-2 gap-1">
-      <PlanTracker
-        developmentPlan={developmentPlan}
-        expandedPlan={expandedPlan}
-        onToggleExpandedPlan={toggleExpandedPlan}
-      />
+      <div className="flex-1 flex flex-col h-full p-0 md:pl-2 md:pb-2 gap-1">
+        <PlanTracker
+          developmentPlan={developmentPlan}
+          expandedPlan={expandedPlan}
+          onToggleExpandedPlan={toggleExpandedPlan}
+        />
 
-      {/* Chat Tab - Keep mounted, hide with CSS */}
-      <div
-        className="flex flex-col flex-1 min-h-0"
-        style={{ display: activeChatTab === ChatTab.CHAT ? 'flex' : 'none' }}
-      >
-        <PersistentTodoList />
+        {/* Chat Tab - Keep mounted, hide with CSS */}
+        <div
+          className="flex flex-col flex-1 min-h-0"
+          style={{ display: activeChatTab === ChatTab.CHAT ? 'flex' : 'none' }}
+        >
+          <div className="flex-1 flex flex-col min-h-0">
+            <div className="px-2 md:px-0">
+              <PersistentTodoList />
+            </div>
 
-        <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} />
+            <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} />
+          </div>
 
-        {safeBuildErrorContext && (
-          <div className="mx-2 rounded-md overflow-hidden border">
-            <div className="p-1.5">
-              <div className="flex items-start justify-between gap-1">
-                <div className="flex-1">
-                  <div className="flex items-center gap-1 mb-0.5">
-                    <svg className="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="font-semibold text-sm">{t('builder_chatpane_build_error')}</span>
-                  </div>
-                  <div className="text-xs break-words">
-                    {safeBuildErrorContext.error}
-                  </div>
-                  {safeBuildErrorContext.exitCode && (
-                    <div className="text-xs mt-0.5">
-                      {t('builder_chatpane_exit_code')}: {safeBuildErrorContext.exitCode}
+          {safeBuildErrorContext && (
+            <div className="mx-2 rounded-md overflow-hidden border">
+              <div className="p-1.5">
+                <div className="flex items-start justify-between gap-1">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-1 mb-0.5">
+                      <svg className="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="font-semibold text-sm">{t('builder_chatpane_build_error')}</span>
                     </div>
-                  )}
+                    <div className="text-xs break-words">
+                      {safeBuildErrorContext.error}
+                    </div>
+                    {safeBuildErrorContext.exitCode && (
+                      <div className="text-xs mt-0.5">
+                        {t('builder_chatpane_exit_code')}: {safeBuildErrorContext.exitCode}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleClearBuildErrorContext}
+                    className="flex-shrink-0 w-3 h-3 flex items-center justify-center bg-white rounded-full shadow-sm hover:shadow-md font-bold text-lg text-red-600"
+                    title={t('builder_chatpane_build_exit_code')}
+                  >
+                    ×
+                  </button>
                 </div>
-                <button
-                  onClick={handleClearBuildErrorContext}
-                  className="flex-shrink-0 w-3 h-3 flex items-center justify-center bg-white rounded-full shadow-sm hover:shadow-md font-bold text-lg text-red-600"
-                  title={t('builder_chatpane_build_exit_code')}
-                >
-                  ×
-                </button>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {showProactiveBudgetBanner && (
-          <div className="px-2 sm:px-3 md:px-1 mb-2">
-            <BudgetExceededBanner onClose={() => setIsProactiveBannerDismissed(true)} />
-          </div>
-        )}
-        <div className="px-2 sm:px-3 md:px-0">
-          <ChatBanners appId={appId} />
-          {uploadError && (
-            <div className="mb-1 px-3 py-2 text-sm rounded-md bg-intents-ux-feedbackHighContrastCritical-feedbackColor/10 text-intents-ux-feedbackHighContrastCritical-feedbackColor flex items-center justify-between">
-              <span>{uploadError}</span>
-              <button onClick={() => setUploadError(null)} className="ml-2 font-bold hover:opacity-70" aria-label={t('builder_common_dismiss')}>×</button>
+          {showProactiveBudgetBanner && (
+            <div className="px-2 sm:px-3 md:px-1 mb-2">
+              <BudgetExceededBanner onClose={() => setIsProactiveBannerDismissed(true)} />
             </div>
           )}
-          <ChatInput
-            appId={appId}
-            inputValue={safeInputValue}
-            isDisabled={isProcessing}
-            isStreaming={isStreaming}
-            isBudgetExceeded={budgetExceeded}
-            onInputChange={setInputValue}
-            onSendMessage={handleSendMessage}
-            onStopGeneration={stopGeneration}
-            selectedAssets={selectedAssets}
-            maxAssets={maxAssets}
-            onClearSelectedAsset={handleClearSingleAsset}
-            onFilesUploaded={handleFilesUploaded}
-            onScreenshotCaptured={handleScreenshotCaptured}
-            onFileReferencesSelected={handleFileReferencesSelected}
-            onUploadStart={handleUploadStart}
-            onUploadError={handleUploadError}
-            uploadingFiles={uploadingFiles}
-            referencedFiles={referencedFiles}
-            onClearReferencedFile={handleClearSingleReferencedFile}
-            aiEditContext={safeAiEditContext}
-            onClearAiEditContext={handleClearAiEditContext}
-            onLargePasteDetected={handleLargePasteDetected}
-            userMessages={userMessages}
-          />
+          <div className="px-2 sm:px-3 md:px-0">
+            <ChatBanners appId={appId} />
+            {uploadError && (
+              <div className="mb-1 px-3 py-2 text-sm rounded-md bg-intents-ux-feedbackHighContrastCritical-feedbackColor/10 text-intents-ux-feedbackHighContrastCritical-feedbackColor flex items-center justify-between">
+                <span>{uploadError}</span>
+                <button onClick={() => setUploadError(null)} className="ml-2 font-bold hover:opacity-70" aria-label={t('builder_common_dismiss')}>×</button>
+              </div>
+            )}
+            <ChatInput
+              appId={appId}
+              inputValue={safeInputValue}
+              isDisabled={isProcessing}
+              isStreaming={isStreaming}
+              isBudgetExceeded={budgetExceeded}
+              onInputChange={setInputValue}
+              onSendMessage={handleSendMessage}
+              onStopGeneration={stopGeneration}
+              selectedAssets={selectedAssets}
+              maxAssets={maxAssets}
+              onClearSelectedAsset={handleClearSingleAsset}
+              onFilesUploaded={handleFilesUploaded}
+              onScreenshotCaptured={handleScreenshotCaptured}
+              onFileReferencesSelected={handleFileReferencesSelected}
+              onUploadStart={handleUploadStart}
+              onUploadError={handleUploadError}
+              uploadingFiles={uploadingFiles}
+              referencedFiles={referencedFiles}
+              onClearReferencedFile={handleClearSingleReferencedFile}
+              aiEditContext={safeAiEditContext}
+              onClearAiEditContext={handleClearAiEditContext}
+              onLargePasteDetected={handleLargePasteDetected}
+              userMessages={userMessages}
+            />
+          </div>
         </div>
-      </div>
 
-      {/* History Tab - Keep mounted, hide with CSS */}
-      <div
-        className="flex flex-col flex-1 min-h-0"
-        style={{ display: activeChatTab === ChatTab.HISTORY ? 'flex' : 'none' }}
-      >
-        <VersionHistory />
-      </div>
+        {/* History Tab - Keep mounted, hide with CSS */}
+        <div
+          className="flex flex-col flex-1 min-h-0"
+          style={{ display: activeChatTab === ChatTab.HISTORY ? 'flex' : 'none' }}
+        >
+          <VersionHistory />
+        </div>
 
-      {/* Media Tab - Keep mounted, hide with CSS */}
-      <div
-        className="flex flex-col flex-1 min-h-0"
-        style={{ display: activeChatTab === ChatTab.MEDIAS ? 'flex' : 'none' }}
-      >
-        <MediaPanel />
-      </div>
+        {/* Media Tab - Keep mounted, hide with CSS */}
+        <div
+          className="flex flex-col flex-1 min-h-0"
+          style={{ display: activeChatTab === ChatTab.MEDIAS ? 'flex' : 'none' }}
+        >
+          <MediaPanel />
+        </div>
 
-      {/* Settings Tab - Keep mounted, hide with CSS */}
-      <div
-        className="flex flex-col flex-1 min-h-0"
-        style={{ display: activeChatTab === ChatTab.SETTINGS ? 'flex' : 'none' }}
-      >
-        <SettingsPane />
-      </div>
+        {/* Settings Tab - Keep mounted, hide with CSS */}
+        <div
+          className="flex flex-col flex-1 min-h-0"
+          style={{ display: activeChatTab === ChatTab.SETTINGS ? 'flex' : 'none' }}
+        >
+          <SettingsPane />
+        </div>
 
-      <ChatToolbar />
-    </div>
+        <ChatToolbar />
+      </div>
     </ChatContext.Provider>
   )
 }

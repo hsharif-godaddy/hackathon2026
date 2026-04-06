@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
+import Flyout from '@ux/flyout'
 
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
@@ -84,6 +85,8 @@ export default function PersistentTodoList() {
     }
   }, [viewState, updatedItemIds])
 
+  const buttonRef = useRef<HTMLButtonElement>(null)
+
   // Don't render if no list or loading or invalid list
   const isValidList = currentList && listAppIdRef.current === appId
   if (isLoading || !isValidList) {
@@ -94,47 +97,6 @@ export default function PersistentTodoList() {
   const completedItems = items.filter(item => item.completed)
   const totalItems = items.length
   const completedCount = completedItems.length
-
-  /**
-   * Render header bar - shared across all states
-   */
-  function renderHeader() {
-    const isExpanded = viewState === 'open' || viewState === 'update'
-    return (
-      <div
-        className="px-2 py-1 cursor-pointer"
-        onClick={toggleViewState}
-      >
-        <div className="flex items-center justify-between text-sm min-w-0">
-          <div className="flex items-center gap-1 min-w-0 flex-1">
-            <span className="font-medium text-foreground truncate">{currentList.name}</span>
-            {viewState === 'update' && (
-              <span className="text-xs text-intents-info-color font-medium flex-shrink-0">
-                {t('builder_todo_updated')}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <span className="text-muted-foreground text-xs">
-              {completedCount}/{totalItems}
-            </span>
-            <svg
-              className="w-2 h-2 text-muted-foreground transition-transform duration-200"
-              style={{ transform: isExpanded ? 'rotate(180deg)' : undefined }}
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
-        </div>
-      </div>
-    )
-  }
 
   function renderExpandedContent() {
     if (viewState === 'update') {
@@ -189,6 +151,7 @@ export default function PersistentTodoList() {
                 className="text-xs text-intents-info-color hover:text-foreground"
                 onClick={(e) => {
                   e.stopPropagation()
+                  toggleViewState() // Close flyout first
                   setIsModalOpen(true)
                 }}
               >
@@ -221,32 +184,60 @@ export default function PersistentTodoList() {
 
   return (
     <>
-      <div className="relative z-10">
-        <div className={`absolute left-0 right-0 top-0 bg-intents-ux-box-backgroundColor border border-border rounded-xl transition-all duration-200 hover:shadow-md ${isExpanded ? 'shadow-md' : ''}`}>
-          {renderHeader()}
-          <AnimatePresence>
-            {isExpanded && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.2, ease: 'easeInOut' }}
-                className="overflow-hidden"
-              >
-                {renderExpandedContent()}
-              </motion.div>
-            )}
-          </AnimatePresence>
+      <button
+        ref={buttonRef}
+        onClick={toggleViewState}
+        aria-expanded={isExpanded}
+        aria-label={`${currentList.name} todo list`}
+        className={`w-full px-2 py-1 flex items-center justify-between gap-1 text-sm bg-intents-ux-box-backgroundColor border border-border shadow-sm hover:shadow-md transition-shadow duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-intents-info-borderColor rounded-lg`}
+      >
+        <div className="flex items-center gap-1 min-w-0 flex-1">
+          <span className="font-medium text-foreground truncate">{currentList.name}</span>
+          {viewState === 'update' && (
+            <span className="text-xs text-intents-info-color font-medium flex-shrink-0">
+              {t('builder_todo_updated')}
+            </span>
+          )}
         </div>
-        {/* Invisible spacer to reserve header height in flow */}
-        <div className="invisible">
-          {renderHeader()}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <span className="text-muted-foreground text-xs">
+            {completedCount}/{totalItems}
+          </span>
+          <svg
+            className="w-2 h-2 text-muted-foreground transition-transform duration-200"
+            style={{ transform: isExpanded ? 'rotate(180deg)' : undefined }}
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path d="M19 9l-7 7-7-7" />
+          </svg>
         </div>
-      </div>
+      </button>
+
+      {isExpanded && !isModalOpen && (
+        <Flyout
+          anchorRef={buttonRef}
+          onClose={toggleViewState}
+          placement="bottom"
+          stretch
+        >
+          {renderExpandedContent()}
+        </Flyout>
+      )}
 
       <TodoListModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false)
+          // Ensure flyout stays closed after modal closes
+          if (viewState !== 'closed') {
+            toggleViewState()
+          }
+        }}
         list={currentList}
       />
     </>

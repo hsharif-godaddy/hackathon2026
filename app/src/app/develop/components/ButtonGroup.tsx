@@ -112,7 +112,7 @@ function ButtonGroupItem({ value, icon, label, disabled, showLabelAlways = false
       {isActive && isControlled && context?.groupId && (
         <motion.div
           layoutId={`${context.groupId}-bubble`}
-          className="absolute inset-0 bg-intents-ux-boxHighContrast-backgroundColor rounded-xmd shadow-md z-10"
+          className="absolute inset-0 bg-intents-ux-boxHighContrast-backgroundColor rounded-xmd shadow-md"
           transition={{
             type: 'spring',
             stiffness: 300,
@@ -120,10 +120,10 @@ function ButtonGroupItem({ value, icon, label, disabled, showLabelAlways = false
           }}
         />
       )}
-      <span className="relative z-20 flex items-center size-2.5">{icon}</span>
+      <span className="relative flex items-center size-2.5">{icon}</span>
       {shouldShowLabel && (
         showLabelAlways ? (
-          <span className="relative z-20 text-xs font-medium whitespace-nowrap">
+          <span className="relative text-xs font-medium whitespace-nowrap">
             {label}
           </span>
         ) : (
@@ -132,7 +132,7 @@ function ButtonGroupItem({ value, icon, label, disabled, showLabelAlways = false
             animate={{ opacity: 1, width: 'auto' }}
             exit={{ opacity: 0, width: 0 }}
             transition={{ duration: 0.2 }}
-            className="relative z-20 text-sm font-medium whitespace-nowrap"
+            className="relative text-sm font-medium whitespace-nowrap"
           >
             {label}
           </motion.span>
