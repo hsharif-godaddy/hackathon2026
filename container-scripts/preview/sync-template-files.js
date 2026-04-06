@@ -129,7 +129,8 @@ const SYNC_MANIFEST = [
       'd26b3f1349b07a524c7df4df29c55883', // 4839907 - added watch.ignored
       '29ca0ea18a635f996d4716ad1d0f43b3', // Before closeBundle plugin and chunk splitting
       '385752a8951868d101668ae3f5c9637b', // fd075bd8 - closeBundle plugin, before resolve.dedupe
-      '23983daa85eb1afd36bd4e4c818f0d84'  // 13898857b - resolve.dedupe, before ESM bundle (still CJS)
+      '23983daa85eb1afd36bd4e4c818f0d84', // 13898857b - resolve.dedupe, before ESM bundle (still CJS)
+      'e35e331c50f1818c26185fda8721c9bc'  // Before mediaVersionsPlugin
     ],
     force: false
   },

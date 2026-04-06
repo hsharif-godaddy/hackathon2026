@@ -470,4 +470,5 @@ describe("MediaManifestService - importSlot", () => {
       expect(astImageEditor.replaceImage).not.toHaveBeenCalled();
     });
   });
+
 });

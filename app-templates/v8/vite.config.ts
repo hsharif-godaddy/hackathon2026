@@ -6,6 +6,7 @@ import sourceMapperPlugin from "./source-mapper/src/index";
 import { devToolsPlugin } from "./dev-tools/src/vite-plugin";
 import { fullStoryPlugin } from "./fullstory-plugin";
 import { errorInterceptorPlugin } from "./dev-tools/src/vite-error-interceptor";
+import { mediaVersionsPlugin } from "./dev-tools/src/vite-media-versions-plugin";
 import apiRoutes from "vite-plugin-api-routes";
 
 function extractHostname(value: string): string {
@@ -85,7 +86,7 @@ export default defineConfig(({ mode }) => ({
 			forceRestart: mode === "development",
 		}),
 		...(mode === "development"
-			? [devToolsPlugin() as Plugin, fullStoryPlugin(), errorInterceptorPlugin()]
+			? [devToolsPlugin() as Plugin, fullStoryPlugin(), errorInterceptorPlugin(), mediaVersionsPlugin() as Plugin]
 			: []),
 		serverBundlePlugin(),
 	],

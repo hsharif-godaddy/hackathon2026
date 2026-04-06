@@ -280,6 +280,16 @@ export class MediaManifestService {
   }
 
   /**
+   * Write the manifest atomically (temp file + rename).
+   */
+  private async writeManifest(manifestPath: string, manifest: MediaManifest): Promise<void> {
+    const tempPath = `${manifestPath}.tmp`;
+    const content = JSON.stringify(manifest, null, 2);
+    await fs.writeFile(tempPath, content, 'utf-8');
+    await fs.rename(tempPath, manifestPath);
+  }
+
+  /**
    * Read the current manifest for an app (does not acquire lock)
    */
   async getManifest(appId: string): Promise<ManifestOperationResult> {
@@ -445,9 +455,7 @@ export class MediaManifestService {
       };
 
       const manifestPath = this.getManifestPath(app.path);
-      const tmpPath = `${manifestPath}.tmp.${Date.now()}`;
-      await fs.writeFile(tmpPath, JSON.stringify(manifest, null, 2));
-      await fs.rename(tmpPath, manifestPath);
+      await this.writeManifest(manifestPath, manifest);
 
       // Update the source file to use the new slot URL via AST-based replacement
       const newSlotUrl = `/airo-assets/images/${slotPath}`;
@@ -654,11 +662,8 @@ export class MediaManifestService {
 
       manifest[slotName] = updatedSlot;
 
-      // Write atomically (temp file + rename)
-      const tempPath = `${manifestPath}.tmp`;
-      const content = JSON.stringify(manifest, null, 2);
-      await fs.writeFile(tempPath, content, 'utf-8');
-      await fs.rename(tempPath, manifestPath);
+      // Write manifest and versions file atomically
+      await this.writeManifest(manifestPath, manifest);
 
       logger.info('media_manifest.update_slot.written', {
         ...logContext,
@@ -795,11 +800,8 @@ export class MediaManifestService {
 
       manifest[slotName] = updatedSlot;
 
-      // Write atomically
-      const tempPath = `${manifestPath}.tmp`;
-      const content = JSON.stringify(manifest, null, 2);
-      await fs.writeFile(tempPath, content, 'utf-8');
-      await fs.rename(tempPath, manifestPath);
+      // Write manifest and versions file atomically
+      await this.writeManifest(manifestPath, manifest);
 
       // Commit manifest to git (media file is in persistent storage, not the workspace)
       let commitHash: string | undefined;
@@ -914,11 +916,8 @@ export class MediaManifestService {
       // Update the slot
       manifest[slotName] = slot;
 
-      // Write atomically
-      const tempPath = `${manifestPath}.tmp`;
-      const content = JSON.stringify(manifest, null, 2);
-      await fs.writeFile(tempPath, content, 'utf-8');
-      await fs.rename(tempPath, manifestPath);
+      // Write manifest and versions file atomically
+      await this.writeManifest(manifestPath, manifest);
 
       logger.info('media_manifest.set_slot.written', logContext);
 

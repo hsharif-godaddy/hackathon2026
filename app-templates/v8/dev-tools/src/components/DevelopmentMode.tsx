@@ -72,11 +72,116 @@ export default function DevelopmentMode() {
       }
     }
 
+    // Media version cache-busting via MutationObserver
+    // Watches for dynamically added/changed images and applies version params
+    let mediaVersions: Record<string, string> = {}
+    let mediaVersionsCleanup: (() => void) | null = null
+    let mediaObserver: MutationObserver | null = null
+
+    const SLOT_URL_PREFIX = '/airo-assets/images/'
+
+    function applyVersionToUrl(url: string): string | null {
+      const prefixIdx = url.indexOf(SLOT_URL_PREFIX)
+      if (prefixIdx === -1) return null
+
+      const afterPrefix = url.substring(prefixIdx + SLOT_URL_PREFIX.length)
+      // Extract slot path (everything before ? or end)
+      const slotPath = afterPrefix.split('?')[0]
+      const version = mediaVersions[slotPath]
+      if (!version) return null
+
+      try {
+        const parsed = new URL(url, window.location.origin)
+        if (parsed.searchParams.get('_v') === version) return null // already correct
+        parsed.searchParams.set('_v', version)
+        return parsed.toString()
+      } catch {
+        return null
+      }
+    }
+
+    function patchImageElement(img: HTMLImageElement) {
+      if (!img.src) return
+      const patched = applyVersionToUrl(img.src)
+      if (patched) img.src = patched
+    }
+
+    function patchBackgroundImage(el: HTMLElement) {
+      const bgImage = el.style.backgroundImage
+      if (!bgImage?.includes(SLOT_URL_PREFIX)) return
+      const urlMatch = bgImage.match(/url\(["']?([^"')]+)["']?\)/)
+      if (!urlMatch?.[1]) return
+      const patched = applyVersionToUrl(urlMatch[1])
+      if (patched) el.style.backgroundImage = `url("${patched}")`
+    }
+
+    function patchAllImages() {
+      document.querySelectorAll<HTMLImageElement>('img').forEach(patchImageElement)
+      // Use getComputedStyle for full scan to catch CSS-applied backgrounds,
+      // not just inline styles (the MutationObserver can only detect inline changes)
+      document.querySelectorAll<HTMLElement>('*').forEach((el) => {
+        const bgImage = window.getComputedStyle(el).backgroundImage
+        if (!bgImage || bgImage === 'none' || !bgImage.includes(SLOT_URL_PREFIX)) return
+        const urlMatch = bgImage.match(/url\(["']?([^"')]+)["']?\)/)
+        if (!urlMatch?.[1]) return
+        const patched = applyVersionToUrl(urlMatch[1])
+        if (patched) el.style.backgroundImage = `url("${patched}")`
+      })
+    }
+
+    // Set up the MutationObserver to catch dynamically rendered images
+    mediaObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === 'childList') {
+          for (const node of mutation.addedNodes) {
+            if (!(node instanceof HTMLElement)) continue
+            if (node instanceof HTMLImageElement) {
+              patchImageElement(node)
+            }
+            // Check descendants of added nodes
+            node.querySelectorAll<HTMLImageElement>('img').forEach(patchImageElement)
+            if (node.style?.backgroundImage) patchBackgroundImage(node)
+            node.querySelectorAll<HTMLElement>('[style*="background"]').forEach(patchBackgroundImage)
+          }
+        } else if (mutation.type === 'attributes') {
+          const target = mutation.target as HTMLElement
+          if (mutation.attributeName === 'src' && target instanceof HTMLImageElement) {
+            patchImageElement(target)
+          } else if (mutation.attributeName === 'style') {
+            patchBackgroundImage(target)
+          }
+        }
+      }
+    })
+
+    mediaObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['src', 'style'],
+    })
+
+    // Load version map from virtual module (dev mode only)
+    // Use a variable to prevent Vite from statically resolving this import —
+    // older apps without the mediaVersionsPlugin will gracefully fall back via .catch()
+    if (import.meta.env.MODE === 'development') {
+      const mediaVersionsModule = 'virtual:' + 'media-versions'
+      import(/* @vite-ignore */ mediaVersionsModule).then(({ getVersions, onVersionsUpdate }) => {
+        mediaVersions = getVersions()
+        patchAllImages()
+        mediaVersionsCleanup = onVersionsUpdate((newVersions: Record<string, string>) => {
+          mediaVersions = newVersions
+          patchAllImages()
+        })
+      }).catch(() => {
+        // Virtual module not available — plugin may not be loaded
+      })
+    }
+
     // Reload images for a specific media slot by adding cache-busting timestamp
     function reloadMediaSlot(slotPath: string) {
       const timestamp = Date.now()
       const slotUrlPattern = `/airo-assets/images/${slotPath}`
-      let updatedCount = 0
 
       // Reload <img> elements
       document.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
@@ -84,7 +189,6 @@ export default function DevelopmentMode() {
           const url = new URL(img.src)
           url.searchParams.set('_t', String(timestamp))
           img.src = url.toString()
-          updatedCount++
         }
       })
 
@@ -97,17 +201,9 @@ export default function DevelopmentMode() {
             const url = new URL(urlMatch[1], window.location.origin)
             url.searchParams.set('_t', String(timestamp))
             el.style.backgroundImage = `url("${url.toString()}")`
-            updatedCount++
           }
         }
       })
-
-      // If no elements were found the slot URL isn't in the DOM yet — the source
-      // code AST update hasn't hot-reloaded yet. Fall back to a full page reload
-      // so the preview reflects the new image without the user having to refresh.
-      if (updatedCount === 0) {
-        window.location.reload()
-      }
     }
 
     // Track visible area of all observed sections for accurate detection
@@ -470,6 +566,8 @@ export default function DevelopmentMode() {
     }
 
     return () => {
+      if (mediaObserver) mediaObserver.disconnect()
+      if (mediaVersionsCleanup) mediaVersionsCleanup()
       if (sectionsObserver) {
         sectionsObserver.disconnect()
       }

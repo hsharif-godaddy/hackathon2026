@@ -376,4 +376,5 @@ describe('MediaManifestService - Getty upload integration', () => {
       expect(gettyUploadService.uploadAndReport).not.toHaveBeenCalled();
     });
   });
+
 });
