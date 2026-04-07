@@ -90,7 +90,7 @@ Host directories are bind-mounted into containers at different paths:
 ## Key Commands
 
 ```bash
-corepack enable                          # Enforces pnpm 10.17.0
+corepack enable                          # Enforces pnpm version from packageManager
 ./setup.sh                               # Automated setup (or: pnpm --filter airo-setup start)
 pnpm install && pnpm run dev             # TUI: agents:4000, app:3000, control-plane:4100
 pnpm run dev:legacy                      # Without TUI: agents + app only

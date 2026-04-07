@@ -29,16 +29,16 @@ export type UpgradeProductId = typeof UPGRADE_PRODUCT_IDS[keyof typeof UPGRADE_P
  * Shared UX dependencies for unified plans and pricing library components
  */
 export const UPGRADE_DEPS = {
-  uxAlert: { module: uxAlert, version: '2500.7.2' },
-  uxButton: { module: uxButton, version: '2500.7.2' },
-  uxIcon: { module: uxIcon, version: '2500.7.2' },
-  uxModal: { module: uxModal, version: '2500.7.2' },
-  uxQuantitySelector: { module: uxQuantitySelector, version: '2500.7.2' },
-  uxRadio: { module: uxRadio, version: '2500.7.1' },
-  uxSpinner: { module: uxSpinner, version: '2500.7.1' },
-  uxTag: { module: uxTag, version: '2500.7.2' },
-  uxText: { module: uxText, version: '2500.7.1' },
-  uxTooltip: { module: uxTooltip, version: '2500.7.2' },
-  uxTooltipLegacy: { module: uxTooltipLegacy, version: '2400.15.1' },
-  uxTextLockup: { module: uxTextLockup, version: '2500.7.2' },
+  uxAlert: { module: uxAlert, version: '2500.11.1' },
+  uxButton: { module: uxButton, version: '2500.11.1' },
+  uxIcon: { module: uxIcon, version: '2500.11.0' },
+  uxModal: { module: uxModal, version: '2500.11.1' },
+  uxQuantitySelector: { module: uxQuantitySelector, version: '2500.11.1' },
+  uxRadio: { module: uxRadio, version: '2500.9.0' },
+  uxSpinner: { module: uxSpinner, version: '2500.9.0' },
+  uxTag: { module: uxTag, version: '2500.11.0' },
+  uxText: { module: uxText, version: '2500.9.0' },
+  uxTooltip: { module: uxTooltip, version: '2500.11.1' },
+  uxTooltipLegacy: { module: uxTooltipLegacy, version: '2400.19.1' },
+  uxTextLockup: { module: uxTextLockup, version: '2500.11.0' },
 }
