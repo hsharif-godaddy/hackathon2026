@@ -121,6 +121,7 @@ type BudgetItemRow struct {
 type BudgetSessionDetail struct {
 	CostTotal           string
 	CreditsChargedTotal string
+	Metadata            []byte
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 	ReconciledAt        *time.Time
@@ -794,8 +795,10 @@ func (s *Store) GetBudgetSession(ctx context.Context, budgetID, sessionID string
 	var d BudgetSessionDetail
 	var rec sql.NullTime
 	var costSum, creditSum decimal.Decimal
+	var metadata []byte
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
+			bs.metadata,
 			bs.created_at,
 			bs.updated_at,
 			bs.reconciled_at,
@@ -803,10 +806,11 @@ func (s *Store) GetBudgetSession(ctx context.Context, budgetID, sessionID string
 			COALESCE((SELECT SUM(credits_charged) FROM budget_session_items WHERE session_id = bs.id), 0)
 		FROM budget_sessions bs
 		WHERE bs.id = $1 AND bs.budget_id = $2 AND bs.reconciled_at IS NULL
-	`, sessionID, budgetID).Scan(&d.CreatedAt, &d.UpdatedAt, &rec, &costSum, &creditSum)
+	`, sessionID, budgetID).Scan(&metadata, &d.CreatedAt, &d.UpdatedAt, &rec, &costSum, &creditSum)
 	if err != nil {
 		return nil, mapNotFound(err)
 	}
+	d.Metadata = metadata
 	if rec.Valid {
 		t := rec.Time
 		d.ReconciledAt = &t

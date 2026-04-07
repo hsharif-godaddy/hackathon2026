@@ -68,7 +68,7 @@ func (s *Server) deliverReportCreatedWebhooks(budgetID, sessionID, reportID, pro
 			"budgetId", budgetID, "sessionId", sessionID, "reportId", reportID)
 		return
 	}
-	reportObj, err := sessionReportDetailToResponse(d)
+	reportObj, err := sessionReportToResponse(d)
 	if err != nil {
 		slog.Error("webhook.report_payload", "error", err)
 		return
@@ -112,6 +112,16 @@ type postWebhookBody struct {
 	URL        string `json:"url"`
 }
 
+func webhookToResponse(row *store.WebhookRow) map[string]any {
+	return map[string]any{
+		"webhookId":  row.ID,
+		"eventType":  row.EventType,
+		"productKey": row.ProductKey,
+		"url":        row.URL,
+		"createdAt":  row.CreatedAt.UTC().Format(time.RFC3339Nano),
+	}
+}
+
 func (s *Server) postWebhook(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, budgetMaxBodyBytes))
 	if err != nil {
@@ -150,8 +160,14 @@ func (s *Server) postWebhook(w http.ResponseWriter, r *http.Request) {
 		writeWebhookStoreError(w, "webhook.create", err)
 		return
 	}
+	row, err := s.Store.GetWebhook(r.Context(), webhookID)
+	if err != nil {
+		slog.Error("webhook.create_get", "error", err)
+		writeJSON(w, http.StatusCreated, map[string]string{"webhookId": webhookID})
+		return
+	}
 
-	writeJSON(w, http.StatusCreated, map[string]string{"webhookId": webhookID})
+	writeJSON(w, http.StatusCreated, webhookToResponse(row))
 }
 
 func writeWebhookStoreError(w http.ResponseWriter, op string, err error) {
@@ -181,13 +197,7 @@ func (s *Server) getWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"webhookId":  row.ID,
-		"eventType":  row.EventType,
-		"productKey": row.ProductKey,
-		"url":        row.URL,
-		"createdAt":  row.CreatedAt.UTC().Format(time.RFC3339Nano),
-	})
+	writeJSON(w, http.StatusOK, webhookToResponse(row))
 }
 
 func (s *Server) deleteWebhook(w http.ResponseWriter, r *http.Request) {

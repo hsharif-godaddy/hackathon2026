@@ -9,20 +9,22 @@ HTTP API for budgets, LLM sessions, session spend lines, session reports (reconc
 
 ## API summary
 
-| Method                    | Path                                                            | Notes                                          |
-| ------------------------- | --------------------------------------------------------------- | ---------------------------------------------- |
-| `GET`, `HEAD`             | `/health`                                                       | No auth                                        |
-| `GET`                     | `/api/v1/auth-check`                                            | Auth probe                                     |
-| `GET`, `POST`             | `/api/v1/products`                                              |                                                |
-| `DELETE`                  | `/api/v1/products/{productKey}`                                 | 409 if active budgets reference product        |
-| `POST`                    | `/api/v1/webhooks`                                              | Register webhook                               |
-| `GET`, `DELETE`           | `/api/v1/webhooks/{webhookId}`                                  | DELETE archives row to `webhooks_history`      |
-| `POST`                    | `/api/v1/budgets`                                               |                                                |
-| `GET`, `PATCH`, `DELETE`  | `/api/v1/budgets/{budgetId}`                                    | DELETE 409 if open sessions or session reports |
-| `POST`, `PATCH`, `DELETE` | `/api/v1/budgets/{budgetId}/budget-items`, `.../{budgetItemId}` |                                                |
-| `POST`                    | `/api/v1/budgets/{budgetId}/sessions`                           |                                                |
-| `GET`, `PATCH`            | `/api/v1/budgets/{budgetId}/sessions/{sessionId}`               | GET 404 when session reconciled / closed       |
-| `POST`, `GET`             | `.../sessions/{sessionId}/reports`, `.../reports/{reportId}`    |                                                |
+| Method                    | Path                                                            | Notes                                           |
+| ------------------------- | --------------------------------------------------------------- | ----------------------------------------------- |
+| `GET`, `HEAD`             | `/health`                                                       | No auth                                         |
+| `GET`                     | `/api/v1/auth-check`                                            | Auth probe                                      |
+| `GET`, `POST`             | `/api/v1/products`                                              |                                                 |
+| `DELETE`                  | `/api/v1/products/{productKey}`                                 | 409 if active budgets reference product         |
+| `POST`                    | `/api/v1/webhooks`                                              | Register webhook; response matches webhook GET  |
+| `GET`, `DELETE`           | `/api/v1/webhooks/{webhookId}`                                  | DELETE archives row to `webhooks_history`       |
+| `POST`                    | `/api/v1/budgets`                                               | Response matches budget GET                     |
+| `GET`, `PATCH`, `DELETE`  | `/api/v1/budgets/{budgetId}`                                    | DELETE 409 if open sessions or session reports  |
+| `POST`, `PATCH`, `DELETE` | `/api/v1/budgets/{budgetId}/budget-items`, `.../{budgetItemId}` | POST/PATCH responses match item GET             |
+| `POST`                    | `/api/v1/budgets/{budgetId}/sessions`                           | Response matches session GET                    |
+| `GET`, `PATCH`            | `/api/v1/budgets/{budgetId}/sessions/{sessionId}`               | PATCH response matches GET; GET 404 when closed |
+| `POST`, `GET`             | `.../sessions/{sessionId}/reports`, `.../reports/{reportId}`    | POST response matches report GET                |
+
+Successful write endpoints (`POST`/`PATCH`) return the same payload format as the corresponding resource `GET`.
 
 **Money in JSON:** `creditsTotal`, `cost`, costs in report lines, etc. are strings in responses (6 decimal places). Requests often accept **string or number** for those fields (`flexAmount`). **`costToCreditRatio`** is **USD per credit** (same as stored **`credit_spend_ratio`**); **credits used** = `budget_cost_usd / credit_spend_ratio` (see `internal/credits`).
 

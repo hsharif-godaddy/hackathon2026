@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -18,6 +20,27 @@ import (
 
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/store"
 )
+
+func decodeJSONMapUseNumber(t *testing.T, body string) map[string]any {
+	t.Helper()
+	dec := json.NewDecoder(strings.NewReader(body))
+	dec.UseNumber()
+	var out map[string]any
+	if err := dec.Decode(&out); err != nil {
+		t.Fatalf("decode json: %v body=%s", err, body)
+	}
+	return out
+}
+
+func assertJSONMapEqual(t *testing.T, label string, got, want map[string]any) {
+	t.Helper()
+	if reflect.DeepEqual(got, want) {
+		return
+	}
+	gotJSON, _ := json.MarshalIndent(got, "", "  ")
+	wantJSON, _ := json.MarshalIndent(want, "", "  ")
+	t.Fatalf("%s mismatch\n--- got ---\n%s\n--- want ---\n%s", label, string(gotJSON), string(wantJSON))
+}
 
 func testStore(t *testing.T) *store.Store {
 	t.Helper()
@@ -543,4 +566,148 @@ func TestReportAllocatesRenewalItemBeforePlainItem(t *testing.T) {
 	if gotID != renewalItemID {
 		t.Fatalf("allocation budgetItemId %q want renewal item %q", gotID, renewalItemID)
 	}
+}
+
+func TestWriteEndpointsReturnCanonicalGetPayloads(t *testing.T) {
+	st := testStore(t)
+	auth := goauth.NewMiddleware("none", "")
+	h := NewRouter(&Server{Store: st}, auth)
+
+	productKey := "parity-" + uuid.NewString()
+	if _, err := st.CreateProduct(context.Background(), productKey); err != nil {
+		t.Fatal(err)
+	}
+
+	postBudgetBody := fmt.Sprintf(`{"productKey":%q,"items":[{"creditsTotal":"10.000000","costToCreditRatio":"1.000000"}]}`, productKey)
+	recPostBudget := httptest.NewRecorder()
+	reqPostBudget := httptest.NewRequest(http.MethodPost, "/api/v1/budgets", strings.NewReader(postBudgetBody))
+	reqPostBudget.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(recPostBudget, reqPostBudget)
+	if recPostBudget.Code != http.StatusCreated {
+		t.Fatalf("post budget: %d %s", recPostBudget.Code, recPostBudget.Body.String())
+	}
+	postBudgetResp := decodeJSONMapUseNumber(t, recPostBudget.Body.String())
+	budgetID, _ := postBudgetResp["budgetId"].(string)
+
+	recGetBudget := httptest.NewRecorder()
+	reqGetBudget := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/"+budgetID, nil)
+	h.ServeHTTP(recGetBudget, reqGetBudget)
+	if recGetBudget.Code != http.StatusOK {
+		t.Fatalf("get budget: %d %s", recGetBudget.Code, recGetBudget.Body.String())
+	}
+	getBudgetResp := decodeJSONMapUseNumber(t, recGetBudget.Body.String())
+	assertJSONMapEqual(t, "post budget vs get budget", postBudgetResp, getBudgetResp)
+
+	itemID := getBudgetResp["items"].([]any)[0].(map[string]any)["budgetItemId"].(string)
+	patchBudgetBody := fmt.Sprintf(`{"items":[{"budgetItemId":%q,"creditsTotal":"11.000000","costToCreditRatio":"1.000000"}]}`, itemID)
+	recPatchBudget := httptest.NewRecorder()
+	reqPatchBudget := httptest.NewRequest(http.MethodPatch, "/api/v1/budgets/"+budgetID, strings.NewReader(patchBudgetBody))
+	reqPatchBudget.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(recPatchBudget, reqPatchBudget)
+	if recPatchBudget.Code != http.StatusOK {
+		t.Fatalf("patch budget: %d %s", recPatchBudget.Code, recPatchBudget.Body.String())
+	}
+	patchBudgetResp := decodeJSONMapUseNumber(t, recPatchBudget.Body.String())
+
+	recGetBudget2 := httptest.NewRecorder()
+	reqGetBudget2 := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/"+budgetID, nil)
+	h.ServeHTTP(recGetBudget2, reqGetBudget2)
+	if recGetBudget2.Code != http.StatusOK {
+		t.Fatalf("get budget after patch: %d %s", recGetBudget2.Code, recGetBudget2.Body.String())
+	}
+	getBudgetResp2 := decodeJSONMapUseNumber(t, recGetBudget2.Body.String())
+	assertJSONMapEqual(t, "patch budget vs get budget", patchBudgetResp, getBudgetResp2)
+
+	recPostItem := httptest.NewRecorder()
+	reqPostItem := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/budget-items", strings.NewReader(`{"creditsTotal":"5.000000","costToCreditRatio":"1.500000"}`))
+	reqPostItem.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(recPostItem, reqPostItem)
+	if recPostItem.Code != http.StatusCreated {
+		t.Fatalf("post budget item: %d %s", recPostItem.Code, recPostItem.Body.String())
+	}
+	postItemResp := decodeJSONMapUseNumber(t, recPostItem.Body.String())
+	itemID2 := postItemResp["budgetItemId"].(string)
+
+	recGetItem := httptest.NewRecorder()
+	reqGetItem := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/"+budgetID+"/budget-items/"+itemID2, nil)
+	h.ServeHTTP(recGetItem, reqGetItem)
+	if recGetItem.Code != http.StatusOK {
+		t.Fatalf("get budget item: %d %s", recGetItem.Code, recGetItem.Body.String())
+	}
+	getItemResp := decodeJSONMapUseNumber(t, recGetItem.Body.String())
+	assertJSONMapEqual(t, "post budget item vs get budget item", postItemResp, getItemResp)
+
+	recPatchItem := httptest.NewRecorder()
+	reqPatchItem := httptest.NewRequest(http.MethodPatch, "/api/v1/budgets/"+budgetID+"/budget-items/"+itemID2, strings.NewReader(`{"creditsTotal":"6.000000","costToCreditRatio":"1.250000"}`))
+	reqPatchItem.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(recPatchItem, reqPatchItem)
+	if recPatchItem.Code != http.StatusOK {
+		t.Fatalf("patch budget item: %d %s", recPatchItem.Code, recPatchItem.Body.String())
+	}
+	patchItemResp := decodeJSONMapUseNumber(t, recPatchItem.Body.String())
+
+	recGetItem2 := httptest.NewRecorder()
+	reqGetItem2 := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/"+budgetID+"/budget-items/"+itemID2, nil)
+	h.ServeHTTP(recGetItem2, reqGetItem2)
+	if recGetItem2.Code != http.StatusOK {
+		t.Fatalf("get budget item after patch: %d %s", recGetItem2.Code, recGetItem2.Body.String())
+	}
+	getItemResp2 := decodeJSONMapUseNumber(t, recGetItem2.Body.String())
+	assertJSONMapEqual(t, "patch budget item vs get budget item", patchItemResp, getItemResp2)
+
+	recPostSession := httptest.NewRecorder()
+	reqPostSession := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/sessions", strings.NewReader(`{"metadata":{"source":"parity"}}`))
+	reqPostSession.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(recPostSession, reqPostSession)
+	if recPostSession.Code != http.StatusCreated {
+		t.Fatalf("post session: %d %s", recPostSession.Code, recPostSession.Body.String())
+	}
+	postSessionResp := decodeJSONMapUseNumber(t, recPostSession.Body.String())
+	sessionID := postSessionResp["sessionId"].(string)
+
+	recGetSession := httptest.NewRecorder()
+	reqGetSession := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/"+budgetID+"/sessions/"+sessionID, nil)
+	h.ServeHTTP(recGetSession, reqGetSession)
+	if recGetSession.Code != http.StatusOK {
+		t.Fatalf("get session: %d %s", recGetSession.Code, recGetSession.Body.String())
+	}
+	getSessionResp := decodeJSONMapUseNumber(t, recGetSession.Body.String())
+	assertJSONMapEqual(t, "post session vs get session", postSessionResp, getSessionResp)
+
+	recPatchSession := httptest.NewRecorder()
+	reqPatchSession := httptest.NewRequest(http.MethodPatch, "/api/v1/budgets/"+budgetID+"/sessions/"+sessionID, strings.NewReader(`{"sessionItems":[{"cost":2,"callRequestId":"parity-req-1"}]}`))
+	reqPatchSession.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(recPatchSession, reqPatchSession)
+	if recPatchSession.Code != http.StatusOK {
+		t.Fatalf("patch session: %d %s", recPatchSession.Code, recPatchSession.Body.String())
+	}
+	patchSessionResp := decodeJSONMapUseNumber(t, recPatchSession.Body.String())
+
+	recGetSession2 := httptest.NewRecorder()
+	reqGetSession2 := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/"+budgetID+"/sessions/"+sessionID, nil)
+	h.ServeHTTP(recGetSession2, reqGetSession2)
+	if recGetSession2.Code != http.StatusOK {
+		t.Fatalf("get session after patch: %d %s", recGetSession2.Code, recGetSession2.Body.String())
+	}
+	getSessionResp2 := decodeJSONMapUseNumber(t, recGetSession2.Body.String())
+	assertJSONMapEqual(t, "patch session vs get session", patchSessionResp, getSessionResp2)
+
+	recPostReport := httptest.NewRecorder()
+	reqPostReport := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/sessions/"+sessionID+"/reports", strings.NewReader(`{"reportItems":[{"budgetCost":"1.500000","productCost":"1.000000","label":"parity"}]}`))
+	reqPostReport.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(recPostReport, reqPostReport)
+	if recPostReport.Code != http.StatusCreated {
+		t.Fatalf("post report: %d %s", recPostReport.Code, recPostReport.Body.String())
+	}
+	postReportResp := decodeJSONMapUseNumber(t, recPostReport.Body.String())
+	reportID := postReportResp["reportId"].(string)
+
+	recGetReport := httptest.NewRecorder()
+	reqGetReport := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/"+budgetID+"/sessions/"+sessionID+"/reports/"+reportID, nil)
+	h.ServeHTTP(recGetReport, reqGetReport)
+	if recGetReport.Code != http.StatusOK {
+		t.Fatalf("get report: %d %s", recGetReport.Code, recGetReport.Body.String())
+	}
+	getReportResp := decodeJSONMapUseNumber(t, recGetReport.Body.String())
+	assertJSONMapEqual(t, "post report vs get report", postReportResp, getReportResp)
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	goauth "github.com/gdcorp-partners/airo-app-builder/packages/go-auth"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
@@ -71,4 +72,36 @@ func TestDeleteWebhookInsertsWebhooksHistory(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("webhooks_history rows %d want 1", n)
 	}
+}
+
+func TestPostWebhookReturnsSamePayloadAsGetWebhook(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	pk := "wh-parity-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, pk); err != nil {
+		t.Fatal(err)
+	}
+
+	auth := goauth.NewMiddleware("none", "")
+	h := NewRouter(&Server{Store: st}, auth)
+
+	body := `{"eventType":"report.created","productKey":"` + pk + `","url":"https://example.com/hook"}`
+	recPost := httptest.NewRecorder()
+	reqPost := httptest.NewRequest(http.MethodPost, "/api/v1/webhooks", strings.NewReader(body))
+	reqPost.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(recPost, reqPost)
+	if recPost.Code != http.StatusCreated {
+		t.Fatalf("post webhook status %d body %s", recPost.Code, recPost.Body.String())
+	}
+	postResp := decodeJSONMapUseNumber(t, recPost.Body.String())
+	webhookID := postResp["webhookId"].(string)
+
+	recGet := httptest.NewRecorder()
+	reqGet := httptest.NewRequest(http.MethodGet, "/api/v1/webhooks/"+webhookID, nil)
+	h.ServeHTTP(recGet, reqGet)
+	if recGet.Code != http.StatusOK {
+		t.Fatalf("get webhook status %d body %s", recGet.Code, recGet.Body.String())
+	}
+	getResp := decodeJSONMapUseNumber(t, recGet.Body.String())
+	assertJSONMapEqual(t, "post webhook vs get webhook", postResp, getResp)
 }

@@ -21,7 +21,7 @@ type postProductBody struct {
 	ProductKey string `json:"productKey"`
 }
 
-func productRowToJSON(r store.ProductRow) map[string]string {
+func productToResponse(r store.ProductRow) map[string]string {
 	return map[string]string{
 		"productKey": r.ProductKey,
 		"createdAt":  r.CreatedAt.UTC().Format(time.RFC3339Nano),
@@ -57,7 +57,7 @@ func (s *Server) getProducts(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]string, 0, len(rows))
 	for i := range rows {
-		out = append(out, productRowToJSON(rows[i]))
+		out = append(out, productToResponse(rows[i]))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -90,7 +90,7 @@ func (s *Server) postProduct(w http.ResponseWriter, r *http.Request) {
 		writeProductStoreError(w, "product.create", err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, productRowToJSON(row))
+	writeJSON(w, http.StatusCreated, productToResponse(row))
 }
 
 func (s *Server) deleteProduct(w http.ResponseWriter, r *http.Request) {

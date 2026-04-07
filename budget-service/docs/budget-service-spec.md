@@ -6,7 +6,7 @@ Spec for API shape, flow, and numbers. Code lives under `budget-service/`; older
 
 1. **Product** — `POST /api/v1/products` registers `productKey` (required before budgets).
 2. **Budget** — `POST /api/v1/budgets` with `productKey` and `items` (`creditsTotal`, `costToCreditRatio`, optional dates / `resetInterval`). `PATCH /budgets/{budgetId}` sends `items[]`: **omit** `budgetItemId` to add a row; **set** `budgetItemId` to update that item. `GET` budget; single-item `GET` / `PATCH .../budget-items/{budgetItemId}` also supported.
-3. **Session** — `POST /api/v1/budgets/{budgetId}/sessions` → `sessionId`. **402** `NO_BUDGET_CAPACITY` when the budget has no items or no consumable credits (same item order and pool math as spend/report). Atomic with the insert so clients can skip a separate budget preflight. A later `PATCH` can still fail if capacity is consumed before that call.
+3. **Session** — `POST /api/v1/budgets/{budgetId}/sessions` returns the same body shape as `GET /sessions/{sessionId}`. **402** `NO_BUDGET_CAPACITY` when the budget has no items or no consumable credits (same item order and pool math as spend/report). Atomic with the insert so clients can skip a separate budget preflight. A later `PATCH` can still fail if capacity is consumed before that call.
 4. **Spend (GoCode)** — `PATCH /api/v1/budgets/{budgetId}/sessions/{sessionId}` with `{ "sessionItems": [ { "cost", "callRequestId" } ] }` (append lines). Only while `reconciled_at` is null. `cost` may be JSON string or number; stored as `NUMERIC(20,6)`.
 5. **Inspect** — `GET .../sessions/{sessionId}` → totals, lines, optional `?debug=1` for consumption order + replayed credits per line. **404** when `reconciled_at` is set (session closed).
 6. **Close out** — `POST .../sessions/{sessionId}/reports` with `reportItems` (`budgetCost`, `productCost`, `label`). One report per session; allocates credits to budget items using the same USD→credits walk as session lines; sets **`reconciled_at`**. **`GET .../sessions/{sessionId}`** returns **404** after close. `GET .../reports/{reportId}` still works.
@@ -15,7 +15,11 @@ Spec for API shape, flow, and numbers. Code lives under `budget-service/`; older
    - **`DELETE /api/v1/budgets/{budgetId}`** — copy budget/items to `budgets_history` / `budget_item_history`, then `DELETE` budget (cascade removes sessions); **409** if any session has `reconciled_at` null (open session) or any session has a report.
    - **`DELETE .../budget-items/{budgetItemId}`** — copy to `budget_item_history`, `DELETE` item; **409** if referenced in report allocations.
    - **`PATCH` item** (and upsert-by-id) copies the prior row into **`budget_item_history`** before updating the live row.
-8. **Webhooks** — `POST /api/v1/webhooks` with `eventType` `report.created`, `productKey`, `url`. **`DELETE /webhooks/{webhookId}`** copies the row to **`webhooks_history`** then deletes the live webhook. After a successful report, matching URLs get `POST` JSON `{ "eventType": "reportCreated", "productKey", "data" }` (`data` = GET report body). Fire-and-forget; failures are logged only.
+8. **Webhooks** — `POST /api/v1/webhooks` with `eventType` `report.created`, `productKey`, `url` and returns the same body shape as `GET /webhooks/{webhookId}`. **`DELETE /webhooks/{webhookId}`** copies the row to **`webhooks_history`** then deletes the live webhook. After a successful report, matching URLs get `POST` JSON `{ "eventType": "reportCreated", "productKey", "data" }` (`data` = GET report body). Fire-and-forget; failures are logged only.
+
+### Response parity rule
+
+For each resource with read/write APIs, successful `POST`/`PATCH` responses are formatted identically to the corresponding `GET` response for that resource.
 
 ## Numbers
 
@@ -33,15 +37,15 @@ Spec for API shape, flow, and numbers. Code lives under `budget-service/`; older
 | `GET`                    | `/api/v1/auth-check`                                            | Auth probe                                                                          |
 | `GET`, `POST`            | `/api/v1/products`                                              | List / register `productKey`                                                        |
 | `DELETE`                 | `/api/v1/products/{productKey}`                                 | Archive + delete; 409 if budgets reference product                                  |
-| `POST`                   | `/api/v1/webhooks`                                              | Body: `eventType`, `productKey`, `url` → `{ webhookId }`                            |
+| `POST`                   | `/api/v1/webhooks`                                              | Body: `eventType`, `productKey`, `url` → same shape as `GET /webhooks/{webhookId}`  |
 | `GET`, `DELETE`          | `/api/v1/webhooks/{webhookId}`                                  | `DELETE` → archive to `webhooks_history`, then 204                                  |
-| `POST`                   | `/api/v1/budgets`                                               | Create budget + items                                                               |
+| `POST`                   | `/api/v1/budgets`                                               | Create budget + items; response matches `GET /budgets/{budgetId}`                   |
 | `GET`, `PATCH`, `DELETE` | `/api/v1/budgets/{budgetId}`                                    | DELETE archives then removes row; 409 if unreconciled session or any session report |
-| `POST`                   | `/api/v1/budgets/{budgetId}/budget-items`                       | Append one item                                                                     |
-| `GET`, `PATCH`, `DELETE` | `/api/v1/budgets/{budgetId}/budget-items/{budgetItemId}`        | Same item shape as budget `items[]`; DELETE 409 if item in report allocations       |
-| `POST`                   | `/api/v1/budgets/{budgetId}/sessions`                           | Optional `metadata`; **402** if no consumable credits (`NO_BUDGET_CAPACITY`)        |
-| `GET`, `PATCH`           | `/api/v1/budgets/{budgetId}/sessions/{sessionId}`               | GET 404 if `reconciled_at` set                                                      |
-| `POST`, `GET`            | `.../sessions/{sessionId}/reports` and `.../reports/{reportId}` | Create report / fetch report                                                        |
+| `POST`                   | `/api/v1/budgets/{budgetId}/budget-items`                       | Append one item; response matches item `GET`                                        |
+| `GET`, `PATCH`, `DELETE` | `/api/v1/budgets/{budgetId}/budget-items/{budgetItemId}`        | `PATCH` response matches item `GET`; DELETE 409 if item in report allocations        |
+| `POST`                   | `/api/v1/budgets/{budgetId}/sessions`                           | Optional `metadata`; response matches session `GET`; **402** when no capacity       |
+| `GET`, `PATCH`           | `/api/v1/budgets/{budgetId}/sessions/{sessionId}`               | `PATCH` response matches session `GET`; GET 404 if `reconciled_at` set              |
+| `POST`, `GET`            | `.../sessions/{sessionId}/reports` and `.../reports/{reportId}` | `POST` response matches report `GET`                                                |
 
 Auth: `packages/go-auth` `AuthenticateAWSIAMService` by default (`Bearer` or `sso-jwt`). `LOCAL_AUTH_DISABLE=true` skips auth (local only).
 
