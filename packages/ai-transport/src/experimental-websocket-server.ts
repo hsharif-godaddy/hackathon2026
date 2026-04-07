@@ -1413,6 +1413,10 @@ export class WebSocketServer {
     const activeConversation = this.getConversation(socketId)
     const agentMessageId = activeConversation?.context?.agentMessageId
 
+    // Stream diagnostics — track progress so error logs can report how far the stream got
+    const streamStartTime = Date.now()
+    let chunksRead = 0
+
     try {
       reader = baseStream.getReader()
       const accumulatedToolInput = new Map<string, string>() // Track tool input deltas
@@ -1432,7 +1436,14 @@ export class WebSocketServer {
           // Handle specific stream read errors
           if (this.isNetworkError(readError)) {
             const errorMessage = readError instanceof Error ? readError.message : String(readError)
-            this.logger.warn('Network error during stream read, attempting graceful fallback', { error: errorMessage })
+            this.logger.warn('stream.read.networkError', {
+              socketId,
+              agentName,
+              error: errorMessage,
+              chunksRead,
+              streamElapsedMs: Date.now() - streamStartTime,
+              abortSignalAborted: abortController?.signal.aborted ?? false,
+            })
             throw readError // Re-throw to trigger fallback
           }
           throw readError
@@ -1443,6 +1454,8 @@ export class WebSocketServer {
         if (done) {
           break
         }
+
+        chunksRead++
 
         if (value?.part) {
           const part = value.part
@@ -1656,29 +1669,71 @@ export class WebSocketServer {
           );
         }
 
-        this.logger.error('Non-retryable error in stream processing - propagating', {
-          category: classification.category,
-          message: error instanceof Error ? error.message : String(error)
-        });
+        if (!abortController?.signal.aborted) {
+          this.logger.error('Non-retryable error in stream processing - propagating', {
+            category: classification.category,
+            message: error instanceof Error ? error.message : String(error)
+          });
+        }
         throw error;
       }
 
-      // Enhanced error logging with structured information
       const errorInfo = this.analyzeStreamError(error);
+      const activeConv = this.getConversation(socketId)
+      const convAppId = activeConv?.context?.metadata && typeof (activeConv.context.metadata as any).appId === 'string'
+        ? (activeConv.context.metadata as any).appId
+        : undefined
 
-      this.logger.error('Error processing baseStream, falling back to text-only', {
-        errorType: errorInfo.type,
-        errorMessage: errorInfo.message,
-        isNetworkError: errorInfo.isNetworkError,
-        isAbortError: errorInfo.isAbortError,
-        originalError: error
+      // Fire-and-forget: extract response metadata without blocking the fallback path.
+      // Settled inline via .then() so the log is emitted after metadata is available,
+      // but the fallback attempt is NOT delayed.
+      this.extractResponseMetadata(streamResult).then(responseMeta => {
+        this.logger.error('stream.baseStream.error', {
+          socketId,
+          appId: convAppId,
+          agentName,
+          errorType: errorInfo.type,
+          errorMessage: errorInfo.message,
+          errorCode: errorInfo.code,
+          causeChain: errorInfo.causeChain,
+          statusCode: errorInfo.statusCode,
+          responseBody: errorInfo.responseBody,
+          isNetworkError: errorInfo.isNetworkError,
+          isAbortError: errorInfo.isAbortError,
+          step: currentStep,
+          classification: classification.category,
+          chunksRead,
+          streamElapsedMs: Date.now() - streamStartTime,
+          abortSignalAborted: abortController?.signal.aborted ?? false,
+          responseHeaders: responseMeta.headers,
+          responseId: responseMeta.responseId,
+          responseModelId: responseMeta.modelId,
+        })
       })
 
       // Fallback to text-only streaming with better error handling
       try {
         await this.processTextOnlyStream(socket, streamResult, currentStep, agentName)
       } catch (fallbackError: unknown) {
-        this.logger.error('Fallback to text-only streaming also failed', fallbackError)
+        const fallbackInfo = this.analyzeStreamError(fallbackError);
+        this.extractResponseMetadata(streamResult).then(responseMeta => {
+          this.logger.error('stream.textFallback.error', {
+            socketId,
+            appId: convAppId,
+            agentName,
+            errorType: fallbackInfo.type,
+            errorMessage: fallbackInfo.message,
+            errorCode: fallbackInfo.code,
+            causeChain: fallbackInfo.causeChain,
+            statusCode: fallbackInfo.statusCode,
+            responseBody: fallbackInfo.responseBody,
+            isNetworkError: fallbackInfo.isNetworkError,
+            step: currentStep,
+            responseHeaders: responseMeta.headers,
+            responseId: responseMeta.responseId,
+            responseModelId: responseMeta.modelId,
+          })
+        })
         // Always rethrow — both base stream and fallback failed, nothing left to retry.
         // The outer handleChatMessageInternal catch block notifies the client and cleans
         // up conversation state. Without rethrowing, the caller proceeds to getFinalResult()
@@ -1724,7 +1779,28 @@ export class WebSocketServer {
       const errorInfo = this.analyzeStreamError(error)
 
       if (!errorInfo.isAbortError) {
-        this.logger.error('Error in text-only stream processing', errorInfo)
+        const activeConv = this.getConversation(socketId)
+        const convAppId = activeConv?.context?.metadata && typeof (activeConv.context.metadata as any).appId === 'string'
+          ? (activeConv.context.metadata as any).appId
+          : undefined
+        this.extractResponseMetadata(streamResult).then(responseMeta => {
+          this.logger.error('stream.textOnly.error', {
+            socketId,
+            appId: convAppId,
+            agentName,
+            errorType: errorInfo.type,
+            errorMessage: errorInfo.message,
+            errorCode: errorInfo.code,
+            causeChain: errorInfo.causeChain,
+            statusCode: errorInfo.statusCode,
+            responseBody: errorInfo.responseBody,
+            isNetworkError: errorInfo.isNetworkError,
+            step: currentStep,
+            responseHeaders: responseMeta.headers,
+            responseId: responseMeta.responseId,
+            responseModelId: responseMeta.modelId,
+          })
+        })
         throw error
       }
     }
@@ -1738,6 +1814,10 @@ export class WebSocketServer {
     message: string
     isNetworkError: boolean
     isAbortError: boolean
+    code: string | undefined
+    causeChain: string[]
+    statusCode: number | undefined
+    responseBody: string | undefined
   } {
     const errorMessage = error instanceof Error ? error.message : String(error)
     const errorName = error instanceof Error ? error.name : 'UnknownError'
@@ -1760,11 +1840,48 @@ export class WebSocketServer {
       errorType = errorName
     }
 
+    // Extract error code (e.g. UND_ERR_SOCKET from undici)
+    const code = (error as any)?.code as string | undefined
+
+    // Walk the cause chain to surface the root network/socket error
+    const causeChain: string[] = []
+    let current: unknown = (error as any)?.cause
+    while (current && causeChain.length < 5) {
+      if (current instanceof Error) {
+        const causeCode = (current as any).code ? ` [${(current as any).code}]` : ''
+        causeChain.push(`${current.name}: ${current.message}${causeCode}`)
+        current = (current as any).cause
+      } else if (typeof current === 'string') {
+        causeChain.push(current)
+        break
+      } else if (typeof current === 'object' && current !== null) {
+        // Duck-type plain objects with code/message (common in undici causes)
+        const obj = current as Record<string, unknown>
+        const causeCode = typeof obj.code === 'string' ? ` [${obj.code}]` : ''
+        const msg = typeof obj.message === 'string' ? obj.message : JSON.stringify(current)
+        const name = typeof obj.name === 'string' ? obj.name : 'Object'
+        causeChain.push(`${name}: ${msg}${causeCode}`)
+        current = obj.cause
+      } else {
+        causeChain.push(String(current))
+        break
+      }
+    }
+
+    // Extract any HTTP response info from AI SDK APICallError or similar
+    const statusCode = (error as any)?.statusCode as number | undefined
+    const rawBody = (error as any)?.responseBody
+    const responseBody = typeof rawBody === 'string' ? rawBody.slice(0, 500) : undefined
+
     return {
       type: errorType,
       message: errorMessage,
       isNetworkError,
-      isAbortError
+      isAbortError,
+      code,
+      causeChain,
+      statusCode,
+      responseBody,
     }
   }
 
@@ -1809,6 +1926,38 @@ export class WebSocketServer {
     const hasNetworkMessage = networkErrorMessages.some(msg => errorMessage.includes(msg))
 
     return isNetworkErrorName || hasNetworkMessage
+  }
+
+  /**
+   * Try to extract response metadata (headers, id, modelId) from a stream result.
+   * Returns whatever was resolved; never throws or blocks indefinitely.
+   */
+  private async extractResponseMetadata(streamResult: any): Promise<{
+    headers?: Record<string, string>
+    responseId?: string
+    modelId?: string
+  }> {
+    if (!streamResult?.response) return {}
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      const res = await Promise.race([
+        streamResult.response,
+        new Promise(resolve => {
+          timer = setTimeout(resolve, 500)
+          timer.unref()
+        }),
+      ])
+      if (!res) return {}
+      return {
+        headers: res.headers,
+        responseId: res.id,
+        modelId: res.modelId,
+      }
+    } catch {
+      return {}
+    } finally {
+      if (timer) clearTimeout(timer)
+    }
   }
 
   /**
@@ -2255,7 +2404,8 @@ export class WebSocketServer {
         statusCode = error.statusCode;
       }
 
-      this.logger.warn(`agent error detected`, {
+      const topLevelErrorInfo = this.analyzeStreamError(error)
+      this.logger.warn('websocket.agent.error', {
         message: errorMessage,
         errorType,
         statusCode,
@@ -2263,6 +2413,10 @@ export class WebSocketServer {
         agentName,
         originalError: error instanceof Error ? error.message : undefined,
         originalErrorName: error instanceof Error ? error.name : undefined,
+        errorCode: topLevelErrorInfo.code,
+        causeChain: topLevelErrorInfo.causeChain,
+        isNetworkError: topLevelErrorInfo.isNetworkError,
+        responseBody: topLevelErrorInfo.responseBody,
       });
 
       // Construct error metadata object explicitly
@@ -3010,6 +3164,12 @@ export class WebSocketServer {
     // immune to cleanupConversation removing the state manager entry during async abort.
     const abortSignal = this.stateManager.getAbortController(socket.id)?.signal
 
+    // Captured eagerly after streamGenerate returns so response headers from GoCode
+    // are available in error handlers even when the stream body fails mid-flight.
+    let capturedResponseHeaders: Record<string, string> | undefined
+    let capturedResponseId: string | undefined
+    let capturedModelId: string | undefined
+
     try {
       // Run agent.streamGenerate within the invocation context
       streamResult = await otelContext.with(invocation.context, async () => {
@@ -3026,6 +3186,17 @@ export class WebSocketServer {
           ...(abortSignal && { abortSignal }),
         })
       })
+
+      if (streamResult.response) {
+        streamResult.response.then(
+          (res: any) => {
+            capturedResponseHeaders = res?.headers
+            capturedResponseId = res?.id
+            capturedModelId = res?.modelId
+          },
+          () => { /* response promise rejected — headers unavailable */ }
+        )
+      }
 
       // Check if this is a tool validation error with mock stream
       if (streamResult && (streamResult as any).isToolValidationError) {
@@ -3058,20 +3229,32 @@ export class WebSocketServer {
       }
 
       const isAPIError = APICallError.isInstance(error)
-
-      this.logger.debug('Caught error in streamGenerate', {
-        name: error?.name,
-        message: error?.message,
-        statusCode: isAPIError ? error.statusCode : error?.statusCode,
-        responseBody: isAPIError ? error.responseBody?.slice(0, 200) : error?.responseBody?.slice?.(0, 200),
-        isAPIError,
-        hasToolUseInvalid: error?.message?.includes('toolUse.input is invalid'),
-        hasJSONParsingFailed: error?.message?.includes('JSON parsing failed')
-      })
+      const streamErrorInfo = this.analyzeStreamError(error)
+      const streamErrorClassification = classifyError(error)
 
       const isToolValidationError =
         error?.message?.includes('toolUse.input is invalid') ||
         error?.message?.includes('JSON parsing failed')
+
+      if (!isToolValidationError) {
+        this.logger.warn('stream.generate.error', {
+          socketId: socket.id,
+          appId,
+          agentName,
+          model: modelName,
+          provider: providerName,
+          errorName: error?.name,
+          errorMessage: error?.message,
+          errorCode: streamErrorInfo.code,
+          causeChain: streamErrorInfo.causeChain,
+          statusCode: isAPIError ? error.statusCode : error?.statusCode,
+          responseBody: isAPIError ? error.responseBody?.slice(0, 500) : error?.responseBody?.slice?.(0, 500),
+          isAPIError,
+          isNetworkError: streamErrorInfo.isNetworkError,
+          isAbortError: streamErrorInfo.isAbortError,
+          classification: streamErrorClassification.category,
+        })
+      }
 
       if (isToolValidationError) {
         this.logger.error('Tool input validation error', { message: error.message })
@@ -3155,11 +3338,6 @@ Please try again with corrected formatting.`
           throw retryError
         }
       } else {
-        // Non-retryable errors (budget exceeded, etc.) should propagate immediately
-        // Note: Transient 400 errors are now handled by the retry infrastructure in retry-with-backoff.ts
-        // via the classify() function which uses isTransientBadRequest()
-        const errorClassification = classifyError(error);
-
         // Enhanced logging for 400 errors to help diagnose issues
         if (isAPIError && error.statusCode === 400) {
           this.logger.warn('llm.api.bad_request', {
@@ -3168,15 +3346,15 @@ Please try again with corrected formatting.`
             statusCode: error.statusCode,
             message: error.message,
             responseBodyLength: error.responseBody?.length,
-            category: errorClassification.category,
-            retryable: errorClassification.retryable
+            category: streamErrorClassification.category,
+            retryable: streamErrorClassification.retryable
           });
         }
 
-        if (!errorClassification.retryable) {
-          this.logger.warn(`Non-retryable error in streamGenerate: ${errorClassification.category || 'unknown'}`, {
-            category: errorClassification.category,
-            statusCode: errorClassification.statusCode
+        if (!streamErrorClassification.retryable) {
+          this.logger.warn(`Non-retryable error in streamGenerate: ${streamErrorClassification.category || 'unknown'}`, {
+            category: streamErrorClassification.category,
+            statusCode: streamErrorClassification.statusCode
           });
         }
 
@@ -3443,6 +3621,26 @@ Please try again with corrected formatting.`
         // would create a duplicate with inconsistent totalSteps.
         return // Don't rethrow — abort is a clean termination, not an error
       }
+
+      const postErrorInfo = this.analyzeStreamError(postStreamError)
+      this.logger.error('stream.postStream.error', {
+        socketId: socket.id,
+        appId,
+        agentName,
+        model: modelName,
+        provider: providerName,
+        errorType: postErrorInfo.type,
+        errorMessage: postErrorInfo.message,
+        errorCode: postErrorInfo.code,
+        causeChain: postErrorInfo.causeChain,
+        statusCode: postErrorInfo.statusCode,
+        responseBody: postErrorInfo.responseBody,
+        isNetworkError: postErrorInfo.isNetworkError,
+        step: currentStep,
+        responseHeaders: capturedResponseHeaders,
+        responseId: capturedResponseId,
+        responseModelId: capturedModelId,
+      })
 
       throw postStreamError
     }

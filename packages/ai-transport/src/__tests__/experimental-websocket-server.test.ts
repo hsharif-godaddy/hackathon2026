@@ -2888,3 +2888,204 @@ describe('WebSocketServer - Stop Generation', () => {
     server.close()
   })
 })
+
+describe('WebSocketServer - analyzeStreamError', () => {
+  let server: WebSocketServer
+  let httpServer: HTTPServer
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    httpServer = new HTTPServer()
+    server = new WebSocketServer(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence()
+    })
+  })
+
+  afterEach(() => {
+    server.close()
+  })
+
+  function analyze(error: unknown) {
+    return (server as any).analyzeStreamError(error)
+  }
+
+  it('should extract error code from undici-style errors', () => {
+    const error = new Error('terminated')
+    ;(error as any).code = 'UND_ERR_SOCKET'
+    const result = analyze(error)
+    expect(result.code).toBe('UND_ERR_SOCKET')
+    expect(result.isNetworkError).toBe(true)
+  })
+
+  it('should walk Error cause chain with codes', () => {
+    const root = new Error('connection reset')
+    ;(root as any).code = 'ECONNRESET'
+    const mid = new Error('socket error', { cause: root })
+    ;(mid as any).code = 'UND_ERR_SOCKET'
+    const top = new Error('terminated', { cause: mid })
+
+    const result = analyze(top)
+    expect(result.causeChain).toEqual([
+      'Error: socket error [UND_ERR_SOCKET]',
+      'Error: connection reset [ECONNRESET]',
+    ])
+  })
+
+  it('should handle string cause', () => {
+    const error = new Error('failed')
+    ;(error as any).cause = 'upstream timeout'
+    const result = analyze(error)
+    expect(result.causeChain).toEqual(['upstream timeout'])
+  })
+
+  it('should duck-type plain object causes with code and message', () => {
+    const error = new Error('terminated')
+    ;(error as any).cause = { code: 'UND_ERR_SOCKET', message: 'other side closed' }
+    const result = analyze(error)
+    expect(result.causeChain).toEqual(['Object: other side closed [UND_ERR_SOCKET]'])
+  })
+
+  it('should duck-type plain object causes with name, code, and message', () => {
+    const error = new Error('terminated')
+    ;(error as any).cause = { name: 'SocketError', code: 'UND_ERR_SOCKET', message: 'other side closed' }
+    const result = analyze(error)
+    expect(result.causeChain).toEqual(['SocketError: other side closed [UND_ERR_SOCKET]'])
+  })
+
+  it('should walk nested plain object causes', () => {
+    const error = new Error('terminated')
+    ;(error as any).cause = {
+      name: 'SocketError',
+      message: 'other side closed',
+      code: 'UND_ERR_SOCKET',
+      cause: { message: 'read ECONNRESET', code: 'ECONNRESET' }
+    }
+    const result = analyze(error)
+    expect(result.causeChain).toEqual([
+      'SocketError: other side closed [UND_ERR_SOCKET]',
+      'Object: read ECONNRESET [ECONNRESET]',
+    ])
+  })
+
+  it('should JSON-stringify plain object causes without message', () => {
+    const error = new Error('failed')
+    ;(error as any).cause = { foo: 'bar' }
+    const result = analyze(error)
+    expect(result.causeChain).toEqual(['Object: {"foo":"bar"}'])
+  })
+
+  it('should limit cause chain to 5 entries', () => {
+    let current: any = new Error('root')
+    for (let i = 0; i < 10; i++) {
+      current = new Error(`level-${i}`, { cause: current })
+    }
+    const result = analyze(current)
+    expect(result.causeChain).toHaveLength(5)
+  })
+
+  it('should extract statusCode from error', () => {
+    const error = new Error('Service Unavailable')
+    ;(error as any).statusCode = 503
+    const result = analyze(error)
+    expect(result.statusCode).toBe(503)
+  })
+
+  it('should extract and truncate responseBody at 500 chars', () => {
+    const error = new Error('Service Unavailable')
+    ;(error as any).responseBody = 'x'.repeat(1000)
+    const result = analyze(error)
+    expect(result.responseBody).toHaveLength(500)
+  })
+
+  it('should return undefined responseBody for non-string values', () => {
+    const error = new Error('failed')
+    ;(error as any).responseBody = 42
+    const result = analyze(error)
+    expect(result.responseBody).toBeUndefined()
+  })
+
+  it('should classify abort errors', () => {
+    const error = new Error('The operation was aborted')
+    error.name = 'AbortError'
+    const result = analyze(error)
+    expect(result.isAbortError).toBe(true)
+    expect(result.type).toBe('AbortError')
+  })
+
+  it('should handle non-Error values', () => {
+    const result = analyze('plain string error')
+    expect(result.message).toBe('plain string error')
+    expect(result.type).toBe('UnknownError')
+    expect(result.causeChain).toEqual([])
+    expect(result.code).toBeUndefined()
+  })
+
+  it('should handle null/undefined causes gracefully', () => {
+    const error = new Error('no cause')
+    const result = analyze(error)
+    expect(result.causeChain).toEqual([])
+  })
+})
+
+describe('WebSocketServer - extractResponseMetadata', () => {
+  let server: WebSocketServer
+  let httpServer: HTTPServer
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    httpServer = new HTTPServer()
+    server = new WebSocketServer(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence()
+    })
+  })
+
+  afterEach(() => {
+    server.close()
+  })
+
+  function extract(streamResult: any) {
+    return (server as any).extractResponseMetadata(streamResult)
+  }
+
+  it('should return empty object when streamResult has no response', async () => {
+    expect(await extract({})).toEqual({})
+    expect(await extract(null)).toEqual({})
+    expect(await extract(undefined)).toEqual({})
+    expect(await extract({ response: undefined })).toEqual({})
+  })
+
+  it('should extract headers, id, and modelId from resolved response', async () => {
+    const result = await extract({
+      response: Promise.resolve({
+        id: 'resp-123',
+        modelId: 'claude-sonnet-4-6',
+        headers: { 'x-request-id': 'abc-456' },
+      })
+    })
+    expect(result).toEqual({
+      headers: { 'x-request-id': 'abc-456' },
+      responseId: 'resp-123',
+      modelId: 'claude-sonnet-4-6',
+    })
+  })
+
+  it('should return empty object when response promise rejects', async () => {
+    const result = await extract({
+      response: Promise.reject(new Error('connection lost'))
+    })
+    expect(result).toEqual({})
+  })
+
+  it('should return empty object when response times out', async () => {
+    vi.useFakeTimers()
+    const neverResolves = new Promise(() => {})
+    const resultPromise = extract({ response: neverResolves })
+    await vi.runAllTimersAsync()
+    expect(await resultPromise).toEqual({})
+    vi.useRealTimers()
+  })
+})

@@ -91,6 +91,8 @@ function extractLitellmMetadata(
 export interface StreamResultWithValidation {
   textStream: AsyncIterable<string>
   baseStream?: unknown
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  response?: PromiseLike<{ id: string; timestamp: Date; modelId: string; headers?: Record<string, string>; body?: any }>
   getFinalResult: () => Promise<any>
   isToolValidationError?: boolean
   validationErrorMessage?: string
@@ -805,14 +807,16 @@ export class AgentWrapper {
     abortSignal?: AbortSignal
   }): Promise<{
     textStream: AsyncIterable<string>
-  baseStream?: unknown
+    baseStream?: unknown
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    response?: PromiseLike<{ id: string; timestamp: Date; modelId: string; headers?: Record<string, string>; body?: any }>
     getFinalResult: () => Promise<{
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  usage: any
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  finishReason: any
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  toolCalls: any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      usage: any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      finishReason: any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      toolCalls: any
     }>
   }> {
     return this._executeStreamGenerate(prompt, options)
@@ -832,6 +836,8 @@ export class AgentWrapper {
   }): Promise<{
     textStream: AsyncIterable<string>
     baseStream?: unknown
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    response?: PromiseLike<{ id: string; timestamp: Date; modelId: string; headers?: Record<string, string>; body?: any }>
     getFinalResult: () => Promise<{
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       usage: any
@@ -864,6 +870,8 @@ export class AgentWrapper {
   ): Promise<{
     textStream: AsyncIterable<string>
     baseStream?: unknown
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    response?: PromiseLike<{ id: string; timestamp: Date; modelId: string; headers?: Record<string, string>; body?: any }>
     getFinalResult: () => Promise<{
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       usage: any
@@ -1134,6 +1142,13 @@ Please retry your tool call with corrected input formatting.`
       // Provide the text stream for the caller to iterate over
       // ToolLoopAgent internal types are provider-specific
       textStream: streamResult.textStream,
+
+      // Expose the response metadata promise (includes headers from GoCode/LLM provider)
+      // IMPORTANT: must be evaluated BEFORE baseStream — accessing .response triggers
+      // the AI SDK's internal consumeStream() → teeStream() which locks the current
+      // this.baseStream fork. Evaluating it first ensures baseStream captures the
+      // post-tee unlocked fork.
+      response: streamResult.response,
 
       // Provide access to the raw baseStream for real-time tool call events
       // baseStream exists at runtime but is not in the AI SDK type definitions
