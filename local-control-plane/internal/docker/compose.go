@@ -215,7 +215,7 @@ func generatePreviewEnvironment(app *store.App) map[string]string {
 		"DEV_SUPERVISOR_ENABLE_SHARE_TOKENS": "true",
 		"DEV_SUPERVISOR_AGENTS_BASE_URL":     agentsBaseURL,
 
-		// Site ID
+		// Site ID (same as app id); also read by Vite client when envPrefix includes SITE_
 		"SITE_ID": app.ID,
 
 		// Nomad compatibility
