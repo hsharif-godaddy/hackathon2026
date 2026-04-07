@@ -119,8 +119,13 @@ check_pnpm() {
 
     if command -v pnpm &> /dev/null; then
         PNPM_VERSION=$(pnpm --version)
-        REQUIRED_VERSION="10.17.0"
-        
+        REQUIRED_VERSION=$(node -p "require('./package.json').packageManager.match(/^pnpm@(.+?)(\+|$)/)[1]" 2>/dev/null || echo "")
+
+        if [ -z "$REQUIRED_VERSION" ]; then
+            print_warning "Could not read pnpm version from package.json packageManager field"
+            return 1
+        fi
+
         if [ "$PNPM_VERSION" = "$REQUIRED_VERSION" ]; then
             print_status "pnpm $PNPM_VERSION is installed (matches package.json)"
             return 0
