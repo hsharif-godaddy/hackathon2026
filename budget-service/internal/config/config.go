@@ -28,6 +28,11 @@ type Config struct {
 	HTTPIdleTimeout  time.Duration
 
 	AuthLogLevel string
+
+	WebhookOAuthTokenURL     string
+	WebhookOAuthClientID     string
+	WebhookOAuthClientSecret string
+	WebhookOAuthScope        string
 }
 
 // Load reads env and checks LOCAL_AUTH_DISABLE / SSO_HOST / TLS pair consistency.
@@ -46,6 +51,13 @@ func Load() (Config, error) {
 		HTTPWriteTimeout:  getEnvDuration("HTTP_WRITE_TIMEOUT", 60*time.Second),
 		HTTPIdleTimeout:   getEnvDuration("HTTP_IDLE_TIMEOUT", 120*time.Second),
 		AuthLogLevel:      getEnv("AUTH_LOG_LEVEL", "info"),
+	}
+	cfg.WebhookOAuthTokenURL = strings.TrimSpace(os.Getenv("WEBHOOK_OAUTH_TOKEN_URL"))
+	cfg.WebhookOAuthClientID = strings.TrimSpace(os.Getenv("WEBHOOK_OAUTH_CLIENT_ID"))
+	cfg.WebhookOAuthClientSecret = strings.TrimSpace(os.Getenv("WEBHOOK_OAUTH_CLIENT_SECRET"))
+	cfg.WebhookOAuthScope = strings.TrimSpace(os.Getenv("WEBHOOK_OAUTH_SCOPE"))
+	if (cfg.WebhookOAuthTokenURL != "") != (cfg.WebhookOAuthClientID != "") {
+		return Config{}, fmt.Errorf("WEBHOOK_OAUTH_TOKEN_URL and WEBHOOK_OAUTH_CLIENT_ID must both be set or both empty")
 	}
 	if !cfg.LocalAuthDisable && cfg.SSOHost == "" {
 		return Config{}, fmt.Errorf("SSO_HOST is required unless LOCAL_AUTH_DISABLE is true")

@@ -6,6 +6,7 @@ HTTP API for budgets, LLM sessions, session spend lines, session reports (reconc
 - **Auth:** [`packages/go-auth`](../packages/go-auth). By default `/api/v1/*` uses **`AuthenticateAWSIAMService`** — AWS IAM, Cert, or Cert2S JWT via **`Authorization: Bearer`** or **`Authorization: sso-jwt`**. The middleware does **not** read the **`auth_idp`** cookie. Set **`LOCAL_AUTH_DISABLE=true`** (local only) to skip JWT validation.
 - **Database:** Optional. If `DATABASE_URL` is unset, `Store` is nil: `/health` reports DB unconfigured; budget/product/webhook handlers return 503 on write paths.
 - **Local E2E:** [docs/local-e2e.md](docs/local-e2e.md) — Docker profile `e2e` (webhook sink), `make e2e-local`, optional `make dev-budget-ui` (proxied CRUD UI). Not used in production.
+- **Outbound webhooks:** If **`WEBHOOK_OAUTH_TOKEN_URL`** and **`WEBHOOK_OAUTH_CLIENT_ID`** are both set, report delivery adds **`Authorization: Bearer …`** on **`https`** subscriber URLs only (plain **`http`** targets are still POSTed but **without** the header to avoid leaking the token). Uses [`authz-lib-go`](https://github.com/gdcorp-identity/authz-lib-go) (`WEBHOOK_OAUTH_CLIENT_SECRET` optional; empty secret uses SSO IAM JWT via the default AWS credential chain). Optional **`WEBHOOK_OAUTH_SCOPE`**. If either token URL or client id is unset, deliveries stay unauthenticated (e.g. local E2E sink).
 
 ## API summary
 
@@ -42,14 +43,14 @@ make dev
 
 ### Private modules (JFrog Artifactory)
 
-`github.com/gdcorp-golang/*` resolves through GoDaddy’s Artifactory Go virtual repo (`go-virt`), same as [`Dockerfile`](Dockerfile) builds. To match **`go.sum`** checksums, use that proxy (not a direct Git fetch) and skip the public sum DB for those paths.
+`github.com/gdcorp-golang/*` and `github.com/gdcorp-identity/*` resolve through GoDaddy’s Artifactory Go virtual repo (`go-virt`), same as [`Dockerfile`](Dockerfile) builds. To match **`go.sum`** checksums, use that proxy (not a direct Git fetch) and skip the public sum DB for those paths.
 
 **Recommended — persist for all `go` commands on this machine** (writes `go env GOENV`, usually under your user config dir; no shell variable expansion, so embed the token in `GOPROXY`):
 
 ```bash
 go env -w GOPROXY='https://:YOUR_JFROG_TOKEN@gdartifactory1.jfrog.io/artifactory/api/go/go-virt,direct'
 go env -w GONOPROXY=none
-go env -w GONOSUMDB='github.com/gdcorp-golang/*'
+go env -w GONOSUMDB='github.com/gdcorp-golang/*,github.com/gdcorp-identity/*'
 go env -u GOPRIVATE
 ```
 
