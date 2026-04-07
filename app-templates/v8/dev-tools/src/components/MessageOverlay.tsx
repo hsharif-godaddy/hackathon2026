@@ -13,7 +13,7 @@ function MessageOverlay({
 }: MessageOverlayProps) {
   return (
     <div
-      data-airo-dev-tool
+      data-airo-dev-tools
       style={{
         position: 'fixed',
         top: 0,
