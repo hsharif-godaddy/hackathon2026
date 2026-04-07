@@ -150,7 +150,7 @@ export async function authenticateCustomer(request: NextRequest, level?: 1 | 2 |
     }
 
     // Use gd-auth for authentication (includes automatic heartbeat and expiration checking)
-    // Default level 2: IAT <= 30 days (persistent) or <= 12 hours (non-persistent)
+    // Default level 1: IAT <= 30 days (persistent) or <= 12 hours (non-persistent)
     // Level 3 (sensitive ops): HBI <= 12 hours (requires recent heartbeat)
     const result = await gdAuthService.authenticate(token, level);
     if (!result.valid || !result.payload) {

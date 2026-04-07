@@ -15,11 +15,25 @@ import {
 } from '@/lib/customer-auth'
 import { logger } from '@/lib/request-context'
 
+const ALLOWED_VARIABLE_KEYS = new Set(['lastInteractionAt', 'title', 'initialPrompt', 'airoSubscriptionId'])
+
 // PATCH /api/sites/[id]/variables - Update site variables
 export const PATCH = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id: siteId } = await params
-    const variableUpdates = await request.json()
+    const rawUpdates = await request.json()
+    if (!rawUpdates || typeof rawUpdates !== 'object' || Array.isArray(rawUpdates)) {
+      return NextResponse.json({ error: 'Request body must be an object' }, { status: 400 })
+    }
+    const variableUpdates: Record<string, unknown> = {}
+    for (const key of Object.keys(rawUpdates)) {
+      if (ALLOWED_VARIABLE_KEYS.has(key)) {
+        variableUpdates[key] = rawUpdates[key]
+      }
+    }
+    if (Object.keys(variableUpdates).length === 0) {
+      return NextResponse.json({ error: 'No valid variable keys provided' }, { status: 400 })
+    }
     const { user } = authContext
 
     // Customer must have an account to update sites
@@ -69,4 +83,4 @@ export const PATCH = withCustomerAuth(async (request: NextRequest, authContext: 
       { status: 500 }
     )
   }
-}, { level: 3 })
+})

@@ -51,7 +51,7 @@ The BFF is Next.js App Router API routes at `src/app/api/`. It does NOT just pro
 
 ### Tiered Auth Levels
 
-gd-auth supports three authentication levels. Default is level 2; sensitive operations use level 3.
+gd-auth supports three authentication levels. Default is level 1; sensitive operations use level 3.
 
 | Level | Check | Expiration (persistent) | Expiration (non-persistent) |
 | ----- | ----- | ----------------------- | --------------------------- |
@@ -79,8 +79,7 @@ export const POST = withCustomerAuth(
 - **Secrets:** `secrets/[appId]/sync` POST, `secrets/[appId]/variants/[variant]` POST
 - **Deletion:** `sites/[id]` DELETE, `sites` DELETE (bulk)
 - **DNS/domains:** `sites/[id]/domains` POST
-- **Data export:** `apps/[id]/download` POST, `apps/[id]/exports` POST
-- **Site config:** `sites/[id]/variables` PATCH
+- **Data export:** `apps/[id]/download` POST
 - **Database writes:** `database/[appId]/tables/[tableName]/rows` POST, PUT, DELETE
 
 **Config:** `use12HourExpiration` in `gasket-config.ts` (client-side, consumed by `@godaddy/gasket-auth`) maps to `useNewExpiration` in `gd-auth-service.ts` (server-side, consumed by `gd-auth` 1.5.0+). The two libraries use different property names for the same feature.

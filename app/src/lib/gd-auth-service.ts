@@ -105,7 +105,7 @@ export class GdAuthService {
   /**
    * Authenticate token using gd-auth (handles heartbeat automatically)
    */
-  async authenticate(token: string, level: 1 | 2 | 3 = 2): Promise<{ valid: boolean; payload?: any; reason?: string; authReason?: number }> {
+  async authenticate(token: string, level: 1 | 2 | 3 = 1): Promise<{ valid: boolean; payload?: any; reason?: string; authReason?: number }> {
     try {
       // If auth is disabled or not JWT mode, return mock success
       const envAuthType = process.env.AUTH_TYPE?.toLowerCase() || 'jwt';
