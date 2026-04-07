@@ -98,7 +98,7 @@ export function AnalyticsHorizontalSingleBarChart({
             tickFormatter={(v: string) => truncateLabel(v)}
             width={labelWidth}
           />
-          <Tooltip content={<ChartTooltip label={label} formatValue={formatValue} />} />
+          <Tooltip content={<ChartTooltip valueName={label} formatValue={formatValue} />} />
           <Bar dataKey="value" radius={[0, 6, 6, 0]} maxBarSize={28}>
             {data.map((_, index) => (
               <Cell

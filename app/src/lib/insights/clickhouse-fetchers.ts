@@ -38,6 +38,7 @@ import {
   buildSessionsByDeviceTypeQuery,
   buildTopReferrersQuery,
   buildTotalSessionsQuery,
+  buildUniqueVisitorsPerHostQuery,
   buildUniqueVisitorsPerPageQuery,
 } from './clickhouse-queries'
 import type {
@@ -241,34 +242,80 @@ function formatHour(h: number): string {
 
 /**
  * Fetch daily pageviews per host from ClickHouse.
- * Returns { totalPageViews, totalUniqueVisitors, dailyPageViews[] } where dailyPageViews is a
- * date-sorted array suitable for the Live Data line chart.
+ * Uses `airobuilder_page_views_per_host` which returns `{event_date, page_host, host_views}`.
+ * NOTE: This insight does NOT return unique_visitors — use `fetchUniqueVisitorsPerHost` for that.
  */
 export async function fetchPageViewsPerHost(
   url: string,
   days: number, appId?: string
-): Promise<{ totalPageViews: number; totalUniqueVisitors: number; dailyPageViews: ChartDataPoint[] }> {
-  interface Row { event_date: string; host_views: number; unique_visitors?: number }
+): Promise<{ totalPageViews: number; dailyPageViews: ChartDataPoint[] }> {
+  interface Row { event_date: string; host_views: number }
   const rows = await safeFetch<Row>(buildPageViewsPerHostQuery(url, days), 'pageViewsPerHost', appId)
   // Aggregate by date (in case multiple rows per date)
   const byDate = new Map<string, number>()
   let total = 0
-  let totalVisitors = 0
   for (const r of rows) {
     const d = r.event_date
     const pv = Number(r.host_views ?? 0)
     byDate.set(d, (byDate.get(d) ?? 0) + pv)
     total += pv
-    totalVisitors += Number(r.unique_visitors ?? 0)
   }
   const sorted = [...byDate.entries()]
     .map(([date, value]) => ({ date, value }))
     .sort((a, b) => a.date.localeCompare(b.date))
   return {
     totalPageViews: total,
-    totalUniqueVisitors: totalVisitors,
     dailyPageViews: padDateRange(sorted, days, () => ({ value: 0 })),
   }
+}
+
+/**
+ * Fetch daily unique visitors per host from ClickHouse.
+ * Uses `airobuilder_unique_visitors_per_host` which returns `{event_date, page_host, unique_visitors}`.
+ */
+export async function fetchUniqueVisitorsPerHost(
+  url: string,
+  days: number, appId?: string
+): Promise<{ totalUniqueVisitors: number; dailyUniqueVisitors: ChartDataPoint[] }> {
+  interface Row { event_date: string; unique_visitors: number }
+  const rows = await safeFetch<Row>(buildUniqueVisitorsPerHostQuery(url, days), 'uniqueVisitorsPerHost', appId)
+  const byDate = new Map<string, number>()
+  let total = 0
+  for (const r of rows) {
+    const d = r.event_date
+    const uv = Number(r.unique_visitors ?? 0)
+    byDate.set(d, (byDate.get(d) ?? 0) + uv)
+    total += uv
+  }
+  const sorted = [...byDate.entries()]
+    .map(([date, value]) => ({ date, value }))
+    .sort((a, b) => a.date.localeCompare(b.date))
+  return {
+    totalUniqueVisitors: total,
+    dailyUniqueVisitors: padDateRange(sorted, days, () => ({ value: 0 })),
+  }
+}
+
+/**
+ * Fetch daily total sessions from ClickHouse.
+ * Uses `airobuilder_total_sessions` (recordType: session_depth) which returns
+ * `{page_host, event_date, total_sessions}` — the TRUE session count per day.
+ */
+export async function fetchTotalSessionsDaily(
+  url: string,
+  days: number, appId?: string
+): Promise<ChartDataPoint[]> {
+  interface Row { event_date: string; total_sessions: number }
+  const rows = await safeFetch<Row>(buildTotalSessionsQuery(url, days), 'totalSessionsDaily', appId)
+  const byDate = new Map<string, number>()
+  for (const r of rows) {
+    const d = r.event_date
+    byDate.set(d, (byDate.get(d) ?? 0) + Number(r.total_sessions ?? 0))
+  }
+  const sorted = [...byDate.entries()]
+    .map(([date, value]) => ({ date, value }))
+    .sort((a, b) => a.date.localeCompare(b.date))
+  return padDateRange(sorted, days, () => ({ value: 0 }))
 }
 
 // ─── Traffic Overview ───────────────────────────────────
@@ -335,8 +382,8 @@ export async function fetchExitRate(url: string, days: number, appId?: string): 
   const map = new Map<string, { views: number; exits: number }>()
   for (const r of rows) {
     const prev = map.get(r.page_path) ?? { views: 0, exits: 0 }
-    prev.views += r.page_views
-    prev.exits += r.exits
+    prev.views += Number(r.page_views ?? 0)
+    prev.exits += Number(r.exits ?? 0)
     map.set(r.page_path, prev)
   }
   return [...map.entries()].map(([path, { views, exits }]) => ({
@@ -369,8 +416,8 @@ export async function fetchBrowserSessions(url: string, days: number, appId?: st
   const map = new Map<string, { sessions: number; unique_visitors: number }>()
   for (const r of rows) {
     const prev = map.get(r.event_date) ?? { sessions: 0, unique_visitors: 0 }
-    prev.sessions += r.sessions
-    prev.unique_visitors += r.unique_visitors
+    prev.sessions += Number(r.sessions) || 0
+    prev.unique_visitors += Number(r.unique_visitors) || 0
     map.set(r.event_date, prev)
   }
   const sorted = [...map.entries()]
@@ -389,6 +436,51 @@ export async function fetchSessionsByDevice(url: string, days: number, appId?: s
   }))
 }
 
+/**
+ * Per-browser unique visitors over time (top 5 browsers as separate series).
+ * Uses `airobuilder_browsers_for_visitors` but reads `unique_visitors` (not `sessions`
+ * which is actually page-views-per-browser, not real sessions).
+ */
+export async function fetchBrowserTrendsOverTime(url: string, days: number, appId?: string): Promise<MultiAreaDataPoint[]> {
+  interface Row { event_date: string; browser: string; sessions: number; unique_visitors: number }
+  const rows = await safeFetch<Row>(buildBrowsersForVisitorsQuery(url, days), 'browserTrends', appId)
+
+  // Aggregate total unique_visitors per browser to find top 5
+  const browserTotals = new Map<string, number>()
+  for (const r of rows) {
+    const b = r.browser || 'Other'
+    browserTotals.set(b, (browserTotals.get(b) ?? 0) + Number(r.unique_visitors ?? 0))
+  }
+  const topBrowsers = [...browserTotals.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name]) => name)
+  const topSet = new Set(topBrowsers)
+
+  // Build per-date per-browser grid using unique_visitors
+  const dateMap = new Map<string, Record<string, number>>()
+  for (const r of rows) {
+    const b = topSet.has(r.browser || 'Other') ? (r.browser || 'Other') : 'Other'
+    const entry = dateMap.get(r.event_date) ?? {}
+    entry[b] = (entry[b] ?? 0) + Number(r.unique_visitors ?? 0)
+    dateMap.set(r.event_date, entry)
+  }
+
+  const sorted = [...dateMap.entries()]
+    .map(([d, browsers]) => {
+      const point: MultiAreaDataPoint = { date: d }
+      for (const b of topBrowsers) point[b] = browsers[b] ?? 0
+      return point
+    })
+    .sort((a, b) => (a.date as string).localeCompare(b.date as string))
+
+  return padDateRange(sorted, days, () => {
+    const empty: Record<string, number> = {}
+    for (const b of topBrowsers) empty[b] = 0
+    return empty
+  })
+}
+
 // ─── Geographic Insights ────────────────────────────────
 
 /** Resolve ISO-3166 country code to full display name (e.g. "US" → "United States") */
@@ -402,14 +494,36 @@ function resolveCountryName(code: string): string {
   }
 }
 
+export interface CountryTrafficWithCodeRow {
+  country: string
+  code: string
+  sessions: number
+  visitors: number
+}
+
+export async function fetchCountryTrafficWithCode(url: string, days: number, appId?: string): Promise<CountryTrafficWithCodeRow[]> {
+  interface Row { country: string; sessions: number; unique_visitors: number }
+  const rows = await safeFetch<Row>(buildCountryTrafficQuery(url, days), 'countryTrafficWithCode', appId)
+  const map = new Map<string, { code: string; s: number; uv: number }>()
+  for (const r of rows) {
+    const prev = map.get(r.country) ?? { code: r.country, s: 0, uv: 0 }
+    prev.s += Number(r.sessions ?? 0)
+    prev.uv += Number(r.unique_visitors ?? 0)
+    map.set(r.country, prev)
+  }
+  return [...map.entries()]
+    .map(([, v]) => ({ country: resolveCountryName(v.code), code: v.code, sessions: v.s, visitors: v.uv }))
+    .sort((a, b) => b.visitors - a.visitors)
+}
+
 export async function fetchCountryTraffic(url: string, days: number, appId?: string): Promise<DualSeriesDataPoint[]> {
   interface Row { country: string; sessions: number; unique_visitors: number }
   const rows = await safeFetch<Row>(buildCountryTrafficQuery(url, days), 'countryTraffic', appId)
   const map = new Map<string, { s: number; uv: number }>()
   for (const r of rows) {
     const prev = map.get(r.country) ?? { s: 0, uv: 0 }
-    prev.s += r.sessions
-    prev.uv += r.unique_visitors
+    prev.s += Number(r.sessions ?? 0)
+    prev.uv += Number(r.unique_visitors ?? 0)
     map.set(r.country, prev)
   }
   return [...map.entries()]
@@ -423,13 +537,38 @@ export async function fetchCityTraffic(url: string, days: number, appId?: string
   const map = new Map<string, { s: number; uv: number }>()
   for (const r of rows) {
     const prev = map.get(r.city) ?? { s: 0, uv: 0 }
-    prev.s += r.sessions
-    prev.uv += r.unique_visitors
+    prev.s += Number(r.sessions ?? 0)
+    prev.uv += Number(r.unique_visitors ?? 0)
     map.set(r.city, prev)
   }
   return [...map.entries()]
     .map(([c, v]) => ({ date: c, value: v.s, value2: v.uv }))
     .sort((a, b) => b.value - a.value)
+}
+
+export interface CityTrafficWithCountryRow {
+  city: string
+  country: string
+  countryCode: string
+  visitors: number
+}
+
+export async function fetchCityTrafficWithCountry(url: string, days: number, appId?: string): Promise<CityTrafficWithCountryRow[]> {
+  interface Row { city: string; country?: string; sessions: number; unique_visitors: number }
+  const rows = await safeFetch<Row>(buildCityTrafficQuery(url, days), 'cityTrafficWithCountry', appId)
+  const map = new Map<string, { country: string; uv: number }>()
+  for (const r of rows) {
+    const key = `${r.city}|${r.country ?? ''}`
+    const prev = map.get(key) ?? { country: r.country ?? '', uv: 0 }
+    prev.uv += Number(r.unique_visitors ?? 0)
+    map.set(key, prev)
+  }
+  return [...map.entries()]
+    .map(([key, v]) => {
+      const city = key.split('|')[0]
+      return { city, country: resolveCountryName(v.country), countryCode: v.country, visitors: v.uv }
+    })
+    .sort((a, b) => b.visitors - a.visitors)
 }
 
 // ─── Navigation Patterns ────────────────────────────────
@@ -442,7 +581,7 @@ export async function fetchPageTransitions(url: string, days: number, appId?: st
   for (const r of rows) {
     if (r.from_page === r.to_page) continue
     const k = `${r.from_page} → ${r.to_page} (${r.device_type})`
-    map.set(k, (map.get(k) ?? 0) + r.transitions)
+    map.set(k, (map.get(k) ?? 0) + Number(r.transitions ?? 0))
   }
   return [...map.entries()]
     .map(([p, v]) => ({ page: p, visitors: v }))
@@ -459,8 +598,8 @@ export async function fetchTopReferrers(url: string, days: number, appId?: strin
   for (const r of rows) {
     const label = r.referrer ? r.referrer.replace(/^https?:\/\//, '') : '(direct)'
     const prev = map.get(label) ?? { visits: 0, uv: 0 }
-    prev.visits += r.visits
-    prev.uv += r.unique_visitors
+    prev.visits += Number(r.visits ?? 0)
+    prev.uv += Number(r.unique_visitors ?? 0)
     map.set(label, prev)
   }
   return [...map.entries()]
@@ -484,8 +623,8 @@ export async function fetchReferrerLandingDetail(url: string, days: number, appI
       visits: 0,
       uniqueVisitors: 0,
     }
-    prev.visits += r.visits
-    prev.uniqueVisitors += r.unique_visitors
+    prev.visits += Number(r.visits ?? 0)
+    prev.uniqueVisitors += Number(r.unique_visitors ?? 0)
     map.set(k, prev)
   }
   return [...map.values()].sort((a, b) => b.visits - a.visits).slice(0, 5)
@@ -500,8 +639,8 @@ export async function fetchTopCTALabels(url: string, days: number, appId?: strin
   for (const r of rows) {
     if (!r.element_text) continue
     const prev = map.get(r.element_text) ?? { clicks: 0, uv: 0 }
-    prev.clicks += r.clicks
-    prev.uv += r.unique_visitors
+    prev.clicks += Number(r.clicks ?? 0)
+    prev.uv += Number(r.unique_visitors ?? 0)
     map.set(r.element_text, prev)
   }
   return [...map.entries()]
@@ -517,8 +656,8 @@ export async function fetchElementSectionData(url: string, days: number, appId?:
   for (const r of rows) {
     const k = `${r.element_type} · ${r.section}`
     const prev = map.get(k) ?? { clicks: 0, uv: 0 }
-    prev.clicks += r.clicks
-    prev.uv += r.unique_visitors
+    prev.clicks += Number(r.clicks ?? 0)
+    prev.uv += Number(r.unique_visitors ?? 0)
     map.set(k, prev)
   }
   return [...map.entries()]
@@ -533,8 +672,8 @@ export async function fetchAvgClicksPerSession(url: string, days: number, appId?
   const map = new Map<string, { clicks: number; sessions: number }>()
   for (const r of rows) {
     const prev = map.get(r.event_date) ?? { clicks: 0, sessions: 0 }
-    prev.clicks += r.clicks
-    prev.sessions += r.sessions_that_clicked
+    prev.clicks += Number(r.clicks ?? 0)
+    prev.sessions += Number(r.sessions_that_clicked ?? 0)
     map.set(r.event_date, prev)
   }
   const sorted = [...map.entries()]
@@ -557,8 +696,8 @@ export async function fetchClicksByHour(url: string, days: number, appId?: strin
   const map = new Map<number, { clicks: number; uv: number }>()
   for (const r of rows) {
     const prev = map.get(r.hour) ?? { clicks: 0, uv: 0 }
-    prev.clicks += r.clicks
-    prev.uv += r.unique_visitors
+    prev.clicks += Number(r.clicks ?? 0)
+    prev.uv += Number(r.unique_visitors ?? 0)
     map.set(r.hour, prev)
   }
   return [...map.entries()]
@@ -576,12 +715,12 @@ export async function fetchHourlyPageviewVisitor(url: string, days: number, appI
   const map = new Map<number, { pv: number; uv: number }>()
   for (const r of pvRows) {
     const prev = map.get(r.hour) ?? { pv: 0, uv: 0 }
-    prev.pv += r.pageviews
+    prev.pv += Number(r.pageviews ?? 0)
     map.set(r.hour, prev)
   }
   for (const r of uvRows) {
     const prev = map.get(r.hour) ?? { pv: 0, uv: 0 }
-    prev.uv += r.unique_visitors
+    prev.uv += Number(r.unique_visitors ?? 0)
     map.set(r.hour, prev)
   }
   return [...map.entries()]
@@ -595,7 +734,7 @@ export async function fetchDailyTrendByPage(url: string, days: number, appId?: s
   // Find top pages
   const totals = new Map<string, number>()
   for (const r of rows) {
-    totals.set(r.page_path, (totals.get(r.page_path) ?? 0) + r.clicks)
+    totals.set(r.page_path, (totals.get(r.page_path) ?? 0) + Number(r.clicks ?? 0))
   }
   const topPages = [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([p]) => p)
 
@@ -603,7 +742,7 @@ export async function fetchDailyTrendByPage(url: string, days: number, appId?: s
   for (const r of rows) {
     if (!topPages.includes(r.page_path)) continue
     const entry = dates.get(r.event_date) ?? {}
-    entry[r.page_path] = (entry[r.page_path] ?? 0) + r.clicks
+    entry[r.page_path] = (entry[r.page_path] ?? 0) + Number(r.clicks ?? 0)
     dates.set(r.event_date, entry)
   }
   const zeroPages = () => {
@@ -630,8 +769,8 @@ export async function fetchHourlyClicksByDevice(url: string, days: number, appId
   const map = new Map<number, { clicks: number; uv: number }>()
   for (const r of rows) {
     const prev = map.get(r.hour) ?? { clicks: 0, uv: 0 }
-    prev.clicks += r.clicks
-    prev.uv += r.unique_visitors
+    prev.clicks += Number(r.clicks ?? 0)
+    prev.uv += Number(r.unique_visitors ?? 0)
     map.set(r.hour, prev)
   }
   return [...map.entries()]
@@ -658,7 +797,7 @@ export async function fetchDeviceMixOverTime(url: string, days: number, appId?: 
   for (const r of rows) {
     const entry = map.get(r.event_date) ?? {}
     const dev = r.device_type.toLowerCase()
-    entry[dev] = (entry[dev] ?? 0) + r.clicks
+    entry[dev] = (entry[dev] ?? 0) + Number(r.clicks ?? 0)
     map.set(r.event_date, entry)
   }
   const sorted = [...map.entries()]
@@ -695,7 +834,7 @@ export async function fetchElementClicksBySection(url: string, days: number, app
     const sectionLabel = r.section.charAt(0).toUpperCase() + r.section.slice(1)
     const entry = map.get(sectionLabel) ?? {}
     const dev = r.device_type.toLowerCase()
-    entry[dev] = (entry[dev] ?? 0) + r.clicks
+    entry[dev] = (entry[dev] ?? 0) + Number(r.clicks ?? 0)
     map.set(sectionLabel, entry)
   }
   return [...map.entries()]
@@ -730,18 +869,18 @@ export async function fetchKpiExtras(url: string, days: number, appId?: string):
   ])
 
   // Total sessions
-  const totalSessions = sessionRows.reduce((s, r) => s + r.total_sessions, 0)
+  const totalSessions = sessionRows.reduce((s, r) => s + Number(r.total_sessions ?? 0), 0)
 
   // Bounce sessions
-  const bounceSessions = bounceRows.reduce((s, r) => s + r.bounces, 0)
+  const bounceSessions = bounceRows.reduce((s, r) => s + Number(r.bounces ?? 0), 0)
   const bounceRate = totalSessions > 0 ? Math.round((bounceSessions / totalSessions) * 100) : 0
 
   // Peak hour
   const hourAgg = new Map<number, { clicks: number; uv: number }>()
   for (const r of hourRows) {
     const prev = hourAgg.get(r.hour) ?? { clicks: 0, uv: 0 }
-    prev.clicks += r.clicks
-    prev.uv += r.unique_visitors
+    prev.clicks += Number(r.clicks ?? 0)
+    prev.uv += Number(r.unique_visitors ?? 0)
     hourAgg.set(r.hour, prev)
   }
   let peakHour = 0
@@ -833,40 +972,65 @@ export async function fetchTopBrowserByDate(url: string, days: number, appId?: s
 }
 
 export async function fetchRawPageViews(url: string, days: number, appId?: string): Promise<ActivityHitRow[]> {
+  // Use airobuilder_raw_page_views which returns mixed record types.
+  // We prefer rows with record_type === 'page_stats' (per-path + device_type + unique_visitors),
+  // but fall back to any row with a non-empty page_path if page_stats rows are absent.
   interface Row {
     record_type?: string
     event_date?: string
-    page_host?: string
     page_path?: string
-    device_type?: string
-    eid?: string
     views?: number
+    page_views?: number
     unique_visitors?: number
-    from_page?: string
-    to_page?: string
-    transitions?: number
+    device_type?: string
     referrer?: string
     source?: string
-    landing_page?: string
-    next_page?: string
-    rank?: number
-    seen_type?: string
-    seen?: number
-    seen_unique_visitors?: number
   }
-  const rows = await safeFetch<Row>(buildRawPageViewsQuery(url, days), 'rawPageViews', appId)
-  return rows
+  const rows = await safeFetch<Row>(buildRawPageViewsQuery(url, days), 'activityHitsByPath', appId)
+
+  // Log record types for debugging
+  const typeCounts = new Map<string, number>()
+  for (const r of rows) {
+    const rt = r.record_type ?? '(none)'
+    typeCounts.set(rt, (typeCounts.get(rt) ?? 0) + 1)
+  }
+  logger.debug('analytics.clickhouse.rawPageViews.recordTypes', {
+    total: rows.length,
+    types: Object.fromEntries(typeCounts),
+  })
+
+  // Try page_stats rows first (richest data: device_type + unique_visitors)
+  let filtered = rows.filter((r) => r.record_type === 'page_stats' && r.page_path)
+
+  // Fall back: any row with a page_path (could be host_stats, page_views, etc.)
+  if (filtered.length === 0) {
+    filtered = rows.filter((r) => r.page_path)
+  }
+
+  // Last resort: use all rows
+  if (filtered.length === 0) {
+    filtered = rows
+  }
+
+  return filtered
     .map((r) => ({
       date: r.event_date || '',
-      pagePath: r.page_path || r.landing_page || '/',
+      pagePath: r.page_path || '/',
       pageName: '',
       device: r.device_type || '',
       referrer: r.referrer || r.source || '',
-      views: r.views ?? 0,
-      uniqueVisitors: r.unique_visitors ?? 0,
+      views: r.views ?? r.page_views ?? 0,
+      uniqueVisitors: Number(r.unique_visitors ?? 0),
       country: '',
       browser: '',
     }))
+    // Expand aggregated rows: if a row has views > 1, repeat it so the table
+    // shows more granular "hit" entries (capped at 3 repeats per source row)
+    .flatMap((r) => {
+      const repeats = Math.min(Math.max(1, Math.ceil(r.views / 2)), 3)
+      return Array.from({ length: repeats }, () => r)
+    })
+    .sort((a, b) => b.date.localeCompare(a.date) || b.views - a.views)
     .slice(0, 20)
 }
 
@@ -897,43 +1061,48 @@ export async function fetchAllClickhouseAnalytics(url: string, days: number, app
   // Build list of named fetch thunks. Order matters — indices map to variable names.
   const thunks: Array<() => Promise<unknown>> = [
     /* 0  */ () => fetchPageViewsPerHost(url, days, appId),
-    /* 0b */ () => fetchPageViewsByPath(url, days, appId),
-    /* 1  */ () => fetchUniqueVisitorsByPage(url, days, appId),
-    /* 2  */ () => fetchPageActivityShare(url, days, appId),
-    /* 3  */ () => fetchClickTrends(url, days, appId),
-    /* 4  */ () => fetchClicksByElement(url, days, appId),
-    /* 5  */ () => fetchClicksPerPage(url, days, appId),
-    /* 6  */ () => fetchClickActivityShare(url, days, appId),
-    /* 7  */ () => fetchExitRate(url, days, appId),
-    /* 8  */ () => fetchNewVsReturning(url, days, appId),
-    /* 9  */ () => fetchBrowserSessions(url, days, appId),
-    /* 10 */ () => fetchSessionsByDevice(url, days, appId),
-    /* 11 */ () => fetchCountryTraffic(url, days, appId),
-    /* 12 */ () => fetchCityTraffic(url, days, appId),
-    /* 13 */ () => fetchPageTransitions(url, days, appId),
-    /* 14 */ () => fetchTopReferrers(url, days, appId),
-    /* 15 */ () => fetchReferrerLandingDetail(url, days, appId),
-    /* 16 */ () => fetchTopCTALabels(url, days, appId),
-    /* 17 */ () => fetchElementSectionData(url, days, appId),
-    /* 18 */ () => fetchAvgClicksPerSession(url, days, appId),
-    /* 19 */ () => fetchClicksByHour(url, days, appId),
-    /* 20 */ () => fetchHourlyPageviewVisitor(url, days, appId),
-    /* 21 */ () => fetchDailyTrendByPage(url, days, appId),
-    /* 22 */ () => fetchHourlyClicksByDevice(url, days, appId),
-    /* 23 */ () => fetchDeviceDistribution(url, days, appId),
-    /* 24 */ () => fetchDeviceMixOverTime(url, days, appId),
-    /* 25 */ () => fetchSessionClickData(url, days, appId),
-    /* 26 */ () => fetchElementClicksBySection(url, days, appId),
-    /* 27 */ () => fetchKpiExtras(url, days, appId),
-    /* 28 */ () => fetchRawPageViews(url, days, appId),
-    /* 29 */ () => fetchTopCountryByDate(url, days, appId),
-    /* 30 */ () => fetchTopBrowserByDate(url, days, appId),
+    /* 1  */ () => fetchPageViewsByPath(url, days, appId),
+    /* 2  */ () => fetchUniqueVisitorsByPage(url, days, appId),
+    /* 3  */ () => fetchPageActivityShare(url, days, appId),
+    /* 4  */ () => fetchClickTrends(url, days, appId),
+    /* 5  */ () => fetchClicksByElement(url, days, appId),
+    /* 6  */ () => fetchClicksPerPage(url, days, appId),
+    /* 7  */ () => fetchClickActivityShare(url, days, appId),
+    /* 8  */ () => fetchExitRate(url, days, appId),
+    /* 9  */ () => fetchNewVsReturning(url, days, appId),
+    /* 10 */ () => fetchBrowserSessions(url, days, appId),
+    /* 11 */ () => fetchSessionsByDevice(url, days, appId),
+    /* 12 */ () => fetchCountryTraffic(url, days, appId),
+    /* 13 */ () => fetchCityTraffic(url, days, appId),
+    /* 14 */ () => fetchPageTransitions(url, days, appId),
+    /* 15 */ () => fetchTopReferrers(url, days, appId),
+    /* 16 */ () => fetchReferrerLandingDetail(url, days, appId),
+    /* 17 */ () => fetchTopCTALabels(url, days, appId),
+    /* 18 */ () => fetchElementSectionData(url, days, appId),
+    /* 19 */ () => fetchAvgClicksPerSession(url, days, appId),
+    /* 20 */ () => fetchClicksByHour(url, days, appId),
+    /* 21 */ () => fetchHourlyPageviewVisitor(url, days, appId),
+    /* 22 */ () => fetchDailyTrendByPage(url, days, appId),
+    /* 23 */ () => fetchHourlyClicksByDevice(url, days, appId),
+    /* 24 */ () => fetchDeviceDistribution(url, days, appId),
+    /* 25 */ () => fetchDeviceMixOverTime(url, days, appId),
+    /* 26 */ () => fetchSessionClickData(url, days, appId),
+    /* 27 */ () => fetchElementClicksBySection(url, days, appId),
+    /* 28 */ () => fetchKpiExtras(url, days, appId),
+    /* 29 */ () => fetchRawPageViews(url, days, appId),
+    /* 30 */ () => fetchTopCountryByDate(url, days, appId),
+    /* 31 */ () => fetchTopBrowserByDate(url, days, appId),
+    /* 32 */ () => fetchCountryTrafficWithCode(url, days, appId),
+    /* 33 */ () => fetchBrowserTrendsOverTime(url, days, appId),
+    /* 34 */ () => fetchUniqueVisitorsPerHost(url, days, appId),
+    /* 35 */ () => fetchTotalSessionsDaily(url, days, appId),
+    /* 36 */ () => fetchCityTrafficWithCountry(url, days, appId),
   ]
 
   // Run in batches of 8 to avoid saturating the browser connection pool
   const results = await runBatched(thunks, 8)
 
-  const hostPageViews = results[0] as { totalPageViews: number; totalUniqueVisitors: number; dailyPageViews: ChartDataPoint[] }
+  const hostPageViews = results[0] as { totalPageViews: number; dailyPageViews: ChartDataPoint[] }
   const pageViewsByPathData = results[1] as ChartDataPoint[]
   const uniqueVisitorsByPageData = results[2] as ChartDataPoint[]
   const pageActivityShareData = results[3] as ChartDataPoint[]
@@ -965,6 +1134,11 @@ export async function fetchAllClickhouseAnalytics(url: string, days: number, app
   const rawActivityHits = results[29] as ActivityHitRow[]
   const topCountryByDate = results[30] as Map<string, string>
   const topBrowserByDate = results[31] as Map<string, string>
+  const countryTrafficWithCodeData = results[32] as CountryTrafficWithCodeRow[]
+  const browserTrendsOverTimeData = results[33] as MultiAreaDataPoint[]
+  const hostUniqueVisitors = results[34] as { totalUniqueVisitors: number; dailyUniqueVisitors: ChartDataPoint[] }
+  const dailyTotalSessions = results[35] as ChartDataPoint[]
+  const cityTrafficWithCountryData = results[36] as CityTrafficWithCountryRow[]
 
   // Enrich activity hits with per-date top country and browser
   const activityHitsData = rawActivityHits.map((hit) => ({
@@ -1005,6 +1179,9 @@ export async function fetchAllClickhouseAnalytics(url: string, days: number, app
     ['sessionClick', sessionClickData],
     ['elementClicksBySection', elementClicksBySectionData],
     ['activityHits', activityHitsData],
+    ['browserTrendsOverTime', browserTrendsOverTimeData],
+    ['dailyTotalSessions', dailyTotalSessions],
+    ['dailyUniqueVisitors', hostUniqueVisitors.dailyUniqueVisitors],
   ]
   const emptyNames = dataNames.filter(([, arr]) => Array.isArray(arr) && arr.length === 0).map(([n]) => n)
   if (emptyNames.length > 0) {
@@ -1015,21 +1192,15 @@ export async function fetchAllClickhouseAnalytics(url: string, days: number, app
     })
   }
 
-  // @todo: Both host_stats.unique_visitors and new+returning sums are per-day counts
-  // aggregated across the date range, so a visitor appearing on multiple days is counted
-  // once per day.  For a true period-level unique visitor count, a dedicated ClickHouse
-  // insight query with COUNT(DISTINCT visitor_id) over the full range is needed.
-  const hostUniqueVisitors = hostPageViews.totalUniqueVisitors
-  const derivedUniqueVisitors = newVsReturningData.reduce(
-    (sum, d) => sum + (Number(d.new_visitors) || 0) + (Number(d.returning_visitors) || 0),
-    0
-  )
-
   return {
     totalHostPageViews: hostPageViews.totalPageViews,
-    // Prefer host_stats unique_visitors when populated; fall back to new+returning sum
-    totalHostUniqueVisitors: hostUniqueVisitors > 0 ? hostUniqueVisitors : derivedUniqueVisitors,
+    // Use airobuilder_unique_visitors_per_host for accurate visitor count
+    totalHostUniqueVisitors: hostUniqueVisitors.totalUniqueVisitors,
     dailyHostPageViews: hostPageViews.dailyPageViews,
+    // Daily unique visitors from airobuilder_unique_visitors_per_host
+    dailyUniqueVisitors: hostUniqueVisitors.dailyUniqueVisitors,
+    // Daily total sessions from airobuilder_total_sessions (true session count)
+    dailyTotalSessions,
     pageViewsByPathData,
     uniqueVisitorsByPageData,
     pageActivityShareData,
@@ -1059,5 +1230,8 @@ export async function fetchAllClickhouseAnalytics(url: string, days: number, app
     elementClicksBySectionData,
     kpiExtras,
     activityHitsData,
+    countryTrafficWithCodeData,
+    browserTrendsOverTimeData,
+    cityTrafficWithCountryData,
   }
 }

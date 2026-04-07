@@ -78,7 +78,7 @@ export function AnalyticsChart({ data, label, embedded }: AnalyticsChartProps) {
             tickLine={{ stroke: 'hsl(var(--muted-foreground))' }}
             tickFormatter={formatChartValue}
           />
-          <Tooltip content={<ChartTooltip label={chartLabel} />} />
+          <Tooltip content={<ChartTooltip valueName={chartLabel} />} />
           <Area
             type="monotone"
             dataKey="value"

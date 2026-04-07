@@ -22,11 +22,13 @@ import {
   buildPageTransitionsQuery,
   buildPageViewsPerHostQuery,
   buildPageViewsPerPathQuery,
+  buildRawPageViewsQuery,
   buildReferrerLandingPageQuery,
   buildReturningVisitorsQuery,
   buildSessionsByDeviceTypeQuery,
   buildTopReferrersQuery,
   buildTotalSessionsQuery,
+  buildUniqueVisitorsPerHostQuery,
   buildUniqueVisitorsPerPageQuery,
 } from '../clickhouse-queries'
 
@@ -267,6 +269,20 @@ describe('clickhouse-queries', () => {
       const query = buildPageViewsPerHostQuery(TEST_URL, TEST_DAYS)
       expect(query).toContain('insightName: "airobuilder_page_views_per_host"')
       expect(query).toContain('recordType: "host_stats"')
+    })
+
+    it('buildUniqueVisitorsPerHostQuery uses host_stats', () => {
+      const query = buildUniqueVisitorsPerHostQuery(TEST_URL, TEST_DAYS)
+      expect(query).toContain('insightName: "airobuilder_unique_visitors_per_host"')
+      expect(query).toContain('recordType: "host_stats"')
+    })
+
+    it('buildRawPageViewsQuery includes limit: 100', () => {
+      const query = buildRawPageViewsQuery(TEST_URL, TEST_DAYS)
+      expect(query).toContain('insightName: "airobuilder_raw_page_views"')
+      expect(query).toContain('limit: 100')
+      // Should NOT be the old limit of 20
+      expect(query).not.toContain('limit: 20')
     })
   })
 

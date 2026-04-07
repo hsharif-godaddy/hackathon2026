@@ -134,5 +134,8 @@ export const buildAvgSessionDurationQuery = (url: string, days: number) =>
 export const buildPageViewsPerHostQuery = (url: string, days: number) =>
   q('airobuilder_page_views_per_host', url, days, { recordType: 'host_stats' })
 
+export const buildUniqueVisitorsPerHostQuery = (url: string, days: number) =>
+  q('airobuilder_unique_visitors_per_host', url, days, { recordType: 'host_stats' })
+
 export const buildRawPageViewsQuery = (url: string, days: number) =>
-  q('airobuilder_raw_page_views', url, days, { limit: 20 })
+  q('airobuilder_raw_page_views', url, days, { limit: 100 })

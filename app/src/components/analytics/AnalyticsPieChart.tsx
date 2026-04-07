@@ -10,6 +10,7 @@ import {
 import text from '@ux/text'
 
 import { useTranslations } from '@/hooks/useTranslations'
+import { Tooltip as InfoTooltip, TooltipContent, TooltipTrigger } from '@/lib/shadcn/tooltip'
 import { ChartTooltip } from './ChartTooltip'
 
 interface ChartDataPoint {
@@ -20,6 +21,8 @@ interface ChartDataPoint {
 interface AnalyticsPieChartProps {
   data: ChartDataPoint[]
   label?: string
+  /** Optional tooltip shown on info icon next to title */
+  tooltip?: string
 }
 
 const COLORS = ['var(--color-ai)', 'var(--color-ai-light)', 'var(--color-chart-blue)', 'var(--color-chart-green)', 'var(--color-chart-amber)', 'var(--color-chart-pink)', 'var(--color-chart-cyan)', 'var(--color-chart-violet)']
@@ -33,7 +36,7 @@ const COLORS = ['var(--color-ai)', 'var(--color-ai-light)', 'var(--color-chart-b
  * @param data - Array of data points with date and value
  * @param label - Chart label
  */
-export function AnalyticsPieChart({ data, label = 'Distribution' }: AnalyticsPieChartProps) {
+export function AnalyticsPieChart({ data, label = 'Distribution', tooltip }: AnalyticsPieChartProps) {
   const chartId = useId().replace(/:/g, '')
   const t = useTranslations()
 
@@ -56,7 +59,7 @@ export function AnalyticsPieChart({ data, label = 'Distribution' }: AnalyticsPie
     const cy = Number(cyProp ?? 0)
     const midAngle = Number(midAngleProp ?? 0)
     const or = Number(orProp ?? 0)
-    const radius = or + 18
+    const radius = or + 14
     const x = cx + radius * Math.cos(-midAngle * RADIAN)
     const y = cy + radius * Math.sin(-midAngle * RADIAN)
     const text = `${name ?? ''} (${((percent ?? 0) * 100).toFixed(0)}%)`
@@ -70,20 +73,32 @@ export function AnalyticsPieChart({ data, label = 'Distribution' }: AnalyticsPie
   return (
     <div
       data-slot="chart"
-      className="flex flex-col w-full rounded-lg border bg-intents-ux-box-backgroundColor p-5 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px min-h-[250px]"
+      className="flex flex-col w-full rounded-xl border bg-intents-ux-box-backgroundColor p-5 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:-translate-y-0.5"
     >
-      <div className="flex items-center gap-2 mb-3.5">
-        <span className="inline-block w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: 'var(--color-chart-pink)', boxShadow: '0 0 6px color-mix(in srgb, var(--color-chart-pink) 25%, transparent)' }} />
-        <text.span className="!text-[13px] !font-semibold">{label}</text.span>
+      <div className="flex items-center gap-2 mb-2">
+        <span className="inline-block w-[6px] h-[6px] rounded-full flex-shrink-0" style={{ background: 'var(--color-chart-pink)', boxShadow: '0 0 8px color-mix(in srgb, var(--color-chart-pink) 30%, transparent)' }} />
+        <text.span className="!text-[13px] !font-bold !tracking-tight">{label}</text.span>
+        {tooltip && (
+          <InfoTooltip>
+            <TooltipTrigger asChild>
+              <button type="button" aria-label="More information" className="shrink-0 text-muted-foreground/40 hover:text-muted-foreground transition-colors">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-[240px] text-xs">
+              {tooltip}
+            </TooltipContent>
+          </InfoTooltip>
+        )}
       </div>
-      <ResponsiveContainer width="100%" height={380} minHeight={250}>
+      <ResponsiveContainer width="100%" height={220} minHeight={160}>
         <PieChart>
           <Pie
             data={pieData}
             cx="50%"
             cy="50%"
-            innerRadius={55}
-            outerRadius={90}
+            innerRadius="30%"
+            outerRadius="50%"
             paddingAngle={3}
             dataKey="value"
             nameKey="name"
@@ -99,7 +114,7 @@ export function AnalyticsPieChart({ data, label = 'Distribution' }: AnalyticsPie
               />
             ))}
           </Pie>
-          <Tooltip content={<ChartTooltip label={label} titleFrom="name" />} />
+          <Tooltip content={<ChartTooltip valueName={label} titleFrom="name" />} />
         </PieChart>
       </ResponsiveContainer>
     </div>

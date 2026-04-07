@@ -76,7 +76,7 @@ export function AnalyticsBarChart({ data, label = 'Value' }: AnalyticsBarChartPr
             tickLine={{ stroke: 'hsl(var(--muted-foreground))' }}
             tickFormatter={formatChartValue}
           />
-          <Tooltip content={<ChartTooltip label={label} />} />
+          <Tooltip content={<ChartTooltip valueName={label} />} />
           <Bar
             dataKey="value"
             radius={[6, 6, 0, 0]}

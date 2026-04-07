@@ -47,6 +47,8 @@ const EMPTY_DATA: Omit<ClickhouseAnalyticsData, 'isLoading' | 'error'> = {
   totalHostPageViews: 0,
   totalHostUniqueVisitors: 0,
   dailyHostPageViews: EMPTY_ARRAY,
+  dailyUniqueVisitors: EMPTY_ARRAY,
+  dailyTotalSessions: EMPTY_ARRAY,
   pageViewsByPathData: EMPTY_ARRAY,
   uniqueVisitorsByPageData: EMPTY_ARRAY,
   pageActivityShareData: EMPTY_ARRAY,
@@ -76,6 +78,9 @@ const EMPTY_DATA: Omit<ClickhouseAnalyticsData, 'isLoading' | 'error'> = {
   elementClicksBySectionData: EMPTY_ARRAY,
   kpiExtras: EMPTY_KPI,
   activityHitsData: EMPTY_ARRAY,
+  countryTrafficWithCodeData: EMPTY_ARRAY,
+  cityTrafficWithCountryData: EMPTY_ARRAY,
+  browserTrendsOverTimeData: EMPTY_ARRAY,
 }
 
 /**

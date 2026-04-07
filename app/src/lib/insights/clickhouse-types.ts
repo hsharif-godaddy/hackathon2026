@@ -132,6 +132,11 @@ export interface ClickhouseAnalyticsData {
   totalHostUniqueVisitors: number
   dailyHostPageViews: ChartDataPoint[]
 
+  // Daily unique visitors from airobuilder_unique_visitors_per_host
+  dailyUniqueVisitors: ChartDataPoint[]
+  // Daily total sessions from airobuilder_total_sessions (true session count)
+  dailyTotalSessions: ChartDataPoint[]
+
   // Traffic Overview
   pageViewsByPathData: ChartDataPoint[]
   uniqueVisitorsByPageData: ChartDataPoint[]
@@ -184,6 +189,13 @@ export interface ClickhouseAnalyticsData {
 
   // KPIs (Row 2)
   kpiExtras: KpiExtras
+
+  // Geo Pro Plan
+  countryTrafficWithCodeData: import('./clickhouse-fetchers').CountryTrafficWithCodeRow[]
+  cityTrafficWithCountryData: import('./clickhouse-fetchers').CityTrafficWithCountryRow[]
+
+  // Device/Browser Trends
+  browserTrendsOverTimeData: MultiAreaDataPoint[]
 
   // Loading state
   isLoading: boolean

@@ -45,7 +45,10 @@ interface SingleSeriesProps extends ChartTooltipBaseProps {
   /** Single-series mode — renders one value row */
   variant?: 'single'
   payload?: SingleTooltipPayload[]
+  /** Recharts injects this as the XAxis value — used as the tooltip title */
   label?: string
+  /** Descriptive name for the value (e.g. "Page Views", "Clicks"). Won't be overridden by Recharts. */
+  valueName?: string
   /** How to derive the title. Defaults to `'date'` (reads `payload[0].payload.date`). */
   titleFrom?: 'date' | 'name'
   /** Value formatter — defaults to `formatChartValue` */
@@ -111,10 +114,11 @@ export function ChartTooltip(props: ChartTooltipProps) {
   }
 
   // Single-series (default)
-  const { label: seriesLabel, titleFrom = 'date', formatValue: fmt } = props
+  const { label: rechartsLabel, valueName, titleFrom = 'date', formatValue: fmt } = props
   const format = fmt ?? ((v: number) => formatChartValue(v))
   const entry = (payload as SingleTooltipPayload[])[0]
-  const title = titleFrom === 'name' ? entry.name : entry.payload.date
+  const title = titleFrom === 'name' ? entry.name : (rechartsLabel || entry.payload.date)
+  const seriesLabel = valueName || 'Value'
 
   return (
     <div className="bg-background/95 backdrop-blur-sm border rounded-lg shadow-lg p-3">
