@@ -18,6 +18,16 @@ vi.mock('@/utils/instrumentation', () => ({
   logClickEvent: vi.fn(() => vi.fn()),
 }));
 
+const { mockAppThumbnail } = vi.hoisted(() => ({
+  mockAppThumbnail: vi.fn(function MockAppThumbnail() {
+    return <div data-testid="app-thumbnail-mock" />;
+  }),
+}));
+
+vi.mock('@/app/apps/AppThumbnail', () => ({
+  default: mockAppThumbnail,
+}));
+
 import AppSiteRow from './AppSiteRow';
 
 const createMockSite = (overrides: Partial<SiteInfo> = {}): SiteInfo => ({
@@ -57,6 +67,33 @@ describe('AppSiteRow', function appSiteRowTests() {
       renderWithProviders(<AppSiteRow {...defaultProps} />);
 
       expect(screen.getByText('Test App')).toBeInTheDocument();
+    });
+
+    it('should pass agent_url from site to AppThumbnail', function passesAgentUrl() {
+      mockAppThumbnail.mockClear();
+      renderWithProviders(
+        <AppSiteRow
+          {...defaultProps}
+          site={createMockSite({ agent_url: 'https://agent.test/app' })}
+        />
+      );
+
+      expect(mockAppThumbnail).toHaveBeenCalled();
+      expect(mockAppThumbnail.mock.calls[0][0]).toMatchObject({
+        siteId: 'site-123',
+        agentUrl: 'https://agent.test/app',
+        size: 'md',
+      });
+    });
+
+    it('should pass undefined agentUrl when site has no agent_url', function noAgentUrl() {
+      mockAppThumbnail.mockClear();
+      renderWithProviders(<AppSiteRow {...defaultProps} />);
+
+      expect(mockAppThumbnail.mock.calls[0][0]).toMatchObject({
+        siteId: 'site-123',
+        agentUrl: undefined,
+      });
     });
 
     it('should render Published tag when isPublished is true', function renderPublishedTag() {

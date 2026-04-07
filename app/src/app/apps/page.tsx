@@ -1,13 +1,15 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
+import Pagination from '@ux/pagination'
 import Spinner from '@ux/spinner'
 import Tag from '@ux/tag'
 
 import AppCard, { AppCardEmptyState } from '@/app/apps/AppCard'
 import AcceptTransferDialog from '@/app/apps/components/AcceptTransferDialog'
+import { APPS_GRID_PAGE_SIZE } from '@/app/apps/constants'
 import { ProtectedRoute } from '@/components/auth'
 import { DevelopmentAdminSection } from '@/components/development'
 import AppInactivityAlert from '@/components/layout/AppInactivityAlert'
@@ -23,6 +25,7 @@ function SitesPageContent() {
   const t = useTranslations();
   const [adminActionLoading, setAdminActionLoading] = useState<string | null>(null)
   const [isAcceptTransferOpen, setIsAcceptTransferOpen] = useState(false)
+  const [appsPage, setAppsPage] = useState(1)
   const { data: isTransferEnabled } = useSwitchboard('appbuilder-transfer-ownership')
 
   const sites = useSitesStore((state) => state.allSites)
@@ -34,6 +37,27 @@ function SitesPageContent() {
 
   const totalSites = sites ? sites.length : 0
   const runningCount = sites ? sites.filter(site => site.status === SiteStatus.Running).length : 0
+
+  const appsTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(Math.max(0, totalSites) / APPS_GRID_PAGE_SIZE)),
+    [totalSites]
+  )
+
+  useEffect(() => {
+    setAppsPage((p) => Math.min(p, appsTotalPages))
+  }, [appsTotalPages])
+
+  const paginatedSites = useMemo(() => {
+    const start = (appsPage - 1) * APPS_GRID_PAGE_SIZE
+    return sites.slice(start, start + APPS_GRID_PAGE_SIZE)
+  }, [sites, appsPage])
+
+  const changeAppsPage = useCallback(function changeAppsPage(newOffset: number) {
+    setAppsPage(Math.max(1, Math.min(
+      Math.floor(newOffset / APPS_GRID_PAGE_SIZE) + 1,
+      appsTotalPages
+    )))
+  }, [appsTotalPages])
 
   useEffect(() => {
     logImpressionEvent('apps.page.view')();
@@ -122,13 +146,26 @@ function SitesPageContent() {
             isTransferEnabled={isTransferEnabled}
             onAcceptTransfer={() => setIsAcceptTransferOpen(true)}
           />
-          {totalSites > 0 && sites.map((site) => (
+          {totalSites > 0 && paginatedSites.map((site) => (
             <AppCard
               key={site.id}
               site={site}
             />
           ))}
         </div>
+
+        {totalSites > APPS_GRID_PAGE_SIZE && (
+          <div className="flex justify-center mt-4">
+            <Pagination
+              limit={APPS_GRID_PAGE_SIZE}
+              offset={(appsPage - 1) * APPS_GRID_PAGE_SIZE}
+              total={totalSites}
+              onChange={changeAppsPage}
+              atStart={appsPage === 1}
+              atEnd={appsPage === appsTotalPages}
+            />
+          </div>
+        )}
       </main>
 
       {isTransferEnabled && isAcceptTransferOpen && (

@@ -13,7 +13,8 @@ import AppThumbnail from './AppThumbnail';
 const mockUseAppThumbnail = vi.fn();
 
 vi.mock('@/hooks/useAppThumbnail', () => ({
-  useAppThumbnail: (siteId: string) => mockUseAppThumbnail(siteId),
+  useAppThumbnail: (siteId: string, enabled?: boolean, agentUrl?: string) =>
+    mockUseAppThumbnail(siteId, enabled, agentUrl),
 }));
 
 describe('AppThumbnail', () => {
@@ -153,8 +154,8 @@ describe('AppThumbnail', () => {
     });
   });
 
-  describe('passes siteId to hook correctly', () => {
-    it('should call useAppThumbnail with siteId', () => {
+  describe('passes props to useAppThumbnail', () => {
+    it('should call useAppThumbnail with enabled true and undefined agentUrl by default', () => {
       mockUseAppThumbnail.mockReturnValue({
         data: null,
         isLoading: false,
@@ -165,7 +166,29 @@ describe('AppThumbnail', () => {
         <AppThumbnail siteId={mockSiteId} siteName={mockSiteName} />
       );
 
-      expect(mockUseAppThumbnail).toHaveBeenCalledWith(mockSiteId);
+      expect(mockUseAppThumbnail).toHaveBeenCalledWith(mockSiteId, true, undefined);
+    });
+
+    it('should pass agentUrl to useAppThumbnail when provided', () => {
+      mockUseAppThumbnail.mockReturnValue({
+        data: null,
+        isLoading: false,
+        isError: false,
+      });
+
+      renderWithProviders(
+        <AppThumbnail
+          siteId={mockSiteId}
+          siteName={mockSiteName}
+          agentUrl="https://app.agent.example.com"
+        />
+      );
+
+      expect(mockUseAppThumbnail).toHaveBeenCalledWith(
+        mockSiteId,
+        true,
+        'https://app.agent.example.com'
+      );
     });
   });
 });

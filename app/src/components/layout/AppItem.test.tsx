@@ -6,6 +6,7 @@ import '@testing-library/jest-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
+import { SiteStatus } from '@/lib/control-plane/types';
 import { Site } from '@/stores/useSitesStore';
 import { renderWithProviders } from '@/tests/test-utils';
 import AppItem, { AppItemNew, AppItemSeeAll, AppItemSkeleton } from './AppItem';
@@ -22,11 +23,21 @@ vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((id) => id),
 }));
 
+const { mockAppThumbnail } = vi.hoisted(() => ({
+  mockAppThumbnail: vi.fn(function MockAppThumbnail() {
+    return <div data-testid="app-thumbnail-mock" />;
+  }),
+}));
+
+vi.mock('@/app/apps/AppThumbnail', () => ({
+  default: mockAppThumbnail,
+}));
+
 describe('AppItem', () => {
   const mockSite: Site = {
     id: 'site-123',
     name: 'My Test App',
-    status: 'running',
+    status: SiteStatus.Running,
     account_id: 'test-account',
     created_at: new Date('2024-01-01T00:00:00Z'),
     updated_at: new Date('2024-01-01T00:00:00Z'),
@@ -83,8 +94,26 @@ describe('AppItem', () => {
   it('should render AppThumbnail component', () => {
     renderWithProviders(<AppItem site={mockSite} />);
 
-    // AppThumbnail should be rendered with correct props
     expect(screen.getByText('My Test App')).toBeInTheDocument();
+  });
+
+  it('should pass agent_url from site to AppThumbnail', () => {
+    mockAppThumbnail.mockClear();
+    const siteWithAgent: Site = {
+      ...mockSite,
+      agent_url: 'https://agent.item.test',
+    };
+    renderWithProviders(<AppItem site={siteWithAgent} />);
+
+    expect(mockAppThumbnail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        siteId: 'site-123',
+        siteName: 'My Test App',
+        agentUrl: 'https://agent.item.test',
+        size: 'xs',
+      }),
+      undefined,
+    );
   });
 });
 

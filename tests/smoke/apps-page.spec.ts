@@ -15,7 +15,7 @@ import { test, expect } from '@playwright/test';
 
 import { deleteAllSitesViaAPI } from '../helpers/api';
 import { handleSsoLogin, openUserMenu, ensureAuthenticated } from '../helpers/auth';
-import { LONG_TIMEOUT, CHAT_INPUT_TIMEOUT, DEFAULT_TIMEOUT, PREVIEW_TIMEOUT, getSpecPrefix } from '../helpers/constants';
+import { LONG_TIMEOUT, CHAT_INPUT_TIMEOUT, DEFAULT_TIMEOUT, PREVIEW_TIMEOUT, APPS_GRID_PAGE_SIZE, getSpecPrefix } from '../helpers/constants';
 import { waitForDevelopPage } from '../helpers/ui';
 
 test.describe('Apps Page & Navigation', () => {
@@ -202,6 +202,119 @@ test.describe('Apps Page & Navigation', () => {
     console.log(`  ✓ App deleted - now ${countBefore - 1} apps remain`);
 
     console.log('🎉 All apps page tests passed!');
+  });
+
+  test('Apps Page Pagination - Next/Prev navigation with intercepted API', async ({ page }) => {
+    const TOTAL_SITES = APPS_GRID_PAGE_SIZE + 2;
+
+    // ========================================
+    // STEP 1: Authenticate
+    // ========================================
+    console.log('🔐 Step 1: Authenticating...');
+    await page.goto('/');
+    const promptInput = page.getByTestId('homepage-prompt-input');
+    await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
+
+    await openUserMenu(page);
+    await page.locator('[data-eid*="user_menu.sign_in"]').click();
+    await handleSsoLogin(page);
+    await page.waitForURL('**/', { timeout: LONG_TIMEOUT });
+    await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
+    console.log('✅ Authenticated');
+
+    // ========================================
+    // STEP 2: Intercept GET /api/sites with synthetic records
+    // ========================================
+    console.log(`🔧 Step 2: Setting up API intercept (${TOTAL_SITES} sites)...`);
+    const syntheticSites = Array.from({ length: TOTAL_SITES }, (_, i) => ({
+      id: `pagination-test-site-${i}`,
+      name: `Pagination App ${i + 1}`,
+      status: 'running',
+      account_id: 'test-account',
+      initial_prompt: `Test prompt ${i + 1}`,
+      agent_url: `https://agent-${i}.test`,
+      preview_url: `https://preview-${i}.test`,
+      created_at: new Date(Date.now() - i * 60000).toISOString(),
+      updated_at: new Date(Date.now() - i * 60000).toISOString(),
+      variants: [],
+    }));
+
+    await page.route('**/api/sites', (route, request) => {
+      if (request.method() === 'GET' && !request.url().includes('/api/sites/')) {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(syntheticSites),
+        });
+      }
+      return route.continue();
+    });
+
+    try {
+      // ========================================
+      // STEP 3: Navigate to /apps, verify first page
+      // ========================================
+      console.log('📋 Step 3: Verifying first page...');
+      await page.goto('/apps');
+      await page.getByTestId('app-card-edit-button').first().waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+
+      const firstPageCards = await page.getByTestId('app-card-edit-button').count();
+      expect(firstPageCards).toBe(APPS_GRID_PAGE_SIZE);
+      console.log(`  ✓ First page shows ${firstPageCards} cards (expected ${APPS_GRID_PAGE_SIZE})`);
+
+      await expect(page.getByText('Pagination App 1')).toBeVisible();
+      await expect(page.getByText(`Pagination App ${APPS_GRID_PAGE_SIZE}`)).toBeVisible();
+      await expect(page.getByText(`Pagination App ${APPS_GRID_PAGE_SIZE + 1}`)).not.toBeVisible();
+      console.log('  ✓ Correct apps visible on page 1');
+
+      const paginationNav = page.locator('nav.ux-pagination');
+      await expect(paginationNav).toBeVisible();
+      console.log('  ✓ Pagination controls visible');
+
+      // ========================================
+      // STEP 4: Click Next, verify second page
+      // ========================================
+      console.log('➡️ Step 4: Navigating to page 2...');
+      const nextButton = page.getByRole('button', { name: 'Go to next page' });
+      await expect(nextButton).toBeEnabled();
+      await nextButton.click();
+
+      await expect(page.getByText(`Pagination App ${APPS_GRID_PAGE_SIZE + 1}`)).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      await expect(page.getByText(`Pagination App ${TOTAL_SITES}`)).toBeVisible();
+
+      const secondPageCards = await page.getByTestId('app-card-edit-button').count();
+      expect(secondPageCards).toBe(TOTAL_SITES - APPS_GRID_PAGE_SIZE);
+      console.log(`  ✓ Page 2 shows ${secondPageCards} cards (expected ${TOTAL_SITES - APPS_GRID_PAGE_SIZE})`);
+
+      await expect(page.getByText('Pagination App 1')).not.toBeVisible();
+      console.log('  ✓ Page 1 apps no longer visible');
+
+      await expect(nextButton).toBeDisabled();
+      console.log('  ✓ Next button disabled on last page');
+
+      // ========================================
+      // STEP 5: Click Prev, verify return to page 1
+      // ========================================
+      console.log('⬅️ Step 5: Navigating back to page 1...');
+      const prevButton = page.getByRole('button', { name: 'Go to previous page' });
+      await expect(prevButton).toBeEnabled();
+      await prevButton.click();
+
+      await expect(page.getByText('Pagination App 1')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      await expect(page.getByText(`Pagination App ${APPS_GRID_PAGE_SIZE}`)).toBeVisible();
+      await expect(page.getByText(`Pagination App ${APPS_GRID_PAGE_SIZE + 1}`)).not.toBeVisible();
+
+      const backToFirstPageCards = await page.getByTestId('app-card-edit-button').count();
+      expect(backToFirstPageCards).toBe(APPS_GRID_PAGE_SIZE);
+      console.log(`  ✓ Back to page 1 with ${backToFirstPageCards} cards`);
+
+      await expect(prevButton).toBeDisabled();
+      console.log('  ✓ Prev button disabled on first page');
+
+      console.log('🎉 Pagination tests passed!');
+    } finally {
+      await page.unroute('**/api/sites');
+    }
   });
 
   test('Homepage Prompt Input - Validation & Suggestions', async ({ page }) => {

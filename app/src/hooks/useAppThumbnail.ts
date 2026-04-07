@@ -1,16 +1,18 @@
 import { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { buildDynamicApiUrl } from '@/config/dynamic-api';
+import { buildAgentAppEndpointUrl, buildDynamicApiUrl } from '@/config/dynamic-api';
 import { agentFetch } from '@/lib/agent-fetch';
 import { logger } from '@/lib/request-context';
 
 /**
  * Fetch thumbnail for an app and return as object URL
  */
-async function fetchThumbnail(siteId: string): Promise<string | null> {
+async function fetchThumbnail(siteId: string, agentUrl?: string): Promise<string | null> {
   try {
-    const apiUrl = await buildDynamicApiUrl('screenshot', siteId);
+    const apiUrl = agentUrl
+      ? buildAgentAppEndpointUrl(agentUrl, siteId, 'screenshot')
+      : await buildDynamicApiUrl('screenshot', siteId);
 
     const response = await agentFetch(apiUrl, {
       method: 'GET',
@@ -54,18 +56,21 @@ async function fetchThumbnail(siteId: string): Promise<string | null> {
  *
  * @param siteId - The app/site ID to fetch thumbnail for
  * @param enabled - Whether to fetch the thumbnail (default: true)
+ * @param agentUrl - Optional agent base URL from list payload; when set, avoids GET /api/sites/:id
  *
  * @example
  * ```tsx
  * const { data: thumbnailUrl, isLoading, isError } = useAppThumbnail(siteId);
  * ```
  */
-export function useAppThumbnail(siteId: string, enabled = true) {
+export function useAppThumbnail(siteId: string, enabled = true, agentUrl?: string) {
   const queryClient = useQueryClient();
+  const normalizedAgentUrl = agentUrl?.trim() || undefined;
+  const cacheKeySuffix = normalizedAgentUrl ?? '';
 
   const query = useQuery({
-    queryKey: ['app-thumbnail', siteId],
-    queryFn: () => fetchThumbnail(siteId),
+    queryKey: ['app-thumbnail', siteId, cacheKeySuffix],
+    queryFn: () => fetchThumbnail(siteId, normalizedAgentUrl),
     enabled: enabled && !!siteId,
     staleTime: 5 * 60 * 1000, // 5 minutes - thumbnails don't change often
     gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes after last use
@@ -73,20 +78,18 @@ export function useAppThumbnail(siteId: string, enabled = true) {
     refetchOnWindowFocus: false, // Don't refetch thumbnails on focus
   });
 
-  // Clean up object URL when component unmounts or siteId changes
   useEffect(() => {
+    const thumbKey = ['app-thumbnail', siteId, cacheKeySuffix] as const;
     return () => {
-      const cachedUrl = queryClient.getQueryData<string | null>(['app-thumbnail', siteId]);
+      const cachedUrl = queryClient.getQueryData<string | null>(thumbKey);
       if (cachedUrl) {
-        // Only revoke if this is the last observer
-        const queryState = queryClient.getQueryState(['app-thumbnail', siteId]);
-        // Check if no other components are observing this query
-        if (queryState && queryClient.getQueryCache().find({ queryKey: ['app-thumbnail', siteId] })?.getObserversCount() === 1) {
+        const queryState = queryClient.getQueryState(thumbKey);
+        if (queryState && queryClient.getQueryCache().find({ queryKey: [...thumbKey] })?.getObserversCount() === 1) {
           URL.revokeObjectURL(cachedUrl);
         }
       }
     };
-  }, [queryClient, siteId]);
+  }, [queryClient, siteId, cacheKeySuffix]);
 
   return query;
 }

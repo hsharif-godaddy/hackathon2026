@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FormattedMessage } from 'react-intl';
 import Box from '@ux/box'
 import Button from '@ux/button'
@@ -58,7 +58,14 @@ export default function AppCard({ site }: { site: SiteInfo }) {
 
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [alertState, setAlertState] = useState<AlertState>({ siteId: null, type: null, message: '' })
-  const [publishedUrl, setPublishedUrl] = useState<string | null>(null)
+  const [optimisticUnpublished, setOptimisticUnpublished] = useState(false)
+  const publishedUrl = useMemo(function derivePublishedUrl() {
+    if (optimisticUnpublished) return null
+    if (site.published_url && hasBeenPublished(site)) {
+      return site.published_url
+    }
+    return null
+  }, [site, optimisticUnpublished])
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
   const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false)
   const [cancelTransferError, setCancelTransferError] = useState<string | null>(null)
@@ -103,31 +110,10 @@ export default function AppCard({ site }: { site: SiteInfo }) {
     }
   }, [site.id])
 
-  useEffect(function load() {
+  useEffect(function loadTransferStatus() {
+    if (!isTransferEnabled) return
     const controller = new AbortController()
-
-    const fetchSiteDetails = async () => {
-      try {
-        const response = await appFetch(`/api/sites/${site.id}`, { signal: controller.signal })
-        if (response.ok) {
-          const siteDetails = await response.json()
-          if (siteDetails.published_url && hasBeenPublished(siteDetails)) {
-            setPublishedUrl(siteDetails.published_url)
-          }
-        }
-      } catch (error) {
-        if (error instanceof DOMException && error.name === 'AbortError') return
-        logger.error('site.details.fetch.failed', {
-          siteId: site.id,
-          error: error instanceof Error ? error.message : String(error)
-        })
-      }
-    }
-
-    fetchSiteDetails()
-    if (isTransferEnabled) {
-      fetchTransferStatus(controller.signal)
-    }
+    fetchTransferStatus(controller.signal)
     return () => controller.abort()
   }, [site.id, fetchTransferStatus, isTransferEnabled])
 
@@ -258,8 +244,12 @@ export default function AppCard({ site }: { site: SiteInfo }) {
       {
         onSuccess: async () => {
           setIsUnpublishModalOpen(false)
-          setPublishedUrl(null)
-          await fetchAllSites()
+          setOptimisticUnpublished(true)
+          try {
+            await fetchAllSites()
+          } finally {
+            setOptimisticUnpublished(false)
+          }
         },
       }
     )
@@ -507,6 +497,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
       <AppThumbnail
         siteId={site.id}
         siteName={site.name || t('builder_apps_alert_delete_untitled')}
+        agentUrl={site.agent_url}
       />
     </div>
   )

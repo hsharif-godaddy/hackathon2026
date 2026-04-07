@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
 import { useSwitchboard } from '@/hooks/useSwitchboard';
+import { SiteStatus } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
 import { useSitesStore } from '@/stores/useSitesStore';
 import { createMockSite, mockInstrumentation, mockRouter } from '@/tests/mocks';
@@ -101,64 +102,42 @@ describe('AppCard', () => {
   });
 
   describe('renders status correctly', () => {
-    it('should display published status when app is published', async () => {
+    it('should display published status when app is published', () => {
       const publishedSite = createMockSite({
         variants: ['publish'],
+        published_url: 'https://published.test/app',
       });
-      
-      vi.mocked(appFetch).mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          ...mockSite,
-          published_url: 'https://published.test/app',
-          published_at: '2024-01-01T00:00:00.000Z',
-          variants: ['publish'],
-        }),
-      } as Response);
-      
+
       renderWithProviders(<AppCard site={publishedSite} />);
-      
-      await waitFor(() => {
-        expect(screen.getByText('builder_status_published')).toBeInTheDocument();
-      });
+
+      expect(screen.getByText('builder_status_published')).toBeInTheDocument();
     });
 
     it('should display error status when there is a failure', () => {
-      const failedSite = createMockSite({ status: 'failed' });
+      const failedSite = createMockSite({ status: SiteStatus.Failed });
       renderWithProviders(<AppCard site={failedSite} />);
 
       expect(screen.getByText('builder_status_error')).toBeInTheDocument();
     });
 
     it('should display error status when there is an error', () => {
-      const errorSite = createMockSite({ status: 'error' });
+      const errorSite = createMockSite({ status: SiteStatus.Error });
       renderWithProviders(<AppCard site={errorSite} />);
 
       expect(screen.getByText('builder_status_error')).toBeInTheDocument();
     });
 
-    it('should display published and error status when both are present', async () => {
+    it('should display published and error status when both are present', () => {
       const publishedAndErrorSite = createMockSite({
         variants: ['publish'],
-        status: 'error',
+        status: SiteStatus.Error,
+        published_url: 'https://published.test/app',
       });
-      
-      vi.mocked(appFetch).mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          ...mockSite,
-          published_url: 'https://published.test/app',
-          published_at: '2024-01-01T00:00:00.000Z',
-          variants: ['publish'],
-        }),
-      } as Response);
-      
+
       renderWithProviders(<AppCard site={publishedAndErrorSite} />);
-      
-      await waitFor(() => {
-        expect(screen.getByText('builder_status_published')).toBeInTheDocument();
-        expect(screen.getByText('builder_status_error')).toBeInTheDocument();
-      });
+
+      expect(screen.getByText('builder_status_published')).toBeInTheDocument();
+      expect(screen.getByText('builder_status_error')).toBeInTheDocument();
     });
   });
 
@@ -204,7 +183,7 @@ describe('AppCard', () => {
     });
 
     it('should not show preview menu item when site is not running', async () => {
-      const stoppedSite = createMockSite({ status: 'stopped' });
+      const stoppedSite = createMockSite({ status: SiteStatus.Stopped });
       const { user } = renderWithProviders(<AppCard site={stoppedSite} />);
 
       const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
@@ -216,7 +195,7 @@ describe('AppCard', () => {
     });
 
     it('should not show preview menu item when preview_url is missing', async () => {
-      const siteWithoutPreview = createMockSite({ status: 'running', preview_url: undefined });
+      const siteWithoutPreview = createMockSite({ status: SiteStatus.Running, preview_url: undefined });
       const { user } = renderWithProviders(<AppCard site={siteWithoutPreview} />);
 
       const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
@@ -250,25 +229,12 @@ describe('AppCard', () => {
     });
 
     it('should show visit site menu item when publishedUrl exists and hasBeenPublished returns true', async () => {
-      vi.mocked(appFetch).mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          ...mockSite,
-          published_url: 'https://published.test/app',
-          published_at: '2024-01-01T00:00:00.000Z',
-          variants: ['publish'],
-        }),
-      } as Response);
-
-      const { user } = renderWithProviders(<AppCard site={mockSite} />);
-
-      await waitFor(() => {
-        expect(appFetch).toHaveBeenCalled();
+      const publishedListSite = createMockSite({
+        published_url: 'https://published.test/app',
+        variants: ['publish'],
       });
 
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: 'builder_apps_menu_actions' })).toBeInTheDocument();
-      });
+      const { user } = renderWithProviders(<AppCard site={publishedListSite} />);
 
       const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
       await user.click(actionsMenuButton);
@@ -279,21 +245,13 @@ describe('AppCard', () => {
     });
 
     it('should not show visit site menu item when publishedUrl exists but hasBeenPublished returns false', async () => {
-      vi.mocked(appFetch).mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          ...mockSite,
-          published_url: 'https://published.test/app',
-          published_at: '2024-01-01T00:00:00.000Z',
-          variants: [],
-        }),
-      } as Response);
-
-      const { user } = renderWithProviders(<AppCard site={mockSite} />);
-
-      await waitFor(() => {
-        expect(appFetch).toHaveBeenCalled();
+      const notPublishedListSite = createMockSite({
+        published_url: 'https://published.test/app',
+        variants: [],
+        variantsWithLifecycle: [],
       });
+
+      const { user } = renderWithProviders(<AppCard site={notPublishedListSite} />);
 
       const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
       await user.click(actionsMenuButton);
@@ -304,19 +262,7 @@ describe('AppCard', () => {
     });
 
     it('should not show visit site menu item when publishedUrl does not exist', async () => {
-      vi.mocked(appFetch).mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          ...mockSite,
-          published_url: null,
-        }),
-      } as Response);
-
       const { user } = renderWithProviders(<AppCard site={mockSite} />);
-
-      await waitFor(() => {
-        expect(appFetch).toHaveBeenCalled();
-      });
 
       const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
       await user.click(actionsMenuButton);
@@ -350,25 +296,12 @@ describe('AppCard', () => {
 
     it('should open published URL in new window when visit site is clicked', async () => {
       const publishedUrl = 'https://published.test/app';
-      vi.mocked(appFetch).mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          ...mockSite,
-          published_url: publishedUrl,
-          published_at: '2024-01-01T00:00:00.000Z',
-          variants: ['publish'],
-        }),
-      } as Response);
-
-      const { user } = renderWithProviders(<AppCard site={mockSite} />);
-
-      await waitFor(() => {
-        expect(appFetch).toHaveBeenCalled();
+      const publishedListSite = createMockSite({
+        published_url: publishedUrl,
+        variants: ['publish'],
       });
 
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: 'builder_apps_menu_actions' })).toBeInTheDocument();
-      });
+      const { user } = renderWithProviders(<AppCard site={publishedListSite} />);
 
       const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
       await user.click(actionsMenuButton);
@@ -398,10 +331,10 @@ describe('AppCard', () => {
       });
 
       const expectedHref = `/develop/${mockSite.id}?siteId=${mockSite.id}`;
-      
+
       const editText = screen.getByText('builder_common_edit');
       const editItem = editText.closest('a') || editText.closest('[role="menuitem"]') || editText;
-      
+
       await waitFor(() => {
         expect(editItem).toHaveAttribute('href', expectedHref);
       });
@@ -418,10 +351,10 @@ describe('AppCard', () => {
       });
 
       const expectedHref = `/develop/${mockSite.id}?siteId=${mockSite.id}&settings=domain&tab=settings`;
-      
+
       const settingsText = screen.getByText('builder_apps_menu_settings');
       const settingsItem = settingsText.closest('a') || settingsText.closest('[role="menuitem"]') || settingsText;
-      
+
       await waitFor(() => {
         expect(settingsItem).toHaveAttribute('href', expectedHref);
       });
@@ -504,23 +437,10 @@ describe('AppCard', () => {
           { variant: 'preview', status: 'active' },
           { variant: 'publish', status: 'active' },
         ],
+        published_url: 'https://published.test/app',
       });
-
-      vi.mocked(appFetch).mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          ...publishedSite,
-          published_url: 'https://published.test/app',
-          published_at: '2024-01-01T00:00:00.000Z',
-          variants: ['preview', 'publish'],
-        }),
-      } as Response);
 
       const { user } = renderWithProviders(<AppCard site={publishedSite} />);
-
-      await waitFor(() => {
-        expect(appFetch).toHaveBeenCalled();
-      });
 
       await clickMenuItemAndExpectNoNavigation(user, () => screen.getByTestId('app-card-unpublish-button'));
     });
@@ -657,36 +577,6 @@ describe('AppCard', () => {
     });
   });
 
-  describe('fetches site details on mount', () => {
-    it('should fetch site details to check for published URL', async () => {
-      vi.mocked(appFetch).mockResolvedValue({
-        ok: true,
-        json: async () => mockSite,
-      } as Response);
-
-      renderWithProviders(<AppCard site={mockSite} />);
-
-      await waitFor(() => {
-        expect(appFetch).toHaveBeenCalledWith(
-          `/api/sites/${mockSite.id}`,
-          expect.objectContaining({ signal: expect.any(AbortSignal) })
-        );
-      });
-    });
-
-    it('should handle fetch errors gracefully', async () => {
-      vi.mocked(appFetch).mockRejectedValue(new Error('Network error'));
-
-      renderWithProviders(<AppCard site={mockSite} />);
-
-      await waitFor(() => {
-        expect(appFetch).toHaveBeenCalled();
-      });
-
-      expect(screen.getByText('Test Application')).toBeInTheDocument();
-    });
-  });
-
   describe('renders thumbnail', () => {
     it('should render AppThumbnail component', async () => {
       renderWithProviders(<AppCard site={mockSite} />);
@@ -740,10 +630,8 @@ describe('AppCard', () => {
       renderWithProviders(<AppCard site={mockSite} />);
 
       await waitFor(() => {
-        expect(appFetch).toHaveBeenCalled();
+        expect(screen.queryByText('Transfer Pending')).not.toBeInTheDocument();
       });
-
-      expect(screen.queryByText('Transfer Pending')).not.toBeInTheDocument();
     });
   });
 

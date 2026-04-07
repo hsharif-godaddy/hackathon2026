@@ -6,6 +6,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 
+import { MANAGE_PLAN_APPS_SCROLL_BATCH } from '@/app/manage-plan/constants';
 import { DomainStatus, DomainType, type SiteInfo } from '@/lib/control-plane/types';
 import { renderWithProviders } from '@/tests/test-utils';
 
@@ -262,6 +263,48 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
       await waitFor(() => {
         expect(screen.getByRole('dialog')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('apps list infinite scroll', function infiniteScrollTests() {
+    it('should render only the first batch until scrolled', function firstBatchOnly() {
+      const total = MANAGE_PLAN_APPS_SCROLL_BATCH + 5;
+      const sites = Array.from({ length: total }, (_, i) =>
+        createMockSite({ id: `site-${i}`, name: `Batch App ${i}`, variants: ['preview'] })
+      );
+      renderWithProviders(<AppsAndSitesCard sites={sites} />);
+
+      expect(screen.getByText('Batch App 0')).toBeInTheDocument();
+      expect(screen.getByText(`Batch App ${MANAGE_PLAN_APPS_SCROLL_BATCH - 1}`)).toBeInTheDocument();
+      expect(screen.queryByText(`Batch App ${MANAGE_PLAN_APPS_SCROLL_BATCH}`)).not.toBeInTheDocument();
+    });
+
+    it('should load more sites when list is scrolled to bottom', function loadsMoreOnScroll() {
+      const total = MANAGE_PLAN_APPS_SCROLL_BATCH + 3;
+      const sites = Array.from({ length: total }, (_, i) =>
+        createMockSite({ id: `site-${i}`, name: `Scroll App ${i}`, variants: ['preview'] })
+      );
+      renderWithProviders(<AppsAndSitesCard sites={sites} />);
+
+      const list = screen.getByTestId('manage-plan-apps-scroll-list');
+      Object.defineProperty(list, 'scrollHeight', { configurable: true, value: 500 });
+      Object.defineProperty(list, 'clientHeight', { configurable: true, value: 100 });
+      list.scrollTop = 400;
+      fireEvent.scroll(list);
+
+      expect(screen.getByText(`Scroll App ${MANAGE_PLAN_APPS_SCROLL_BATCH}`)).toBeInTheDocument();
+      expect(screen.getByText(`Scroll App ${total - 1}`)).toBeInTheDocument();
+    });
+
+    it('should render every site when total is below batch size', function belowBatchSize() {
+      const sites = Array.from({ length: 5 }, (_, i) =>
+        createMockSite({ id: `site-${i}`, name: `Small App ${i}`, variants: ['preview'] })
+      );
+      renderWithProviders(<AppsAndSitesCard sites={sites} />);
+
+      for (let i = 0; i < 5; i++) {
+        expect(screen.getByText(`Small App ${i}`)).toBeInTheDocument();
+      }
     });
   });
 

@@ -7,7 +7,9 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
+import { APPS_GRID_PAGE_SIZE } from '@/app/apps/constants';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
+import { SiteStatus } from '@/lib/control-plane/types';
 import { useSitesStore } from '@/stores/useSitesStore';
 import { createMockSite, mockRouter } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
@@ -45,6 +47,44 @@ vi.mock('@ux/modal', () => ({
       {children}
     </div>
   ),
+}));
+
+vi.mock('@ux/pagination', () => ({
+  default: function MockPagination({
+    limit,
+    offset,
+    onChange,
+    atStart,
+    atEnd,
+  }: {
+    limit: number;
+    offset: number;
+    total: number;
+    onChange: (nextOffset: number) => void;
+    atStart?: boolean;
+    atEnd?: boolean;
+  }) {
+    return (
+      <div data-testid="apps-pagination">
+        <button
+          type="button"
+          data-testid="apps-pagination-prev"
+          disabled={atStart}
+          onClick={() => onChange(Math.max(0, offset - limit))}
+        >
+          Prev
+        </button>
+        <button
+          type="button"
+          data-testid="apps-pagination-next"
+          disabled={atEnd}
+          onClick={() => onChange(offset + limit)}
+        >
+          Next
+        </button>
+      </div>
+    );
+  },
 }));
 
 vi.mock('@ux/menu', () => ({
@@ -162,6 +202,70 @@ describe('Sites Page', () => {
     });
   });
 
+  describe('paginates app cards', () => {
+    it('should not show pagination when sites fit one page', () => {
+      const sites = Array.from({ length: APPS_GRID_PAGE_SIZE }, (_, i) =>
+        createMockSite({ id: `site-${i}`, name: `App ${i + 1}` })
+      );
+      useSitesStore.setState({ allSites: sites });
+
+      renderWithProviders(<Sites />);
+
+      expect(screen.queryByTestId('apps-pagination-next')).not.toBeInTheDocument();
+      expect(screen.getByText('App 1')).toBeInTheDocument();
+      expect(screen.getByText(`App ${APPS_GRID_PAGE_SIZE}`)).toBeInTheDocument();
+    });
+
+    it('should show only the current page of apps and paginate on next', async () => {
+      const count = APPS_GRID_PAGE_SIZE + 2;
+      const sites = Array.from({ length: count }, (_, i) =>
+        createMockSite({ id: `site-${i}`, name: `App ${i + 1}` })
+      );
+      useSitesStore.setState({ allSites: sites });
+
+      const { user } = renderWithProviders(<Sites />);
+
+      expect(screen.getByTestId('apps-pagination-next')).toBeInTheDocument();
+      expect(screen.getByText('App 1')).toBeInTheDocument();
+      expect(screen.getByText(`App ${APPS_GRID_PAGE_SIZE}`)).toBeInTheDocument();
+      expect(screen.queryByText(`App ${APPS_GRID_PAGE_SIZE + 1}`)).not.toBeInTheDocument();
+
+      await user.click(screen.getByTestId('apps-pagination-next'));
+
+      expect(screen.queryByText('App 1')).not.toBeInTheDocument();
+      expect(screen.getByText(`App ${APPS_GRID_PAGE_SIZE + 1}`)).toBeInTheDocument();
+      expect(screen.getByText(`App ${count}`)).toBeInTheDocument();
+
+      await user.click(screen.getByTestId('apps-pagination-prev'));
+
+      expect(screen.getByText('App 1')).toBeInTheDocument();
+      expect(screen.queryByText(`App ${count}`)).not.toBeInTheDocument();
+    });
+
+    it('should clamp to last valid page when sites are deleted while on page 2', async () => {
+      const count = APPS_GRID_PAGE_SIZE + 2;
+      const sites = Array.from({ length: count }, (_, i) =>
+        createMockSite({ id: `site-${i}`, name: `App ${i + 1}` })
+      );
+      useSitesStore.setState({ allSites: sites });
+
+      const { user } = renderWithProviders(<Sites />);
+
+      await user.click(screen.getByTestId('apps-pagination-next'));
+      expect(screen.getByText(`App ${APPS_GRID_PAGE_SIZE + 1}`)).toBeInTheDocument();
+      expect(screen.queryByText('App 1')).not.toBeInTheDocument();
+
+      useSitesStore.setState({
+        allSites: sites.slice(0, APPS_GRID_PAGE_SIZE),
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('App 1')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('apps-pagination-next')).not.toBeInTheDocument();
+    });
+  });
+
   describe('renders error state', () => {
     it('should display error message', () => {
       useSitesStore.setState({ error: 'Failed to load sites' });
@@ -184,8 +288,8 @@ describe('Sites Page', () => {
     it('should call stopAllSites when stop all is clicked', async () => {
       const stopAllSites = vi.fn().mockResolvedValue(true);
       const sites = [
-        createMockSite({ status: 'running' }),
-        createMockSite({ status: 'running' }),
+        createMockSite({ status: SiteStatus.Running }),
+        createMockSite({ status: SiteStatus.Running }),
       ];
 
       useSitesStore.setState({

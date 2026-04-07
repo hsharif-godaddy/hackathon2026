@@ -208,6 +208,20 @@ export class DynamicApiConfigService {
 export const dynamicApiConfigService = new DynamicApiConfigService()
 
 /**
+ * Build an agent app API URL when the agent base URL is already known (e.g. from GET /api/sites list).
+ * Skips site lookup (GET /api/sites/:id) used by DynamicApiConfigService.getConfigForSite.
+ */
+export function buildAgentAppEndpointUrl(agentBaseUrl: string, siteId: string, endpoint: string): string {
+  const base = agentBaseUrl.replace(/\/$/, '');
+  const cleanEndpoint = endpoint.replace(/^\//, '');
+
+  if (cleanEndpoint) {
+    return `${base}/apps/${siteId}/${cleanEndpoint}`;
+  }
+  return `${base}/apps/${siteId}`;
+}
+
+/**
  * Helper function to build API URLs with site context
  */
 export async function buildDynamicApiUrl(endpoint: string, siteId: string): Promise<string> {

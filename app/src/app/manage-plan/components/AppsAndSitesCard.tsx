@@ -2,7 +2,15 @@
 
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { useCallback, useMemo, useState } from 'react';
+import {
+  type UIEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { FormattedMessage } from 'react-intl';
 import Button from '@ux/button';
 import ChevronDownIcon from '@ux/icon/chevron-down';
@@ -11,6 +19,7 @@ import text from '@ux/text';
 
 import AppSiteRow from '@/app/manage-plan/components/AppSiteRow';
 import { CollapsibleCardBody } from '@/app/manage-plan/components/CollapsibleCardBody';
+import { APPS_LIST_LOAD_MORE_THRESHOLD_PX, MANAGE_PLAN_APPS_SCROLL_BATCH } from '@/app/manage-plan/constants';
 import UnpublishConfirmationModal from '@/components/layout/UnpublishConfirmationModal';
 import { useCloseOnReauth } from '@/hooks/useCloseOnReauth';
 import { useDomainDisconnectPolling, useMultipleDeploymentStatusPolling } from '@/hooks/useDeploymentStatusPolling';
@@ -93,6 +102,52 @@ export default function AppsAndSitesCard({
     () => sites.filter(isPublishedApp).length,
     [sites]
   );
+
+  const sitesSignature = useMemo(() => sites.map((s) => s.id).join('|'), [sites]);
+
+  const [visibleSiteCount, setVisibleSiteCount] = useState(() =>
+    Math.min(MANAGE_PLAN_APPS_SCROLL_BATCH, sites.length)
+  );
+
+  useEffect(() => {
+    setVisibleSiteCount(Math.min(MANAGE_PLAN_APPS_SCROLL_BATCH, sites.length));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sites.length changes iff sitesSignature changes
+  }, [sitesSignature]);
+
+  const visibleSites = useMemo(
+    () => sites.slice(0, visibleSiteCount),
+    [sites, visibleSiteCount]
+  );
+
+  const appsScrollListRef = useRef<HTMLDivElement>(null);
+
+  const onAppsListScroll = useCallback(function onAppsListScroll(e: UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    if (el.scrollTop + el.clientHeight < el.scrollHeight - APPS_LIST_LOAD_MORE_THRESHOLD_PX) {
+      return;
+    }
+    setVisibleSiteCount((c) => {
+      if (c >= sites.length) {
+        return c;
+      }
+      return Math.min(c + MANAGE_PLAN_APPS_SCROLL_BATCH, sites.length);
+    });
+  }, [sites.length]);
+
+  // Runs synchronously after DOM mutations so layout measurements are committed
+  useLayoutEffect(() => {
+    const el = appsScrollListRef.current;
+    if (!el || visibleSiteCount >= sites.length) {
+      return;
+    }
+    const { scrollHeight, clientHeight } = el;
+    if (clientHeight === 0 || scrollHeight === 0) {
+      return;
+    }
+    if (scrollHeight <= clientHeight + 1) {
+      setVisibleSiteCount((c) => Math.min(c + MANAGE_PLAN_APPS_SCROLL_BATCH, sites.length));
+    }
+  }, [visibleSiteCount, sites.length]);
 
   const isAtPublishLimit = publishLimit !== null && publishedCount >= publishLimit;
 
@@ -485,8 +540,13 @@ export default function AppsAndSitesCard({
               </text.p>
             )}
 
-            <div className="flex flex-col flex-1 min-h-0 overflow-y-auto pr-1 max-h-48">
-              {sites.map((site) => {
+            <div
+              ref={appsScrollListRef}
+              data-testid="manage-plan-apps-scroll-list"
+              className="flex flex-col flex-1 min-h-0 overflow-y-auto pr-1 max-h-48"
+              onScroll={onAppsListScroll}
+            >
+              {visibleSites.map((site) => {
                 const published = isPublishedApp(site);
                 const offerUnpublish = shouldOfferUnpublish(site);
                 return (

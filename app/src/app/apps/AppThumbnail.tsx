@@ -9,6 +9,8 @@ interface AppThumbnailProps {
   siteId: string
   siteName: string
   size?: 'xs' | 'sm' | 'md' | 'lg'
+  /** When set (e.g. from GET /api/sites), resolves screenshot URL without GET /api/sites/:id */
+  agentUrl?: string
 }
 
 const SIZE_CLASS_MAP = {
@@ -25,8 +27,8 @@ const ICON_SIZE_MAP = {
   lg: 'size-5'
 } as const;
 
-export default function AppThumbnail({ siteId, siteName, size }: AppThumbnailProps) {
-  const { data: thumbnailUrl, isLoading, isError } = useAppThumbnail(siteId)
+export default function AppThumbnail({ siteId, siteName, size, agentUrl }: AppThumbnailProps) {
+  const { data: thumbnailUrl, isLoading, isError } = useAppThumbnail(siteId, true, agentUrl)
 
   const containerSize = size ? clsx(SIZE_CLASS_MAP[size], 'shrink-0') : 'w-full h-full'
   const iconSize = size ? ICON_SIZE_MAP[size] : ICON_SIZE_MAP.md

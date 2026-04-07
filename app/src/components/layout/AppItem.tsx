@@ -36,7 +36,7 @@ export default function AppItem({site, dataEid}: {site: Site, dataEid?: string})
         inlineAlignChildren="center"
         className="p-1 rounded-md group-hover:bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300"
       >
-        <AppThumbnail siteId={site.id} siteName={site.name} size="xs" />
+        <AppThumbnail siteId={site.id} siteName={site.name} size="xs" agentUrl={site.agent_url} />
         <div className="flex flex-wrap items-center gap-0.5">
           <text.span as="label" className="line-clamp-2">{site.name}</text.span>
         </div>

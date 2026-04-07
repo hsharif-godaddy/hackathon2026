@@ -4,13 +4,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  */
 import { waitFor } from '@testing-library/react';
 
-import { buildDynamicApiUrl } from '@/config/dynamic-api';
+import { buildAgentAppEndpointUrl, buildDynamicApiUrl } from '@/config/dynamic-api';
 import { agentFetch } from '@/lib/agent-fetch';
 import { mockURLMethods } from '@/tests/mocks';
 import { renderHookWithProviders } from '@/tests/test-utils';
 import { useAppThumbnail } from './useAppThumbnail';
 
-vi.mock('@/config/dynamic-api');
+vi.mock('@/config/dynamic-api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/config/dynamic-api')>();
+  return {
+    ...actual,
+    buildDynamicApiUrl: vi.fn(),
+  };
+});
 vi.mock('@/lib/agent-fetch');
 
 describe('useAppThumbnail', () => {
@@ -133,8 +139,44 @@ describe('useAppThumbnail', () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    // The hook uses ['app-thumbnail', siteId] as the query key
-    // This ensures caching works correctly per siteId
     expect(agentFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('should skip buildDynamicApiUrl when agentUrl is provided', async () => {
+    const agentBase = 'https://agent.test';
+    vi.mocked(agentFetch).mockResolvedValue({
+      ok: false,
+      status: 404,
+    } as Response);
+
+    const { result } = renderHookWithProviders(() => useAppThumbnail(mockSiteId, true, agentBase));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(buildDynamicApiUrl).not.toHaveBeenCalled();
+    expect(agentFetch).toHaveBeenCalledWith(
+      buildAgentAppEndpointUrl(agentBase, mockSiteId, 'screenshot'),
+      {
+        method: 'GET',
+        siteId: mockSiteId,
+      }
+    );
+  });
+
+  it('should treat whitespace-only agentUrl as missing', async () => {
+    vi.mocked(agentFetch).mockResolvedValue({
+      ok: false,
+      status: 404,
+    } as Response);
+
+    const { result } = renderHookWithProviders(() => useAppThumbnail(mockSiteId, true, '  \t  '));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(buildDynamicApiUrl).toHaveBeenCalledWith('screenshot', mockSiteId);
   });
 });

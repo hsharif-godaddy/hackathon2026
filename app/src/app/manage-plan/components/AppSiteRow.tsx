@@ -81,7 +81,7 @@ export default function AppSiteRow({
       )}
     >
       <div className="flex items-center gap-3 min-w-0 w-full md:w-auto">
-        <AppThumbnail siteId={site.id} siteName={site.name} size="md" />
+        <AppThumbnail siteId={site.id} siteName={site.name} size="md" agentUrl={site.agent_url} />
         <div className="flex flex-col min-w-0">
           <div className="flex flex-col-reverse md:flex-row md:items-center flex-shrink-0 gap-2">
             <text.p className="truncate font-medium" title={site.name}>
