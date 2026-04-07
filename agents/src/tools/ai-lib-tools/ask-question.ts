@@ -6,17 +6,26 @@ import { Logger } from '../../logging/index.js'
 const logger = Logger.create({ component: 'ask-question-tool' })
 
 /**
- * Suggestion schema for question answers
+ * Suggestion schema for question answers.
+ * Accepts both plain strings and { text, value? } objects because LLMs
+ * frequently simplify single-required-field objects to bare strings.
  */
-const suggestionSchema = z.object({
+export const suggestionObjectSchema = z.object({
   text: z.string().describe('The suggestion text to display'),
   value: z.string().optional().describe('Optional: different value to send vs display')
 })
 
+export const suggestionSchema = z.union([
+  z.string().transform(text => ({ text })),
+  suggestionObjectSchema
+]).describe(
+  'Suggested answer, either a plain string (displayed and used as value) or an object { text, value? } when the value to send should differ from the displayed text'
+)
+
 /**
  * Question schema
  */
-const questionSchema = z.object({
+export const questionSchema = z.object({
   question: z.string().describe('The question to ask the user'),
   suggestions: z.array(suggestionSchema).min(1).describe('Array of suggested answers (minimum 1)'),
   allowOther: z.boolean().default(true).describe('Whether to show "Other" option for free text input'),
@@ -27,7 +36,7 @@ const questionSchema = z.object({
 /**
  * Ask Question input schema
  */
-const askQuestionInputSchema = z.object({
+export const askQuestionInputSchema = z.object({
   questions: z.array(questionSchema).min(1).max(10).describe('Array of questions to ask (minimum 1, maximum 10)')
 })
 
