@@ -544,7 +544,7 @@ export default function PreviewPane({
       <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
         <div className="inset-0 relative h-full">
           <div className="flex flex-col items-center justify-center h-full bg-intents-ux-boxLowContrast-backgroundColor rounded-lg md:rounded-b-none">
-            <div className="flex flex-col h-full w-full bg-intents-ux-boxLowContrast-backgroundColor relative rounded-lg md:rounded-b-none overflow-hidden">
+            <div className="flex flex-col h-full w-full bg-intents-ux-boxLowContrast-backgroundColor relative rounded-lg md:rounded-b-none">
               {/* Crossfade Animation Container */}
               <div className="relative w-full h-full overflow-hidden">
                 {/* Preview View (DomainBar + iframe) */}
@@ -581,7 +581,7 @@ export default function PreviewPane({
                         id="preview-iframe"
                         data-testid="preview-iframe"
                         src={previewUrl}
-                        className="w-full h-full border"
+                        className="w-full h-full border rounded-lg md:rounded-b-none"
                         onError={handleIframeError}
                         onLoad={handleIframeLoad}
                         sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"
@@ -612,12 +612,12 @@ export default function PreviewPane({
                    INTENTIONAL: Stays visible if agent never edits (errors, timeouts, etc.)
                    The vanilla template is an implementation detail that shouldn't be visible */}
               {showBuildingOverlay && (
-                <div className="absolute inset-0 bg-intents-ux-boxLowContrast-backgroundColor">
+                <div className="absolute inset-0 bg-intents-ux-boxLowContrast-backgroundColor rounded-lg">
                   <Tips buildingMessage={t('builder_preview_building_app')} />
                 </div>
               )}
               {fixingOverlayMessage && (
-                <div className="absolute inset-0 bg-intents-ux-boxLowContrast-backgroundColor">
+                <div className="absolute inset-0 bg-intents-ux-boxLowContrast-backgroundColor rounded-lg">
                   <Tips buildingMessage={fixingOverlayMessage} />
                 </div>
               )}
