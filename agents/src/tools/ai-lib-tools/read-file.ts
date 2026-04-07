@@ -3,20 +3,15 @@ import { z } from 'zod'
 import { ReadFileTool, ReadFileOptions } from '../read-file.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 
-// Initialize tool instances
 const readFileTool = new ReadFileTool()
 const appRepo = new AppRepository()
 
-/**
- * Read File Tool for AI-Lib
- * Read file contents with line numbers - useful for understanding code structure
- */
 export const readFileAITool: Tool = createTool(
-  'Read file contents with line numbers for easy reference. Returns content in format "     1|line content". Supports optional line range selection for large files.',
+  'Read file contents with line numbers (format: "     1|line content"). Supports line range selection for large files. If blocked, try a different approach — no retries.',
   z.object({
-    path: z.string().describe('Path to the file to read (relative to app root)'),
-    startLine: z.number().min(1).optional().describe('Starting line number (1-indexed, optional). If omitted, reads from line 1'),
-    numLines: z.number().min(1).optional().describe('Number of lines to read from start line (optional). If omitted, reads to end of file')
+    path: z.string().describe('File path relative to app root'),
+    startLine: z.number().min(1).optional().describe('Start line (1-indexed). Omit to read from line 1'),
+    numLines: z.number().min(1).optional().describe('Line count from startLine. Omit to read to end')
   }),
   async (input, context) => {
     const appId = context?.metadata?.appId as string
@@ -35,17 +30,16 @@ export const readFileAITool: Tool = createTool(
       throw new Error(result.error || 'Failed to read file')
     }
 
-    // Build response with metadata
-    let response = `File: ${result.path}\n`
+    let response = `${result.path}`
     if (result.linesRead) {
-      response += `Lines ${result.linesRead.start}-${result.linesRead.end} of ${result.totalLines}\n`
+      response += ` [${result.linesRead.start}-${result.linesRead.end} of ${result.totalLines}]`
     } else {
-      response += `Total lines: ${result.totalLines}\n`
+      response += ` [${result.totalLines} lines]`
     }
     if (result.fileSize) {
-      response += `File size: ${result.fileSize} bytes\n`
+      response += ` (${result.fileSize}B)`
     }
-    response += `\nContent (with line numbers):\n${result.content}`
+    response += `\n${result.content}`
 
     return response
   }

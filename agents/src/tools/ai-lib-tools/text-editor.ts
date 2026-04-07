@@ -57,11 +57,11 @@ export const textEditorAITool: Tool = anthropic.tools.textEditor_20250728({
 
     // === SECURITY LAYER ===
 
-    // 1. AI Guardrails - Block wasteful files on view
-    if (command === 'view') {
+    // 1. AI Guardrails - Block image/binary files from view, str_replace, and insert
+    if (['view', 'str_replace', 'insert'].includes(command)) {
       const blockCheck = isFileBlocked(path);
       if (blockCheck.blocked) {
-        throw new Error(`File blocked: ${blockCheck.reason}`);
+        throw new Error(`File blocked: ${blockCheck.reason} Do not retry — use a different approach.`);
       }
     }
 
@@ -69,9 +69,7 @@ export const textEditorAITool: Tool = anthropic.tools.textEditor_20250728({
     if (['str_replace', 'create', 'insert'].includes(command)) {
       const immutable = await isFileImmutable(fullPath);
       if (immutable) {
-        throw new Error(
-          'This file is marked as immutable and cannot be edited. The file contains "TREAT AS IMMUTABLE" in its first line.'
-        );
+        throw new Error('File is immutable (contains "TREAT AS IMMUTABLE") — cannot edit.');
       }
     }
 
@@ -115,7 +113,7 @@ export const textEditorAITool: Tool = anthropic.tools.textEditor_20250728({
 
       case 'create':
         if (binaryCopied) {
-          return `Successfully created ${basename(path)} (binary file auto-resolved from uploads)`;
+          return `Created ${basename(path)} (binary auto-resolved from uploads)`;
         }
         if (resolvedFileText == null) {
           throw new Error('create requires file_text');

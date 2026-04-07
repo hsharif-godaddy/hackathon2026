@@ -221,39 +221,41 @@ describe('ReadFileTool - Security Tests', () => {
     it('should block image files with image-specific reason', () => {
       const result = isFileBlocked('assets/logo.png');
       expect(result.blocked).toBe(true);
-      expect(result.reason).toContain('Cannot read image files');
-      expect(result.reason).toContain('reference it by its file path');
+      expect(result.reason).toContain('Cannot read image as text');
+      expect(result.reason).toContain('Reference by path in code');
     });
 
     it('should block jpg with image-specific reason', () => {
       const result = isFileBlocked('photo.jpg');
       expect(result.blocked).toBe(true);
-      expect(result.reason).toContain('Cannot read image files');
+      expect(result.reason).toContain('Cannot read image as text');
     });
 
     it('should block PDF with document-specific reason', () => {
       const result = isFileBlocked('report.pdf');
       expect(result.blocked).toBe(true);
-      expect(result.reason).toContain('PDF documents');
-      expect(result.reason).toContain('paste the relevant content');
+      expect(result.reason).toContain('Cannot read PDF as text');
+      expect(result.reason).toContain('paste relevant content');
     });
 
     it('should block DOCX with document-specific reason', () => {
       const result = isFileBlocked('spec.docx');
       expect(result.blocked).toBe(true);
-      expect(result.reason).toContain('DOCX documents');
+      expect(result.reason).toContain('Cannot read DOCX as text');
     });
 
     it('should block archive files with generic binary reason', () => {
       const result = isFileBlocked('bundle.zip');
       expect(result.blocked).toBe(true);
-      expect(result.reason).toContain('Binary files are not readable');
+      expect(result.reason).toContain('not readable as text');
+      expect(result.reason).toContain('Reference by path in code');
     });
 
     it('should block executable files', () => {
       const result = isFileBlocked('app.exe');
       expect(result.blocked).toBe(true);
-      expect(result.reason).toContain('Binary files are not readable');
+      expect(result.reason).toContain('not readable as text');
+      expect(result.reason).toContain('Reference by path in code');
     });
 
     it('should not block SVG files', () => {
@@ -273,7 +275,7 @@ describe('ReadFileTool - Security Tests', () => {
       writeFileSync(join(testAppDir, 'data.custom'), Buffer.from([0x00, 0x01, 0x02, 0xFF]));
       const result = await readFileTool.readFile({ path: 'data.custom' }, testAppDir);
       expect(result.success).toBe(false);
-      expect(result.error).toContain('file appears to be binary');
+      expect(result.error).toContain('binary file detected');
     });
 
     it('should allow text files with unknown extensions', async () => {

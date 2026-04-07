@@ -41,7 +41,6 @@ export interface ReadFileResult {
  */
 export function isFileBlocked(filePath: string): { blocked: boolean; reason?: string } {
   const fileName = basename(filePath);
-  // const dirPath = dirname(filePath);
   const normalizedPath = filePath.replace(/\\/g, '/');
 
   // Lock files (auto-generated dependency trees)
@@ -59,7 +58,7 @@ export function isFileBlocked(filePath: string): { blocked: boolean; reason?: st
       fileName.includes('lock') && (fileName.endsWith('.json') || fileName.endsWith('.yaml') || fileName.endsWith('.yml'))) {
     return {
       blocked: true,
-      reason: 'Lock files contain thousands of lines of auto-generated dependency data that waste tokens and provide no value for development tasks'
+      reason: 'Lock files are auto-generated — not useful for development'
     };
   }
 
@@ -70,25 +69,16 @@ export function isFileBlocked(filePath: string): { blocked: boolean; reason?: st
       normalizedPath.includes('.yarn/')) {
     return {
       blocked: true,
-      reason: 'Dependency directories contain external code that is not relevant for development tasks'
+      reason: 'Dependency directory — external code, not relevant'
     };
   }
-
-  // Build output directories - DISABLED to allow reading build files
-  // const buildDirectories = ['dist/', 'build/', '.next/', '.nuxt/', 'out/', 'public/build/', 'target/', 'bin/', 'obj/'];
-  // if (buildDirectories.some(dir => normalizedPath.includes(dir))) {
-  //   return {
-  //     blocked: true,
-  //     reason: 'Build output files are generated and not useful for development tasks'
-  //   };
-  // }
 
   // Cache directories
   const cacheDirectories = ['.cache/', '.vite/', '.turbo/', '.parcel-cache/', '.rollup.cache/', 'tmp/', 'temp/'];
   if (cacheDirectories.some(dir => normalizedPath.includes(dir))) {
     return {
       blocked: true,
-      reason: 'Cache directories contain temporary files that are not relevant for development'
+      reason: 'Cache directory — temporary files, not relevant'
     };
   }
 
@@ -101,7 +91,7 @@ export function isFileBlocked(filePath: string): { blocked: boolean; reason?: st
       fileName.startsWith('pnpm-debug')) {
     return {
       blocked: true,
-      reason: 'Log files contain runtime output that is not useful for code development'
+      reason: 'Log file — runtime output, not useful for development'
     };
   }
 
@@ -113,18 +103,18 @@ export function isFileBlocked(filePath: string): { blocked: boolean; reason?: st
     if ((IMAGE_FILE_EXTENSIONS as readonly string[]).includes(ext)) {
       return {
         blocked: true,
-        reason: `Cannot read image files as text. To use this image, reference it by its file path in code (e.g. src="${filePath}"). If you need to know what the image looks like (colors, content, style), ask the user to describe it.`
+        reason: `Cannot read image as text. Reference by path in code (e.g. src="${filePath}"). Ask the user to describe visual content if needed.`
       };
     }
     if ((DOCUMENT_FILE_EXTENSIONS as readonly string[]).includes(ext)) {
       return {
         blocked: true,
-        reason: `Cannot read ${ext.toUpperCase()} documents as text. Tell the user that document reading is not currently supported and ask them to paste the relevant content directly into the chat.`
+        reason: `Cannot read ${ext.toUpperCase()} as text. Ask the user to paste relevant content into chat.`
       };
     }
     return {
       blocked: true,
-      reason: 'Binary files are not readable as text. To use this file, reference it by its file path in code.'
+      reason: 'Binary file — not readable as text. Reference by path in code.'
     };
   }
 
@@ -173,10 +163,10 @@ export class ReadFileTool {
       const lineRange = result.linesRead.start === result.linesRead.end
         ? `line ${result.linesRead.start}`
         : `lines ${result.linesRead.start}-${result.linesRead.end}`;
-      return `Read ${fileName} ${lineRange} (${result.totalLines} total lines${sizeInfo ? ', ' + sizeInfo : ''}) with line numbers`;
+      return `Read ${fileName} ${lineRange} of ${result.totalLines}${sizeInfo ? ' (' + sizeInfo + ')' : ''}`;
     } else {
       // Full file read (always includes line numbers)
-      return `Read ${fileName} (${result.totalLines} lines${sizeInfo ? ', ' + sizeInfo : ''}) with line numbers`;
+      return `Read ${fileName} (${result.totalLines} lines${sizeInfo ? ', ' + sizeInfo : ''})`;
     }
   }
 
@@ -205,7 +195,7 @@ export class ReadFileTool {
           path: options.path,
           content: '',
           totalLines: 0,
-          error: 'Access denied: path is outside the app directory or contains unsafe symlinks',
+          error: 'Access denied: path outside app directory or unsafe symlinks',
         };
       }
 
@@ -240,7 +230,7 @@ export class ReadFileTool {
           path: options.path,
           content: '',
           totalLines: 0,
-          error: 'File blocked: file appears to be binary. Binary files are not readable as text. To use this file, reference it by its file path in code.',
+          error: 'File blocked: binary file detected. Reference by path in code.',
         };
       }
 
@@ -261,7 +251,7 @@ export class ReadFileTool {
           path: options.path,
           content: '',
           totalLines,
-          error: `Start line ${startLine} is beyond the end of the file (${totalLines} lines)`,
+          error: `Start line ${startLine} exceeds file length (${totalLines} lines)`,
         };
       }
 
