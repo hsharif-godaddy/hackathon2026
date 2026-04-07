@@ -9,7 +9,7 @@
     "allowSyntheticDefaultImports": true,
     "allowImportingTsExtensions": true,
     "outDir": "dist",
-    "lib": ["esnext", "dom"],
+    "lib": ["esnext", "dom", "dom.iterable"],
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
