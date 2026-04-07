@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { act } from '@testing-library/react';
 
+import { shipAnalyticsLog } from '@/lib/logging';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import AuthBoundary from './AuthBoundary';
 
@@ -51,8 +52,13 @@ vi.mock('@/lib/request-context', () => ({
   },
 }));
 
+// Mock analytics
+vi.mock('@/lib/logging', () => ({
+  shipAnalyticsLog: vi.fn(),
+}));
+
 describe('AuthBoundary', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     // Reset the store to initial state before each test
     act(() => {
       useAuthUIStore.setState({
@@ -64,6 +70,10 @@ describe('AuthBoundary', () => {
       });
     });
     vi.clearAllMocks();
+
+    // Reset pathname mock to default
+    const { usePathname } = vi.mocked(await import('next/navigation'));
+    usePathname.mockReturnValue('/develop');
   });
 
   it('should render children when needsReauth is false', () => {
@@ -234,6 +244,284 @@ describe('AuthBoundary', () => {
         </AuthBoundary>
       );
 
+      expect(screen.getByText('builder_common_signin_required')).toBeInTheDocument();
+    });
+  });
+
+  describe('analytics tracking', () => {
+    it('should log analytics when modal is shown', () => {
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('not_authenticated');
+      });
+
+      render(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('auth.boundary.modal_shown', {
+        reason: 'not_authenticated',
+        pathname: '/develop'
+      });
+      expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not log duplicate analytics on re-render', () => {
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('session_expired');
+      });
+
+      const { rerender } = render(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
+
+      // Re-render with same state
+      rerender(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      // Should still only be called once
+      expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
+    });
+
+    it('should log again when modal is dismissed and re-shown (flag resets)', () => {
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('not_authenticated');
+      });
+
+      const { rerender } = render(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
+
+      // Hide modal by clearing reauth state
+      act(() => {
+        useAuthUIStore.getState().clearNeedsReauth();
+      });
+
+      rerender(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      // Show modal again
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('session_expired');
+      });
+
+      rerender(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      // Should be called twice (once for each time modal was shown)
+      expect(shipAnalyticsLog).toHaveBeenCalledTimes(2);
+      expect(shipAnalyticsLog).toHaveBeenNthCalledWith(2, 'auth.boundary.modal_shown', {
+        reason: 'session_expired',
+        pathname: '/develop'
+      });
+    });
+
+    it('should not log duplicate events when pathname changes during modal display', async () => {
+      const { usePathname } = vi.mocked(await import('next/navigation'));
+      usePathname.mockReturnValue('/develop');
+
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('not_authenticated');
+      });
+
+      const { rerender } = render(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('auth.boundary.modal_shown', {
+        reason: 'not_authenticated',
+        pathname: '/develop'
+      });
+
+      // Pathname changes while modal is still visible
+      usePathname.mockReturnValue('/settings');
+
+      rerender(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      // Should still only be 1 call (doesn't re-log on pathname change)
+      expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not log duplicate events when reason changes during modal display', () => {
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('not_authenticated');
+      });
+
+      const { rerender } = render(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('auth.boundary.modal_shown', {
+        reason: 'not_authenticated',
+        pathname: '/develop'
+      });
+
+      // Reason changes while modal is still visible (edge case but possible)
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('session_expired');
+      });
+
+      rerender(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      // Should still only be 1 call (doesn't re-log on reason change)
+      expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not log analytics on homepage even when needsReauth is set', async () => {
+      const { usePathname } = vi.mocked(await import('next/navigation'));
+      usePathname.mockReturnValue('/');
+
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('not_authenticated');
+      });
+
+      render(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      expect(shipAnalyticsLog).not.toHaveBeenCalled();
+    });
+
+    it('should not log analytics when SSO modal is already open', () => {
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('not_authenticated');
+        useAuthUIStore.getState().openSsoLogin();
+      });
+
+      render(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      expect(shipAnalyticsLog).not.toHaveBeenCalled();
+    });
+
+    it('should include correct pathname in analytics', async () => {
+      const { usePathname } = vi.mocked(await import('next/navigation'));
+      usePathname.mockReturnValue('/develop/settings');
+
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('session_stale');
+      });
+
+      render(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('auth.boundary.modal_shown', {
+        reason: 'session_stale',
+        pathname: '/develop/settings'
+      });
+    });
+
+    it('should handle analytics errors gracefully without breaking UI', async () => {
+      const { logger } = await import('@/lib/request-context');
+      const mockError = new Error('Analytics service unavailable');
+      vi.mocked(shipAnalyticsLog).mockImplementationOnce(() => {
+        throw mockError;
+      });
+
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('not_authenticated');
+      });
+
+      // Should not throw - component should render successfully
+      expect(() => {
+        render(
+          <AuthBoundary>
+            <div data-testid="child-content">Content</div>
+          </AuthBoundary>
+        );
+      }).not.toThrow();
+
+      // Modal should still be visible despite analytics failure
+      expect(screen.getByText('builder_common_signin_required')).toBeInTheDocument();
+      expect(screen.getByTestId('child-content')).toBeInTheDocument();
+
+      // Error should be logged
+      expect(logger.error).toHaveBeenCalledWith('auth.boundary.analytics-failed', {
+        error: mockError
+      });
+    });
+
+    it('should not double-fire analytics when SSO modal is dismissed without sign-in', () => {
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('not_authenticated');
+      });
+
+      const { rerender } = render(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      // Modal shows, analytics logs once
+      expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
+
+      // User clicks "Sign In" button - SSO modal opens
+      act(() => {
+        useAuthUIStore.getState().openSsoLogin();
+      });
+
+      rerender(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      // Auth boundary modal hidden, but analytics should still only be 1 call
+      expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
+
+      // User dismisses SSO modal without completing sign-in
+      act(() => {
+        useAuthUIStore.getState().closeSsoLogin('dismiss');
+      });
+
+      rerender(
+        <AuthBoundary>
+          <div>Content</div>
+        </AuthBoundary>
+      );
+
+      // Auth boundary modal re-appears (needsReauth still true), but should NOT log again
+      expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
       expect(screen.getByText('builder_common_signin_required')).toBeInTheDocument();
     });
   });

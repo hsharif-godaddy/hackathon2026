@@ -1,13 +1,14 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useRef } from 'react';
 import Button from '@ux/button';
 import Modal from '@ux/modal';
 import text from '@ux/text';
 
 import { isLandingPagePathname } from '@/data/landing-pages/landing-page-paths';
 import { useTranslations } from '@/hooks/useTranslations';
+import { shipAnalyticsLog } from '@/lib/logging';
 import { logger } from '@/lib/request-context';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
 
@@ -41,15 +42,47 @@ export default function AuthBoundary({ children }: AuthBoundaryProps) {
   const t = useTranslations();
   const pathname = usePathname();
   const { needsReauth, reauthReason, openSsoLogin, isSsoLoginOpen, setRedirectUrl } = useAuthUIStore();
+  const hasLoggedModalShown = useRef(false);
+  const reauthReasonRef = useRef(reauthReason);
+  const pathnameRef = useRef(pathname);
 
   const isHomepage = pathname === '/' || pathname === '';
   const isLandingPage = isLandingPagePathname(pathname);
+
+  // Determine if modal should be shown
+  const shouldShowModal = !isHomepage && !isLandingPage && needsReauth && !isSsoLoginOpen;
+
+  // Keep refs in sync with current values
+  useEffect(() => {
+    reauthReasonRef.current = reauthReason;
+    pathnameRef.current = pathname;
+  });
+
+  // Track when modal is shown for analytics
+  useEffect(() => {
+    if (shouldShowModal && !hasLoggedModalShown.current) {
+      try {
+        shipAnalyticsLog('auth.boundary.modal_shown', {
+          reason: reauthReasonRef.current || 'not_authenticated',
+          pathname: pathnameRef.current
+        });
+      } catch (error) {
+        // Analytics failures should not break the UI
+        logger.error('auth.boundary.analytics-failed', { error });
+      }
+      hasLoggedModalShown.current = true;
+    } else if (!needsReauth) {
+      // Only reset when needsReauth is cleared (auth succeeded), not when
+      // shouldShowModal temporarily becomes false due to SSO modal opening
+      hasLoggedModalShown.current = false;
+    }
+  }, [shouldShowModal, needsReauth]);
 
   // Don't show boundary if:
   // - We're on homepage or a landing page
   // - Auth is not required
   // - SSO modal is already open (user is in the process of signing in)
-  if (isHomepage || isLandingPage || !needsReauth || isSsoLoginOpen) {
+  if (!shouldShowModal) {
     return <>{children}</>;
   }
 
