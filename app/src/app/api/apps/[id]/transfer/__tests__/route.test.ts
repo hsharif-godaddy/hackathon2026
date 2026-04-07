@@ -6,6 +6,8 @@ const mockGetSite = vi.fn();
 const mockInitiateTransfer = vi.fn();
 const mockGetTransferMetadata = vi.fn();
 const mockCancelTransfer = vi.fn();
+const mockUnpublishApp = vi.fn();
+const mockCreateToken = vi.fn();
 
 vi.mock('@/lib/agent-fetch', () => ({
   agentFetch: (...args: any[]) => mockAgentFetch(...args),
@@ -22,6 +24,7 @@ vi.mock('@/lib/mgmt-airo', () => ({
     initiateTransfer(...args: any[]) { return mockInitiateTransfer(...args); }
     getTransferMetadata(...args: any[]) { return mockGetTransferMetadata(...args); }
     cancelTransfer(...args: any[]) { return mockCancelTransfer(...args); }
+    unpublishApp(...args: any[]) { return mockUnpublishApp(...args); }
   },
   AiroHttpError: class extends Error {
     status: number;
@@ -34,6 +37,12 @@ vi.mock('@/lib/mgmt-airo', () => ({
       this.body = body;
     }
   },
+}));
+
+vi.mock('@/lib/jwt-service', () => ({
+  getJWTService: () => ({
+    createToken: (...args: any[]) => mockCreateToken(...args),
+  }),
 }));
 
 vi.mock('@/lib/request-context', () => ({
@@ -73,6 +82,12 @@ const MOCK_SITE = {
   status: 'running',
 };
 
+const MOCK_SITE_WITH_SUBSCRIPTION = {
+  ...MOCK_SITE,
+  subscription_id: 'sub-1',
+  system_id: 'sys-1',
+};
+
 function mockPassingValidation() {
   mockAgentFetch.mockResolvedValue({
     ok: true,
@@ -80,10 +95,15 @@ function mockPassingValidation() {
   });
 }
 
+const mockFetch = vi.fn();
+
 describe('/api/apps/[id]/transfer', function transferRouteTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
     mockGetSite.mockResolvedValue(MOCK_SITE);
+    mockCreateToken.mockResolvedValue({ token: 'agent-jwt-token' });
+    mockFetch.mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', mockFetch);
   });
 
   describe('POST - Commerce validation guard', function postGuardTests() {
@@ -314,6 +334,129 @@ describe('/api/apps/[id]/transfer', function transferRouteTests() {
       );
 
       expect(response.status).toBe(404);
+    });
+  });
+
+  describe('POST - Unpublish after initiate', function postUnpublishTests() {
+    // Unpublish is fire-and-forget; flush microtasks so assertions see the side effects
+    async function flush() {
+      await new Promise(function resolve(r) { setTimeout(r, 0); });
+    }
+
+    it('should call agents unpublish and control plane unpublish after successful initiation', async function unpublishBoth() {
+      mockGetSite.mockResolvedValue(MOCK_SITE_WITH_SUBSCRIPTION);
+      mockPassingValidation();
+      mockInitiateTransfer.mockResolvedValue({ status: 'initiated', transferToken: 'tok-123' });
+      mockUnpublishApp.mockResolvedValue({ message: 'Unpublished' });
+
+      const { POST } = await import('../route');
+      const response = await POST(
+        createPostRequest('app-1', { targetEmail: 'test@godaddy.com' }),
+        { params: Promise.resolve({ id: 'app-1' }) }
+      );
+      await flush();
+
+      expect(response.status).toBe(201);
+      expect(mockCreateToken).toHaveBeenCalledWith(expect.objectContaining({
+        siteId: 'app-1',
+        canPublish: true,
+      }));
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://agent.example.com/apps/app-1/unpublish',
+        expect.objectContaining({ method: 'POST' })
+      );
+      expect(mockUnpublishApp).toHaveBeenCalledWith('sub-1', 'sys-1', 'app-1');
+    });
+
+    it('should return 201 even when agents unpublish fails', async function agentsUnpublishFail() {
+      mockGetSite.mockResolvedValue(MOCK_SITE_WITH_SUBSCRIPTION);
+      mockPassingValidation();
+      mockInitiateTransfer.mockResolvedValue({ status: 'initiated', transferToken: 'tok-123' });
+      mockFetch.mockResolvedValue({ ok: false, status: 500, text: async () => 'Internal Error' });
+      mockUnpublishApp.mockResolvedValue({ message: 'Unpublished' });
+
+      const { POST } = await import('../route');
+      const response = await POST(
+        createPostRequest('app-1', { targetEmail: 'test@godaddy.com' }),
+        { params: Promise.resolve({ id: 'app-1' }) }
+      );
+      await flush();
+
+      expect(response.status).toBe(201);
+      expect(mockUnpublishApp).toHaveBeenCalled();
+    });
+
+    it('should return 201 even when control plane unpublish fails', async function controlPlaneUnpublishFail() {
+      mockGetSite.mockResolvedValue(MOCK_SITE_WITH_SUBSCRIPTION);
+      mockPassingValidation();
+      mockInitiateTransfer.mockResolvedValue({ status: 'initiated', transferToken: 'tok-123' });
+      mockUnpublishApp.mockRejectedValue(new Error('Control plane down'));
+
+      const { POST } = await import('../route');
+      const response = await POST(
+        createPostRequest('app-1', { targetEmail: 'test@godaddy.com' }),
+        { params: Promise.resolve({ id: 'app-1' }) }
+      );
+      await flush();
+
+      expect(response.status).toBe(201);
+    });
+
+    it('should skip control plane unpublish when subscription_id is missing', async function skipControlPlane() {
+      mockPassingValidation();
+      mockInitiateTransfer.mockResolvedValue({ status: 'initiated', transferToken: 'tok-123' });
+
+      const { POST } = await import('../route');
+      const response = await POST(
+        createPostRequest('app-1', { targetEmail: 'test@godaddy.com' }),
+        { params: Promise.resolve({ id: 'app-1' }) }
+      );
+      await flush();
+
+      expect(response.status).toBe(201);
+      expect(mockFetch).toHaveBeenCalled();
+      expect(mockUnpublishApp).not.toHaveBeenCalled();
+    });
+
+    it('should log info instead of error when control plane returns 409', async function alreadyUnpublished() {
+      mockGetSite.mockResolvedValue(MOCK_SITE_WITH_SUBSCRIPTION);
+      mockPassingValidation();
+      mockInitiateTransfer.mockResolvedValue({ status: 'initiated', transferToken: 'tok-123' });
+      mockUnpublishApp.mockRejectedValue({ status: 409 });
+
+      const { logger } = await import('@/lib/request-context');
+      const { POST } = await import('../route');
+      const response = await POST(
+        createPostRequest('app-1', { targetEmail: 'test@godaddy.com' }),
+        { params: Promise.resolve({ id: 'app-1' }) }
+      );
+      await flush();
+
+      expect(response.status).toBe(201);
+      expect(logger.info).toHaveBeenCalledWith('transfer.unpublish.alreadyUnpublished', { appId: 'app-1' });
+      expect(logger.error).not.toHaveBeenCalledWith(
+        'transfer.unpublish.controlPlane.error',
+        expect.anything()
+      );
+    });
+
+    it('should use fallback URL when agent_url is missing', async function fallbackUnpublish() {
+      mockGetSite.mockResolvedValue({ id: 'app-1', status: 'running', agent_url: null });
+      mockPassingValidation();
+      mockInitiateTransfer.mockResolvedValue({ status: 'initiated', transferToken: 'tok-123' });
+
+      const { POST } = await import('../route');
+      const response = await POST(
+        createPostRequest('app-1', { targetEmail: 'test@godaddy.com' }),
+        { params: Promise.resolve({ id: 'app-1' }) }
+      );
+      await flush();
+
+      expect(response.status).toBe(201);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:4000/apps/app-1/unpublish',
+        expect.objectContaining({ method: 'POST' })
+      );
     });
   });
 

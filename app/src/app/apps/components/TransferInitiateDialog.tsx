@@ -113,7 +113,7 @@ export default function TransferInitiateDialog({
         <div className="text-left">
           <Box orientation="vertical" gap="md">
             <text.p size={0} emphasis="passive">
-              {t('builder_transfer_initiate_description', undefined, 'Start a transfer by entering the recipient\u2019s email. They must have a GoDaddy account linked to this email.')}
+              {t('builder_transfer_initiate_description', { appName }, 'Start a transfer by entering the recipient\u2019s email. They must have a GoDaddy account linked to this email.')}
             </text.p>
 
             <ul className="list-disc pl-5 space-y-1">

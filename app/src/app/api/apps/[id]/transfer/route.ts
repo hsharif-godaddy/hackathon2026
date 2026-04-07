@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { agentFetch } from '@/lib/agent-fetch';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
+import { type SiteInfo } from '@/lib/control-plane/types';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
+import { getJWTService } from '@/lib/jwt-service';
 import { AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 
@@ -12,6 +14,68 @@ export const dynamic = 'force-dynamic';
 
 function createClient(jwt: string) {
   return new AiroMgmtClient({ baseUrl: MGMT_AIRO_BASE_URL, jwt });
+}
+
+/**
+ * Best-effort unpublish after transfer initiation.
+ * Calls agents to remove the publish symlink and mgmt-airo to mark variant inactive.
+ * Failures are logged but do not block the transfer.
+ */
+async function unpublishAfterTransfer(
+  site: SiteInfo,
+  authContext: CustomerAuthContext
+) {
+  const { id } = site;
+  const agentBaseUrl = site.agent_url || process.env.AGENTS_SERVICE_URL || 'http://localhost:4000';
+
+  try {
+    const { user } = authContext;
+    const tokenResult = await getJWTService().createToken({
+      siteId: id,
+      canDownload: false,
+      canPublish: true,
+      authType: user.authType || 'basic',
+      isE2S: user.isE2S ?? false,
+    });
+
+    const response = await fetch(`${agentBaseUrl}/apps/${id}/unpublish`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${tokenResult.token}`,
+      },
+    });
+
+    if (response.ok) {
+      logger.info('transfer.unpublish.agents.success', { appId: id });
+    } else {
+      let body: string | undefined;
+      try { body = await response.text(); } catch { body = undefined; }
+      logger.error('transfer.unpublish.agents.failed', { appId: id, status: response.status, body });
+    }
+  } catch (err) {
+    logger.error('transfer.unpublish.agents.error', {
+      appId: id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  if (site.subscription_id && site.system_id) {
+    try {
+      await createClient(authContext.jwt).unpublishApp(site.subscription_id, site.system_id, id);
+      logger.info('transfer.unpublish.controlPlane.success', { appId: id });
+    } catch (err) {
+      const status = (err as { status?: number })?.status;
+      if (status === 409) {
+        logger.info('transfer.unpublish.alreadyUnpublished', { appId: id });
+      } else {
+        logger.error('transfer.unpublish.controlPlane.error', {
+          appId: id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
 }
 
 // POST /api/apps/:id/transfer — Initiate transfer
@@ -81,6 +145,14 @@ export const POST = withCustomerAuth(async (
 
     const data = await createClient(authContext.jwt).initiateTransfer(id, body.targetEmail);
     logger.info('transfer.initiate.success', { appId: id, status: data.status });
+
+    unpublishAfterTransfer(site, authContext).catch(function logUnpublishError(err) {
+      logger.error('transfer.unpublish.unexpected', {
+        appId: id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+
     return NextResponse.json(data, { status: 201 });
   } catch (error) {
     if (error instanceof AiroHttpError) {
