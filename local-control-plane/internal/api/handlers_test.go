@@ -1410,3 +1410,437 @@ func TestGetCustomerHandler(t *testing.T) {
 		t.Error("expected exists true")
 	}
 }
+
+// --- GetCustomerTree ---
+
+func TestGetCustomerTreeEmpty(t *testing.T) {
+	srv := newTestServer(t)
+
+	req := httptest.NewRequest("GET", "/customers/me/tree", nil)
+	w := httptest.NewRecorder()
+	srv.GetCustomerTree(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+
+	if resp["customerId"] != store.DefaultCustomerID {
+		t.Errorf("expected customerId %s, got %v", store.DefaultCustomerID, resp["customerId"])
+	}
+
+	subs := resp["subscriptions"].([]any)
+	if len(subs) != 1 {
+		t.Fatalf("expected 1 subscription, got %d", len(subs))
+	}
+
+	sub := subs[0].(map[string]any)
+	if sub["subscriptionId"] != store.DefaultSubscriptionID {
+		t.Errorf("expected subscriptionId %s, got %v", store.DefaultSubscriptionID, sub["subscriptionId"])
+	}
+
+	systems := sub["systems"].([]any)
+	system := systems[0].(map[string]any)
+	apps := system["apps"].([]any)
+	if len(apps) != 0 {
+		t.Errorf("expected 0 apps, got %d", len(apps))
+	}
+}
+
+func TestGetCustomerTreeGroupsBySubscriptionID(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Create apps with different subscription IDs
+	srv.DB.CreateApp("sub-a", "sys-1", nil, nil)
+	srv.DB.CreateApp("sub-a", "sys-1", nil, nil)
+	srv.DB.CreateApp("sub-b", "sys-1", nil, nil)
+
+	req := httptest.NewRequest("GET", "/customers/me/tree", nil)
+	w := httptest.NewRecorder()
+	srv.GetCustomerTree(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+
+	subs := resp["subscriptions"].([]any)
+	if len(subs) != 2 {
+		t.Fatalf("expected 2 subscriptions, got %d", len(subs))
+	}
+
+	// Subscriptions should be sorted by ID
+	sub1 := subs[0].(map[string]any)
+	sub2 := subs[1].(map[string]any)
+	if sub1["subscriptionId"] != "sub-a" {
+		t.Errorf("expected first subscription sub-a, got %v", sub1["subscriptionId"])
+	}
+	if sub2["subscriptionId"] != "sub-b" {
+		t.Errorf("expected second subscription sub-b, got %v", sub2["subscriptionId"])
+	}
+
+	// Check app counts per subscription
+	systems1 := sub1["systems"].([]any)
+	apps1 := systems1[0].(map[string]any)["apps"].([]any)
+	if len(apps1) != 2 {
+		t.Errorf("expected 2 apps in sub-a, got %d", len(apps1))
+	}
+
+	systems2 := sub2["systems"].([]any)
+	apps2 := systems2[0].(map[string]any)["apps"].([]any)
+	if len(apps2) != 1 {
+		t.Errorf("expected 1 app in sub-b, got %d", len(apps2))
+	}
+}
+
+func TestGetCustomerTreeUsesDefaultForEmptySubscriptionID(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Create an app with empty subscription ID (will use default)
+	srv.DB.CreateApp("", "sys-1", nil, nil)
+
+	req := httptest.NewRequest("GET", "/customers/me/tree", nil)
+	w := httptest.NewRecorder()
+	srv.GetCustomerTree(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+
+	subs := resp["subscriptions"].([]any)
+	if len(subs) != 1 {
+		t.Fatalf("expected 1 subscription, got %d", len(subs))
+	}
+
+	sub := subs[0].(map[string]any)
+	if sub["subscriptionId"] != store.DefaultSubscriptionID {
+		t.Errorf("expected subscriptionId %s, got %v", store.DefaultSubscriptionID, sub["subscriptionId"])
+	}
+}
+
+func TestGetCustomerTreeDeterministicOrdering(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Create apps with subscription IDs in non-alphabetical order
+	srv.DB.CreateApp("sub-z", "sys-1", nil, nil)
+	srv.DB.CreateApp("sub-a", "sys-1", nil, nil)
+	srv.DB.CreateApp("sub-m", "sys-1", nil, nil)
+
+	// Run multiple times to verify deterministic ordering
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("GET", "/customers/me/tree", nil)
+		w := httptest.NewRecorder()
+		srv.GetCustomerTree(w, req)
+
+		var resp map[string]any
+		decodeJSON(t, w, &resp)
+
+		subs := resp["subscriptions"].([]any)
+		subIDs := make([]string, len(subs))
+		for j, s := range subs {
+			subIDs[j] = s.(map[string]any)["subscriptionId"].(string)
+		}
+
+		expected := []string{"sub-a", "sub-m", "sub-z"}
+		for j, id := range subIDs {
+			if id != expected[j] {
+				t.Errorf("iteration %d: expected %v at index %d, got %v", i, expected[j], j, id)
+			}
+		}
+	}
+}
+
+func TestGetCustomerTreeGroupsBySystemID(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Create apps with same subscription but different system IDs
+	srv.DB.CreateApp("sub-a", "sys-1", nil, nil)
+	srv.DB.CreateApp("sub-a", "sys-1", nil, nil)
+	srv.DB.CreateApp("sub-a", "sys-2", nil, nil)
+
+	req := httptest.NewRequest("GET", "/customers/me/tree", nil)
+	w := httptest.NewRecorder()
+	srv.GetCustomerTree(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+
+	subs := resp["subscriptions"].([]any)
+	if len(subs) != 1 {
+		t.Fatalf("expected 1 subscription, got %d", len(subs))
+	}
+
+	sub := subs[0].(map[string]any)
+	systems := sub["systems"].([]any)
+	if len(systems) != 2 {
+		t.Fatalf("expected 2 systems, got %d", len(systems))
+	}
+
+	// Systems should be sorted by ID
+	sys1 := systems[0].(map[string]any)
+	sys2 := systems[1].(map[string]any)
+	if sys1["systemId"] != "sys-1" {
+		t.Errorf("expected first system sys-1, got %v", sys1["systemId"])
+	}
+	if sys2["systemId"] != "sys-2" {
+		t.Errorf("expected second system sys-2, got %v", sys2["systemId"])
+	}
+
+	// Check app counts per system
+	apps1 := sys1["apps"].([]any)
+	if len(apps1) != 2 {
+		t.Errorf("expected 2 apps in sys-1, got %d", len(apps1))
+	}
+
+	apps2 := sys2["apps"].([]any)
+	if len(apps2) != 1 {
+		t.Errorf("expected 1 app in sys-2, got %d", len(apps2))
+	}
+}
+
+func TestGetCustomerTreeGroupsBySubscriptionAndSystemID(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Create apps with different combinations of subscription and system IDs
+	srv.DB.CreateApp("sub-a", "sys-1", nil, nil)
+	srv.DB.CreateApp("sub-a", "sys-2", nil, nil)
+	srv.DB.CreateApp("sub-b", "sys-1", nil, nil)
+	srv.DB.CreateApp("sub-b", "sys-3", nil, nil)
+
+	req := httptest.NewRequest("GET", "/customers/me/tree", nil)
+	w := httptest.NewRecorder()
+	srv.GetCustomerTree(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+
+	subs := resp["subscriptions"].([]any)
+	if len(subs) != 2 {
+		t.Fatalf("expected 2 subscriptions, got %d", len(subs))
+	}
+
+	// sub-a should have sys-1 and sys-2
+	subA := subs[0].(map[string]any)
+	if subA["subscriptionId"] != "sub-a" {
+		t.Errorf("expected sub-a, got %v", subA["subscriptionId"])
+	}
+	systemsA := subA["systems"].([]any)
+	if len(systemsA) != 2 {
+		t.Fatalf("expected 2 systems in sub-a, got %d", len(systemsA))
+	}
+	if systemsA[0].(map[string]any)["systemId"] != "sys-1" {
+		t.Errorf("expected sys-1, got %v", systemsA[0].(map[string]any)["systemId"])
+	}
+	if systemsA[1].(map[string]any)["systemId"] != "sys-2" {
+		t.Errorf("expected sys-2, got %v", systemsA[1].(map[string]any)["systemId"])
+	}
+
+	// sub-b should have sys-1 and sys-3
+	subB := subs[1].(map[string]any)
+	if subB["subscriptionId"] != "sub-b" {
+		t.Errorf("expected sub-b, got %v", subB["subscriptionId"])
+	}
+	systemsB := subB["systems"].([]any)
+	if len(systemsB) != 2 {
+		t.Fatalf("expected 2 systems in sub-b, got %d", len(systemsB))
+	}
+	if systemsB[0].(map[string]any)["systemId"] != "sys-1" {
+		t.Errorf("expected sys-1, got %v", systemsB[0].(map[string]any)["systemId"])
+	}
+	if systemsB[1].(map[string]any)["systemId"] != "sys-3" {
+		t.Errorf("expected sys-3, got %v", systemsB[1].(map[string]any)["systemId"])
+	}
+}
+
+// --- GetAppsForSubscription ---
+
+func TestGetAppsForSubscriptionFiltersCorrectly(t *testing.T) {
+	srv := newTestServer(t)
+
+	srv.DB.CreateApp("sub-1", "sys-1", nil, nil)
+	srv.DB.CreateApp("sub-1", "sys-1", nil, nil)
+	srv.DB.CreateApp("sub-2", "sys-1", nil, nil)
+
+	req := httptest.NewRequest("GET", "/subscriptions/sub-1/apps", nil)
+	req = setMuxVars(req, map[string]string{"subId": "sub-1"})
+
+	w := httptest.NewRecorder()
+	srv.GetAppsForSubscription(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+	apps := resp["apps"].([]any)
+	if len(apps) != 2 {
+		t.Fatalf("expected 2 apps for sub-1, got %d", len(apps))
+	}
+}
+
+func TestGetAppsForSubscriptionUsesDefaultForEmptySubscriptionID(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Create an app with empty subscription ID
+	srv.DB.CreateApp("", "sys-1", nil, nil)
+
+	req := httptest.NewRequest("GET", "/subscriptions/"+store.DefaultSubscriptionID+"/apps", nil)
+	req = setMuxVars(req, map[string]string{"subId": store.DefaultSubscriptionID})
+
+	w := httptest.NewRecorder()
+	srv.GetAppsForSubscription(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+	apps := resp["apps"].([]any)
+	if len(apps) != 1 {
+		t.Fatalf("expected 1 app for default subscription, got %d", len(apps))
+	}
+}
+
+func TestGetAppsForSubscriptionReturnsEmptyForUnknown(t *testing.T) {
+	srv := newTestServer(t)
+
+	srv.DB.CreateApp("sub-1", "sys-1", nil, nil)
+
+	req := httptest.NewRequest("GET", "/subscriptions/unknown-sub/apps", nil)
+	req = setMuxVars(req, map[string]string{"subId": "unknown-sub"})
+
+	w := httptest.NewRecorder()
+	srv.GetAppsForSubscription(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+	apps := resp["apps"].([]any)
+	if len(apps) != 0 {
+		t.Fatalf("expected 0 apps for unknown subscription, got %d", len(apps))
+	}
+}
+
+// --- ListSubscriptions ---
+
+func TestListSubscriptionsReturnsDefaultWhenNoApps(t *testing.T) {
+	srv := newTestServer(t)
+
+	req := httptest.NewRequest("GET", "/subscriptions", nil)
+	w := httptest.NewRecorder()
+	srv.ListSubscriptions(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp []map[string]any
+	decodeJSON(t, w, &resp)
+
+	if len(resp) != 1 {
+		t.Fatalf("expected 1 subscription, got %d", len(resp))
+	}
+
+	if resp[0]["id"] != store.DefaultSubscriptionID {
+		t.Errorf("expected id %s, got %v", store.DefaultSubscriptionID, resp[0]["id"])
+	}
+}
+
+func TestListSubscriptionsReturnsAllUniqueSubscriptions(t *testing.T) {
+	srv := newTestServer(t)
+
+	srv.DB.CreateApp("sub-a", "sys-1", nil, nil)
+	srv.DB.CreateApp("sub-a", "sys-1", nil, nil) // Duplicate
+	srv.DB.CreateApp("sub-b", "sys-1", nil, nil)
+
+	req := httptest.NewRequest("GET", "/subscriptions", nil)
+	w := httptest.NewRecorder()
+	srv.ListSubscriptions(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp []map[string]any
+	decodeJSON(t, w, &resp)
+
+	if len(resp) != 2 {
+		t.Fatalf("expected 2 unique subscriptions, got %d", len(resp))
+	}
+
+	// Should be sorted alphabetically
+	if resp[0]["id"] != "sub-a" {
+		t.Errorf("expected first subscription sub-a, got %v", resp[0]["id"])
+	}
+	if resp[1]["id"] != "sub-b" {
+		t.Errorf("expected second subscription sub-b, got %v", resp[1]["id"])
+	}
+}
+
+func TestListSubscriptionsUsesDefaultForEmptySubscriptionID(t *testing.T) {
+	srv := newTestServer(t)
+
+	srv.DB.CreateApp("", "sys-1", nil, nil)
+
+	req := httptest.NewRequest("GET", "/subscriptions", nil)
+	w := httptest.NewRecorder()
+	srv.ListSubscriptions(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp []map[string]any
+	decodeJSON(t, w, &resp)
+
+	if len(resp) != 1 {
+		t.Fatalf("expected 1 subscription, got %d", len(resp))
+	}
+
+	if resp[0]["id"] != store.DefaultSubscriptionID {
+		t.Errorf("expected id %s, got %v", store.DefaultSubscriptionID, resp[0]["id"])
+	}
+}
+
+// --- GetEntitlement ---
+
+func TestGetEntitlementUsesSubIdParam(t *testing.T) {
+	srv := newTestServer(t)
+
+	req := httptest.NewRequest("GET", "/subscriptions/custom-sub-123/entitlement", nil)
+	req = setMuxVars(req, map[string]string{"subId": "custom-sub-123"})
+
+	w := httptest.NewRecorder()
+	srv.GetEntitlement(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+
+	if resp["id"] != "custom-sub-123" {
+		t.Errorf("expected id custom-sub-123, got %v", resp["id"])
+	}
+}
