@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/airo-ai-builder/release-manager/internal/config"
 	"github.com/airo-ai-builder/release-manager/internal/pipeline"
@@ -363,6 +364,265 @@ func TestRenderSlackDeployValuesNoOutputsNoLine(t *testing.T) {
 
 	if sb.Len() != 0 {
 		t.Errorf("expected no output when no stages have values, got:\n%s", sb.String())
+	}
+}
+
+func TestSlackEmojiToUnicode(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"check mark", ":white_check_mark: Deploy", "\u2705 Deploy"},
+		{"x mark", ":x: Failed", "\u274C Failed"},
+		{"rocket", ":rocket: Launching", "\U0001F680 Launching"},
+		{"checkered flag", ":checkered_flag: Done", "\U0001F3C1 Done"},
+		{"blue circle", ":large_blue_circle: Running", "\U0001F535 Running"},
+		{"white circle", ":white_circle: Pending", "\u26AA Pending"},
+		{"no entry", ":no_entry: Blocked", "\u26D4 Blocked"},
+		{"fast forward", ":fast_forward: Skipped", "\u23E9 Skipped"},
+		{"label", ":label: v1.0", "\U0001F3F7\uFE0F v1.0"},
+		{"spinner removed", ":spinner_: Loading", " Loading"},
+		{"multiple emoji", ":rocket: :white_check_mark:", "\U0001F680 \u2705"},
+		{"no emoji", "plain text", "plain text"},
+		{"empty string", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := slackEmojiToUnicode(tt.input); got != tt.want {
+				t.Errorf("slackEmojiToUnicode(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func newTestModel(opts ...func(*Model)) Model {
+	cfg := &config.Config{
+		Pipeline: config.PipelineConfig{
+			Environments: map[string]*config.EnvironmentConfig{
+				"test": {Stages: []config.Stage{{ID: "deploy", Name: "Deploy App to Test"}}},
+			},
+		},
+	}
+	p := pipeline.New(cfg, nil, true, "main", nil)
+	m := Model{
+		config:   cfg,
+		pipeline: p,
+		branch:   "main",
+		operator: "testuser",
+		envOrder: []string{"test"},
+		fv:       &formValues{},
+	}
+	for _, fn := range opts {
+		fn(&m)
+	}
+	return m
+}
+
+func TestSlackMessageHeader(t *testing.T) {
+	m := newTestModel()
+	msg := m.slackMessage(false)
+
+	if !strings.Contains(msg, ":rocket: **testuser** is deploying `main`") {
+		t.Errorf("missing header, got:\n%s", msg)
+	}
+}
+
+func TestSlackMessageHeaderWithCommit(t *testing.T) {
+	m := newTestModel()
+	m.pipeline.SetValue("commit", "abc1234def5678")
+
+	msg := m.slackMessage(false)
+
+	if !strings.Contains(msg, "(`abc1234`)") {
+		t.Errorf("expected truncated commit hash, got:\n%s", msg)
+	}
+}
+
+func TestSlackMessageDryRun(t *testing.T) {
+	m := newTestModel(func(m *Model) { m.dryRun = true })
+	msg := m.slackMessage(false)
+
+	if !strings.Contains(msg, "(DRY RUN)") {
+		t.Errorf("expected DRY RUN badge, got:\n%s", msg)
+	}
+}
+
+func TestSlackMessageReleaseNotes(t *testing.T) {
+	m := newTestModel(func(m *Model) {
+		m.releaseNotes = []pipeline.ReleaseNote{
+			{Number: 100, Title: "fix: first bug", Author: "alice"},
+			{Number: 200, Title: "feat: new feature", Author: "bob"},
+		}
+		m.releaseNotesURL = "https://github.com/org/repo/compare/a...b"
+	})
+
+	msg := m.slackMessage(false)
+
+	for _, want := range []string{
+		"**Release Notes** (2 PRs)",
+		"[Full diff](https://github.com/org/repo/compare/a...b)",
+		"• #100 fix: first bug — @alice",
+		"• #200 feat: new feature — @bob",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("expected %q in output, got:\n%s", want, msg)
+		}
+	}
+}
+
+func TestSlackMessageReleaseNotesURLOnly(t *testing.T) {
+	m := newTestModel(func(m *Model) {
+		m.releaseNotesURL = "https://github.com/org/repo/compare/a...b"
+	})
+
+	msg := m.slackMessage(false)
+
+	if !strings.Contains(msg, "[Full diff](https://github.com/org/repo/compare/a...b)") {
+		t.Errorf("expected full diff link, got:\n%s", msg)
+	}
+	if strings.Contains(msg, "**Release Notes**") {
+		t.Errorf("should not show Release Notes header without PRs, got:\n%s", msg)
+	}
+}
+
+func TestSlackMessageStages(t *testing.T) {
+	m := newTestModel()
+	m.pipeline.BuildStages("test")
+	m.pipeline.CompleteChecklist(0)
+
+	msg := m.slackMessage(false)
+
+	for _, want := range []string{
+		"**TEST**",
+		":white_check_mark:",
+		"Deploy App to Test",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("expected %q in output, got:\n%s", want, msg)
+		}
+	}
+}
+
+func TestSlackMessageMatrixRuns(t *testing.T) {
+	cfg := &config.Config{
+		Pipeline: config.PipelineConfig{
+			Environments: map[string]*config.EnvironmentConfig{
+				"test": {Stages: []config.Stage{{
+					ID:   "promote",
+					Name: "Promote Images",
+					Matrix: []config.MatrixEntry{
+						{Inputs: map[string]string{"env": "prod", "image": "agent"}},
+					},
+				}}},
+			},
+		},
+	}
+	p := pipeline.New(cfg, nil, true, "main", nil)
+	p.BuildStages("test")
+
+	m := Model{
+		config:   cfg,
+		pipeline: p,
+		branch:   "main",
+		operator: "testuser",
+		envOrder: []string{"test"},
+		fv:       &formValues{},
+	}
+
+	msg := m.slackMessage(false)
+
+	if !strings.Contains(msg, nbspx2) {
+		t.Errorf("matrix runs should be indented with nbspx2, got:\n%s", msg)
+	}
+	if !strings.Contains(msg, "env=prod image=agent") {
+		t.Errorf("expected matrix inputs, got:\n%s", msg)
+	}
+}
+
+func TestSlackMessageInProgress(t *testing.T) {
+	m := newTestModel()
+	msg := m.slackMessage(false)
+
+	if !strings.Contains(msg, ":spinner_: *In progress...*") {
+		t.Errorf("expected in-progress footer, got:\n%s", msg)
+	}
+}
+
+func TestSlackMessageComplete(t *testing.T) {
+	m := newTestModel(func(m *Model) {
+		m.startTime = time.Now().Add(-30 * time.Second)
+	})
+
+	msg := m.slackMessage(true)
+
+	if !strings.Contains(msg, ":checkered_flag: **Complete**") {
+		t.Errorf("expected complete footer, got:\n%s", msg)
+	}
+}
+
+func TestSlackMessageAborted(t *testing.T) {
+	m := newTestModel(func(m *Model) {
+		m.phase = phaseAborted
+		m.statusMessage = "Aborted by user"
+		m.startTime = time.Now().Add(-10 * time.Second)
+	})
+
+	msg := m.slackMessage(true)
+
+	if !strings.Contains(msg, ":no_entry: **Aborted by user**") {
+		t.Errorf("expected aborted footer, got:\n%s", msg)
+	}
+}
+
+func TestSlackMessageUsesMarkdownFormat(t *testing.T) {
+	m := newTestModel(func(m *Model) {
+		m.releaseNotes = []pipeline.ReleaseNote{
+			{Number: 42, Title: "test PR", Author: "dev"},
+		}
+		m.releaseNotesURL = "https://github.com/org/repo/compare/a...b"
+	})
+
+	msg := m.slackMessage(true)
+
+	if strings.Contains(msg, "<https://") {
+		t.Errorf("should not contain mrkdwn link syntax, got:\n%s", msg)
+	}
+	if strings.Contains(msg, "|Full diff>") {
+		t.Errorf("should not contain mrkdwn link labels, got:\n%s", msg)
+	}
+	if !strings.Contains(msg, "[Full diff](") {
+		t.Errorf("expected standard markdown links, got:\n%s", msg)
+	}
+	if !strings.Contains(msg, "**testuser**") {
+		t.Errorf("expected ** bold syntax, got:\n%s", msg)
+	}
+}
+
+func TestSlackMessageBlankLineSeparators(t *testing.T) {
+	m := newTestModel(func(m *Model) {
+		m.releaseNotes = []pipeline.ReleaseNote{
+			{Number: 1, Title: "test"},
+		}
+	})
+	m.pipeline.BuildStages("test")
+
+	msg := m.slackMessage(false)
+
+	if !strings.Contains(msg, blankLine) {
+		t.Errorf("expected zero-width space section separators, got:\n%s", msg)
+	}
+}
+
+func TestSlackMessageStageIndentation(t *testing.T) {
+	m := newTestModel()
+	m.pipeline.BuildStages("test")
+
+	msg := m.slackMessage(false)
+
+	if !strings.Contains(msg, nbsp) {
+		t.Errorf("stage lines should be indented with nbsp, got:\n%s", msg)
 	}
 }
 

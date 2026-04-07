@@ -26,6 +26,10 @@ type Notifier struct {
 	client    *http.Client
 	baseURL   string
 
+	// mu serializes all Slack API operations. Multiple Bubble Tea commands
+	// can fire concurrently (ticks, stage completions, etc.), so we hold the
+	// lock for the entire duration of each Post/Update to prevent races like
+	// duplicate initial posts.
 	mu       sync.Mutex
 	ts       string
 	lastText string
@@ -73,17 +77,17 @@ func FetchCredentials(ctx context.Context, secretName, awsProfile string) (*Cred
 	return &creds, nil
 }
 
+// postRequest uses markdown_text (12k char limit) instead of text (4k limit).
+// markdown_text must not be combined with text or blocks.
 type postRequest struct {
-	Channel string `json:"channel"`
-	Text    string `json:"text"`
-	Mrkdwn  bool   `json:"mrkdwn"`
+	Channel      string `json:"channel"`
+	MarkdownText string `json:"markdown_text"`
 }
 
 type updateRequest struct {
-	Channel string `json:"channel"`
-	TS      string `json:"ts"`
-	Text    string `json:"text"`
-	Mrkdwn  bool   `json:"mrkdwn"`
+	Channel      string `json:"channel"`
+	TS           string `json:"ts"`
+	MarkdownText string `json:"markdown_text"`
 }
 
 type apiResponse struct {
@@ -99,10 +103,15 @@ func (n *Notifier) Post(ctx context.Context, text string) {
 		return
 	}
 
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.post(ctx, text)
+}
+
+func (n *Notifier) post(ctx context.Context, text string) {
 	body, err := json.Marshal(postRequest{
-		Channel: n.channelID,
-		Text:    text,
-		Mrkdwn:  true,
+		Channel:      n.channelID,
+		MarkdownText: text,
 	})
 	if err != nil {
 		logger.Log("slack.error: marshalling post payload: %s", err)
@@ -115,10 +124,8 @@ func (n *Notifier) Post(ctx context.Context, text string) {
 		return
 	}
 
-	n.mu.Lock()
 	n.ts = resp.TS
 	n.lastText = text
-	n.mu.Unlock()
 
 	logger.Log("slack.posted: ts=%s", resp.TS)
 }
@@ -131,23 +138,21 @@ func (n *Notifier) Update(ctx context.Context, text string) {
 	}
 
 	n.mu.Lock()
-	ts := n.ts
-	if ts != "" && n.lastText == text {
-		n.mu.Unlock()
+	defer n.mu.Unlock()
+
+	if n.ts != "" && n.lastText == text {
 		return
 	}
-	n.mu.Unlock()
 
-	if ts == "" {
-		n.Post(ctx, text)
+	if n.ts == "" {
+		n.post(ctx, text)
 		return
 	}
 
 	body, err := json.Marshal(updateRequest{
-		Channel: n.channelID,
-		TS:      ts,
-		Text:    text,
-		Mrkdwn:  true,
+		Channel:      n.channelID,
+		TS:           n.ts,
+		MarkdownText: text,
 	})
 	if err != nil {
 		logger.Log("slack.error: marshalling update payload: %s", err)
@@ -159,11 +164,9 @@ func (n *Notifier) Update(ctx context.Context, text string) {
 		return
 	}
 
-	n.mu.Lock()
 	n.lastText = text
-	n.mu.Unlock()
 
-	logger.Log("slack.updated: ts=%s", ts)
+	logger.Log("slack.updated: ts=%s", n.ts)
 }
 
 // Permalink returns a direct link to the Slack message, or empty if no

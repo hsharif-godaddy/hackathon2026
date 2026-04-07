@@ -376,11 +376,22 @@ func (m Model) elapsed() string {
 	return fmt.Sprintf("%dm%02ds", int(d.Minutes()), int(d.Seconds())%60)
 }
 
-// slackMessage builds a full Slack mrkdwn status message from current pipeline state.
+// Slack's markdown_text renderer strips leading ASCII spaces and collapses
+// consecutive blank lines. These Unicode characters work around that:
+// - nbsp preserves indentation (non-breaking space, not stripped)
+// - blankLine forces a visible blank line (zero-width space, not collapsed)
+const (
+	nbsp      = "\u00A0\u00A0"
+	nbspx2    = "\u00A0\u00A0\u00A0\u00A0"
+	blankLine = "\u200B"
+)
+
+// slackMessage builds a Slack status message using standard markdown format
+// (for use with the markdown_text API field, which allows up to 12,000 chars).
 func (m Model) slackMessage(finished bool) string {
 	var sb strings.Builder
 
-	header := ":rocket: *" + m.operator + "* is deploying `" + m.branch + "`"
+	header := ":rocket: **" + m.operator + "** is deploying `" + m.branch + "`"
 	if commit := m.pipeline.Values()["commit"]; commit != "" && commit != m.branch {
 		short := commit
 		if len(short) > 7 {
@@ -395,20 +406,20 @@ func (m Model) slackMessage(finished bool) string {
 
 	if len(m.releaseNotes) > 0 || m.releaseNotesURL != "" {
 		if len(m.releaseNotes) > 0 {
-			sb.WriteString(fmt.Sprintf("\n*Release Notes* (%d PRs)", len(m.releaseNotes)))
+			sb.WriteString(fmt.Sprintf("\n%s\n**Release Notes** (%d PRs)", blankLine, len(m.releaseNotes)))
 			if m.releaseNotesURL != "" {
-				sb.WriteString(fmt.Sprintf(" — <%s|Full diff>", m.releaseNotesURL))
+				sb.WriteString(fmt.Sprintf(" — [Full diff](%s)", m.releaseNotesURL))
 			}
 			sb.WriteString("\n")
 			for _, n := range m.releaseNotes {
-				line := fmt.Sprintf("  • #%d %s", n.Number, n.Title)
+				line := fmt.Sprintf("• #%d %s", n.Number, n.Title)
 				if n.Author != "" {
 					line += " — @" + n.Author
 				}
 				sb.WriteString(line + "\n")
 			}
 		} else if m.releaseNotesURL != "" {
-			sb.WriteString(fmt.Sprintf("\n<%s|Full diff>\n", m.releaseNotesURL))
+			sb.WriteString(fmt.Sprintf("\n%s\n[Full diff](%s)\n", blankLine, m.releaseNotesURL))
 		}
 	}
 
@@ -420,7 +431,7 @@ func (m Model) slackMessage(finished bool) string {
 		}
 		if sr.Env != currentEnv {
 			currentEnv = sr.Env
-			sb.WriteString(fmt.Sprintf("\n*%s*\n", strings.ToUpper(currentEnv)))
+			sb.WriteString(fmt.Sprintf("\n%s\n**%s**\n", blankLine, strings.ToUpper(currentEnv)))
 			m.renderSlackDeployValues(&sb, currentEnv, stages)
 		}
 		m.renderSlackStage(&sb, sr)
@@ -430,7 +441,7 @@ func (m Model) slackMessage(finished bool) string {
 	for _, sr := range stages {
 		if sr.Env == "rollback" {
 			if !rollbackStages {
-				sb.WriteString("\n*ROLLBACK*\n")
+				sb.WriteString(fmt.Sprintf("\n%s\n**ROLLBACK**\n", blankLine))
 				m.renderSlackSnapshotValues(&sb)
 				rollbackStages = true
 			}
@@ -439,11 +450,11 @@ func (m Model) slackMessage(finished bool) string {
 	}
 
 	if finished && m.phase == phaseAborted {
-		sb.WriteString(fmt.Sprintf("\n:no_entry: *%s* (%s)", m.statusMessage, m.elapsed()))
+		sb.WriteString(fmt.Sprintf("\n%s\n:no_entry: **%s** (%s)", blankLine, m.statusMessage, m.elapsed()))
 	} else if finished {
-		sb.WriteString(fmt.Sprintf("\n:checkered_flag: *Complete* (%s)", m.elapsed()))
+		sb.WriteString(fmt.Sprintf("\n%s\n:checkered_flag: **Complete** (%s)", blankLine, m.elapsed()))
 	} else {
-		sb.WriteString("\n:spinner_: _In progress..._")
+		sb.WriteString(fmt.Sprintf("\n%s\n:spinner_: *In progress...*", blankLine))
 	}
 
 	return sb.String()
@@ -451,14 +462,14 @@ func (m Model) slackMessage(finished bool) string {
 
 func (m Model) renderSlackStage(sb *strings.Builder, sr *pipeline.StageRun) {
 	emoji := slackEmoji(sr.State)
-	line := fmt.Sprintf("  %s %s", emoji, sr.Stage.Name)
+	line := fmt.Sprintf("%s%s %s", nbsp, emoji, sr.Stage.Name)
 
 	if dur := sr.Duration(); dur > 0 && sr.State != pipeline.StateRunning {
 		line += " " + formatDuration(dur)
 	}
 
 	if sr.RunURL != "" && !strings.HasPrefix(sr.RunURL, "[DRY RUN]") {
-		line += fmt.Sprintf(" — <%s|View Run>", sr.RunURL)
+		line += fmt.Sprintf(" — [View Run](%s)", sr.RunURL)
 	}
 
 	if sr.Error != "" {
@@ -468,9 +479,9 @@ func (m Model) renderSlackStage(sb *strings.Builder, sr *pipeline.StageRun) {
 	sb.WriteString(line + "\n")
 
 	for _, mr := range sr.MatrixRuns {
-		mrLine := fmt.Sprintf("    %s %s", slackEmoji(mr.State), formatMatrixInputs(mr.Inputs))
+		mrLine := fmt.Sprintf("%s%s %s", nbspx2, slackEmoji(mr.State), formatMatrixInputs(mr.Inputs))
 		if mr.RunURL != "" && !strings.HasPrefix(mr.RunURL, "[DRY RUN]") {
-			mrLine += fmt.Sprintf(" — <%s|View Run>", mr.RunURL)
+			mrLine += fmt.Sprintf(" — [View Run](%s)", mr.RunURL)
 		}
 		if mr.Error != "" {
 			mrLine += " — " + mr.Error
@@ -508,20 +519,20 @@ func (m Model) renderSlackDeployValues(sb *strings.Builder, env string, stages [
 		}
 	}
 	if artifact != "" {
-		sb.WriteString("  artifact: `" + artifact + "`\n")
+		sb.WriteString(nbsp + "artifact: `" + artifact + "`\n")
 	}
 	if agent != "" || preview != "" || publish != "" {
-		sb.WriteString("  agent: `" + agent + "` preview: `" + preview + "` publish: `" + publish + "`\n")
+		sb.WriteString(nbsp + "agent: `" + agent + "` preview: `" + preview + "` publish: `" + publish + "`\n")
 	}
 }
 
 func (m Model) renderSlackSnapshotValues(sb *strings.Builder) {
 	snap := m.pipeline.Snapshot
 	if snap.ArtifactID != "" {
-		sb.WriteString("  artifact: `" + snap.ArtifactID + "`\n")
+		sb.WriteString(nbsp + "artifact: `" + snap.ArtifactID + "`\n")
 	}
 	if snap.AgentImageTag != "" || snap.PreviewImageTag != "" || snap.PublishImageTag != "" {
-		sb.WriteString("  agent: `" + snap.AgentImageTag + "` preview: `" + snap.PreviewImageTag + "` publish: `" + snap.PublishImageTag + "`\n")
+		sb.WriteString(nbsp + "agent: `" + snap.AgentImageTag + "` preview: `" + snap.PreviewImageTag + "` publish: `" + snap.PublishImageTag + "`\n")
 	}
 }
 
@@ -538,6 +549,27 @@ func slackEmoji(state pipeline.StageState) string {
 	default:
 		return ":white_circle:"
 	}
+}
+
+// slackEmojiToUnicode replaces Slack emoji codes with Unicode characters
+// for contexts that don't render Slack codes natively (e.g. GitHub releases).
+func slackEmojiToUnicode(text string) string {
+	replacements := []struct{ code, unicode string }{
+		{":white_check_mark:", "\u2705"},
+		{":x:", "\u274C"},
+		{":rocket:", "\U0001F680"},
+		{":checkered_flag:", "\U0001F3C1"},
+		{":large_blue_circle:", "\U0001F535"},
+		{":white_circle:", "\u26AA"},
+		{":no_entry:", "\u26D4"},
+		{":fast_forward:", "\u23E9"},
+		{":label:", "\U0001F3F7\uFE0F"},
+		{":spinner_:", ""},
+	}
+	for _, r := range replacements {
+		text = strings.ReplaceAll(text, r.code, r.unicode)
+	}
+	return text
 }
 
 func formatMatrixInputs(inputs map[string]string) string {

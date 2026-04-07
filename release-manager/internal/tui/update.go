@@ -77,15 +77,16 @@ func (m Model) exitCleanupCmd(sendSlack bool, createRelease bool) tea.Cmd {
 				if i := strings.Index(releaseText, "\n"); i >= 0 {
 					releaseText = strings.TrimLeft(releaseText[i+1:], "\n")
 				}
-				body := pipeline.MrkdwnToMarkdown(releaseText)
+				releaseText = slackEmojiToUnicode(releaseText)
+				releaseText = strings.ReplaceAll(releaseText, blankLine, "")
 				if permalink := n.Permalink(); permalink != "" {
-					body += fmt.Sprintf("\n\n---\n[Slack thread](%s)", permalink)
+					releaseText += fmt.Sprintf("\n\n---\n[Slack thread](%s)", permalink)
 				}
-				releaseURL, err := p.CreateRelease(ctx, tag, tag, body)
+				releaseURL, err := p.CreateRelease(ctx, tag, tag, releaseText)
 				if err != nil {
 					logger.Log("release.error: creating release: %s", err)
 				} else {
-					slackText += fmt.Sprintf("\n\n:label: <%s|%s>", releaseURL, tag)
+					slackText += fmt.Sprintf("\n\n:label: [%s](%s)", tag, releaseURL)
 				}
 			}
 		}
