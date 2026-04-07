@@ -40,7 +40,7 @@ export interface MgmtVariantLifecycle {
 export interface MgmtVariantWithLifecycle {
     variant: string;
     status: string;
-    lifecycle: MgmtVariantLifecycle;
+    lifecycle?: MgmtVariantLifecycle;
 }
 
 export interface MgmtFilesystem {

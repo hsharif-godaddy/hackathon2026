@@ -158,7 +158,7 @@ function DetailedStatusBlock({ name, url, variant, imageStatus, imageStatusLoadi
                 </div>
 
                 {/* Right: variant lifecycle */}
-                {variant && (
+                {variant && variant.lifecycle && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem', flexShrink: 0 }}>
                         <StatusBadge value={variant.lifecycle.lifecycleState} green={['running']} red={['stopped', 'failed']} />
                         <span style={{ fontSize: '0.7rem', color: '#6b7280', fontFamily: 'monospace' }}>
