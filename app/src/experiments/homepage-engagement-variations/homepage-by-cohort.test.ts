@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { INELIGIBLE_COHORT } from '@/config/experiments'
+import { AbstractAnimationHomePage } from '@/experiments/homepage-engagement-variations/abstract_animation/HomePage'
 import { HeroContentImprovementHomePage } from '@/experiments/homepage-engagement-variations/hero_content_improvement/HomePage'
 import {
   COHORT_IDS,
@@ -21,6 +22,10 @@ describe('homepageComponentForCohort', function homepageComponentForCohortSuite(
 
   it('uses light homepage for light_homepage cohort', function lightHomepage() {
     expect(homepageComponentForCohort(COHORT_IDS.LIGHT_HOMEPAGE_COHORT_ID)).toBe(LightHomepageHomePage)
+  })
+
+  it('uses abstract animation homepage for abstract_animation cohort', function abstractAnimation() {
+    expect(homepageComponentForCohort(COHORT_IDS.ABSTRACT_ANIMATION_COHORT_ID)).toBe(AbstractAnimationHomePage)
   })
 
   it('uses original for unknown cohort', function unknown() {

@@ -55,7 +55,7 @@ export default function Header({
                 href={godaddyUrl}
                 className="flex items-center mr-2"
                 data-eid={ generateClickEID(`${location}.header.godaddy_link`) }
-                aria-label="Back to GoDaddy"
+                aria-label={t('builder_abstract_animation_header_back_to_godaddy')}
               >
                 <ChevronLeftIcon className="w-4 h-4" />
               </Link>

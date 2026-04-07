@@ -430,7 +430,7 @@ export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
         errorMessage: errorMsg.substring(0, 200),
       })
 
-      let errorMessage = 'Something went wrong. Please try again.'
+      let errorMessage = t('builder_abstract_animation_error_generic')
       let errorType = 'generic'
 
       if (error instanceof Error) {

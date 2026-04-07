@@ -1,12 +1,14 @@
 import type { ComponentType } from 'react'
 
-import { HOMEPAGE_ENGAGEMENT_HERO_CONTENT_COHORT, HOMEPAGE_ENGAGEMENT_LIGHT_COHORT, INELIGIBLE_COHORT } from '@/config/experiments'
+import { HOMEPAGE_ENGAGEMENT_ABSTRACT_ANIMATION_COHORT, HOMEPAGE_ENGAGEMENT_HERO_CONTENT_COHORT, HOMEPAGE_ENGAGEMENT_LIGHT_COHORT, INELIGIBLE_COHORT } from '@/config/experiments'
+import { AbstractAnimationHomePage } from '@/experiments/homepage-engagement-variations/abstract_animation/HomePage'
 import { HeroContentImprovementHomePage } from '@/experiments/homepage-engagement-variations/hero_content_improvement/HomePage'
 import { LightHomepageHomePage } from '@/experiments/homepage-engagement-variations/light_homepage/HomePage'
 import { OriginalHomePage } from '@/experiments/homepage-engagement-variations/original/HomePage'
 import type { ServerFeatureFlags } from '@/lib/server-features'
 
 export const COHORT_IDS = {
+  ABSTRACT_ANIMATION_COHORT_ID: HOMEPAGE_ENGAGEMENT_ABSTRACT_ANIMATION_COHORT,
   HERO_CONTENT_IMPROVEMENT_COHORT_ID: HOMEPAGE_ENGAGEMENT_HERO_CONTENT_COHORT,
   HOMEPAGE_ENGAGEMENT_ORIGINAL_COHORT: 'original',
   LIGHT_HOMEPAGE_COHORT_ID: HOMEPAGE_ENGAGEMENT_LIGHT_COHORT,
@@ -15,6 +17,7 @@ export const COHORT_IDS = {
 type HomePageComponent = ComponentType<{ serverFeatures: ServerFeatureFlags }>
 
 const homepageByCohort = new Map<string, HomePageComponent>([
+  [COHORT_IDS.ABSTRACT_ANIMATION_COHORT_ID, AbstractAnimationHomePage],
   [COHORT_IDS.HERO_CONTENT_IMPROVEMENT_COHORT_ID, HeroContentImprovementHomePage],
   [COHORT_IDS.HOMEPAGE_ENGAGEMENT_ORIGINAL_COHORT, OriginalHomePage],
   [INELIGIBLE_COHORT, OriginalHomePage],

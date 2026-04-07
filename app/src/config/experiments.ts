@@ -13,4 +13,7 @@ export const HOMEPAGE_ENGAGEMENT_HERO_CONTENT_COHORT = 'hero_content_improvement
 /** Hivemind cohort id for the light homepage engagement arm (matches `light_homepage/` + `data-homepage-variation`). */
 export const HOMEPAGE_ENGAGEMENT_LIGHT_COHORT = 'light_homepage' as const
 
+/** Hivemind cohort id for the abstract animation homepage arm (matches `abstract_animation/` + `data-homepage-variation`). */
+export const HOMEPAGE_ENGAGEMENT_ABSTRACT_ANIMATION_COHORT = 'abstract_animation' as const
+
 export const INELIGIBLE_COHORT = 'ineligible' as const
