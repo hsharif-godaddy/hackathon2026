@@ -6,8 +6,8 @@ import Card from "@ux/card";
 import WandIcon from "@ux/icon/wand";
 
 import { SettingsLoadingState } from '@/app/develop/components/settings/components/SettingsLoadingState';
+import SettingsSection from "@/app/develop/components/settings/SettingsSection";
 import { useAppIdFromParams } from '@/app/develop/components/utils';
-import BigCard from "@/components/layout/BigCard";
 import { useTranslations } from '@/hooks/useTranslations';
 import { type TestPilotRunResult } from "@/lib/testpilot";
 import { useSecurityQuickFixHandoffStore } from '@/stores/useSecurityQuickFixHandoffStore';
@@ -157,19 +157,23 @@ export default function SecurityPanel() {
 
   return (
     <Box gap="lg" className="@container">
-      <BigCard
+      <SettingsSection
         title={t('builder_settings_security_title')}
         description={t('builder_settings_security_desc')}
         button={
-          <Button
-            design="primary"
-            icon={<WandIcon />}
-            disabled={!isReady || isLoading || isQuickFixInProgress}
-            onClick={handleRunAnalysis}
-            text={isLoading ? t('builder_settings_security_analysis_running') : t('builder_settings_security_analysis_run')}
-          />
+          !isLoading && (
+            <Button
+              design="primary"
+              size="sm"
+              icon={<WandIcon />}
+              disabled={!isReady || isLoading || isQuickFixInProgress}
+              onClick={handleRunAnalysis}
+              text={isLoading ? t('builder_settings_security_analysis_running') : t('builder_settings_security_analysis_run')}
+            />
+          )
         }
-        hideStatus={true}>
+        hideStatus={true}
+      >
 
         {!isReady && !error && !isLoading && (
           <Card>
@@ -203,7 +207,7 @@ export default function SecurityPanel() {
             {error}
           </Alert>
         )}
-      </BigCard>
+      </SettingsSection>
     </Box>
   );
 }

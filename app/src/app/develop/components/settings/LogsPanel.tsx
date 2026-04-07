@@ -10,8 +10,8 @@ import text from '@ux/text';
 import TextInput from '@ux/text-input';
 
 import { SettingsLoadingState } from '@/app/develop/components/settings/components/SettingsLoadingState';
+import SettingsSection from '@/app/develop/components/settings/SettingsSection';
 import { useAppIdFromParams } from '@/app/develop/components/utils';
-import BigCard from '@/components/layout/BigCard';
 import { type LogEntry, useLogs } from '@/hooks/useLogs';
 import { useTranslations } from '@/hooks/useTranslations';
 
@@ -256,7 +256,7 @@ export default function LogsPanel() {
 
   return (
     <Box gap="lg" className="@container">
-      <BigCard
+      <SettingsSection
         title={t('builder_settings_logs_title')}
         description={t('builder_settings_logs_desc')}
         button={(
@@ -590,7 +590,7 @@ export default function LogsPanel() {
             </div>
           )}
         </div>
-      </BigCard>
+      </SettingsSection>
     </Box>
   );
 }

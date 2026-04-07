@@ -73,7 +73,7 @@ export function AnalyticsPieChart({ data, label = 'Distribution', tooltip }: Ana
   return (
     <div
       data-slot="chart"
-      className="flex flex-col w-full rounded-xl border bg-intents-ux-box-backgroundColor p-5 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:-translate-y-0.5"
+      className="flex flex-col w-full rounded-lg border bg-intents-ux-box-backgroundColor p-2 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px min-h-[250px] hover:-translate-y-0.5"
     >
       <div className="flex items-center gap-2 mb-2">
         <span className="inline-block w-[6px] h-[6px] rounded-full flex-shrink-0" style={{ background: 'var(--color-chart-pink)', boxShadow: '0 0 8px color-mix(in srgb, var(--color-chart-pink) 30%, transparent)' }} />

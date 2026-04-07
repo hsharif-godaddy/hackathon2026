@@ -112,7 +112,7 @@ export default function ChatToolbar({
     // Call optimistic callback first for instant UI updates
     onBeforeTabChange?.(tab)
 
-    if (tab === ChatTab.SETTINGS && isMobile) {
+    if (tab === ChatTab.SETTINGS) {
       // Open the settings popover instead of navigating
       settingsMenuRef.current?.openPopover()
       return

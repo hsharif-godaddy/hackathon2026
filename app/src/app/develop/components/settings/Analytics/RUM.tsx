@@ -8,6 +8,7 @@ import Select from '@ux/select'
 import text from '@ux/text'
 
 import { SettingsLoadingState } from '@/app/develop/components/settings/components/SettingsLoadingState'
+import SettingsSection from '@/app/develop/components/settings/SettingsSection'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { usePublishedUrl } from '@/app/develop/hooks/usePublishedUrl'
 import { AnalyticsChart } from '@/components/analytics/AnalyticsChart'
@@ -17,7 +18,6 @@ import { AnalyticsPieChart } from '@/components/analytics/AnalyticsPieChart'
 import { MetricCard } from '@/components/analytics/MetricCard'
 import type { StatProgressItem } from '@/components/analytics/StatProgressList'
 import { StatProgressList } from '@/components/analytics/StatProgressList'
-import BigCard from '@/components/layout/BigCard'
 import EmptyStateCard from '@/components/layout/EmptyStateCard'
 import { useClickhouseAnalytics } from '@/hooks/useClickhouseAnalytics'
 import { useInsightsAnalytics } from '@/hooks/useInsightsAnalytics'
@@ -535,7 +535,7 @@ export default function RUM() {
   }
 
   return (
-    <BigCard
+    <SettingsSection
       title={t('builder_analytics_rum_title')}
       description={t('builder_analytics_rum_description')}
       hideStatus={true}
@@ -592,6 +592,7 @@ export default function RUM() {
           </Select>
         </div>
       )}
+      className="pb-2"
     >
       <TooltipProvider>
         <div className="h-full overflow-y-auto @container">
@@ -603,7 +604,7 @@ export default function RUM() {
             )}
 
             {/* Key Metrics — Row 1: Core Overview */}
-            <div className="grid grid-cols-2 @md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 @md:grid-cols-3 gap-2">
               <MetricCard
                 label={t('builder_analytics_pageviews')}
                 value={metrics.pageviews}
@@ -670,7 +671,7 @@ export default function RUM() {
             <div className="[&>*]:min-w-0">
               <div
                 data-slot="chart"
-                className="flex flex-col w-full rounded-lg border bg-intents-ux-box-backgroundColor p-5 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px"
+                className="flex flex-col w-full rounded-lg border bg-intents-ux-box-backgroundColor p-2 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px"
               >
                 <div className="mb-4">
                   <SegmentedControl
@@ -707,8 +708,6 @@ export default function RUM() {
                 )}
               </div>
             </div>
-
-
 
             {/* ═══════════ GEOGRAPHIC ═══════════ */}
             <SectionHeader
@@ -964,7 +963,7 @@ export default function RUM() {
             <div className="[&>*]:min-w-0">
               <div
                 data-slot="chart"
-                className="flex flex-col w-full rounded-lg border bg-intents-ux-box-backgroundColor p-5 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px"
+                className="flex flex-col w-full rounded-lg border bg-intents-ux-box-backgroundColor p-2 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px"
               >
                 <div className="mb-4">
                   <SegmentedControl
@@ -1098,6 +1097,6 @@ export default function RUM() {
           </Box>
         </div>
       </TooltipProvider>
-    </BigCard>
+    </SettingsSection>
   )
 }

@@ -101,7 +101,7 @@ export function ChartTooltip(props: ChartTooltipProps) {
     const format = fmt ?? ((v: number) => formatChartValue(v))
 
     return (
-      <div className="bg-background/95 backdrop-blur-sm border rounded-lg shadow-lg p-3">
+      <div className="bg-background/95 backdrop-blur-sm border rounded-lg shadow-lg p-2">
         <text.p className="!text-sm !font-medium !mb-0">{tooltipLabel}</text.p>
         {(payload as MultiTooltipPayload[]).map((p, i) => (
           <text.p key={i} emphasis="passive" className="!text-sm !mb-0">

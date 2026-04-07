@@ -1125,11 +1125,7 @@ function DevelopPageContent() {
                 {/* Preview/Code View */}
                 <div
                   id="preview-pane-container"
-                  className="absolute inset-0 flex flex-col transition-opacity duration-150"
-                  style={{
-                    opacity: activeChatTab !== ChatTab.SETTINGS ? 1 : 0,
-                    pointerEvents: activeChatTab !== ChatTab.SETTINGS ? 'auto' : 'none',
-                  }}
+                  className="absolute inset-0 flex flex-col"
                 >
                   <PreviewPane
                     onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
@@ -1145,17 +1141,6 @@ function DevelopPageContent() {
                     onRetryImageReload={() => imageReadiness.retry()}
                     isMobile={false}
                   />
-                </div>
-
-                {/* Settings View */}
-                <div
-                  className="absolute inset-0 flex flex-col transition-opacity duration-150"
-                  style={{
-                    opacity: activeChatTab === ChatTab.SETTINGS ? 1 : 0,
-                    pointerEvents: activeChatTab === ChatTab.SETTINGS ? 'auto' : 'none',
-                  }}
-                >
-                  <SettingsView />
                 </div>
               </div>
             </motion.div>

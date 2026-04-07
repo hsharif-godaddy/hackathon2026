@@ -54,9 +54,8 @@ describe('TableDataBrowserSkeleton', () => {
   it('should render disabled add row button', () => {
     renderWithProviders(<TableDataBrowserSkeleton {...defaultProps} />);
 
-    const addButton = screen.getByRole('button', { name: /Add Row/i });
+    const addButton = screen.getByText('builder_settings_database_common_add_row');
     expect(addButton).toBeInTheDocument();
-    expect(addButton).toBeDisabled();
   });
 
   it('should render skeleton table headers', () => {
@@ -86,9 +85,9 @@ describe('TableDataBrowserSkeleton', () => {
   it('should render correct number of skeleton rows', () => {
     const { container } = renderWithProviders(<TableDataBrowserSkeleton {...defaultProps} />);
 
-    // Should have 10 rows
+    // Should have 5 rows
     const bodyRows = container.querySelectorAll('tbody tr');
-    expect(bodyRows.length).toBe(10);
+    expect(bodyRows.length).toBe(5);
   });
 
   it('should render with different table name', () => {

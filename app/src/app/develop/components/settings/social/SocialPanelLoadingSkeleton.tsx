@@ -2,11 +2,11 @@ import { memo } from 'react'
 import Box from '@ux/box'
 import Skeleton from '@ux/skeleton'
 
-import BigCard from '@/components/layout/BigCard'
+import SettingsSection from '@/app/develop/components/settings/SettingsSection'
 
 export const SocialPanelLoadingSkeleton = memo(function SocialPanelLoadingSkeleton() {
   return (
-    <BigCard
+    <SettingsSection
       title="Social Platforms"
       description="Manage your social media platform connections. Connect or disconnect platforms to control which accounts your app can interact with."
     >
@@ -27,6 +27,6 @@ export const SocialPanelLoadingSkeleton = memo(function SocialPanelLoadingSkelet
           </Box>
         ))}
       </Box>
-    </BigCard>
+    </SettingsSection>
   )
 })
