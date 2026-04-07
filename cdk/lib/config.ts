@@ -228,7 +228,10 @@ const prodConfig: Config = {
     'arn:aws:iam::644094189644:role/airobuilde-custom-prod-gocode-spend-sync-role',
     'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment9535GlobalEcsTaskRoleAAF08999'
   ],
-  katanaEcsTaskRoleArn: ['arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment6030GlobalEcsTaskRole99409837'],
+  katanaEcsTaskRoleArn: [
+    'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment6030GlobalEcsTaskRole99409837',
+    'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment9637GlobalEcsTaskRoleCE42F0DB' // budget-service prod
+  ],
   vpnIps: {},
   awsIamJwtAccount: ['377100941779'],
   monitoring: {
