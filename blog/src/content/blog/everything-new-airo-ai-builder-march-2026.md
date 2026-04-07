@@ -128,28 +128,3 @@ Describe your business in a few sentences and Airo AI Builder generates a fully 
 [Join the community on Discord](https://discord.gg/EfybfxAXg8)
 
 [Subscribe on YouTube](https://www.youtube.com/@InsideAiroBuilder)
-
----
-
-## SEO & Discoverability Reference
-
-### Target Search Queries
-
-| Query | Intent | Addressed in Section |
-|-------|--------|---------------------|
-| airo ai builder update march 2026 | Navigational | Full article |
-| no code app builder new features 2026 | Informational | All sections |
-| ai app builder changelog | Informational | Full article |
-| godaddy airo builder analytics | Informational | Analytics Dashboard |
-| no code app builder with database | Commercial | Core Features |
-| ai builder professional plan | Commercial | Professional & Ultimate |
-| ai website builder multilingual | Commercial | Core Features |
-| no code app builder pricing | Commercial | Professional & Ultimate |
-
-### LLM/GEO Optimization Notes
-
-- Clear section headers with feature names for parseable structure
-- Entity-rich language throughout (Airo AI Builder, GoDaddy, Claude 4.6, Getty Images, WebSocket)
-- Direct feature-to-benefit statements that LLMs can extract as snippets
-- Monthly cadence language signals freshness for search engines and LLMs
-- TL;DR block at the top provides a concise summary for AI-generated answers

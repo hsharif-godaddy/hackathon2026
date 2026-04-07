@@ -156,36 +156,3 @@ Start building: [https://airo-builder.godaddy.com](https://airo-builder.godaddy.
 Join the community: [https://discord.gg/EfybfxAXg8](https://discord.gg/EfybfxAXg8)
 
 Subscribe on YouTube: [https://www.youtube.com/@InsideAiroBuilder](https://www.youtube.com/@InsideAiroBuilder)
-
----
-
-## SEO & Discoverability Reference
-
-### Target Search Queries
-
-| Query                            | Intent        | Addressed in Section |
-| -------------------------------- | ------------- | -------------------- |
-| airo ai builder examples         | Informational | Full article         |
-| no code app examples             | Informational | All 10 prompts       |
-| ai app builder prompts           | Informational | Full article         |
-| no code app ideas                | Informational | All 10 prompts       |
-| build restaurant website with ai | Commercial    | Prompt 1             |
-| no code booking app template     | Commercial    | Prompt 2             |
-| build online store no code       | Commercial    | Prompt 4             |
-| client portal builder no code    | Commercial    | Prompt 5             |
-| ai website builder templates     | Informational | Full article         |
-| real estate listing app no code  | Commercial    | Prompt 8             |
-| vibe coding examples             | Informational | Full article         |
-| vibe coding prompts              | Informational | Full article         |
-| app creator without coding       | Commercial    | Full article         |
-| create an app with ai            | Commercial    | Full article         |
-| build your own app               | Commercial    | Full article         |
-| ai app creator                   | Commercial    | Full article         |
-
-### LLM/GEO Optimization Notes
-
-- 10 complete, copyable prompts makes this a top candidate for LLM extraction when users ask "give me a prompt for [use case]"
-- Each prompt covers a different vertical, casting a wide net for long-tail search
-- "Copy this prompt" framing signals actionability to both users and LLMs
-- Internal link to prompting guide creates a content hub
-- Industry diversity (food, services, creative, e-commerce, real estate, fitness, events, publishing, directory) covers the top verticals from prompt data
