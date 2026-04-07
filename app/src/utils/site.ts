@@ -22,13 +22,16 @@ type PublishCheckableSite = {
 } | null | undefined;
 
 /**
- * Check if a site has an active publish variant
+ * Check if a site is treated as published for UI gating.
  *
- * The publish variant indicates that a site is currently published to production.
- * Handles both variantsWithLifecycle and variants formats.
+ * When `variantsWithLifecycle` is present, only a `publish` row with status `active`
+ * or `provisioning` counts (domains panel / new-publish guidance). There is no
+ * fallback to coarse `variants` in that case.
+ *
+ * When lifecycle is absent, uses legacy `variants.includes('publish')`.
  *
  * @param site - The site information object (only needs variants/variantsWithLifecycle)
- * @returns true if the site has an active publish variant, false otherwise
+ * @returns true if the site should be considered published for gating
  *
  * @example
  * ```typescript
@@ -38,14 +41,14 @@ type PublishCheckableSite = {
  * ```
  */
 export function hasBeenPublished(site: PublishCheckableSite): boolean {
-  // V2: Check variantsWithLifecycle for active publish variant
   if (site?.variantsWithLifecycle?.length) {
     return site.variantsWithLifecycle.some(
-      v => v.variant === 'publish' && v.status === 'active'
+      v =>
+        v.variant === 'publish' &&
+        (v.status === 'active' || v.status === 'provisioning')
     );
   }
 
-  // Fallback: Check variants array for 'publish'
   if (site?.variants?.length) {
     return site.variants.includes('publish');
   }

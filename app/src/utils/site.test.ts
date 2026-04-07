@@ -112,6 +112,49 @@ describe('hasBeenPublished', () => {
     });
   });
 
+  describe('variantsWithLifecycle publish status', () => {
+    it('should return true when publish lifecycle status is active', () => {
+      const site = {
+        variantsWithLifecycle: [{ variant: 'publish', status: 'active' }],
+      };
+      expect(hasBeenPublished(site)).toBe(true);
+    });
+
+    it('should return true when publish lifecycle status is provisioning', () => {
+      const site = {
+        variantsWithLifecycle: [{ variant: 'publish', status: 'provisioning' }],
+      };
+      expect(hasBeenPublished(site)).toBe(true);
+    });
+
+    it('should return false when variantsWithLifecycle has no publish entry even if variants includes publish', () => {
+      const site = {
+        variantsWithLifecycle: [{ variant: 'preview', status: 'active' }],
+        variants: ['preview', 'publish'],
+      };
+      expect(hasBeenPublished(site)).toBe(false);
+    });
+
+    it('should return false when publish lifecycle is pending even if variants includes publish', () => {
+      const site = {
+        variantsWithLifecycle: [
+          { variant: 'preview', status: 'active' },
+          { variant: 'publish', status: 'pending' },
+        ],
+        variants: ['preview', 'publish'],
+      };
+      expect(hasBeenPublished(site)).toBe(false);
+    });
+
+    it('should return false when publish lifecycle is pending and variants omits publish', () => {
+      const site = {
+        variantsWithLifecycle: [{ variant: 'publish', status: 'pending' }],
+        variants: ['preview'],
+      };
+      expect(hasBeenPublished(site)).toBe(false);
+    });
+  });
+
   describe('boolean consistency', () => {
     it('should always return boolean', () => {
       expect(typeof hasBeenPublished({ variants: ['publish'] })).toBe('boolean');
