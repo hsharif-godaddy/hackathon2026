@@ -125,6 +125,12 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const publishError = useDevelopPageStore(
     (state) => state.publishStates?.[currentAppId]?.publishError ?? false
   );
+  const showFirstPublishCongrats = useDevelopPageStore(
+    (state) =>
+      currentAppId && state.publishStates[currentAppId]
+        ? Boolean(state.publishStates[currentAppId].showFirstPublishCongrats)
+        : false
+  );
 
   const publishMutation = usePublishApp();
 
@@ -208,6 +214,12 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     }
   }, [currentAppId]);
 
+  useEffect(() => {
+    if (!currentAppId || !showFirstPublishCongrats) return;
+    setOpen(false);
+    setPublishResult(null);
+  }, [currentAppId, showFirstPublishCongrats]);
+
   // Check if this is first-time publishing
   const isFirstTimePublishing = !hasBeenPublished(site);
 
@@ -257,6 +269,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
         appId: currentAppId,
         error: errorMessage,
       });
+      useDevelopPageStore.getState().setFirstPublishDeployPending(currentAppId, false);
       setPublishError(currentAppId, true);
       setIsPublishing(currentAppId, false);
     }
@@ -274,6 +287,16 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     if (!failed && !succeeded) return;
 
     const outcome: 'success' | 'failed' = failed ? 'failed' : 'success';
+
+    if (
+      currentAppId &&
+      outcome === 'success' &&
+      useDevelopPageStore.getState().getPublishState(currentAppId).showFirstPublishCongrats
+    ) {
+      setOpen(false);
+      setPublishResult(null);
+      return;
+    }
 
     if (openRef.current) {
       setPublishResult(outcome);
@@ -317,7 +340,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       ),
       emphasis: 'critical',
     });
-  }, [isPublishingOrDeploying, mostRecentDeployment?.status, publishError, fqdn, t, handleDeploy]);
+  }, [currentAppId, isPublishingOrDeploying, mostRecentDeployment?.status, publishError, fqdn, t, handleDeploy]);
 
   /**
    * Navigate to version history tab

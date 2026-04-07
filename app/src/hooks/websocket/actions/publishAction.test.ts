@@ -99,6 +99,9 @@ describe('publishAction', () => {
       setBuildErrorDetails: vi.fn(),
       setDeploymentInProgressId: vi.fn(),
       setShowPaywallModal: vi.fn(),
+      setShowFirstPublishCongrats: vi.fn(),
+      setFirstPublishDeployPending: vi.fn(),
+      getPublishState: vi.fn(() => ({ firstPublishDeployPending: false })),
       openUpgradeModal: vi.fn(),
     }
 

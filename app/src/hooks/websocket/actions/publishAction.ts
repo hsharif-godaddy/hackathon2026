@@ -143,13 +143,16 @@ export const publishAction: ClientActionExecutor = async (params) => {
       })
     }
 
+    const firstPublishDeployPending = !hasBeenPublished(appDetails)
+
     // Clear any previous publish errors and set publishing state (matches UI behavior)
     // This immediately updates the button text to "Publishing..."
     try {
       const store = useDevelopPageStore.getState()
 
-      // Perform both state updates atomically to prevent inconsistent UI state
+      // Perform publish UI state updates together to prevent inconsistent UI state
       store.clearPublishStatus(appId)
+      store.setFirstPublishDeployPending(appId, firstPublishDeployPending)
       store.setIsPublishing(appId, true)
     } catch (storeError) {
       logger.warn('websocket.client-action.publish.initial-state-update-failed', {
@@ -160,6 +163,7 @@ export const publishAction: ClientActionExecutor = async (params) => {
       // Attempt to restore consistent state if partial update occurred
       try {
         const store = useDevelopPageStore.getState()
+        store.setFirstPublishDeployPending(appId, false)
         store.setIsPublishing(appId, false)
       } catch {
         // Ignore restoration errors - state will be corrected on next publish attempt
@@ -271,6 +275,7 @@ export const publishAction: ClientActionExecutor = async (params) => {
           store.setPublishError(appId, true)
         }
 
+        store.setFirstPublishDeployPending(appId, false)
         store.setIsPublishing(appId, false)
       } catch (storeError) {
         logger.warn('websocket.client-action.publish.error-state-update-failed', {
@@ -418,6 +423,10 @@ export const publishAction: ClientActionExecutor = async (params) => {
       // show success immediately instead of polling
       try {
         const store = useDevelopPageStore.getState()
+        if (store.getPublishState(appId).firstPublishDeployPending) {
+          store.setShowFirstPublishCongrats(appId, true)
+        }
+        store.setFirstPublishDeployPending(appId, false)
         store.setIsPublishing(appId, false)
         store.setPublishSuccess(appId, true)
       } catch (storeError) {
@@ -449,6 +458,7 @@ export const publishAction: ClientActionExecutor = async (params) => {
         store.setPublishError(appId, true)
       }
 
+      store.setFirstPublishDeployPending(appId, false)
       store.setIsPublishing(appId, false)
     } catch (storeError) {
       logger.warn('websocket.client-action.publish.error-state-update-failed', {

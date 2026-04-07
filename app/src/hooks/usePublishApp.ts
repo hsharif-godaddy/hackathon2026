@@ -20,6 +20,7 @@ import {
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSitesStore } from '@/stores/useSitesStore';
 import { useSiteStore } from '@/stores/useSiteStore';
+import { hasBeenPublished } from '@/utils/site';
 
 /**
  * Response from the publish API endpoint
@@ -75,6 +76,15 @@ async function handleLocalDevPublishSuccess(
   fetchSite: (appId: string, forceRefresh: boolean) => Promise<any>,
   fetchSitesList: (siteId: string) => Promise<any>
 ) {
+  const siteBeforePublish = useSiteStore.getState().getSite(appId);
+  const pendingFirstPublish =
+    useDevelopPageStore.getState().getPublishState(appId).firstPublishDeployPending;
+  const isFirstPublish = pendingFirstPublish || !hasBeenPublished(siteBeforePublish);
+
+  if (isFirstPublish) {
+    useDevelopPageStore.getState().setShowFirstPublishCongrats(appId, true);
+  }
+
   // Store published commit hash for unpublished changes tracking
   setLastPublishedCommitHash(appId, commitHash);
 
@@ -96,6 +106,7 @@ async function handleLocalDevPublishSuccess(
       appId,
       error: error instanceof Error ? error.message : String(error),
     });
+    useDevelopPageStore.getState().setShowFirstPublishCongrats(appId, false);
     // Still show success alert even if refetch fails
     setPublishSuccess(appId, true);
   }
@@ -111,6 +122,8 @@ async function handleLocalDevPublishSuccess(
       refetchType: 'active'
     }),
   ]);
+
+  useDevelopPageStore.getState().setFirstPublishDeployPending(appId, false);
 }
 
 /**
@@ -180,6 +193,11 @@ export function usePublishApp() {
             : t('builder_manageplan_apps_publish_blocked_subscription')
         );
       }
+
+      useDevelopPageStore.getState().setFirstPublishDeployPending(
+        appId,
+        !hasBeenPublished(site),
+      );
 
       if (isSecretsSyncEnabled) {
         try {
@@ -353,9 +371,14 @@ export function usePublishApp() {
           fetchSite,
           fetchSitesList
         );
+        return;
       }
+
+      useDevelopPageStore.getState().setFirstPublishDeployPending(variables.appId, false);
     },
     onError: (error, variables) => {
+      useDevelopPageStore.getState().setFirstPublishDeployPending(variables.appId, false);
+      useDevelopPageStore.getState().setShowFirstPublishCongrats(variables.appId, false);
       logger.error('publish.error', {
         appId: variables.appId,
         error: error.message,

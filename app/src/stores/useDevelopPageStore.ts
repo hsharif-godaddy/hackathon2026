@@ -135,6 +135,8 @@ const createDefaultPublishState = () => {
     showPaywallModal: false,
     showPublishLimitModal: false,
     publishLimitData: null as PublishLimitData | null,
+    showFirstPublishCongrats: false,
+    firstPublishDeployPending: false,
     hasGoneLive: goLiveStatus.hasGoneLive,
     wentLiveAt: goLiveStatus.wentLiveAt,
     showGoLiveModal: false,
@@ -210,6 +212,8 @@ interface DevelopPageStore {
     // Publish limit modal state
     showPublishLimitModal: boolean
     publishLimitData: PublishLimitData | null
+    showFirstPublishCongrats: boolean
+    firstPublishDeployPending: boolean
     // Go Live modal state
     hasGoneLive: boolean
     wentLiveAt: string | null
@@ -283,6 +287,8 @@ interface DevelopPageStore {
   clearPublishStatus: (appId: string) => void
   setShowPaywallModal: (appId: string, show: boolean) => void
   setShowPublishLimitModal: (appId: string, show: boolean, data?: PublishLimitData) => void
+  setShowFirstPublishCongrats: (appId: string, show: boolean) => void
+  setFirstPublishDeployPending: (appId: string, pending: boolean) => void
   getPublishState: (appId: string) => {
     isPublishing: boolean
     publishError: boolean
@@ -293,6 +299,8 @@ interface DevelopPageStore {
     showSuccessAlert: boolean
     showPublishLimitModal: boolean
     publishLimitData: PublishLimitData | null
+    showFirstPublishCongrats: boolean
+    firstPublishDeployPending: boolean
     hasGoneLive: boolean
     wentLiveAt: string | null
     showGoLiveModal: boolean
@@ -653,6 +661,18 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       }
       state.publishStates[appId].showPublishLimitModal = show;
       state.publishStates[appId].publishLimitData = show && data ? data : null;
+    }),
+    setShowFirstPublishCongrats: (appId: string, show: boolean) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = createDefaultPublishState();
+      }
+      state.publishStates[appId].showFirstPublishCongrats = show;
+    }),
+    setFirstPublishDeployPending: (appId: string, pending: boolean) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = createDefaultPublishState();
+      }
+      state.publishStates[appId].firstPublishDeployPending = pending;
     }),
 
     // Page loading orchestration

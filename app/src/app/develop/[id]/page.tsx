@@ -27,6 +27,7 @@ import { ProtectedRoute } from '@/components/auth'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { Feedback } from '@/components/feedback/Feedback'
 import { FEEDBACK_ID } from '@/components/feedback/utils'
+import FirstPublishCongratsModal from '@/components/layout/FirstPublishCongratsModal'
 import PostPublishGoLiveModal from '@/components/layout/PostPublishGoLiveModal'
 import PublishLimitModal from '@/components/layout/PublishLimitModal'
 import { useAuthContext } from '@/components/providers/AuthProvider'
@@ -1332,6 +1333,7 @@ function DevelopPageContent() {
           )}
 
           {appId && <DevelopCreditsModal appId={appId} />}
+          {appId && <FirstPublishCongratsModal appId={appId} />}
         </ErrorBoundary>
 
         {showPublishLimitModal && publishLimitData && appId && (

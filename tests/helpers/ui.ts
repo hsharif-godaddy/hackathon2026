@@ -2,7 +2,15 @@ import type { Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 
 import { handleSsoLogin, detectSsoType } from './auth';
-import { LONG_TIMEOUT, PREVIEW_TIMEOUT, CHAT_INPUT_TIMEOUT, DEFAULT_TIMEOUT, SHORT_TIMEOUT, GO_LIVE_MODAL_TIMEOUT } from './constants';
+import {
+  CHAT_INPUT_TIMEOUT,
+  DEFAULT_TIMEOUT,
+  DEPLOYMENT_TIMEOUT_MS,
+  GO_LIVE_MODAL_TIMEOUT,
+  LONG_TIMEOUT,
+  PREVIEW_TIMEOUT,
+  SHORT_TIMEOUT,
+} from './constants';
 
 /**
  * Check if SSO login is required and handle it if so
@@ -237,6 +245,19 @@ export async function setupIsolatedApp(page: Page, specPrefix: string, appDescri
 
   console.log(`App created: ${appId}`);
   return appId;
+}
+
+/**
+ * After deploy completes, first publish shows the congrats modal (`#first-publish-congrats-modal`);
+ * republish (or legacy paths) may show the success growl (`#app-publish-success`) instead.
+ */
+export async function expectPublishSuccessVisible(
+  page: Page,
+  timeout = DEPLOYMENT_TIMEOUT_MS,
+): Promise<void> {
+  const congratsModal = page.locator('#first-publish-congrats-modal');
+  const successGrowl = page.locator('#app-publish-success');
+  await expect(congratsModal.or(successGrowl)).toBeVisible({ timeout });
 }
 
 /**

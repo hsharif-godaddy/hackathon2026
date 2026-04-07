@@ -4,8 +4,8 @@
  * Tests automatic publishing via AI agent:
  * 1. Creates an app with prompt to publish
  * 2. Waits for AI agent to auto-publish
- * 3. Verifies success via publish button state and success Growl (background publish
- *    leaves the popover closed, so publish-success-alert is not set in the popover)
+ * 3. Verifies success via publish button state and first-publish congrats modal or
+ *    success Growl (first publish suppresses the growl in favor of the modal)
  *
  * Strategy:
  * - AI agent handles publishing automatically
@@ -16,7 +16,7 @@ import { test, expect } from '@playwright/test';
 import { deleteAllSitesViaAPI } from '../helpers/api';
 import { handleSsoLogin, ensureAuthenticated } from '../helpers/auth';
 import { LONG_TIMEOUT, DEPLOYMENT_TIMEOUT_MS, getSpecPrefix } from '../helpers/constants';
-import { waitForDevelopPage, waitForChatInput } from '../helpers/ui';
+import { expectPublishSuccessVisible, waitForChatInput, waitForDevelopPage } from '../helpers/ui';
 
 test.describe('Publish Flow', () => {
   test.beforeEach(async ({}, testInfo) => {
@@ -73,9 +73,8 @@ test.describe('Publish Flow', () => {
     await expect(publishButton).not.toBeDisabled({ timeout: DEPLOYMENT_TIMEOUT_MS });
     console.log('  ✓ Publish button enabled');
 
-    // Success Growl uses id app-publish-success (@ux/growl title node) when popover was closed
-    await expect(page.locator('#app-publish-success')).toBeVisible({ timeout: DEPLOYMENT_TIMEOUT_MS });
-    console.log('  ✓ Publish success Growl visible');
+    await expectPublishSuccessVisible(page, DEPLOYMENT_TIMEOUT_MS);
+    console.log('  ✓ Publish success (congrats modal or growl visible)');
 
     console.log('🎉 Publish flow test passed!');
   });

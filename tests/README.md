@@ -44,7 +44,7 @@ In CI, credentials are fetched from AWS Secrets Manager automatically.
 | `apps-page.spec.ts`       | Apps page, navigation, homepage input validation          |
 | `authentication.spec.ts`  | Login/logout flows, session persistence, protected routes |
 | `develop-chat.spec.ts`    | Develop page components, chat, preview, header elements   |
-| `develop-publish.spec.ts` | AI agent auto-publish flow, Go Live modal verification    |
+| `develop-publish.spec.ts` | AI agent auto-publish; first-publish congrats modal or success growl |
 
 ## Test Strategy
 

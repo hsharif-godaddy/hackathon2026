@@ -85,6 +85,8 @@ export function useDeploymentsQuery({
   const getPublishState = useDevelopPageStore((state) => state.getPublishState);
   const setDeploymentInProgressId = useDevelopPageStore((state) => state.setDeploymentInProgressId);
   const setPublishSuccess = useDevelopPageStore((state) => state.setPublishSuccess);
+  const setShowFirstPublishCongrats = useDevelopPageStore((state) => state.setShowFirstPublishCongrats);
+  const setFirstPublishDeployPending = useDevelopPageStore((state) => state.setFirstPublishDeployPending);
   const setShowGoLiveModal = useDevelopPageStore((state) => state.setShowGoLiveModal);
   const hasGoneLive = useDevelopPageStore((state) => state.hasGoneLive);
   const fetchSite = useSiteStore((state) => state.fetchSite);
@@ -217,22 +219,31 @@ export function useDeploymentsQuery({
         const currentSiteData = getSite(appId);
 
         // Ship analytics log for Elastic dashboards
+        const wasAlreadyPublished = hasBeenPublished(currentSiteData);
+        const pendingFirstPublish = publishState.firstPublishDeployPending;
+        const isFirstPublish = pendingFirstPublish || !wasAlreadyPublished;
+
         shipAnalyticsLog('publish.success', {
           appId,
           domain: currentSiteData?.name,
           deploymentId: deploymentInProgressId,
-          isFirstPublish: !hasBeenPublished(currentSiteData)
+          isFirstPublish,
         });
-        const wasAlreadyPublished = hasBeenPublished(currentSiteData);
+
+        if (isFirstPublish) {
+          setShowFirstPublishCongrats(appId, true);
+        }
+
+        setFirstPublishDeployPending(appId, false);
 
         // Determine event IDs based on whether this is first publish or re-publish
-        const impressionEid = wasAlreadyPublished
-          ? 'develop.publish.publish_success'
-          : 'develop.publish.first_publish_success';
+        const impressionEid = isFirstPublish
+          ? 'develop.publish.first_publish_success'
+          : 'develop.publish.publish_success';
 
-        const airoHQTask = wasAlreadyPublished
-          ? 'builder_project_published'
-          : 'builder_project_first_published';
+        const airoHQTask = isFirstPublish
+          ? 'builder_project_first_published'
+          : 'builder_project_published';
 
         // Log events BEFORE refetch (deployment already updated backend with publish variant)
         logImpressionEvent(impressionEid)();
@@ -263,19 +274,14 @@ export function useDeploymentsQuery({
           }
         })();
 
-        // Refetch site data to get updated domains/URLs/variants, then show success or go-live modal
+        // Refetch site after deploy (first-publish congrats is not gated on go-live)
         fetchSite(appId, true)
           .then(async function handleRefetchSuccess() {
-            // Check if go-live feature is enabled
             const isGoLiveEnabled = await fetchFeatureFlag('appbuilder-go-live');
-
-            // Check if this is first publish and user hasn't gone live yet
-            const isFirstPublish = !wasAlreadyPublished;
             const userHasGoneLive = hasGoneLive(appId);
             const wasDismissed = getPublishState(appId).goLiveModalDismissed;
 
             if (isGoLiveEnabled && isFirstPublish && !userHasGoneLive && !wasDismissed) {
-              // Show go-live modal for first-time publishers
               setShowGoLiveModal(appId, true);
               logger.info('deployments-query.showing-go-live-modal', {
                 appId,
@@ -283,7 +289,6 @@ export function useDeploymentsQuery({
                 userHasGoneLive
               });
             } else {
-              // Show normal success alert for subsequent publishes or users who already went live
               setPublishSuccess(appId, true);
             }
           })
@@ -292,10 +297,12 @@ export function useDeploymentsQuery({
               appId,
               error: error instanceof Error ? error.message : String(error),
             });
+            setShowFirstPublishCongrats(appId, false);
             // Still show success alert even if refetch fails
             setPublishSuccess(appId, true);
           });
       } else if (deploymentInProgress.status === DeploymentStatus.FAILED) {
+        setFirstPublishDeployPending(appId, false);
         const currentSiteData = getSite(appId);
         shipAnalyticsLog('publish.failed', {
           appId,
@@ -307,7 +314,7 @@ export function useDeploymentsQuery({
       // Clear deployment tracking
       setDeploymentInProgressId(appId, null);
     }
-  }, [query.data, appId, getPublishState, setDeploymentInProgressId, setPublishSuccess, setShowGoLiveModal, hasGoneLive, fetchSite, getSite, queryClient]);
+  }, [query.data, appId, getPublishState, setDeploymentInProgressId, setFirstPublishDeployPending, setPublishSuccess, setShowFirstPublishCongrats, setShowGoLiveModal, hasGoneLive, fetchSite, getSite, queryClient]);
 
   return query;
 }

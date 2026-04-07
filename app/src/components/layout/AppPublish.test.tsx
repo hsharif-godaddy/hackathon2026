@@ -5,22 +5,43 @@ import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
+import Growl from '@ux/growl';
 
 import AppPublish from '@/components/layout/AppPublish';
+import { DeploymentStatus } from '@/lib/mgmt-airo/types';
 import { createMockSite, mockRouter } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 
 const mockRouterInstance = mockRouter();
 let mockPathname = '/develop/app-123';
 
+type MockPublishSlice = {
+  isPublishing?: boolean;
+  publishError?: boolean;
+  showFirstPublishCongrats?: boolean;
+  firstPublishDeployPending?: boolean;
+};
+
 const mockDevelopStore = {
   currentAppId: 'app-123',
-  publishStates: {} as Record<string, { isPublishing?: boolean; publishError?: boolean }>,
+  publishStates: {} as Record<string, MockPublishSlice>,
+  getPublishState(appId: string) {
+    const slice = mockDevelopStore.publishStates[appId];
+    return {
+      isPublishing: slice?.isPublishing ?? false,
+      publishError: slice?.publishError ?? false,
+      showFirstPublishCongrats: slice?.showFirstPublishCongrats ?? false,
+      firstPublishDeployPending: slice?.firstPublishDeployPending ?? false,
+    };
+  },
   setIsPublishing: vi.fn(),
   setPublishError: vi.fn(),
   clearPublishStatus: vi.fn(),
   setDeploymentsRefetch: vi.fn(),
+  setFirstPublishDeployPending: vi.fn(),
 };
+
+let mockDeploymentsData: Array<{ id: string; status: string }> = [];
 
 const mockSiteStore = {
   getSite: vi.fn(),
@@ -52,7 +73,7 @@ vi.mock('@/hooks/useChatTabs', () => ({
 
 vi.mock('@/hooks/useDeploymentsQuery', () => ({
   useDeploymentsQuery: () => ({
-    data: [],
+    data: mockDeploymentsData,
     isLoading: false,
     refetch: mockRefetchDeployments,
   }),
@@ -118,8 +139,10 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: (selector: (state: typeof mockDevelopStore) => unknown) =>
-    selector(mockDevelopStore),
+  useDevelopPageStore: Object.assign(
+    (selector: (state: typeof mockDevelopStore) => unknown) => selector(mockDevelopStore),
+    { getState: () => mockDevelopStore },
+  ),
 }));
 
 vi.mock('@/stores/useSiteStore', () => ({
@@ -150,6 +173,7 @@ describe('AppPublish', () => {
     mockPathname = '/develop/app-123';
     mockDevelopStore.currentAppId = 'app-123';
     mockDevelopStore.publishStates = {};
+    mockDeploymentsData = [];
     mockStreaming.isLoading = false;
     mockStreaming.streamingState = 'idle';
     mockSiteStore.getSite.mockReturnValue(
@@ -232,6 +256,46 @@ describe('AppPublish', () => {
 
     await waitFor(() => {
       expect(screen.getByText('builder_publish_unpublished_domain_info')).toBeInTheDocument();
+    });
+  });
+
+  it('should close publish popover when showFirstPublishCongrats becomes true', async function closePopoverOnCongrats() {
+    const { user, rerender } = renderWithProviders(<AppPublish />);
+
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    mockDevelopStore.publishStates['app-123'] = { showFirstPublishCongrats: true };
+    rerender(<AppPublish />);
+
+    await waitFor(() => {
+      expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+    });
+  });
+
+  it('should not show success growl when showFirstPublishCongrats is true', async function noGrowlWhenCongrats() {
+    mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
+    mockDevelopStore.publishStates['app-123'] = {
+      isPublishing: true,
+      publishError: false,
+      showFirstPublishCongrats: true,
+    };
+
+    const { rerender } = renderWithProviders(<AppPublish />);
+
+    mockDevelopStore.publishStates['app-123'] = {
+      isPublishing: false,
+      publishError: false,
+      showFirstPublishCongrats: true,
+    };
+    rerender(<AppPublish />);
+
+    await waitFor(() => {
+      expect(Growl.addGrowlMessage).not.toHaveBeenCalled();
     });
   });
 });
