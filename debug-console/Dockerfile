@@ -5,13 +5,13 @@ USER root
 
 RUN apk add --no-cache openssl
 
-# Install pnpm globally (pinned to 10.17.0)
-RUN npm install -g pnpm@10.17.0+sha512.fce8a3dd29a4ed2ec566fb53efbb04d8c44a0f05bc6f24a73046910fb9c3ce7afa35a0980500668fa3573345bd644644fa98338fa168235c80f4aa17aa17fbef
-
 WORKDIR /workspace
 
 # Copy workspace files first (for pnpm workspace setup)
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+
+# Install pnpm via corepack (version from packageManager in package.json)
+RUN corepack enable && corepack install
 COPY debug-console/package.json ./debug-console/
 
 ENV NODE_ENV=production
@@ -45,11 +45,15 @@ FROM 764525110978.dkr.ecr.us-west-2.amazonaws.com/node:22-alpine
 
 USER root
 
-# pnpm is required at runtime: CMD uses `pnpm start` to launch the Next.js server
-RUN apk add --no-cache wget && \
-    npm install -g pnpm@10.17.0+sha512.fce8a3dd29a4ed2ec566fb53efbb04d8c44a0f05bc6f24a73046910fb9c3ce7afa35a0980500668fa3573345bd644644fa98338fa168235c80f4aa17aa17fbef
+RUN apk add --no-cache wget
 
+# Copy workspace first so corepack can read packageManager from package.json
 COPY --from=builder --chown=node:node /workspace /workspace
+
+WORKDIR /workspace
+
+# pnpm is required at runtime: CMD uses `pnpm start` to launch the Next.js server
+RUN corepack enable && corepack install
 
 WORKDIR /workspace/debug-console
 USER node

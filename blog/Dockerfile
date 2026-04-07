@@ -5,11 +5,12 @@ USER root
 
 RUN apk add --no-cache openssl
 
-RUN npm install -g pnpm@10.17.0+sha512.fce8a3dd29a4ed2ec566fb53efbb04d8c44a0f05bc6f24a73046910fb9c3ce7afa35a0980500668fa3573345bd644644fa98338fa168235c80f4aa17aa17fbef
-
 WORKDIR /workspace
 
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+
+# Install pnpm via corepack (version from packageManager in package.json)
+RUN corepack enable && corepack install
 COPY blog/package.json ./blog/
 COPY packages/eslint-config-airo ./packages/eslint-config-airo/
 

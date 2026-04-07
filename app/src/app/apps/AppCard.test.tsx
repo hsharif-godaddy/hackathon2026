@@ -432,20 +432,26 @@ describe('AppCard', () => {
 
   describe('handles card click navigation', () => {
     it('should navigate to edit page when card is clicked', async () => {
-      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+      renderWithProviders(<AppCard site={mockSite} />);
 
+      // MediaCard's click forwarding uses pointerDown/pointerUp on an inner shell element,
+      // which then calls .click() on a hidden input. In jsdom, user.click() on the outer
+      // wrapper (where aria-label lives) doesn't reach the inner shell's pointer handlers.
+      // Click the hidden interactive element directly to simulate the forwarded click.
       const card = screen.getByLabelText(new RegExp(`builder_common_edit.*${mockSite.name}`, 'i'));
-      await user.click(card);
+      const hiddenButton = card.querySelector('.ux-card-hidden') as HTMLElement;
+      hiddenButton.click();
 
       expect(mockRouterInstance.push).toHaveBeenCalledWith(`/develop/${mockSite.id}?siteId=${mockSite.id}`);
     });
 
     it('should navigate to edit page when card is clicked for site without name', async () => {
       const siteWithoutName = createMockSite({ name: '' });
-      const { user } = renderWithProviders(<AppCard site={siteWithoutName} />);
+      renderWithProviders(<AppCard site={siteWithoutName} />);
 
       const card = screen.getByLabelText(new RegExp('builder_common_edit', 'i'));
-      await user.click(card);
+      const hiddenButton = card.querySelector('.ux-card-hidden') as HTMLElement;
+      hiddenButton.click();
 
       expect(mockRouterInstance.push).toHaveBeenCalledWith(`/develop/${siteWithoutName.id}?siteId=${siteWithoutName.id}`);
     });

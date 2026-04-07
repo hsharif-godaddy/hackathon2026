@@ -379,16 +379,16 @@ show_nodejs_install_instructions() {
 # Show pnpm fix instructions
 show_pnpm_instructions() {
     echo ""
-    print_info "This project requires pnpm 10.17.0 (specified in package.json)"
+    print_info "This project requires the pnpm version specified in package.json packageManager field"
     echo ""
     echo "  Corepack is enabled automatically by .envrc"
     echo "  Try: direnv allow && pnpm --version"
     echo ""
-    echo "Alternative: Manual pnpm installation (NOT recommended):"
+    echo "Alternative: Manual install (extracts version from package.json):"
     echo ""
-    echo "  npm install -g pnpm@10.17.0"
+    echo "  npm install -g pnpm@\$(node -p \"require('./package.json').packageManager.match(/^pnpm@(.+?)(\\\\+|\$)/)[1]\")"
     echo ""
-    print_warning "Manual installation may cause version drift between developers"
+    print_warning "Prefer corepack over manual installation"
     echo ""
 }
 

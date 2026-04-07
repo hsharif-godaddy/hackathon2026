@@ -21,15 +21,15 @@ USER root
 
 RUN apk add --no-cache openssl wget
 
-# Install pnpm globally (pinned to 10.17.0)
-RUN npm install -g pnpm@10.17.0+sha512.fce8a3dd29a4ed2ec566fb53efbb04d8c44a0f05bc6f24a73046910fb9c3ce7afa35a0980500668fa3573345bd644644fa98338fa168235c80f4aa17aa17fbef
-
 WORKDIR /workspace
 
 # Copy only package.json files + lockfile (install layer cache)
 COPY --from=pruner /workspace/out/json/ /workspace/
 COPY --from=pruner /workspace/out/pnpm-lock.yaml /workspace/
 COPY --from=pruner /workspace/out/pnpm-workspace.yaml /workspace/
+
+# Install pnpm via corepack (version from packageManager in package.json)
+RUN corepack enable && corepack install
 
 ENV NEXT_TELEMETRY_DISABLED=1
 

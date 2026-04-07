@@ -3,7 +3,6 @@ FROM 764525110978.dkr.ecr.us-west-2.amazonaws.com/node:22-alpine
 USER root
 
 RUN apk add --no-cache openssl
-RUN npm install -g pnpm
 
 # Use existing node user from base image (UID 1001)
 RUN mkdir -p /workspace && chown node:node /workspace
@@ -21,6 +20,10 @@ ARG ARTIFACTORY_NPM_TOKEN
 # Copy workspace files for pnpm
 COPY --chown=node:node package.json pnpm-workspace.yaml pnpm-lock.yaml /app
 COPY --chown=node:node proxy/package.json ./proxy/
+
+# Install pnpm via corepack (version from packageManager in package.json)
+WORKDIR /app
+RUN corepack enable && corepack install
 
 # Create .npmrc with auth
 RUN echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" > .npmrc && \

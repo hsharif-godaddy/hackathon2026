@@ -20,7 +20,6 @@ USER root
 
 RUN apk add --no-cache python3 py3-setuptools make g++
 
-RUN npm install -g pnpm@10.17.0+sha512.fce8a3dd29a4ed2ec566fb53efbb04d8c44a0f05bc6f24a73046910fb9c3ce7afa35a0980500668fa3573345bd644644fa98338fa168235c80f4aa17aa17fbef
 ENV CI=true
 
 RUN addgroup -S -g 790 agent
@@ -36,6 +35,12 @@ WORKDIR /workspace
 COPY --from=pruner --chown=agent:agent /workspace/out/json/ /workspace/
 COPY --from=pruner --chown=agent:agent /workspace/out/pnpm-lock.yaml /workspace/
 COPY --from=pruner --chown=agent:agent /workspace/out/pnpm-workspace.yaml /workspace/
+
+# Install pnpm via corepack (version from packageManager in package.json)
+# corepack enable requires root for /usr/local/bin symlinks
+USER root
+RUN corepack enable && corepack install
+USER agent
 
 RUN --mount=type=secret,id=npm_token,uid=790 \
   printf "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=%s\n//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:always-auth=true\nregistry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/\n" "$(cat /run/secrets/npm_token)" > ~/.npmrc && \
