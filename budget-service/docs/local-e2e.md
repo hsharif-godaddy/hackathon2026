@@ -110,7 +110,7 @@ The UI calls **`/api/v1/…`** and **`/health`** on the dev UI origin; those req
 
 ## Troubleshooting
 
-- **Missing tables / schema drift:** Apply the current [`migrations/001_init.sql`](../migrations/001_init.sql) with `psql`, or reset the volume with `make down -v` then `make up` and re-seed if needed.
+- **Missing tables / schema drift:** Start the budget service with `DATABASE_URL` (golang-migrate applies embedded SQL), or run integration tests / `migrate` CLI against `migrations/`. Or reset the volume with `make down -v` then `make up` and re-seed if needed.
 - **Webhook assertion fails:** Increase the sleep in `scripts/e2e-local.sh` if the host is slow; delivery runs in a background goroutine after `POST .../reports`.
 - **`ERR_TOO_MANY_REDIRECTS` on :9980:** Usually `BUDGET_SERVICE_URL` points at the dev UI (same port as `DEV_BUDGET_UI_ADDR`). The dev UI now exits at startup if it detects that; fix env so the budget service runs on another port (e.g. 8080) and `BUDGET_SERVICE_URL=http://127.0.0.1:8080`.
 - **HTML `403 Forbidden` (nginx) against a remote API while `curl $BUDGET_SERVICE_URL/health` returns JSON:** Older dev UI proxies forwarded the browser `Host` (`127.0.0.1:9980`). Current `dev-budget-ui` sets outbound `Host` from `BUDGET_SERVICE_URL`. Rebuild/re-run the latest `cmd/dev-budget-ui`; otherwise check edge allowlists and VPN.

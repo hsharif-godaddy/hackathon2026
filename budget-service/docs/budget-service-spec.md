@@ -59,7 +59,7 @@ See [local-e2e.md](local-e2e.md) for Docker profile `e2e`, `make e2e-local`, and
 
 ## Integration tests
 
-Set `TEST_DATABASE_URL` (same shape as `DATABASE_URL`), apply [`migrations/001_init.sql`](../migrations/001_init.sql), then:
+Set `TEST_DATABASE_URL` (same shape as `DATABASE_URL`); tests run golang-migrate automatically. Then:
 
 ```bash
 go test ./internal/api/... ./internal/credits/...

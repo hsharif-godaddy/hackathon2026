@@ -1,4 +1,4 @@
--- Full schema for fresh Postgres (replaces former 001–010 chain). Apply via docker-entrypoint-initdb.d or psql.
+-- Full schema for fresh Postgres, golang-migrate version 1 (replaces former 001–010 chain).
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 

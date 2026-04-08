@@ -1,6 +1,6 @@
 # Budget service database design
 
-Source of truth for DDL: [`migrations/001_init.sql`](../migrations/001_init.sql). API-facing behavior is summarized in [`budget-service-spec.md`](budget-service-spec.md).
+Source of truth for DDL: versioned files under [`migrations/`](../migrations/) (golang-migrate), starting with [`000001_init.up.sql`](../migrations/000001_init.up.sql). API-facing behavior is summarized in [`budget-service-spec.md`](budget-service-spec.md).
 
 This document focuses on **tables**, **relationships**, **constraints**, **triggers**, **history**, and the **credit ledger** model.
 
@@ -132,11 +132,11 @@ flowchart TB
 
 ## Credit ledger vs `budget_items.credits_used`
 
-| Concern | Mechanism |
-|--------|-----------|
-| **Audit / why credits moved** | Rows in `budget_item_credit_ledger` (`entry_kind`, `credits_delta`, optional `report_item_id`, `created_at`). |
-| **Fast read / consumption input** | `budget_items.credits_used` — maintained **only** by the database trigger below (not read-then-write in application code). |
-| **Invariant** (when ledger is append-only) | For each `budget_item_id`, `credits_used = SUM(credits_delta)` over all ledger rows for that item. |
+| Concern                                    | Mechanism                                                                                                                  |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| **Audit / why credits moved**              | Rows in `budget_item_credit_ledger` (`entry_kind`, `credits_delta`, optional `report_item_id`, `created_at`).              |
+| **Fast read / consumption input**          | `budget_items.credits_used` — maintained **only** by the database trigger below (not read-then-write in application code). |
+| **Invariant** (when ledger is append-only) | For each `budget_item_id`, `credits_used = SUM(credits_delta)` over all ledger rows for that item.                         |
 
 **Persisted spend today:** the application inserts into `budget_item_credit_ledger` when finalizing a session report (per allocation chunk). Session PATCH lines do **not** by themselves write the ledger; they only record USD/credits on `budget_session_items` until reconciliation.
 
@@ -226,4 +226,16 @@ These are implemented in the service layer, not as DB constraints:
 
 ## Migration
 
-Fresh databases load **`001_init.sql`** only (no incremental migration chain in this package). Any environment using an older schema must be migrated separately if introduced later.
+The server applies pending `.up.sql` files on startup (after a successful DB ping) via [golang-migrate](https://github.com/golang-migrate/migrate), using the same `DATABASE_URL` unless `MIGRATE_DATABASE_URL` is set for a DDL-capable role. Applied versions are recorded in **`schema_migrations`**.
+
+Each `.up.sql` file is **one golang-migrate version**; the PostgreSQL driver applies the file as a single migration step (multiple DDL statements in that file are fine as one script). Do **not** enable golang-migrate’s `x-multi-statement` mode for files that contain PL/pgSQL (`$$` bodies): its `;` splitter breaks functions.
+
+Add new files such as `000002_description.up.sql` for schema changes; deploy a new image.
+
+### Baseline (legacy databases)
+
+If the database already contains the full schema (e.g. created by an older `001_init.sql` / initdb hook) but **`schema_migrations` is missing or empty**, a blind `Up()` will fail with “already exists”. After verifying the live schema matches `000001_init.up.sql`, mark version **1** without re-running SQL, for example with the migrate CLI:
+
+`migrate -path ./migrations -database "$DATABASE_URL" force 1`
+
+(or insert the equivalent row into `schema_migrations` per golang-migrate’s table format). Use `force` only when the schema truly matches that version.

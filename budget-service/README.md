@@ -100,34 +100,36 @@ curl -sS -H "Authorization: Bearer $TOKEN" "http://localhost:8080/api/v1/auth-ch
 
 ## Environment
 
-| Variable                              | Default | Notes                                                  |
-| ------------------------------------- | ------- | ------------------------------------------------------ |
-| `BUDGET_SERVICE_ADDR`                 | `:8080` | Listen address                                         |
-| `LOCAL_AUTH_DISABLE`                  | —       | `true`/`1`/`yes`/`on` skips JWT (local dev only)       |
-| `AUTH_LOG_LEVEL`                      | `info`  | `debug` → more `go-auth` slog                          |
-| `SSO_HOST`                            | —       | Required when auth enabled; e.g. `sso.dev-godaddy.com` |
-| `IAM_ROLE_ARN`                        | —       | **`mint-iam-jwt` only**                                |
-| `AWS_PROFILE`                         | —       | **`mint-iam-jwt`** / AWS CLI                           |
-| `CERT_PEM_PATH`, `CERT_KEY_PATH`      | —       | **`mint-cert-jwt` only**                               |
-| `DATABASE_URL`                        | —       | If unset, no Store                                     |
-| `DB_MAX_OPEN_CONNS`                   | `25`    |                                                        |
-| `DB_MAX_IDLE_CONNS`                   | `5`     |                                                        |
-| `DB_CONN_MAX_LIFETIME`                | `5m`    | Go duration                                            |
-| `SERVER_CERT_PATH`, `SERVER_KEY_PATH` | —       | Both or neither → TLS                                  |
-| `HTTP_READ_TIMEOUT`                   | `30s`   |                                                        |
-| `HTTP_WRITE_TIMEOUT`                  | `60s`   |                                                        |
-| `HTTP_IDLE_TIMEOUT`                   | `120s`  |                                                        |
-| `WEBHOOK_SECRET`                      | —       | Secret token sent as `X-BMS-Secret` header on webhooks |
+| Variable                              | Default | Notes                                                                                           |
+| ------------------------------------- | ------- | ----------------------------------------------------------------------------------------------- |
+| `BUDGET_SERVICE_ADDR`                 | `:8080` | Listen address                                                                                  |
+| `LOCAL_AUTH_DISABLE`                  | —       | `true`/`1`/`yes`/`on` skips JWT (local dev only)                                                |
+| `AUTH_LOG_LEVEL`                      | `info`  | `debug` → more `go-auth` slog                                                                   |
+| `SSO_HOST`                            | —       | Required when auth enabled; e.g. `sso.dev-godaddy.com`                                          |
+| `IAM_ROLE_ARN`                        | —       | **`mint-iam-jwt` only**                                                                         |
+| `AWS_PROFILE`                         | —       | **`mint-iam-jwt`** / AWS CLI                                                                    |
+| `CERT_PEM_PATH`, `CERT_KEY_PATH`      | —       | **`mint-cert-jwt` only**                                                                        |
+| `DATABASE_URL`                        | —       | If unset, no Store                                                                              |
+| `AUTO_MIGRATE`                        | —       | If unset and `DATABASE_URL` is set, **on**: run golang-migrate after ping. Set `false` to skip. |
+| `MIGRATE_DATABASE_URL`                | —       | Optional DDL-capable DSN for migrations only; requires `DATABASE_URL` for the app pool.         |
+| `DB_MAX_OPEN_CONNS`                   | `25`    |                                                                                                 |
+| `DB_MAX_IDLE_CONNS`                   | `5`     |                                                                                                 |
+| `DB_CONN_MAX_LIFETIME`                | `5m`    | Go duration                                                                                     |
+| `SERVER_CERT_PATH`, `SERVER_KEY_PATH` | —       | Both or neither → TLS                                                                           |
+| `HTTP_READ_TIMEOUT`                   | `30s`   |                                                                                                 |
+| `HTTP_WRITE_TIMEOUT`                  | `60s`   |                                                                                                 |
+| `HTTP_IDLE_TIMEOUT`                   | `120s`  |                                                                                                 |
+| `WEBHOOK_SECRET`                      | —       | Secret token sent as `X-BMS-Secret` header on webhooks                                           |
 
 ## Postgres
 
-`make up` starts Postgres (`budget` / `budget_test` on `localhost:5432`). On **first** container init, `docker-entrypoint-initdb.d` runs [`migrations/001_init.sql`](migrations/001_init.sql).
+`make up` starts Postgres (`budget` / `budget_test` on `localhost:5432`). The database starts **empty**; run the server with `DATABASE_URL` set (or integration tests with `TEST_DATABASE_URL`) so **golang-migrate** applies embedded SQL from [`migrations/`](migrations/) after a successful ping (`schema_migrations` tracks versions).
 
-**Existing volumes** with an older schema: apply `001_init.sql` changes manually with `psql`, or reset the volume (`make down -v` then `make up`).
+**Existing volumes** from the old `docker-entrypoint-initdb.d` flow: if tables exist but `schema_migrations` was never populated, baseline once (see **Migration** in [docs/database-design.md](docs/database-design.md)) or reset the volume (`make down -v` then `make up`).
 
-**Seed:** `make data` runs `seed/seed_test_data.sql` inside the container (requires `make up`).
+**Seed:** `make data` runs `seed/seed_test_data.sql` inside the container (requires schema applied and `make up`).
 
-**Integration:** set `TEST_DATABASE_URL`, apply [`migrations/001_init.sql`](migrations/001_init.sql), optional `make data`. Example: `TestGoCodeSpendMathOverHTTP` in `internal/api/budget_handlers_test.go`.
+**Integration:** set `TEST_DATABASE_URL` (tests run `migrate.Up` automatically), optional `make data`. Example: `TestGoCodeSpendMathOverHTTP` in `internal/api/budget_handlers_test.go`.
 
 ## Makefile
 

@@ -27,10 +27,11 @@ RUN --mount=type=secret,id=jfrog_token \
     GOFLAGS="-mod=mod" \
     go mod download
 
-# Production sources only: cmd/server + internal (skip e2e, docs, migrations, scripts,
-# docker-compose, dev CLIs under cmd/, local certs/env, etc.)
+# Production sources: cmd/server + internal + migrations (embedded SQL via migrations/embed.go).
+# Skip e2e, docs, scripts, docker-compose, dev CLIs under cmd/, local certs/env, etc.
 COPY budget-service/cmd/server ./cmd/server
 COPY budget-service/internal ./internal
+COPY budget-service/migrations ./migrations
 
 # Build the binary with optimizations for smaller, reproducible builds.
 # JFrog token is required to resolve any go.sum entries for private modules

@@ -9,6 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.10
 	github.com/gdcorp-golang/auth-client v1.0.0
 	github.com/gdcorp-partners/airo-app-builder/packages/go-auth v0.0.0
+	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/joho/godotenv v1.5.1
@@ -29,7 +30,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.18 // indirect
 	github.com/aws/smithy-go v1.24.2 // indirect
 	github.com/gdcorp-golang/auth v1.0.0 // indirect
-	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect

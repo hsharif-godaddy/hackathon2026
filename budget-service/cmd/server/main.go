@@ -13,6 +13,7 @@ import (
 
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/api"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/config"
+	schemamigrate "github.com/gdcorp-partners/airo-app-builder/budget-service/internal/migrate"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/store"
 	goauth "github.com/gdcorp-partners/airo-app-builder/packages/go-auth"
 	"github.com/joho/godotenv"
@@ -60,6 +61,22 @@ func main() {
 			slog.Warn("database.ping.initial.failed", "error", pingErr, "host", dbHost)
 		} else {
 			slog.Info("database.connected", "host", dbHost, "elapsed", time.Since(connectStart).String())
+			if cfg.AutoMigrate {
+				migrateURL := cfg.MigrateDatabaseURL
+				if migrateURL == "" {
+					migrateURL = cfg.DatabaseURL
+				}
+				migrateHost := dbHost
+				if u, err := url.Parse(migrateURL); err == nil && u.Host != "" {
+					migrateHost = u.Hostname()
+				}
+				migrateStart := time.Now()
+				if err := schemamigrate.Up(migrateURL); err != nil {
+					slog.Error("database.migrate.failed", "error", err, "migrateHost", migrateHost, "poolHost", dbHost)
+					os.Exit(1)
+				}
+				slog.Info("database.migrate.done", "migrateHost", migrateHost, "poolHost", dbHost, "elapsed", time.Since(migrateStart).String())
+			}
 		}
 		st = store.New(sqlDB)
 	} else {

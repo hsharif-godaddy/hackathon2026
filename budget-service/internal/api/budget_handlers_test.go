@@ -10,6 +10,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
@@ -18,8 +19,11 @@ import (
 
 	goauth "github.com/gdcorp-partners/airo-app-builder/packages/go-auth"
 
+	schemamigrate "github.com/gdcorp-partners/airo-app-builder/budget-service/internal/migrate"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/store"
 )
+
+var testDBMigrateOnce sync.Once
 
 func decodeJSONMapUseNumber(t *testing.T, body string) map[string]any {
 	t.Helper()
@@ -47,6 +51,13 @@ func testStore(t *testing.T) *store.Store {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
 		t.Skip("TEST_DATABASE_URL not set (integration)")
+	}
+	var migrateErr error
+	testDBMigrateOnce.Do(func() {
+		migrateErr = schemamigrate.Up(dsn)
+	})
+	if migrateErr != nil {
+		t.Fatalf("migrate: %v", migrateErr)
 	}
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
