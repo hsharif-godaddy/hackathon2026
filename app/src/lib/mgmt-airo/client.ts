@@ -20,6 +20,7 @@ import {
   type AiroDeployAppResponse,
   type AiroDeploymentsResponse,
   type AiroDomainCheckResponse,
+  type AiroDomainDnsOwnershipResponse,
   type AiroDomainErrorResponse,
   type AiroGetCreditGrantsResponse,
   AiroHttpError,
@@ -718,6 +719,35 @@ export class AiroMgmtClient {
       `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/domain-error?fqdn=${encodeURIComponent(fqdn)}`,
       undefined,
       { logEvent: 'mgmt-airo.get-domain-error' }
+    );
+  }
+
+  /**
+   * Get domain DNS ownership details for one or more FQDNs (comma-separated in query)
+   *
+   * GET /airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/domain-dns-ownership
+   *
+   * @param subscriptionId - Subscription ID
+   * @param systemId - System ID
+   * @param appId - Application ID
+   * @param query - fqdns (comma-separated), customerId, shopperId
+   */
+  async getDomainDnsOwnership(
+    subscriptionId: string,
+    systemId: string,
+    appId: string,
+    query: { fqdns: string; customerId: string; shopperId: string }
+  ): Promise<AiroDomainDnsOwnershipResponse> {
+    const params = new URLSearchParams({
+      fqdns: query.fqdns,
+      customerId: query.customerId,
+      shopperId: query.shopperId,
+    });
+    return this.request<AiroDomainDnsOwnershipResponse>(
+      'GET',
+      `/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/domain-dns-ownership?${params.toString()}`,
+      undefined,
+      { logEvent: 'mgmt-airo.get-domain-dns-ownership' }
     );
   }
 

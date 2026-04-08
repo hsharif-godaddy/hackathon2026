@@ -18,6 +18,7 @@ import { useAppIdFromParams } from '@/app/develop/components/utils';
 import DomainPurchaseWidget from '@/app/develop/components/widgets/DomainPurchaseWidget';
 import { useAuth } from '@/hooks/useAuth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
+import { useDomainDnsOwnership } from '@/hooks/useDomainDnsOwnership';
 import { useDomainPolling } from '@/hooks/useDomainPolling';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
@@ -150,6 +151,28 @@ export default function DomainAttachWidget({
   const pendingDomainDetails = pendingDomain
     ? appDetails?.domains?.find((d) => d.fqdn === pendingDomain)
     : null;
+
+  const domainDnsOwnershipEnabled = !!pendingDomain && !!pendingDomainDetails;
+  const {
+    data: domainDnsOwnershipData,
+    isLoading: isDomainDnsOwnershipLoading,
+    isError: isDomainDnsOwnershipError,
+  } = useDomainDnsOwnership({
+    siteId: appId,
+    fqdns: pendingDomain ?? '',
+    enabled: domainDnsOwnershipEnabled,
+  });
+
+  const hideDomainDnsUntilOwnershipResolved =
+    domainDnsOwnershipEnabled &&
+    isDomainDnsOwnershipLoading &&
+    !domainDnsOwnershipData &&
+    !isDomainDnsOwnershipError;
+
+  const showDomainDNS =
+    !!pendingDomainDetails &&
+    !hideDomainDnsUntilOwnershipResolved &&
+    domainDnsOwnershipData?.isGdDomain !== true;
 
   // Cleanup validation timeout on unmount
   useEffect(() => {
@@ -780,7 +803,7 @@ export default function DomainAttachWidget({
       )}
 
       {/* DNS Instructions for Pending External Domain */}
-      {pendingDomainDetails && (
+      {showDomainDNS && (
         <Box gap="sm">
           <text.strong size={-1}>
             {t('builder_domain_attach_dns_title')}

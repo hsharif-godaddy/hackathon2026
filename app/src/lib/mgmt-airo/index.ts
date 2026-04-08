@@ -26,6 +26,7 @@ export type {
   AiroDeploymentsResponse,
   AiroDeploymentStatus,
   AiroDomainCheckResponse,
+  AiroDomainDnsOwnershipResponse,
   AiroDomainError,
   AiroDomainErrorResponse,
   AiroGetCreditGrantsResponse,

@@ -22,6 +22,14 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(() => ({ data: true, isLoading: false })),
 }));
 
+vi.mock('@/hooks/useDomainDnsOwnership', () => ({
+  useDomainDnsOwnership: vi.fn(() => ({
+    data: { isGdDomain: false },
+    isLoading: false,
+    isError: false,
+  })),
+}));
+
 vi.mock('@/app/develop/components/utils', () => ({
   useAppIdFromParams: vi.fn(() => 'test-app-123'),
 }));

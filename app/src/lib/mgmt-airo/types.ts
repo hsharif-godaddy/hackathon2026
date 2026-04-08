@@ -419,6 +419,22 @@ export interface AiroDomainErrorResponse {
 }
 
 /**
+ * Response from domain DNS ownership check (mgmt-airo)
+ */
+export interface AiroDomainDnsOwnershipResponse {
+  isGdDomain: boolean;
+  isGDDomainOwner: boolean;
+  isGoDaddyDns: boolean;
+  pendingNsPropagation: boolean;
+  domainCreatedAt: string | null;
+  zoneMatchedAt: string | null;
+  nameserverType: string;
+  nameservers: string[];
+  dnsApiResponseCode: number | null;
+  domainsApiResponseCode: number | null;
+}
+
+/**
  * Bulk customer apps response
  */
 export interface AiroBulkAppsResponse {

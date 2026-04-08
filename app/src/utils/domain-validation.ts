@@ -7,6 +7,7 @@ import { translateApiError } from '@/utils/api-errors';
  * Generic errors (auth, site, etc.) live in @/utils/api-errors.
  */
 export enum DomainApiErrorCode {
+  FQDNS_REQUIRED = 'FQDNS_REQUIRED',
   FQDN_REQUIRED = 'FQDN_REQUIRED',
   DOMAIN_ERROR_NOT_FOUND = 'DOMAIN_ERROR_NOT_FOUND',
   DOMAIN_ERROR_FETCH_FAILED = 'DOMAIN_ERROR_FETCH_FAILED',
@@ -16,6 +17,7 @@ export enum DomainApiErrorCode {
 }
 
 const DOMAIN_API_ERROR_KEYS: Record<string, string> = {
+  [DomainApiErrorCode.FQDNS_REQUIRED]: 'builder_domain_api_error_fqdn_required',
   [DomainApiErrorCode.FQDN_REQUIRED]: 'builder_domain_api_error_fqdn_required',
   [DomainApiErrorCode.DOMAIN_ERROR_NOT_FOUND]: 'builder_domain_api_error_not_found',
   [DomainApiErrorCode.DOMAIN_ERROR_FETCH_FAILED]: 'builder_domain_api_error_fetch_failed',

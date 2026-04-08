@@ -14,6 +14,7 @@ import BigCard from "@/components/layout/BigCard";
 import { useAuth } from '@/hooks/useAuth';
 import { useCloseOnReauth } from '@/hooks/useCloseOnReauth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
+import { useDomainDnsOwnership } from '@/hooks/useDomainDnsOwnership';
 import { useDomainPolling } from '@/hooks/useDomainPolling';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
@@ -128,6 +129,32 @@ export default function DomainAttach() {
 
     return pending ? pending.fqdn : null;
   }, [appDetails, domains, requiresManualDnsSetup, pendingCustomerDomainForAttach]);
+
+  const pendingDomainDetails = pendingDomain
+    ? appDetails?.domains?.find((d) => d.fqdn === pendingDomain)
+    : null;
+
+  const domainDnsOwnershipEnabled = !!pendingDomain && !!pendingDomainDetails;
+  const {
+    data: domainDnsOwnershipData,
+    isLoading: isDomainDnsOwnershipLoading,
+    isError: isDomainDnsOwnershipError,
+  } = useDomainDnsOwnership({
+    siteId: currentAppId,
+    fqdns: pendingDomain ?? '',
+    enabled: domainDnsOwnershipEnabled,
+  });
+
+  const hideDomainDnsUntilOwnershipResolved =
+    domainDnsOwnershipEnabled &&
+    isDomainDnsOwnershipLoading &&
+    !domainDnsOwnershipData &&
+    !isDomainDnsOwnershipError;
+
+  const showDomainDNS =
+    !!pendingDomainDetails &&
+    !hideDomainDnsUntilOwnershipResolved &&
+    domainDnsOwnershipData?.isGdDomain !== true;
 
   // Cleanup validation timeout on unmount
   useEffect(() => {
@@ -285,10 +312,6 @@ export default function DomainAttach() {
     setShowAddConfirmation(false);
     await handleAddCustomDomain();
   }
-
-  const pendingDomainDetails = pendingDomain
-    ? appDetails?.domains?.find((d) => d.fqdn === pendingDomain)
-    : null;
 
   // Get customer domain entries (includes root domains + connected subdomains)
   // Only compute once both queries have fetched
@@ -521,7 +544,7 @@ export default function DomainAttach() {
         </Box>
       )}
 
-      {pendingDomainDetails && (
+      {showDomainDNS && (
         <DomainDNS
           domainDetails={pendingDomainDetails}
         />

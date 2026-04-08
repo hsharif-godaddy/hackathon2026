@@ -54,6 +54,15 @@ vi.mock('@/hooks/useDomainValidationQuery', () => ({
   })),
 }));
 
+vi.mock('@/hooks/useDomainDnsOwnership', () => ({
+  useDomainDnsOwnership: vi.fn(() => ({
+    data: { isGdDomain: false },
+    isPending: false,
+    isLoading: false,
+    isError: false,
+  })),
+}));
+
 vi.mock('@/hooks/useModifyDomains', () => ({
   useModifyDomains: vi.fn(() => ({
     mutateAsync: vi.fn(),
@@ -166,6 +175,42 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
       });
 
       expect(screen.getByText('1.2.3.4')).toBeInTheDocument();
+    });
+
+    it('should not render DNS instructions when isGdDomain is true', async function hideDnsForGdDomain() {
+      const { useCustomerDomainAttach } = await import('@/hooks/useCustomerDomainAttach');
+      const { useAppDetails } = await import('@/hooks/useAppDetails');
+      const { useDomainDnsOwnership } = await import('@/hooks/useDomainDnsOwnership');
+
+      vi.mocked(useCustomerDomainAttach).mockReturnValue({
+        pendingCustomerDomain,
+        isPolling: true,
+        hasExternalNameservers: true,
+        requiresManualDnsSetup: true,
+      });
+
+      vi.mocked(useAppDetails).mockReturnValue({
+        data: {
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [pendingCustomerDomain],
+        },
+        isFetched: true,
+      } as any);
+
+      vi.mocked(useDomainDnsOwnership).mockReturnValue({
+        data: { isGdDomain: true },
+        isPending: false,
+        isLoading: false,
+        isError: false,
+      } as any);
+
+      renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
+
+      await waitFor(function waitForNoDnsTitle() {
+        expect(screen.queryByText('builder_domain_attach_dns_title')).not.toBeInTheDocument();
+      });
     });
 
     it('should not render DNS instructions when requiresManualDnsSetup is false and domain is active', async function noDns() {
