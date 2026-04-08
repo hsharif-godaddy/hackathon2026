@@ -3,27 +3,27 @@ package api
 import (
 	"net/http"
 	"sort"
-	"time"
 
 	"github.com/airo-ai-builder/local-control-plane/internal/store"
 	"github.com/gorilla/mux"
 )
 
-var defaultTimestamp = time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
-
-// subscriptionResponse returns common subscription fields.
-// Callers must set "id" explicitly since subscriptions can have any ID.
-func subscriptionResponse() map[string]any {
-	return map[string]any{
-		"productId":    store.DefaultProductID,
-		"ownerProduct": "AiroAppBuilder",
-		"customerId":   store.DefaultCustomerID,
-		"status":       "active",
-		"isTrial":      true,
-		"plan":         "free",
-		"createdAt":    defaultTimestamp,
-		"updatedAt":    defaultTimestamp,
+func subscriptionToResponse(sub *store.Subscription) map[string]any {
+	resp := map[string]any{
+		"id":            sub.ID,
+		"productId":     sub.ProductID,
+		"ownerProduct":  sub.OwnerProduct,
+		"customerId":    sub.CustomerID,
+		"status":        sub.Status,
+		"isTrial":       sub.IsTrial,
+		"hadAiroPlus":   sub.HadAiroPlus,
+		"tokenBudgetId": sub.TokenBudgetID,
+		"plan":          sub.Plan,
+		"createdAt":     sub.CreatedAt,
+		"updatedAt":     sub.UpdatedAt,
 	}
+	resp["reason"] = sub.Reason
+	return resp
 }
 
 func (s *Server) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
@@ -33,7 +33,7 @@ func (s *Server) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Collect unique subscription IDs
+	// Collect unique subscription IDs from apps
 	subIDs := make(map[string]bool)
 	for _, app := range apps {
 		subID := app.SubscriptionID
@@ -43,10 +43,8 @@ func (s *Server) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
 		subIDs[subID] = true
 	}
 
-	// Always include default subscription if no apps exist
-	if len(subIDs) == 0 {
-		subIDs[store.DefaultSubscriptionID] = true
-	}
+	// Always include default subscription
+	subIDs[store.DefaultSubscriptionID] = true
 
 	// Sort for deterministic ordering
 	sortedIDs := make([]string, 0, len(subIDs))
@@ -55,12 +53,15 @@ func (s *Server) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Strings(sortedIDs)
 
-	// Build response
+	// Ensure all referenced subscriptions exist in DB and build response
 	result := make([]map[string]any, 0, len(sortedIDs))
 	for _, id := range sortedIDs {
-		sub := subscriptionResponse()
-		sub["id"] = id
-		result = append(result, sub)
+		sub, err := s.DB.EnsureSubscription(id)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		result = append(result, subscriptionToResponse(sub))
 	}
 
 	writeJSON(w, http.StatusOK, result)
@@ -68,16 +69,46 @@ func (s *Server) ListSubscriptions(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) GetSubscription(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	sub := subscriptionResponse()
-	sub["id"] = vars["subId"]
-	writeJSON(w, http.StatusOK, sub)
+	sub, err := s.DB.EnsureSubscription(vars["subId"])
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, subscriptionToResponse(sub))
 }
 
 func (s *Server) GetEntitlement(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	sub := subscriptionResponse()
-	sub["id"] = vars["subId"]
-	writeJSON(w, http.StatusOK, sub)
+	sub, err := s.DB.EnsureSubscription(vars["subId"])
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, subscriptionToResponse(sub))
+}
+
+func (s *Server) UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	subID := vars["subId"]
+
+	// Ensure subscription exists before updating
+	if _, err := s.DB.EnsureSubscription(subID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var fields map[string]any
+	if err := readJSON(r, &fields); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	sub, err := s.DB.UpdateSubscription(subID, fields)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, subscriptionToResponse(sub))
 }
 
 func (s *Server) GetAppsForSubscription(w http.ResponseWriter, r *http.Request) {

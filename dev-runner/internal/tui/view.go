@@ -55,6 +55,8 @@ func (m Model) View() tea.View {
 
 		if m.confirmQuit {
 			content = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.renderQuitConfirm())
+		} else if m.devSettingsOpen {
+			content = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.renderDevSettings())
 		} else if m.settingsOpen {
 			content = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.renderSettings())
 		} else {
@@ -163,7 +165,48 @@ func (m Model) renderSearchBar() string {
 	)
 }
 
+// statusBarHeight returns 2 when the status and hints won't fit on one line, 1 otherwise.
+func (m Model) statusBarHeight() int {
+	left := m.renderStatusLeft()
+	right := m.renderStatusRight()
+	if lipgloss.Width(left)+lipgloss.Width(right)+1 > m.width {
+		return 2
+	}
+	return 1
+}
+
 func (m Model) renderStatusBar() string {
+	barBg := lipgloss.Color("236")
+	left := m.renderStatusLeft()
+	right := m.renderStatusRight()
+
+	if lipgloss.Width(left)+lipgloss.Width(right)+1 > m.width {
+		// Two-line layout: status on top, controls on bottom
+		padTop := m.width - lipgloss.Width(left)
+		if padTop < 0 {
+			padTop = 0
+		}
+		topLine := left + lipgloss.NewStyle().Background(barBg).Render(strings.Repeat(" ", padTop))
+
+		padBot := m.width - lipgloss.Width(right)
+		if padBot < 0 {
+			padBot = 0
+		}
+		botLine := lipgloss.NewStyle().Background(barBg).Render(strings.Repeat(" ", padBot)) + right
+
+		return topLine + "\n" + botLine
+	}
+
+	// Single-line layout
+	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right)
+	if gap < 1 {
+		gap = 1
+	}
+	pad := lipgloss.NewStyle().Background(barBg).Render(strings.Repeat(" ", gap))
+	return left + pad + right
+}
+
+func (m Model) renderStatusLeft() string {
 	barBg := lipgloss.Color("236")
 	barFg := lipgloss.Color("250")
 	barText := func(s string) string {
@@ -174,7 +217,7 @@ func (m Model) renderStatusBar() string {
 	}
 
 	var parts []string
-	parts = append(parts, barText("Health Checks: "))
+	parts = append(parts, barText("Health: "))
 	for i, p := range m.manager.Processes {
 		state := p.GetState()
 
@@ -201,44 +244,53 @@ func (m Model) renderStatusBar() string {
 			parts = append(parts, barText("  │  "))
 		}
 	}
-	left := strings.Join(parts, "")
+	// Show subscription preset indicator when non-default
+	if m.devSettingsPreset != "" && m.devSettingsPreset != "free-trial" {
+		parts = append(parts, barText("  \u2502  "))
+		parts = append(parts, barKey("[sub: "+m.devSettingsPreset+"]"))
+	}
 
-	var right string
+	return strings.Join(parts, "")
+}
+
+func (m Model) renderStatusRight() string {
+	barBg := lipgloss.Color("236")
+	barFg := lipgloss.Color("250")
+	barText := func(s string) string {
+		return lipgloss.NewStyle().Foreground(barFg).Background(barBg).Render(s)
+	}
+	barKey := func(s string) string {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("229")).Background(barBg).Bold(true).Render(s)
+	}
+
 	if m.clickHint {
-		right = lipgloss.NewStyle().Foreground(lipgloss.Color("229")).Background(barBg).Bold(true).
-			Render("To select text: hold Shift (⇧) or Option (⌥), or press 'm' to disable mouse mode")
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("229")).Background(barBg).Bold(true).
+			Render("To select text: hold Shift or Option, or press 'm' to disable mouse mode")
+	}
+
+	hints := barKey("Tab") + barText(":Switch  ") +
+		barKey("m") + barText(":Mouse(")
+	if m.mouseEnabled {
+		hints += barText("on")
 	} else {
-		hints := barKey("Tab") + barText(":Switch  ") +
-			barKey("m") + barText(":Mouse(")
-		if m.mouseEnabled {
-			hints += barText("on")
+		hints += barText("off")
+	}
+	hints += barText(")  ") +
+		barKey("d") + barText(":Dev  ") +
+		barKey("s") + barText(":Settings  ")
+	if m.activeTab != 0 {
+		hints += barKey("↑↓") + barText(":Scroll  ") +
+			barKey("/") + barText(":Search  ")
+		pane := m.activePanePtr()
+		if pane != nil && pane.AutoFollow {
+			hints += barKey("F") + barText(":Follow(on)  ")
 		} else {
-			hints += barText("off")
+			hints += barKey("F") + barText(":Follow(off)  ")
 		}
-		hints += barText(")  ") +
-			barKey("s") + barText(":Settings  ")
-		if m.activeTab != 0 {
-			hints += barKey("↑↓") + barText(":Scroll  ") +
-				barKey("/") + barText(":Search  ")
-			pane := m.activePanePtr()
-			if pane != nil && pane.AutoFollow {
-				hints += barKey("F") + barText(":Follow(on)  ")
-			} else {
-				hints += barKey("F") + barText(":Follow(off)  ")
-			}
-		}
-		hints += barKey("Esc") + barText(":Clear Alerts  ") +
-			barKey("q") + barText(":Quit")
-		right = hints
 	}
-
-	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right)
-	if gap < 1 {
-		gap = 1
-	}
-	pad := lipgloss.NewStyle().Background(barBg).Render(strings.Repeat(" ", gap))
-
-	return left + pad + right
+	hints += barKey("Esc") + barText(":Clear  ") +
+		barKey("q") + barText(":Quit")
+	return hints
 }
 
 func (m Model) renderQuitConfirm() string {

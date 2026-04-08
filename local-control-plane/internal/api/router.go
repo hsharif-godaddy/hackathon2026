@@ -61,6 +61,7 @@ func NewRouter(db *store.DB, jwtService *auth.JWTService) *mux.Router {
 	v1.HandleFunc("/subscriptions", srv.ListSubscriptions).Methods("GET")
 	v1.HandleFunc("/subscriptions/{subId}", srv.GetSubscription).Methods("GET")
 	v1.HandleFunc("/subscriptions/{subId}/entitlement", srv.GetEntitlement).Methods("GET")
+	v1.HandleFunc("/subscriptions/{subId}", srv.UpdateSubscriptionHandler).Methods("PATCH")
 	v1.HandleFunc("/subscriptions/{subId}/entitlement", srv.UpdateEntitlement).Methods("PUT")
 	v1.HandleFunc("/subscriptions/{subId}/builder-plan", srv.CreateBuilderPlan).Methods("POST")
 	v1.HandleFunc("/subscriptions/{subId}/credits/grants", srv.GetCreditGrants).Methods("GET")

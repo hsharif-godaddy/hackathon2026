@@ -46,6 +46,21 @@ type Deployment struct {
 	UpdatedAt   string `json:"updatedAt"`
 }
 
+type Subscription struct {
+	ID            string `json:"id"`
+	ProductID     string `json:"productId"`
+	OwnerProduct  string `json:"ownerProduct"`
+	CustomerID    string `json:"customerId"`
+	Status        string `json:"status"`
+	Reason        string `json:"reason"`
+	IsTrial       bool   `json:"isTrial"`
+	HadAiroPlus   bool   `json:"hadAiroPlus"`
+	TokenBudgetID string `json:"tokenBudgetId"`
+	Plan          string `json:"plan"`
+	CreatedAt     string `json:"createdAt"`
+	UpdatedAt     string `json:"updatedAt"`
+}
+
 const (
 	DefaultSubscriptionID = "local-sub-001"
 	DefaultSystemID       = "local-sys-001"

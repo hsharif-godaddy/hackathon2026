@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"net/http"
+	"net/url"
 	"time"
 
 	"charm.land/bubbles/v2/textinput"
@@ -51,6 +52,13 @@ type tickMsg time.Time
 type bellResetMsg struct{}
 
 type clickHintMsg struct{}
+
+type devSettingsPresetMsg struct {
+	Preset string
+	Err    error
+}
+
+type devSettingsErrorClearMsg struct{}
 
 // --- Preflight phase ---
 
@@ -103,6 +111,9 @@ type Model struct {
 	settingsCursor int
 	settingsItems  []SettingsItem
 
+	devSettingsOpen  bool
+	devSettingsError string
+
 	searchOpen  bool
 	searchInput textinput.Model
 
@@ -137,6 +148,11 @@ type Model struct {
 	envFormFields  []envFormField
 	envFormCursor  int
 	envFormFixer   *fixers.EnvFixer // the fixer waiting for form values
+
+	// Dev settings tab state
+	devSettingsCursor   int
+	devSettingsPreset   string // current preset name
+	controlPlaneBaseURL string
 }
 
 // NewModel creates the initial model.
@@ -155,21 +171,23 @@ func NewModel(cfg *config.Config, projectRoot string) Model {
 	items := buildSettingsItems(cfg)
 
 	return Model{
-		config:           cfg,
-		projectRoot:      projectRoot,
-		manager:          mgr,
-		panes:            panes,
-		activeTab:        0,
-		lastErrorCount:   make([]int, len(cfg.Processes)),
-		healthGeneration: make([]int, len(cfg.Processes)),
-		mouseEnabled:     true,
-		bellAllowed:      true,
-		hookAutoFollow:   true,
-		hookViewport:     newSoftWrapViewport(80, 24),
-		searchInput:      ti,
-		settingsItems:    items,
-		phase:            PhasePreflightChecking,
-		preflightRunner:  buildPreflightRunner(),
+		config:              cfg,
+		projectRoot:         projectRoot,
+		manager:             mgr,
+		panes:               panes,
+		activeTab:           0,
+		lastErrorCount:      make([]int, len(cfg.Processes)),
+		healthGeneration:    make([]int, len(cfg.Processes)),
+		mouseEnabled:        true,
+		bellAllowed:         true,
+		hookAutoFollow:      true,
+		hookViewport:        newSoftWrapViewport(80, 24),
+		searchInput:         ti,
+		settingsItems:       items,
+		phase:               PhasePreflightChecking,
+		preflightRunner:     buildPreflightRunner(),
+		devSettingsPreset:   "free-trial",
+		controlPlaneBaseURL: controlPlaneBaseURL(cfg),
 	}
 }
 
@@ -369,5 +387,18 @@ func (m Model) processCount() int {
 }
 
 func (m Model) tabCount() int {
-	return 1 + m.processCount()
+	return 1 + m.processCount() // All + processes
+}
+
+// controlPlaneBaseURL extracts the base URL from the control plane health check config, or defaults to localhost:4100.
+func controlPlaneBaseURL(cfg *config.Config) string {
+	for _, p := range cfg.Processes {
+		if p.Name == "Control Plane" && p.HealthCheck != nil {
+			if parsed, err := url.Parse(p.HealthCheck.URL); err == nil {
+				return parsed.Scheme + "://" + parsed.Host
+			}
+			return p.HealthCheck.URL
+		}
+	}
+	return "http://localhost:4100"
 }

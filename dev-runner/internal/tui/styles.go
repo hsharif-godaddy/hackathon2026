@@ -112,4 +112,22 @@ var (
 				Bold(true).
 				Foreground(lipgloss.Color("62")).
 				MarginBottom(1)
+
+	devSettingsRadioActive = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#00ff00")).
+				Bold(true)
+
+	devSettingsRadioInactive = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("250"))
+
+	devSettingsSectionTitle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("62")).
+				PaddingLeft(2)
+
+	devSettingsCursorStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("15")).
+				Background(lipgloss.Color("62")).
+				Bold(true).
+				Padding(0, 1)
 )

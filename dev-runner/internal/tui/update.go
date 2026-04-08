@@ -254,6 +254,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case bellResetMsg:
 		m.bellAllowed = true
 
+	case devSettingsPresetMsg:
+		if msg.Err == nil {
+			m.devSettingsPreset = msg.Preset
+		} else {
+			m.devSettingsOpen = true
+			m.devSettingsError = fmt.Sprintf("Failed to apply preset: %v", msg.Err)
+			cmds = append(cmds, tea.Tick(5*time.Second, func(_ time.Time) tea.Msg {
+				return devSettingsErrorClearMsg{}
+			}))
+		}
+
+	case devSettingsErrorClearMsg:
+		m.devSettingsError = ""
+
 	case clickHintMsg:
 		m.clickHint = false
 
@@ -410,6 +424,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
+	if m.devSettingsOpen {
+		return m.handleDevSettingsKey(msg)
+	}
+
 	switch key {
 	case "q":
 		m.confirmQuit = true
@@ -450,6 +468,15 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.activeTab = 3
 			m.resizePanes()
 			m.refreshPanes()
+		}
+	case "d":
+		m.devSettingsOpen = true
+		m.devSettingsCursor = 0
+		for i, p := range subscriptionPresets {
+			if p.Name == m.devSettingsPreset {
+				m.devSettingsCursor = i
+				break
+			}
 		}
 	case "m":
 		m.mouseEnabled = !m.mouseEnabled
@@ -686,8 +713,8 @@ func (m *Model) resizePanes() {
 	if !m.ready {
 		return
 	}
-	// Available: total height minus tab bar (1) and status bar (1)
-	contentHeight := m.height - 2
+	// Available: total height minus tab bar (1) and status bar (1 or 2)
+	contentHeight := m.height - 1 - m.statusBarHeight()
 	if m.searchOpen {
 		contentHeight--
 	}

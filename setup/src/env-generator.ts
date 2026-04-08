@@ -530,6 +530,7 @@ HTTPS_PORT=${config.httpsPort}
 		envContent += `
 # Application Features
 SHOW_USAGE_COST=true
+NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true
 
 # Authentication Configuration
 AUTH_TYPE=${config.authConfig.authType}

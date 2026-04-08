@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"strings"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -1784,16 +1785,17 @@ func TestListSubscriptionsReturnsAllUniqueSubscriptions(t *testing.T) {
 	var resp []map[string]any
 	decodeJSON(t, w, &resp)
 
-	if len(resp) != 2 {
-		t.Fatalf("expected 2 unique subscriptions, got %d", len(resp))
+	// sub-a + sub-b from apps + default local-sub-001 always included
+	if len(resp) != 3 {
+		t.Fatalf("expected 3 unique subscriptions (sub-a, sub-b, default), got %d", len(resp))
 	}
 
-	// Should be sorted alphabetically
-	if resp[0]["id"] != "sub-a" {
-		t.Errorf("expected first subscription sub-a, got %v", resp[0]["id"])
-	}
-	if resp[1]["id"] != "sub-b" {
-		t.Errorf("expected second subscription sub-b, got %v", resp[1]["id"])
+	// Should be sorted alphabetically: local-sub-001, sub-a, sub-b
+	expected := []string{"local-sub-001", "sub-a", "sub-b"}
+	for i, want := range expected {
+		if resp[i]["id"] != want {
+			t.Errorf("expected subscription[%d]=%s, got %v", i, want, resp[i]["id"])
+		}
 	}
 }
 
@@ -1842,5 +1844,232 @@ func TestGetEntitlementUsesSubIdParam(t *testing.T) {
 
 	if resp["id"] != "custom-sub-123" {
 		t.Errorf("expected id custom-sub-123, got %v", resp["id"])
+	}
+}
+
+// --- UpdateSubscriptionHandler (PATCH) ---
+
+func TestUpdateSubscriptionPatchValidFields(t *testing.T) {
+	srv := newTestServer(t)
+
+	body := strings.NewReader(`{"plan":"professional","isTrial":false,"status":"active","tokenBudgetId":"airo-plus"}`)
+	req := httptest.NewRequest("PATCH", "/subscriptions/local-sub-001", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = setMuxVars(req, map[string]string{"subId": "local-sub-001"})
+
+	w := httptest.NewRecorder()
+	srv.UpdateSubscriptionHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+
+	if resp["id"] != "local-sub-001" {
+		t.Errorf("expected id local-sub-001, got %v", resp["id"])
+	}
+	if resp["plan"] != "professional" {
+		t.Errorf("expected plan professional, got %v", resp["plan"])
+	}
+	if resp["isTrial"] != false {
+		t.Errorf("expected isTrial false, got %v", resp["isTrial"])
+	}
+	if resp["status"] != "active" {
+		t.Errorf("expected status active, got %v", resp["status"])
+	}
+	if resp["tokenBudgetId"] != "airo-plus" {
+		t.Errorf("expected tokenBudgetId airo-plus, got %v", resp["tokenBudgetId"])
+	}
+}
+
+func TestUpdateSubscriptionPatchPartialPreservesDefaults(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Only update plan - other fields should keep defaults
+	body := strings.NewReader(`{"plan":"starter"}`)
+	req := httptest.NewRequest("PATCH", "/subscriptions/local-sub-001", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = setMuxVars(req, map[string]string{"subId": "local-sub-001"})
+
+	w := httptest.NewRecorder()
+	srv.UpdateSubscriptionHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+
+	if resp["plan"] != "starter" {
+		t.Errorf("expected plan starter, got %v", resp["plan"])
+	}
+	// Default values should be preserved
+	if resp["status"] != "active" {
+		t.Errorf("expected default status active, got %v", resp["status"])
+	}
+	if resp["isTrial"] != true {
+		t.Errorf("expected default isTrial true, got %v", resp["isTrial"])
+	}
+}
+
+func TestUpdateSubscriptionPatchReasonRoundTrips(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Set reason
+	body := strings.NewReader(`{"status":"suspended","reason":"NON_PAYMENT"}`)
+	req := httptest.NewRequest("PATCH", "/subscriptions/local-sub-001", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = setMuxVars(req, map[string]string{"subId": "local-sub-001"})
+
+	w := httptest.NewRecorder()
+	srv.UpdateSubscriptionHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+
+	if resp["status"] != "suspended" {
+		t.Errorf("expected status suspended, got %v", resp["status"])
+	}
+	if resp["reason"] != "NON_PAYMENT" {
+		t.Errorf("expected reason NON_PAYMENT, got %v", resp["reason"])
+	}
+
+	// Clear reason
+	body2 := strings.NewReader(`{"status":"active","reason":""}`)
+	req2 := httptest.NewRequest("PATCH", "/subscriptions/local-sub-001", body2)
+	req2.Header.Set("Content-Type", "application/json")
+	req2 = setMuxVars(req2, map[string]string{"subId": "local-sub-001"})
+
+	w2 := httptest.NewRecorder()
+	srv.UpdateSubscriptionHandler(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w2.Code, w2.Body.String())
+	}
+
+	var resp2 map[string]any
+	decodeJSON(t, w2, &resp2)
+
+	if resp2["status"] != "active" {
+		t.Errorf("expected status active, got %v", resp2["status"])
+	}
+	if resp2["reason"] != "" {
+		t.Errorf("expected reason to be empty string, got %v", resp2["reason"])
+	}
+}
+
+func TestUpdateSubscriptionPatchCreatesIfNotExists(t *testing.T) {
+	srv := newTestServer(t)
+
+	body := strings.NewReader(`{"plan":"professional"}`)
+	req := httptest.NewRequest("PATCH", "/subscriptions/new-sub-999", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = setMuxVars(req, map[string]string{"subId": "new-sub-999"})
+
+	w := httptest.NewRecorder()
+	srv.UpdateSubscriptionHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+
+	if resp["id"] != "new-sub-999" {
+		t.Errorf("expected id new-sub-999, got %v", resp["id"])
+	}
+	if resp["plan"] != "professional" {
+		t.Errorf("expected plan professional, got %v", resp["plan"])
+	}
+}
+
+func TestUpdateSubscriptionPatchInvalidJSON(t *testing.T) {
+	srv := newTestServer(t)
+
+	body := strings.NewReader(`not valid json`)
+	req := httptest.NewRequest("PATCH", "/subscriptions/local-sub-001", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = setMuxVars(req, map[string]string{"subId": "local-sub-001"})
+
+	w := httptest.NewRecorder()
+	srv.UpdateSubscriptionHandler(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+// --- EnsureSubscription (DB) ---
+
+func TestEnsureSubscriptionCreatesWithDefaults(t *testing.T) {
+	db := newTestDB(t)
+
+	sub, err := db.EnsureSubscription("test-sub-1")
+	if err != nil {
+		t.Fatalf("EnsureSubscription: %v", err)
+	}
+
+	if sub.ID != "test-sub-1" {
+		t.Errorf("expected id test-sub-1, got %s", sub.ID)
+	}
+	if sub.Status != "active" {
+		t.Errorf("expected default status active, got %s", sub.Status)
+	}
+	if !sub.IsTrial {
+		t.Errorf("expected default isTrial true")
+	}
+	if sub.Plan != "free" {
+		t.Errorf("expected default plan free, got %s", sub.Plan)
+	}
+	if sub.Reason != "" {
+		t.Errorf("expected default reason empty, got %s", sub.Reason)
+	}
+}
+
+func TestEnsureSubscriptionReturnsExisting(t *testing.T) {
+	db := newTestDB(t)
+
+	// Create
+	sub1, err := db.EnsureSubscription("test-sub-1")
+	if err != nil {
+		t.Fatalf("first EnsureSubscription: %v", err)
+	}
+
+	// Update it
+	_, err = db.UpdateSubscription("test-sub-1", map[string]any{"plan": "professional"})
+	if err != nil {
+		t.Fatalf("UpdateSubscription: %v", err)
+	}
+
+	// Ensure again - should return the updated version, not re-create
+	sub2, err := db.EnsureSubscription("test-sub-1")
+	if err != nil {
+		t.Fatalf("second EnsureSubscription: %v", err)
+	}
+
+	if sub2.CreatedAt != sub1.CreatedAt {
+		t.Errorf("expected same createdAt, got %s vs %s", sub2.CreatedAt, sub1.CreatedAt)
+	}
+	if sub2.Plan != "professional" {
+		t.Errorf("expected updated plan professional, got %s", sub2.Plan)
+	}
+}
+
+// --- UpdateSubscription (DB) ---
+
+func TestUpdateSubscriptionNotFound(t *testing.T) {
+	db := newTestDB(t)
+
+	_, err := db.UpdateSubscription("nonexistent", map[string]any{"plan": "starter"})
+	if err == nil {
+		t.Fatal("expected error for nonexistent subscription")
 	}
 }

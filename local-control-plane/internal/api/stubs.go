@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -137,16 +139,49 @@ func (s *Server) ReloadImages(w http.ResponseWriter, r *http.Request) {
 // Entitlement stubs
 
 func (s *Server) UpdateEntitlement(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, subscriptionResponse())
+	vars := mux.Vars(r)
+	subID := vars["subId"]
+
+	existing, err := s.DB.EnsureSubscription(subID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var fields map[string]any
+	if err := readJSON(r, &fields); err != nil {
+		if errors.Is(err, io.EOF) {
+			// No body - return current state
+			writeJSON(w, http.StatusOK, subscriptionToResponse(existing))
+			return
+		}
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	sub, err := s.DB.UpdateSubscription(subID, fields)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, subscriptionToResponse(sub))
 }
 
 func (s *Server) CreateBuilderPlan(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
+	subID := vars["subId"]
+
+	sub, err := s.DB.EnsureSubscription(subID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"subscriptionId":     vars["subId"],
-		"plan":               "free",
+		"subscriptionId":       sub.ID,
+		"plan":                 sub.Plan,
 		"builderEntitlementId": "local-entitlement-001",
-		"message":            "builder plan created (stub)",
+		"message":              "builder plan created (stub)",
 	})
 }
 

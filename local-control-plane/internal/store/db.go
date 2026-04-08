@@ -111,6 +111,30 @@ func (d *DB) migrate() error {
 		}
 	}
 
+	if _, err := d.db.Exec(`CREATE TABLE IF NOT EXISTS subscriptions (
+		id TEXT PRIMARY KEY,
+		product_id TEXT NOT NULL DEFAULT 'aab-v1',
+		owner_product TEXT NOT NULL DEFAULT 'AiroAppBuilder',
+		customer_id TEXT NOT NULL DEFAULT 'local-customer-001',
+		status TEXT NOT NULL DEFAULT 'active',
+		reason TEXT NOT NULL DEFAULT '',
+		is_trial INTEGER NOT NULL DEFAULT 1,
+		had_airo_plus INTEGER NOT NULL DEFAULT 0,
+		token_budget_id TEXT NOT NULL DEFAULT 'trial',
+		plan TEXT NOT NULL DEFAULT 'free',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	)`); err != nil {
+		return fmt.Errorf("create subscriptions table: %w", err)
+	}
+
+	// Add reason column to existing subscriptions tables (idempotent)
+	if _, err := d.db.Exec(`ALTER TABLE subscriptions ADD COLUMN reason TEXT NOT NULL DEFAULT ''`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("add reason column: %w", err)
+		}
+	}
+
 	if _, err := d.db.Exec(`CREATE TABLE IF NOT EXISTS deployments (
 		id TEXT PRIMARY KEY,
 		app_id TEXT NOT NULL,
@@ -562,4 +586,158 @@ func (d *DB) GetDeployments(appID string, limit int) ([]Deployment, error) {
 	}
 
 	return deps, nil
+}
+
+// EnsureSubscription returns the subscription with the given ID, creating it with defaults if it doesn't exist.
+func (d *DB) EnsureSubscription(id string) (*Subscription, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	sub, err := d.getSubscriptionUnlocked(id)
+	if err != nil {
+		return nil, err
+	}
+	if sub != nil {
+		return sub, nil
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err = d.db.Exec(
+		`INSERT INTO subscriptions (id, created_at, updated_at) VALUES (?, ?, ?)`,
+		id, now, now,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("insert subscription: %w", err)
+	}
+
+	return d.getSubscriptionUnlocked(id)
+}
+
+func (d *DB) getSubscriptionUnlocked(id string) (*Subscription, error) {
+	var sub Subscription
+	var isTrial, hadAiroPlus int
+
+	err := d.db.QueryRow(
+		`SELECT id, product_id, owner_product, customer_id, status, reason, is_trial, had_airo_plus,
+		        token_budget_id, plan, created_at, updated_at
+		 FROM subscriptions WHERE id = ?`, id,
+	).Scan(
+		&sub.ID, &sub.ProductID, &sub.OwnerProduct, &sub.CustomerID, &sub.Status, &sub.Reason,
+		&isTrial, &hadAiroPlus, &sub.TokenBudgetID, &sub.Plan, &sub.CreatedAt, &sub.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query subscription: %w", err)
+	}
+
+	sub.IsTrial = isTrial != 0
+	sub.HadAiroPlus = hadAiroPlus != 0
+	return &sub, nil
+}
+
+// GetSubscription retrieves a subscription by ID. Returns nil if not found.
+func (d *DB) GetSubscription(id string) (*Subscription, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.getSubscriptionUnlocked(id)
+}
+
+// ListSubscriptions returns all subscriptions.
+func (d *DB) ListSubscriptions() ([]*Subscription, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	rows, err := d.db.Query(
+		`SELECT id, product_id, owner_product, customer_id, status, reason, is_trial, had_airo_plus,
+		        token_budget_id, plan, created_at, updated_at
+		 FROM subscriptions ORDER BY created_at`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query subscriptions: %w", err)
+	}
+	defer rows.Close()
+
+	var subs []*Subscription
+	for rows.Next() {
+		var sub Subscription
+		var isTrial, hadAiroPlus int
+		if err := rows.Scan(
+			&sub.ID, &sub.ProductID, &sub.OwnerProduct, &sub.CustomerID, &sub.Status, &sub.Reason,
+			&isTrial, &hadAiroPlus, &sub.TokenBudgetID, &sub.Plan, &sub.CreatedAt, &sub.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan subscription: %w", err)
+		}
+		sub.IsTrial = isTrial != 0
+		sub.HadAiroPlus = hadAiroPlus != 0
+		subs = append(subs, &sub)
+	}
+	return subs, nil
+}
+
+// UpdateSubscription applies partial updates to a subscription.
+func (d *DB) UpdateSubscription(id string, fields map[string]any) (*Subscription, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	sub, err := d.getSubscriptionUnlocked(id)
+	if err != nil {
+		return nil, err
+	}
+	if sub == nil {
+		return nil, fmt.Errorf("subscription not found: %s", id)
+	}
+
+	if v, ok := fields["status"]; ok {
+		if s, ok := v.(string); ok {
+			sub.Status = s
+		}
+	}
+	if v, ok := fields["isTrial"]; ok {
+		if b, ok := v.(bool); ok {
+			sub.IsTrial = b
+		}
+	}
+	if v, ok := fields["plan"]; ok {
+		if s, ok := v.(string); ok {
+			sub.Plan = s
+		}
+	}
+	if v, ok := fields["tokenBudgetId"]; ok {
+		if s, ok := v.(string); ok {
+			sub.TokenBudgetID = s
+		}
+	}
+	if v, ok := fields["reason"]; ok {
+		if s, ok := v.(string); ok {
+			sub.Reason = s
+		}
+	}
+	if v, ok := fields["hadAiroPlus"]; ok {
+		if b, ok := v.(bool); ok {
+			sub.HadAiroPlus = b
+		}
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	isTrial := 0
+	if sub.IsTrial {
+		isTrial = 1
+	}
+	hadAiroPlus := 0
+	if sub.HadAiroPlus {
+		hadAiroPlus = 1
+	}
+
+	_, err = d.db.Exec(
+		`UPDATE subscriptions SET status = ?, reason = ?, is_trial = ?, had_airo_plus = ?, plan = ?, token_budget_id = ?, updated_at = ? WHERE id = ?`,
+		sub.Status, sub.Reason, isTrial, hadAiroPlus, sub.Plan, sub.TokenBudgetID, now, id,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("update subscription: %w", err)
+	}
+
+	sub.UpdatedAt = now
+	return sub, nil
 }

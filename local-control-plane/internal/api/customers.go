@@ -68,34 +68,50 @@ func (s *Server) GetCustomerTree(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 
-		subscriptions = append(subscriptions, map[string]any{
+		sub, err := s.DB.EnsureSubscription(subID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		subEntry := map[string]any{
 			"subscriptionId": subID,
-			"productId":      store.DefaultProductID,
-			"ownerProduct":   "AiroAppBuilder",
-			"status":         "active",
-			"isTrial":        true,
+			"productId":      sub.ProductID,
+			"ownerProduct":   sub.OwnerProduct,
+			"status":         sub.Status,
+			"isTrial":        sub.IsTrial,
+			"plan":           sub.Plan,
+			"reason":         sub.Reason,
 			"systems":        systems,
-		})
+		}
+		subscriptions = append(subscriptions, subEntry)
 	}
 
 	// If no apps exist, return empty subscription with default ID
 	if len(subscriptions) == 0 {
-		subscriptions = []map[string]any{
-			{
-				"subscriptionId": store.DefaultSubscriptionID,
-				"productId":      store.DefaultProductID,
-				"ownerProduct":   "AiroAppBuilder",
-				"status":         "active",
-				"isTrial":        true,
-				"systems": []map[string]any{
-					{
-						"systemId":   store.DefaultSystemID,
-						"datacenter": store.DefaultDatacenter,
-						"apps":       []map[string]any{},
-					},
+		sub, err := s.DB.EnsureSubscription(store.DefaultSubscriptionID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		subEntry := map[string]any{
+			"subscriptionId": sub.ID,
+			"productId":      sub.ProductID,
+			"ownerProduct":   sub.OwnerProduct,
+			"status":         sub.Status,
+			"isTrial":        sub.IsTrial,
+			"plan":           sub.Plan,
+			"reason":         sub.Reason,
+			"systems": []map[string]any{
+				{
+					"systemId":   store.DefaultSystemID,
+					"datacenter": store.DefaultDatacenter,
+					"apps":       []map[string]any{},
 				},
 			},
 		}
+		subscriptions = []map[string]any{subEntry}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
