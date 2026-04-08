@@ -228,7 +228,7 @@ jobs:
 
       - name: Run Playwright tests
         run: |
-          FILTER="${{ inputs.test_filter }}"
+          FILTER="${{ inputs.test_filter || 'all' }}"
           ALLOWED="all authentication apps-page develop-chat develop-media develop-publish"
           if [[ ! " $ALLOWED " =~ " $FILTER " ]]; then
             echo "Invalid test_filter: $FILTER"
