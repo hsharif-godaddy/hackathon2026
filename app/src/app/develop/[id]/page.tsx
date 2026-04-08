@@ -16,7 +16,7 @@ import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
 import { AppIntroTour } from '@/app/develop/components/tour/AppIntroTour'
-import { ChatTab, IframeMessageType, MobileMode, ViewMode } from '@/app/develop/components/types'
+import { ChatTab, IframeMessageType, MobileMode } from '@/app/develop/components/types'
 import { extractNewPageRoute, handlePreviewRefresh, navigatePreviewToRoute, requestPreviewScreenshot, useAppIdFromParams } from '@/app/develop/components/utils'
 import VersionHistory from '@/app/develop/components/VersionHistory'
 import { clearExpiredWidgetStates } from '@/app/develop/components/widgets'
@@ -43,7 +43,6 @@ import { usePaywallPrefetch } from '@/hooks/usePaywallPrefetch'
 import { useRumAppContext } from '@/hooks/useRumAppContext'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { useIsRenewalPolling } from '@/hooks/useSubscriptionRenewal'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useSyncResponsiveState } from '@/hooks/useSyncResponsiveState'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsUpgradePolling } from '@/hooks/useUpgradePurchase'
@@ -142,7 +141,6 @@ function DevelopPageContent() {
   const showIntroTour = useDevelopPageStore((state) => state.showIntroTour)
 
   const setChatPaneWidth = useDevelopPageStore((state) => state.setChatPaneWidth)
-  const setIsSelectMode = useDevelopPageStore((state) => state.setIsSelectMode)
   const closeFeedbackModal = useDevelopPageStore((state) => state.closeFeedbackModal)
   const setIsPreviewVisible = useDevelopPageStore((state) => state.setIsPreviewVisible)
   const setShowIntroTour = useDevelopPageStore((state) => state.setShowIntroTour)
@@ -176,10 +174,7 @@ function DevelopPageContent() {
   usePageTiming('develop-page', appId)
 
   // Local state (only what's not in stores)
-  const [selectedElement, setSelectedElement] = useState<unknown>(null)
   const isEditModeEnabled = useDevelopPageStore((state) => state.isEditModeEnabled)
-  const setIsEditModeEnabled = useDevelopPageStore((state) => state.setIsEditModeEnabled)
-  const { data: isEditModeFeatureEnabled } = useSwitchboard('appbuilder-edit-mode')
   // Optimistic mobile tab state for instant transitions
   const [optimisticMobileTab, setOptimisticMobileTab] = useState<ChatTab>(activeChatTab)
   const securityQuickFixFailCountRef = useRef<Map<string, number>>(new Map())
@@ -225,21 +220,6 @@ function DevelopPageContent() {
       postMessageToIframe(iframe, { type: enabled ? IframeMessageType.EDIT_MODE_ENABLED : IframeMessageType.EDIT_MODE_DISABLED })
     }
   }, [])
-
-  // Disable edit mode and reset view mode when feature flag is off
-  const viewMode = useDevelopPageStore((state) => state.viewMode)
-  const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange)
-  useEffect(() => {
-    if (isEditModeFeatureEnabled === false) {
-      if (isEditModeEnabled) {
-        setIsEditModeEnabled(false)
-        sendEditModeMessage(false)
-      }
-      if (viewMode === ViewMode.EDIT) {
-        handleViewModeChange(ViewMode.PREVIEW, false)
-      }
-    }
-  }, [isEditModeFeatureEnabled, isEditModeEnabled, setIsEditModeEnabled, sendEditModeMessage, viewMode, handleViewModeChange])
 
   // Funnel event: Track when chat loader hides (user can now see chat)
   // Only during create flow from homepage
@@ -388,14 +368,10 @@ function DevelopPageContent() {
     void handleTodoListContext()
   }, [todoListIdParam, router, appId, ws.actions.send, securityHandoffRetryNonce, setActiveChatTab, t])
 
-  // Cleanup WebSocket connections and batched updates on unmount
+  // Cleanup WebSocket connections on unmount
   useEffect(() => {
     return () => {
-      // Legacy cleanupMessageService removed - streaming architecture handles its own cleanup
       cleanupServerPolling()
-      if (batchTimeoutRef.current) {
-        clearTimeout(batchTimeoutRef.current)
-      }
     }
   }, [cleanupServerPolling])
 
@@ -428,10 +404,6 @@ function DevelopPageContent() {
   // Note: Server polling is managed by PreviewPane component
   // PreviewPane owns its server state and polling lifecycle
 
-  // Batching state for style updates
-  const batchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const pendingUpdateRef = useRef<{ selector: string; property: string; value: string; newClassName: string; newStyle?: string } | null>(null)
-  const isFirstUpdateRef = useRef(true)
   const isProcessing = isLoading || isStreaming
   const isProcessingRef = useRef(isProcessing)
   isProcessingRef.current = isProcessing
@@ -471,26 +443,6 @@ function DevelopPageContent() {
     actions: errorFixActions
   } = useErrorFixState(isProcessing, errorFixSendHandler)
 
-  const sendStyleUpdate = useCallback(async (styleData: { selector: string; property: string; value: string; newClassName: string; newStyle?: string }) => {
-    if (!appId) return
-
-    try {
-      const result = await appService.updateStyles(appId, { /* eslint-disable-line @typescript-eslint/no-unused-vars */
-        ...styleData,
-        elementInfo: selectedElement
-      })
-      logger.info('develop-page.style-update.success', {
-        appId,
-        selector: styleData.selector,
-        property: styleData.property
-      })
-    } catch (error) {
-      logger.error('develop-page.style-update.error', {
-        appId,
-        error: error instanceof Error ? error.message : String(error)
-      })
-    }
-  }, [appId, selectedElement])
 
   const handleScreenshotUpload = useCallback(async (screenshotDataUrl: string) => {
     if (!appId) return
@@ -605,34 +557,6 @@ function DevelopPageContent() {
     }
   }, [appId])
 
-  const handleStyleUpdate = useCallback(async (styleData: { selector: string; property: string; value: string; newClassName: string; newStyle?: string }) => {
-    if (!appId) return
-
-    // Send first update immediately
-    if (isFirstUpdateRef.current) {
-      isFirstUpdateRef.current = false
-      await sendStyleUpdate(styleData)
-      return
-    }
-
-    // Store the most recent update
-    pendingUpdateRef.current = styleData
-
-    // Clear existing timeout
-    if (batchTimeoutRef.current) {
-      clearTimeout(batchTimeoutRef.current)
-    }
-
-    // Set new timeout to send the batched update
-    batchTimeoutRef.current = setTimeout(async () => {
-      if (pendingUpdateRef.current) {
-        await sendStyleUpdate(pendingUpdateRef.current)
-        pendingUpdateRef.current = null
-        isFirstUpdateRef.current = true // Reset for next batch
-      }
-    }, 5000)
-  }, [appId, sendStyleUpdate])
-
   // Listen for file edit tool completions to show preview
   useEffect(() => {
     if (!appId || !activeStream) return
@@ -673,18 +597,6 @@ function DevelopPageContent() {
       if (!isFromIframe && !isFromSameWindow) return
 
       switch (event.data.type) {
-        case 'ELEMENT_SELECTED':
-          setSelectedElement(event.data.data)
-          setIsSelectMode(false)
-          logger.info('develop-page.element-selected', {
-            appId,
-            selector: event.data.data?.selector
-          })
-          break
-        case 'STYLE_UPDATED':
-          logger.info('develop-page.style-updated-from-iframe', { appId })
-          handleStyleUpdate(event.data.data)
-          break
         case 'TEXT_UPDATED':
           logger.info('develop-page.text-updated-from-iframe', { appId })
           sendTextUpdate(event.data.data)
@@ -871,7 +783,7 @@ function DevelopPageContent() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setIsSelectMode, ws.actions.send, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask, sendEditModeMessage, isEditModeEnabled, handleAutoImportMediaSlot, errorFixActions])
+  }, [sendTextUpdate, setAiEditContext, ws.actions.send, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask, sendEditModeMessage, isEditModeEnabled, handleAutoImportMediaSlot, errorFixActions])
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {

@@ -72,7 +72,6 @@ export enum ViewMode {
 export enum IframeMessageType {
   EDIT_MODE_ENABLED = 'EDIT_MODE_ENABLED',
   EDIT_MODE_DISABLED = 'EDIT_MODE_DISABLED',
-  TOGGLE_SELECT_MODE = 'TOGGLE_SELECT_MODE',
 }
 
 export enum MobileMode {

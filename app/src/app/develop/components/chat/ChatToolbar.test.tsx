@@ -16,7 +16,6 @@ const mockDevelopStore = {
   isMobile: false,
   mobileMode: MobileMode.TOOLS, // MobileMode.TOOLS
   viewMode: ViewMode.PREVIEW, // ViewMode.PREVIEW
-  isSelectMode: false,
   isVersionHistoryOpen: false,
   isAssetManagerOpen: false,
   hasUnsavedChanges: false,
@@ -24,7 +23,6 @@ const mockDevelopStore = {
   app: null,
   deploymentInProgressId: null,
   setIsAssetManagerOpen: vi.fn(),
-  toggleSelectMode: vi.fn(),
   handleViewModeChange: vi.fn(),
   handleMobileModeChange: vi.fn(),
   getPublishState: vi.fn(() => ({
@@ -106,13 +104,10 @@ describe('ChatToolbar', () => {
     mockDevelopStore.isMobile = false;
     mockDevelopStore.mobileMode = MobileMode.TOOLS;
     mockDevelopStore.viewMode = ViewMode.PREVIEW;
-    mockDevelopStore.isSelectMode = false;
     mockDevelopStore.isVersionHistoryOpen = false;
     mockDevelopStore.isAssetManagerOpen = false;
     mockDevelopStore.hasUnsavedChanges = false;
     mockDevelopStore.publishStates = { 'app-123': { isPublishing: false } };
-    mockDevelopStore.viewMode = ViewMode.PREVIEW;
-    mockDevelopStore.isSelectMode = false;
     mockChatTabs.activeChatTab = ChatTab.CHAT;
     mockChatTabs.activeSettingsSection = SettingsSection.DOMAIN;
     mockGitStore.isSelectingCommit = false;

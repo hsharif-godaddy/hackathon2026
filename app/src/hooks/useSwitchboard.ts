@@ -31,7 +31,6 @@ const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-domain-purchase': true,
   'appbuilder-transfer-ownership': true,
   'appbuilder-higher-plans': true,
-  'appbuilder-edit-mode': true,
   'appbuilder-analytics': true,
   'appbuilder-settings-analytics': true,
   'appbuilder-suspended-compliance-banner': true,

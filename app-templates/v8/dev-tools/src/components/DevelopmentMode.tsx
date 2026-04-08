@@ -1,6 +1,4 @@
-import { useDevelopmentMode } from '../hooks/useDevelopmentMode'
 import { useState, useEffect } from 'react'
-import ElementEditor, { editorTypographyStyles } from './ElementEditor'
 import { safePostMessage, isOriginAllowed } from '../utils/postMessage'
 import { captureAndResizeScreenshot, captureViewportScreenshot } from '../utils/screenshot'
 import { useEditMode } from "../hooks/useEditMode";
@@ -12,28 +10,7 @@ export default function DevelopmentMode() {
   useEffect(() => { void initTranslations(); }, []);
   const [isEditModeActive, setIsEditModeActive] = useState(false); // off by default, parent enables via EDIT_MODE_ENABLED message
 
-  const {
-    isEnabled,
-    isSelectMode,
-    selectedElement,
-    showEditor,
-    editorPosition,
-    isInlineEditing,
-    clearSelection,
-    toggleSelectMode,
-    isTextEditable,
-    startInlineEditing,
-    stopInlineEditing,
-    cancelInlineEditing
-  } = useDevelopmentMode({ isEditModeActive })
-
   const { hoveredImage, handleBarMouseEnter, handleBarMouseLeave } = useEditMode(isEditModeActive)
-
-  // State to control indicator visibility on hover
-  const [isIndicatorHovered, setIsIndicatorHovered] = useState(false)
-
-  // Check if floating button should be visible via environment variable
-  const showFloatingButton = import.meta.env.VITE_SHOW_DEV_TOOLS === 'true'
 
   // Visual context capture for AI assistance
   useEffect(() => {
@@ -588,69 +565,8 @@ export default function DevelopmentMode() {
     }
   }, [])
 
-  if (!isEnabled) {
-    return null
-  }
-
   return (
     <div data-airo-dev-tools>
-      {/* Development Mode Floating Button - Only show if environment variable is set */}
-      {showFloatingButton && (
-        <button
-        data-dev-tools="floating-button"
-        className="fixed bottom-10 left-10 w-7.5 h-7.5 rounded-full backdrop-blur-10px text-white p-1.5 font-semibold text-sm z-999999 box-shadow-md border transition-opacity duration-200 cursor-pointer"
-        style={{
-          background: isSelectMode
-            ? 'linear-gradient(135deg, var(--color-error-gradient-start) 0%, var(--color-error-gradient-end) 100%)'
-            : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        }}
-        onClick={() => {
-          toggleSelectMode()
-        }}
-        onMouseOver={(e) => {
-          e.currentTarget.style.transform = 'scale(1.1)'
-        }}
-        onMouseOut={(e) => {
-          e.currentTarget.style.transform = 'scale(1)'
-        }}
-        title={isSelectMode ? 'Exit selection mode' : 'Enter selection mode (Dev Tools)'}
-        >
-          {isSelectMode ? '✕' : '🎨'}
-        </button>
-      )}
-
-      {/* Development Mode Indicator */}
-      {(isSelectMode || isInlineEditing) && (
-        <div
-          data-dev-tools="indicator"
-          onMouseEnter={() => setIsIndicatorHovered(true)}
-          onMouseLeave={() => setIsIndicatorHovered(false)}
-          className="fixed top-[10px] left-1/2 transform -translate-x-1/2 bg-white text-black px-2 py-0.5 rounded-sm z-999998 shadow-md border border-border transition-opacity duration-200 cursor-pointer"
-          style={{ opacity: isIndicatorHovered ? 0 : 1, ...editorTypographyStyles }}
-          title="Hover to temporarily hide this indicator"
-        >
-          <div className="font-semibold text-sm">
-            {isInlineEditing ? (
-              <>Editing text - Press Enter to save, Escape to cancel</>
-            ) : (
-              <>Click element to edit</>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Element Editor */}
-      <ElementEditor
-        isOpen={showEditor}
-        onClose={clearSelection}
-        position={editorPosition}
-        selectedElement={selectedElement}
-        isInlineEditing={isInlineEditing}
-        isTextEditable={isTextEditable}
-        startInlineEditing={startInlineEditing}
-        stopInlineEditing={stopInlineEditing}
-        cancelInlineEditing={cancelInlineEditing}
-      />
       {isEditModeActive && hoveredImage && (
         <ImageHoverBar
           hoveredImage={hoveredImage}

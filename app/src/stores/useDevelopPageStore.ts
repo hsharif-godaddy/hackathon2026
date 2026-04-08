@@ -156,7 +156,6 @@ interface DevelopPageStore {
   mobileMode: MobileMode
   previewViewMode: PreviewViewMode
   selectedDeviceId: string
-  isSelectMode: boolean
   isEditModeEnabled: boolean
   expandedPlan: boolean
   chatPaneWidth: number
@@ -239,7 +238,6 @@ interface DevelopPageStore {
   setMobileMode: (mode: MobileMode) => void
   setPreviewViewMode: (mode: PreviewViewMode) => void
   setSelectedDeviceId: (deviceId: string) => void
-  setIsSelectMode: (selectMode: boolean) => void
   setIsEditModeEnabled: (enabled: boolean) => void
   setExpandedPlan: (expanded: boolean) => void
   setChatPaneWidth: (width: number) => void
@@ -331,7 +329,6 @@ interface DevelopPageStore {
   restartApp: (appId: string, appStoreRestartApp: (appId: string) => Promise<void>) => Promise<void>
 
   // UI helpers
-  toggleSelectMode: () => void
   toggleEditMode: () => void
   toggleExpandedPlan: () => void
   toggleChatPaneCollapse: () => void
@@ -349,7 +346,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     mobileMode: MobileMode.TOOLS,
     previewViewMode: PreviewViewMode.DESKTOP,
     selectedDeviceId: 'full',
-    isSelectMode: false,
     isEditModeEnabled: true,
     expandedPlan: false,
     chatPaneWidth: DEFAULT_CHAT_PANE_WIDTH,
@@ -414,7 +410,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       }
     }),
     setSelectedDeviceId: (deviceId) => set((state) => { state.selectedDeviceId = deviceId }),
-    setIsSelectMode: (selectMode) => set((state) => { state.isSelectMode = selectMode }),
     setIsEditModeEnabled: (enabled) => set((state) => { state.isEditModeEnabled = enabled }),
     setExpandedPlan: (expanded) => set((state) => { state.expandedPlan = expanded }),
     setChatPaneWidth: (width) => set((state) => { state.chatPaneWidth = width }),
@@ -799,20 +794,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     },
 
     // UI helpers
-    toggleSelectMode: () => {
-      const newSelectMode = !get().isSelectMode
-      set((state) => { state.isSelectMode = newSelectMode })
-
-      // Send message to preview iframe to toggle select mode
-      const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
-      if (iframe) {
-        postMessageToIframe(iframe, {
-          type: IframeMessageType.TOGGLE_SELECT_MODE,
-          data: { isSelectMode: newSelectMode }
-        })
-      }
-    },
-
     toggleEditMode: () => {
       const newEditMode = !get().isEditModeEnabled
       set((state) => { state.isEditModeEnabled = newEditMode })

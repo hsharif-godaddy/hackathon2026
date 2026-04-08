@@ -8,7 +8,6 @@ import { ViewMode } from '@/app/develop/components/types';
 import { useIsHistoryDisabled } from '@/hooks/useIsHistoryDisabled';
 
 let mockViewMode = ViewMode.PREVIEW;
-let mockIsSelectMode = false;
 let mockIsPublishing = false;
 let mockIsSelectingCommit = false;
 let mockIsLoadingCommits = false;
@@ -19,7 +18,6 @@ let mockHistoryLoadingComplete = true;
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: (state: Record<string, unknown>) => unknown) => selector({
     viewMode: mockViewMode,
-    isSelectMode: mockIsSelectMode,
     publishStates: {
       'app-123': { isPublishing: mockIsPublishing },
     },
@@ -47,7 +45,6 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
 describe('useIsHistoryDisabled', () => {
   beforeEach(() => {
     mockViewMode = ViewMode.PREVIEW;
-    mockIsSelectMode = false;
     mockIsPublishing = false;
     mockIsSelectingCommit = false;
     mockIsLoadingCommits = false;
@@ -93,12 +90,6 @@ describe('useIsHistoryDisabled', () => {
 
   it('should return true when in code view mode', () => {
     mockViewMode = ViewMode.CODE;
-    const { result } = renderHook(() => useIsHistoryDisabled('app-123'));
-    expect(result.current).toBe(true);
-  });
-
-  it('should return true when in select mode', () => {
-    mockIsSelectMode = true;
     const { result } = renderHook(() => useIsHistoryDisabled('app-123'));
     expect(result.current).toBe(true);
   });

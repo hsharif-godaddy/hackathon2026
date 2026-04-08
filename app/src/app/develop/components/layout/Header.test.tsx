@@ -16,12 +16,9 @@ const mockDevelopStore = {
   viewMode: ViewMode.PREVIEW,
   isRestarting: false,
   hasUnsavedChanges: false,
-  isSelectMode: false,
   isChatPaneCollapsed: false,
   isVersionHistoryOpen: false,
   handleViewModeChange: vi.fn(),
-  setIsSelectMode: vi.fn(),
-  toggleSelectMode: vi.fn(),
   toggleChatPaneCollapse: vi.fn(),
 };
 
@@ -112,7 +109,6 @@ describe('DevelopHeader', () => {
     mockDevelopStore.isMobile = false;
     mockDevelopStore.viewMode = ViewMode.PREVIEW;
     mockDevelopStore.isChatPaneCollapsed = false;
-    mockDevelopStore.isSelectMode = false;
     mockDevelopStore.isVersionHistoryOpen = false;
     mockAuthContext.isAuthenticated = true;
     mockAuthContext.isLoading = false;
@@ -154,27 +150,12 @@ describe('DevelopHeader', () => {
     expect(screen.getByLabelText('builder_preview_button_expand')).toBeInTheDocument();
   });
 
-  it('should render ButtonGroup with preview and code buttons', () => {
+  it('should render ButtonGroup with preview, edit, and code buttons', () => {
     renderWithProviders(<DevelopHeader />);
 
     expect(screen.getByLabelText('builder_preview_button_preview')).toBeInTheDocument();
+    expect(screen.getByLabelText('builder_preview_button_edit')).toBeInTheDocument();
     expect(screen.getByLabelText('builder_preview_button_code')).toBeInTheDocument();
-  });
-
-  it('should render select mode button on desktop', () => {
-    mockDevelopStore.isMobile = false;
-
-    renderWithProviders(<DevelopHeader />);
-
-    expect(screen.getByLabelText('builder_preview_button_select')).toBeInTheDocument();
-  });
-
-  it('should not render select mode button on mobile', () => {
-    mockDevelopStore.isMobile = true;
-
-    renderWithProviders(<DevelopHeader />);
-
-    expect(screen.queryByLabelText('builder_preview_button_select')).not.toBeInTheDocument();
   });
 
   it('should render device selector on desktop', () => {
@@ -202,24 +183,6 @@ describe('DevelopHeader', () => {
 
     const codeButton = screen.getByLabelText('builder_preview_button_code');
     expect(codeButton).toBeDisabled();
-  });
-
-  it('should disable select mode button when version history is open', () => {
-    mockDevelopStore.isVersionHistoryOpen = true;
-
-    renderWithProviders(<DevelopHeader />);
-
-    const selectButton = screen.getByLabelText('builder_preview_button_select');
-    expect(selectButton).toBeDisabled();
-  });
-
-  it('should disable select mode button when in code mode', () => {
-    mockDevelopStore.viewMode = ViewMode.CODE;
-
-    renderWithProviders(<DevelopHeader />);
-
-    const selectButton = screen.getByLabelText('builder_preview_button_select');
-    expect(selectButton).toBeDisabled();
   });
 
   it('should disable device selector when in code mode', () => {
@@ -250,27 +213,6 @@ describe('DevelopHeader', () => {
     await user.click(previewButton);
 
     expect(mockDevelopStore.handleViewModeChange).toHaveBeenCalledWith(ViewMode.PREVIEW, false);
-  });
-
-  it('should call setIsSelectMode(false) when switching to code mode', async () => {
-    mockDevelopStore.viewMode = ViewMode.PREVIEW;
-
-    const { user } = renderWithProviders(<DevelopHeader />);
-
-    const codeButton = screen.getByLabelText('builder_preview_button_code');
-    await user.click(codeButton);
-
-    expect(mockDevelopStore.setIsSelectMode).toHaveBeenCalledWith(false);
-    expect(mockDevelopStore.handleViewModeChange).toHaveBeenCalledWith(ViewMode.CODE, false);
-  });
-
-  it('should call toggleSelectMode when select button is clicked', async () => {
-    const { user } = renderWithProviders(<DevelopHeader />);
-
-    const selectButton = screen.getByLabelText('builder_preview_button_select');
-    await user.click(selectButton);
-
-    expect(mockDevelopStore.toggleSelectMode).toHaveBeenCalledOnce();
   });
 
   it('should have correct EID on ButtonGroup', () => {

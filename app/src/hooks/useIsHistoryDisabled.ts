@@ -6,7 +6,6 @@ import { useHistoryLoadingComplete, useIsActivelyStreaming, useIsLoading } from 
 
 export function useIsHistoryDisabled(appId: string) {
   const viewMode = useDevelopPageStore((state) => state.viewMode);
-  const isSelectMode = useDevelopPageStore((state) => state.isSelectMode);
   const isPublishing = useDevelopPageStore((state) =>
     appId ? (state.publishStates?.[appId]?.isPublishing ?? false) : false
   );
@@ -25,6 +24,5 @@ export function useIsHistoryDisabled(appId: string) {
     || isLoadingCommits
     || isSelectingCommit
     || viewMode === ViewMode.CODE
-    || isSelectMode
     || isPublishing;
 }

@@ -6,7 +6,6 @@ import { useCallback } from 'react';
 import Box from '@ux/box';
 import Apps2Icon from '@ux/icon/apps2'
 import CodeIcon from '@ux/icon/code'
-import EditIcon from '@ux/icon/edit'
 import MobilePhoneIcon from '@ux/icon/mobile-phone'
 import RefreshIcon from '@ux/icon/refresh'
 import SidebarCollapseIcon from '@ux/icon/sidebar-collapse'
@@ -26,7 +25,6 @@ import AppPublish from '@/components/layout/AppPublish';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
 import UserMenu from '@/components/layout/UserMenu';
 import { useChatTabs } from '@/hooks/useChatTabs';
-import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { generateClickEID } from '@/utils/instrumentation'
@@ -45,15 +43,11 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
   const viewMode = useDevelopPageStore((state) => state.viewMode)
   const mobileMode = useDevelopPageStore((state) => state.mobileMode)
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges)
-  const isSelectMode = useDevelopPageStore((state) => state.isSelectMode)
   const isChatPaneCollapsed = useDevelopPageStore((state) => state.isChatPaneCollapsed)
   const isVersionHistoryOpen = useDevelopPageStore((state) => state.isVersionHistoryOpen)
   const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange)
   const handleMobileModeChange = useDevelopPageStore((state) => state.handleMobileModeChange)
-  const setIsSelectMode = useDevelopPageStore((state) => state.setIsSelectMode)
-  const toggleSelectMode = useDevelopPageStore((state) => state.toggleSelectMode)
   const toggleChatPaneCollapse = useDevelopPageStore((state) => state.toggleChatPaneCollapse)
-  const { data: isEditModeFeatureEnabled } = useSwitchboard('appbuilder-edit-mode')
   const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
 
   const handleDomainSettings = useCallback(() => {
@@ -113,9 +107,6 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                 <ButtonGroup
                   value={viewMode}
                   onChange={(value) => {
-                    if (value === ViewMode.CODE) {
-                      setIsSelectMode(false);
-                    }
                     handleViewModeChange(value as ViewMode, hasUnsavedChanges);
                   }}
                   data-eid={generateClickEID('develop.header.view_mode')}
@@ -127,15 +118,13 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                     showLabelAlways
                     data-eid={generateClickEID('develop.header.iframe')}
                   />
-                  {isEditModeFeatureEnabled && (
-                    <ButtonGroup.Item
-                      value={ViewMode.EDIT}
-                      icon={<WandIcon className="size-2.5" />}
-                      label={t('builder_preview_button_edit')}
-                      showLabelAlways
-                      data-eid={generateClickEID('develop.header.edit_mode')}
-                    />
-                  )}
+                  <ButtonGroup.Item
+                    value={ViewMode.EDIT}
+                    icon={<WandIcon className="size-2.5" />}
+                    label={t('builder_preview_button_edit')}
+                    showLabelAlways
+                    data-eid={generateClickEID('develop.header.edit_mode')}
+                  />
                   <ButtonGroup.Item
                     value={ViewMode.CODE}
                     icon={<CodeIcon className="size-2.5" />}
@@ -145,19 +134,6 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                     data-eid={generateClickEID('develop.header.code_editor')}
                   />
                 </ButtonGroup>
-
-                {!isEditModeFeatureEnabled && (
-                  <IconButton
-                    icon={<EditIcon className="size-2.5" />}
-                    disabled={viewMode === ViewMode.CODE || isVersionHistoryOpen}
-                    onClick={toggleSelectMode}
-                    data-eid={generateClickEID('develop.header.select_mode')}
-                    active={isSelectMode}
-                    label={t('builder_preview_button_select')}
-                    showLabelWhenActive={false}
-                    id="tour-select-mode-button"
-                  />
-                )}
               </Box>
             )}
 

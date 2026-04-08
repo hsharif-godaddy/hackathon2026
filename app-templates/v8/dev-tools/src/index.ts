@@ -1,8 +1,6 @@
 // Main exports for the dev tools package
 export { default as DevelopmentMode } from './components/DevelopmentMode'
-export { default as ElementEditor } from './components/ElementEditor'
 export { default as DevToolsProvider } from './DevToolsProvider'
-export { useDevelopmentMode } from './hooks/useDevelopmentMode'
 
 // Types
 export type { RuntimeErrorData, ErrorFixRequestMessage } from './types'

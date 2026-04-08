@@ -40,15 +40,6 @@ export interface AppConfig {
   showUsageCost: boolean
 }
 
-export interface StyleUpdateData {
-  selector: string
-  property: string
-  value: string
-  newClassName: string
-  newStyle?: string
-  elementInfo?: unknown
-}
-
 export interface TextUpdateData {
   selector: string
   preciseSelector?: string
@@ -371,34 +362,6 @@ export class AppService {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
       throw new Error(errorData.error || `Failed to publish app: ${response.status}`)
-    }
-
-    return response.json()
-  }
-
-  /**
-   * Update element styles
-   */
-  async updateStyles(appId: string, styleData: StyleUpdateData): Promise<unknown> {
-    const requestBody = {
-      selector: styleData.selector,
-      property: styleData.property,
-      value: styleData.value,
-      newClassName: styleData.newClassName,
-      newStyle: styleData.newStyle,
-      elementInfo: styleData.elementInfo
-    };
-
-    const apiUrl = await buildDynamicApiUrl(`styles/edit`, appId)
-    const response = await agentFetch(apiUrl, {
-      siteId: appId,
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
-    })
-
-    if (!response.ok) {
-      throw new Error(`Failed to send style update to API: ${response.status}`)
     }
 
     return response.json()
