@@ -11,6 +11,7 @@ import type { Tool } from 'ai'
 import { z } from 'zod'
 import { createTool } from './index.js'
 import type { AgentFactory, HandoffContext } from '../core/agent-factory.js'
+import type { ExecutionContext } from '@airo/ai-grants'
 
 const logger = createLogger('delegate-tool')
 
@@ -22,7 +23,8 @@ const logger = createLogger('delegate-tool')
  */
 export function createDelegateTool(
   factory: AgentFactory,
-  sourceAgentId: string
+  sourceAgentId: string,
+  executionContext?: ExecutionContext
 ): Tool {
   return createTool(
     'Delegate a task to another specialized agent and receive the result',
@@ -34,6 +36,10 @@ export function createDelegateTool(
       reason: z.string().optional().describe('Reason for the delegation')
     }),
     async ({ targetAgent, task, context, parameters, reason }) => {
+      // Clone metadata per-invocation to prevent child agent mutations from affecting parent
+      const clonedContext = executionContext
+        ? { ...executionContext, metadata: executionContext.metadata ? { ...executionContext.metadata } : undefined }
+        : undefined
       logger.info(`${sourceAgentId} delegating task to ${targetAgent}`)
       logger.info(`Task: ${task}`)
 
@@ -52,7 +58,8 @@ export function createDelegateTool(
         const result = await factory.executeHandoff(
           sourceAgentId,
           targetAgent,
-          handoffContext
+          handoffContext,
+          clonedContext
         )
 
         if (result.success) {
@@ -144,10 +151,11 @@ export function createDelegationHistoryTool(
 export function addDelegationTools(
   factory: AgentFactory,
   agentId: string,
-  includeHistory: boolean = true
+  includeHistory: boolean = true,
+  executionContext?: ExecutionContext
 ) {
   const tools: Record<string, any> = {
-    delegate: createDelegateTool(factory, agentId)
+    delegate: createDelegateTool(factory, agentId, executionContext)
   }
 
   if (includeHistory) {
@@ -163,7 +171,8 @@ export function addDelegationTools(
 export function addHandoffTools(
   factory: AgentFactory,
   agentId: string,
-  includeHistory: boolean = true
+  includeHistory: boolean = true,
+  executionContext?: ExecutionContext
 ) {
-  return addDelegationTools(factory, agentId, includeHistory)
+  return addDelegationTools(factory, agentId, includeHistory, executionContext)
 }

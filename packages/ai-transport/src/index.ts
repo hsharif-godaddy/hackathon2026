@@ -3,7 +3,8 @@ export {
   WebSocketServer,
   createWebSocketServer,
   createSingleAgentFactory,
-  createSingleAgentWebSocketServer
+  createSingleAgentWebSocketServer,
+  restoreBudgetMetadata
 } from './experimental-websocket-server.js'
 export type {
   WebSocketConfig,

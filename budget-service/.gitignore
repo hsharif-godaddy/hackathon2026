@@ -1,4 +1,5 @@
 /bin/
+/server
 /tmp/
 # Local PEMs for cmd/mint-cert-jwt (CloudUI cert + key); not committed
 .certs

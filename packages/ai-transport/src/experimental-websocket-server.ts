@@ -124,6 +124,24 @@ function contextAttachmentsPayloadLength(context: Record<string, unknown> | unde
 }
 
 /**
+ * Restore budget metadata fields from conversation.context to processedContext.metadata
+ * after an agent handoff (processContext() replaces processedContext, losing budget fields).
+ * Both fields must be present; partial state is ignored.
+ */
+export function restoreBudgetMetadata(
+  conversationContext: Record<string, unknown> | undefined,
+  processedContext: Record<string, unknown>,
+): void {
+  const budgetId = conversationContext?.bmsBudgetId
+  const sessionId = conversationContext?.budgetSessionId
+  if (typeof budgetId !== 'string' || typeof sessionId !== 'string') return
+  const typed = processedContext as { metadata?: Record<string, unknown> }
+  if (!typed.metadata) typed.metadata = {}
+  typed.metadata.bmsBudgetId = budgetId
+  typed.metadata.budgetSessionId = sessionId
+}
+
+/**
  * WebSocket Server Configuration for AgentFactory
  */
 export interface WebSocketConfig {
@@ -298,6 +316,15 @@ export interface WebSocketConfig {
 
   /** ACK timeout in ms (default: 30 seconds) - time to wait for client acknowledgment after replay */
   ackTimeout?: number
+
+  /**
+   * Budget report creation callback. Called after prompt execution to reconcile BMS session.
+   * @returns payload is BudgetUpdatePayload (from @airo/shared/budget) when refreshRequired is false
+   */
+  onBudgetReport?: (budgetId: string, sessionId: string) => Promise<
+    | { refreshRequired: false; payload: Record<string, unknown> }
+    | { refreshRequired: true }
+  >
 }
 
 /**
@@ -2136,17 +2163,16 @@ export class WebSocketServer {
       await this.config.onMessageStart?.(socketId, data.message, agentName, processedContext)
 
       // 5b. Thread budget state to conversation.context (persists across handoffs)
-      // Budget state is set by onMessageStart when app-builder-budget-service flag is enabled.
+      // Budget state is set by onMessageStart on metadata when app-builder-budget-service flag is enabled.
       // processedContext is replaced on each handoff; conversation.context is not
-      const budgetState = processedContext?.budgetService as
-        | { budgetId: string; sessionId: string }
-        | undefined
-      if (budgetState) {
-        budgetSessionBudgetId = budgetState.budgetId
-        budgetSessionSessionId = budgetState.sessionId
+      const budgetMeta = (processedContext as { metadata?: Record<string, unknown> })?.metadata
+      if (budgetMeta?.bmsBudgetId && budgetMeta?.budgetSessionId) {
+        budgetSessionBudgetId = budgetMeta.bmsBudgetId as string
+        budgetSessionSessionId = budgetMeta.budgetSessionId as string
         const budgetConversation = this.getConversation(socketId)
         if (budgetConversation) {
-          budgetConversation.context.budgetService = budgetState
+          budgetConversation.context.bmsBudgetId = budgetSessionBudgetId
+          budgetConversation.context.budgetSessionId = budgetSessionSessionId
         }
       }
 
@@ -2209,13 +2235,10 @@ export class WebSocketServer {
         if (iterationCount > 1) {
           processedContext = await this.processContext(data, socketId)
 
-          // Restore budget state after handoff
+          // Restore budget metadata after handoff
           // processedContext is fully replaced by processContext(); restore from conversation.context
           const handoffConv = this.getConversation(socketId)
-          const persistedBudget = handoffConv?.context?.budgetService
-          if (persistedBudget) {
-            processedContext.budgetService = persistedBudget
-          }
+          restoreBudgetMetadata(handoffConv?.context, processedContext)
 
           // Reload conversation history for the new agent
           // This is critical - the new agent needs the full conversation history
@@ -2335,7 +2358,32 @@ export class WebSocketServer {
         this.logger.warn(`Maximum handoff limit (${maxHandoffs}) reached`)
       }
 
-      // 8. Complete the conversation (after all handoffs complete)
+      // 8. Budget reconciliation BEFORE completion so credits are updated
+      // before the client sees the complete event. If reconciliation takes
+      // >10s, emit a progress signal so the client knows we're still working.
+      if (budgetSessionBudgetId && budgetSessionSessionId && !budgetReportFiled) {
+        budgetReportFiled = true
+        let progressTimer: ReturnType<typeof setTimeout> | undefined
+        try {
+          progressTimer = setTimeout(() => {
+            const effectiveSid = this.stateManager.getEffectiveSocketId(socketId)
+            const socket = this.io.sockets.sockets.get(effectiveSid)
+            if (socket?.connected) {
+              socket.emit('budget_status', { status: 'reconciling' })
+            }
+          }, 10_000)
+          if (typeof progressTimer === 'object' && 'unref' in progressTimer) progressTimer.unref()
+
+          const filed = await this.fileBudgetReport(
+            budgetSessionBudgetId, budgetSessionSessionId, socketId,
+          )
+          if (!filed) budgetReportFiled = false
+        } finally {
+          if (progressTimer !== undefined) clearTimeout(progressTimer)
+        }
+      }
+
+      // 9. Complete the conversation (after reconciliation)
       // Always runs — handles both normal and abort paths:
       //   - Persistence finalization (message saved with inProgress: false)
       //   - Pre-completion hooks (git commits)
@@ -2476,14 +2524,12 @@ export class WebSocketServer {
         this.stateManager.transitionTo(effectiveSocketId, 'cleaned')
       }
     } finally {
-      // Budget session cleanup: if session created but no report filed, log for debugging.
-      // Unit 6 replaces this with actual report creation.
-      if (budgetSessionSessionId && !budgetReportFiled) {
-        this.logger.debug('budget.session.cleanup', {
-          socketId,
-          budgetId: budgetSessionBudgetId,
-          sessionId: budgetSessionSessionId,
-        })
+      // Budget report creation fallback: if normal path didn't file (error/abort), attempt here
+      if (budgetSessionBudgetId && budgetSessionSessionId && !budgetReportFiled) {
+        budgetReportFiled = true
+        await this.fileBudgetReport(
+          budgetSessionBudgetId, budgetSessionSessionId, socketId, 'finally',
+        )
       }
 
       // Clean up stream tracking via state manager
@@ -2767,6 +2813,37 @@ export class WebSocketServer {
     this.config.stateManager.clearLastHandoffPrompt?.(socketId)
 
     return { newAgentName, handoffPrompt }
+  }
+
+  /**
+   * File a budget report and emit budget_update to the client.
+   * Returns true if the report was filed (or attempted), false if skipped.
+   */
+  private async fileBudgetReport(
+    budgetId: string,
+    sessionId: string,
+    socketId: string,
+    source?: 'finally',
+  ): Promise<boolean> {
+    if (!this.config.onBudgetReport) return false
+    const effectiveSid = this.stateManager.getEffectiveSocketId(socketId)
+    const logData = { socketId: effectiveSid, budgetId, sessionId, ...(source && { source }) }
+    try {
+      const reportResult = await this.config.onBudgetReport(budgetId, sessionId)
+      const socket = this.io.sockets.sockets.get(effectiveSid)
+      if (socket?.connected) {
+        socket.emit('budget_update', reportResult.refreshRequired ? { refreshRequired: true } : reportResult.payload)
+      }
+      this.logger.info('budget.report.created', { ...logData, refreshRequired: reportResult.refreshRequired })
+      return true
+    } catch (err) {
+      this.logger.error('budget.report.failed', { ...logData, error: err instanceof Error ? err.message : String(err) })
+      const socket = this.io.sockets.sockets.get(effectiveSid)
+      if (socket?.connected) {
+        socket.emit('budget_update', { refreshRequired: true })
+      }
+      return false
+    }
   }
 
   /**

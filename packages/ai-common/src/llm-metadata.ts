@@ -11,6 +11,10 @@ export interface LitellmMetadata {
     socketId?: string
     customerId?: string
   }
+  /** BMS budget ID for GoCode cost reporting (HTTP header, not litellm_metadata body) */
+  budgetId?: string
+  /** BMS session ID for GoCode cost reporting (HTTP header, not litellm_metadata body) */
+  budgetSessionId?: string
 }
 
 /**

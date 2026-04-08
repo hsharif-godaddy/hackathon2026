@@ -189,7 +189,8 @@ export interface ConversationContext {
   appId?: string
   userId?: string
   sessionId?: string
-  budgetService?: { budgetId: string; sessionId: string }
+  bmsBudgetId?: string
+  budgetSessionId?: string
   [key: string]: any
 }
 

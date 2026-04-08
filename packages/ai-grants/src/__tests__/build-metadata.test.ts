@@ -448,4 +448,93 @@ describe('build-metadata', function tests() {
       expect(result?.user).toBe('customer-last-resort')
     })
   })
+
+  describe('BMS budget session fields (GoCode header propagation)', function budgetSessionTests() {
+    it('includes budgetId and budgetSessionId when metadata has budget fields', function hasBudgetFields() {
+      const context = {
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: 'sub-1',
+          bmsBudgetId: 'budget-uuid-1',
+          budgetSessionId: 'session-uuid-1',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result).toBeDefined()
+      expect(result?.budgetId).toBe('budget-uuid-1')
+      expect(result?.budgetSessionId).toBe('session-uuid-1')
+    })
+
+    it('omits budget fields when metadata has no budget session', function noBudgetFields() {
+      const context = {
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: 'sub-1',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result).toBeDefined()
+      expect(result?.budgetId).toBeUndefined()
+      expect(result?.budgetSessionId).toBeUndefined()
+    })
+
+    it('omits budget fields for BudgetOverride sessions', function overrideNoBudget() {
+      const context = {
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: BudgetOverride.CareAgent,
+          // bmsBudgetId/budgetSessionId won't be set by context provider for overrides
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result?.user).toBe(BudgetOverride.CareAgent)
+      expect(result?.budgetId).toBeUndefined()
+      expect(result?.budgetSessionId).toBeUndefined()
+    })
+
+    it('omits budget fields when only bmsBudgetId is set (incomplete)', function partialBudget() {
+      const context = {
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: 'sub-1',
+          bmsBudgetId: 'budget-uuid-1',
+          // budgetSessionId missing
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result).toBeDefined()
+      expect(result?.budgetId).toBeUndefined()
+      expect(result?.budgetSessionId).toBeUndefined()
+    })
+
+    it('includes budget fields alongside grant metadata', function budgetWithGrants() {
+      grantSessionManager.setGrants('test-session', [
+        createGrant({ llmBudgetUserId: 'airo-builder:grant:g1' }),
+      ])
+
+      const context = {
+        socketId: 'test-session',
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: 'sub-1',
+          bmsBudgetId: 'budget-uuid-1',
+          budgetSessionId: 'session-uuid-1',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result?.user).toBe('airo-builder:grant:g1')
+      expect(result?.budgetId).toBe('budget-uuid-1')
+      expect(result?.budgetSessionId).toBe('session-uuid-1')
+    })
+  })
 })

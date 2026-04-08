@@ -16,12 +16,6 @@ export interface CreateReportRequest {
   readonly reportItems: readonly ReportItemRequest[]
 }
 
-export interface CreateReportResponse {
-  readonly reportId: string
-  readonly budgetId: string
-  readonly sessionId: string
-}
-
 export interface BudgetItemDeduction {
   readonly budgetItemId: string
   readonly creditsUsed: number

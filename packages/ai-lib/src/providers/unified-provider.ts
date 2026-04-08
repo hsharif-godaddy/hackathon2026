@@ -311,8 +311,12 @@ async function handleBudgetExceededWithGrantFallback(
     const originalBody = JSON.parse(init.body as string)
     originalBody.litellm_metadata = { user: newUserId, tags: metadata.tags }
     const retryBody = JSON.stringify(originalBody)
-    const retryInit: RequestInit = { ...modifiedInit, body: retryBody }
-    modifiedInit.body = retryBody
+    // Remove budget headers on grant fallback -- grant-funded requests must not
+    // attribute cost to the exhausted BMS session
+    const retryHeaders = new Headers(modifiedInit.headers as HeadersInit)
+    retryHeaders.delete('x-gocode-budget-service-name')
+    retryHeaders.delete('x-gocode-budget-id')
+    const retryInit: RequestInit = { ...modifiedInit, body: retryBody, headers: retryHeaders }
     return await fetch(url, retryInit)
   } catch (retryError) {
     logger.error('grants.fetch.fallback.retry_failed', {
@@ -340,9 +344,16 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
 
     filterAnthropicBetaHeaders(headers, options?.blockedBetaHeaders)
 
+    // Inject BMS cost-reporting headers when budget session is active
+    // Set before first fetch so they persist across 401 retries and grant-fallback retries
+    const metadata = llmMetadataContext.getStore()
+    if (metadata?.budgetId && metadata?.budgetSessionId) {
+      headers.set('x-gocode-budget-service-name', 'airo-bms')
+      headers.set('x-gocode-budget-id', `${metadata.budgetId}:${metadata.budgetSessionId}`)
+    }
+
     // Inject litellm_metadata into request body if available from AsyncLocalStorage context
     const modifiedInit: RequestInit = { ...init, headers }
-    const metadata = llmMetadataContext.getStore()
 
     if (metadata && init?.body) {
       try {
@@ -364,7 +375,13 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
     // Handle budget exceeded with grant fallback
     if (metadata) {
       const retryResponse = await handleBudgetExceededWithGrantFallback(response, metadata, url, init, modifiedInit)
-      if (retryResponse) response = retryResponse
+      if (retryResponse) {
+        response = retryResponse
+        // Clear budget headers from shared headers object -- grant-funded requests
+        // must not attribute cost to the exhausted BMS session on subsequent 401 retry
+        headers.delete('x-gocode-budget-service-name')
+        headers.delete('x-gocode-budget-id')
+      }
     }
 
     // Attempt token refresh on authentication failure
@@ -399,9 +416,15 @@ function createSelectiveBetaHeaderFetch(blockedHeaders?: string[]): typeof fetch
 
     filterAnthropicBetaHeaders(headers, blockedHeaders)
 
+    // Inject BMS cost-reporting headers when budget session is active
+    const metadata = llmMetadataContext.getStore()
+    if (metadata?.budgetId && metadata?.budgetSessionId) {
+      headers.set('x-gocode-budget-service-name', 'airo-bms')
+      headers.set('x-gocode-budget-id', `${metadata.budgetId}:${metadata.budgetSessionId}`)
+    }
+
     // Inject litellm_metadata into request body if available from AsyncLocalStorage context
     const modifiedInit: RequestInit = { ...init, headers }
-    const metadata = llmMetadataContext.getStore()
 
     if (metadata && init?.body) {
       try {

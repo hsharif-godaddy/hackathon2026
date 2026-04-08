@@ -47,6 +47,15 @@ export interface ExecutionContextMetadata {
 
   /** Whether app has unbuilt rebuild pages */
   hasUnbuiltRebuildPages?: boolean
+
+  /** Budget Service flag from JWT */
+  budgetServiceEnabled?: boolean
+
+  /** BMS budget ID (subscriptionId mapped to BMS) */
+  bmsBudgetId?: string
+
+  /** BMS session ID (created per prompt via performBudgetPreCheck) */
+  budgetSessionId?: string
 }
 
 // Re-export enums from shared
@@ -104,6 +113,13 @@ export function buildLitellmMetadataFromContext(
   tags.push(`source:${options?.source ?? LlmCallSource.UserChat}`)
   if (options?.agentId) tags.push(`agent:${options.agentId}`)
 
+  // BMS session fields for GoCode cost reporting (x-gocode-budget-* headers)
+  // Only present when budget service is enabled and session was created
+  const budgetFields: Pick<LitellmMetadata, 'budgetId' | 'budgetSessionId'> =
+    metadata.bmsBudgetId && metadata.budgetSessionId
+      ? { budgetId: metadata.bmsBudgetId, budgetSessionId: metadata.budgetSessionId }
+      : {}
+
   // E2S (care) sessions bypass grants entirely
   // This is set explicitly by the session that triggered the LLM call
   if (subscriptionId === BudgetOverride.CareAgent) {
@@ -152,6 +168,7 @@ export function buildLitellmMetadataFromContext(
       const metadata: LitellmMetadata = {
         user: userId,
         tags,
+        ...budgetFields,
         _internal: {
           socketId,
           ...(customerId && { customerId })
@@ -206,7 +223,7 @@ export function buildLitellmMetadataFromContext(
 
     if (userId) {
       apm?.setLabel?.('litellm.user_type', 'grant_by_subscription')
-      const metadata = { user: userId, tags }
+      const metadata = { user: userId, tags, ...budgetFields }
       logger.debug('grants.build_metadata.result', {
         appId,
         socketId: null,
@@ -245,7 +262,7 @@ export function buildLitellmMetadataFromContext(
     const prefixedSubscriptionId = subscriptionId.startsWith(SUBSCRIPTION_ID_PREFIX)
       ? subscriptionId
       : `${SUBSCRIPTION_ID_PREFIX}${subscriptionId}`
-    const metadata = { user: prefixedSubscriptionId, tags }
+    const metadata = { user: prefixedSubscriptionId, tags, ...budgetFields }
     logger.debug('grants.build_metadata.result', {
       appId,
       socketId,
@@ -262,7 +279,7 @@ export function buildLitellmMetadataFromContext(
   // customerId is LAST RESORT - provides infinite budget, only for legacy/edge cases
   if (customerId) {
     apm?.setLabel?.('litellm.user_type', 'customer_id')
-    const metadata = { user: customerId, tags }
+    const metadata = { user: customerId, tags, ...budgetFields }
     logger.warn('grants.build_metadata.result', {
       appId,
       socketId,

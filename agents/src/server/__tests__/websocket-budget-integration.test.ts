@@ -5,6 +5,7 @@ import {
   BudgetServiceTimeoutError,
   BudgetServiceError,
   BudgetServiceAuthError,
+  toBudgetUpdatePayload,
 } from '@airo/ai-lib/budget'
 import { BudgetOverride } from '@airo/ai-grants'
 import { performBudgetPreCheck, type BudgetPreCheckDeps } from '../budget-pre-check.js'
@@ -262,3 +263,170 @@ describe('budget error mapping contracts', () => {
     expect(auth.name).not.toBe('BudgetServiceError')
   })
 })
+
+// ── Group 3: Budget report creation (onBudgetReport callback logic) ──
+
+describe('budget report creation', () => {
+  function mockReportClient(overrides?: {
+    getSession?: ReturnType<typeof vi.fn>
+    createReport?: ReturnType<typeof vi.fn>
+    getBudget?: ReturnType<typeof vi.fn>
+  }) {
+    return {
+      getSession: overrides?.getSession ?? vi.fn().mockResolvedValue({
+        costTotal: 0.05,
+        sessionItems: [],
+      }),
+      // createReport returns full ReportResponse (BMS response parity, PR #2577)
+      createReport: overrides?.createReport ?? vi.fn().mockResolvedValue({
+        reportId: 'report-1',
+        budgetId: 'budget-1',
+        sessionId: 'session-1',
+        productKey: 'airo-builder',
+        budgetCostTotal: 0.05,
+        productCostTotal: 0,
+        creditsAvailable: 99.95,
+        reportItems: [{
+          reportItemId: 'ri-1',
+          budgetCost: 0.05,
+          productCost: 0,
+          category: 'airo-builder:general',
+          createdAt: '2026-04-06T12:00:00Z',
+          budgetItems: [{ budgetItemId: 'bi-1', creditsUsed: 0.075 }],
+        }],
+      }),
+      getBudget: overrides?.getBudget ?? vi.fn().mockResolvedValue({
+        budgetId: 'budget-1',
+        productKey: 'airo-builder',
+        creditsTotal: '100.000000',
+        creditsUsed: '0.075000',
+        creditsPending: '0.000000',
+        items: [{
+          budgetItemId: 'bi-1',
+          creditsTotal: '100.000000',
+          creditsUsed: '0.075000',
+          costToCreditRatio: '1.500000',
+          startsAt: null,
+          expiresAt: null,
+          resetInterval: null,
+        }],
+      }),
+    } as any
+  }
+
+  // Simulate the onBudgetReport callback logic (mirrors ai-lib-websocket-server.ts)
+  async function simulateOnBudgetReport(
+    client: ReturnType<typeof mockReportClient>,
+    budgetId: string,
+    sessionId: string,
+  ) {
+    const session = await client.getSession(budgetId, sessionId)
+    // createReport is the critical path -- must not be blocked by getBudget
+    const report = await client.createReport(budgetId, sessionId, {
+      reportItems: [{
+        budgetCost: session.costTotal.toString(),
+        productCost: '0',
+        label: 'airo-builder:general',
+      }],
+    })
+    // getBudget for per-item breakdown (graceful degradation)
+    try {
+      const budget = await client.getBudget(budgetId)
+      return { refreshRequired: false as const, payload: toBudgetUpdatePayload(report, budget) }
+    } catch {
+      return { refreshRequired: true as const }
+    }
+  }
+
+  it('happy path: creates report and returns payload', async () => {
+    const client = mockReportClient()
+    const result = await simulateOnBudgetReport(client, 'budget-1', 'session-1')
+
+    expect(result.refreshRequired).toBe(false)
+    expect(client.getSession).toHaveBeenCalledWith('budget-1', 'session-1')
+    expect(client.createReport).toHaveBeenCalledWith('budget-1', 'session-1', {
+      reportItems: [{ budgetCost: '0.05', productCost: '0', label: 'airo-builder:general' }],
+    })
+    if (!result.refreshRequired) {
+      expect(result.payload.customerRemaining).toBe(99.925)
+    }
+  })
+
+  it('zero-cost session: creates report with budgetCost 0', async () => {
+    const client = mockReportClient({
+      getSession: vi.fn().mockResolvedValue({ costTotal: 0, sessionItems: [] }),
+    })
+    const result = await simulateOnBudgetReport(client, 'budget-1', 'session-1')
+
+    expect(result.refreshRequired).toBe(false)
+    expect(client.createReport).toHaveBeenCalledWith('budget-1', 'session-1', {
+      reportItems: [{ budgetCost: '0', productCost: '0', label: 'airo-builder:general' }],
+    })
+  })
+
+  it('getSession throws: propagates error (no report created)', async () => {
+    const client = mockReportClient({
+      getSession: vi.fn().mockRejectedValue(new BudgetServiceError('session not found', 404, '{}')),
+    })
+
+    await expect(simulateOnBudgetReport(client, 'budget-1', 'session-1'))
+      .rejects.toThrow(BudgetServiceError)
+    expect(client.createReport).not.toHaveBeenCalled()
+  })
+
+  it('getBudget fails after createReport: returns refreshRequired (credits still deducted)', async () => {
+    const client = mockReportClient({
+      getBudget: vi.fn().mockRejectedValue(new BudgetServiceError('budget not found', 404, '{}')),
+    })
+    const result = await simulateOnBudgetReport(client, 'budget-1', 'session-1')
+
+    expect(result.refreshRequired).toBe(true)
+    expect(client.createReport).toHaveBeenCalled()
+  })
+
+  it('createReport throws: propagates error', async () => {
+    const client = mockReportClient({
+      createReport: vi.fn().mockRejectedValue(new BudgetServiceUnavailableError('BMS down')),
+    })
+
+    await expect(simulateOnBudgetReport(client, 'budget-1', 'session-1'))
+      .rejects.toThrow(BudgetServiceUnavailableError)
+  })
+})
+
+// ── Group 4: restoreBudgetMetadata helper ──
+
+import { restoreBudgetMetadata } from '@airo/ai-transport'
+
+describe('restoreBudgetMetadata', () => {
+  it('restores both fields from conversation.context to processedContext.metadata', () => {
+    const ctx: Record<string, unknown> = { metadata: { appId: 'app-1' } }
+    restoreBudgetMetadata({ bmsBudgetId: 'b-1', budgetSessionId: 's-1' }, ctx)
+    expect((ctx.metadata as any).bmsBudgetId).toBe('b-1')
+    expect((ctx.metadata as any).budgetSessionId).toBe('s-1')
+  })
+
+  it('skips when conversation.context has no budget fields', () => {
+    const ctx: Record<string, unknown> = { metadata: { appId: 'app-1' } }
+    restoreBudgetMetadata({}, ctx)
+    expect((ctx.metadata as any).bmsBudgetId).toBeUndefined()
+  })
+
+  it('skips when only one budget field is present (partial)', () => {
+    const ctx: Record<string, unknown> = { metadata: { appId: 'app-1' } }
+    restoreBudgetMetadata({ bmsBudgetId: 'b-1' }, ctx)
+    expect((ctx.metadata as any).bmsBudgetId).toBeUndefined()
+  })
+
+  it('creates metadata object when absent', () => {
+    const ctx: Record<string, unknown> = {}
+    restoreBudgetMetadata({ bmsBudgetId: 'b-1', budgetSessionId: 's-1' }, ctx)
+    expect((ctx.metadata as any).bmsBudgetId).toBe('b-1')
+    expect((ctx.metadata as any).budgetSessionId).toBe('s-1')
+  })
+})
+
+// Note: Grant-fallback budget header removal (unified-provider.ts:385) is covered
+// by the fix in createS2SFetchWrapper but cannot be unit-tested without exporting
+// internal functions. The metadata contract is tested in build-metadata.test.ts
+// (BudgetOverride exclusion, partial field handling, grant+budget combo).

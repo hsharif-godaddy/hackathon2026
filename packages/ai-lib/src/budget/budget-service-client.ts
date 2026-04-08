@@ -17,7 +17,6 @@ import type {
 } from '@airo/shared/budget'
 import type {
   CreateReportRequest,
-  CreateReportResponse,
   ReportResponse,
   ReportItemResponse,
   BudgetItemDeduction,
@@ -88,11 +87,6 @@ const BudgetItemDeductionSchema = z.object({
   creditsUsed: z.number(),
 }).passthrough() as z.ZodType<BudgetItemDeduction>
 
-const CreateReportResponseSchema = z.object({
-  reportId: z.string(),
-  budgetId: z.string(),
-  sessionId: z.string(),
-}).passthrough() as z.ZodType<CreateReportResponse>
 
 const ReportItemResponseSchema = z.object({
   budgetCost: z.number(),
@@ -183,12 +177,12 @@ export class BudgetServiceClient {
     budgetId: string,
     sessionId: string,
     request: CreateReportRequest
-  ): Promise<CreateReportResponse> {
+  ): Promise<ReportResponse> {
     const path = `/api/v1/budgets/${encodeURIComponent(budgetId)}/sessions/${encodeURIComponent(sessionId)}/reports`
     const operationId = randomUUID()
     const body = { ...request, operationId }
     const doReport = () =>
-      this.requestAndValidate('POST', path, CreateReportResponseSchema, 'CreateReportResponse', body, this.reportTimeoutMs)
+      this.requestAndValidate('POST', path, ReportResponseSchema, 'ReportResponse', body, this.reportTimeoutMs)
     let lastErr: unknown
     for (let attempt = 0; attempt <= this.reportMaxRetries; attempt++) {
       try {

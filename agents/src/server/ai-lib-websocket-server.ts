@@ -16,6 +16,7 @@ import {
 import { grantSessionManager, type GrantContextPayload, BudgetOverride } from '@airo/ai-grants'
 import { getBudgetServiceClient } from '../services/budget-service-instance.js'
 import { performBudgetPreCheck } from './budget-pre-check.js'
+import { toBudgetUpdatePayload } from '@airo/ai-lib/budget'
 import { auth, AuthType, BYPASS_SITE_IDS } from '../services/features.js'
 import { getTemplateIds } from '../agents/template-registry.js'
 import { isEmployeeAuthType, type AuthType as TokenAuthType, type ProductType } from '@airo/shared/auth'
@@ -1611,11 +1612,15 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           { getClient: getBudgetServiceClient, logger },
         )
         if (budgetResult) {
-          // Store on processedContext; experimental-websocket-server copies to
-          // conversation.context (survives handoffs)
-          context!.budgetService = {
-            budgetId: budgetResult.budgetId,
-            sessionId: budgetResult.sessionId,
+          // Write to ExecutionContextMetadata for GoCode header propagation
+          // via buildLitellmMetadataFromContext -> createS2SFetchWrapper.
+          // experimental-websocket-server copies metadata fields to conversation.context
+          // for handoff persistence.
+          // Guard is defensive: performBudgetPreCheck returns null when
+          // budgetServiceEnabled !== true, which requires metadata to exist.
+          if (typedContext?.metadata) {
+            typedContext.metadata.bmsBudgetId = budgetResult.budgetId
+            typedContext.metadata.budgetSessionId = budgetResult.sessionId
           }
         }
 
@@ -1849,6 +1854,56 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
         // Unified cleanup: memory tracking, APM transaction
         finalizeMessage(socketId, 'complete', { appId, agentId, steps, ...(typeof duration === 'number' && { duration }) });
+      },
+
+      onBudgetReport: async (budgetId: string, sessionId: string) => {
+        const client = getBudgetServiceClient()
+        if (!client) {
+          throw new Error('Budget service client unavailable')
+        }
+
+        // Get session cost (GoCode reports cost async, may be 0 due to race)
+        let session
+        try {
+          session = await client.getSession(budgetId, sessionId)
+        } catch (err) {
+          logger.error('budget.report.getSessionFailed', {
+            budgetId, sessionId, error: err instanceof Error ? err.message : String(err),
+          })
+          throw err
+        }
+
+        // createReport is the critical path (credits deducted). Must not be blocked
+        // by getBudget failure. Returns full ReportResponse (BMS parity, PR #2577).
+        let report
+        try {
+          report = await client.createReport(budgetId, sessionId, {
+            reportItems: [{
+              budgetCost: session.costTotal.toString(),
+              productCost: '0',
+              label: 'airo-builder:general',
+            }],
+          })
+        } catch (err) {
+          logger.error('budget.report.createReportFailed', {
+            budgetId, sessionId, error: err instanceof Error ? err.message : String(err),
+          })
+          throw err
+        }
+
+        // getBudget for per-item breakdown (post-deduction state). Graceful degradation.
+        try {
+          const budget = await client.getBudget(budgetId)
+          return { refreshRequired: false, payload: toBudgetUpdatePayload(report, budget) }
+        } catch (err) {
+          logger.error('budget.report.payload_failed', {
+            budgetId,
+            sessionId,
+            reportId: report.reportId,
+            error: err instanceof Error ? err.message : String(err),
+          })
+          return { refreshRequired: true }
+        }
       },
 
       onDisconnection: async (socketId: string) => {

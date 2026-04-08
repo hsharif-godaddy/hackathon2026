@@ -39,12 +39,7 @@ const VALID_SESSION_RESPONSE = JSON.stringify({
   ],
 })
 
-const VALID_CREATE_REPORT_RESPONSE = JSON.stringify({
-  reportId: 'rpt-1',
-  budgetId: 'b-1',
-  sessionId: 'sess-abc',
-})
-
+// createReport and getReport both return the full ReportResponse shape (BMS response parity, PR #2577)
 const VALID_REPORT_RESPONSE = JSON.stringify({
   reportId: 'rpt-1',
   budgetId: 'b-1',
@@ -63,6 +58,7 @@ const VALID_REPORT_RESPONSE = JSON.stringify({
     },
   ],
 })
+const VALID_CREATE_REPORT_RESPONSE = VALID_REPORT_RESPONSE
 
 function mockFetchWithText(ok: boolean, status: number, text: string) {
   return vi.fn().mockResolvedValue({
@@ -248,7 +244,7 @@ describe('BudgetServiceClient', () => {
   // ── createReport ──
 
   describe('createReport', () => {
-    it('sends report and returns confirmation', async () => {
+    it('sends report and returns full ReportResponse', async () => {
       const fetchMock = mockFetchWithText(true, 200, VALID_CREATE_REPORT_RESPONSE)
       const client = clientWith(fetchMock)
 
@@ -259,6 +255,8 @@ describe('BudgetServiceClient', () => {
       expect(result.reportId).toBe('rpt-1')
       expect(result.budgetId).toBe('b-1')
       expect(result.sessionId).toBe('sess-abc')
+      expect(result.creditsAvailable).toBe(135)
+      expect(result.reportItems).toHaveLength(1)
 
       const [url, init] = (fetchMock as ReturnType<typeof vi.fn>).mock.calls[0]!
       expect(url).toBe('https://budget.example.com/api/v1/budgets/b-1/sessions/sess-abc/reports')
@@ -382,7 +380,7 @@ describe('BudgetServiceClient', () => {
         client.createReport('b-1', 'sess-abc', {
           reportItems: [{ budgetCost: '3.5', productCost: '0', label: 'airo-builder:general' }],
         })
-      ).rejects.toThrow('invalid CreateReportResponse')
+      ).rejects.toThrow('invalid ReportResponse')
       expect(fetchMock).toHaveBeenCalledTimes(1)
     })
 
