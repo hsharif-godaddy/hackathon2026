@@ -7,8 +7,8 @@ import CopyIcon from '@ux/icon/copy';
 import ShareIcon from '@ux/icon/share';
 import Spinner from '@ux/spinner';
 
-import SettingsSection from '@/app/develop/components/settings/SettingsSection';
 import { useAppIdFromParams } from '@/app/develop/components/utils';
+import BigCard from '@/components/layout/BigCard';
 import { useCreateShareToken, useShareTokens } from '@/hooks/useShareTokens';
 import { useTranslations } from '@/hooks/useTranslations';
 
@@ -71,12 +71,11 @@ export default function SharePanel() {
 
   return (
     <Box gap="lg" className="@container">
-      <SettingsSection
+      <BigCard
         title={t('builder_settings_share_title')}
         description={t('builder_settings_share_description')}
         button={
           <Button
-            size="sm"
             text={t('builder_settings_share_create')}
             design="primary"
             icon={<ShareIcon />}
@@ -93,20 +92,15 @@ export default function SharePanel() {
         ) : error ? (
           <div>{t('builder_settings_share_error')}</div>
         ) : tokens.length === 0 ? (
-          <div className="italic">
+          <div className="p-4 rounded-md">
             {t('builder_settings_share_empty')}
           </div>
         ) : (
-          <Box orientation="vertical" gap="md" className="pt-2">
-            {!isLoading && createToken.isPending && (
-              <div className="flex justify-center p-4">
-                <Spinner />
-              </div>
-            )}
+          <Box orientation="vertical" gap="md">
             {tokens.map((token) => (
               <div
                 key={token.token}
-                className="flex flex-col gap-2"
+                className="p-3 rounded-md flex flex-col gap-2"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex flex-col gap-1 flex-1 min-w-0">
@@ -149,7 +143,7 @@ export default function SharePanel() {
             {t('builder_settings_share_create_error')}
           </div>
         )}
-      </SettingsSection>
+      </BigCard>
     </Box>
   );
 }

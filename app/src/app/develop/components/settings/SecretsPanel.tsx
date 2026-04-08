@@ -14,7 +14,7 @@ import TextInput from '@ux/text-input';
 
 import IconButton from '@/app/develop/components/IconButton';
 import { SettingsLoadingState } from '@/app/develop/components/settings/components/SettingsLoadingState';
-import SettingsSection from '@/app/develop/components/settings/SettingsSection';
+import BigCard from '@/components/layout/BigCard';
 import EmptyStateCard from '@/components/layout/EmptyStateCard';
 import { useSecretOperations } from '@/hooks/useSecretOperations';
 import { type Secret, useSecrets } from '@/hooks/useSecrets';
@@ -411,14 +411,13 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
 
   return (
     <Box gap="lg" className="@container">
-      <SettingsSection
+      <BigCard
         title={t('builder_settings_secrets_title')}
         button={(
           <Button
             design="primary"
             onClick={handleSubmit}
             disabled={!hasChanges || isSubmitting}
-            size="sm"
           >
             {isSubmitting ? t('builder_settings_secrets_saving') : t('builder_settings_secrets_save')}
           </Button>
@@ -589,7 +588,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
           )}
         </div>
       )}
-      </SettingsSection>
+      </BigCard>
       <Growl />
     </Box>
   );

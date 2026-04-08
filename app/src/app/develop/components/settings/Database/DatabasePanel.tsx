@@ -12,8 +12,8 @@ import text from '@ux/text';
 
 import { TableDataBrowser } from '@/app/develop/components/settings/Database/TableDataBrowser';
 import { formatColumnName, triggerTableExport } from '@/app/develop/components/settings/Database/utils';
-import SettingsSection from '@/app/develop/components/settings/SettingsSection';
 import { ChatTab } from '@/app/develop/components/types';
+import BigCard from '@/components/layout/BigCard';
 import EmptyStateCard from '@/components/layout/EmptyStateCard';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useDatabaseTables } from '@/hooks/useDatabaseTables';
@@ -56,7 +56,7 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
 
   if (isLoading) {
     return (
-      <SettingsSection
+      <BigCard
         title={t('builder_settings_database_title')}
         description={t('builder_settings_database_description')}
       >
@@ -77,7 +77,7 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
             </Box>
           ))}
         </Box>
-      </SettingsSection>
+      </BigCard>
     );
   }
 
@@ -108,7 +108,7 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
   }
 
   return (
-    <SettingsSection
+    <BigCard
       title={t('builder_settings_database_title')}
       description={t('builder_settings_database_description')}
     >
@@ -155,6 +155,6 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
           </Box>
         ))}
       </Box>
-    </SettingsSection>
+    </BigCard>
   );
 }

@@ -8,9 +8,9 @@ import TextInput from "@ux/text-input";
 
 import DomainDNS from "@/app/develop/components/settings/components/DomainDNS";
 import DomainItem from "@/app/develop/components/settings/components/DomainItem";
-import SettingsSection from "@/app/develop/components/settings/SettingsSection";
 import { Status } from "@/app/develop/components/types";
 import { useAppIdFromParams } from "@/app/develop/components/utils";
+import BigCard from "@/components/layout/BigCard";
 import { useAuth } from '@/hooks/useAuth';
 import { useCloseOnReauth } from '@/hooks/useCloseOnReauth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
@@ -349,11 +349,19 @@ export default function DomainAttach() {
   };
 
   return (
-    <SettingsSection
+    <BigCard
       title={t('builder_custom_domain_title')}
       description={t('builder_custom_domain_description')}
       status={getCustomDomainStatus()}
-      isCollapsible
+      button={(
+        <Button
+          text={t('builder_custom_domain_button_buy')}
+          design="primary"
+          data-eid={generateClickEID(`settings.domains.buy_new_domain`)}
+          href={`https://www.${getRootDomain()}/domains`}
+          external
+        />
+      )}
     >
       {/* GoDaddy Domains Section */}
       <Box gap="sm">
@@ -422,18 +430,11 @@ export default function DomainAttach() {
             </Box>
           );
         })}
-        <Button
-          text={t('builder_custom_domain_button_buy')}
-          design="primary"
-          size="sm"
-          data-eid={generateClickEID(`settings.domains.buy_new_domain`)}
-          href={`https://www.${getRootDomain()}/domains`}
-          external
-        />
       </Box>
 
       {/* Custom Domain Input */}
       <Box
+        className="mt-3"
         orientation="vertical"
         blockAlignChildren="start"
         gap="sm"
@@ -469,7 +470,6 @@ export default function DomainAttach() {
             }
             data-eid={generateClickEID(`settings.domains.add_domain`)}
             className="!hover:bg-transparent"
-            size="sm"
           />
         </div>
       )}
@@ -486,14 +486,12 @@ export default function DomainAttach() {
                 onClick={handleConfirmAdd}
                 text={t('builder_custom_domain_modal_button_continue')}
                 data-eid={generateClickEID(`settings.domains.connect_continue`)}
-                size="sm"
               />
               <Button
                 design="secondary"
                 onClick={() => setShowAddConfirmation(false)}
                 text={t('builder_custom_domain_modal_button_cancel')}
                 data-eid={generateClickEID(`settings.domains.connect_cancel`)}
-                size="sm"
               />
             </Box>
           </Box>
@@ -528,6 +526,6 @@ export default function DomainAttach() {
           domainDetails={pendingDomainDetails}
         />
       )}
-    </SettingsSection>
+    </BigCard>
   );
 }

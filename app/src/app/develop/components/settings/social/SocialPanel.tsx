@@ -1,10 +1,9 @@
 'use client'
 
-import Box from '@ux/box'
 import ShareIcon from '@ux/icon/forward'
 
-import SettingsSection from '@/app/develop/components/settings/SettingsSection'
 import { SocialConnectModal } from '@/app/develop/components/social/connect-flow/SocialConnectModal'
+import BigCard from '@/components/layout/BigCard'
 import EmptyStateCard from '@/components/layout/EmptyStateCard'
 import { useSocialPanelActions } from '@/hooks/social/panel/useSocialPanelActions'
 import { useSocialPanelData } from '@/hooks/social/panel/useSocialPanelData'
@@ -41,10 +40,9 @@ function SocialPlatformsSection({ siteId }: SocialPanelProps) {
 
   return (
     <>
-      <SettingsSection
+      <BigCard
         title={t('builder_settings_socialpanel_title')}
         description={t('builder_settings_socialpanel_desc')}
-        isCollapsible
       >
         <PlatformConnectionsList
           platformStatuses={data.platformStatuses}
@@ -53,7 +51,7 @@ function SocialPlatformsSection({ siteId }: SocialPanelProps) {
           onSelectConnection={actions.handleSelectConnection}
           onUnlinkConnection={actions.handleUnlinkConnection}
         />
-      </SettingsSection>
+      </BigCard>
 
       <SocialConnectModal
         platform={actions.selectedPlatform}
@@ -72,11 +70,13 @@ export default function SocialPanel({ siteId }: SocialPanelProps) {
   const { data: isVideoGenerationEnabled } = useSwitchboard('appbuilder-social-video-generation')
 
   return (
-    <Box gap='lg' className='@container'>
+    <>
       <SocialPlatformsSection siteId={siteId} />
       {isVideoGenerationEnabled === true && (
-        <VideoGenerationSection siteId={siteId} />
+        <div className="mt-4">
+          <VideoGenerationSection siteId={siteId} />
+        </div>
       )}
-    </Box>
+    </>
   )
 }

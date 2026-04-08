@@ -41,7 +41,7 @@ export const PlatformItem = memo(function PlatformItem({
   const hasConnections = connections.length > 0
 
   return (
-    <Card space={{ gap: 'sm', block: 'md', inline: 'md' }}>
+    <Card space={{ gap: 'sm', block: 'md' }}>
       <Box orientation="vertical" gap="md">
         {/* Platform header with status */}
         <Box

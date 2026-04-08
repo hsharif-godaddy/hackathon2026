@@ -21,7 +21,7 @@ import Table, {
 } from '@ux/table';
 import text from '@ux/text';
 
-import SettingsSection from '@/app/develop/components/settings/SettingsSection';
+import BigCard from '@/components/layout/BigCard';
 import EmptyStateCard from '@/components/layout/EmptyStateCard';
 import { useTableData } from '@/hooks/useTableData';
 import { useDeleteRow } from '@/hooks/useTableMutations';
@@ -205,8 +205,6 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
             text={t('builder_common_back')}
             icon={<ArrowLeftIcon />}
             onClick={onBack}
-            design="inline"
-            size="sm"
           />
         </div>
         <EmptyStateCard
@@ -226,17 +224,15 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
   };
 
   return (
-    <Box orientation="vertical" gap="md" className="@container w-full">
-      <div className="flex">
-        <Button
-          text={t('builder_common_back')}
-          icon={<ArrowLeftIcon />}
-          onClick={onBack}
-          design="inline"
-          size="sm"
-        />
-      </div>
-      <SettingsSection
+      <Box orientation="vertical" gap="md" className="@container w-full">
+        <div className="flex">
+          <Button
+            text={t('builder_common_back')}
+            icon={<ArrowLeftIcon />}
+            onClick={onBack}
+          />
+        </div>
+      <BigCard
         title={formatColumnName(tableName)}
         description={getDescription()}
         status={undefined}
@@ -290,36 +286,36 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
         {data.length > 0 && (
           <Box gap="md">
             <div className="border rounded-lg overflow-x-auto">
-              <Table stretch size="md">
-                <Thead>
-                  <Tr>
-                    <Th className="p-2 border-r border-intents-ux-box-borderColor">
-                      <text.span as='label' className="text-xs">{t('builder_common_actions')}</text.span>
-                    </Th>
-                    {schema.map((col) => (
-                      <Th key={col.name} className="p-2 max-w-xs">
-                        <text.span as='label' className="truncate">
-                          {formatColumnName(col.name)}
-                        </text.span>
+              <Table stretch size="lg">
+                  <Thead>
+                    <Tr>
+                      <Th className="px-2 py-1.5 border-r border-intents-ux-box-borderColor">
+                        <text.span as='label' className="text-xs">{t('builder_common_actions')}</text.span>
                       </Th>
-                    ))}
-                  </Tr>
-                </Thead>
+                      {schema.map((col) => (
+                        <Th key={col.name} className="px-3 py-1.5 max-w-xs">
+                          <text.span as='label' className="truncate">
+                            {formatColumnName(col.name)}
+                          </text.span>
+                        </Th>
+                      ))}
+                    </Tr>
+                  </Thead>
                 <Tbody>
                   {data.map((row, rowIndex) => (
                     <Tr key={rowIndex}>
-                      <Td key={`${rowIndex}-actions`} className="p-2 border-r border-intents-ux-box-borderColor">
-                        <div className="flex items-center gap-2">
+                      <Td key={`${rowIndex}-actions`} className="px-2 py-1 border-r border-intents-ux-box-borderColor">
+                        <div className="flex items-center gap-1.5">
                           <Button
                             icon={<EditIcon />}
-                            design="inline"
+                            design="tertiary"
                             size="sm"
                             onClick={() => handleEditRow(row)}
                             aria-label={t('builder_common_edit', undefined, 'Edit')}
                           />
                           <Button
                             icon={<TrashIcon />}
-                            design="inline"
+                            design="critical"
                             size="sm"
                             onClick={() => handleDeleteRow(row)}
                             aria-label={t('builder_common_delete', undefined, 'Delete')}
@@ -327,7 +323,7 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
                         </div>
                       </Td>
                       {schema.map((col) => (
-                        <Td key={`${rowIndex}-${col.name}`} className="font-mono text-xs p-2 max-w-xs">
+                        <Td key={`${rowIndex}-${col.name}`} className="font-mono text-xs px-2 py-1 max-w-xs">
                           <div className="truncate" title={getCellValueString(row[col.name], col.type)}>
                             {renderCellValue(row[col.name], col.type)}
                           </div>
@@ -354,7 +350,7 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
             )}
           </Box>
         )}
-      </SettingsSection>
+      </BigCard>
 
       {/* Dialogs */}
       <AddRowDialog

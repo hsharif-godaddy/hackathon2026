@@ -12,6 +12,7 @@ import RevertIcon from '@ux/icon/revert';
 import SettingsIcon from '@ux/icon/settings';
 import ShareIcon from '@ux/icon/share';
 import SocialIcon from '@ux/icon/social';
+import Users3Icon from '@ux/icon/users3';
 
 import { SettingsSection } from '@/app/develop/components/types';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
@@ -35,9 +36,9 @@ export interface SettingsNavItem {
 
 /**
  * Hook that provides the settings navigation items with their current state
- * Used by SettingsMenu popover
+ * Used by both SettingsPane (desktop sidebar) and SettingsMenu (mobile popover)
  *
- * @param enabled - Whether to fetch feature flags (defer until menu is visible)
+ * @param enabled - Whether to fetch feature flags (defer until tab is visible)
  * @returns Array of settings navigation items with current enabled/disabled state
  */
 export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] {
@@ -49,6 +50,7 @@ export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] 
   const backups = useSwitchboard('appbuilder-settings-backups', { enabled });
   const security = useSwitchboard('appbuilder-settings-security', { enabled });
   const shareLinks = useSwitchboard('appbuilder-share-links', { enabled });
+  const team = useSwitchboard('appbuilder-settings-team', { enabled });
   const visualScan = useSwitchboard('appbuilder-settings-visualscan', { enabled });
   const secrets = useSwitchboard('appbuilder-settings-secrets', { enabled });
   const social = useSwitchboard('appbuilder-settings-social', { enabled });
@@ -96,6 +98,13 @@ export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] 
       disabled: false,
       needsAuth: isAuthError(shareLinks.error),
     }] : []),
+    {
+      id: SettingsSection.TEAM,
+      label: t('builder_settings_nav_team'),
+      icon: <Users3Icon />,
+      disabled: !isAuthError(team.error) && team.data !== true,
+      needsAuth: isAuthError(team.error),
+    },
     {
       id: SettingsSection.DATABASE,
       label: t('builder_settings_nav_database'),

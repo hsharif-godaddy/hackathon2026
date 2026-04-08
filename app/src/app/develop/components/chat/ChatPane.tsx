@@ -14,7 +14,7 @@ import { UploadedFile } from '@/app/develop/components/chat/FileUploadButton'
 import MediaPanel from '@/app/develop/components/media/MediaPanel'
 import PersistentTodoList from '@/app/develop/components/PersistentTodoList'
 import PlanTracker from '@/app/develop/components/PlanTracker'
-import SettingsView from '@/app/develop/components/settings/SettingsView'
+import SettingsPane from '@/app/develop/components/settings/SettingsPane'
 import StreamingMessageList from '@/app/develop/components/StreamingMessageList'
 import { ChatTab } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
@@ -914,7 +914,7 @@ export default function ChatPane({
           className="flex flex-col flex-1 min-h-0"
           style={{ display: activeChatTab === ChatTab.SETTINGS ? 'flex' : 'none' }}
         >
-          <SettingsView />
+          <SettingsPane />
         </div>
 
         <ChatToolbar />

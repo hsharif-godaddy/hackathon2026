@@ -6,8 +6,8 @@ import CalendarIcon from '@ux/icon/calendar';
 
 import { SettingsLoadingState } from '@/app/develop/components/settings/components/SettingsLoadingState';
 import ContentCalendar from '@/app/develop/components/settings/Marketing/ContentCalendar';
-import SettingsSection from '@/app/develop/components/settings/SettingsSection';
 import { useAppIdFromParams } from '@/app/develop/components/utils';
+import BigCard from '@/components/layout/BigCard';
 import EmptyStateCard from '@/components/layout/EmptyStateCard';
 import { useTranslations } from '@/hooks/useTranslations';
 
@@ -39,13 +39,13 @@ export default function MarketingPanel() {
         />
       )}
       <Box className={isCalendarLoading ? '!hidden' : '@container'}>
-        <SettingsSection
+        <BigCard
           title={t('builder_marketing_calendar')}
           description={t('builder_marketing_calendar_description')}
           className="min-w-[340px]"
         >
           <ContentCalendar appId={appId} onLoadingChange={setIsCalendarLoading} />
-        </SettingsSection>
+        </BigCard>
       </Box>
     </>
   );

@@ -48,7 +48,7 @@ export function SocialConnectModal({
 
   return (
     <Modal title={title} onClose={onClose}>
-      <div className="max-w-full w-[400px] md:w-[500px] lg:w-[600px]">
+      <div className="w-full w-[400px] md:w-[500px] lg:w-[600px]">
         <SocialConnectFlow
           key={mountKey}
           platform={platform}

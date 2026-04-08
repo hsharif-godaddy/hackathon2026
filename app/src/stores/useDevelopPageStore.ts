@@ -16,19 +16,6 @@ import { postMessageToIframe } from '@/utils/postMessage'
 // Loading phases for proper sequencing
 type LoadingPhase = 'idle' | 'loading-app' | 'loading-site' | 'loading-conversations' | 'ready'
 
-// Chat pane width constants
-const DEFAULT_CHAT_PANE_WIDTH = 415
-const WIDE_CHAT_PANE_WIDTH = 640 - 24 // 640px - 24px (12px left + 12px right padding)
-
-// Settings sections that require wider panel
-const WIDE_SETTINGS_SECTIONS: SettingsSection[] = [
-  SettingsSection.ANALYTICS,
-  SettingsSection.BACKUPS,
-  SettingsSection.DATABASE,
-  SettingsSection.MARKETING,
-  SettingsSection.SECRETS,
-]
-
 // Helper to load go-live status from .airo/live.json (defaults to false for sync init)
 const loadGoLiveStatus = (): { hasGoneLive: boolean; wentLiveAt: string | null } => {
   // Return default for initialization - actual status will be loaded async
@@ -159,7 +146,6 @@ interface DevelopPageStore {
   isEditModeEnabled: boolean
   expandedPlan: boolean
   chatPaneWidth: number
-  originalChatPaneWidth: number | null
   isChatPaneCollapsed: boolean
   isMobile: boolean
   isPreviewVisible: boolean
@@ -348,8 +334,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     selectedDeviceId: 'full',
     isEditModeEnabled: true,
     expandedPlan: false,
-    chatPaneWidth: DEFAULT_CHAT_PANE_WIDTH,
-    originalChatPaneWidth: null,
+    chatPaneWidth: 415,
     isChatPaneCollapsed: false,
     isMobile: false,
     isPreviewVisible: false,
@@ -426,45 +411,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setIsPreviewVisible: (visible) => set((state) => { state.isPreviewVisible = visible }),
 
     // Tab setters
-    setActiveChatTab: (tab) => set((state) => {
-      const wasInSettings = state.activeChatTab === ChatTab.SETTINGS
-      const enteringSettings = !wasInSettings && tab === ChatTab.SETTINGS
-      const leavingSettings = wasInSettings && tab !== ChatTab.SETTINGS
-
-      state.activeChatTab = tab
-
-      if (enteringSettings) {
-        const isWideSection = WIDE_SETTINGS_SECTIONS.includes(state.activeSettingsSection)
-        if (isWideSection) {
-          if (state.originalChatPaneWidth === null) {
-            state.originalChatPaneWidth = state.chatPaneWidth
-          }
-          state.chatPaneWidth = WIDE_CHAT_PANE_WIDTH
-        }
-      } else if (leavingSettings && state.originalChatPaneWidth !== null) {
-        state.chatPaneWidth = state.originalChatPaneWidth
-        state.originalChatPaneWidth = null
-      }
-    }),
-    setActiveSettingsSection: (section) => set((state) => {
-      const isWideSection = WIDE_SETTINGS_SECTIONS.includes(section)
-      const wasWideSection = WIDE_SETTINGS_SECTIONS.includes(state.activeSettingsSection)
-      const inSettingsTab = state.activeChatTab === ChatTab.SETTINGS
-
-      state.activeSettingsSection = section
-
-      if (inSettingsTab) {
-        if (isWideSection && !wasWideSection) {
-          if (state.originalChatPaneWidth === null) {
-            state.originalChatPaneWidth = state.chatPaneWidth
-          }
-          state.chatPaneWidth = WIDE_CHAT_PANE_WIDTH
-        } else if (!isWideSection && wasWideSection && state.originalChatPaneWidth !== null) {
-          state.chatPaneWidth = state.originalChatPaneWidth
-          state.originalChatPaneWidth = null
-        }
-      }
-    }),
+    setActiveChatTab: (tab) => set((state) => { state.activeChatTab = tab }),
+    setActiveSettingsSection: (section) => set((state) => { state.activeSettingsSection = section }),
     markChatTabsInitialized: (pathname) => set((state) => { state.chatTabsInitializedForPathname = pathname }),
 
     // Feedback modal actions

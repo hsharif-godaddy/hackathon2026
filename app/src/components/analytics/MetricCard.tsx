@@ -31,7 +31,7 @@ export function MetricCard({
     <Tooltip>
       <TooltipTrigger asChild>
         <div
-          className={clsx("group relative flex flex-col justify-between rounded-lg border p-2 pt-2.5 bg-intents-ux-box-backgroundColor shadow-sm overflow-hidden transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px min-h-[88px]", {
+          className={clsx("group relative flex flex-col justify-between rounded-lg border p-4 pt-5 bg-intents-ux-box-backgroundColor shadow-sm overflow-hidden transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px min-h-[88px]", {
             "cursor-pointer": onClick,
           })}
           onClick={onClick}

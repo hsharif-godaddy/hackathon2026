@@ -6,17 +6,14 @@ import Box from '@ux/box'
 import Button from '@ux/button'
 import DownloadIcon from '@ux/icon/download'
 import RefreshIcon from '@ux/icon/refresh'
-import Users3Icon from '@ux/icon/users3';
 import Spinner from '@ux/spinner'
 
-import SettingsSection from '@/app/develop/components/settings/SettingsSection'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
+import BigCard from '@/components/layout/BigCard'
 import { useDownloadApp } from '@/hooks/useDownloadApp'
 import { usePaywallModal } from '@/hooks/usePaywallModal'
 import { PurgeErrorCode, PurgeStatus, usePurgeCache } from '@/hooks/usePurgeCache'
-import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations'
-import { getRootDomain } from '@/utils/getRootDomain';
 import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation'
 
 const PURGE_ERROR_I18N_KEYS: Record<PurgeErrorCode, string> = {
@@ -31,14 +28,10 @@ export default function ProjectPanel() {
   const t = useTranslations()
   const appId = useAppIdFromParams()
   const { download, isDownloading } = useDownloadApp(appId)
-  const rootDomain = getRootDomain() || 'godaddy.com';
-  const delegationUrl = `https://sso.${rootDomain}/access`;
-
-  const { data: isTeamEnabled } = useSwitchboard('appbuilder-settings-team');
   const { trigger: triggerPurge, status: purgeStatus, errorCode: purgeErrorCode } = usePurgeCache(appId)
-
   const [purgeToast, setPurgeToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const lastToastStatusRef = useRef<string | null>(null)
+
   const isPurging = purgeStatus === PurgeStatus.STARTING || purgeStatus === PurgeStatus.POLLING
 
   useEffect(function showPurgeToast() {
@@ -117,7 +110,7 @@ export default function ProjectPanel() {
     <>
       <PaywallModal />
       <Box gap='lg' className='@container'>
-        <SettingsSection
+        <BigCard
           title={t('builder_settings_project_purge_cache_title', undefined, 'Purge Cache')}
           hideStatus
           button={
@@ -125,7 +118,7 @@ export default function ProjectPanel() {
               onClick={handlePurgeCache}
               disabled={isPurging || !appId}
               design='primary'
-              size='sm'
+              size='md'
               data-eid={generateClickEID('settings.project.purge_cache')}
               icon={isPurging ? <Spinner size='sm' /> : <RefreshIcon />}
               text={isPurging
@@ -144,8 +137,8 @@ export default function ProjectPanel() {
               {purgeToast.message}
             </Alert>
           )}
-        </SettingsSection>
-        <SettingsSection
+        </BigCard>
+        <BigCard
           title={t('builder_settings_project_download_title', undefined, 'Download Application')}
           hideStatus
           button={
@@ -153,7 +146,7 @@ export default function ProjectPanel() {
               onClick={handleDownload}
               disabled={isDownloading || isPaywallLoading || !appId}
               design='primary'
-              size='sm'
+              size='md'
               data-eid={generateClickEID('settings.project.app_download')}
               icon={isDownloading ? <Spinner size='sm' /> : <DownloadIcon />}
               text={isDownloading
@@ -162,26 +155,8 @@ export default function ProjectPanel() {
               }
             />
           }
-          description={t('builder_settings_project_download_desc')}
-        >
-        </SettingsSection>
-        {isTeamEnabled && (
-          <SettingsSection
-            title={t("builder_settings_team_title")}
-            description={t("builder_settings_team_description")}
-            button={
-              <Button
-                design="primary"
-                size="sm"
-                text={t("builder_settings_team_manage_access")}
-                href={delegationUrl}
-                rel="noopener noreferrer"
-                icon={<Users3Icon />}
-                external
-              />
-            }
-          />
-        )}
+          description={t('builder_settings_project_download_desc', undefined, 'Download all your application files as a ZIP archive')}
+        />
       </Box>
     </>
   )

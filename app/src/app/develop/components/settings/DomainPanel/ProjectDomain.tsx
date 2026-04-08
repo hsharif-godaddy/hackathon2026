@@ -7,9 +7,9 @@ import Button from "@ux/button";
 import Skeleton from "@ux/skeleton";
 import TextInput from "@ux/text-input";
 
-import SettingsSection from "@/app/develop/components/settings/SettingsSection";
 import { Status } from "@/app/develop/components/types";
 import { useAppIdFromParams } from "@/app/develop/components/utils";
+import BigCard from "@/components/layout/BigCard";
 import { useAppNameUpdate } from '@/hooks/useAppName';
 import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
 import { useTranslations } from '@/hooks/useTranslations';
@@ -164,9 +164,9 @@ export default function ProjectDomain() {
     (updateAppNameMutation.error as any)?.status === 409;
 
   /**
-   * Determine SettingsSection status based on validation and mutation state
+   * Determine BigCard status based on validation and mutation state
    *
-   * @returns Status enum value for the SettingsSection component
+   * @returns Status enum value for the BigCard component
    */
   const getProjectDomainStatus = () => {
     if (updateAppNameMutation.isPending || shouldPoll || isDomainPending) {
@@ -278,11 +278,10 @@ export default function ProjectDomain() {
   const disableProjectDomain = !isPublished;
 
   return (
-    <SettingsSection
+    <BigCard
       title={t('builder_project_domain_title')}
       description={t('builder_project_domain_description')}
       status={getProjectDomainStatus()}
-      isCollapsible
     >
       <Box orientation="vertical" gap="md" className="w-full" blockAlignChildren="start">
         <Box
@@ -307,20 +306,20 @@ export default function ProjectDomain() {
           )}
         </Box>
         <div>
-          {!site ? (
+         {!site ? (
             <div className="w-[15em] lg:w-[25em]">
-              <Skeleton size="md" width="100%" lines={1} />
+                <Skeleton size="md" width="100%" lines={1} />
             </div>
-          ) : (
-            <Button
-              design="inline"
-              text={projectDomainDisplay}
-              data-eid={generateClickEID(`settings.domains.project_domain_link`)}
-              className="!hover:bg-transparent"
-              href={getProjectDomainUrl(projectDomainDisplay)}
-              as="external"
-              external
-            />
+         ) : (
+           <Button
+             design="inline"
+             text={projectDomainDisplay}
+             data-eid={generateClickEID(`settings.domains.project_domain_link`)}
+             className="!hover:bg-transparent"
+             href={getProjectDomainUrl(projectDomainDisplay)}
+             as="external"
+             external
+           />
          )}
         </div>
         { showButtons && currentProjectName !== projectDomainValue && (
@@ -356,7 +355,7 @@ export default function ProjectDomain() {
           </Box>
         ) }
       </Box>
-    </SettingsSection>
+    </BigCard>
   )
 }
 

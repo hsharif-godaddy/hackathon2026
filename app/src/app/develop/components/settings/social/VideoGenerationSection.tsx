@@ -10,7 +10,7 @@ import MuteIcon from '@ux/icon/volume-mute';
 import UnmuteIcon from '@ux/icon/volume-up';
 import text from '@ux/text';
 
-import SettingsSection from '@/app/develop/components/settings/SettingsSection';
+import BigCard from '@/components/layout/BigCard';
 import { useVideoGeneration } from '@/components/layout/PostPublishGoLiveModal/hooks/useVideoGeneration';
 import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
@@ -87,29 +87,39 @@ export function VideoGenerationSection({ siteId }: VideoGenerationSectionProps) 
   const description = t('builder_video_generating_description')
 
   return (
-    <SettingsSection
-      title={t('builder_video_marketing_title')}
-      description={description}
-      isCollapsible
-      button={videoUrl && !isGeneratingVideo ? (
-        <Button
-          design="primary"
-          size="sm"
-          icon={<RevertIcon />}
-          disabled={isGeneratingVideo}
-          onClick={handleRegenerate}
-          text={t('builder_video_regenerate')}
-        />
-      ) : (
-        <Button
-          design="primary"
-          size="sm"
-          text={isGeneratingVideo ? t('builder_common_generating') : t('builder_video_generate_title')}
-          disabled={isGeneratingVideo}
-          onClick={generateVideo}
-        />
-      )}
-    >
+    <BigCard>
+      {/* Row 1: title + description on left, action button on right */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <text.h3 as="title" size={2}>
+            {t('builder_video_marketing_title')}
+          </text.h3>
+          <text.p>
+            {description}
+          </text.p>
+        </div>
+        {videoUrl && !isGeneratingVideo ? (
+          <Button
+            design="primary"
+            size="sm"
+            icon={<RevertIcon />}
+            disabled={isGeneratingVideo}
+            onClick={handleRegenerate}
+          >
+            {t('builder_video_regenerate')}
+          </Button>
+        ) : (
+          <Button
+            design="primary"
+            size="sm"
+            text={isGeneratingVideo ? t('builder_common_generating') : t('builder_video_generate_title')}
+            disabled={isGeneratingVideo}
+            onClick={generateVideo}
+          />
+        )}
+      </div>
+
+      {/* Row 2: video + controls in white panel (only after generation) */}
       {videoUrl && !isGeneratingVideo && (
         <Card space={{ gap: 'sm', block: 'md' }}>
           <div className="flex items-end justify-between gap-6">
@@ -167,6 +177,6 @@ export function VideoGenerationSection({ siteId }: VideoGenerationSectionProps) 
           {t('golive_video_download_error')}
         </Alert>
       )}
-    </SettingsSection>
+    </BigCard>
   )
 }

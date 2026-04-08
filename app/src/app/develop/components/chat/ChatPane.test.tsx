@@ -62,6 +62,10 @@ vi.mock('@/app/develop/components/preview/PreviewPane', () => ({
   default: () => <div data-testid="preview-pane">Preview Pane</div>,
 }));
 
+vi.mock('@/app/develop/components/settings/SettingsPane', () => ({
+  default: () => <div data-testid="settings-pane">Settings Pane</div>,
+}));
+
 vi.mock('@/app/develop/components/settings/SettingsView', () => ({
   default: () => <div data-testid="settings-view">Settings View</div>,
 }));
