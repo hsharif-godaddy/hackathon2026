@@ -7,26 +7,58 @@ on:
     paths:
       - "budget-service/**"
       - "packages/go-auth/**"
+      - ".github/workflows/aws-deploy-budget-service.yml"
 
-  # Manual deployment
   workflow_dispatch:
+    inputs:
+      DEPLOY_TO_ENV:
+        description: "Environment to deploy the artifact"
+        required: true
+        type: choice
+        options:
+          - dev-private
+          - test
+          - prod
+        default: dev-private
 
-run-name: "[BUDGET SERVICE - dev-private] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
+run-name: "[BUDGET SERVICE - ${{ github.event_name == 'workflow_dispatch' && inputs.DEPLOY_TO_ENV || 'dev-private+test' }}] ${{ github.ref_name }} | ${{ github.actor }}"
 
 permissions:
   id-token: write # required for artifactory token login
   contents: read
 
 jobs:
-  continuous-integration:
-    name: "[BUDGET SERVICE - dev-private] branch: ${{ github.ref_name }}"
+  set-matrix:
+    name: Resolve promotion targets
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    outputs:
+      environments: ${{ steps.set.outputs.environments }}
+    steps:
+      - id: set
+        env:
+          MANUAL_ENV: ${{ inputs.DEPLOY_TO_ENV }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo 'environments=["dev-private","test"]' >> $GITHUB_OUTPUT
+          else
+            printf 'environments=["%s"]\n' "$MANUAL_ENV" >> $GITHUB_OUTPUT
+          fi
+
+  build-publish:
+    name: "[BUDGET SERVICE] Build and publish artifact"
     runs-on:
       labels:
         - airo-cicd-runners
         - self-hosted
 
-    env:
-      DEPLOY_TO_ENV: dev-private
+    outputs:
+      artifact_id: ${{ steps.katana-publish.outputs.artifact_id }}
+      image_uri: ${{ steps.katana-publish.outputs.image_uri }}
+      namespace: ${{ steps.katana-app.outputs.namespace }}
+      app: ${{ steps.katana-app.outputs.app }}
 
     steps:
       - name: Checkout Codebase
@@ -82,23 +114,52 @@ jobs:
               "healthcheckGracePeriod": 120
             }
 
-      # Promote the published artifact to dev-private environment with the katana-promote-artifact GitHub Action
-      - name: Promote to dev-private Environment
-        uses: gdcorp-actions/katana-promote-artifact@v1
-        with:
-          namespace: ${{ steps.katana-app.outputs.namespace }}
-          app: ${{ steps.katana-app.outputs.app }}
-          environment: ${{ env.DEPLOY_TO_ENV }}
-          artifact_id: ${{ steps.katana-publish.outputs.artifact_id }}
-
-      # Publish summary
       - name: Publish Summary
         run: |
           {
             printf '**Build Summary:**\n\n```\n'
             echo "Artifact ID: ${{ steps.katana-publish.outputs.artifact_id }}"
-            echo "Deployed to: ${{ env.DEPLOY_TO_ENV }}"
             echo "Image: ${{ steps.katana-publish.outputs.image_uri }}"
+            echo "Commit: ${{ github.sha }}"
+            echo "Branch: ${{ github.ref_name }}"
+            echo "Actor: ${{ github.actor }}"
+            printf '\n```\n\n'
+          } >> $GITHUB_STEP_SUMMARY
+
+  promote:
+    name: "[BUDGET SERVICE] Promote to ${{ matrix.environment }}"
+    needs:
+      - set-matrix
+      - build-publish
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJSON(needs.set-matrix.outputs.environments) }}
+
+    steps:
+      - name: Promote to ${{ matrix.environment }} Environment
+        uses: gdcorp-actions/katana-promote-artifact@v1
+        with:
+          namespace: ${{ needs.build-publish.outputs.namespace }}
+          app: ${{ needs.build-publish.outputs.app }}
+          environment: ${{ matrix.environment }}
+          artifact_id: ${{ needs.build-publish.outputs.artifact_id }}
+
+      - name: Publish Summary
+        env:
+          ARTIFACT_ID: ${{ needs.build-publish.outputs.artifact_id }}
+          IMAGE_URI: ${{ needs.build-publish.outputs.image_uri }}
+          ENV_NAME: ${{ matrix.environment }}
+        run: |
+          {
+            printf '**Promotion Summary:**\n\n```\n'
+            echo "Artifact ID: $ARTIFACT_ID"
+            echo "Deployed to: $ENV_NAME"
+            echo "Image: $IMAGE_URI"
             echo "Commit: ${{ github.sha }}"
             echo "Branch: ${{ github.ref_name }}"
             echo "Actor: ${{ github.actor }}"
