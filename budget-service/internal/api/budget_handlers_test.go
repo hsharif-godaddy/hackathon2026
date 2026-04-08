@@ -311,6 +311,87 @@ func TestPatchNonexistentSessionReturns404(t *testing.T) {
 	}
 }
 
+func TestPatchSessionDuplicateCallRequestID(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "dup-call-req-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
+		{CreditsTotal: "10.000000", CreditSpendRatio: "1.000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	auth := goauth.NewMiddleware("none", "")
+	h := NewRouter(&Server{Store: st}, auth)
+
+	recS := httptest.NewRecorder()
+	reqS := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/sessions", strings.NewReader(`{}`))
+	reqS.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(recS, reqS)
+	if recS.Code != http.StatusCreated {
+		t.Fatalf("post session: %d %s", recS.Code, recS.Body.String())
+	}
+	var sess struct {
+		SessionID string `json:"sessionId"`
+	}
+	if err := json.Unmarshal(recS.Body.Bytes(), &sess); err != nil {
+		t.Fatal(err)
+	}
+
+	recDupInBody := httptest.NewRecorder()
+	reqDupInBody := httptest.NewRequest(http.MethodPatch, "/api/v1/budgets/"+budgetID+"/sessions/"+sess.SessionID, strings.NewReader(
+		`{"sessionItems":[{"cost":"1","callRequestId":"same"},{"cost":"1","callRequestId":"same"}]}`,
+	))
+	reqDupInBody.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(recDupInBody, reqDupInBody)
+	if recDupInBody.Code != http.StatusBadRequest {
+		t.Fatalf("duplicate in body: %d %s", recDupInBody.Code, recDupInBody.Body.String())
+	}
+	var dupInBodyErr struct {
+		Code  string `json:"code"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(recDupInBody.Body.Bytes(), &dupInBodyErr); err != nil {
+		t.Fatal(err)
+	}
+	if dupInBodyErr.Code != "DUPLICATE_CALL_REQUEST_ID" || dupInBodyErr.Error != "duplicate callRequestId in sessionItems" {
+		t.Fatalf("duplicate in body: got %#v body=%s", dupInBodyErr, recDupInBody.Body.String())
+	}
+
+	recFirst := httptest.NewRecorder()
+	reqFirst := httptest.NewRequest(http.MethodPatch, "/api/v1/budgets/"+budgetID+"/sessions/"+sess.SessionID, strings.NewReader(
+		`{"sessionItems":[{"cost":"1","callRequestId":"idempotent-req"}]}`,
+	))
+	reqFirst.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(recFirst, reqFirst)
+	if recFirst.Code != http.StatusOK {
+		t.Fatalf("first patch: %d %s", recFirst.Code, recFirst.Body.String())
+	}
+
+	recSecond := httptest.NewRecorder()
+	reqSecond := httptest.NewRequest(http.MethodPatch, "/api/v1/budgets/"+budgetID+"/sessions/"+sess.SessionID, strings.NewReader(
+		`{"sessionItems":[{"cost":"1","callRequestId":"idempotent-req"}]}`,
+	))
+	reqSecond.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(recSecond, reqSecond)
+	if recSecond.Code != http.StatusBadRequest {
+		t.Fatalf("reuse callRequestId: %d %s", recSecond.Code, recSecond.Body.String())
+	}
+	var errBody struct {
+		Code  string `json:"code"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(recSecond.Body.Bytes(), &errBody); err != nil {
+		t.Fatal(err)
+	}
+	if errBody.Code != "DUPLICATE_CALL_REQUEST_ID" || errBody.Error != "callRequestId already used for this session" {
+		t.Fatalf("got %#v want DUPLICATE_CALL_REQUEST_ID", errBody)
+	}
+}
+
 func TestGoCodeSpendMathOverHTTP(t *testing.T) {
 	st := testStore(t)
 	auth := goauth.NewMiddleware("none", "")

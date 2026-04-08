@@ -162,6 +162,10 @@ func writeBudgetStoreError(w http.ResponseWriter, op string, err error) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "insufficient credits for this report")
 		return
 	}
+	if errors.Is(err, store.ErrDuplicateCallRequestID) {
+		writeError(w, http.StatusBadRequest, "DUPLICATE_CALL_REQUEST_ID", "callRequestId already used for this session")
+		return
+	}
 	if errors.Is(err, credits.ErrInvalid) || errors.Is(err, credits.ErrOutOfRange) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
@@ -705,6 +709,7 @@ func (s *Server) appendSessionLines(w http.ResponseWriter, r *http.Request, budg
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "sessionItems must contain at least one entry")
 		return nil, false
 	}
+	seenCallRequest := make(map[string]struct{}, len(items))
 	for i := range items {
 		if strings.TrimSpace(items[i].CallRequestID) == "" {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "each sessionItem requires callRequestId")
@@ -714,6 +719,12 @@ func (s *Server) appendSessionLines(w http.ResponseWriter, r *http.Request, budg
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "each sessionItem requires cost")
 			return nil, false
 		}
+		key := strings.TrimSpace(items[i].CallRequestID)
+		if _, dup := seenCallRequest[key]; dup {
+			writeError(w, http.StatusBadRequest, "DUPLICATE_CALL_REQUEST_ID", "duplicate callRequestId in sessionItems")
+			return nil, false
+		}
+		seenCallRequest[key] = struct{}{}
 	}
 
 	if !s.requireStore(w) {

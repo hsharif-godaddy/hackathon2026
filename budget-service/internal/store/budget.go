@@ -161,10 +161,20 @@ func mapFKNotFound(err error) error {
 	return err
 }
 
+const sessionCallRequestUniqueConstraint = "budget_session_items_session_call_request_unique"
+
 func mapReportSessionUnique(err error) error {
 	var pqErr *pq.Error
 	if errors.As(err, &pqErr) && pqErr.Code == "23505" {
 		return ErrAlreadyReconciled
+	}
+	return err
+}
+
+func mapSessionCallRequestUnique(err error) error {
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) && pqErr.Code == "23505" && pqErr.Constraint == sessionCallRequestUniqueConstraint {
+		return ErrDuplicateCallRequestID
 	}
 	return err
 }
@@ -777,7 +787,7 @@ func (s *Store) AppendSessionItems(ctx context.Context, budgetID, sessionID stri
 			INSERT INTO budget_session_items (session_id, cost_usd, credits_charged, call_request_id)
 			VALUES ($1, $2, $3, $4)
 		`, sessionID, costStr, chargedStr, lines[i].CallRequestID); err != nil {
-			return nil, err
+			return nil, mapSessionCallRequestUnique(err)
 		}
 		math := SessionAppendMathLine{CostUsd: costStr, CreditsCharged: chargedStr}
 		for j := range chunks {

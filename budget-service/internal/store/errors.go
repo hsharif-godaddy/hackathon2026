@@ -23,4 +23,6 @@ var (
 	ErrBudgetHasUnreconciledSessions = errors.New("budget has unreconciled sessions")
 	// ErrBudgetItemInReport is returned when deleting a budget item referenced by report allocations.
 	ErrBudgetItemInReport = errors.New("budget item referenced in report")
+	// ErrDuplicateCallRequestID is returned when a session item reuses an existing callRequestId for that session.
+	ErrDuplicateCallRequestID = errors.New("duplicate callRequestId")
 )
