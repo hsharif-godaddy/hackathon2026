@@ -9,18 +9,7 @@ interface TranslateFn {
   (key: string, values?: Record<string, unknown>): string;
 }
 
-/**
- * Validate files before upload. Returns an error message string if validation
- * fails, or null if all files pass.
- */
-export function validate(
-  files: File[],
-  t: TranslateFn
-): string | null {
-  if (files.length > MAX_FILES_PER_UPLOAD) {
-    return t('builder_chatfiles_error_max_files', { count: MAX_FILES_PER_UPLOAD });
-  }
-
+function validateFileSizes(files: File[], t: TranslateFn): string | null {
   const oversizedFiles = files.filter(f => f.size > MAX_FILE_SIZE);
   if (oversizedFiles.length === 1) {
     return t('builder_chatfiles_error_file_too_large', { name: oversizedFiles[0].name, size: (oversizedFiles[0].size / (1024 * 1024)).toFixed(1), limit: MAX_FILE_SIZE_MB });
@@ -34,4 +23,27 @@ export function validate(
   }
 
   return null;
+}
+
+/**
+ * Validate staged / to-be-staged files (picker, drag-drop). Does not enforce
+ * {@link MAX_FILES_PER_UPLOAD}; send-time upload chunks that limit per HTTP request.
+ */
+export function validateForStaging(files: File[], t: TranslateFn): string | null {
+  return validateFileSizes(files, t);
+}
+
+/**
+ * Validate a single upload request batch (≤ {@link MAX_FILES_PER_UPLOAD} files).
+ * Use {@link validateForStaging} when adding many files to the composer before upload.
+ */
+export function validate(
+  files: File[],
+  t: TranslateFn
+): string | null {
+  if (files.length > MAX_FILES_PER_UPLOAD) {
+    return t('builder_chatfiles_error_max_files', { count: MAX_FILES_PER_UPLOAD });
+  }
+
+  return validateFileSizes(files, t);
 }

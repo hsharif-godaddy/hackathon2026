@@ -256,6 +256,17 @@ describe('AssetInline', () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it('should blur thumbnail and show busy overlay when isLoading with image asset', function loadingOverlay() {
+    const { container } = renderWithProviders(
+      <AssetInline asset={mockImageAsset} onClear={vi.fn()} mode={AssetMode.EDIT} isLoading />
+    );
+
+    const image = screen.getByAltText('test.jpg');
+    expect(image).toHaveClass('blur-[2px]');
+    expect(container.querySelector('[aria-busy="true"]')).toBeTruthy();
+    expect(screen.queryByTitle('builder_chatpane_clear_asset')).not.toBeInTheDocument();
+  });
+
   it('should render VIDEO customAsset', function customAssetVideo() {
     const customAsset = {
       imageUrl: 'https://example.com/video-thumb.jpg',

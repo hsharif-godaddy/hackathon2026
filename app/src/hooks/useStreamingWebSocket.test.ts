@@ -341,6 +341,23 @@ describe('useStreamingWebSocket', () => {
       expect(mockSetIsLoadingAction).not.toHaveBeenCalled();
     });
 
+    it('should allow empty content when selectedAssets are present', async () => {
+      vi.useFakeTimers();
+      const { hook } = await setupWebSocketWithApp('test-app-assets-only');
+
+      mockSetIsLoadingAction.mockClear();
+
+      await act(async () => {
+        await hook.result.current.actions.send({
+          content: '',
+          selectedAssets: [{ imageUrl: 'https://example.com/a.jpg' } as any],
+        });
+      });
+
+      expect(mockSetIsLoadingAction).toHaveBeenCalledWith(true);
+      vi.useRealTimers();
+    });
+
     it('should require appId to send messages', async () => {
       const { useStreamingWebSocket } = await import('./useStreamingWebSocket');
       const { useCurrentAppId } = await import('@/stores/useStreamingConversationStore');

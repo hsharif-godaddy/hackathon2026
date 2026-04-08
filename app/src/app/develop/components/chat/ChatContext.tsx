@@ -16,7 +16,7 @@ interface ChatContextValue {
    * @param content - The message text to send
    * @param options - Optional settings for the message
    */
-  sendMessage: (content: string, options?: SendMessageOptions) => void
+  sendMessage: (content?: string, options?: SendMessageOptions) => void | Promise<void>
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null)
@@ -37,7 +37,7 @@ const ChatContext = createContext<ChatContextValue | null>(null)
  * Hook to send a user message to the chat, returns null if outside chat context
  * Useful for components that may be rendered outside ChatProvider
  */
- const useSendUserMessage = (): ((content: string, options?: SendMessageOptions) => void) | null => {
+ const useSendUserMessage = (): ((content?: string, options?: SendMessageOptions) => void | Promise<void>) | null => {
   const context = useContext(ChatContext)
   return context?.sendMessage ?? null
 }

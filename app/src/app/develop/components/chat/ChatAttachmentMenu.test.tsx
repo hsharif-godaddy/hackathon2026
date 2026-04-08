@@ -57,10 +57,9 @@ vi.mock('@/app/develop/components/chat/FileReferenceModal', () => ({
 describe('ChatAttachmentMenu', () => {
   const defaultProps = {
     appId: 'test-app-123',
-    onFilesUploaded: vi.fn(),
+    onStageFiles: vi.fn(),
     onScreenshotCaptured: vi.fn(),
     onFileReferencesSelected: vi.fn(),
-    onUploadStart: vi.fn(),
     onUploadError: vi.fn(),
   };
 
@@ -175,20 +174,11 @@ describe('ChatAttachmentMenu', () => {
     expect(clickSpy).toHaveBeenCalled();
   });
 
-  it('should handle file upload success', async () => {
-    const onFilesUploaded = vi.fn();
-    const onUploadStart = vi.fn();
-    const mockFiles = [
-      { id: '1', originalName: 'test.jpg', filename: 'test-123.jpg', size: 12345, mimeType: 'image/jpeg', uploadedAt: new Date().toISOString() },
-    ];
-
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ files: mockFiles, uploadId: 'upload-123' }),
-    });
+  it('should call onStageFiles when file is selected (no immediate upload)', async () => {
+    const onStageFiles = vi.fn();
 
     const { user } = renderWithProviders(
-      <ChatAttachmentMenu {...defaultProps} onFilesUploaded={onFilesUploaded} onUploadStart={onUploadStart} />
+      <ChatAttachmentMenu {...defaultProps} onStageFiles={onStageFiles} />
     );
 
     const fileInput = screen.getByTestId('file-input') as HTMLInputElement;
@@ -197,48 +187,34 @@ describe('ChatAttachmentMenu', () => {
     await user.upload(fileInput, file);
 
     await waitFor(() => {
-      expect(onUploadStart).toHaveBeenCalledWith([file]);
+      expect(onStageFiles).toHaveBeenCalledWith([file]);
     });
 
-    await waitFor(() => {
-      expect(onFilesUploaded).toHaveBeenCalledWith(mockFiles);
-    });
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(mockCompressImageFiles).not.toHaveBeenCalled();
   });
 
-  it('should handle file upload failure', async () => {
+  it('should call onUploadError when validation fails (oversized file)', async () => {
     const onUploadError = vi.fn();
-    const onUploadStart = vi.fn();
-
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-    });
+    const onStageFiles = vi.fn();
+    const bigBuffer = new ArrayBuffer(11 * 1024 * 1024);
+    const hugeFile = new File([bigBuffer], 'huge.jpg', { type: 'image/jpeg' });
 
     const { user } = renderWithProviders(
-      <ChatAttachmentMenu {...defaultProps} onUploadStart={onUploadStart} onUploadError={onUploadError} />
+      <ChatAttachmentMenu {...defaultProps} onStageFiles={onStageFiles} onUploadError={onUploadError} />
     );
 
     const fileInput = screen.getByTestId('file-input') as HTMLInputElement;
-    const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' });
 
-    await user.upload(fileInput, file);
+    await user.upload(fileInput, hugeFile);
 
     await waitFor(() => {
-      expect(onUploadStart).toHaveBeenCalledWith([file]);
       expect(onUploadError).toHaveBeenCalled();
     });
+    expect(onStageFiles).not.toHaveBeenCalled();
   });
 
-  it('should reset file input after successful upload', async () => {
-    const mockFiles = [
-      { id: '1', originalName: 'test.jpg', filename: 'test-123.jpg', size: 12345, mimeType: 'image/jpeg', uploadedAt: new Date().toISOString() },
-    ];
-
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ files: mockFiles, uploadId: 'upload-123' }),
-    });
-
+  it('should reset file input after staging files', async () => {
     const { user } = renderWithProviders(<ChatAttachmentMenu {...defaultProps} />);
 
     const fileInput = screen.getByTestId('file-input') as HTMLInputElement;
@@ -246,12 +222,6 @@ describe('ChatAttachmentMenu', () => {
 
     await user.upload(fileInput, file);
 
-    // Wait for fetch to complete
-    await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalled();
-    });
-
-    // File input should be reset after successful upload
     await waitFor(() => {
       expect(fileInput.value).toBe('');
     });
@@ -365,76 +335,20 @@ describe('ChatAttachmentMenu', () => {
     });
   });
 
-  describe('image compression', () => {
-    it('should compress image files before upload', async function compressImages() {
-      const onFilesUploaded = vi.fn();
-      const mockFiles = [
-        { id: '1', originalName: 'photo.jpg', filename: 'photo-123.jpg', size: 240000, mimeType: 'image/jpeg', uploadedAt: new Date().toISOString() },
-      ];
-
-      (global.fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ files: mockFiles, uploadId: 'upload-123' }),
-      });
-
-      const { user } = renderWithProviders(
-        <ChatAttachmentMenu {...defaultProps} onFilesUploaded={onFilesUploaded} />
-      );
-
-      const fileInput = screen.getByTestId('file-input') as HTMLInputElement;
-      const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
-
-      await user.upload(fileInput, file);
-
-      await waitFor(() => {
-        expect(mockCompressImageFiles).toHaveBeenCalledWith([file]);
-      });
-    });
-
-    it('should upload the compressed file not the original', async function uploadsCompressed() {
-      const compressedFile = new File(['smaller'], 'photo.jpg', { type: 'image/jpeg' });
-      mockCompressImageFiles.mockResolvedValueOnce([compressedFile]);
-
-      (global.fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ files: [], uploadId: 'upload-123' }),
-      });
-
+  describe('staging (upload on send)', () => {
+    it('does not compress or fetch when picking a file', async () => {
       const { user } = renderWithProviders(<ChatAttachmentMenu {...defaultProps} />);
 
       const fileInput = screen.getByTestId('file-input') as HTMLInputElement;
-      const originalFile = new File([new ArrayBuffer(5 * 1024 * 1024)], 'photo.jpg', { type: 'image/jpeg' });
-
-      await user.upload(fileInput, originalFile);
-
-      await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalled();
-        const formData = (global.fetch as any).mock.calls[0][1].body as FormData;
-        const uploadedFiles = formData.getAll('files');
-        expect(uploadedFiles[0]).toBe(compressedFile);
-      });
-    });
-
-    it('should call onUploadStart with original files before compression', async function originalFilesOnStart() {
-      const onUploadStart = vi.fn();
-
-      (global.fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ files: [], uploadId: 'upload-123' }),
-      });
-
-      const { user } = renderWithProviders(
-        <ChatAttachmentMenu {...defaultProps} onUploadStart={onUploadStart} />
-      );
-
-      const fileInput = screen.getByTestId('file-input') as HTMLInputElement;
       const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
 
       await user.upload(fileInput, file);
 
       await waitFor(() => {
-        expect(onUploadStart).toHaveBeenCalledWith([file]);
+        expect(defaultProps.onStageFiles).toHaveBeenCalledWith([file]);
       });
+      expect(mockCompressImageFiles).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalled();
     });
   });
 });

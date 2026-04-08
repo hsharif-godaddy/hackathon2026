@@ -183,6 +183,51 @@ describe('ChatInput', () => {
     expect(sendButton).not.toBeDisabled();
   });
 
+  it('should enable send when staged files exist without message text', () => {
+    renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue=""
+        stagedFiles={[
+          {
+            id: 's1',
+            file: new File(['x'], 'a.png', { type: 'image/png' }),
+            previewUrl: 'blob:mock',
+          },
+        ]}
+        onRemoveStagedFile={vi.fn()}
+      />
+    );
+
+    const sendButton = screen.getByTestId('chat-send-button');
+    expect(sendButton).not.toBeDisabled();
+  });
+
+  it('should enable send when only selectedAssets without text', () => {
+    renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue=""
+        selectedAssets={[
+          {
+            imageUrl: 'https://example.com/x.jpg',
+            filename: 'x.jpg',
+            mediaType: MediaType.IMAGE,
+            sourceType: 'gc',
+            contentType: 'image/jpeg',
+            size: 100,
+            dimensions: { width: 10, height: 10 },
+            thumbnailUrl: 'https://example.com/x.jpg',
+          },
+        ]}
+        maxAssets={4}
+        onClearSelectedAsset={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId('chat-send-button')).not.toBeDisabled();
+  });
+
   it('should enable send button when input is empty but referenced files are present', () => {
     renderWithProviders(
       <ChatInput
@@ -247,9 +292,8 @@ describe('ChatInput', () => {
   });
 
   it('should disable send button while files are uploading', () => {
-    const uploadingFiles = [{ id: 'upload-1', name: 'photo.jpg' }];
     renderWithProviders(
-      <ChatInput {...defaultProps} inputValue="Test" uploadingFiles={uploadingFiles} />
+      <ChatInput {...defaultProps} inputValue="Test" uploadingStagedFileIds={['staged-1']} />
     );
 
     const sendButton = screen.getByRole('button', { name: 'builder_chatinput_send' });
@@ -258,13 +302,12 @@ describe('ChatInput', () => {
 
   it('should not call onSendMessage via Enter key while files are uploading', async () => {
     const onSendMessage = vi.fn();
-    const uploadingFiles = [{ id: 'upload-1', name: 'photo.jpg' }];
     const { user } = renderWithProviders(
       <ChatInput
         {...defaultProps}
         inputValue="Test"
         onSendMessage={onSendMessage}
-        uploadingFiles={uploadingFiles}
+        uploadingStagedFileIds={['staged-1']}
       />
     );
 
@@ -394,9 +437,9 @@ describe('ChatInput', () => {
     expect(sendButton).toHaveAttribute('data-eid', 'develop.prompt.send');
   });
 
-  it('should render attachment menu when appId and onFilesUploaded provided', () => {
+  it('should render attachment menu when appId and onStageFiles provided', () => {
     const { container } = renderWithProviders(
-      <ChatInput {...defaultProps} appId="test-app-123" onFilesUploaded={vi.fn()} />
+      <ChatInput {...defaultProps} appId="test-app-123" onStageFiles={vi.fn()} />
     );
 
     const attachmentButton = container.querySelector('[data-eid="develop.chat_input.attachment_menu"]');
@@ -410,7 +453,7 @@ describe('ChatInput', () => {
     expect(attachmentButton).not.toBeInTheDocument();
   });
 
-  it('should not render attachment menu when onFilesUploaded is not provided', () => {
+  it('should not render attachment menu when onStageFiles is not provided', () => {
     const { container } = renderWithProviders(<ChatInput {...defaultProps} appId="test-app-123" />);
 
     const attachmentButton = container.querySelector('[data-eid="develop.chat_input.attachment_menu"]');
@@ -419,7 +462,7 @@ describe('ChatInput', () => {
 
   it('should disable attachment menu button when disabled', () => {
     const { container } = renderWithProviders(
-      <ChatInput {...defaultProps} appId="test-app-123" onFilesUploaded={vi.fn()} isDisabled={true} />
+      <ChatInput {...defaultProps} appId="test-app-123" onStageFiles={vi.fn()} isDisabled={true} />
     );
 
     const attachmentButton = container.querySelector('[data-eid="develop.chat_input.attachment_menu"]');
@@ -443,7 +486,7 @@ describe('ChatInput', () => {
       <ChatInput
         {...defaultProps}
         appId="test-app-123"
-        onFilesUploaded={vi.fn()}
+        onStageFiles={vi.fn()}
         selectedAssets={assetsAtLimit}
         maxAssets={maxAssets}
         onClearSelectedAsset={vi.fn()}
@@ -471,7 +514,7 @@ describe('ChatInput', () => {
       <ChatInput
         {...defaultProps}
         appId="test-app-123"
-        onFilesUploaded={vi.fn()}
+        onStageFiles={vi.fn()}
         selectedAssets={assetsBelowLimit}
         maxAssets={maxAssets}
         onClearSelectedAsset={vi.fn()}
@@ -531,7 +574,7 @@ describe('ChatInput', () => {
 
     it('should disable attachment menu when isBudgetExceeded is true', () => {
       const { container } = renderWithProviders(
-        <ChatInput {...defaultProps} appId="test-app-123" onFilesUploaded={vi.fn()} isBudgetExceeded={true} />
+        <ChatInput {...defaultProps} appId="test-app-123" onStageFiles={vi.fn()} isBudgetExceeded={true} />
       );
 
       const attachmentButton = container.querySelector('[data-eid="develop.chat_input.attachment_menu"]');
@@ -598,47 +641,11 @@ describe('ChatInput', () => {
   });
 
   describe('paste handling', () => {
-    const OriginalImage = globalThis.Image;
-
-    beforeEach(() => {
-      URL.createObjectURL = vi.fn(() => 'blob:mock-url');
-      URL.revokeObjectURL = vi.fn();
-
-      globalThis.Image = class MockImage {
-        width = 800
-        height = 600
-        onload: (() => void) | null = null
-        onerror: (() => void) | null = null
-        set src(_url: string) {
-          this.onload?.()
-        }
-      } as any;
-
-      const originalCreateElement = document.createElement.bind(document);
-      vi.spyOn(document, 'createElement').mockImplementation(
-        function (this: Document, tagName: string, options?: ElementCreationOptions) {
-          if (tagName === 'canvas') {
-            return {
-              width: 0,
-              height: 0,
-              getContext: () => ({ drawImage: vi.fn() }),
-              toDataURL: () => 'data:image/jpeg;base64,compressed',
-            } as any;
-          }
-          return originalCreateElement.call(this, tagName, options);
-        }
-      );
-    });
-
-    afterEach(() => {
-      globalThis.Image = OriginalImage;
-      vi.mocked(document.createElement).mockRestore();
-    });
-
-    it('should call onScreenshotCaptured and preventDefault when pasting an image', function pasteImage() {
-      const onScreenshotCaptured = vi.fn();
+    it('should call onStageFiles and preventDefault when pasting a file', function pasteFile() {
+      const onStageFiles = vi.fn();
+      const pastedFile = new File(['pixel'], 'screenshot.png', { type: 'image/png' });
       renderWithProviders(
-        <ChatInput {...defaultProps} onScreenshotCaptured={onScreenshotCaptured} />
+        <ChatInput {...defaultProps} appId="app-1" onStageFiles={onStageFiles} />
       );
 
       const textarea = screen.getByRole('textbox');
@@ -646,40 +653,40 @@ describe('ChatInput', () => {
         clipboardData: {
           items: [{
             type: 'image/png',
-            getAsFile: () => new File(['pixel'], 'screenshot.png', { type: 'image/png' }),
+            kind: 'file',
+            getAsFile: () => pastedFile,
           }],
         },
       });
 
       expect(defaultNotPrevented).toBe(false);
-      expect(onScreenshotCaptured).toHaveBeenCalledWith('data:image/jpeg;base64,compressed');
-      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
+      expect(onStageFiles).toHaveBeenCalledWith([pastedFile]);
     });
 
     it('should not interfere when pasting plain text', function pasteText() {
-      const onScreenshotCaptured = vi.fn();
+      const onStageFiles = vi.fn();
       renderWithProviders(
-        <ChatInput {...defaultProps} onScreenshotCaptured={onScreenshotCaptured} />
+        <ChatInput {...defaultProps} appId="app-1" onStageFiles={onStageFiles} />
       );
 
       const textarea = screen.getByRole('textbox');
       const defaultNotPrevented = fireEvent.paste(textarea, {
         clipboardData: {
-          items: [{ type: 'text/plain', getAsFile: () => null }],
+          items: [{ type: 'text/plain', kind: 'string', getAsFile: () => null }],
         },
       });
 
       expect(defaultNotPrevented).toBe(true);
-      expect(onScreenshotCaptured).not.toHaveBeenCalled();
-      expect(URL.createObjectURL).not.toHaveBeenCalled();
+      expect(onStageFiles).not.toHaveBeenCalled();
     });
 
     it('should not handle paste when asset limit is reached', function pasteAtLimit() {
-      const onScreenshotCaptured = vi.fn();
+      const onStageFiles = vi.fn();
       renderWithProviders(
         <ChatInput
           {...defaultProps}
-          onScreenshotCaptured={onScreenshotCaptured}
+          appId="app-1"
+          onStageFiles={onStageFiles}
           selectedAssets={[{
             imageUrl: 'https://example.com/existing.jpg',
             filename: 'existing.jpg',
@@ -700,47 +707,13 @@ describe('ChatInput', () => {
         clipboardData: {
           items: [{
             type: 'image/png',
+            kind: 'file',
             getAsFile: () => new File(['pixel'], 'screenshot.png', { type: 'image/png' }),
           }],
         },
       });
 
-      expect(onScreenshotCaptured).not.toHaveBeenCalled();
-    });
-
-    it('should revoke object URL when getContext returns null', function nullContext() {
-      vi.spyOn(document, 'createElement').mockRestore();
-      const originalCreateElement = document.createElement.bind(document);
-      vi.spyOn(document, 'createElement').mockImplementation(
-        function (this: Document, tagName: string, options?: ElementCreationOptions) {
-          if (tagName === 'canvas') {
-            return {
-              width: 0,
-              height: 0,
-              getContext: () => null,
-              toDataURL: vi.fn(),
-            } as any;
-          }
-          return originalCreateElement.call(this, tagName, options);
-        }
-      );
-
-      const onScreenshotCaptured = vi.fn();
-      renderWithProviders(
-        <ChatInput {...defaultProps} onScreenshotCaptured={onScreenshotCaptured} />
-      );
-
-      fireEvent.paste(screen.getByRole('textbox'), {
-        clipboardData: {
-          items: [{
-            type: 'image/png',
-            getAsFile: () => new File(['pixel'], 'screenshot.png', { type: 'image/png' }),
-          }],
-        },
-      });
-
-      expect(onScreenshotCaptured).not.toHaveBeenCalled();
-      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
+      expect(onStageFiles).not.toHaveBeenCalled();
     });
   });
 

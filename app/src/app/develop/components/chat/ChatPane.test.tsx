@@ -581,7 +581,7 @@ describe('ChatPane', () => {
       mockGrantsData.data = [{ id: 'grant-1', creditsSpent: 100, creditsMax: 100 }];
       mockActiveGrant.result = undefined; // No active grant
 
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       const chatInput = screen.getByTestId('chat-input');
       expect(chatInput).toHaveAttribute('data-budget-exceeded', 'true');
@@ -596,7 +596,7 @@ describe('ChatPane', () => {
       mockGrantsData.data = [];
       mockActiveGrant.result = undefined;
 
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       const chatInput = screen.getByTestId('chat-input');
       expect(chatInput).toHaveAttribute('data-budget-exceeded', 'true');
@@ -610,7 +610,7 @@ describe('ChatPane', () => {
       mockSubscriptionData.data = { id: 'sub-123' };
       mockGrantsData.data = undefined; // Still fetching
 
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       const chatInput = screen.getByTestId('chat-input');
       expect(chatInput).toHaveAttribute('data-budget-exceeded', 'false');
@@ -627,7 +627,7 @@ describe('ChatPane', () => {
       mockGrantsData.isFetching = true; // Background refetch in progress
       mockActiveGrant.result = undefined; // No active grant in stale data
 
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       const chatInput = screen.getByTestId('chat-input');
       expect(chatInput).toHaveAttribute('data-budget-exceeded', 'true');
@@ -645,7 +645,7 @@ describe('ChatPane', () => {
       mockGrantsData.isFetching = true; // Background refetch in progress
       mockActiveGrant.result = undefined;
 
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       const chatInput = screen.getByTestId('chat-input');
       expect(chatInput).toHaveAttribute('data-budget-exceeded', 'false');
@@ -659,7 +659,7 @@ describe('ChatPane', () => {
       mockGrantsData.data = [{ id: 'grant-1', creditsSpent: 100, creditsMax: 100 }];
       mockActiveGrant.result = undefined;
 
-      const { user } = renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+      const { user } = renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
       await waitFor(function assertBannerVisible() {
         expect(screen.getByTestId('budget-exceeded-banner')).toBeInTheDocument();

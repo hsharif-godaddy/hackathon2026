@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useIntl } from 'react-intl'
 import Button from '@ux/button'
 import MicIcon from '@ux/icon/mic'
@@ -10,7 +10,7 @@ import XIcon from '@ux/icon/x'
 
 import AssetInline, { AssetMode } from '@/app/develop/components/chat/AssetInline'
 import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/AssetTypes'
-import ChatAttachmentMenu, { UploadedFile } from '@/app/develop/components/chat/ChatAttachmentMenu'
+import ChatAttachmentMenu from '@/app/develop/components/chat/ChatAttachmentMenu'
 import type { SendMessageOptions } from '@/app/develop/components/chat/ChatContext'
 import UsageGauge from '@/app/develop/components/chat/usage-gauge/UsageGauge'
 import { useChatHistoryNavigation } from '@/app/develop/components/chat/useChatHistoryNavigation'
@@ -20,7 +20,36 @@ import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { generateClickEID } from '@/utils/instrumentation'
 
+export interface StagedChatFile {
+  id: string
+  file: File
+  /** Set for image/* so AssetInline can show a thumbnail; revoked when removed or after send */
+  previewUrl: string
+}
+
 const MAX_INLINE_PASTE_LENGTH = 4_000
+
+function fileToMediaType(file: File): MediaType {
+  if (file.type.startsWith('image/')) return MediaType.IMAGE
+  if (file.type.startsWith('video/')) return MediaType.VIDEO
+  if (file.type === 'application/pdf') return MediaType.PDF
+  return MediaType.FILE
+}
+
+function collectFilesFromClipboard(e: React.ClipboardEvent): File[] {
+  const items = e.clipboardData?.items
+  if (!items) {
+    return []
+  }
+  const files: File[] = []
+  for (const item of Array.from(items)) {
+    if (item.kind === 'file') {
+      const f = item.getAsFile()
+      if (f) files.push(f)
+    }
+  }
+  return files
+}
 
 interface ChatInputProps {
   appId?: string | null
@@ -29,17 +58,19 @@ interface ChatInputProps {
   isStreaming?: boolean
   isBudgetExceeded?: boolean
   onInputChange: (value: string) => void
-  onSendMessage: (content?: string, options?: SendMessageOptions) => void
+  onSendMessage: (content?: string, options?: SendMessageOptions) => void | Promise<void>
   onStopGeneration?: () => void
   selectedAssets?: AssetManagerItem[]
   maxAssets?: number
   onClearSelectedAsset?: (index: number) => void
-  onFilesUploaded?: (files: UploadedFile[]) => void
+  stagedFiles?: StagedChatFile[]
+  onStageFiles?: (files: File[]) => void
+  onRemoveStagedFile?: (id: string) => void
   onScreenshotCaptured?: (dataUrl: string) => void
   onFileReferencesSelected?: (filePaths: string[]) => void
-  onUploadStart?: (files: File[]) => void
   onUploadError?: (errorMessage?: string) => void
-  uploadingFiles?: Array<{ id: string; name: string }>
+  /** Staged file ids currently uploading — shows overlay spinner on each matching thumbnail */
+  uploadingStagedFileIds?: readonly string[]
   referencedFiles?: Array<{ path: string; content: string }>
   onClearReferencedFile?: (index: number) => void
   aiEditContext?: AiEditContext | null
@@ -61,12 +92,13 @@ export default function ChatInput({
   selectedAssets = [],
   maxAssets = 1,
   onClearSelectedAsset,
-  onFilesUploaded,
+  stagedFiles = [],
+  onStageFiles,
+  onRemoveStagedFile,
   onScreenshotCaptured,
   onFileReferencesSelected,
-  onUploadStart,
   onUploadError,
-  uploadingFiles = [],
+  uploadingStagedFileIds = [],
   referencedFiles = [],
   onClearReferencedFile,
   aiEditContext,
@@ -77,10 +109,12 @@ export default function ChatInput({
   const t = useTranslations();
   const { locale } = useIntl();
   const { data: isChatGaugeEnabled } = useSwitchboard('appbuilder-chat-gauge');
-  const canAddAsset = selectedAssets.length < maxAssets;
+  const attachmentSlotsUsed = selectedAssets.length + stagedFiles.length
+  const canAddAsset = attachmentSlotsUsed < maxAssets;
 
   const textBeforeListeningRef = useRef('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [isFileDragOver, setIsFileDragOver] = useState(false)
 
   const { handleArrowUp, handleArrowDown, resetNavigation, exitNavigationMode, navRevision } =
     useChatHistoryNavigation({
@@ -129,14 +163,20 @@ export default function ChatInput({
     }
   }, [isListening]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const canStageFiles = Boolean(
+    appId &&
+    onStageFiles &&
+    canAddAsset &&
+    !((isDisabled && !isStreaming) || isBudgetExceeded || isListening)
+  )
+
   function handleSend() {
     if (isListening) {
-      // Clear ref before stopping to prevent race condition with captureTextOnListeningStart effect
       textBeforeListeningRef.current = ''
       stopSpeech()
       resetTranscript()
     }
-    onSendMessage()
+    void onSendMessage()
     resetNavigation()
   }
 
@@ -153,7 +193,14 @@ export default function ChatInput({
     handleLargeTextPaste(e)
     if (e.defaultPrevented) return
 
-    if (isDisabled || isBudgetExceeded) return
+    if (isDisabled || isBudgetExceeded || isListening) return
+
+    const files = collectFilesFromClipboard(e)
+    if (files.length > 0 && canStageFiles && onStageFiles) {
+      e.preventDefault()
+      onStageFiles(files)
+      return
+    }
 
     const items = e.clipboardData?.items
     if (!items?.length) return
@@ -195,6 +242,45 @@ export default function ChatInput({
     img.src = objectUrl
   }
 
+  function handleDragEnter(e: React.DragEvent<HTMLDivElement>) {
+    if (!canStageFiles || !e.dataTransfer.types.includes('Files')) return
+    e.preventDefault()
+    e.stopPropagation()
+    setIsFileDragOver(true)
+  }
+
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
+    if (!canStageFiles || !e.dataTransfer.types.includes('Files')) return
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  function handleDragLeave(e: React.DragEvent<HTMLDivElement>) {
+    // Do not gate on dataTransfer.types — it is often empty in dragleave (e.g. Firefox protected mode),
+    // which would skip clearing and leave the drag ring stuck.
+    e.stopPropagation()
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+      setIsFileDragOver(false)
+    }
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    if (!canStageFiles || !onStageFiles) return
+    if (!e.dataTransfer.types.includes('Files')) return
+    e.preventDefault()
+    e.stopPropagation()
+    setIsFileDragOver(false)
+    const files = Array.from(e.dataTransfer.files || [])
+    if (files.length === 0) return
+    onStageFiles(files)
+  }
+
+  const canSubmit =
+    Boolean(inputValue?.trim()) ||
+    stagedFiles.length > 0 ||
+    selectedAssets.length > 0 ||
+    referencedFiles.length > 0
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'ArrowUp') {
       if (textareaRef.current && handleArrowUp(textareaRef.current)) {
@@ -211,8 +297,8 @@ export default function ChatInput({
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       if (
-        (inputValue?.trim() || referencedFiles.length > 0) &&
-        uploadingFiles.length === 0 &&
+        canSubmit &&
+        uploadingStagedFileIds.length === 0 &&
         !(isStreaming && onStopGeneration)
       ) {
         handleSend()
@@ -220,10 +306,21 @@ export default function ChatInput({
     }
   }
 
+  const cardClassName = `flex flex-col p-1.5 mb-px bg-intents-ux-box-backgroundColor shadow-md rounded-lg focus-within:ring-1 focus-within:ring-ai-light${
+    isFileDragOver ? ' ring-2 ring-ai-light ring-offset-1' : ''
+  }`
+
   return (
     <div className="px-2 sm:px-3 md:px-0 mt-1 mt-auto pb-1">
       <div id="tour-chat-input" className="relative">
-        <div className="flex flex-col p-1.5 mb-px bg-intents-ux-box-backgroundColor shadow-md rounded-lg focus-within:ring-1 focus-within:ring-ai-light">
+        <div
+          data-testid="chat-input-card"
+          className={cardClassName}
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
           {/* AI Edit Context - shows screenshot (works for both Edit with AI and Replace Image) */}
           {aiEditContext && aiEditContext.screenshot && (
             <div className="mb-1">
@@ -282,26 +379,30 @@ export default function ChatInput({
             </div>
           )}
 
-          {/* Selected assets and uploading placeholders - combined in one line */}
-          {(selectedAssets.length > 0 || uploadingFiles.length > 0) && (
+          {/* Selected assets and staged local files (upload overlay on staged items) */}
+          {(selectedAssets.length > 0 || stagedFiles.length > 0) && (
             <div className="flex flex-wrap gap-1 mb-1">
-              {/* Selected assets */}
               {selectedAssets.map((asset, index) => (
                 <AssetInline
-                  key={asset.imageUrl}
+                  key={asset.imageUrl ?? `asset-${index}`}
                   asset={asset}
                   onClear={() => onClearSelectedAsset?.(index)}
                   mode={AssetMode.EDIT}
                 />
               ))}
 
-              {/* Uploading placeholders */}
-              {uploadingFiles.map((file) => (
+              {stagedFiles.map((s) => (
                 <AssetInline
-                  key={file.id}
-                  isLoading={true}
-                  onClear={() => {}}
+                  key={s.id}
+                  customAsset={{
+                    mediaType: fileToMediaType(s.file),
+                    imageUrl: s.previewUrl || undefined,
+                    filename: s.file.name,
+                    imageAlt: s.file.name,
+                  }}
+                  onClear={() => onRemoveStagedFile?.(s.id)}
                   mode={AssetMode.EDIT}
+                  isLoading={uploadingStagedFileIds.includes(s.id)}
                 />
               ))}
             </div>
@@ -331,13 +432,12 @@ export default function ChatInput({
 
           <div className="flex items-center justify-between pt-1">
             <div className="flex items-center gap-1">
-              {appId && onFilesUploaded && (
+              {appId && onStageFiles && (
                 <ChatAttachmentMenu
                   appId={appId}
-                  onFilesUploaded={onFilesUploaded}
+                  onStageFiles={onStageFiles}
                   onScreenshotCaptured={onScreenshotCaptured}
                   onFileReferencesSelected={onFileReferencesSelected}
-                  onUploadStart={onUploadStart}
                   onUploadError={onUploadError}
                   disabled={(isDisabled && !isStreaming) || isBudgetExceeded || !canAddAsset}
                 />
@@ -379,12 +479,7 @@ export default function ChatInput({
                   data-testid="chat-send-button"
                   onClick={handleSend}
                   data-eid={generateClickEID('develop.prompt.send')}
-                  disabled={
-                    (!inputValue?.trim() && referencedFiles.length === 0) ||
-                    (isDisabled && !isStreaming) ||
-                    isBudgetExceeded ||
-                    uploadingFiles.length > 0
-                  }
+                  disabled={!canSubmit || (isDisabled && !isStreaming) || isBudgetExceeded || uploadingStagedFileIds.length > 0}
                   aria-label={t('builder_chatinput_send')}
                   design="primary"
                   icon={<SendIcon />}

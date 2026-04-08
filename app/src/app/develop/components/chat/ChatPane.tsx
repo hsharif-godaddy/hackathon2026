@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { isEmployeeAuthType } from '@airo/shared/auth'
 import Growl from '@ux/growl'
 
@@ -8,9 +9,14 @@ import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/Asset
 import ChatBanners from '@/app/develop/components/chat/banners/ChatBanners'
 import BudgetExceededBanner from '@/app/develop/components/chat/BudgetExceededBanner'
 import { ChatContext } from '@/app/develop/components/chat/ChatContext'
-import ChatInput from '@/app/develop/components/chat/ChatInput'
+import ChatInput, { type StagedChatFile } from '@/app/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
 import { UploadedFile } from '@/app/develop/components/chat/FileUploadButton'
+import {
+  getStagedFilePreviewUrl,
+  revokeStagedFilePreviewIfCached,
+} from '@/app/develop/components/chat/stagedFilePreviewUrl'
+import { uploadChatFiles } from '@/app/develop/components/chat/uploadChatFiles'
 import MediaPanel from '@/app/develop/components/media/MediaPanel'
 import PersistentTodoList from '@/app/develop/components/PersistentTodoList'
 import PlanTracker from '@/app/develop/components/PlanTracker'
@@ -50,7 +56,7 @@ import {
   useStreamingConversationStore,
 } from '@/stores/useStreamingConversationStore'
 import { getActiveGrant } from '@/utils/credits'
-import { MAX_TOTAL_ASSETS } from '@/utils/file-upload-validation'
+import { MAX_TOTAL_ASSETS, validateForStaging } from '@/utils/file-upload-validation'
 import { logAiroHQEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 
@@ -58,6 +64,80 @@ interface ChatPaneProps {
   sendMessage: (options: SendMessageOptions) => Promise<void>
   stopGeneration: () => void
   isCreateFlowSession?: boolean
+}
+
+function mapUploadedFilesToAssetItems(files: UploadedFile[], agentUrl: string): AssetManagerItem[] {
+  return files.map((file) => {
+    let mediaType: MediaType
+    if (file.mimeType?.startsWith('image/')) {
+      mediaType = MediaType.IMAGE
+    } else if (file.mimeType?.startsWith('video/')) {
+      mediaType = MediaType.VIDEO
+    } else if (file.mimeType === 'application/pdf') {
+      mediaType = MediaType.PDF
+    } else {
+      mediaType = MediaType.FILE
+    }
+
+    const fileUrl = file.signedUrl ? `${agentUrl}${file.signedUrl}` : undefined
+
+    const baseAsset = {
+      mediaType,
+      sourceType: 'upload' as const,
+      imageUrl: fileUrl,
+      filename: file.originalName,
+      contentType: file.mimeType || 'application/octet-stream',
+      size: file.size,
+      thumbnailUrl: fileUrl
+    }
+
+    if (mediaType === MediaType.IMAGE) {
+      return {
+        ...baseAsset,
+        mediaType: MediaType.IMAGE,
+        dimensions: { width: 0, height: 0 }
+      } as AssetManagerItem
+    }
+    if (mediaType === MediaType.VIDEO) {
+      return {
+        ...baseAsset,
+        mediaType: MediaType.VIDEO,
+        videoUrl: fileUrl,
+        id: file.id,
+        urlHash: file.id,
+        width: 0,
+        height: 0
+      } as AssetManagerItem
+    }
+    if (mediaType === MediaType.PDF) {
+      return {
+        ...baseAsset,
+        mediaType: MediaType.PDF
+      } as AssetManagerItem
+    }
+    return {
+      ...baseAsset,
+      mediaType: MediaType.FILE
+    } as AssetManagerItem
+  })
+}
+
+/** Map server-reported uploads back to staged rows (order: first unused match per originalName). */
+function stagedIdsForSuccessfulUploads(
+  staged: StagedChatFile[],
+  uploaded: UploadedFile[]
+): string[] {
+  const pool = [...staged]
+  const used = new Set<string>()
+  const ids: string[] = []
+  for (const u of uploaded) {
+    const idx = pool.findIndex((s) => s.file.name === u.originalName && !used.has(s.id))
+    if (idx >= 0) {
+      used.add(pool[idx].id)
+      ids.push(pool[idx].id)
+    }
+  }
+  return ids
 }
 
 export default function ChatPane({
@@ -150,8 +230,11 @@ export default function ChatPane({
   // State for selected assets from AssetManager
   const [selectedAssets, setSelectedAssets] = useState<AssetManagerItem[]>([])
 
-  // State for uploading files (placeholder assets with loading state)
-  const [uploadingFiles, setUploadingFiles] = useState<Array<{ id: string; name: string }>>([])
+  /** Local files staged for the next send (preview only until upload on send) */
+  const [stagedFiles, setStagedFiles] = useState<StagedChatFile[]>([])
+
+  /** Staged attachment ids currently uploading — ChatInput shows overlay spinners on those thumbnails */
+  const [uploadingStagedFileIds, setUploadingStagedFileIds] = useState<string[]>([])
 
   // State for upload error message (auto-dismisses after 8s)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -224,12 +307,28 @@ export default function ChatPane({
   // Calculate maxAssets based on image replacement mode
   const maxAssets = safeAiEditContext?.isImageReplacement ? 1 : MAX_TOTAL_ASSETS
 
-  // Clear selected assets when entering image replacement mode
+  // Clear selected assets and staged files when entering image replacement mode
   useEffect(() => {
     if (safeAiEditContext?.isImageReplacement) {
       setSelectedAssets([])
+      setStagedFiles((prev) => {
+        prev.forEach((s) => {
+          if (s.previewUrl) URL.revokeObjectURL(s.previewUrl)
+        })
+        return []
+      })
     }
   }, [safeAiEditContext?.isImageReplacement])
+
+  // Drop staged files when switching apps (revoke object URLs)
+  useEffect(() => {
+    setStagedFiles((prev) => {
+      prev.forEach((s) => {
+        if (s.previewUrl) URL.revokeObjectURL(s.previewUrl)
+      })
+      return []
+    })
+  }, [appId])
 
   // Debug current state (only log when there's a significant change)
   const prevDebugRef = useRef<string>('')
@@ -352,104 +451,6 @@ export default function ChatPane({
     setBuildErrorContext(null)
   }, [setBuildErrorContext])
 
-  // Handle sending a message - accepts optional content for programmatic sends
-  const handleSendMessage = useCallback((content?: string, options?: { isActionRequest?: boolean }) => {
-    const messageToSend = content ?? inputValue
-
-    logger.debug('chat-pane.send-message', {
-      message: 'ChatPane handleSendMessage called',
-      inputValuePreview: inputValue?.slice(0, 50) + '...',
-      hasSendMessageFunction: !!sendMessage
-    })
-
-    if (messageToSend?.trim() || referencedFiles.length > 0) {
-      logAiroHQEvent({
-        category: 'click',
-        recommendation_task: 'builder_develop_prompt_submit',
-        recommendation_type: 'user_prompt'
-      })();
-
-      shipAnalyticsLog('chat.prompt.sent', {
-        appId,
-        promptLength: messageToSend.length,
-        source: content ? 'suggestion' : 'user-input',
-        hasEditContext: !!safeAiEditContext,
-        hasSelectedAsset: selectedAssets.length > 0,
-        hasBuildErrorContext: !!safeBuildErrorContext,
-        hasReferencedFiles: referencedFiles.length > 0
-      });
-
-      // Funnel event: Track first user-initiated message after create
-      // Only log if this is part of a create flow from homepage (not a returning visit)
-      if (!hasLoggedFirstUserMessageRef.current && appId && isCreateFlowSession) {
-        // Count user messages with early exit (we only care if <= 1)
-        let userCount = 0
-        for (const msg of messages) {
-          if (msg.role === 'user' && ++userCount > 1) break
-        }
-        // If there's 0 or 1 user message (the auto-sent one), this is the first manual interaction
-        if (userCount <= 1) {
-          shipAnalyticsLog('funnel.user_first_message.sent', {
-            appId,
-            promptLength: messageToSend.length,
-          })
-          hasLoggedFirstUserMessageRef.current = true
-        }
-      }
-
-      // Ensure we're connected to the right app
-      if (currentAppId !== appId) {
-        setCurrentAppId(appId)
-      }
-
-      // Send the message using the streaming WebSocket
-      // For programmatic sends (suggestions), don't include edit context/assets
-      // Screenshot is null to avoid agent analyzing it
-      if (content) {
-        // Programmatic send (e.g., suggestion button click)
-        // Parameters: message, aiEditContext, selectedAssets, todoListContext, isActionRequest, customContext
-        // - aiEditContext: minimal (no screenshot) since this isn't a user edit request
-        // - selectedAssets: undefined since programmatic sends don't have asset selections
-        // - todoListContext: undefined since todo context is managed separately
-        // - isActionRequest: signals agent to execute request immediately
-        // - customContext: pass file references if any
-        sendMessage({
-          content: messageToSend,
-          aiEditContext: { screenshot: null },
-          isActionRequest: options?.isActionRequest,
-          customContext: referencedFiles.length > 0 ? { referencedFiles } : undefined
-        })
-      } else {
-        // User input send - include all context
-        sendMessage({
-          content: messageToSend,
-          aiEditContext: { ...safeAiEditContext, screenshot: null },
-          selectedAssets: selectedAssets.length > 0 ? selectedAssets : undefined,
-          customContext: referencedFiles.length > 0 ? { referencedFiles } : undefined
-        })
-
-        // Clear contexts only for user input sends
-        if (safeAiEditContext) {
-          handleClearAiEditContext()
-        }
-        if (selectedAssets.length > 0) {
-          handleClearSelectedAsset()
-        }
-        if (referencedFiles.length > 0) {
-          handleClearReferencedFiles()
-        }
-        if (safeBuildErrorContext) {
-          handleClearBuildErrorContext()
-        }
-      }
-    }
-  }, [inputValue, sendMessage, currentAppId, appId, setCurrentAppId, safeAiEditContext, selectedAssets, referencedFiles, safeBuildErrorContext, handleClearAiEditContext, handleClearSelectedAsset, handleClearReferencedFiles, handleClearBuildErrorContext, isCreateFlowSession, messages])
-
-  // Create stable context value - reuses handleSendMessage
-  const chatContextValue = useMemo(() => ({
-    sendMessage: handleSendMessage
-  }), [handleSendMessage])
-
   useEffect(function cleanupUploadErrorTimer() {
     return () => {
       if (uploadErrorTimeoutRef.current) {
@@ -458,20 +459,277 @@ export default function ChatPane({
     }
   }, [])
 
+  /** Chat attachment banner (staging limits, validation); does not log as upload failure or clear in-flight upload state */
+  const showTransientAttachmentBanner = useCallback((errorMessage: string) => {
+    setUploadError(errorMessage)
+    if (uploadErrorTimeoutRef.current) {
+      clearTimeout(uploadErrorTimeoutRef.current)
+    }
+    uploadErrorTimeoutRef.current = setTimeout(() => {
+      setUploadError(null)
+      uploadErrorTimeoutRef.current = null
+    }, 8000)
+  }, [])
+
   const handleUploadError = useCallback((errorMessage?: string) => {
     logger.error('chat-pane.upload-error', { errorMessage })
-    setUploadingFiles([])
+    setUploadingStagedFileIds([])
     if (errorMessage) {
-      setUploadError(errorMessage)
-      if (uploadErrorTimeoutRef.current) {
-        clearTimeout(uploadErrorTimeoutRef.current)
-      }
-      uploadErrorTimeoutRef.current = setTimeout(() => {
-        setUploadError(null)
-        uploadErrorTimeoutRef.current = null
-      }, 8000)
+      showTransientAttachmentBanner(errorMessage)
     }
+  }, [showTransientAttachmentBanner])
+
+  /** ChatAttachmentMenu: file validation / screenshot — not multipart upload; no upload-error log or clearing in-flight IDs */
+  const handleAttachmentMenuError = useCallback(
+    (errorMessage?: string) => {
+      if (errorMessage) {
+        showTransientAttachmentBanner(errorMessage)
+      }
+    },
+    [showTransientAttachmentBanner]
+  )
+
+  const handleStageFiles = useCallback(
+    (files: File[]) => {
+      if (!appId || budgetExceeded) return
+      if (files.length === 0) return
+
+      let errorAfter: string | undefined
+      let partialAfter = false
+
+      flushSync(() => {
+        setStagedFiles((prev) => {
+          const usedSlots = selectedAssets.length + prev.length
+          const room = maxAssets - usedSlots
+          if (room <= 0) {
+            errorAfter = t('builder_chatfiles_error_max_attachments', { count: maxAssets })
+            return prev
+          }
+
+          const slice = files.slice(0, room)
+          const validationError = validateForStaging(slice, t)
+          if (validationError) {
+            errorAfter = validationError
+            return prev
+          }
+
+          if (slice.length < files.length) {
+            partialAfter = true
+          }
+
+          return [
+            ...prev,
+            ...slice.map((file) => ({
+              id: `staged-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              file,
+              previewUrl: getStagedFilePreviewUrl(file)
+            }))
+          ]
+        })
+      })
+
+      if (errorAfter) {
+        showTransientAttachmentBanner(errorAfter)
+      } else if (partialAfter) {
+        showTransientAttachmentBanner(t('builder_chatfiles_error_max_attachments', { count: maxAssets }))
+      }
+    },
+    [appId, budgetExceeded, selectedAssets.length, maxAssets, t, showTransientAttachmentBanner]
+  )
+
+  const handleRemoveStagedFile = useCallback((id: string) => {
+    setStagedFiles((prev) => {
+      const found = prev.find((s) => s.id === id)
+      if (found) {
+        revokeStagedFilePreviewIfCached(found.file)
+      }
+      return prev.filter((s) => s.id !== id)
+    })
   }, [])
+
+  // Handle sending a message - accepts optional content for programmatic sends
+  const handleSendMessage = useCallback(async (content?: string, options?: { isActionRequest?: boolean }) => {
+    const messageToSend = content ?? inputValue
+    const userInitiated = !content
+    const hasText = Boolean(messageToSend?.trim())
+    const hasStaged = userInitiated && stagedFiles.length > 0
+
+    logger.debug('chat-pane.send-message', {
+      message: 'ChatPane handleSendMessage called',
+      inputValuePreview: inputValue?.slice(0, 50) + '...',
+      hasSendMessageFunction: !!sendMessage
+    })
+
+    if (content) {
+      if (!hasText) return
+    } else if (!hasText && !hasStaged && selectedAssets.length === 0 && referencedFiles.length === 0) {
+      return
+    }
+
+    let mergedAssets: AssetManagerItem[] | undefined =
+      selectedAssets.length > 0 ? [...selectedAssets] : undefined
+
+    if (userInitiated && stagedFiles.length > 0) {
+      if (!agentUrl) {
+        logger.error('chat-pane.send-with-staged.no-agent-url', { appId })
+        handleUploadError(t('builder_chatfiles_error_upload_failed'))
+        return
+      }
+
+      const toUpload = [...stagedFiles]
+      setUploadingStagedFileIds(toUpload.map((s) => s.id))
+
+      try {
+        const { files: uploadedList, failedFiles, batchLevelError } = await uploadChatFiles(
+          appId!,
+          toUpload.map((s) => s.file),
+          t
+        )
+
+        if (batchLevelError) {
+          setUploadingStagedFileIds([])
+          if (uploadedList.length > 0) {
+            const partialItems = mapUploadedFilesToAssetItems(uploadedList, agentUrl)
+            setSelectedAssets((prev) => [...prev, ...partialItems].slice(0, MAX_TOTAL_ASSETS))
+            const succeededIds = stagedIdsForSuccessfulUploads(toUpload, uploadedList)
+            setStagedFiles((prev) =>
+              prev.filter((s) => {
+                if (succeededIds.includes(s.id)) {
+                  revokeStagedFilePreviewIfCached(s.file)
+                  return false
+                }
+                return true
+              })
+            )
+          }
+          handleUploadError(batchLevelError)
+          return
+        }
+
+        if (uploadedList.length === 0) {
+          setUploadingStagedFileIds([])
+          handleUploadError(t('builder_chatfiles_error_upload_failed'))
+          return
+        }
+
+        const newItems = mapUploadedFilesToAssetItems(uploadedList, agentUrl)
+        mergedAssets = [...(mergedAssets ?? []), ...newItems]
+
+        toUpload.forEach((s) => {
+          revokeStagedFilePreviewIfCached(s.file)
+        })
+        setStagedFiles([])
+        setUploadingStagedFileIds([])
+
+        if (failedFiles && failedFiles.length > 0) {
+          const names = failedFiles.map((f) => f.originalName).join(', ')
+          showTransientAttachmentBanner(
+            t('builder_chatfiles_error_partial_failure', {
+              success: uploadedList.length,
+              total: uploadedList.length + failedFiles.length,
+              names
+            })
+          )
+        }
+      } catch (error) {
+        setUploadingStagedFileIds([])
+        handleUploadError(error instanceof Error ? error.message : undefined)
+        return
+      }
+    }
+
+    logAiroHQEvent({
+      category: 'click',
+      recommendation_task: 'builder_develop_prompt_submit',
+      recommendation_type: 'user_prompt'
+    })();
+
+    shipAnalyticsLog('chat.prompt.sent', {
+      appId,
+      promptLength: messageToSend.length,
+      source: content ? 'suggestion' : 'user-input',
+      hasEditContext: !!safeAiEditContext,
+      hasSelectedAsset: Boolean(mergedAssets?.length),
+      hasBuildErrorContext: !!safeBuildErrorContext,
+      hasReferencedFiles: referencedFiles.length > 0
+    });
+
+    if (!hasLoggedFirstUserMessageRef.current && appId && isCreateFlowSession && userInitiated) {
+      let userCount = 0
+      for (const msg of messages) {
+        if (msg.role === 'user' && ++userCount > 1) break
+      }
+      if (userCount <= 1) {
+        shipAnalyticsLog('funnel.user_first_message.sent', {
+          appId,
+          promptLength: messageToSend.length,
+        })
+        hasLoggedFirstUserMessageRef.current = true
+      }
+    }
+
+    if (currentAppId !== appId) {
+      setCurrentAppId(appId)
+    }
+
+    const outboundContent = messageToSend.trim()
+
+    if (content) {
+      void sendMessage({
+        content: outboundContent,
+        aiEditContext: { screenshot: null },
+        isActionRequest: options?.isActionRequest,
+        customContext: referencedFiles.length > 0 ? { referencedFiles } : undefined
+      })
+    } else {
+      void sendMessage({
+        content: outboundContent,
+        aiEditContext: { ...safeAiEditContext, screenshot: null },
+        selectedAssets: mergedAssets,
+        customContext: referencedFiles.length > 0 ? { referencedFiles } : undefined
+      })
+
+      // Clear contexts only for user input sends
+      if (safeAiEditContext) {
+        handleClearAiEditContext()
+      }
+      if (selectedAssets.length > 0) {
+        handleClearSelectedAsset()
+      }
+      if (referencedFiles.length > 0) {
+        handleClearReferencedFiles()
+      }
+      if (safeBuildErrorContext) {
+        handleClearBuildErrorContext()
+      }
+    }
+  }, [
+    inputValue,
+    sendMessage,
+    currentAppId,
+    appId,
+    setCurrentAppId,
+    safeAiEditContext,
+    selectedAssets,
+    stagedFiles,
+    referencedFiles,
+    safeBuildErrorContext,
+    handleClearAiEditContext,
+    handleClearSelectedAsset,
+    handleClearReferencedFiles,
+    handleClearBuildErrorContext,
+    isCreateFlowSession,
+    messages,
+    agentUrl,
+    t,
+    handleUploadError,
+    showTransientAttachmentBanner,
+  ])
+
+  // Create stable context value - reuses handleSendMessage
+  const chatContextValue = useMemo(() => ({
+    sendMessage: handleSendMessage
+  }), [handleSendMessage])
 
   // Handle asset selection from AssetManager
   const handleAssetSelect = useCallback((items: AssetManagerItem[]) => {
@@ -560,16 +818,10 @@ export default function ChatPane({
         const existingUrls = new Set(selectedAssets.map(asset => asset.imageUrl))
         const newUniqueItems = items.filter(item => !existingUrls.has(item.imageUrl))
         if (selectedAssets.length + newUniqueItems.length > MAX_TOTAL_ASSETS) {
-          // Use setUploadError directly — handleUploadError also clears uploadingFiles which
-          // would wipe in-progress upload indicators unrelated to this limit violation
-          setUploadError(t('builder_chatfiles_error_max_attachments', { count: MAX_TOTAL_ASSETS }))
-          if (uploadErrorTimeoutRef.current) {
-            clearTimeout(uploadErrorTimeoutRef.current)
-          }
-          uploadErrorTimeoutRef.current = setTimeout(() => {
-            setUploadError(null)
-            uploadErrorTimeoutRef.current = null
-          }, 8000)
+          // Not handleUploadError — that clears uploadingStagedFileIds and logs upload failure
+          showTransientAttachmentBanner(
+            t('builder_chatfiles_error_max_attachments', { count: MAX_TOTAL_ASSETS })
+          )
         }
 
         // Intentional partial-accept: assets that fit within the limit are still added
@@ -587,19 +839,7 @@ export default function ChatPane({
     } else {
       logger.debug('chat-pane.asset-select.empty', { appId })
     }
-  }, [appId, sendMessage, handleClearAiEditContext, t, selectedAssets])
-
-  // Handle upload start - show placeholders immediately
-  const handleUploadStart = useCallback((files: File[]) => {
-    logger.debug('chat-pane.upload-start', { fileCount: files.length })
-
-    const uploadingPlaceholders = files.map(file => ({
-      id: `temp-${Date.now()}-${Math.random()}`,
-      name: file.name
-    }))
-
-    setUploadingFiles(uploadingPlaceholders)
-  }, [])
+  }, [appId, sendMessage, handleClearAiEditContext, t, selectedAssets, showTransientAttachmentBanner])
 
   // Handle screenshot capture from chat input
   const handleScreenshotCaptured = useCallback((dataUrl: string) => {
@@ -620,95 +860,20 @@ export default function ChatPane({
       dimensions: { width: 1024, height: 0 } // Width is 1024 from resize
     }
 
-    // Add to selected assets (or replace if at max)
+    // Respect combined cap with staged files (same slots as menu / drop / paste)
     setSelectedAssets(prev => {
-      if (prev.length >= maxAssets) {
-        // Replace last asset if at max
-        return [...prev.slice(0, maxAssets - 1), screenshotAsset]
+      const roomForSelected = maxAssets - stagedFiles.length
+      if (roomForSelected <= 0) {
+        return prev
+      }
+      if (prev.length >= roomForSelected) {
+        return [...prev.slice(0, roomForSelected - 1), screenshotAsset]
       }
       return [...prev, screenshotAsset]
     })
 
     logger.info('chat-pane.screenshot-added', { appId, assetsCount: selectedAssets.length + 1 })
-  }, [appId, maxAssets, selectedAssets.length])
-
-  // Handle file uploads from chat input
-  const handleFilesUploaded = useCallback((files: UploadedFile[]) => {
-    logger.debug('chat-pane.files-uploaded', { fileCount: files.length })
-
-    // Clear uploading placeholders
-    setUploadingFiles([])
-
-    // Agent URL is required to construct file URLs
-    if (!agentUrl) {
-      logger.error('chat-pane.files-uploaded.no-agent-url', { appId })
-      return
-    }
-
-    // Convert UploadedFile to AssetManagerItem
-    const assetItems: AssetManagerItem[] = files.map(file => {
-      // Determine media type from MIME type
-      let mediaType: MediaType
-      if (file.mimeType?.startsWith('image/')) {
-        mediaType = MediaType.IMAGE
-      } else if (file.mimeType?.startsWith('video/')) {
-        mediaType = MediaType.VIDEO
-      } else if (file.mimeType === 'application/pdf') {
-        mediaType = MediaType.PDF
-      } else {
-        // All other files (markdown, JSON, text, etc.)
-        mediaType = MediaType.FILE
-      }
-
-      // Use signed URL if available, otherwise undefined (triggers fallback UI)
-      const fileUrl = file.signedUrl
-        ? `${agentUrl}${file.signedUrl}`
-        : undefined
-
-      // Create base asset structure
-      const baseAsset = {
-        mediaType,
-        sourceType: 'upload',
-        imageUrl: fileUrl,
-        filename: file.originalName,
-        contentType: file.mimeType || 'application/octet-stream',
-        size: file.size,
-        thumbnailUrl: fileUrl
-      }
-
-      // Return appropriate asset type based on media type
-      if (mediaType === MediaType.IMAGE) {
-        return {
-          ...baseAsset,
-          mediaType: MediaType.IMAGE,
-          dimensions: { width: 0, height: 0 } // Dimensions unknown for now
-        } as AssetManagerItem
-      } else if (mediaType === MediaType.VIDEO) {
-        return {
-          ...baseAsset,
-          mediaType: MediaType.VIDEO,
-          videoUrl: fileUrl,
-          id: file.id,
-          urlHash: file.id,
-          width: 0,
-          height: 0
-        } as AssetManagerItem
-      } else if (mediaType === MediaType.PDF) {
-        return {
-          ...baseAsset,
-          mediaType: MediaType.PDF
-        } as AssetManagerItem
-      } else {
-        return {
-          ...baseAsset,
-          mediaType: MediaType.FILE
-        } as AssetManagerItem
-      }
-    })
-
-    // Use existing handleAssetSelect logic
-    handleAssetSelect(assetItems)
-  }, [appId, agentUrl, handleAssetSelect])
+  }, [appId, maxAssets, selectedAssets.length, stagedFiles.length])
 
   // Listen for error fix requests from PreviewPaneSimple
   useEffect(() => {
@@ -781,12 +946,13 @@ export default function ChatPane({
             selectedAssets={selectedAssets}
             maxAssets={maxAssets}
             onClearSelectedAsset={handleClearSingleAsset}
-            onFilesUploaded={handleFilesUploaded}
+            stagedFiles={stagedFiles}
+            onStageFiles={handleStageFiles}
+            onRemoveStagedFile={handleRemoveStagedFile}
             onScreenshotCaptured={handleScreenshotCaptured}
             onFileReferencesSelected={handleFileReferencesSelected}
-            onUploadStart={handleUploadStart}
-            onUploadError={handleUploadError}
-            uploadingFiles={uploadingFiles}
+            onUploadError={handleAttachmentMenuError}
+            uploadingStagedFileIds={uploadingStagedFileIds}
             referencedFiles={referencedFiles}
             onClearReferencedFile={handleClearSingleReferencedFile}
             aiEditContext={safeAiEditContext}
@@ -878,12 +1044,13 @@ export default function ChatPane({
               selectedAssets={selectedAssets}
               maxAssets={maxAssets}
               onClearSelectedAsset={handleClearSingleAsset}
-              onFilesUploaded={handleFilesUploaded}
+              stagedFiles={stagedFiles}
+              onStageFiles={handleStageFiles}
+              onRemoveStagedFile={handleRemoveStagedFile}
               onScreenshotCaptured={handleScreenshotCaptured}
               onFileReferencesSelected={handleFileReferencesSelected}
-              onUploadStart={handleUploadStart}
-              onUploadError={handleUploadError}
-              uploadingFiles={uploadingFiles}
+              onUploadError={handleAttachmentMenuError}
+              uploadingStagedFileIds={uploadingStagedFileIds}
               referencedFiles={referencedFiles}
               onClearReferencedFile={handleClearSingleReferencedFile}
               aiEditContext={safeAiEditContext}

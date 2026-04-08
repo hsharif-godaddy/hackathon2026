@@ -12,6 +12,10 @@
  * - All develop page tests run sequentially
  *
  * Note: Consolidates develop-header, develop-loading, develop-preview, develop-chat
+ *
+ * Coverage gap: staged-file send (uploadChatFiles → agent multipart) is not exercised here —
+ * depends on a live agent and is high flake risk in smoke. Step 6b only validates drop/paste
+ * staging; add a dedicated integration or nightly test if we need upload path coverage.
  */
 import { test, expect } from '@playwright/test';
 
@@ -195,6 +199,66 @@ test.describe('Develop Page', () => {
     console.log('  ✓ Shift+Enter creates multiline without sending');
 
     await chatInput.clear();
+
+    // ========================================
+    // STEP 6b: Chat input — file drop and clipboard paste staging
+    // ========================================
+    await dismissOverlays(page);
+    console.log('📎 Step 6b: Staging attachments via drop and paste...');
+
+    const chatInputCard = page.getByTestId('chat-input-card');
+    await expect(chatInputCard).toBeVisible();
+
+    await chatInput.clear();
+    await expect(page.getByTestId('chat-send-button')).toBeDisabled();
+
+    const tinyPngBase64 =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+    await chatInputCard.evaluate((el, b64: string) => {
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const file = new File([bytes], 'e2e-drop.png', { type: 'image/png' });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      el.dispatchEvent(
+        new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt })
+      );
+    }, tinyPngBase64);
+
+    await expect(page.getByTestId('chat-send-button')).not.toBeDisabled();
+    await expect(chatInputCard.getByRole('img', { name: 'e2e-drop.png' })).toBeVisible({
+      timeout: DEFAULT_TIMEOUT,
+    });
+    console.log('  ✓ Drop onto chat input stages file and enables send');
+
+    await page.getByTestId('chat-staged-file-clear').first().click();
+    await expect(page.getByTestId('chat-send-button')).toBeDisabled();
+    console.log('  ✓ Cleared staged drop attachment');
+
+    await chatInput.click();
+    await chatInput.evaluate((el) => {
+      const file = new File(['e2e-paste'], 'e2e-paste.txt', { type: 'text/plain' });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      const ev = new ClipboardEvent('paste', {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: dt,
+      });
+      el.dispatchEvent(ev);
+    });
+
+    await expect(page.getByTestId('chat-send-button')).not.toBeDisabled();
+    await expect(page.getByText('e2e-paste.txt', { exact: true })).toBeVisible({
+      timeout: DEFAULT_TIMEOUT,
+    });
+    console.log('  ✓ Paste file from clipboard stages attachment');
+
+    await page.getByTestId('chat-staged-file-clear').first().click();
+    await chatInput.clear();
+    console.log('  ✓ Cleared staged paste attachment');
 
     // ========================================
     // STEP 7: Test sending message via click

@@ -25,7 +25,9 @@ export enum AssetMode {
 interface CustomAsset {
   imageUrl?: string
   imageAlt?: string
-  mediaType: MediaType,
+  mediaType: MediaType
+  /** Shown as the caption for non-image / fallback image rows (e.g. staged local files) */
+  filename?: string
 }
 
 interface AssetInlineProps {
@@ -66,40 +68,39 @@ export default function AssetInline({
 
   // Helper function to get the asset label
   const getAssetLabel = (item: AssetManagerItem | CustomAsset): string => {
+    if ('filename' in item && item.filename) {
+      return item.filename
+    }
     switch (item.mediaType) {
       case MediaType.IMAGE:
-        // For AssetManagerItem, use filename if available; for CustomAsset, use default
-        return 'filename' in item && item.filename ? item.filename : t('builder_chatpane_asset_image')
+        return t('builder_chatpane_asset_image')
       case MediaType.VIDEO:
-        // For AssetManagerItem, use filename if available; for CustomAsset, use default
-        return 'filename' in item && item.filename ? item.filename : t('builder_chatpane_asset_video')
+        return t('builder_chatpane_asset_video')
       case MediaType.PDF:
-        // For AssetManagerItem, use filename if available; for CustomAsset, use default
-        return 'filename' in item && item.filename ? item.filename : t('builder_chatpane_asset_pdf')
+        return t('builder_chatpane_asset_pdf')
       case MediaType.FILE:
-        // For generic files, use filename if available
-        return 'filename' in item && item.filename ? item.filename : t('builder_chatpane_asset_default')
+        return t('builder_chatpane_asset_default')
       default:
         return t('builder_chatpane_asset_default')
     }
   }
 
-  // Show loading state
-  if (isLoading) {
-    return (
-      <div className="relative inline-block">
-        <div className={cn(ASSET_CLASSES, 'justify-center bg-intents-ux-box-backgroundColor')}>
-          <Spinner size="sm" />
-        </div>
-      </div>
-    )
-  }
-
   if (!activeAsset) {
+    if (isLoading) {
+      return (
+        <div className="relative inline-block">
+          <div className={cn(ASSET_CLASSES, 'justify-center bg-intents-ux-box-backgroundColor')}>
+            <Spinner size="sm" />
+          </div>
+        </div>
+      )
+    }
     return null
   }
 
-  const label = getAssetLabel(activeAsset);
+  const label = getAssetLabel(activeAsset)
+  /** Light blur so dark photos do not turn muddy under the overlay */
+  const mediaBlurClass = isLoading ? 'blur-[2px]' : undefined
 
   return (
     <div className="relative inline-block">
@@ -109,11 +110,11 @@ export default function AssetInline({
           src={getAssetDisplayUrl(activeAsset)}
           alt={customAsset?.imageAlt || label}
           onError={() => setImageLoadFailed(true)}
-          className={cn(ASSET_CLASSES, 'object-cover')}
+          className={cn(ASSET_CLASSES, 'object-cover', mediaBlurClass)}
         />
       ) : activeAsset.mediaType === MediaType.IMAGE ? (
         // Images WITHOUT URL render as icon with filename (fallback)
-        <div className={cn(ASSET_CLASSES, 'justify-end gap-0.5 px-1 py-0.5')}>
+        <div className={cn(ASSET_CLASSES, 'justify-end gap-0.5 px-1 py-0.5', mediaBlurClass)}>
           <ImageIcon />
           <text.div as='caption' size={-2} className='truncate max-w-full'>
             {label}
@@ -121,7 +122,7 @@ export default function AssetInline({
         </div>
       ) : activeAsset.mediaType === MediaType.VIDEO ? (
         // Videos render as icon with filename
-        <div className={cn(ASSET_CLASSES, 'justify-end gap-0.5 px-1 py-0.5')}>
+        <div className={cn(ASSET_CLASSES, 'justify-end gap-0.5 px-1 py-0.5', mediaBlurClass)}>
           <VideoIcon />
           <text.div as='caption' size={-2} className='truncate max-w-full'>
             {label}
@@ -129,15 +130,25 @@ export default function AssetInline({
         </div>
       ) : (
         // PDF and FILE types render as attachment icon with filename
-        <div className={cn(ASSET_CLASSES, 'justify-end gap-0.5 px-1 py-0.5')}>
+        <div className={cn(ASSET_CLASSES, 'justify-end gap-0.5 px-1 py-0.5', mediaBlurClass)}>
           <AttachmentIcon />
           <text.div as='caption' size={-2} className='truncate max-w-full'>
             {label}
           </text.div>
         </div>
       )}
-      {mode === AssetMode.EDIT && onClear && (
+      {isLoading && (
+        <div
+          className="absolute inset-0 flex items-center justify-center rounded ring-1 ring-inset ring-intents-ux-box-borderColor/25 bg-intents-ux-boxLowContrast-backgroundColor/88 shadow-none"
+          aria-busy="true"
+        >
+          <Spinner size="sm" />
+        </div>
+      )}
+      {mode === AssetMode.EDIT && onClear && !isLoading && (
         <button
+          type="button"
+          data-testid="chat-staged-file-clear"
           onClick={onClear}
           className="absolute top-0.5 right-0.5 size-3 flex items-center shadow-lg justify-center bg-intents-ux-box-backgroundColor rounded-full cursor-pointer border border-intents-ux-box-borderColor"
           title={t('builder_chatpane_clear_asset')}

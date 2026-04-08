@@ -8,34 +8,30 @@ import PageIcon from '@ux/icon/page';
 import PlusIcon from '@ux/icon/plus';
 
 import FileReferenceModal from '@/app/develop/components/chat/FileReferenceModal';
-import type { UploadedFile } from '@/app/develop/components/chat/FileUploadButton';
 import { useTranslations } from '@/hooks/useTranslations';
-import { getFileUploadAgent } from '@/lib/file-agent';
 import { logger } from '@/lib/request-context';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { ACCEPTED_UPLOAD_FILE_TYPES } from '@/utils/file-types';
-import { UPLOAD_TIMEOUT_MS, UPLOAD_TIMEOUT_SECONDS, validate } from '@/utils/file-upload-validation';
-import { compressImageFiles } from '@/utils/image-compression';
-import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation';
+import { validateForStaging } from '@/utils/file-upload-validation';
+import { generateClickEID } from '@/utils/instrumentation';
 
 export type { UploadedFile } from '@/app/develop/components/chat/FileUploadButton';
 
 interface ChatAttachmentMenuProps {
   appId: string;
-  onFilesUploaded: (files: UploadedFile[]) => void;
+  /** Stage files locally; upload runs when the user sends the message */
+  onStageFiles: (files: File[]) => void;
   onScreenshotCaptured?: (dataUrl: string) => void;
   onFileReferencesSelected?: (filePaths: string[]) => void;
-  onUploadStart?: (files: File[]) => void;
   onUploadError?: (errorMessage?: string) => void;
   disabled?: boolean;
 }
 
 export default function ChatAttachmentMenu({
   appId,
-  onFilesUploaded,
+  onStageFiles,
   onScreenshotCaptured,
   onFileReferencesSelected,
-  onUploadStart,
   onUploadError,
   disabled = false
 }: ChatAttachmentMenuProps) {
@@ -67,106 +63,30 @@ export default function ChatAttachmentMenu({
     setShowFileReferenceModal(false);
   };
 
-  const handleFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
 
     if (files.length === 0) {
       return;
     }
 
-    const validationError = validate(files, t);
+    const validationError = validateForStaging(files, t);
     if (validationError) {
       onUploadError?.(validationError);
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+    logger.debug('chat-attachment.stage-from-picker', {
+      appId,
+      fileCount: files.length,
+      totalSize: files.reduce((sum, f) => sum + f.size, 0)
+    });
 
-    try {
-      onUploadStart?.(files);
+    onStageFiles(files);
 
-      logger.debug('file-upload.chat.start', {
-        appId,
-        fileCount: files.length,
-        totalSize: files.reduce((sum, f) => sum + f.size, 0)
-      });
-
-      const [compressed, { token, uploadUrl }] = await Promise.all([
-        compressImageFiles(files),
-        getFileUploadAgent(appId)
-      ]);
-
-      logger.debug('file-upload.chat.compressed', {
-        appId,
-        originalSize: files.reduce((sum, f) => sum + f.size, 0),
-        compressedSize: compressed.reduce((sum, f) => sum + f.size, 0)
-      });
-
-      const formData = new FormData();
-      formData.append('appId', appId);
-      compressed.forEach(file => formData.append('files', file));
-
-      const response = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-        signal: controller.signal
-      });
-
-      if (!response.ok) {
-        let errorMessage = `Upload failed (${response.status})`;
-        try {
-          const body = await response.json();
-          if (body.error) {
-            errorMessage = typeof body.error === 'string' ? body.error : body.error.message || errorMessage;
-          }
-        } catch { /* response body not JSON */ }
-        throw new Error(errorMessage);
-      }
-
-      const result = await response.json();
-
-      logger.info('file-upload.chat.success', {
-        appId,
-        uploadId: result.uploadId,
-        fileCount: result.files.length,
-        failedCount: result.failedFiles?.length ?? 0
-      });
-
-      logImpressionEvent('uploads.image.success')();
-
-      onFilesUploaded(result.files);
-
-      if (result.failedFiles?.length > 0) {
-        const names = result.failedFiles.map((f: { originalName: string }) => f.originalName).join(', ');
-        onUploadError?.(t('builder_chatfiles_error_partial_failure', {
-          success: result.files.length,
-          total: result.files.length + result.failedFiles.length,
-          names
-        }));
-      }
-
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    } catch (error) {
-      const isTimeout = error instanceof DOMException && error.name === 'AbortError';
-      const message = isTimeout
-        ? t('builder_chatfiles_error_timeout_duration', { seconds: UPLOAD_TIMEOUT_SECONDS })
-        : error instanceof Error ? error.message : t('builder_chatfiles_error_upload_failed');
-
-      logger.error('file-upload.chat.failed', {
-        appId,
-        error: message
-      });
-
-      logImpressionEvent(isTimeout ? 'uploads.image.timeout' : 'uploads.image.failed')();
-
-      onUploadError?.(message);
-    } finally {
-      clearTimeout(timeout);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
