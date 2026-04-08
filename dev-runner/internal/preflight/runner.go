@@ -100,6 +100,16 @@ func (r *Runner) FixableChecks(results []CheckResult) []CheckWithFixer {
 	return fixable
 }
 
+// HasUnfixableFailures returns true if any check failed without a fix available.
+func HasUnfixableFailures(results []CheckResult) bool {
+	for _, r := range results {
+		if r.Status == StatusFail && !r.FixAvailable {
+			return true
+		}
+	}
+	return false
+}
+
 // HasFailures returns true if any check failed (not warn).
 func HasFailures(results []CheckResult) bool {
 	for _, r := range results {

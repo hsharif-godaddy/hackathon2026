@@ -83,7 +83,6 @@ Create `agents/.env`:
 # AI Provider (choose one)
 OPENAI_API_KEY=your_api_key_here
 OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-4
 
 # Getty Images (optional)
 GETTY_API_URL=https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net/img/search

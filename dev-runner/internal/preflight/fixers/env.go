@@ -100,7 +100,6 @@ AUTH_TYPE=%s
 
 OPENAI_API_KEY="%s"
 OPENAI_BASE_URL="%s"
-OPENAI_MODEL="%s"
 
 DEFAULT_PROVIDER=anthropic
 ANTHROPIC_API_KEY="%s"
@@ -127,7 +126,7 @@ DOWNLOAD_TEMP_DIR="/tmp/apps/archives"
 CHANNEL_ID=web
 
 ENABLE_AI_DEVTOOLS=true
-`, v.AuthType, v.APIKey, v.BaseURL, v.Model,
+`, v.AuthType, v.APIKey, v.BaseURL,
 		v.APIKey, v.BaseURL, v.Model)
 
 	if err := writeFileAtomic(filepath.Join(projectRoot, "agents/.env"), content); err != nil {

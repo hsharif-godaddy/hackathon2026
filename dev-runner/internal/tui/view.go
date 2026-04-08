@@ -24,18 +24,10 @@ func (m Model) View() tea.View {
 		var sections []string
 
 		switch m.phase {
-		case PhasePreflightChecking:
-			sections = append(sections, m.renderPreflightChecking())
-		case PhasePreflightDashboard:
-			sections = append(sections, m.renderPreflightDashboard())
-		case PhasePreflightSelectFixes:
-			sections = append(sections, m.renderPreflightSelectFixes())
-		case PhasePreflightEnvForm:
-			sections = append(sections, m.renderPreflightEnvForm())
-		case PhasePreflightFixing:
-			sections = append(sections, m.renderPreflightFixing())
-		case PhasePreflightVerifying:
-			sections = append(sections, m.renderPreflightVerifying())
+		case PhasePreflightChecking, PhasePreflightDashboard,
+			PhasePreflightSelectFixes, PhasePreflightEnvForm,
+			PhasePreflightFixing, PhasePreflightVerifying:
+			sections = append(sections, m.preflightViewport.View())
 		case PhaseHooks:
 			sections = append(sections, m.renderHookView())
 		case PhaseRunning:

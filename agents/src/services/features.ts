@@ -34,7 +34,6 @@ interface FeatureConfig {
   // OpenAI configuration
   openaiApiKey: string | undefined
   openaiBaseUrl: string | undefined
-  openaiModel: string
 
   // MySQL configuration
   mysqlRootHost: string
@@ -194,7 +193,6 @@ function parseEnvironmentFeatures(): FeatureConfig {
     // OpenAI configuration
     openaiApiKey: process.env.OPENAI_API_KEY,
     openaiBaseUrl: process.env.OPENAI_BASE_URL,
-    openaiModel: process.env.OPENAI_MODEL || 'gpt-4',
 
     // MySQL configuration
     mysqlRootHost: process.env.MYSQL_ROOT_HOST || 'localhost',
@@ -259,7 +257,6 @@ export const getAgentConfig = {
     return {
       apiKey: features.openaiApiKey,
       baseUrl: features.openaiBaseUrl,
-      model: features.openaiModel,
     };
   },
   mysqlConfig: () => {

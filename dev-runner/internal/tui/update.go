@@ -111,6 +111,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ready = true
 		m.resizePanes()
 		m.refreshPanes()
+		m.refreshPreflightViewport()
 		m.refreshHookViewport()
 		return m, nil
 
@@ -280,7 +281,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseWheelMsg:
-		if m.phase == PhaseHooks {
+		if m.phase >= PhasePreflightChecking && m.phase <= PhasePreflightVerifying {
+			switch msg.Button {
+			case tea.MouseWheelUp:
+				m.preflightAutoFollow = false
+				m.preflightViewport.ScrollUp(3)
+			case tea.MouseWheelDown:
+				m.preflightViewport.ScrollDown(3)
+				if m.preflightViewport.AtBottom() {
+					m.preflightAutoFollow = true
+				}
+			}
+		} else if m.phase == PhaseHooks {
 			switch msg.Button {
 			case tea.MouseWheelUp:
 				m.hookAutoFollow = false
@@ -326,6 +338,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				pane.AutoFollow = true
 			}
 		}
+	}
+
+	// Keep preflight viewport in sync with current phase content
+	if m.phase >= PhasePreflightChecking && m.phase <= PhasePreflightVerifying {
+		m.refreshPreflightViewport()
 	}
 
 	return m, tea.Batch(cmds...)
@@ -391,8 +408,8 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 				return hookCmd
 			}
 		case "s":
-			// Skip — continue without fixing
-			if !preflight.HasFailures(m.preflightResults) {
+			// Skip — continue without fixing (allowed when all failures have fixes available)
+			if !preflight.HasUnfixableFailures(m.preflightResults) {
 				m.phase = PhaseHooks
 				m.hookRunning = true
 				ctx, cancel := context.WithCancel(context.Background())
@@ -757,6 +774,42 @@ func (m *Model) refreshPanes() {
 		if idx >= 0 && idx < len(m.panes) {
 			m.panes[idx].UpdateContent(m.manager.Processes[idx].GetLines(), false)
 		}
+	}
+}
+
+func (m *Model) refreshPreflightViewport() {
+	if !m.ready {
+		return
+	}
+	h := m.height
+	if h < 1 {
+		h = 1
+	}
+
+	var content string
+	switch m.phase {
+	case PhasePreflightChecking:
+		content = m.renderPreflightChecking()
+	case PhasePreflightDashboard:
+		content = m.renderPreflightDashboard()
+	case PhasePreflightSelectFixes:
+		content = m.renderPreflightSelectFixes()
+	case PhasePreflightEnvForm:
+		content = m.renderPreflightEnvForm()
+	case PhasePreflightFixing:
+		content = m.renderPreflightFixing()
+	case PhasePreflightVerifying:
+		content = m.renderPreflightVerifying()
+	}
+
+	savedOffset := m.preflightViewport.YOffset()
+	m.preflightViewport.SetWidth(m.width)
+	m.preflightViewport.SetHeight(h)
+	m.preflightViewport.SetContent(content)
+	if m.preflightAutoFollow {
+		m.preflightViewport.GotoBottom()
+	} else {
+		m.preflightViewport.SetYOffset(savedOffset)
 	}
 }
 

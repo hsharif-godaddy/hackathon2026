@@ -137,7 +137,9 @@ type Model struct {
 	preflightResults   []preflight.CheckResult
 	preflightFixQueue  []preflight.CheckWithFixer
 	preflightFixIndex  int
-	preflightFixStatus string // "Fixing: <name>..."
+	preflightFixStatus     string // "Fixing: <name>..."
+	preflightViewport      viewport.Model
+	preflightAutoFollow    bool
 
 	// Inline fix selector state
 	fixSelectorItems    []preflight.CheckWithFixer
@@ -186,6 +188,8 @@ func NewModel(cfg *config.Config, projectRoot string) Model {
 		settingsItems:       items,
 		phase:               PhasePreflightChecking,
 		preflightRunner:     buildPreflightRunner(),
+		preflightViewport:   newSoftWrapViewport(80, 24),
+		preflightAutoFollow: true,
 		devSettingsPreset:   "free-trial",
 		controlPlaneBaseURL: controlPlaneBaseURL(cfg),
 	}
