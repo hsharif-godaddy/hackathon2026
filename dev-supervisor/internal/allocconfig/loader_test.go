@@ -662,6 +662,268 @@ func TestConfig_CopyNil(t *testing.T) {
 	}
 }
 
+func TestLoader_LoadWithProductID(t *testing.T) {
+	t.Run("load config with PRODUCT_ID", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.json")
+
+		configData := map[string]any{
+			"PRODUCT_ID": map[string]any{
+				"SYSTEM_MANAGED": true,
+				"VALUE":          "paas-nodejs-v1",
+			},
+		}
+
+		writeTestConfig(t, configPath, configData)
+
+		loader := NewLoader(configPath)
+		config, err := loader.Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+
+		if config.ProductID == nil {
+			t.Fatal("PRODUCT_ID is nil")
+		}
+		if !config.ProductID.SystemManaged {
+			t.Error("PRODUCT_ID.SYSTEM_MANAGED should be true")
+		}
+		if config.ProductID.Value != "paas-nodejs-v1" {
+			t.Errorf("PRODUCT_ID.VALUE = %q, want %q", config.ProductID.Value, "paas-nodejs-v1")
+		}
+	})
+
+	t.Run("load config with all fields including PRODUCT_ID", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.json")
+
+		configData := map[string]any{
+			"DATABASE": map[string]any{
+				"SYSTEM_MANAGED": true,
+				"VALUE": map[string]any{
+					"NAME":     "testdb",
+					"HOST":     "mysql.example.com",
+					"IP":       "10.0.0.1",
+					"PORT":     3306,
+					"USERNAME": "dbuser",
+					"PASSWORD": "secret",
+					"VARIANT":  "preview",
+				},
+			},
+			"JWT_REDIRECT_URL": map[string]any{
+				"SYSTEM_MANAGED": true,
+				"VALUE":          "https://example.com/redirect",
+			},
+			"PRODUCT_ID": map[string]any{
+				"SYSTEM_MANAGED": true,
+				"VALUE":          "aab-v2",
+			},
+		}
+
+		writeTestConfig(t, configPath, configData)
+
+		loader := NewLoader(configPath)
+		config, err := loader.Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+
+		if config.Database == nil {
+			t.Fatal("DATABASE is nil")
+		}
+		if config.JWTRedirectURL == nil {
+			t.Fatal("JWT_REDIRECT_URL is nil")
+		}
+		if config.ProductID == nil {
+			t.Fatal("PRODUCT_ID is nil")
+		}
+		if config.ProductID.Value != "aab-v2" {
+			t.Errorf("PRODUCT_ID.VALUE = %q, want %q", config.ProductID.Value, "aab-v2")
+		}
+	})
+
+	t.Run("empty file has nil PRODUCT_ID", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.json")
+
+		if err := os.WriteFile(configPath, []byte("{}"), 0600); err != nil {
+			t.Fatalf("failed to write test file: %v", err)
+		}
+
+		loader := NewLoader(configPath)
+		config, err := loader.Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+
+		if config.ProductID != nil {
+			t.Error("PRODUCT_ID should be nil for empty config")
+		}
+	})
+}
+
+func TestConfig_CopyWithProductID(t *testing.T) {
+	t.Run("Copy includes ProductID", func(t *testing.T) {
+		config := &Config{
+			ProductID: &Secret[string]{
+				SystemManaged: true,
+				Value:         "test-product-id",
+			},
+		}
+
+		configCopy := config.Copy()
+
+		if configCopy.ProductID == nil {
+			t.Fatal("Copy().ProductID is nil")
+		}
+		if configCopy.ProductID.Value != "test-product-id" {
+			t.Errorf("Copy().ProductID.Value = %q, want %q", configCopy.ProductID.Value, "test-product-id")
+		}
+		if configCopy.ProductID == config.ProductID {
+			t.Error("Copy() should create new ProductID pointer")
+		}
+	})
+
+	t.Run("Copy handles nil ProductID", func(t *testing.T) {
+		config := &Config{
+			Database: &Secret[DatabaseConfig]{
+				Value: DatabaseConfig{Name: "testdb"},
+			},
+			ProductID: nil,
+		}
+
+		configCopy := config.Copy()
+
+		if configCopy.ProductID != nil {
+			t.Error("Copy().ProductID should be nil when original is nil")
+		}
+	})
+
+	t.Run("Copy mutation does not affect original ProductID", func(t *testing.T) {
+		config := &Config{
+			ProductID: &Secret[string]{
+				SystemManaged: true,
+				Value:         "original-value",
+			},
+		}
+
+		configCopy := config.Copy()
+		configCopy.ProductID.Value = "mutated-value"
+
+		if config.ProductID.Value != "original-value" {
+			t.Errorf("Original ProductID was mutated: got %q, want %q", config.ProductID.Value, "original-value")
+		}
+	})
+}
+
+func TestConfig_GetProductID(t *testing.T) {
+	t.Run("returns value when configured", func(t *testing.T) {
+		config := &Config{
+			ProductID: &Secret[string]{Value: "paas-nodejs-v1"},
+		}
+		if got := config.GetProductID(); got != "paas-nodejs-v1" {
+			t.Errorf("GetProductID() = %q, want %q", got, "paas-nodejs-v1")
+		}
+	})
+
+	t.Run("returns empty string when nil", func(t *testing.T) {
+		config := &Config{}
+		if got := config.GetProductID(); got != "" {
+			t.Errorf("GetProductID() = %q, want empty string", got)
+		}
+	})
+}
+
+func TestConfig_HasProductID(t *testing.T) {
+	t.Run("returns true when present and non-empty", func(t *testing.T) {
+		config := &Config{
+			ProductID: &Secret[string]{Value: "aab-v1"},
+		}
+		if !config.HasProductID() {
+			t.Error("HasProductID() = false, want true")
+		}
+	})
+
+	t.Run("returns false when nil", func(t *testing.T) {
+		config := &Config{}
+		if config.HasProductID() {
+			t.Error("HasProductID() = true, want false")
+		}
+	})
+
+	t.Run("returns false when empty string", func(t *testing.T) {
+		config := &Config{
+			ProductID: &Secret[string]{Value: ""},
+		}
+		if config.HasProductID() {
+			t.Error("HasProductID() = true, want false")
+		}
+	})
+}
+
+func TestGetProductIDOrDefaultWithLoader(t *testing.T) {
+	t.Run("returns product ID when config exists", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.json")
+		writeTestConfig(t, configPath, map[string]any{
+			"PRODUCT_ID": map[string]any{
+				"SYSTEM_MANAGED": true,
+				"VALUE":          "paas-nodejs-v1",
+			},
+		})
+
+		loader := NewLoader(configPath)
+		result := getProductIDOrDefaultWithLoader(loader, "default-value")
+		if result != "paas-nodejs-v1" {
+			t.Errorf("got %q, want %q", result, "paas-nodejs-v1")
+		}
+	})
+
+	t.Run("returns default when ProductID is missing", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.json")
+		writeTestConfig(t, configPath, map[string]any{
+			"DATABASE": map[string]any{
+				"SYSTEM_MANAGED": true,
+				"VALUE": map[string]any{
+					"NAME": "testdb",
+				},
+			},
+		})
+
+		loader := NewLoader(configPath)
+		result := getProductIDOrDefaultWithLoader(loader, "default-value")
+		if result != "default-value" {
+			t.Errorf("got %q, want %q", result, "default-value")
+		}
+	})
+
+	t.Run("returns default when ProductID value is empty", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.json")
+		writeTestConfig(t, configPath, map[string]any{
+			"PRODUCT_ID": map[string]any{
+				"SYSTEM_MANAGED": true,
+				"VALUE":          "",
+			},
+		})
+
+		loader := NewLoader(configPath)
+		result := getProductIDOrDefaultWithLoader(loader, "default-value")
+		if result != "default-value" {
+			t.Errorf("got %q, want %q", result, "default-value")
+		}
+	})
+
+	t.Run("returns default when config file missing", func(t *testing.T) {
+		loader := NewLoader("/nonexistent/config.json")
+		result := getProductIDOrDefaultWithLoader(loader, "fallback")
+		if result != "fallback" {
+			t.Errorf("got %q, want %q", result, "fallback")
+		}
+	})
+}
+
 // writeTestConfig is a helper that writes test config data to a file
 func writeTestConfig(t *testing.T, path string, data map[string]any) {
 	t.Helper()

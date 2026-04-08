@@ -130,8 +130,8 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 		if tokenFromHeader != "" {
 			// Only set cookie if token came from Authorization header (not from cookie itself to avoid loops)
 			// SameSite=None is required for cross-origin cookie access: both variants set it.
-		// Unpartitioned: for top-level navigation (user opens preview URL directly).
-		// Partitioned (CHIPS): for iframe embedding (builder on .dev-godaddy.com embeds preview on localhost).
+			// Unpartitioned: for top-level navigation (user opens preview URL directly).
+			// Partitioned (CHIPS): for iframe embedding (builder on .dev-godaddy.com embeds preview on localhost).
 			maxAge := CookieMaxAgeFromClaims(result.Claims)
 
 			// Unpartitioned cookie for top-level navigation (PaaS: user opens preview URL directly).

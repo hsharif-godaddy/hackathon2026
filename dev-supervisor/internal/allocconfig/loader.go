@@ -59,6 +59,7 @@ var validEnvKey = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
 type Config struct {
 	Database       *Secret[DatabaseConfig] `json:"DATABASE"`
 	JWTRedirectURL *Secret[string]         `json:"JWT_REDIRECT_URL"`
+	ProductID      *Secret[string]         `json:"PRODUCT_ID"`
 	CustomerEnv    map[string]string       `json:"-"` // Populated from other top-level entries; not from JSON tag
 }
 
@@ -79,6 +80,11 @@ func (c *Config) Copy() *Config {
 	if c.JWTRedirectURL != nil {
 		jwtCopy := *c.JWTRedirectURL
 		configCopy.JWTRedirectURL = &jwtCopy
+	}
+
+	if c.ProductID != nil {
+		pidCopy := *c.ProductID
+		configCopy.ProductID = &pidCopy
 	}
 
 	if len(c.CustomerEnv) > 0 {
@@ -194,6 +200,12 @@ func (l *Loader) Load() (*Config, error) {
 					continue
 				}
 				config.JWTRedirectURL = &s
+			case "PRODUCT_ID":
+				var s Secret[string]
+				if err := json.Unmarshal(v, &s); err != nil {
+					continue
+				}
+				config.ProductID = &s
 			default:
 				if validEnvKey.MatchString(k) {
 					var s Secret[string]

@@ -29,3 +29,36 @@ func (c *Config) HasDatabase() bool {
 func (c *Config) HasJWTRedirectURL() bool {
 	return c.JWTRedirectURL != nil && c.JWTRedirectURL.Value != ""
 }
+
+// GetProductID returns the product ID value.
+// Returns empty string if not configured.
+func (c *Config) GetProductID() string {
+	if c.ProductID == nil {
+		return ""
+	}
+	return c.ProductID.Value
+}
+
+// HasProductID returns true if PRODUCT_ID is configured and non-empty
+func (c *Config) HasProductID() bool {
+	return c.ProductID != nil && c.ProductID.Value != ""
+}
+
+// GetProductIDOrDefault loads config using Default() and returns the product ID.
+// Returns defaultValue if config cannot be loaded or PRODUCT_ID is not set.
+func GetProductIDOrDefault(defaultValue string) string {
+	return getProductIDOrDefaultWithLoader(Default(), defaultValue)
+}
+
+// getProductIDOrDefaultWithLoader is the internal implementation that accepts a loader.
+// This allows testing with custom loaders while the public function uses Default().
+func getProductIDOrDefaultWithLoader(loader *Loader, defaultValue string) string {
+	cfg, err := loader.Load()
+	if err != nil {
+		return defaultValue
+	}
+	if cfg.HasProductID() {
+		return cfg.GetProductID()
+	}
+	return defaultValue
+}

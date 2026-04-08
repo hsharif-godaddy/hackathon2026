@@ -249,7 +249,7 @@ func (p *HTTPProxy) Start() error {
 	mux.Handle("/", router)
 
 	// Build middleware chain (outermost to innermost):
-	// logging -> CORS -> method validation -> JWT -> connection tracking -> activity -> router
+	// logging -> responseHeaders -> CORS -> method validation -> JWT -> connection tracking -> activity -> router
 	//
 	// This order ensures:
 	// - All requests are logged (logging first)
@@ -343,6 +343,9 @@ func (p *HTTPProxy) Start() error {
 		MaxAge:           86400, // Cache preflight for 24 hours
 	})
 	handler = p.corsMiddleware.Handler(handler)
+
+	// Response headers middleware (injects X-Product-Id and other custom headers)
+	handler = responseHeadersMiddleware(handler)
 
 	// Logging middleware (outermost layer)
 	// Logs all requests with response details
