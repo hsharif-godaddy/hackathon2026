@@ -1,0 +1,254 @@
+[
+  {
+    "name": "pizza-restaurant",
+    "prompt": "Build a pizza restaurant website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "pizza restaurant interior brick oven wood fire",
+        "context": "wide hero banner showing warm pizza restaurant with brick oven for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "menu/margherita",
+        "query": "margherita pizza fresh basil mozzarella close up",
+        "context": "close-up overhead shot of classic margherita pizza for menu page",
+        "filters": { "compositions": ["close_up"], "subjectCategory": ["food"] }
+      }
+    ]
+  },
+  {
+    "name": "bbq-restaurant",
+    "prompt": "Build a BBQ restaurant website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "bbq smokehouse restaurant smoked meat brisket ribs",
+        "context": "wide hero banner showing rustic BBQ smokehouse with smoked meats for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "menu/platter",
+        "query": "bbq platter smoked brisket ribs pulled pork cornbread",
+        "context": "overhead shot of BBQ platter with smoked meats and sides for menu page",
+        "filters": { "compositions": ["close_up"], "subjectCategory": ["food"] }
+      }
+    ]
+  },
+  {
+    "name": "vegan-restaurant",
+    "prompt": "Build a vegan restaurant website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "vegan restaurant interior modern plant-based green",
+        "context": "wide hero banner showing bright modern vegan restaurant interior for homepage",
+        "filters": { "moods": ["natural"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "menu/bowl",
+        "query": "vegan buddha bowl colorful vegetables grains fresh",
+        "context": "close-up of colorful vegan buddha bowl with fresh ingredients for menu page",
+        "filters": { "compositions": ["close_up"], "subjectCategory": ["food"] }
+      }
+    ]
+  },
+  {
+    "name": "food-truck",
+    "prompt": "Build a food truck website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "food truck street vendor colorful serving window",
+        "context": "wide shot of vibrant food truck with serving window and customers for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "about/truck",
+        "query": "food truck chef cooking outdoor street food preparation",
+        "context": "chef preparing food inside food truck kitchen for about page",
+        "filters": { "numberOfPeople": ["one"] }
+      }
+    ]
+  },
+  {
+    "name": "catering-service",
+    "prompt": "Build a catering company website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "catering buffet elegant event setup food display",
+        "context": "wide hero banner showing elegant catering buffet setup at event for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "services/wedding",
+        "query": "wedding reception dinner table setting floral centerpiece",
+        "context": "beautifully set wedding reception dinner table with floral arrangements for wedding catering page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "wine-bar",
+    "prompt": "Build a wine bar website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "wine bar interior dim lighting bottles shelves elegant",
+        "context": "wide hero banner showing sophisticated wine bar interior with bottle display for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "menu/wine-glass",
+        "query": "red wine glass pour sommelier tasting",
+        "context": "close-up of red wine being poured into elegant glass for wine menu page",
+        "filters": { "compositions": ["close_up"] }
+      }
+    ]
+  },
+  {
+    "name": "brewery",
+    "prompt": "Build a craft brewery website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "craft brewery taproom interior beer taps bar",
+        "context": "wide hero banner showing industrial craft brewery taproom with beer taps for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "about/brewing",
+        "query": "brewer checking beer fermentation tanks brewing process",
+        "context": "brewer working with stainless steel fermentation tanks for about brewing process page",
+        "filters": { "numberOfPeople": ["one"] }
+      }
+    ]
+  },
+  {
+    "name": "ice-cream-shop",
+    "prompt": "Build an ice cream shop website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "ice cream shop colorful display gelato counter scoops",
+        "context": "wide hero banner showing colorful ice cream shop with gelato display counter for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "menu/cone",
+        "query": "ice cream cone scoops waffle cone colorful dripping",
+        "context": "close-up of stacked ice cream scoops on waffle cone for menu page",
+        "filters": { "compositions": ["close_up"], "subjectCategory": ["food"] }
+      }
+    ]
+  },
+  {
+    "name": "steakhouse",
+    "prompt": "Build a steakhouse restaurant website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "upscale steakhouse interior dark wood leather booths",
+        "context": "wide hero banner showing elegant steakhouse dining room with dark wood and leather for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "menu/steak",
+        "query": "grilled ribeye steak plated herbs butter seared",
+        "context": "close-up of perfectly grilled ribeye steak with herbs for menu page",
+        "filters": { "compositions": ["close_up"], "subjectCategory": ["food"] }
+      }
+    ]
+  },
+  {
+    "name": "thai-restaurant",
+    "prompt": "Build a Thai restaurant website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "thai restaurant interior tropical decor bamboo orchids",
+        "context": "wide hero banner showing Thai restaurant with tropical decor for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "menu/pad-thai",
+        "query": "pad thai noodles shrimp peanuts lime plated",
+        "context": "close-up of pad thai noodle dish with shrimp and garnish for menu page",
+        "filters": { "compositions": ["close_up"], "subjectCategory": ["food"] }
+      }
+    ]
+  },
+  {
+    "name": "juice-bar",
+    "prompt": "Build a juice bar website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "juice bar counter fresh fruit smoothie blender colorful",
+        "context": "wide hero banner showing vibrant juice bar counter with fresh fruits for homepage",
+        "filters": { "moods": ["natural"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "menu/smoothie",
+        "query": "green smoothie fresh spinach kale healthy glass",
+        "context": "close-up of fresh green smoothie in glass for menu page",
+        "filters": { "compositions": ["close_up"], "subjectCategory": ["food"] }
+      }
+    ]
+  },
+  {
+    "name": "donut-shop",
+    "prompt": "Build a donut shop website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "donut shop display case colorful glazed assorted donuts",
+        "context": "wide hero banner showing donut shop with colorful glazed donut display for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "menu/featured",
+        "query": "artisan donut close up frosting sprinkles colorful",
+        "context": "close-up of decorated artisan donut with frosting and sprinkles for featured menu item",
+        "filters": { "compositions": ["close_up"], "subjectCategory": ["food"] }
+      }
+    ]
+  },
+  {
+    "name": "seafood-restaurant",
+    "prompt": "Build a seafood restaurant website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "seafood restaurant waterfront dining ocean view nautical",
+        "context": "wide hero banner showing waterfront seafood restaurant with ocean views for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "menu/lobster",
+        "query": "fresh lobster plated butter lemon seafood dish",
+        "context": "close-up of fresh lobster dinner beautifully plated for menu page",
+        "filters": { "compositions": ["close_up"], "subjectCategory": ["food"] }
+      }
+    ]
+  },
+  {
+    "name": "indian-restaurant",
+    "prompt": "Build an Indian restaurant website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "indian restaurant interior colorful spices ornate decor",
+        "context": "wide hero banner showing vibrant Indian restaurant interior with ornate decor for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "menu/curry",
+        "query": "chicken tikka masala curry naan bread traditional",
+        "context": "close-up of traditional chicken tikka masala with naan for menu page",
+        "filters": { "compositions": ["close_up"], "subjectCategory": ["food"] }
+      }
+    ]
+  }
+]

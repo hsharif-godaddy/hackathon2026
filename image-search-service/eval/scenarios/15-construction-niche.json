@@ -1,0 +1,398 @@
+[
+  {
+    "name": "general-contractor",
+    "prompt": "Build a general contractor website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "construction site house building framing workers progress",
+        "context": "wide hero banner showing house under construction with framing in progress for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "portfolio/kitchen",
+        "query": "kitchen remodel renovation modern cabinets countertop finished",
+        "context": "completed kitchen remodel with modern cabinets and countertops for portfolio page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "concrete-company",
+    "prompt": "Build a concrete and paving company website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "concrete pouring driveway construction workers smoothing",
+        "context": "wide hero banner showing workers pouring and smoothing concrete driveway for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "services/stamped",
+        "query": "stamped concrete patio decorative pattern outdoor beautiful",
+        "context": "beautiful stamped decorative concrete patio for stamped concrete services page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "tree-service",
+    "prompt": "Build a tree removal and trimming service website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "arborist tree trimming chainsaw harness climbing professional",
+        "context": "wide hero banner showing professional arborist trimming tree for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"], "numberOfPeople": ["one"] }
+      },
+      {
+        "slot": "services/removal",
+        "query": "large tree removal crane cutting residential yard",
+        "context": "large tree being removed from residential yard for tree removal services page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "tailor",
+    "prompt": "Build a tailor and alterations shop website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "tailor shop interior sewing machine fabric suits elegant",
+        "context": "wide hero banner showing elegant tailor shop with sewing machines and fabrics for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "services/bespoke",
+        "query": "tailor measuring suit fitting customer bespoke custom",
+        "context": "tailor measuring customer for bespoke suit fitting for custom tailoring page",
+        "filters": { "numberOfPeople": ["two"] }
+      }
+    ]
+  },
+  {
+    "name": "upholstery",
+    "prompt": "Build an upholstery and furniture restoration website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "upholstery workshop fabric furniture restoration craftsman",
+        "context": "wide hero banner showing upholstery workshop with furniture being restored for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "portfolio/before-after",
+        "query": "reupholstered antique chair beautiful new fabric restored",
+        "context": "beautifully reupholstered antique chair for before/after portfolio page",
+        "filters": { "compositions": ["close_up"] }
+      }
+    ]
+  },
+  {
+    "name": "church",
+    "prompt": "Build a church website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "church building exterior steeple welcoming entrance",
+        "context": "wide hero banner showing welcoming church building exterior for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "worship/service",
+        "query": "church worship service congregation singing community",
+        "context": "church congregation during worship service for worship page",
+        "filters": { "numberOfPeople": ["group"], "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "community-center",
+    "prompt": "Build a community center website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "community center building modern welcoming entrance exterior",
+        "context": "wide hero banner showing modern community center building for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "programs/seniors",
+        "query": "senior citizens activity class community center group exercise",
+        "context": "seniors participating in group exercise class for senior programs page",
+        "filters": { "numberOfPeople": ["group"] }
+      }
+    ]
+  },
+  {
+    "name": "kayak-rental",
+    "prompt": "Build a kayak and canoe rental business website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "kayak rental dock lake scenic colorful boats water",
+        "context": "wide hero banner showing colorful kayaks at lake dock for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["wide_shot"] }
+      },
+      {
+        "slot": "tours/river",
+        "query": "kayakers paddling river scenic nature adventure group",
+        "context": "group of kayakers paddling scenic river for river tours page",
+        "filters": { "numberOfPeople": ["group"], "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "fishing-charter",
+    "prompt": "Build a fishing charter boat website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "fishing charter boat ocean deep sea sport sunrise",
+        "context": "wide hero banner showing charter fishing boat on ocean at sunrise for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["wide_shot"] }
+      },
+      {
+        "slot": "trips/catch",
+        "query": "deep sea fishing catch big fish trophy angler proud",
+        "context": "angler holding trophy fish catch for fishing trips page",
+        "filters": { "numberOfPeople": ["one"] }
+      }
+    ]
+  },
+  {
+    "name": "ski-shop",
+    "prompt": "Build a ski and snowboard shop website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "ski shop interior equipment skis snowboards display rack",
+        "context": "wide hero banner showing ski shop with equipment on display for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "lifestyle/mountain",
+        "query": "skier fresh powder snow mountain scenic action",
+        "context": "skier carving through fresh powder on scenic mountain for lifestyle page",
+        "filters": { "numberOfPeople": ["one"], "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "flooring-company",
+    "prompt": "Build a flooring installation company website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "hardwood floor installation worker laying planks room",
+        "context": "wide hero banner showing worker installing hardwood flooring for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"], "numberOfPeople": ["one"] }
+      },
+      {
+        "slot": "products/hardwood",
+        "query": "beautiful hardwood floor living room warm elegant interior",
+        "context": "beautiful hardwood flooring in elegant living room for hardwood products page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "sign-shop",
+    "prompt": "Build a custom sign and graphics shop website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "custom sign shop neon signs display workshop making",
+        "context": "wide hero banner showing custom sign shop with signs on display for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "products/vehicle-wrap",
+        "query": "vehicle wrap graphics van commercial branding colorful",
+        "context": "commercial van with colorful branded vehicle wrap for vehicle wrap products page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "security-company",
+    "prompt": "Build a security guard company website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "security guard professional uniform patrol building entrance",
+        "context": "wide hero banner showing professional security guard at building entrance for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"], "numberOfPeople": ["one"] }
+      },
+      {
+        "slot": "services/surveillance",
+        "query": "security cameras monitoring system screens control room",
+        "context": "security monitoring control room with surveillance screens for surveillance services page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "food-truck-builder",
+    "prompt": "Build a food truck builder and outfitter website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "custom food truck build kitchen equipment installation workshop",
+        "context": "wide hero banner showing custom food truck being built in workshop for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "portfolio/completed",
+        "query": "custom food truck exterior colorful branding serving window",
+        "context": "completed custom food truck with colorful branding for portfolio page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "appliance-repair",
+    "prompt": "Build an appliance repair service website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "appliance repair technician fixing washing machine home",
+        "context": "wide hero banner showing technician repairing washing machine for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"], "numberOfPeople": ["one"] }
+      },
+      {
+        "slot": "services/kitchen",
+        "query": "modern kitchen appliances refrigerator oven dishwasher",
+        "context": "modern kitchen with appliances for kitchen appliance repair services page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "trampoline-park",
+    "prompt": "Build a trampoline park website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "trampoline park indoor jumping kids fun colorful foam pit",
+        "context": "wide hero banner showing colorful indoor trampoline park for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "attractions/dodgeball",
+        "query": "trampoline dodgeball arena kids jumping playing group",
+        "context": "kids playing dodgeball on trampolines for dodgeball attraction page",
+        "filters": { "numberOfPeople": ["group"], "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "archery-range",
+    "prompt": "Build an archery range website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "archery range indoor targets bows equipment lanes",
+        "context": "wide hero banner showing indoor archery range with targets and lanes for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "lessons/beginner",
+        "query": "archery instructor teaching student bow arrow technique",
+        "context": "instructor teaching archery technique to student for beginner lessons page",
+        "filters": { "numberOfPeople": ["two"] }
+      }
+    ]
+  },
+  {
+    "name": "winery",
+    "prompt": "Build a winery and vineyard website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "vineyard rows grapevines scenic landscape sunset rolling hills",
+        "context": "wide hero banner showing scenic vineyard landscape at sunset for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["wide_shot"] }
+      },
+      {
+        "slot": "tastings/room",
+        "query": "wine tasting room elegant barrel cellar glasses pouring",
+        "context": "elegant wine tasting room with barrels for tasting room page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "distillery",
+    "prompt": "Build a craft distillery website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "craft distillery copper stills equipment production room",
+        "context": "wide hero banner showing craft distillery with copper stills for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "products/whiskey",
+        "query": "whiskey bottle glass amber spirit oak barrel aged",
+        "context": "whiskey bottle and glass with oak barrel for whiskey product page",
+        "filters": { "compositions": ["close_up"] }
+      }
+    ]
+  },
+  {
+    "name": "photo-booth",
+    "prompt": "Build a photo booth rental business website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "photo booth setup event props backdrop fun party",
+        "context": "wide hero banner showing photo booth setup with props at event for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "gallery/events",
+        "query": "friends photo booth props funny poses party event fun",
+        "context": "friends posing with fun props in photo booth for events gallery",
+        "filters": { "numberOfPeople": ["group"] }
+      }
+    ]
+  },
+  {
+    "name": "escape-room-vr",
+    "prompt": "Build a virtual reality entertainment center website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "virtual reality gaming center VR headsets players neon",
+        "context": "wide hero banner showing VR gaming center with players wearing headsets for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "experiences/multiplayer",
+        "query": "group VR gaming experience friends playing virtual reality",
+        "context": "group of friends in multiplayer VR experience for multiplayer page",
+        "filters": { "numberOfPeople": ["group"] }
+      }
+    ]
+  },
+  {
+    "name": "ceramics-studio",
+    "prompt": "Build a paint-your-own ceramics studio website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "ceramics painting studio interior shelves pottery colorful",
+        "context": "wide hero banner showing ceramics studio with pottery on shelves for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "activities/painting",
+        "query": "person painting ceramic pottery brush colorful creative",
+        "context": "person painting ceramic piece with colorful brushes for painting activities page",
+        "filters": { "numberOfPeople": ["one"] }
+      }
+    ]
+  }
+]

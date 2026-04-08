@@ -1,0 +1,182 @@
+[
+  {
+    "name": "tutoring-center",
+    "prompt": "Build a tutoring center website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "tutoring center students studying desks bright classroom",
+        "context": "wide hero banner showing bright tutoring center with students at desks for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"], "numberOfPeople": ["group"] }
+      },
+      {
+        "slot": "services/one-on-one",
+        "query": "tutor helping student homework one on one desk",
+        "context": "tutor working one-on-one with student at desk for tutoring services page",
+        "filters": { "numberOfPeople": ["two"] }
+      }
+    ]
+  },
+  {
+    "name": "driving-school",
+    "prompt": "Build a driving school website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "driving school car instructor student learning drive",
+        "context": "wide hero banner showing driving school car with instructor and student for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"], "numberOfPeople": ["two"] }
+      },
+      {
+        "slot": "courses/theory",
+        "query": "driving theory classroom students road signs traffic",
+        "context": "classroom session teaching driving theory and road signs for theory course page",
+        "filters": { "numberOfPeople": ["group"] }
+      }
+    ]
+  },
+  {
+    "name": "cooking-class",
+    "prompt": "Build a cooking class business website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "cooking class kitchen students chef demonstration group",
+        "context": "wide hero banner showing group cooking class with chef demonstrating for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"], "numberOfPeople": ["group"] }
+      },
+      {
+        "slot": "classes/pasta-making",
+        "query": "hands making fresh pasta dough rolling kitchen",
+        "context": "hands rolling fresh pasta dough during pasta-making class",
+        "filters": { "compositions": ["close_up"] }
+      }
+    ]
+  },
+  {
+    "name": "art-school",
+    "prompt": "Build an art school website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "art studio classroom students painting easels creative",
+        "context": "wide hero banner showing art students painting at easels in bright studio for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"], "numberOfPeople": ["group"] }
+      },
+      {
+        "slot": "classes/sculpture",
+        "query": "sculptor hands clay pottery wheel creating",
+        "context": "artist's hands shaping clay on pottery wheel for sculpture class page",
+        "filters": { "compositions": ["close_up"] }
+      }
+    ]
+  },
+  {
+    "name": "language-school",
+    "prompt": "Build a language school website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "language class students diverse group speaking learning",
+        "context": "wide hero banner showing diverse group of students in language class for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"], "numberOfPeople": ["group"] }
+      },
+      {
+        "slot": "about/method",
+        "query": "teacher whiteboard foreign language classroom instruction",
+        "context": "teacher at whiteboard teaching foreign language for methodology page",
+        "filters": { "numberOfPeople": ["one"] }
+      }
+    ]
+  },
+  {
+    "name": "dance-studio",
+    "prompt": "Build a dance studio website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "dance studio class ballet modern dancers mirrors",
+        "context": "wide hero banner showing dance class in studio with mirrors for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"], "numberOfPeople": ["group"] }
+      },
+      {
+        "slot": "classes/ballet",
+        "query": "ballet dancer pointe shoes graceful practice barre",
+        "context": "ballet dancer practicing at barre for ballet class page",
+        "filters": { "numberOfPeople": ["one"] }
+      }
+    ]
+  },
+  {
+    "name": "martial-arts",
+    "prompt": "Build a martial arts dojo website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "martial arts dojo karate class students training uniform",
+        "context": "wide hero banner showing martial arts class training in dojo for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"], "numberOfPeople": ["group"] }
+      },
+      {
+        "slot": "programs/kids",
+        "query": "children martial arts karate class kids kicking",
+        "context": "children practicing martial arts kicks in kids class for youth programs page",
+        "filters": { "numberOfPeople": ["group"] }
+      }
+    ]
+  },
+  {
+    "name": "swim-school",
+    "prompt": "Build a swim school website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "swimming pool lessons children instructor water indoor",
+        "context": "wide hero banner showing children in swimming lesson with instructor for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"], "numberOfPeople": ["group"] }
+      },
+      {
+        "slot": "classes/baby",
+        "query": "baby swimming lesson parent pool infant water play",
+        "context": "parent and baby in pool during infant swim class for baby swim page",
+        "filters": { "numberOfPeople": ["two"] }
+      }
+    ]
+  },
+  {
+    "name": "preschool",
+    "prompt": "Build a preschool website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "preschool classroom children playing learning colorful",
+        "context": "wide hero banner showing happy children in colorful preschool classroom for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"], "numberOfPeople": ["group"] }
+      },
+      {
+        "slot": "programs/outdoor",
+        "query": "children playing playground outdoor preschool nature",
+        "context": "preschoolers playing on outdoor playground for outdoor programs page",
+        "filters": { "numberOfPeople": ["group"], "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "test-prep",
+    "prompt": "Build a test prep tutoring website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "student studying books laptop focused academic exam prep",
+        "context": "wide hero banner showing focused student studying for exams for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"], "numberOfPeople": ["one"] }
+      },
+      {
+        "slot": "programs/sat",
+        "query": "students classroom test taking standardized exam focused",
+        "context": "students focused during practice test session for SAT prep page",
+        "filters": { "numberOfPeople": ["group"] }
+      }
+    ]
+  }
+]

@@ -68,18 +68,6 @@ const (
 	SettingTypeOther       SettingType = "other"
 )
 
-// ColorMood represents the overall color mood of the image.
-type ColorMood string
-
-// ColorMood enum values.
-const (
-	ColorMoodWarm    ColorMood = "warm"
-	ColorMoodCool    ColorMood = "cool"
-	ColorMoodNeutral ColorMood = "neutral"
-	ColorMoodVibrant ColorMood = "vibrant"
-	ColorMoodMuted   ColorMood = "muted"
-)
-
 // Composition represents where the visual interest is positioned.
 type Composition string
 
@@ -271,7 +259,6 @@ type ImageAnalysis struct {
 
 	// Color (Mixed - programmatic + Haiku)
 	DominantColors []string       `json:"dominantColors"` // Programmatic: 3 hex codes
-	ColorMood      ColorMood      `json:"colorMood"`      // Derived from colors
 	TextSafeColors TextSafeColors `json:"textSafeColors"` // Haiku
 	BackgroundType BackgroundType `json:"backgroundType"` // Haiku
 
@@ -289,6 +276,7 @@ type ImageAnalysis struct {
 	Tone              []string          `json:"tone"`         // Array of 1-3
 	UsageContext      []string          `json:"usageContext"` // Array of 1-3
 	AuthenticityStyle AuthenticityStyle `json:"authenticityStyle"`
+	ImageType         string            `json:"imageType,omitempty"` // photograph, 3d_render, illustration, vector, graphic
 
 	// Getty metadata (populated from Getty API response)
 	Orientation    string   `json:"orientation,omitempty"`    // e.g. "horizontal", "vertical"
@@ -315,20 +303,36 @@ type ImageAnalysis struct {
 	// Vector embedding (for Qdrant, not JSON serialized)
 	Embedding []float32 `json:"-"`
 
+	// Sparse vector (for Qdrant hybrid search, not JSON serialized)
+	SparseIndices []uint32  `json:"-"`
+	SparseValues  []float32 `json:"-"`
+
 	// RelevanceScore is the semantic similarity score from Qdrant (0-1, higher = more relevant).
 	// Only populated when retrieved via vector search, not by ID lookup.
 	RelevanceScore float32 `json:"relevanceScore,omitempty"`
 }
 
 // EmbeddingText returns the concatenated text used for generating embeddings.
-// The text combines primarySubject, description, activity, settingType, and searchTerms.
+// Includes all Haiku-derived fields plus Getty title/caption for richer semantic representation.
 func (a *ImageAnalysis) EmbeddingText() string {
 	parts := []string{
 		a.PrimarySubject,
 		a.Description,
 		string(a.Activity),
 		string(a.SettingType),
+		string(a.SubjectCategory),
 		strings.Join(a.SearchTerms, " "),
+		strings.Join(a.Tone, " "),
+		strings.Join(a.Moods, " "),
+		strings.Join(a.UsageContext, " "),
+		a.Title,
+		a.Caption,
 	}
 	return strings.Join(parts, " ")
+}
+
+// SearchText returns the full text for sparse vector generation.
+// Includes everything in EmbeddingText plus Getty keywords for exact keyword matching.
+func (a *ImageAnalysis) SearchText() string {
+	return a.EmbeddingText() + " " + strings.Join(a.GettyKeywords, " ")
 }

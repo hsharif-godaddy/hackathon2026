@@ -18,13 +18,13 @@ type SearchFilters struct {
 	Color           string   `json:"color,omitempty"`
 
 	// Analysis-enriched filters
+	ImageTypes        []string `json:"imageTypes,omitempty"` // photograph, 3d_render, illustration, vector, graphic
 	SubjectCategory   []string `json:"subjectCategory,omitempty"`
 	PeopleCount       []string `json:"peopleCount,omitempty"`
 	PeopleFocus       []string `json:"peopleFocus,omitempty"`
 	Tone              []string `json:"tone,omitempty"`
 	CopySpaceAmount   []string `json:"copySpaceAmount,omitempty"`
 	CopySpaceLocation []string `json:"copySpaceLocation,omitempty"`
-	ColorMood         []string `json:"colorMood,omitempty"`
 	Composition       []string `json:"composition,omitempty"`
 	UsageContext      []string `json:"usageContext,omitempty"`
 	BackgroundType    []string `json:"backgroundType,omitempty"`
@@ -34,6 +34,7 @@ type SearchFilters struct {
 // SearchRequest is the POST body for /api/v1/search
 type SearchRequest struct {
 	Query           string        `json:"query"`
+	Context         string        `json:"context,omitempty"`
 	Count           int           `json:"count,omitempty"`
 	Filters         SearchFilters `json:"filters,omitempty"`
 	MinCachedResult int           `json:"minCachedResults,omitempty"`
@@ -71,9 +72,9 @@ type ImageAnalysisResponse struct {
 
 	// Style & Mood
 	Tone              []string `json:"tone"`
-	ColorMood         string   `json:"colorMood"`
 	TextSafeColors    string   `json:"textSafeColors"`
 	AuthenticityStyle string   `json:"authenticityStyle"`
+	ImageType         string   `json:"imageType,omitempty"`
 	UsageContext      []string `json:"usageContext"`
 
 	// Colors

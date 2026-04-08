@@ -1,0 +1,182 @@
+[
+  {
+    "name": "clothing-boutique",
+    "prompt": "Build a clothing boutique website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "clothing boutique interior racks display fashion store",
+        "context": "wide hero banner showing stylish clothing boutique interior with curated displays for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "collections/summer",
+        "query": "summer dress fashion model outdoor sunlight",
+        "context": "model wearing summer dress in natural outdoor light for summer collection page",
+        "filters": { "numberOfPeople": ["one"] }
+      }
+    ]
+  },
+  {
+    "name": "shoe-store",
+    "prompt": "Build a shoe store website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "shoe store display shelves sneakers heels organized",
+        "context": "wide hero banner showing organized shoe store display wall for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "products/sneaker",
+        "query": "athletic sneaker running shoe close up product",
+        "context": "close-up product shot of athletic running sneaker for product page",
+        "filters": { "compositions": ["close_up"] }
+      }
+    ]
+  },
+  {
+    "name": "bookstore",
+    "prompt": "Build an independent bookstore website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "bookstore interior shelves cozy reading warm lighting",
+        "context": "wide hero banner showing cozy independent bookstore with full shelves for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "events/reading",
+        "query": "author book reading event audience bookstore",
+        "context": "author reading event with audience in bookstore for events page",
+        "filters": { "numberOfPeople": ["group"] }
+      }
+    ]
+  },
+  {
+    "name": "pet-store",
+    "prompt": "Build a pet store website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "pet store interior supplies toys food shelves colorful",
+        "context": "wide hero banner showing colorful pet store interior with supplies for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "products/toys",
+        "query": "happy dog playing toy fetch puppy playful",
+        "context": "playful dog with toy for pet toys product section",
+        "filters": { "subjectCategory": ["animal"] }
+      }
+    ]
+  },
+  {
+    "name": "sporting-goods",
+    "prompt": "Build a sporting goods store website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "sporting goods store interior equipment display athletic",
+        "context": "wide hero banner showing sporting goods store with athletic equipment displays for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "categories/running",
+        "query": "runner jogging trail morning sunrise athletic",
+        "context": "runner on scenic trail at sunrise for running category page",
+        "filters": { "numberOfPeople": ["one"], "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "furniture-store",
+    "prompt": "Build a furniture store website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "furniture showroom modern sofas tables display",
+        "context": "wide hero banner showing modern furniture showroom with staged living displays for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "products/sofa",
+        "query": "modern sectional sofa living room staged comfortable",
+        "context": "modern sectional sofa in staged living room setting for product page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "garden-center",
+    "prompt": "Build a garden center website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "garden center nursery greenhouse plants flowers rows",
+        "context": "wide hero banner showing garden center greenhouse full of plants and flowers for homepage",
+        "filters": { "moods": ["natural"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "products/flowers",
+        "query": "colorful potted flowers display garden center spring",
+        "context": "vibrant display of potted spring flowers for flowers section",
+        "filters": { "compositions": ["close_up"] }
+      }
+    ]
+  },
+  {
+    "name": "electronics-store",
+    "prompt": "Build an electronics store website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "electronics store interior displays screens gadgets modern",
+        "context": "wide hero banner showing modern electronics store with product displays for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "products/headphones",
+        "query": "premium wireless headphones product shot sleek design",
+        "context": "clean product photo of premium wireless headphones for product page",
+        "filters": { "compositions": ["close_up"] }
+      }
+    ]
+  },
+  {
+    "name": "gift-shop",
+    "prompt": "Build a gift shop website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "gift shop interior curated displays artisan products",
+        "context": "wide hero banner showing curated gift shop with artisan products on display for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "products/candles",
+        "query": "artisan scented candles handmade display beautiful",
+        "context": "collection of handmade artisan candles for candle products page",
+        "filters": { "compositions": ["close_up"] }
+      }
+    ]
+  },
+  {
+    "name": "antique-shop",
+    "prompt": "Build an antique shop website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "antique shop interior vintage furniture collectibles eclectic",
+        "context": "wide hero banner showing charming antique shop filled with vintage items for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "collections/vintage",
+        "query": "vintage antique furniture ornate wooden cabinet dresser",
+        "context": "ornate vintage wooden furniture piece for vintage collection page",
+        "filters": { "compositions": ["close_up"] }
+      }
+    ]
+  }
+]

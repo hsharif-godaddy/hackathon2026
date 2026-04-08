@@ -13,6 +13,7 @@ import (
 	"github.com/airo-ai-builder/image-search-service/internal/analysis"
 	"github.com/airo-ai-builder/image-search-service/internal/embeddings"
 	"github.com/airo-ai-builder/image-search-service/internal/getty"
+	"github.com/airo-ai-builder/image-search-service/internal/sparse"
 	"github.com/airo-ai-builder/image-search-service/internal/storage/qdrant"
 	"github.com/airo-ai-builder/image-search-service/internal/storage/s3"
 	"github.com/airo-ai-builder/image-search-service/pkg/models"
@@ -20,12 +21,12 @@ import (
 
 // Orchestrator coordinates the hybrid search flow.
 type Orchestrator struct {
-	getty             *getty.Client
-	analysis          *analysis.Client
-	embeddings        *embeddings.Client
-	qdrant            *qdrant.Client
-	s3                *s3.Client
-	minRelevanceScore float32
+	getty              *getty.Client
+	analysis           *analysis.Client
+	embeddings         *embeddings.Client
+	qdrant             *qdrant.Client
+	s3                 *s3.Client
+	relativeScoreRatio float32
 }
 
 // New creates a new search orchestrator.
@@ -35,21 +36,22 @@ func New(
 	embeddings *embeddings.Client,
 	qdrant *qdrant.Client,
 	s3 *s3.Client,
-	minRelevanceScore float32,
+	relativeScoreRatio float32,
 ) *Orchestrator {
 	return &Orchestrator{
-		getty:             getty,
-		analysis:          analysis,
-		embeddings:        embeddings,
-		qdrant:            qdrant,
-		s3:                s3,
-		minRelevanceScore: minRelevanceScore,
+		getty:              getty,
+		analysis:           analysis,
+		embeddings:         embeddings,
+		qdrant:             qdrant,
+		s3:                 s3,
+		relativeScoreRatio: relativeScoreRatio,
 	}
 }
 
 // SearchParams contains the parameters for a search request.
 type SearchParams struct {
 	Query          string
+	Context        string
 	Count          int
 	Filters        models.SearchFilters
 	MinCached      int
@@ -71,26 +73,40 @@ type SearchResult struct {
 // 3. If results >= minCached, return (queue Getty candidates for background analysis)
 // 4. If results < minCached, query Getty, analyze uncached, re-query Qdrant
 // 5. Return results sorted by relevance
-func (o *Orchestrator) Search(ctx context.Context, params SearchParams) (*SearchResult, error) {
+func (o *Orchestrator) Search(ctx context.Context, params SearchParams) (*SearchResult, error) { //nolint:gocyclo // breaking up Search() would hurt readability
 	start := time.Now()
-	slog.Info("search.start", "query", params.Query, "count", params.Count, "minCached", params.MinCached)
+	slog.Info("search.start", "query", params.Query, "context", params.Context, "count", params.Count, "minCached", params.MinCached)
 
-	// Step 1: Generate embedding from query
+	// Step 1: Generate embeddings
+	// Raw query embedding + sparse vector for precise retrieval (exact keyword matching).
+	// Context embedding (query + context) for re-ranking candidates by purpose/style fit.
 	embeddingStart := time.Now()
 	queryEmbedding, err := o.embeddings.Generate(ctx, params.Query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate query embedding: %w", err)
 	}
-	slog.Info("search.embedding.complete", "durationMs", time.Since(embeddingStart).Milliseconds())
-
-	// Validate embedding is not empty
 	if len(queryEmbedding) == 0 {
 		return nil, errors.New("empty embedding generated for query")
 	}
 
-	// Step 2: Search Qdrant with embedding + filters
+	// Generate sparse vector from raw query only (domain-specific keywords)
+	sparseIndices, sparseValues := sparse.Vectorize(params.Query)
+
+	// Generate context embedding for re-ranking (if context provided)
+	var contextEmbedding []float32
+	if params.Context != "" {
+		enrichedQuery := params.Query + " " + params.Context
+		contextEmbedding, err = o.embeddings.Generate(ctx, enrichedQuery)
+		if err != nil {
+			slog.Warn("search.context.embedding.failed", "error", err)
+			// Non-fatal: fall back to single-stage search without context rescore
+		}
+	}
+	slog.Info("search.embedding.complete", "durationMs", time.Since(embeddingStart).Milliseconds(), "hasContext", len(contextEmbedding) > 0)
+
+	// Step 2: Hybrid search Qdrant with dense + sparse vectors, optionally rescored by context.
 	qdrantStart := time.Now()
-	cachedResults, err := o.qdrant.Search(ctx, queryEmbedding, params.Filters, params.Count, o.minRelevanceScore)
+	cachedResults, err := o.qdrant.HybridSearch(ctx, queryEmbedding, sparseIndices, sparseValues, contextEmbedding, params.Filters, params.Count)
 	if err != nil {
 		slog.Warn("search.qdrant.error", "error", err)
 		cachedResults = nil
@@ -98,7 +114,8 @@ func (o *Orchestrator) Search(ctx context.Context, params SearchParams) (*Search
 	slog.Info("search.qdrant.complete", "cached", len(cachedResults), "durationMs", time.Since(qdrantStart).Milliseconds())
 
 	// Step 3: Check if we have enough cached results
-	if len(cachedResults) >= params.MinCached {
+	// MinCached=0 means "always query Getty" (skip early return), used for cache filling.
+	if params.MinCached > 0 && len(cachedResults) >= params.MinCached {
 		slog.Info("search.sufficient.cached", "cached", len(cachedResults), "minCached", params.MinCached)
 
 		// Queue Getty search + analysis in background for cache warming
@@ -109,7 +126,7 @@ func (o *Orchestrator) Search(ctx context.Context, params SearchParams) (*Search
 			o.warmCacheInBackground(bgCtx, params.Query, params.Count*2, cachedResults)
 		}()
 
-		results := collectResults(cachedResults, params.Count)
+		results := collectResults(cachedResults, params.Count, 0)
 		return &SearchResult{
 			Results:         results,
 			CachedCount:     len(results),
@@ -165,15 +182,16 @@ func (o *Orchestrator) Search(ctx context.Context, params SearchParams) (*Search
 		slog.Info("search.analyzed.complete", "analyzed", analyzedCount)
 	}
 
-	// Re-query Qdrant with filters to get fresh, sorted results
-	finalResults, err := o.qdrant.Search(ctx, queryEmbedding, params.Filters, params.Count, o.minRelevanceScore)
+	// Re-query Qdrant with hybrid search to get RRF-fused results including newly analyzed images.
+	finalResults, err := o.qdrant.HybridSearch(ctx, queryEmbedding, sparseIndices, sparseValues, contextEmbedding, params.Filters, params.Count)
 	if err != nil {
 		slog.Warn("search.final.qdrant.error", "error", err)
 		// Fall back to initial cached results if re-query fails
 		finalResults = cachedResults
 	}
+	slog.Info("search.final.results", "candidates", len(finalResults))
 
-	results := collectResults(finalResults, params.Count)
+	results := collectResults(finalResults, params.Count, 0)
 
 	// Calculate pending (uncached that weren't analyzed in time)
 	pendingCount := len(uncachedIDs) - analyzedCount
@@ -244,7 +262,7 @@ func (o *Orchestrator) fetchGettyResults(
 	cachedResults []*models.ImageAnalysis,
 ) ([]getty.ImageResult, *SearchResult, error) {
 	gettyStart := time.Now()
-	gettyOpts := filtersToGettyOptions(params.Query, params.Count*2, params.Filters)
+	gettyOpts := filtersToGettyOptions(params.Query, params.Count*4, params.Filters)
 	gettyResp, err := o.getty.SearchWithOptions(ctx, gettyOpts)
 	var gettyResults []getty.ImageResult
 	if gettyResp != nil {
@@ -254,7 +272,7 @@ func (o *Orchestrator) fetchGettyResults(
 		// If Getty fails but we have some cached results, return those
 		if len(cachedResults) > 0 {
 			slog.Warn("search.getty.failed.returning.cached", "error", err, "cachedCount", len(cachedResults))
-			results := collectResults(cachedResults, params.Count)
+			results := collectResults(cachedResults, params.Count, 0)
 			return nil, &SearchResult{
 				Results:         results,
 				CachedCount:     len(results),
@@ -267,9 +285,22 @@ func (o *Orchestrator) fetchGettyResults(
 	}
 	slog.Info("search.getty.complete", "count", len(gettyResults), "durationMs", time.Since(gettyStart).Milliseconds())
 
+	if len(gettyResults) == 0 && hasGettyFilters(params.Filters) {
+		// Retry without filters — overly specific filters can produce 0 results
+		slog.Info("search.getty.retry.no.filters", "query", params.Query)
+		unfiltered := getty.NewSearchOptions(params.Query)
+		unfiltered.PageSize = params.Count * 4
+		unfiltered.Fields = gettyMetadataFields
+		retryResp, retryErr := o.getty.SearchWithOptions(ctx, unfiltered)
+		if retryErr == nil && retryResp != nil {
+			gettyResults = retryResp.Images
+			slog.Info("search.getty.retry.complete", "count", len(gettyResults))
+		}
+	}
+
 	if len(gettyResults) == 0 {
-		// No Getty results, return whatever we have from cache
-		results := collectResults(cachedResults, params.Count)
+		// No Getty results even after retry, return whatever we have from cache
+		results := collectResults(cachedResults, params.Count, 0)
 		return nil, &SearchResult{
 			Results:         results,
 			CachedCount:     len(results),
@@ -359,7 +390,7 @@ func (o *Orchestrator) analyzeAndStore(ctx context.Context, gettyResult getty.Im
 		Preview:   gettyResult.Preview(),
 	}
 	imgAnalysis.AnalyzedAt = time.Now()
-	imgAnalysis.AnalysisVersion = "1"
+	imgAnalysis.AnalysisVersion = "4"
 
 	// Calculate aspect ratio category
 	imgAnalysis.AspectRatioCategory = calculateAspectRatio(gettyResult.Width(), gettyResult.Height())
@@ -369,9 +400,19 @@ func (o *Orchestrator) analyzeAndStore(ctx context.Context, gettyResult getty.Im
 	imgAnalysis.GraphicalStyle = gettyResult.GraphicalStyle
 	imgAnalysis.Artist = gettyResult.Artist
 	imgAnalysis.CollectionCode = gettyResult.CollectionCode
-	imgAnalysis.NumberOfPeople = gettyResult.NumberOfPeople
-	imgAnalysis.Ethnicity = gettyResult.Ethnicity
-	imgAnalysis.AgeOfPeople = gettyResult.AgeOfPeople
+	// Only overwrite Haiku-derived values with Getty metadata when Getty actually returns data.
+	// numberOfPeople, ethnicity, ageOfPeople, and moods are search-only Getty filters —
+	// they work as query parameters but are NOT returned in API responses.
+	// The LLM-derived values from Haiku are the authoritative source for these fields.
+	if gettyResult.NumberOfPeople != "" {
+		imgAnalysis.NumberOfPeople = gettyResult.NumberOfPeople
+	}
+	if len(gettyResult.Ethnicity) > 0 {
+		imgAnalysis.Ethnicity = gettyResult.Ethnicity
+	}
+	if len(gettyResult.AgeOfPeople) > 0 {
+		imgAnalysis.AgeOfPeople = gettyResult.AgeOfPeople
+	}
 	if len(gettyResult.Keywords) > 0 {
 		keywords := make([]string, 0, len(gettyResult.Keywords))
 		for _, kw := range gettyResult.Keywords {
@@ -380,7 +421,10 @@ func (o *Orchestrator) analyzeAndStore(ctx context.Context, gettyResult getty.Im
 		imgAnalysis.GettyKeywords = keywords
 	}
 
-	// Generate embedding from analysis text
+	// Generate sparse vector from search text (for keyword matching)
+	imgAnalysis.SparseIndices, imgAnalysis.SparseValues = sparse.Vectorize(imgAnalysis.SearchText())
+
+	// Generate dense embedding from analysis text (for semantic similarity)
 	embedding, err := o.embeddings.Generate(ctx, imgAnalysis.EmbeddingText())
 	if err != nil {
 		return nil, err
@@ -404,13 +448,50 @@ func (o *Orchestrator) analyzeAndStore(ctx context.Context, gettyResult getty.Im
 	return imgAnalysis, nil
 }
 
-// collectResults sorts analyses by relevance score (descending) and returns up to limit results.
-func collectResults(analyses []*models.ImageAnalysis, limit int) []*models.ImageAnalysis {
-	sorted := sortByRelevance(analyses)
-	if len(sorted) <= limit {
+// collectResults deduplicates by Getty ID, sorts analyses by relevance score
+// (descending), applies relative score filtering, and returns up to limit results.
+func collectResults(analyses []*models.ImageAnalysis, limit int, relativeScoreRatio float32) []*models.ImageAnalysis {
+	deduped := deduplicateByGettyID(analyses)
+	sorted := sortByRelevance(deduped)
+	filtered := filterByRelativeScore(sorted, relativeScoreRatio)
+	if len(filtered) <= limit {
+		return filtered
+	}
+	return filtered[:limit]
+}
+
+// deduplicateByGettyID removes duplicate analyses with the same Getty ID,
+// keeping the first occurrence (highest relevance when pre-sorted).
+func deduplicateByGettyID(analyses []*models.ImageAnalysis) []*models.ImageAnalysis {
+	seen := make(map[string]bool, len(analyses))
+	result := make([]*models.ImageAnalysis, 0, len(analyses))
+	for _, a := range analyses {
+		if a == nil || seen[a.GettyID] {
+			continue
+		}
+		seen[a.GettyID] = true
+		result = append(result, a)
+	}
+	return result
+}
+
+// filterByRelativeScore drops results that fall below a ratio of the top result's score.
+// Results must be sorted by score descending. For example, with ratio=0.65 and a top
+// score of 0.80, results below 0.52 are dropped. This adapts to query difficulty —
+// specific queries with high scores keep more results, vague queries with lower scores
+// still return something.
+func filterByRelativeScore(sorted []*models.ImageAnalysis, ratio float32) []*models.ImageAnalysis {
+	if len(sorted) == 0 || ratio <= 0 {
 		return sorted
 	}
-	return sorted[:limit]
+
+	threshold := sorted[0].RelevanceScore * ratio
+	for i, a := range sorted {
+		if a.RelevanceScore < threshold {
+			return sorted[:i]
+		}
+	}
+	return sorted
 }
 
 // calculateAspectRatio determines the aspect ratio category from dimensions.
@@ -490,6 +571,13 @@ func filtersToGettyOptions(query string, count int, filters models.SearchFilters
 	}
 
 	return opts
+}
+
+// hasGettyFilters returns true if any Getty search-time filters are set.
+func hasGettyFilters(f models.SearchFilters) bool {
+	return len(f.Orientations) > 0 || len(f.Compositions) > 0 || len(f.Moods) > 0 ||
+		len(f.GraphicalStyles) > 0 || len(f.NumberOfPeople) > 0 || len(f.Ethnicity) > 0 ||
+		len(f.AgeOfPeople) > 0 || f.MinimumSize != "" || f.Color != ""
 }
 
 // sortByRelevance sorts analyses by RelevanceScore in descending order.

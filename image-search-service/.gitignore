@@ -9,6 +9,7 @@ dist/
 *.dylib
 image-search-service
 image-search
+/debug-query
 
 # Test binary, built with `go test -c`
 *.test

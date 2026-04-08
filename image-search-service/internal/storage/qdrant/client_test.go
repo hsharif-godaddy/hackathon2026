@@ -1,6 +1,7 @@
 package qdrant
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -13,8 +14,15 @@ func TestBuildFilters_EmptyFilters(t *testing.T) {
 	filters := models.SearchFilters{}
 	result := buildFilters(filters)
 
-	if result != nil {
-		t.Error("expected nil filters for empty input")
+	// Empty filters still produce a must_not to exclude non-photograph image types
+	if result == nil {
+		t.Fatal("expected non-nil filters (default imageType must_not)")
+	}
+	if len(result.Must) != 0 {
+		t.Errorf("expected 0 must conditions, got %d", len(result.Must))
+	}
+	if len(result.MustNot) != 1 {
+		t.Errorf("expected 1 must_not condition (imageType exclusion), got %d", len(result.MustNot))
 	}
 }
 
@@ -51,19 +59,24 @@ func TestBuildFilters_MultipleValues(t *testing.T) {
 
 func TestBuildFilters_AllFields(t *testing.T) {
 	filters := models.SearchFilters{
+		// Must filters
 		Orientations:      []string{"landscape"},
 		SubjectCategory:   []string{"people"},
 		PeopleCount:       []string{"1"},
 		PeopleFocus:       []string{"primary"},
 		Tone:              []string{"professional"},
-		Moods:             []string{"warm"},
 		CopySpaceAmount:   []string{"high"},
 		CopySpaceLocation: []string{"right"},
-		ColorMood:         []string{"warm"},
 		Composition:       []string{"center"},
 		UsageContext:      []string{"hero"},
 		BackgroundType:    []string{"blurred"},
 		VisualComplexity:  []string{"low"},
+		GraphicalStyles:   []string{"photography"},
+		// Should filters (Haiku-derived, may mismatch Getty)
+		Moods:          []string{"warm"},
+		NumberOfPeople: []string{"one"},
+		Ethnicity:      []string{"white"},
+		AgeOfPeople:    []string{"adult"},
 	}
 	result := buildFilters(filters)
 
@@ -71,8 +84,33 @@ func TestBuildFilters_AllFields(t *testing.T) {
 		t.Fatal("expected non-nil filters")
 	}
 
+	// numberOfPeople is a must filter; moods, ethnicity, ageOfPeople are Getty-only (not in Qdrant)
 	if len(result.Must) != 13 {
-		t.Errorf("expected 13 conditions, got %d", len(result.Must))
+		t.Errorf("expected 13 must conditions, got %d", len(result.Must))
+	}
+	if len(result.Should) != 0 {
+		t.Errorf("expected 0 should conditions (moods/ethnicity/ageOfPeople are Getty-only), got %d", len(result.Should))
+	}
+}
+
+func TestBuildFilters_MoodsAreGettyOnly(t *testing.T) {
+	// Moods are only sent to Getty, not used as Qdrant filters.
+	// NumberOfPeople is a must filter.
+	filters := models.SearchFilters{
+		Moods:          []string{"warm"},
+		NumberOfPeople: []string{"group"},
+	}
+	result := buildFilters(filters)
+
+	if result == nil {
+		t.Fatal("expected non-nil filters")
+	}
+
+	if len(result.Must) != 1 {
+		t.Errorf("expected 1 must conditions (numberOfPeople), got %d", len(result.Must))
+	}
+	if len(result.Should) != 0 {
+		t.Errorf("expected 0 should conditions (moods are Getty-only), got %d", len(result.Should))
 	}
 }
 
@@ -130,7 +168,6 @@ func TestPayloadToAnalysis_Basic(t *testing.T) {
 		"activity":            "working",
 		"settingType":         "office",
 		"dominantColors":      []interface{}{"#FF0000", "#00FF00", "#0000FF"},
-		"colorMood":           "warm",
 		"textSafeColors":      "light-only",
 		"backgroundType":      "blurred",
 		"composition":         "center",
@@ -193,7 +230,6 @@ func TestAnalysisToPayload(t *testing.T) {
 		Activity:            models.ActivityWorking,
 		SettingType:         models.SettingTypeOffice,
 		DominantColors:      []string{"#FF0000", "#00FF00", "#0000FF"},
-		ColorMood:           models.ColorMoodWarm,
 		TextSafeColors:      models.TextSafeColorsLightOnly,
 		BackgroundType:      models.BackgroundTypeBlurred,
 		Composition:         models.CompositionCenter,
@@ -299,15 +335,16 @@ func TestGetStringSlice(t *testing.T) {
 }
 
 func TestAnalysisPayloadRoundTripGettyMetadata(t *testing.T) {
+	// Getty returns title-case values; analysisToPayload should normalize to lowercase
 	original := &models.ImageAnalysis{
 		GettyID:        "123456",
 		Title:          "Test",
-		Orientation:    "horizontal",
-		GraphicalStyle: "photography",
-		Moods:          []string{"warm", "natural"},
-		NumberOfPeople: "one",
-		Ethnicity:      []string{"east_asian"},
-		AgeOfPeople:    []string{"adult"},
+		Orientation:    "Horizontal",
+		GraphicalStyle: "Photography",
+		Moods:          []string{"Warm", "Natural"},
+		NumberOfPeople: "One",
+		Ethnicity:      []string{"East_Asian"},
+		AgeOfPeople:    []string{"Adult"},
 		CollectionCode: "test-col",
 		Artist:         "Test Artist",
 		GettyKeywords:  []string{"nature", "sunset"},
@@ -320,6 +357,7 @@ func TestAnalysisPayloadRoundTripGettyMetadata(t *testing.T) {
 	payload := analysisToPayload(original)
 	restored := payloadToAnalysis(payload, 0.95)
 
+	// Verify Getty metadata is stored lowercase
 	if restored.Orientation != "horizontal" {
 		t.Errorf("Orientation: got %q, want %q", restored.Orientation, "horizontal")
 	}
@@ -362,27 +400,92 @@ func TestBuildFiltersGettyFields(t *testing.T) {
 	if result == nil {
 		t.Fatal("expected non-nil filter")
 	}
-	// 5 filter fields set = 5 Must conditions
-	if len(result.Must) != 5 {
-		t.Errorf("expected 5 conditions, got %d", len(result.Must))
+	// graphicalStyles + orientations + numberOfPeople = 3 must conditions
+	if len(result.Must) != 3 {
+		t.Errorf("expected 3 must conditions, got %d", len(result.Must))
+	}
+	// moods + ethnicity are now Getty-only (not Qdrant filters)
+	if len(result.Should) != 0 {
+		t.Errorf("expected 0 should conditions (moods/ethnicity are Getty-only), got %d", len(result.Should))
 	}
 }
 
-func TestBuildFiltersCompositionMerge(t *testing.T) {
-	// When both Composition (analysis) and Compositions (Getty) are set,
-	// they should be merged into a single condition on "composition" field.
+func TestBuildFiltersCompositionSeparation(t *testing.T) {
+	// Compositions (Getty) and Composition (analysis) are different vocabularies.
+	// Only Composition should produce a Qdrant condition; Compositions is Getty-only.
+	t.Run("only Composition creates Qdrant condition", func(t *testing.T) {
+		filters := models.SearchFilters{
+			Composition:  []string{"center"},
+			Compositions: []string{"copy_space"},
+		}
+
+		result := buildFilters(filters)
+		if result == nil {
+			t.Fatal("expected non-nil filter")
+		}
+		// Only Composition produces a condition, Compositions is ignored for Qdrant
+		if len(result.Must) != 1 {
+			t.Errorf("expected 1 condition (Composition only), got %d", len(result.Must))
+		}
+	})
+
+	t.Run("Compositions alone produces no must Qdrant condition", func(t *testing.T) {
+		filters := models.SearchFilters{
+			Compositions: []string{"copy_space", "headshot"},
+		}
+
+		result := buildFilters(filters)
+		// Still gets the default must_not for imageType, but no must conditions
+		if result == nil {
+			t.Fatal("expected non-nil filter (default imageType must_not)")
+		}
+		if len(result.Must) != 0 {
+			t.Errorf("expected 0 must conditions when only Compositions is set, got %d", len(result.Must))
+		}
+	})
+}
+
+func TestBuildFiltersCaseInsensitive(t *testing.T) {
+	// Filter values should be lowercased for case-insensitive matching against stored data
 	filters := models.SearchFilters{
-		Composition:  []string{"center"},
-		Compositions: []string{"close_up"},
+		Orientations:   []string{"Horizontal"},
+		NumberOfPeople: []string{"One"},
+		Moods:          []string{"Warm", "NATURAL"},
 	}
 
 	result := buildFilters(filters)
 	if result == nil {
 		t.Fatal("expected non-nil filter")
 	}
-	// Both map to the same Qdrant field, so should produce 1 condition
-	if len(result.Must) != 1 {
-		t.Errorf("expected 1 condition (merged), got %d", len(result.Must))
+
+	// orientations + numberOfPeople = 2 must, moods is Getty-only
+	if len(result.Must) != 2 {
+		t.Errorf("expected 2 must conditions, got %d", len(result.Must))
+	}
+	if len(result.Should) != 0 {
+		t.Errorf("expected 0 should conditions (moods are Getty-only), got %d", len(result.Should))
+	}
+
+	// Verify the condition values are lowercased in must conditions
+	allConditions := result.Must
+	for _, cond := range allConditions {
+		fc := cond.GetField()
+		if fc == nil {
+			continue
+		}
+		match := fc.GetMatch()
+		if match == nil {
+			continue
+		}
+		keywords := match.GetKeywords()
+		if keywords == nil {
+			continue
+		}
+		for _, kw := range keywords.Strings {
+			if kw != strings.ToLower(kw) {
+				t.Errorf("filter value %q should be lowercase", kw)
+			}
+		}
 	}
 }
 

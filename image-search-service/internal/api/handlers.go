@@ -72,7 +72,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	if req.Count <= 0 {
 		req.Count = 10
 	}
-	if req.MinCachedResult <= 0 {
+	if req.MinCachedResult < 0 {
 		req.MinCachedResult = s.config.DefaultMinCached
 	}
 	if req.MaxWaitSeconds <= 0 {
@@ -82,6 +82,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	// Execute hybrid search
 	result, err := s.orchestrator.Search(r.Context(), search.SearchParams{
 		Query:          req.Query,
+		Context:        req.Context,
 		Count:          req.Count,
 		Filters:        req.Filters,
 		MinCached:      req.MinCachedResult,
@@ -118,9 +119,9 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 				PeopleFocus: string(analysis.PeopleFocus),
 				// Style & Mood
 				Tone:              analysis.Tone,
-				ColorMood:         string(analysis.ColorMood),
 				TextSafeColors:    string(analysis.TextSafeColors),
 				AuthenticityStyle: string(analysis.AuthenticityStyle),
+				ImageType:         analysis.ImageType,
 				UsageContext:      analysis.UsageContext,
 				// Colors
 				DominantColors: analysis.DominantColors,

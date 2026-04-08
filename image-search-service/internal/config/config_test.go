@@ -75,8 +75,8 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if cfg.LogLevel != "info" {
 		t.Errorf("expected default log level info, got %s", cfg.LogLevel)
 	}
-	if cfg.QdrantCollection != "image_analyses" {
-		t.Errorf("expected default collection image_analyses, got %s", cfg.QdrantCollection)
+	if cfg.QdrantCollection != "image_analyses_v3" {
+		t.Errorf("expected default collection image_analyses_v3, got %s", cfg.QdrantCollection)
 	}
 }
 

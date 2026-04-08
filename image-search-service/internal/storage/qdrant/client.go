@@ -18,10 +18,17 @@ import (
 	"github.com/airo-ai-builder/image-search-service/pkg/models"
 )
 
+// Vector name constants for named vectors in the collection.
+const (
+	DenseVectorName  = "dense"
+	SparseVectorName = "keywords"
+)
+
 // Client provides methods for storing and searching image analyses in Qdrant.
 type Client struct {
-	client     *qdrant.Client
-	collection string
+	client                *qdrant.Client
+	collection            string
+	rrfPrefetchMultiplier int
 }
 
 // New creates a new Qdrant client with the provided configuration.
@@ -46,9 +53,15 @@ func New(cfg *config.Config) (*Client, error) {
 		return nil, fmt.Errorf("failed to create qdrant client: %w", err)
 	}
 
+	rrfMult := cfg.RRFPrefetchMultiplier
+	if rrfMult <= 0 {
+		rrfMult = 3
+	}
+
 	return &Client{
-		client:     client,
-		collection: cfg.QdrantCollection,
+		client:                client,
+		collection:            cfg.QdrantCollection,
+		rrfPrefetchMultiplier: rrfMult,
 	}, nil
 }
 
@@ -80,12 +93,19 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 		return nil
 	}
 
-	// Create collection with vector config for text-embedding-3-small (1536 dimensions)
+	// Create collection with named dense vectors + sparse vectors for hybrid search
 	err = c.client.CreateCollection(ctx, &qdrant.CreateCollection{
 		CollectionName: c.collection,
-		VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
-			Size:     1536,
-			Distance: qdrant.Distance_Cosine,
+		VectorsConfig: qdrant.NewVectorsConfigMap(map[string]*qdrant.VectorParams{
+			DenseVectorName: {
+				Size:     1536,
+				Distance: qdrant.Distance_Cosine,
+			},
+		}),
+		SparseVectorsConfig: qdrant.NewSparseVectorsConfig(map[string]*qdrant.SparseVectorParams{
+			SparseVectorName: {
+				Modifier: qdrant.Modifier_Idf.Enum(),
+			},
 		}),
 	})
 	if err != nil {
@@ -107,11 +127,12 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 		"moods",
 		"copySpaceAmount",
 		"copySpaceLocation",
-		"colorMood",
 		"composition",
 		"usageContext",
 		"backgroundType",
 		"visualComplexity",
+		// Haiku-derived type classification
+		"imageType",
 		// Getty metadata indexes
 		"orientation",
 		"graphicalStyle",
@@ -130,6 +151,20 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 			// Log but don't fail - indexes are optimization, not required
 			slog.Warn("qdrant.index.create.failed", "field", field, "error", err)
 		}
+	}
+
+	// Create text index on searchText for debug/optional filtering
+	_, err = c.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
+		CollectionName: c.collection,
+		FieldName:      "searchText",
+		FieldType:      qdrant.PtrOf(qdrant.FieldType_FieldTypeText),
+		FieldIndexParams: qdrant.NewPayloadIndexParamsText(&qdrant.TextIndexParams{
+			Tokenizer: qdrant.TokenizerType_Word,
+			Lowercase: qdrant.PtrOf(true),
+		}),
+	})
+	if err != nil {
+		slog.Warn("qdrant.index.create.failed", "field", "searchText", "error", err)
 	}
 
 	return nil
@@ -152,6 +187,7 @@ func (c *Client) Search(
 	queryRequest := &qdrant.QueryPoints{
 		CollectionName: c.collection,
 		Query:          qdrant.NewQueryDense(embedding),
+		Using:          qdrant.PtrOf(DenseVectorName),
 		Limit:          qdrant.PtrOf(uint64(limit)), //nolint:gosec // limit is validated above
 		WithPayload:    qdrant.NewWithPayload(true),
 	}
@@ -168,6 +204,101 @@ func (c *Client) Search(
 	results, err := c.client.Query(ctx, queryRequest)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search qdrant: %w", err)
+	}
+
+	analyses := make([]*models.ImageAnalysis, 0, len(results))
+	for _, point := range results {
+		analysis := payloadToAnalysis(point.Payload, point.Score)
+		if analysis != nil {
+			analyses = append(analyses, analysis)
+		}
+	}
+
+	return analyses, nil
+}
+
+// HybridSearch performs a hybrid dense+sparse search using Reciprocal Rank Fusion.
+// Dense prefetch retrieves semantically similar results; sparse prefetch retrieves
+// keyword-matching results. RRF fuses both ranked lists so images matching both
+// semantic meaning AND exact keywords rank highest.
+//
+// When contextEmbedding is provided, a two-stage retrieval is used:
+// 1. Inner prefetch: RRF fusion of dense (raw query) + sparse (raw keywords) → top N candidates
+// 2. Outer rescore: cosine similarity against contextEmbedding → final top results
+// This keeps retrieval precise (raw query keywords) while using the richer context
+// (e.g., "wide hero banner for homepage") to re-rank candidates by purpose/style fit.
+func (c *Client) HybridSearch(
+	ctx context.Context,
+	denseEmbedding []float32,
+	sparseIndices []uint32,
+	sparseValues []float32,
+	contextEmbedding []float32,
+	filters models.SearchFilters,
+	limit int,
+) ([]*models.ImageAnalysis, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	prefetchLimit := qdrant.PtrOf(uint64(limit * c.rrfPrefetchMultiplier)) //nolint:gosec // limit is validated above
+
+	// Build the inner retrieval prefetches (raw query — precise keyword + semantic match)
+	innerPrefetches := []*qdrant.PrefetchQuery{
+		{
+			Query: qdrant.NewQueryDense(denseEmbedding),
+			Using: qdrant.PtrOf(DenseVectorName),
+			Limit: prefetchLimit,
+		},
+	}
+	if len(sparseIndices) > 0 {
+		innerPrefetches = append(innerPrefetches, &qdrant.PrefetchQuery{
+			Query: qdrant.NewQuerySparse(sparseIndices, sparseValues),
+			Using: qdrant.PtrOf(SparseVectorName),
+			Limit: prefetchLimit,
+		})
+	}
+
+	filter := buildFilters(filters)
+
+	var queryRequest *qdrant.QueryPoints
+
+	if len(contextEmbedding) > 0 {
+		// Two-stage: RRF retrieval → context rescore
+		// Inner: RRF fuses dense + sparse from raw query to get broad candidates
+		// Outer: rescore those candidates by cosine similarity to the enriched context embedding
+		rrfLimit := qdrant.PtrOf(uint64(limit * c.rrfPrefetchMultiplier)) //nolint:gosec // limit is validated above
+		rrfPrefetch := &qdrant.PrefetchQuery{
+			Prefetch: innerPrefetches,
+			Query:    qdrant.NewQueryRRF(&qdrant.Rrf{}),
+			Limit:    rrfLimit,
+		}
+
+		queryRequest = &qdrant.QueryPoints{
+			CollectionName: c.collection,
+			Prefetch:       []*qdrant.PrefetchQuery{rrfPrefetch},
+			Query:          qdrant.NewQueryDense(contextEmbedding),
+			Using:          qdrant.PtrOf(DenseVectorName),
+			Limit:          qdrant.PtrOf(uint64(limit)), //nolint:gosec // limit is validated above
+			WithPayload:    qdrant.NewWithPayload(true),
+		}
+	} else {
+		// Single-stage: standard RRF fusion (no context available)
+		queryRequest = &qdrant.QueryPoints{
+			CollectionName: c.collection,
+			Prefetch:       innerPrefetches,
+			Query:          qdrant.NewQueryRRF(&qdrant.Rrf{}),
+			Limit:          qdrant.PtrOf(uint64(limit)), //nolint:gosec // limit is validated above
+			WithPayload:    qdrant.NewWithPayload(true),
+		}
+	}
+
+	if filter != nil {
+		queryRequest.Filter = filter
+	}
+
+	results, err := c.client.Query(ctx, queryRequest)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hybrid search qdrant: %w", err)
 	}
 
 	analyses := make([]*models.ImageAnalysis, 0, len(results))
@@ -255,14 +386,23 @@ func (c *Client) Upsert(ctx context.Context, analysis *models.ImageAnalysis) err
 
 	payload := analysisToPayload(analysis)
 
-	slog.Debug("qdrant.upsert.request", "collection", c.collection, "gettyId", analysis.GettyID, "pointId", pointID, "embeddingLen", len(analysis.Embedding))
+	// Build named vectors map (dense required, sparse optional)
+	vectors := map[string]*qdrant.Vector{
+		DenseVectorName: qdrant.NewVectorDense(analysis.Embedding),
+	}
+	if len(analysis.SparseIndices) > 0 {
+		vectors[SparseVectorName] = qdrant.NewVectorSparse(analysis.SparseIndices, analysis.SparseValues)
+	}
+
+	slog.Debug("qdrant.upsert.request", "collection", c.collection, "gettyId", analysis.GettyID, "pointId", pointID, "embeddingLen", len(analysis.Embedding), "sparseLen", len(analysis.SparseIndices))
 
 	_, err = c.client.Upsert(ctx, &qdrant.UpsertPoints{
 		CollectionName: c.collection,
+		Wait:           qdrant.PtrOf(true),
 		Points: []*qdrant.PointStruct{
 			{
 				Id:      qdrant.NewIDNum(pointID),
-				Vectors: qdrant.NewVectorsDense(analysis.Embedding),
+				Vectors: qdrant.NewVectorsMap(vectors),
 				Payload: payload,
 			},
 		},
@@ -290,12 +430,15 @@ type filterMapping struct {
 
 // buildFilters converts SearchFilters to a Qdrant filter.
 func buildFilters(filters models.SearchFilters) *qdrant.Filter {
-	// Composition: merge Getty-native Compositions and analysis-enriched Composition
-	// since both map to the same Qdrant "composition" field.
-	compositionValues := append([]string{}, filters.Composition...)
-	compositionValues = append(compositionValues, filters.Compositions...)
+	// Compositions (Getty-native, e.g. "copy_space", "headshot") is a different vocabulary
+	// from Composition (AI analysis, e.g. "center", "full-frame"). Compositions is forwarded
+	// to Getty via filtersToGettyOptions() and not filtered in Qdrant.
 
-	mappings := []filterMapping{
+	// "must" filters: fields where stored values come from Getty metadata or are
+	// consistently derived by Haiku — no vocabulary mismatch expected.
+	// numberOfPeople is a hard filter because Haiku reliably agrees with Getty
+	// on people count (none/one/two/group), making it safe as a strict requirement.
+	mustMappings := []filterMapping{
 		{"orientation", filters.Orientations},
 		{"subjectCategory", filters.SubjectCategory},
 		{"peopleCount", filters.PeopleCount},
@@ -303,33 +446,64 @@ func buildFilters(filters models.SearchFilters) *qdrant.Filter {
 		{"tone", filters.Tone},
 		{"copySpaceAmount", filters.CopySpaceAmount},
 		{"copySpaceLocation", filters.CopySpaceLocation},
-		{"colorMood", filters.ColorMood},
-		{"composition", compositionValues},
+		{"composition", filters.Composition},
 		{"usageContext", filters.UsageContext},
 		{"backgroundType", filters.BackgroundType},
 		{"visualComplexity", filters.VisualComplexity},
-		// Getty metadata filters
-		{"moods", filters.Moods},
 		{"graphicalStyle", filters.GraphicalStyles},
 		{"numberOfPeople", filters.NumberOfPeople},
-		{"ethnicity", filters.Ethnicity},
-		{"ageOfPeople", filters.AgeOfPeople},
 	}
 
-	var conditions []*qdrant.Condition
-	for _, m := range mappings {
+	// Getty-only filters (NOT applied in Qdrant):
+	// - moods: Getty and Haiku use incompatible vocabularies (e.g., Getty "cool" ↔ Haiku "natural").
+	//   Moods are passed to Getty as search-time filters but not filtered in Qdrant.
+	// - ethnicity, ageOfPeople: derived by Haiku from image analysis, may differ from Getty's tags.
+	//   Passed to Getty as search-time filters only.
+	// These filters still work because filtersToGettyOptions() sends them to Getty,
+	// which returns appropriate images that then get stored and found via vector similarity.
+	_ = filters.Moods       // sent to Getty via filtersToGettyOptions
+	_ = filters.Ethnicity   // sent to Getty via filtersToGettyOptions
+	_ = filters.AgeOfPeople // sent to Getty via filtersToGettyOptions
+
+	var mustConditions []*qdrant.Condition
+	for _, m := range mustMappings {
 		if len(m.values) > 0 {
-			conditions = append(conditions, qdrant.NewMatchKeywords(m.field, m.values...))
+			lower := toLowerSlice(m.values)
+			mustConditions = append(mustConditions, qdrant.NewMatchKeywords(m.field, lower...))
 		}
 	}
 
-	if len(conditions) == 0 {
+	// No should filters currently needed; kept as nil for filter assembly below.
+	var shouldConditions []*qdrant.Condition
+
+	// Default: exclude non-photograph image types (3D renders, illustrations, vectors, graphics).
+	// Uses must_not so legacy images without imageType are still included.
+	var mustNotConditions []*qdrant.Condition
+	if len(filters.ImageTypes) == 0 {
+		mustNotConditions = append(mustNotConditions, qdrant.NewMatchKeywords("imageType",
+			"3d_render", "illustration", "vector", "graphic"))
+	} else {
+		// Explicit imageType filter requested — use as must filter
+		mustConditions = append(mustConditions, qdrant.NewMatchKeywords("imageType",
+			toLowerSlice(filters.ImageTypes)...))
+	}
+
+	if len(mustConditions) == 0 && len(shouldConditions) == 0 && len(mustNotConditions) == 0 {
 		return nil
 	}
 
-	return &qdrant.Filter{
-		Must: conditions,
+	filter := &qdrant.Filter{}
+	if len(mustConditions) > 0 {
+		filter.Must = mustConditions
 	}
+	if len(shouldConditions) > 0 {
+		filter.Should = shouldConditions
+	}
+	if len(mustNotConditions) > 0 {
+		filter.MustNot = mustNotConditions
+	}
+
+	return filter
 }
 
 // analysisToPayload converts an ImageAnalysis to a Qdrant payload map.
@@ -348,7 +522,6 @@ func analysisToPayload(a *models.ImageAnalysis) map[string]*qdrant.Value {
 		"activity":            string(a.Activity),
 		"settingType":         string(a.SettingType),
 		"dominantColors":      toInterfaceSlice(a.DominantColors),
-		"colorMood":           string(a.ColorMood),
 		"textSafeColors":      string(a.TextSafeColors),
 		"backgroundType":      string(a.BackgroundType),
 		"composition":         string(a.Composition),
@@ -360,12 +533,13 @@ func analysisToPayload(a *models.ImageAnalysis) map[string]*qdrant.Value {
 		"tone":                toInterfaceSlice(a.Tone),
 		"usageContext":        toInterfaceSlice(a.UsageContext),
 		"authenticityStyle":   string(a.AuthenticityStyle),
-		"orientation":         a.Orientation,
-		"graphicalStyle":      a.GraphicalStyle,
-		"moods":               toInterfaceSlice(a.Moods),
-		"numberOfPeople":      a.NumberOfPeople,
-		"ethnicity":           toInterfaceSlice(a.Ethnicity),
-		"ageOfPeople":         toInterfaceSlice(a.AgeOfPeople),
+		"imageType":           strings.ToLower(a.ImageType),
+		"orientation":         strings.ToLower(a.Orientation),
+		"graphicalStyle":      strings.ToLower(a.GraphicalStyle),
+		"moods":               toInterfaceSlice(toLowerSlice(a.Moods)),
+		"numberOfPeople":      strings.ToLower(a.NumberOfPeople),
+		"ethnicity":           toInterfaceSlice(toLowerSlice(a.Ethnicity)),
+		"ageOfPeople":         toInterfaceSlice(toLowerSlice(a.AgeOfPeople)),
 		"collectionCode":      a.CollectionCode,
 		"artist":              a.Artist,
 		"gettyKeywords":       toInterfaceSlice(a.GettyKeywords),
@@ -374,6 +548,7 @@ func analysisToPayload(a *models.ImageAnalysis) map[string]*qdrant.Value {
 		"searchTerms":         toInterfaceSlice(a.SearchTerms),
 		"analyzedAt":          a.AnalyzedAt.Format(time.RFC3339),
 		"analysisVersion":     a.AnalysisVersion,
+		"searchText":          a.SearchText(),
 	}
 
 	return qdrant.NewValueMap(payload)
@@ -409,7 +584,6 @@ func payloadToAnalysis(payload map[string]*qdrant.Value, score float32) *models.
 
 	// Color
 	analysis.DominantColors = getStringSlice(payload, "dominantColors")
-	analysis.ColorMood = models.ColorMood(getStringValue(payload, "colorMood"))
 	analysis.TextSafeColors = models.TextSafeColors(getStringValue(payload, "textSafeColors"))
 	analysis.BackgroundType = models.BackgroundType(getStringValue(payload, "backgroundType"))
 
@@ -427,6 +601,7 @@ func payloadToAnalysis(payload map[string]*qdrant.Value, score float32) *models.
 	analysis.Tone = getStringSlice(payload, "tone")
 	analysis.UsageContext = getStringSlice(payload, "usageContext")
 	analysis.AuthenticityStyle = models.AuthenticityStyle(getStringValue(payload, "authenticityStyle"))
+	analysis.ImageType = getStringValue(payload, "imageType")
 
 	// Getty metadata
 	analysis.Orientation = getStringValue(payload, "orientation")
@@ -495,10 +670,19 @@ func getStringSlice(payload map[string]*qdrant.Value, key string) []string {
 	return nil
 }
 
-func toInterfaceSlice(s []string) []interface{} {
-	result := make([]interface{}, len(s))
+func toInterfaceSlice(s []string) []any {
+	result := make([]any, len(s))
 	for i, v := range s {
 		result[i] = v
+	}
+	return result
+}
+
+// toLowerSlice returns a new slice with all strings lowercased.
+func toLowerSlice(s []string) []string {
+	result := make([]string, len(s))
+	for i, v := range s {
+		result[i] = strings.ToLower(v)
 	}
 	return result
 }

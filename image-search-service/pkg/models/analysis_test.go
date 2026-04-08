@@ -27,7 +27,6 @@ func TestImageAnalysis_JSONRoundTrip(t *testing.T) {
 		Activity:            ActivityMeeting,
 		SettingType:         SettingTypeOffice,
 		DominantColors:      []string{"#2C3E50", "#ECF0F1", "#3498DB"},
-		ColorMood:           ColorMoodCool,
 		TextSafeColors:      TextSafeColorsEither,
 		BackgroundType:      BackgroundTypeComplex,
 		Composition:         CompositionCenter,
@@ -249,16 +248,6 @@ func TestEnumConstants(t *testing.T) {
 	for _, v := range activities {
 		if v == "" {
 			t.Error("Activity should not be empty")
-		}
-	}
-
-	// ColorMood
-	colorMoods := []ColorMood{
-		ColorMoodWarm, ColorMoodCool, ColorMoodNeutral, ColorMoodVibrant, ColorMoodMuted,
-	}
-	for _, v := range colorMoods {
-		if v == "" {
-			t.Error("ColorMood should not be empty")
 		}
 	}
 

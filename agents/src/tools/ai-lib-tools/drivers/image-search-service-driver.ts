@@ -86,6 +86,7 @@ export class ImageSearchServiceDriver implements MediaDriver {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query: options.query,
+          ...(options.context && { context: options.context }),
           count,
           ...(filters && { filters }),
         }),

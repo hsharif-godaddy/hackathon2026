@@ -1,0 +1,146 @@
+[
+  {
+    "name": "car-dealership",
+    "prompt": "Build a car dealership website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "car dealership showroom new vehicles display modern",
+        "context": "wide hero banner showing modern car dealership showroom with new vehicles for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "inventory/sedan",
+        "query": "luxury sedan car exterior side profile sleek",
+        "context": "sleek profile shot of luxury sedan for vehicle inventory page",
+        "filters": { "orientations": ["horizontal"], "subjectCategory": ["vehicle"] }
+      }
+    ]
+  },
+  {
+    "name": "tire-shop",
+    "prompt": "Build a tire shop website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "tire shop rack display new tires automotive service",
+        "context": "wide hero banner showing tire shop with rack of new tires for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "services/installation",
+        "query": "mechanic changing tire wheel car lift garage",
+        "context": "mechanic installing tire on vehicle for tire installation services page",
+        "filters": { "numberOfPeople": ["one"] }
+      }
+    ]
+  },
+  {
+    "name": "car-wash",
+    "prompt": "Build a car wash website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "car wash tunnel automatic brushes water soap vehicle",
+        "context": "wide hero banner showing car going through automatic car wash tunnel for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "services/detail",
+        "query": "auto detailing polishing car exterior shine professional",
+        "context": "professional detailer polishing car exterior for detailing services page",
+        "filters": { "numberOfPeople": ["one"] }
+      }
+    ]
+  },
+  {
+    "name": "auto-body-shop",
+    "prompt": "Build an auto body shop website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "auto body shop paint booth spray car repair collision",
+        "context": "wide hero banner showing auto body paint booth with vehicle for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "services/paint",
+        "query": "auto painter spraying car panel paint booth protective suit",
+        "context": "technician spray painting car panel in booth for paint services page",
+        "filters": { "numberOfPeople": ["one"] }
+      }
+    ]
+  },
+  {
+    "name": "motorcycle-dealer",
+    "prompt": "Build a motorcycle dealership website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "motorcycle showroom display bikes cruiser sport",
+        "context": "wide hero banner showing motorcycle showroom with bikes on display for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "lifestyle/riding",
+        "query": "motorcyclist riding scenic road mountain curves",
+        "context": "motorcyclist riding on scenic mountain road for lifestyle page",
+        "filters": { "orientations": ["horizontal"], "numberOfPeople": ["one"] }
+      }
+    ]
+  },
+  {
+    "name": "oil-change",
+    "prompt": "Build a quick oil change service website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "oil change service bay car lifted mechanic underneath",
+        "context": "wide hero banner showing vehicle in service bay for oil change for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "services/oil-change",
+        "query": "pouring motor oil engine funnel fresh oil change",
+        "context": "fresh motor oil being poured during oil change for services page",
+        "filters": { "compositions": ["close_up"] }
+      }
+    ]
+  },
+  {
+    "name": "towing-service",
+    "prompt": "Build a towing service website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "tow truck loading car roadside assistance vehicle",
+        "context": "wide hero banner showing tow truck loading vehicle for roadside assistance homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "services/emergency",
+        "query": "tow truck night highway emergency roadside service lights",
+        "context": "tow truck at night with emergency lights for emergency towing page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "rv-dealer",
+    "prompt": "Build an RV dealership website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "rv motorhome dealership lot recreational vehicles display",
+        "context": "wide hero banner showing RV dealership lot with motorhomes for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "lifestyle/camping",
+        "query": "rv campsite nature scenic parked motorhome camping",
+        "context": "RV parked at scenic campsite in nature for camping lifestyle page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  }
+]

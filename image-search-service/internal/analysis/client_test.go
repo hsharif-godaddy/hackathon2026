@@ -28,6 +28,9 @@ func TestBuildPrompt(t *testing.T) {
 		"usageContext",
 		"searchTerms",
 		"description",
+		"numberOfPeople",
+		"ethnicity",
+		"ageOfPeople",
 		"ONLY with valid JSON",
 	}
 
@@ -52,6 +55,9 @@ func TestParseAnalysisResponse(t *testing.T) {
 		"visualComplexity": "moderate",
 		"peopleCount": "0",
 		"peopleFocus": "none",
+		"numberOfPeople": "none",
+		"ethnicity": [],
+		"ageOfPeople": [],
 		"tone": ["playful", "friendly", "energetic"],
 		"usageContext": ["hero", "content", "gallery"],
 		"authenticityStyle": "candid",
@@ -101,6 +107,15 @@ func TestParseAnalysisResponse(t *testing.T) {
 	if result.PeopleFocus != "none" {
 		t.Errorf("PeopleFocus = %q, want %q", result.PeopleFocus, "none")
 	}
+	if result.NumberOfPeople != "none" {
+		t.Errorf("NumberOfPeople = %q, want %q", result.NumberOfPeople, "none")
+	}
+	if len(result.Ethnicity) != 0 {
+		t.Errorf("Ethnicity length = %d, want 0", len(result.Ethnicity))
+	}
+	if len(result.AgeOfPeople) != 0 {
+		t.Errorf("AgeOfPeople length = %d, want 0", len(result.AgeOfPeople))
+	}
 	if result.AuthenticityStyle != "candid" {
 		t.Errorf("AuthenticityStyle = %q, want %q", result.AuthenticityStyle, "candid")
 	}
@@ -148,6 +163,9 @@ func TestParseAnalysisResponse_WithMarkdown(t *testing.T) {
 		"visualComplexity": "moderate",
 		"peopleCount": "2-3",
 		"peopleFocus": "primary",
+		"numberOfPeople": "group",
+		"ethnicity": ["multiethnic_group"],
+		"ageOfPeople": ["adult"],
 		"tone": ["professional"],
 		"usageContext": ["content"],
 		"authenticityStyle": "stock",
@@ -183,6 +201,9 @@ func TestParseAnalysisResponse_WithBackticks(t *testing.T) {
 		"visualComplexity": "minimal",
 		"peopleCount": "0",
 		"peopleFocus": "none",
+		"numberOfPeople": "none",
+		"ethnicity": [],
+		"ageOfPeople": [],
 		"tone": ["calm", "neutral"],
 		"usageContext": ["product", "thumbnail"],
 		"authenticityStyle": "stock",
@@ -240,6 +261,9 @@ func TestResult_ToImageAnalysis(t *testing.T) {
 		VisualComplexity:  "low",
 		PeopleCount:       "1",
 		PeopleFocus:       "primary",
+		NumberOfPeople:    "one",
+		Ethnicity:         []string{"white"},
+		AgeOfPeople:       []string{"adult"},
 		Tone:              []string{"professional", "energetic"},
 		UsageContext:      []string{"hero", "content"},
 		AuthenticityStyle: "stock",
@@ -284,6 +308,15 @@ func TestResult_ToImageAnalysis(t *testing.T) {
 	}
 	if analysis.PeopleFocus != models.PeopleFocus(result.PeopleFocus) {
 		t.Errorf("PeopleFocus = %q, want %q", analysis.PeopleFocus, result.PeopleFocus)
+	}
+	if analysis.NumberOfPeople != result.NumberOfPeople {
+		t.Errorf("NumberOfPeople = %q, want %q", analysis.NumberOfPeople, result.NumberOfPeople)
+	}
+	if len(analysis.Ethnicity) != len(result.Ethnicity) {
+		t.Errorf("Ethnicity length = %d, want %d", len(analysis.Ethnicity), len(result.Ethnicity))
+	}
+	if len(analysis.AgeOfPeople) != len(result.AgeOfPeople) {
+		t.Errorf("AgeOfPeople length = %d, want %d", len(analysis.AgeOfPeople), len(result.AgeOfPeople))
 	}
 	if analysis.AuthenticityStyle != models.AuthenticityStyle(result.AuthenticityStyle) {
 		t.Errorf("AuthenticityStyle = %q, want %q", analysis.AuthenticityStyle, result.AuthenticityStyle)

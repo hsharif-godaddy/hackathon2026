@@ -1,0 +1,290 @@
+[
+  {
+    "name": "bakery",
+    "prompt": "Build a bakery website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "bakery display case fresh bread pastries storefront",
+        "context": "wide hero banner showing inviting bakery with glass display case full of fresh bread and pastries",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "products/croissant",
+        "query": "golden flaky croissant close up baked",
+        "context": "close-up product shot of perfectly golden flaky croissant for bakery menu",
+        "filters": { "compositions": ["close_up"], "subjectCategory": ["food"] }
+      }
+    ]
+  },
+  {
+    "name": "cafe-restaurant",
+    "prompt": "Build a cafe restaurant website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "cafe restaurant interior dining tables warm lighting",
+        "context": "wide hero banner showing stylish cafe restaurant interior with tables and warm ambient lighting",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "menu/brunch",
+        "query": "brunch plate eggs benedict avocado toast",
+        "context": "overhead close-up of plated brunch dish for cafe menu page",
+        "filters": { "compositions": ["close_up"], "subjectCategory": ["food"] }
+      }
+    ]
+  },
+  {
+    "name": "yoga-studio",
+    "prompt": "Build a yoga studio website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "yoga class studio group practice poses",
+        "context": "wide hero banner showing group yoga class in bright modern studio for homepage",
+        "filters": { "orientations": ["horizontal"], "numberOfPeople": ["group"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "classes/meditation",
+        "query": "meditation peaceful sitting cross legged calm",
+        "context": "serene person meditating in quiet studio setting for meditation class page",
+        "filters": { "numberOfPeople": ["one"], "moods": ["natural"] }
+      }
+    ]
+  },
+  {
+    "name": "pilates-studio",
+    "prompt": "Build a pilates studio website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "pilates class reformer studio group workout",
+        "context": "wide hero banner showing pilates class on reformer machines in bright modern studio",
+        "filters": { "orientations": ["horizontal"], "numberOfPeople": ["group"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "classes/mat",
+        "query": "pilates mat exercise core workout stretching",
+        "context": "person doing pilates mat exercises focusing on core strength for mat class page",
+        "filters": { "numberOfPeople": ["one"] }
+      }
+    ]
+  },
+  {
+    "name": "dental-clinic",
+    "prompt": "Build a dental clinic website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "modern dental clinic interior clean professional",
+        "context": "wide hero banner showing bright modern dental office with professional equipment for homepage",
+        "filters": { "moods": ["cool"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "services/checkup",
+        "query": "dentist examining patient teeth dental chair",
+        "context": "dentist performing dental examination on patient in chair for services page",
+        "filters": { "numberOfPeople": ["two"] }
+      }
+    ]
+  },
+  {
+    "name": "dermatology-clinic",
+    "prompt": "Build a dermatology clinic website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "dermatology clinic modern medical office skin care",
+        "context": "wide hero banner showing clean modern dermatology clinic interior for homepage",
+        "filters": { "moods": ["cool"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "services/consultation",
+        "query": "dermatologist examining patient skin consultation",
+        "context": "dermatologist examining patient skin during consultation for services page",
+        "filters": { "numberOfPeople": ["two"] }
+      }
+    ]
+  },
+  {
+    "name": "dog-groomer",
+    "prompt": "Build a dog grooming salon website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "dog grooming salon groomer bathing fluffy dog",
+        "context": "wide hero banner showing professional dog groomer working with cute dog in grooming salon",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "services/grooming",
+        "query": "dog haircut trimming groomer scissors poodle",
+        "context": "groomer carefully trimming dog with scissors for grooming services page",
+        "filters": { "numberOfPeople": ["one"] }
+      }
+    ]
+  },
+  {
+    "name": "veterinary-clinic",
+    "prompt": "Build a veterinary clinic website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "veterinary clinic vet examining dog stethoscope",
+        "context": "wide hero banner showing friendly veterinarian examining dog in modern clinic for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "services/wellness",
+        "query": "veterinarian checkup cat exam table clinic",
+        "context": "veterinarian performing wellness checkup on cat at exam table for services page",
+        "filters": { "numberOfPeople": ["one"] }
+      }
+    ]
+  },
+  {
+    "name": "hair-salon",
+    "prompt": "Build a hair salon website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "hair salon interior styling stations mirrors chairs",
+        "context": "wide hero banner showing stylish modern hair salon interior with styling stations for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "services/color",
+        "query": "hairstylist applying hair color dye foils client",
+        "context": "hairstylist applying color treatment to client hair for color services page",
+        "filters": { "numberOfPeople": ["two"] }
+      }
+    ]
+  },
+  {
+    "name": "barber-shop",
+    "prompt": "Build a barber shop website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "barber shop interior vintage chairs mirrors",
+        "context": "wide hero banner showing classic barber shop with vintage chairs and mirrors for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "services/shave",
+        "query": "barber straight razor shave hot towel client",
+        "context": "barber performing traditional straight razor shave on client for shave services page",
+        "filters": { "numberOfPeople": ["two"] }
+      }
+    ]
+  },
+  {
+    "name": "italian-restaurant",
+    "prompt": "Build an Italian restaurant website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "italian restaurant interior rustic dining tables wine",
+        "context": "wide hero banner showing warm rustic Italian restaurant interior with dining tables for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "menu/pasta",
+        "query": "fresh handmade pasta dish plated Italian cuisine",
+        "context": "close-up of beautifully plated fresh pasta dish for restaurant menu page",
+        "filters": { "compositions": ["close_up"], "subjectCategory": ["food"] }
+      }
+    ]
+  },
+  {
+    "name": "mexican-restaurant",
+    "prompt": "Build a Mexican restaurant website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "mexican restaurant interior colorful decor vibrant",
+        "context": "wide hero banner showing vibrant colorful Mexican restaurant interior for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "menu/tacos",
+        "query": "authentic street tacos plated cilantro lime Mexican",
+        "context": "close-up of authentic Mexican street tacos with fresh cilantro and lime for menu page",
+        "filters": { "compositions": ["close_up"], "subjectCategory": ["food"] }
+      }
+    ]
+  },
+  {
+    "name": "real-estate-agent",
+    "prompt": "Build a real estate agent website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "luxury home exterior modern architecture neighborhood",
+        "context": "wide hero banner showing beautiful luxury home exterior for real estate homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "listings/interior",
+        "query": "spacious modern living room interior staging",
+        "context": "professionally staged spacious modern living room for property listing page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "interior-designer",
+    "prompt": "Build an interior design firm website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "stunning interior design living room luxury modern",
+        "context": "wide hero banner showing beautifully designed luxury modern living room for firm homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "portfolio/kitchen",
+        "query": "custom kitchen design marble countertop cabinetry",
+        "context": "professionally designed custom kitchen with marble countertops for portfolio page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "personal-trainer",
+    "prompt": "Build a personal trainer website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "personal trainer coaching client gym weights workout",
+        "context": "wide hero banner showing personal trainer working with client in gym for homepage",
+        "filters": { "orientations": ["horizontal"], "numberOfPeople": ["two"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "programs/strength",
+        "query": "weightlifting barbell squat strength training gym",
+        "context": "person doing barbell squat in gym for strength training programs page",
+        "filters": { "numberOfPeople": ["one"] }
+      }
+    ]
+  },
+  {
+    "name": "crossfit-gym",
+    "prompt": "Build a CrossFit gym website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "crossfit box gym group workout intense athletic",
+        "context": "wide hero banner showing intense CrossFit group workout in warehouse-style gym",
+        "filters": { "orientations": ["horizontal"], "numberOfPeople": ["group"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "programs/wod",
+        "query": "crossfit athlete kettlebell swing box jump rope",
+        "context": "athletic person doing kettlebell swing in CrossFit gym for workout of the day page",
+        "filters": { "numberOfPeople": ["one"] }
+      }
+    ]
+  }
+]

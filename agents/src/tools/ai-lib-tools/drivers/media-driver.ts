@@ -27,6 +27,10 @@ export interface MediaDriverSearchOptions {
   ageOfPeople?: string[];
   minimumSize?: string;
 
+  // Search context hint for the image search service (e.g., "close-up product photo for gallery").
+  // Enriches the query embedding with purpose/style context. Getty direct driver ignores this.
+  context?: string;
+
   // Filters only supported by the image search service.
   // Getty direct driver silently ignores these.
   subjectCategory?: string[];

@@ -49,9 +49,10 @@ type Config struct {
 	S3Prefix string
 
 	// Response behavior
-	DefaultMinCached   int
-	DefaultMaxWaitSecs int
-	MinRelevanceScore  float32
+	DefaultMinCached      int
+	DefaultMaxWaitSecs    int
+	RelativeScoreRatio    float32
+	RRFPrefetchMultiplier int
 
 	// SSO
 	SSOHost string
@@ -92,7 +93,7 @@ func LoadConfig() *Config {
 		AnthropicAPIURL:   getEnvString("ANTHROPIC_API_URL", "https://api.anthropic.com"),
 		AnthropicAPIKey:   getEnvString("ANTHROPIC_API_KEY", ""),
 		HaikuRateLimitRPS: getEnvInt("HAIKU_RATE_LIMIT_RPS", 20),
-		HaikuConcurrency:  getEnvInt("HAIKU_CONCURRENCY", 5),
+		HaikuConcurrency:  getEnvInt("HAIKU_CONCURRENCY", 10),
 
 		// OpenAI (Embeddings)
 		OpenAIAPIKey:  getEnvString("OPENAI_API_KEY", ""),
@@ -101,7 +102,7 @@ func LoadConfig() *Config {
 		// Qdrant (use 127.0.0.1 to avoid IPv6 timeout when Docker only binds IPv4)
 		QdrantHost:          getEnvString("QDRANT_HOST", "127.0.0.1"),
 		QdrantPort:          getEnvInt("QDRANT_PORT", 6334),
-		QdrantCollection:    getEnvString("QDRANT_COLLECTION", "image_analyses"),
+		QdrantCollection:    getEnvString("QDRANT_COLLECTION", "image_analyses_v3"),
 		QdrantAPIKey:        getEnvString("QDRANT_API_KEY", ""),
 		QdrantUseTLS:        getEnvBool("QDRANT_USE_TLS", false),
 		QdrantTLSSkipVerify: getEnvBool("QDRANT_TLS_SKIP_VERIFY", false),
@@ -112,9 +113,10 @@ func LoadConfig() *Config {
 		S3Prefix: getEnvString("S3_PREFIX", "analyses/v1"),
 
 		// Response behavior
-		DefaultMinCached:   getEnvInt("DEFAULT_MIN_CACHED", 5),
-		DefaultMaxWaitSecs: getEnvInt("DEFAULT_MAX_WAIT_SECONDS", 30),
-		MinRelevanceScore:  getEnvFloat32("MIN_RELEVANCE_SCORE", 0.5),
+		DefaultMinCached:      getEnvInt("DEFAULT_MIN_CACHED", 0),
+		DefaultMaxWaitSecs:    getEnvInt("DEFAULT_MAX_WAIT_SECONDS", 30),
+		RelativeScoreRatio:    getEnvFloat32("RELATIVE_SCORE_RATIO", 0.65),
+		RRFPrefetchMultiplier: getEnvInt("RRF_PREFETCH_MULTIPLIER", 3),
 
 		// SSO
 		SSOHost: getEnvString("SSO_HOST", "sso.godaddy.com"),

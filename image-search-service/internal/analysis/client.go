@@ -20,7 +20,7 @@ import (
 )
 
 // Model is the Claude model used for image analysis.
-const Model = "claude-3-haiku-20240307"
+const Model = "claude-haiku-4-5-20251001"
 
 // Image media type constants.
 const (
@@ -44,6 +44,9 @@ type Result struct {
 	VisualComplexity  string   `json:"visualComplexity"`
 	PeopleCount       string   `json:"peopleCount"`
 	PeopleFocus       string   `json:"peopleFocus"`
+	NumberOfPeople    string   `json:"numberOfPeople"`
+	Ethnicity         []string `json:"ethnicity"`
+	AgeOfPeople       []string `json:"ageOfPeople"`
 	Tone              []string `json:"tone"`
 	Moods             []string `json:"moods"`
 	UsageContext      []string `json:"usageContext"`
@@ -226,8 +229,11 @@ func ToImageAnalysis(r *Result) *models.ImageAnalysis {
 		VisualComplexity:  models.VisualComplexity(r.VisualComplexity),
 
 		// People
-		PeopleCount: models.PeopleCount(r.PeopleCount),
-		PeopleFocus: models.PeopleFocus(r.PeopleFocus),
+		PeopleCount:    models.PeopleCount(r.PeopleCount),
+		PeopleFocus:    models.PeopleFocus(r.PeopleFocus),
+		NumberOfPeople: r.NumberOfPeople,
+		Ethnicity:      r.Ethnicity,
+		AgeOfPeople:    r.AgeOfPeople,
 
 		// Mood & Style
 		Tone:              r.Tone,

@@ -1,0 +1,362 @@
+[
+  {
+    "name": "travel-agency",
+    "prompt": "Build a travel agency website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "tropical beach resort paradise turquoise water palm trees",
+        "context": "wide hero banner showing stunning tropical beach resort destination for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "destinations/europe",
+        "query": "european city historic architecture travel cobblestone streets",
+        "context": "scenic European city with historic architecture for Europe destinations page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "hotel",
+    "prompt": "Build a boutique hotel website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "boutique hotel lobby interior luxury elegant modern",
+        "context": "wide hero banner showing elegant boutique hotel lobby for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "rooms/suite",
+        "query": "luxury hotel suite bedroom king bed modern amenities",
+        "context": "luxury hotel suite with king bed and modern amenities for rooms page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "bed-and-breakfast",
+    "prompt": "Build a bed and breakfast website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "charming bed and breakfast exterior garden cottage quaint",
+        "context": "wide hero banner showing charming B&B cottage exterior with garden for homepage",
+        "filters": { "moods": ["warm"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "rooms/garden-room",
+        "query": "cozy bedroom interior floral decor vintage bed breakfast",
+        "context": "cozy guest bedroom with vintage floral decor for garden room page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "escape-room",
+    "prompt": "Build an escape room business website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "escape room mystery puzzle themed dark atmospheric",
+        "context": "wide hero banner showing mysterious themed escape room interior for homepage",
+        "filters": { "moods": ["dramatic"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "rooms/detective",
+        "query": "detective mystery room clues puzzles props vintage office",
+        "context": "detective-themed escape room with clues and props for room description page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "bowling-alley",
+    "prompt": "Build a bowling alley website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "bowling alley lanes neon lights pins modern entertainment",
+        "context": "wide hero banner showing modern bowling lanes with neon lighting for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "events/birthday",
+        "query": "bowling birthday party group friends fun celebration",
+        "context": "group of friends having fun at bowling birthday party for events page",
+        "filters": { "numberOfPeople": ["group"] }
+      }
+    ]
+  },
+  {
+    "name": "rock-climbing-gym",
+    "prompt": "Build a rock climbing gym website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "indoor rock climbing gym wall colorful holds tall",
+        "context": "wide hero banner showing tall indoor climbing wall with colorful holds for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "classes/beginner",
+        "query": "rock climbing instructor teaching belaying beginner class",
+        "context": "instructor teaching belaying technique to beginner for beginner class page",
+        "filters": { "numberOfPeople": ["two"] }
+      }
+    ]
+  },
+  {
+    "name": "golf-course",
+    "prompt": "Build a golf course website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "golf course scenic fairway green landscape beautiful",
+        "context": "wide hero banner showing scenic golf course fairway for homepage",
+        "filters": { "moods": ["natural"], "orientations": ["horizontal"], "compositions": ["wide_shot"] }
+      },
+      {
+        "slot": "facilities/clubhouse",
+        "query": "golf clubhouse elegant restaurant bar lounge interior",
+        "context": "elegant golf clubhouse interior with dining area for clubhouse page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "camping-outfitter",
+    "prompt": "Build an outdoor camping outfitter website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "camping tent mountain lake sunset wilderness adventure",
+        "context": "wide hero banner showing campsite with tent at mountain lake at sunset for homepage",
+        "filters": { "moods": ["dramatic"], "orientations": ["horizontal"], "compositions": ["wide_shot"] }
+      },
+      {
+        "slot": "products/gear",
+        "query": "camping gear equipment backpack boots outdoor supplies",
+        "context": "camping gear and equipment layout for outdoor gear products page",
+        "filters": { "compositions": ["close_up"] }
+      }
+    ]
+  },
+  {
+    "name": "laundromat",
+    "prompt": "Build a laundromat website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "modern laundromat interior washing machines clean bright",
+        "context": "wide hero banner showing clean modern laundromat with washing machines for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "services/wash-fold",
+        "query": "fresh folded laundry towels clean white organized",
+        "context": "neatly folded fresh clean laundry for wash and fold services page",
+        "filters": { "compositions": ["close_up"] }
+      }
+    ]
+  },
+  {
+    "name": "dry-cleaner",
+    "prompt": "Build a dry cleaning service website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "dry cleaning shop garments rack plastic wrapped suits shirts",
+        "context": "wide hero banner showing dry cleaning shop with wrapped garments on rack for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "services/pressing",
+        "query": "professional pressing ironing shirt steam crisp clean",
+        "context": "professional pressing and steaming shirt for pressing services page",
+        "filters": { "numberOfPeople": ["one"] }
+      }
+    ]
+  },
+  {
+    "name": "storage-facility",
+    "prompt": "Build a self-storage facility website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "storage facility hallway units doors clean organized",
+        "context": "wide hero banner showing clean storage facility hallway with unit doors for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "units/large",
+        "query": "storage unit interior boxes organized shelving space",
+        "context": "organized storage unit interior with boxes for large unit description page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "music-venue",
+    "prompt": "Build a live music venue website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "live music venue stage lights concert empty atmospheric",
+        "context": "wide hero banner showing atmospheric empty concert stage with lights for homepage",
+        "filters": { "moods": ["dramatic"], "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "events/concert",
+        "query": "live band performing stage concert crowd audience energy",
+        "context": "live band performing on stage with energetic crowd for events page",
+        "filters": { "numberOfPeople": ["group"], "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "skateboard-shop",
+    "prompt": "Build a skateboard shop website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "skateboard shop interior boards deck wall display urban",
+        "context": "wide hero banner showing skateboard shop with boards on wall display for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "lifestyle/skate",
+        "query": "skateboarder trick halfpipe skatepark action urban",
+        "context": "skateboarder performing trick at skatepark for lifestyle page",
+        "filters": { "numberOfPeople": ["one"], "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "bike-shop",
+    "prompt": "Build a bicycle shop website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "bicycle shop interior bikes hanging display repair",
+        "context": "wide hero banner showing bicycle shop with bikes on display for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "services/repair",
+        "query": "bike mechanic repairing bicycle wheel spoke workshop",
+        "context": "bike mechanic repairing wheel in workshop for repair services page",
+        "filters": { "numberOfPeople": ["one"] }
+      }
+    ]
+  },
+  {
+    "name": "tattoo-removal",
+    "prompt": "Build a tattoo removal clinic website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "laser tattoo removal treatment clean clinical modern",
+        "context": "wide hero banner showing modern laser tattoo removal treatment room for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "results/before-after",
+        "query": "tattoo removal results faded skin laser treatment progress",
+        "context": "tattoo removal progress showing faded results for before/after results page",
+        "filters": { "compositions": ["close_up"] }
+      }
+    ]
+  },
+  {
+    "name": "nail-salon",
+    "prompt": "Build a nail salon website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "nail salon interior manicure stations modern clean",
+        "context": "wide hero banner showing modern nail salon with manicure stations for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "services/manicure",
+        "query": "manicure nail art close up colorful design hands",
+        "context": "close-up of beautiful nail art manicure for manicure services page",
+        "filters": { "compositions": ["close_up"] }
+      }
+    ]
+  },
+  {
+    "name": "car-rental",
+    "prompt": "Build a car rental company website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "car rental lot fleet vehicles parked row available",
+        "context": "wide hero banner showing fleet of rental cars available for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "fleet/suv",
+        "query": "suv crossover vehicle luxury family adventure road",
+        "context": "luxury SUV on scenic road for SUV rental category page",
+        "filters": { "orientations": ["horizontal"], "subjectCategory": ["vehicle"] }
+      }
+    ]
+  },
+  {
+    "name": "locksmith",
+    "prompt": "Build a locksmith service website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "locksmith working door lock installation professional tools",
+        "context": "wide hero banner showing locksmith installing door lock for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"], "numberOfPeople": ["one"] }
+      },
+      {
+        "slot": "services/emergency",
+        "query": "locked out car door key emergency lockout help",
+        "context": "emergency car lockout situation for emergency locksmith services page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  },
+  {
+    "name": "solar-installer",
+    "prompt": "Build a solar panel installation company website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "solar panels roof installation residential home energy",
+        "context": "wide hero banner showing solar panels installed on residential roof for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "about/installation",
+        "query": "solar installer technician mounting panels roof worker",
+        "context": "technician installing solar panels on roof for installation process page",
+        "filters": { "numberOfPeople": ["one"] }
+      }
+    ]
+  },
+  {
+    "name": "fencing-company",
+    "prompt": "Build a fencing company website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "beautiful wooden fence residential backyard privacy",
+        "context": "wide hero banner showing attractive wooden privacy fence in residential yard for homepage",
+        "filters": { "orientations": ["horizontal"], "compositions": ["copy_space"] }
+      },
+      {
+        "slot": "products/iron",
+        "query": "ornamental iron fence gate elegant black wrought",
+        "context": "elegant ornamental wrought iron fence and gate for iron fencing products page",
+        "filters": { "orientations": ["horizontal"] }
+      }
+    ]
+  }
+]

@@ -57,7 +57,7 @@ func TestCollectResults_AppliesLimit(t *testing.T) {
 		{GettyID: "5", RelevanceScore: 0.5},
 	}
 
-	result := collectResults(analyses, 3)
+	result := collectResults(analyses, 3, 0.65)
 
 	if len(result) != 3 {
 		t.Errorf("expected 3 results, got %d", len(result))
@@ -70,7 +70,7 @@ func TestCollectResults_LimitGreaterThanLength(t *testing.T) {
 		{GettyID: "2", RelevanceScore: 0.8},
 	}
 
-	result := collectResults(analyses, 10)
+	result := collectResults(analyses, 10, 0.65)
 
 	if len(result) != 2 {
 		t.Errorf("expected 2 results (all available), got %d", len(result))
@@ -98,6 +98,42 @@ func TestSortByRelevance_EqualScores(t *testing.T) {
 	}
 	if !ids["first"] || !ids["second"] || !ids["third"] {
 		t.Error("all items should be present after sorting")
+	}
+}
+
+func TestCollectResults_RelativeScoreFiltering(t *testing.T) {
+	analyses := []*models.ImageAnalysis{
+		{GettyID: "1", RelevanceScore: 0.90},
+		{GettyID: "2", RelevanceScore: 0.80},
+		{GettyID: "3", RelevanceScore: 0.60}, // 0.60 >= 0.90*0.65=0.585 → kept
+		{GettyID: "4", RelevanceScore: 0.50}, // 0.50 < 0.585 → dropped
+		{GettyID: "5", RelevanceScore: 0.30},
+	}
+
+	result := collectResults(analyses, 10, 0.65)
+
+	if len(result) != 3 {
+		t.Errorf("expected 3 results after relative filtering, got %d", len(result))
+	}
+}
+
+func TestCollectResults_ZeroRatioDisablesFiltering(t *testing.T) {
+	analyses := []*models.ImageAnalysis{
+		{GettyID: "1", RelevanceScore: 0.90},
+		{GettyID: "2", RelevanceScore: 0.10},
+	}
+
+	result := collectResults(analyses, 10, 0)
+
+	if len(result) != 2 {
+		t.Errorf("expected 2 results with zero ratio, got %d", len(result))
+	}
+}
+
+func TestFilterByRelativeScore_Empty(t *testing.T) {
+	result := filterByRelativeScore(nil, 0.65)
+	if len(result) != 0 {
+		t.Errorf("expected empty result, got %d", len(result))
 	}
 }
 

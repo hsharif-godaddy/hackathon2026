@@ -105,7 +105,6 @@ func TestSearchResponse_JSONSerialization(t *testing.T) {
 					PeopleCount:         "2-3",
 					PeopleFocus:         "primary",
 					Tone:                []string{"professional", "friendly"},
-					ColorMood:           "warm",
 					TextSafeColors:      "dark-only",
 					AuthenticityStyle:   "candid",
 					UsageContext:        []string{"hero", "content"},

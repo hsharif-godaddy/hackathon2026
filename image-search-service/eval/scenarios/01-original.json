@@ -1,0 +1,337 @@
+[
+  {
+    "name": "restaurant",
+    "prompt": "Build a restaurant website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "restaurant interior dining elegant",
+        "context": "wide hero banner for restaurant homepage, showing ambiance and atmosphere",
+        "filters": {
+          "compositions": [
+            "copy_space"
+          ],
+          "moods": [
+            "warm"
+          ],
+          "orientations": [
+            "horizontal"
+          ]
+        }
+      },
+      {
+        "slot": "menu/featured-dish",
+        "query": "gourmet food plated dish",
+        "context": "close-up product photo of a single plated dish for menu feature",
+        "filters": {
+          "compositions": [
+            "close_up"
+          ],
+          "subjectCategory": [
+            "food"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "fitness-studio",
+    "prompt": "Build a fitness studio website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "gym workout training equipment",
+        "context": "wide hero banner for fitness studio homepage, showing gym facility and equipment",
+        "filters": {
+          "moods": [
+            "bold"
+          ],
+          "orientations": [
+            "horizontal"
+          ]
+        }
+      },
+      {
+        "slot": "pages/about/trainer",
+        "query": "personal trainer portrait",
+        "context": "professional headshot portrait of a fitness trainer for about page",
+        "filters": {
+          "compositions": [
+            "headshot"
+          ],
+          "numberOfPeople": [
+            "one"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "law-firm",
+    "prompt": "Build a law firm website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "modern office building corporate",
+        "context": "impressive corporate office tower exterior for law firm homepage hero banner",
+        "filters": {
+          "moods": [
+            "cool"
+          ],
+          "compositions": [
+            "copy_space"
+          ],
+          "orientations": [
+            "horizontal"
+          ]
+        }
+      },
+      {
+        "slot": "team/attorney",
+        "query": "professional attorney portrait",
+        "context": "professional headshot portrait of a lawyer in office setting for team page",
+        "filters": {
+          "compositions": [
+            "headshot"
+          ],
+          "graphicalStyles": [
+            "photography"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "real-estate",
+    "prompt": "Build a real estate agency website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "luxury home exterior real estate",
+        "context": "wide shot of luxury home exterior for real estate agency homepage hero",
+        "filters": {
+          "compositions": [
+            "wide_shot"
+          ],
+          "orientations": [
+            "horizontal"
+          ]
+        }
+      },
+      {
+        "slot": "pages/home/interior",
+        "query": "modern home interior living room",
+        "context": "staged modern living room interior for real estate listing showcase",
+        "filters": {
+          "subjectCategory": [
+            "architecture"
+          ],
+          "moods": [
+            "warm"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "tech-startup",
+    "prompt": "Build a tech startup website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "technology team collaboration startup",
+        "context": "wide hero banner showing diverse team actively collaborating with laptops in modern office",
+        "filters": {
+          "moods": [
+            "cool"
+          ],
+          "compositions": [
+            "copy_space"
+          ],
+          "orientations": [
+            "horizontal"
+          ]
+        }
+      },
+      {
+        "slot": "pages/about/team",
+        "query": "diverse tech team meeting",
+        "context": "group photo of diverse team in collaborative meeting for about/team page",
+        "filters": {
+          "numberOfPeople": [
+            "group"
+          ],
+          "subjectCategory": [
+            "people"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "salon",
+    "prompt": "Build a hair salon website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "modern hair salon interior",
+        "context": "wide hero banner showing professional hair salon interior with styling chairs and mirrors",
+        "filters": {
+          "moods": [
+            "warm"
+          ],
+          "orientations": [
+            "horizontal"
+          ]
+        }
+      },
+      {
+        "slot": "services/styling",
+        "query": "hairstylist working on client",
+        "context": "professional hairstylist actively styling client hair in salon for services page",
+        "filters": {
+          "numberOfPeople": [
+            "two"
+          ],
+          "compositions": [
+            "medium_shot"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "dental-office",
+    "prompt": "Build a dental office website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "modern dental office clinic",
+        "context": "wide hero banner showing clean modern dental treatment room with dental chair and equipment",
+        "filters": {
+          "moods": [
+            "cool"
+          ],
+          "compositions": [
+            "copy_space"
+          ],
+          "orientations": [
+            "horizontal"
+          ]
+        }
+      },
+      {
+        "slot": "team/dentist",
+        "query": "friendly dentist smiling professional",
+        "context": "professional headshot portrait of a smiling dentist in dental office for team page",
+        "filters": {
+          "compositions": [
+            "headshot"
+          ],
+          "numberOfPeople": [
+            "one"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "wedding-planner",
+    "prompt": "Build a wedding planner website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "elegant wedding ceremony venue",
+        "context": "wide hero banner showing decorated wedding ceremony venue setup for wedding planner homepage",
+        "filters": {
+          "moods": [
+            "warm"
+          ],
+          "compositions": [
+            "wide_shot"
+          ],
+          "orientations": [
+            "horizontal"
+          ]
+        }
+      },
+      {
+        "slot": "gallery/bouquet",
+        "query": "wedding flowers bouquet arrangement",
+        "context": "close-up photo of bridal flower bouquet for wedding planner floral gallery",
+        "filters": {
+          "compositions": [
+            "close_up"
+          ],
+          "moods": [
+            "warm"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "pet-grooming",
+    "prompt": "Build a pet grooming website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "happy dog grooming salon",
+        "context": "wide hero banner showing professional dog grooming in salon setting",
+        "filters": {
+          "subjectCategory": [
+            "animal"
+          ],
+          "moods": [
+            "warm"
+          ]
+        }
+      },
+      {
+        "slot": "services/bathing",
+        "query": "dog bath grooming service",
+        "context": "dog being bathed or washed in professional grooming tub for bathing services page",
+        "filters": {
+          "subjectCategory": [
+            "animal"
+          ],
+          "compositions": [
+            "medium_shot"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "photography-portfolio",
+    "prompt": "Build a photography portfolio website",
+    "imageNeeds": [
+      {
+        "slot": "pages/home/hero",
+        "query": "photographer professional camera studio",
+        "context": "wide hero banner showing photographer with camera in professional studio for portfolio homepage",
+        "filters": {
+          "compositions": [
+            "copy_space"
+          ],
+          "graphicalStyles": [
+            "photography"
+          ]
+        }
+      },
+      {
+        "slot": "portfolio/landscape",
+        "query": "dramatic landscape mountain sunset",
+        "context": "dramatic wide landscape photograph of mountains at sunset for photography portfolio gallery",
+        "filters": {
+          "moods": [
+            "dramatic"
+          ],
+          "compositions": [
+            "wide_shot"
+          ]
+        }
+      }
+    ]
+  }
+]
