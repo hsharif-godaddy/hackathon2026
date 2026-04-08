@@ -3404,6 +3404,35 @@ Please try again with corrected formatting.`
         })
       }
 
+      const streamAbortSignal =
+        this.stateManager.getAbortController(socket.id)?.signal ?? abortSignal
+      if (streamAbortSignal?.aborted) {
+        this.logger.info('stream.aborted.skip_get_final_result', {
+          socketId: socket.id,
+          agentName,
+          step: currentStep,
+        })
+
+        const toolResultsForSpan = conversationAfterStream?.pendingToolCalls
+        const hasToolResultsForSpan = toolResultsForSpan && toolResultsForSpan.size > 0
+
+        invocation.end({
+          outputText: fullContent,
+          responseType: fullContent ? 'llm_reply' : 'tool_call',
+          ...(hasToolResultsForSpan && {
+            responseData: Array.from(toolResultsForSpan.values()).map(t => ({
+              name: t.name,
+              status: t.status,
+              output: t.result,
+            }))
+          }),
+          success: false,
+          finishReason: 'aborted',
+        })
+
+        return
+      }
+
       // Get final result with usage and tool calls
       const finalResult = await streamResult.getFinalResult() as AgentExecutionResult
 

@@ -2510,6 +2510,72 @@ describe('WebSocketServer - Abort Signal Handling', () => {
     server.close()
   })
 
+  it('should not await getFinalResult when abort stops baseStream loop and SDK final promises hang', async () => {
+    const mockPersistence = createMockPersistence({
+      startConversation: vi.fn().mockResolvedValue('conv-skip-final'),
+      startAgentTurn: vi.fn().mockResolvedValue('msg-skip-final')
+    })
+
+    let readCount = 0
+    const mockReader = {
+      read: vi.fn(),
+      cancel: vi.fn().mockResolvedValue(undefined),
+      releaseLock: vi.fn()
+    }
+
+    const hangingGetFinalResult = vi.fn().mockReturnValue(new Promise(() => {}))
+
+    mockAgent.streamGenerate = vi.fn().mockResolvedValue({
+      baseStream: {
+        getReader: () => mockReader,
+        cancel: vi.fn()
+      },
+      // eslint-disable-next-line require-yield
+      textStream: (async function* () {})(),
+      getFinalResult: hangingGetFinalResult
+    })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: mockPersistence
+    })
+
+    const stateManager = (server as any).stateManager
+
+    mockReader.read.mockImplementation(() => {
+      readCount++
+      if (readCount === 1) {
+        return Promise.resolve({
+          done: false,
+          value: { part: { type: 'text-delta', text: 'partial' } }
+        }).then((value) => {
+          stateManager.getAbortController(mockSocket.id)?.abort()
+          return value
+        })
+      }
+      return new Promise(() => {})
+    })
+
+    const deadline = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('messageHandler timed out — likely blocked on getFinalResult')), 5000)
+    })
+
+    await Promise.race([
+      messageHandler({
+        message: 'Test message',
+        agentId: 'test-agent',
+        context: { metadata: { appId: 'test-app' } }
+      }),
+      deadline
+    ])
+
+    expect(hangingGetFinalResult).not.toHaveBeenCalled()
+    expect(mockReader.read).toHaveBeenCalledTimes(1)
+
+    server.close()
+  })
+
   it('should not emit duplicate complete events on normal (non-aborted) completion', async () => {
     const mockPersistence = createMockPersistence({
       startConversation: vi.fn().mockResolvedValue('conv-race'),

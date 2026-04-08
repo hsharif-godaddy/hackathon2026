@@ -12,12 +12,16 @@ vi.mock('nanoid', async (importOriginal) => {
 })
 
 const mockUpdateMessage = vi.fn().mockResolvedValue(undefined)
+const mockUpdateMessageMetadata = vi.fn().mockResolvedValue(undefined)
 const mockAddMessage = vi.fn().mockResolvedValue({ id: 'new-msg-id' })
+const mockGetMessageById = vi.fn()
 
 vi.mock('../../database/repositories/index.js', () => ({
   conversationRepository: {
     addMessage: mockAddMessage,
     updateMessage: mockUpdateMessage,
+    updateMessageMetadata: mockUpdateMessageMetadata,
+    getMessageById: mockGetMessageById,
     getById: vi.fn(),
     getOrCreateForApp: vi.fn(),
   },
@@ -31,13 +35,15 @@ const mockLogger = {
   debug: vi.fn(),
 }
 
+const mockLoggerModule = {
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+}
+
 vi.mock('../../logging/index.js', () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  },
+  logger: mockLoggerModule,
   log: {
     withContext: vi.fn().mockReturnValue(mockLogger),
     forApp: vi.fn().mockReturnValue(mockLogger),
@@ -410,6 +416,106 @@ describe('AgentsMessagePersistence', function packageTests() {
 
       expect(mockUpdateMessage).not.toHaveBeenCalled()
       expect(mockAddMessage).toHaveBeenCalledWith('conv-123', 'agent', 'hi', expect.any(Object))
+    })
+  })
+
+  describe('#handleDisconnection – cleanup', function disconnectionCleanupTests() {
+    it('should clear inProgress flag when agent message is in progress', async function clearsInProgress() {
+      seedActiveConversation('test-socket', 'agent-msg-123')
+      
+      mockGetMessageById.mockResolvedValueOnce({
+        id: 'agent-msg-123',
+        sender: 'agent',
+        content: 'Partial response...',
+        metadata: { inProgress: true }
+      })
+
+      await persistence.handleDisconnection('test-socket', ['conv-123'])
+
+      expect(mockGetMessageById).toHaveBeenCalledWith('agent-msg-123')
+      expect(mockUpdateMessageMetadata).toHaveBeenCalledWith('agent-msg-123', {
+        inProgress: false
+      })
+      expect(mockLoggerModule.info).toHaveBeenCalledWith(
+        'websocket.disconnection.clearing_inprogress',
+        expect.objectContaining({
+          conversationId: 'conv-123',
+          messageId: 'agent-msg-123',
+          socketId: 'test-socket'
+        })
+      )
+    })
+
+    it('should not update when message has inProgress: false', async function skipWhenNotInProgress() {
+      seedActiveConversation('test-socket', 'agent-msg-123')
+      
+      mockGetMessageById.mockResolvedValueOnce({
+        id: 'agent-msg-123',
+        sender: 'agent',
+        content: 'Complete response',
+        metadata: { inProgress: false }
+      })
+
+      await persistence.handleDisconnection('test-socket', ['conv-123'])
+
+      expect(mockGetMessageById).toHaveBeenCalledWith('agent-msg-123')
+      expect(mockUpdateMessageMetadata).not.toHaveBeenCalled()
+    })
+
+    it('should not update when message has no inProgress metadata', async function skipWhenNoMetadata() {
+      seedActiveConversation('test-socket', 'agent-msg-123')
+      
+      mockGetMessageById.mockResolvedValueOnce({
+        id: 'agent-msg-123',
+        sender: 'agent',
+        content: 'Response',
+        metadata: {}
+      })
+
+      await persistence.handleDisconnection('test-socket', ['conv-123'])
+
+      expect(mockUpdateMessageMetadata).not.toHaveBeenCalled()
+    })
+
+    it('should not update when no active conversation exists', async function skipWhenNoActiveConversation() {
+      // Don't seed activeConversations - socket has no tracked message
+
+      await persistence.handleDisconnection('test-socket', ['conv-123'])
+
+      expect(mockGetMessageById).not.toHaveBeenCalled()
+      expect(mockUpdateMessageMetadata).not.toHaveBeenCalled()
+    })
+
+    it('should handle errors gracefully and log them', async function handleErrors() {
+      seedActiveConversation('test-socket', 'agent-msg-123')
+      
+      mockGetMessageById.mockRejectedValueOnce(new Error('Database unavailable'))
+
+      await persistence.handleDisconnection('test-socket', ['conv-123'])
+
+      expect(mockLoggerModule.error).toHaveBeenCalledWith(
+        'websocket.disconnection.clear_inprogress_failed',
+        expect.objectContaining({
+          conversationId: 'conv-123',
+          socketId: 'test-socket',
+          error: 'Database unavailable'
+        })
+      )
+    })
+
+    it('should clean up activeConversations after processing', async function cleansUpTracking() {
+      seedActiveConversation('test-socket', 'agent-msg-123')
+      
+      mockGetMessageById.mockResolvedValueOnce({
+        id: 'agent-msg-123',
+        sender: 'agent',
+        metadata: { inProgress: true }
+      })
+
+      await persistence.handleDisconnection('test-socket', ['conv-123'])
+
+      const activeConversations = (persistence as any).activeConversations
+      expect(activeConversations.has('test-socket')).toBe(false)
     })
   })
 })

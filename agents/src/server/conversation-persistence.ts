@@ -812,6 +812,36 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       await this.checkAndCommitChanges(activeConversation.context.appId, 'websocket_disconnection');
     }
 
+    // Clear inProgress flag on any pending agent messages to prevent users from
+    // being stuck in "thinking" state on reconnect/refresh.
+    //
+    // Note: If the 2-minute abort timeout fires after this cleanup, completeConversation()
+    // may overwrite the metadata. This is harmless - both clear inProgress: false.
+    // The disconnect cleanup runs immediately for best UX, the timeout cleanup is a backup.
+    if (activeConversation?.agentMessageId) {
+      try {
+        const message = await this.conversationRepo.getMessageById(activeConversation.agentMessageId);
+        
+        if (message?.metadata?.inProgress) {
+          logger.info('websocket.disconnection.clearing_inprogress', {
+            conversationId: activeConversation.conversationId,
+            messageId: activeConversation.agentMessageId,
+            socketId
+          });
+          
+          await this.conversationRepo.updateMessageMetadata(activeConversation.agentMessageId, {
+            inProgress: false
+          });
+        }
+      } catch (error) {
+        logger.error('websocket.disconnection.clear_inprogress_failed', {
+          conversationId: activeConversation.conversationId,
+          socketId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+
     // Clean up any tracked conversations for this socket
     this.activeConversations.delete(socketId)
   }
