@@ -33,11 +33,18 @@ const sendBuildPageRequest = (path: string) => {
 };
 
 /**
- * Development mode — preview is embedded in the builder iframe.
- * Offers “Build this page” to send a postMessage to the parent so the user can ask Airo in chat.
+ * 404 for Vite development / preview container only.
+ *
+ * - Development (embedded in builder iframe): “Build this page” + postMessage to parent.
+ * - Preview (standalone tab): explains incomplete preview and points to builder chat.
+ *
+ * Publish / production builds do not load this module; see `src/routes.tsx` → `pages/_404`.
  */
-function DevelopmentModeNotFound({ path }: { path: string }) {
+export default function PageNotFound() {
+  const location = useLocation();
   const navigate = useNavigate();
+
+  const isEmbeddedInBuilder = window !== window.top;
   const [isBuilding, setIsBuilding] = React.useState(false);
 
   useEffect(() => {
@@ -46,14 +53,24 @@ function DevelopmentModeNotFound({ path }: { path: string }) {
 
   const handleBuildPage = () => {
     setIsBuilding(true);
-    sendBuildPageRequest(path);
+    sendBuildPageRequest(location.pathname);
   };
+
+  const builderUrl = builderEntryUrl(
+    import.meta.env.VITE_PARENT_ORIGIN,
+    import.meta.env.SITE_ID
+  );
+
+  const hasAppDeepLink = Boolean(import.meta.env.SITE_ID?.trim());
+
+  const lastSegment = location.pathname.split('/').filter(Boolean).pop() ?? location.pathname;
+  const capitalizedPath = lastSegment.charAt(0).toUpperCase() + lastSegment.slice(1);
 
   return (
     <MessageOverlay
-      title="Page doesn't exist"
-      message={`The page "${path}" hasn't been created yet.`}
-      button={
+      title="This page hasn't been built yet."
+      message={`The ${capitalizedPath} page is planned but not generated yet — keeping your app lightweight until you need it. Ready to build it now?`}
+      button={ isEmbeddedInBuilder ? (
         <>
           <Button
             text="Go Back"
@@ -66,34 +83,7 @@ function DevelopmentModeNotFound({ path }: { path: string }) {
             loading={isBuilding}
           />
         </>
-      }
-    />
-  );
-}
-
-/**
- * Preview mode — user opened the preview URL in its own tab (not inside the builder).
- * No postMessage target; direct them to development/chat in the builder.
- */
-function PreviewModeNotFound({ path }: { path: string }) {
-  useEffect(() => {
-    injectDevToolsStyles();
-  }, []);
-
-  const builderUrl = builderEntryUrl(
-    import.meta.env.VITE_PARENT_ORIGIN,
-    import.meta.env.SITE_ID
-  );
-  const hasAppDeepLink = Boolean(import.meta.env.SITE_ID?.trim());
-
-  return (
-    <MessageOverlay
-      title="Preview of an incomplete page"
-      message={
-        `You are looking at a preview of an incomplete page (${path}).\n\n` +
-        'Go to development / chat mode in the builder to view this app and ask Airo to build this page.'
-      }
-      button={
+      ) : (
         builderUrl ? (
           <Button
             text={hasAppDeepLink ? 'Open app in builder' : 'Open builder'}
@@ -104,24 +94,8 @@ function PreviewModeNotFound({ path }: { path: string }) {
             Open the builder and use chat to ask Airo to build this page.
           </span>
         )
+      )
       }
     />
   );
-}
-
-/**
- * 404 for Vite development / preview container only.
- *
- * - Development (embedded in builder iframe): “Build this page” + postMessage to parent.
- * - Preview (standalone tab): explains incomplete preview and points to builder chat.
- *
- * Publish / production builds do not load this module; see `src/routes.tsx` → `pages/_404`.
- */
-export default function PageNotFound() {
-  const location = useLocation();
-  const isEmbeddedInBuilder = window !== window.top;
-
-  return isEmbeddedInBuilder
-    ? <DevelopmentModeNotFound path={location.pathname} />
-    : <PreviewModeNotFound path={location.pathname} />;
 }
