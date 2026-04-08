@@ -38,11 +38,14 @@ function estimateCostFromTokens(
   const pricing = ANTHROPIC_PRICING[model] ??
     Object.entries(ANTHROPIC_PRICING).find(([k]) => model.startsWith(k))?.[1];
   if (!pricing) return undefined;
-  // Anthropic: input_tokens includes cache_read but NOT cache_creation.
-  // Regular input = input_tokens - cache_read_input_tokens (at full input price).
-  // Cache reads are billed separately at the lower cache read price.
-  // Cache writes (cache_creation_input_tokens) are NOT in input_tokens — billed additionally.
-  const regularInput = Math.max(0, inputTokens - cacheRead);
+  // The AI SDK rolls all three types into ai.usage.inputTokens (and Langfuse stores
+  // that as promptTokens): inputTokens = raw_input + cache_creation + cache_read.
+  // Anthropic's raw `input_tokens` field is just raw_input — the AI SDK differs here.
+  // So we must subtract BOTH cache_read and cache_creation from inputTokens to get the
+  // tokens billed at the regular input rate. Subtracting only cacheRead would leave
+  // cache_creation tokens in regularInput, causing them to be double-billed (once at
+  // $3.00/MTok as part of regularInput, and again at $3.75/MTok as cacheWrite).
+  const regularInput = Math.max(0, inputTokens - cacheRead - cacheWrite);
   return (regularInput * pricing.in + cacheRead * pricing.cacheRead + cacheWrite * pricing.cacheWrite + outputTokens * pricing.out) / 1_000_000;
 }
 
@@ -189,6 +192,57 @@ interface AgentStep {
   durationMs?: number;
   inputTokens?: number;
   outputTokens?: number;
+  cost?: number;
+}
+
+// Parse cache read/write tokens from a single GENERATION observation's metadata.
+// Shared by trace-level aggregation, lfTotals, and per-step cost calculation.
+function parseGenCacheTokens(gen: Observation): { cacheRead: number; cacheWrite: number } {
+  let cacheRead = 0;
+  let cacheWrite = 0;
+  const genAttrs = gen.metadata?.attributes;
+
+  // Cache reads from ai.usage.cachedInputTokens
+  const cachedRaw = genAttrs?.['ai.usage.cachedInputTokens'];
+  const hasAiSdkRead = cachedRaw != null;
+  if (hasAiSdkRead) {
+    if (typeof cachedRaw === 'number') {
+      cacheRead = cachedRaw;
+    } else if (typeof cachedRaw === 'string') {
+      try {
+        const parsed = JSON.parse(cachedRaw);
+        const val = parsed.intValue ?? parsed;
+        if (typeof val === 'number') cacheRead = val;
+      } catch {
+        const num = parseInt(cachedRaw, 10);
+        if (!isNaN(num)) cacheRead = num;
+      }
+    }
+  }
+
+  // Cache writes (and fallback reads) from providerMetadata
+  const metaStr = genAttrs?.['ai.response.providerMetadata'];
+  if (typeof metaStr === 'string') {
+    try {
+      const parsed = JSON.parse(metaStr);
+      const meta: Record<string, unknown> = parsed.anthropic || parsed;
+      const rawUsage = meta.usage as Record<string, unknown> | undefined;
+      const write =
+        (meta.cacheCreationInputTokens as number | null) ??
+        (rawUsage?.cache_creation_input_tokens as number | undefined);
+      if (typeof write === 'number' && write > 0) cacheWrite = write;
+      // Only use providerMetadata reads as fallback when AI SDK attribute absent —
+      // otherwise we'd double-count with the parsed value above.
+      if (!hasAiSdkRead) {
+        const read =
+          (meta.cacheReadInputTokens as number | null) ??
+          (rawUsage?.cache_read_input_tokens as number | undefined);
+        if (typeof read === 'number' && read > 0) cacheRead = read;
+      }
+    } catch { /* ignore */ }
+  }
+
+  return { cacheRead, cacheWrite };
 }
 
 interface ConversationItem {
@@ -273,6 +327,56 @@ const SUMMARIZATION_DOMINANCE_THRESHOLD = 0.75;
 
 // Exported for testing
 export type { Session, ConversationItem };
+
+export interface SessionTotals {
+  inputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteInputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cost: number;
+  observationCount: number;
+  traceCount: number;
+}
+
+/** Aggregate token/cost totals across all GENERATION observations in the given sessions. */
+export function computeSessionTotals(sessions: Session[]): SessionTotals {
+  let inputTokens = 0;
+  let cachedInputTokens = 0;
+  let cacheWriteInputTokens = 0;
+  let outputTokens = 0;
+  let totalTokens = 0;
+  let cost = 0;
+  let observationCount = 0;
+  let traceCount = 0;
+
+  for (const session of sessions) {
+    for (const trace of session.traces) {
+      traceCount++;
+      for (const obs of (trace.observations || [])) {
+        observationCount++;
+        if (obs.type === 'GENERATION') {
+          const prompt = obs.promptTokens || 0;
+          const completion = obs.completionTokens || 0;
+          inputTokens += prompt;
+          outputTokens += completion;
+          totalTokens += obs.totalTokens || 0;
+
+          const { cacheRead: obsCacheRead, cacheWrite: obsCacheWrite } = parseGenCacheTokens(obs);
+          if (obsCacheRead > 0) cachedInputTokens += obsCacheRead;
+          if (obsCacheWrite > 0) cacheWriteInputTokens += obsCacheWrite;
+
+          const attrs = obs.metadata?.attributes;
+          const model = (attrs?.['ai.model.id'] as string) || obs.model;
+          const estimated = estimateCostFromTokens(model, prompt, completion, obsCacheRead, obsCacheWrite);
+          cost += estimated ?? obs.calculatedTotalCost ?? 0;
+        }
+      }
+    }
+  }
+  return { inputTokens, cachedInputTokens, cacheWriteInputTokens, outputTokens, totalTokens, cost, observationCount, traceCount };
+}
+
 export function extractConversationItems(sessions: Session[]): ConversationItem[] {
   const items: ConversationItem[] = [];
   let itemId = 0;
@@ -337,25 +441,13 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
       // If no generations had tokens, set to undefined to avoid showing 0
       const hasTokenData = generationObservations.some(g => g.promptTokens || g.completionTokens);
 
-      // Parse ai.usage.cachedInputTokens (cache reads) from all generation observations
+      // Aggregate cache tokens across all generation observations using shared helper
       let cacheReadInputTokens: number | undefined;
+      let cacheWriteInputTokens: number | undefined;
       for (const gen of generationObservations) {
-        const genAttrs = gen.metadata?.attributes;
-        const cachedTokensRaw = genAttrs?.['ai.usage.cachedInputTokens'];
-        if (cachedTokensRaw) {
-          if (typeof cachedTokensRaw === 'number') {
-            cacheReadInputTokens = (cacheReadInputTokens || 0) + cachedTokensRaw;
-          } else if (typeof cachedTokensRaw === 'string') {
-            try {
-              const parsed = JSON.parse(cachedTokensRaw);
-              const val = parsed.intValue ?? parsed;
-              if (typeof val === 'number') cacheReadInputTokens = (cacheReadInputTokens || 0) + val;
-            } catch {
-              const num = parseInt(cachedTokensRaw, 10);
-              if (!isNaN(num)) cacheReadInputTokens = (cacheReadInputTokens || 0) + num;
-            }
-          }
-        }
+        const { cacheRead, cacheWrite } = parseGenCacheTokens(gen);
+        if (cacheRead > 0) cacheReadInputTokens = (cacheReadInputTokens || 0) + cacheRead;
+        if (cacheWrite > 0) cacheWriteInputTokens = (cacheWriteInputTokens || 0) + cacheWrite;
       }
 
       const provider = obsAttrs?.['ai.model.provider'];
@@ -371,36 +463,6 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
       const msToFinish = typeof msToFinishStr === 'string'
         ? parseInt(msToFinishStr, 10)
         : undefined;
-
-      // Aggregate cache write tokens from providerMetadata across ALL generation observations.
-      // For cache reads: providerMetadata is used as a per-observation fallback only when the
-      // AI SDK did not emit ai.usage.cachedInputTokens for that observation (avoids double-counting).
-      let cacheWriteInputTokens: number | undefined;
-      for (const gen of generationObservations) {
-        const genAttrs = gen.metadata?.attributes;
-        const metaStr = genAttrs?.['ai.response.providerMetadata'];
-        if (typeof metaStr !== 'string') continue;
-        try {
-          const parsed = JSON.parse(metaStr);
-          // After `parsed.anthropic || parsed`, top-level keys are camelCase per @ai-sdk/anthropic
-          // The nested `usage` object retains the raw Anthropic snake_case fields as a fallback
-          const meta: Record<string, unknown> = parsed.anthropic || parsed;
-          const rawUsage = meta.usage as Record<string, unknown> | undefined;
-          const write =
-            (meta.cacheCreationInputTokens as number | null) ??
-            (rawUsage?.cache_creation_input_tokens as number | undefined);
-          if (typeof write === 'number' && write > 0) cacheWriteInputTokens = (cacheWriteInputTokens || 0) + write;
-          // Only use providerMetadata reads as fallback when this observation didn't emit
-          // the AI SDK attribute — otherwise we'd double-count with the loop above.
-          const hasAiSdkRead = !!genAttrs?.['ai.usage.cachedInputTokens'];
-          if (!hasAiSdkRead) {
-            const read =
-              (meta.cacheReadInputTokens as number | null) ??
-              (rawUsage?.cache_read_input_tokens as number | undefined);
-            if (typeof read === 'number' && read > 0) cacheReadInputTokens = (cacheReadInputTokens || 0) + read;
-          }
-        } catch { /* ignore parse errors */ }
-      }
 
       const model = obsAttrs?.['ai.model.id'] || textGenObs?.model;
       // Prefer our estimate over Langfuse's calculatedTotalCost — Langfuse has a
@@ -832,6 +894,10 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
 
           // Only add step if it has text or tool calls
           if (stepText || stepToolCalls.length > 0) {
+            const genModel = (gen.metadata?.attributes as TraceAttributes | undefined)?.['ai.model.id'] || gen.model;
+            const { cacheRead: genCR, cacheWrite: genCW } = parseGenCacheTokens(gen);
+            const stepCost = estimateCostFromTokens(genModel, gen.promptTokens || 0, gen.completionTokens || 0, genCR, genCW)
+              ?? gen.calculatedTotalCost ?? undefined;
             steps.push({
               generationId: gen.id,
               text: stepText,
@@ -839,6 +905,7 @@ export function extractConversationItems(sessions: Session[]): ConversationItem[
               durationMs: genDur,
               inputTokens: gen.promptTokens,
               outputTokens: gen.completionTokens,
+              cost: stepCost,
             });
           }
         }
@@ -1178,9 +1245,19 @@ function StepByStepContent({ steps }: { steps: AgentStep[] }) {
                 {formatMs(step.durationMs)}ms
               </span>
             )}
+            {step.inputTokens != null && step.inputTokens > 0 && (
+              <span style={{ fontSize: '0.55rem', color: '#64748b', fontFamily: 'monospace' }}>
+                {formatNumber(step.inputTokens)} in
+              </span>
+            )}
             {step.outputTokens != null && step.outputTokens > 0 && (
               <span style={{ fontSize: '0.55rem', color: '#10b981', fontFamily: 'monospace' }}>
                 {formatNumber(step.outputTokens)} out
+              </span>
+            )}
+            {step.cost != null && step.cost > 0 && (
+              <span style={{ fontSize: '0.55rem', color: '#059669', fontFamily: 'monospace' }}>
+                ${step.cost.toFixed(4)}
               </span>
             )}
           </div>
@@ -1576,7 +1653,9 @@ function AssistantMessage({ item, traceUrlBase }: { item: ConversationItem; trac
             <TokenBadge label="in" value={item.inputTokens} color="#64748b" />
             <TokenBadge
               label="c.read" value={item.cacheReadInputTokens} color="#8b5cf6"
-              suffix={item.cacheReadInputTokens && item.inputTokens ? `(${Math.round(item.cacheReadInputTokens / item.inputTokens * 100)}%)` : undefined}
+              suffix={item.cacheReadInputTokens && item.inputTokens
+                ? `(${Math.round(item.cacheReadInputTokens / item.inputTokens * 100)}%)`
+                : undefined}
             />
             <TokenBadge label="c.write" value={item.cacheWriteInputTokens} color="#d97706" />
             <TokenBadge label="out" value={item.outputTokens} color="#10b981" />
@@ -2049,78 +2128,7 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
   const assistantMessages = conversationItems.filter(i => i.type === 'assistant').length;
   const totalTools = conversationItems.reduce((sum, i) => sum + (i.tools?.length || 0), 0);
 
-  const lfTotals = useMemo(() => {
-    let inputTokens = 0;
-    let cachedInputTokens = 0;
-    let outputTokens = 0;
-    let totalTokens = 0;
-    let cost = 0;
-    let observationCount = 0;
-    let traceCount = 0;
-
-    for (const session of sessions) {
-      for (const trace of session.traces) {
-        traceCount++;
-        for (const obs of (trace.observations || [])) {
-          observationCount++;
-          // Only count tokens and cost from GENERATION observations to avoid
-          // double-counting parent SPANs that aggregate their children's values
-          if (obs.type === 'GENERATION') {
-            const prompt = obs.promptTokens || 0;
-            const completion = obs.completionTokens || 0;
-            inputTokens += prompt;
-            outputTokens += completion;
-            totalTokens += obs.totalTokens || 0;
-
-            let obsCacheRead = 0;
-            let obsCacheWrite = 0;
-
-            // Parse cache read — mirrors extractConversationItems logic:
-            // handles number, JSON-encoded {intValue: N}, and plain numeric strings
-            const attrs = obs.metadata?.attributes as Record<string, unknown> | undefined;
-            const cachedRaw = attrs?.['ai.usage.cachedInputTokens'];
-            if (cachedRaw) {
-              if (typeof cachedRaw === 'number') {
-                obsCacheRead = cachedRaw;
-              } else if (typeof cachedRaw === 'string') {
-                try {
-                  const parsed = JSON.parse(cachedRaw);
-                  const val = parsed.intValue ?? parsed;
-                  if (typeof val === 'number') obsCacheRead = val;
-                } catch {
-                  const num = parseInt(cachedRaw, 10);
-                  if (!isNaN(num)) obsCacheRead = num;
-                }
-              }
-              if (obsCacheRead > 0) cachedInputTokens += obsCacheRead;
-            }
-
-            // Parse cache write from providerMetadata
-            const metaStr = attrs?.['ai.response.providerMetadata'];
-            if (typeof metaStr === 'string') {
-              try {
-                const parsed = JSON.parse(metaStr);
-                const meta: Record<string, unknown> = (parsed as Record<string, unknown>).anthropic as Record<string, unknown> || parsed;
-                const rawUsage = meta.usage as Record<string, unknown> | undefined;
-                const write = (meta.cacheCreationInputTokens as number | null) ?? (rawUsage?.cache_creation_input_tokens as number | undefined);
-                if (typeof write === 'number' && write > 0) obsCacheWrite = write;
-                // Fallback cache read from providerMetadata when AI SDK attribute absent
-                if (obsCacheRead === 0) {
-                  const read = (meta.cacheReadInputTokens as number | null) ?? (rawUsage?.cache_read_input_tokens as number | undefined);
-                  if (typeof read === 'number' && read > 0) { cachedInputTokens += read; obsCacheRead = read; }
-                }
-              } catch { /* ignore */ }
-            }
-
-            const model = (attrs?.['ai.model.id'] as string) || obs.model;
-            const estimated = estimateCostFromTokens(model, prompt, completion, obsCacheRead, obsCacheWrite);
-            cost += estimated ?? obs.calculatedTotalCost ?? 0;
-          }
-        }
-      }
-    }
-    return { inputTokens, cachedInputTokens, outputTokens, totalTokens, cost, observationCount, traceCount };
-  }, [sessions]);
+  const lfTotals = useMemo(() => computeSessionTotals(sessions), [sessions]);
 
   return (
     <div style={{
@@ -2268,15 +2276,20 @@ export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }
             <span style={{ color: '#64748b' }}>|</span>
             <span style={{ color: '#64748b' }}>{lfTotals.traceCount} traces</span>
             <span style={{ color: '#334155', fontWeight: 600 }}>
-              📥 {formatNumber(Math.max(0, lfTotals.inputTokens - lfTotals.cachedInputTokens))}
+              📥 {formatNumber(lfTotals.inputTokens)}
               {lfTotals.cachedInputTokens > 0 && (
                 <span style={{ color: '#8b5cf6', fontWeight: 400, marginLeft: '0.3rem' }}>
-                  +{formatNumber(lfTotals.cachedInputTokens)} cached
+                  +{formatNumber(lfTotals.cachedInputTokens)} c.read
                   {lfTotals.inputTokens > 0 && (
                     <span style={{ color: '#7c3aed', marginLeft: '0.25rem' }}>
                       ({Math.round(lfTotals.cachedInputTokens / lfTotals.inputTokens * 100)}%)
                     </span>
                   )}
+                </span>
+              )}
+              {lfTotals.cacheWriteInputTokens > 0 && (
+                <span style={{ color: '#d97706', fontWeight: 400, marginLeft: '0.3rem' }}>
+                  +{formatNumber(lfTotals.cacheWriteInputTokens)} c.write
                 </span>
               )}
             </span>
