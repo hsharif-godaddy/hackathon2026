@@ -60,7 +60,7 @@ export interface EndUserDoc {
 export const ES_INDEX_MODEL = 'llm_spend_model_daily';
 export const ES_INDEX_ENDUSER = 'llm_spend_enduser_daily';
 export const ENTITY_PREFIX = 'airo-build:sid:';
-export const GRANT_PREFIX = 'airo-builder:grant:';
+export const BUILDER_PREFIX = 'airo-builder:';
 export const PARALLEL_PAGES = 10;
 export const ES_BATCH_SIZE = 500;
 
@@ -135,7 +135,7 @@ export function extractEndUserDocs(results: DailyResult[]): EndUserDoc[] {
   for (const result of results) {
     const entities = result.breakdown?.entities || {};
     for (const [entityName, entityData] of Object.entries(entities)) {
-      if (!entityName.startsWith(ENTITY_PREFIX) && !entityName.startsWith(GRANT_PREFIX)) continue;
+      if (!entityName.startsWith(ENTITY_PREFIX) && !entityName.startsWith(BUILDER_PREFIX)) continue;
 
       const m = entityData.metrics;
       const key = `${result.date}-${entityName}`;
