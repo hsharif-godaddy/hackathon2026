@@ -69,6 +69,7 @@
     "dotenv": "^16.4.7",
     "gd-auth-client": "^2.1.1",
     "openai": "^6.0.0",
+    "undici": "^6.21.3",
     "zod": "^4.3.6"
   },
   "peerDependencies": {

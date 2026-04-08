@@ -182,6 +182,7 @@ import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, 
 import { setupAILibWebSocketServer, getWebSocketServerInfo, getGitHookService } from './ai-lib-websocket-server.js';
 import { getDatabase } from '../database/index.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
+import { destroyLlmDispatcher } from '@airo/ai-lib';
 import { fileCleanupService } from '../services/FileCleanupService.js';
 
 const app: Express = express();
@@ -704,6 +705,8 @@ async function shutdown() {
         setTimeout(() => reject(new Error('server.close() timed out')), SERVER_CLOSE_TIMEOUT_MS)
       )
     ]);
+
+    await destroyLlmDispatcher();
 
     logger.info('server.shutdown.success', {
       service: serviceName,

@@ -282,7 +282,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     maxSteps: 100,
     temperature: 0.3,
     maxOutputTokens: 32000,
-    timeout: { stepMs: 300_000 },
+    timeout: { stepMs: 600_000 },
     providerOptions: {
       anthropic: {
         effort: 'low',

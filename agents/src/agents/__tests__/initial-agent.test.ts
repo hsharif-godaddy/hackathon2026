@@ -121,7 +121,7 @@ describe('initial-agent', function initialAgentTests() {
     it('should have step timeout configured', async function timeout() {
       const config = await createInitialAgent();
 
-      expect(config.timeout).toEqual({ stepMs: 300_000 });
+      expect(config.timeout).toEqual({ stepMs: 600_000 });
     });
 
     it('should create agent with template-specific id when templateId is provided', async function templateId() {

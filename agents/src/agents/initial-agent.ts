@@ -126,7 +126,7 @@ export async function createInitialAgent(
     maxSteps: 10,
     temperature: 0.5,
     maxOutputTokens: 8000,
-    timeout: { stepMs: 300_000 },
+    timeout: { stepMs: 600_000 },
     providerOptions: {
       anthropic: {
         effort: 'low',

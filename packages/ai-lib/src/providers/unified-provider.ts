@@ -9,6 +9,23 @@ import { createLogger, containsBudgetExceededPattern, llmMetadataContext, type L
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { LanguageModel } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
+import { Agent } from 'undici'
+
+// Extend undici timeouts for LLM streaming — long generations can pause for
+// minutes between chunks (e.g. extended thinking). The default 300s undici
+// bodyTimeout/headersTimeout can fire before the AI SDK's application-layer
+// timeout, causing UND_ERR_BODY_TIMEOUT or UND_ERR_HEADERS_TIMEOUT mid-stream.
+// The AI SDK's own timeout config (stepMs, chunkMs) handles application-level
+// timeouts at a higher layer, so we raise the undici timeouts to 10 minutes.
+const llmDispatcher = new Agent({ bodyTimeout: 600_000, headersTimeout: 600_000 })
+
+function llmFetch(url: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return fetch(url, { ...init, dispatcher: llmDispatcher } as RequestInit)
+}
+
+export function destroyLlmDispatcher(): Promise<void> {
+  return llmDispatcher.destroy()
+}
 
 const logger = createLogger('unified-provider')
 import {
@@ -183,7 +200,8 @@ export async function createOpenAIClient(config?: ProviderConfig): Promise<any> 
 
     const { default: OpenAI } = await import('openai')
     const openaiConfig: any = {
-      apiKey: fallbackApiKey
+      apiKey: fallbackApiKey,
+      fetch: llmFetch
     }
 
     // Add base URL if provided (for proxy support)
@@ -317,7 +335,7 @@ async function handleBudgetExceededWithGrantFallback(
     retryHeaders.delete('x-gocode-budget-service-name')
     retryHeaders.delete('x-gocode-budget-id')
     const retryInit: RequestInit = { ...modifiedInit, body: retryBody, headers: retryHeaders }
-    return await fetch(url, retryInit)
+    return await llmFetch(url, retryInit)
   } catch (retryError) {
     logger.error('grants.fetch.fallback.retry_failed', {
       socketId,
@@ -370,7 +388,7 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
     }
 
     // Make request with Headers instance and modified body
-    let response = await fetch(url, modifiedInit)
+    let response = await llmFetch(url, modifiedInit)
 
     // Handle budget exceeded with grant fallback
     if (metadata) {
@@ -396,7 +414,7 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
       // Refresh token and retry
       const newToken = await refreshS2SToken(s2sAuthConfig)
       headers.set('Authorization', `Bearer ${newToken}`)
-      return await fetch(url, modifiedInit)
+      return await llmFetch(url, modifiedInit)
     }
 
     return response
@@ -437,7 +455,7 @@ function createSelectiveBetaHeaderFetch(blockedHeaders?: string[]): typeof fetch
     }
 
     // Make request with modified headers and body
-    let response = await fetch(url, modifiedInit)
+    let response = await llmFetch(url, modifiedInit)
 
     // Handle budget exceeded with grant fallback
     if (metadata) {
@@ -510,6 +528,7 @@ async function createOpenAIProvider(config?: ProviderConfig) {
     const openaiConfig: any = {
       name: 'litellm',
       apiKey: fallbackApiKey,
+      fetch: llmFetch,
       includeUsage: true // Include token usage in streaming responses
     }
 
@@ -690,7 +709,8 @@ async function createAnthropicProvider(config?: ProviderConfig) {
     const fallbackApiKey = config?.anthropicApiKey || process.env.ANTHROPIC_API_KEY || ''
 
     const anthropicConfig: any = {
-      apiKey: fallbackApiKey
+      apiKey: fallbackApiKey,
+      fetch: llmFetch
     }
 
     // Add base URL - use GoCode Anthropic proxy endpoint if no explicit override
