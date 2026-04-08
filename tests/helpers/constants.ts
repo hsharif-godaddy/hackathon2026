@@ -10,6 +10,8 @@ declare const process: {
 export const AI_RESPONSE_TIMEOUT_MS = 300000;
 /** Deployment timeout - 5 minutes for full deployment cycle */
 export const DEPLOYMENT_TIMEOUT_MS = 300000;
+/** Publish success timeout - 10 minutes (fqdn propagation can be slow) */
+export const PUBLISH_TIMEOUT_MS = DEPLOYMENT_TIMEOUT_MS * 2;
 /** Deployment status poll interval - check every 5 seconds */
 export const DEPLOYMENT_POLL_INTERVAL_MS = 5000;
 /** Default timeout for most assertions - 30 seconds */

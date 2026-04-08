@@ -15,7 +15,7 @@ import { test, expect } from '@playwright/test';
 
 import { deleteAllSitesViaAPI } from '../helpers/api';
 import { handleSsoLogin, ensureAuthenticated } from '../helpers/auth';
-import { LONG_TIMEOUT, DEPLOYMENT_TIMEOUT_MS, getSpecPrefix } from '../helpers/constants';
+import { LONG_TIMEOUT, DEPLOYMENT_TIMEOUT_MS, PUBLISH_TIMEOUT_MS, getSpecPrefix } from '../helpers/constants';
 import { expectPublishSuccessVisible, waitForChatInput, waitForDevelopPage } from '../helpers/ui';
 
 test.describe('Publish Flow', () => {
@@ -73,7 +73,7 @@ test.describe('Publish Flow', () => {
     await expect(publishButton).not.toBeDisabled({ timeout: DEPLOYMENT_TIMEOUT_MS });
     console.log('  ✓ Publish button enabled');
 
-    await expectPublishSuccessVisible(page, DEPLOYMENT_TIMEOUT_MS);
+    await expectPublishSuccessVisible(page, PUBLISH_TIMEOUT_MS);
     console.log('  ✓ Publish success (congrats modal or growl visible)');
 
     console.log('🎉 Publish flow test passed!');

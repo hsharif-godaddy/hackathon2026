@@ -1,6 +1,6 @@
 name: E2E Tests
 
-run-name: "E2E Tests - ${{ inputs.environment || 'prod' }} (by ${{ github.actor }})"
+run-name: "E2E Tests - ${{ inputs.environment || 'prod' }}${{ inputs.test_filter && inputs.test_filter != 'all' && format(' [{0}]', inputs.test_filter) || '' }} (by ${{ github.actor }})"
 
 on:
   # Run every 2 hours against prod
@@ -19,6 +19,18 @@ on:
           - test
           - dev
           - prod
+      test_filter:
+        description: "Run specific test (or 'all' for full suite)"
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - all
+          - authentication
+          - apps-page
+          - develop-chat
+          - develop-media
+          - develop-publish
       post_promotion:
         description: "Triggered by promotion workflow (internal use)"
         required: false
@@ -32,6 +44,11 @@ on:
         description: "Environment to test against"
         required: true
         default: "test" # The workflow_call will mostly be called building for the test env
+        type: string
+      test_filter:
+        description: "Run specific test: all, authentication, apps-page, develop-chat, develop-media, develop-publish"
+        required: false
+        default: "all"
         type: string
       post_promotion:
         description: "Triggered by promotion workflow (internal use)"
@@ -210,7 +227,20 @@ jobs:
           fi
 
       - name: Run Playwright tests
-        run: npx playwright test
+        run: |
+          FILTER="${{ inputs.test_filter }}"
+          ALLOWED="all authentication apps-page develop-chat develop-media develop-publish"
+          if [[ ! " $ALLOWED " =~ " $FILTER " ]]; then
+            echo "Invalid test_filter: $FILTER"
+            exit 1
+          fi
+          if [ "$FILTER" != "all" ] && [ -n "$FILTER" ]; then
+            echo "🎯 Running filtered test: $FILTER"
+            npx playwright test "tests/smoke/${FILTER}.spec.ts"
+          else
+            echo "🧪 Running full test suite"
+            npx playwright test
+          fi
         env:
           CI: true
           TEST_USERNAME: ${{ steps.get-credentials.outputs.username }}

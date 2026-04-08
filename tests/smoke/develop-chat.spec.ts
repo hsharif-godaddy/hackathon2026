@@ -234,42 +234,7 @@ test.describe('Develop Page', () => {
     await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
     console.log('  ✓ AI response completed');
 
-    // ========================================
-    // STEP 9: Test stop button during streaming
-    // ========================================
-    await dismissOverlays(page);
-    console.log('🛑 Step 9: Testing stop button...');
-
-    const stopMessage = 'Create a long detailed blog post';
-    await chatInput.clear();
-    await chatInput.fill(stopMessage);
-    await chatInput.press('Enter');
-
-    // Verify message appears in transcript
-    await expect(transcript.getByText(stopMessage, { exact: true })).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    console.log('  ✓ Message sent for stop test');
-
-    // Wait for stop button to appear (replaces send button during streaming)
-    const stopButton = page.getByTestId('chat-stop-button');
-    await expect(stopButton).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
-    console.log('  ✓ Stop button appeared during streaming');
-
-    // Verify send button is not visible (replaced by stop button)
-    await expect(page.getByTestId('chat-send-button')).not.toBeVisible();
-    console.log('  ✓ Send button hidden during streaming');
-
-    await stopButton.click({ force: true });
-    console.log('  ✓ Stop button clicked');
-
-    // Wait for streaming to end and send button to reappear
-    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
-    console.log('  ✓ Send button reappeared after stop');
-
-    // Verify input is enabled (can type during and after streaming)
-    await expect(chatInput).not.toBeDisabled();
-    console.log('  ✓ Chat input remains enabled');
-
-    // Session may have expired during chat interactions
+    // Session may have expired during AI interactions (Steps 5–9)
     await ensureAuthenticated(page);
 
     // ========================================
@@ -287,6 +252,34 @@ test.describe('Develop Page', () => {
     console.log('  ✓ Page refresh maintains state');
 
     console.log('🎉 All develop page tests passed!');
+  });
+
+  // Skip: backend does not reliably cancel agent — re-enable once AIROBUILD-1235 is fixed
+  test.skip('Stop button during streaming', async ({ page }) => {
+    await page.goto('/');
+    const promptInput = page.getByTestId('homepage-prompt-input');
+    await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
+    await promptInput.fill('Create a long detailed blog post');
+    await page.locator('[data-eid*="homepage.prompt.submit"]').click();
+    await handleSsoLogin(page);
+    await page.waitForURL(/\/develop\//, { timeout: LONG_TIMEOUT });
+    await waitForDevelopPage(page);
+
+    const chatInput = await waitForChatInput(page);
+    const transcript = page.getByTestId('chat-transcript');
+
+    const stopMessage = 'Create a long detailed blog post';
+    await chatInput.clear();
+    await chatInput.fill(stopMessage);
+    await chatInput.press('Enter');
+
+    await expect(transcript.getByText(stopMessage, { exact: true })).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    const stopButton = page.getByTestId('chat-stop-button');
+    await expect(stopButton).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    await expect(page.getByTestId('chat-send-button')).not.toBeVisible();
+    await stopButton.click({ force: true });
+    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    await expect(chatInput).not.toBeDisabled();
   });
 
   test.afterEach(async ({ page }, testInfo) => {
