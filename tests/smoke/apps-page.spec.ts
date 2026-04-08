@@ -262,7 +262,7 @@ test.describe('Apps Page & Navigation', () => {
       expect(firstPageCards).toBe(APPS_GRID_PAGE_SIZE);
       console.log(`  ✓ First page shows ${firstPageCards} cards (expected ${APPS_GRID_PAGE_SIZE})`);
 
-      await expect(page.getByText('Pagination App 1')).toBeVisible();
+      await expect(page.getByText('Pagination App 1', { exact: true })).toBeVisible();
       await expect(page.getByText(`Pagination App ${APPS_GRID_PAGE_SIZE}`)).toBeVisible();
       await expect(page.getByText(`Pagination App ${APPS_GRID_PAGE_SIZE + 1}`)).not.toBeVisible();
       console.log('  ✓ Correct apps visible on page 1');
@@ -286,7 +286,7 @@ test.describe('Apps Page & Navigation', () => {
       expect(secondPageCards).toBe(TOTAL_SITES - APPS_GRID_PAGE_SIZE);
       console.log(`  ✓ Page 2 shows ${secondPageCards} cards (expected ${TOTAL_SITES - APPS_GRID_PAGE_SIZE})`);
 
-      await expect(page.getByText('Pagination App 1')).not.toBeVisible();
+      await expect(page.getByText('Pagination App 1', { exact: true })).not.toBeVisible();
       console.log('  ✓ Page 1 apps no longer visible');
 
       await expect(nextButton).toBeDisabled();
@@ -300,7 +300,7 @@ test.describe('Apps Page & Navigation', () => {
       await expect(prevButton).toBeEnabled();
       await prevButton.click();
 
-      await expect(page.getByText('Pagination App 1')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      await expect(page.getByText('Pagination App 1', { exact: true })).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       await expect(page.getByText(`Pagination App ${APPS_GRID_PAGE_SIZE}`)).toBeVisible();
       await expect(page.getByText(`Pagination App ${APPS_GRID_PAGE_SIZE + 1}`)).not.toBeVisible();
 

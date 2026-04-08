@@ -175,7 +175,7 @@ test.describe('Authentication', () => {
     // STEP 2: Sign In option in user menu
     // ========================================
     console.log('👤 Step 2: Checking user menu (unauthenticated)...');
-    const userMenuButton = page.getByTestId('user-menu-trigger');
+    const userMenuButton = page.locator('[data-eid*="user_menu.button"], [data-eid*="chat_toolbar.user_menu"]');
     await userMenuButton.click({ force: true });
     await page.getByRole('button', { name: /sign in/i }).waitFor({ state: 'visible', timeout: 5000 });
     console.log('  ✓ Sign In option visible in user menu');
