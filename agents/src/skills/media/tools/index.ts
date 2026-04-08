@@ -330,7 +330,9 @@ export const generateImageTool: SkillToolDefinition = {
 export const editImageTool: SkillToolDefinition = {
   name: 'edit_image',
   description:
-    'Edit an existing image using AI-powered modifications. Provide the image URL and describe the changes you want to make.',
+    'Edit an existing image using AI-powered modifications. Provide the image URL and describe the changes you want to make. ' +
+    'This tool renders edits onto an opaque canvas, so it cannot produce transparent backgrounds. ' +
+    'For logos, use media__generate_logo instead - it returns both transparent and solid variants.',
 
   parameters: EditImageInputSchema,
 

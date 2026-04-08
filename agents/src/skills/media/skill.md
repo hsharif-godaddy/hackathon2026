@@ -32,7 +32,7 @@ Each tool in this skill is backed by a dedicated service. Understanding which se
 | "Generate a logo for my business"          | `media__generate_logo`  |
 | "Create an AI image of a sunset"           | `media__generate_image` |
 | "Design a custom banner"                   | `media__generate_image` |
-| "Edit this photo to remove the background" | `media__edit_image`     |
+| "Add a vintage filter to this photo"       | `media__edit_image`     |
 | "Generate a short video clip"              | `media__generate_video` |
 
 ---
@@ -149,7 +149,7 @@ media__generate_image({
 
 ```typescript
 media__edit_image({
-  prompt: 'Remove the background and replace with a gradient blue sky',
+  prompt: 'Add a warm sunset filter and increase the contrast',
   imageUrl: 'https://example.com/image.png',
 });
 ```
@@ -164,6 +164,8 @@ media__edit_image({
   }
 }
 ```
+
+> **Transparency limitation:** This tool renders onto an opaque canvas, so edited images always have a solid background. For logos that need transparency, regenerate with `media__generate_logo` - it returns a `transparentUrl` variant that's already transparent with no post-processing needed.
 
 ---
 
@@ -206,19 +208,20 @@ media__generate_video({
 
 ## Using Generated Media
 
-After calling any media generation tool, the response includes CDN URLs (`isteam.wsimg.com`) to the generated content. These URLs are **already optimized for serving** — do NOT download and save locally.
+URLs returned by media generation tools are persistent and already optimized for delivery. Use them directly in source code - there's no need to download or re-host them.
 
-### Using the CDN URLs Directly
+### Using Generated Media URLs Directly
 
 ```tsx
-// Logo — prefer transparentUrl for placement, solidUrl for opaque backgrounds
-<img src="https://isteam.wsimg.com/genai-assistant/mcp/generated_logos/abc123.png" alt="Company Logo" />
+// Logo - use transparentUrl for most placements, solidUrl for dark backgrounds
+// (transparentUrl and solidUrl are returned by media__generate_logo)
+<img src={transparentUrl} alt="Company Logo" />
 
-// Next.js Image component (add isteam.wsimg.com to next.config.js remotePatterns if needed)
-<Image src={logoUrl} alt="Company Logo" width={200} height={200} />
+// Generated image (url returned by media__generate_image)
+<img src={generatedImageUrl} alt="Description" />
 
-// Video
-<video src="https://isteam.wsimg.com/genai-assistant/mcp/generated_videos/xyz789.mp4" controls />
+// Video (url returned by media__generate_video)
+<video src={videoUrl} controls />
 ```
 
 ---
@@ -240,17 +243,46 @@ Only ask the user for information that isn't already available in the context. T
 **DO:**
 
 - Use known brand data from context before asking the user
-- Offer style customization options (style preset, colors, symbol)
 - Generate multiple variations (3-4) so user has choices
-- Use the CDN URLs directly in components
-- Fill in aesthetic and style details to get the best results (determine style based on brand personality and audience if not specified)
+- Use `transparentUrl` for most placements, `solidUrl` for dark backgrounds
+- Use the returned URLs directly in components - they're persistent and optimized for delivery
+- Fill in aesthetic and style details to get the best results
+- **Regenerate with adjusted parameters when the user wants a logo change** - different `style`, `styleDescription`, `symbol`, or `brandColors` let you iterate on the design without manual editing
 
 **DON'T:**
 
 - Ask for brand name/description if already known from context
-- Use `media__generate_image` for logos — it won't return transparent/solid/mockup variants
-- Download and re-save CDN media locally (wastes storage, slower delivery)
-- Assume business details beyond what's in context — ask the user for unknowns
+- Use `media__generate_image` for logos - it won't return transparent/solid/mockup variants
+- Use `media__edit_image` on logos - the opaque canvas loses transparency, and spatial edits (repositioning text, resizing elements) are unreliable
+- Download logo URLs locally or process images with terminal commands - the URLs are already permanent and optimized
+
+<example>
+User: "Move the company name to the right of the icon and make the background transparent"
+
+Correct approach - regenerate with adjusted style description:
+
+```typescript
+media__generate_logo({
+  brandName: 'Sunrise Cafe',
+  brandDescription: 'A cozy neighborhood coffee shop',
+  style: 'handmade',
+  styleDescription: 'Icon on the left, company name "Sunrise Cafe" on the right in a horizontal side-by-side layout.',
+  symbol: 'coffee cup with sunrise',
+  brandColors: 'warm earth tones with orange accents',
+  count: 4,
+});
+// Then use transparentUrl from the result - it's already transparent
+```
+
+Wrong approach - editing the existing logo:
+
+```typescript
+// These will fail or produce poor results:
+media__edit_image({ prompt: 'Move text to the right...', imageUrl: '...' })  // Can't reposition reliably, loses transparency
+terminalCommand({ command: 'curl ... -o public/assets/logo.png' })  // Bypasses delivery infrastructure
+terminalCommand({ command: 'npm install jimp' })  // Don't install packages to process images
+```
+</example>
 
 ### Video Generation (ImagegenService)
 
