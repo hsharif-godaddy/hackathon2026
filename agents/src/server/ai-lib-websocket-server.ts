@@ -1682,6 +1682,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             socketId,
             enabledOverride: enableAssessmentAgent,
             previousUserMessage,
+            isInitialPrompt,
           })
 
           // Store for later use in onMessageComplete

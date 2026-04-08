@@ -1,5 +1,5 @@
 import { asSchema } from 'ai';
-import { allAILibTools } from '@airo/agents/src/tools/ai-lib-tools/index.js';
+import { allAILibTools } from '@airo/agents/tools';
 
 type Tool = (typeof allAILibTools)[string];
 

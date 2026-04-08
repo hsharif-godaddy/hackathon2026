@@ -1,0 +1,10 @@
+# Generated reports
+reports/*.json
+reports/*.html
+!reports/.gitkeep
+
+# Build output
+dist/
+
+# Dependencies
+node_modules/

@@ -12,4 +12,5 @@ packages:
   - "langfuse-trace-analyzer"
   - "design-rag"
   - "ts-bridge"
+  - "corpus-eval"
   - "!app-templates/**"

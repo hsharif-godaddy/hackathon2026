@@ -511,6 +511,89 @@ describe('AssessmentAgent', () => {
     })
   })
 
+  describe('isInitialPrompt context parameter', () => {
+    it('should skip classification and return general for initial prompts', async () => {
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 500 })
+      const outcome = await agent.classify('launch a food delivery app', {
+        isInitialPrompt: true,
+        enabledOverride: true,
+      })
+
+      expect(outcome.reason).toBe(AssessmentReason.InitialPrompt)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
+      expect(outcome.result?.confidence).toBe(100)
+      expect(outcome.overrideApplied).toBe(false)
+      expect(outcome.completedInTime).toBe(true)
+    })
+
+    it('should not call embedding classifier for initial prompts', async () => {
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 500 })
+      await agent.classify('publish my new website', {
+        isInitialPrompt: true,
+        enabledOverride: true,
+      })
+
+      // Embedding classifier should NOT be called for initial prompts
+      expect(mockEmbeddingClassify).not.toHaveBeenCalled()
+    })
+
+    it('should not call Haiku LLM for initial prompts', async () => {
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 500 })
+      await agent.classify('fix my broken site', {
+        isInitialPrompt: true,
+        enabledOverride: true,
+      })
+
+      // LLM should NOT be called for initial prompts
+      expect(mockGenerateText).not.toHaveBeenCalled()
+    })
+
+    it('should classify normally when isInitialPrompt is false', async () => {
+      mockEmbeddingClassify.mockResolvedValue({
+        taskType: AssessmentTaskType.Publish,
+        confidence: 90,
+        similarity: 0.85,
+        matchedExample: 'publish my app',
+        margin: 0.3,
+        method: 'embedding-nn',
+        hasNegation: false,
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 500 })
+      const outcome = await agent.classify('publish my app', {
+        isInitialPrompt: false,
+        enabledOverride: true,
+      })
+
+      // Should classify normally, not return InitialPrompt
+      expect(outcome.reason).not.toBe(AssessmentReason.InitialPrompt)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.Publish)
+      expect(mockEmbeddingClassify).toHaveBeenCalled()
+    })
+
+    it('should classify normally when isInitialPrompt is undefined', async () => {
+      mockEmbeddingClassify.mockResolvedValue({
+        taskType: AssessmentTaskType.Publish,
+        confidence: 90,
+        similarity: 0.85,
+        matchedExample: 'publish my app',
+        margin: 0.3,
+        method: 'embedding-nn',
+        hasNegation: false,
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 500 })
+      const outcome = await agent.classify('publish my app', {
+        enabledOverride: true,
+        // isInitialPrompt not set
+      })
+
+      // Should classify normally
+      expect(outcome.reason).not.toBe(AssessmentReason.InitialPrompt)
+      expect(mockEmbeddingClassify).toHaveBeenCalled()
+    })
+  })
+
   describe('enabledOverride context parameter', () => {
     it('should enable assessment when enabledOverride is true even if config disabled', async () => {
       mockEmbeddingClassify.mockResolvedValue({

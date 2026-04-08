@@ -1,0 +1,43 @@
+{
+  "name": "corpus-eval",
+  "version": "1.0.0",
+  "description": "Corpus-based evaluation system for AI classification agents",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "eval": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../agents/load-env.cjs pnpm exec tsx src/index.ts",
+    "eval:assessment": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/",
+    "eval:assessment:verbose": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/ --verbose",
+    "eval:assessment:compare": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../agents/load-env.cjs pnpm exec tsx src/index.ts compare corpora/assessment-agent/ -m haiku,sonnet",
+    "eval:assessment:publish": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/publish.yaml --verbose",
+    "eval:assessment:domain": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/domain.yaml --verbose",
+    "eval:assessment:fix": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/fix.yaml --verbose",
+    "eval:assessment:general": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/general.yaml --verbose",
+    "eval:assessment:path": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/ --tags path-validation --verbose",
+    "eval:assessment:initial": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/ --tags initial --verbose",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix"
+  },
+  "dependencies": {
+    "@airo/agents": "workspace:*",
+    "commander": "^12.0.0",
+    "yaml": "^2.7.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@airo/eslint-config": "workspace:*",
+    "@types/node": "^22.18.12",
+    "eslint": "^8.54.0",
+    "tsx": "^4.6.0",
+    "typescript": "5.9.2",
+    "vitest": "3.2.4"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}

@@ -1,0 +1,656 @@
+metadata:
+  name: "Assessment Agent - Fix Classification"
+  version: "1.0.0"
+  agent: "assessment-agent"
+  description: "All fix-related test cases: bugs, errors, broken functionality"
+  created: "2026-04-06"
+
+config:
+  defaultModel: "haiku"
+  timeoutMs: 5000
+
+cases:
+  # ============================================================================
+  # CLEAR INTENT (50 cases)
+  # ============================================================================
+
+  # Canonical cases with path-validation (should hit embedding)
+  - id: "fix-001"
+    prompt: "fix this"
+    expectedTaskType: "fix"
+    expectedPath: "embedding"
+    tags: ["fix", "clear", "path-validation"]
+
+  - id: "fix-002"
+    prompt: "fix it"
+    expectedTaskType: "fix"
+    expectedPath: "embedding"
+    tags: ["fix", "clear", "path-validation"]
+
+  - id: "fix-003"
+    prompt: "fix the bug"
+    expectedTaskType: "fix"
+    expectedPath: "embedding"
+    tags: ["fix", "clear", "path-validation"]
+
+  - id: "fix-004"
+    prompt: "fix this bug"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-005"
+    prompt: "fix my site"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-006"
+    prompt: "fix the issue"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-007"
+    prompt: "fix the problem"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-008"
+    prompt: "fix that"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-009"
+    prompt: "fix please"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-010"
+    prompt: "can you fix this"
+    expectedTaskType: "general"
+    tags: ["fix", "vague"]
+    rationale: "Vague - no specific problem stated, context needed"
+
+  - id: "fix-011"
+    prompt: "something is broken"
+    expectedTaskType: "fix"
+    expectedPath: "embedding"
+    tags: ["fix", "clear", "path-validation"]
+
+  - id: "fix-012"
+    prompt: "its broken"
+    expectedTaskType: "fix"
+    expectedPath: "embedding"
+    tags: ["fix", "clear", "path-validation"]
+
+  - id: "fix-013"
+    prompt: "this is broken"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-014"
+    prompt: "the site is broken"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-015"
+    prompt: "my website is broken"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-016"
+    prompt: "everything is broken"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-017"
+    prompt: "something broke"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-018"
+    prompt: "not working"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-019"
+    prompt: "its not working"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-020"
+    prompt: "that doesnt work"
+    expectedTaskType: "general"
+    tags: ["fix", "vague"]
+    rationale: "Vague statement - no specific problem or fix request"
+
+  - id: "fix-021"
+    prompt: "the button doesnt work"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-022"
+    prompt: "nothing works"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-023"
+    prompt: "stopped working"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-024"
+    prompt: "there is an error"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-025"
+    prompt: "i got an error"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-026"
+    prompt: "getting an error"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-027"
+    prompt: "error message"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-028"
+    prompt: "theres a bug"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-029"
+    prompt: "i found a bug"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-030"
+    prompt: "debug this"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-031"
+    prompt: "the button is broken"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-032"
+    prompt: "fix the button"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-033"
+    prompt: "the form doesnt submit"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-034"
+    prompt: "fix the form"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-035"
+    prompt: "the menu is broken"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-036"
+    prompt: "navigation doesnt work"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-037"
+    prompt: "broken link"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-038"
+    prompt: "image wont load"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-039"
+    prompt: "it looks wrong"
+    expectedTaskType: "general"
+    tags: ["fix", "vague"]
+    rationale: "Vague subjective statement - no specific problem"
+
+  - id: "fix-040"
+    prompt: "layout is messed up"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-041"
+    prompt: "page wont load"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-042"
+    prompt: "site wont load"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-043"
+    prompt: "help something is wrong"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-044"
+    prompt: "having issues"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-045"
+    prompt: "undo that"
+    expectedTaskType: "general"
+    tags: ["fix", "vague"]
+    rationale: "Undo/revert request, not a fix request"
+
+  - id: "fix-046"
+    prompt: "undo the last change"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-047"
+    prompt: "revert that"
+    expectedTaskType: "general"
+    tags: ["general", "user-action"]
+    rationale: "Revert/undo is an intentional user action, not a bug report"
+
+  - id: "fix-048"
+    prompt: "it crashed"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-049"
+    prompt: "blank page"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  - id: "fix-050"
+    prompt: "FIX IT NOW"
+    expectedTaskType: "fix"
+    tags: ["fix", "clear"]
+
+  # ============================================================================
+  # QUESTIONS (8 cases)
+  # Questions about fixing are informational, not action requests.
+  # For billing purposes, these should be classified as "general".
+  # ============================================================================
+
+  - id: "fix-q-001"
+    prompt: "how do i fix this"
+    expectedTaskType: "general"
+    tags: ["fix", "question"]
+    rationale: "How-to question, not fix request"
+
+  - id: "fix-q-002"
+    prompt: "why isnt it working"
+    expectedTaskType: "fix"
+    tags: ["fix", "question"]
+    rationale: "Implies something is broken, asking for diagnosis/fix"
+
+  - id: "fix-q-003"
+    prompt: "whats wrong"
+    expectedTaskType: "general"
+    tags: ["fix", "question"]
+    rationale: "Diagnostic question, not fix request"
+
+  - id: "fix-q-004"
+    prompt: "what happened"
+    expectedTaskType: "general"
+    tags: ["fix", "question"]
+    rationale: "Diagnostic question, not fix request"
+
+  - id: "fix-q-005"
+    prompt: "why is my site broken"
+    expectedTaskType: "fix"
+    tags: ["fix", "question"]
+    rationale: "Clearly states something is broken"
+
+  - id: "fix-q-006"
+    prompt: "what went wrong"
+    expectedTaskType: "fix"
+    tags: ["fix", "question"]
+    rationale: "Implies something broke, looking for diagnosis"
+
+  - id: "fix-q-007"
+    prompt: "why did it break"
+    expectedTaskType: "fix"
+    tags: ["fix", "question"]
+    rationale: "Clearly states something broke"
+
+  - id: "fix-q-008"
+    prompt: "can you help me debug"
+    expectedTaskType: "fix"
+    tags: ["fix", "question"]
+    rationale: "Debug is a fix action"
+
+  # ============================================================================
+  # TYPOS AND INFORMAL (14 cases)
+  # ============================================================================
+
+  - id: "fix-typo-001"
+    prompt: "fixx this"
+    expectedTaskType: "fix"
+    tags: ["fix", "typo"]
+
+  - id: "fix-typo-002"
+    prompt: "fxi it"
+    expectedTaskType: "fix"
+    tags: ["fix", "typo"]
+
+  - id: "fix-typo-003"
+    prompt: "brokn"
+    expectedTaskType: "fix"
+    tags: ["fix", "typo"]
+    skip: true
+    skipReason: "Single-word typo without context - too ambiguous"
+
+  - id: "fix-typo-004"
+    prompt: "borken"
+    expectedTaskType: "fix"
+    tags: ["fix", "typo"]
+    skip: true
+    skipReason: "Single-word typo without context - too ambiguous"
+
+  - id: "fix-typo-005"
+    prompt: "somethings worng"
+    expectedTaskType: "fix"
+    tags: ["fix", "typo"]
+
+  - id: "fix-typo-006"
+    prompt: "not workign"
+    expectedTaskType: "fix"
+    tags: ["fix", "typo"]
+
+  - id: "fix-typo-007"
+    prompt: "errror"
+    expectedTaskType: "fix"
+    tags: ["fix", "typo"]
+
+  - id: "fix-typo-008"
+    prompt: "bugg"
+    expectedTaskType: "fix"
+    tags: ["fix", "typo"]
+    skip: true
+    skipReason: "Single-word typo without context - too ambiguous"
+
+  - id: "fix-typo-009"
+    prompt: "pls fix"
+    expectedTaskType: "fix"
+    tags: ["fix", "informal"]
+
+  - id: "fix-typo-010"
+    prompt: "plz fix asap"
+    expectedTaskType: "fix"
+    tags: ["fix", "informal"]
+
+  - id: "fix-typo-011"
+    prompt: "halp its broken"
+    expectedTaskType: "fix"
+    tags: ["fix", "informal"]
+
+  - id: "fix-typo-012"
+    prompt: "y is it broken"
+    expectedTaskType: "fix"
+    tags: ["fix", "informal"]
+
+  - id: "fix-typo-013"
+    prompt: "wont wrk"
+    expectedTaskType: "fix"
+    tags: ["fix", "informal"]
+
+  - id: "fix-typo-014"
+    prompt: "doestn work"
+    expectedTaskType: "fix"
+    tags: ["fix", "typo"]
+
+  # ============================================================================
+  # MULTILINGUAL (12 cases)
+  # ============================================================================
+
+  - id: "fix-es-001"
+    prompt: "arreglar esto"
+    expectedTaskType: "fix"
+    tags: ["fix", "spanish"]
+
+  - id: "fix-es-002"
+    prompt: "no funciona"
+    expectedTaskType: "fix"
+    tags: ["fix", "spanish"]
+
+  - id: "fix-es-003"
+    prompt: "esta roto"
+    expectedTaskType: "fix"
+    tags: ["fix", "spanish"]
+
+  - id: "fix-es-004"
+    prompt: "hay un error"
+    expectedTaskType: "fix"
+    tags: ["fix", "spanish"]
+
+  - id: "fix-fr-001"
+    prompt: "corriger ca"
+    expectedTaskType: "fix"
+    tags: ["fix", "french"]
+
+  - id: "fix-fr-002"
+    prompt: "ca ne marche pas"
+    expectedTaskType: "fix"
+    tags: ["fix", "french"]
+
+  - id: "fix-fr-003"
+    prompt: "cest casse"
+    expectedTaskType: "fix"
+    tags: ["fix", "french"]
+
+  - id: "fix-de-001"
+    prompt: "reparieren"
+    expectedTaskType: "general"
+    tags: ["fix", "german", "keyword-only"]
+    rationale: "Single word without context - just a keyword"
+
+  - id: "fix-de-002"
+    prompt: "funktioniert nicht"
+    expectedTaskType: "fix"
+    tags: ["fix", "german"]
+
+  - id: "fix-pt-001"
+    prompt: "consertar isso"
+    expectedTaskType: "fix"
+    tags: ["fix", "portuguese"]
+
+  - id: "fix-pt-002"
+    prompt: "nao funciona"
+    expectedTaskType: "fix"
+    tags: ["fix", "portuguese"]
+
+  - id: "fix-zh-001"
+    prompt: "修复这个"
+    expectedTaskType: "fix"
+    tags: ["fix", "chinese"]
+
+  # ============================================================================
+  # MULTI-TURN (12 cases)
+  # ============================================================================
+
+  - id: "fix-mt-001"
+    previousMessage: "fix my button"
+    prompt: "it doesnt work"
+    expectedTaskType: "fix"
+    tags: ["fix", "multi-turn"]
+
+  - id: "fix-mt-002"
+    previousMessage: "the form is broken"
+    prompt: "it wont submit"
+    expectedTaskType: "fix"
+    tags: ["fix", "multi-turn"]
+
+  - id: "fix-mt-003"
+    previousMessage: "theres a bug"
+    prompt: "on the contact page"
+    expectedTaskType: "fix"
+    tags: ["fix", "multi-turn"]
+
+  - id: "fix-mt-004"
+    previousMessage: "something is wrong"
+    prompt: "with the header"
+    expectedTaskType: "fix"
+    tags: ["fix", "multi-turn"]
+
+  - id: "fix-mt-005"
+    previousMessage: "can you fix the error"
+    prompt: "the one on the home page"
+    expectedTaskType: "fix"
+    tags: ["fix", "multi-turn"]
+
+  - id: "fix-mt-006"
+    previousMessage: "its broken"
+    prompt: "since yesterday"
+    expectedTaskType: "fix"
+    tags: ["fix", "multi-turn"]
+
+  - id: "fix-mt-007"
+    previousMessage: "the page crashed"
+    prompt: "can you look into it"
+    expectedTaskType: "fix"
+    tags: ["fix", "multi-turn"]
+
+  - id: "fix-mt-008"
+    previousMessage: "not working"
+    prompt: "the checkout button"
+    expectedTaskType: "fix"
+    tags: ["fix", "multi-turn"]
+
+  - id: "fix-mt-009"
+    previousMessage: "i found a bug"
+    prompt: "fix it please"
+    expectedTaskType: "fix"
+    tags: ["fix", "multi-turn"]
+
+  - id: "fix-mt-010"
+    previousMessage: "debug the form"
+    prompt: "its not saving data"
+    expectedTaskType: "fix"
+    tags: ["fix", "multi-turn"]
+
+  - id: "fix-mt-011"
+    previousMessage: "the image wont load"
+    prompt: "the one in the hero section"
+    expectedTaskType: "fix"
+    tags: ["fix", "multi-turn"]
+    skip: true
+    skipReason: "Multi-turn follow-up too vague without full context"
+
+  - id: "fix-mt-012"
+    previousMessage: "theres an error"
+    prompt: "when i click submit"
+    expectedTaskType: "fix"
+    tags: ["fix", "multi-turn"]
+
+  # ============================================================================
+  # LONG PROMPTS (9 cases)
+  # ============================================================================
+
+  - id: "fix-long-001"
+    prompt: "there seems to be an issue with the contact form where when users click submit nothing happens and they dont get a confirmation message"
+    expectedTaskType: "fix"
+    tags: ["fix", "long"]
+
+  - id: "fix-long-002"
+    prompt: "the button that was working yesterday when people clicked it to submit their email for the newsletter is now completely broken"
+    expectedTaskType: "fix"
+    tags: ["fix", "long"]
+
+  - id: "fix-long-003"
+    prompt: "everything was working fine until i made some changes and now the whole site is broken and showing errors everywhere"
+    expectedTaskType: "fix"
+    tags: ["fix", "long"]
+
+  - id: "fix-long-004"
+    prompt: "my customers are complaining that the checkout process is not working and they cant complete their purchases on my online store"
+    expectedTaskType: "fix"
+    tags: ["fix", "long"]
+
+  - id: "fix-long-005"
+    prompt: "when i click the button nothing happens and it just sits there"
+    expectedTaskType: "fix"
+    tags: ["fix", "long"]
+
+  - id: "fix-long-006"
+    prompt: "the contact form was working yesterday but now it wont submit"
+    expectedTaskType: "fix"
+    tags: ["fix", "long"]
+
+  - id: "fix-long-007"
+    prompt: "i tried refreshing but the error keeps coming back"
+    expectedTaskType: "fix"
+    tags: ["fix", "long"]
+
+  - id: "fix-long-008"
+    prompt: "it worked before but now its completely broken"
+    expectedTaskType: "fix"
+    tags: ["fix", "long"]
+
+  - id: "fix-long-009"
+    prompt: "i didnt change anything and now it doesnt work"
+    expectedTaskType: "fix"
+    tags: ["fix", "long"]
+
+  # ============================================================================
+  # COMPLEX/DETAILED REQUESTS
+  # ============================================================================
+
+  - id: "fix-complex-001"
+    prompt: "the contact form on the about page is not sending emails when customers fill it out and click submit"
+    expectedTaskType: "fix"
+    tags: ["fix", "complex"]
+
+  - id: "fix-complex-002"
+    prompt: "users are reporting that the checkout button disappears on mobile when they try to buy something"
+    expectedTaskType: "fix"
+    tags: ["fix", "complex"]
+
+  - id: "fix-complex-003"
+    prompt: "the images in the gallery section are loading really slowly and sometimes dont show up at all"
+    expectedTaskType: "fix"
+    tags: ["fix", "complex"]
+
+  - id: "fix-complex-004"
+    prompt: "when i click the menu on mobile it opens but then immediately closes and i cant navigate anywhere"
+    expectedTaskType: "fix"
+    tags: ["fix", "complex"]
+
+  - id: "fix-complex-005"
+    prompt: "the pricing table looks fine on desktop but on tablet the columns are overlapping each other"
+    expectedTaskType: "fix"
+    tags: ["fix", "complex"]
+
+  - id: "fix-complex-006"
+    prompt: "customers are getting an error message when they try to add items to their cart from the product page"
+    expectedTaskType: "fix"
+    tags: ["fix", "complex"]
+
+  - id: "fix-complex-007"
+    prompt: "the appointment booking calendar is showing the wrong timezone and customers are booking at wrong times"
+    expectedTaskType: "fix"
+    tags: ["fix", "complex"]
+
+  - id: "fix-complex-008"
+    prompt: "after you made those changes yesterday the footer is now appearing in the middle of the page on some pages"
+    expectedTaskType: "fix"
+    tags: ["fix", "complex"]
+
+  - id: "fix-complex-009"
+    prompt: "so i have been getting complaints from multiple customers today saying that when they try to submit the contact form on my website nothing happens at all like they click the submit button and it just sits there spinning forever and then eventually they get some kind of error message about the server not responding and they have to refresh the page and start over which is really frustrating for them and probably costing me business"
+    expectedTaskType: "fix"
+    tags: ["fix", "complex", "long"]
+
+  - id: "fix-complex-010"
+    prompt: "ok this is weird but ever since we added that new hero section to the homepage something broke and now when you scroll down the page on an iphone the navigation bar kind of jumps around and flickers and sometimes it completely disappears and you cant get back to the top of the page without refreshing which is really annoying and it worked perfectly fine before we made those changes last week"
+    expectedTaskType: "fix"
+    tags: ["fix", "complex", "long"]

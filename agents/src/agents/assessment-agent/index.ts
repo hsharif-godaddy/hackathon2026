@@ -1,4 +1,4 @@
-export { AssessmentAgent, getAssessmentAgent, createAssessmentAgent } from './AssessmentAgent.js'
+export { AssessmentAgent, getAssessmentAgent, createAssessmentAgent, MIN_CONFIDENCE_FOR_OVERRIDE } from './AssessmentAgent.js'
 
 export { EmbeddingClassifier, getEmbeddingClassifier } from './embedding-classifier.js'
 

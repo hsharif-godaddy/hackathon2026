@@ -10,6 +10,7 @@ export enum AssessmentTaskType {
 export enum AssessmentReason {
   LlmCompleted = 'llm_completed',
   EmbeddingCompleted = 'embedding_completed',
+  InitialPrompt = 'initial_prompt',
   Timeout = 'timeout',
   Error = 'error',
   BelowThreshold = 'below_threshold',
@@ -39,6 +40,12 @@ export interface AssessmentContext {
   enabledOverride?: boolean
   /** Previous user message for multi-turn context (e.g., "fix my button" before "it doesn't work") */
   previousUserMessage?: string
+  /**
+   * True if this is the first message for a new app.
+   * Initial prompts are always creation intent - you can't publish/fix/domain an app that doesn't exist.
+   * When true, classification returns 'general' immediately (no budget override).
+   */
+  isInitialPrompt?: boolean
 }
 
 export interface AssessmentOutcome {

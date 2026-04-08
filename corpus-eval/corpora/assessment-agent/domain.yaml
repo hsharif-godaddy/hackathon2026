@@ -1,0 +1,633 @@
+metadata:
+  name: "Assessment Agent - Domain Classification"
+  version: "1.0.0"
+  agent: "assessment-agent"
+  description: "All domain-related test cases: buy, connect, configure, DNS"
+  created: "2026-04-06"
+
+config:
+  defaultModel: "haiku"
+  timeoutMs: 5000
+
+cases:
+  # ============================================================================
+  # CLEAR INTENT (50 cases)
+  # ============================================================================
+
+  # Canonical cases with path-validation (should hit embedding)
+  - id: "dom-001"
+    prompt: "buy a domain"
+    expectedTaskType: "domain"
+    expectedPath: "embedding"
+    tags: ["domain", "clear", "path-validation"]
+
+  - id: "dom-002"
+    prompt: "get a domain"
+    expectedTaskType: "domain"
+    expectedPath: "embedding"
+    tags: ["domain", "clear", "path-validation"]
+
+  - id: "dom-003"
+    prompt: "i need a domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-004"
+    prompt: "i want a domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-005"
+    prompt: "purchase a domain"
+    expectedTaskType: "domain"
+    expectedPath: "embedding"
+    tags: ["domain", "clear", "path-validation"]
+
+  - id: "dom-006"
+    prompt: "buy domain"
+    expectedTaskType: "domain"
+    expectedPath: "embedding"
+    tags: ["domain", "clear", "path-validation"]
+
+  - id: "dom-007"
+    prompt: "get me a domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-008"
+    prompt: "i want to buy a domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-009"
+    prompt: "lets get a domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-010"
+    prompt: "help me get a domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-011"
+    prompt: "add a custom domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-012"
+    prompt: "i want a custom domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-013"
+    prompt: "set up custom domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-014"
+    prompt: "use my own domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-015"
+    prompt: "i have my own domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-016"
+    prompt: "attach my domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-017"
+    prompt: "attach a custom domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-018"
+    prompt: "connect my domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-019"
+    prompt: "connect a domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-020"
+    prompt: "connect domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-021"
+    prompt: "hook up my domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-022"
+    prompt: "link my domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-023"
+    prompt: "point my domain here"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-024"
+    prompt: "add my domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-025"
+    prompt: "set up my domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-026"
+    prompt: "i want mybusiness.com"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-027"
+    prompt: "can i get mybusiness.com"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-028"
+    prompt: "check if mybusiness.com is available"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-029"
+    prompt: "is mybusiness.com available"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-030"
+    prompt: "buy mybusiness.com"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-031"
+    prompt: "search for domains"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-032"
+    prompt: "find a domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-033"
+    prompt: "domain search"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-034"
+    prompt: "check domain availability"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-035"
+    prompt: "what domains are available"
+    expectedTaskType: "general"
+    tags: ["domain", "question"]
+    rationale: "Browsing question, not clear purchase intent"
+
+  - id: "dom-036"
+    prompt: "suggest some domains"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-037"
+    prompt: "configure dns"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-038"
+    prompt: "set up dns"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-039"
+    prompt: "update dns settings"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-040"
+    prompt: "domain settings"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-041"
+    prompt: "manage my domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-042"
+    prompt: "i need a web address"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-043"
+    prompt: "get a url for my site"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-044"
+    prompt: "i want my own url"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-045"
+    prompt: "custom url"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-046"
+    prompt: "transfer my domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-047"
+    prompt: "move my domain here"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-048"
+    prompt: "domain transfer"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  - id: "dom-049"
+    prompt: "DOMAIN"
+    expectedTaskType: "general"
+    tags: ["domain", "keyword-only"]
+    rationale: "Just a keyword, no action intent"
+
+  - id: "dom-050"
+    prompt: "i really need my own domain name"
+    expectedTaskType: "domain"
+    tags: ["domain", "clear"]
+
+  # ============================================================================
+  # QUESTIONS (10 cases)
+  # Questions about domains are informational, not action requests.
+  # For billing purposes, these should be classified as "general" to avoid
+  # over-charging users who are just asking for information.
+  # ============================================================================
+
+  - id: "dom-q-001"
+    prompt: "how do i get a domain"
+    expectedTaskType: "general"
+    tags: ["domain", "question"]
+    rationale: "Informational question, not action request"
+
+  - id: "dom-q-002"
+    prompt: "how much is a domain"
+    expectedTaskType: "general"
+    tags: ["domain", "question"]
+    rationale: "Pricing question, not purchase request"
+
+  - id: "dom-q-003"
+    prompt: "how much does a domain cost"
+    expectedTaskType: "general"
+    tags: ["domain", "question"]
+    rationale: "Pricing question, not purchase request"
+
+  - id: "dom-q-004"
+    prompt: "do i need a domain"
+    expectedTaskType: "general"
+    tags: ["domain", "question"]
+    rationale: "Informational question, not action request"
+
+  - id: "dom-q-005"
+    prompt: "what is a domain"
+    expectedTaskType: "general"
+    tags: ["domain", "question"]
+    rationale: "Definition question, not action request"
+
+  - id: "dom-q-006"
+    prompt: "can i use my own domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "question"]
+    rationale: "Capability question that implies intent to connect domain"
+
+  - id: "dom-q-007"
+    prompt: "how do domains work"
+    expectedTaskType: "general"
+    tags: ["domain", "question"]
+    rationale: "Educational question, not action request"
+
+  - id: "dom-q-008"
+    prompt: "whats a custom domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "question"]
+    rationale: "Question about custom domains implies interest in getting one"
+
+  - id: "dom-q-009"
+    prompt: "tell me about domains"
+    expectedTaskType: "general"
+    tags: ["domain", "question"]
+    rationale: "Informational request, not action request"
+
+  - id: "dom-q-010"
+    prompt: "domain options"
+    expectedTaskType: "general"
+    tags: ["domain", "question"]
+    rationale: "Browsing/exploring, not clear action intent"
+
+  # ============================================================================
+  # TYPOS AND INFORMAL (10 cases)
+  # ============================================================================
+
+  - id: "dom-typo-001"
+    prompt: "domainn"
+    expectedTaskType: "domain"
+    tags: ["domain", "typo"]
+
+  - id: "dom-typo-002"
+    prompt: "doman"
+    expectedTaskType: "domain"
+    tags: ["domain", "typo"]
+
+  - id: "dom-typo-003"
+    prompt: "domian"
+    expectedTaskType: "domain"
+    tags: ["domain", "typo"]
+
+  - id: "dom-typo-004"
+    prompt: "get me a domin"
+    expectedTaskType: "domain"
+    tags: ["domain", "typo"]
+
+  - id: "dom-typo-005"
+    prompt: "dmain"
+    expectedTaskType: "domain"
+    tags: ["domain", "typo"]
+
+  - id: "dom-typo-006"
+    prompt: "custm domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "typo"]
+
+  - id: "dom-typo-007"
+    prompt: "conect my domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "typo"]
+
+  - id: "dom-typo-008"
+    prompt: "pls get domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "informal"]
+
+  - id: "dom-typo-009"
+    prompt: "need dmn"
+    expectedTaskType: "domain"
+    tags: ["domain", "informal"]
+
+  - id: "dom-typo-010"
+    prompt: "dns settngs"
+    expectedTaskType: "domain"
+    tags: ["domain", "typo"]
+
+  # ============================================================================
+  # MULTILINGUAL (12 cases)
+  # ============================================================================
+
+  - id: "dom-es-001"
+    prompt: "comprar un dominio"
+    expectedTaskType: "domain"
+    tags: ["domain", "spanish"]
+
+  - id: "dom-es-002"
+    prompt: "necesito un dominio"
+    expectedTaskType: "domain"
+    tags: ["domain", "spanish"]
+
+  - id: "dom-es-003"
+    prompt: "conectar mi dominio"
+    expectedTaskType: "domain"
+    tags: ["domain", "spanish"]
+
+  - id: "dom-fr-001"
+    prompt: "acheter un domaine"
+    expectedTaskType: "domain"
+    tags: ["domain", "french"]
+
+  - id: "dom-fr-002"
+    prompt: "je veux un nom de domaine"
+    expectedTaskType: "domain"
+    tags: ["domain", "french"]
+
+  - id: "dom-fr-003"
+    prompt: "connecter mon domaine"
+    expectedTaskType: "domain"
+    tags: ["domain", "french"]
+
+  - id: "dom-de-001"
+    prompt: "domain kaufen"
+    expectedTaskType: "domain"
+    tags: ["domain", "german"]
+
+  - id: "dom-de-002"
+    prompt: "ich brauche eine domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "german"]
+
+  - id: "dom-pt-001"
+    prompt: "comprar dominio"
+    expectedTaskType: "domain"
+    tags: ["domain", "portuguese"]
+
+  - id: "dom-pt-002"
+    prompt: "preciso de um dominio"
+    expectedTaskType: "domain"
+    tags: ["domain", "portuguese"]
+
+  - id: "dom-it-001"
+    prompt: "comprare un dominio"
+    expectedTaskType: "domain"
+    tags: ["domain", "italian"]
+
+  - id: "dom-zh-001"
+    prompt: "购买域名"
+    expectedTaskType: "domain"
+    tags: ["domain", "chinese"]
+
+  # ============================================================================
+  # MULTI-TURN (10 cases)
+  # ============================================================================
+
+  - id: "dom-mt-001"
+    previousMessage: "i want a custom domain"
+    prompt: "how much does it cost"
+    expectedTaskType: "domain"
+    tags: ["domain", "multi-turn"]
+    skip: true
+    skipReason: "Multi-turn follow-up too vague without full context"
+
+  - id: "dom-mt-002"
+    previousMessage: "set up my domain"
+    prompt: "i already bought one"
+    expectedTaskType: "domain"
+    tags: ["domain", "multi-turn"]
+
+  - id: "dom-mt-003"
+    previousMessage: "i need a domain"
+    prompt: "mybusiness.com"
+    expectedTaskType: "domain"
+    tags: ["domain", "multi-turn"]
+
+  - id: "dom-mt-004"
+    previousMessage: "can i use my own domain"
+    prompt: "yes connect it"
+    expectedTaskType: "domain"
+    tags: ["domain", "multi-turn"]
+
+  - id: "dom-mt-005"
+    previousMessage: "search for domains"
+    prompt: "something with coffee"
+    expectedTaskType: "domain"
+    tags: ["domain", "multi-turn"]
+    skip: true
+    skipReason: "Multi-turn follow-up too vague without full context"
+
+  - id: "dom-mt-006"
+    previousMessage: "domain options"
+    prompt: "show me .com only"
+    expectedTaskType: "domain"
+    tags: ["domain", "multi-turn"]
+    skip: true
+    skipReason: "Multi-turn follow-up too vague without full context"
+
+  - id: "dom-mt-007"
+    previousMessage: "configure dns"
+    prompt: "for mybusiness.com"
+    expectedTaskType: "domain"
+    tags: ["domain", "multi-turn"]
+
+  - id: "dom-mt-008"
+    previousMessage: "i want to buy a domain"
+    prompt: "what are my options"
+    expectedTaskType: "domain"
+    tags: ["domain", "multi-turn"]
+    skip: true
+    skipReason: "Multi-turn follow-up too vague without full context"
+
+  - id: "dom-mt-009"
+    previousMessage: "domain setup"
+    prompt: "use the one i already have"
+    expectedTaskType: "domain"
+    tags: ["domain", "multi-turn"]
+
+  - id: "dom-mt-010"
+    previousMessage: "help me with my domain"
+    prompt: "its not working"
+    expectedTaskType: "domain"
+    tags: ["domain", "multi-turn"]
+    skip: true
+    skipReason: "Multi-turn follow-up too vague - 'its not working' matches fix patterns"
+
+  # ============================================================================
+  # LONG PROMPTS (8 cases)
+  # ============================================================================
+
+  - id: "dom-long-001"
+    prompt: "can you help me understand how to get my own custom domain name that matches my business name instead of using the default one"
+    expectedTaskType: "general"
+    tags: ["domain", "long", "question"]
+    rationale: "Asking for explanation/understanding, not action"
+
+  - id: "dom-long-002"
+    prompt: "i already have a domain that i purchased from another provider and i want to use it for this website can you help me connect it"
+    expectedTaskType: "domain"
+    tags: ["domain", "long"]
+
+  - id: "dom-long-003"
+    prompt: "i want my business to have a professional web presence with its own domain name that people can easily remember and find"
+    expectedTaskType: "general"
+    tags: ["domain", "long"]
+    rationale: "Statement of desire, not action request"
+
+  - id: "dom-long-004"
+    prompt: "my customers keep asking for our website address and i want something professional instead of the long default url"
+    expectedTaskType: "domain"
+    tags: ["domain", "long"]
+
+  - id: "dom-long-005"
+    prompt: "i registered a domain name last year and now i want to point it to this website"
+    expectedTaskType: "domain"
+    tags: ["domain", "long"]
+
+  - id: "dom-long-006"
+    prompt: "help me find a good domain name for my bakery business that is easy to spell and remember"
+    expectedTaskType: "domain"
+    tags: ["domain", "long"]
+
+  - id: "dom-long-007"
+    prompt: "i need to set up dns records so my domain points to this site"
+    expectedTaskType: "domain"
+    tags: ["domain", "long"]
+
+  - id: "dom-long-008"
+    prompt: "what domains would you recommend for a photography business"
+    expectedTaskType: "general"
+    tags: ["domain", "long", "question"]
+    rationale: "Recommendation question, not purchase request"
+
+  # ============================================================================
+  # COMPLEX/DETAILED REQUESTS
+  # ============================================================================
+
+  - id: "dom-complex-001"
+    prompt: "i want to get a domain that matches my business name and connect it so customers can find us easily"
+    expectedTaskType: "domain"
+    tags: ["domain", "complex"]
+
+  - id: "dom-complex-002"
+    prompt: "my company is called sunrise bakery and i need a domain like sunrisebakery.com or something similar"
+    expectedTaskType: "domain"
+    tags: ["domain", "complex"]
+
+  - id: "dom-complex-003"
+    prompt: "i bought a domain from godaddy last year called mybusiness.com and now i want to point it to this site"
+    expectedTaskType: "domain"
+    tags: ["domain", "complex"]
+
+  - id: "dom-complex-004"
+    prompt: "help me find a professional domain name for my photography business that is short and memorable"
+    expectedTaskType: "general"
+    tags: ["domain", "complex", "question"]
+    rationale: "Asking for suggestions/help, not direct purchase action"
+
+  - id: "dom-complex-005"
+    prompt: "i need to configure dns records because my email is hosted somewhere else but the website should be here"
+    expectedTaskType: "domain"
+    tags: ["domain", "complex"]
+
+  - id: "dom-complex-006"
+    prompt: "search for available domains with coffee or cafe in the name for my new coffee shop website"
+    expectedTaskType: "domain"
+    tags: ["domain", "complex"]
+
+  - id: "dom-complex-007"
+    prompt: "the domain i want is taken so suggest some alternatives with .co or .shop extensions"
+    expectedTaskType: "domain"
+    tags: ["domain", "complex"]
+
+  - id: "dom-complex-008"
+    prompt: "transfer my domain from namecheap to here and update the nameservers to point to this site"
+    expectedTaskType: "domain"
+    tags: ["domain", "complex"]
+
+  - id: "dom-complex-009"
+    prompt: "so i have been thinking about this for a while and i really want my business to look professional online and right now the url is super long and hard to remember so i think its time to finally get a real domain name that matches my company name which is brightside consulting and i want something like brightsideconsulting.com if its available or maybe something close to that"
+    expectedTaskType: "domain"
+    tags: ["domain", "complex", "long"]
+
+  - id: "dom-complex-010"
+    prompt: "ok so here is the situation i already own a domain that i bought a few years ago when i first started my business and its registered with google domains but now i want to use it for this new website that we are building together so can you help me figure out how to connect it and make sure the dns settings are correct so everything works properly including my email which is also on that domain"
+    expectedTaskType: "domain"
+    tags: ["domain", "complex", "long"]

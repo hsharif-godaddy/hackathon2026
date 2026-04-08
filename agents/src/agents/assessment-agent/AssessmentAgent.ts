@@ -39,8 +39,9 @@ const LOW_CONFIDENCE_SIMILARITY = 0.50
 /**
  * Minimum confidence score to apply budget override.
  * Even if classified correctly, low confidence means don't override billing.
+ * Exported for use by corpus-eval to ensure consistency.
  */
-const MIN_CONFIDENCE_FOR_OVERRIDE = 65
+export const MIN_CONFIDENCE_FOR_OVERRIDE = 65
 
 // Between LOW and HIGH: call Haiku as tiebreaker for verification
 
@@ -130,6 +131,23 @@ export class AssessmentAgent {
         durationMs: 0,
         overrideApplied: false,
         reason: AssessmentReason.EmptyPrompt,
+      }
+    }
+
+    // Initial prompts are always creation intent - skip classification entirely
+    // By definition, you can't publish/fix/domain an app that doesn't exist yet.
+    if (context?.isInitialPrompt) {
+      logger.info('assessment_agent.classify.initial_prompt', {
+        appId: context?.appId,
+        reason: 'initial_prompt_always_general',
+        promptPreview: prompt.substring(0, 100),
+      })
+      return {
+        result: { taskType: AssessmentTaskType.General, confidence: 100 },
+        completedInTime: true,
+        durationMs: Date.now() - startTime,
+        overrideApplied: false,
+        reason: AssessmentReason.InitialPrompt,
       }
     }
 
@@ -477,12 +495,20 @@ MULTI-TURN CONTEXT:
 NEGATION AND TIMING:
 - "don't publish", "not yet", "wait", "later" = general (user is NOT requesting the action)
 - "I want to publish later" = general (future intent, not NOW)
+- "it's not broken", "its not broken" = general (negation of problem)
 - Negated actions should NEVER match the negated category
 
 QUESTIONS VS ACTIONS:
 - "How do I publish?" = general (asking a question, not requesting action)
 - "What happens when I publish?" = general (informational)
 - "Publish my app" = publish (clear action request)
+
+KEYWORDS IN CONTEXT (not action intent):
+- "quick fix media company logo" = general (company name contains "fix")
+- "remove the broken image icon" = general (describing a UI element, not reporting a bug)
+- "label says error" = general (referring to text content, not an error)
+- "the bug icon in the corner" = general (icon name, not reporting a bug)
+- Keywords appearing as part of names, labels, or descriptions are NOT action requests
 
 CONFIDENCE GUIDANCE:
 - 90-100: Clear, unambiguous intent with action words

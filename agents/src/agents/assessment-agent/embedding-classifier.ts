@@ -36,7 +36,11 @@ const logger = Logger.create({ service: 'embedding-classifier' })
 const NEGATION_PATTERNS = new RegExp(
   '(' +
     // English (en-us)
+    // Note: "not working", "is not", "not broken" are excluded - they describe problem states, not command negations
+    // "it's not" / "its not" / "isn't" use negative lookahead to exclude fix-intent phrases like "its not working"
+    // These patterns should only match when negating a problem state ("it's not broken" = general)
     "\\b(don'?t|do not|never|stop|cancel|wait|later|not yet|hold off)\\b" +
+    "|(it'?s not|its not|isn'?t)(?! working| loading| saving| submitting| showing| displaying| responding| functioning| connecting)" +
     // Spanish (es-es, es-mx, es-us, es-ar, es-cl, es-co, es-pe, es-ve)
     '|\\b(no quiero|no lo hagas|todavía no|espera|cancelar|más tarde|nunca)\\b' +
     // French (fr-fr, fr-ca, fr-be, fr-ch)
@@ -123,6 +127,16 @@ const CATEGORY_EXAMPLES: Record<AssessmentTaskType, string[]> = {
     'make my site public',
     'publish the app',
     'deploy this',
+    // "share" and "make live" patterns (common publish intent)
+    'share my site',
+    'share my website',
+    'share this with everyone',
+    'make the store live',
+    'make my store live',
+    // Typo variations
+    'publsh my site',
+    'pubish my app',
+    'pulish this',
     // CJK + Thai - structurally different, may need explicit examples
     '发布我的应用',      // Chinese Simplified: publish my app
     '上线',             // Chinese: go live
@@ -149,6 +163,17 @@ const CATEGORY_EXAMPLES: Record<AssessmentTaskType, string[]> = {
     'I want my own domain',
     'attach domain',
     'connect domain',
+    // Typo variations
+    'domainn',
+    'domian',
+    'dmain',
+    'doman',
+    'get a domian',
+    // Domain search/availability actions
+    'search for domains',
+    'check domain availability',
+    'is mybusiness.com available',
+    'suggest some domains',
     // CJK + Thai - structurally different
     '购买域名',          // Chinese Simplified: buy domain
     '绑定域名',          // Chinese: connect domain
@@ -185,6 +210,22 @@ const CATEGORY_EXAMPLES: Record<AssessmentTaskType, string[]> = {
     'button doesnt work',
     'my site is broken',
     'page not loading',
+    // Problem descriptions (users describe issues without saying "fix")
+    // Only include clear "something is broken" patterns, not user-initiated changes
+    'form doesnt submit',
+    'the form is not submitting',
+    'images not showing up',
+    'images wont load',
+    'layout is broken',
+    'checkout not working',
+    'customers cant checkout',
+    'error message appears',
+    'getting an error',
+    // Typo variations (with context to avoid false positives)
+    'fixx this',
+    'fxi the bug',
+    'its brokn',
+    'somethings borken',
     // CJK + Thai - structurally different
     '修复这个错误',       // Chinese Simplified: fix this bug
     '出问题了',          // Chinese: something went wrong
@@ -195,7 +236,45 @@ const CATEGORY_EXAMPLES: Record<AssessmentTaskType, string[]> = {
     '작동 안함',          // Korean: not working
     'แก้ไขบัค',          // Thai: fix bug
   ],
-  [AssessmentTaskType.General]: [], // General is the fallback, no examples needed
+  [AssessmentTaskType.General]: [
+    'create a website for my bakery',
+    'build me an online store',
+    'make me a portfolio site',
+    'I want a landing page for my business',
+    'design a website for my restaurant',
+    'build an app for my company',
+    'create a blog',
+    'make a simple website',
+    'build me a site',
+    'create a site for my business',
+    'make me a website',
+    'I need a website',
+    'build a website',
+    'create my website',
+
+    // Feature requests (common follow-ups)
+    'add a contact form',
+    'change the colors',
+    'add a new page',
+    'update the header',
+    'add more images',
+    'change the font',
+
+    // Questions (should not trigger special tasks)
+    'how do I publish my site',
+    'what is my domain',
+    'how does this work',
+
+    // CJK + Thai - structurally different
+    '为我的面包店创建网站',      // Chinese Simplified: create website for bakery
+    '帮我建一个网站',           // Chinese: help me build a website
+    '為我的餐廳設計網站',        // Chinese Traditional: design website for my restaurant
+    'ウェブサイトを作って',      // Japanese: make a website
+    'ポートフォリオを作成',      // Japanese: create portfolio
+    '웹사이트 만들어줘',         // Korean: make me a website
+    '블로그 만들기',            // Korean: create a blog
+    'สร้างเว็บไซต์',           // Thai: create website
+  ],
 }
 
 // Stored example with its embedding

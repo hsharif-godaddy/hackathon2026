@@ -6,6 +6,20 @@
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./assessment-agent": {
+      "types": "./dist/agents/assessment-agent/index.d.ts",
+      "import": "./dist/agents/assessment-agent/index.js"
+    },
+    "./tools": {
+      "types": "./dist/tools/ai-lib-tools/index.d.ts",
+      "import": "./dist/tools/ai-lib-tools/index.js"
+    }
+  },
   "scripts": {
     "dev": "GASKET_ENV=local.dev NODE_OPTIONS='--max-old-space-size=1536' node load-env.cjs pnpm run dev:watch",
     "dev:log": "GASKET_ENV=local.dev NODE_OPTIONS='--max-old-space-size=1536' node load-env.cjs pnpm run dev:watch | tee /tmp/agents.log",

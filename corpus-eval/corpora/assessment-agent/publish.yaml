@@ -1,0 +1,642 @@
+metadata:
+  name: "Assessment Agent - Publish Classification"
+  version: "1.0.0"
+  agent: "assessment-agent"
+  description: "All publish-related test cases: deploy, go live, launch, make public"
+  created: "2026-04-06"
+
+config:
+  defaultModel: "haiku"
+  timeoutMs: 5000
+
+cases:
+  # ============================================================================
+  # CLEAR INTENT (50 cases)
+  # ============================================================================
+
+  # Canonical cases with path-validation (should hit embedding)
+  - id: "pub-001"
+    prompt: "publish my app"
+    expectedTaskType: "publish"
+    expectedPath: "embedding"
+    tags: ["publish", "clear", "path-validation"]
+
+  - id: "pub-002"
+    prompt: "publish"
+    expectedTaskType: "publish"
+    expectedPath: "embedding"
+    tags: ["publish", "clear", "path-validation"]
+
+  - id: "pub-003"
+    prompt: "publish it"
+    expectedTaskType: "publish"
+    expectedPath: "embedding"
+    tags: ["publish", "clear", "path-validation"]
+
+  - id: "pub-004"
+    prompt: "publish the site"
+    expectedTaskType: "publish"
+    expectedPath: "embedding"
+    tags: ["publish", "clear", "path-validation"]
+
+  - id: "pub-005"
+    prompt: "publish my website"
+    expectedTaskType: "publish"
+    expectedPath: "embedding"
+    tags: ["publish", "clear", "path-validation"]
+
+  - id: "pub-006"
+    prompt: "publish this"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-007"
+    prompt: "publish now"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-008"
+    prompt: "publish please"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-009"
+    prompt: "can you publish"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-010"
+    prompt: "deploy"
+    expectedTaskType: "publish"
+    expectedPath: "embedding"
+    tags: ["publish", "clear", "path-validation"]
+
+  - id: "pub-011"
+    prompt: "deploy my app"
+    expectedTaskType: "publish"
+    expectedPath: "embedding"
+    tags: ["publish", "clear", "path-validation"]
+
+  - id: "pub-012"
+    prompt: "deploy to production"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-013"
+    prompt: "deploy it"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-014"
+    prompt: "deploy the site"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-015"
+    prompt: "deploy now"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-016"
+    prompt: "go live"
+    expectedTaskType: "publish"
+    expectedPath: "embedding"
+    tags: ["publish", "clear", "path-validation"]
+
+  - id: "pub-017"
+    prompt: "make it live"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-018"
+    prompt: "take it live"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-019"
+    prompt: "lets go live"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-020"
+    prompt: "ready to go live"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-021"
+    prompt: "i want to go live"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-022"
+    prompt: "push it live"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-023"
+    prompt: "launch"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-024"
+    prompt: "launch my site"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-025"
+    prompt: "launch my website"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-026"
+    prompt: "launch the app"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-027"
+    prompt: "launch it"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-028"
+    prompt: "ready to launch"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-029"
+    prompt: "make it public"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-030"
+    prompt: "make my site public"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-031"
+    prompt: "put it online"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-032"
+    prompt: "put my site online"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-033"
+    prompt: "get it online"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-034"
+    prompt: "push to prod"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-035"
+    prompt: "push to production"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-036"
+    prompt: "ship it"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-037"
+    prompt: "ship the site"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-038"
+    prompt: "release it"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-039"
+    prompt: "release my site"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-040"
+    prompt: "i think im ready to publish"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-041"
+    prompt: "ok lets publish it"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-042"
+    prompt: "yes publish it"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-043"
+    prompt: "everything looks good publish it"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-044"
+    prompt: "i want people to see my site"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-045"
+    prompt: "make my site visible"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-046"
+    prompt: "share my site with everyone"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-047"
+    prompt: "PUBLISH"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-048"
+    prompt: "finally ready to publish this thing"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-049"
+    prompt: "make it available to everyone"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  - id: "pub-050"
+    prompt: "i want the world to see this"
+    expectedTaskType: "publish"
+    tags: ["publish", "clear"]
+
+  # ============================================================================
+  # QUESTIONS (10 cases)
+  # Questions about publishing are informational, not action requests.
+  # For billing purposes, these should be classified as "general".
+  # ============================================================================
+
+  - id: "pub-q-001"
+    prompt: "how do i publish"
+    expectedTaskType: "general"
+    tags: ["publish", "question"]
+    rationale: "How-to question, not action request"
+
+  - id: "pub-q-002"
+    prompt: "how do i publish my site"
+    expectedTaskType: "general"
+    tags: ["publish", "question"]
+    rationale: "How-to question, not action request"
+
+  - id: "pub-q-003"
+    prompt: "how can i publish"
+    expectedTaskType: "general"
+    tags: ["publish", "question"]
+    rationale: "How-to question, not action request"
+
+  - id: "pub-q-004"
+    prompt: "how to publish"
+    expectedTaskType: "general"
+    tags: ["publish", "question"]
+    rationale: "How-to question, not action request"
+
+  - id: "pub-q-005"
+    prompt: "whats the publishing process"
+    expectedTaskType: "general"
+    tags: ["publish", "question"]
+    rationale: "Process question, not action request"
+
+  - id: "pub-q-006"
+    prompt: "can you explain how to deploy"
+    expectedTaskType: "general"
+    tags: ["publish", "question"]
+    rationale: "Explanation request, not action request"
+
+  - id: "pub-q-007"
+    prompt: "what happens when i publish"
+    expectedTaskType: "general"
+    tags: ["publish", "question"]
+    rationale: "Informational question, not action request"
+
+  - id: "pub-q-008"
+    prompt: "is my site ready to publish"
+    expectedTaskType: "general"
+    tags: ["publish", "question"]
+    rationale: "Readiness check, not publish request"
+
+  - id: "pub-q-009"
+    prompt: "how long does publishing take"
+    expectedTaskType: "general"
+    tags: ["publish", "question"]
+    rationale: "Timing question, not action request"
+
+  - id: "pub-q-010"
+    prompt: "can i publish without a domain"
+    expectedTaskType: "general"
+    tags: ["publish", "question"]
+    rationale: "Capability question, not action request"
+
+  # ============================================================================
+  # TYPOS AND INFORMAL (12 cases)
+  # ============================================================================
+
+  - id: "pub-typo-001"
+    prompt: "pubish my site"
+    expectedTaskType: "publish"
+    tags: ["publish", "typo"]
+
+  - id: "pub-typo-002"
+    prompt: "publsh"
+    expectedTaskType: "publish"
+    tags: ["publish", "typo"]
+
+  - id: "pub-typo-003"
+    prompt: "publlish"
+    expectedTaskType: "publish"
+    tags: ["publish", "typo"]
+
+  - id: "pub-typo-004"
+    prompt: "deplpy"
+    expectedTaskType: "publish"
+    tags: ["publish", "typo"]
+
+  - id: "pub-typo-005"
+    prompt: "delpoy"
+    expectedTaskType: "publish"
+    tags: ["publish", "typo"]
+
+  - id: "pub-typo-006"
+    prompt: "deply to prod"
+    expectedTaskType: "publish"
+    tags: ["publish", "typo"]
+
+  - id: "pub-typo-007"
+    prompt: "pls publish"
+    expectedTaskType: "publish"
+    tags: ["publish", "informal"]
+
+  - id: "pub-typo-008"
+    prompt: "plz deploy"
+    expectedTaskType: "publish"
+    tags: ["publish", "informal"]
+
+  - id: "pub-typo-009"
+    prompt: "k publish it"
+    expectedTaskType: "publish"
+    tags: ["publish", "informal"]
+
+  - id: "pub-typo-010"
+    prompt: "pubilsh"
+    expectedTaskType: "publish"
+    tags: ["publish", "typo"]
+
+  - id: "pub-typo-011"
+    prompt: "go lvie"
+    expectedTaskType: "publish"
+    tags: ["publish", "typo"]
+
+  - id: "pub-typo-012"
+    prompt: "lnch my site"
+    expectedTaskType: "publish"
+    tags: ["publish", "typo"]
+
+  # ============================================================================
+  # MULTILINGUAL (15 cases)
+  # ============================================================================
+
+  - id: "pub-es-001"
+    prompt: "publicar mi sitio"
+    expectedTaskType: "publish"
+    tags: ["publish", "spanish"]
+
+  - id: "pub-es-002"
+    prompt: "publicar"
+    expectedTaskType: "publish"
+    tags: ["publish", "spanish"]
+
+  - id: "pub-es-003"
+    prompt: "lanzar mi pagina web"
+    expectedTaskType: "publish"
+    tags: ["publish", "spanish"]
+
+  - id: "pub-fr-001"
+    prompt: "publier mon site"
+    expectedTaskType: "publish"
+    tags: ["publish", "french"]
+
+  - id: "pub-fr-002"
+    prompt: "mettre en ligne"
+    expectedTaskType: "publish"
+    tags: ["publish", "french"]
+
+  - id: "pub-fr-003"
+    prompt: "lancer mon site web"
+    expectedTaskType: "publish"
+    tags: ["publish", "french"]
+
+  - id: "pub-de-001"
+    prompt: "veröffentlichen"
+    expectedTaskType: "publish"
+    tags: ["publish", "german"]
+
+  - id: "pub-de-002"
+    prompt: "meine seite veröffentlichen"
+    expectedTaskType: "publish"
+    tags: ["publish", "german"]
+
+  - id: "pub-de-003"
+    prompt: "online stellen"
+    expectedTaskType: "publish"
+    tags: ["publish", "german"]
+
+  - id: "pub-pt-001"
+    prompt: "publicar meu site"
+    expectedTaskType: "publish"
+    tags: ["publish", "portuguese"]
+
+  - id: "pub-pt-002"
+    prompt: "colocar online"
+    expectedTaskType: "publish"
+    tags: ["publish", "portuguese"]
+
+  - id: "pub-it-001"
+    prompt: "pubblicare il mio sito"
+    expectedTaskType: "publish"
+    tags: ["publish", "italian"]
+
+  - id: "pub-zh-001"
+    prompt: "发布我的网站"
+    expectedTaskType: "publish"
+    tags: ["publish", "chinese"]
+
+  - id: "pub-ja-001"
+    prompt: "サイトを公開する"
+    expectedTaskType: "publish"
+    tags: ["publish", "japanese"]
+
+  - id: "pub-ko-001"
+    prompt: "내 사이트 게시"
+    expectedTaskType: "publish"
+    tags: ["publish", "korean"]
+
+  # ============================================================================
+  # MULTI-TURN (12 cases)
+  # ============================================================================
+
+  - id: "pub-mt-001"
+    previousMessage: "can you publish my site"
+    prompt: "yes please"
+    expectedTaskType: "publish"
+    tags: ["publish", "multi-turn"]
+
+  - id: "pub-mt-002"
+    previousMessage: "i want to go live"
+    prompt: "do it now"
+    expectedTaskType: "publish"
+    tags: ["publish", "multi-turn"]
+
+  - id: "pub-mt-003"
+    previousMessage: "should i publish"
+    prompt: "yes"
+    expectedTaskType: "publish"
+    tags: ["publish", "multi-turn"]
+
+  - id: "pub-mt-004"
+    previousMessage: "is my site ready to publish"
+    prompt: "go ahead"
+    expectedTaskType: "publish"
+    tags: ["publish", "multi-turn"]
+
+  - id: "pub-mt-005"
+    previousMessage: "i want to deploy"
+    prompt: "please proceed"
+    expectedTaskType: "publish"
+    tags: ["publish", "multi-turn"]
+
+  - id: "pub-mt-006"
+    previousMessage: "can we launch the site"
+    prompt: "yeah lets do it"
+    expectedTaskType: "publish"
+    tags: ["publish", "multi-turn"]
+
+  - id: "pub-mt-007"
+    previousMessage: "ready to publish"
+    prompt: "ok"
+    expectedTaskType: "publish"
+    tags: ["publish", "multi-turn"]
+    skip: true
+    skipReason: "Single word 'ok' too vague without full context"
+
+  - id: "pub-mt-008"
+    previousMessage: "do you want me to publish"
+    prompt: "sure"
+    expectedTaskType: "publish"
+    tags: ["publish", "multi-turn"]
+
+  - id: "pub-mt-009"
+    previousMessage: "should i make it live"
+    prompt: "go for it"
+    expectedTaskType: "publish"
+    tags: ["publish", "multi-turn"]
+
+  - id: "pub-mt-010"
+    previousMessage: "i finished the site"
+    prompt: "publish it"
+    expectedTaskType: "publish"
+    tags: ["publish", "multi-turn"]
+
+  - id: "pub-mt-011"
+    previousMessage: "the site looks great"
+    prompt: "lets go live"
+    expectedTaskType: "publish"
+    tags: ["publish", "multi-turn"]
+
+  - id: "pub-mt-012"
+    previousMessage: "publish the website"
+    prompt: "with the new changes"
+    expectedTaskType: "publish"
+    tags: ["publish", "multi-turn"]
+    skip: true
+    skipReason: "Multi-turn follow-up too vague without full context"
+
+  # ============================================================================
+  # LONG PROMPTS (6 cases)
+  # ============================================================================
+
+  - id: "pub-long-001"
+    prompt: "i have been working on my website for a while now and i think its finally ready to be seen by the world so please publish it for me"
+    expectedTaskType: "publish"
+    tags: ["publish", "long"]
+
+  - id: "pub-long-002"
+    prompt: "im finally done with all the changes and the site looks great so i think its time to make it available to everyone on the internet"
+    expectedTaskType: "publish"
+    tags: ["publish", "long"]
+
+  - id: "pub-long-003"
+    prompt: "everything is ready and i want to share my website with my customers so they can see what we offer"
+    expectedTaskType: "publish"
+    tags: ["publish", "long"]
+
+  - id: "pub-long-004"
+    prompt: "my website is complete and i want it to be accessible to anyone who searches for my business online"
+    expectedTaskType: "publish"
+    tags: ["publish", "long"]
+    rationale: "Clear publish intent - 'complete' and 'accessible to anyone' indicates going live"
+
+  - id: "pub-long-005"
+    prompt: "i finished building my site and now i want everyone to be able to visit it"
+    expectedTaskType: "publish"
+    tags: ["publish", "long"]
+
+  - id: "pub-long-006"
+    prompt: "the website looks perfect now please make it live so people can find us"
+    expectedTaskType: "publish"
+    tags: ["publish", "long"]
+
+  # ============================================================================
+  # COMPLEX/DETAILED REQUESTS
+  # ============================================================================
+
+  - id: "pub-complex-001"
+    prompt: "i finished adding the contact form and updating the about page so now i want to publish everything"
+    expectedTaskType: "publish"
+    tags: ["publish", "complex"]
+
+  - id: "pub-complex-002"
+    prompt: "the website is done with all the pages and content so lets deploy it to production and make it live"
+    expectedTaskType: "publish"
+    tags: ["publish", "complex"]
+
+  - id: "pub-complex-003"
+    prompt: "everything looks good the design is finished and all links work so publish it now please"
+    expectedTaskType: "publish"
+    tags: ["publish", "complex"]
+
+  - id: "pub-complex-004"
+    prompt: "my client approved all the changes we made yesterday and wants the site live by end of day"
+    expectedTaskType: "publish"
+    tags: ["publish", "complex"]
+
+  - id: "pub-complex-005"
+    prompt: "we have been testing the site for a week and found no bugs so go ahead and launch it to the public"
+    expectedTaskType: "publish"
+    tags: ["publish", "complex"]
+
+  - id: "pub-complex-006"
+    prompt: "all the product images are uploaded and descriptions are written now make the store live"
+    expectedTaskType: "publish"
+    tags: ["publish", "complex"]
+
+  - id: "pub-complex-007"
+    prompt: "i checked on mobile and desktop and everything looks perfect so deploy to production"
+    expectedTaskType: "publish"
+    tags: ["publish", "complex"]
+
+  - id: "pub-complex-008"
+    prompt: "the seo tags are done and sitemap is ready so go live so google can start indexing"
+    expectedTaskType: "publish"
+    tags: ["publish", "complex"]
