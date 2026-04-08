@@ -162,7 +162,7 @@ describe('useSettingsNavItems', () => {
     const feedbackItem = result.current.find(item => item.id === SettingsSection.FEEDBACK);
     feedbackItem?.onClick?.();
 
-    expect(openFeedbackModal).toHaveBeenCalledWith('airo#app-builder');
+    expect(openFeedbackModal).toHaveBeenCalledWith('airo#app-builder', 'Settings');
   });
 
   it('should clear localStorage when feedback onClick called', () => {

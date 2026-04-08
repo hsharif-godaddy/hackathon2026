@@ -15,14 +15,36 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   },
 }))
 
+vi.mock('@/stores/useSiteStore', () => ({
+  useSiteStore: {
+    getState: vi.fn(),
+  },
+}))
+
+vi.mock('@/stores/useSitesStore', () => ({
+  useSitesStore: {
+    getState: vi.fn(),
+  },
+}))
+
 const mockLogImpressionEvent = vi.fn(() => vi.fn())
 vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: (...args: unknown[]) => mockLogImpressionEvent(...args),
 }))
 
+import { useSitesStore } from '@/stores/useSitesStore'
+import { useSiteStore } from '@/stores/useSiteStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 
 const mockStore = useStreamingConversationStore as unknown as {
+  getState: ReturnType<typeof vi.fn>
+}
+
+const mockSiteStore = useSiteStore as unknown as {
+  getState: ReturnType<typeof vi.fn>
+}
+
+const mockSitesStore = useSitesStore as unknown as {
   getState: ReturnType<typeof vi.fn>
 }
 
@@ -33,6 +55,24 @@ describe('CompleteHandler', () => {
     vi.clearAllMocks()
     mockLogImpressionEvent.mockClear()
     sessionStorage.removeItem('airo_eval_snapshot_app_build_count_app-123')
+    sessionStorage.removeItem('airo_session_prompt_count')
+
+    // Mock site stores to return a published site by default
+    mockSiteStore.getState.mockReturnValue({
+      getSite: vi.fn().mockReturnValue({
+        id: 'app-123',
+        published_url: 'https://published.example.com',
+      }),
+      updateSite: vi.fn(),
+    })
+
+    mockSitesStore.getState.mockReturnValue({
+      getSite: vi.fn().mockReturnValue({
+        id: 'app-123',
+        published_url: 'https://published.example.com',
+      }),
+      updateSite: vi.fn(),
+    })
   })
 
   it('finalizes stream and clears recovery state on completion', async () => {
@@ -132,5 +172,80 @@ describe('CompleteHandler', () => {
     )
     expect(sessionStorage.getItem('airo_eval_snapshot_app_build_count_app-123')).toBe(null)
     dispatchSpy.mockRestore()
+  })
+
+  it('increments session prompt count only for published sites', async () => {
+    // Mock a published site
+    mockSitesStore.getState.mockReturnValue({
+      getSite: vi.fn().mockReturnValue({
+        id: 'app-123',
+        published_url: 'https://published.example.com',
+      }),
+      updateSite: vi.fn(),
+    })
+
+    mockStore.getState.mockReturnValue({
+      connectionRetry: { isRetrying: false },
+      clearConnectionRetry: vi.fn(),
+      messages: [],
+    })
+
+    sessionStorage.removeItem('airo_session_prompt_count')
+
+    await handler.handle(
+      { type: 'complete', content: '', data: { agentId: 'develop' } },
+      createMockMessageContext()
+    )
+
+    expect(sessionStorage.getItem('airo_session_prompt_count')).toBe('1')
+  })
+
+  it('does not increment session prompt count for unpublished sites', async () => {
+    // Mock an unpublished site (no published_url)
+    mockSitesStore.getState.mockReturnValue({
+      getSite: vi.fn().mockReturnValue({
+        id: 'app-123',
+        published_url: '',
+      }),
+      updateSite: vi.fn(),
+    })
+
+    mockStore.getState.mockReturnValue({
+      connectionRetry: { isRetrying: false },
+      clearConnectionRetry: vi.fn(),
+      messages: [],
+    })
+
+    sessionStorage.removeItem('airo_session_prompt_count')
+
+    await handler.handle(
+      { type: 'complete', content: '', data: { agentId: 'develop' } },
+      createMockMessageContext()
+    )
+
+    expect(sessionStorage.getItem('airo_session_prompt_count')).toBe(null)
+  })
+
+  it('does not increment session prompt count when site is not found', async () => {
+    // Mock getSite returning null (site not found)
+    mockSitesStore.getState.mockReturnValue({
+      getSite: vi.fn().mockReturnValue(null),
+      updateSite: vi.fn(),
+    })
+
+    mockStore.getState.mockReturnValue({
+      connectionRetry: { isRetrying: false },
+      clearConnectionRetry: vi.fn(),
+      messages: [],
+    })
+
+    sessionStorage.removeItem('airo_session_prompt_count')
+
+    await handler.handle(
+      { type: 'complete', content: '', data: { agentId: 'develop' } },
+      createMockMessageContext()
+    )
+
+    expect(sessionStorage.getItem('airo_session_prompt_count')).toBe(null)
   })
 })

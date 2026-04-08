@@ -114,7 +114,7 @@ describe('FeedbackBanner', function feedbackBannerTests() {
       const feedbackLink = screen.getByRole('link');
       await user.click(feedbackLink);
 
-      expect(mockOpenFeedbackModal).toHaveBeenCalledWith(FEEDBACK_ID);
+      expect(mockOpenFeedbackModal).toHaveBeenCalledWith(FEEDBACK_ID, 'Session feedback');
 
       await waitFor(function waitForDismiss() {
         expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).not.toBeInTheDocument();
@@ -138,7 +138,7 @@ describe('FeedbackBanner', function feedbackBannerTests() {
 
       // Verify localStorage key was removed
       expect(localStorage.getItem(`airo-feedback-shown:${FEEDBACK_ID}`)).toBeNull();
-      expect(mockOpenFeedbackModal).toHaveBeenCalledWith(FEEDBACK_ID);
+      expect(mockOpenFeedbackModal).toHaveBeenCalledWith(FEEDBACK_ID, 'Session feedback');
     });
   });
 

@@ -207,7 +207,7 @@ describe('SettingsMenu', () => {
     await user.click(feedbackButton);
 
     await waitFor(() => {
-      expect(openFeedbackModal).toHaveBeenCalledWith('airo#app-builder');
+      expect(openFeedbackModal).toHaveBeenCalledWith('airo#app-builder', 'Settings');
     });
   });
 

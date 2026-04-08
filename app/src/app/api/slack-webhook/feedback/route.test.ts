@@ -22,11 +22,18 @@ const mockAuthContext = {
   jwt: 'test-jwt',
   user: {
     customerId: 'customer-123',
-    shopperId: 'shopper-123'
+    shopperId: 'shopper-123',
+    authType: 'basic'
   }
 };
 
 const mockSendSlackMessage = vi.fn();
+const mockSendSlackBlockMessage = vi.fn();
+const mockIsEmployeeAuthType = vi.fn();
+
+vi.mock('@airo/shared/auth', () => ({
+  isEmployeeAuthType: mockIsEmployeeAuthType
+}));
 
 vi.mock('@/lib/request-context', () => ({
   logger: mockLogger
@@ -39,7 +46,9 @@ vi.mock('@/lib/customer-auth', () => ({
 }));
 
 vi.mock('@/lib/slack-webhook', () => ({
-  sendSlackMessage: mockSendSlackMessage
+  sendSlackMessage: mockSendSlackMessage,
+  sendSlackBlockMessage: mockSendSlackBlockMessage,
+  formatSlackBlockMessage: (data: any) => data, // Pass-through for testing
 }));
 
 /**
@@ -65,6 +74,8 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
     mockSendSlackMessage.mockClear();
     // Set default webhook URL for tests
     process.env.SLACK_FEEDBACK_WEBHOOK_URL = 'https://hooks.slack.com/services/TEST/WEBHOOK/URL';
+    // Default to non-employee auth type (regular customer)
+    mockIsEmployeeAuthType.mockReturnValue(false);
   });
 
   afterEach(function cleanup() {
@@ -145,7 +156,7 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'feedback.slack.not_configured',
         expect.objectContaining({
-          message: 'SLACK_FEEDBACK_WEBHOOK_URL not configured, skipping Slack notification'
+          message: 'SLACK_FEEDBACK_WEBHOOK_URL not configured, returning blockMessage to frontend'
         })
       );
 
@@ -468,4 +479,92 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
       });
     });
   });
+
+  describe('POST - TLA Detection and Impersonation Logging', function tlaDetectionTests() {
+    it('should log when feedback is from impersonation session', async function logImpersonationSession() {
+      // Set authType to e2s (impersonation)
+      const originalAuthType = mockAuthContext.user.authType;
+      mockAuthContext.user.authType = 'e2s';
+      mockIsEmployeeAuthType.mockReturnValueOnce(true);
+
+      const { POST } = await import('./route');
+
+      mockSendSlackMessage.mockResolvedValueOnce({
+        success: true
+      });
+
+      const request = createMockRequest({
+        title: 'Test Feedback',
+        message: 'Test Message'
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'feedback.slack.internal_user',
+        expect.objectContaining({
+          message: 'Feedback from impersonation account',
+          shopperId: mockAuthContext.user.shopperId
+        })
+      );
+
+      // Reset authType after test
+      mockAuthContext.user.authType = originalAuthType;
+    });
+
+    it('should log when feedback is from TLA account', async function logTlaAccount() {
+      // Set 3-character shopper ID (TLA account)
+      mockAuthContext.user.shopperId = 'abc';
+
+      const { POST } = await import('./route');
+
+      mockSendSlackMessage.mockResolvedValueOnce({
+        success: true
+      });
+
+      const request = createMockRequest({
+        title: 'Test Feedback',
+        message: 'Test Message'
+      });
+
+      await POST(request);
+
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'feedback.slack.internal_user',
+        expect.any(Object)
+      );
+
+      // Reset shopper ID after test
+      mockAuthContext.user.shopperId = 'shopper-123';
+    });
+
+    it('should not log TLA for regular customer', async function noLogForRegularCustomer() {
+      // Set long shopper ID (regular customer)
+      mockAuthContext.user.shopperId = 'customer-12345';
+
+      const { POST } = await import('./route');
+
+      mockSendSlackMessage.mockResolvedValueOnce({
+        success: true
+      });
+
+      const request = createMockRequest({
+        title: 'Test Feedback',
+        message: 'Test Message'
+      });
+
+      await POST(request);
+
+      // Get all info log calls
+      const infoLogCalls = mockLogger.info.mock.calls;
+      const hasInternalUserLog = infoLogCalls.some((call) => call[0] === 'feedback.slack.internal_user');
+
+      expect(hasInternalUserLog).toBe(false);
+
+      // Reset shopper ID after test
+      mockAuthContext.user.shopperId = 'shopper-123';
+    });
+  });
+
 });

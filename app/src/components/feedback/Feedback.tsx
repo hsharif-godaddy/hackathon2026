@@ -22,7 +22,7 @@ export function Feedback(props: FeedbackProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const isImpersonating = isEmployeeAuthType((authState as any)?.authType);
 
-  const { feedbackId, onClose, onSubmitSuccess } = props;
+  const { feedbackId, onClose, onSubmitSuccess, origin } = props;
 
   useEffect(() => {
     // CRM impersonation sessions cannot submit feedback
@@ -88,6 +88,7 @@ export function Feedback(props: FeedbackProps) {
               config={config}
               onClose={onClose}
               onSubmitSuccess={onSubmitSuccess}
+              origin={origin}
             />
           )}
         </>

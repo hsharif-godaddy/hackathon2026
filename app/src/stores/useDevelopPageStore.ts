@@ -164,6 +164,7 @@ interface DevelopPageStore {
 
   // Feedback modal UI
   openFeedbackId: string | null
+  feedbackOrigin: string | null
 
   // Feedback banner UI
   showFeedbackBanner: boolean
@@ -238,7 +239,7 @@ interface DevelopPageStore {
   markChatTabsInitialized: (pathname: string) => void
 
   // Feedback modal actions
-  openFeedbackModal: (feedbackId: string) => void
+  openFeedbackModal: (feedbackId: string, origin?: string) => void
   closeFeedbackModal: () => void
 
   // Feedback banner actions
@@ -349,6 +350,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     // Feedback modal state
     openFeedbackId: null,
+    feedbackOrigin: null,
 
     // Feedback banner state
     showFeedbackBanner: false,
@@ -416,7 +418,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     markChatTabsInitialized: (pathname) => set((state) => { state.chatTabsInitializedForPathname = pathname }),
 
     // Feedback modal actions
-    openFeedbackModal: (feedbackId: string) => {
+    openFeedbackModal: (feedbackId: string, origin?: string) => {
       // Check if feedback modal has been shown before using feedback ID
       const localStorageKey = `airo-feedback-shown:${feedbackId}`
       const hasShownFeedback = typeof window !== 'undefined'
@@ -436,6 +438,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
       set((state) => {
         state.openFeedbackId = feedbackId
+        state.feedbackOrigin = origin || null
       })
     },
     closeFeedbackModal: () => {
@@ -447,6 +450,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       logImpressionEvent('feedback.modal.closed')();
       set((state) => {
         state.openFeedbackId = null
+        state.feedbackOrigin = null
       })
     },
 

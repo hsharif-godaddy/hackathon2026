@@ -245,6 +245,7 @@ export default function PublishStatusAlert() {
       feedbackId={FEEDBACK_ID}
       onClose={() => setShowFeedback(false)}
       onSubmitSuccess={() => setShowFeedback(false)}
+      origin="Publish banner"
     />
   );
 

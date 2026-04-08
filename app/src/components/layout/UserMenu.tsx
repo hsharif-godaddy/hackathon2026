@@ -201,6 +201,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
           feedbackId={FEEDBACK_ID}
           onClose={closeFeedback}
           onSubmitSuccess={closeFeedback}
+          origin={`User menu${location && location !== 'unknown' ? ` (${location})` : ''}`}
         />
       )}
     </>

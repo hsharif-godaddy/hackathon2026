@@ -16,6 +16,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { isEmployeeAuthType } from '@airo/shared/auth';
 
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
@@ -37,6 +38,7 @@ interface FeedbackPayload {
  */
 interface FeedbackBlockPayload {
   blockMessage: SlackBlockMessage;
+  appId?: string; // Optional appId for agent JWT token generation
 }
 
 /**
@@ -56,28 +58,16 @@ export const POST = withCustomerAuth(async (
       return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
     }
 
-    // CRM impersonation sessions cannot submit feedback on behalf of customers
-    if (authContext.user.authType === 'e2s') {
-      logger.info('feedback.slack.impersonation_blocked', {
-        message: 'Feedback submission blocked for impersonation session',
-        shopperId: authContext.user.shopperId,
-      });
-      return NextResponse.json(
-        { error: 'Feedback cannot be submitted during account impersonation' },
-        { status: 403 }
-      );
-    }
-    // Get webhook URL from server-side environment variable (NOT exposed to client)
-    const webhookUrl = process.env.SLACK_FEEDBACK_WEBHOOK_URL;
+    // Detect internal users (TLA accounts and impersonation sessions)
+    const shopperId = authContext.user.shopperId;
+    const isTLA = shopperId?.length === 3;
+    const isImpersonating = isEmployeeAuthType(authContext.user?.authType);
 
-    if (!webhookUrl) {
-      logger.debug('feedback.slack.not_configured', {
-        message: 'SLACK_FEEDBACK_WEBHOOK_URL not configured, skipping Slack notification',
-      });
-      // Return success even if not configured - feedback was still saved
-      return NextResponse.json({
-        success: true,
-        message: 'Feedback received (Slack notification not configured)',
+    // Log internal feedback for tracking
+    if (isTLA || isImpersonating) {
+      logger.info('feedback.slack.internal_user', {
+        message: isTLA ? 'Feedback from TLA account' : 'Feedback from impersonation account',
+        shopperId,
       });
     }
 
@@ -94,10 +84,16 @@ export const POST = withCustomerAuth(async (
 
     // Determine if using Block Kit format or legacy format
     const isBlockFormat = 'blockMessage' in payload;
-    let result;
 
+    logger.debug('feedback.payload.received', {
+      isBlockFormat,
+      hasBlockMessage: 'blockMessage' in payload,
+      payloadKeys: Object.keys(payload),
+      blockMessageKeys: isBlockFormat ? Object.keys((payload as any).blockMessage) : [],
+    });
+
+    // Validate Block Kit format
     if (isBlockFormat) {
-      // Block Kit format
       const blockPayload = payload as FeedbackBlockPayload;
 
       if (!blockPayload.blockMessage) {
@@ -109,16 +105,8 @@ export const POST = withCustomerAuth(async (
           { status: 400 }
         );
       }
-
-      logger.info('feedback.slack.sending_blocks', {
-        title: blockPayload.blockMessage.title || 'Untitled',
-        fieldCount: blockPayload.blockMessage.fields?.length || 0,
-        linkCount: blockPayload.blockMessage.links?.length || 0,
-      });
-
-      result = await sendSlackBlockMessage(webhookUrl, blockPayload.blockMessage);
     } else {
-      // Legacy format
+      // Legacy format validation
       const legacyPayload = payload as FeedbackPayload;
 
       if (!legacyPayload.title || !legacyPayload.message) {
@@ -132,6 +120,47 @@ export const POST = withCustomerAuth(async (
           { status: 400 }
         );
       }
+    }
+
+    // Get webhook URL from server-side environment variable (NOT exposed to client)
+    const webhookUrl = process.env.SLACK_FEEDBACK_WEBHOOK_URL;
+
+    if (!webhookUrl) {
+      logger.debug('feedback.slack.not_configured', {
+        message: 'SLACK_FEEDBACK_WEBHOOK_URL not configured, returning blockMessage to frontend',
+      });
+      // Return success with translated blockMessage for frontend to log
+      if (isBlockFormat) {
+        const blockPayload = payload as FeedbackBlockPayload;
+        return NextResponse.json({
+          success: true,
+          message: 'Feedback received (Slack notification not configured)',
+          blockMessage: blockPayload.blockMessage, // Return translated blockMessage
+        });
+      }
+      return NextResponse.json({
+        success: true,
+        message: 'Feedback received (Slack notification not configured)',
+      });
+    }
+
+    // Send to Slack based on format
+    let result;
+
+    if (isBlockFormat) {
+      // Block Kit format - already translated above
+      const blockPayload = payload as FeedbackBlockPayload;
+
+      logger.info('feedback.slack.sending_blocks', {
+        title: blockPayload.blockMessage.title || 'Untitled',
+        fieldCount: blockPayload.blockMessage.fields?.length || 0,
+        linkCount: blockPayload.blockMessage.links?.length || 0,
+      });
+
+      result = await sendSlackBlockMessage(webhookUrl, blockPayload.blockMessage);
+    } else {
+      // Legacy format - already validated above
+      const legacyPayload = payload as FeedbackPayload;
 
       logger.info('feedback.slack.sending', {
         title: legacyPayload.title,

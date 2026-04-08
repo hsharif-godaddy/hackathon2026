@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
+import { isEmployeeAuthType } from '@airo/shared/auth';
 import Box from "@ux/box";
 import Button from "@ux/button";
 import Checkbox from "@ux/checkbox";
 import Radio from "@ux/radio";
+import Spinner from "@ux/spinner";
 import text from "@ux/text";
 import TextInput from "@ux/text-input";
 
@@ -22,14 +25,24 @@ export function FeedbackForm({
   onSubmitSuccess,
   onSubmitError,
   eids,
+  origin,
 }: FeedbackFormProps) {
   const t = useTranslations();
   const { control, handleSubmit, formState } = useForm();
-  const { getUserInfo } = useAuthContext();
+  const { getUserInfo, authState } = useAuthContext();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const getSite = useSitesStore((state) => state.getSite);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  async function sendToSlack(data: any) {
+  // TLA detection for internal users
+  const userInfo = getUserInfo();
+  const shopperId = userInfo?.shopperId;
+  const isInternalUser = shopperId?.length === 3;
+
+  // Impersonation detection (e2s/e2s2s)
+  const isImpersonating = isEmployeeAuthType(authState?.authType);
+
+  async function sendToSlack(data) {
     try {
       // Get site info for URLs
       const site = currentAppId ? getSite(currentAppId) : null;
@@ -105,9 +118,25 @@ export function FeedbackForm({
         });
       }
 
-      // Build right column with rating (big emoji + label)
+      // Subscription information
+      if (subscriptionInfo) {
+        leftFields.push({
+          label: 'Subscription',
+          value: subscriptionInfo,
+        });
+      }
+
+      // Build right column with rating (big emoji + label) and origin
       const rightFields: Array<{ label?: string; value: string }> = [];
-      if (rating) {
+
+      // Add rating display (or "No score" for internal/impersonating users)
+      if (isImpersonating || isInternalUser) {
+        rightFields.push({
+          label: 'No score',
+          value: isImpersonating ? 'E2S session' : 'TLA account',
+        });
+      } else if (rating) {
+        // Regular user - show full rating
         const ratingNumber = String(rating).charAt(0);
         const ratingEmojis: Record<string, string> = {
           '1': ':alert_red: :alert_red: :alert_red:',
@@ -136,16 +165,16 @@ export function FeedbackForm({
         });
       }
 
-      // Build single-column sections
-      const singleColumnSections: Array<{ label?: string; value: string }> = [];
-
-      // Subscription information (full-width section)
-      if (subscriptionInfo) {
-        singleColumnSections.push({
-          label: 'Subscription',
-          value: subscriptionInfo,
+      // Origin
+      if (origin) {
+        rightFields.push({
+          label: 'Origin',
+          value: origin,
         });
       }
+
+      // Build single-column sections
+      const singleColumnSections: Array<{ label?: string; value: string }> = [];
 
       // Comment section
       if (comment && String(comment).trim()) {
@@ -160,19 +189,20 @@ export function FeedbackForm({
 
       // Preview and published URLs
       if (previewUrl) {
-        links.push({ url: previewUrl, text: 'Preview site' });
+        links.push({ url: previewUrl, text: 'Preview' });
       }
       if (isValidPublishedUrl) {
-        links.push({ url: publishedUrl, text: 'Published site' });
+        links.push({ url: publishedUrl, text: 'Published' });
       }
 
       // FullStory link
       if (fullStoryUrl) {
-        links.push({ url: fullStoryUrl, text: 'FullStory session' });
+        links.push({ url: fullStoryUrl, text: 'FullStory' });
       }
 
-      // Console link (at the end)
+      // Nexus and Console links
       if (currentAppId) {
+        links.push({ url: `https://ctk.int.gdcorp.tools/nexus/results?criteria=app_id&term=${currentAppId}`, text: 'Nexus' });
         links.push({ url: `https://console.airo-builder.godaddy.com/?appId=${currentAppId}`, text: 'Console' });
       }
 
@@ -185,27 +215,32 @@ export function FeedbackForm({
         links: links.length > 0 ? links : undefined,
       };
 
-      // In dev mode, log formatted payload to console instead of sending to Slack
-      if (isLocalhost()) {
-        const formattedPayload = formatSlackBlockMessage(blockMessage);
-        console.log('📧 [DEV MODE] Feedback Slack payload:', JSON.stringify(formattedPayload, null, 2));
-        logger.info('feedback.slack.dev_mode_logged', {
-          feedbackId: config.pk,
-          appId: currentAppId,
-        });
-        return;
-      }
-
       // Send Block Kit formatted message with two-column layout (no title)
-      await fetch('/api/slack-webhook/feedback', {
+      // Backend handles logging and Slack sending
+      const response = await fetch('/api/slack-webhook/feedback', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           blockMessage,
+          appId: currentAppId, // Pass appId for agent JWT token generation
         }),
       });
+
+      // In dev mode, log the blockMessage returned from backend
+      if (isLocalhost() && response.ok) {
+        const result = await response.json();
+        if (result.blockMessage) {
+          const formattedPayload = formatSlackBlockMessage(result.blockMessage);
+          console.log('📧 [DEV MODE] Feedback Slack payload:', JSON.stringify(formattedPayload, null, 2));
+          logger.info('feedback.slack.dev_mode_logged', {
+            feedbackId: config.pk,
+            appId: currentAppId,
+          });
+        }
+      }
+
       logger.info('feedback.slack.sent', {
         feedbackId: config.pk,
         appId: currentAppId,
@@ -222,73 +257,91 @@ export function FeedbackForm({
     }
   }
 
-  function onSubmit(data: any) {
-    // Close immediately (optimistic UI)
-    if (onSubmitSuccess) {
-      const mockResponse = {
-        success: true,
-        message: 'Feedback submitted successfully'
-      };
-      onSubmitSuccess(mockResponse);
-    } else {
-      onClose();
-    }
+  async function onSubmit(data: any) {
+    setIsSubmitting(true);
 
-    // Fire and forget - submit in background
-    if (isLocalhost()) {
-      // Send to Slack in background
-      sendToSlack(data).catch((err) => {
-        logger.warn('feedback.slack.background_send_failed', {
+    try {
+      if (isLocalhost()) {
+        // Development: just send to Slack
+        await sendToSlack(data);
+        logger.info('feedback.submit.success', {
           feedbackId: config.pk,
-          error: err instanceof Error ? err.message : String(err)
         });
-      });
-      return;
-    }
+      } else {
+        // Production: submit to API then send to Slack
+        const customerId = getUserInfo()?.customerId ?? '';
+        if (!customerId) {
+          logger.warn('feedback.submit.missing_customer_id', { feedbackId: config.pk });
+        }
+        const keys = [...Object.keys(data), 'customerId'];
+        const values = [...Object.values(data), customerId];
+        const baseUrl = getBaseUrl();
 
-    // Production: submit to API in background
-    const customerId = getUserInfo()?.customerId ?? '';
-    if (!customerId) {
-      logger.warn('feedback.submit.missing_customer_id', { feedbackId: config.pk });
-    }
-    const keys = [...Object.keys(data), 'customerId'];
-    const values = [...Object.values(data), customerId];
-    const baseUrl = getBaseUrl();
-    fetch(baseUrl + "feedbacks/" + encodeURIComponent(config.pk), {
-      mode: "cors",
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "X-XSRF-TOKEN": "1",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        url: window?.location?.href,
-        keys,
-        values,
-      }),
-    })
-      .then((res) => res.json())
-      .then(async () => {
+        // Save to database
+        const response = await fetch(baseUrl + "feedbacks/" + encodeURIComponent(config.pk), {
+          mode: "cors",
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "X-XSRF-TOKEN": "1",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            url: window?.location?.href,
+            keys,
+            values,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to save feedback: ${response.status}`);
+        }
+
+        await response.json();
+
         // Send to Slack after successful database save
         await sendToSlack(data);
+
         logger.info('feedback.submit.success', {
           feedbackId: config.pk,
           customerId,
         });
-      })
-      .catch((err) => {
-        if (onSubmitError) {
-          onSubmitError(err);
-        } else {
-          logger.error('feedback.submit.failed', {
-            feedbackId: config.pk,
-            customerId,
-            error: err instanceof Error ? err.message : String(err)
-          });
-        }
+      }
+
+      // Success! Close the modal
+      if (onSubmitSuccess) {
+        const mockResponse = {
+          success: true,
+          message: 'Feedback submitted successfully'
+        };
+        onSubmitSuccess(mockResponse);
+      } else {
+        onClose();
+      }
+    } catch (err) {
+      logger.error('feedback.submit.failed', {
+        feedbackId: config.pk,
+        error: err instanceof Error ? err.message : String(err)
       });
+
+      if (onSubmitError) {
+        onSubmitError(err);
+      }
+
+      // Don't close the modal on error - let the user retry
+    } finally {
+      setIsSubmitting(false);
+    }
   }
+
+  // Filter fields based on user type
+  const visibleFields = config.fields.filter(field => {
+    // Hide rating field for internal users (TLAs) and impersonation sessions
+    if ((isInternalUser || isImpersonating) && field.id === 'rate-overal-experience') {
+      return false;
+    }
+    return true;
+  });
 
   return (
     <form
@@ -297,7 +350,7 @@ export function FeedbackForm({
       })}
     >
       <Box gap="xl">
-        {config.fields.map((field) => {
+        {visibleFields.map((field) => {
           const { id, type, label, options, required, hint } = field;
           return (
             <div key={id}>
@@ -380,13 +433,16 @@ export function FeedbackForm({
           <Button
             type="submit"
             design="primary"
-            text={t('builder_common_submit')}
+            text={isSubmitting ? t('builder_widgets_feedback_submitting') : t('builder_common_submit')}
             data-eid={eids?.submitButton}
+            disabled={isSubmitting}
+            icon={isSubmitting ? <Spinner size="sm" /> : undefined}
           />
           <Button
             text={t('builder_common_cancel')}
             onClick={onClose}
             data-eid={eids?.cancelButton}
+            disabled={isSubmitting}
           />
         </Box>
       </Box>

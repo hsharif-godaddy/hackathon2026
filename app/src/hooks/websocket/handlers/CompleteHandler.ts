@@ -39,9 +39,18 @@ function shouldShowFeedbackBanner(): boolean {
 }
 
 /**
- * Increment session prompt counter (global, for feedback widget). Always call on every complete.
+ * Increment session prompt counter (global, for feedback widget).
+ * Only increments if site is published.
  */
-function incrementSessionPromptCount(): void {
+function incrementSessionPromptCount(appId: string | null): void {
+  // Only increment if site is published to avoid triggering feedback banner for draft sites
+  const site = appId ? useSitesStore.getState().getSite(appId) : null
+  const isPublished = site?.published_url && site.published_url.length > 0
+
+  if (!isPublished) {
+    return
+  }
+
   const countStr = sessionStorage.getItem(SESSION_PROMPT_COUNT_KEY)
   const count = countStr ? parseInt(countStr, 10) : 0
   sessionStorage.setItem(SESSION_PROMPT_COUNT_KEY, String(count + 1))
@@ -101,7 +110,7 @@ export class CompleteHandler implements MessageHandler {
 
     const commitHash = commitHashFromComplete(data)
     const appId = context.currentAppId
-    incrementSessionPromptCount()
+    incrementSessionPromptCount(appId)
 
     const shouldShowBanner = shouldShowFeedbackBanner()
     if (shouldShowBanner) {

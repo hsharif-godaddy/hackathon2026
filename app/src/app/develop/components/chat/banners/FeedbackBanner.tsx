@@ -35,7 +35,7 @@ export default function FeedbackBanner() {
     e.preventDefault()
     logClickEvent('chat.feedbackBanner.feedback')()
     localStorage.removeItem(`airo-feedback-shown:${FEEDBACK_ID}`)
-    openFeedbackModal(FEEDBACK_ID)
+    openFeedbackModal(FEEDBACK_ID, 'Session feedback')
     setIsDismissed(true)
   }
 

@@ -31,10 +31,12 @@ export interface FeedbackBaseProps {
 
 export interface FeedbackFormProps extends FeedbackBaseProps {
   config: FeedbackConfig;
+  origin?: string;
 }
 
 export interface FeedbackProps extends FeedbackBaseProps {
   feedbackId: string;
   /** If not provided Growl is used and onClose is invoked. */
   onInitError?: (err: any) => void;
+  origin?: string;
 }

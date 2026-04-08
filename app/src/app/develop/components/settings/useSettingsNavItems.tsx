@@ -59,7 +59,7 @@ export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] 
 
   const handleFeedbackClick = () => {
     localStorage.removeItem(`airo-feedback-shown:${FEEDBACK_ID}`);
-    openFeedbackModal(FEEDBACK_ID);
+    openFeedbackModal(FEEDBACK_ID, 'Settings');
   };
 
   return [
