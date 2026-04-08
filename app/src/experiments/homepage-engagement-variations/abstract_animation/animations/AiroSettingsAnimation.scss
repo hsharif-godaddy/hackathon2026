@@ -433,10 +433,8 @@
   }
 
   @media (max-width: 600px) {
-    height: 100dvh;
-    max-height: 100dvh;
-    border-radius: 0;
-    border: none;
+    min-height: 420px;
+    border-radius: 10px;
 
     .stg-settings-sidebar { width: 130px; }
     .stg-sidebar-item { font-size: 10px; padding: 6px 8px; gap: 6px; svg { width: 12px; height: 12px; } }
