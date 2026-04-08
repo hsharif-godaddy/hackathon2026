@@ -171,7 +171,7 @@
     "sass": "^1.92.1",
     "server-only": "^0.0.1",
     "socket.io-client": "^4.8.3",
-    "tailwind-merge": "^3.3.1",
+    "tailwind-merge": "^3.5.0",
     "uuid": "^11.1.0",
     "zod": "^4.3.6",
     "xstate": "^5.28.0",
