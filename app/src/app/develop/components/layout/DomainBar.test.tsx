@@ -21,13 +21,22 @@ const mockDevelopStore = {
 
 const mockSendMessage = vi.fn();
 const mockShipAnalyticsLog = vi.fn();
+const mockGetSite = vi.fn((_id: string) => null);
 
 vi.mock('@/app/develop/components/utils', () => ({
-  useAppIdFromParams: () => 'app-123',
+  useAppIdFromParams: vi.fn(() => 'app-123'),
 }));
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: any) => selector(mockDevelopStore),
+}));
+
+vi.mock('@/stores/useSiteStore', () => ({
+  useSiteStore: vi.fn((selector: any) =>
+    selector({
+      getSite: () => null,
+    }),
+  ),
 }));
 
 vi.mock('@/contexts/WebSocketContext', () => ({
@@ -65,12 +74,22 @@ vi.mock('@/utils/domain', () => ({
 }));
 
 // Import mocked modules to control their behavior
+import { useAppIdFromParams } from '@/app/develop/components/utils';
 import { useDomainSearch } from '@/hooks/useDomainSearch';
 import { shipAnalyticsLog } from '@/lib/logging';
+import { useSiteStore } from '@/stores/useSiteStore';
 
 describe('DomainBar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetSite.mockReset();
+    mockGetSite.mockImplementation(() => null);
+    vi.mocked(useAppIdFromParams).mockReturnValue('app-123');
+    vi.mocked(useSiteStore).mockImplementation((selector: any) =>
+      selector({
+        getSite: mockGetSite,
+      }),
+    );
     mockDevelopStore.site = {
       name: 'Test App',
       domains: [{ fqdn: 'test.airoapp.ai', domainType: 'prefix' }],
@@ -131,6 +150,129 @@ describe('DomainBar', () => {
 
     expect(useDomainSearch).toHaveBeenCalledWith(
       expect.objectContaining({ query: 'caferesume' })
+    );
+  });
+
+  it('should use site name when app name is missing', () => {
+    mockDevelopStore.app = {};
+    mockDevelopStore.site = {
+      name: 'Site Only Brand',
+      domains: [{ fqdn: 'test.airoapp.ai', domainType: 'prefix' }],
+    };
+
+    renderWithProviders(<DomainBar />);
+
+    expect(useDomainSearch).toHaveBeenCalledWith(
+      expect.objectContaining({ query: 'siteonlybrand' })
+    );
+  });
+
+  it('should use site name when app name is an empty string', () => {
+    mockDevelopStore.app = { name: '' };
+    mockDevelopStore.site = {
+      name: 'Empty App Site Name',
+      domains: [{ fqdn: 'test.airoapp.ai', domainType: 'prefix' }],
+    };
+
+    renderWithProviders(<DomainBar />);
+
+    expect(useDomainSearch).toHaveBeenCalledWith(
+      expect.objectContaining({ query: 'emptyappsitename' })
+    );
+  });
+
+  it('should prefer app name over site name when both exist', () => {
+    mockDevelopStore.app = { name: 'App Preferred' };
+    mockDevelopStore.site = {
+      name: 'Site Other',
+      domains: [{ fqdn: 'test.airoapp.ai', domainType: 'prefix' }],
+    };
+
+    renderWithProviders(<DomainBar />);
+
+    expect(useDomainSearch).toHaveBeenCalledWith(
+      expect.objectContaining({ query: 'apppreferred' })
+    );
+  });
+
+  it('should prefer cached site when getSite returns published airo subdomain and develop store differs', () => {
+    mockDevelopStore.app = {};
+    mockDevelopStore.site = {
+      name: 'Stale Unpublished',
+      domains: [{ fqdn: 'custom-stale.example.com', domainType: 'custom' }],
+    };
+    const cachedPublished = {
+      name: 'Cached Published',
+      variants: ['publish'],
+      domains: [{ fqdn: 'cached.airoapp.ai', domainType: 'prefix' }],
+    };
+    vi.mocked(useSiteStore).mockImplementation((selector: any) =>
+      selector({
+        getSite: (id: string) => (id === 'app-123' ? cachedPublished : null),
+      }),
+    );
+    vi.mocked(useDomainSearch).mockReturnValue({
+      data: {
+        domains: [{ fqdn: 'cachedbrand.com', available: true }],
+      },
+      isError: false,
+    } as any);
+
+    const { container } = renderWithProviders(<DomainBar />);
+
+    expect(container.querySelector('.bg-ai')).toBeInTheDocument();
+    expect(useDomainSearch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enabled: true,
+        query: 'cachedpublished',
+      }),
+    );
+  });
+
+  it('should not render when cached site is custom domain even if develop site is airo subdomain', () => {
+    mockDevelopStore.site = {
+      name: 'Develop Airo',
+      domains: [{ fqdn: 'develop.airoapp.ai', domainType: 'prefix' }],
+    };
+    const cachedCustom = {
+      name: 'Cached Custom',
+      domains: [{ fqdn: 'owner-custom.example.com', domainType: 'custom' }],
+    };
+    vi.mocked(useSiteStore).mockImplementation((selector: any) =>
+      selector({
+        getSite: (id: string) => (id === 'app-123' ? cachedCustom : null),
+      }),
+    );
+    vi.mocked(useDomainSearch).mockReturnValue({
+      data: {
+        domains: [{ fqdn: 'ignored.com', available: true }],
+      },
+      isError: false,
+    } as any);
+
+    const { container } = renderWithProviders(<DomainBar />);
+
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('should skip getSite and use develop site when appId is absent', () => {
+    vi.mocked(useAppIdFromParams).mockReturnValue(undefined);
+    vi.mocked(useDomainSearch).mockReturnValue({
+      data: {
+        domains: [{ fqdn: 'fallback.com', available: true }],
+      },
+      isError: false,
+    } as any);
+
+    const { container } = renderWithProviders(<DomainBar />);
+
+    expect(mockGetSite).not.toHaveBeenCalled();
+    expect(container.querySelector('.bg-ai')).toBeInTheDocument();
+    expect(useDomainSearch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enabled: true,
+        query: 'testapp',
+      }),
     );
   });
 

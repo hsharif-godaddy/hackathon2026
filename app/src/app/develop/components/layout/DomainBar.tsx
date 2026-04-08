@@ -13,6 +13,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useSiteStore } from '@/stores/useSiteStore'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 import { isAiroSubdomain, resolveSiteFqdn } from '@/utils/domain'
 import { generateClickEID } from '@/utils/instrumentation'
@@ -31,7 +32,9 @@ export default function DomainBar() {
   const isLoading = useIsLoading();
   const isProcessing = isStreaming || isLoading;
 
-  const site = useDevelopPageStore((state) => state.site);
+  const siteFromCache = useSiteStore((state) => (appId ? state.getSite(appId) : null));
+  const developSite = useDevelopPageStore((state) => state.site);
+  const site = siteFromCache ?? developSite;
   const appName = useDevelopPageStore((state) => state.app?.name);
   const setActiveChatTab = useDevelopPageStore((state) => state.setActiveChatTab);
 
@@ -39,10 +42,10 @@ export default function DomainBar() {
   const isAiroSubdomainCheck = isAiroSubdomain(fqdn);
   const isPublished = hasBeenPublished(site);
 
-  // Search for a suggested domain based on the app name.
+  // Search for a suggested domain from app name, falling back to site record name.
   // Request up to 5 results so the API can return good alternatives
   // even when the exact match (e.g. yourbrand.com) is unavailable.
-  const domainQuery = appName ? toDomainQuery(appName) : '';
+  const domainQuery = toDomainQuery(appName?.trim() || site?.name?.trim() || '');
   const { data: suggestedDomainData, isError: isDomainSearchError } = useDomainSearch({
     query: domainQuery,
     maxResults: 5,
