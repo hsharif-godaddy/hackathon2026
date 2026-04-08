@@ -205,6 +205,27 @@ const MIGRATIONS = [
         console.log('  Deleted bundle.js');
       }
     }
+  },
+  {
+    id: 'remove-public-assets-gitignore',
+    description: 'Remove public/assets from .gitignore so uploaded assets are tracked in git',
+    run(customerDir, _syncedFiles) {
+      const gitignorePath = join(customerDir, '.gitignore');
+      if (!existsSync(gitignorePath)) return;
+
+      const content = readFileSync(gitignorePath, 'utf8');
+      // Remove the "# Public Assets" comment and "public/assets" entry independently
+      // so we catch cases where the comment was removed but the entry remains.
+      // Match whole lines in multiline mode so both LF and CRLF files are handled,
+      // and tolerate an optional trailing slash on "public/assets/".
+      const updated = content
+        .replace(/^# Public Assets\s*$\r?\n?/gm, '')
+        .replace(/^public\/assets\/?\s*$\r?\n?/gm, '');
+      if (updated !== content) {
+        writeFileSync(gitignorePath, updated, 'utf8');
+        console.log('  Removed public/assets from .gitignore');
+      }
+    }
   }
 ];
 
