@@ -17,7 +17,7 @@ import {
   type CostPrediction,
 } from './types.js'
 
-const logger = Logger.create({ service: 'assessment-agent' })
+const logger = Logger.create({ component: 'assessment-agent' })
 
 // ============================================================================
 // CLASSIFICATION THRESHOLDS

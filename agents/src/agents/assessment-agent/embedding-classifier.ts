@@ -17,7 +17,7 @@ import { BudgetOverride, LlmCallSource } from '@airo/ai-grants'
 import { Logger } from '../../logging/index.js'
 import { AssessmentTaskType } from './types.js'
 
-const logger = Logger.create({ service: 'embedding-classifier' })
+const logger = Logger.create({ component: 'embedding-classifier' })
 
 // ============================================================================
 // CONFIGURATION
