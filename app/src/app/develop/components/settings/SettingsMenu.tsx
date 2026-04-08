@@ -2,7 +2,7 @@
 
 import { forwardRef, useImperativeHandle, useState } from 'react';
 import Button from '@ux/button';
-import SettingsIcon from '@ux/icon/settings';
+import MenuIcon from '@ux/icon/menu';
 
 import { ButtonGroup } from '@/app/develop/components/ButtonGroup';
 import { useSettingsNavItems } from '@/app/develop/components/settings/useSettingsNavItems';
@@ -51,8 +51,7 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
       <PopoverAnchor>
         <ButtonGroup.Item
           value={ChatTab.SETTINGS}
-          icon={<SettingsIcon className="size-2.5" />}
-          label={t('builder_settings_title')}
+          icon={<MenuIcon className="size-2.5" />}
           onClick={() => setOpen(!open)}
           data-eid={generateClickEID('develop.chat_toolbar.settings')}
         />

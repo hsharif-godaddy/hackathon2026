@@ -5,14 +5,12 @@ import CalendarIcon from '@ux/icon/calendar';
 import ContentIcon from '@ux/icon/content';
 import ClipboardIcon from '@ux/icon/copy';
 import DatabaseIcon from '@ux/icon/database';
-import GraphIcon from '@ux/icon/graph';
 import LinkIcon from '@ux/icon/link';
 import LockedIcon from '@ux/icon/locked';
 import RevertIcon from '@ux/icon/revert';
 import SettingsIcon from '@ux/icon/settings';
 import ShareIcon from '@ux/icon/share';
 import SocialIcon from '@ux/icon/social';
-import Users3Icon from '@ux/icon/users3';
 
 import { SettingsSection } from '@/app/develop/components/types';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
@@ -36,9 +34,9 @@ export interface SettingsNavItem {
 
 /**
  * Hook that provides the settings navigation items with their current state
- * Used by both SettingsPane (desktop sidebar) and SettingsMenu (mobile popover)
+ * Used by SettingsMenu popover
  *
- * @param enabled - Whether to fetch feature flags (defer until tab is visible)
+ * @param enabled - Whether to fetch feature flags (defer until menu is visible)
  * @returns Array of settings navigation items with current enabled/disabled state
  */
 export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] {
@@ -50,11 +48,9 @@ export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] 
   const backups = useSwitchboard('appbuilder-settings-backups', { enabled });
   const security = useSwitchboard('appbuilder-settings-security', { enabled });
   const shareLinks = useSwitchboard('appbuilder-share-links', { enabled });
-  const team = useSwitchboard('appbuilder-settings-team', { enabled });
   const visualScan = useSwitchboard('appbuilder-settings-visualscan', { enabled });
   const secrets = useSwitchboard('appbuilder-settings-secrets', { enabled });
   const social = useSwitchboard('appbuilder-settings-social', { enabled });
-  const analytics = useSwitchboard('appbuilder-settings-analytics', { enabled });
   const marketing = useSwitchboard('appbuilder-settings-marketing', { enabled });
 
   const handleFeedbackClick = () => {
@@ -99,13 +95,6 @@ export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] 
       needsAuth: isAuthError(shareLinks.error),
     }] : []),
     {
-      id: SettingsSection.TEAM,
-      label: t('builder_settings_nav_team'),
-      icon: <Users3Icon />,
-      disabled: !isAuthError(team.error) && team.data !== true,
-      needsAuth: isAuthError(team.error),
-    },
-    {
       id: SettingsSection.DATABASE,
       label: t('builder_settings_nav_database'),
       icon: <DatabaseIcon />,
@@ -132,13 +121,6 @@ export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] 
       disabled: false,
       needsAuth: isAuthError(visualScan.error),
     }] : []),
-    {
-      id: SettingsSection.ANALYTICS,
-      label: t('builder_settings_nav_analytics'),
-      icon: <GraphIcon />,
-      disabled: !isAuthError(analytics.error) && analytics.data !== true,
-      needsAuth: isAuthError(analytics.error),
-    },
     ...(marketing.data || isAuthError(marketing.error) ? [{
       id: SettingsSection.MARKETING,
       label: t('builder_settings_nav_marketing'),

@@ -40,7 +40,7 @@ export function AnalyticsDetailTable<T>({
 
   if (!data || data.length === 0) {
     return (
-      <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-intents-ux-box-backgroundColor p-4">
+      <div className="flex flex-col gap-2 rounded-lg border border-border bg-intents-ux-box-backgroundColor p-2">
         <text.p className="!text-[13px] !font-semibold !mb-0">{title}</text.p>
         <text.p emphasis="passive" className="!text-xs">{t('builder_analytics_no_data')}</text.p>
       </div>
@@ -48,25 +48,22 @@ export function AnalyticsDetailTable<T>({
   }
 
   return (
-    <div className="flex flex-col rounded-lg border border-border bg-intents-ux-box-backgroundColor shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px overflow-hidden">
-      {/* Header */}
-      <div className="px-4 pt-3.5 pb-2">
-        <div className="flex items-center gap-2">
-          <span className="inline-block w-[6px] h-[6px] rounded-full flex-shrink-0" style={{ background: 'var(--color-ai)', boxShadow: '0 0 6px var(--color-ai-glow)' }} />
-          <text.p className="!text-[13px] !font-bold !tracking-tight !mb-0">{title}</text.p>
-          {tooltip && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button type="button" aria-label="More information" className="shrink-0 text-muted-foreground/40 hover:text-muted-foreground transition-colors">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="max-w-[240px] text-xs">
-                {tooltip}
-              </TooltipContent>
-            </Tooltip>
-          )}
-        </div>
+    <div className="flex flex-col gap-2 rounded-lg border border-border bg-intents-ux-box-backgroundColor p-2 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="inline-block w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: 'var(--color-ai)', boxShadow: '0 0 6px var(--color-ai-glow)' }} />
+        <text.p className="!text-[13px] !font-semibold !mb-0">{title}</text.p>
+        {tooltip && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" aria-label="More information" className="shrink-0 text-muted-foreground/40 hover:text-muted-foreground transition-colors">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-[240px] text-xs">
+              {tooltip}
+            </TooltipContent>
+          </Tooltip>
+        )}
         {subtitle && (
           <text.p emphasis="passive" className="!text-[11px] !mt-0.5 !mb-0 !pl-[14px]">{subtitle}</text.p>
         )}

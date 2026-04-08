@@ -102,7 +102,7 @@ export default function DomainPanel() {
   }
 
   return (
-    <Box gap="lg" className="@container">
+    <Box gap="sm" className="@container">
       {!isDomainAttachEnabled && !isProjectDomainEnabled && (
         <>
           <text.h1>{t('builder_domain_title')}</text.h1>

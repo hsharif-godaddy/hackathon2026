@@ -8,14 +8,14 @@ import { screen } from '@testing-library/react';
 
 import { StatusValue } from '@/app/develop/components/types';
 import { renderWithProviders } from '@/tests/test-utils';
-import BigCard from './BigCard';
+import SettingsSection from './SettingsSection';
 
-describe('BigCard', () => {
+describe('SettingsSection', () => {
   it('should render without crashing', () => {
     renderWithProviders(
-      <BigCard>
+      <SettingsSection>
         <div data-testid="test-content">Content</div>
-      </BigCard>
+      </SettingsSection>
     );
 
     expect(screen.getByTestId('test-content')).toBeInTheDocument();
@@ -23,43 +23,43 @@ describe('BigCard', () => {
 
   it('should render children', () => {
     renderWithProviders(
-      <BigCard>
-        <p>Card content</p>
-      </BigCard>
+      <SettingsSection>
+        <p>Section content</p>
+      </SettingsSection>
     );
 
-    expect(screen.getByText('Card content')).toBeInTheDocument();
+    expect(screen.getByText('Section content')).toBeInTheDocument();
   });
 
   it('should render title when provided', () => {
     renderWithProviders(
-      <BigCard title="Card Title">
+      <SettingsSection title="Section Title">
         <div>Content</div>
-      </BigCard>
+      </SettingsSection>
     );
 
-    expect(screen.getByText('Card Title')).toBeInTheDocument();
+    expect(screen.getByText('Section Title')).toBeInTheDocument();
   });
 
   it('should render description when provided', () => {
     renderWithProviders(
-      <BigCard description="Card description text">
+      <SettingsSection description="Section description text">
         <div>Content</div>
-      </BigCard>
+      </SettingsSection>
     );
 
-    expect(screen.getByText('Card description text')).toBeInTheDocument();
+    expect(screen.getByText('Section description text')).toBeInTheDocument();
   });
 
   it('should render both title and description', () => {
     renderWithProviders(
-      <BigCard title="Card Title" description="Card description">
+      <SettingsSection title="Section Title" description="Section description">
         <div>Content</div>
-      </BigCard>
+      </SettingsSection>
     );
 
-    expect(screen.getByText('Card Title')).toBeInTheDocument();
-    expect(screen.getByText('Card description')).toBeInTheDocument();
+    expect(screen.getByText('Section Title')).toBeInTheDocument();
+    expect(screen.getByText('Section description')).toBeInTheDocument();
   });
 
   it('should render status when provided', () => {
@@ -69,9 +69,9 @@ describe('BigCard', () => {
     };
 
     renderWithProviders(
-      <BigCard status={status}>
+      <SettingsSection status={status}>
         <div>Content</div>
-      </BigCard>
+      </SettingsSection>
     );
 
     expect(screen.getByText('builder_status_ready')).toBeInTheDocument();
@@ -79,9 +79,9 @@ describe('BigCard', () => {
 
   it('should render button when provided', () => {
     renderWithProviders(
-      <BigCard button={<button>Action Button</button>}>
+      <SettingsSection button={<button>Action Button</button>}>
         <div>Content</div>
-      </BigCard>
+      </SettingsSection>
     );
 
     expect(screen.getByRole('button', { name: /Action Button/i })).toBeInTheDocument();
@@ -94,9 +94,9 @@ describe('BigCard', () => {
     };
 
     renderWithProviders(
-      <BigCard status={status} button={<button>Action</button>}>
+      <SettingsSection status={status} button={<button>Action</button>}>
         <div>Content</div>
-      </BigCard>
+      </SettingsSection>
     );
 
     expect(screen.getByText('builder_status_ready')).toBeInTheDocument();
@@ -110,9 +110,9 @@ describe('BigCard', () => {
     };
 
     renderWithProviders(
-      <BigCard status={status}>
+      <SettingsSection status={status}>
         <div>Content</div>
-      </BigCard>
+      </SettingsSection>
     );
 
     const tag = screen.getByText('builder_status_ready').closest('[class*="ux-tag"]');
@@ -126,9 +126,9 @@ describe('BigCard', () => {
     };
 
     renderWithProviders(
-      <BigCard status={status}>
+      <SettingsSection status={status}>
         <div>Content</div>
-      </BigCard>
+      </SettingsSection>
     );
 
     expect(screen.getByText('builder_status_error')).toBeInTheDocument();
@@ -141,9 +141,9 @@ describe('BigCard', () => {
     };
 
     renderWithProviders(
-      <BigCard status={status}>
+      <SettingsSection status={status}>
         <div>Content</div>
-      </BigCard>
+      </SettingsSection>
     );
 
     expect(screen.getByText('builder_status_pending')).toBeInTheDocument();
@@ -151,9 +151,9 @@ describe('BigCard', () => {
 
   it('should render without title and description', () => {
     renderWithProviders(
-      <BigCard>
+      <SettingsSection>
         <div>Just content</div>
-      </BigCard>
+      </SettingsSection>
     );
 
     expect(screen.getByText('Just content')).toBeInTheDocument();

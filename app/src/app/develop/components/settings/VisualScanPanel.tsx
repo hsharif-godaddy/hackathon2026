@@ -3,14 +3,14 @@ import Button from '@ux/button';
 import Card from '@ux/card';
 import WandIcon from '@ux/icon/wand';
 
-import BigCard from "@/components/layout/BigCard.tsx";
+import SettingsSection from "@/app/develop/components/settings/SettingsSection";
 import { useTranslations } from '@/hooks/useTranslations';
 
 export default function VisualScanPanel() {
   const t = useTranslations();
   return (
     <Box gap="lg" className="@container">
-      <BigCard
+      <SettingsSection
         title={t('builder_settings_visualscan_title')}
         description={t('builder_settings_visualscan_desc')}
         button={(
@@ -24,7 +24,7 @@ export default function VisualScanPanel() {
         <Card>
           <p>{t('builder_settings_visualscan_no_result')}</p>
         </Card>
-      </BigCard>
+      </SettingsSection>
     </Box>
   )
 }

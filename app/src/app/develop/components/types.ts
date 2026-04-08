@@ -93,6 +93,7 @@ export enum ChatTab {
   MEDIAS = 'medias',
   TODO = 'todo',
   HISTORY = 'history',
+  ANALYTICS = 'analytics',
   SETTINGS = 'settings'
 }
 

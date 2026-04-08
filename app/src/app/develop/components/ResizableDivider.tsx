@@ -16,6 +16,7 @@ export default function ResizableDivider({
   style,
 }: ResizableDividerProps) {
   const [isDragging, setIsDragging] = useState(false)
+  const isDraggingRef = useRef(false)
   const dividerRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const animationFrameRef = useRef<number | null>(null)
@@ -30,15 +31,10 @@ export default function ResizableDivider({
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    isDraggingRef.current = true
     setIsDragging(true)
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
-    document.body.style.pointerEvents = 'none'
-
-    // Enable pointer events only on the body for dragging
-    if (dividerRef.current) {
-      dividerRef.current.style.pointerEvents = 'auto'
-    }
   }, [])
 
   const updateWidth = useCallback((clientX: number) => {
@@ -61,7 +57,7 @@ export default function ResizableDivider({
   }, [minLeftWidth, minRightWidth, onResize])
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDragging) return
+    if (!isDraggingRef.current) return
 
     // Throttle updates using requestAnimationFrame
     if (animationFrameRef.current) {
@@ -71,17 +67,15 @@ export default function ResizableDivider({
     animationFrameRef.current = requestAnimationFrame(() => {
       updateWidth(e.clientX)
     })
-  }, [isDragging, updateWidth])
+  }, [updateWidth])
 
   const handleMouseUp = useCallback(() => {
+    if (!isDraggingRef.current) return
+
+    isDraggingRef.current = false
     setIsDragging(false)
     document.body.style.cursor = ''
     document.body.style.userSelect = ''
-    document.body.style.pointerEvents = ''
-
-    if (dividerRef.current) {
-      dividerRef.current.style.pointerEvents = ''
-    }
 
     // Cancel any pending animation frame
     if (animationFrameRef.current) {
@@ -93,18 +87,29 @@ export default function ResizableDivider({
   // Global mouse events for smooth dragging
   useEffect(() => {
     if (isDragging) {
-      // Use passive: false to allow preventDefault if needed
-      document.addEventListener('mousemove', handleMouseMove, { passive: true })
-      document.addEventListener('mouseup', handleMouseUp, { passive: true })
+      // Use capture phase to catch events even over iframes and other elements
+      document.addEventListener('mousemove', handleMouseMove, { passive: true, capture: true })
+      document.addEventListener('mouseup', handleMouseUp, { passive: true, capture: true })
+
+      // Stop dragging if window loses focus or visibility
+      const handleBlur = () => handleMouseUp()
+      const handleVisibilityChange = () => {
+        if (document.hidden) handleMouseUp()
+      }
+
+      window.addEventListener('blur', handleBlur)
+      document.addEventListener('visibilitychange', handleVisibilityChange)
 
       // Prevent context menu during drag
       const preventContextMenu = (e: Event) => e.preventDefault()
-      document.addEventListener('contextmenu', preventContextMenu)
+      document.addEventListener('contextmenu', preventContextMenu, { capture: true })
 
       return () => {
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
-        document.removeEventListener('contextmenu', preventContextMenu)
+        document.removeEventListener('mousemove', handleMouseMove, { capture: true })
+        document.removeEventListener('mouseup', handleMouseUp, { capture: true })
+        window.removeEventListener('blur', handleBlur)
+        document.removeEventListener('visibilitychange', handleVisibilityChange)
+        document.removeEventListener('contextmenu', preventContextMenu, { capture: true })
       }
     }
   }, [isDragging, handleMouseMove, handleMouseUp])
@@ -128,11 +133,35 @@ export default function ResizableDivider({
   }, [])
 
   return (
-    <div
-      ref={dividerRef}
-      className="absolute top-2 bottom-2 z-10 w-0.5 bg-transparent cursor-col-resize flex-shrink-0 rounded-lg transition-colors duration-400 hover:bg-border"
-      onMouseDown={handleMouseDown}
-      style={style}
-    />
+    <>
+      {/* Transparent overlay during dragging to prevent iframe interaction */}
+      {isDragging && (
+        <div
+          className="fixed inset-0 z-50"
+          style={{
+            cursor: 'col-resize',
+            // Transparent but blocks pointer events to iframes
+            background: 'transparent',
+          }}
+        />
+      )}
+
+      <div
+        ref={dividerRef}
+        className="absolute top-2 bottom-2 z-10 cursor-col-resize flex-shrink-0 group"
+        onMouseDown={handleMouseDown}
+        style={{
+          ...style,
+          // Wider hit area for easier grabbing (centered on position)
+          width: '16px',
+          transform: 'translateX(-8px)',
+          // Increase z-index during dragging
+          zIndex: isDragging ? 51 : 10,
+        }}
+      >
+        {/* Visual divider line - centered within hit area */}
+        <div className="absolute left-1/2 top-0 bottom-0 w-0.5 -translate-x-1/2 bg-transparent rounded-lg transition-colors duration-200 group-hover:bg-border group-active:bg-border" />
+      </div>
+    </>
   )
 }

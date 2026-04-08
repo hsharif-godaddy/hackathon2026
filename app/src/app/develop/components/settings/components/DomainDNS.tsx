@@ -34,8 +34,8 @@ export function CopyableValue({ value }: { value: string }) {
   };
 
   return (
-    <Box orientation="horizontal" inlineAlignChildren="center" gap="sm">
-      <code className="bg-intents-ux-box-subtle rounded px-1 py-0.5 text-xs font-mono whitespace-nowrap">
+    <Box orientation="horizontal" inlineAlignChildren="center" gap="sm" wrap>
+      <code className="bg-intents-ux-box-subtle rounded px-1 py-0.5 text-xs font-mono">
         {value}
       </code>
       <button
@@ -50,6 +50,47 @@ export function CopyableValue({ value }: { value: string }) {
           <ClipboardIcon />
         )}
       </button>
+    </Box>
+  );
+}
+
+function DnsRecordCard({
+  type,
+  name,
+  value,
+  ttl
+}: {
+  type: string;
+  name: string;
+  value: string;
+  ttl: string | number;
+}) {
+  const t = useTranslations();
+
+  return (
+    <Box
+      orientation="vertical"
+      className="p-2 rounded-md border border-intents-ux-border-subtle bg-intents-ux-box-backgroundColor"
+    >
+      <text.p className="!font-semibold text-right">{type}</text.p>
+      <Box gap="sm" orientation="horizontal" inlineAlignChildren="center">
+        <text.p>
+          <strong>{t('builder_domain_dns_table_ttl')}:</strong>
+        </text.p>
+        <CopyableValue value={String(ttl)} />
+      </Box>
+      <Box gap="sm" orientation="horizontal" inlineAlignChildren="center">
+        <text.p>
+          <strong>{t('builder_domain_dns_table_name')}:</strong>
+        </text.p>
+        <CopyableValue value={name} />
+      </Box>
+      <Box gap="sm" orientation="horizontal" inlineAlignChildren="center">
+        <text.p>
+          <strong>{t('builder_domain_dns_table_value')}:</strong>
+        </text.p>
+        <CopyableValue value={value} />
+      </Box>
     </Box>
   );
 }
@@ -93,54 +134,18 @@ export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain 
     <Box
       orientation="vertical"
       gap="md"
-      className="rounded-lg"
+      className="rounded-lg w-full"
     >
       <text.p className="text-sm">
         {t('builder_domain_dns_instructions')}
       </text.p>
 
-      {/* DNS Records Table */}
-      <div className="mt-1 overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="border-b border-intents-ux-border-subtle">
-              <th className="text-left font-semibold pb-1 pr-4 whitespace-nowrap">{t('builder_domain_dns_table_type')}</th>
-              <th className="text-left font-semibold pb-1 pr-4 whitespace-nowrap">{t('builder_domain_dns_table_name')}</th>
-              <th className="text-left font-semibold pb-1 pr-4 whitespace-nowrap">{t('builder_domain_dns_table_value')}</th>
-              <th className="text-left font-semibold pb-1 whitespace-nowrap">{t('builder_domain_dns_table_ttl')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {/* A Record */}
-            <tr className={dnsRecords.cnameRecord ? "border-b border-intents-ux-border-subtle" : ""}>
-              <td className="py-1 pr-4 whitespace-nowrap">{dnsRecords.aRecord.type}</td>
-              <td className="py-1 pr-4 whitespace-nowrap">{dnsRecords.aRecord.name}</td>
-              <td className="py-1 pr-4"><CopyableValue value={dnsRecords.aRecord.value} /></td>
-              <td className="py-1 whitespace-nowrap">{dnsRecords.aRecord.ttl}</td>
-            </tr>
-
-            {/* CNAME Record */}
-            {dnsRecords.cnameRecord && (
-              <tr className={dnsRecords.dcvRecord ? "border-b border-intents-ux-border-subtle" : ""}>
-                <td className="py-1 pr-4 whitespace-nowrap">{dnsRecords.cnameRecord.type}</td>
-                <td className="py-1 pr-4 whitespace-nowrap">{dnsRecords.cnameRecord.name}</td>
-                <td className="py-1 pr-4"><CopyableValue value={dnsRecords.cnameRecord.value} /></td>
-                <td className="py-1 whitespace-nowrap">{dnsRecords.cnameRecord.ttl}</td>
-              </tr>
-            )}
-
-            {/* DCV Record */}
-            {dnsRecords.dcvRecord && (
-              <tr>
-                <td className="py-1 pr-4 whitespace-nowrap">{dnsRecords.dcvRecord.type}</td>
-                <td className="py-1 pr-4 whitespace-nowrap">{dnsRecords.dcvRecord.name}</td>
-                <td className="py-1 pr-4"><CopyableValue value={dnsRecords.dcvRecord.value} /></td>
-                <td className="py-1 whitespace-nowrap">{dnsRecords.dcvRecord.ttl}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/* DNS Records Cards */}
+      <Box orientation="vertical" gap="sm">
+        <DnsRecordCard {...dnsRecords.aRecord} />
+        {dnsRecords.cnameRecord && <DnsRecordCard {...dnsRecords.cnameRecord} />}
+        {dnsRecords.dcvRecord && <DnsRecordCard {...dnsRecords.dcvRecord} />}
+      </Box>
     </Box>
   );
 }

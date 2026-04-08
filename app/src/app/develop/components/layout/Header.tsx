@@ -97,74 +97,68 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
         <div className="p-1.5 md:p-2.5 grow">
           <Box
             orientation="horizontal"
-            blockAlignChildren={activeChatTab === ChatTab.SETTINGS ? 'end' : 'spaceBetween'}
+            blockAlignChildren='spaceBetween'
             inlineAlignChildren='center'
             gap="sm"
           >
-            {/* Left side controls - hide on Settings tab */}
-            {activeChatTab !== ChatTab.SETTINGS && (
-              <Box orientation="horizontal" gap="sm" inlineAlignChildren='center'>
-                <ButtonGroup
-                  value={viewMode}
-                  onChange={(value) => {
-                    handleViewModeChange(value as ViewMode, hasUnsavedChanges);
-                  }}
-                  data-eid={generateClickEID('develop.header.view_mode')}
-                >
-                  <ButtonGroup.Item
-                    value={ViewMode.PREVIEW}
-                    icon={<WebsiteFilledIcon className="size-2.5" />}
-                    label={t('builder_preview_button_preview')}
-                    showLabelAlways
-                    data-eid={generateClickEID('develop.header.iframe')}
-                  />
-                  <ButtonGroup.Item
-                    value={ViewMode.EDIT}
-                    icon={<WandIcon className="size-2.5" />}
-                    label={t('builder_preview_button_edit')}
-                    showLabelAlways
-                    data-eid={generateClickEID('develop.header.edit_mode')}
-                  />
-                  <ButtonGroup.Item
-                    value={ViewMode.CODE}
-                    icon={<CodeIcon className="size-2.5" />}
-                    label={t('builder_preview_button_code')}
-                    showLabelAlways
-                    disabled={isVersionHistoryOpen}
-                    data-eid={generateClickEID('develop.header.code_editor')}
-                  />
-                </ButtonGroup>
-              </Box>
-            )}
+            {/* Left side controls */}
+            <Box orientation="horizontal" gap="sm" inlineAlignChildren='center'>
+              <ButtonGroup
+                value={viewMode}
+                onChange={(value) => {
+                  handleViewModeChange(value as ViewMode, hasUnsavedChanges);
+                }}
+                data-eid={generateClickEID('develop.header.view_mode')}
+              >
+                <ButtonGroup.Item
+                  value={ViewMode.PREVIEW}
+                  icon={<WebsiteFilledIcon className="size-2.5" />}
+                  label={t('builder_preview_button_preview')}
+                  showLabelAlways
+                  data-eid={generateClickEID('develop.header.iframe')}
+                />
+                <ButtonGroup.Item
+                  value={ViewMode.EDIT}
+                  icon={<WandIcon className="size-2.5" />}
+                  label={t('builder_preview_button_edit')}
+                  showLabelAlways
+                  data-eid={generateClickEID('develop.header.edit_mode')}
+                />
+                <ButtonGroup.Item
+                  value={ViewMode.CODE}
+                  icon={<CodeIcon className="size-2.5" />}
+                  label={t('builder_preview_button_code')}
+                  showLabelAlways
+                  disabled={isVersionHistoryOpen}
+                  data-eid={generateClickEID('develop.header.code_editor')}
+                />
+              </ButtonGroup>
+            </Box>
 
             <Box orientation="horizontal" gap="sm" inlineAlignChildren='center'>
-              {/* Middle controls - hide on Settings tab */}
-              {activeChatTab !== ChatTab.SETTINGS && (
-                <>
-                  <IconButton
-                    icon={<RefreshIcon className="size-2.5" />}
-                    disabled={viewMode === ViewMode.CODE || isVersionHistoryOpen}
-                    onClick={onPreviewRefresh}
-                    data-eid={generateClickEID('develop.header.refresh')}
-                    label={t('builder_preview_button_refresh')}
-                    showLabelWhenActive={false}
-                  />
+              {/* Middle controls */}
+              <IconButton
+                icon={<RefreshIcon className="size-2.5" />}
+                disabled={viewMode === ViewMode.CODE || isVersionHistoryOpen}
+                onClick={onPreviewRefresh}
+                data-eid={generateClickEID('develop.header.refresh')}
+                label={t('builder_preview_button_refresh')}
+                showLabelWhenActive={false}
+              />
 
-                  <span className="hidden lg:block">
-                    <DeviceSelector disabled={viewMode === ViewMode.CODE} />
-                  </span>
+              <span className="hidden lg:block">
+                <DeviceSelector disabled={viewMode === ViewMode.CODE} />
+              </span>
 
-                  <DomainMenu />
+              <DomainMenu />
 
-                  <IconButton
-                    icon={<WorldIcon className="size-2.5" />}
-                    label={t('builder_project_domain_title')}
-                    showLabelWhenActive={false}
-                    data-eid={generateClickEID('develop.header.domain_settings')}
-                    onClick={handleDomainSettings}
-                  />
-                </>
-              )}
+              <IconButton
+                icon={<WorldIcon className="size-2.5" />}
+                label={t('builder_project_domain_title')}
+                showLabelWhenActive={false}
+                data-eid={generateClickEID('develop.header.domain_settings')}
+                onClick={handleDomainSettings}
+              />
 
               {/* Always show Upgrade/Publish/UserMenu */}
               <ButtonGroup>

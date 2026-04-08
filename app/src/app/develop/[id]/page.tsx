@@ -14,6 +14,7 @@ import MediaPanel from '@/app/develop/components/media/MediaPanel'
 import { DevelopCreditsModal, PaywallErrorFallback, RenewalPollingModal, UpgradeContainer, UpgradePollingModal } from '@/app/develop/components/paywall'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
+import AnalyticsPanel from '@/app/develop/components/settings/Analytics/AnalyticsPanel'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
 import { AppIntroTour } from '@/app/develop/components/tour/AppIntroTour'
 import { ChatTab, IframeMessageType, MobileMode } from '@/app/develop/components/types'
@@ -1039,11 +1040,7 @@ function DevelopPageContent() {
                 {/* Preview/Code View */}
                 <div
                   id="preview-pane-container"
-                  className="absolute inset-0 flex flex-col transition-opacity duration-150"
-                  style={{
-                    opacity: activeChatTab !== ChatTab.SETTINGS ? 1 : 0,
-                    pointerEvents: activeChatTab !== ChatTab.SETTINGS ? 'auto' : 'none',
-                  }}
+                  className="absolute inset-0 flex flex-col"
                 >
                   <PreviewPane
                     onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
@@ -1059,17 +1056,6 @@ function DevelopPageContent() {
                     onRetryImageReload={() => imageReadiness.retry()}
                     isMobile={false}
                   />
-                </div>
-
-                {/* Settings View */}
-                <div
-                  className="absolute inset-0 flex flex-col transition-opacity duration-150"
-                  style={{
-                    opacity: activeChatTab === ChatTab.SETTINGS ? 1 : 0,
-                    pointerEvents: activeChatTab === ChatTab.SETTINGS ? 'auto' : 'none',
-                  }}
-                >
-                  <SettingsView />
                 </div>
               </div>
             </motion.div>
@@ -1185,6 +1171,18 @@ function DevelopPageContent() {
                       }}
                     >
                       <MediaPanel />
+                    </div>
+
+                    {/* Analytics Tab */}
+                    <div
+                      className="absolute inset-0 flex flex-col overflow-y-auto transition-opacity duration-150"
+                      style={{
+                        opacity: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.ANALYTICS ? 1 : 0,
+                        pointerEvents: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.ANALYTICS ? 'auto' : 'none',
+                        willChange: 'opacity'
+                      }}
+                    >
+                      <AnalyticsPanel />
                     </div>
 
                     {/* Settings Tab */}

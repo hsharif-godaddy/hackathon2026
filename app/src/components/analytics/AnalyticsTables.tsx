@@ -40,7 +40,7 @@ export function AnalyticsTables({
     getDescription: (row: T) => string
   ) => {
     return (
-      <div className="flex flex-col gap-4 rounded-lg border border-border bg-intents-ux-box-backgroundColor p-5 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px">
+      <div className="flex flex-col gap-4 rounded-lg border border-border bg-intents-ux-box-backgroundColor p-2 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px">
         <div className="flex items-center justify-between text-sm font-medium">
           <div className="flex items-center gap-2">
             <span className="inline-block w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: 'var(--color-ai)', boxShadow: '0 0 6px var(--color-ai-glow)' }} />
@@ -86,7 +86,7 @@ export function AnalyticsTables({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-6">
+    <div className="grid grid-cols-1 gap-3">
       {renderTable(tableTitle, pageData, 'page', getPageDescription)}
     </div>
   )

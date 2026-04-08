@@ -141,9 +141,10 @@ describe('ChatToolbar', () => {
   it('should render settings button on desktop', () => {
     mockDevelopStore.isMobile = false;
 
-    renderWithProviders(<ChatToolbar {...defaultProps} />);
+    const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.getByLabelText('builder_settings_title')).toBeInTheDocument();
+    const settingsButton = container.querySelector('[data-eid="develop.chat_toolbar.settings"]');
+    expect(settingsButton).toBeInTheDocument();
   });
 
   it('should render view button on mobile preview mode', () => {
@@ -221,18 +222,20 @@ describe('ChatToolbar', () => {
   it('should render settings menu on mobile when settings enabled', () => {
     mockDevelopStore.isMobile = true;
 
-    renderWithProviders(<ChatToolbar {...defaultProps} />);
+    const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.getByLabelText('builder_settings_title')).toBeInTheDocument();
+    const settingsButton = container.querySelector('[data-eid="develop.chat_toolbar.settings"]');
+    expect(settingsButton).toBeInTheDocument();
   });
 
   it('should not render settings button on mobile preview mode', () => {
     mockDevelopStore.isMobile = true;
     mockDevelopStore.mobileMode = MobileMode.PREVIEW;
 
-    renderWithProviders(<ChatToolbar {...defaultProps} />);
+    const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.queryByLabelText('builder_settings_title')).not.toBeInTheDocument();
+    const settingsButton = container.querySelector('[data-eid="develop.chat_toolbar.settings"]');
+    expect(settingsButton).not.toBeInTheDocument();
   });
 
   it('should have correct data-eid attributes', () => {

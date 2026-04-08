@@ -80,22 +80,22 @@ describe('SettingsMenu', () => {
   });
 
   it('should render without crashing', () => {
-    renderWithProviders(<SettingsMenu />);
+    const { container } = renderWithProviders(<SettingsMenu />);
 
-    expect(screen.getByLabelText('builder_settings_title')).toBeInTheDocument();
+    expect(container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!).toBeInTheDocument();
   });
 
   it('should render settings trigger button', () => {
-    renderWithProviders(<SettingsMenu />);
+    const { container } = renderWithProviders(<SettingsMenu />);
 
-    const button = screen.getByLabelText('builder_settings_title');
+    const button = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
     expect(button).toBeInTheDocument();
   });
 
   it('should open popover when trigger button clicked', async () => {
-    const { user } = renderWithProviders(<SettingsMenu />);
+    const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('builder_settings_title');
+    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -104,9 +104,9 @@ describe('SettingsMenu', () => {
   });
 
   it('should display all settings options when open', async () => {
-    const { user } = renderWithProviders(<SettingsMenu />);
+    const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('builder_settings_title');
+    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -121,9 +121,9 @@ describe('SettingsMenu', () => {
 
   it('should display feedback option on desktop', async () => {
     mockChatTabs.activeSettingsSection = SettingsSection.PROJECT;
-    const { user } = renderWithProviders(<SettingsMenu />);
+    const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('builder_settings_title');
+    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -135,9 +135,9 @@ describe('SettingsMenu', () => {
     const setActiveSettingsSection = vi.fn();
     mockChatTabs.setActiveSettingsSection = setActiveSettingsSection;
 
-    const { user } = renderWithProviders(<SettingsMenu />);
+    const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('builder_settings_title');
+    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -153,9 +153,9 @@ describe('SettingsMenu', () => {
   });
 
   it('should close popover after option clicked', async () => {
-    const { user } = renderWithProviders(<SettingsMenu />);
+    const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('builder_settings_title');
+    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -173,9 +173,9 @@ describe('SettingsMenu', () => {
   it('should mark active section with active state', async () => {
     mockChatTabs.activeSettingsSection = SettingsSection.DATABASE;
 
-    const { user } = renderWithProviders(<SettingsMenu />);
+    const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('builder_settings_title');
+    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -184,9 +184,9 @@ describe('SettingsMenu', () => {
   });
 
   it('should have correct data-eid on trigger button', () => {
-    renderWithProviders(<SettingsMenu />);
+    const { container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('builder_settings_title');
+    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
     expect(trigger).toHaveAttribute('data-eid', 'develop.chat_toolbar.settings');
   });
 
@@ -194,9 +194,9 @@ describe('SettingsMenu', () => {
     const openFeedbackModal = vi.fn();
     mockDevelopStore.openFeedbackModal = openFeedbackModal;
 
-    const { user } = renderWithProviders(<SettingsMenu />);
+    const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('builder_settings_title');
+    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -214,9 +214,9 @@ describe('SettingsMenu', () => {
   it('should close popover after feedback clicked', async () => {
     mockChatTabs.activeSettingsSection = SettingsSection.PROJECT;
 
-    const { user } = renderWithProviders(<SettingsMenu />);
+    const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('builder_settings_title');
+    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -237,9 +237,9 @@ describe('SettingsMenu', () => {
       error: new SwitchboardAuthError('appbuilder-settings-project'),
     };
 
-    const { user } = renderWithProviders(<SettingsMenu />);
+    const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('builder_settings_title');
+    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
     await user.click(trigger);
 
     await waitFor(() => {
@@ -260,9 +260,9 @@ describe('SettingsMenu', () => {
       error: new SwitchboardAuthError('appbuilder-settings-domain'),
     };
 
-    const { user } = renderWithProviders(<SettingsMenu />);
+    const { user, container } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('builder_settings_title');
+    const trigger = container.querySelector('[data-eid="develop.chat_toolbar.settings"]')!;
     await user.click(trigger);
 
     await waitFor(() => {

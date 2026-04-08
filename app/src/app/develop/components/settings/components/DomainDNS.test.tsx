@@ -92,14 +92,14 @@ describe('DomainDNS', () => {
     expect(screen.getByText('builder_domain_dns_provisioning')).toBeInTheDocument();
   });
 
-  it('renders DNS table with A record for root domain', async () => {
+  it('renders DNS cards with A record for root domain', async () => {
     const { useSwitchboard } = await import('@/hooks/useSwitchboard');
     vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false } as ReturnType<typeof useSwitchboard>);
 
     renderWithProviders(<DomainDNS domainDetails={baseDomain} />);
 
     expect(screen.getByText('1.2.3.4')).toBeInTheDocument();
-    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getByText('builder_domain_dns_instructions')).toBeInTheDocument();
   });
 
   it('renders copy buttons for record values', async () => {

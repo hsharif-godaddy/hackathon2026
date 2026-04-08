@@ -5,6 +5,7 @@ import { useEffect, useRef } from 'react'
 import Box from '@ux/box'
 import CodeIcon from '@ux/icon/code'
 import CommentsIcon from '@ux/icon/comments'
+import GraphIcon from '@ux/icon/graph'
 import HistoryIcon from '@ux/icon/history'
 import ImageIcon from '@ux/icon/image'
 import RefreshIcon from '@ux/icon/refresh'
@@ -14,12 +15,13 @@ import { ButtonGroup } from '@/app/develop/components/ButtonGroup'
 import IconButton from '@/app/develop/components/IconButton'
 import DomainMenu from '@/app/develop/components/layout/DomainMenu'
 import SettingsMenu, { SettingsMenuRef } from '@/app/develop/components/settings/SettingsMenu'
-import { ChatTab, MobileMode, ViewMode } from '@/app/develop/components/types'
+import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import AppPublish from '@/components/layout/AppPublish'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useIsHistoryDisabled } from '@/hooks/useIsHistoryDisabled'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { cn } from '@/lib/utils'
@@ -42,7 +44,7 @@ export default function ChatToolbar({
   }: ChatToolbarProps) {
   const t = useTranslations();
   const appId = useAppIdFromParams()
-  const { activeChatTab, setActiveChatTab } = useChatTabs()
+  const { activeChatTab, setActiveChatTab, setActiveSettingsSection } = useChatTabs()
   const isMobile = useDevelopPageStore((state) => state.isMobile);
   const mobileMode = useDevelopPageStore((state) => state.mobileMode);
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges);
@@ -54,6 +56,7 @@ export default function ChatToolbar({
   const returnToMain = useGitStore((state) => state.returnToMain);
   const setSelectedCommitHash = useGitStore((state) => state.setSelectedCommitHash);
   const isHistoryDisabled = useIsHistoryDisabled(appId || '');
+  const { data: isAnalyticsEnabled } = useSwitchboard('appbuilder-analytics');
 
   const { data: gitHistoryData } = useGitHistoryQuery({
     appId: appId || '',
@@ -105,7 +108,7 @@ export default function ChatToolbar({
     // Call optimistic callback first for instant UI updates
     onBeforeTabChange?.(tab)
 
-    if (tab === ChatTab.SETTINGS && isMobile) {
+    if (tab === ChatTab.SETTINGS) {
       // Open the settings popover instead of navigating
       settingsMenuRef.current?.openPopover()
       return
@@ -156,6 +159,14 @@ export default function ChatToolbar({
               disabled={isHistoryDisabled}
               data-eid={generateClickEID('develop.chat_toolbar.history')}
             />
+            {isAnalyticsEnabled && (
+              <ButtonGroup.Item
+                value={ChatTab.ANALYTICS}
+                icon={<GraphIcon className="size-2.5" />}
+                label={t('builder_settings_nav_analytics')}
+                data-eid={generateClickEID('develop.chat_toolbar.analytics')}
+              />
+            )}
             <SettingsMenu ref={settingsMenuRef} />
           </ButtonGroup>
 

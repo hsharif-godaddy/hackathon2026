@@ -62,10 +62,6 @@ vi.mock('@/app/develop/components/preview/PreviewPane', () => ({
   default: () => <div data-testid="preview-pane">Preview Pane</div>,
 }));
 
-vi.mock('@/app/develop/components/settings/SettingsPane', () => ({
-  default: () => <div data-testid="settings-pane">Settings Pane</div>,
-}));
-
 vi.mock('@/app/develop/components/settings/SettingsView', () => ({
   default: () => <div data-testid="settings-view">Settings View</div>,
 }));
@@ -92,6 +88,7 @@ const mockStreamingStore = {
   isLoading: false,
   currentAppId: 'test-app-123',
   isActivelyStreaming: false,
+  streamingState: 'idle' as 'idle' | 'streaming' | 'completing' | 'retrying' | 'error',
   messages: [] as any[],
   activeStream: null as any,
   developmentPlan: null,
@@ -109,6 +106,29 @@ const mockDevelopPageStore = {
   isMobile: false,
   toggleExpandedPlan: vi.fn(),
   setIsVersionHistoryOpen: vi.fn(),
+  getPublishState: vi.fn(() => ({
+    isPublishing: false,
+    publishError: false,
+    buildErrorDetails: null,
+    lastPublishedCommitHash: null,
+    deploymentsRefetch: null,
+    deploymentInProgressId: null,
+    showSuccessAlert: false,
+    showPaywallModal: false,
+    showPublishLimitModal: false,
+    publishLimitData: null,
+    showFirstPublishCongrats: false,
+    firstPublishDeployPending: false,
+    hasGoneLive: false,
+    wentLiveAt: null,
+    showGoLiveModal: false,
+    goLiveModalDismissed: false,
+    goLiveModalStep: null,
+    securityScanResults: null,
+    launchVideoResult: null,
+    featureSelections: null,
+    marketingSelections: null,
+  })),
 };
 const mockChatTabs = {
   activeChatTab: ChatTab.CHAT,
@@ -124,6 +144,7 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsLoading: () => mockStreamingStore.isLoading,
   useCurrentAppId: () => mockStreamingStore.currentAppId,
   useIsActivelyStreaming: () => mockStreamingStore.isActivelyStreaming,
+  useStreamingState: () => mockStreamingStore.streamingState,
   useDevelopmentPlan: () => mockStreamingStore.developmentPlan,
   useAiEditContext: () => mockStreamingStore.aiEditContext,
   useBuildErrorContext: () => mockStreamingStore.buildErrorContext,

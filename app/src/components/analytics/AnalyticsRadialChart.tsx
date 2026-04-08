@@ -45,7 +45,7 @@ export function AnalyticsRadialChart({ data, label = 'Engagement' }: AnalyticsRa
   return (
     <div
       data-slot="chart"
-      className="flex flex-col items-center w-full rounded-lg border bg-intents-ux-box-backgroundColor p-5 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px min-h-[250px]"
+      className="flex flex-col items-center w-full rounded-lg border bg-intents-ux-box-backgroundColor p-2 shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:border-light-purple-solid hover:-translate-y-px min-h-[250px]"
     >
       <div className="flex items-center gap-2 mb-3.5 self-start">
         <span className="inline-block w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: 'var(--color-chart-violet)', boxShadow: '0 0 6px color-mix(in srgb, var(--color-chart-violet) 25%, transparent)' }} />

@@ -45,14 +45,10 @@ export default function BackupsPanel() {
   };
 
   return (
-    <Box className="h-full bg-intents-ux-box-backgroundColor rounded-lg overflow-y-auto">
-      <div className="max-w-[1200px] p-3">
-        <RemoteModulePage
-          moduleName={moduleName}
-          version={version}
-          componentProps={componentProps}
-        />
-      </div>
-    </Box>
+    <RemoteModulePage
+      moduleName={moduleName}
+      version={version}
+      componentProps={componentProps}
+    />
   );
 }
