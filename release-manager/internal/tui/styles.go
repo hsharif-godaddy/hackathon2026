@@ -3,88 +3,183 @@ package tui
 import (
 	"image/color"
 
+	catppuccin "github.com/catppuccin/go"
+
 	"charm.land/lipgloss/v2"
+
+	"github.com/airo-ai-builder/release-manager/internal/pipeline"
 )
 
-var (
-	colorSuccess color.Color = lipgloss.Color("#00ff00")
-	colorRunning color.Color = lipgloss.Color("#00bfff")
-	colorPending color.Color = lipgloss.Color("#666666")
-	colorFailed  color.Color = lipgloss.Color("#ff4444")
-	colorSkipped color.Color = lipgloss.Color("#888888")
-	colorParsing color.Color = lipgloss.Color("#ffaa00")
-	colorDryRun  color.Color = lipgloss.Color("#ff69b4")
-	colorAccent  color.Color = lipgloss.Color("#7c3aed")
-	colorMuted   color.Color = lipgloss.Color("#6b7280")
-	colorBright  color.Color = lipgloss.Color("#f9fafb")
+// Theme holds all colors and pre-built styles for the TUI, derived from a
+// Catppuccin flavour. Use themeForBackground to construct.
+type Theme struct {
+	// Semantic colors
+	Success color.Color
+	Running color.Color
+	Pending color.Color
+	Failed  color.Color
+	Skipped color.Color
+	Parsing color.Color
+	DryRun  color.Color
+	Accent  color.Color
+	Muted   color.Color
+	Bright  color.Color
+	URL     color.Color
+	Output  color.Color
 
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(colorAccent).
-			Padding(0, 1)
+	// Pre-built styles
+	TitleStyle          lipgloss.Style
+	DryRunBadge         lipgloss.Style
+	SectionStyle        lipgloss.Style
+	StageNameStyle      lipgloss.Style
+	StageDurationStyle  lipgloss.Style
+	StageURLStyle       lipgloss.Style
+	StageErrorStyle     lipgloss.Style
+	OutputStyle         lipgloss.Style
+	SnapshotLabelStyle  lipgloss.Style
+	SnapshotValueStyle  lipgloss.Style
+	SnapshotURLStyle    lipgloss.Style
+	PreflightPassStyle  lipgloss.Style
+	PreflightFailStyle  lipgloss.Style
+	PreflightWarnStyle  lipgloss.Style
+	SuccessMessageStyle lipgloss.Style
+	FailedMessageStyle  lipgloss.Style
+	RunningDotStyle     lipgloss.Style
+	MutedStyle          lipgloss.Style
+	HelpStyle           lipgloss.Style
+}
 
-	dryRunBadge = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#000000")).
-			Background(colorDryRun).
-			Padding(0, 1)
+// cat converts a catppuccin Color to a lipgloss Color.
+func cat(c catppuccin.Color) color.Color {
+	return lipgloss.Color(c.Hex)
+}
 
-	sectionStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(colorBright).
-			Padding(0, 0, 0, 1)
+// themeForBackground returns a Theme for the given terminal background.
+func themeForBackground(isDark bool) Theme {
+	var f catppuccin.Flavour
+	if isDark {
+		f = catppuccin.Mocha
+	} else {
+		f = catppuccin.Latte
+	}
 
-	stageNameStyle = lipgloss.NewStyle().
-			Foreground(colorBright)
+	// Light themes need darker neutrals because the terminal background may
+	// be darker than Catppuccin Latte's own Base (#eff1f5). Step each
+	// neutral role one or two levels towards Text for better contrast.
+	muted := f.Subtext0()
+	pending := f.Overlay0()
+	skipped := f.Overlay1()
+	if !isDark {
+		muted = f.Subtext1()
+		pending = f.Subtext0()
+		skipped = f.Overlay2()
+	}
 
-	stageDurationStyle = lipgloss.NewStyle().
-				Foreground(colorMuted)
+	t := Theme{
+		Success: cat(f.Green()),
+		Running: cat(f.Sapphire()),
+		Pending: cat(pending),
+		Failed:  cat(f.Red()),
+		Skipped: cat(skipped),
+		Parsing: cat(f.Yellow()),
+		DryRun:  cat(f.Pink()),
+		Accent:  cat(f.Mauve()),
+		Muted:   cat(muted),
+		Bright:  cat(f.Text()),
+		URL:     cat(f.Blue()),
+		Output:  cat(f.Lavender()),
+	}
 
-	stageURLStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#60a5fa")).
-			Underline(true)
+	t.TitleStyle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(t.Accent).
+		Padding(0, 1)
 
-	stageErrorStyle = lipgloss.NewStyle().
-			Foreground(colorFailed).
-			Padding(0, 0, 0, 4)
+	t.DryRunBadge = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(cat(f.Base())).
+		Background(t.DryRun).
+		Padding(0, 1)
 
-	outputStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#a78bfa")).
-			Padding(0, 0, 0, 4)
+	t.SectionStyle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(t.Bright).
+		Padding(0, 0, 0, 1)
 
-	snapshotLabelStyle = lipgloss.NewStyle().
-				Foreground(colorMuted).
-				Width(22)
+	t.StageNameStyle = lipgloss.NewStyle().
+		Foreground(t.Bright)
 
-	snapshotValueStyle = lipgloss.NewStyle().
-				Foreground(colorBright).
-				Bold(true)
+	t.StageDurationStyle = lipgloss.NewStyle().
+		Foreground(t.Muted)
 
-	snapshotURLStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#60a5fa")).
-				Underline(true)
+	t.StageURLStyle = lipgloss.NewStyle().
+		Foreground(t.URL).
+		Underline(true)
 
-	preflightPassStyle = lipgloss.NewStyle().
-				Foreground(colorSuccess)
+	t.StageErrorStyle = lipgloss.NewStyle().
+		Foreground(t.Failed).
+		Padding(0, 0, 0, 4)
 
-	preflightFailStyle = lipgloss.NewStyle().
-			Foreground(colorFailed)
+	t.OutputStyle = lipgloss.NewStyle().
+		Foreground(t.Output).
+		Padding(0, 0, 0, 4)
 
-	preflightWarnStyle = lipgloss.NewStyle().
-				Foreground(colorParsing)
+	t.SnapshotLabelStyle = lipgloss.NewStyle().
+		Foreground(t.Muted).
+		Width(22)
 
-	successMessageStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorSuccess)
+	t.SnapshotValueStyle = lipgloss.NewStyle().
+		Foreground(t.Bright).
+		Bold(true)
 
-	failedMessageStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorFailed)
+	t.SnapshotURLStyle = lipgloss.NewStyle().
+		Foreground(t.URL).
+		Underline(true)
 
-	mutedStyle = lipgloss.NewStyle().
-			Foreground(colorMuted)
+	t.PreflightPassStyle = lipgloss.NewStyle().
+		Foreground(t.Success)
 
-	helpStyle = lipgloss.NewStyle().
-			Foreground(colorMuted).
-			Padding(1, 0, 0, 1)
-)
+	t.PreflightFailStyle = lipgloss.NewStyle().
+		Foreground(t.Failed)
+
+	t.PreflightWarnStyle = lipgloss.NewStyle().
+		Foreground(t.Parsing)
+
+	t.SuccessMessageStyle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(t.Success)
+
+	t.FailedMessageStyle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(t.Failed)
+
+	t.RunningDotStyle = lipgloss.NewStyle().
+		Foreground(t.Running)
+
+	t.MutedStyle = lipgloss.NewStyle().
+		Foreground(t.Muted)
+
+	t.HelpStyle = lipgloss.NewStyle().
+		Foreground(t.Muted).
+		Padding(1, 0, 0, 1)
+
+	return t
+}
+
+// StateColor returns the color for a given pipeline stage state.
+func (t Theme) StateColor(state pipeline.StageState) color.Color {
+	switch state {
+	case pipeline.StateSuccess:
+		return t.Success
+	case pipeline.StateRunning:
+		return t.Running
+	case pipeline.StateFailed:
+		return t.Failed
+	case pipeline.StateSkipped:
+		return t.Skipped
+	case pipeline.StateParsingOutputs:
+		return t.Parsing
+	default:
+		return t.Pending
+	}
+}

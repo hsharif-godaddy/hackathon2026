@@ -101,6 +101,9 @@ type Model struct {
 	width  int
 	height int
 
+	hasDarkBG bool
+	theme     Theme
+
 	operator        string
 	statusMessage   string
 	startTime       time.Time
@@ -155,6 +158,8 @@ func NewModel(cfg *config.Config, runner gh.Runner, dryRun bool, branch string, 
 		fv:          &formValues{},
 		operator:    operator,
 		startTime:   time.Time{},
+		hasDarkBG:   true,
+		theme:       themeForBackground(true),
 		width:       80,
 		height:      24,
 	}
@@ -162,6 +167,7 @@ func NewModel(cfg *config.Config, runner gh.Runner, dryRun bool, branch string, 
 
 func (m Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
+		func() tea.Msg { return tea.RequestBackgroundColor() },
 		checkGHInstalled(m.runner, m.ctx),
 		checkGHVersion(m.runner, m.ctx),
 		checkGHAuth(m.runner, m.ctx),

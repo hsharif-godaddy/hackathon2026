@@ -103,6 +103,11 @@ func (m Model) exitCleanupCmd(sendSlack bool, createRelease bool) tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.BackgroundColorMsg:
+		m.hasDarkBG = msg.IsDark()
+		m.theme = themeForBackground(m.hasDarkBG)
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -313,7 +318,7 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 		return m, tea.Batch(
-			printAbove(successMessageStyle.Render(fmt.Sprintf("Release complete! (%s)", m.elapsed()))),
+			printAbove(m.theme.SuccessMessageStyle.Render(fmt.Sprintf("Release complete! (%s)", m.elapsed()))),
 			m.exitCleanupCmd(true, true),
 		)
 
@@ -454,7 +459,7 @@ func (m Model) handleLockAcquire(msg lockAcquireMsg) (tea.Model, tea.Cmd) {
 		m.statusMessage = fmt.Sprintf("Failed to acquire deploy lock: %s", msg.err)
 		logger.Log("lock: FAILED — %s", msg.err)
 		return m, tea.Sequence(
-			printAbove(failedMessageStyle.Render(m.statusMessage)),
+			printAbove(m.theme.FailedMessageStyle.Render(m.statusMessage)),
 			tea.Quit,
 		)
 	}
@@ -470,7 +475,7 @@ func (m Model) handleSnapshotResult(msg snapshotResultMsg) (tea.Model, tea.Cmd) 
 		m.statusMessage = fmt.Sprintf("Failed to fetch rollback snapshot: %s", msg.err)
 		logger.Log("snapshot: FAILED — %s", msg.err)
 		return m, tea.Batch(
-			printAbove(failedMessageStyle.Render(m.statusMessage)),
+			printAbove(m.theme.FailedMessageStyle.Render(m.statusMessage)),
 			m.exitCleanupCmd(false, false),
 		)
 	}
@@ -568,7 +573,7 @@ func (m Model) advanceEnvironment() (tea.Model, tea.Cmd) {
 		logger.Log("pipeline: all environments complete")
 		if m.autoApprove {
 			return m, tea.Batch(
-				printAbove(successMessageStyle.Render(fmt.Sprintf("Release complete! (%s)", m.elapsed()))),
+				printAbove(m.theme.SuccessMessageStyle.Render(fmt.Sprintf("Release complete! (%s)", m.elapsed()))),
 				m.exitCleanupCmd(true, true),
 			)
 		}
@@ -790,7 +795,7 @@ func (m *Model) setupEnvironment() tea.Cmd {
 	m.envGroups = m.pipeline.StageGroups(envName)
 	m.currentGroupIdx = 0
 
-	envHeader := fmt.Sprintf("\n%s", sectionStyle.Render(strings.ToUpper(envName)+" Deployment"))
+	envHeader := fmt.Sprintf("\n%s", m.theme.SectionStyle.Render(strings.ToUpper(envName)+" Deployment"))
 	return tea.Batch(printAbove(envHeader), m.runGroup())
 }
 
@@ -867,7 +872,7 @@ func (m *Model) runRollback() tea.Cmd {
 	m.rollbackGroupIdx = 0
 
 	return tea.Batch(
-		printAbove("\n"+sectionStyle.Render("ROLLBACK")),
+		printAbove("\n"+m.theme.SectionStyle.Render("ROLLBACK")),
 		m.runRollbackGroup(),
 	)
 }
@@ -937,7 +942,7 @@ func (m Model) handleRollbackDone(msg rollbackDoneMsg) (tea.Model, tea.Cmd) {
 		m.statusMessage = "Rollback had failures — check output above"
 		logger.Log("rollback: FAILED — rollback had errors")
 		return m, tea.Batch(
-			printAbove(failedMessageStyle.Render(m.statusMessage)),
+			printAbove(m.theme.FailedMessageStyle.Render(m.statusMessage)),
 			m.exitCleanupCmd(true, false),
 		)
 	}
@@ -945,7 +950,7 @@ func (m Model) handleRollbackDone(msg rollbackDoneMsg) (tea.Model, tea.Cmd) {
 	m.statusMessage = "Rollback complete!"
 	logger.Log("rollback: completed successfully")
 	return m, tea.Batch(
-		printAbove(successMessageStyle.Render(fmt.Sprintf("Rollback complete! (%s)", m.elapsed()))),
+		printAbove(m.theme.SuccessMessageStyle.Render(fmt.Sprintf("Rollback complete! (%s)", m.elapsed()))),
 		m.exitCleanupCmd(true, false),
 	)
 }

@@ -16,7 +16,7 @@ var tagDateRe = regexp.MustCompile(`^v(\d{4}\.\d{2}\.\d{2})\.(\d+)$`)
 // GenerateReleaseTag queries existing releases and returns the next
 // date-based tag in the format v2026.04.03.N.
 func (p *Pipeline) GenerateReleaseTag(ctx context.Context) (string, error) {
-	today := time.Now().Format("2006.01.02")
+	today := time.Now().UTC().Format("2006.01.02")
 	prefix := "v" + today + "."
 
 	releases, err := p.Runner.ListReleases(ctx, p.Config.Release.Repo, 50)

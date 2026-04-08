@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"image/color"
 	"sort"
 	"strings"
 	"time"
@@ -27,10 +26,10 @@ func (m Model) View() tea.View {
 		}
 
 	case phaseLockAcquire:
-		sb.WriteString("  " + lipgloss.NewStyle().Foreground(colorRunning).Render("◉") + " Acquiring deploy lock...\n")
+		sb.WriteString("  " + m.theme.RunningDotStyle.Render("◉") + " Acquiring deploy lock...\n")
 
 	case phaseSnapshot:
-		sb.WriteString("  " + lipgloss.NewStyle().Foreground(colorRunning).Render("◉") + " Fetching rollback snapshot...\n")
+		sb.WriteString("  " + m.theme.RunningDotStyle.Render("◉") + " Fetching rollback snapshot...\n")
 
 	case phaseSnapshotConfirm:
 		m.renderSnapshot(&sb)
@@ -42,7 +41,7 @@ func (m Model) View() tea.View {
 		if m.form != nil {
 			sb.WriteString("\n" + m.form.View())
 		} else {
-			sb.WriteString("\n  " + lipgloss.NewStyle().Foreground(colorRunning).Render("◉") + " Fetching release notes...\n")
+			sb.WriteString("\n  " + m.theme.RunningDotStyle.Render("◉") + " Fetching release notes...\n")
 		}
 
 	case phaseRunning:
@@ -79,57 +78,57 @@ func (m Model) View() tea.View {
 		}
 
 	case phaseAborted:
-		sb.WriteString(failedMessageStyle.Render(m.statusMessage) + "\n")
+		sb.WriteString(m.theme.FailedMessageStyle.Render(m.statusMessage) + "\n")
 	}
 
-	sb.WriteString(helpStyle.Render("ctrl+c to quit") + "\n")
+	sb.WriteString(m.theme.HelpStyle.Render("ctrl+c to quit") + "\n")
 	return tea.NewView(sb.String())
 }
 
 // renderPreflight shows running preflight checks (used only during phasePreflight).
 func (m Model) renderPreflight(sb *strings.Builder) {
-	sb.WriteString(sectionStyle.Render("Preflight Checks") + "\n")
+	sb.WriteString(m.theme.SectionStyle.Render("Preflight Checks") + "\n")
 	for _, check := range m.preflight {
 		if !check.Done {
 			sb.WriteString(fmt.Sprintf("  %s %s\n",
-				lipgloss.NewStyle().Foreground(colorRunning).Render("◉"),
+				m.theme.RunningDotStyle.Render("◉"),
 				check.Name,
 			))
 		} else if check.Passed {
 			sb.WriteString(fmt.Sprintf("  %s %s\n",
-				preflightPassStyle.Render("✓"),
+				m.theme.PreflightPassStyle.Render("✓"),
 				check.Name,
 			))
 		} else if !check.Required {
 			sb.WriteString(fmt.Sprintf("  %s %s (disabled)\n",
-				preflightWarnStyle.Render("⚠"),
+				m.theme.PreflightWarnStyle.Render("⚠"),
 				check.Name,
 			))
 			if check.Error != "" {
-				sb.WriteString(fmt.Sprintf("    %s\n", preflightWarnStyle.Render(check.Error)))
+				sb.WriteString(fmt.Sprintf("    %s\n", m.theme.PreflightWarnStyle.Render(check.Error)))
 			}
 			if check.Hint != "" {
-				sb.WriteString(fmt.Sprintf("    %s\n", mutedStyle.Render(check.Hint)))
+				sb.WriteString(fmt.Sprintf("    %s\n", m.theme.MutedStyle.Render(check.Hint)))
 			}
 		} else {
 			sb.WriteString(fmt.Sprintf("  %s %s\n",
-				preflightFailStyle.Render("✗"),
+				m.theme.PreflightFailStyle.Render("✗"),
 				check.Name,
 			))
 			if check.Error != "" {
-				sb.WriteString(fmt.Sprintf("    %s\n", preflightFailStyle.Render(check.Error)))
+				sb.WriteString(fmt.Sprintf("    %s\n", m.theme.PreflightFailStyle.Render(check.Error)))
 			}
 			if check.Hint != "" {
-				sb.WriteString(fmt.Sprintf("    %s\n", mutedStyle.Render(check.Hint)))
+				sb.WriteString(fmt.Sprintf("    %s\n", m.theme.MutedStyle.Render(check.Hint)))
 			}
 		}
 	}
 }
 
 func (m Model) headerString() string {
-	header := titleStyle.Render("Release Manager")
+	header := m.theme.TitleStyle.Render("Release Manager")
 	if m.dryRun {
-		header += " " + dryRunBadge.Render("DRY RUN")
+		header += " " + m.theme.DryRunBadge.Render("DRY RUN")
 	}
 	return header
 }
@@ -149,17 +148,17 @@ func (m Model) renderSnapshot(sb *strings.Builder) {
 		return
 	}
 
-	sb.WriteString("\n" + sectionStyle.Render("Rollback Snapshot (current production state)") + "\n")
-	sb.WriteString(fmt.Sprintf("  %s %s\n", snapshotLabelStyle.Render("App artifact ID:"), snapshotValueStyle.Render(snap.ArtifactID)))
-	sb.WriteString(fmt.Sprintf("  %s %s\n", snapshotLabelStyle.Render("Agent image tag:"), snapshotValueStyle.Render(snap.AgentImageTag)))
-	sb.WriteString(fmt.Sprintf("  %s %s\n", snapshotLabelStyle.Render("Preview image tag:"), snapshotValueStyle.Render(snap.PreviewImageTag)))
-	sb.WriteString(fmt.Sprintf("  %s %s\n", snapshotLabelStyle.Render("Publish image tag:"), snapshotValueStyle.Render(snap.PublishImageTag)))
+	sb.WriteString("\n" + m.theme.SectionStyle.Render("Rollback Snapshot (current production state)") + "\n")
+	sb.WriteString(fmt.Sprintf("  %s %s\n", m.theme.SnapshotLabelStyle.Render("App artifact ID:"), m.theme.SnapshotValueStyle.Render(snap.ArtifactID)))
+	sb.WriteString(fmt.Sprintf("  %s %s\n", m.theme.SnapshotLabelStyle.Render("Agent image tag:"), m.theme.SnapshotValueStyle.Render(snap.AgentImageTag)))
+	sb.WriteString(fmt.Sprintf("  %s %s\n", m.theme.SnapshotLabelStyle.Render("Preview image tag:"), m.theme.SnapshotValueStyle.Render(snap.PreviewImageTag)))
+	sb.WriteString(fmt.Sprintf("  %s %s\n", m.theme.SnapshotLabelStyle.Render("Publish image tag:"), m.theme.SnapshotValueStyle.Render(snap.PublishImageTag)))
 
 	if snap.AppSourceURL != "" {
-		sb.WriteString(fmt.Sprintf("\n  %s %s\n", snapshotLabelStyle.Render("App source:"), snapshotURLStyle.Render(snap.AppSourceURL)))
+		sb.WriteString(fmt.Sprintf("\n  %s %s\n", m.theme.SnapshotLabelStyle.Render("App source:"), m.theme.SnapshotURLStyle.Render(snap.AppSourceURL)))
 	}
 	if snap.ImagesSourceURL != "" {
-		sb.WriteString(fmt.Sprintf("  %s %s\n", snapshotLabelStyle.Render("Images source:"), snapshotURLStyle.Render(snap.ImagesSourceURL)))
+		sb.WriteString(fmt.Sprintf("  %s %s\n", m.theme.SnapshotLabelStyle.Render("Images source:"), m.theme.SnapshotURLStyle.Render(snap.ImagesSourceURL)))
 	}
 }
 
@@ -172,20 +171,20 @@ func (m Model) snapshotString() string {
 
 func (m Model) renderReleaseNotes(sb *strings.Builder) {
 	if len(m.releaseNotes) == 0 {
-		sb.WriteString("\n" + sectionStyle.Render("Release Notes") + "\n")
-		sb.WriteString("  " + mutedStyle.Render("No PRs found between last production deploy and "+m.branch) + "\n")
+		sb.WriteString("\n" + m.theme.SectionStyle.Render("Release Notes") + "\n")
+		sb.WriteString("  " + m.theme.MutedStyle.Render("No PRs found between last production deploy and "+m.branch) + "\n")
 		m.renderPinnedCommit(sb)
 		return
 	}
 
-	sb.WriteString("\n" + sectionStyle.Render(fmt.Sprintf("Release Notes (%d PRs)", len(m.releaseNotes))) + "\n")
+	sb.WriteString("\n" + m.theme.SectionStyle.Render(fmt.Sprintf("Release Notes (%d PRs)", len(m.releaseNotes))) + "\n")
 	for _, n := range m.releaseNotes {
 		author := ""
 		if n.Author != "" {
-			author = " " + mutedStyle.Render("@"+n.Author)
+			author = " " + m.theme.MutedStyle.Render("@"+n.Author)
 		}
 		sb.WriteString(fmt.Sprintf("  %s #%d %s%s\n",
-			lipgloss.NewStyle().Foreground(colorSuccess).Render("•"),
+			lipgloss.NewStyle().Foreground(m.theme.Success).Render("•"),
 			n.Number,
 			n.Title,
 			author,
@@ -193,7 +192,7 @@ func (m Model) renderReleaseNotes(sb *strings.Builder) {
 	}
 
 	if m.releaseNotesURL != "" {
-		sb.WriteString(fmt.Sprintf("\n  %s %s\n", snapshotLabelStyle.Render("Full diff:"), stageURLStyle.Render(m.releaseNotesURL)))
+		sb.WriteString(fmt.Sprintf("\n  %s %s\n", m.theme.SnapshotLabelStyle.Render("Full diff:"), m.theme.StageURLStyle.Render(m.releaseNotesURL)))
 	}
 	m.renderPinnedCommit(sb)
 }
@@ -202,15 +201,15 @@ func (m Model) renderPinnedCommit(sb *strings.Builder) {
 	commit := m.pipeline.Values()["commit"]
 	if commit == "" || commit == m.branch {
 		sb.WriteString(fmt.Sprintf("  %s %s\n",
-			preflightWarnStyle.Render("⚠"),
-			mutedStyle.Render("Commit pinning failed — deploying branch tip")))
+			m.theme.PreflightWarnStyle.Render("⚠"),
+			m.theme.MutedStyle.Render("Commit pinning failed — deploying branch tip")))
 		return
 	}
 	short := commit
 	if len(short) > 7 {
 		short = short[:7]
 	}
-	sb.WriteString(fmt.Sprintf("  %s %s\n", snapshotLabelStyle.Render("Pinned to:"), snapshotValueStyle.Render(short+" ("+m.branch+")")))
+	sb.WriteString(fmt.Sprintf("  %s %s\n", m.theme.SnapshotLabelStyle.Render("Pinned to:"), m.theme.SnapshotValueStyle.Render(short+" ("+m.branch+")")))
 }
 
 func (m Model) releaseNotesString() string {
@@ -252,37 +251,37 @@ func (m Model) stageString(sr *pipeline.StageRun) string {
 
 func (m Model) renderStage(sb *strings.Builder, sr *pipeline.StageRun) {
 	symbol := sr.State.Symbol()
-	name := stageNameStyle.Render(sr.Stage.Name)
+	name := m.theme.StageNameStyle.Render(sr.Stage.Name)
 
 	sb.WriteString(fmt.Sprintf("  %s %s",
-		lipgloss.NewStyle().Foreground(stateColor(sr.State)).Render(symbol),
+		lipgloss.NewStyle().Foreground(m.theme.StateColor(sr.State)).Render(symbol),
 		name,
 	))
 
 	if dur := sr.Duration(); dur > 0 {
-		sb.WriteString(" " + stageDurationStyle.Render(formatDuration(dur)))
+		sb.WriteString(" " + m.theme.StageDurationStyle.Render(formatDuration(dur)))
 	}
 
 	if sr.State == pipeline.StateRunning && sr.StatusText != "" {
-		sb.WriteString(" " + mutedStyle.Render(sr.StatusText))
+		sb.WriteString(" " + m.theme.MutedStyle.Render(sr.StatusText))
 	}
 
 	if m.dryRun && sr.State == pipeline.StateSuccess {
-		sb.WriteString(" " + dryRunBadge.Render("DRY RUN"))
+		sb.WriteString(" " + m.theme.DryRunBadge.Render("DRY RUN"))
 	}
 
 	sb.WriteString("\n")
 
 	if sr.RunURL != "" && !strings.HasPrefix(sr.RunURL, "[DRY RUN]") {
-		sb.WriteString(fmt.Sprintf("    %s\n", stageURLStyle.Render(sr.RunURL)))
+		sb.WriteString(fmt.Sprintf("    %s\n", m.theme.StageURLStyle.Render(sr.RunURL)))
 	}
 
 	if sr.DryRunCmd != "" {
-		sb.WriteString(fmt.Sprintf("    %s\n", mutedStyle.Render(sr.DryRunCmd)))
+		sb.WriteString(fmt.Sprintf("    %s\n", m.theme.MutedStyle.Render(sr.DryRunCmd)))
 	}
 
 	if sr.Error != "" {
-		sb.WriteString(fmt.Sprintf("    %s\n", stageErrorStyle.Render(sr.Error)))
+		sb.WriteString(fmt.Sprintf("    %s\n", m.theme.StageErrorStyle.Render(sr.Error)))
 	}
 
 	if len(sr.Outputs) > 0 {
@@ -292,69 +291,52 @@ func (m Model) renderStage(sb *strings.Builder, sr *pipeline.StageRun) {
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			sb.WriteString(fmt.Sprintf("    %s\n", outputStyle.Render(fmt.Sprintf("%s = %s", k, sr.Outputs[k]))))
+			sb.WriteString(fmt.Sprintf("    %s\n", m.theme.OutputStyle.Render(fmt.Sprintf("%s = %s", k, sr.Outputs[k]))))
 		}
 	}
 
 	for _, mr := range sr.MatrixRuns {
 		mrSymbol := pipeline.StateSuccess.Symbol()
-		mrColor := stateColor(pipeline.StateSuccess)
+		mrColor := m.theme.StateColor(pipeline.StateSuccess)
 		if mr.State == pipeline.StateFailed {
 			mrSymbol = pipeline.StateFailed.Symbol()
-			mrColor = stateColor(pipeline.StateFailed)
+			mrColor = m.theme.StateColor(pipeline.StateFailed)
 		} else if mr.State == pipeline.StateRunning {
 			mrSymbol = pipeline.StateRunning.Symbol()
-			mrColor = stateColor(pipeline.StateRunning)
+			mrColor = m.theme.StateColor(pipeline.StateRunning)
 		} else if mr.State == pipeline.StatePending {
 			mrSymbol = pipeline.StatePending.Symbol()
-			mrColor = stateColor(pipeline.StatePending)
+			mrColor = m.theme.StateColor(pipeline.StatePending)
 		}
 
 		mrLabel := formatMatrixInputs(mr.Inputs)
 		if mr.State == pipeline.StateRunning && mr.StatusText != "" {
-			mrLabel += " " + mutedStyle.Render(mr.StatusText)
+			mrLabel += " " + m.theme.MutedStyle.Render(mr.StatusText)
 		}
 		sb.WriteString(fmt.Sprintf("    %s %s\n",
 			lipgloss.NewStyle().Foreground(mrColor).Render(mrSymbol),
 			mrLabel,
 		))
 		if mr.RunURL != "" && !strings.HasPrefix(mr.RunURL, "[DRY RUN]") {
-			sb.WriteString(fmt.Sprintf("      %s\n", stageURLStyle.Render(mr.RunURL)))
+			sb.WriteString(fmt.Sprintf("      %s\n", m.theme.StageURLStyle.Render(mr.RunURL)))
 		}
 		if mr.DryRunCmd != "" {
-			sb.WriteString(fmt.Sprintf("      %s\n", mutedStyle.Render(mr.DryRunCmd)))
+			sb.WriteString(fmt.Sprintf("      %s\n", m.theme.MutedStyle.Render(mr.DryRunCmd)))
 		}
 		if mr.Error != "" {
-			sb.WriteString(fmt.Sprintf("      %s\n", stageErrorStyle.Render(mr.Error)))
+			sb.WriteString(fmt.Sprintf("      %s\n", m.theme.StageErrorStyle.Render(mr.Error)))
 		}
 	}
 }
 
 func (m Model) renderRollbackSummary(sb *strings.Builder) {
 	snap := m.pipeline.Snapshot
-	sb.WriteString("\n" + sectionStyle.Render("Rollback") + "\n")
+	sb.WriteString("\n" + m.theme.SectionStyle.Render("Rollback") + "\n")
 	sb.WriteString("  Will revert to:\n")
-	sb.WriteString(fmt.Sprintf("    Artifact ID:     %s\n", snapshotValueStyle.Render(snap.ArtifactID)))
-	sb.WriteString(fmt.Sprintf("    Agent image:     %s\n", snapshotValueStyle.Render(snap.AgentImageTag)))
-	sb.WriteString(fmt.Sprintf("    Preview image:   %s\n", snapshotValueStyle.Render(snap.PreviewImageTag)))
-	sb.WriteString(fmt.Sprintf("    Publish image:   %s\n", snapshotValueStyle.Render(snap.PublishImageTag)))
-}
-
-func stateColor(state pipeline.StageState) color.Color {
-	switch state {
-	case pipeline.StateSuccess:
-		return colorSuccess
-	case pipeline.StateRunning:
-		return colorRunning
-	case pipeline.StateFailed:
-		return colorFailed
-	case pipeline.StateSkipped:
-		return colorSkipped
-	case pipeline.StateParsingOutputs:
-		return colorParsing
-	default:
-		return colorPending
-	}
+	sb.WriteString(fmt.Sprintf("    Artifact ID:     %s\n", m.theme.SnapshotValueStyle.Render(snap.ArtifactID)))
+	sb.WriteString(fmt.Sprintf("    Agent image:     %s\n", m.theme.SnapshotValueStyle.Render(snap.AgentImageTag)))
+	sb.WriteString(fmt.Sprintf("    Preview image:   %s\n", m.theme.SnapshotValueStyle.Render(snap.PreviewImageTag)))
+	sb.WriteString(fmt.Sprintf("    Publish image:   %s\n", m.theme.SnapshotValueStyle.Render(snap.PublishImageTag)))
 }
 
 func formatDuration(d time.Duration) string {
