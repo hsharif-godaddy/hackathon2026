@@ -4,7 +4,6 @@ import { diffLines, createPatch } from 'diff';
 import { existsSync, realpathSync, lstatSync } from 'fs';
 import { AppRepository } from '../database/index.js';
 import { GitTool } from './git-tool.js';
-import axios from 'axios';
 import { translateDockerPath, deriveAssetsDir, validateNoEscapingSymlinks } from '../utils/path-helper.js';
 import { logger } from '../logging/index.js';
 import { toolFileEditEvents, toolServerHealthEvents } from '../logging/events/index.js';
@@ -195,18 +194,14 @@ export class FileEditTool {
    */
   private async checkServerHealth(port: number): Promise<boolean> {
     try {
-      await axios.get(`http://localhost:${port}`, {
-        timeout: 3000,
-        validateStatus: (status) => status < 500, // Accept any non-server-error response
+      const response = await fetch(`http://localhost:${port}`, {
+        signal: AbortSignal.timeout(3000),
       });
+      await response.body?.cancel();
 
-      return true; // Server is responding
-    } catch (error) {
-      // Check if it's a timeout or connection error vs an HTTP error
-      if (axios.isAxiosError(error) && error.response && error.response.status < 500) {
-        return true; // Server is responding, even if with an error page
-      }
-      return false; // Server not responding or internal server error
+      return response.status < 500;
+    } catch {
+      return false;
     }
   }
 
