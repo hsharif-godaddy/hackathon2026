@@ -18,6 +18,7 @@ interface StreamingMessageProps {
   isActiveStream?: boolean
   isLastAssistantMessage?: boolean
   startTime?: Date
+  showThinking?: boolean
 }
 
 // Helper function to determine if message should be rendered
@@ -196,19 +197,24 @@ function UserMessage({ content, selectedAssets, referencedFiles }: { content: st
   )
 }
 
-// Helper function to render message content based on type and role (matching Message.tsx)
-function renderMessageContent(message: ChatMessage | StreamingMessageType, isActiveStream?: boolean, isLastAssistantMessage?: boolean, startTime?: Date, streamingState?: 'idle' | 'streaming' | 'completing' | 'retrying' | 'error') {
-  // Assistant messages - use streaming integrated response for proper content flow
+interface RenderMessageContentOptions {
+  message: ChatMessage | StreamingMessageType
+  isActiveStream?: boolean
+  isLastAssistantMessage?: boolean
+  startTime?: Date
+  streamingState?: 'idle' | 'streaming' | 'completing' | 'retrying' | 'error'
+  showThinking?: boolean
+}
+
+function renderMessageContent({ message, isActiveStream, isLastAssistantMessage, startTime, streamingState, showThinking }: RenderMessageContentOptions) {
   if (message.role === 'assistant') {
-    return <StreamingIntegratedResponse message={message} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} startTime={startTime} streamingState={streamingState} />
+    return <StreamingIntegratedResponse message={message} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} startTime={startTime} streamingState={streamingState} showThinking={showThinking} />
   }
 
-  // User messages with copy functionality
   if (message.role === 'user') {
     return <UserMessage content={message.content} selectedAssets={message.selectedAssets} referencedFiles={message.referencedFiles} />
   }
 
-  // Other message types
   return (
     <p className="text-sm leading-normal break-words">
       {message.content}
@@ -216,7 +222,7 @@ function renderMessageContent(message: ChatMessage | StreamingMessageType, isAct
   )
 }
 
-export default function StreamingMessage({ message, isActiveStream = false, isLastAssistantMessage = false, startTime }: StreamingMessageProps) {
+export default function StreamingMessage({ message, isActiveStream = false, isLastAssistantMessage = false, startTime, showThinking = false }: StreamingMessageProps) {
   const streamingState = useStreamingState()
 
   // Don't render messages that shouldn't be displayed
@@ -234,7 +240,7 @@ export default function StreamingMessage({ message, isActiveStream = false, isLa
         'order-1 w-full': message.role !== 'user'
       })}>
         <div className={getMessageClasses(message)}>
-          {renderMessageContent(message, isActiveStream, isLastAssistantMessage, startTime, streamingState)}
+          {renderMessageContent({ message, isActiveStream, isLastAssistantMessage, startTime, streamingState, showThinking })}
         </div>
       </div>
     </div>

@@ -2,8 +2,10 @@
 
 import { useMemo } from 'react'
 
+import { groupConsecutiveActionTools, groupConsecutiveMediaTools } from '@/app/develop/components/actionToolGrouping'
 import BudgetExceededBanner from '@/app/develop/components/chat/BudgetExceededBanner'
-import MessageContentRenderer, { type ContentBlock } from '@/app/develop/components/MessageContentRenderer'
+import type { ContentBlock } from '@/app/develop/components/contentBlocks'
+import MessageContentRenderer from '@/app/develop/components/MessageContentRenderer'
 import MessageToolCallsRenderer from '@/app/develop/components/MessageToolCallsRenderer'
 import ResponseMetadata from '@/app/develop/components/ResponseMetadata'
 import StreamingAlertMessage from '@/app/develop/components/StreamingAlertMessage'
@@ -17,55 +19,10 @@ interface StreamingIntegratedResponseProps {
   isLastAssistantMessage?: boolean
   startTime?: Date
   streamingState?: 'idle' | 'streaming' | 'completing' | 'retrying' | 'error'
+  showThinking?: boolean
 }
 
-/**
- * Check if a tool call is a media slot tool that should be grouped
- */
-function isMediaSlotTool(name?: string): boolean {
-  return name === 'media'
-}
-
-/**
- * Group consecutive media slot tool calls into tool-group blocks
- * Single media tool calls are left as individual tool blocks
- */
-function groupConsecutiveMediaTools(blocks: ContentBlock[]): ContentBlock[] {
-  const result: ContentBlock[] = []
-  let mediaGroup: ContentBlock[] = []
-
-  const flushMediaGroup = () => {
-    if (mediaGroup.length > 1) {
-      // Multiple consecutive media tools - create a group
-      result.push({
-        type: 'tool-group',
-        toolCalls: mediaGroup.map((b) => b.toolCall!),
-        order: mediaGroup[0]!.order,
-      })
-    } else if (mediaGroup.length === 1) {
-      // Single media tool - keep as individual
-      result.push(mediaGroup[0]!)
-    }
-    mediaGroup = []
-  }
-
-  blocks.forEach((block) => {
-    if (block.type === 'tool' && isMediaSlotTool(block.toolCall?.name)) {
-      mediaGroup.push(block)
-    } else {
-      // Non-media block - flush any accumulated media group first
-      flushMediaGroup()
-      result.push(block)
-    }
-  })
-
-  // Flush any remaining media group at end
-  flushMediaGroup()
-
-  return result
-}
-
-export default function StreamingIntegratedResponse({ message, isActiveStream = false, isLastAssistantMessage = false, startTime, streamingState }: StreamingIntegratedResponseProps) {
+export default function StreamingIntegratedResponse({ message, isActiveStream = false, isLastAssistantMessage = false, startTime, streamingState, showThinking = false }: StreamingIntegratedResponseProps) {
   const t = useTranslations();
   const hasSegments = hasValidSegments(message)
   const isComplete = isStreamingMessage(message) ? message.isComplete : true
@@ -219,10 +176,19 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
       })
     }
 
-    // Sort blocks by order, then group consecutive media tools
-    const sortedBlocks = blocks.sort((a, b) => a.order - b.order)
-    return groupConsecutiveMediaTools(sortedBlocks)
-  }, [hasSegments, message.segments])
+    // Filter suggestedResponse tool blocks before grouping so they don't act as
+    // boundaries that split consecutive action tools into separate groups.
+    // When it IS the last assistant message, suggestedResponse renders normally.
+    const filteredBlocks = isLastAssistantMessage
+      ? blocks
+      : blocks.filter((block) => !(block.type === 'tool' && block.toolCall?.name === 'suggestedResponse'))
+
+    // Order matters here: media tools must be collapsed into tool-group blocks first,
+    // then compact action rows are grouped. Reversing this would let raw media tool
+    // blocks participate in action grouping before their richer media renderer takes over.
+    const sortedBlocks = filteredBlocks.sort((a, b) => a.order - b.order)
+    return groupConsecutiveActionTools(groupConsecutiveMediaTools(sortedBlocks))
+  }, [hasSegments, isLastAssistantMessage, message.segments])
 
   const getFullResponseText = () => {
     return chronologicalContent
@@ -237,7 +203,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
         {/* Always use segments - extract tool calls directly if chronologicalContent is empty */}
         {hasSegments ? (
           chronologicalContent.length > 0 ? (
-            <MessageContentRenderer blocks={chronologicalContent} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} />
+            <MessageContentRenderer blocks={chronologicalContent} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} showThinking={showThinking} />
           ) : (
             <MessageToolCallsRenderer toolCalls={extractToolCallsFromSegments(message.segments)} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} />
           )

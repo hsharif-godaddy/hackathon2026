@@ -4,7 +4,7 @@
 import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import type { SiteInfo } from '@/lib/control-plane/types';
 import { DomainStatus, DomainType } from '@/lib/control-plane/types';
@@ -192,6 +192,291 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
       );
 
       expect(mockLogImpressionEvent).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('action grouping', function actionGroupingTests() {
+    it('collapses consecutive compact tool actions by default and expands on click', function collapsesAndExpandsActionGroup() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={{
+            id: 'msg-actions-1',
+            role: 'assistant',
+            content: '',
+            timestamp: new Date(),
+            segments: [
+              {
+                id: 'seg-1',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: {
+                  id: 'logs',
+                  name: 'viewLogs',
+                  input: {},
+                  status: 'completed'
+                }
+              },
+              {
+                id: 'seg-2',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: {
+                  id: 'restart',
+                  name: 'serverRestart',
+                  input: {},
+                  status: 'completed'
+                }
+              },
+              {
+                id: 'seg-3',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: {
+                  id: 'git',
+                  name: 'gitOperation',
+                  input: {},
+                  status: 'completed'
+                }
+              }
+            ]
+          }}
+          streamingState="idle"
+        />
+      );
+
+      const toggleButton = screen.getByRole('button', { name: 'Show 3 actions' });
+      expect(toggleButton).toBeInTheDocument();
+      expect(screen.queryByText('View Logs')).not.toBeInTheDocument();
+
+      fireEvent.click(toggleButton);
+
+      expect(screen.getByRole('button', { name: 'Hide 3 actions' })).toBeInTheDocument();
+      expect(screen.getByText('View Logs')).toBeInTheDocument();
+      expect(screen.getByText('Server Restart')).toBeInTheDocument();
+      expect(screen.getByText('Git Operation')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Hide 3 actions' }));
+
+      expect(screen.queryByText('View Logs')).not.toBeInTheDocument();
+    });
+
+    it('does not collapse across rich inline tool boundaries', function respectsRichToolBoundaries() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={{
+            id: 'msg-actions-2',
+            role: 'assistant',
+            content: '',
+            timestamp: new Date(),
+            segments: [
+              {
+                id: 'seg-1',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: {
+                  id: 'logs',
+                  name: 'viewLogs',
+                  input: {},
+                  status: 'completed'
+                }
+              },
+              {
+                id: 'seg-2',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: {
+                  id: 'ask',
+                  name: 'askQuestion',
+                  input: {},
+                  status: 'completed',
+                  result: {
+                    question: 'Need more detail?',
+                    options: [
+                      { label: 'Yes', value: 'yes' }
+                    ]
+                  }
+                }
+              },
+              {
+                id: 'seg-3',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: {
+                  id: 'restart',
+                  name: 'serverRestart',
+                  input: {},
+                  status: 'completed'
+                }
+              },
+              {
+                id: 'seg-4',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: {
+                  id: 'git',
+                  name: 'gitOperation',
+                  input: {},
+                  status: 'completed'
+                }
+              }
+            ]
+          }}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByRole('button', { name: 'Show 2 actions' })).toBeInTheDocument();
+      expect(screen.getByText('View Logs')).toBeInTheDocument();
+    });
+
+    it('filters suggestedResponse so it does not split action groups when not last assistant message', function suggestedResponseFilteredWhenNotLast() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={{
+            id: 'msg-sr-1',
+            role: 'assistant',
+            content: '',
+            timestamp: new Date(),
+            segments: [
+              {
+                id: 'seg-1',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'read1', name: 'fileRead', input: {}, status: 'completed' }
+              },
+              {
+                id: 'seg-2',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'sr1', name: 'suggestedResponse', input: {}, status: 'completed' }
+              },
+              {
+                id: 'seg-3',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'edit1', name: 'fileEdit', input: {}, status: 'completed' }
+              }
+            ]
+          }}
+          isLastAssistantMessage={false}
+          streamingState="idle"
+        />
+      );
+
+      // All three tools should be in one group (suggestedResponse filtered, not a boundary)
+      expect(screen.getByRole('button', { name: 'Show 2 actions' })).toBeInTheDocument();
+    });
+
+    it('preserves suggestedResponse in blocks when it is the last assistant message', function suggestedResponsePreservedWhenLast() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={{
+            id: 'msg-sr-2',
+            role: 'assistant',
+            content: '',
+            timestamp: new Date(),
+            segments: [
+              {
+                id: 'seg-1',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'read1', name: 'fileRead', input: {}, status: 'completed' }
+              },
+              {
+                id: 'seg-2',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'sr1', name: 'suggestedResponse', input: {}, status: 'completed' }
+              },
+              {
+                id: 'seg-3',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'edit1', name: 'fileEdit', input: {}, status: 'completed' }
+              }
+            ]
+          }}
+          isLastAssistantMessage={true}
+          streamingState="idle"
+        />
+      );
+
+      // suggestedResponse is NOT filtered — it acts as a boundary, so fileRead is standalone
+      // and fileEdit is standalone (no group of 2+ consecutive eligible tools)
+      expect(screen.queryByRole('button', { name: /actions/ })).not.toBeInTheDocument();
+    });
+
+    it('keeps completed tools grouped while trailing running tool renders standalone', function staysCollapsedWhileStreaming() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={{
+            id: 'msg-actions-3',
+            role: 'assistant',
+            content: '',
+            timestamp: new Date(),
+            segments: [
+              {
+                id: 'seg-1',
+                type: 'tool_result',
+                content: '',
+                timestamp: new Date(),
+                toolCall: {
+                  id: 'logs',
+                  name: 'viewLogs',
+                  input: {},
+                  status: 'completed'
+                }
+              },
+              {
+                id: 'seg-2',
+                type: 'tool_result',
+                content: '',
+                timestamp: new Date(),
+                toolCall: {
+                  id: 'git',
+                  name: 'gitOperation',
+                  input: {},
+                  status: 'completed'
+                }
+              },
+              {
+                id: 'seg-3',
+                type: 'tool_start',
+                content: '',
+                timestamp: new Date(),
+                toolCall: {
+                  id: 'restart',
+                  name: 'serverRestart',
+                  input: {},
+                  status: 'running'
+                }
+              }
+            ]
+          }}
+          isActiveStream={true}
+          streamingState="streaming"
+        />
+      );
+
+      // Completed tools are grouped and collapsed
+      const toggleButton = screen.getByRole('button', { name: 'Show 2 actions' });
+      expect(toggleButton).toHaveAttribute('aria-expanded', 'false');
+
+      // Running tool renders standalone (visible outside the group)
+      expect(screen.getByText('Server Restart')).toBeInTheDocument();
     });
   });
 });

@@ -505,6 +505,11 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
     return !hasRunningTools && !isStreamingText && !isSuggestedResponseCompleted
   }, [isStreaming, activeStream])
 
+  // Standalone thinking indicator shows when the last assistant message has no content yet
+  const lastMsg = allMessages[allMessages.length - 1]
+  const lastMsgHasContent = lastMsg?.role === 'assistant' && (lastMsg.segments?.length ?? 0) > 0
+  const shouldShowStandaloneThinking = shouldShowGlobalThinking && !lastMsgHasContent
+
   // Show loading state during app transitions to prevent showing stale messages
   const isAppTransitioning = currentAppId !== appIdFromParams
 
@@ -707,11 +712,13 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
             isActiveStream={'isComplete' in message && !message.isComplete}
             isLastAssistantMessage={isLastAssistantMessage}
             startTime={startTime}
+            showThinking={isLastAssistantMessage && shouldShowGlobalThinking}
           />
         )
       })}
 
-      {shouldShowGlobalThinking && <ThinkingIndicator active={true} />}
+      {/* Standalone thinking indicator when the last assistant message has no content yet */}
+      {shouldShowStandaloneThinking && <ThinkingIndicator active={true} />}
 
       {/* New messages indicator - shows when user is scrolled up and new messages arrive */}
       {showNewMessageIndicator && (
