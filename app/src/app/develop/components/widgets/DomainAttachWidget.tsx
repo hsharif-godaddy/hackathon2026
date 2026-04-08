@@ -34,6 +34,9 @@ import { hasBeenPublished } from '@/utils/site';
 
 const DOMAINS_PER_PAGE = 5;
 
+const DOMAIN_ATTACH_WIDGET_CONNECT_INFO_DEFAULT =
+    'GoDaddy-hosted domains can get DNS updated automatically; elsewhere you change DNS at your registrar or host. Connecting ties this web address to this published app and detaches it from any other site that was using that domain.';
+
 export interface DomainAttachWidgetProps {
   brandName?: string
   appId?: string
@@ -572,10 +575,18 @@ export default function DomainAttachWidget({
       orientation="vertical"
       gap="md"
     >
-      {/* Widget description */}
-      <text.span size={-1} className="text-intents-ux-text-secondary">
-        {t('builder_domain_attach_description')}
-      </text.span>
+      <Box orientation="vertical" gap="sm">
+        <text.span size={-1} className="text-intents-ux-text-secondary">
+          {t('builder_domain_attach_widget_description')}
+        </text.span>
+        <text.span size={-1} className="text-intents-ux-text-secondary">
+          {t(
+            'builder_domain_attach_widget_connect_info',
+            undefined,
+            DOMAIN_ATTACH_WIDGET_CONNECT_INFO_DEFAULT
+          )}
+        </text.span>
+      </Box>
 
       {/* Section 1: Your GoDaddy Domains */}
       <Box className="rounded-md bg-intents-ux-boxLowContrast-backgroundColor p-3" orientation="vertical" gap="sm">

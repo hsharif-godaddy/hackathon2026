@@ -12,6 +12,13 @@ const logger = Logger.create({ component: 'domain-tool' })
 const memoryTool = new MemoryTool()
 const appRepo = new AppRepository()
 
+const DOMAIN_ATTACH_AGENT_EXPLAINER =
+    'Connecting a domain points that address at this published app. GoDaddy-hosted domains can get DNS updated automatically; elsewhere the user updates DNS at their registrar. If the domain already serves another site, attaching can move visitors to this app—confirm with the user before connecting.'
+
+function messageForAttachWidget(base: string): string {
+    return `${base.trimEnd()}\n\n${DOMAIN_ATTACH_AGENT_EXPLAINER}`
+}
+
 const domainInputSchema = z.object({
     action: z.enum(['purchase', 'attach']).describe(
         'Action to perform. "purchase" = user wants to BUY/FIND a new domain. "attach" = user wants to CONNECT a domain they already own.'
@@ -239,9 +246,11 @@ async function attach(
             brandName: domain || input.brandName,
             appId
         },
-        message: attachedSummary
-            ? `Domain attach widget rendered. Custom domains already on this app: ${attachedSummary}.`
-            : 'Domain attach widget rendered'
+        message: messageForAttachWidget(
+            attachedSummary
+                ? `Domain attach widget rendered. Custom domains already on this app: ${attachedSummary}.`
+                : 'Domain attach widget rendered'
+        )
     }
 }
 
@@ -293,7 +302,9 @@ async function autoAttach(
             brandName: domain,
             appId
         },
-        message: `Automatic attachment failed — showing domain attach widget for ${domain}`
+        message: messageForAttachWidget(
+            `Automatic attachment failed — showing domain attach widget for ${domain}`
+        )
     }
 }
 

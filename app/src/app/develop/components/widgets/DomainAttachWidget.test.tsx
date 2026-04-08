@@ -234,7 +234,10 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
         expect(screen.queryByText('builder_domain_attach_confirm_title')).not.toBeInTheDocument();
       });
 
-      expect(screen.getByText('builder_domain_attach_description')).toBeInTheDocument();
+      expect(screen.getByText('builder_domain_attach_widget_description')).toBeInTheDocument();
+      expect(
+        screen.getByText(/detaches it from any other site that was using that domain/)
+      ).toBeInTheDocument();
     });
 
     it('should not pre-fill external domain when brand is a non-owned domain already active on app', async function skipCase3() {
@@ -275,7 +278,10 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
         expect(input).toHaveValue('');
       });
 
-      expect(screen.getByText('builder_domain_attach_description')).toBeInTheDocument();
+      expect(screen.getByText('builder_domain_attach_widget_description')).toBeInTheDocument();
+      expect(
+        screen.getByText(/detaches it from any other site that was using that domain/)
+      ).toBeInTheDocument();
     });
   });
 
