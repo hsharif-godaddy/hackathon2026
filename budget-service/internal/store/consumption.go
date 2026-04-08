@@ -1,6 +1,6 @@
 // Consumption: USD→credits for session lines and session reports. Each budget_item row keeps its own
 // credit_spend_ratio; we never blend ratios across rows. Order matches docs/budget-service-spec.md.
-// Pool “used” is budget_items.credits_used (cached); an AFTER INSERT trigger on budget_item_credit_ledger
+// Pool "used" is budget_items.credits_used (cached); an AFTER INSERT trigger on budget_item_credit_ledger
 // keeps it equal to SUM(ledger.credits_delta) per item.
 package store
 
@@ -8,45 +8,115 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
+	"time"
 
 	"github.com/shopspring/decimal"
 
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/credits"
 )
 
-// budgetConsumptionState is one row’s pool for walking: how many credits remain (total−used) at csr.
+// budgetConsumptionState is one row's pool for walking: how many credits remain (total−used) at csr.
+// expireAt and resetsAt are used for filtering expired items and prioritizing renewable items.
+// createdAt is used for stable tie-breaking in sort order (matching SQL ORDER BY).
 type budgetConsumptionState struct {
-	id    string
-	csr   decimal.Decimal
-	total decimal.Decimal
-	used  decimal.Decimal
+	id        string
+	csr       decimal.Decimal
+	total     decimal.Decimal
+	used      decimal.Decimal
+	expireAt  *time.Time
+	resetsAt  *time.Time
+	createdAt time.Time
 }
 
-// budgetCreditChunk is one slice of a USD amount taken from a single budget_item at that row’s ratio.
+// budgetCreditChunk is one slice of a USD amount taken from a single budget_item at that row's ratio.
 type budgetCreditChunk struct {
 	budgetItemID string
 	credits      decimal.Decimal
 	usdChunk     decimal.Decimal
 }
 
-// consumeBudgetCostUSD walks items in slice order (caller must load via loadBudgetConsumptionStatesTx).
-// credits = round_6(usd/csr) per chunk; capacityUsd = availCredits×csr caps how much USD one row can cover.
-// Mutates items[].used; returns ErrInsufficientCredits if USD remains after the walk.
-func consumeBudgetCostUSD(usd decimal.Decimal, items []budgetConsumptionState) ([]budgetCreditChunk, error) {
-	if !usd.IsPositive() {
-		return nil, nil
-	}
-	var out []budgetCreditChunk
-	usdRem := usd
-	for i := range items {
-		if !usdRem.IsPositive() {
-			break
+// sortConsumptionItems sorts items by consumption priority matching the SQL ORDER BY:
+// renewable items first (resets_at IS NOT NULL), then by expire_at ASC NULLS LAST,
+// then by created_at, then by id.
+func sortConsumptionItems(items []budgetConsumptionState) {
+	sort.SliceStable(items, func(i, j int) bool {
+		// Renewable items come first (resets_at IS NOT NULL sorted before IS NULL)
+		iRenewable := items[i].resetsAt != nil
+		jRenewable := items[j].resetsAt != nil
+		if iRenewable != jRenewable {
+			return iRenewable // renewable (true) comes before non-renewable (false)
 		}
+
+		// Then by expire_at ASC NULLS LAST
+		iHasExpire := items[i].expireAt != nil
+		jHasExpire := items[j].expireAt != nil
+		if iHasExpire && jHasExpire {
+			if !items[i].expireAt.Equal(*items[j].expireAt) {
+				return items[i].expireAt.Before(*items[j].expireAt)
+			}
+		} else if iHasExpire != jHasExpire {
+			return iHasExpire // has expiry comes before no expiry (NULLS LAST)
+		}
+
+		// Then by created_at (matching SQL ORDER BY)
+		if !items[i].createdAt.Equal(items[j].createdAt) {
+			return items[i].createdAt.Before(items[j].createdAt)
+		}
+
+		// Final tie-break by id
+		return items[i].id < items[j].id
+	})
+}
+
+// filterConsumableItems returns only items that are eligible for credit allocation at the given time.
+// An item is NOT consumable if:
+// - It has expired (expireAt <= now)
+// - It has no remaining credits (total - used <= 0)
+func filterConsumableItems(items []budgetConsumptionState, now time.Time) []budgetConsumptionState {
+	var out []budgetConsumptionState
+	for i := range items {
+		// Skip expired items (expireAt is at or before now)
+		if items[i].expireAt != nil && !items[i].expireAt.After(now) {
+			continue
+		}
+		// Skip items with no remaining credits
 		avail := items[i].total.Sub(items[i].used)
 		if !avail.IsPositive() {
 			continue
 		}
-		capacityUsd := avail.Mul(items[i].csr)
+		out = append(out, items[i])
+	}
+	return out
+}
+
+// consumeBudgetCostUSD sorts items by priority, filters expired/exhausted items, and allocates credits.
+// Items can be passed in any order; they will be sorted according to consumption priority.
+// Mutates items[].used to reflect consumed credits for repeated in-memory consumption.
+// Returns ErrInsufficientCredits if USD remains after walking all eligible items.
+func consumeBudgetCostUSD(usd decimal.Decimal, items []budgetConsumptionState, now time.Time) ([]budgetCreditChunk, error) {
+	if !usd.IsPositive() {
+		return nil, nil
+	}
+
+	// Make a copy to avoid mutating the original slice order.
+	sorted := make([]budgetConsumptionState, len(items))
+	copy(sorted, items)
+	sortConsumptionItems(sorted)
+	consumable := filterConsumableItems(sorted, now)
+
+	// Walk consumable items and allocate credits.
+	var out []budgetCreditChunk
+	usdRem := usd
+	for i := range consumable {
+		if !usdRem.IsPositive() {
+			break
+		}
+		avail := consumable[i].total.Sub(consumable[i].used)
+		if !avail.IsPositive() {
+			continue
+		}
+		capacityUsd := avail.Mul(consumable[i].csr)
 		if !capacityUsd.IsPositive() {
 			continue
 		}
@@ -54,7 +124,7 @@ func consumeBudgetCostUSD(usd decimal.Decimal, items []budgetConsumptionState) (
 		if capacityUsd.LessThan(usdChunk) {
 			usdChunk = capacityUsd
 		}
-		creditChunk, err := credits.DollarsToCredits(usdChunk, items[i].csr)
+		creditChunk, err := credits.DollarsToCredits(usdChunk, consumable[i].csr)
 		if err != nil {
 			return nil, err
 		}
@@ -66,28 +136,42 @@ func consumeBudgetCostUSD(usd decimal.Decimal, items []budgetConsumptionState) (
 			creditChunk = avail
 		}
 		out = append(out, budgetCreditChunk{
-			budgetItemID: items[i].id,
+			budgetItemID: consumable[i].id,
 			credits:      creditChunk,
 			usdChunk:     usdChunk,
 		})
-		items[i].used = items[i].used.Add(creditChunk)
+		consumable[i].used = consumable[i].used.Add(creditChunk)
 		usdRem = usdRem.Sub(usdChunk)
 	}
+
+	// Reconcile mutated used values back onto the caller's original slice
+	// so repeated in-memory consumption sees prior spend.
+	usedByID := make(map[string]decimal.Decimal, len(consumable))
+	for i := range consumable {
+		usedByID[consumable[i].id] = consumable[i].used
+	}
+	for i := range items {
+		if used, ok := usedByID[items[i].id]; ok {
+			items[i].used = used
+		}
+	}
+
 	if usdRem.IsPositive() {
 		return nil, ErrInsufficientCredits
 	}
 	return out, nil
 }
 
-// budgetHasConsumableCapacity matches consumeBudgetCostUSD progress for a positive USD amount:
-// at least one row with positive (credits_total−credits_used) and positive capacity USD (avail×ratio).
-func budgetHasConsumableCapacity(items []budgetConsumptionState) bool {
-	for i := range items {
-		avail := items[i].total.Sub(items[i].used)
+// budgetHasConsumableCapacity checks if at least one item has positive available credits
+// after filtering expired items. Returns true if any item can accept a positive USD amount.
+func budgetHasConsumableCapacity(items []budgetConsumptionState, now time.Time) bool {
+	consumable := filterConsumableItems(items, now)
+	for i := range consumable {
+		avail := consumable[i].total.Sub(consumable[i].used)
 		if !avail.IsPositive() {
 			continue
 		}
-		capacityUsd := avail.Mul(items[i].csr)
+		capacityUsd := avail.Mul(consumable[i].csr)
 		if capacityUsd.IsPositive() {
 			return true
 		}
@@ -96,14 +180,14 @@ func budgetHasConsumableCapacity(items []budgetConsumptionState) bool {
 }
 
 // loadBudgetConsumptionStatesTx returns rows in consumption priority: renewable lines first
-// (renew_interval set), then soonest expire_at, then stable tie-break.
+// (resets_at set), then soonest expire_at, then created_at, then id.
 func loadBudgetConsumptionStatesTx(ctx context.Context, tx *sql.Tx, budgetID string, forUpdate bool) ([]budgetConsumptionState, error) {
 	q := `
-		SELECT bi.id, bi.credits_total, bi.credits_used, bi.credit_spend_ratio
-		FROM budget_items bi
-		WHERE bi.budget_id = $1
-		ORDER BY (bi.renew_interval IS NULL), bi.expire_at ASC NULLS LAST, bi.created_at, bi.id
-	`
+			SELECT bi.id, bi.credits_total, bi.credits_used, bi.credit_spend_ratio, bi.expire_at, bi.resets_at, bi.created_at
+			FROM budget_items bi
+			WHERE bi.budget_id = $1
+			ORDER BY (bi.resets_at IS NULL), bi.expire_at NULLS LAST, bi.created_at, bi.id
+		`
 	if forUpdate {
 		q += ` FOR UPDATE`
 	}
@@ -115,8 +199,18 @@ func loadBudgetConsumptionStatesTx(ctx context.Context, tx *sql.Tx, budgetID str
 	var out []budgetConsumptionState
 	for rows.Next() {
 		var st budgetConsumptionState
-		if err := rows.Scan(&st.id, &st.total, &st.used, &st.csr); err != nil {
+		var expireAt sql.NullTime
+		var resetsAt sql.NullTime
+		if err := rows.Scan(&st.id, &st.total, &st.used, &st.csr, &expireAt, &resetsAt, &st.createdAt); err != nil {
 			return nil, err
+		}
+		if expireAt.Valid {
+			tm := expireAt.Time
+			st.expireAt = &tm
+		}
+		if resetsAt.Valid {
+			tm := resetsAt.Time
+			st.resetsAt = &tm
 		}
 		out = append(out, st)
 	}

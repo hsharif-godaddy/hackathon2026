@@ -4,22 +4,27 @@ package store
 
 import (
 	"testing"
+	"time"
 
 	"github.com/shopspring/decimal"
 )
 
-func TestConsumeBudgetCostUSDRespectsSliceOrder(t *testing.T) {
+func TestConsumeBudgetCostUSDSortAndAllocation(t *testing.T) {
 	rLow := decimal.RequireFromString("0.1")
 	rHigh := decimal.RequireFromString("0.5")
 	t1000 := decimal.RequireFromString("1000")
 	z := decimal.Zero
+	now := time.Now()
+	earlier := now.Add(-time.Hour)
+	later := now.Add(time.Hour)
 
-	t.Run("firstRowConsumesBeforeSecond", func(t *testing.T) {
+	t.Run("allocatesInSortedOrder", func(t *testing.T) {
+		// Items with createdAt controlling sort order (earlier first)
 		items := []budgetConsumptionState{
-			{id: "a", csr: rLow, total: t1000, used: z},
-			{id: "b", csr: rHigh, total: t1000, used: z},
+			{id: "a", csr: rLow, total: t1000, used: z, createdAt: earlier},
+			{id: "b", csr: rHigh, total: t1000, used: z, createdAt: later},
 		}
-		chunks, err := consumeBudgetCostUSD(decimal.RequireFromString("1"), items)
+		chunks, err := consumeBudgetCostUSD(decimal.RequireFromString("1"), items, now)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -36,11 +41,12 @@ func TestConsumeBudgetCostUSDRespectsSliceOrder(t *testing.T) {
 	})
 
 	t.Run("spillsToSecondWhenFirstCapacityUsdExhausted", func(t *testing.T) {
+		// "small" created earlier, so it comes first in sort order
 		items := []budgetConsumptionState{
-			{id: "small", csr: decimal.RequireFromString("1"), total: decimal.RequireFromString("1"), used: z},
-			{id: "big", csr: decimal.RequireFromString("1"), total: t1000, used: z},
+			{id: "small", csr: decimal.RequireFromString("1"), total: decimal.RequireFromString("1"), used: z, createdAt: earlier},
+			{id: "big", csr: decimal.RequireFromString("1"), total: t1000, used: z, createdAt: later},
 		}
-		chunks, err := consumeBudgetCostUSD(decimal.RequireFromString("3"), items)
+		chunks, err := consumeBudgetCostUSD(decimal.RequireFromString("3"), items, now)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -57,13 +63,14 @@ func TestBudgetHasConsumableCapacity(t *testing.T) {
 	z := decimal.Zero
 	t1000 := decimal.RequireFromString("1000")
 	r1 := decimal.RequireFromString("1")
-	if !budgetHasConsumableCapacity([]budgetConsumptionState{{id: "a", csr: r1, total: t1000, used: z}}) {
+	now := time.Now()
+	if !budgetHasConsumableCapacity([]budgetConsumptionState{{id: "a", csr: r1, total: t1000, used: z}}, now) {
 		t.Fatal("expected true when pool has credits")
 	}
-	if budgetHasConsumableCapacity([]budgetConsumptionState{{id: "a", csr: r1, total: t1000, used: t1000}}) {
+	if budgetHasConsumableCapacity([]budgetConsumptionState{{id: "a", csr: r1, total: t1000, used: t1000}}, now) {
 		t.Fatal("expected false when exhausted")
 	}
-	if budgetHasConsumableCapacity([]budgetConsumptionState{}) {
+	if budgetHasConsumableCapacity([]budgetConsumptionState{}, now) {
 		t.Fatal("expected false for empty slice")
 	}
 }

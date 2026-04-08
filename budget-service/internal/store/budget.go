@@ -571,7 +571,7 @@ func (s *Store) CreateBudgetSession(ctx context.Context, budgetID, sessionID str
 		}
 		return err
 	}
-	if !budgetHasConsumableCapacity(states) {
+	if !budgetHasConsumableCapacity(states, time.Now()) {
 		return ErrNoSessionCapacity
 	}
 
@@ -665,12 +665,13 @@ func (s *Store) DebugSessionCreditsReplay(ctx context.Context, budgetID, session
 	}
 	defer func() { _ = rows.Close() }()
 	var totals []string
+	now := time.Now()
 	for rows.Next() {
 		var costD decimal.Decimal
 		if err := rows.Scan(&costD); err != nil {
 			return nil, err
 		}
-		chunks, err := consumeBudgetCostUSD(costD, states)
+		chunks, err := consumeBudgetCostUSD(costD, states, now)
 		if err != nil {
 			return nil, err
 		}
@@ -715,6 +716,8 @@ func (s *Store) AppendSessionItems(ctx context.Context, budgetID, sessionID stri
 		return nil, err
 	}
 
+	now := time.Now()
+
 	// Replay existing lines so new lines stack on the same consumption order as a single chronological stream.
 	priorRows, err := tx.QueryContext(ctx, `
 		SELECT cost_usd FROM budget_session_items WHERE session_id = $1 ORDER BY id
@@ -728,7 +731,7 @@ func (s *Store) AppendSessionItems(ctx context.Context, budgetID, sessionID stri
 			_ = priorRows.Close()
 			return nil, err
 		}
-		if _, err := consumeBudgetCostUSD(costD, states); err != nil {
+		if _, err := consumeBudgetCostUSD(costD, states, now); err != nil {
 			_ = priorRows.Close()
 			return nil, err
 		}
@@ -747,7 +750,7 @@ func (s *Store) AppendSessionItems(ctx context.Context, budgetID, sessionID stri
 			return nil, err
 		}
 		costStr := credits.Format(costD)
-		chunks, err := consumeBudgetCostUSD(costD, states)
+		chunks, err := consumeBudgetCostUSD(costD, states, now)
 		if err != nil {
 			return nil, err
 		}
@@ -878,6 +881,8 @@ func (s *Store) CreateSessionReport(ctx context.Context, budgetID, sessionID str
 		return "", err
 	}
 
+	now := time.Now()
+
 	reportID := uuid.NewString()
 	if _, err := tx.ExecContext(ctx, `INSERT INTO budget_session_reports (id, session_id) VALUES ($1, $2)`, reportID, sessionID); err != nil {
 		return "", mapReportSessionUnique(err)
@@ -901,7 +906,7 @@ func (s *Store) CreateSessionReport(ctx context.Context, budgetID, sessionID str
 			return "", err
 		}
 
-		chunks, err := consumeBudgetCostUSD(bc, budgetItems)
+		chunks, err := consumeBudgetCostUSD(bc, budgetItems, now)
 		if err != nil {
 			return "", err
 		}
