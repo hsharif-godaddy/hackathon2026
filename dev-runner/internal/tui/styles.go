@@ -81,4 +81,35 @@ var (
 			Bold(true).
 			Foreground(lipgloss.Color("62")).
 			Padding(0, 1)
+
+	preflightPassStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#00ff00"))
+
+	preflightFailStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#ff0000"))
+
+	preflightWarnStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#ffff00"))
+
+	preflightSkipStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#666666"))
+
+	preflightCategoryStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("62")).
+				MarginTop(1)
+
+	preflightHeaderStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("15")).
+				MarginBottom(1)
+
+	preflightFooterStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("244")).
+				MarginTop(1)
+
+	preflightFixTitleStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("62")).
+				MarginBottom(1)
 )

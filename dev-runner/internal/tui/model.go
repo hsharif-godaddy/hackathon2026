@@ -12,6 +12,9 @@ import (
 
 	"github.com/airo-ai-builder/dev-runner/internal/config"
 	"github.com/airo-ai-builder/dev-runner/internal/hooks"
+	"github.com/airo-ai-builder/dev-runner/internal/preflight"
+	"github.com/airo-ai-builder/dev-runner/internal/preflight/checks"
+	"github.com/airo-ai-builder/dev-runner/internal/preflight/fixers"
 	"github.com/airo-ai-builder/dev-runner/internal/process"
 )
 
@@ -49,6 +52,37 @@ type bellResetMsg struct{}
 
 type clickHintMsg struct{}
 
+// --- Preflight phase ---
+
+// Phase represents the current lifecycle phase of the TUI.
+type Phase int
+
+const (
+	PhasePreflightChecking     Phase = iota
+	PhasePreflightDashboard
+	PhasePreflightSelectFixes
+	PhasePreflightEnvForm
+	PhasePreflightFixing
+	PhasePreflightVerifying
+	PhaseHooks
+	PhaseRunning
+)
+
+type preflightAllChecksDoneMsg struct {
+	Results []preflight.CheckResult
+}
+
+type preflightFixDoneMsg struct {
+	Err       error
+	FixerName string
+}
+
+type preflightVerifyDoneMsg struct {
+	Results []preflight.CheckResult
+}
+
+type preflightAutoAdvanceMsg struct{}
+
 // --- Model ---
 
 // Model is the root Bubble Tea model.
@@ -84,8 +118,25 @@ type Model struct {
 	clickHint        bool
 	confirmQuit      bool
 	bellAllowed      bool
-	healthGeneration []int   // per-process generation counter to discard stale health check results
-	initHookCmd      tea.Cmd // pre-created hook cmd from NewModel (used only in Init)
+	healthGeneration []int // per-process generation counter to discard stale health check results
+
+	// Preflight state
+	phase              Phase
+	preflightRunner    *preflight.Runner
+	preflightResults   []preflight.CheckResult
+	preflightFixQueue  []preflight.CheckWithFixer
+	preflightFixIndex  int
+	preflightFixStatus string // "Fixing: <name>..."
+
+	// Inline fix selector state
+	fixSelectorItems    []preflight.CheckWithFixer
+	fixSelectorCursor   int
+	fixSelectorSelected []bool
+
+	// Inline env form state
+	envFormFields  []envFormField
+	envFormCursor  int
+	envFormFixer   *fixers.EnvFixer // the fixer waiting for form values
 }
 
 // NewModel creates the initial model.
@@ -103,9 +154,6 @@ func NewModel(cfg *config.Config, projectRoot string) Model {
 
 	items := buildSettingsItems(cfg)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	hookCmd, hookDone := startHookRun(ctx, projectRoot, cfg.Hooks.PreStart)
-
 	return Model{
 		config:           cfg,
 		projectRoot:      projectRoot,
@@ -116,23 +164,83 @@ func NewModel(cfg *config.Config, projectRoot string) Model {
 		healthGeneration: make([]int, len(cfg.Processes)),
 		mouseEnabled:     true,
 		bellAllowed:      true,
-		hookRunning:      true,
-		hookCancel:       cancel,
-		hookDone:         hookDone,
 		hookAutoFollow:   true,
 		hookViewport:     newSoftWrapViewport(80, 24),
 		searchInput:      ti,
 		settingsItems:    items,
-		initHookCmd:      hookCmd,
+		phase:            PhasePreflightChecking,
+		preflightRunner:  buildPreflightRunner(),
 	}
 }
 
-// Init starts the TUI: run pre-start hooks then start processes.
+// Init starts the TUI: run preflight checks first, then hooks, then processes.
 func (m Model) Init() tea.Cmd {
+	runner := m.preflightRunner
+	projectRoot := m.projectRoot
 	return tea.Batch(
-		m.initHookCmd,
 		m.tickCmd(),
+		func() tea.Msg {
+			results := runner.RunAll(context.Background(), projectRoot)
+			return preflightAllChecksDoneMsg{Results: results}
+		},
 	)
+}
+
+// buildPreflightRunner creates a Runner with all standard checks grouped by category.
+func buildPreflightRunner() *preflight.Runner {
+	requiredPorts := map[int]string{
+		3000: "App",
+		4000: "Agents",
+		4100: "Control Plane",
+		8443: "App HTTPS",
+	}
+
+	// App env fixer collects values; agents fixer reuses them via AppEnvFixer pointer.
+	appEnvFixer := &fixers.EnvFixer{Target: "app"}
+	agentsEnvFixer := &fixers.EnvFixer{Target: "agents", AppEnvFixer: appEnvFixer}
+
+	return &preflight.Runner{
+		Categories: []preflight.CategoryGroup{
+			{
+				Name: preflight.CategoryTools,
+				Checks: []preflight.CheckWithFixer{
+					{Check: &checks.NodeVersionManagerCheck{}},
+					{Check: &checks.NodeCheck{}},
+					{Check: &checks.PnpmCheck{}, Fixer: &fixers.PnpmFixer{}},
+					{Check: &checks.GoCheck{}},
+					{Check: &checks.MakeCheck{}},
+					{Check: &checks.DockerCheck{}},
+					{Check: &checks.AWSCLICheck{}},
+					{Check: &checks.MkcertCheck{}},
+					{Check: &checks.ArtifactoryCheck{}, Fixer: &fixers.ArtifactoryFixer{}},
+				},
+			},
+			{
+				Name: preflight.CategoryEnvironment,
+				Checks: []preflight.CheckWithFixer{
+					{Check: &checks.HostsCheck{}, Fixer: &fixers.HostsFixer{}},
+					{Check: &checks.AWSSSOCheck{}, Fixer: &fixers.AWSSSOFixer{}},
+					{Check: &checks.AppEnvCheck{}, Fixer: appEnvFixer},
+					{Check: &checks.AgentsEnvCheck{}, Fixer: agentsEnvFixer},
+					{Check: &checks.JWTKeysCheck{}, Fixer: &fixers.JWTFixer{}},
+					{Check: &checks.CertsCheck{}, Fixer: &fixers.CertsFixer{}},
+					{Check: &checks.DevCACheck{}, Fixer: &fixers.DevCAFixer{}},
+					{Check: &checks.S2SCertsCheck{}, Fixer: &fixers.S2SCertsFixer{}},
+					{Check: &checks.CommerceOAuthCheck{}, Fixer: &fixers.CommerceOAuthFixer{}},
+					{Check: &checks.GettyCheck{}, Fixer: &fixers.GettyFixer{}},
+					{Check: &checks.KnowBCheck{}, Fixer: &fixers.KnowBFixer{}},
+					{Check: &checks.DesignRAGCheck{}, Fixer: &fixers.DesignRAGFixer{}},
+				},
+			},
+			{
+				Name: preflight.CategoryServices,
+				Checks: []preflight.CheckWithFixer{
+					{Check: &checks.PortCheck{Ports: requiredPorts}, Fixer: &fixers.PortsFixer{Ports: requiredPorts}},
+					{Check: &checks.MySQLCheck{}, Fixer: &fixers.MySQLFixer{}},
+				},
+			},
+		},
+	}
 }
 
 // runPreStartHooks creates a new cancellable context and starts hooks.

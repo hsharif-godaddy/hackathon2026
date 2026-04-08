@@ -176,8 +176,11 @@ export class AiroMgmtClient {
           const errorText = await response.text();
           const errorBody = this.normalizeErrorBody(errorText);
 
-          // Log auth failures at warn level — 401/403 are expected for unauthenticated/unsubscribed users
-          const logLevel = response.status === 401 || response.status === 403 ? 'warn' : 'error';
+          // Log expected failures at warn level:
+          // - 401/403: expected for unauthenticated/unsubscribed users
+          // - 404 without retryOn404: resource genuinely doesn't exist (e.g., getAttribute on stub)
+          const isExpectedFailure = response.status === 401 || response.status === 403 || (response.status === 404 && !retryOn404);
+          const logLevel = isExpectedFailure ? 'warn' : 'error';
           logger[logLevel](`${logEvent}.error`, {
             url,
             method,
@@ -207,6 +210,11 @@ export class AiroMgmtClient {
             attemptDuration,
             totalDuration,
           });
+          throw error;
+        }
+
+        // Do not retry 404s when retryOn404 is disabled - the resource genuinely doesn't exist.
+        if (error instanceof AiroHttpError && error.status === 404 && !retryOn404) {
           throw error;
         }
 

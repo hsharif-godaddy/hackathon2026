@@ -23,17 +23,32 @@ func (m Model) View() tea.View {
 	} else {
 		var sections []string
 
-		if m.hookRunning || m.hookErr != nil {
+		switch m.phase {
+		case PhasePreflightChecking:
+			sections = append(sections, m.renderPreflightChecking())
+		case PhasePreflightDashboard:
+			sections = append(sections, m.renderPreflightDashboard())
+		case PhasePreflightSelectFixes:
+			sections = append(sections, m.renderPreflightSelectFixes())
+		case PhasePreflightEnvForm:
+			sections = append(sections, m.renderPreflightEnvForm())
+		case PhasePreflightFixing:
+			sections = append(sections, m.renderPreflightFixing())
+		case PhasePreflightVerifying:
+			sections = append(sections, m.renderPreflightVerifying())
+		case PhaseHooks:
 			sections = append(sections, m.renderHookView())
-		} else {
-			sections = append(sections, m.renderTabBar())
-			sections = append(sections, m.renderContent())
-
-			if m.searchOpen {
-				sections = append(sections, m.renderSearchBar())
+		case PhaseRunning:
+			if m.hookErr != nil {
+				sections = append(sections, m.renderHookView())
+			} else {
+				sections = append(sections, m.renderTabBar())
+				sections = append(sections, m.renderContent())
+				if m.searchOpen {
+					sections = append(sections, m.renderSearchBar())
+				}
+				sections = append(sections, m.renderStatusBar())
 			}
-
-			sections = append(sections, m.renderStatusBar())
 		}
 
 		base := lipgloss.JoinVertical(lipgloss.Left, sections...)

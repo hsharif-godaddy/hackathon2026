@@ -8,8 +8,10 @@ Runs all three local dev processes (Agents, App, Control Plane) in a single term
 
 ## Features
 
+- **Preflight checks** — Validates tools, environment, and services before starting; groups checks by category (Tools, Environment, Services) with pass/fail/warn/skip status
+- **Auto-fix system** — Fixable issues can be resolved automatically; inline checkbox selector lets you choose which items to fix, inline env form collects configuration values without leaving the TUI
 - **Tabbed views** — Combined "All" view showing all process output, or switch to individual full-screen views
-- **Pre-start hooks** — Run setup commands (dependency checks, install, build) before starting processes, displayed in a scrollable viewport
+- **Pre-start hooks** — Run setup commands (install, build) before starting processes, displayed in a scrollable viewport
 - **Error detection** — Configurable error patterns with visual alerts (🔔 bell + error count badge on tabs)
 - **Health checks** — Periodic HTTP health checks with adaptive intervals; status dot turns yellow (pending), green (healthy), or red (unhealthy)
 - **Log search** — `/` opens incremental search within individual process views, `n`/`N` to cycle matches, `Enter` to advance
@@ -29,6 +31,32 @@ pnpm run dev
 # Or directly:
 cd dev-runner && make run
 ```
+
+## Preflight Checks
+
+On startup, dev-runner runs a comprehensive set of preflight checks before launching processes. These validate that all required tools, environment configuration, and services are ready.
+
+**Check categories:**
+
+- **Tools** — Node.js (via fnm/nvm), pnpm, Go, make, Docker, AWS CLI, mkcert, Artifactory auth
+- **Environment** — /etc/hosts entry, AWS SSO session, app/.env & agents/.env files, JWT keys, TLS certificates, Dev CA, S2S client certs, Commerce OAuth, Getty proxy, KnowB config, Design RAG
+- **Services** — Required ports (3000, 4000, 4100, 8443) are available, MySQL container running
+
+**Lifecycle phases:**
+
+1. **Checking** — Runs all checks and displays results
+2. **Dashboard** — Shows pass/fail/warn summary with fix options
+3. **Fix Selection** — Inline checkbox list to choose which items to auto-fix (all selected by default)
+4. **Env Form** — Inline form to collect env configuration (GoCode API key, base URL, model, auth type) when .env files need generation
+5. **Fixing** — Runs selected fixers sequentially, re-verifies fixed items
+6. **Hooks** — Pre-start hooks (install, build)
+7. **Running** — Process manager with tabbed views
+
+**Dashboard keys:** `Enter` to select fixes, `s` to skip (warnings only), `q` to quit.
+
+**Fix selector keys:** `space` to toggle, `a` to select all, `n` to deselect all, `enter` to confirm, `esc` to cancel.
+
+**Env form keys:** `tab`/`↓` next field, `shift+tab`/`↑` previous field, `enter` to submit (or advance), `esc` to cancel.
 
 ## Key Bindings
 
@@ -68,9 +96,6 @@ processes:
 
 hooks:
   preStart: # Run sequentially before starting processes
-    - name: Check dependencies
-      command: bash setup/check-deps.sh --integrated
-      dir: .
     - name: Install dependencies
       command: pnpm install
       dir: .
@@ -98,13 +123,20 @@ dev-runner/
 ├── internal/
 │   ├── config/config.go         # YAML config parsing & validation
 │   ├── hooks/hooks.go           # Pre-start hook runner with streaming output
+│   ├── preflight/
+│   │   ├── check.go             # Check/Fixer interfaces, CheckResult, Status types
+│   │   ├── runner.go            # Orchestrates checks by category, RunAll/RunFailed/FixableChecks
+│   │   ├── checks/              # Individual check implementations (tools, env, services)
+│   │   └── fixers/              # Auto-fix implementations (env generation, AWS, certs, etc.)
 │   ├── process/
 │   │   ├── manager.go           # Process lifecycle (start/stop/restart), process groups
 │   │   └── scanner.go           # Output scanning for error patterns
 │   └── tui/
-│       ├── model.go             # Root Bubble Tea model & state
+│       ├── model.go             # Root Bubble Tea model, phases, messages
 │       ├── update.go            # Message handling, key bindings, state transitions
-│       ├── view.go              # Rendering (tabs, panes, status bar, dialogs)
+│       ├── view.go              # Main View() dispatch to phase renderers
+│       ├── preflight_view.go    # Preflight dashboard, fix selector, fixing views
+│       ├── env_form.go          # Inline env configuration form
 │       ├── styles.go            # Lipgloss styles & color theme
 │       ├── pane.go              # Scrollable log pane with search highlighting
 │       └── settings.go          # Settings overlay menu

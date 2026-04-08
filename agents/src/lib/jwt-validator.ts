@@ -261,7 +261,6 @@ export class JWTValidator {
       });
 
       logger.info('jwks.key.fetched', {
-        message: 'Public key fetched from JWKS',
         kid,
         jwksUrl: this.config.jwksUrl
       });

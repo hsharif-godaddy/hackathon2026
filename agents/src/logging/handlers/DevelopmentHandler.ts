@@ -162,6 +162,10 @@ export class DevelopmentHandler implements LogHandler {
         return this.purple(`🔌 ${event}`);
       case 'perf':
         return this.gray(`⚡ ${event}`);
+      case 'jwks':
+      case 'jwt':
+      case 'cert':
+        return this.blue(`🔑 ${event}`);
       default:
         return `{${event}}`;
     }
@@ -321,7 +325,9 @@ export class DevelopmentHandler implements LogHandler {
   }
 
   private isErrorInfoObject(obj: any): boolean {
-    return obj.error || obj.message || obj.code || obj.statusCode;
+    // Require error, code, or statusCode — message alone is too broad
+    // (many info-level logs include a message field for context)
+    return obj.error || obj.code || obj.statusCode;
   }
 
   private formatSimpleObject(obj: any): string {

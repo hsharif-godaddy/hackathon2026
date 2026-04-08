@@ -38,9 +38,6 @@ processes:
 
 hooks:
   preStart:
-    - name: Check dependencies
-      command: bash setup/check-deps.sh --integrated
-      dir: .
     - name: Install dependencies
       command: pnpm install
       dir: .

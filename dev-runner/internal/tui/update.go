@@ -1,13 +1,17 @@
 package tui
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/airo-ai-builder/dev-runner/internal/preflight"
+	"github.com/airo-ai-builder/dev-runner/internal/preflight/fixers"
 	"github.com/airo-ai-builder/dev-runner/internal/process"
 )
 
@@ -38,6 +42,64 @@ func (m *Model) shutdownCmd() tea.Cmd {
 	}
 }
 
+// fixerExecCmd wraps a Fixer.Fix() call as a tea.ExecCommand so the TUI
+// can suspend itself and give the fixer full terminal access (for sudo, etc.).
+type fixerExecCmd struct {
+	fixer       preflight.Fixer
+	ctx         context.Context
+	projectRoot string
+	err         error
+}
+
+func (f *fixerExecCmd) Run() error {
+	f.err = f.fixer.Fix(f.ctx, f.projectRoot)
+	return f.err
+}
+
+func (f *fixerExecCmd) SetStdin(r io.Reader)  {}
+func (f *fixerExecCmd) SetStdout(w io.Writer) {}
+func (f *fixerExecCmd) SetStderr(w io.Writer) {}
+
+// runNextFixer starts the next fixer in the fix queue.
+// EnvFixers that need user input pause to show an inline form first.
+// TerminalFixers suspend the TUI for full terminal access (sudo prompts).
+// All other fixers run in a background goroutine.
+func (m *Model) runNextFixer() tea.Cmd {
+	if m.preflightFixIndex >= len(m.preflightFixQueue) {
+		return nil
+	}
+	cwf := m.preflightFixQueue[m.preflightFixIndex]
+	name := cwf.Check.Name()
+	m.preflightFixStatus = "Fixing: " + name + "..."
+	fixer := cwf.Fixer
+	projectRoot := m.projectRoot
+
+	// EnvFixer that needs form input — pause and show inline form
+	if ef, ok := fixer.(*fixers.EnvFixer); ok && ef.NeedsForm() {
+		m.initEnvForm(ef)
+		m.phase = PhasePreflightEnvForm
+		return nil
+	}
+
+	// TerminalFixer — suspend TUI so stdin reaches the subprocess (sudo, etc.)
+	if tf, ok := fixer.(preflight.TerminalFixer); ok && tf.NeedsTerminal() {
+		cmd := &fixerExecCmd{fixer: fixer, ctx: context.Background(), projectRoot: projectRoot}
+		return tea.Exec(cmd, func(err error) tea.Msg {
+			// Prefer the fixer's own error over the exec wrapper error
+			if cmd.err != nil {
+				err = cmd.err
+			}
+			return preflightFixDoneMsg{Err: err, FixerName: name}
+		})
+	}
+
+	// All other fixers run in a goroutine
+	return func() tea.Msg {
+		err := fixer.Fix(context.Background(), projectRoot)
+		return preflightFixDoneMsg{Err: err, FixerName: name}
+	}
+}
+
 // Update handles all Bubble Tea messages.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
@@ -61,6 +123,77 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 
+	case tea.PasteMsg, tea.PasteStartMsg, tea.PasteEndMsg:
+		// Forward paste events to the active textinput during env form
+		if m.phase == PhasePreflightEnvForm && len(m.envFormFields) > 0 {
+			var cmd tea.Cmd
+			m.envFormFields[m.envFormCursor].Input, cmd = m.envFormFields[m.envFormCursor].Input.Update(msg)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+
+	case preflightAllChecksDoneMsg:
+		m.preflightResults = msg.Results
+		if preflight.HasIssues(msg.Results) {
+			// Failures or warnings — pause for user to review
+			m.phase = PhasePreflightDashboard
+		} else {
+			// All pass — show briefly then auto-advance
+			m.phase = PhasePreflightDashboard
+			cmds = append(cmds, tea.Tick(1*time.Second, func(_ time.Time) tea.Msg {
+				return preflightAutoAdvanceMsg{}
+			}))
+		}
+
+	case preflightAutoAdvanceMsg:
+		if m.phase == PhasePreflightDashboard && !preflight.HasIssues(m.preflightResults) {
+			m.phase = PhaseHooks
+			m.hookRunning = true
+			ctx, cancel := context.WithCancel(context.Background())
+			m.hookCancel = cancel
+			hookCmd, hookDone := startHookRun(ctx, m.projectRoot, m.config.Hooks.PreStart)
+			m.hookDone = hookDone
+			cmds = append(cmds, hookCmd)
+		}
+
+	case preflightFixDoneMsg:
+		if msg.Err != nil {
+			m.preflightFixStatus = fmt.Sprintf("Fix failed: %v", msg.Err)
+		} else {
+			m.preflightFixIndex++
+		}
+
+		if m.preflightFixIndex >= len(m.preflightFixQueue) {
+			// All fixes attempted — re-run ALL checks since fixes may
+			// unlock previously-skipped checks (e.g., creating .env files
+			// enables S2S certs, Commerce OAuth, etc.)
+			m.phase = PhasePreflightVerifying
+			runner := m.preflightRunner
+			projectRoot := m.projectRoot
+			cmds = append(cmds, func() tea.Msg {
+				results := runner.RunAll(context.Background(), projectRoot)
+				return preflightVerifyDoneMsg{Results: results}
+			})
+		} else {
+			// Run next fixer
+			cmds = append(cmds, m.runNextFixer())
+		}
+
+	case preflightVerifyDoneMsg:
+		// Replace all results with fresh check results
+		m.preflightResults = msg.Results
+
+		if preflight.HasIssues(m.preflightResults) {
+			// Still has failures or warnings — pause for review
+			m.phase = PhasePreflightDashboard
+		} else {
+			m.phase = PhasePreflightDashboard
+			cmds = append(cmds, tea.Tick(1*time.Second, func(_ time.Time) tea.Msg {
+				return preflightAutoAdvanceMsg{}
+			}))
+		}
+
 	case hookOutputMsg:
 		m.hookOutput = append(m.hookOutput, msg.Output)
 		m.refreshHookViewport()
@@ -72,6 +205,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.hookErr = msg.Err
 		m.refreshHookViewport()
 		if msg.Err == nil {
+			m.phase = PhaseRunning
 			m.manager.StartAll()
 			cmds = append(cmds, m.scheduleHealthChecks())
 		}
@@ -132,7 +266,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseWheelMsg:
-		if m.hookRunning || m.hookErr != nil {
+		if m.phase == PhaseHooks {
 			switch msg.Button {
 			case tea.MouseWheelUp:
 				m.hookAutoFollow = false
@@ -161,7 +295,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// Forward to active viewport for keyboard scrolling
-	if m.ready && !m.settingsOpen && !m.searchOpen && !m.hookRunning {
+	if m.ready && !m.settingsOpen && !m.searchOpen && m.phase == PhaseRunning {
 		pane := m.activePanePtr()
 		if pane != nil {
 			prevOffset := pane.Viewport.YOffset()
@@ -216,7 +350,63 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.handleSettingsKey(msg)
 	}
 
-	if m.hookRunning {
+	// Preflight phase key handling
+	if m.phase == PhasePreflightDashboard {
+		switch key {
+		case "enter":
+			fixable := m.preflightRunner.FixableChecks(m.preflightResults)
+			if len(fixable) > 0 {
+				// Show inline checkbox selector
+				m.fixSelectorItems = fixable
+				m.fixSelectorCursor = 0
+				m.fixSelectorSelected = make([]bool, len(fixable))
+				for i := range m.fixSelectorSelected {
+					m.fixSelectorSelected[i] = true // all selected by default
+				}
+				m.phase = PhasePreflightSelectFixes
+				return nil
+			}
+			// No fixable items — continue past warnings
+			if !preflight.HasFailures(m.preflightResults) {
+				m.phase = PhaseHooks
+				m.hookRunning = true
+				ctx, cancel := context.WithCancel(context.Background())
+				m.hookCancel = cancel
+				hookCmd, hookDone := startHookRun(ctx, m.projectRoot, m.config.Hooks.PreStart)
+				m.hookDone = hookDone
+				return hookCmd
+			}
+		case "s":
+			// Skip — continue without fixing
+			if !preflight.HasFailures(m.preflightResults) {
+				m.phase = PhaseHooks
+				m.hookRunning = true
+				ctx, cancel := context.WithCancel(context.Background())
+				m.hookCancel = cancel
+				hookCmd, hookDone := startHookRun(ctx, m.projectRoot, m.config.Hooks.PreStart)
+				m.hookDone = hookDone
+				return hookCmd
+			}
+		case "q":
+			m.quitting = true
+			return tea.Quit
+		}
+		return nil
+	}
+
+	if m.phase == PhasePreflightSelectFixes {
+		return m.handleFixSelectorKey(msg)
+	}
+
+	if m.phase == PhasePreflightEnvForm {
+		return m.handleEnvFormKey(msg)
+	}
+
+	if m.phase < PhaseHooks {
+		return nil // No other keys during preflight
+	}
+
+	if m.phase == PhaseHooks {
 		return nil
 	}
 
@@ -388,6 +578,7 @@ func (m *Model) executeSettingsAction() tea.Cmd {
 
 	switch item.Action {
 	case ActionRestartAll:
+		m.phase = PhaseHooks
 		m.hookRunning = true
 		m.hookOutput = nil
 		m.hookErr = nil
@@ -424,6 +615,70 @@ func (m *Model) executeSettingsAction() tea.Cmd {
 		return m.shutdownCmd()
 	}
 
+	return nil
+}
+
+func (m *Model) handleFixSelectorKey(msg tea.KeyPressMsg) tea.Cmd {
+	n := len(m.fixSelectorItems)
+	if n == 0 {
+		return nil
+	}
+
+	// Check special keys by code first
+	switch msg.Code {
+	case tea.KeySpace:
+		m.fixSelectorSelected[m.fixSelectorCursor] = !m.fixSelectorSelected[m.fixSelectorCursor]
+		return nil
+	case tea.KeyEnter:
+		var queue []preflight.CheckWithFixer
+		for i, cwf := range m.fixSelectorItems {
+			if m.fixSelectorSelected[i] {
+				queue = append(queue, cwf)
+			}
+		}
+		if len(queue) > 0 {
+			m.preflightFixQueue = queue
+			m.preflightFixIndex = 0
+			m.phase = PhasePreflightFixing
+			return m.runNextFixer()
+		}
+		m.phase = PhasePreflightDashboard
+		return nil
+	case tea.KeyEscape:
+		m.phase = PhasePreflightDashboard
+		return nil
+	case tea.KeyUp:
+		m.fixSelectorCursor--
+		if m.fixSelectorCursor < 0 {
+			m.fixSelectorCursor = n - 1
+		}
+		return nil
+	case tea.KeyDown:
+		m.fixSelectorCursor = (m.fixSelectorCursor + 1) % n
+		return nil
+	}
+
+	// Letter keys
+	switch msg.String() {
+	case "j":
+		m.fixSelectorCursor = (m.fixSelectorCursor + 1) % n
+	case "k":
+		m.fixSelectorCursor--
+		if m.fixSelectorCursor < 0 {
+			m.fixSelectorCursor = n - 1
+		}
+	case "a":
+		for i := range m.fixSelectorSelected {
+			m.fixSelectorSelected[i] = true
+		}
+	case "n":
+		for i := range m.fixSelectorSelected {
+			m.fixSelectorSelected[i] = false
+		}
+	case "q":
+		m.quitting = true
+		return tea.Quit
+	}
 	return nil
 }
 

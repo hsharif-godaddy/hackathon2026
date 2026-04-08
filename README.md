@@ -23,11 +23,13 @@ Additionally, you will want to make sure you request access to the GitHub orgs `
 git clone <repository-url>
 cd airo-app-builder
 
-# Run the setup utility
-./setup.sh
+# One command to set up and run everything
+pnpm run dev
 ```
 
-The setup utility will guide you through the full setup. Make sure to read all the output and confirm everything is configured without any errors. At the end of the `./setup.sh`, final manual directions will be printed that need to be followed.
+`pnpm run dev` launches the **Dev Runner** TUI which automatically runs preflight checks, detects missing tools or configuration, and offers to fix them inline — no separate setup step needed. On subsequent runs, checks pass in ~2 seconds and auto-advance to launching services.
+
+**Fallback:** If you prefer a standalone setup step, run `./setup.sh` first.
 
 **[📖 Detailed Setup Guide →](./GETTING_STARTED.md)**
 

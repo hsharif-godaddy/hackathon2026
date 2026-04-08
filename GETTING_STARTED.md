@@ -5,10 +5,8 @@ Complete setup guide to run the AI builder locally.
 ## Prerequisites
 
 - Access to AWS Account: `GD-AWS-USA-GD-AiroBuilde-Dev-Private`
-- direnv (managed via `.envrc` — auto-configures Node.js, pnpm, corepack)
-- Node.js 22.16.0+
-- pnpm (managed by Corepack via `.envrc`)
-- Go (for local control plane)
+- Node.js 22+ (via fnm, mise, asdf, or nvm)
+- Go (for local control plane and dev-runner)
 - Docker (for MySQL container)
 - AI Provider API Key (GoCode recommended)
 - For running the test and prod environment locally: `Dev-Airo-Builders` AD group access
@@ -17,93 +15,52 @@ Complete setup guide to run the AI builder locally.
 
 You first need to request access to the `GD-AWS-USA-GD-AiroBuilde-Dev-Private` AWS Account, as the app has to retrieve secrets in order to run. Please request access in #airo-ai-builder-dev. After verifying access via Okta, you can then proceed with the setup.
 
-## 🛠️ Automated Setup (Recommended)
+## 🛠️ Setup & Run (Recommended)
 
-### Option 1: Full Setup
+The fastest way to get started is a single command:
 
-Run the complete setup utility:
+```bash
+pnpm run dev
+```
+
+This launches the **Dev Runner** TUI, which runs preflight checks on startup and offers to auto-fix any issues inline:
+
+1. **Tools** — Verifies Node.js, pnpm, Go, make, Docker, AWS CLI v2, mkcert, Artifactory auth
+2. **Environment** — Checks /etc/hosts, AWS SSO session, .env files, JWT keys, TLS certificates, S2S certs, Commerce OAuth, Getty proxy, KnowB, Design RAG
+3. **Services** — Ensures required ports are free and MySQL is running
+
+If anything fails or warns, you'll see a dashboard with a fix selector — choose what to fix and the TUI handles it (generates .env files, runs `aws sso login`, creates certs, starts containers, etc.). On subsequent runs, all checks pass in ~2 seconds and auto-advance to launching services.
+
+See [dev-runner/README.md](dev-runner/README.md) for keybindings and details.
+
+### Fallback: setup.sh
+
+If you prefer a standalone setup step before running, or need to reconfigure individual components:
 
 ```bash
 ./setup.sh
 ```
 
-This will:
-
-1. ✅ Verify Node.js 22.16.0+, pnpm, and Go installation
-2. ✅ Check Docker environment and start MySQL container
-3. ✅ Configure AI provider (GoCode recommended)
-4. ✅ Set up authentication (JWT/SSO)
-5. ✅ Configure Getty Images proxy with AWS Secrets Manager
-6. ✅ Generate all required `.env` files
-
-#### Recommended Configuration Options
-
-When prompted during setup, use these recommended settings for local development:
-
-**AI Model Provider:**
-
-- **Provider**: GoCode (Recommended)
-- **Base URL**: `https://caas-gocode-prod.caas-prod.prod.onkatana.net`
-
-**Authentication Configuration:**
-
-- **Auth Type**: JWT (for SSO authentication)
-- **Auth Realm**: `idp`
-- **Auth Risk Level**: `low`
-
-### Option 2: Selective Configuration
-
-For individual component setup or reconfiguration:
+This runs the legacy Node.js setup utility which guides you through configuration. You can also use it for selective reconfiguration:
 
 ```bash
-# From project root (recommended)
 pnpm --filter airo-setup start
-
-# Or from setup directory
-cd setup && pnpm start
 ```
-
-Choose from the menu:
-
-- 🔍 Check Docker Dependencies
-- 📱 Configure App Environment (.env)
-- 🤖 Configure Agents Environment (.env)
-- 🖼️ Configure Getty Images Proxy
-- 🗄️ Check MySQL Container Status
-- 🐳 Start MySQL Container
-- 🔍 Check Current Configuration Status
 
 ### Reconfiguring Environment Files
 
 If you need to change your AI provider, authentication settings, or regenerate environment files:
 
-1. **Run the setup wizard:**
+**Via Dev Runner (recommended):** Delete the `.env` file you want to regenerate and run `pnpm run dev` — the preflight checks will detect it's missing and offer to recreate it.
 
-   ```bash
-   pnpm --filter airo-setup start
-   ```
+**Via setup.sh:** Run `./setup.sh` or `pnpm --filter airo-setup start` and select "Configure App Environment (.env)".
 
-   or from the root:
+Environment files generated:
 
-   ```bash
-    ./setup.sh
-   ```
-
-2. **Select "📱 Configure App Environment (.env)"**
-
-3. **Follow the prompts to update:**
-
-   - AI Model Provider (GoCode)
-   - Authentication Type (None, Mock, JWT/SSO) you must select JWT
-   - AWS Profile (this is normally "default")
-
-4. **This will regenerate:**
-   - `app/.env` - Base configuration
-   - `app/.env.local.dev` - Dev environment (dev-godaddy.com SSO)
-   - `app/.env.local.test` - Test environment (test-godaddy.com SSO)
-   - `app/.env.local.prod` - Prod environment (godaddy.com SSO)
-
-**Note:** If the files already exist, you'll be prompted to confirm overwriting them.
+- `app/.env` - Base configuration
+- `app/.env.local.dev` - Dev environment (dev-godaddy.com SSO)
+- `app/.env.local.test` - Test environment (test-godaddy.com SSO)
+- `app/.env.local.prod` - Prod environment (godaddy.com SSO)
 
 ## 📋 Manual Setup (Alternative)
 
@@ -175,25 +132,11 @@ On Windows: `notepad C:\Windows\System32\drivers\etc\hosts` (as Admin)
 
 ### 4. Start Services
 
-**Start MySQL Container (if not using setup utility):**
-
-```bash
-docker compose up app-mysql -d
-```
-
-**AWS SSO login:**
-
-```bash
-aws sso login --profile airobuild-dev-private-sso
-```
-
-**Start all services (recommended):**
-
 ```bash
 pnpm run dev
 ```
 
-This launches the **Dev Runner** — a single-terminal TUI that manages all three services (Agents, App, Local Control Plane) with tabbed log views, health checks, error detection, and search. See [dev-runner/README.md](dev-runner/README.md) for keybindings and features.
+This is the same command from the recommended setup above — preflight checks will handle MySQL, AWS SSO, and everything else automatically.
 
 **Alternative: Start services individually in separate terminals:**
 
@@ -244,9 +187,9 @@ pnpm run local:prod       # Prod environment (local.prod) — uses real control 
 
 #### Environment Configuration
 
-**✨ Environment files are auto-generated by `./setup.sh`!**
+**✨ Environment files are auto-generated by Dev Runner preflight or `./setup.sh`!**
 
-The setup script automatically creates environment-specific configuration files:
+Environment-specific configuration files are created automatically:
 
 - `app/.env.local.dev` - Dev environment (dev-godaddy.com SSO)
 - `app/.env.local.test` - Test environment (test-godaddy.com SSO)
@@ -374,50 +317,25 @@ This adds the CA to your system trust store, eliminating certificate warnings fo
 
 ## 🔧 Setup Utilities
 
-### Reconfigure Components
+### Dev Runner Preflight (Recommended)
 
-Use the selective configuration tool to modify specific settings:
+`pnpm run dev` handles most setup tasks automatically. If a check fails, select it in the fix selector and the TUI will resolve it. This covers: .env generation, AWS SSO login, JWT keys, TLS certs, S2S certs, Getty proxy tokens, MySQL, hosts file, and more.
 
-```bash
-# From project root (recommended)
-pnpm --filter airo-setup start
-# Choose "Selective Configuration"
+### Legacy Setup Utility
 
-# Or from setup directory
-cd setup && pnpm start
-```
-
-### Check System Status
-
-Get an overview of your current configuration:
+For selective reconfiguration or if you prefer a standalone setup:
 
 ```bash
-# From project root (recommended)
-pnpm --filter airo-setup start
-# Choose "Selective Configuration" → "Check Current Configuration Status"
-
-# Or from setup directory
-cd setup && pnpm start
+./setup.sh                        # Full guided setup
+pnpm --filter airo-setup start    # Selective configuration menu
 ```
 
 ### Getty Images Setup
 
-If Getty Images isn't working, reconfigure it:
+If Getty Images isn't working, either:
 
-```bash
-# From project root (recommended)
-pnpm --filter airo-setup start
-# Choose "Selective Configuration" → "Configure Getty Images Proxy"
-
-# Or from setup directory
-cd setup && pnpm start
-```
-
-This will:
-
-- Set up AWS SSO credentials if needed
-- Fetch the Getty token from AWS Secrets Manager
-- Update your `agents/.env` with the correct configuration
+- Run `pnpm run dev` and select the Getty fix when it appears in preflight
+- Or: `pnpm --filter airo-setup start` → "Configure Getty Images Proxy"
 
 ## Troubleshooting
 
@@ -439,11 +357,11 @@ This resolves most dependency and build cache issues.
 ### AWS SSO expired
 
 **Issue**: Switchboard authentication errors or "Unable to obtain token from SSO"
-**Solution**: `aws sso login --profile airobuild-dev-private-sso`
+**Solution**: Run `pnpm run dev` — preflight checks will detect the expired session and offer to run `aws sso login` for you. Or manually: `aws sso login --profile airobuild-dev-private-sso`
 
 ### Configuration Issues
 
-**Recommended**: Use the setup utility to diagnose and fix configuration problems:
+**Recommended**: Run `pnpm run dev` — preflight checks will detect and offer to fix most configuration problems automatically. For manual diagnosis:
 
 ```bash
 pnpm --filter airo-setup start
@@ -548,6 +466,7 @@ lsof -ti:5001 | xargs kill -9
 
 Need help?
 
-- 🛠️ Use the setup utility: `./setup.sh` or `pnpm --filter airo-setup start`
+- 🚀 Run `pnpm run dev` — preflight checks detect and fix most issues
+- 🛠️ Legacy setup: `./setup.sh` or `pnpm --filter airo-setup start`
 - 📖 Check the full [README.md](./README.md)
 - 📚 Browse [documentation](./docs/)
