@@ -22,6 +22,11 @@ const AWS_REGION = 'us-west-2';
 const SSO_HOST = ENV_NAME === 'prod' ? 'sso.godaddy.com' : 'sso.test-godaddy.com';
 const GOCODE_ENDPOINT = ENV_NAME === 'prod' ? 'https://api.gocode.caas.gdcorp.tools' : 'https://api.gocode.caas.test-gdcorp.tools';
 
+// GoCode API page_size defaults to 10 which results in ~1,108 pages per day, causing Lambda timeouts.
+// GoCode (LiteLLM) has no documented upper limit on page_size.
+// See: https://api.gocode.caas.gdcorp.tools/#/Customer%20Management/get_customer_daily_activity_customer_daily_activity_get
+const GOCODE_PAGE_SIZE = '500';
+
 const getGoCodeRoleArn = () => `arn:aws:iam::${process.env.AWS_ACCOUNT_ID}:role/airobuilde-custom-${ENV_NAME}-airo-builder-gocode-access`;
 
 function getLastTwoDays(): string[] {
@@ -60,14 +65,14 @@ export async function handler(event: LambdaEvent = {}) {
     for (const day of days) {
       console.log(`Processing ${day}...`);
 
-      const userParams = new URLSearchParams({ start_date: day, end_date: day });
+      const userParams = new URLSearchParams({ start_date: day, end_date: day, page_size: GOCODE_PAGE_SIZE });
       const userResults = await fetchAllPages(jwt, fetchUserDaily, userParams);
       const modelDocs = extractModelDocs(userResults, roleArn);
       const modelIndexed = await indexDocs(esClient, ES_INDEX_MODEL, modelDocs, doc => `${doc.date}-${doc.model}`);
       console.log(`  Models: ${modelDocs.length} docs, ${modelIndexed} indexed`);
       totalModelDocs += modelIndexed;
 
-      const custParams = new URLSearchParams({ start_date: day, end_date: day });
+      const custParams = new URLSearchParams({ start_date: day, end_date: day, page_size: GOCODE_PAGE_SIZE });
       const custResults = await fetchAllPages(jwt, fetchCustomerDaily, custParams);
       const endUserDocs = extractEndUserDocs(custResults);
       const endUserIndexed = await indexDocs(esClient, ES_INDEX_ENDUSER, endUserDocs, doc => `${doc.date}-${doc.end_user}`);

@@ -124,7 +124,9 @@ export class GocaasSpendLambdaStack extends GDStack {
           user: 'root'
         }
       }),
-      timeout: cdk.Duration.minutes(5),
+      // With page_size=500, expected runtime is ~22 pages/day × 2 days × ~3s p95 / 10 parallel = ~15s.
+      // 10 minutes provides headroom for API slowness or data volume growth.
+      timeout: cdk.Duration.minutes(10),
       memorySize: 512,
       role: this.syncLambdaRole,
       logGroup: syncLogGroup,
