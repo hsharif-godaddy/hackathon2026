@@ -86,6 +86,10 @@ vi.mock('@/hooks/useSubscription', () => ({
   useSubscription: () => mockUseSubscription(),
 }));
 
+vi.mock('@/utils/getRootDomain', () => ({
+  getRootDomain: () => 'godaddy.com',
+}));
+
 describe('UserMenu', function userMenuTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
@@ -99,53 +103,62 @@ describe('UserMenu', function userMenuTests() {
     it('should render user icon trigger', function renderTrigger() {
       renderWithProviders(<UserMenu location="develop" />);
 
-      // The popover trigger should be present
       expect(document.body).toBeTruthy();
     });
 
-    it('should open popover when clicked', async function openPopover() {
+    it('should show all expected menu items', async function showAllItems() {
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
-      // Click the user icon to open popover
       await user.click(screen.getByLabelText('builder_user_menu_label'));
 
-      await waitFor(function checkPopover() {
-        // Popover should be open - check for sign out button
-        expect(screen.getByText('builder_user_menu_sign_out')).toBeInTheDocument();
-      });
-    });
-
-    it('should show Invite Friends menu item on develop page', async function showInviteFriends() {
-      const { user } = renderWithProviders(<UserMenu location="develop" />);
-
-      // Click to open popover
-      await user.click(screen.getByLabelText('builder_user_menu_label'));
-
-      await waitFor(function checkInviteFriends() {
+      await waitFor(function checkItems() {
+        expect(screen.getByText('builder_user_menu_all_projects')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_my_products')).toBeInTheDocument();
         expect(screen.getByText('builder_user_menu_refer_friend')).toBeInTheDocument();
-      });
-    });
-
-    it('should show Discord menu item on develop page', async function showDiscord() {
-      const { user } = renderWithProviders(<UserMenu location="develop" />);
-
-      // Click to open popover
-      await user.click(screen.getByLabelText('builder_user_menu_label'));
-
-      await waitFor(function checkDiscord() {
         expect(screen.getByText('builder_user_menu_join_discord')).toBeInTheDocument();
-      });
-    });
-
-    it('should show Sign Out button', async function showSignOut() {
-      const { user } = renderWithProviders(<UserMenu location="develop" />);
-
-      // Click to open popover
-      await user.click(screen.getByLabelText('builder_user_menu_label'));
-
-      await waitFor(function checkSignOut() {
+        expect(screen.getByText('builder_user_menu_give_feedback')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_airo_hq')).toBeInTheDocument();
         expect(screen.getByText('builder_user_menu_sign_out')).toBeInTheDocument();
       });
+
+      expect(screen.queryByText('builder_common_signin')).not.toBeInTheDocument();
+    });
+
+    it('should navigate to /apps when All Projects is clicked', async function navigateAllProjects() {
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
+      await waitFor(function checkAllProjects() {
+        expect(screen.getByText('builder_user_menu_all_projects')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('builder_user_menu_all_projects'));
+
+      expect(mockPush).toHaveBeenCalledWith('/apps');
+    });
+  });
+
+  describe('when user is unauthenticated', function unauthenticatedTests() {
+    beforeEach(function setup() {
+      mockUseAuthContext.mockReturnValue(mockAuthContext({ isAuthenticated: false, isAuthDisabled: false }));
+    });
+
+    it('should show only GoDaddy Airo and Sign In', async function showUnauthItems() {
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
+
+      await waitFor(function checkItems() {
+        expect(screen.getByText('builder_user_menu_airo_hq')).toBeInTheDocument();
+        expect(screen.getByText('builder_common_signin')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('builder_user_menu_all_projects')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_user_menu_my_products')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_user_menu_give_feedback')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_user_menu_sign_out')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_user_menu_refer_friend')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_user_menu_join_discord')).not.toBeInTheDocument();
     });
   });
 
@@ -243,6 +256,51 @@ describe('UserMenu', function userMenuTests() {
     });
   });
 
+  describe('My Products menu item', function myProductsTests() {
+    it('should show My Products when authenticated', async function showWhenAuthenticated() {
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
+
+      await waitFor(function checkMyProducts() {
+        expect(screen.getByText('builder_user_menu_my_products')).toBeInTheDocument();
+      });
+    });
+
+    it('should navigate to account products page when clicked', async function navigate() {
+      const originalLocation = window.location;
+      const hrefSetter = vi.fn();
+      Object.defineProperty(window, 'location', {
+        value: { ...originalLocation, href: '' },
+        writable: true,
+        configurable: true,
+      });
+      Object.defineProperty(window.location, 'href', {
+        set: hrefSetter,
+        configurable: true,
+      });
+
+      try {
+        const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+        await user.click(screen.getByLabelText('builder_user_menu_label'));
+        await waitFor(function checkMyProducts() {
+          expect(screen.getByText('builder_user_menu_my_products')).toBeInTheDocument();
+        });
+
+        await user.click(screen.getByText('builder_user_menu_my_products'));
+
+        expect(hrefSetter).toHaveBeenCalledWith('https://account.godaddy.com/products');
+      } finally {
+        Object.defineProperty(window, 'location', {
+          value: originalLocation,
+          writable: true,
+          configurable: true,
+        });
+      }
+    });
+  });
+
   describe('Give Feedback button', function giveFeedbackTests() {
     it('should show Give Feedback when authenticated', async function showWhenAuthenticated() {
       const { user } = renderWithProviders(<UserMenu location="develop" />);
@@ -252,20 +310,6 @@ describe('UserMenu', function userMenuTests() {
       await waitFor(function checkFeedbackButton() {
         expect(screen.getByText('builder_user_menu_give_feedback')).toBeInTheDocument();
       });
-    });
-
-    it('should not show Give Feedback when unauthenticated', async function hideWhenUnauthenticated() {
-      mockUseAuthContext.mockReturnValue(mockAuthContext({ isAuthenticated: false, isAuthDisabled: false }));
-
-      const { user } = renderWithProviders(<UserMenu location="develop" />);
-
-      await user.click(screen.getByLabelText('builder_user_menu_label'));
-
-      await waitFor(function checkSignIn() {
-        expect(screen.getByText('builder_common_signin')).toBeInTheDocument();
-      });
-
-      expect(screen.queryByText('builder_user_menu_give_feedback')).not.toBeInTheDocument();
     });
 
     it('should open feedback modal when Give Feedback is clicked', async function openModal() {

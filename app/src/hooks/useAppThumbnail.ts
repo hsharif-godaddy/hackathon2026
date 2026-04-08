@@ -6,9 +6,11 @@ import { agentFetch } from '@/lib/agent-fetch';
 import { logger } from '@/lib/request-context';
 
 /**
- * Fetch thumbnail for an app and return as object URL
+ * Fetch thumbnail for an app and return as object URL.
+ * Accepts an AbortSignal so React Query can cancel in-flight requests
+ * on unmount — preventing orphaned blob URLs that would never be revoked.
  */
-async function fetchThumbnail(siteId: string, agentUrl?: string): Promise<string | null> {
+async function fetchThumbnail(siteId: string, agentUrl?: string, signal?: AbortSignal): Promise<string | null> {
   try {
     const apiUrl = agentUrl
       ? buildAgentAppEndpointUrl(agentUrl, siteId, 'screenshot')
@@ -17,15 +19,18 @@ async function fetchThumbnail(siteId: string, agentUrl?: string): Promise<string
     const response = await agentFetch(apiUrl, {
       method: 'GET',
       siteId,
+      signal,
     });
+
+    if (signal?.aborted) return null;
 
     if (response.ok) {
       const blob = await response.blob();
+      if (signal?.aborted) return null;
       return URL.createObjectURL(blob);
     }
 
     if (response.status === 404) {
-      // No thumbnail available - this is expected for new apps
       return null;
     }
 
@@ -36,7 +41,7 @@ async function fetchThumbnail(siteId: string, agentUrl?: string): Promise<string
 
     return null;
   } catch (error) {
-    // Site not ready, no agent_url, etc. - show fallback
+    if (signal?.aborted) return null;
     logger.debug('app-thumbnail.fetch.error', {
       siteId,
       error: error instanceof Error ? error.message : String(error),
@@ -66,11 +71,12 @@ async function fetchThumbnail(siteId: string, agentUrl?: string): Promise<string
 export function useAppThumbnail(siteId: string, enabled = true, agentUrl?: string) {
   const queryClient = useQueryClient();
   const normalizedAgentUrl = agentUrl?.trim() || undefined;
+
   const cacheKeySuffix = normalizedAgentUrl ?? '';
 
   const query = useQuery({
     queryKey: ['app-thumbnail', siteId, cacheKeySuffix],
-    queryFn: () => fetchThumbnail(siteId, normalizedAgentUrl),
+    queryFn: ({ signal }) => fetchThumbnail(siteId, normalizedAgentUrl, signal),
     enabled: enabled && !!siteId,
     staleTime: 5 * 60 * 1000, // 5 minutes - thumbnails don't change often
     gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes after last use
@@ -78,14 +84,17 @@ export function useAppThumbnail(siteId: string, enabled = true, agentUrl?: strin
     refetchOnWindowFocus: false, // Don't refetch thumbnails on focus
   });
 
+  // useQuery unsubscribes before this cleanup runs, so observer count is
+  // already decremented. Revoke only when no observers remain (=== 0).
   useEffect(() => {
-    const thumbKey = ['app-thumbnail', siteId, cacheKeySuffix] as const;
+    const queryKey = ['app-thumbnail', siteId, cacheKeySuffix];
     return () => {
-      const cachedUrl = queryClient.getQueryData<string | null>(thumbKey);
+      const cachedUrl = queryClient.getQueryData<string | null>(queryKey);
       if (cachedUrl) {
-        const queryState = queryClient.getQueryState(thumbKey);
-        if (queryState && queryClient.getQueryCache().find({ queryKey: [...thumbKey] })?.getObserversCount() === 1) {
+        const entry = queryClient.getQueryCache().find({ queryKey });
+        if (entry && entry.getObserversCount() === 0) {
           URL.revokeObjectURL(cachedUrl);
+          queryClient.removeQueries({ queryKey });
         }
       }
     };

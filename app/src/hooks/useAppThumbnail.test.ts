@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 /**
  * @vitest-environment jsdom
  */
+import { QueryClient } from '@tanstack/react-query';
 import { waitFor } from '@testing-library/react';
 
 import { buildAgentAppEndpointUrl, buildDynamicApiUrl } from '@/config/dynamic-api';
@@ -108,10 +109,10 @@ describe('useAppThumbnail', () => {
 
     expect(agentFetch).toHaveBeenCalledWith(
       `https://api.test/screenshot/${mockSiteId}`,
-      {
+      expect.objectContaining({
         method: 'GET',
         siteId: mockSiteId,
-      }
+      })
     );
   });
 
@@ -158,10 +159,10 @@ describe('useAppThumbnail', () => {
     expect(buildDynamicApiUrl).not.toHaveBeenCalled();
     expect(agentFetch).toHaveBeenCalledWith(
       buildAgentAppEndpointUrl(agentBase, mockSiteId, 'screenshot'),
-      {
+      expect.objectContaining({
         method: 'GET',
         siteId: mockSiteId,
-      }
+      })
     );
   });
 
@@ -178,5 +179,49 @@ describe('useAppThumbnail', () => {
     });
 
     expect(buildDynamicApiUrl).toHaveBeenCalledWith('screenshot', mockSiteId);
+  });
+
+  it('should evict cache and refetch after last observer unmounts', async () => {
+    const mockBlob = new Blob(['img'], { type: 'image/png' });
+    vi.mocked(agentFetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      blob: async () => mockBlob,
+    } as Response);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    });
+
+    const { result, unmount } = renderHookWithProviders(
+      () => useAppThumbnail(mockSiteId),
+      { queryClient }
+    );
+
+    await waitFor(() => {
+      expect(result.current.data).toBe('blob:mock-url');
+    });
+    expect(agentFetch).toHaveBeenCalledTimes(1);
+
+    unmount();
+
+    expect(global.URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
+    expect(queryClient.getQueryData(['app-thumbnail', mockSiteId, ''])).toBeUndefined();
+
+    vi.mocked(agentFetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      blob: async () => new Blob(['img2'], { type: 'image/png' }),
+    } as Response);
+
+    const { result: result2 } = renderHookWithProviders(
+      () => useAppThumbnail(mockSiteId),
+      { queryClient }
+    );
+
+    await waitFor(() => {
+      expect(result2.current.data).toBe('blob:mock-url');
+    });
+    expect(agentFetch).toHaveBeenCalledTimes(2);
   });
 });

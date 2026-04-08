@@ -93,11 +93,12 @@ test.describe('Develop Page', () => {
     await dismissOverlays(page);
     console.log('🏷️ Step 3: Testing header elements...');
 
-    // Verify user menu shows Sign Out
+    // Verify user menu shows expected items for authenticated users
     await openUserMenu(page);
     await expect(page.locator('[data-eid*="user_menu.sign_out"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-eid*="user_menu.my_products"]')).toBeVisible({ timeout: 5000 });
     await page.keyboard.press('Escape');
-    console.log('  ✓ User menu shows Sign Out (authenticated)');
+    console.log('  ✓ User menu shows Sign Out and My Products (authenticated)');
 
     // ========================================
     // STEP 4: Test preview controls
