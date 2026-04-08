@@ -142,7 +142,7 @@ const devConfig: Config = {
     cpu: 1024,
     memory: 2048,
     ephemeralStorageGiB: 30,
-    imageTag: 'v1.16.3',
+    imageTag: 'v1.16.3-2',
     enableTls: true, // TLS enabled for dev testing
   },
 };
@@ -256,7 +256,7 @@ const prodConfig: Config = {
     cpu: 2048,
     memory: 4096,
     ephemeralStorageGiB: 50,
-    imageTag: 'v1.16.3',
+    imageTag: 'v1.16.3-2',
     enableTls: true, // TLS required in production
   },
 };

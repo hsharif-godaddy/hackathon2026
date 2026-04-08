@@ -106,8 +106,50 @@ setup_tls() {
 # Start Qdrant
 # -----------------------------------------------------------------------------
 start_qdrant() {
+    local probe_proto="http"
+    if [ "${QDRANT_ENABLE_TLS}" = "true" ]; then
+        probe_proto="https"
+    fi
+
     if [ "${QDRANT_NODE_ROLE}" = "seed" ]; then
-        echo "Starting as SEED node..."
+        if [ -z "${QDRANT_SEED_FQDN}" ]; then
+            echo "ERROR: QDRANT_SEED_FQDN is required for seed nodes"
+            exit 1
+        fi
+
+        # Derive worker service FQDN from seed FQDN
+        # e.g., qdrant-seed.prod.airo.local → qdrant.prod.airo.local
+        local worker_fqdn="${QDRANT_SEED_FQDN/qdrant-seed/qdrant}"
+
+        if [ "${worker_fqdn}" = "${QDRANT_SEED_FQDN}" ]; then
+            echo "WARN: Could not derive worker FQDN from '${QDRANT_SEED_FQDN}' (expected 'qdrant-seed' substring). Skipping rejoin probe."
+        else
+        # Check if workers from an existing cluster are already running
+        # AND have healthy Raft consensus. Only rejoin if the cluster is
+        # genuinely functional — joining a broken cluster makes things worse.
+        echo "Checking for existing healthy cluster at ${worker_fqdn}..."
+        local probe_attempts=3
+        local probe=0
+        while [ "$probe" -lt "$probe_attempts" ]; do
+            # Check /cluster endpoint — only returns 200 with "enabled" status
+            # when the node has healthy Raft consensus, not just a running process.
+            local cluster_status
+            cluster_status=$(curl -sfk --connect-timeout 2 --max-time 3 \
+                "${probe_proto}://${worker_fqdn}:6333/cluster" 2>/dev/null) || true
+            if echo "$cluster_status" | grep -q '"status":"enabled"'; then
+                echo "Healthy cluster detected — rejoining via worker at ${worker_fqdn}"
+                echo "Cluster info: ${cluster_status}"
+                exec ./qdrant --uri "http://${QDRANT_SEED_FQDN}:6335" \
+                    --bootstrap "http://${worker_fqdn}:6335"
+            fi
+            probe=$((probe + 1))
+            [ "$probe" -lt "$probe_attempts" ] && sleep 2
+        done
+
+        echo "No healthy cluster found."
+        fi
+
+        echo "Bootstrapping as new SEED node..."
         echo "URI: http://${QDRANT_SEED_FQDN}:6335"
         exec ./qdrant --uri "http://${QDRANT_SEED_FQDN}:6335"
     fi
@@ -116,11 +158,6 @@ start_qdrant() {
     if [ -z "${QDRANT_SEED_FQDN}" ]; then
         echo "ERROR: QDRANT_SEED_FQDN is required for worker nodes"
         exit 1
-    fi
-
-    local probe_proto="http"
-    if [ "${QDRANT_ENABLE_TLS}" = "true" ]; then
-        probe_proto="https"
     fi
 
     echo "Waiting for seed node at ${QDRANT_SEED_FQDN}..."
