@@ -23,7 +23,7 @@ RUN --mount=type=secret,id=jfrog_token \
     GOPROXY="https://:${JFROG_TOKEN}@gdartifactory1.jfrog.io/artifactory/api/go/go-virt" \
     GOPRIVATE= \
     GONOPROXY=none \
-    GONOSUMDB="github.com/gdcorp-golang/*,github.com/gdcorp-identity/*" \
+    GONOSUMDB="github.com/gdcorp-golang/*" \
     GOFLAGS="-mod=mod" \
     go mod download
 
@@ -40,7 +40,7 @@ RUN --mount=type=secret,id=jfrog_token \
     GOPROXY="https://:${JFROG_TOKEN}@gdartifactory1.jfrog.io/artifactory/api/go/go-virt" \
     GOPRIVATE= \
     GONOPROXY=none \
-    GONOSUMDB="github.com/gdcorp-golang/*,github.com/gdcorp-identity/*" \
+    GONOSUMDB="github.com/gdcorp-golang/*" \
     GOFLAGS="-mod=mod" \
     CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/server ./cmd/server
 

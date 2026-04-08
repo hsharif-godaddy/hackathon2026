@@ -1,25 +1,16 @@
 package api
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/store"
 )
 
-// WebhookDataStore lists webhooks and loads session reports for deliverReportCreatedWebhooks.
-// If nil, Server.Store is used.
-type WebhookDataStore interface {
-	ListWebhooksForReportCreated(ctx context.Context, productKey string) ([]store.WebhookRow, error)
-	GetSessionReport(ctx context.Context, budgetID, sessionID, reportID string) (*store.SessionReportDetail, error)
-}
-
 // Server holds handler dependencies.
 type Server struct {
-	Store            *store.Store // nil if DATABASE_URL was unset at startup
-	WebhookDataStore WebhookDataStore
-	WebhookOAuth     WebhookOAuthClient
-	WebhookClient    *http.Client // optional outbound HTTP for report webhooks (default 15s timeout)
+	Store         *store.Store // nil if DATABASE_URL was unset at startup
+	WebhookClient *http.Client // optional outbound HTTP for report webhooks (default 15s timeout)
+	WebhookSecret string       // optional secret for X-BMS-Secret header on webhook deliveries
 }
 
 func (s *Server) getHealth(w http.ResponseWriter, r *http.Request) {

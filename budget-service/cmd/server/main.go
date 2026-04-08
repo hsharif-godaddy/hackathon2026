@@ -11,8 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gdcorp-identity/authz-lib-go/pkg/oauth"
-
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/api"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/config"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/store"
@@ -74,16 +72,7 @@ func main() {
 		authType = "none"
 	}
 	authMW := goauth.NewMiddleware(authType, cfg.SSOHost)
-	srv := &api.Server{Store: st}
-	if cfg.WebhookOAuthTokenURL != "" {
-		srv.WebhookOAuth = oauth.NewClient(oauth.Config{
-			TokenURL:     cfg.WebhookOAuthTokenURL,
-			ClientID:     cfg.WebhookOAuthClientID,
-			ClientSecret: cfg.WebhookOAuthClientSecret,
-			Scope:        cfg.WebhookOAuthScope,
-		})
-		slog.Info("budget_service.webhook_oauth", "enabled", true)
-	}
+	srv := &api.Server{Store: st, WebhookSecret: cfg.WebhookSecret}
 	handler := api.NewRouter(srv, authMW)
 
 	httpSrv := &http.Server{

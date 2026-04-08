@@ -47,17 +47,13 @@ func (s *Server) webhookHTTPClient() *http.Client {
 
 // deliverReportCreatedWebhooks POSTs report payload to report.created subscribers (best-effort; spawned from postBudgetSessionReport).
 func (s *Server) deliverReportCreatedWebhooks(budgetID, sessionID, reportID, productKey string) {
-	dataStore := s.WebhookDataStore
-	if dataStore == nil {
-		dataStore = s.Store
-	}
-	if dataStore == nil || strings.TrimSpace(productKey) == "" {
+	if s.Store == nil || strings.TrimSpace(productKey) == "" {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	hooks, err := dataStore.ListWebhooksForReportCreated(ctx, productKey)
+	hooks, err := s.Store.ListWebhooksForReportCreated(ctx, productKey)
 	if err != nil {
 		slog.Error("webhook.list_report_created", "error", err, "productKey", productKey)
 		return
@@ -66,7 +62,7 @@ func (s *Server) deliverReportCreatedWebhooks(budgetID, sessionID, reportID, pro
 		return
 	}
 
-	d, err := dataStore.GetSessionReport(ctx, budgetID, sessionID, reportID)
+	d, err := s.Store.GetSessionReport(ctx, budgetID, sessionID, reportID)
 	if err != nil {
 		slog.Error("webhook.load_report_payload", "error", err,
 			"budgetId", budgetID, "sessionId", sessionID, "reportId", reportID)
@@ -89,20 +85,6 @@ func (s *Server) deliverReportCreatedWebhooks(budgetID, sessionID, reportID, pro
 		return
 	}
 
-	var authHeader string
-	if s.WebhookOAuth != nil {
-		tr, tokErr := s.WebhookOAuth.GetAccessToken(ctx)
-		if tokErr != nil {
-			slog.Error("webhook.oauth_token", "error", tokErr, "productKey", productKey, "hooks", len(hooks))
-			return
-		}
-		authHeader = webhookAuthorizationValue(tr)
-		if authHeader == "" {
-			slog.Error("webhook.oauth_token_empty", "productKey", productKey, "hooks", len(hooks))
-			return
-		}
-	}
-
 	client := s.webhookHTTPClient()
 	for i := range hooks {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, hooks[i].URL, bytes.NewReader(body))
@@ -111,12 +93,11 @@ func (s *Server) deliverReportCreatedWebhooks(budgetID, sessionID, reportID, pro
 			continue
 		}
 		req.Header.Set("Content-Type", "application/json")
-		if authHeader != "" {
-			if strings.EqualFold(req.URL.Scheme, "https") {
-				req.Header.Set("Authorization", authHeader)
+		if s.WebhookSecret != "" {
+			if req.URL != nil && strings.EqualFold(req.URL.Scheme, "https") {
+				req.Header.Set("X-BMS-Secret", s.WebhookSecret)
 			} else {
-				slog.Warn("webhook.authorization_skipped_insecure_transport",
-					"webhookId", hooks[i].ID, "url", hooks[i].URL, "scheme", req.URL.Scheme)
+				slog.Warn("webhook.secret_skipped_insecure_transport", "webhookId", hooks[i].ID, "url", hooks[i].URL)
 			}
 		}
 		resp, err := client.Do(req)

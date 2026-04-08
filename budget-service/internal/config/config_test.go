@@ -1,32 +1,55 @@
 package config
 
 import (
-	"strings"
+	"os"
 	"testing"
 )
 
-func TestLoadWebhookOAuthRequiresPairedTokenURLAndClientID(t *testing.T) {
-	t.Setenv("LOCAL_AUTH_DISABLE", "true")
-	t.Setenv("SSO_HOST", "")
+func TestLoad_WebhookSecret(t *testing.T) {
+	// Save and restore environment
+	origSecret := os.Getenv("WEBHOOK_SECRET")
+	origSSOHost := os.Getenv("SSO_HOST")
+	origLocalAuth := os.Getenv("LOCAL_AUTH_DISABLE")
+	defer func() {
+		os.Setenv("WEBHOOK_SECRET", origSecret)
+		os.Setenv("SSO_HOST", origSSOHost)
+		os.Setenv("LOCAL_AUTH_DISABLE", origLocalAuth)
+	}()
+
+	// Set required env vars for Load() to succeed
+	os.Setenv("LOCAL_AUTH_DISABLE", "true")
 
 	tests := []struct {
-		name   string
-		url    string
-		client string
+		name     string
+		envValue string
+		want     string
 	}{
-		{"token_url_without_client_id", "https://example.com/token", ""},
-		{"client_id_without_token_url", "", "some-client-id"},
+		{
+			name:     "reads secret from env",
+			envValue: "my-webhook-secret",
+			want:     "my-webhook-secret",
+		},
+		{
+			name:     "trims whitespace",
+			envValue: "  secret-with-spaces  ",
+			want:     "secret-with-spaces",
+		},
+		{
+			name:     "empty when not set",
+			envValue: "",
+			want:     "",
+		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("WEBHOOK_OAUTH_TOKEN_URL", tt.url)
-			t.Setenv("WEBHOOK_OAUTH_CLIENT_ID", tt.client)
-			_, err := Load()
-			if err == nil {
-				t.Fatal("expected error")
+			os.Setenv("WEBHOOK_SECRET", tt.envValue)
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
 			}
-			if !strings.Contains(err.Error(), "WEBHOOK_OAUTH_TOKEN_URL") {
-				t.Fatalf("error %q should mention WEBHOOK_OAUTH_TOKEN_URL", err.Error())
+			if cfg.WebhookSecret != tt.want {
+				t.Errorf("WebhookSecret = %q, want %q", cfg.WebhookSecret, tt.want)
 			}
 		})
 	}
