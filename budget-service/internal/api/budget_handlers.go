@@ -139,7 +139,7 @@ func writeBudgetStoreError(w http.ResponseWriter, op string, err error) {
 		return
 	}
 	if errors.Is(err, store.ErrAlreadyReconciled) {
-		writeError(w, http.StatusConflict, "CONFLICT", "session already closed or reconciled")
+		writeError(w, http.StatusConflict, "CONFLICT", "session already reconciled")
 		return
 	}
 	if errors.Is(err, store.ErrBudgetHasUnreconciledSessions) {

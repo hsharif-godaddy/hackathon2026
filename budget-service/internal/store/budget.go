@@ -708,7 +708,21 @@ func (s *Store) AppendSessionItems(ctx context.Context, budgetID, sessionID stri
 		SELECT 1 FROM budget_sessions WHERE id = $1 AND budget_id = $2 AND reconciled_at IS NULL FOR UPDATE
 	`, sessionID, budgetID).Scan(&sessLock)
 	if err != nil {
-		return nil, mapNotFound(err)
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+		var rec sql.NullTime
+		err = tx.QueryRowContext(ctx, `
+			SELECT reconciled_at FROM budget_sessions WHERE id = $1 AND budget_id = $2
+		`, sessionID, budgetID).Scan(&rec)
+		if err != nil {
+			return nil, mapNotFound(err)
+		}
+		if rec.Valid {
+			return nil, ErrAlreadyReconciled
+		}
+		// Row exists with reconciled_at null but first query missed it: should be unreachable; surface as not found.
+		return nil, ErrNotFound
 	}
 
 	states, err := loadBudgetConsumptionStatesTx(ctx, tx, budgetID, true)

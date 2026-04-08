@@ -218,6 +218,99 @@ func TestPostSessionReturns402WhenBudgetExhausted(t *testing.T) {
 	}
 }
 
+func TestPatchReconciledSessionReturns409(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "patch-rec-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
+		{CreditsTotal: "10.000000", CreditSpendRatio: "1.000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	auth := goauth.NewMiddleware("none", "")
+	h := NewRouter(&Server{Store: st}, auth)
+
+	recS := httptest.NewRecorder()
+	reqS := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/sessions", strings.NewReader(`{}`))
+	reqS.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(recS, reqS)
+	if recS.Code != http.StatusCreated {
+		t.Fatalf("post session: %d %s", recS.Code, recS.Body.String())
+	}
+	var sess struct {
+		SessionID string `json:"sessionId"`
+	}
+	if err := json.Unmarshal(recS.Body.Bytes(), &sess); err != nil {
+		t.Fatal(err)
+	}
+	repBody := `{"reportItems":[{"budgetCost":"1","productCost":"0","label":"x"}]}`
+	recRep := httptest.NewRecorder()
+	reqRep := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/sessions/"+sess.SessionID+"/reports", strings.NewReader(repBody))
+	reqRep.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(recRep, reqRep)
+	if recRep.Code != http.StatusCreated {
+		t.Fatalf("post report: %d %s", recRep.Code, recRep.Body.String())
+	}
+
+	recPatch := httptest.NewRecorder()
+	reqPatch := httptest.NewRequest(http.MethodPatch, "/api/v1/budgets/"+budgetID+"/sessions/"+sess.SessionID, strings.NewReader(`{"sessionItems":[{"cost":"1","callRequestId":"late-req"}]}`))
+	reqPatch.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(recPatch, reqPatch)
+	if recPatch.Code != http.StatusConflict {
+		t.Fatalf("patch after reconcile: %d %s", recPatch.Code, recPatch.Body.String())
+	}
+	var errBody struct {
+		Code  string `json:"code"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(recPatch.Body.Bytes(), &errBody); err != nil {
+		t.Fatal(err)
+	}
+	if errBody.Code != "CONFLICT" || errBody.Error != "session already reconciled" {
+		t.Fatalf("got %#v want CONFLICT / session already reconciled", errBody)
+	}
+}
+
+func TestPatchNonexistentSessionReturns404(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "patch-missing-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
+		{CreditsTotal: "10.000000", CreditSpendRatio: "1.000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	auth := goauth.NewMiddleware("none", "")
+	h := NewRouter(&Server{Store: st}, auth)
+
+	fakeSessionID := uuid.NewString()
+	recPatch := httptest.NewRecorder()
+	reqPatch := httptest.NewRequest(http.MethodPatch, "/api/v1/budgets/"+budgetID+"/sessions/"+fakeSessionID, strings.NewReader(`{"sessionItems":[{"cost":"1","callRequestId":"req"}]}`))
+	reqPatch.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(recPatch, reqPatch)
+	if recPatch.Code != http.StatusNotFound {
+		t.Fatalf("patch missing session: %d %s", recPatch.Code, recPatch.Body.String())
+	}
+	var errBody struct {
+		Code  string `json:"code"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(recPatch.Body.Bytes(), &errBody); err != nil {
+		t.Fatal(err)
+	}
+	if errBody.Code != "NOT_FOUND" || errBody.Error != "resource not found" {
+		t.Fatalf("got %#v want NOT_FOUND / resource not found", errBody)
+	}
+}
+
 func TestGoCodeSpendMathOverHTTP(t *testing.T) {
 	st := testStore(t)
 	auth := goauth.NewMiddleware("none", "")
