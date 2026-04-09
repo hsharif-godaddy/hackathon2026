@@ -3,30 +3,54 @@ package fileops
 import (
 	"context"
 	"encoding/json"
-	"os"
-	"path/filepath"
-	"strings"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/supervisor"
 	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/tool"
 )
 
-func setupTestDir(t *testing.T) string {
+// setupReadFileServer creates a test HTTP server that mocks the supervisor /fs/read endpoint.
+// files maps relative path -> file content.
+func setupReadFileServer(
+	t *testing.T, files map[string]string,
+) (*httptest.Server, *supervisor.ClientFactory, context.Context) {
 	t.Helper()
-	dir := t.TempDir()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/fs/read":
+			var req supervisor.FSReadRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "bad_request", "message": err.Error()})
+				return
+			}
+			content, ok := files[req.Path]
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				json.NewEncoder(w).Encode(map[string]string{"error": "not_found", "message": "file does not exist"})
+				return
+			}
+			json.NewEncoder(w).Encode(supervisor.FSReadResponse{
+				Content:   content,
+				Size:      int64(len(content)),
+				TotalSize: int64(len(content)),
+				Encoding:  "utf-8",
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
 
-	// Create a sample file with known content
-	content := "line one\nline two\nline three\nline four\nline five\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "sample.txt"), []byte(content), 0o644))
+	factory := supervisor.NewClientFactory()
+	addr := "http://" + srv.Listener.Addr().String()
+	ctx := tool.TestContextWithSupervisor("", addr)
 
-	// Create a nested file
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "sub"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "sub", "nested.txt"), []byte("nested content\n"), 0o644))
-
-	return dir
+	return srv, factory, ctx
 }
 
 func execReadFile(ctx context.Context, t *testing.T, rf tool.Tool, input map[string]any) (string, string) {
@@ -42,9 +66,11 @@ func execReadFile(ctx context.Context, t *testing.T, rf tool.Tool, input map[str
 }
 
 func TestReadFileFullFile(t *testing.T) {
-	dir := setupTestDir(t)
-	ctx := tool.TestContext(dir)
-	rf := NewReadFile()
+	srv, factory, ctx := setupReadFileServer(t, map[string]string{
+		"sample.txt": "line one\nline two\nline three\nline four\nline five\n",
+	})
+	defer srv.Close()
+	rf := NewReadFile(factory)
 
 	out, errStr := execReadFile(ctx, t, rf, map[string]any{"path": "sample.txt"})
 	assert.Empty(t, errStr)
@@ -55,9 +81,11 @@ func TestReadFileFullFile(t *testing.T) {
 }
 
 func TestReadFilePartialRead(t *testing.T) {
-	dir := setupTestDir(t)
-	ctx := tool.TestContext(dir)
-	rf := NewReadFile()
+	srv, factory, ctx := setupReadFileServer(t, map[string]string{
+		"sample.txt": "line one\nline two\nline three\nline four\nline five\n",
+	})
+	defer srv.Close()
+	rf := NewReadFile(factory)
 
 	out, errStr := execReadFile(ctx, t, rf, map[string]any{
 		"path":      "sample.txt",
@@ -73,9 +101,9 @@ func TestReadFilePartialRead(t *testing.T) {
 }
 
 func TestReadFileNotFound(t *testing.T) {
-	dir := setupTestDir(t)
-	ctx := tool.TestContext(dir)
-	rf := NewReadFile()
+	srv, factory, ctx := setupReadFileServer(t, map[string]string{})
+	defer srv.Close()
+	rf := NewReadFile(factory)
 
 	var stream tool.BufferedStream
 	data, _ := json.Marshal(map[string]any{"path": "nonexistent.txt"})
@@ -84,22 +112,12 @@ func TestReadFileNotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "does not exist")
 }
 
-func TestReadFilePathTraversal(t *testing.T) {
-	dir := setupTestDir(t)
-	ctx := tool.TestContext(dir)
-	rf := NewReadFile()
-
-	var stream tool.BufferedStream
-	data, _ := json.Marshal(map[string]any{"path": "../../../etc/passwd"})
-	err := rf.Execute(ctx, data, &stream)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "outside app directory")
-}
-
 func TestReadFileNestedPath(t *testing.T) {
-	dir := setupTestDir(t)
-	ctx := tool.TestContext(dir)
-	rf := NewReadFile()
+	srv, factory, ctx := setupReadFileServer(t, map[string]string{
+		"sub/nested.txt": "nested content\n",
+	})
+	defer srv.Close()
+	rf := NewReadFile(factory)
 
 	out, errStr := execReadFile(ctx, t, rf, map[string]any{"path": "sub/nested.txt"})
 	assert.Empty(t, errStr)
@@ -108,9 +126,11 @@ func TestReadFileNestedPath(t *testing.T) {
 }
 
 func TestReadFileStartLineBeyondEnd(t *testing.T) {
-	dir := setupTestDir(t)
-	ctx := tool.TestContext(dir)
-	rf := NewReadFile()
+	srv, factory, ctx := setupReadFileServer(t, map[string]string{
+		"sample.txt": "line one\nline two\nline three\nline four\nline five\n",
+	})
+	defer srv.Close()
+	rf := NewReadFile(factory)
 
 	var stream tool.BufferedStream
 	data, _ := json.Marshal(map[string]any{"path": "sample.txt", "startLine": 100})
@@ -120,7 +140,7 @@ func TestReadFileStartLineBeyondEnd(t *testing.T) {
 }
 
 func TestReadFileToolMetadata(t *testing.T) {
-	rf := NewReadFile()
+	rf := NewReadFile(supervisor.NewClientFactory())
 
 	assert.Equal(t, "readFile", rf.Name())
 	assert.NotEmpty(t, rf.Description())
@@ -135,16 +155,12 @@ func TestReadFileToolMetadata(t *testing.T) {
 }
 
 func TestReadFileBlockedFiles(t *testing.T) {
-	dir := setupTestDir(t)
-	ctx := tool.TestContext(dir)
-	rf := NewReadFile()
-
-	// Create blocked files
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "package-lock.json"), []byte("{}"), 0o644))
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "node_modules", "pkg"), 0o755))
-	require.NoError(t, os.WriteFile(
-		filepath.Join(dir, "node_modules", "pkg", "index.js"), []byte("x"), 0o644,
-	))
+	srv, factory, ctx := setupReadFileServer(t, map[string]string{
+		"package-lock.json":         "{}",
+		"node_modules/pkg/index.js": "x",
+	})
+	defer srv.Close()
+	rf := NewReadFile(factory)
 
 	tests := []struct {
 		path string
@@ -162,20 +178,21 @@ func TestReadFileBlockedFiles(t *testing.T) {
 }
 
 func TestReadFileEmptyFile(t *testing.T) {
-	dir := setupTestDir(t)
-	ctx := tool.TestContext(dir)
-	rf := NewReadFile()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "empty.txt"), []byte(""), 0o644))
+	srv, factory, ctx := setupReadFileServer(t, map[string]string{
+		"empty.txt": "",
+	})
+	defer srv.Close()
+	rf := NewReadFile(factory)
 
 	out, errStr := execReadFile(ctx, t, rf, map[string]any{"path": "empty.txt"})
 	assert.Empty(t, errStr)
 	assert.Contains(t, out, "File: empty.txt")
 	assert.Contains(t, out, "Total lines: 0")
-	assert.Contains(t, strings.ToLower(out), "file size: 0 bytes")
+	assert.Contains(t, out, "File size: 0 bytes")
 }
 
 func TestReadFileMissingScope(t *testing.T) {
-	rf := NewReadFile()
+	rf := NewReadFile(supervisor.NewClientFactory())
 
 	var stream tool.BufferedStream
 	data, _ := json.Marshal(map[string]any{"path": "any.txt"})

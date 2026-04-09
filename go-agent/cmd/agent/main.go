@@ -22,6 +22,7 @@ import (
 	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/run"
 	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/session"
 	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/store"
+	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/supervisor"
 	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/tool"
 	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/tool/fileops"
 	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/tool/grep"
@@ -55,7 +56,8 @@ func main() {
 
 	// Tool registry.
 	toolReg := tool.NewRegistry()
-	registerNativeTools(toolReg)
+	svFactory := supervisor.NewClientFactory()
+	registerNativeTools(toolReg, svFactory)
 
 	// Start the TS bridge process and discover its tools.
 	bridge, err := startBridge(cfg, logger)
@@ -150,14 +152,12 @@ func resolvePromptsDir() string {
 	return filepath.Join(filepath.Dir(exe), "prompts")
 }
 
-func registerNativeTools(reg *tool.Registry) {
-	reg.Register(fileops.NewReadFile())
-	reg.Register(fileops.NewTextEditor())
-	reg.Register(fileops.NewDirectoryListing())
-	reg.Register(grep.NewSearch())
-	// terminalCommand requires a supervisor ClientFactory which is not
-	// yet wired in Phase 1. It will be registered when supervisor
-	// integration is added.
+func registerNativeTools(reg *tool.Registry, factory *supervisor.ClientFactory) {
+	reg.Register(fileops.NewReadFile(factory))
+	reg.Register(fileops.NewTextEditor(factory))
+	reg.Register(fileops.NewDirectoryListing(factory))
+	reg.Register(grep.NewSearch(factory))
+	// TODO: Register terminal.NewCommand(factory) once supervisor is available in prod.
 }
 
 func registerBridgeTools(reg *tool.Registry, socketPath string, logger *slog.Logger) {

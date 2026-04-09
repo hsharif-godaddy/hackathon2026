@@ -3,19 +3,22 @@ package fileops
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"os"
 	"strings"
 
+	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/supervisor"
 	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/tool"
 )
 
 // ReadFile implements the readFile tool — reads a file with line-numbered output.
-type ReadFile struct{}
+type ReadFile struct {
+	factory *supervisor.ClientFactory
+}
 
-// NewReadFile creates a readFile tool. The app root is resolved per-request from context.
-func NewReadFile() *ReadFile {
-	return &ReadFile{}
+// NewReadFile creates a readFile tool that reads files via the supervisor API.
+func NewReadFile(factory *supervisor.ClientFactory) *ReadFile {
+	return &ReadFile{factory: factory}
 }
 
 func (*ReadFile) Name() string        { return "readFile" }
@@ -49,26 +52,29 @@ func (rf *ReadFile) Execute(ctx context.Context, input json.RawMessage, out tool
 		return err
 	}
 
-	absPath, err := tool.ValidatePath(scope.AppRoot, in.Path)
-	if err != nil {
-		return err
-	}
-
 	if blockErr := tool.CheckBlocked(in.Path); blockErr != nil {
 		return blockErr
 	}
 
-	data, err := os.ReadFile(absPath)
+	client, err := rf.factory.Get(scope.SupervisorAddr)
 	if err != nil {
-		if os.IsNotExist(err) {
+		return fmt.Errorf("supervisor client: %w", err)
+	}
+
+	resp, err := client.FSRead(ctx, supervisor.FSReadRequest{
+		Path:     in.Path,
+		Encoding: "utf-8",
+	})
+	if err != nil {
+		if errors.Is(err, supervisor.ErrNotFound) {
 			return fmt.Errorf("file does not exist: %s", in.Path)
 		}
 		return fmt.Errorf("reading file: %w", err)
 	}
 
-	fileSize := int64(len(data))
+	fileSize := resp.TotalSize
 
-	lines := splitLines(string(data))
+	lines := splitLines(resp.Content)
 	totalLines := len(lines)
 
 	start := 1

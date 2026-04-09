@@ -218,6 +218,7 @@ func (s *Server) setupRoutes() {
 	fsRouter.HandleFunc("/unlink", s.handleFsUnlink).Methods("POST")
 	fsRouter.HandleFunc("/rename", s.handleFsRename).Methods("POST")
 	fsRouter.HandleFunc("/exists", s.handleFsExists).Methods("POST")
+	fsRouter.HandleFunc("/grep", s.handleFsGrep).Methods("POST")
 }
 
 func (s *Server) getConfiguredAddress() string {

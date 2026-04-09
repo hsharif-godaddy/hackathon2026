@@ -3,55 +3,34 @@ package grep
 import (
 	"context"
 	"encoding/json"
-	"os"
-	"path/filepath"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/supervisor"
 	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/tool"
 )
 
-func setupGrepDir(t *testing.T) string {
+// newGrepTest creates a Search tool wired to a mock supervisor that returns
+// the given response for /fs/grep requests.
+func newGrepTest(t *testing.T, resp supervisor.FSGrepResponse) (*Search, *httptest.Server, context.Context) {
 	t.Helper()
-	dir := t.TempDir()
-
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "src"), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "docs"), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "vendor"), 0o755))
-
-	files := map[string]string{
-		"src/main.go": `package main
-
-import "fmt"
-
-func main() {
-	fmt.Println("hello world")
-}
-`,
-		"src/util.go": `package main
-
-func add(a, b int) int {
-	return a + b
+	return newGrepTestWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	})
 }
 
-func multiply(a, b int) int {
-	return a * b
-}
-`,
-		"docs/README.md": `# Project
-This is a hello world project.
-Use fmt.Println for output.
-`,
-		"vendor/lib.go": `package vendor
-func Ignored() {}
-`,
-	}
-	for path, content := range files {
-		require.NoError(t, os.WriteFile(filepath.Join(dir, path), []byte(content), 0o644))
-	}
-	return dir
+func newGrepTestWithHandler(t *testing.T, handler http.HandlerFunc) (*Search, *httptest.Server, context.Context) {
+	t.Helper()
+	srv := httptest.NewServer(handler)
+	factory := supervisor.NewClientFactory()
+	addr := "http://" + srv.Listener.Addr().String()
+	ctx := tool.TestContextWithSupervisor("", addr)
+	return NewSearch(factory), srv, ctx
 }
 
 func execGrep(ctx context.Context, t *testing.T, g tool.Tool, input map[string]any) (string, error) {
@@ -64,21 +43,39 @@ func execGrep(ctx context.Context, t *testing.T, g tool.Tool, input map[string]a
 }
 
 func TestGrepLiteralSearch(t *testing.T) {
-	dir := setupGrepDir(t)
-	ctx := tool.TestContext(dir)
-	g := NewSearch()
+	g, srv, ctx := newGrepTest(t, supervisor.FSGrepResponse{
+		Matches: []supervisor.FSGrepMatch{
+			{File: "src/main.go", LineNum: 6, LineText: `fmt.Println("hello world")`},
+			{File: "docs/README.md", LineNum: 2, LineText: "This is a hello world project."},
+		},
+		TotalFiles: 2,
+	})
+	defer srv.Close()
 
 	out, err := execGrep(ctx, t, g, map[string]any{"query": "hello"})
 	require.NoError(t, err)
 	assert.Contains(t, out, "src/main.go")
 	assert.Contains(t, out, "hello world")
 	assert.Contains(t, out, "docs/README.md")
+	assert.Contains(t, out, "Found 2 matches across 2 files")
 }
 
 func TestGrepRegexSearch(t *testing.T) {
-	dir := setupGrepDir(t)
-	ctx := tool.TestContext(dir)
-	g := NewSearch()
+	g, srv, ctx := newGrepTestWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		var req supervisor.FSGrepRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		assert.True(t, req.Regex)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(supervisor.FSGrepResponse{
+			Matches: []supervisor.FSGrepMatch{
+				{File: "src/main.go", LineNum: 5, LineText: "func main() {"},
+				{File: "src/util.go", LineNum: 3, LineText: "func add(a, b int) int {"},
+			},
+			TotalFiles: 2,
+		})
+	})
+	defer srv.Close()
 
 	out, err := execGrep(ctx, t, g, map[string]any{
 		"query": "func \\w+\\(",
@@ -87,13 +84,23 @@ func TestGrepRegexSearch(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "func main(")
 	assert.Contains(t, out, "func add(")
-	assert.Contains(t, out, "func multiply(")
 }
 
 func TestGrepCaseInsensitive(t *testing.T) {
-	dir := setupGrepDir(t)
-	ctx := tool.TestContext(dir)
-	g := NewSearch()
+	g, srv, ctx := newGrepTestWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		var req supervisor.FSGrepRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		assert.False(t, req.CaseSensitive)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(supervisor.FSGrepResponse{
+			Matches: []supervisor.FSGrepMatch{
+				{File: "src/main.go", LineNum: 6, LineText: `fmt.Println("hello world")`},
+			},
+			TotalFiles: 1,
+		})
+	})
+	defer srv.Close()
 
 	out, err := execGrep(ctx, t, g, map[string]any{
 		"query":         "HELLO",
@@ -104,51 +111,97 @@ func TestGrepCaseInsensitive(t *testing.T) {
 }
 
 func TestGrepCaseSensitive(t *testing.T) {
-	dir := setupGrepDir(t)
-	ctx := tool.TestContext(dir)
-	g := NewSearch()
+	g, srv, ctx := newGrepTestWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		var req supervisor.FSGrepRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		assert.True(t, req.CaseSensitive)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(supervisor.FSGrepResponse{
+			Matches:    []supervisor.FSGrepMatch{},
+			TotalFiles: 0,
+		})
+	})
+	defer srv.Close()
 
 	out, err := execGrep(ctx, t, g, map[string]any{
 		"query":         "HELLO",
 		"caseSensitive": true,
 	})
 	require.NoError(t, err)
-	assert.NotContains(t, out, "hello")
+	assert.Contains(t, out, "No matches found")
 }
 
 func TestGrepContextLines(t *testing.T) {
-	dir := setupGrepDir(t)
-	ctx := tool.TestContext(dir)
-	g := NewSearch()
+	g, srv, ctx := newGrepTestWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		var req supervisor.FSGrepRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		assert.Equal(t, 1, req.ContextLines)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(supervisor.FSGrepResponse{
+			Matches: []supervisor.FSGrepMatch{
+				{
+					File:          "src/main.go",
+					LineNum:       6,
+					LineText:      `fmt.Println("hello")`,
+					ContextBefore: []string{"func main() {"},
+					ContextAfter:  []string{"}"},
+				},
+			},
+			TotalFiles: 1,
+		})
+	})
+	defer srv.Close()
 
 	out, err := execGrep(ctx, t, g, map[string]any{
-		"query":        "fmt.Println",
+		"query":        "Println",
 		"contextLines": 1,
 	})
 	require.NoError(t, err)
 	assert.Contains(t, out, "fmt.Println")
-	// Should have context lines around the match
 	assert.Contains(t, out, "func main()")
 }
 
 func TestGrepMaxResults(t *testing.T) {
-	dir := setupGrepDir(t)
-	ctx := tool.TestContext(dir)
-	g := NewSearch()
+	g, srv, ctx := newGrepTestWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		var req supervisor.FSGrepRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		assert.Equal(t, 1, req.MaxResults)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(supervisor.FSGrepResponse{
+			Matches: []supervisor.FSGrepMatch{
+				{File: "src/main.go", LineNum: 5, LineText: "func main() {"},
+			},
+			TotalFiles: 1,
+		})
+	})
+	defer srv.Close()
 
 	out, err := execGrep(ctx, t, g, map[string]any{
 		"query":      "func",
 		"maxResults": 1,
 	})
 	require.NoError(t, err)
-	// Should only have 1 match
-	assert.Contains(t, out, "func")
+	assert.Contains(t, out, "Found 1 matches")
 }
 
 func TestGrepIncludePatterns(t *testing.T) {
-	dir := setupGrepDir(t)
-	ctx := tool.TestContext(dir)
-	g := NewSearch()
+	g, srv, ctx := newGrepTestWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		var req supervisor.FSGrepRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		assert.Equal(t, []string{"*.go"}, req.IncludePatterns)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(supervisor.FSGrepResponse{
+			Matches: []supervisor.FSGrepMatch{
+				{File: "src/main.go", LineNum: 6, LineText: `fmt.Println("hello world")`},
+			},
+			TotalFiles: 1,
+		})
+	})
+	defer srv.Close()
 
 	out, err := execGrep(ctx, t, g, map[string]any{
 		"query":           "hello",
@@ -160,9 +213,22 @@ func TestGrepIncludePatterns(t *testing.T) {
 }
 
 func TestGrepExcludePatterns(t *testing.T) {
-	dir := setupGrepDir(t)
-	ctx := tool.TestContext(dir)
-	g := NewSearch()
+	g, srv, ctx := newGrepTestWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		var req supervisor.FSGrepRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		// Should contain both blocked extensions and user-provided excludes.
+		assert.Contains(t, req.ExcludePatterns, "*.md")
+		assert.Contains(t, req.ExcludePatterns, "*.log")
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(supervisor.FSGrepResponse{
+			Matches: []supervisor.FSGrepMatch{
+				{File: "src/main.go", LineNum: 6, LineText: `fmt.Println("hello world")`},
+			},
+			TotalFiles: 1,
+		})
+	})
+	defer srv.Close()
 
 	out, err := execGrep(ctx, t, g, map[string]any{
 		"query":           "hello",
@@ -170,13 +236,23 @@ func TestGrepExcludePatterns(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Contains(t, out, "src/main.go")
-	assert.NotContains(t, out, "README.md")
 }
 
 func TestGrepPathFilter(t *testing.T) {
-	dir := setupGrepDir(t)
-	ctx := tool.TestContext(dir)
-	g := NewSearch()
+	g, srv, ctx := newGrepTestWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		var req supervisor.FSGrepRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		assert.Equal(t, []string{"docs/"}, req.Paths)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(supervisor.FSGrepResponse{
+			Matches: []supervisor.FSGrepMatch{
+				{File: "docs/README.md", LineNum: 2, LineText: "hello world project"},
+			},
+			TotalFiles: 1,
+		})
+	})
+	defer srv.Close()
 
 	out, err := execGrep(ctx, t, g, map[string]any{
 		"query": "hello",
@@ -187,20 +263,12 @@ func TestGrepPathFilter(t *testing.T) {
 	assert.NotContains(t, out, "src/main.go")
 }
 
-func TestGrepIgnoresVendor(t *testing.T) {
-	dir := setupGrepDir(t)
-	ctx := tool.TestContext(dir)
-	g := NewSearch()
-
-	out, err := execGrep(ctx, t, g, map[string]any{"query": "Ignored"})
-	require.NoError(t, err)
-	assert.NotContains(t, out, "vendor")
-}
-
 func TestGrepNoResults(t *testing.T) {
-	dir := setupGrepDir(t)
-	ctx := tool.TestContext(dir)
-	g := NewSearch()
+	g, srv, ctx := newGrepTest(t, supervisor.FSGrepResponse{
+		Matches:    []supervisor.FSGrepMatch{},
+		TotalFiles: 0,
+	})
+	defer srv.Close()
 
 	out, err := execGrep(ctx, t, g, map[string]any{"query": "nonexistent_string_xyz"})
 	require.NoError(t, err)
@@ -208,7 +276,8 @@ func TestGrepNoResults(t *testing.T) {
 }
 
 func TestGrepToolMetadata(t *testing.T) {
-	g := NewSearch()
+	factory := supervisor.NewClientFactory()
+	g := NewSearch(factory)
 
 	assert.Equal(t, "grepSearch", g.Name())
 	assert.NotEmpty(t, g.Description())
@@ -221,72 +290,59 @@ func TestGrepToolMetadata(t *testing.T) {
 	assert.Contains(t, props, "caseSensitive")
 }
 
-func TestGrepPathTraversal(t *testing.T) {
-	dir := setupGrepDir(t)
-	ctx := tool.TestContext(dir)
-	g := NewSearch()
-
-	_, err := execGrep(ctx, t, g, map[string]any{
-		"query": "root",
-		"paths": []string{"../../../etc"},
-	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "outside app directory")
-}
-
 func TestGrepGroupedByFile(t *testing.T) {
-	dir := setupGrepDir(t)
-	ctx := tool.TestContext(dir)
-	g := NewSearch()
+	g, srv, ctx := newGrepTest(t, supervisor.FSGrepResponse{
+		Matches: []supervisor.FSGrepMatch{
+			{File: "src/main.go", LineNum: 5, LineText: "func main() {"},
+			{File: "src/util.go", LineNum: 3, LineText: "func add(a, b int) int {"},
+			{File: "src/util.go", LineNum: 7, LineText: "func multiply(a, b int) int {"},
+		},
+		TotalFiles: 2,
+	})
+	defer srv.Close()
 
 	out, err := execGrep(ctx, t, g, map[string]any{"query": "func"})
 	require.NoError(t, err)
-	// Output should have file headers
 	assert.Contains(t, out, "src/main.go:")
 	assert.Contains(t, out, "src/util.go:")
 }
 
-func TestGrepSkipsBinaryFiles(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "src"), 0o755))
+func TestGrepBlockedExtensionsSentAsExcludes(t *testing.T) {
+	g, srv, ctx := newGrepTestWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		var req supervisor.FSGrepRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		// Agent should send blocked extensions as exclude patterns.
+		assert.Contains(t, req.ExcludePatterns, "*.log")
+		assert.Contains(t, req.ExcludePatterns, "*.db")
+		assert.Contains(t, req.ExcludePatterns, "*.png")
 
-	// Text file with searchable content
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "src", "main.go"), []byte("hello world\n"), 0o644))
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(supervisor.FSGrepResponse{
+			Matches:    []supervisor.FSGrepMatch{},
+			TotalFiles: 0,
+		})
+	})
+	defer srv.Close()
 
-	// Binary file: uses .bin2 (not .bin) to bypass the extension check and
-	// exercise the null-byte sniff path instead.
-	bin := make([]byte, 100)
-	copy(bin, []byte("hello world"))
-	bin[50] = 0 // null byte
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "src", "data.bin2"), bin, 0o644))
-
-	ctx := tool.TestContext(dir)
-	g := NewSearch()
-
-	out, err := execGrep(ctx, t, g, map[string]any{"query": "hello"})
+	_, err := execGrep(ctx, t, g, map[string]any{"query": "test"})
 	require.NoError(t, err)
-	assert.Contains(t, out, "src/main.go")
-	assert.NotContains(t, out, "data.bin2", "binary file with null bytes should be skipped")
 }
 
-func TestGrepSkipsBlockedExtensions(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "logs"), 0o755))
+func TestGrepBlockedPathsRejected(t *testing.T) {
+	g, srv, ctx := newGrepTest(t, supervisor.FSGrepResponse{})
+	defer srv.Close()
 
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.go"), []byte("findme\n"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "logs", "app.log"), []byte("findme\n"), 0o644))
-
-	ctx := tool.TestContext(dir)
-	g := NewSearch()
-
-	out, err := execGrep(ctx, t, g, map[string]any{"query": "findme"})
-	require.NoError(t, err)
-	assert.Contains(t, out, "main.go")
-	assert.NotContains(t, out, "app.log", ".log files should be skipped via BlockedExtensions")
+	_, err := execGrep(ctx, t, g, map[string]any{
+		"query": "test",
+		"paths": []string{"node_modules/pkg"},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "blocked")
 }
 
 func TestGrepMissingScope(t *testing.T) {
-	g := NewSearch()
+	factory := supervisor.NewClientFactory()
+	g := NewSearch(factory)
 
 	var stream tool.BufferedStream
 	data, _ := json.Marshal(map[string]any{"query": "test"})

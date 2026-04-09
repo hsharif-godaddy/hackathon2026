@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -10,7 +13,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -281,10 +286,11 @@ func validateReaddirRequest(req *validation.FileReaddirRequest) error {
 		return fmt.Errorf("max_entries must be between 1 and %d", maxMaxEntries)
 	}
 	if req.Recursive && req.MaxDepth == 0 {
+		// 0 means "unspecified" — default to max depth for recursive listing.
 		req.MaxDepth = maxMaxDepth
 	}
 	if req.MaxDepth < 0 || req.MaxDepth > maxMaxDepth {
-		return fmt.Errorf("max_depth must be between 0 and %d", maxMaxDepth)
+		return fmt.Errorf("max_depth must be between 1 and %d (or 0 for default)", maxMaxDepth)
 	}
 	for _, p := range req.IgnorePatterns {
 		if _, err := filepath.Match(p, ""); err != nil {
@@ -561,6 +567,345 @@ func (s *Server) handleFsExists(w http.ResponseWriter, r *http.Request) {
 	}); err != nil {
 		slog.Error("failed to encode JSON response", "error", err)
 	}
+}
+
+// Default ignored directories for grep operations. Do not modify at runtime.
+var defaultIgnoredDirs = []string{
+	"node_modules", ".git", ".svn", ".hg", "vendor", "dist", "build", "out",
+	"target", ".next", ".nuxt", ".vscode", ".idea", ".cache", ".parcel-cache",
+	"coverage", ".nyc_output", "__pycache__", ".pytest_cache", ".mypy_cache",
+	"venv", ".turbo", ".pnpm", ".yarn", ".vite",
+}
+
+// Default blocked file extensions for grep operations. Do not modify at runtime.
+var defaultBlockedExts = []string{
+	".zip", ".tar", ".gz", ".rar", ".7z", ".bin", ".exe", ".dll", ".so", ".dylib",
+	".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".woff", ".woff2", ".ttf", ".eot",
+	".db", ".sqlite", ".sqlite3", ".log",
+}
+
+const (
+	defaultGrepMaxResults = 50
+	maxGrepMaxResults     = 1000
+	maxGrepContextLines   = 10
+
+	rgTypeMatch   = "match"
+	rgTypeContext = "context"
+)
+
+func (s *Server) handleFsGrep(w http.ResponseWriter, r *http.Request) {
+	var req validation.FileGrepRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
+		return
+	}
+
+	if strings.TrimSpace(req.Query) == "" {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", "query cannot be empty")
+		return
+	}
+
+	if req.MaxResults == 0 {
+		req.MaxResults = defaultGrepMaxResults
+	}
+	if req.MaxResults < 1 || req.MaxResults > maxGrepMaxResults {
+		s.sendError(w, http.StatusBadRequest, "validation_failed",
+			fmt.Sprintf("max_results must be between 1 and %d", maxGrepMaxResults))
+		return
+	}
+
+	if req.ContextLines < 0 {
+		req.ContextLines = 0
+	}
+	if req.ContextLines > maxGrepContextLines {
+		req.ContextLines = maxGrepContextLines
+	}
+
+	baseDir := s.fsBaseDir()
+
+	// Resolve search paths
+	var searchPaths []string
+	if len(req.Paths) == 0 {
+		searchPaths = []string{baseDir}
+	} else {
+		for _, p := range req.Paths {
+			resolved, err := validation.ValidateFilePath(p, baseDir)
+			if err != nil {
+				s.sendError(w, http.StatusBadRequest, "validation_failed", fmt.Sprintf("path %q: %s", p, err.Error()))
+				return
+			}
+			searchPaths = append(searchPaths, resolved)
+		}
+	}
+
+	slog.Debug("fs.grep.start", "query", req.Query, "paths", searchPaths, "regex", req.Regex)
+
+	// Build rg command args
+	args := []string{"--json", "--sort", "path"}
+
+	if !req.Regex {
+		args = append(args, "-F")
+	}
+	if !req.CaseSensitive {
+		args = append(args, "-i")
+	}
+	if req.ContextLines > 0 {
+		args = append(args, "-C", strconv.Itoa(req.ContextLines))
+	}
+
+	// Default ignores
+	if !req.NoDefaultIgnores {
+		for _, dir := range defaultIgnoredDirs {
+			args = append(args, "--glob", fmt.Sprintf("!%s", dir))
+		}
+		for _, ext := range defaultBlockedExts {
+			args = append(args, "--glob", fmt.Sprintf("!*%s", ext))
+		}
+	}
+
+	// Caller-provided patterns
+	for _, p := range req.IncludePatterns {
+		args = append(args, "--glob", p)
+	}
+	for _, p := range req.ExcludePatterns {
+		args = append(args, "--glob", fmt.Sprintf("!%s", p))
+	}
+
+	// Query and search paths
+	args = append(args, "--", req.Query)
+	args = append(args, searchPaths...)
+
+	resp, err := s.executeRipgrep(r.Context(), args, baseDir, req.MaxResults, req.ContextLines)
+	if err != nil {
+		var userErr *rgUserError
+		if errors.As(err, &userErr) {
+			slog.Warn("fs.grep.user_error", "error", err)
+			s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
+			return
+		}
+		slog.Error("fs.grep.failed", "error", err)
+		s.sendError(w, http.StatusInternalServerError, "grep_failed", err.Error())
+		return
+	}
+
+	slog.Debug("fs.grep.completed", "matches", len(resp.Matches), "total_files", resp.TotalFiles)
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		slog.Error("failed to encode JSON response", "error", err)
+	}
+}
+
+// rgUserError indicates a user-input error from ripgrep (e.g., invalid regex or glob pattern).
+type rgUserError struct {
+	message string
+}
+
+func (e *rgUserError) Error() string {
+	return e.message
+}
+
+// rgJSONMessage represents a single line of ripgrep JSON output.
+type rgJSONMessage struct {
+	Type string          `json:"type"`
+	Data json.RawMessage `json:"data"`
+}
+
+// rgMatchData represents the data field of a "match" type message.
+type rgMatchData struct {
+	Path       rgText `json:"path"`
+	Lines      rgText `json:"lines"`
+	LineNumber int    `json:"line_number"`
+}
+
+// rgContextData represents the data field of a "context" type message.
+type rgContextData struct {
+	Path       rgText `json:"path"`
+	Lines      rgText `json:"lines"`
+	LineNumber int    `json:"line_number"`
+}
+
+// rgText represents a text field in ripgrep JSON output.
+type rgText struct {
+	Text string `json:"text"`
+}
+
+// executeRipgrep runs rg with the given args and parses the JSON output.
+func (s *Server) executeRipgrep(
+	ctx context.Context, args []string, baseDir string, maxResults int, contextLines int,
+) (validation.FileGrepResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "rg", args...)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	// rg exits 1 when no matches found, 2 for usage/pattern errors, other codes for internal errors
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			switch exitErr.ExitCode() {
+			case 1:
+				// No matches
+				return validation.FileGrepResponse{
+					Matches:    []validation.FileGrepMatch{},
+					TotalFiles: 0,
+				}, nil
+			case 2:
+				// Exit code 2: bad regex, invalid glob, or other user-input errors
+				return validation.FileGrepResponse{}, &rgUserError{message: stderr.String()}
+			}
+		}
+		return validation.FileGrepResponse{}, fmt.Errorf("rg failed: %s", stderr.String())
+	}
+
+	return parseRipgrepOutput(stdout.Bytes(), baseDir, maxResults, contextLines), nil
+}
+
+// rgLineEntry holds a parsed match or context line from ripgrep JSON output.
+type rgLineEntry struct {
+	msgType    string
+	filePath   string
+	lineNumber int
+	lineText   string
+}
+
+// parseRipgrepOutput parses ripgrep JSON output into FileGrepResponse.
+func parseRipgrepOutput(
+	data []byte, baseDir string, maxResults int, contextLines int,
+) validation.FileGrepResponse {
+	var entries []rgLineEntry
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	// Increase scanner buffer for long lines
+	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+
+		var msg rgJSONMessage
+		if err := json.Unmarshal(line, &msg); err != nil {
+			continue
+		}
+
+		switch msg.Type {
+		case rgTypeMatch:
+			var md rgMatchData
+			if err := json.Unmarshal(msg.Data, &md); err != nil {
+				continue
+			}
+			entries = append(entries, rgLineEntry{
+				msgType:    rgTypeMatch,
+				filePath:   md.Path.Text,
+				lineNumber: md.LineNumber,
+				lineText:   strings.TrimRight(md.Lines.Text, "\n\r"),
+			})
+		case rgTypeContext:
+			var cd rgContextData
+			if err := json.Unmarshal(msg.Data, &cd); err != nil {
+				continue
+			}
+			entries = append(entries, rgLineEntry{
+				msgType:    rgTypeContext,
+				filePath:   cd.Path.Text,
+				lineNumber: cd.LineNumber,
+				lineText:   strings.TrimRight(cd.Lines.Text, "\n\r"),
+			})
+		}
+	}
+
+	// Second pass: build matches with context
+	var matches []validation.FileGrepMatch
+	filesSet := make(map[string]struct{})
+	matchCount := 0
+
+	for i, entry := range entries {
+		if entry.msgType != rgTypeMatch {
+			continue
+		}
+		if matchCount >= maxResults {
+			break
+		}
+
+		relPath := entry.filePath
+		if filepath.IsAbs(relPath) {
+			if rel, err := filepath.Rel(baseDir, relPath); err == nil {
+				relPath = rel
+			}
+		}
+		filesSet[relPath] = struct{}{}
+
+		match := validation.FileGrepMatch{
+			File:     relPath,
+			LineNum:  entry.lineNumber,
+			LineText: entry.lineText,
+		}
+
+		if contextLines > 0 {
+			match.ContextBefore = gatherContextBefore(entries, i, contextLines)
+			match.ContextAfter = gatherContextAfter(entries, i, contextLines)
+		}
+
+		matches = append(matches, match)
+		matchCount++
+	}
+
+	if matches == nil {
+		matches = []validation.FileGrepMatch{}
+	}
+
+	return validation.FileGrepResponse{
+		Matches:    matches,
+		TotalFiles: len(filesSet),
+	}
+}
+
+// gatherContextBefore collects context lines preceding the match at index i.
+func gatherContextBefore(entries []rgLineEntry, i int, contextLines int) []string {
+	entry := entries[i]
+	var reversed []string
+	for j := i - 1; j >= 0; j-- {
+		ce := entries[j]
+		if ce.filePath != entry.filePath || ce.msgType == rgTypeMatch {
+			break
+		}
+		if ce.lineNumber < entry.lineNumber-contextLines {
+			break
+		}
+		if ce.msgType == rgTypeContext && ce.lineNumber < entry.lineNumber {
+			reversed = append(reversed, ce.lineText)
+		}
+	}
+	// Reverse to get chronological order.
+	for left, right := 0, len(reversed)-1; left < right; left, right = left+1, right-1 {
+		reversed[left], reversed[right] = reversed[right], reversed[left]
+	}
+	return reversed
+}
+
+// gatherContextAfter collects context lines following the match at index i.
+func gatherContextAfter(entries []rgLineEntry, i int, contextLines int) []string {
+	entry := entries[i]
+	var result []string
+	for j := i + 1; j < len(entries); j++ {
+		ce := entries[j]
+		if ce.filePath != entry.filePath || ce.msgType == rgTypeMatch {
+			break
+		}
+		if ce.lineNumber > entry.lineNumber+contextLines {
+			break
+		}
+		if ce.msgType == rgTypeContext && ce.lineNumber > entry.lineNumber {
+			result = append(result, ce.lineText)
+		}
+	}
+	return result
 }
 
 // fsMaxBodyMiddleware limits request body size on /fs endpoints.

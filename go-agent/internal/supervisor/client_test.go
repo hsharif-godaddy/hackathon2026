@@ -105,7 +105,7 @@ func TestExecHTTPError(t *testing.T) {
 
 	_, err := client.Exec(context.Background(), ExecRequest{Command: ""})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "status 400")
+	assert.ErrorIs(t, err, ErrValidation)
 }
 
 func TestHealthSuccess(t *testing.T) {

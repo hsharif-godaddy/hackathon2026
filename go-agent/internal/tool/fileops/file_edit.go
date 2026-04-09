@@ -4,11 +4,12 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
+	"strconv"
 	"strings"
 
+	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/supervisor"
 	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/tool"
 )
 
@@ -17,11 +18,13 @@ const immutableMarker = "TREAT AS IMMUTABLE"
 
 // TextEditor implements Anthropic's str_replace_based_edit_tool pattern.
 // TODO: Register as type "text_editor_20250728" once Anthropic SDK integration is in place.
-type TextEditor struct{}
+type TextEditor struct {
+	factory *supervisor.ClientFactory
+}
 
-// NewTextEditor creates a text editor tool. The app root is resolved per-request from context.
-func NewTextEditor() *TextEditor {
-	return &TextEditor{}
+// NewTextEditor creates a text editor tool that operates via the supervisor API.
+func NewTextEditor(factory *supervisor.ClientFactory) *TextEditor {
+	return &TextEditor{factory: factory}
 }
 
 func (*TextEditor) Name() string { return "str_replace_based_edit_tool" }
@@ -79,9 +82,9 @@ func (te *TextEditor) Execute(
 		return err
 	}
 
-	absPath, err := tool.ValidatePath(scope.AppRoot, in.Path)
+	client, err := te.factory.Get(scope.SupervisorAddr)
 	if err != nil {
-		return err
+		return fmt.Errorf("supervisor client: %w", err)
 	}
 
 	switch in.Command {
@@ -89,37 +92,39 @@ func (te *TextEditor) Execute(
 		if blockErr := tool.CheckBlocked(in.Path); blockErr != nil {
 			return blockErr
 		}
-		return te.view(absPath, in, out)
+		return te.view(ctx, client, in, out)
 	case "str_replace":
 		if blockErr := tool.CheckBlocked(in.Path); blockErr != nil {
 			return blockErr
 		}
-		return te.strReplace(absPath, in, out)
+		return te.strReplace(ctx, client, in, out)
 	case "create":
 		if blockErr := tool.CheckBlocked(in.Path); blockErr != nil {
 			return blockErr
 		}
-		return te.create(absPath, in, out)
+		return te.create(ctx, client, in, out)
 	case "insert":
 		if blockErr := tool.CheckBlocked(in.Path); blockErr != nil {
 			return blockErr
 		}
-		return te.insert(absPath, in, out)
+		return te.insert(ctx, client, in, out)
 	default:
 		return fmt.Errorf("unknown command: %s", in.Command)
 	}
 }
 
-func (te *TextEditor) strReplace(absPath string, in textEditorInput, out tool.OutputStream) error {
-	data, err := os.ReadFile(absPath)
+func (te *TextEditor) strReplace(
+	ctx context.Context, client *supervisor.Client, in textEditorInput, out tool.OutputStream,
+) error {
+	resp, err := client.FSRead(ctx, supervisor.FSReadRequest{Path: in.Path, Encoding: "utf-8"})
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, supervisor.ErrNotFound) {
 			return fmt.Errorf("file does not exist: %s", in.Path)
 		}
 		return fmt.Errorf("reading file: %w", err)
 	}
 
-	content := string(data)
+	content := resp.Content
 	if isImmutable(content) {
 		return fmt.Errorf("file is immutable: %s", in.Path)
 	}
@@ -136,14 +141,18 @@ func (te *TextEditor) strReplace(absPath string, in textEditorInput, out tool.Ou
 	}
 
 	// Preserve original file permissions.
-	info, err := os.Stat(absPath)
-	mode := os.FileMode(0o644)
-	if err == nil {
-		mode = info.Mode()
+	mode := 0
+	statResp, statErr := client.FSStat(ctx, supervisor.FSStatRequest{Path: in.Path})
+	if statErr == nil {
+		mode = parseOctalPermissions(statResp.Permissions)
 	}
 
 	newContent := strings.Replace(content, in.OldStr, in.NewStr, 1)
-	if err := os.WriteFile(absPath, []byte(newContent), mode); err != nil {
+	writeReq := supervisor.FSWriteRequest{Path: in.Path, Content: newContent, Encoding: "utf-8"}
+	if mode != 0 {
+		writeReq.Mode = mode
+	}
+	if _, err := client.FSWrite(ctx, writeReq); err != nil {
 		return fmt.Errorf("writing file: %w", err)
 	}
 
@@ -154,23 +163,30 @@ func (te *TextEditor) strReplace(absPath string, in textEditorInput, out tool.Ou
 // create writes file_text to the given path, creating parent directories as needed.
 // If the file already exists it is overwritten (this matches the Anthropic text editor
 // behaviour where "create" is used for both new files and full-file replacements).
-func (te *TextEditor) create(absPath string, in textEditorInput, out tool.OutputStream) error {
+func (te *TextEditor) create(
+	ctx context.Context, client *supervisor.Client, in textEditorInput, out tool.OutputStream,
+) error {
 	if isImmutable(in.FileText) {
 		return fmt.Errorf("cannot create file marked as immutable: %s", in.Path)
 	}
 
-	// Preserve existing permissions on overwrite; default to 0o644 for new files.
-	mode := os.FileMode(0o644)
-	if info, statErr := os.Stat(absPath); statErr == nil {
-		mode = info.Mode()
+	// Preserve existing permissions on overwrite; default handled by supervisor (0644).
+	mode := 0
+	statResp, statErr := client.FSStat(ctx, supervisor.FSStatRequest{Path: in.Path})
+	if statErr == nil {
+		mode = parseOctalPermissions(statResp.Permissions)
 	}
 
-	dir := filepath.Dir(absPath)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return fmt.Errorf("creating directories: %w", err)
+	writeReq := supervisor.FSWriteRequest{
+		Path:     in.Path,
+		Content:  in.FileText,
+		Encoding: "utf-8",
+		MkdirP:   true,
 	}
-
-	if err := os.WriteFile(absPath, []byte(in.FileText), mode); err != nil {
+	if mode != 0 {
+		writeReq.Mode = mode
+	}
+	if _, err := client.FSWrite(ctx, writeReq); err != nil {
 		return fmt.Errorf("writing file: %w", err)
 	}
 
@@ -178,25 +194,27 @@ func (te *TextEditor) create(absPath string, in textEditorInput, out tool.Output
 	return nil
 }
 
-func (te *TextEditor) view(absPath string, in textEditorInput, out tool.OutputStream) error {
+func (te *TextEditor) view(
+	ctx context.Context, client *supervisor.Client, in textEditorInput, out tool.OutputStream,
+) error {
 	// Check if path is a directory.
-	info, err := os.Stat(absPath)
+	statResp, err := client.FSStat(ctx, supervisor.FSStatRequest{Path: in.Path})
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, supervisor.ErrNotFound) {
 			return fmt.Errorf("file does not exist: %s", in.Path)
 		}
 		return fmt.Errorf("stat: %w", err)
 	}
-	if info.IsDir() {
-		return te.viewDirectory(absPath, in, out)
+	if statResp.IsDir {
+		return te.viewDirectory(ctx, client, in, out)
 	}
 
-	data, err := os.ReadFile(absPath)
+	resp, err := client.FSRead(ctx, supervisor.FSReadRequest{Path: in.Path, Encoding: "utf-8"})
 	if err != nil {
 		return fmt.Errorf("reading file: %w", err)
 	}
 
-	lines := splitLines(string(data))
+	lines := splitLines(resp.Content)
 	totalLines := len(lines)
 
 	start := 1
@@ -227,17 +245,17 @@ func (te *TextEditor) view(absPath string, in textEditorInput, out tool.OutputSt
 }
 
 func (te *TextEditor) viewDirectory(
-	absPath string, _ textEditorInput, out tool.OutputStream,
+	ctx context.Context, client *supervisor.Client, in textEditorInput, out tool.OutputStream,
 ) error {
-	entries, err := os.ReadDir(absPath)
+	resp, err := client.FSReaddir(ctx, supervisor.FSReaddirRequest{Path: in.Path})
 	if err != nil {
 		return fmt.Errorf("reading directory: %w", err)
 	}
 
 	var b strings.Builder
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() {
+	for _, e := range resp.Entries {
+		name := e.Name
+		if e.IsDir {
 			name += "/"
 		}
 		fmt.Fprintf(&b, "%s\n", name)
@@ -246,16 +264,18 @@ func (te *TextEditor) viewDirectory(
 	return nil
 }
 
-func (te *TextEditor) insert(absPath string, in textEditorInput, out tool.OutputStream) error {
-	data, err := os.ReadFile(absPath)
+func (te *TextEditor) insert(
+	ctx context.Context, client *supervisor.Client, in textEditorInput, out tool.OutputStream,
+) error {
+	resp, err := client.FSRead(ctx, supervisor.FSReadRequest{Path: in.Path, Encoding: "utf-8"})
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, supervisor.ErrNotFound) {
 			return fmt.Errorf("file does not exist: %s", in.Path)
 		}
 		return fmt.Errorf("reading file: %w", err)
 	}
 
-	content := string(data)
+	content := resp.Content
 	if isImmutable(content) {
 		return fmt.Errorf("file is immutable: %s", in.Path)
 	}
@@ -274,10 +294,10 @@ func (te *TextEditor) insert(absPath string, in textEditorInput, out tool.Output
 	}
 
 	// Preserve original file permissions.
-	info, statErr := os.Stat(absPath)
-	mode := os.FileMode(0o644)
+	mode := 0
+	statResp, statErr := client.FSStat(ctx, supervisor.FSStatRequest{Path: in.Path})
 	if statErr == nil {
-		mode = info.Mode()
+		mode = parseOctalPermissions(statResp.Permissions)
 	}
 
 	var b strings.Builder
@@ -289,12 +309,26 @@ func (te *TextEditor) insert(absPath string, in textEditorInput, out tool.Output
 		b.WriteString(lines[i])
 	}
 
-	if err := os.WriteFile(absPath, []byte(b.String()), mode); err != nil {
+	writeReq := supervisor.FSWriteRequest{Path: in.Path, Content: b.String(), Encoding: "utf-8"}
+	if mode != 0 {
+		writeReq.Mode = mode
+	}
+	if _, err := client.FSWrite(ctx, writeReq); err != nil {
 		return fmt.Errorf("writing file: %w", err)
 	}
 
 	out.Write(fmt.Sprintf("Successfully inserted text at line %d in %s\n", insertLine, in.Path))
 	return nil
+}
+
+// parseOctalPermissions parses an octal permissions string (e.g. "0755") into an int.
+// Returns 0 on parse failure, which callers treat as "use default".
+func parseOctalPermissions(perms string) int {
+	v, err := strconv.ParseInt(perms, 8, 32)
+	if err != nil {
+		return 0
+	}
+	return int(v)
 }
 
 // isImmutable checks if the first line of content contains the immutable marker.

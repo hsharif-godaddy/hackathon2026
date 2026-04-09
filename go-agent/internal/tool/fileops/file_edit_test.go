@@ -3,15 +3,181 @@ package fileops
 import (
 	"context"
 	"encoding/json"
-	"os"
-	"path/filepath"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/supervisor"
 	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/tool"
 )
+
+// mockFS is an in-memory filesystem used by the test supervisor server.
+type mockFS struct {
+	mu    sync.RWMutex
+	files map[string]mockFile       // path -> file
+	dirs  map[string][]mockDirEntry // path -> entries
+}
+
+type mockFile struct {
+	content     string
+	permissions string // octal e.g. "0644"
+}
+
+type mockDirEntry struct {
+	name  string
+	isDir bool
+}
+
+func newMockFS() *mockFS {
+	return &mockFS{
+		files: make(map[string]mockFile),
+		dirs:  make(map[string][]mockDirEntry),
+	}
+}
+
+func (fs *mockFS) setFile(path, content, perms string) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	fs.files[path] = mockFile{content: content, permissions: perms}
+}
+
+func (fs *mockFS) getFile(path string) (mockFile, bool) {
+	fs.mu.RLock()
+	defer fs.mu.RUnlock()
+	f, ok := fs.files[path]
+	return f, ok
+}
+
+func (fs *mockFS) setDir(path string, entries []mockDirEntry) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	fs.dirs[path] = entries
+}
+
+// setupTextEditorServer creates a test HTTP server that mocks supervisor fs endpoints.
+func setupTextEditorServer(t *testing.T, fs *mockFS) (*httptest.Server, *supervisor.ClientFactory, context.Context) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/fs/read":
+			var req supervisor.FSReadRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "bad_request", "message": err.Error()})
+				return
+			}
+			f, ok := fs.getFile(req.Path)
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				json.NewEncoder(w).Encode(map[string]string{"error": "not_found", "message": "file does not exist"})
+				return
+			}
+			json.NewEncoder(w).Encode(supervisor.FSReadResponse{
+				Content:   f.content,
+				Size:      int64(len(f.content)),
+				TotalSize: int64(len(f.content)),
+				Encoding:  "utf-8",
+			})
+
+		case "/fs/write":
+			var req supervisor.FSWriteRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "bad_request", "message": err.Error()})
+				return
+			}
+			perms := "0644"
+			if req.Mode != 0 {
+				perms = "0" + strconv.FormatInt(int64(req.Mode), 8)
+			}
+			// Check if file exists to preserve permissions if mode not specified.
+			if req.Mode == 0 {
+				if existing, ok := fs.getFile(req.Path); ok {
+					perms = existing.permissions
+				}
+			}
+			fs.setFile(req.Path, req.Content, perms)
+			json.NewEncoder(w).Encode(supervisor.FSWriteResponse{
+				BytesWritten: int64(len(req.Content)),
+			})
+
+		case "/fs/stat":
+			var req supervisor.FSStatRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "bad_request", "message": err.Error()})
+				return
+			}
+			// Check dirs first.
+			fs.mu.RLock()
+			_, isDir := fs.dirs[req.Path]
+			fs.mu.RUnlock()
+			if isDir {
+				json.NewEncoder(w).Encode(supervisor.FSStatResponse{
+					IsDir:       true,
+					IsFile:      false,
+					Permissions: "0755",
+				})
+				return
+			}
+			f, ok := fs.getFile(req.Path)
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				json.NewEncoder(w).Encode(map[string]string{"error": "not_found", "message": "file does not exist"})
+				return
+			}
+			json.NewEncoder(w).Encode(supervisor.FSStatResponse{
+				Size:        int64(len(f.content)),
+				IsDir:       false,
+				IsFile:      true,
+				Permissions: f.permissions,
+			})
+
+		case "/fs/readdir":
+			var req supervisor.FSReaddirRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "bad_request", "message": err.Error()})
+				return
+			}
+			fs.mu.RLock()
+			entries, ok := fs.dirs[req.Path]
+			fs.mu.RUnlock()
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				json.NewEncoder(w).Encode(map[string]string{
+					"error": "not_found", "message": "directory does not exist",
+				})
+				return
+			}
+			var dirEntries []supervisor.FSDirEntry
+			for _, e := range entries {
+				dirEntries = append(dirEntries, supervisor.FSDirEntry{
+					Name:  e.name,
+					IsDir: e.isDir,
+				})
+			}
+			json.NewEncoder(w).Encode(supervisor.FSReaddirResponse{
+				Entries: dirEntries,
+			})
+
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+
+	factory := supervisor.NewClientFactory()
+	addr := "http://" + srv.Listener.Addr().String()
+	ctx := tool.TestContextWithSupervisor("", addr)
+
+	return srv, factory, ctx
+}
 
 func execTextEditor(ctx context.Context, t *testing.T, te tool.Tool, input map[string]any) (string, error) {
 	t.Helper()
@@ -23,11 +189,12 @@ func execTextEditor(ctx context.Context, t *testing.T, te tool.Tool, input map[s
 }
 
 func TestTextEditorStrReplace(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hello world\n"), 0o644))
+	fs := newMockFS()
+	fs.setFile("hello.txt", "hello world\n", "0644")
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
 
-	ctx := tool.TestContext(dir)
-	te := NewTextEditor()
+	te := NewTextEditor(factory)
 	out, err := execTextEditor(ctx, t, te, map[string]any{
 		"command": "str_replace",
 		"path":    "hello.txt",
@@ -37,17 +204,18 @@ func TestTextEditorStrReplace(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "replaced")
 
-	content, _ := os.ReadFile(filepath.Join(dir, "hello.txt"))
-	assert.Equal(t, "goodbye world\n", string(content))
+	f, ok := fs.getFile("hello.txt")
+	require.True(t, ok)
+	assert.Equal(t, "goodbye world\n", f.content)
 }
 
 func TestTextEditorStrReplacePreservesPermissions(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "script.sh")
-	require.NoError(t, os.WriteFile(path, []byte("#!/bin/bash\necho old\n"), 0o755))
+	fs := newMockFS()
+	fs.setFile("script.sh", "#!/bin/bash\necho old\n", "0755")
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
 
-	ctx := tool.TestContext(dir)
-	te := NewTextEditor()
+	te := NewTextEditor(factory)
 	_, err := execTextEditor(ctx, t, te, map[string]any{
 		"command": "str_replace",
 		"path":    "script.sh",
@@ -56,17 +224,18 @@ func TestTextEditorStrReplacePreservesPermissions(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	info, err := os.Stat(path)
-	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o755), info.Mode().Perm())
+	f, ok := fs.getFile("script.sh")
+	require.True(t, ok)
+	assert.Equal(t, "0755", f.permissions)
 }
 
 func TestTextEditorStrReplaceNotFound(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hello world\n"), 0o644))
+	fs := newMockFS()
+	fs.setFile("hello.txt", "hello world\n", "0644")
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
 
-	ctx := tool.TestContext(dir)
-	te := NewTextEditor()
+	te := NewTextEditor(factory)
 	_, err := execTextEditor(ctx, t, te, map[string]any{
 		"command": "str_replace",
 		"path":    "hello.txt",
@@ -78,11 +247,12 @@ func TestTextEditorStrReplaceNotFound(t *testing.T) {
 }
 
 func TestTextEditorStrReplaceMultipleMatches(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "dup.txt"), []byte("foo\nbar\nfoo\n"), 0o644))
+	fs := newMockFS()
+	fs.setFile("dup.txt", "foo\nbar\nfoo\n", "0644")
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
 
-	ctx := tool.TestContext(dir)
-	te := NewTextEditor()
+	te := NewTextEditor(factory)
 	_, err := execTextEditor(ctx, t, te, map[string]any{
 		"command": "str_replace",
 		"path":    "dup.txt",
@@ -94,10 +264,11 @@ func TestTextEditorStrReplaceMultipleMatches(t *testing.T) {
 }
 
 func TestTextEditorCreate(t *testing.T) {
-	dir := t.TempDir()
+	fs := newMockFS()
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
 
-	ctx := tool.TestContext(dir)
-	te := NewTextEditor()
+	te := NewTextEditor(factory)
 	out, err := execTextEditor(ctx, t, te, map[string]any{
 		"command":   "create",
 		"path":      "sub/new.txt",
@@ -106,16 +277,18 @@ func TestTextEditorCreate(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "created")
 
-	content, _ := os.ReadFile(filepath.Join(dir, "sub", "new.txt"))
-	assert.Equal(t, "new content\n", string(content))
+	f, ok := fs.getFile("sub/new.txt")
+	require.True(t, ok)
+	assert.Equal(t, "new content\n", f.content)
 }
 
 func TestTextEditorCreateOverwritesExisting(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "exists.txt"), []byte("old"), 0o644))
+	fs := newMockFS()
+	fs.setFile("exists.txt", "old", "0644")
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
 
-	ctx := tool.TestContext(dir)
-	te := NewTextEditor()
+	te := NewTextEditor(factory)
 	out, err := execTextEditor(ctx, t, te, map[string]any{
 		"command":   "create",
 		"path":      "exists.txt",
@@ -124,17 +297,18 @@ func TestTextEditorCreateOverwritesExisting(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "created")
 
-	content, _ := os.ReadFile(filepath.Join(dir, "exists.txt"))
-	assert.Equal(t, "new content", string(content))
+	f, ok := fs.getFile("exists.txt")
+	require.True(t, ok)
+	assert.Equal(t, "new content", f.content)
 }
 
 func TestTextEditorCreateOverwritePreservesPermissions(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "script.sh")
-	require.NoError(t, os.WriteFile(path, []byte("#!/bin/bash\necho old\n"), 0o755))
+	fs := newMockFS()
+	fs.setFile("script.sh", "#!/bin/bash\necho old\n", "0755")
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
 
-	ctx := tool.TestContext(dir)
-	te := NewTextEditor()
+	te := NewTextEditor(factory)
 	_, err := execTextEditor(ctx, t, te, map[string]any{
 		"command":   "create",
 		"path":      "script.sh",
@@ -142,16 +316,17 @@ func TestTextEditorCreateOverwritePreservesPermissions(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	info, err := os.Stat(path)
-	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o755), info.Mode().Perm())
+	f, ok := fs.getFile("script.sh")
+	require.True(t, ok)
+	assert.Equal(t, "0755", f.permissions)
 }
 
 func TestTextEditorCreateImmutable(t *testing.T) {
-	dir := t.TempDir()
+	fs := newMockFS()
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
 
-	ctx := tool.TestContext(dir)
-	te := NewTextEditor()
+	te := NewTextEditor(factory)
 	_, err := execTextEditor(ctx, t, te, map[string]any{
 		"command":   "create",
 		"path":      "locked.txt",
@@ -162,11 +337,12 @@ func TestTextEditorCreateImmutable(t *testing.T) {
 }
 
 func TestTextEditorView(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "view.txt"), []byte("line1\nline2\n"), 0o644))
+	fs := newMockFS()
+	fs.setFile("view.txt", "line1\nline2\n", "0644")
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
 
-	ctx := tool.TestContext(dir)
-	te := NewTextEditor()
+	te := NewTextEditor(factory)
 	out, err := execTextEditor(ctx, t, te, map[string]any{
 		"command": "view",
 		"path":    "view.txt",
@@ -177,14 +353,12 @@ func TestTextEditorView(t *testing.T) {
 }
 
 func TestTextEditorViewRange(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(
-		filepath.Join(dir, "multi.txt"),
-		[]byte("line1\nline2\nline3\nline4\nline5\n"), 0o644,
-	))
+	fs := newMockFS()
+	fs.setFile("multi.txt", "line1\nline2\nline3\nline4\nline5\n", "0644")
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
 
-	ctx := tool.TestContext(dir)
-	te := NewTextEditor()
+	te := NewTextEditor(factory)
 	out, err := execTextEditor(ctx, t, te, map[string]any{
 		"command":    "view",
 		"path":       "multi.txt",
@@ -199,14 +373,12 @@ func TestTextEditorViewRange(t *testing.T) {
 }
 
 func TestTextEditorViewRangeInverted(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(
-		filepath.Join(dir, "multi.txt"),
-		[]byte("line1\nline2\nline3\nline4\nline5\n"), 0o644,
-	))
+	fs := newMockFS()
+	fs.setFile("multi.txt", "line1\nline2\nline3\nline4\nline5\n", "0644")
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
 
-	ctx := tool.TestContext(dir)
-	te := NewTextEditor()
+	te := NewTextEditor(factory)
 	_, err := execTextEditor(ctx, t, te, map[string]any{
 		"command":    "view",
 		"path":       "multi.txt",
@@ -217,12 +389,15 @@ func TestTextEditorViewRangeInverted(t *testing.T) {
 }
 
 func TestTextEditorViewDirectory(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "src", "sub"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "src", "main.go"), []byte("x"), 0o644))
+	fs := newMockFS()
+	fs.setDir("src", []mockDirEntry{
+		{name: "main.go", isDir: false},
+		{name: "sub", isDir: true},
+	})
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
 
-	ctx := tool.TestContext(dir)
-	te := NewTextEditor()
+	te := NewTextEditor(factory)
 	out, err := execTextEditor(ctx, t, te, map[string]any{
 		"command": "view",
 		"path":    "src",
@@ -233,14 +408,12 @@ func TestTextEditorViewDirectory(t *testing.T) {
 }
 
 func TestTextEditorInsert(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(
-		filepath.Join(dir, "insert.txt"),
-		[]byte("line1\nline2\nline3\n"), 0o644,
-	))
+	fs := newMockFS()
+	fs.setFile("insert.txt", "line1\nline2\nline3\n", "0644")
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
 
-	ctx := tool.TestContext(dir)
-	te := NewTextEditor()
+	te := NewTextEditor(factory)
 	out, err := execTextEditor(ctx, t, te, map[string]any{
 		"command":     "insert",
 		"path":        "insert.txt",
@@ -250,19 +423,18 @@ func TestTextEditorInsert(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "inserted text")
 
-	content, _ := os.ReadFile(filepath.Join(dir, "insert.txt"))
-	assert.Equal(t, "line1\ninserted\nline2\nline3\n", string(content))
+	f, ok := fs.getFile("insert.txt")
+	require.True(t, ok)
+	assert.Equal(t, "line1\ninserted\nline2\nline3\n", f.content)
 }
 
 func TestTextEditorInsertAtBeginning(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(
-		filepath.Join(dir, "begin.txt"),
-		[]byte("line1\nline2\n"), 0o644,
-	))
+	fs := newMockFS()
+	fs.setFile("begin.txt", "line1\nline2\n", "0644")
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
 
-	ctx := tool.TestContext(dir)
-	te := NewTextEditor()
+	te := NewTextEditor(factory)
 	_, err := execTextEditor(ctx, t, te, map[string]any{
 		"command":     "insert",
 		"path":        "begin.txt",
@@ -271,26 +443,13 @@ func TestTextEditorInsertAtBeginning(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	content, _ := os.ReadFile(filepath.Join(dir, "begin.txt"))
-	assert.Equal(t, "header\nline1\nline2\n", string(content))
-}
-
-func TestTextEditorPathTraversal(t *testing.T) {
-	dir := t.TempDir()
-	ctx := tool.TestContext(dir)
-	te := NewTextEditor()
-
-	_, err := execTextEditor(ctx, t, te, map[string]any{
-		"command":   "create",
-		"path":      "../../../tmp/evil.txt",
-		"file_text": "pwned",
-	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "outside app directory")
+	f, ok := fs.getFile("begin.txt")
+	require.True(t, ok)
+	assert.Equal(t, "header\nline1\nline2\n", f.content)
 }
 
 func TestTextEditorToolMetadata(t *testing.T) {
-	te := NewTextEditor()
+	te := NewTextEditor(supervisor.NewClientFactory())
 
 	assert.Equal(t, "str_replace_based_edit_tool", te.Name())
 	assert.NotEmpty(t, te.Description())
@@ -305,10 +464,11 @@ func TestTextEditorToolMetadata(t *testing.T) {
 }
 
 func TestTextEditorInvalidCommand(t *testing.T) {
-	dir := t.TempDir()
-	ctx := tool.TestContext(dir)
-	te := NewTextEditor()
+	fs := newMockFS()
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
 
+	te := NewTextEditor(factory)
 	_, err := execTextEditor(ctx, t, te, map[string]any{
 		"command": "drop_tables",
 		"path":    "x.txt",
@@ -318,13 +478,12 @@ func TestTextEditorInvalidCommand(t *testing.T) {
 }
 
 func TestTextEditorBlockedFile(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(
-		filepath.Join(dir, "package-lock.json"), []byte("{}"), 0o644,
-	))
+	fs := newMockFS()
+	fs.setFile("package-lock.json", "{}", "0644")
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
 
-	ctx := tool.TestContext(dir)
-	te := NewTextEditor()
+	te := NewTextEditor(factory)
 	_, err := execTextEditor(ctx, t, te, map[string]any{
 		"command": "view",
 		"path":    "package-lock.json",
@@ -334,12 +493,13 @@ func TestTextEditorBlockedFile(t *testing.T) {
 }
 
 func TestTextEditorImmutableFile(t *testing.T) {
-	dir := t.TempDir()
+	fs := newMockFS()
 	content := "// TREAT AS IMMUTABLE\nconst x = 1;\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "locked.js"), []byte(content), 0o644))
+	fs.setFile("locked.js", content, "0644")
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
 
-	ctx := tool.TestContext(dir)
-	te := NewTextEditor()
+	te := NewTextEditor(factory)
 
 	// str_replace should fail
 	_, err := execTextEditor(ctx, t, te, map[string]any{
@@ -371,9 +531,11 @@ func TestTextEditorImmutableFile(t *testing.T) {
 }
 
 func TestTextEditorCreateBlockedFile(t *testing.T) {
-	dir := t.TempDir()
-	ctx := tool.TestContext(dir)
-	te := NewTextEditor()
+	fs := newMockFS()
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
+
+	te := NewTextEditor(factory)
 
 	// create inside node_modules should be blocked
 	_, err := execTextEditor(ctx, t, te, map[string]any{
@@ -395,7 +557,7 @@ func TestTextEditorCreateBlockedFile(t *testing.T) {
 }
 
 func TestTextEditorMissingScope(t *testing.T) {
-	te := NewTextEditor()
+	te := NewTextEditor(supervisor.NewClientFactory())
 
 	var stream tool.BufferedStream
 	data, _ := json.Marshal(map[string]any{
@@ -404,4 +566,50 @@ func TestTextEditorMissingScope(t *testing.T) {
 	})
 	err := te.Execute(context.Background(), data, &stream)
 	require.ErrorIs(t, err, tool.ErrNoScope)
+}
+
+func TestTextEditorStrReplaceFileNotExist(t *testing.T) {
+	fs := newMockFS()
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
+
+	te := NewTextEditor(factory)
+	_, err := execTextEditor(ctx, t, te, map[string]any{
+		"command": "str_replace",
+		"path":    "nonexistent.txt",
+		"old_str": "hello",
+		"new_str": "world",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not exist")
+}
+
+func TestTextEditorViewFileNotExist(t *testing.T) {
+	fs := newMockFS()
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
+
+	te := NewTextEditor(factory)
+	_, err := execTextEditor(ctx, t, te, map[string]any{
+		"command": "view",
+		"path":    "nonexistent.txt",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not exist")
+}
+
+func TestTextEditorInsertFileNotExist(t *testing.T) {
+	fs := newMockFS()
+	srv, factory, ctx := setupTextEditorServer(t, fs)
+	defer srv.Close()
+
+	te := NewTextEditor(factory)
+	_, err := execTextEditor(ctx, t, te, map[string]any{
+		"command":     "insert",
+		"path":        "nonexistent.txt",
+		"insert_line": 0,
+		"insert_text": "hello",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not exist")
 }

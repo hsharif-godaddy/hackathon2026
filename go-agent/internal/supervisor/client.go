@@ -4,11 +4,20 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+)
+
+// Sentinel errors returned by the post helper based on HTTP status codes.
+var (
+	ErrNotFound         = errors.New("not found")
+	ErrPermissionDenied = errors.New("permission denied")
+	ErrValidation       = errors.New("validation failed")
+	ErrTooLarge         = errors.New("request too large")
 )
 
 // ExecRequest is the request body for POST /exec.
@@ -84,43 +93,82 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
-// Exec runs a command via POST /exec and returns the result.
-func (c *Client) Exec(ctx context.Context, req ExecRequest) (*ExecResult, error) {
+// apiError is the JSON error body returned by the supervisor on non-200 responses.
+type apiError struct {
+	Error   string `json:"error"`
+	Message string `json:"message"`
+}
+
+// post sends a JSON POST request to the supervisor and decodes the JSON response.
+// Pass nil for resp when the endpoint returns only {"status":"ok"}.
+func (c *Client) post(ctx context.Context, path string, req, resp any) error {
 	body, err := json.Marshal(req)
 	if err != nil {
-		return nil, fmt.Errorf("marshaling request: %w", err)
+		return fmt.Errorf("marshaling request: %w", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(
-		ctx, http.MethodPost, "http://supervisor/exec", bytes.NewReader(body),
+		ctx, http.MethodPost, "http://supervisor"+path, bytes.NewReader(body),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
+		return fmt.Errorf("creating request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.http.Do(httpReq)
+	httpResp, err := c.http.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("executing request: %w", err)
+		return fmt.Errorf("executing request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer httpResp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(httpResp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("reading response: %w", err)
+		return fmt.Errorf("reading response: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf(
-			"supervisor returned status %d: %s", resp.StatusCode, string(respBody),
-		)
+	if httpResp.StatusCode != http.StatusOK {
+		return classifyError(httpResp.StatusCode, respBody)
 	}
 
+	if resp != nil {
+		if err := json.Unmarshal(respBody, resp); err != nil {
+			return fmt.Errorf("decoding response: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// classifyError maps HTTP status codes to typed sentinel errors.
+func classifyError(status int, body []byte) error {
+	var ae apiError
+	_ = json.Unmarshal(body, &ae) // best-effort parse
+
+	msg := ae.Message
+	if msg == "" {
+		msg = string(body)
+	}
+
+	switch status {
+	case http.StatusNotFound:
+		return fmt.Errorf("%w: %s", ErrNotFound, msg)
+	case http.StatusForbidden:
+		return fmt.Errorf("%w: %s", ErrPermissionDenied, msg)
+	case http.StatusBadRequest:
+		return fmt.Errorf("%w: %s", ErrValidation, msg)
+	case http.StatusRequestEntityTooLarge:
+		return fmt.Errorf("%w: %s", ErrTooLarge, msg)
+	default:
+		return fmt.Errorf("supervisor returned status %d: %s", status, msg)
+	}
+}
+
+// Exec runs a command via POST /exec and returns the result.
+func (c *Client) Exec(ctx context.Context, req ExecRequest) (*ExecResult, error) {
 	var result ExecResult
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
+	if err := c.post(ctx, "/exec", req, &result); err != nil {
+		return nil, err
 	}
-
 	return &result, nil
 }
 

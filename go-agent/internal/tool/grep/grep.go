@@ -1,28 +1,26 @@
 package grep
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"regexp"
-	"sort"
 	"strings"
 
+	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/supervisor"
 	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/tool"
 )
 
 const defaultMaxResults = 50
 
-// Search implements the grepSearch tool — searches file contents.
-type Search struct{}
+// Search implements the grepSearch tool — searches file contents via the supervisor API.
+type Search struct {
+	factory *supervisor.ClientFactory
+}
 
-// NewSearch creates a grepSearch tool. The app root is resolved per-request from context.
-func NewSearch() *Search {
-	return &Search{}
+// NewSearch creates a grepSearch tool that searches via the supervisor API.
+func NewSearch(factory *supervisor.ClientFactory) *Search {
+	return &Search{factory: factory}
 }
 
 func (*Search) Name() string        { return "grepSearch" }
@@ -55,14 +53,6 @@ type grepInput struct {
 	ExcludePatterns []string `json:"excludePatterns"`
 }
 
-type match struct {
-	file          string
-	lineNum       int
-	lineText      string
-	contextBefore []string
-	contextAfter  []string
-}
-
 func (g *Search) Execute(ctx context.Context, input json.RawMessage, out tool.OutputStream) error {
 	var in grepInput
 	if err := json.Unmarshal(input, &in); err != nil {
@@ -79,218 +69,83 @@ func (g *Search) Execute(ctx context.Context, input json.RawMessage, out tool.Ou
 	if err != nil {
 		return err
 	}
-	appRoot := scope.AppRoot
 
-	matcher, err := buildMatcher(in.Query, in.Regex, in.CaseSensitive)
+	// Validate user-supplied paths against agent-side blocked list.
+	for _, p := range in.Paths {
+		if blockErr := tool.CheckBlocked(p); blockErr != nil {
+			return blockErr
+		}
+	}
+
+	client, err := g.factory.Get(scope.SupervisorAddr)
 	if err != nil {
-		return fmt.Errorf("invalid query: %w", err)
+		return fmt.Errorf("supervisor client: %w", err)
 	}
 
-	searchRoots := []string{appRoot}
-	if len(in.Paths) > 0 {
-		searchRoots = make([]string, 0, len(in.Paths))
-		for _, p := range in.Paths {
-			abs, pathErr := tool.ValidatePath(appRoot, p)
-			if pathErr != nil {
-				return pathErr
-			}
-			searchRoots = append(searchRoots, abs)
-		}
+	// Build blocked-extension exclude patterns for the agent's additional layer.
+	agentExcludes := make([]string, 0, len(tool.BlockedExtensions)+len(in.ExcludePatterns))
+	for ext := range tool.BlockedExtensions {
+		agentExcludes = append(agentExcludes, "*"+ext)
+	}
+	agentExcludes = append(agentExcludes, in.ExcludePatterns...)
+
+	resp, err := client.FSGrep(ctx, supervisor.FSGrepRequest{
+		Query:           in.Query,
+		Paths:           in.Paths,
+		Regex:           in.Regex,
+		CaseSensitive:   in.CaseSensitive,
+		ContextLines:    in.ContextLines,
+		MaxResults:      in.MaxResults,
+		IncludePatterns: in.IncludePatterns,
+		ExcludePatterns: agentExcludes,
+	})
+	if err != nil {
+		return fmt.Errorf("grep search: %w", err)
 	}
 
-	var matches []match
-	for _, root := range searchRoots {
-		if len(matches) >= in.MaxResults {
-			break
-		}
-		g.searchDir(root, appRoot, in, matcher, &matches)
-	}
-
-	if len(matches) == 0 {
+	if len(resp.Matches) == 0 {
 		out.Write("No matches found\n")
 		return nil
 	}
 
-	out.Write(formatMatches(matches))
+	out.Write(formatMatches(resp.Matches, resp.TotalFiles))
 	return nil
 }
 
-func (g *Search) searchDir(dir, appRoot string, opts grepInput, matcher func(string) bool, matches *[]match) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-
-	// Sort for deterministic output
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Name() < entries[j].Name()
-	})
-
-	for _, e := range entries {
-		if len(*matches) >= opts.MaxResults {
-			return
-		}
-		name := e.Name()
-		if strings.HasPrefix(name, ".") && name != "." {
-			continue
-		}
-
-		fullPath := filepath.Join(dir, name)
-
-		if e.IsDir() {
-			if tool.IgnoredDirs[name] {
-				continue
-			}
-			g.searchDir(fullPath, appRoot, opts, matcher, matches)
-			continue
-		}
-
-		if !matchesFileFilters(name, opts.IncludePatterns, opts.ExcludePatterns) {
-			continue
-		}
-		ext := filepath.Ext(name)
-		if tool.BlockedExtensions[ext] {
-			continue
-		}
-
-		g.searchFile(fullPath, appRoot, opts, matcher, matches)
-	}
-}
-
-// binarySniffSize is the number of bytes checked for null bytes to detect binary files.
-const binarySniffSize = 512
-
-func (g *Search) searchFile(
-	path, appRoot string, opts grepInput, matcher func(string) bool, matches *[]match,
-) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return
-	}
-
-	// Skip binary files that aren't caught by the extension check.
-	sniff := data
-	if len(sniff) > binarySniffSize {
-		sniff = sniff[:binarySniffSize]
-	}
-	if bytes.ContainsRune(sniff, 0) {
-		return
-	}
-
-	lines := strings.Split(string(data), "\n")
-	relPath, _ := filepath.Rel(appRoot, path)
-
-	for i, line := range lines {
-		if len(*matches) >= opts.MaxResults {
-			return
-		}
-		if !matcher(line) {
-			continue
-		}
-
-		m := match{
-			file:     relPath,
-			lineNum:  i + 1,
-			lineText: line,
-		}
-
-		if opts.ContextLines > 0 {
-			start := max(i-opts.ContextLines, 0)
-			end := i + opts.ContextLines
-			if end >= len(lines) {
-				end = len(lines) - 1
-			}
-			for j := start; j < i; j++ {
-				m.contextBefore = append(m.contextBefore, lines[j])
-			}
-			for j := i + 1; j <= end; j++ {
-				m.contextAfter = append(m.contextAfter, lines[j])
-			}
-		}
-
-		*matches = append(*matches, m)
-	}
-}
-
-func buildMatcher(query string, isRegex, caseSensitive bool) (func(string) bool, error) {
-	if isRegex {
-		pattern := query
-		if !caseSensitive {
-			pattern = "(?i)" + pattern
-		}
-		re, err := regexp.Compile(pattern)
-		if err != nil {
-			return nil, err
-		}
-		return re.MatchString, nil
-	}
-
-	if caseSensitive {
-		return func(line string) bool {
-			return strings.Contains(line, query)
-		}, nil
-	}
-
-	lowerQuery := strings.ToLower(query)
-	return func(line string) bool {
-		return strings.Contains(strings.ToLower(line), lowerQuery)
-	}, nil
-}
-
-func matchesFileFilters(name string, include, exclude []string) bool {
-	if len(include) > 0 {
-		matched := false
-		for _, pattern := range include {
-			if ok, _ := filepath.Match(pattern, name); ok {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			return false
-		}
-	}
-	for _, pattern := range exclude {
-		if ok, _ := filepath.Match(pattern, name); ok {
-			return false
-		}
-	}
-	return true
-}
-
-func formatMatches(matches []match) string {
+func formatMatches(matches []supervisor.FSGrepMatch, totalFiles int) string {
 	// Group by file
 	type fileGroup struct {
 		file    string
-		matches []match
+		matches []supervisor.FSGrepMatch
 	}
 
 	seen := map[string]int{}
 	var groups []fileGroup
 
 	for _, m := range matches {
-		idx, ok := seen[m.file]
+		idx, ok := seen[m.File]
 		if !ok {
 			idx = len(groups)
-			seen[m.file] = idx
-			groups = append(groups, fileGroup{file: m.file})
+			seen[m.File] = idx
+			groups = append(groups, fileGroup{file: m.File})
 		}
 		groups[idx].matches = append(groups[idx].matches, m)
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "Found %d matches across %d files\n\n", len(matches), len(groups))
+	fmt.Fprintf(&b, "Found %d matches across %d files\n\n",
+		len(matches), max(len(groups), totalFiles))
 
 	for _, g := range groups {
 		fmt.Fprintf(&b, "%s:\n", g.file)
 		for _, m := range g.matches {
-			for j, ctxLine := range m.contextBefore {
-				lineNum := m.lineNum - len(m.contextBefore) + j
+			for j, ctxLine := range m.ContextBefore {
+				lineNum := m.LineNum - len(m.ContextBefore) + j
 				fmt.Fprintf(&b, "  %d  %s\n", lineNum, ctxLine)
 			}
-			fmt.Fprintf(&b, "  %d: %s\n", m.lineNum, m.lineText)
-			for j, ctxLine := range m.contextAfter {
-				lineNum := m.lineNum + 1 + j
+			fmt.Fprintf(&b, "  %d: %s\n", m.LineNum, m.LineText)
+			for j, ctxLine := range m.ContextAfter {
+				lineNum := m.LineNum + 1 + j
 				fmt.Fprintf(&b, "  %d  %s\n", lineNum, ctxLine)
 			}
 		}

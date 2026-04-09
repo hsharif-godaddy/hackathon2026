@@ -4,25 +4,25 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/supervisor"
 	"github.com/gdcorp-partners/airo-app-builder/go-agent/internal/tool"
 )
 
 const maxEntries = 1000
 
-// ignoredDirs aliases the shared ignored-directory list.
-var ignoredDirs = tool.IgnoredDirs
-
 // DirectoryListing implements the directoryListing tool.
-type DirectoryListing struct{}
+type DirectoryListing struct {
+	factory *supervisor.ClientFactory
+}
 
-// NewDirectoryListing creates a directoryListing tool. The app root is resolved per-request from context.
-func NewDirectoryListing() *DirectoryListing {
-	return &DirectoryListing{}
+// NewDirectoryListing creates a directoryListing tool that lists directories
+// via the supervisor API. The app root is resolved per-request from context.
+func NewDirectoryListing(factory *supervisor.ClientFactory) *DirectoryListing {
+	return &DirectoryListing{factory: factory}
 }
 
 func (*DirectoryListing) Name() string        { return "directoryListing" }
@@ -69,31 +69,48 @@ func (dl *DirectoryListing) Execute(
 	if err != nil {
 		return err
 	}
-	appRoot := scope.AppRoot
 
-	rootPath := appRoot
-	if in.Path != "" {
-		abs, pathErr := tool.ValidatePath(appRoot, in.Path)
-		if pathErr != nil {
-			return pathErr
-		}
-		rootPath = abs
+	client, err := dl.factory.Get(scope.SupervisorAddr)
+	if err != nil {
+		return fmt.Errorf("supervisor client: %w", err)
 	}
 
-	count := 0
-	truncated := false
-	root, walkErr := dl.walk(rootPath, 0, in, &count, &truncated)
-	if walkErr != nil {
-		return walkErr
+	reqPath := in.Path
+	if reqPath == "" {
+		reqPath = "."
 	}
+
+	// Build ignore patterns from the shared ignored-directory list.
+	ignorePatterns := make([]string, 0, len(tool.IgnoredDirs))
+	for name := range tool.IgnoredDirs {
+		ignorePatterns = append(ignorePatterns, name)
+	}
+
+	resp, err := client.FSReaddir(ctx, supervisor.FSReaddirRequest{
+		Path:           reqPath,
+		Recursive:      true,
+		MaxDepth:       in.MaxDepth,
+		MaxEntries:     maxEntries,
+		IgnorePatterns: ignorePatterns,
+		IncludeHidden:  in.ShowHidden,
+	})
+	if err != nil {
+		return fmt.Errorf("reading directory: %w", err)
+	}
+
+	root := buildTree(resp.Entries, in)
 
 	var b strings.Builder
 	dirCount, fileCount := countEntries(root)
+	displayName := "."
+	if in.Path != "" {
+		displayName = in.Path
+	}
 	fmt.Fprintf(
 		&b, "%s (%d dirs, %d files)\n",
-		displayPath(appRoot, rootPath), dirCount, fileCount,
+		displayName, dirCount, fileCount,
 	)
-	if truncated {
+	if resp.Truncated {
 		fmt.Fprintf(&b, "truncated (%d+ items)\n", maxEntries)
 	}
 	b.WriteString("\n")
@@ -104,101 +121,132 @@ func (dl *DirectoryListing) Execute(
 	return nil
 }
 
-func (dl *DirectoryListing) walk(
-	dir string, depth int, opts dirListingInput, count *int, truncated *bool,
-) (*entry, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, fmt.Errorf("reading directory: %w", err)
+// buildTree constructs a tree from the flat list of directory entries returned
+// by the supervisor's recursive readdir. Each entry has a relative path name
+// (e.g. "src/", "src/main.go"). Filters (directoriesOnly, pattern, search) are
+// applied in the agent.
+func buildTree(entries []supervisor.FSDirEntry, opts dirListingInput) *entry {
+	root := &entry{name: ".", isDir: true}
+
+	// Index directories by path for parent lookup.
+	dirMap := map[string]*entry{
+		"": root,
 	}
 
-	root := &entry{name: filepath.Base(dir) + "/", isDir: true}
+	// First pass: create all directory entries so parents exist.
+	for _, e := range entries {
+		if !e.IsDir {
+			continue
+		}
+		name := strings.TrimSuffix(e.Name, "/")
+		dirEntry := &entry{name: filepath.Base(name) + "/", isDir: true}
+		dirMap[name] = dirEntry
+	}
 
-	// Sort: directories first, then files, alphabetically
-	sort.Slice(entries, func(i, j int) bool {
-		di, dj := entries[i].IsDir(), entries[j].IsDir()
+	// Second pass: add matching files first, tracking which directories
+	// have matching content so we can include parent dirs.
+	includedDirs := map[string]bool{}
+
+	for _, e := range entries {
+		if e.IsDir {
+			continue
+		}
+		if opts.DirectoriesOnly {
+			continue
+		}
+		name := e.Name
+		base := filepath.Base(name)
+		if !matchesFilters(base, false, opts) {
+			continue
+		}
+		parentPath := filepath.Dir(name)
+		if parentPath == "." {
+			parentPath = ""
+		}
+		parent := ensureParent(dirMap, parentPath, root)
+		parent.children = append(parent.children, &entry{
+			name: base,
+			size: e.Size,
+		})
+		// Mark all ancestor directories as included.
+		for p := parentPath; p != ""; p = filepath.Dir(p) {
+			if p == "." {
+				break
+			}
+			includedDirs[p] = true
+		}
+	}
+
+	// Track which entries have been added to avoid duplicates from ensureParent.
+	added := map[*entry]struct{}{}
+
+	// Third pass: add directories that either match filters or have matching children.
+	for _, e := range entries {
+		if !e.IsDir {
+			continue
+		}
+		name := strings.TrimSuffix(e.Name, "/")
+		base := filepath.Base(name)
+		parentPath := filepath.Dir(name)
+		if parentPath == "." {
+			parentPath = ""
+		}
+
+		if !matchesFilters(base, true, opts) && !includedDirs[name] {
+			continue
+		}
+		parent := ensureParent(dirMap, parentPath, root)
+		child := dirMap[name]
+		if _, dup := added[child]; !dup {
+			added[child] = struct{}{}
+			parent.children = append(parent.children, child)
+		}
+	}
+
+	// Sort children: directories first, then files, alphabetically.
+	sortTree(root)
+
+	return root
+}
+
+// ensureParent returns the parent entry for the given parentPath, creating
+// intermediate entries if they don't yet exist in the tree.
+func ensureParent(dirMap map[string]*entry, parentPath string, root *entry) *entry {
+	if parentPath == "" {
+		return root
+	}
+	if p, ok := dirMap[parentPath]; ok {
+		return p
+	}
+	// Create missing intermediate directory.
+	base := filepath.Base(parentPath)
+	p := &entry{name: base + "/", isDir: true}
+	dirMap[parentPath] = p
+
+	// Recursively ensure grandparent.
+	grandparentPath := filepath.Dir(parentPath)
+	if grandparentPath == "." {
+		grandparentPath = ""
+	}
+	gp := ensureParent(dirMap, grandparentPath, root)
+	gp.children = append(gp.children, p)
+	return p
+}
+
+// sortTree recursively sorts children: directories first, then files, alphabetically.
+func sortTree(e *entry) {
+	sort.Slice(e.children, func(i, j int) bool {
+		di, dj := e.children[i].isDir, e.children[j].isDir
 		if di != dj {
 			return di
 		}
-		return entries[i].Name() < entries[j].Name()
+		return e.children[i].name < e.children[j].name
 	})
-
-	for _, e := range entries {
-		if *truncated {
-			break
-		}
-		name := e.Name()
-
-		// Skip hidden files unless requested
-		if !opts.ShowHidden && strings.HasPrefix(name, ".") {
-			continue
-		}
-
-		if e.IsDir() {
-			dl.walkDir(dir, name, depth, opts, count, truncated, root)
-		} else {
-			walkFile(e, name, opts, count, truncated, root)
+	for _, child := range e.children {
+		if child.isDir {
+			sortTree(child)
 		}
 	}
-
-	return root, nil
-}
-
-func (dl *DirectoryListing) walkDir(
-	dir, name string, depth int, opts dirListingInput,
-	count *int, truncated *bool, root *entry,
-) {
-	if ignoredDirs[name] {
-		return
-	}
-
-	if opts.MaxDepth > 0 && depth+1 >= opts.MaxDepth {
-		if matchesFilters(name, true, opts) {
-			*count++
-			if *count > maxEntries {
-				*truncated = true
-				return
-			}
-			root.children = append(root.children, &entry{name: name + "/", isDir: true})
-		}
-		return
-	}
-
-	child, err := dl.walk(filepath.Join(dir, name), depth+1, opts, count, truncated)
-	if err != nil {
-		return
-	}
-	if matchesFilters(name, true, opts) || len(child.children) > 0 {
-		*count++
-		if *count > maxEntries {
-			*truncated = true
-			return
-		}
-		root.children = append(root.children, child)
-	}
-}
-
-func walkFile(
-	e os.DirEntry, name string, opts dirListingInput,
-	count *int, truncated *bool, root *entry,
-) {
-	if opts.DirectoriesOnly {
-		return
-	}
-	if !matchesFilters(name, false, opts) {
-		return
-	}
-	*count++
-	if *count > maxEntries {
-		*truncated = true
-		return
-	}
-	info, err := e.Info()
-	var size int64
-	if err == nil {
-		size = info.Size()
-	}
-	root.children = append(root.children, &entry{name: name, size: size})
 }
 
 func matchesFilters(name string, isDir bool, opts dirListingInput) bool {
@@ -272,12 +320,4 @@ func countEntries(root *entry) (int, int) {
 		}
 	}
 	return dirs, files
-}
-
-func displayPath(appRoot, absPath string) string {
-	rel, err := filepath.Rel(appRoot, absPath)
-	if err != nil || rel == "." {
-		return "."
-	}
-	return rel
 }

@@ -107,3 +107,31 @@ type FileExistsResponse struct {
 type FileWriteResponse struct {
 	BytesWritten int64 `json:"bytes_written"`
 }
+
+// FileGrepRequest represents a content search request.
+type FileGrepRequest struct {
+	Query            string   `json:"query"`
+	Paths            []string `json:"paths,omitempty"`          // dirs or files, default: base dir
+	Regex            bool     `json:"regex,omitempty"`          // default: literal match
+	CaseSensitive    bool     `json:"case_sensitive,omitempty"` // default: false (case-insensitive)
+	ContextLines     int      `json:"context_lines,omitempty"`
+	MaxResults       int      `json:"max_results,omitempty"`        // global limit, default 50
+	IncludePatterns  []string `json:"include_patterns,omitempty"`   // basename globs
+	ExcludePatterns  []string `json:"exclude_patterns,omitempty"`   // basename globs
+	NoDefaultIgnores bool     `json:"no_default_ignores,omitempty"` // disable built-in ignores
+}
+
+// FileGrepMatch represents a single grep match with optional context.
+type FileGrepMatch struct {
+	File          string   `json:"file"`
+	LineNum       int      `json:"line_num"`
+	LineText      string   `json:"line_text"`
+	ContextBefore []string `json:"context_before,omitempty"`
+	ContextAfter  []string `json:"context_after,omitempty"`
+}
+
+// FileGrepResponse is the response for /fs/grep
+type FileGrepResponse struct {
+	Matches    []FileGrepMatch `json:"matches"`
+	TotalFiles int             `json:"total_files"`
+}
