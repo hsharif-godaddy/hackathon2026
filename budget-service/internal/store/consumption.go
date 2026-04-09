@@ -16,8 +16,8 @@ import (
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/credits"
 )
 
-// budgetConsumptionState is one row's pool for walking: how many credits remain (total−used) at csr.
-// expireAt and resetsAt are used for filtering expired items and prioritizing renewable items.
+// budgetConsumptionState is one row's pool for walking: how many credits remain (total-used) at csr.
+// expireAt and resetInt are used for filtering expired items and prioritizing resetting items.
 // createdAt is used for stable tie-breaking in sort order (matching SQL ORDER BY).
 type budgetConsumptionState struct {
 	id        string
@@ -25,7 +25,7 @@ type budgetConsumptionState struct {
 	total     decimal.Decimal
 	used      decimal.Decimal
 	expireAt  *time.Time
-	resetsAt  *time.Time
+	resetInt  *string
 	createdAt time.Time
 }
 
@@ -37,15 +37,15 @@ type budgetCreditChunk struct {
 }
 
 // sortConsumptionItems sorts items by consumption priority matching the SQL ORDER BY:
-// renewable items first (resets_at IS NOT NULL), then by expire_at ASC NULLS LAST,
+// reset-interval items first (reset_interval IS NOT NULL), then by expire_at ASC NULLS LAST,
 // then by created_at, then by id.
 func sortConsumptionItems(items []budgetConsumptionState) {
 	sort.SliceStable(items, func(i, j int) bool {
-		// Renewable items come first (resets_at IS NOT NULL sorted before IS NULL)
-		iRenewable := items[i].resetsAt != nil
-		jRenewable := items[j].resetsAt != nil
-		if iRenewable != jRenewable {
-			return iRenewable // renewable (true) comes before non-renewable (false)
+		// Reset-interval items come first (matches SQL ORDER BY reset_interval IS NULL).
+		iResetting := items[i].resetInt != nil
+		jResetting := items[j].resetInt != nil
+		if iResetting != jResetting {
+			return iResetting // reset interval set comes first
 		}
 
 		// Then by expire_at ASC NULLS LAST
@@ -179,14 +179,14 @@ func budgetHasConsumableCapacity(items []budgetConsumptionState, now time.Time) 
 	return false
 }
 
-// loadBudgetConsumptionStatesTx returns rows in consumption priority: renewable lines first
-// (resets_at set), then soonest expire_at, then created_at, then id.
+// loadBudgetConsumptionStatesTx returns rows in consumption priority: reset interval lines first
+// (reset_interval set), then soonest expire_at, then created_at, then id.
 func loadBudgetConsumptionStatesTx(ctx context.Context, tx *sql.Tx, budgetID string, forUpdate bool) ([]budgetConsumptionState, error) {
 	q := `
-			SELECT bi.id, bi.credits_total, bi.credits_used, bi.credit_spend_ratio, bi.expire_at, bi.resets_at, bi.created_at
+			SELECT bi.id, bi.credits_total, bi.credits_used, bi.credit_spend_ratio, bi.expire_at, bi.reset_interval, bi.created_at
 			FROM budget_items bi
 			WHERE bi.budget_id = $1
-			ORDER BY (bi.resets_at IS NULL), bi.expire_at NULLS LAST, bi.created_at, bi.id
+			ORDER BY (bi.reset_interval IS NULL), bi.expire_at NULLS LAST, bi.created_at, bi.id
 		`
 	if forUpdate {
 		q += ` FOR UPDATE`
@@ -200,17 +200,17 @@ func loadBudgetConsumptionStatesTx(ctx context.Context, tx *sql.Tx, budgetID str
 	for rows.Next() {
 		var st budgetConsumptionState
 		var expireAt sql.NullTime
-		var resetsAt sql.NullTime
-		if err := rows.Scan(&st.id, &st.total, &st.used, &st.csr, &expireAt, &resetsAt, &st.createdAt); err != nil {
+		var resetInt sql.NullString
+		if err := rows.Scan(&st.id, &st.total, &st.used, &st.csr, &expireAt, &resetInt, &st.createdAt); err != nil {
 			return nil, err
 		}
 		if expireAt.Valid {
 			tm := expireAt.Time
 			st.expireAt = &tm
 		}
-		if resetsAt.Valid {
-			tm := resetsAt.Time
-			st.resetsAt = &tm
+		if resetInt.Valid {
+			r := resetInt.String
+			st.resetInt = &r
 		}
 		out = append(out, st)
 	}

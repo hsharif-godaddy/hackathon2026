@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -113,6 +114,106 @@ func TestPostBudgetRejectsInvalidResetInterval(t *testing.T) {
 	}
 }
 
+func TestPostBudgetAcceptsCompactResetInterval(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	body := `{"productKey":"x","items":[{"creditsTotal":"1.000000","costToCreditRatio":"1","resetInterval":"1mo"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/budgets", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postBudget(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPostBudgetDefaultsStartsAtToCreatedAt(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "budget-default-start-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{Store: st}
+	body := `{"productKey":"` + key + `","items":[{"creditsTotal":"100.000000","costToCreditRatio":"1.000000"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/budgets", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postBudget(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Items []struct {
+			CreatedAt     string  `json:"createdAt"`
+			StartsAt      *string `json:"startsAt"`
+			ResetsAt      *string `json:"resetsAt"`
+			ResetInterval *string `json:"resetInterval"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Items) != 1 {
+		t.Fatalf("items len %d want 1", len(resp.Items))
+	}
+	if resp.Items[0].StartsAt == nil {
+		t.Fatal("startsAt should be defaulted")
+	}
+	createdAt, err := time.Parse(time.RFC3339Nano, resp.Items[0].CreatedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	startsAt, err := time.Parse(time.RFC3339Nano, *resp.Items[0].StartsAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !createdAt.Equal(startsAt) {
+		t.Fatalf("startsAt %s want createdAt %s", startsAt.Format(time.RFC3339Nano), createdAt.Format(time.RFC3339Nano))
+	}
+	if resp.Items[0].ResetsAt != nil {
+		t.Fatalf("resetsAt = %v want nil", *resp.Items[0].ResetsAt)
+	}
+	if resp.Items[0].ResetInterval != nil {
+		t.Fatalf("resetInterval = %v want nil", *resp.Items[0].ResetInterval)
+	}
+}
+
+func TestCreateBudgetItemWithCompactResetInterval(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "renew-compact-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	renewVal := "3d"
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
+		{
+			CreditsTotal:     "100.000000",
+			CreditSpendRatio: "1.000000",
+			ResetInterval:    &renewVal,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Fetch the budget and verify the reset interval was stored
+	budget, err := st.GetBudget(ctx, budgetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(budget.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(budget.Items))
+	}
+	if budget.Items[0].ResetInterval == nil {
+		t.Fatalf("ResetInterval is nil, expected %q", renewVal)
+	}
+	if *budget.Items[0].ResetInterval != renewVal {
+		t.Fatalf("ResetInterval = %q, want %q", *budget.Items[0].ResetInterval, renewVal)
+	}
+}
+
 func TestGetBudgetWithMuxVars(t *testing.T) {
 	ctx := context.Background()
 	st := testStore(t)
@@ -137,6 +238,63 @@ func TestGetBudgetWithMuxVars(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"budgetId"`) {
 		t.Fatalf("expected budgetId: %s", rec.Body.String())
+	}
+}
+
+func TestPostBudgetItemDefaultsStartsAtAndDerivesResetsAt(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "budget-item-defaults-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
+		CreditsTotal:     "10.000000",
+		CreditSpendRatio: "1.000000",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items", s.postBudgetItem).Methods(http.MethodPost)
+	req := httptest.NewRequest(http.MethodPost, "/budgets/"+budgetID+"/budget-items", strings.NewReader(`{"creditsTotal":"5.000000","costToCreditRatio":"1.250000","resetInterval":"2w"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		CreatedAt string  `json:"createdAt"`
+		StartsAt  *string `json:"startsAt"`
+		ResetsAt  *string `json:"resetsAt"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.StartsAt == nil || resp.ResetsAt == nil {
+		t.Fatalf("expected startsAt and resetsAt in response: %s", rec.Body.String())
+	}
+	createdAt, err := time.Parse(time.RFC3339Nano, resp.CreatedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	startsAt, err := time.Parse(time.RFC3339Nano, *resp.StartsAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resetsAt, err := time.Parse(time.RFC3339Nano, *resp.ResetsAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !createdAt.Equal(startsAt) {
+		t.Fatalf("startsAt %s want createdAt %s", startsAt.Format(time.RFC3339Nano), createdAt.Format(time.RFC3339Nano))
+	}
+	wantReset := startsAt.AddDate(0, 0, 14)
+	if !resetsAt.Equal(wantReset) {
+		t.Fatalf("resetsAt %s want %s", resetsAt.Format(time.RFC3339Nano), wantReset.Format(time.RFC3339Nano))
 	}
 }
 
@@ -584,6 +742,150 @@ func TestPatchBudgetItemInsertsHistoryRow(t *testing.T) {
 	}
 }
 
+func TestPatchBudgetAddItemDefaultsStartsAtAndDerivesResetsAt(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "budget-patch-add-defaults-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
+		CreditsTotal:     "10.000000",
+		CreditSpendRatio: "1.000000",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}", s.patchBudget).Methods(http.MethodPatch)
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID, strings.NewReader(`{"items":[{"creditsTotal":"4.000000","costToCreditRatio":"2.000000","resetInterval":"3d"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Items []struct {
+			CreditsTotal string  `json:"creditsTotal"`
+			CreatedAt    string  `json:"createdAt"`
+			StartsAt     *string `json:"startsAt"`
+			ResetsAt     *string `json:"resetsAt"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Items) != 2 {
+		t.Fatalf("items len %d want 2", len(resp.Items))
+	}
+	var added *struct {
+		CreditsTotal string
+		CreatedAt    string
+		StartsAt     *string
+		ResetsAt     *string
+	}
+	for i := range resp.Items {
+		if resp.Items[i].CreditsTotal == "4.000000" {
+			added = &struct {
+				CreditsTotal string
+				CreatedAt    string
+				StartsAt     *string
+				ResetsAt     *string
+			}{
+				CreditsTotal: resp.Items[i].CreditsTotal,
+				CreatedAt:    resp.Items[i].CreatedAt,
+				StartsAt:     resp.Items[i].StartsAt,
+				ResetsAt:     resp.Items[i].ResetsAt,
+			}
+			break
+		}
+	}
+	if added == nil || added.StartsAt == nil || added.ResetsAt == nil {
+		t.Fatalf("added item defaults missing: %s", rec.Body.String())
+	}
+	createdAt, err := time.Parse(time.RFC3339Nano, added.CreatedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	startsAt, err := time.Parse(time.RFC3339Nano, *added.StartsAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resetsAt, err := time.Parse(time.RFC3339Nano, *added.ResetsAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !createdAt.Equal(startsAt) {
+		t.Fatalf("startsAt %s want createdAt %s", startsAt.Format(time.RFC3339Nano), createdAt.Format(time.RFC3339Nano))
+	}
+	wantReset := startsAt.AddDate(0, 0, 3)
+	if !resetsAt.Equal(wantReset) {
+		t.Fatalf("resetsAt %s want %s", resetsAt.Format(time.RFC3339Nano), wantReset.Format(time.RFC3339Nano))
+	}
+}
+
+func TestPatchBudgetAddItemRejectsResetsAtWithoutResetInterval(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}", s.patchBudget).Methods(http.MethodPatch)
+	budgetID := uuid.NewString()
+	body := `{"items":[{"creditsTotal":"4.000000","costToCreditRatio":"1.000000","resetsAt":"2030-01-01T00:00:00Z"}]}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "resetsAt requires resetInterval") {
+		t.Fatalf("expected clear error, got %s", rec.Body.String())
+	}
+}
+
+func TestPatchBudgetItemRejectsResetIntervalWithoutResetsAt(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+	budgetID := uuid.NewString()
+	itemID := uuid.NewString()
+	body := `{"creditsTotal":"4.000000","costToCreditRatio":"1.000000","resetInterval":"1mo"}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "resetInterval requires resetsAt when updating") {
+		t.Fatalf("expected clear error, got %s", rec.Body.String())
+	}
+}
+
+func TestPatchBudgetUpdateExistingItemRejectsResetIntervalWithoutResetsAt(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}", s.patchBudget).Methods(http.MethodPatch)
+	budgetID := uuid.NewString()
+	itemID := uuid.NewString()
+	body := `{"items":[{"budgetItemId":"` + itemID + `","creditsTotal":"4.000000","costToCreditRatio":"1.000000","resetInterval":"1mo"}]}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "resetInterval requires resetsAt when updating") {
+		t.Fatalf("expected clear error, got %s", rec.Body.String())
+	}
+}
+
 func TestGetBudgetItem(t *testing.T) {
 	ctx := context.Background()
 	st := testStore(t)
@@ -614,7 +916,7 @@ func TestGetBudgetItem(t *testing.T) {
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("get item: %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("get item: %d, body: %s", rec.Code, rec.Body.String())
 	}
 	var body map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
@@ -661,7 +963,7 @@ func TestReportAllocatesRenewalItemBeforePlainItem(t *testing.T) {
 	}
 
 	budgetBody := `{"productKey":"` + prodResp.ProductKey + `","items":[` +
-		`{"creditsTotal":"1000.000000","costToCreditRatio":"0.5","resetInterval":"MONTH","expiresAt":"2030-12-31T23:59:59Z"},` +
+		`{"creditsTotal":"1000.000000","costToCreditRatio":"0.5","resetInterval":"1mo","expiresAt":"2030-12-31T23:59:59Z"},` +
 		`{"creditsTotal":"1000.000000","costToCreditRatio":"0.1","expiresAt":"2025-06-01T00:00:00Z"}` +
 		`]}`
 	reqB := httptest.NewRequest(http.MethodPost, "/api/v1/budgets", strings.NewReader(budgetBody))

@@ -9,9 +9,10 @@ This document focuses on **tables**, **relationships**, **constraints**, **trigg
 ## Domain overview
 
 - A **product** (`product_key`) registers with the service; **budgets** belong to a product (optional FK for migration flexibility).
-- A **budget** owns **budget items** (credit pools with terms: totals, USD-per-credit ratio, renewal, expiry, etc.).
+- A **budget** owns **budget items** (credit pools with terms: totals, USD-per-credit ratio, reset cadence, expiry, etc.).
 - A **budget session** is an LLM-style spend window on one budget. **Session items** record GoCode USD lines and derived credits while the session is open.
 - Closing a session uses a **session report** (one per session): report lines carry USD costs; the service allocates credits to budget items and **persists finalized credit movement** in the **credit ledger** and **report allocations**.
+- Renewable budget items use **hybrid reset handling**: a periodic PostgreSQL job (`pg_cron`) processes due rows in the background, while budget write paths lazily apply due resets inside the same transaction before capacity or consumption decisions.
 - **Webhooks** are product-scoped URLs for events (e.g. report created).
 
 Live OLTP tables have **no soft-delete column**; deletes **archive** into `*_history` tables first where applicable.
@@ -82,8 +83,8 @@ flowchart TB
   - `credits_total` — pool size (credits). **CHECK ≥ 0.**
   - `credits_used` — **cached** net credits consumed for this item (**CHECK ≥ 0**). Must stay aligned with the ledger (see triggers).
   - `credit_spend_ratio` — USD per credit. **CHECK > 0.**
-  - `expire_at`, `starts_at`, `resets_at`, `renew_interval` — optional term fields. `renew_interval` ∈ `{ DAY, WEEK, MONTH, YEAR }` or null.
-- **Consumption order** (application, not a DB constraint): rows with `renew_interval` set first, then `expire_at ASC NULLS LAST`, then `created_at`, `id`. Available credits = `credits_total - credits_used`.
+  - `expire_at`, `starts_at`, `resets_at`, `reset_interval` — optional term fields. `reset_interval` matches `^[1-9][0-9]*(d|w|mo|y)$` (examples: `1d`, `2w`, `1mo`, `1y`) or null. When `reset_interval` is set, `resets_at` is the next reset boundary; due rows satisfy `resets_at <= now()`.
+- **Consumption order** (application, not a DB constraint): rows with `reset_interval` set first, then `expire_at ASC NULLS LAST`, then `created_at`, `id`. Available credits = `credits_total - credits_used`.
 
 ### `budget_sessions`
 
@@ -140,7 +141,14 @@ flowchart TB
 
 **Persisted spend today:** the application inserts into `budget_item_credit_ledger` when finalizing a session report (per allocation chunk). Session PATCH lines do **not** by themselves write the ledger; they only record USD/credits on `budget_session_items` until reconciliation.
 
-**Future writers** (e.g. periodic reset jobs, reimbursements) should **only** insert ledger rows with the appropriate `entry_kind` and `credits_delta`; the trigger keeps `credits_used` consistent for any client connection.
+**Hybrid reset handling:** due resets are applied in two places:
+
+- **Periodic path:** `pg_cron` runs `public.process_due_budget_item_resets(...)` on a schedule and sweeps due rows in batches.
+- **Lazy path:** budget write paths (`CreateBudgetSession`, `AppendSessionItems`, `CreateSessionReport`) call the same SQL function in-transaction for the target budget before checking capacity or consuming credits.
+
+For a due item with `credits_used > 0`, the processor inserts a `periodic_reset` ledger row with `credits_delta = -credits_used`, which brings the cached usage back to zero through the trigger. For a due item already at zero usage, the processor advances `resets_at` without inserting a ledger row.
+
+**Future writers** (e.g. reimbursements) should **only** insert ledger rows with the appropriate `entry_kind` and `credits_delta`; the trigger keeps `credits_used` consistent for any client connection.
 
 ---
 
@@ -168,6 +176,15 @@ flowchart TB
 - **Purpose:** Single place that applies credit deltas to the cached total, safe under **multiple DB connections** (atomic row update, serializes on the same `budget_items` row).
 
 **Note:** The bump runs an `UPDATE` on `budget_items`, which fires `trg_budget_items_set_updated_at`; by design that trigger **does not** advance `updated_at` for credits-only changes.
+
+### `next_reset_from_interval`, `advance_reset_to_future`, `process_due_budget_item_resets`
+
+- **Defined in:** migration `000004_periodic_resets.up.sql`.
+- **Purpose:** implement renewable reset scheduling and execution entirely in SQL.
+- **`next_reset_from_interval(base_at, reset_interval)`** — computes the next boundary from compact reset intervals using calendar-aware month/year math.
+- **`advance_reset_to_future(reset_at, reset_interval, now_at)`** — repeatedly advances stale boundaries until the returned value is in the future.
+- **`process_due_budget_item_resets(target_budget_id, batch_size)`** — selects due rows (`resets_at <= now()`), locks them with `FOR UPDATE SKIP LOCKED`, inserts `periodic_reset` ledger rows when `credits_used > 0`, advances `resets_at`, and returns the processed row count.
+- **Scheduler:** when `pg_cron` is available, the service registers `budget_service_periodic_resets` to call the processor periodically; local Docker Postgres also enables `pg_cron` for development.
 
 ---
 
@@ -212,6 +229,7 @@ These are implemented in the service layer, not as DB constraints:
 ## Indexes (summary)
 
 - `budget_items(budget_id)` — list items per budget.
+- `budget_items(resets_at, id) WHERE resets_at IS NOT NULL AND reset_interval IS NOT NULL` — due-reset sweeps.
 - `budget_sessions(budget_id)` — sessions per budget.
 - `budget_session_items(session_id)` — lines per session.
 - `budget_session_reports(session_id)` — report by session.
@@ -230,7 +248,7 @@ The server applies pending `.up.sql` files on startup (after a successful DB pin
 
 Each `.up.sql` file is **one golang-migrate version**; the PostgreSQL driver applies the file as a single migration step (multiple DDL statements in that file are fine as one script). Do **not** enable golang-migrate’s `x-multi-statement` mode for files that contain PL/pgSQL (`$$` bodies): its `;` splitter breaks functions.
 
-Add new files such as `000002_description.up.sql` for schema changes; deploy a new image.
+Add new files such as `000002_description.up.sql` for schema changes; deploy a new image. Reset processing is introduced by `000004_periodic_resets.up.sql`. The pg_cron extension and scheduled job are created by the migration when pg_cron is available; for local development, the custom Docker image installs pg_cron and [`docker-entrypoint-initdb.d/001_pg_cron.sql`](../docker-entrypoint-initdb.d/001_pg_cron.sql) enables it during container initialization.
 
 ### Baseline (legacy databases)
 

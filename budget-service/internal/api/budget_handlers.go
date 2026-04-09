@@ -20,10 +20,6 @@ import (
 
 const budgetMaxBodyBytes = 1 << 20
 
-var budgetResetIntervals = map[string]struct{}{
-	"DAY": {}, "WEEK": {}, "MONTH": {}, "YEAR": {},
-}
-
 // flexAmount unmarshals JSON string or number into a normalized decimal string.
 type flexAmount string
 
@@ -71,7 +67,7 @@ func (s *Server) appendSessionDebug(ctx context.Context, out map[string]any, bud
 		orderJSON[i] = map[string]any{
 			"budgetItemId":     order[i].BudgetItemID,
 			"creditSpendRatio": order[i].CreditSpendRatio,
-			"renewInterval":    order[i].RenewInterval,
+			"resetInterval":    order[i].ResetInterval,
 			"expiresAt":        order[i].ExpiresAt,
 		}
 	}
@@ -90,7 +86,7 @@ func (s *Server) appendSessionDebug(ctx context.Context, out map[string]any, bud
 	}
 	debug := map[string]any{
 		"consumptionOrder": orderJSON,
-		"note":             "USD→credits walks budget items renew_interval set first, then soonest expire_at; replay recomputes each line in id order from current budget_items.credits_used",
+		"note":             "USD→credits walks budget items reset_interval set first, then soonest expire_at; replay recomputes each line in id order from current budget_items.credits_used",
 		"sessionItems":     dbgItems,
 	}
 	if len(appendedLines) > 0 {
@@ -183,13 +179,7 @@ func parseCostToCreditRatio(s string) (string, error) {
 	return credits.Format(d), nil
 }
 
-func validateBudgetItemDates(expiresAt, startsAt, resetsAt *string, resetInterval *string) string {
-	if resetInterval != nil && strings.TrimSpace(*resetInterval) != "" {
-		u := strings.ToUpper(strings.TrimSpace(*resetInterval))
-		if _, ok := budgetResetIntervals[u]; !ok {
-			return "resetInterval must be DAY, WEEK, MONTH, YEAR, or null"
-		}
-	}
+func validateBudgetItemDates(expiresAt, startsAt, resetsAt *string) string {
 	for _, label := range []struct {
 		name string
 		p    *string
@@ -208,6 +198,10 @@ func validateBudgetItemDates(expiresAt, startsAt, resetsAt *string, resetInterva
 	return ""
 }
 
+func hasNonEmptyStringValue(p *string) bool {
+	return p != nil && strings.TrimSpace(*p) != ""
+}
+
 type budgetItemBody struct {
 	CreditsTotal      flexAmount  `json:"creditsTotal"`
 	CostToCreditRatio *flexAmount `json:"costToCreditRatio"`
@@ -217,8 +211,18 @@ type budgetItemBody struct {
 	ResetInterval     *string     `json:"resetInterval"`
 }
 
-func (b budgetItemBody) toItemInput() (store.ItemInput, string) {
-	if msg := validateBudgetItemDates(b.ExpiresAt, b.StartsAt, b.ResetsAt, b.ResetInterval); msg != "" {
+func (b budgetItemBody) toItemInput(validateCreate bool) (store.ItemInput, string) {
+	ri, err := store.NormalizeResetInterval(b.ResetInterval)
+	if err != nil {
+		return store.ItemInput{}, err.Error()
+	}
+	if hasNonEmptyStringValue(b.ResetsAt) && ri == nil {
+		return store.ItemInput{}, "resetsAt requires resetInterval"
+	}
+	if !validateCreate && ri != nil && b.ResetsAt == nil {
+		return store.ItemInput{}, "resetInterval requires resetsAt when updating"
+	}
+	if msg := validateBudgetItemDates(b.ExpiresAt, b.StartsAt, b.ResetsAt); msg != "" {
 		return store.ItemInput{}, msg
 	}
 	ct, err := credits.ParseNonNegative(strings.TrimSpace(string(b.CreditsTotal)))
@@ -239,7 +243,7 @@ func (b budgetItemBody) toItemInput() (store.ItemInput, string) {
 		ExpireAt:         b.ExpiresAt,
 		StartsAt:         b.StartsAt,
 		ResetsAt:         b.ResetsAt,
-		RenewInterval:    b.ResetInterval,
+		ResetInterval:    ri,
 	}
 	return out, ""
 }
@@ -272,8 +276,8 @@ func budgetItemToResponse(r store.BudgetItemRow) map[string]any {
 	} else {
 		out["resetsAt"] = nil
 	}
-	if r.RenewInterval != nil {
-		out["resetInterval"] = *r.RenewInterval
+	if r.ResetInterval != nil {
+		out["resetInterval"] = *r.ResetInterval
 	} else {
 		out["resetInterval"] = nil
 	}
@@ -364,7 +368,7 @@ func (s *Server) postBudget(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "each item requires creditsTotal")
 			return
 		}
-		row, msg := payload.Items[i].toItemInput()
+		row, msg := payload.Items[i].toItemInput(true)
 		if msg != "" {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", msg)
 			return
@@ -419,7 +423,7 @@ type patchBudgetItem struct {
 	ResetInterval     *string     `json:"resetInterval"`
 }
 
-func (p patchBudgetItem) toPutItemInput() (store.PutItemInput, string) {
+func (p patchBudgetItem) toPutItemInput(validateCreate bool) (store.PutItemInput, string) {
 	body := budgetItemBody{
 		CreditsTotal:      p.CreditsTotal,
 		CostToCreditRatio: p.CostToCreditRatio,
@@ -428,7 +432,7 @@ func (p patchBudgetItem) toPutItemInput() (store.PutItemInput, string) {
 		ResetsAt:          p.ResetsAt,
 		ResetInterval:     p.ResetInterval,
 	}
-	row, msg := body.toItemInput()
+	row, msg := body.toItemInput(validateCreate)
 	if msg != "" {
 		return store.PutItemInput{}, msg
 	}
@@ -439,7 +443,7 @@ func (p patchBudgetItem) toPutItemInput() (store.PutItemInput, string) {
 		ExpireAt:         row.ExpireAt,
 		StartsAt:         row.StartsAt,
 		ResetsAt:         row.ResetsAt,
-		RenewInterval:    row.RenewInterval,
+		ResetInterval:    row.ResetInterval,
 	}, ""
 }
 
@@ -472,7 +476,8 @@ func (s *Server) patchBudget(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "each item requires creditsTotal")
 			return
 		}
-		row, msg := payload.Items[i].toPutItemInput()
+		createItem := payload.Items[i].BudgetItemID == nil || strings.TrimSpace(*payload.Items[i].BudgetItemID) == ""
+		row, msg := payload.Items[i].toPutItemInput(createItem)
 		if msg != "" {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", msg)
 			return
@@ -532,7 +537,7 @@ func (s *Server) postBudgetItem(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "creditsTotal is required")
 		return
 	}
-	row, msg := payload.toItemInput()
+	row, msg := payload.toItemInput(true)
 	if msg != "" {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", msg)
 		return
@@ -598,7 +603,7 @@ func (s *Server) patchBudgetItem(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "creditsTotal is required")
 		return
 	}
-	row, msg := payload.toItemInput()
+	row, msg := payload.toItemInput(false)
 	if msg != "" {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", msg)
 		return

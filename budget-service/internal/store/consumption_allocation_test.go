@@ -17,7 +17,7 @@ type testBudgetItem struct {
 	CreditsUsed  string  `json:"creditsUsed"`
 	CSR          string  `json:"creditSpendRatio"`
 	ExpireAt     *string `json:"expireAt,omitempty"`
-	ResetsAt     *string `json:"resetsAt,omitempty"`
+	ResetInt     *string `json:"resetInterval,omitempty"`
 }
 
 // testAllocation represents an expected allocation result.
@@ -72,12 +72,8 @@ func parseTestItems(items []testBudgetItem) ([]budgetConsumptionState, error) {
 			st.expireAt = &t
 		}
 
-		if item.ResetsAt != nil {
-			t, err := time.Parse(time.RFC3339, *item.ResetsAt)
-			if err != nil {
-				return nil, err
-			}
-			st.resetsAt = &t
+		if item.ResetInt != nil {
+			st.resetInt = item.ResetInt
 		}
 
 		out = append(out, st)
@@ -169,7 +165,7 @@ func TestRenewableNotExpiredAllocated(t *testing.T) {
 				CreditsUsed:  "0",
 				CSR:          "1",
 				ExpireAt:     strPtr("2024-12-31T23:59:59Z"),
-				ResetsAt:     strPtr("2024-07-01T00:00:00Z"),
+				ResetInt:     strPtr("1mo"),
 			},
 		},
 		CostUSD: "100",
@@ -232,7 +228,7 @@ func TestRenewableBeforeNonRenewable(t *testing.T) {
 				CreditsUsed:  "0",
 				CSR:          "1",
 				ExpireAt:     strPtr("2024-12-31T23:59:59Z"),
-				ResetsAt:     strPtr("2024-07-01T00:00:00Z"),
+				ResetInt:     strPtr("1mo"),
 			},
 		},
 		CostUSD: "50",
@@ -286,7 +282,7 @@ func TestExhaustedNotAllocated(t *testing.T) {
 				CreditsUsed:  "1000", // fully used
 				CSR:          "1",
 				ExpireAt:     strPtr("2024-12-31T23:59:59Z"),
-				ResetsAt:     strPtr("2024-07-01T00:00:00Z"),
+				ResetInt:     strPtr("1mo"),
 			},
 			{
 				ID:           "item-available",
@@ -370,7 +366,7 @@ func TestRenewableButExpired(t *testing.T) {
 				CreditsUsed:  "0",
 				CSR:          "1",
 				ExpireAt:     strPtr("2024-05-01T12:00:00Z"), // expired
-				ResetsAt:     strPtr("2024-06-01T00:00:00Z"),
+				ResetInt:     strPtr("1mo"),
 			},
 			{
 				ID:           "item-valid",
@@ -423,7 +419,7 @@ func TestSpillOverOnExhaustion(t *testing.T) {
 				CreditsUsed:  "0",
 				CSR:          "1",
 				ExpireAt:     strPtr("2024-12-31T23:59:59Z"),
-				ResetsAt:     strPtr("2024-07-01T00:00:00Z"),
+				ResetInt:     strPtr("1mo"),
 			},
 			{
 				ID:           "item-large",
@@ -480,7 +476,7 @@ func TestDifferentCreditSpendRatios(t *testing.T) {
 				CreditsUsed:  "0",
 				CSR:          "0.5", // $0.50 per credit, so $50 = 100 credits
 				ExpireAt:     strPtr("2024-12-31T23:59:59Z"),
-				ResetsAt:     strPtr("2024-07-01T00:00:00Z"),
+				ResetInt:     strPtr("1mo"),
 			},
 		},
 		CostUSD: "50",
@@ -504,7 +500,7 @@ func TestPartialCreditsUsed(t *testing.T) {
 				CreditsUsed:  "70", // 30 credits remaining
 				CSR:          "1",
 				ExpireAt:     strPtr("2024-12-31T23:59:59Z"),
-				ResetsAt:     strPtr("2024-07-01T00:00:00Z"),
+				ResetInt:     strPtr("1mo"),
 			},
 			{
 				ID:           "item-full",
@@ -536,7 +532,7 @@ func TestRenewableSortedByExpiration(t *testing.T) {
 				CreditsUsed:  "0",
 				CSR:          "1",
 				ExpireAt:     strPtr("2024-12-31T23:59:59Z"),
-				ResetsAt:     strPtr("2024-07-01T00:00:00Z"),
+				ResetInt:     strPtr("1mo"),
 			},
 			{
 				ID:           "item-renewable-sooner",
@@ -544,7 +540,7 @@ func TestRenewableSortedByExpiration(t *testing.T) {
 				CreditsUsed:  "0",
 				CSR:          "1",
 				ExpireAt:     strPtr("2024-07-31T23:59:59Z"),
-				ResetsAt:     strPtr("2024-07-01T00:00:00Z"),
+				ResetInt:     strPtr("1mo"),
 			},
 		},
 		CostUSD: "50",
@@ -622,13 +618,13 @@ func TestFilterConsumableItems(t *testing.T) {
 	expired := func() *time.Time { tm, _ := time.Parse(time.RFC3339, "2024-01-01T00:00:00Z"); return &tm }()
 	exactNow := func() *time.Time { tm, _ := time.Parse(time.RFC3339, "2024-06-01T12:00:00Z"); return &tm }()
 	future := func() *time.Time { tm, _ := time.Parse(time.RFC3339, "2024-12-31T00:00:00Z"); return &tm }()
-	futureReset := func() *time.Time { tm, _ := time.Parse(time.RFC3339, "2024-07-01T00:00:00Z"); return &tm }()
+	monthlyReset := func() *string { s := "1mo"; return &s }()
 
 	items := []budgetConsumptionState{
 		{id: "expired", csr: decimal.RequireFromString("1"), total: decimal.RequireFromString("1000"), used: decimal.Zero, expireAt: expired},
 		{id: "exact-now", csr: decimal.RequireFromString("1"), total: decimal.RequireFromString("1000"), used: decimal.Zero, expireAt: exactNow},
 		{id: "exhausted", csr: decimal.RequireFromString("1"), total: decimal.RequireFromString("1000"), used: decimal.RequireFromString("1000"), expireAt: future},
-		{id: "valid-renewable", csr: decimal.RequireFromString("1"), total: decimal.RequireFromString("1000"), used: decimal.Zero, expireAt: future, resetsAt: futureReset},
+		{id: "valid-renewable", csr: decimal.RequireFromString("1"), total: decimal.RequireFromString("1000"), used: decimal.Zero, expireAt: future, resetInt: monthlyReset},
 		{id: "valid-no-expiry", csr: decimal.RequireFromString("1"), total: decimal.RequireFromString("1000"), used: decimal.Zero, expireAt: nil},
 		{id: "valid-future", csr: decimal.RequireFromString("1"), total: decimal.RequireFromString("1000"), used: decimal.Zero, expireAt: future},
 	}
@@ -681,7 +677,7 @@ func TestAllExpiredItemsNoCapacity(t *testing.T) {
 				CreditsUsed:  "0",
 				CSR:          "1",
 				ExpireAt:     strPtr("2024-01-01T12:00:00Z"),
-				ResetsAt:     strPtr("2024-02-01T00:00:00Z"),
+				ResetInt:     strPtr("1mo"),
 			},
 			{
 				ID:           "expired-plain",

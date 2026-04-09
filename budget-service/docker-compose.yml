@@ -5,7 +5,15 @@
 # Seed: `make data` (see seed/). Existing volumes keep data; to re-init, `make down -v` then `make up`.
 services:
   postgres:
-    image: postgres:15-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_cron
+      - -c
+      - cron.database_name=budget_test
     environment:
       POSTGRES_USER: budget
       POSTGRES_PASSWORD: budget

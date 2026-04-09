@@ -14,13 +14,15 @@ import (
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/credits"
 )
 
+const lazyResetBatchSize = 500
+
 type ItemInput struct {
 	CreditsTotal     string
 	CreditSpendRatio string
 	ExpireAt         *string
 	StartsAt         *string
 	ResetsAt         *string
-	RenewInterval    *string
+	ResetInterval    *string
 }
 
 type PutItemInput struct {
@@ -30,7 +32,7 @@ type PutItemInput struct {
 	ExpireAt         *string
 	StartsAt         *string
 	ResetsAt         *string
-	RenewInterval    *string
+	ResetInterval    *string
 }
 
 type SessionLine struct {
@@ -59,7 +61,7 @@ type SessionAppendMathLine struct {
 type BudgetConsumptionPreviewRow struct {
 	BudgetItemID     string  `json:"budgetItemId"`
 	CreditSpendRatio string  `json:"creditSpendRatio"`
-	RenewInterval    *string `json:"renewInterval"`
+	ResetInterval    *string `json:"resetInterval"`
 	ExpiresAt        *string `json:"expiresAt"`
 }
 
@@ -113,7 +115,7 @@ type BudgetItemRow struct {
 	ExpireAt         *time.Time
 	StartsAt         *time.Time
 	ResetsAt         *time.Time
-	RenewInterval    *string
+	ResetInterval    *string
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -139,11 +141,77 @@ func nullTimeRFC3339(p *string) (sql.NullTime, error) {
 	return sql.NullTime{Time: t, Valid: true}, nil
 }
 
-func renewForDB(p *string) sql.NullString {
-	if p == nil || strings.TrimSpace(*p) == "" {
-		return sql.NullString{}
+func resetIntervalForDB(p *string) (sql.NullString, error) {
+	norm, err := NormalizeResetInterval(p)
+	if err != nil {
+		return sql.NullString{}, err
 	}
-	return sql.NullString{String: strings.ToUpper(strings.TrimSpace(*p)), Valid: true}
+	if norm == nil {
+		return sql.NullString{}, nil
+	}
+	return sql.NullString{String: *norm, Valid: true}, nil
+}
+
+type preparedBudgetItemInsert struct {
+	ID               string
+	CreditsTotal     string
+	CreditSpendRatio string
+	ExpireAt         sql.NullTime
+	StartsAt         sql.NullTime
+	ResetsAt         sql.NullTime
+	ResetInterval    sql.NullString
+	CreatedAt        time.Time
+}
+
+func prepareBudgetItemInsert(in ItemInput) (*preparedBudgetItemInsert, error) {
+	exp, err := nullTimeRFC3339(in.ExpireAt)
+	if err != nil {
+		return nil, err
+	}
+	st, err := nullTimeRFC3339(in.StartsAt)
+	if err != nil {
+		return nil, err
+	}
+	createdAt := time.Now().UTC()
+	if !st.Valid {
+		st = sql.NullTime{Time: createdAt, Valid: true}
+	}
+	rs, err := nullTimeRFC3339(in.ResetsAt)
+	if err != nil {
+		return nil, err
+	}
+	resetInterval, err := resetIntervalForDB(in.ResetInterval)
+	if err != nil {
+		return nil, err
+	}
+	if !rs.Valid && resetInterval.Valid {
+		nextReset, err := NextResetAt(st.Time, resetInterval.String)
+		if err != nil {
+			return nil, err
+		}
+		rs = sql.NullTime{Time: nextReset, Valid: true}
+	}
+	return &preparedBudgetItemInsert{
+		ID:               uuid.NewString(),
+		CreditsTotal:     in.CreditsTotal,
+		CreditSpendRatio: in.CreditSpendRatio,
+		ExpireAt:         exp,
+		StartsAt:         st,
+		ResetsAt:         rs,
+		ResetInterval:    resetInterval,
+		CreatedAt:        createdAt,
+	}, nil
+}
+
+func insertPreparedBudgetItem(ctx context.Context, tx *sql.Tx, budgetID string, prepared *preparedBudgetItemInsert) error {
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO budget_items (
+			id, budget_id, credits_total, credits_used, credit_spend_ratio,
+			expire_at, starts_at, resets_at, reset_interval, created_at
+		) VALUES ($1, $2, $3, 0, $4, $5, $6, $7, $8, $9)
+	`, prepared.ID, budgetID, prepared.CreditsTotal, prepared.CreditSpendRatio,
+		prepared.ExpireAt, prepared.StartsAt, prepared.ResetsAt, prepared.ResetInterval, prepared.CreatedAt)
+	return err
 }
 
 func mapNotFound(err error) error {
@@ -179,6 +247,11 @@ func mapSessionCallRequestUnique(err error) error {
 	return err
 }
 
+func applyDueResetsForBudgetTx(ctx context.Context, tx *sql.Tx, budgetID string) error {
+	_, err := tx.ExecContext(ctx, `SELECT public.process_due_budget_item_resets($1::uuid, $2::integer)`, budgetID, lazyResetBatchSize)
+	return err
+}
+
 func (s *Store) CreateBudget(ctx context.Context, budgetID, productKey string, items []ItemInput) error {
 	if _, err := uuid.Parse(budgetID); err != nil {
 		return err
@@ -204,46 +277,33 @@ func (s *Store) CreateBudget(ctx context.Context, budgetID, productKey string, i
 		return err
 	}
 	for i := range items {
-		if err := insertBudgetItem(ctx, tx, budgetID, items[i]); err != nil {
+		if _, err := insertBudgetItem(ctx, tx, budgetID, items[i]); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
 }
 
-func insertBudgetItem(ctx context.Context, tx *sql.Tx, budgetID string, in ItemInput) error {
-	id := uuid.NewString()
-	exp, err := nullTimeRFC3339(in.ExpireAt)
+func insertBudgetItem(ctx context.Context, tx *sql.Tx, budgetID string, in ItemInput) (string, error) {
+	prepared, err := prepareBudgetItemInsert(in)
 	if err != nil {
-		return err
+		return "", err
 	}
-	st, err := nullTimeRFC3339(in.StartsAt)
-	if err != nil {
-		return err
+	if err := insertPreparedBudgetItem(ctx, tx, budgetID, prepared); err != nil {
+		return "", err
 	}
-	rs, err := nullTimeRFC3339(in.ResetsAt)
-	if err != nil {
-		return err
-	}
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO budget_items (
-			id, budget_id, credits_total, credits_used, credit_spend_ratio,
-			expire_at, starts_at, resets_at, renew_interval
-		) VALUES ($1, $2, $3, 0, $4, $5, $6, $7, $8)
-	`, id, budgetID, in.CreditsTotal, in.CreditSpendRatio,
-		exp, st, rs, renewForDB(in.RenewInterval))
-	return err
+	return prepared.ID, nil
 }
 
 func insertBudgetItemHistory(ctx context.Context, tx *sql.Tx, itemID, budgetID string) error {
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO budget_item_history (
 			budget_item_id, budget_id, credits_total, credits_used, credit_spend_ratio,
-			expire_at, starts_at, renew_interval, resets_at, item_created_at, item_updated_at
+			expire_at, starts_at, reset_interval, resets_at, item_created_at, item_updated_at
 		)
 		SELECT
 			id, budget_id, credits_total, credits_used, credit_spend_ratio,
-			expire_at, starts_at, renew_interval, resets_at, created_at, updated_at
+			expire_at, starts_at, reset_interval, resets_at, created_at, updated_at
 		FROM budget_items
 		WHERE id = $1 AND budget_id = $2
 	`, itemID, budgetID)
@@ -303,7 +363,7 @@ func (s *Store) GetBudget(ctx context.Context, budgetID string) (*BudgetDetail, 
 			bi.credits_total,
 			bi.credits_used,
 			bi.credit_spend_ratio,
-			bi.expire_at, bi.starts_at, bi.resets_at, bi.renew_interval, bi.created_at, bi.updated_at
+			bi.expire_at, bi.starts_at, bi.resets_at, bi.reset_interval, bi.created_at, bi.updated_at
 		FROM budget_items bi
 		WHERE bi.budget_id = $1
 		ORDER BY bi.created_at, bi.id
@@ -316,11 +376,11 @@ func (s *Store) GetBudget(ctx context.Context, budgetID string) (*BudgetDetail, 
 	for rows.Next() {
 		var r BudgetItemRow
 		var exp, st, rs sql.NullTime
-		var renew sql.NullString
+		var reset sql.NullString
 		var ctot, cusd, csr decimal.Decimal
 		if err := rows.Scan(
 			&r.ID, &ctot, &cusd, &csr,
-			&exp, &st, &rs, &renew, &r.CreatedAt, &r.UpdatedAt,
+			&exp, &st, &rs, &reset, &r.CreatedAt, &r.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -339,9 +399,9 @@ func (s *Store) GetBudget(ctx context.Context, budgetID string) (*BudgetDetail, 
 			t := rs.Time
 			r.ResetsAt = &t
 		}
-		if renew.Valid {
-			sv := renew.String
-			r.RenewInterval = &sv
+		if reset.Valid {
+			sv := reset.String
+			r.ResetInterval = &sv
 		}
 		d.Items = append(d.Items, r)
 	}
@@ -357,7 +417,7 @@ func (s *Store) GetBudgetItem(ctx context.Context, budgetID, itemID string) (*Bu
 	}
 	var r BudgetItemRow
 	var exp, st, rs sql.NullTime
-	var renew sql.NullString
+	var reset sql.NullString
 	var ctot, cusd, csr decimal.Decimal
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
@@ -365,12 +425,12 @@ func (s *Store) GetBudgetItem(ctx context.Context, budgetID, itemID string) (*Bu
 			bi.credits_total,
 			bi.credits_used,
 			bi.credit_spend_ratio,
-			bi.expire_at, bi.starts_at, bi.resets_at, bi.renew_interval, bi.created_at, bi.updated_at
+			bi.expire_at, bi.starts_at, bi.resets_at, bi.reset_interval, bi.created_at, bi.updated_at
 		FROM budget_items bi
 		WHERE bi.id = $1 AND bi.budget_id = $2
 	`, itemID, budgetID).Scan(
 		&r.ID, &ctot, &cusd, &csr,
-		&exp, &st, &rs, &renew, &r.CreatedAt, &r.UpdatedAt,
+		&exp, &st, &rs, &reset, &r.CreatedAt, &r.UpdatedAt,
 	)
 	if err != nil {
 		return nil, mapNotFound(err)
@@ -390,9 +450,9 @@ func (s *Store) GetBudgetItem(ctx context.Context, budgetID, itemID string) (*Bu
 		t := rs.Time
 		r.ResetsAt = &t
 	}
-	if renew.Valid {
-		sv := renew.String
-		r.RenewInterval = &sv
+	if reset.Valid {
+		sv := reset.String
+		r.ResetInterval = &sv
 	}
 	return &r, nil
 }
@@ -415,13 +475,13 @@ func (s *Store) UpsertBudgetItems(ctx context.Context, budgetID string, items []
 	for i := range items {
 		it := items[i]
 		if it.BudgetItemID == nil || strings.TrimSpace(*it.BudgetItemID) == "" {
-			if err := insertBudgetItem(ctx, tx, budgetID, ItemInput{
+			if _, err := insertBudgetItem(ctx, tx, budgetID, ItemInput{
 				CreditsTotal:     it.CreditsTotal,
 				CreditSpendRatio: it.CreditSpendRatio,
 				ExpireAt:         it.ExpireAt,
 				StartsAt:         it.StartsAt,
 				ResetsAt:         it.ResetsAt,
-				RenewInterval:    it.RenewInterval,
+				ResetInterval:    it.ResetInterval,
 			}); err != nil {
 				return err
 			}
@@ -443,6 +503,10 @@ func (s *Store) UpsertBudgetItems(ctx context.Context, budgetID string, items []
 		if err != nil {
 			return err
 		}
+		resetInterval, err := resetIntervalForDB(it.ResetInterval)
+		if err != nil {
+			return err
+		}
 		if err := insertBudgetItemHistory(ctx, tx, itemID, budgetID); err != nil {
 			return err
 		}
@@ -453,10 +517,10 @@ func (s *Store) UpsertBudgetItems(ctx context.Context, budgetID string, items []
 				expire_at = $3,
 				starts_at = $4,
 				resets_at = $5,
-				renew_interval = $6
+				reset_interval = $6
 			WHERE id = $7 AND budget_id = $8
 		`, it.CreditsTotal, it.CreditSpendRatio,
-			exp, st, rs, renewForDB(it.RenewInterval), itemID, budgetID)
+			exp, st, rs, resetInterval, itemID, budgetID)
 		if err != nil {
 			return err
 		}
@@ -482,26 +546,7 @@ func (s *Store) InsertBudgetItem(ctx context.Context, budgetID string, in ItemIn
 	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM budgets WHERE id = $1`, budgetID).Scan(&exists); err != nil {
 		return "", mapNotFound(err)
 	}
-	id := uuid.NewString()
-	exp, err := nullTimeRFC3339(in.ExpireAt)
-	if err != nil {
-		return "", err
-	}
-	st, err := nullTimeRFC3339(in.StartsAt)
-	if err != nil {
-		return "", err
-	}
-	rs, err := nullTimeRFC3339(in.ResetsAt)
-	if err != nil {
-		return "", err
-	}
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO budget_items (
-			id, budget_id, credits_total, credits_used, credit_spend_ratio,
-			expire_at, starts_at, resets_at, renew_interval
-		) VALUES ($1, $2, $3, 0, $4, $5, $6, $7, $8)
-	`, id, budgetID, in.CreditsTotal, in.CreditSpendRatio,
-		exp, st, rs, renewForDB(in.RenewInterval))
+	id, err := insertBudgetItem(ctx, tx, budgetID, in)
 	if err != nil {
 		return "", err
 	}
@@ -527,6 +572,10 @@ func (s *Store) UpdateBudgetItem(ctx context.Context, budgetID, itemID string, i
 	if err != nil {
 		return err
 	}
+	resetInterval, err := resetIntervalForDB(in.ResetInterval)
+	if err != nil {
+		return err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -542,10 +591,10 @@ func (s *Store) UpdateBudgetItem(ctx context.Context, budgetID, itemID string, i
 			expire_at = $3,
 			starts_at = $4,
 			resets_at = $5,
-			renew_interval = $6
+			reset_interval = $6
 		WHERE id = $7 AND budget_id = $8
 	`, in.CreditsTotal, in.CreditSpendRatio,
-		exp, st, rs, renewForDB(in.RenewInterval), itemID, budgetID)
+		exp, st, rs, resetInterval, itemID, budgetID)
 	if err != nil {
 		return err
 	}
@@ -572,6 +621,9 @@ func (s *Store) CreateBudgetSession(ctx context.Context, budgetID, sessionID str
 	var budgetOK int
 	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM budgets WHERE id = $1 FOR UPDATE`, budgetID).Scan(&budgetOK); err != nil {
 		return mapNotFound(err)
+	}
+	if err := applyDueResetsForBudgetTx(ctx, tx, budgetID); err != nil {
+		return err
 	}
 
 	states, err := loadBudgetConsumptionStatesTx(ctx, tx, budgetID, true)
@@ -603,10 +655,10 @@ func (s *Store) BudgetConsumptionPreview(ctx context.Context, budgetID string) (
 		return nil, err
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, credit_spend_ratio::text, renew_interval, expire_at
+		SELECT id, credit_spend_ratio::text, reset_interval, expire_at
 		FROM budget_items
 		WHERE budget_id = $1
-		ORDER BY (renew_interval IS NULL), expire_at ASC NULLS LAST, created_at, id
+		ORDER BY (reset_interval IS NULL), expire_at ASC NULLS LAST, created_at, id
 	`, budgetID)
 	if err != nil {
 		return nil, err
@@ -615,14 +667,14 @@ func (s *Store) BudgetConsumptionPreview(ctx context.Context, budgetID string) (
 	var out []BudgetConsumptionPreviewRow
 	for rows.Next() {
 		var r BudgetConsumptionPreviewRow
-		var renew sql.NullString
+		var reset sql.NullString
 		var exp sql.NullTime
-		if err := rows.Scan(&r.BudgetItemID, &r.CreditSpendRatio, &renew, &exp); err != nil {
+		if err := rows.Scan(&r.BudgetItemID, &r.CreditSpendRatio, &reset, &exp); err != nil {
 			return nil, err
 		}
-		if renew.Valid {
-			sv := renew.String
-			r.RenewInterval = &sv
+		if reset.Valid {
+			sv := reset.String
+			r.ResetInterval = &sv
 		}
 		if exp.Valid {
 			s := exp.Time.UTC().Format(time.RFC3339Nano)
@@ -733,6 +785,9 @@ func (s *Store) AppendSessionItems(ctx context.Context, budgetID, sessionID stri
 		}
 		// Row exists with reconciled_at null but first query missed it: should be unreachable; surface as not found.
 		return nil, ErrNotFound
+	}
+	if err := applyDueResetsForBudgetTx(ctx, tx, budgetID); err != nil {
+		return nil, err
 	}
 
 	states, err := loadBudgetConsumptionStatesTx(ctx, tx, budgetID, true)
@@ -897,6 +952,9 @@ func (s *Store) CreateSessionReport(ctx context.Context, budgetID, sessionID str
 	}
 	if rec.Valid {
 		return "", ErrAlreadyReconciled
+	}
+	if err := applyDueResetsForBudgetTx(ctx, tx, budgetID); err != nil {
+		return "", err
 	}
 
 	// One mutable snapshot across all report lines; later lines see credits_used from earlier lines in this tx (trigger bumps column on ledger insert).
@@ -1113,11 +1171,11 @@ func (s *Store) SoftDeleteBudget(ctx context.Context, budgetID string) error {
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO budget_item_history (
 			budget_item_id, budget_id, credits_total, credits_used, credit_spend_ratio,
-			expire_at, starts_at, renew_interval, resets_at, item_created_at, item_updated_at
+			expire_at, starts_at, reset_interval, resets_at, item_created_at, item_updated_at
 		)
 		SELECT
 			id, budget_id, credits_total, credits_used, credit_spend_ratio,
-			expire_at, starts_at, renew_interval, resets_at, created_at, updated_at
+			expire_at, starts_at, reset_interval, resets_at, created_at, updated_at
 		FROM budget_items WHERE budget_id = $1
 	`, budgetID); err != nil {
 		return err
@@ -1152,11 +1210,11 @@ func (s *Store) SoftDeleteBudgetItem(ctx context.Context, budgetID, itemID strin
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO budget_item_history (
 			budget_item_id, budget_id, credits_total, credits_used, credit_spend_ratio,
-			expire_at, starts_at, renew_interval, resets_at, item_created_at, item_updated_at
+			expire_at, starts_at, reset_interval, resets_at, item_created_at, item_updated_at
 		)
 		SELECT
 			id, budget_id, credits_total, credits_used, credit_spend_ratio,
-			expire_at, starts_at, renew_interval, resets_at, created_at, updated_at
+			expire_at, starts_at, reset_interval, resets_at, created_at, updated_at
 		FROM budget_items WHERE id = $1 AND budget_id = $2
 	`, itemID, budgetID)
 	if err != nil {

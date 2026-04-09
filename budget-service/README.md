@@ -119,13 +119,15 @@ curl -sS -H "Authorization: Bearer $TOKEN" "http://localhost:8080/api/v1/auth-ch
 | `HTTP_READ_TIMEOUT`                   | `30s`   |                                                                                                 |
 | `HTTP_WRITE_TIMEOUT`                  | `60s`   |                                                                                                 |
 | `HTTP_IDLE_TIMEOUT`                   | `120s`  |                                                                                                 |
-| `WEBHOOK_SECRET`                      | —       | Secret token sent as `X-BMS-Secret` header on webhooks                                           |
+| `WEBHOOK_SECRET`                      | —       | Secret token sent as `X-BMS-Secret` header on webhooks                                          |
 
 ## Postgres
 
-`make up` starts Postgres (`budget` / `budget_test` on `localhost:5432`). The database starts **empty**; run the server with `DATABASE_URL` set (or integration tests with `TEST_DATABASE_URL`) so **golang-migrate** applies embedded SQL from [`migrations/`](migrations/) after a successful ping (`schema_migrations` tracks versions).
+`make up` starts Postgres (`budget` / `budget_test` on `localhost:5432`). Local Docker Postgres is built from [`Dockerfile.postgres`](Dockerfile.postgres) with `pg_cron` installed and `shared_preload_libraries=pg_cron`. On a fresh volume, [`docker-entrypoint-initdb.d/001_pg_cron.sql`](docker-entrypoint-initdb.d/001_pg_cron.sql) creates the extension in `budget_test`. The database starts **empty**; run the server with `DATABASE_URL` set (or integration tests with `TEST_DATABASE_URL`) so **golang-migrate** applies embedded SQL from [`migrations/`](migrations/) after a successful ping (`schema_migrations` tracks versions).
 
-**Existing volumes** from the old `docker-entrypoint-initdb.d` flow: if tables exist but `schema_migrations` was never populated, baseline once (see **Migration** in [docs/database-design.md](docs/database-design.md)) or reset the volume (`make down -v` then `make up`).
+Renewable budget items use **hybrid reset handling**. A periodic `pg_cron` job runs `public.process_due_budget_item_resets(NULL, 500)` to sweep due rows in the background, and the service also lazily applies the same reset logic inside `CreateBudgetSession`, `AppendSessionItems`, and `CreateSessionReport` transactions before it checks capacity or allocates credits. Reset credit movement is still ledger-backed: due items with positive `credits_used` get a `periodic_reset` ledger entry, while already-zero items simply advance `resets_at`.
+
+**Existing volumes** from the old `docker-entrypoint-initdb.d` flow: if tables exist but `schema_migrations` was never populated, baseline once (see **Migration** in [docs/database-design.md](docs/database-design.md)) or reset the volume (`make down -v` then `make up`). If the volume predates `pg_cron`, restart Postgres with the new Docker image so `pg_cron` is installed and preloaded, then recreate the volume so [`docker-entrypoint-initdb.d/001_pg_cron.sql`](docker-entrypoint-initdb.d/001_pg_cron.sql) can create the extension during initdb. Recreating the volume also reinitializes the cron setup.
 
 **Seed:** `make data` runs `seed/seed_test_data.sql` inside the container (requires schema applied and `make up`).
 
