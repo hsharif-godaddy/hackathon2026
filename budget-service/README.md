@@ -3,6 +3,7 @@
 HTTP API for budgets, LLM sessions, session spend lines, session reports (reconciliation), products, and outbound webhooks.
 
 - **Spec (flow, numbers, routes):** [`docs/budget-service-spec.md`](docs/budget-service-spec.md)
+- **OpenAPI / Swagger:** [`internal/openapi/openapi.yaml`](internal/openapi/openapi.yaml) — `GET /openapi.yaml` (raw YAML), `GET /swagger/` (Swagger UI). Same host, **no auth** on those routes; **`/api/v1/*` still uses JWT** for actual API calls (use Authorize in Swagger or `LOCAL_AUTH_DISABLE=true` locally).
 - **Auth:** [`packages/go-auth`](../packages/go-auth). By default `/api/v1/*` uses **`AuthenticateAWSIAMService`** — AWS IAM, Cert, or Cert2S JWT via **`Authorization: Bearer`** or **`Authorization: sso-jwt`**. The middleware does **not** read the **`auth_idp`** cookie. Set **`LOCAL_AUTH_DISABLE=true`** (local only) to skip JWT validation.
 - **Database:** Optional. If `DATABASE_URL` is unset, `Store` is nil: `/health` reports DB unconfigured; budget/product/webhook handlers return 503 on write paths.
 - **Local E2E:** [docs/local-e2e.md](docs/local-e2e.md) — Docker profile `e2e` (webhook sink), `make e2e-local`, optional `make dev-budget-ui` (proxied CRUD UI). Not used in production.
@@ -11,6 +12,8 @@ HTTP API for budgets, LLM sessions, session spend lines, session reports (reconc
 
 | Method                    | Path                                                            | Notes                                             |
 | ------------------------- | --------------------------------------------------------------- | ------------------------------------------------- |
+| `GET`                     | `/openapi.yaml`                                                 | OpenAPI 3 spec; no auth                           |
+| `GET`                     | `/swagger/`, `/swagger`                                         | Swagger UI → `/openapi.yaml`; no auth             |
 | `GET`, `HEAD`             | `/health`                                                       | No auth                                           |
 | `GET`                     | `/api/v1/auth-check`                                            | Auth probe                                        |
 | `GET`, `POST`             | `/api/v1/products`                                              | POST revives soft-deleted key when safe; else 409 |

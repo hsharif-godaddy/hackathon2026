@@ -1,0 +1,4 @@
+# Vendored swagger-ui-dist (npm); collapse noisy diffs in PRs
+swagger-ui-bundle.js linguist-generated
+swagger-ui-standalone-preset.js linguist-generated
+swagger-ui.css linguist-generated

@@ -2,6 +2,8 @@
 
 Spec for API shape, flow, and numbers. Code lives under `budget-service/`; older reference: `budget-service/`.
 
+**OpenAPI 3:** [`internal/openapi/openapi.yaml`](../internal/openapi/openapi.yaml) (source of truth for machine-readable paths and schemas). Served without authentication at **`GET /openapi.yaml`** and interactive docs at **`GET /swagger/`** (redirect from `/swagger`). **`/api/v1/*` still requires JWT** when calling the API from Swagger “Try it out” or any client.
+
 ## Flow
 
 1. **Product** — `POST /api/v1/products` registers `productKey` (required before budgets). If the key was previously soft-deleted (`DELETE /products/{productKey}`) and no active budgets reference it, the same `POST` **revives** the row by clearing `deleted_at` (same primary key; `createdAt` is unchanged).

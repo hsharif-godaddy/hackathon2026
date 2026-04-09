@@ -4,6 +4,7 @@ package api
 import (
 	"net/http"
 
+	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/openapi"
 	goauth "github.com/gdcorp-partners/airo-app-builder/packages/go-auth"
 	"github.com/gorilla/mux"
 )
@@ -17,6 +18,7 @@ func NewRouter(s *Server, authMW *goauth.Middleware) http.Handler {
 	r.MethodNotAllowedHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 	})
+	openapi.Mount(r)
 	r.HandleFunc("/health", s.getHealth).Methods(http.MethodGet, http.MethodHead)
 
 	v1 := r.PathPrefix("/api/v1").Subrouter()

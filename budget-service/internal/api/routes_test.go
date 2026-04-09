@@ -40,3 +40,19 @@ func TestRouterMethodNotAllowedReturnsJSONEnvelope(t *testing.T) {
 		t.Fatalf("expected METHOD_NOT_ALLOWED code, got %s", rec.Body.String())
 	}
 }
+
+func TestRouterOpenAPIPublic(t *testing.T) {
+	t.Parallel()
+	h := NewRouter(&Server{}, goauth.NewMiddleware("none", ""))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/openapi.yaml", nil)
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /openapi.yaml status %d", rec.Code)
+	}
+	if !strings.HasPrefix(rec.Body.String(), "openapi:") {
+		t.Fatalf("expected OpenAPI yaml prefix")
+	}
+}

@@ -1,0 +1,799 @@
+openapi: 3.0.3
+info:
+  title: Budget Service API
+  description: |
+    Credits and budget sessions for Airo. `/api/v1/*` requires IAM / cert-class service JWT
+    (`Authorization: Bearer` or `sso-jwt`) via `packages/go-auth`, except when `LOCAL_AUTH_DISABLE=true`.
+    This spec and Swagger UI are served without authentication at `/openapi.yaml` and `/swagger/`.
+    When `DATABASE_URL` is unset, most `/api/v1` handlers return **503** `SERVICE_UNAVAILABLE` (`database not configured`).
+  version: 1.0.0
+
+servers:
+  - url: /
+    description: Same host as the service
+
+tags:
+  - name: docs
+    description: OpenAPI spec and Swagger UI (no auth)
+  - name: health
+  - name: v1
+    description: Authenticated API (see security)
+
+security:
+  - bearerAuth: []
+
+paths:
+  /openapi.yaml:
+    get:
+      tags: [docs]
+      summary: OpenAPI 3 document (embedded; same bytes as this file)
+      security: []
+      responses:
+        "200":
+          description: YAML document
+          content:
+            application/yaml:
+              schema:
+                type: string
+    head:
+      tags: [docs]
+      summary: OpenAPI document metadata (no body)
+      security: []
+      responses:
+        "200":
+          description: OK
+
+  /swagger:
+    get:
+      tags: [docs]
+      summary: Redirect to Swagger UI
+      security: []
+      responses:
+        "301":
+          description: Redirect to `/swagger/`
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /swagger/
+
+  /swagger/:
+    get:
+      tags: [docs]
+      summary: Swagger UI (loads `/openapi.yaml`)
+      security: []
+      responses:
+        "200":
+          description: HTML
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /health:
+    get:
+      tags: [health]
+      summary: Liveness / DB probe
+      security: []
+      responses:
+        "200":
+          description: OK (JSON body when not HEAD)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Database ping failed but process is up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+    head:
+      tags: [health]
+      summary: Liveness (no body)
+      security: []
+      responses:
+        "200":
+          description: OK
+        "503":
+          description: Degraded
+
+  /api/v1/auth-check:
+    get:
+      tags: [v1]
+      summary: Auth probe — returns 200 when JWT is accepted
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: IAM or Cert-class service JWT accepted
+
+  /api/v1/products:
+    get:
+      tags: [v1]
+      summary: List products
+      responses:
+        "200":
+          description: Product rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+    post:
+      tags: [v1]
+      summary: Register or revive productKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productKey]
+              properties:
+                productKey:
+                  type: string
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/products/{productKey}:
+    delete:
+      tags: [v1]
+      summary: Soft-delete product
+      parameters:
+        - $ref: "#/components/parameters/productKeyPath"
+      responses:
+        "204":
+          description: Deleted
+        "400":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/webhooks:
+    post:
+      tags: [v1]
+      summary: Create webhook (eventType report.created)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [eventType, productKey, url]
+              properties:
+                eventType:
+                  type: string
+                  enum: [report.created]
+                productKey:
+                  type: string
+                url:
+                  type: string
+                  format: uri
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Webhook"
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/webhooks/{webhookId}:
+    get:
+      tags: [v1]
+      summary: Get webhook
+      parameters:
+        - $ref: "#/components/parameters/webhookIdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Webhook"
+        "404":
+          $ref: "#/components/responses/Error"
+    delete:
+      tags: [v1]
+      summary: Soft-delete webhook
+      parameters:
+        - $ref: "#/components/parameters/webhookIdPath"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/budgets:
+    post:
+      tags: [v1]
+      summary: Create budget with items
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PostBudgetRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Budget"
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/budgets/{budgetId}:
+    get:
+      tags: [v1]
+      summary: Get budget
+      parameters:
+        - $ref: "#/components/parameters/budgetIdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Budget"
+        "404":
+          $ref: "#/components/responses/Error"
+    patch:
+      tags: [v1]
+      summary: Replace budget items (upsert by budgetItemId)
+      parameters:
+        - $ref: "#/components/parameters/budgetIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/PatchBudgetItem"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Budget"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+    delete:
+      tags: [v1]
+      summary: Soft-delete budget and items
+      parameters:
+        - $ref: "#/components/parameters/budgetIdPath"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/budgets/{budgetId}/budget-items:
+    post:
+      tags: [v1]
+      summary: Append one budget item
+      parameters:
+        - $ref: "#/components/parameters/budgetIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BudgetItemInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetItem"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/budgets/{budgetId}/budget-items/{budgetItemId}:
+    get:
+      tags: [v1]
+      summary: Get budget item
+      parameters:
+        - $ref: "#/components/parameters/budgetIdPath"
+        - $ref: "#/components/parameters/budgetItemIdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetItem"
+        "404":
+          $ref: "#/components/responses/Error"
+    patch:
+      tags: [v1]
+      summary: Update budget item
+      parameters:
+        - $ref: "#/components/parameters/budgetIdPath"
+        - $ref: "#/components/parameters/budgetItemIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchBudgetItem"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetItem"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    delete:
+      tags: [v1]
+      summary: Soft-delete budget item
+      parameters:
+        - $ref: "#/components/parameters/budgetIdPath"
+        - $ref: "#/components/parameters/budgetItemIdPath"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/budgets/{budgetId}/sessions:
+    post:
+      tags: [v1]
+      summary: Open session (402 if no consumable capacity)
+      parameters:
+        - $ref: "#/components/parameters/budgetIdPath"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                metadata:
+                  type: object
+                  nullable: true
+                  additionalProperties: true
+                  description: Optional opaque JSON
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetSession"
+        "402":
+          description: NO_BUDGET_CAPACITY
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/budgets/{budgetId}/sessions/{sessionId}:
+    get:
+      tags: [v1]
+      summary: Get session (404 if reconciled)
+      parameters:
+        - $ref: "#/components/parameters/budgetIdPath"
+        - $ref: "#/components/parameters/sessionIdPath"
+        - name: debug
+          in: query
+          schema:
+            type: string
+            enum: ["1"]
+          description: If set to 1, include allocation debug in response
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetSession"
+        "404":
+          $ref: "#/components/responses/Error"
+    patch:
+      tags: [v1]
+      summary: Append spend lines
+      parameters:
+        - $ref: "#/components/parameters/budgetIdPath"
+        - $ref: "#/components/parameters/sessionIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionItems]
+              properties:
+                sessionItems:
+                  type: array
+                  items:
+                    type: object
+                    required: [cost, callRequestId]
+                    properties:
+                      cost:
+                        description: USD amount (JSON string or number)
+                        oneOf:
+                          - type: string
+                          - type: number
+                      callRequestId:
+                        type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetSession"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/budgets/{budgetId}/sessions/{sessionId}/reports:
+    post:
+      tags: [v1]
+      summary: Close session with report (sets reconciled_at)
+      parameters:
+        - $ref: "#/components/parameters/budgetIdPath"
+        - $ref: "#/components/parameters/sessionIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reportItems]
+              properties:
+                reportItems:
+                  type: array
+                  items:
+                    type: object
+                    required: [budgetCost, productCost, label]
+                    properties:
+                      budgetCost:
+                        description: Non-negative USD (string or number)
+                      productCost:
+                        description: Non-negative USD (string or number)
+                      label:
+                        type: string
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionReport"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/budgets/{budgetId}/sessions/{sessionId}/reports/{reportId}:
+    get:
+      tags: [v1]
+      summary: Get report
+      parameters:
+        - $ref: "#/components/parameters/budgetIdPath"
+        - $ref: "#/components/parameters/sessionIdPath"
+        - $ref: "#/components/parameters/reportIdPath"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionReport"
+        "404":
+          $ref: "#/components/responses/Error"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: IAM or Cert-class service JWT (see go-auth)
+
+  parameters:
+    budgetIdPath:
+      name: budgetId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    budgetItemIdPath:
+      name: budgetItemId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    sessionIdPath:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    reportIdPath:
+      name: reportId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    webhookIdPath:
+      name: webhookId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    productKeyPath:
+      name: productKey
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    Error:
+      description: Error envelope
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+
+  schemas:
+    ErrorBody:
+      type: object
+      required: [code, error]
+      properties:
+        code:
+          type: string
+          example: BAD_REQUEST
+        error:
+          type: string
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        database:
+          type: object
+          additionalProperties: true
+
+    Product:
+      type: object
+      properties:
+        productKey:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    Webhook:
+      type: object
+      properties:
+        webhookId:
+          type: string
+        eventType:
+          type: string
+        productKey:
+          type: string
+        url:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    BudgetItemInput:
+      type: object
+      required: [creditsTotal]
+      properties:
+        creditsTotal:
+          type: string
+          description: NUMERIC(20,6) non-negative
+        costToCreditRatio:
+          type: string
+          description: USD per credit (positive); defaults to 1 when omitted on create
+        expiresAt:
+          type: string
+          nullable: true
+        startsAt:
+          type: string
+          nullable: true
+        resetsAt:
+          type: string
+          nullable: true
+        resetInterval:
+          type: string
+          nullable: true
+
+    PatchBudgetItem:
+      type: object
+      properties:
+        budgetItemId:
+          type: string
+          format: uuid
+          nullable: true
+        creditsTotal:
+          type: string
+        costToCreditRatio:
+          type: string
+        expiresAt:
+          type: string
+          nullable: true
+        startsAt:
+          type: string
+          nullable: true
+        resetsAt:
+          type: string
+          nullable: true
+        resetInterval:
+          type: string
+          nullable: true
+
+    BudgetItem:
+      type: object
+      properties:
+        budgetId:
+          type: string
+          format: uuid
+          description: Present on GET/POST single budget item responses
+        budgetItemId:
+          type: string
+        creditsTotal:
+          type: string
+        creditsUsed:
+          type: string
+        costToCreditRatio:
+          type: string
+        expiresAt:
+          type: string
+          nullable: true
+        startsAt:
+          type: string
+          nullable: true
+        resetsAt:
+          type: string
+          nullable: true
+        resetInterval:
+          type: string
+          nullable: true
+        deletedAt:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    PostBudgetRequest:
+      type: object
+      required: [productKey, items]
+      properties:
+        productKey:
+          type: string
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/BudgetItemInput"
+
+    Budget:
+      type: object
+      properties:
+        budgetId:
+          type: string
+        productKey:
+          type: string
+        creditsTotal:
+          type: string
+        creditsPending:
+          type: string
+        creditsUsed:
+          type: string
+        deletedAt:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/BudgetItem"
+
+    BudgetSession:
+      type: object
+      properties:
+        budgetId:
+          type: string
+        sessionId:
+          type: string
+        costTotal:
+          description: JSON number
+        sessionItems:
+          type: array
+          items:
+            type: object
+            properties:
+              cost:
+                description: USD amount (JSON string or number in responses)
+                oneOf:
+                  - type: string
+                  - type: number
+              callRequestId:
+                type: string
+        reconciledAt:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: Opaque JSON when present
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    SessionReport:
+      type: object
+      description: Report shape matches GET after POST
+      additionalProperties: true
