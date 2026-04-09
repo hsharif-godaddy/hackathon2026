@@ -20,7 +20,7 @@ interface SiteStore {
   _pendingRequests: Record<string, Promise<Site | null>>
 
   // Actions
-  fetchSite: (siteId: string, force?: boolean) => Promise<Site | null>
+  fetchSite: (siteId: string, force?: boolean, silent?: boolean) => Promise<Site | null>
   updateSite: (siteId: string, updates: Partial<Site>) => void
   getSite: (siteId: string) => Site | null
   clearError: () => void
@@ -37,7 +37,7 @@ export const useSiteStore = create<SiteStore>()(
     _pendingRequests: {},
 
     // Fetch site data from API with promise-based deduplication
-    fetchSite: async (siteId: string, force: boolean = false) => {
+    fetchSite: async (siteId: string, force: boolean = false, silent: boolean = false) => {
       const state = get()
 
       // Return cached site if we have it and it's not currently being fetched (unless force=true)
@@ -46,7 +46,9 @@ export const useSiteStore = create<SiteStore>()(
         return existingSite
       }
 
-      // If there's already a pending request for this siteId, return that promise
+      // If a non-silent fetch is already in flight, a silent caller shares that promise and its
+      // loading side effects. Acceptable tradeoff: concurrent silent and non-silent fetches for
+      // the same siteId are rare (polling is the only silent caller; normal loads do not overlap).
       const existingRequest = state._pendingRequests[siteId]
       if (existingRequest) {
         return existingRequest
@@ -55,7 +57,9 @@ export const useSiteStore = create<SiteStore>()(
       // Create new request promise
       const requestPromise = (async () => {
         set((state) => {
-          state.loading[siteId] = true
+          if (!silent) {
+            state.loading[siteId] = true
+          }
           state.error = null
         })
 
@@ -73,7 +77,9 @@ export const useSiteStore = create<SiteStore>()(
 
           set((state) => {
             state.sites[siteId] = siteData
-            state.loading[siteId] = false
+            if (!silent) {
+              state.loading[siteId] = false
+            }
             // Clean up the pending request
             delete state._pendingRequests[siteId]
           })
@@ -86,7 +92,10 @@ export const useSiteStore = create<SiteStore>()(
           logger.error('site-store.fetch.failure', { siteId, error: errorMessage })
 
           set((state) => {
-            state.loading[siteId] = false
+            if (!silent) {
+              state.loading[siteId] = false
+            }
+            // Still set store error for silent fetches so consumers can surface it if needed.
             state.error = errorMessage
             delete state._pendingRequests[siteId]
           })

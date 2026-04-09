@@ -110,7 +110,7 @@ export default function ProjectDomain() {
     queryKey: ['site-poll', currentAppId, pollSessionId],
     queryFn: async () => {
       if (!currentAppId) return null;
-      return await fetchSite(currentAppId, true);
+      return await fetchSite(currentAppId, true, true);
     },
     enabled: shouldPoll && !!currentAppId,
     refetchInterval: 2000, // Poll every 2 seconds
@@ -174,9 +174,6 @@ export default function ProjectDomain() {
     }
     if (updateAppNameMutation.error) {
       return Status.UNAVAILABLE;
-    }
-    if (currentProjectName === projectDomainValue) {
-      return Status.READY;
     }
     return Status.READY;
   };
