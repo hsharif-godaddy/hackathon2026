@@ -232,7 +232,23 @@ jobs:
     name: Trigger Knowledge Base Update
     if: ${{ needs.promote.result == 'success' && inputs.environment == 'prod' && inputs.component == 'app' }}
     needs: [promote]
-    uses: ./.github/workflows/knowledge_base.yml
-    with:
-      environment: PROD
-      filenames: ""
+    continue-on-error: true
+    permissions:
+      actions: write
+      contents: read
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - name: Trigger Knowledge Base Workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "📚 Triggering knowledge base update after successful production promotion..."
+          gh workflow run knowledge_base.yml \
+            --repo ${{ github.repository }} \
+            --ref main \
+            --field environment=PROD
+
+          echo "✅ Knowledge base update workflow dispatch queued"
