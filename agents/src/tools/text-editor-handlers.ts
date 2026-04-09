@@ -48,7 +48,7 @@ export async function handleView(
   const stats = await stat(fullPath);
   if (stats.isDirectory()) {
     const files = await readdir(fullPath);
-    return `Directory contents:\n${files.join('\n')}`;
+    return `Contents:\n${files.join('\n')}`;
   }
 
   // Binary files produce garbled output when read as UTF-8, wasting massive tokens.
@@ -58,18 +58,18 @@ export async function handleView(
     const name = basename(fullPath);
 
     if ((IMAGE_FILE_EXTENSIONS as readonly string[]).includes(ext)) {
-      return `Cannot read ${name} — image files cannot be viewed as text. To use this image, reference it by its file path in code. If you need to know what the image looks like (colors, content, style), ask the user to describe it.`;
+      return `Cannot read ${name} — image file. Reference by path in code. Ask the user to describe visual content if needed.`;
     }
     if ((DOCUMENT_FILE_EXTENSIONS as readonly string[]).includes(ext)) {
-      return `Cannot read ${name} — ${ext.toUpperCase()} document reading is not currently supported. Ask the user to paste the relevant content directly into the chat.`;
+      return `Cannot read ${name} — ${ext.toUpperCase()} not supported. Ask the user to paste relevant content into chat.`;
     }
-    return `Cannot read ${name} — binary files cannot be viewed as text. To use this file, reference it by path in code.`;
+    return `Cannot read ${name} — binary file. Reference by path in code.`;
   }
 
   // Fallback: sniff first 8KB for null bytes — only for files with unknown extensions
   if (!BINARY_FILE_REGEX.test(fullPath) && !TEXT_FILE_REGEX.test(fullPath) && !(OTHER_BINARY_EXTENSIONS as readonly string[]).includes(ext)) {
     if (await isBinaryFile(fullPath)) {
-      return `Cannot read ${basename(fullPath)} — file appears to be binary. Binary files cannot be viewed as text. To use this file, reference it by path in code.`;
+      return `Cannot read ${basename(fullPath)} — binary file detected. Reference by path in code.`;
     }
   }
 
@@ -129,8 +129,34 @@ export async function handleView(
   return formatted;
 }
 
-/** Hard cap on snippet size to handle minified files with very long lines */
-const MAX_SNIPPET_CHARS = 20_000;
+/** Hard cap on snippet size — keeps error messages lean to reduce token waste on retries */
+const MAX_SNIPPET_CHARS = 5_000;
+
+/** Lines of context above/below each match in multi-match errors */
+const MULTI_MATCH_CONTEXT_LINES = 2;
+
+function countNewlines(text: string, from: number, to: number): number {
+  let n = 0;
+  for (let i = from; i < to; i++) {
+    if (text.charCodeAt(i) === 10) n++;
+  }
+  return n;
+}
+
+/** Max match-location blocks in multi-match errors (avoids huge output for repeated short old_str) */
+const MULTI_MATCH_SNIPPETS_CAP = 5;
+
+/** Max start-line numbers listed in the error header (rest summarized) */
+const MULTI_MATCH_HEADER_LINES_CAP = 20;
+
+function formatMatchStartLinesHeader(lines: number[]): string {
+  if (lines.length <= MULTI_MATCH_HEADER_LINES_CAP) {
+    return lines.join(', ');
+  }
+  const head = lines.slice(0, MULTI_MATCH_HEADER_LINES_CAP).join(', ');
+  const rest = lines.length - MULTI_MATCH_HEADER_LINES_CAP;
+  return `${head}, … (${rest} more)`;
+}
 
 /**
  * Build a file content snippet for error messages.
@@ -151,10 +177,10 @@ function buildErrorSnippet(lines: string[], searchText: string): string {
         // so the LLM gets at least some context (handles minified single-line files)
         if (totalChars === 0) {
           const truncLen = Math.max(0, charBudget - 50); // leave room for truncation marker
-          result = fullLine.slice(0, truncLen) + `\n... (line truncated, ${fullLine.length} chars total) ...`;
+          result = fullLine.slice(0, truncLen) + `\n... (truncated, ${fullLine.length} chars) ...`;
           totalChars = result.length;
         } else {
-          result += `\n... (truncated at ${charBudget} character limit) ...`;
+          result += `\n... (truncated at ${charBudget} chars) ...`;
         }
         break;
       }
@@ -166,7 +192,7 @@ function buildErrorSnippet(lines: string[], searchText: string): string {
   };
 
   // Small files: show everything (subject to char cap)
-  if (lines.length <= 100) {
+  if (lines.length <= 40) {
     return formatLines(lines, 1, MAX_SNIPPET_CHARS).text;
   }
 
@@ -182,13 +208,23 @@ function buildErrorSnippet(lines: string[], searchText: string): string {
     }
   }
 
-  // No partial match: show first 50 + last 50 (unified cap across both sections)
-  const head = formatLines(lines.slice(0, 50), 1, MAX_SNIPPET_CHARS);
-  const omitted = lines.length - 100;
+  // No partial match: up to first 50 + last 50 lines without overlap; omit middle only when needed
+  const headMax = 50;
+  const tailMax = 50;
+  const headCount = Math.min(headMax, lines.length);
+  const tailCount = Math.min(tailMax, lines.length - headCount);
+
+  if (tailCount === 0 || headCount + tailCount === lines.length) {
+    return formatLines(lines, 1, MAX_SNIPPET_CHARS).text;
+  }
+
+  const omitted = lines.length - headCount - tailCount;
+  const head = formatLines(lines.slice(0, headCount), 1, MAX_SNIPPET_CHARS);
   const separator = `\n... (${omitted} line${omitted === 1 ? '' : 's'} omitted) ...\n`;
   const tailBudget = MAX_SNIPPET_CHARS - head.chars - separator.length;
+  const tailStartLine = lines.length - tailCount + 1;
   const tail = tailBudget > 0
-    ? formatLines(lines.slice(-50), lines.length - 49, tailBudget).text
+    ? formatLines(lines.slice(-tailCount), tailStartLine, tailBudget).text
     : '... (tail truncated) ...';
   return `${head.text}${separator}${tail}`;
 }
@@ -216,40 +252,74 @@ export async function handleStrReplace(
     const lines = content.split('\n');
     const snippet = buildErrorSnippet(lines, oldStr);
     throw new Error(
-      `No match found for replacement. The text you provided does not exist in the file.\n\n` +
-      `Current file content (${lines.length} lines):\n${snippet}`
+      `No match found for old_str in this file.\n\n` +
+      `File content (${lines.length} lines):\n${snippet}`
     );
   }
 
   if (matches > 1) {
-    // Find line numbers of each match — single pass tracking newlines incrementally
-    const matchLines: number[] = [];
+    const lines = content.split('\n');
+    const oldLineCount = oldStr.split('\n').length;
+    const ctx = MULTI_MATCH_CONTEXT_LINES;
+    const matchSnippets: string[] = [];
     let searchFrom = 0;
-    let lineNum = 1;
-    let lastCountedPos = 0;
+    const lineCount = lines.length;
+    const lastLineIdx = lineCount > 0 ? lineCount - 1 : 0;
+    const maxShow = Math.min(matches, MULTI_MATCH_SNIPPETS_CAP);
+    const oldStrNewlineCount = countNewlines(oldStr, 0, oldStr.length);
+    let lineAtSearchFrom = 1;
+    const matchStartLines: number[] = [];
+
     for (let i = 0; i < matches; i++) {
       const idx = content.indexOf(oldStr, searchFrom);
-      if (idx !== -1) {
-        // Count newlines between last position and this match
-        for (let j = lastCountedPos; j < idx; j++) {
-          if (content[j] === '\n') lineNum++;
-        }
-        lastCountedPos = idx;
-        matchLines.push(lineNum);
-        searchFrom = idx + oldStr.length;
+      if (idx === -1) break;
+      const startLine = lineAtSearchFrom + countNewlines(content, searchFrom, idx);
+      matchStartLines.push(startLine);
+
+      if (i < maxShow) {
+        const rawStartLine0 = startLine - 1;
+        const rawEndLine0 = rawStartLine0 + oldLineCount - 1;
+        const startLine0 = Math.min(Math.max(0, rawStartLine0), lastLineIdx);
+        const endLine0 = Math.min(Math.max(startLine0, rawEndLine0), lastLineIdx);
+        const sliceStart = Math.max(0, startLine0 - ctx);
+        const sliceEndExclusive = Math.min(
+          lineCount,
+          Math.max(sliceStart + 1, endLine0 + ctx + 1),
+        );
+        const block = lines.slice(sliceStart, sliceEndExclusive)
+          .map((line, j) => `${String(sliceStart + j + 1).padStart(6)}|${line}`)
+          .join('\n');
+        matchSnippets.push(`Match ${i + 1} (starts line ${startLine}):\n${block}`);
       }
+
+      lineAtSearchFrom = startLine + oldStrNewlineCount;
+      searchFrom = idx + oldStr.length;
     }
-    throw new Error(
-      `Found ${matches} matches for replacement text at lines: ${matchLines.join(', ')}. ` +
-      `Please provide more context to make a unique match.`
-    );
+
+    let detail = matchSnippets.join('\n\n');
+    const truncationNote = `\n\n... (match detail truncated at ${MAX_SNIPPET_CHARS} characters)`;
+    if (detail.length > MAX_SNIPPET_CHARS) {
+      detail = `${detail.slice(0, MAX_SNIPPET_CHARS - truncationNote.length).trimEnd()}${truncationNote}`;
+    }
+
+    const linesHeader = formatMatchStartLinesHeader(matchStartLines);
+    const summary =
+      `Found ${matches} matches for old_str at lines: ${linesHeader}. Include more surrounding context to make it unique.`;
+
+    const omittedBlocks = matches - matchSnippets.length;
+    const omittedNote =
+      omittedBlocks > 0
+        ? `\n\n${omittedBlocks} more match location${omittedBlocks === 1 ? '' : 's'} not shown.`
+        : '';
+
+    throw new Error(`${summary}\n\n${detail}${omittedNote}`);
   }
 
   // Perform single replacement
   const newContent = content.replace(oldStr, newStr);
   await writeFile(fullPath, newContent, 'utf-8');
 
-  return 'Successfully replaced text at exactly one location.';
+  return 'Successfully replaced text.';
 }
 
 /**

@@ -213,7 +213,7 @@ describe('ToolResultCompressionStrategy', () => {
     // Error message embeds file content that happens to contain "successfully"
     const errorWithSuccessInContent =
       'No match found for replacement. The text you provided does not exist in the file.\n\n' +
-      'Current file content (5 lines):\n' +
+      'File content (5 lines):\n' +
       '1: // Successfully connected to database\n' +
       '2: export function init() {\n' +
       '3:   return true;\n' +

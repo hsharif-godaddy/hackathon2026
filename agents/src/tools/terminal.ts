@@ -120,7 +120,8 @@ export class TerminalTool {
   // Potentially dangerous command patterns
   private readonly DANGEROUS_PATTERNS = [
     /rm\s+-rf\s+[/~]/,
-    />\s*\/(?:etc|bin|usr|var|opt|sys|proc|dev)\//,
+    />\s*\/(?:etc|bin|usr|var|opt|sys|proc)\//,
+    />\s*\/dev\/(?!(?:null|zero|stdin|stdout|stderr)(?:\s|$|[;&|<>'"()]))/i,
     /sudo\s+/,
     /su\s+/,
     /chmod\s+777/,
@@ -130,8 +131,10 @@ export class TerminalTool {
     /\$\(.*curl/,
     /\$\(.*wget/,
     // Block dangerous file operations to system directories
-    /\btouch\s+\/(?:etc|bin|usr|var|opt|sys|proc|dev)\//,
-    /\bmkdir\s+\/(?:etc|bin|usr|var|opt|sys|proc|dev)\//,
+    /\btouch\s+\/(?:etc|bin|usr|var|opt|sys|proc)\//,
+    /\btouch\s+\/dev\/(?!(?:null|zero|stdin|stdout|stderr)(?:\s|$|[;&|<>'"()]))/i,
+    /\bmkdir\s+\/(?:etc|bin|usr|var|opt|sys|proc)\//,
+    /\bmkdir\s+\/dev\/(?!(?:null|zero|stdin|stdout|stderr)(?:\s|$|[;&|<>'"()]))/i,
     // Block standalone 'dd' command (when used as a complete word)
     /\bdd\s+if=/,
     /\bdd\s+of=/,

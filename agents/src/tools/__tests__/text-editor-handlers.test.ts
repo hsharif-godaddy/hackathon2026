@@ -33,7 +33,7 @@ describe('text-editor-handlers', () => {
       const result = await handleView(testDir)
       expect(result).toContain('a.txt')
       expect(result).toContain('b.txt')
-      expect(result).toMatch(/^Directory contents:/)
+      expect(result).toMatch(/^Contents:/)
     })
 
     it('should apply view_range with 1-indexed lines', async () => {
@@ -68,22 +68,24 @@ describe('text-editor-handlers', () => {
       writeFileSync(join(testDir, 'logo.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]))
       const result = await handleView(join(testDir, 'logo.png'))
       expect(result).toContain('Cannot read logo.png')
-      expect(result).toContain('image files cannot be viewed as text')
-      expect(result).toContain('reference it by its file path')
+      expect(result).toContain('image file')
+      expect(result).toContain('Reference by path')
     })
 
     it('should block document files with doc-specific message', async () => {
       writeFileSync(join(testDir, 'report.pdf'), Buffer.from([0x25, 0x50, 0x44, 0x46]))
       const result = await handleView(join(testDir, 'report.pdf'))
       expect(result).toContain('Cannot read report.pdf')
-      expect(result).toContain('PDF document reading is not currently supported')
+      expect(result).toContain('PDF not supported')
+      expect(result).toContain('paste relevant')
     })
 
     it('should block archive files with generic binary message', async () => {
       writeFileSync(join(testDir, 'data.zip'), Buffer.from([0x50, 0x4b, 0x03, 0x04]))
       const result = await handleView(join(testDir, 'data.zip'))
       expect(result).toContain('Cannot read data.zip')
-      expect(result).toContain('binary files cannot be viewed as text')
+      expect(result).toContain('binary file')
+      expect(result).toContain('Reference by path')
     })
 
     it('should allow SVG files since they are readable XML text', async () => {
@@ -96,7 +98,7 @@ describe('text-editor-handlers', () => {
     it('should block binary files with unknown extensions via null-byte sniffing', async () => {
       writeFileSync(join(testDir, 'data.custom'), Buffer.from([0x00, 0x01, 0x02, 0xFF]))
       const result = await handleView(join(testDir, 'data.custom'))
-      expect(result).toContain('file appears to be binary')
+      expect(result).toContain('binary file detected')
       expect(result).not.toContain('\x00')
     })
 
@@ -130,7 +132,7 @@ describe('text-editor-handlers', () => {
         await handleStrReplace(filePath, 'not here', 'x')
         expect.fail('Should have thrown')
       } catch (e: any) {
-        expect(e.message).toContain('Current file content (3 lines):')
+        expect(e.message).toContain('File content (3 lines):')
         // Uses readFile format: padded line number + pipe separator
         expect(e.message).toContain('     1|line one')
         expect(e.message).toContain('     2|line two')
@@ -150,7 +152,7 @@ describe('text-editor-handlers', () => {
         expect.fail('Should have thrown')
       } catch (e: any) {
         // Should find partial match on the first line of search text
-        expect(e.message).toContain('Current file content (200 lines):')
+        expect(e.message).toContain('File content (200 lines):')
         // Should include line 100 (the marker)
         expect(e.message).toContain('   100|UNIQUE_MARKER_LINE here')
         // Should NOT include line 1 (too far from match)
@@ -175,19 +177,65 @@ describe('text-editor-handlers', () => {
       }
     })
 
+    it('should show full file for 41–99 lines when head+tail would cover entire file (no negative line numbers)', async () => {
+      const filePath = join(testDir, 'mid.txt')
+      const lines = Array.from({ length: 45 }, (_, i) => `row ${i + 1}`)
+      writeFileSync(filePath, lines.join('\n'))
+      try {
+        await handleStrReplace(filePath, 'xyz', 'x')
+        expect.fail('Should have thrown')
+      } catch (e: any) {
+        expect(e.message).toContain('File content (45 lines):')
+        expect(e.message).toContain('     1|row 1')
+        expect(e.message).toContain('    45|row 45')
+        expect(e.message).not.toMatch(/\s+-\d+\|/)
+        expect(e.message).not.toMatch(/omitted\)/)
+      }
+    })
+
+    it('should show full file for 99 lines without head/tail overlap or bogus omission', async () => {
+      const filePath = join(testDir, 'ninety-nine.txt')
+      const lines = Array.from({ length: 99 }, (_, i) => `L${i + 1}`)
+      writeFileSync(filePath, lines.join('\n'))
+      try {
+        await handleStrReplace(filePath, 'xyz', 'x')
+        expect.fail('Should have thrown')
+      } catch (e: any) {
+        expect(e.message).toContain('File content (99 lines):')
+        expect(e.message).toContain('     1|L1')
+        expect(e.message).toContain('    99|L99')
+        expect(e.message).not.toMatch(/\([0-9]+ lines omitted\)/)
+      }
+    })
+
+    it('should use correct omitted count and tail start line for files just over head+tail span', async () => {
+      const filePath = join(testDir, 'one-gap.txt')
+      const lines = Array.from({ length: 105 }, (_, i) => `cell ${i + 1}`)
+      writeFileSync(filePath, lines.join('\n'))
+      try {
+        await handleStrReplace(filePath, 'xyz', 'x')
+        expect.fail('Should have thrown')
+      } catch (e: any) {
+        expect(e.message).toContain('(5 lines omitted)')
+        expect(e.message).toContain('    50|cell 50')
+        expect(e.message).toContain('    56|cell 56')
+        expect(e.message).toContain('   105|cell 105')
+      }
+    })
+
     it('should include truncated prefix for oversized single-line files', async () => {
       const filePath = join(testDir, 'minified.js')
-      // Create a single-line file larger than the 20KB snippet cap
+      // Create a single-line file larger than the snippet cap
       const longLine = 'var x=' + 'a'.repeat(25_000) + ';'
       writeFileSync(filePath, longLine)
       try {
         await handleStrReplace(filePath, 'not_in_file', 'x')
         expect.fail('Should have thrown')
       } catch (e: any) {
-        expect(e.message).toContain('Current file content (1 lines):')
+        expect(e.message).toContain('File content (1 lines):')
         // Should include a truncated prefix, not just the truncation marker
         expect(e.message).toContain('     1|var x=')
-        expect(e.message).toContain('chars total')
+        expect(e.message).toMatch(/truncated, 25014 chars/)
         // Should NOT contain the full 25KB line
         expect(e.message.length).toBeLessThan(25_000)
       }
@@ -200,8 +248,152 @@ describe('text-editor-handlers', () => {
         await handleStrReplace(filePath, 'foo', 'baz')
         expect.fail('Should have thrown')
       } catch (e: any) {
-        expect(e.message).toMatch(/Found 2 matches/)
-        expect(e.message).toContain('at lines: 1, 3')
+        expect(e.message).toContain('Found 2 matches for old_str at lines: 1, 3.')
+        expect(e.message).toContain('Match 1 (starts line 1)')
+        expect(e.message).toContain('Match 2 (starts line 3)')
+      }
+    })
+
+    it('should include two lines of context before and after each match when available', async () => {
+      const filePath = join(testDir, 'multi-ctx.txt')
+      const content = [
+        'before0',
+        'before1',
+        'XY',
+        'after0',
+        'after1',
+        'gap1',
+        'gap2',
+        'before0b',
+        'before1b',
+        'XY',
+        'after0b',
+        'after1b',
+      ].join('\n')
+      writeFileSync(filePath, content)
+      try {
+        await handleStrReplace(filePath, 'XY', 'Z')
+        expect.fail('Should have thrown')
+      } catch (e: any) {
+        expect(e.message).toContain('Found 2 matches for old_str at lines: 3, 10.')
+        expect(e.message).toContain('Match 1 (starts line 3)')
+        expect(e.message).toContain('     1|before0')
+        expect(e.message).toContain('     2|before1')
+        expect(e.message).toContain('     3|XY')
+        expect(e.message).toContain('     4|after0')
+        expect(e.message).toContain('     5|after1')
+        expect(e.message).not.toContain('gap1')
+        expect(e.message).toContain('Match 2 (starts line 10)')
+        expect(e.message).toContain('     8|before0b')
+        expect(e.message).toContain('     9|before1b')
+        expect(e.message).toContain('    10|XY')
+        expect(e.message).toContain('    11|after0b')
+        expect(e.message).toContain('    12|after1b')
+      }
+    })
+
+    it('should clip multi-match context at file start when two lines before do not exist', async () => {
+      const filePath = join(testDir, 'multi-start.txt')
+      const content = ['dup', 'a', 'b', 'c', 'd', 'e', 'dup', 'f'].join('\n')
+      writeFileSync(filePath, content)
+      try {
+        await handleStrReplace(filePath, 'dup', 'Z')
+        expect.fail('Should have thrown')
+      } catch (e: any) {
+        expect(e.message).toContain('Found 2 matches for old_str at lines: 1, 7.')
+        expect(e.message).toContain('Match 1 (starts line 1)')
+        expect(e.message).toContain('     1|dup')
+        expect(e.message).toContain('     2|a')
+        expect(e.message).toContain('     3|b')
+        expect(e.message).not.toContain('     0|')
+        expect(e.message).toContain('Match 2 (starts line 7)')
+        expect(e.message).toContain('     5|d')
+        expect(e.message).toContain('     6|e')
+        expect(e.message).toContain('     7|dup')
+        expect(e.message).toContain('     8|f')
+      }
+    })
+
+    it('should clip multi-match context at file end when two lines after do not exist', async () => {
+      const filePath = join(testDir, 'multi-end.txt')
+      const content = ['a', 'b', 'c', 'd', 'dup', 'e', 'f', 'g', 'dup'].join('\n')
+      writeFileSync(filePath, content)
+      try {
+        await handleStrReplace(filePath, 'dup', 'Z')
+        expect.fail('Should have thrown')
+      } catch (e: any) {
+        expect(e.message).toContain('Found 2 matches for old_str at lines: 5, 9.')
+        expect(e.message).toContain('Match 1 (starts line 5)')
+        expect(e.message).toContain('     3|c')
+        expect(e.message).toContain('     4|d')
+        expect(e.message).toContain('     5|dup')
+        expect(e.message).toContain('     6|e')
+        expect(e.message).toContain('     7|f')
+        expect(e.message).toContain('Match 2 (starts line 9)')
+        expect(e.message).toContain('     8|g')
+        expect(e.message).toContain('     9|dup')
+        expect(e.message).not.toMatch(/\s+10\|/)
+      }
+    })
+
+    it('should list all match start lines in header while capping detail blocks to five', async () => {
+      const filePath = join(testDir, 'many-matches.txt')
+      const content = Array.from({ length: 10 }, () => 'x').join('\n')
+      writeFileSync(filePath, content)
+      try {
+        await handleStrReplace(filePath, 'x', 'y')
+        expect.fail('Should have thrown')
+      } catch (e: any) {
+        expect(e.message).toContain(
+          'Found 10 matches for old_str at lines: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10.',
+        )
+        expect(e.message).toContain('Match 5 (starts line')
+        expect(e.message).not.toContain('Match 6 (starts line')
+        expect(e.message).toContain('5 more match locations not shown.')
+      }
+    })
+
+    it('should append singular omitted note when only one detail block is past the cap', async () => {
+      const filePath = join(testDir, 'six-matches.txt')
+      const content = Array.from({ length: 6 }, () => 'x').join('\n')
+      writeFileSync(filePath, content)
+      try {
+        await handleStrReplace(filePath, 'x', 'y')
+        expect.fail('Should have thrown')
+      } catch (e: any) {
+        expect(e.message).toMatch(/Found 6 matches/)
+        expect(e.message).toContain('1 more match location not shown.')
+      }
+    })
+
+    it('should cap at-lines header after 20 start lines with remainder summarized', async () => {
+      const filePath = join(testDir, 'twenty-five-matches.txt')
+      const content = Array.from({ length: 25 }, () => 'x').join('\n')
+      writeFileSync(filePath, content)
+      const first20 = Array.from({ length: 20 }, (_, i) => String(i + 1)).join(', ')
+      try {
+        await handleStrReplace(filePath, 'x', 'y')
+        expect.fail('Should have thrown')
+      } catch (e: any) {
+        expect(e.message).toMatch(/Found 25 matches/)
+        expect(e.message).toContain(`at lines: ${first20}, … (5 more).`)
+        expect(e.message).toContain('Match 5 (starts line')
+        expect(e.message).toContain('20 more match locations not shown.')
+      }
+    })
+
+    it('should truncate multi-match detail when it exceeds MAX_SNIPPET_CHARS', async () => {
+      const filePath = join(testDir, 'huge-blocks.txt')
+      const pad = 'p'.repeat(2_000)
+      const lines = Array.from({ length: 5 }, (_, i) => `${pad}${i}`)
+      writeFileSync(filePath, lines.join('\n'))
+      try {
+        await handleStrReplace(filePath, pad, 'q')
+        expect.fail('Should have thrown')
+      } catch (e: any) {
+        expect(e.message).toContain('Found 5 matches for old_str at lines: 1, 2, 3, 4, 5.')
+        expect(e.message).toContain('truncated at 5000 characters')
+        expect(e.message.length).toBeLessThan(6_500)
       }
     })
 
