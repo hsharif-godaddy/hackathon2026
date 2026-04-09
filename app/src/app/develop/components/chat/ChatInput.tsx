@@ -19,6 +19,7 @@ import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { generateClickEID } from '@/utils/instrumentation'
+import { handleModifierEnterNewline } from '@/utils/textareaShortcuts'
 
 export interface StagedChatFile {
   id: string
@@ -292,6 +293,15 @@ export default function ChatInput({
       if (textareaRef.current && handleArrowDown(textareaRef.current)) {
         e.preventDefault()
       }
+      return
+    }
+    if (handleModifierEnterNewline(e, {
+      currentValue: inputValue,
+      onValueChange: (nextValue) => {
+        exitNavigationMode()
+        onInputChange(nextValue)
+      },
+    })) {
       return
     }
     if (e.key === 'Enter' && !e.shiftKey) {

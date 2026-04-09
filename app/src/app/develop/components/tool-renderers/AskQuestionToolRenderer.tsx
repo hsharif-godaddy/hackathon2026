@@ -163,7 +163,7 @@ export default function AskQuestionToolRenderer({
   }
 
   function handleOtherKeyDown(event: React.KeyboardEvent) {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (event.key === 'Enter' && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
       event.preventDefault()
       if (otherValue.trim()) {
         submitAnswer(otherValue.trim())

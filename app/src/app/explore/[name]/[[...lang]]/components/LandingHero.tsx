@@ -16,6 +16,7 @@ import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useTranslations } from '@/hooks/useTranslations'
 import { MAX_PROMPT_LENGTH } from '@/lib/features'
 import { generateClickEID } from '@/utils/instrumentation'
+import { handleModifierEnterNewline } from '@/utils/textareaShortcuts'
 import LandingExamples from './LandingExamples'
 import { LandingHeroData } from './types'
 
@@ -319,6 +320,15 @@ const LandingHero = forwardRef<LandingHeroRef, LandingHeroProps>(({
                   }
                 }}
                 onKeyDown={(e) => {
+                  if (handleModifierEnterNewline(e, {
+                    currentValue: displayText,
+                    onValueChange: (nextValue) => {
+                      setDisplayText(nextValue)
+                      debouncedSetPromptText(nextValue)
+                    },
+                  })) {
+                    return
+                  }
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
                     if (displayText.trim() && !isLoading && !isTyping && displayText.length < MAX_PROMPT_LENGTH) {

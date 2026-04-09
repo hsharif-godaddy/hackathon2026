@@ -421,6 +421,46 @@ describe('ChatInput', () => {
     expect(onSendMessage).not.toHaveBeenCalled();
   });
 
+  it('should not call onSendMessage when Alt+Enter pressed', async () => {
+    const onSendMessage = vi.fn();
+    const onInputChange = vi.fn();
+    const { user } = renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        onInputChange={onInputChange}
+        onSendMessage={onSendMessage}
+      />
+    );
+
+    const textarea = screen.getByRole('textbox');
+    await user.click(textarea);
+    await user.keyboard('{Alt>}{Enter}{/Alt}');
+
+    expect(onSendMessage).not.toHaveBeenCalled();
+    expect(onInputChange).toHaveBeenCalledWith('Test\n');
+  });
+
+  it('should not call onSendMessage when Cmd+Enter pressed', async () => {
+    const onSendMessage = vi.fn();
+    const onInputChange = vi.fn();
+    const { user } = renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        onInputChange={onInputChange}
+        onSendMessage={onSendMessage}
+      />
+    );
+
+    const textarea = screen.getByRole('textbox');
+    await user.click(textarea);
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+
+    expect(onSendMessage).not.toHaveBeenCalled();
+    expect(onInputChange).toHaveBeenCalledWith('Test\n');
+  });
+
   it('should have correct textarea attributes', () => {
     renderWithProviders(<ChatInput {...defaultProps} />);
 

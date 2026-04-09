@@ -121,6 +121,38 @@ describe('HeroSection', () => {
     expect(sendButton).not.toBeDisabled();
   });
 
+  it('should insert a newline and not submit when Cmd+Enter pressed', async () => {
+    const onStartBuilding = vi.fn();
+    const { user } = renderWithProviders(
+      <HeroSection {...defaultProps} promptText="Test prompt" onStartBuilding={onStartBuilding} />
+    );
+
+    const textarea = screen.getByTestId('homepage-prompt-input');
+    await user.click(textarea);
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+
+    await waitFor(() => {
+      expect(textarea).toHaveValue('Test prompt\n');
+    });
+    expect(onStartBuilding).not.toHaveBeenCalled();
+  });
+
+  it('should insert a newline and not submit when Alt+Enter pressed', async () => {
+    const onStartBuilding = vi.fn();
+    const { user } = renderWithProviders(
+      <HeroSection {...defaultProps} promptText="Test prompt" onStartBuilding={onStartBuilding} />
+    );
+
+    const textarea = screen.getByTestId('homepage-prompt-input');
+    await user.click(textarea);
+    await user.keyboard('{Alt>}{Enter}{/Alt}');
+
+    await waitFor(() => {
+      expect(textarea).toHaveValue('Test prompt\n');
+    });
+    expect(onStartBuilding).not.toHaveBeenCalled();
+  });
+
   describe('engagement metrics', () => {
     it('logs homepage.prompt.focus on first textarea focus', async function focusMetric() {
       renderWithProviders(<HeroSection {...defaultProps} />);

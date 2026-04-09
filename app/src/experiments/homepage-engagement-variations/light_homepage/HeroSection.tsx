@@ -20,6 +20,7 @@ import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useTranslations } from '@/hooks/useTranslations'
 import { getByteLength, MAX_PROMPT_BYTES, validateAndClampPrompt } from '@/lib/waf-validation'
 import { generateClickEID } from '@/utils/instrumentation'
+import { handleModifierEnterNewline } from '@/utils/textareaShortcuts'
 
 const PROMPT_IDLE_MS = 30_000
 
@@ -462,6 +463,15 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                   }
                 }}
                 onKeyDown={(e) => {
+                  if (handleModifierEnterNewline(e, {
+                    currentValue: displayText,
+                    onValueChange: (nextValue) => {
+                      setDisplayText(nextValue)
+                      debouncedSetPromptText(nextValue)
+                    },
+                  })) {
+                    return
+                  }
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
                     if (displayText.trim() && !isLoading && !isTyping && !isOverLimit) {
