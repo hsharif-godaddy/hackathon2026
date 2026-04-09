@@ -63,6 +63,8 @@ type Stage struct {
 	Outputs         map[string]Output `yaml:"outputs"`
 	Matrix          []MatrixEntry     `yaml:"matrix"`
 	Items           []string          `yaml:"items"`
+	URL             string            `yaml:"url"`
+	ExpectVersion   string            `yaml:"expect_version"`
 }
 
 type Output struct {
@@ -157,6 +159,13 @@ func (c *Config) validate() error {
 			if s.Type == "checklist" {
 				if len(s.Items) == 0 {
 					return fmt.Errorf("environment %q stage %q: checklist requires items", envName, s.ID)
+				}
+				continue
+			}
+
+			if s.Type == "health-check" {
+				if s.URL == "" {
+					return fmt.Errorf("environment %q stage %q: health-check requires url", envName, s.ID)
 				}
 				continue
 			}
@@ -262,7 +271,7 @@ func (c *Config) DeployWorkflows() []DeployWorkflow {
 	var result []DeployWorkflow
 
 	add := func(s Stage) {
-		if s.Type == "checklist" || s.Workflow == "" || s.Repo == "" {
+		if s.Type == "checklist" || s.Type == "health-check" || s.Workflow == "" || s.Repo == "" {
 			return
 		}
 		if strings.Contains(s.Workflow, "e2e") || strings.Contains(s.Workflow, "playwright") {

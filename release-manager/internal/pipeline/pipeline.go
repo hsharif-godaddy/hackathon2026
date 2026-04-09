@@ -2,7 +2,10 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"regexp"
 	"strings"
 	"sync"
@@ -121,14 +124,18 @@ type RollbackSnapshot struct {
 	ImagesSourceURL string
 }
 
+// Default retry delays for health check stages.
+var defaultHealthCheckDelays = []time.Duration{0, 5 * time.Second, 10 * time.Second, 20 * time.Second}
+
 // Pipeline manages the full deployment flow.
 type Pipeline struct {
-	Config       *config.Config
-	Runner       gh.Runner
-	DryRun       bool
-	Branch       string
-	Snapshot     RollbackSnapshot
-	FailStages map[string]bool
+	Config            *config.Config
+	Runner            gh.Runner
+	DryRun            bool
+	Branch            string
+	Snapshot          RollbackSnapshot
+	FailStages        map[string]bool
+	HealthCheckDelays []time.Duration
 
 	mu     sync.RWMutex
 	stages []*StageRun
@@ -288,6 +295,10 @@ func (p *Pipeline) RunStage(ctx context.Context, idx int) error {
 		return nil
 	}
 
+	if sr.Stage.Type == "health-check" {
+		return p.runHealthCheck(ctx, idx)
+	}
+
 	resolvedInputs := config.ResolveInputs(sr.Stage.Inputs, p.Values())
 	resolvedRef := config.ResolveTemplate(sr.Stage.Ref, p.Values())
 	logger.Log("stage.inputs: [%s] %s — %v", sr.Env, sr.Stage.ID, resolvedInputs)
@@ -429,6 +440,99 @@ func (p *Pipeline) runDryStage(ctx context.Context, idx int, resolvedInputs map[
 	}
 
 	p.succeedStage(idx)
+	return nil
+}
+
+func (p *Pipeline) runHealthCheck(ctx context.Context, idx int) error {
+	sr := p.stages[idx]
+	url := config.ResolveTemplate(sr.Stage.URL, p.Values())
+	expectVersion := config.ResolveTemplate(sr.Stage.ExpectVersion, p.Values())
+
+	logger.Log("health-check.start: [%s] %s — url=%s expect_version=%s", sr.Env, sr.Stage.Name, url, expectVersion)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	var lastErr error
+	delays := p.HealthCheckDelays
+	if delays == nil {
+		delays = defaultHealthCheckDelays
+	}
+	for attempt, delay := range delays {
+		if delay > 0 {
+			logger.Log("health-check.retry: [%s] %s — attempt %d, waiting %s", sr.Env, sr.Stage.Name, attempt+1, delay)
+			p.mu.Lock()
+			sr.StatusText = fmt.Sprintf("retry %d/%d", attempt, len(delays)-1)
+			p.mu.Unlock()
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				p.failStage(idx, ctx.Err().Error())
+				return ctx.Err()
+			}
+		}
+
+		lastErr = p.doHealthCheck(ctx, client, idx, url, expectVersion)
+		if lastErr == nil {
+			p.succeedStage(idx)
+			return nil
+		}
+		logger.Log("health-check.attempt-failed: [%s] %s — attempt %d: %s", sr.Env, sr.Stage.Name, attempt+1, lastErr)
+	}
+
+	p.failStage(idx, lastErr.Error())
+	return lastErr
+}
+
+type healthResponse struct {
+	Status  string `json:"status"`
+	Version string `json:"version"`
+}
+
+func (p *Pipeline) doHealthCheck(ctx context.Context, client *http.Client, idx int, url, expectVersion string) error {
+	sr := p.stages[idx]
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("creating request: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("fetching %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("health endpoint returned %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return fmt.Errorf("reading response: %w", err)
+	}
+
+	var health healthResponse
+	if err := json.Unmarshal(body, &health); err != nil {
+		return fmt.Errorf("parsing response: %w", err)
+	}
+
+	if health.Status != "healthy" {
+		return fmt.Errorf("status is %q, expected \"healthy\"", health.Status)
+	}
+
+	if expectVersion != "" {
+		if health.Version == "" {
+			return fmt.Errorf("version check required but endpoint returned no version field")
+		}
+		if !strings.HasPrefix(expectVersion, health.Version) && !strings.HasPrefix(health.Version, expectVersion) {
+			return fmt.Errorf("version mismatch: got %q, expected %q (prefix match)", health.Version, expectVersion)
+		}
+	}
+
+	p.mu.Lock()
+	sr.StatusText = fmt.Sprintf("healthy, version=%s", health.Version)
+	p.mu.Unlock()
+
 	return nil
 }
 

@@ -66,12 +66,18 @@ pipeline:
           inputs:
             environment: test
 
+        - id: health-check-test
+          name: Health Check (Test)
+          group: validate
+          type: health-check
+          url: "https://airo-builder.test-godaddy.com/api/health"
+          expect_version: "{{commit}}"
+
         - id: checklist-test
           name: Manual Checklist
           group: validate
           type: checklist
           items:
-            - "Verify the health & version of the katana app: https://airo-builder.test-godaddy.com/api/health"
             - "Verify the katana app loads at test URL: https://airo-builder.test-godaddy.com/"
             - "Create a new app and verify it builds the site"
             - "Publish the app and verify it goes live"
@@ -141,12 +147,18 @@ pipeline:
           inputs:
             environment: prod
 
+        - id: health-check-prod
+          name: Health Check (Prod)
+          group: validate-prod
+          type: health-check
+          url: "https://airo-builder.godaddy.com/api/health"
+          expect_version: "{{commit}}"
+
         - id: checklist-prod
           name: Manual Checklist
           group: validate-prod
           type: checklist
           items:
-            - "Verify the health & version of the katana app: https://airo-builder.godaddy.com/api/health"
             - "Verify the katana app loads at prod URL: https://airo-builder.godaddy.com/"
             - "Create a new app and verify it builds the site"
             - "Publish the app and verify it goes live"

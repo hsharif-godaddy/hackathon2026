@@ -489,6 +489,38 @@ func TestValidateChecklistWithItems(t *testing.T) {
 	}
 }
 
+func TestValidateHealthCheckNoURL(t *testing.T) {
+	cfg := &Config{
+		Pipeline: PipelineConfig{
+			Environments: map[string]*EnvironmentConfig{
+				"test": {Stages: []Stage{{ID: "hc", Name: "Health Check", Type: "health-check"}}},
+			},
+		},
+	}
+	if err := cfg.validate(); err == nil {
+		t.Fatal("validate() expected error for health-check with no url")
+	}
+}
+
+func TestValidateHealthCheckWithURL(t *testing.T) {
+	cfg := &Config{
+		Pipeline: PipelineConfig{
+			Environments: map[string]*EnvironmentConfig{
+				"test": {Stages: []Stage{{
+					ID:            "hc",
+					Name:          "Health Check",
+					Type:          "health-check",
+					URL:           "https://example.com/api/health",
+					ExpectVersion: "{{commit}}",
+				}}},
+			},
+		},
+	}
+	if err := cfg.validate(); err != nil {
+		t.Fatalf("validate() unexpected error: %v", err)
+	}
+}
+
 func TestValidateBadRequires(t *testing.T) {
 	cfg := &Config{
 		Pipeline: PipelineConfig{
