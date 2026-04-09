@@ -1,5 +1,6 @@
 'use client';
 
+import clsx from 'clsx';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import {
@@ -465,7 +466,7 @@ export default function AppsAndSitesCard({
 
   return (
     <>
-      <div className="flex flex-col md:col-span-2 bg-intents-ux-box-backgroundColor rounded-xl border border-border p-2 sm:p-4">
+      <div className={clsx('flex flex-col md:col-span-2 bg-intents-ux-box-backgroundColor rounded-xl border border-border p-2 sm:p-4', isExpanded && 'pb-0 sm:pb-0')}>
         <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full">
           <button
             type="button"
