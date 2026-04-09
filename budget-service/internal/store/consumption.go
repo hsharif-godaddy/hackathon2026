@@ -1,5 +1,5 @@
 // Consumption: USD→credits for session lines and session reports. Each budget_item row keeps its own
-// credit_spend_ratio; we never blend ratios across rows. Order matches docs/budget-service-spec.md.
+// cost_credit_ratio; we never blend ratios across rows. Order matches docs/budget-service-spec.md.
 // Pool "used" is budget_items.credits_used (cached); an AFTER INSERT trigger on budget_item_credit_ledger
 // keeps it equal to SUM(ledger.credits_delta) per item.
 package store
@@ -17,14 +17,14 @@ import (
 )
 
 // budgetConsumptionState is one row's pool for walking: how many credits remain (total-used) at csr.
-// expireAt and resetInt are used for filtering expired items and prioritizing resetting items.
+// expiresAt and resetInt are used for filtering expired items and prioritizing resetting items.
 // createdAt is used for stable tie-breaking in sort order (matching SQL ORDER BY).
 type budgetConsumptionState struct {
 	id        string
 	csr       decimal.Decimal
 	total     decimal.Decimal
 	used      decimal.Decimal
-	expireAt  *time.Time
+	expiresAt *time.Time
 	resetInt  *string
 	createdAt time.Time
 }
@@ -37,7 +37,7 @@ type budgetCreditChunk struct {
 }
 
 // sortConsumptionItems sorts items by consumption priority matching the SQL ORDER BY:
-// reset-interval items first (reset_interval IS NOT NULL), then by expire_at ASC NULLS LAST,
+// reset-interval items first (reset_interval IS NOT NULL), then by expires_at ASC NULLS LAST,
 // then by created_at, then by id.
 func sortConsumptionItems(items []budgetConsumptionState) {
 	sort.SliceStable(items, func(i, j int) bool {
@@ -48,12 +48,12 @@ func sortConsumptionItems(items []budgetConsumptionState) {
 			return iResetting // reset interval set comes first
 		}
 
-		// Then by expire_at ASC NULLS LAST
-		iHasExpire := items[i].expireAt != nil
-		jHasExpire := items[j].expireAt != nil
+		// Then by expires_at ASC NULLS LAST
+		iHasExpire := items[i].expiresAt != nil
+		jHasExpire := items[j].expiresAt != nil
 		if iHasExpire && jHasExpire {
-			if !items[i].expireAt.Equal(*items[j].expireAt) {
-				return items[i].expireAt.Before(*items[j].expireAt)
+			if !items[i].expiresAt.Equal(*items[j].expiresAt) {
+				return items[i].expiresAt.Before(*items[j].expiresAt)
 			}
 		} else if iHasExpire != jHasExpire {
 			return iHasExpire // has expiry comes before no expiry (NULLS LAST)
@@ -71,13 +71,13 @@ func sortConsumptionItems(items []budgetConsumptionState) {
 
 // filterConsumableItems returns only items that are eligible for credit allocation at the given time.
 // An item is NOT consumable if:
-// - It has expired (expireAt <= now)
+// - It has expired (expiresAt <= now)
 // - It has no remaining credits (total - used <= 0)
 func filterConsumableItems(items []budgetConsumptionState, now time.Time) []budgetConsumptionState {
 	var out []budgetConsumptionState
 	for i := range items {
-		// Skip expired items (expireAt is at or before now)
-		if items[i].expireAt != nil && !items[i].expireAt.After(now) {
+		// Skip expired items (expiresAt is at or before now)
+		if items[i].expiresAt != nil && !items[i].expiresAt.After(now) {
 			continue
 		}
 		// Skip items with no remaining credits
@@ -180,13 +180,13 @@ func budgetHasConsumableCapacity(items []budgetConsumptionState, now time.Time) 
 }
 
 // loadBudgetConsumptionStatesTx returns rows in consumption priority: reset interval lines first
-// (reset_interval set), then soonest expire_at, then created_at, then id.
+// (reset_interval set), then soonest expires_at, then created_at, then id.
 func loadBudgetConsumptionStatesTx(ctx context.Context, tx *sql.Tx, budgetID string, forUpdate bool) ([]budgetConsumptionState, error) {
 	q := `
-			SELECT bi.id, bi.credits_total, bi.credits_used, bi.credit_spend_ratio, bi.expire_at, bi.reset_interval, bi.created_at
+			SELECT bi.id, bi.credits_total, bi.credits_used, bi.cost_credit_ratio, bi.expires_at, bi.reset_interval, bi.created_at
 			FROM budget_items bi
 			WHERE bi.budget_id = $1
-			ORDER BY (bi.reset_interval IS NULL), bi.expire_at NULLS LAST, bi.created_at, bi.id
+			ORDER BY (bi.reset_interval IS NULL), bi.expires_at NULLS LAST, bi.created_at, bi.id
 		`
 	if forUpdate {
 		q += ` FOR UPDATE`
@@ -199,14 +199,14 @@ func loadBudgetConsumptionStatesTx(ctx context.Context, tx *sql.Tx, budgetID str
 	var out []budgetConsumptionState
 	for rows.Next() {
 		var st budgetConsumptionState
-		var expireAt sql.NullTime
+		var expiresAt sql.NullTime
 		var resetInt sql.NullString
-		if err := rows.Scan(&st.id, &st.total, &st.used, &st.csr, &expireAt, &resetInt, &st.createdAt); err != nil {
+		if err := rows.Scan(&st.id, &st.total, &st.used, &st.csr, &expiresAt, &resetInt, &st.createdAt); err != nil {
 			return nil, err
 		}
-		if expireAt.Valid {
-			tm := expireAt.Time
-			st.expireAt = &tm
+		if expiresAt.Valid {
+			tm := expiresAt.Time
+			st.expiresAt = &tm
 		}
 		if resetInt.Valid {
 			r := resetInt.String

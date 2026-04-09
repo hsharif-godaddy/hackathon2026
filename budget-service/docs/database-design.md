@@ -22,7 +22,7 @@ Live OLTP tables have **no soft-delete column**; deletes **archive** into `*_his
 ## Numeric and type conventions
 
 - Money and credit amounts use **`NUMERIC(20, 6)`** (at most 14 digits left of the decimal point).
-- **Credit spend ratio** (`credit_spend_ratio`): USD **per one credit** (same meaning as API `costToCreditRatio`).
+- **Credit spend ratio** (`cost_credit_ratio`): USD **per one credit** (same meaning as API `costToCreditRatio`).
 - **Credits from USD** (application layer): `internal/credits.DollarsToCredits` — rounding half away from zero at 6 decimal places.
 
 ---
@@ -82,9 +82,9 @@ flowchart TB
 - **Columns (business-relevant):**
   - `credits_total` — pool size (credits). **CHECK ≥ 0.**
   - `credits_used` — **cached** net credits consumed for this item (**CHECK ≥ 0**). Must stay aligned with the ledger (see triggers).
-  - `credit_spend_ratio` — USD per credit. **CHECK > 0.**
-  - `expire_at`, `starts_at`, `resets_at`, `reset_interval` — optional term fields. `reset_interval` matches `^[1-9][0-9]*(d|w|mo|y)$` (examples: `1d`, `2w`, `1mo`, `1y`) or null. When `reset_interval` is set, `resets_at` is the next reset boundary; due rows satisfy `resets_at <= now()`.
-- **Consumption order** (application, not a DB constraint): rows with `reset_interval` set first, then `expire_at ASC NULLS LAST`, then `created_at`, `id`. Available credits = `credits_total - credits_used`.
+  - `cost_credit_ratio` — USD per credit. **CHECK > 0.**
+  - `expires_at`, `starts_at`, `resets_at`, `reset_interval` — optional term fields. `reset_interval` matches `^[1-9][0-9]*(d|w|mo|y)$` (examples: `1d`, `2w`, `1mo`, `1y`) or null. When `reset_interval` is set, `resets_at` is the next reset boundary; due rows satisfy `resets_at <= now()`.
+- **Consumption order** (application, not a DB constraint): rows with `reset_interval` set first, then `expires_at ASC NULLS LAST`, then `created_at`, `id`. Available credits = `credits_total - credits_used`.
 
 ### `budget_sessions`
 
@@ -105,7 +105,7 @@ flowchart TB
 ### `budget_session_report_items`
 
 - **PK:** `id` (uuid). **FK:** `report_id` → `budget_session_reports` **CASCADE**.
-- **Purpose:** Report lines with `budget_cost`, `product_cost`, `category`. **CHECK:** costs ≥ 0.
+- **Purpose:** Report lines with `budget_cost`, `product_cost`, `label`. **CHECK:** costs ≥ 0.
 
 ### `budget_session_report_item_allocations`
 

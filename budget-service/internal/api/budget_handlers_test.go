@@ -190,9 +190,9 @@ func TestCreateBudgetItemWithCompactResetInterval(t *testing.T) {
 	renewVal := "3d"
 	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
 		{
-			CreditsTotal:     "100.000000",
-			CreditSpendRatio: "1.000000",
-			ResetInterval:    &renewVal,
+			CreditsTotal:    "100.000000",
+			CostCreditRatio: "1.000000",
+			ResetInterval:   &renewVal,
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -223,7 +223,7 @@ func TestGetBudgetWithMuxVars(t *testing.T) {
 	}
 	budgetID := uuid.NewString()
 	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
-		{CreditsTotal: "10.000000", CreditSpendRatio: "1.000000"},
+		{CreditsTotal: "10.000000", CostCreditRatio: "1.000000"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -250,8 +250,8 @@ func TestPostBudgetItemDefaultsStartsAtAndDerivesResetsAt(t *testing.T) {
 	}
 	budgetID := uuid.NewString()
 	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
-		CreditsTotal:     "10.000000",
-		CreditSpendRatio: "1.000000",
+		CreditsTotal:    "10.000000",
+		CostCreditRatio: "1.000000",
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +327,7 @@ func TestPostSessionReturns402WhenBudgetExhausted(t *testing.T) {
 	}
 	budgetID := uuid.NewString()
 	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
-		{CreditsTotal: "1.000000", CreditSpendRatio: "1.000000"},
+		{CreditsTotal: "1.000000", CostCreditRatio: "1.000000"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +385,7 @@ func TestPatchReconciledSessionReturns409(t *testing.T) {
 	}
 	budgetID := uuid.NewString()
 	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
-		{CreditsTotal: "10.000000", CreditSpendRatio: "1.000000"},
+		{CreditsTotal: "10.000000", CostCreditRatio: "1.000000"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -442,7 +442,7 @@ func TestPatchNonexistentSessionReturns404(t *testing.T) {
 	}
 	budgetID := uuid.NewString()
 	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
-		{CreditsTotal: "10.000000", CreditSpendRatio: "1.000000"},
+		{CreditsTotal: "10.000000", CostCreditRatio: "1.000000"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -478,7 +478,7 @@ func TestPatchSessionDuplicateCallRequestID(t *testing.T) {
 	}
 	budgetID := uuid.NewString()
 	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
-		{CreditsTotal: "10.000000", CreditSpendRatio: "1.000000"},
+		{CreditsTotal: "10.000000", CostCreditRatio: "1.000000"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -687,8 +687,8 @@ func TestGoCodeSpendMathOverHTTP(t *testing.T) {
 	if rep["budgetId"].(string) != budgetID {
 		t.Fatalf("report budgetId")
 	}
-	if rep["reportItems"].([]any)[0].(map[string]any)["category"].(string) != "usage" {
-		t.Fatalf("report category")
+	if rep["reportItems"].([]any)[0].(map[string]any)["label"].(string) != "usage" {
+		t.Fatalf("report label")
 	}
 
 	reqGS404 := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/"+budgetID+"/sessions/"+sessionID, nil)
@@ -708,7 +708,7 @@ func TestPatchBudgetItemInsertsHistoryRow(t *testing.T) {
 	}
 	budgetID := uuid.NewString()
 	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
-		{CreditsTotal: "100.000000", CreditSpendRatio: "0.066666"},
+		{CreditsTotal: "100.000000", CostCreditRatio: "0.066666"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -751,8 +751,8 @@ func TestBudgetItemBodyToItemInputAllowsMissingCostToCreditRatioOnUpdate(t *test
 	if row.CreditsTotal != "10.000000" {
 		t.Fatalf("creditsTotal %q want %q", row.CreditsTotal, "10.000000")
 	}
-	if row.CreditSpendRatio != "" {
-		t.Fatalf("creditSpendRatio %q want empty", row.CreditSpendRatio)
+	if row.CostCreditRatio != "" {
+		t.Fatalf("costCreditRatio %q want empty", row.CostCreditRatio)
 	}
 }
 
@@ -765,8 +765,8 @@ func TestPatchBudgetItemToPutItemInputAllowsMissingCostToCreditRatioOnUpdate(t *
 	if row.CreditsTotal != "10.000000" {
 		t.Fatalf("creditsTotal %q want %q", row.CreditsTotal, "10.000000")
 	}
-	if row.CreditSpendRatio != "" {
-		t.Fatalf("creditSpendRatio %q want empty", row.CreditSpendRatio)
+	if row.CostCreditRatio != "" {
+		t.Fatalf("costCreditRatio %q want empty", row.CostCreditRatio)
 	}
 }
 
@@ -779,8 +779,8 @@ func TestPatchBudgetItemKeepsExistingCostToCreditRatioWhenOmitted(t *testing.T) 
 	}
 	budgetID := uuid.NewString()
 	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
-		CreditsTotal:     "100.000000",
-		CreditSpendRatio: "0.066666",
+		CreditsTotal:    "100.000000",
+		CostCreditRatio: "0.066666",
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -820,8 +820,8 @@ func TestPatchBudgetItemKeepsExistingCostToCreditRatioWhenOmitted(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row.CreditSpendRatio != "0.066666" {
-		t.Fatalf("stored creditSpendRatio %q want %q", row.CreditSpendRatio, "0.066666")
+	if row.CostCreditRatio != "0.066666" {
+		t.Fatalf("stored costCreditRatio %q want %q", row.CostCreditRatio, "0.066666")
 	}
 }
 
@@ -834,8 +834,8 @@ func TestPatchBudgetExistingItemKeepsExistingCostToCreditRatioWhenOmitted(t *tes
 	}
 	budgetID := uuid.NewString()
 	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
-		CreditsTotal:     "100.000000",
-		CreditSpendRatio: "0.066666",
+		CreditsTotal:    "100.000000",
+		CostCreditRatio: "0.066666",
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -888,8 +888,8 @@ func TestPatchBudgetExistingItemKeepsExistingCostToCreditRatioWhenOmitted(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row.CreditSpendRatio != "0.066666" {
-		t.Fatalf("stored creditSpendRatio %q want %q", row.CreditSpendRatio, "0.066666")
+	if row.CostCreditRatio != "0.066666" {
+		t.Fatalf("stored costCreditRatio %q want %q", row.CostCreditRatio, "0.066666")
 	}
 }
 
@@ -906,12 +906,12 @@ func TestPatchBudgetItemKeepsExistingDateFieldsWhenOmitted(t *testing.T) {
 	resetInterval := "1mo"
 	budgetID := uuid.NewString()
 	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
-		CreditsTotal:     "100.000000",
-		CreditSpendRatio: "0.500000",
-		ExpireAt:         &expiresAt,
-		StartsAt:         &startsAt,
-		ResetsAt:         &resetsAt,
-		ResetInterval:    &resetInterval,
+		CreditsTotal:    "100.000000",
+		CostCreditRatio: "0.500000",
+		ExpiresAt:       &expiresAt,
+		StartsAt:        &startsAt,
+		ResetsAt:        &resetsAt,
+		ResetInterval:   &resetInterval,
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -941,8 +941,8 @@ func TestPatchBudgetItemKeepsExistingDateFieldsWhenOmitted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row.ExpireAt == nil || row.ExpireAt.UTC().Format(time.RFC3339) != expiresAt {
-		t.Fatalf("expireAt got %v want %s", row.ExpireAt, expiresAt)
+	if row.ExpiresAt == nil || row.ExpiresAt.UTC().Format(time.RFC3339) != expiresAt {
+		t.Fatalf("expiresAt got %v want %s", row.ExpiresAt, expiresAt)
 	}
 	if row.StartsAt == nil || row.StartsAt.UTC().Format(time.RFC3339) != startsAt {
 		t.Fatalf("startsAt got %v want %s", row.StartsAt, startsAt)
@@ -968,12 +968,12 @@ func TestPatchBudgetExistingItemKeepsExistingDateFieldsWhenOmitted(t *testing.T)
 	resetInterval := "1mo"
 	budgetID := uuid.NewString()
 	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
-		CreditsTotal:     "100.000000",
-		CreditSpendRatio: "0.500000",
-		ExpireAt:         &expiresAt,
-		StartsAt:         &startsAt,
-		ResetsAt:         &resetsAt,
-		ResetInterval:    &resetInterval,
+		CreditsTotal:    "100.000000",
+		CostCreditRatio: "0.500000",
+		ExpiresAt:       &expiresAt,
+		StartsAt:        &startsAt,
+		ResetsAt:        &resetsAt,
+		ResetInterval:   &resetInterval,
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -1004,8 +1004,8 @@ func TestPatchBudgetExistingItemKeepsExistingDateFieldsWhenOmitted(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row.ExpireAt == nil || row.ExpireAt.UTC().Format(time.RFC3339) != expiresAt {
-		t.Fatalf("expireAt got %v want %s", row.ExpireAt, expiresAt)
+	if row.ExpiresAt == nil || row.ExpiresAt.UTC().Format(time.RFC3339) != expiresAt {
+		t.Fatalf("expiresAt got %v want %s", row.ExpiresAt, expiresAt)
 	}
 	if row.StartsAt == nil || row.StartsAt.UTC().Format(time.RFC3339) != startsAt {
 		t.Fatalf("startsAt got %v want %s", row.StartsAt, startsAt)
@@ -1029,10 +1029,10 @@ func TestPatchBudgetItemExplicitNullClearsField(t *testing.T) {
 	startsAt := "2030-01-01T00:00:00Z"
 	budgetID := uuid.NewString()
 	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
-		CreditsTotal:     "100.000000",
-		CreditSpendRatio: "0.500000",
-		ExpireAt:         &expiresAt,
-		StartsAt:         &startsAt,
+		CreditsTotal:    "100.000000",
+		CostCreditRatio: "0.500000",
+		ExpiresAt:       &expiresAt,
+		StartsAt:        &startsAt,
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -1062,8 +1062,8 @@ func TestPatchBudgetItemExplicitNullClearsField(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row.ExpireAt != nil {
-		t.Fatalf("expireAt got %v want nil", row.ExpireAt)
+	if row.ExpiresAt != nil {
+		t.Fatalf("expiresAt got %v want nil", row.ExpiresAt)
 	}
 	if row.StartsAt == nil || row.StartsAt.UTC().Format(time.RFC3339) != startsAt {
 		t.Fatalf("startsAt got %v want %s", row.StartsAt, startsAt)
@@ -1081,10 +1081,10 @@ func TestPatchBudgetExistingItemExplicitNullClearsField(t *testing.T) {
 	startsAt := "2030-01-01T00:00:00Z"
 	budgetID := uuid.NewString()
 	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
-		CreditsTotal:     "100.000000",
-		CreditSpendRatio: "0.500000",
-		ExpireAt:         &expiresAt,
-		StartsAt:         &startsAt,
+		CreditsTotal:    "100.000000",
+		CostCreditRatio: "0.500000",
+		ExpiresAt:       &expiresAt,
+		StartsAt:        &startsAt,
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -1115,8 +1115,8 @@ func TestPatchBudgetExistingItemExplicitNullClearsField(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row.ExpireAt != nil {
-		t.Fatalf("expireAt got %v want nil", row.ExpireAt)
+	if row.ExpiresAt != nil {
+		t.Fatalf("expiresAt got %v want nil", row.ExpiresAt)
 	}
 	if row.StartsAt == nil || row.StartsAt.UTC().Format(time.RFC3339) != startsAt {
 		t.Fatalf("startsAt got %v want %s", row.StartsAt, startsAt)
@@ -1132,8 +1132,8 @@ func TestPatchBudgetAddItemDefaultsStartsAtAndDerivesResetsAt(t *testing.T) {
 	}
 	budgetID := uuid.NewString()
 	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
-		CreditsTotal:     "10.000000",
-		CreditSpendRatio: "1.000000",
+		CreditsTotal:    "10.000000",
+		CostCreditRatio: "1.000000",
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -1276,7 +1276,7 @@ func TestGetBudgetItem(t *testing.T) {
 	}
 	budgetID := uuid.NewString()
 	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
-		{CreditsTotal: "77.000000", CreditSpendRatio: "0.066666"},
+		{CreditsTotal: "77.000000", CostCreditRatio: "0.066666"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1631,10 +1631,10 @@ func TestPatchBudgetItemClearResetIntervalAlsoClearsResetsAt(t *testing.T) {
 	resetInterval := "1mo"
 	budgetID := uuid.NewString()
 	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
-		CreditsTotal:     "100.000000",
-		CreditSpendRatio: "0.500000",
-		ResetsAt:         &resetsAt,
-		ResetInterval:    &resetInterval,
+		CreditsTotal:    "100.000000",
+		CostCreditRatio: "0.500000",
+		ResetsAt:        &resetsAt,
+		ResetInterval:   &resetInterval,
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -1684,10 +1684,10 @@ func TestPatchBudgetExistingItemClearResetIntervalAlsoClearsResetsAt(t *testing.
 	resetInterval := "1mo"
 	budgetID := uuid.NewString()
 	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
-		CreditsTotal:     "100.000000",
-		CreditSpendRatio: "0.500000",
-		ResetsAt:         &resetsAt,
-		ResetInterval:    &resetInterval,
+		CreditsTotal:    "100.000000",
+		CostCreditRatio: "0.500000",
+		ResetsAt:        &resetsAt,
+		ResetInterval:   &resetInterval,
 	}}); err != nil {
 		t.Fatal(err)
 	}

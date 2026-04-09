@@ -26,7 +26,7 @@ HTTP API for budgets, LLM sessions, session spend lines, session reports (reconc
 
 Successful write endpoints (`POST`/`PATCH`) return the same payload format as the corresponding resource `GET`.
 
-**Money in JSON:** `creditsTotal`, `cost`, costs in report lines, etc. are strings in responses (6 decimal places). Requests often accept **string or number** for those fields (`flexAmount`). **`costToCreditRatio`** is **USD per credit** (same as stored **`credit_spend_ratio`**); **credits used** = `budget_cost_usd / credit_spend_ratio` (see `internal/credits`).
+**Money in JSON:** `creditsTotal`, `cost`, costs in report lines, etc. are strings in responses (6 decimal places). Requests often accept **string or number** for those fields (`flexAmount`). **`costToCreditRatio`** is **USD per credit** (same as stored **`cost_credit_ratio`**); **credits used** = `budget_cost_usd / cost_credit_ratio` (see `internal/credits`).
 
 ## Run
 

@@ -65,10 +65,10 @@ func (s *Server) appendSessionDebug(ctx context.Context, out map[string]any, bud
 	orderJSON := make([]map[string]any, len(order))
 	for i := range order {
 		orderJSON[i] = map[string]any{
-			"budgetItemId":     order[i].BudgetItemID,
-			"creditSpendRatio": order[i].CreditSpendRatio,
-			"resetInterval":    order[i].ResetInterval,
-			"expiresAt":        order[i].ExpiresAt,
+			"budgetItemId":    order[i].BudgetItemID,
+			"costCreditRatio": order[i].CostCreditRatio,
+			"resetInterval":   order[i].ResetInterval,
+			"expiresAt":       order[i].ExpiresAt,
 		}
 	}
 	dbgItems := make([]map[string]any, len(lines))
@@ -86,7 +86,7 @@ func (s *Server) appendSessionDebug(ctx context.Context, out map[string]any, bud
 	}
 	debug := map[string]any{
 		"consumptionOrder": orderJSON,
-		"note":             "USD→credits walks budget items reset_interval set first, then soonest expire_at; replay recomputes each line in id order from current budget_items.credits_used",
+		"note":             "USD→credits walks budget items reset_interval set first, then soonest expires_at; replay recomputes each line in id order from current budget_items.credits_used",
 		"sessionItems":     dbgItems,
 	}
 	if len(appendedLines) > 0 {
@@ -170,7 +170,7 @@ func writeBudgetStoreError(w http.ResponseWriter, op string, err error) {
 	writeError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
 }
 
-// parseCostToCreditRatio parses JSON costToCreditRatio: USD per credit, same as DB credit_spend_ratio.
+// parseCostToCreditRatio parses JSON costToCreditRatio: USD per credit, same as DB cost_credit_ratio.
 func parseCostToCreditRatio(s string) (string, error) {
 	d, err := credits.ParsePositiveRatio(s)
 	if err != nil {
@@ -227,11 +227,11 @@ func (s *Server) hydrateMissingBudgetItemUpdateFields(ctx context.Context, budge
 		*creditsTotal = flexAmount(existing.CreditsTotal)
 	}
 	if missingCostToCreditRatio {
-		ratio := flexAmount(existing.CreditSpendRatio)
+		ratio := flexAmount(existing.CostCreditRatio)
 		*costToCreditRatio = &ratio
 	}
-	if missingExpiresAt && existing.ExpireAt != nil {
-		expires := existing.ExpireAt.UTC().Format(time.RFC3339Nano)
+	if missingExpiresAt && existing.ExpiresAt != nil {
+		expires := existing.ExpiresAt.UTC().Format(time.RFC3339Nano)
 		*expiresAt = &expires
 	}
 	if missingStartsAt && existing.StartsAt != nil {
@@ -299,18 +299,18 @@ func (b budgetItemBody) toItemInput(validateCreate bool) (store.ItemInput, strin
 		}
 	}
 	out := store.ItemInput{
-		CreditsTotal:     formattedCreditsTotal,
-		CreditSpendRatio: csr,
-		ExpireAt:         b.ExpiresAt,
-		StartsAt:         b.StartsAt,
-		ResetsAt:         b.ResetsAt,
-		ResetInterval:    ri,
+		CreditsTotal:    formattedCreditsTotal,
+		CostCreditRatio: csr,
+		ExpiresAt:       b.ExpiresAt,
+		StartsAt:        b.StartsAt,
+		ResetsAt:        b.ResetsAt,
+		ResetInterval:   ri,
 	}
 	return out, ""
 }
 
 func budgetItemToResponse(r store.BudgetItemRow) map[string]any {
-	ctc := strings.TrimSpace(r.CreditSpendRatio)
+	ctc := strings.TrimSpace(r.CostCreditRatio)
 	if d, err := credits.ParsePositiveRatio(ctc); err == nil {
 		ctc = credits.Format(d)
 	}
@@ -322,8 +322,8 @@ func budgetItemToResponse(r store.BudgetItemRow) map[string]any {
 		"updatedAt":         r.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		"createdAt":         r.CreatedAt.UTC().Format(time.RFC3339Nano),
 	}
-	if r.ExpireAt != nil {
-		out["expiresAt"] = r.ExpireAt.UTC().Format(time.RFC3339Nano)
+	if r.ExpiresAt != nil {
+		out["expiresAt"] = r.ExpiresAt.UTC().Format(time.RFC3339Nano)
 	} else {
 		out["expiresAt"] = nil
 	}
@@ -531,13 +531,13 @@ func (p patchBudgetItem) toPutItemInput(validateCreate bool) (store.PutItemInput
 		return store.PutItemInput{}, msg
 	}
 	return store.PutItemInput{
-		BudgetItemID:     p.BudgetItemID,
-		CreditsTotal:     row.CreditsTotal,
-		CreditSpendRatio: row.CreditSpendRatio,
-		ExpireAt:         row.ExpireAt,
-		StartsAt:         row.StartsAt,
-		ResetsAt:         row.ResetsAt,
-		ResetInterval:    row.ResetInterval,
+		BudgetItemID:    p.BudgetItemID,
+		CreditsTotal:    row.CreditsTotal,
+		CostCreditRatio: row.CostCreditRatio,
+		ExpiresAt:       row.ExpiresAt,
+		StartsAt:        row.StartsAt,
+		ResetsAt:        row.ResetsAt,
+		ResetInterval:   row.ResetInterval,
 	}, ""
 }
 
@@ -764,12 +764,12 @@ func (s *Server) patchBudgetItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	row := store.ItemInput{
-		CreditsTotal:     putRow.CreditsTotal,
-		CreditSpendRatio: putRow.CreditSpendRatio,
-		ExpireAt:         putRow.ExpireAt,
-		StartsAt:         putRow.StartsAt,
-		ResetsAt:         putRow.ResetsAt,
-		ResetInterval:    putRow.ResetInterval,
+		CreditsTotal:    putRow.CreditsTotal,
+		CostCreditRatio: putRow.CostCreditRatio,
+		ExpiresAt:       putRow.ExpiresAt,
+		StartsAt:        putRow.StartsAt,
+		ResetsAt:        putRow.ResetsAt,
+		ResetInterval:   putRow.ResetInterval,
 	}
 
 	if err := s.Store.UpdateBudgetItem(r.Context(), budgetID, budgetItemID, row); err != nil {
@@ -1012,7 +1012,7 @@ func (s *Server) postBudgetSessionReport(w http.ResponseWriter, r *http.Request)
 		lines[i] = store.ReportLineInput{
 			BudgetCost:  strings.TrimSpace(string(ri.BudgetCost)),
 			ProductCost: strings.TrimSpace(string(ri.ProductCost)),
-			Category:    strings.TrimSpace(ri.Label),
+			Label:       strings.TrimSpace(ri.Label),
 		}
 	}
 
@@ -1121,7 +1121,7 @@ func sessionReportToResponse(d *store.SessionReportDetail) (map[string]any, erro
 			"reportItemId": it.ReportItemID,
 			"budgetCost":   bc,
 			"productCost":  pc,
-			"category":     it.Category,
+			"label":        it.Label,
 			"createdAt":    it.CreatedAt.UTC().Format(time.RFC3339Nano),
 			"budgetItems":  budgetItems,
 		}

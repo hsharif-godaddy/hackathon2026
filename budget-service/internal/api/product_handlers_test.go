@@ -124,7 +124,7 @@ func TestDeleteProductConflictWhenBudgetExists(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := st.CreateBudget(ctx, uuid.NewString(), key, []store.ItemInput{
-		{CreditsTotal: "1.000000", CreditSpendRatio: "1.000000"},
+		{CreditsTotal: "1.000000", CostCreditRatio: "1.000000"},
 	}); err != nil {
 		t.Fatal(err)
 	}

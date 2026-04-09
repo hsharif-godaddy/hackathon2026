@@ -81,11 +81,11 @@ func TestCreateBudgetSessionAppliesDueResetAndIsIdempotent(t *testing.T) {
 
 	budgetID := uuid.NewString()
 	if err := st.CreateBudget(ctx, budgetID, productKey, []ItemInput{{
-		CreditsTotal:     "10.000000",
-		CreditSpendRatio: "1.000000",
-		StartsAt:         &startsAt,
-		ResetsAt:         &resetsAt,
-		ResetInterval:    &interval,
+		CreditsTotal:    "10.000000",
+		CostCreditRatio: "1.000000",
+		StartsAt:        &startsAt,
+		ResetsAt:        &resetsAt,
+		ResetInterval:   &interval,
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -153,11 +153,11 @@ func TestProcessDueBudgetItemResetsAdvancesScheduleWithoutLedgerWhenUnused(t *te
 
 	budgetID := uuid.NewString()
 	if err := st.CreateBudget(ctx, budgetID, productKey, []ItemInput{{
-		CreditsTotal:     "5.000000",
-		CreditSpendRatio: "1.000000",
-		StartsAt:         &startsAt,
-		ResetsAt:         &resetsAt,
-		ResetInterval:    &interval,
+		CreditsTotal:    "5.000000",
+		CostCreditRatio: "1.000000",
+		StartsAt:        &startsAt,
+		ResetsAt:        &resetsAt,
+		ResetInterval:   &interval,
 	}}); err != nil {
 		t.Fatal(err)
 	}
