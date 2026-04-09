@@ -49,6 +49,116 @@ export default function DevelopmentMode() {
       }
     }
 
+    // Clear stale theme preview state from previous sessions
+    localStorage.removeItem('airo-dev-original-theme')
+    localStorage.removeItem('airo-dev-preview-theme')
+
+    // Theme preview: convert hex to HSL for CSS custom properties
+    function hexToHsl(hex: string): string {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+      if (!result) return '0 0% 0%'
+
+      const r = parseInt(result[1], 16) / 255
+      const g = parseInt(result[2], 16) / 255
+      const b = parseInt(result[3], 16) / 255
+
+      const max = Math.max(r, g, b)
+      const min = Math.min(r, g, b)
+      let h = 0
+      let s = 0
+      const l = (max + min) / 2
+
+      if (max !== min) {
+        const d = max - min
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+
+        switch (max) {
+          case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break
+          case g: h = ((b - r) / d + 2) / 6; break
+          case b: h = ((r - g) / d + 4) / 6; break
+        }
+      }
+
+      return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`
+    }
+
+    function applyThemePreview(palette: any) {
+      const root = document.documentElement
+
+      // CSS custom properties to update (shadcn/ui format) - matches updateCssColors exactly
+      const cssVars = [
+        { key: '--background', value: palette.background },
+        { key: '--foreground', value: palette.foreground },
+        { key: '--card', value: palette.card ?? palette.muted },
+        { key: '--card-foreground', value: palette.cardForeground ?? palette.foreground },
+        { key: '--popover', value: palette.background },
+        { key: '--popover-foreground', value: palette.foreground },
+        { key: '--primary', value: palette.primary },
+        { key: '--primary-foreground', value: palette.primaryForeground },
+        { key: '--secondary', value: palette.secondary },
+        { key: '--secondary-foreground', value: palette.secondaryForeground },
+        { key: '--muted', value: palette.muted },
+        { key: '--muted-foreground', value: palette.mutedForeground },
+        { key: '--accent', value: palette.accent },
+        { key: '--accent-foreground', value: palette.accentForeground },
+        { key: '--destructive', value: palette.destructive },
+        { key: '--destructive-foreground', value: palette.destructiveForeground },
+        { key: '--border', value: palette.border },
+        { key: '--input', value: palette.border },
+        { key: '--ring', value: palette.primary },
+        { key: '--chart-1', value: palette.chart1 },
+        { key: '--chart-2', value: palette.chart2 },
+        { key: '--chart-3', value: palette.chart3 },
+        { key: '--chart-4', value: palette.chart4 },
+        { key: '--chart-5', value: palette.chart5 },
+        { key: '--sidebar', value: palette.muted },
+        { key: '--sidebar-foreground', value: palette.foreground },
+        { key: '--sidebar-primary', value: palette.primary },
+        { key: '--sidebar-primary-foreground', value: palette.primaryForeground },
+        { key: '--sidebar-accent', value: palette.accent },
+        { key: '--sidebar-accent-foreground', value: palette.accentForeground },
+        { key: '--sidebar-border', value: palette.border },
+        { key: '--sidebar-ring', value: palette.primary }
+      ].filter(item => item.value !== undefined && item.value !== null)
+
+      // Store original theme on first preview for revert
+      const hasOriginalTheme = localStorage.getItem('airo-dev-original-theme')
+      if (!hasOriginalTheme) {
+        const originalTheme: Record<string, string> = {}
+        cssVars.forEach(({ key }) => {
+          const currentValue = getComputedStyle(root).getPropertyValue(key)
+          if (currentValue) {
+            originalTheme[key] = currentValue.trim()
+          }
+        })
+        localStorage.setItem('airo-dev-original-theme', JSON.stringify(originalTheme))
+      }
+
+      // Apply new theme values as HSL
+      cssVars.forEach(({ key, value }) => {
+        if (value) {
+          root.style.setProperty(key, hexToHsl(value))
+        }
+      })
+
+      localStorage.setItem('airo-dev-preview-theme', JSON.stringify(palette))
+    }
+
+    function revertThemePreview() {
+      const originalThemeStr = localStorage.getItem('airo-dev-original-theme')
+      if (!originalThemeStr) return
+
+      const originalTheme = JSON.parse(originalThemeStr)
+      const root = document.documentElement
+
+      Object.entries(originalTheme).forEach(([key, value]) => {
+        root.style.setProperty(key, value as string)
+      })
+
+      localStorage.removeItem('airo-dev-original-theme')
+      localStorage.removeItem('airo-dev-preview-theme')
+    }
+
     // Media version cache-busting via MutationObserver
     // Watches for dynamically added/changed images and applies version params
     let mediaVersions: Record<string, string> = {}
@@ -513,6 +623,10 @@ export default function DevelopmentMode() {
           })
         } else if (event.data?.type === 'RELOAD_MEDIA_SLOT' && event.data.slotPath) {
           reloadMediaSlot(event.data.slotPath)
+        } else if (event.data?.type === 'PREVIEW_THEME' && event.data.palette) {
+          applyThemePreview(event.data.palette)
+        } else if (event.data?.type === 'REVERT_THEME') {
+          revertThemePreview()
         }
       } catch (error) {
 

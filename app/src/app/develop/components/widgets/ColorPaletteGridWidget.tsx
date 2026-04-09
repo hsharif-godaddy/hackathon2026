@@ -63,7 +63,7 @@ export interface ColorPaletteGridWidgetProps {
  */
 export default function ColorPaletteGridWidget({ palettes, className = '' }: ColorPaletteGridWidgetProps) {
   const t = useTranslations()
-  const [previewedPalette, setPreviewedPalette] = useState<any>(null)
+  const [previewedPalette, setPreviewedPalette] = useState<(CompletePalette & { name: string }) | null>(null)
   const sendUserMessage = useSendUserMessage();
   const isStreaming = useIsActivelyStreaming();
   const isLoading = useIsLoading();
@@ -135,7 +135,7 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
   return (
     <div className={className}>
       {/* Palette Grid */}
-      <div className="grid grid-cols-2 gap-2">
+      <div data-testid="color-palette-grid" className="grid grid-cols-2 gap-2">
         {palettes.map((paletteData, index) => (
           <ColorPaletteWidget
             key={index}
@@ -150,6 +150,7 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
       <div className="mt-3 flex items-center gap-1 flex-wrap justify-end pr-0.5">
 
         <Button
+          data-testid="color-palette-more-options"
           text={t('builder_common_more_options')}
           design="tertiary"
           size="sm"
@@ -158,16 +159,18 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
         />
 
         <Button
+          data-testid="color-palette-revert"
           text={t('builder_common_revert')}
           design="secondary"
           size="sm"
           onClick={handleRevert}
         />
         <Button
+          data-testid="color-palette-save"
           text={t('builder_common_save')}
           design="primary"
           size="sm"
-          disabled={isProcessing}
+          disabled={isProcessing || !previewedPalette}
           onClick={handleSave}
         />
       </div>

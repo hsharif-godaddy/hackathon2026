@@ -107,6 +107,7 @@ export default function ColorPaletteWidget({ name, palette, className = '', isSe
 
   return (
     <button
+      data-testid="color-palette-option"
       className={clsx(
         "flex flex-col w-full gap-2 p-2 rounded-md border-2 border-border transition-all duration-300 hover:shadow-md hover:cursor-pointer hover:border-intents-ux-boxHighContrast-borderColor relative",
         className,
