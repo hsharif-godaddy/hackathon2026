@@ -619,6 +619,18 @@ func TestMatchesFilter(t *testing.T) {
 			filter: `displayTitle contains "PROD"`,
 			want:   true,
 		},
+		{
+			name:   "preprov filter excludes reload-only run",
+			title:  "Reload Pre-Prov in PROD",
+			filter: "displayTitle contains 'Upsert + Reload Pre-Prov' and 'PROD'",
+			want:   false,
+		},
+		{
+			name:   "preprov filter matches upsert+reload run",
+			title:  "Upsert + Reload Pre-Prov in PROD",
+			filter: "displayTitle contains 'Upsert + Reload Pre-Prov' and 'PROD'",
+			want:   true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -954,7 +966,8 @@ func TestFetchRollbackSnapshot(t *testing.T) {
 				}, nil
 			case "airo-preprov-management-unified.yml":
 				return []gh.RunListEntry{
-					{ID: 200, Name: "PROD deployment", URL: "https://github.com/org/infra/actions/runs/200"},
+					{ID: 201, Name: "Reload Pre-Prov in PROD", URL: "https://github.com/org/infra/actions/runs/201"},
+					{ID: 200, Name: "Upsert + Reload Pre-Prov in PROD", URL: "https://github.com/org/infra/actions/runs/200"},
 				}, nil
 			}
 			return nil, nil
@@ -985,7 +998,7 @@ Upsert Template Images	PUBLISH_TAG="pi-eee555-ext-fff666"`, nil
 					ImageTags: config.RollbackImageTags{
 						Repo:     "org/infra",
 						Workflow: "airo-preprov-management-unified.yml",
-						Filter:   "displayTitle contains 'PROD'",
+						Filter:   "displayTitle contains 'Upsert + Reload Pre-Prov' and 'PROD'",
 						JobMatch: "Upsert Template Images",
 						Patterns: map[string]string{
 							"agent_image_tag":   `AGENT_TAG="(pi-[a-f0-9]+-ext-[a-f0-9]+)"`,

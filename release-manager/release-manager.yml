@@ -180,7 +180,7 @@ pipeline:
       image_tags:
         repo: gdcorp-commerce/pioneer-infra
         workflow: airo-preprov-management-unified.yml
-        filter: "displayTitle contains 'PROD'"
+        filter: "displayTitle contains 'Upsert + Reload Pre-Prov' and 'PROD'"
         extract_from: run-log
         job_match: "Upsert Template Images"
         patterns:
