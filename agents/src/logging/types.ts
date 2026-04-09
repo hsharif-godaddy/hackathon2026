@@ -12,6 +12,7 @@ export interface LogContext {
   conversationId?: string;
   component?: string;
   version?: string;
+  productId?: string;
   [key: string]: any;
 }
 
@@ -35,7 +36,8 @@ export interface LogEvent {
   userId?: string;
   requestId?: string;
   conversationId?: string;
-  
+  productId?: string;
+
   // Event data
   data?: Record<string, any>;
   

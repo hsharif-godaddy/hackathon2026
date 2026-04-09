@@ -36,7 +36,7 @@ export class ProductionHandler implements LogHandler {
 
   /**
    * Transform field names from camelCase to snake_case for log output
-   * Currently transforms: appId -> app_id
+   * Currently transforms: appId -> app_id, productId -> product_id
    */
   private transformFieldNames(event: any): any {
     if (!event || typeof event !== 'object') {
@@ -45,9 +45,13 @@ export class ProductionHandler implements LogHandler {
 
     const result: any = Array.isArray(event) ? [] : {};
 
+    const fieldMap: Record<string, string> = {
+      appId: 'app_id',
+      productId: 'product_id',
+    };
+
     for (const [key, value] of Object.entries(event)) {
-      // Transform appId to app_id
-      const newKey = key === 'appId' ? 'app_id' : key;
+      const newKey = fieldMap[key] ?? key;
 
       // Recursively transform nested objects
       if (value && typeof value === 'object') {

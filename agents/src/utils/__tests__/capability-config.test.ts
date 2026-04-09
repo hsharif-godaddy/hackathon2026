@@ -252,6 +252,9 @@ describe('capability-config', function capabilityConfigTests() {
 
       const { isCapabilityEnabled } = await import('../capability-config.js');
 
+      // Clear any calls from module initialization (e.g. logging config reading alloc config)
+      vi.mocked(fs.readFileSync).mockClear();
+
       // Call multiple times
       isCapabilityEnabled('GIT_REMOTE_SYNC');
       isCapabilityEnabled('COMMERCE_API_READ');

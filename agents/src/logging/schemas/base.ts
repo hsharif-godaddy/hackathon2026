@@ -36,6 +36,7 @@ export const LogEventSchema = z.object({
   userId: z.string().optional(),
   requestId: z.string().optional(),
   conversationId: z.string().optional(),
+  productId: z.string().optional(),
   
   // Event data
   data: z.record(z.string(), z.any()).optional(),
