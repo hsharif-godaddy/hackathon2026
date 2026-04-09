@@ -24,6 +24,7 @@ interface UseGrantContextOptions {
   controller: GrantContextController | null
   subscriptionId: string | undefined
   isConnected: boolean
+  enabled?: boolean
 }
 
 /**
@@ -58,6 +59,7 @@ export function useGrantContext({
   controller,
   subscriptionId,
   isConnected,
+  enabled = true,
 }: UseGrantContextOptions): void {
   const lastSentHashRef = useRef<string | null>(null)
   const isInitialSendRef = useRef(true)
@@ -67,7 +69,7 @@ export function useGrantContext({
     refetch: refetchGrants,
     isLoading: isGrantsLoading,
   } = useCreditGrants({
-    subscriptionId,
+    subscriptionId: enabled ? subscriptionId : undefined,
     syncSpend: true,
   })
 
@@ -132,14 +134,16 @@ export function useGrantContext({
   // Send on connection and data changes
   useEffect(
     function syncOnChange() {
+      if (!enabled) return
       sendGrantContext()
     },
-    [sendGrantContext]
+    [enabled, sendGrantContext]
   )
 
   // Handle reconnection - reset state (will re-send via isConnected change)
   useEffect(
     function resetOnReconnect() {
+      if (!enabled) return
       if (isConnected) {
         // Connection just established, reset for initial send
         if (isInitialSendRef.current === false && lastSentHashRef.current !== null) {
@@ -150,13 +154,13 @@ export function useGrantContext({
         }
       }
     },
-    [isConnected]
+    [enabled, isConnected]
   )
 
   // Handle agent refresh requests via controller
   useEffect(
     function handleRefreshRequest() {
-      if (!controller) return
+      if (!controller || !enabled) return
 
       return controller.onGrantRefreshRequested(function onRefresh() {
         logger.info('websocket.grant_context.refresh_requested')
@@ -177,13 +181,13 @@ export function useGrantContext({
           })
       })
     },
-    [controller, emitAfterRefetch, refetchGrants]
+    [controller, enabled, emitAfterRefetch, refetchGrants]
   )
 
   // Re-send on visibility change (user returns to tab)
   useEffect(
     function handleVisibilityChange() {
-      if (!controller || !isConnected) return
+      if (!controller || !isConnected || !enabled) return
 
       function onVisibilityChange() {
         if (document.visibilityState === 'visible') {
@@ -210,7 +214,7 @@ export function useGrantContext({
       document.addEventListener('visibilitychange', onVisibilityChange)
       return () => document.removeEventListener('visibilitychange', onVisibilityChange)
     },
-    [controller, emitAfterRefetch, isConnected, refetchGrants]
+    [controller, enabled, emitAfterRefetch, isConnected, refetchGrants]
   )
 
   // Refetch grants when stream completes (credits have been consumed)
@@ -223,6 +227,8 @@ export function useGrantContext({
     function handleStreamComplete() {
       const prevIsStreaming = prevIsStreamingRef.current
       prevIsStreamingRef.current = isStreaming
+
+      if (!enabled) return
 
       // Detect transition from streaming to not streaming (completion)
       if (prevIsStreaming === true && isStreaming === false) {
@@ -266,18 +272,19 @@ export function useGrantContext({
         }
       }
     },
-    [emitAfterRefetch, isStreaming]
+    [emitAfterRefetch, enabled, isStreaming]
   )
 
   // Reset on disconnect
   useEffect(
     function resetOnDisconnect() {
+      if (!enabled) return
       if (!isConnected) {
         lastSentHashRef.current = null
         isInitialSendRef.current = true
       }
     },
-    [isConnected]
+    [enabled, isConnected]
   )
 
   // Retry fetching grants when list is empty (new account provisioning)
@@ -293,6 +300,12 @@ export function useGrantContext({
           clearInterval(emptyGrantsIntervalRef.current)
           emptyGrantsIntervalRef.current = null
         }
+      }
+
+      if (!enabled) {
+        clearRetryInterval()
+        emptyGrantsRetryStartRef.current = null
+        return
       }
 
       if (!subscriptionId) {
@@ -370,6 +383,6 @@ export function useGrantContext({
 
       return clearRetryInterval
     },
-    [subscriptionId, grants, isGrantsLoading]
+    [enabled, subscriptionId, grants, isGrantsLoading]
   )
 }

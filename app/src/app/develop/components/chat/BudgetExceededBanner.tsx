@@ -6,6 +6,7 @@ import Button from '@ux/button'
 import text from '@ux/text'
 
 import StreamingAlertMessage from '@/app/develop/components/StreamingAlertMessage'
+import { useBudgetService } from '@/hooks/useBudgetService'
 import { useCreditGrants } from '@/hooks/useCreditGrants'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -35,9 +36,18 @@ export default function BudgetExceededBanner({ onClose }: BudgetExceededBannerPr
   const openCreditsModal = useDevelopPageStore((state) => state.openCreditsModal)
 
   const { data: isHigherPlansEnabled } = useSwitchboard('appbuilder-higher-plans')
+  const { data: isBudgetServiceEnabled = false } = useSwitchboard('app-builder-budget-service')
   const { data: subscription, isLoading: isSubscriptionLoading } = useSubscription()
+
+  // Gate grants fetch: disabled when budget path active
   const { data: grants } = useCreditGrants({
+    subscriptionId: !isBudgetServiceEnabled ? subscription?.id : undefined,
+  })
+
+  // Budget path: fetch credit status from BFF
+  const { data: budgetData } = useBudgetService({
     subscriptionId: subscription?.id,
+    enabled: isBudgetServiceEnabled,
   })
 
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : SubscriptionPlan.None
@@ -59,6 +69,18 @@ export default function BudgetExceededBanner({ onClose }: BudgetExceededBannerPr
   }, [hasPublishedApp, hasCustomDomain, site])
 
   const resetTime = useMemo(() => {
+    if (isBudgetServiceEnabled) {
+      if (!budgetData) return undefined
+      const planItem = budgetData.items.find(function findPlanMonthly(item) { return item.type === 'plan-monthly' })
+      if (planItem?.expiresAt) {
+        const expiresDate = new Date(planItem.expiresAt)
+        const date = intl.formatDate(expiresDate, { month: 'long', day: 'numeric' })
+        const time = intl.formatDate(expiresDate, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+        return t('builder_usage_limit_reset_on_date', { date, time })
+      }
+      return undefined
+    }
+
     if (!grants) return undefined
     const planGrant = getMonthlyPlanGrant(grants)
     if (planGrant?.useBefore) {
@@ -68,7 +90,7 @@ export default function BudgetExceededBanner({ onClose }: BudgetExceededBannerPr
       return t('builder_usage_limit_reset_on_date', { date, time })
     }
     return undefined
-  }, [intl, t, grants])
+  }, [intl, t, grants, isBudgetServiceEnabled, budgetData])
 
   return (
     <StreamingAlertMessage

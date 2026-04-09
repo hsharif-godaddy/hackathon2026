@@ -15,6 +15,7 @@ import { EventEmitter } from 'events'
 import type { Socket } from 'socket.io-client'
 import type { Actor } from 'xstate'
 import { createActor } from 'xstate'
+import type { BudgetUpdatePayload } from '@airo/shared/budget'
 import type { AgentsAppChatMessage } from '@airo/shared/websocket'
 
 import type { AssetManagerItem } from '@/app/develop/components/chat/AssetTypes'
@@ -51,6 +52,7 @@ export interface StreamingWebSocketControllerEvents {
   'connection:failed': { error: Error }
   'connection:error': { error: Error }
   'grant:refresh-requested': void
+  'budget:update': BudgetUpdatePayload
   'disconnect': { reason: Socket.DisconnectReason }
   'reconnect:attempt': void
   'reconnect:success': void
@@ -208,6 +210,11 @@ export class StreamingWebSocketController extends EventEmitter {
     // Forward grant context events
     this.supervisor.on('grant:refresh-requested', () => {
       this.emit('grant:refresh-requested')
+    })
+
+    // Forward budget update events
+    this.supervisor.on('budget:update', (data) => {
+      this.emit('budget:update', data)
     })
 
     // Safety net: When the XState machine transitions from reconnecting → connecting
@@ -601,13 +608,18 @@ export class StreamingWebSocketController extends EventEmitter {
   onGrantRefreshRequested(callback: () => void): () => void {
     this.on('grant:refresh-requested', callback)
     return () => {
-      // Guard against cleanup being called after controller is destroyed or during HMR
-      // Prefer off() for consistency with on(), fall back to removeListener()
-      if (typeof this.off === 'function') {
-        this.off('grant:refresh-requested', callback)
-      } else if (typeof this.removeListener === 'function') {
-        this.removeListener('grant:refresh-requested', callback)
-      }
+      this.off('grant:refresh-requested', callback)
+    }
+  }
+
+  /**
+   * Register callback for budget update events from agent
+   * Returns cleanup function to unregister the listener
+   */
+  onBudgetUpdate(callback: (data: BudgetUpdatePayload) => void): () => void {
+    this.on('budget:update', callback)
+    return () => {
+      this.off('budget:update', callback)
     }
   }
 

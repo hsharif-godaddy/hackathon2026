@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-
 /**
  * @vitest-environment jsdom
  */
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
 import { renderHookWithProviders } from '@/tests/test-utils'
 import { WarningLevel } from '@/types/usage'
 
@@ -14,23 +14,63 @@ vi.mock('@/hooks/useCreditGrants', () => ({
   useCreditGrants: vi.fn(),
 }))
 
+vi.mock('@/hooks/useBudgetService', () => ({
+  useBudgetService: vi.fn(),
+}))
+
+vi.mock('@/lib/request-context', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}))
+
+import { useBudgetService } from '@/hooks/useBudgetService'
 import { useCreditGrants } from '@/hooks/useCreditGrants'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useUsage } from './useUsage'
 
+const mockUseSubscription = vi.mocked(useSubscription)
+const mockUseCreditGrants = vi.mocked(useCreditGrants)
+const mockUseBudgetService = vi.mocked(useBudgetService)
+
+function defaultGrantsMock(overrides = {}) {
+  return {
+    data: undefined,
+    isFetching: false,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+    ...overrides,
+  } as ReturnType<typeof useCreditGrants>
+}
+
+function defaultBudgetMock(overrides = {}) {
+  return {
+    data: undefined,
+    isFetching: false,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+    ...overrides,
+  } as ReturnType<typeof useBudgetService>
+}
+
 describe('useUsage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockUseSubscription.mockReturnValue({
+      data: { id: 'sub-123' },
+      subscriptions: [],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    } as ReturnType<typeof useSubscription>)
+    mockUseCreditGrants.mockReturnValue(defaultGrantsMock())
+    mockUseBudgetService.mockReturnValue(defaultBudgetMock())
   })
 
   describe('when grants are enabled', () => {
-    beforeEach(() => {
-      vi.mocked(useSubscription).mockReturnValue({
-        data: { id: 'sub-123' },
-        isLoading: false,
-      } as ReturnType<typeof useSubscription>)
-    })
-
     it('calculates percentage from grants data', () => {
       vi.mocked(useCreditGrants).mockReturnValue({
         data: [
@@ -213,6 +253,192 @@ describe('useUsage', () => {
 
       expect(result.current.isLoading).toBe(true)
       expect(result.current.percentage).toBe(0)
+    })
+  })
+
+  describe('budget path (flag ON)', () => {
+    it('computes percentage from budget data', () => {
+      mockUseBudgetService.mockReturnValue(defaultBudgetMock({
+        data: {
+          budgetId: 'b1',
+          productKey: 'airo-builder',
+          creditsTotal: '1000',
+          creditsUsed: '500',
+          creditsPending: '0',
+          creditsTotalNumeric: 1000,
+          creditsUsedNumeric: 500,
+          creditsPendingNumeric: 0,
+          items: [],
+        },
+        isFetching: false,
+      }))
+
+      const { result } = renderHookWithProviders(() =>
+        useUsage({ appId: 'app-1', isBudgetServiceEnabled: true, subscriptionId: 'sub-1' })
+      )
+
+      expect(result.current.percentage).toBe(50)
+      expect(result.current.warningLevel).toBe(WarningLevel.CAUTION)
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    it('returns exceeded when budget remaining is 0', () => {
+      mockUseBudgetService.mockReturnValue(defaultBudgetMock({
+        data: {
+          budgetId: 'b1',
+          productKey: 'airo-builder',
+          creditsTotal: '1000',
+          creditsUsed: '1000',
+          creditsPending: '0',
+          creditsTotalNumeric: 1000,
+          creditsUsedNumeric: 1000,
+          creditsPendingNumeric: 0,
+          items: [],
+        },
+        isFetching: false,
+      }))
+
+      const { result } = renderHookWithProviders(() =>
+        useUsage({ appId: 'app-1', isBudgetServiceEnabled: true, subscriptionId: 'sub-1' })
+      )
+
+      expect(result.current.percentage).toBe(100)
+      expect(result.current.warningLevel).toBe(WarningLevel.EXCEEDED)
+    })
+
+    it('caps used at total (overspend)', () => {
+      mockUseBudgetService.mockReturnValue(defaultBudgetMock({
+        data: {
+          budgetId: 'b1',
+          productKey: 'airo-builder',
+          creditsTotal: '1000',
+          creditsUsed: '1200',
+          creditsPending: '0',
+          creditsTotalNumeric: 1000,
+          creditsUsedNumeric: 1200,
+          creditsPendingNumeric: 0,
+          items: [],
+        },
+        isFetching: false,
+      }))
+
+      const { result } = renderHookWithProviders(() =>
+        useUsage({ appId: 'app-1', isBudgetServiceEnabled: true, subscriptionId: 'sub-1' })
+      )
+
+      expect(result.current.percentage).toBe(100)
+      expect(result.current.warningLevel).toBe(WarningLevel.EXCEEDED)
+    })
+
+    it('handles creditsTotalNumeric of 0 without division by zero', () => {
+      mockUseBudgetService.mockReturnValue(defaultBudgetMock({
+        data: {
+          budgetId: 'b1',
+          productKey: 'airo-builder',
+          creditsTotal: '0',
+          creditsUsed: '0',
+          creditsPending: '0',
+          creditsTotalNumeric: 0,
+          creditsUsedNumeric: 0,
+          creditsPendingNumeric: 0,
+          items: [],
+        },
+        isFetching: false,
+      }))
+
+      const { result } = renderHookWithProviders(() =>
+        useUsage({ appId: 'app-1', isBudgetServiceEnabled: true, subscriptionId: 'sub-1' })
+      )
+
+      expect(result.current.percentage).toBe(0)
+      expect(Number.isNaN(result.current.percentage)).toBe(false)
+    })
+
+    it('isLoading respects enabled gate on budget path', () => {
+      mockUseBudgetService.mockReturnValue(defaultBudgetMock({
+        data: undefined,
+        isLoading: true,
+      }))
+
+      const { result } = renderHookWithProviders(() =>
+        useUsage({ appId: 'app-1', isBudgetServiceEnabled: true, subscriptionId: 'sub-1' })
+      )
+
+      expect(result.current.isLoading).toBe(true)
+    })
+
+    it('isLoading is false when enabled=false on budget path', () => {
+      mockUseBudgetService.mockReturnValue(defaultBudgetMock({
+        data: undefined,
+        isLoading: true,
+      }))
+
+      const { result } = renderHookWithProviders(() =>
+        useUsage({ appId: 'app-1', isBudgetServiceEnabled: true, subscriptionId: 'sub-1', enabled: false })
+      )
+
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    it('gates useCreditGrants when budget ON', () => {
+      renderHookWithProviders(() =>
+        useUsage({ appId: 'app-1', isBudgetServiceEnabled: true, subscriptionId: 'sub-1' })
+      )
+
+      expect(mockUseCreditGrants).toHaveBeenCalledWith({
+        subscriptionId: undefined,
+      })
+    })
+
+    it('does not call useBudgetService when flag OFF', () => {
+      renderHookWithProviders(() =>
+        useUsage({ appId: 'app-1', isBudgetServiceEnabled: false })
+      )
+
+      expect(mockUseBudgetService).toHaveBeenCalledWith({
+        subscriptionId: 'sub-123',
+        enabled: false,
+      })
+    })
+
+    it('warning banner active at 90%', () => {
+      mockUseBudgetService.mockReturnValue(defaultBudgetMock({
+        data: {
+          budgetId: 'b1',
+          productKey: 'airo-builder',
+          creditsTotal: '1000',
+          creditsUsed: '950',
+          creditsPending: '0',
+          creditsTotalNumeric: 1000,
+          creditsUsedNumeric: 950,
+          creditsPendingNumeric: 0,
+          items: [],
+        },
+        isFetching: false,
+      }))
+
+      const { result } = renderHookWithProviders(() =>
+        useUsage({ appId: 'app-1', isBudgetServiceEnabled: true, subscriptionId: 'sub-1' })
+      )
+
+      expect(result.current.percentage).toBe(95)
+      expect(result.current.warningLevel).toBe(WarningLevel.WARNING)
+      expect(result.current.isWarningBannerActive).toBe(true)
+    })
+
+    it('returns defaults when budget data is undefined', () => {
+      mockUseBudgetService.mockReturnValue(defaultBudgetMock({
+        data: undefined,
+        isFetching: false,
+      }))
+
+      const { result } = renderHookWithProviders(() =>
+        useUsage({ appId: 'app-1', isBudgetServiceEnabled: true, subscriptionId: 'sub-1' })
+      )
+
+      expect(result.current.percentage).toBe(0)
+      expect(result.current.warningLevel).toBe(WarningLevel.NONE)
+      expect(result.current.isWarningBannerActive).toBe(false)
     })
   })
 })

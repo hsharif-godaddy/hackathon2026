@@ -27,10 +27,12 @@ import { ChatTab } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import VersionHistory from '@/app/develop/components/VersionHistory'
 import { useAuthContext } from '@/components/providers/AuthProvider'
+import { useBudgetService } from '@/hooks/useBudgetService'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useCreditGrants } from '@/hooks/useCreditGrants'
 import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
 import { useSubscription } from '@/hooks/useSubscription'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { appFetch } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
@@ -166,8 +168,17 @@ export default function ChatPane({
   const setCurrentAppId = useSetCurrentAppId()
 
   const { data: subscription } = useSubscription()
+  const { data: isBudgetServiceEnabled = false } = useSwitchboard('app-builder-budget-service')
+
+  // Gate grants fetch: disabled when budget path active
   const { data: grants, isFetching: isGrantsFetching } = useCreditGrants({
+    subscriptionId: !isBudgetServiceEnabled ? subscription?.id : undefined,
+  })
+
+  // Budget path: fetch credit status from BFF
+  const { data: budgetData, isFetching: isBudgetFetching } = useBudgetService({
     subscriptionId: subscription?.id,
+    enabled: isBudgetServiceEnabled,
   })
 
   const { authState } = useAuthContext()
@@ -176,20 +187,27 @@ export default function ChatPane({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const isImpersonating = isEmployeeAuthType((authState as any)?.authType)
 
-  const hasAvailableCredits = grants && getActiveGrant(grants) !== undefined
-  // grantsLoaded is false while fetching (including background refetches of stale cache) to prevent
-  // briefly blocking a user who purchased credits between page visits.
-  const grantsLoaded = grants !== undefined && !isGrantsFetching
+  // Dual-path credit availability check
+  const hasAvailableCredits = isBudgetServiceEnabled
+    ? budgetData !== undefined && (budgetData.creditsTotalNumeric - budgetData.creditsUsedNumeric) > 0
+    : grants !== undefined && getActiveGrant(grants) !== undefined
+
+  // Data loaded gate: prevents false "budget exceeded" during fetches
+  const dataLoaded = isBudgetServiceEnabled
+    ? budgetData !== undefined && !isBudgetFetching
+    : grants !== undefined && !isGrantsFetching
+
   // CRM skip / impersonation sessions always have chat enabled regardless of credits
-  const budgetExceeded = !isImpersonating && !hasAvailableCredits && (grantsLoaded || budgetExceededFlag)
+  const budgetExceeded = !isImpersonating && !hasAvailableCredits && (dataLoaded || budgetExceededFlag)
   const [isProactiveBannerDismissed, setIsProactiveBannerDismissed] = useState(false)
 
-  // Reset dismissal only when grants data is stable and credits are no longer exhausted.
-  // Excluding isGrantsFetching prevents a background refetch from briefly flipping
-  // budgetExceeded=false (via grantsLoaded) and resetting a dismissal the user just made.
+  // Reset dismissal only when credit data is stable and credits are no longer exhausted.
+  // Excluding fetching state prevents a background refetch from briefly flipping
+  // budgetExceeded=false (via dataLoaded) and resetting a dismissal the user just made.
+  const isCreditFetching = isBudgetServiceEnabled ? isBudgetFetching : isGrantsFetching
   useEffect(() => {
-    if (!budgetExceeded && !isGrantsFetching) setIsProactiveBannerDismissed(false)
-  }, [budgetExceeded, isGrantsFetching])
+    if (!budgetExceeded && !isCreditFetching) setIsProactiveBannerDismissed(false)
+  }, [budgetExceeded, isCreditFetching])
 
   // Only show the proactive banner when budgetExceededFlag is false — the mid-stream
   // case already shows an identical banner inline in the message list.

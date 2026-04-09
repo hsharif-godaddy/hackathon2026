@@ -13,6 +13,7 @@
 
 import { EventEmitter } from 'events'
 import type { DisconnectDescription, Socket } from 'socket.io-client'
+import type { BudgetUpdatePayload } from '@airo/shared/budget'
 
 import {
   AgentsAvailableHandler,
@@ -72,6 +73,8 @@ export interface TransportSupervisorEvents {
   'transport:escalation-timeout': { socketId: string }
   // Grant context events
   'grant:refresh-requested': void
+  // Budget update events
+  'budget:update': BudgetUpdatePayload
 }
 
 export interface TransportSupervisorDeps {
@@ -447,6 +450,15 @@ export class TransportSupervisor extends EventEmitter {
         appId: messageContext.currentAppId,
       });
       this.emit('grant:refresh-requested');
+    });
+
+    // Budget update events from agent
+    socket.on('budget_update', (data: BudgetUpdatePayload) => {
+      logger.info('websocket.budget.update_received', {
+        appId: messageContext.currentAppId,
+        refreshRequired: data.refreshRequired,
+      });
+      this.emit('budget:update', data);
     });
 
     socket.on('message', async (data: { type: string; content: string; data?: any }, ack?: () => void) => {
