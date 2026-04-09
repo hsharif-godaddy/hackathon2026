@@ -11,51 +11,15 @@ import { test, expect } from '@playwright/test';
 
 import { handleSsoLogin, clearAuthState, openUserMenu, verifyAuthenticated } from '../helpers/auth';
 import { LONG_TIMEOUT, DEFAULT_TIMEOUT } from '../helpers/constants';
+import { logTestResult, logTestStart } from '../helpers/ui';
 
 test.describe('Authentication', () => {
   test.beforeEach(async ({}, testInfo) => {
-    const fullTitle = testInfo.titlePath.join(' > ');
-    console.log(`\n${'='.repeat(70)}`);
-    console.log(`🚀 STARTING TEST`);
-    console.log(`📄 File: ${testInfo.file?.split('/').pop() || 'unknown'}`);
-    console.log(`🧪 Test: ${fullTitle}`);
-    console.log(`${'='.repeat(70)}`);
+    logTestStart(testInfo);
   });
 
-  test.afterEach(async ({}, testInfo) => {
-    // Log test result with details
-    const fullTitle = testInfo.titlePath.join(' > ');
-    const duration = ((testInfo.duration || 0) / 1000).toFixed(1);
-    console.log(`\n${'='.repeat(70)}`);
-    console.log(`🏁 TEST COMPLETED`);
-    console.log(`📄 File: ${testInfo.file?.split('/').pop() || 'unknown'}`);
-    console.log(`🧪 Test: ${fullTitle}`);
-    console.log(`⏱️ Duration: ${duration}s`);
-
-    if (testInfo.status === 'passed') {
-      console.log(`✅ Status: PASSED`);
-    } else if (testInfo.status === 'failed') {
-      console.log(`❌ Status: FAILED`);
-      if (testInfo.error) {
-        const errorLines = testInfo.error.message?.split('\n') || [];
-        console.log(`💥 Error Type: ${testInfo.error.name || 'Error'}`);
-        console.log(`💥 Message: ${errorLines[0] || 'Unknown error'}`);
-        // Show locator info if present
-        const locatorLine = errorLines.find(l => l.includes('Locator:'));
-        if (locatorLine) console.log(`🎯 ${locatorLine.trim()}`);
-        // Show expected/received if present
-        const expectedLine = errorLines.find(l => l.includes('Expected:'));
-        const receivedLine = errorLines.find(l => l.includes('Received:'));
-        if (expectedLine) console.log(`   ${expectedLine.trim()}`);
-        if (receivedLine) console.log(`   ${receivedLine.trim()}`);
-        // Show file location from stack
-        const stackMatch = testInfo.error.stack?.match(/at.*\((.*:\d+:\d+)\)/);
-        if (stackMatch) console.log(`📍 Location: ${stackMatch[1]}`);
-      }
-    } else if (testInfo.status === 'skipped') {
-      console.log(`⏭️ Status: SKIPPED`);
-    }
-    console.log(`${'='.repeat(70)}\n`);
+  test.afterEach(async ({ page }, testInfo) => {
+    await logTestResult(page, testInfo);
   });
 
   /**
@@ -137,15 +101,25 @@ test.describe('Authentication', () => {
     console.log('🚪 Step 6: Testing sign out...');
     await page.goto('/');
     await page.getByTestId('homepage-prompt-input').waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
+    console.log(`  [6.1] Homepage loaded, url=${page.url()}`);
 
     await openUserMenu(page);
-    await expect(page.locator('[data-eid*="user_menu.sign_out"]')).toBeVisible();
-    await page.locator('[data-eid*="user_menu.sign_out"]').click({ force: true });
+    console.log('  [6.2] User menu opened');
 
-    await page.waitForTimeout(2000);
-    const url = page.url();
-    const logoutInitiated = url.includes('sso') || url.includes('logout') || url.includes('godaddy.com');
-    expect(logoutInitiated).toBe(true);
+    const signOutLocator = page.locator('[data-eid*="user_menu.sign_out"]');
+    await expect(signOutLocator).toBeVisible();
+    console.log('  [6.3] Sign Out button visible');
+
+    // noWaitAfter: sign-out triggers a cross-origin redirect (SSO/godaddy.com)
+    // that Playwright's auto-wait-for-navigation can't resolve, causing a 30s hang.
+    await signOutLocator.click({ force: true, noWaitAfter: true });
+    console.log('  [6.4] Sign Out clicked');
+
+    await page.waitForURL(
+      (url) => url.href.includes('sso') || url.href.includes('logout') || url.href.includes('godaddy.com'),
+      { timeout: DEFAULT_TIMEOUT }
+    );
+    console.log(`  [6.5] Post sign-out url=${page.url()}`);
     console.log('  ✓ Sign out redirects to SSO/logout');
 
     console.log('🎉 Authenticated flow complete!');

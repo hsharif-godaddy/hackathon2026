@@ -16,16 +16,11 @@ import { test, expect } from '@playwright/test';
 import { deleteAllSitesViaAPI } from '../helpers/api';
 import { handleSsoLogin, openUserMenu, ensureAuthenticated } from '../helpers/auth';
 import { LONG_TIMEOUT, CHAT_INPUT_TIMEOUT, DEFAULT_TIMEOUT, PREVIEW_TIMEOUT, APPS_GRID_PAGE_SIZE, getSpecPrefix } from '../helpers/constants';
-import { waitForDevelopPage } from '../helpers/ui';
+import { logTestResult, logTestStart, waitForDevelopPage } from '../helpers/ui';
 
 test.describe('Apps Page & Navigation', () => {
   test.beforeEach(async ({}, testInfo) => {
-    const fullTitle = testInfo.titlePath.join(' > ');
-    console.log(`\n${'='.repeat(70)}`);
-    console.log(`🚀 STARTING TEST`);
-    console.log(`📄 File: ${testInfo.file?.split('/').pop() || 'unknown'}`);
-    console.log(`🧪 Test: ${fullTitle}`);
-    console.log(`${'='.repeat(70)}`);
+    logTestStart(testInfo);
   });
 
   test('Apps List, Card Actions & Page Navigation - Full Flow', async ({ page }) => {
@@ -400,7 +395,8 @@ test.describe('Apps Page & Navigation', () => {
   });
 
   test.afterEach(async ({ page }, testInfo) => {
-    // Cleanup any remaining test apps
+    await logTestResult(page, testInfo);
+
     console.log('🧹 Cleanup...');
     try {
       await page.goto('/apps');
@@ -408,39 +404,5 @@ test.describe('Apps Page & Navigation', () => {
     } catch {
       console.log('  ⚠ Cleanup skipped (page may not be authenticated)');
     }
-
-    // Log test result with details
-    const fullTitle = testInfo.titlePath.join(' > ');
-    const duration = ((testInfo.duration || 0) / 1000).toFixed(1);
-    console.log(`\n${'='.repeat(70)}`);
-    console.log(`🏁 TEST COMPLETED`);
-    console.log(`📄 File: ${testInfo.file?.split('/').pop() || 'unknown'}`);
-    console.log(`🧪 Test: ${fullTitle}`);
-    console.log(`⏱️ Duration: ${duration}s`);
-
-    if (testInfo.status === 'passed') {
-      console.log(`✅ Status: PASSED`);
-    } else if (testInfo.status === 'failed') {
-      console.log(`❌ Status: FAILED`);
-      if (testInfo.error) {
-        const errorLines = testInfo.error.message?.split('\n') || [];
-        console.log(`💥 Error Type: ${testInfo.error.name || 'Error'}`);
-        console.log(`💥 Message: ${errorLines[0] || 'Unknown error'}`);
-        // Show locator info if present
-        const locatorLine = errorLines.find(l => l.includes('Locator:'));
-        if (locatorLine) console.log(`🎯 ${locatorLine.trim()}`);
-        // Show expected/received if present
-        const expectedLine = errorLines.find(l => l.includes('Expected:'));
-        const receivedLine = errorLines.find(l => l.includes('Received:'));
-        if (expectedLine) console.log(`   ${expectedLine.trim()}`);
-        if (receivedLine) console.log(`   ${receivedLine.trim()}`);
-        // Show file location from stack
-        const stackMatch = testInfo.error.stack?.match(/at.*\((.*:\d+:\d+)\)/);
-        if (stackMatch) console.log(`📍 Location: ${stackMatch[1]}`);
-      }
-    } else if (testInfo.status === 'skipped') {
-      console.log(`⏭️ Status: SKIPPED`);
-    }
-    console.log(`${'='.repeat(70)}\n`);
   });
 });

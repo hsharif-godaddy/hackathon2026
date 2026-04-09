@@ -13,16 +13,23 @@ import { test, expect } from '@playwright/test';
 import { deleteAllSitesViaAPI } from '../helpers/api';
 import { handleSsoLogin, ensureAuthenticated } from '../helpers/auth';
 import { LONG_TIMEOUT, DEFAULT_TIMEOUT, PREVIEW_TIMEOUT, AI_RESPONSE_TIMEOUT_MS, CHAT_INPUT_TIMEOUT, getSpecPrefix } from '../helpers/constants';
-import { dismissOverlays, waitForDevelopPage, waitForChatInput } from '../helpers/ui';
+import { dismissOverlays, logTestResult, logTestStart, waitForDevelopPage, waitForChatInput } from '../helpers/ui';
 
 test.describe('Develop Page - Media Tab', () => {
-  test.beforeEach(async ({ }, testInfo) => {
-    const fullTitle = testInfo.titlePath.join(' > ');
-    console.log(`\n${'='.repeat(70)}`);
-    console.log(`🚀 STARTING TEST`);
-    console.log(`📄 File: ${testInfo.file?.split('/').pop() || 'unknown'}`);
-    console.log(`🧪 Test: ${fullTitle}`);
-    console.log(`${'='.repeat(70)}`);
+  test.beforeEach(async ({}, testInfo) => {
+    logTestStart(testInfo);
+  });
+
+  test.afterEach(async ({ page }, testInfo) => {
+    await logTestResult(page, testInfo);
+
+    console.log('🧹 Cleanup...');
+    try {
+      await page.goto('/apps');
+      await deleteAllSitesViaAPI(page);
+    } catch {
+      console.log('  ⚠ Cleanup skipped');
+    }
   });
 
   // Skip: AI image generation timeout in CI — re-enable once generation latency is addressed

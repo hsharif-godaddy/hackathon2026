@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Page, TestInfo } from '@playwright/test';
 import { expect } from '@playwright/test';
 
 import { handleSsoLogin, detectSsoType } from './auth';
@@ -11,6 +11,101 @@ import {
   PREVIEW_TIMEOUT,
   SHORT_TIMEOUT,
 } from './constants';
+
+/**
+ * Log page state for post-mortem debugging.
+ * Safe to call at any point — catches all internal errors.
+ */
+export async function logPageState(page: Page, label: string): Promise<void> {
+  try {
+    console.log(`  [PAGE STATE: ${label}]`);
+    console.log(`    url: ${page.url()}`);
+
+    const title = await page.title().catch(() => '<unavailable>');
+    console.log(`    title: ${title}`);
+
+    const visibleDialogs = await page.locator('[role="dialog"]:visible').count().catch(() => -1);
+    if (visibleDialogs > 0) {
+      console.log(`    visible dialogs: ${visibleDialogs}`);
+    }
+
+    const userMenu = page.locator('[data-eid*="user_menu.button"], [data-eid*="chat_toolbar.user_menu"]');
+    const menuVisible = await userMenu.isVisible().catch(() => false);
+    console.log(`    user menu button visible: ${menuVisible}`);
+
+    const signOut = page.locator('[data-eid*="user_menu.sign_out"]');
+    const signOutVisible = await signOut.isVisible().catch(() => false);
+    console.log(`    sign_out visible: ${signOutVisible}`);
+
+    const signIn = page.locator('[data-eid*="user_menu.sign_in"]');
+    const signInVisible = await signIn.isVisible().catch(() => false);
+    if (signInVisible) {
+      console.log(`    sign_in visible: true (session may have expired)`);
+    }
+
+    const authModal = page.getByRole('heading', { name: 'Sign In Required' });
+    const authModalVisible = await authModal.isVisible().catch(() => false);
+    if (authModalVisible) {
+      console.log(`    ⚠ "Sign In Required" modal is showing`);
+    }
+  } catch {
+    console.log(`    [PAGE STATE: failed to collect]`);
+  }
+}
+
+/**
+ * Log test start banner. Use in beforeEach to mark the beginning of each test.
+ */
+export function logTestStart(testInfo: TestInfo): void {
+  const fullTitle = testInfo.titlePath.join(' > ');
+  console.log(`\n${'='.repeat(70)}`);
+  console.log(`🚀 STARTING TEST`);
+  console.log(`📄 File: ${testInfo.file?.split('/').pop() || 'unknown'}`);
+  console.log(`🧪 Test: ${fullTitle}`);
+  console.log(`${'='.repeat(70)}`);
+}
+
+/**
+ * Logs full error context on failure — URL, call log, locator hint, and stack location.
+ */
+export async function logTestResult(page: Page, testInfo: TestInfo): Promise<void> {
+  const fullTitle = testInfo.titlePath.join(' > ');
+  const duration = ((testInfo.duration || 0) / 1000).toFixed(1);
+  console.log(`\n${'='.repeat(70)}`);
+  console.log(`🏁 TEST COMPLETED`);
+  console.log(`📄 File: ${testInfo.file?.split('/').pop() || 'unknown'}`);
+  console.log(`🧪 Test: ${fullTitle}`);
+  console.log(`⏱️ Duration: ${duration}s`);
+
+  if (testInfo.status === 'passed') {
+    console.log(`✅ Status: PASSED`);
+  } else if (testInfo.status === 'failed') {
+    console.log(`❌ Status: FAILED`);
+    if (testInfo.error) {
+      const fullMessage = testInfo.error.message || 'Unknown error';
+      const lines = fullMessage.split('\n');
+      console.log(`💥 Message: ${lines[0]}`);
+
+      const locatorLine = lines.find(l => /locator|selector|getBy/i.test(l));
+      if (locatorLine) console.log(`🎯 Locator: ${locatorLine.trim()}`);
+
+      const callLogStart = lines.findIndex(l => l.includes('Call log:'));
+      if (callLogStart !== -1) {
+        const callLogLines = lines.slice(callLogStart, callLogStart + 8);
+        console.log(`📞 ${callLogLines.join('\n   ')}`);
+      }
+
+      const stackMatch = testInfo.error.stack?.match(/at.*\((.*:\d+:\d+)\)/);
+      if (stackMatch) console.log(`📍 Location: ${stackMatch[1]}`);
+    }
+    await logPageState(page, 'at failure');
+  } else if (testInfo.status === 'skipped') {
+    console.log(`⏭️ Status: SKIPPED`);
+  } else {
+    console.log(`🟡 Status: ${String(testInfo.status).toUpperCase()}`);
+  }
+  console.log(`${'='.repeat(70)}\n`);
+}
 
 /**
  * Check if SSO login is required and handle it if so
