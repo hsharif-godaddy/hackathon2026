@@ -66,6 +66,14 @@ export default function PageNotFound() {
   const lastSegment = location.pathname.split('/').filter(Boolean).pop() ?? location.pathname;
   const capitalizedPath = lastSegment.charAt(0).toUpperCase() + lastSegment.slice(1);
 
+  const goBackOrHome = function goBackOrHome() {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate('/');
+  };
+
   return (
     <MessageOverlay
       title="This page hasn't been built yet."
@@ -74,7 +82,7 @@ export default function PageNotFound() {
         <>
           <Button
             text="Go Back"
-            onClick={() => navigate(-1)}
+            onClick={goBackOrHome}
             variant="secondary"
           />
           <Button
@@ -85,10 +93,17 @@ export default function PageNotFound() {
         </>
       ) : (
         builderUrl ? (
-          <Button
-            text={hasAppDeepLink ? 'Open app in builder' : 'Open builder'}
-            onClick={() => window.open(builderUrl, '_blank', 'noopener,noreferrer')}
-          />
+          <>
+            <Button
+              text="Go Back"
+              onClick={goBackOrHome}
+              variant="secondary"
+            />
+            <Button
+              text={hasAppDeepLink ? 'Open app in builder' : 'Open builder'}
+              onClick={() => window.open(builderUrl, '_blank', 'noopener,noreferrer')}
+            />
+          </>
         ) : (
           <span style={{ color: 'var(--color-text-tertiary)', fontSize: '0.875rem' }}>
             Open the builder and use chat to ask Airo to build this page.
