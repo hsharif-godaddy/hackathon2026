@@ -22,7 +22,7 @@ func TestKnowBCheck_NotConfigured(t *testing.T) {
 
 func TestKnowBCheck_ConfiguredMissingSSO(t *testing.T) {
 	root := t.TempDir()
-	writeAgentsEnv(t, root, "GODADDY_API_BASE_URL=https://knowb.api.int.test-godaddy.com\n")
+	writeAgentsEnv(t, root, "NODE_ENV=development\n")
 
 	result := (&KnowBCheck{}).Run(context.Background(), root)
 	if result.Status != preflight.StatusWarn {

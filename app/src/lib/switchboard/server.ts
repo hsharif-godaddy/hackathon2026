@@ -11,6 +11,25 @@ const BFF_HOST_PREFIX = 'bff.pcx';
 const SWITCHBOARD_APP = 'airo-app-builder';
 
 /**
+ * Server-side local development feature flag overrides.
+ * Applied when NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true.
+ */
+const SERVER_LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
+  'appbuilder-publish-button': true,
+  'appbuilder-manage-plan': true,
+  'appbuilder-settings-team': true,
+  'appbuilder-domain-purchase': true,
+  'appbuilder-domain-attach': true,
+  'appbuilder-share-links': true,
+  'appbuilder-transfer-ownership': true,
+  'appbuilder-higher-plans': true,
+  'appbuilder-github-integration': true,
+  'app-builder-budget-service': false, // opt-in: requires running Budget Service
+  'appbuilder-assessment-agent': true,
+  'appbuilder-assessment-override': true,
+};
+
+/**
  * Check if a feature flag is enabled on the server
  *
  * @param featureName - Name of the feature flag (e.g., 'appbuilder-manage-plan')
@@ -25,27 +44,12 @@ export async function checkSwitchboardFlag(
 ): Promise<boolean> {
   // Local development override
   if (process.env.NEXT_PUBLIC_ENABLE_LOCAL_FEATURES === 'true') {
-    const localOverrides: Record<string, boolean> = {
-      'appbuilder-publish-button': true,
-      'appbuilder-manage-plan': true,
-      'appbuilder-settings-team': true,
-      'appbuilder-domain-purchase': true,
-      'appbuilder-domain-attach': true,
-      'appbuilder-share-links': true,
-      'appbuilder-transfer-ownership': true,
-      'appbuilder-higher-plans': true,
-      'appbuilder-github-integration': true,
-      'app-builder-budget-service': false, // opt-in: requires running Budget Service
-      'appbuilder-assessment-agent': true,
-      'appbuilder-assessment-override': true,
-    };
-
-    if (featureName in localOverrides) {
+    if (featureName in SERVER_LOCAL_FEATURE_OVERRIDES) {
       logger.info('switchboard.server.local-override', {
         featureName,
-        value: localOverrides[featureName],
+        value: SERVER_LOCAL_FEATURE_OVERRIDES[featureName],
       });
-      return localOverrides[featureName];
+      return SERVER_LOCAL_FEATURE_OVERRIDES[featureName];
     }
   }
 

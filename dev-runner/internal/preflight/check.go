@@ -62,6 +62,7 @@ type TerminalFixer interface {
 type CheckWithFixer struct {
 	Check Check
 	Fixer Fixer // nil if not auto-fixable
+	OptIn bool  // when true, fix is unchecked by default in the selector
 }
 
 // Category groups checks that run concurrently within the group.

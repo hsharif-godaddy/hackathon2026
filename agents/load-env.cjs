@@ -97,8 +97,11 @@ if (!allowedCommands.includes(command)) {
  * Validate environment configuration
  */
 async function validateEnvironment() {
-  // Check for AWS_PROFILE (should not be set for agents other than for gocode s2s local dev)
-  if (process.env.AWS_PROFILE && process.env.AWS_PROFILE !== 'airo-builder-dev-gocode') {
+  // AWS_PROFILE is expected in local dev for S2S auth (logo generation,
+  // budget service, knowledge service, etc.). In non-local environments
+  // it should not be set — it interferes with instance-profile credentials.
+  const isLocal = (process.env.GASKET_ENV || '').startsWith('local') || process.env.NODE_ENV === 'development';
+  if (process.env.AWS_PROFILE && !isLocal) {
     console.error('\n❌ AWS_PROFILE is set in your environment');
     console.error('   Please remove it before running the agents service\n');
     process.exit(1);

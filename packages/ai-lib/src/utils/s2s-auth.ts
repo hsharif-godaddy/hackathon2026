@@ -1,8 +1,8 @@
 /**
  * Service-to-Service Authentication utilities
  *
- * Provides optional S2S authentication using gd-auth-client IamTokenClient
- * when GOCODE_USE_S2S_AUTH environment variable is set to true.
+ * Provides S2S authentication using gd-auth-client IamTokenClient.
+ * Used by services that need IAM-based JWT tokens (media, logo, knowledge, budget).
  */
 
 /**
@@ -113,7 +113,9 @@ function getDefaultS2SConfig(): Required<S2SAuthConfig> {
 }
 
 /**
- * Check if S2S authentication is enabled via environment variable
+ * Check if S2S authentication is enabled via environment variable.
+ * Used by unified-provider and other callers to decide whether to use S2S auth paths.
+ * Note: getS2SToken() itself does NOT check this — it always attempts to fetch a token.
  */
 export function isS2SAuthEnabled(): boolean {
   return process.env.GOCODE_USE_S2S_AUTH === 'true';
@@ -223,13 +225,9 @@ export function getTokenCacheInfo(): {
  *
  * @param config - Optional S2S authentication configuration
  * @returns Promise that resolves to JWT token string
- * @throws Error if S2S auth is not enabled or token retrieval fails
+ * @throws Error if token retrieval fails
  */
 export async function getS2SToken(config?: S2SAuthConfig): Promise<string> {
-  if (!isS2SAuthEnabled()) {
-    throw new Error('S2S authentication is not enabled. Set GOCODE_USE_S2S_AUTH=true to enable.');
-  }
-
   const finalConfig = { ...getDefaultS2SConfig(), ...config };
 
   // Check if we have a valid cached token
@@ -265,7 +263,7 @@ export async function getS2SToken(config?: S2SAuthConfig): Promise<string> {
 
       cachedToken = {
         jwt: token,
-        expiresAt: (payload.iat + 30 * 60) * 1000, // iat + 30 minutes, convert to milliseconds
+        expiresAt: payload.exp ? payload.exp * 1000 : (payload.iat + 30 * 60) * 1000,
         config: finalConfig
       };
 
@@ -286,13 +284,9 @@ export async function getS2SToken(config?: S2SAuthConfig): Promise<string> {
  *
  * @param config - Optional S2S authentication configuration
  * @returns Promise that resolves to new JWT token string
- * @throws Error if S2S auth is not enabled or token retrieval fails
+ * @throws Error if token retrieval fails
  */
 export async function refreshS2SToken(config?: S2SAuthConfig): Promise<string> {
-  if (!isS2SAuthEnabled()) {
-    throw new Error('S2S authentication is not enabled. Set GOCODE_USE_S2S_AUTH=true to enable.');
-  }
-
   // Clear cache to force refresh
   clearTokenCache();
 

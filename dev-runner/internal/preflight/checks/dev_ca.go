@@ -30,12 +30,17 @@ func (c *DevCACheck) Run(_ context.Context, projectRoot string) preflight.CheckR
 	}
 
 	if len(missing) > 0 {
+		msg := fmt.Sprintf(".dev-ca/ missing %s — local HTTPS will show certificate warnings", strings.Join(missing, ", "))
+		fixable := hasMkcert()
+		if !fixable {
+			msg += fmt.Sprintf(" (install mkcert first: %s)", mkcertInstallHint())
+		}
 		return preflight.CheckResult{
 			Status:       preflight.StatusWarn,
 			Name:         c.Name(),
 			Category:     c.Category(),
-			FixAvailable: true,
-			Message:      fmt.Sprintf(".dev-ca/ missing %s — local HTTPS will show certificate warnings", strings.Join(missing, ", ")),
+			FixAvailable: fixable,
+			Message:      msg,
 			InstallHint:  "./setup.sh",
 		}
 	}

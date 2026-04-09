@@ -35,19 +35,19 @@ func (m *Model) initEnvForm(ef *fixers.EnvFixer) {
 	baseURL.CharLimit = 200
 	baseURL.SetValue(defaults.BaseURL)
 
-	model := textinput.New()
-	model.CharLimit = 100
-	model.SetValue(defaults.Model)
-
 	authType := textinput.New()
 	authType.CharLimit = 10
 	authType.SetValue(defaults.AuthType)
 
+	awsProfile := textinput.New()
+	awsProfile.CharLimit = 100
+	awsProfile.SetValue(defaults.AWSProfile)
+
 	m.envFormFields = []envFormField{
 		{Label: "GoCode API Key", Description: "Get your key at: https://caas.open-webui.godaddy.com/workspace/apiKeys", Input: apiKey},
 		{Label: "GoCode Base URL", Input: baseURL},
-		{Label: "AI Model", Input: model},
 		{Label: "Auth Type (jwt/mock/none)", Input: authType},
+		{Label: "AWS Profile", Description: "AWS SSO profile for S2S auth (logo, budget, knowledge services)", Input: awsProfile},
 	}
 	m.envFormCursor = 0
 }
@@ -112,10 +112,10 @@ func (m *Model) submitEnvForm() tea.Cmd {
 	}
 
 	values := &fixers.EnvValues{
-		APIKey:   apiKey,
-		BaseURL:  strings.TrimSpace(m.envFormFields[1].Input.Value()),
-		Model:    strings.TrimSpace(m.envFormFields[2].Input.Value()),
-		AuthType: strings.TrimSpace(m.envFormFields[3].Input.Value()),
+		APIKey:     apiKey,
+		BaseURL:    strings.TrimSpace(m.envFormFields[1].Input.Value()),
+		AuthType:   strings.TrimSpace(m.envFormFields[2].Input.Value()),
+		AWSProfile: strings.TrimSpace(m.envFormFields[3].Input.Value()),
 	}
 
 	m.envFormFixer.Values = values

@@ -35,8 +35,8 @@ func (f *KnowBFixer) Fix(ctx context.Context, projectRoot string) error {
 	if err := upsertEnvVar(agentsEnvPath, "SSO_JWT", token); err != nil {
 		return fmt.Errorf("writing SSO_JWT: %w", err)
 	}
-	if err := upsertEnvVar(agentsEnvPath, "GODADDY_API_BASE_URL", knowbAPIURL); err != nil {
-		return fmt.Errorf("writing GODADDY_API_BASE_URL: %w", err)
+	if err := upsertEnvVar(agentsEnvPath, "KNOWB_URL", knowbAPIURL); err != nil {
+		return fmt.Errorf("writing KNOWB_URL: %w", err)
 	}
 
 	return nil

@@ -23,19 +23,23 @@ func (c *KnowBCheck) Run(_ context.Context, projectRoot string) preflight.CheckR
 	var issues []string
 
 	env, err := ParseEnvFile(envPath)
+	// When GOCODE_USE_S2S_AUTH=true, KnowB uses AWS IAM-based S2S tokens
+	// instead of SSO_JWT, so SSO_JWT and ssojwt binary are not required.
+	useS2S := env != nil && strings.TrimSpace(env["GOCODE_USE_S2S_AUTH"]) == "true"
+
 	if err != nil {
 		issues = append(issues, "agents/.env not found")
-	} else {
-		if strings.TrimSpace(env["GODADDY_API_BASE_URL"]) == "" {
-			issues = append(issues, "GODADDY_API_BASE_URL not set")
-		}
+	} else if !useS2S {
 		if v, ok := env["SSO_JWT"]; !ok || strings.TrimSpace(v) == "" {
-			issues = append(issues, "SSO_JWT missing")
+			issues = append(issues, "SSO_JWT missing (set SSO_JWT or use GOCODE_USE_S2S_AUTH=true)")
 		}
 	}
 
-	if _, err := exec.LookPath("ssojwt"); err != nil {
-		issues = append(issues, "ssojwt binary not found in PATH")
+	// ssojwt binary only needed when not using S2S auth
+	if !useS2S {
+		if _, err := exec.LookPath("ssojwt"); err != nil {
+			issues = append(issues, "ssojwt binary not found in PATH")
+		}
 	}
 
 	if len(issues) > 0 {
@@ -49,10 +53,15 @@ func (c *KnowBCheck) Run(_ context.Context, projectRoot string) preflight.CheckR
 		}
 	}
 
+	msg := "KnowB configuration present"
+	if useS2S {
+		msg = "KnowB configured (S2S auth via AWS IAM)"
+	}
+
 	return preflight.CheckResult{
 		Status:   preflight.StatusPass,
 		Name:     c.Name(),
 		Category: c.Category(),
-		Message:  "KnowB configuration present",
+		Message:  msg,
 	}
 }

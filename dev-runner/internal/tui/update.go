@@ -391,8 +391,8 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 				m.fixSelectorItems = fixable
 				m.fixSelectorCursor = 0
 				m.fixSelectorSelected = make([]bool, len(fixable))
-				for i := range m.fixSelectorSelected {
-					m.fixSelectorSelected[i] = true // all selected by default
+				for i, cwf := range fixable {
+					m.fixSelectorSelected[i] = !cwf.OptIn // opt-in fixes unchecked by default
 				}
 				m.phase = PhasePreflightSelectFixes
 				return nil

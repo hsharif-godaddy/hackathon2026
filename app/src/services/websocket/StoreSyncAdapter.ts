@@ -230,7 +230,9 @@ export class StoreSyncAdapter {
     if (this.disposed) return
 
     const { context } = snapshot
-    const activeAppId = useStreamingConversationStore.getState().currentAppId
+    const storeState = useStreamingConversationStore.getState()
+    // Guard: getState() can return undefined during test teardown or hot-reload edge cases
+    const activeAppId = storeState?.currentAppId
 
     // Guard against stale controllers updating the global store after app switching.
     // During app creation/redirects, multiple controllers can overlap briefly; without

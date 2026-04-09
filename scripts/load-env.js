@@ -81,11 +81,6 @@ if (process.env.SSO_LOGIN_URL) {
   console.log(`      SSO_LOGIN_URL: ${process.env.SSO_LOGIN_URL}`);
   console.log(`      LOGIN_REDIRECT_URL: ${process.env.LOGIN_REDIRECT_URL || '(not set)'}`);
 
-  if (envSuffix === 'prod' && !process.env.JWT_PRIVATE_KEY) {
-    console.warn('\n   WARNING: Running prod V2 without JWT_PRIVATE_KEY!');
-    console.warn('      Agent API calls will fail. See GETTING_STARTED.md\n');
-  }
-
   console.log('');
 }
 

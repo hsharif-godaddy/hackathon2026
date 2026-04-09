@@ -233,7 +233,7 @@ func buildPreflightRunner() *preflight.Runner {
 					{Check: &checks.MakeCheck{}},
 					{Check: &checks.DockerCheck{}},
 					{Check: &checks.AWSCLICheck{}},
-					{Check: &checks.MkcertCheck{}},
+					{Check: &checks.MkcertCheck{}, Fixer: &fixers.MkcertFixer{}},
 					{Check: &checks.ArtifactoryCheck{}, Fixer: &fixers.ArtifactoryFixer{}},
 				},
 			},
@@ -241,10 +241,9 @@ func buildPreflightRunner() *preflight.Runner {
 				Name: preflight.CategoryEnvironment,
 				Checks: []preflight.CheckWithFixer{
 					{Check: &checks.HostsCheck{}, Fixer: &fixers.HostsFixer{}},
-					{Check: &checks.AWSSSOCheck{}, Fixer: &fixers.AWSSSOFixer{}},
 					{Check: &checks.AppEnvCheck{}, Fixer: appEnvFixer},
 					{Check: &checks.AgentsEnvCheck{}, Fixer: agentsEnvFixer},
-					{Check: &checks.JWTKeysCheck{}, Fixer: &fixers.JWTFixer{}},
+					{Check: &checks.AWSSSOCheck{}, Fixer: &fixers.AWSSSOFixer{}},
 					{Check: &checks.CertsCheck{}, Fixer: &fixers.CertsFixer{}},
 					{Check: &checks.DevCACheck{}, Fixer: &fixers.DevCAFixer{}},
 					{Check: &checks.S2SCertsCheck{}, Fixer: &fixers.S2SCertsFixer{}},
@@ -252,6 +251,7 @@ func buildPreflightRunner() *preflight.Runner {
 					{Check: &checks.GettyCheck{}, Fixer: &fixers.GettyFixer{}},
 					{Check: &checks.KnowBCheck{}, Fixer: &fixers.KnowBFixer{}},
 					{Check: &checks.DesignRAGCheck{}, Fixer: &fixers.DesignRAGFixer{}},
+					{Check: &checks.LocalFeaturesCheck{}, Fixer: &fixers.LocalFeaturesFixer{}, OptIn: true},
 				},
 			},
 			{

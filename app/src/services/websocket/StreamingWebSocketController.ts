@@ -102,6 +102,11 @@ export class StreamingWebSocketController extends EventEmitter {
   private supervisor: TransportSupervisor
   private qualityMonitor: NetworkQualityMonitor
 
+  // Machine-driven reconnect safety net
+  private machineReconnectSubscription: { unsubscribe: () => void } | null = null
+  private previousTransportState: string | null = null
+  private reconnectionExplicitlyDisabled = false
+
   // Refs for handler-specific state management
   // Note: These refs manage implementation-specific state (recovery ACK protocol, APP_NOT_FOUND retry, server config)
   // that is too granular for the state machine. Machine handles high-level lifecycle state.
@@ -204,6 +209,39 @@ export class StreamingWebSocketController extends EventEmitter {
     this.supervisor.on('grant:refresh-requested', () => {
       this.emit('grant:refresh-requested')
     })
+
+    // Safety net: When the XState machine transitions from reconnecting → connecting
+    // (via retry delay) after an explicit disconnect() that disabled Socket.IO's
+    // built-in reconnection, the machine's "connecting" state is passive — it waits
+    // for CONNECTION_ESTABLISHED events that never arrive. This subscription detects
+    // that specific scenario and re-triggers supervisor.connect().
+    //
+    // Gated on reconnectionExplicitlyDisabled to avoid firing on involuntary server
+    // disconnects, where Socket.IO's built-in reconnection handles recovery.
+    this.machineReconnectSubscription = this.machine.subscribe((snapshot) => {
+      const transportValue = snapshot.value && typeof snapshot.value === 'object' && 'transport' in snapshot.value
+        ? (snapshot.value as Record<string, unknown>).transport
+        : null
+      const currentTransportState = typeof transportValue === 'string'
+        ? transportValue
+        : (transportValue && typeof transportValue === 'object' ? Object.keys(transportValue)[0] : null)
+      const prevState = this.previousTransportState
+      this.previousTransportState = currentTransportState as string | null
+
+      if (
+        currentTransportState === 'connecting' &&
+        prevState === 'reconnecting' &&
+        this.currentAppId &&
+        this.reconnectionExplicitlyDisabled
+      ) {
+        this.reconnectionExplicitlyDisabled = false
+        logger.info('websocket.controller.reconnect_safety_net', {
+          message: 'Machine entered connecting from reconnecting after explicit disconnect — re-triggering connection',
+          appId: this.currentAppId,
+        })
+        void this.supervisor.connect(this.currentAppId)
+      }
+    })
   }
 
   /**
@@ -239,6 +277,7 @@ export class StreamingWebSocketController extends EventEmitter {
     // This allows subsequent CONNECT events to be handled
     this.machine.send({ type: 'DISCONNECT', reason: 'app_switch' })
 
+    this.reconnectionExplicitlyDisabled = true
     this.supervisor.disconnect()
     this.supervisor.clearRetryState()
   }
@@ -247,8 +286,9 @@ export class StreamingWebSocketController extends EventEmitter {
    * Cleanup - disconnect resources, then stop machine
    *
    * Order is critical to prevent race conditions:
-   * 1. disconnect() - Stops WebSocket and removes event listeners (prevents new events)
-   * 2. adapter.destroy() - Unsubscribes from machine (cleanup subscriptions)
+   * 1. Unsubscribe all machine observers FIRST - adapter and reconnect safety net
+   *    must not observe state transitions triggered by disconnect()'s DISCONNECT event
+   * 2. disconnect() - Stops WebSocket, removes event listeners, sends DISCONNECT
    * 3. machine.stop() - Stops state machine (safe, no more events can arrive)
    *
    * Previous order (adapter → machine → disconnect) caused race conditions where
@@ -256,14 +296,18 @@ export class StreamingWebSocketController extends EventEmitter {
    * machine was stopped, causing XState warnings and resource leaks.
    */
   destroy(): void {
-    // 1. Disconnect transport first - stops event sources
+    // 1. Unsubscribe all machine observers BEFORE disconnect — disconnect() sends
+    //    DISCONNECT to the machine which triggers state transitions; observers must
+    //    not fire during teardown (store getState() may return undefined).
+    this.machineReconnectSubscription?.unsubscribe()
+    this.machineReconnectSubscription = null
+    this.adapter.destroy()
+
+    // 2. Disconnect transport - stops event sources, sends DISCONNECT to machine
     this.disconnect()
 
-    // 2. Clean up quality monitor
+    // 3. Clean up quality monitor
     this.qualityMonitor.destroy()
-
-    // 3. Clean up adapter subscriptions
-    this.adapter.destroy()
 
     // 4. Stop machine last - safe because no more events can arrive
     this.machine.stop()

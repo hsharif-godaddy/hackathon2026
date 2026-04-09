@@ -4,7 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
+
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
 )
@@ -68,39 +72,77 @@ func parseAWSMajorVersion(output string) int {
 	return 0
 }
 
-// AWSSSOCheck verifies that the given AWS SSO profile is authenticated.
-type AWSSSOCheck struct {
-	// Profile is the AWS profile to check. Defaults to "airobuild-dev-private-sso".
-	Profile string
-}
+// AWSSSOCheck verifies that the AWS SSO profile(s) used by app and agents are
+// authenticated. It reads AWS_PROFILE from both app/.env and agents/.env,
+// deduplicates, and validates each with STS GetCallerIdentity.
+type AWSSSOCheck struct{}
 
 func (c *AWSSSOCheck) Name() string     { return "AWS SSO" }
 func (c *AWSSSOCheck) Category() string { return preflight.CategoryEnvironment }
 
-func (c *AWSSSOCheck) profile() string {
-	if c.Profile != "" {
-		return c.Profile
-	}
-	return defaultAWSProfile
-}
+func (c *AWSSSOCheck) Run(ctx context.Context, projectRoot string) preflight.CheckResult {
+	profiles := c.resolveProfiles(projectRoot)
 
-func (c *AWSSSOCheck) Run(ctx context.Context, _ string) preflight.CheckResult {
-	profile := c.profile()
-	err := exec.CommandContext(ctx, "aws", "sts", "get-caller-identity", "--profile", profile).Run()
-	if err != nil {
-		return preflight.CheckResult{
-			Status:       preflight.StatusFail,
-			Name:         c.Name(),
-			Category:     c.Category(),
-			Message:      fmt.Sprintf("AWS SSO profile %q not authenticated", profile),
-			FixAvailable: true,
+	for _, profile := range profiles {
+		cfg, err := awsconfig.LoadDefaultConfig(ctx,
+			awsconfig.WithRegion("us-west-2"),
+			awsconfig.WithSharedConfigProfile(profile),
+		)
+		if err != nil {
+			return preflight.CheckResult{
+				Status:       preflight.StatusFail,
+				Name:         c.Name(),
+				Category:     c.Category(),
+				Message:      fmt.Sprintf("AWS SSO profile %q: failed to load config: %s", profile, err),
+				FixAvailable: true,
+			}
 		}
+
+		client := sts.NewFromConfig(cfg)
+		_, err = client.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+		if err != nil {
+			return preflight.CheckResult{
+				Status:       preflight.StatusFail,
+				Name:         c.Name(),
+				Category:     c.Category(),
+				Message:      fmt.Sprintf("AWS SSO session expired for profile %q (run: aws sso login --profile %s)", profile, profile),
+				FixAvailable: true,
+			}
+		}
+	}
+
+	msg := fmt.Sprintf("profile %q authenticated", profiles[0])
+	if len(profiles) > 1 {
+		msg = fmt.Sprintf("profiles %q authenticated", profiles)
 	}
 
 	return preflight.CheckResult{
 		Status:   preflight.StatusPass,
 		Name:     c.Name(),
 		Category: c.Category(),
-		Message:  fmt.Sprintf("profile %q authenticated", profile),
+		Message:  msg,
 	}
+}
+
+// resolveProfiles reads AWS_PROFILE from app/.env and agents/.env, returning
+// a deduplicated list. Falls back to the default profile if neither file exists.
+func (c *AWSSSOCheck) resolveProfiles(projectRoot string) []string {
+	seen := make(map[string]bool)
+	var profiles []string
+
+	for _, rel := range []string{"app/.env", "agents/.env"} {
+		env, err := ParseEnvFile(filepath.Join(projectRoot, rel))
+		if err != nil {
+			continue
+		}
+		if p := strings.TrimSpace(env["AWS_PROFILE"]); p != "" && !seen[p] {
+			seen[p] = true
+			profiles = append(profiles, p)
+		}
+	}
+
+	if len(profiles) == 0 {
+		return []string{defaultAWSProfile}
+	}
+	return profiles
 }
