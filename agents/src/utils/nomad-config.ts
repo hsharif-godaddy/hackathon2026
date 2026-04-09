@@ -5,25 +5,32 @@ import { Logger } from '../logging/index.js';
 
 const logger = Logger.create({ component: 'nomad-config' });
 
+const NEGATIVE_CACHE_TTL_MS = 5_000;
+
 let cachedConfig: Record<string, { VALUE: string }> | null | undefined;
+let negativeCacheExpiry = 0;
 
 /**
  * Reads configuration from Nomad alloc directory if it exists.
- * Only caches successful reads — missing/invalid config is NOT cached so that
- * late-arriving config.json (normal Nomad startup race) gets picked up on retry.
+ * Successful reads are cached permanently (memoized).
+ * Missing/invalid config is negative-cached for 5s so that late-arriving
+ * config.json (normal Nomad startup race) gets picked up on retry without
+ * hitting the filesystem on every call.
  */
 export function getNomadAllocConfig(): Record<string, { VALUE: string }> | null {
   if (cachedConfig !== undefined) return cachedConfig; // memoized successful read
+  if (Date.now() < negativeCacheExpiry) return null; // negative cache still valid
 
   const allocConfigPath = join(env.NOMAD_ALLOC_DIR || '/alloc', 'config.json');
   if (!existsSync(allocConfigPath)) {
+    negativeCacheExpiry = Date.now() + NEGATIVE_CACHE_TTL_MS;
     return null;
   }
 
   try {
     const raw = readFileSync(allocConfigPath, 'utf-8');
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object') {
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       const config = parsed as Record<string, { VALUE: string }>;
       cachedConfig = config;
       return config;
@@ -36,6 +43,7 @@ export function getNomadAllocConfig(): Record<string, { VALUE: string }> | null 
     });
   }
 
+  negativeCacheExpiry = Date.now() + NEGATIVE_CACHE_TTL_MS;
   return null;
 }
 

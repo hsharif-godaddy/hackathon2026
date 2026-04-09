@@ -3,17 +3,22 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-// Mock the logger to break circular dependency
-vi.mock('../../logging/index.js', () => ({
-  Logger: {
-    create: () => ({
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    }),
-  },
+// vi.hoisted makes the factory available when vi.mock() calls are hoisted to the top
+const { mockLoggerFactory } = vi.hoisted(() => ({
+  mockLoggerFactory: () => ({
+    Logger: {
+      create: () => ({
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      }),
+    },
+  }),
 }));
+
+// Mock the logger to break circular dependency
+vi.mock('../../logging/index.js', mockLoggerFactory);
 
 describe('nomad-config', () => {
   let testDir: string;
@@ -47,16 +52,7 @@ describe('nomad-config', () => {
   describe('getNomadAllocConfigValue', () => {
     it('should return value when key exists', async () => {
       vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      vi.mock('../../logging/index.js', mockLoggerFactory);
 
       const configPath = join(testDir, 'config.json');
       const config = { PRODUCT_ID: { VALUE: 'my-product' } };
@@ -70,16 +66,7 @@ describe('nomad-config', () => {
 
     it('should return default when key does not exist', async () => {
       vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      vi.mock('../../logging/index.js', mockLoggerFactory);
 
       const configPath = join(testDir, 'config.json');
       const config = { OTHER_KEY: { VALUE: 'other-value' } };
@@ -93,16 +80,7 @@ describe('nomad-config', () => {
 
     it('should return default when config file does not exist', async () => {
       vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      vi.mock('../../logging/index.js', mockLoggerFactory);
 
       const { getNomadAllocConfigValue: getValue } = await import('../nomad-config.js');
       const result = getValue('PRODUCT_ID', 'fallback-value');
@@ -112,16 +90,7 @@ describe('nomad-config', () => {
 
     it('should return default when VALUE is empty string (consistent with Go)', async () => {
       vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      vi.mock('../../logging/index.js', mockLoggerFactory);
 
       const configPath = join(testDir, 'config.json');
       const config = { PRODUCT_ID: { VALUE: '' } };
@@ -136,16 +105,7 @@ describe('nomad-config', () => {
 
     it('should return default when key exists but VALUE property is missing', async () => {
       vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      vi.mock('../../logging/index.js', mockLoggerFactory);
 
       const configPath = join(testDir, 'config.json');
       const config = { PRODUCT_ID: { OTHER_PROP: 'something' } };
@@ -159,16 +119,7 @@ describe('nomad-config', () => {
 
     it('should return default when key exists but value is null', async () => {
       vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      vi.mock('../../logging/index.js', mockLoggerFactory);
 
       const configPath = join(testDir, 'config.json');
       const config = { PRODUCT_ID: { VALUE: null } };
@@ -182,16 +133,7 @@ describe('nomad-config', () => {
 
     it('should work with various key names', async () => {
       vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      vi.mock('../../logging/index.js', mockLoggerFactory);
 
       const configPath = join(testDir, 'config.json');
       const config = {
@@ -209,16 +151,7 @@ describe('nomad-config', () => {
 
     it('should handle special characters in VALUE', async () => {
       vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      vi.mock('../../logging/index.js', mockLoggerFactory);
 
       const configPath = join(testDir, 'config.json');
       const config = {
@@ -236,16 +169,7 @@ describe('nomad-config', () => {
   describe('getNomadAllocConfig', () => {
     it('should return null when config file does not exist', async () => {
       vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      vi.mock('../../logging/index.js', mockLoggerFactory);
 
       const { getNomadAllocConfig: getConfig } = await import('../nomad-config.js');
       const result = getConfig();
@@ -254,16 +178,7 @@ describe('nomad-config', () => {
 
     it('should return parsed config when file exists with valid JSON', async () => {
       vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      vi.mock('../../logging/index.js', mockLoggerFactory);
 
       const configPath = join(testDir, 'config.json');
       const config = {
@@ -282,16 +197,7 @@ describe('nomad-config', () => {
 
     it('should return null for invalid JSON', async () => {
       vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      vi.mock('../../logging/index.js', mockLoggerFactory);
 
       const configPath = join(testDir, 'config.json');
       writeFileSync(configPath, 'not valid json {{{');
@@ -302,18 +208,9 @@ describe('nomad-config', () => {
       expect(result).toBeNull();
     });
 
-    it('should handle array JSON as valid object (typeof array === object)', async () => {
+    it('should reject array JSON config', async () => {
       vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      vi.mock('../../logging/index.js', mockLoggerFactory);
 
       const configPath = join(testDir, 'config.json');
       writeFileSync(configPath, '["not", "an", "object"]');
@@ -321,23 +218,12 @@ describe('nomad-config', () => {
       const { getNomadAllocConfig: getConfig } = await import('../nomad-config.js');
       const result = getConfig();
 
-      // Note: In JavaScript, typeof [] === 'object', so arrays pass the object check
-      // The function returns them as-is (not recommended usage, but valid)
-      expect(result).toEqual(['not', 'an', 'object']);
+      expect(result).toBeNull();
     });
 
     it('should return null for null JSON', async () => {
       vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      vi.mock('../../logging/index.js', mockLoggerFactory);
 
       const configPath = join(testDir, 'config.json');
       writeFileSync(configPath, 'null');
@@ -350,16 +236,7 @@ describe('nomad-config', () => {
 
     it('should handle empty config object', async () => {
       vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      vi.mock('../../logging/index.js', mockLoggerFactory);
 
       const configPath = join(testDir, 'config.json');
       writeFileSync(configPath, '{}');
@@ -373,16 +250,7 @@ describe('nomad-config', () => {
 
     it('should memoize results on subsequent calls', async () => {
       vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      vi.mock('../../logging/index.js', mockLoggerFactory);
 
       const configPath = join(testDir, 'config.json');
       const config = { PRODUCT_ID: { VALUE: 'memoized-value' } };
@@ -400,16 +268,7 @@ describe('nomad-config', () => {
   describe('Edge cases', () => {
     it('should handle whitespace-only VALUE', async () => {
       vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      vi.mock('../../logging/index.js', mockLoggerFactory);
 
       const configPath = join(testDir, 'config.json');
       const config = { WHITESPACE: { VALUE: '   ' } };
@@ -424,16 +283,7 @@ describe('nomad-config', () => {
 
     it('should handle very long VALUE strings', async () => {
       vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      vi.mock('../../logging/index.js', mockLoggerFactory);
 
       const configPath = join(testDir, 'config.json');
       const longValue = 'x'.repeat(10000);
@@ -449,16 +299,7 @@ describe('nomad-config', () => {
 
     it('should handle config directory not existing', async () => {
       vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      vi.mock('../../logging/index.js', mockLoggerFactory);
 
       const nonExistentDir = join(testDir, 'non', 'existent', 'path');
       process.env.NOMAD_ALLOC_DIR = nonExistentDir;
@@ -471,21 +312,37 @@ describe('nomad-config', () => {
 
     it('should return empty string default if specified', async () => {
       vi.resetModules();
-      vi.mock('../../logging/index.js', () => ({
-        Logger: {
-          create: () => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-          }),
-        },
-      }));
+      vi.mock('../../logging/index.js', mockLoggerFactory);
 
       const { getNomadAllocConfigValue: getValue } = await import('../nomad-config.js');
       const result = getValue('NONEXISTENT', '');
 
       expect(result).toBe('');
+    });
+
+    it('should retry filesystem read after negative cache TTL expires', async () => {
+      vi.resetModules();
+      vi.useFakeTimers();
+      vi.mock('../../logging/index.js', mockLoggerFactory);
+
+      const { getNomadAllocConfig: getConfig } = await import('../nomad-config.js');
+
+      // First call: file absent → negative cache set
+      expect(getConfig()).toBeNull();
+
+      // Write config while negative cache is still active
+      const configPath = join(testDir, 'config.json');
+      writeFileSync(configPath, JSON.stringify({ PRODUCT_ID: { VALUE: 'late-value' } }));
+
+      // Still null within TTL window
+      vi.advanceTimersByTime(4999);
+      expect(getConfig()).toBeNull();
+
+      // After TTL expires, config is picked up
+      vi.advanceTimersByTime(1);
+      expect(getConfig()?.PRODUCT_ID?.VALUE).toBe('late-value');
+
+      vi.useRealTimers();
     });
   });
 });
