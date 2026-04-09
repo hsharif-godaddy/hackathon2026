@@ -92,6 +92,104 @@
       line-height: 1.5;
     }
 
+    .step-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem 0.65rem;
+      align-items: center;
+      margin: 0 0 1rem;
+      padding: 0.55rem 0.65rem;
+      font-size: 0.78rem;
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .step-nav a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .step-nav a:hover {
+      text-decoration: underline;
+    }
+
+    details.step {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.15rem 1rem 0.85rem;
+      margin-bottom: 0.75rem;
+      background: var(--surface);
+    }
+
+    details.step > summary {
+      list-style: none;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      padding: 0.55rem 0 0.35rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0.5rem;
+    }
+
+    details.step > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    details.step > summary::before {
+      content: "▸ ";
+      display: inline-block;
+      transition: transform 0.12s ease;
+      margin-right: 0.15rem;
+    }
+
+    details.step[open] > summary::before {
+      transform: rotate(90deg);
+    }
+
+    .json-field-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 0.35rem 0.75rem;
+      margin: 0.5rem 0 0.2rem;
+    }
+
+    .json-field-head label {
+      margin: 0;
+    }
+
+    .json-tools {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      align-items: center;
+    }
+
+    .json-tools button {
+      margin: 0;
+      padding: 0.28rem 0.55rem;
+      font-size: 0.75rem;
+    }
+
+    textarea.json-input {
+      min-height: 10.5rem;
+    }
+
+    textarea.json-input-sm {
+      min-height: 5.5rem;
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
     h2 {
       margin: 1.35rem 0 0.65rem;
       font-size: 0.8rem;
@@ -105,6 +203,10 @@
 
     h2:first-of-type {
       margin-top: 0;
+    }
+
+    details.step h2 {
+      margin-top: 1rem;
     }
 
     .out-heading {
@@ -223,72 +325,164 @@
       <h1 class="page-title">Budget service · dev UI</h1>
       <p class="hint">Local E2E only. Traffic goes through this host’s proxy to the budget API. Optional JWT on proxied calls. Request and response are shown separately in the right column.</p>
 
-      <h2>Config</h2>
-      <label for="jwt">JWT (optional — saved in sessionStorage)</label>
-      <input id="jwt" type="password" autocomplete="off" placeholder="empty when LOCAL_AUTH_DISABLE=true" />
-      <div class="row">
-        <button type="button" id="btnHealth">GET /health</button>
-        <button type="button" id="btnAuthCheck">GET /api/v1/auth-check</button>
-        <button type="button" id="btnSaveJwt">Save JWT</button>
-      </div>
+      <nav class="step-nav" aria-label="Jump to section">
+        <a href="#step-config">Config</a>
+        <a href="#step-product">Product</a>
+        <a href="#step-budget">Budget</a>
+        <a href="#step-session">Session</a>
+        <a href="#step-gocode">GoCode</a>
+        <a href="#step-webhook">Webhook</a>
+        <a href="#step-report">Report</a>
+      </nav>
 
-      <h2>Product</h2>
-      <label for="productKey">productKey</label>
-      <input id="productKey" value="dev-ui-product" />
-      <button type="button" id="btnPostProduct">POST /api/v1/products</button>
+      <details class="step" id="step-config" open>
+        <summary>1 · Config</summary>
+        <label for="jwt">JWT (optional — saved in sessionStorage)</label>
+        <input id="jwt" type="password" autocomplete="off" placeholder="empty when LOCAL_AUTH_DISABLE=true" />
+        <div class="row">
+          <button type="button" id="btnHealth">GET /health</button>
+          <button type="button" id="btnAuthCheck">GET /api/v1/auth-check</button>
+          <button type="button" id="btnSaveJwt">Save JWT</button>
+        </div>
+      </details>
 
-      <h2>Budget</h2>
-      <p class="hint"><code>costToCreditRatio</code> = USD per credit (<code>credits_used = budget_cost / costToCreditRatio</code>). Example: <code>0.1</code> ⇒ $1 ⇒ 10 credits.</p>
-      <label for="budgetPost">POST body (JSON)</label>
-      <textarea id="budgetPost">{"productKey":"dev-ui-product","items":[{"creditsTotal":"150.000000","costToCreditRatio":"0.1"}]}</textarea>
-      <div class="row">
-        <button type="button" id="btnPostBudget">POST /api/v1/budgets</button>
-        <button type="button" id="btnGetBudget">GET /api/v1/budgets/{id}</button>
-      </div>
-      <label for="budgetId">budgetId (GET / PATCH)</label>
-      <input id="budgetId" placeholder="from POST response" />
+      <details class="step" id="step-product" open>
+        <summary>2 · Product</summary>
+        <label for="productKey">productKey</label>
+        <input id="productKey" value="dev-ui-product" autocomplete="off" />
+        <div class="row">
+          <button type="button" id="btnPostProduct">POST /api/v1/products</button>
+          <button type="button" id="btnSyncBudgetProductKey" title="Set productKey in the budget POST JSON from the field above">Sync → budget JSON</button>
+        </div>
+      </details>
 
-      <h2>Budget items (PATCH)</h2>
-      <label for="budgetPatch">PATCH body</label>
-      <textarea id="budgetPatch">{"items":[{"creditsTotal":"100.000000","costToCreditRatio":"0.066666"}]}</textarea>
-      <button type="button" id="btnPatchBudget">PATCH /api/v1/budgets/{id}</button>
+      <details class="step" id="step-budget" open>
+        <summary>3 · Budget</summary>
+        <p class="hint"><code>costToCreditRatio</code> = USD per credit (<code>credits_used = budget_cost / costToCreditRatio</code>). Example: <code>0.1</code> ⇒ $1 ⇒ 10 credits. Optional per item: <code>expiresAt</code>, <code>startsAt</code>, <code>resetInterval</code> (<code>30d</code>, <code>1mo</code>, …), <code>resetsAt</code> (RFC3339).</p>
+        <div class="json-field-head">
+          <label for="budgetPost">POST <code>/api/v1/budgets</code> body</label>
+          <div class="json-tools">
+            <button type="button" id="btnFormatBudgetPost">Format</button>
+            <button type="button" id="btnLoadMinimalBudget">Minimal</button>
+            <button type="button" id="btnLoadFullBudget">Full example</button>
+          </div>
+        </div>
+        <textarea id="budgetPost" class="json-input">{
+  "productKey": "dev-ui-product",
+  "items": [
+    {
+      "creditsTotal": "100.000000",
+      "costToCreditRatio": "0.1",
+      "resetInterval": "30d"
+    },
+    {
+      "creditsTotal": "50.000000",
+      "costToCreditRatio": "0.066666",
+      "expiresAt": "2027-12-31T23:59:59Z"
+    }
+  ]
+}</textarea>
+        <div class="row">
+          <button type="button" id="btnPostBudget">POST /api/v1/budgets</button>
+          <button type="button" id="btnGetBudget">GET /api/v1/budgets/{id}</button>
+        </div>
+        <label for="budgetId">budgetId (GET / PATCH / sessions)</label>
+        <input id="budgetId" placeholder="from POST response" autocomplete="off" />
 
-      <h2>Single budget item</h2>
-      <label for="budgetItemId">budgetItemId</label>
-      <input id="budgetItemId" placeholder="from GET budget or POST …/budget-items" />
-      <button type="button" id="btnGetBudgetItem">GET /api/v1/budgets/{id}/budget-items/{budgetItemId}</button>
+        <h2>Budget PATCH</h2>
+        <div class="json-field-head">
+          <label for="budgetPatch">PATCH body</label>
+          <div class="json-tools">
+            <button type="button" id="btnFormatBudgetPatch">Format</button>
+          </div>
+        </div>
+        <textarea id="budgetPatch" class="json-input-sm">{
+  "items": [
+    {
+      "creditsTotal": "100.000000",
+      "costToCreditRatio": "0.066666"
+    }
+  ]
+}</textarea>
+        <button type="button" id="btnPatchBudget">PATCH /api/v1/budgets/{id}</button>
 
-      <h2>Session</h2>
-      <label for="sessionPost">POST body</label>
-      <textarea id="sessionPost">{}</textarea>
-      <button type="button" id="btnPostSession">POST /api/v1/budgets/{id}/sessions</button>
-      <label for="sessionId">sessionId</label>
-      <input id="sessionId" placeholder="from POST session" />
+        <h2>Single budget item</h2>
+        <label for="budgetItemId">budgetItemId</label>
+        <input id="budgetItemId" placeholder="from GET budget or POST …/budget-items" autocomplete="off" />
+        <button type="button" id="btnGetBudgetItem">GET /api/v1/budgets/{id}/budget-items/{budgetItemId}</button>
+      </details>
 
-      <h2>GoCode (PATCH session lines)</h2>
-      <label for="sessionPatch">PATCH body</label>
-      <textarea id="sessionPatch">{"sessionItems":[{"cost":"2.000000","callRequestId":"dev-ui-1"}]}</textarea>
-      <button type="button" id="btnPatchSession">PATCH session</button>
-      <button type="button" id="btnGetSession">GET session</button>
+      <details class="step" id="step-session" open>
+        <summary>4 · Session</summary>
+        <div class="json-field-head">
+          <label for="sessionPost">POST body</label>
+          <div class="json-tools">
+            <button type="button" id="btnFormatSessionPost">Format</button>
+          </div>
+        </div>
+        <textarea id="sessionPost" class="json-input-sm">{}</textarea>
+        <button type="button" id="btnPostSession">POST /api/v1/budgets/{id}/sessions</button>
+        <label for="sessionId">sessionId</label>
+        <input id="sessionId" placeholder="from POST session" autocomplete="off" />
+      </details>
 
-      <h2>Webhook</h2>
-      <label for="webhookUrl">Callback URL</label>
-      <input id="webhookUrl" value="http://127.0.0.1:9999/hook" />
-      <button type="button" id="btnPostWebhook">POST /api/v1/webhooks</button>
-      <label for="webhookId">webhookId (GET / DELETE)</label>
-      <input id="webhookId" />
-      <div class="row">
-        <button type="button" id="btnGetWebhook">GET webhook</button>
-        <button type="button" id="btnDelWebhook">DELETE webhook</button>
-      </div>
+      <details class="step" id="step-gocode" open>
+        <summary>5 · GoCode (session PATCH)</summary>
+        <div class="json-field-head">
+          <label for="sessionPatch">PATCH body</label>
+          <div class="json-tools">
+            <button type="button" id="btnFormatSessionPatch">Format</button>
+          </div>
+        </div>
+        <textarea id="sessionPatch" class="json-input-sm">{
+  "sessionItems": [
+    {
+      "cost": "2.000000",
+      "callRequestId": "dev-ui-1"
+    }
+  ]
+}</textarea>
+        <div class="row">
+          <button type="button" id="btnPatchSession">PATCH session</button>
+          <button type="button" id="btnGetSession">GET session</button>
+        </div>
+      </details>
 
-      <h2>Report</h2>
-      <label for="reportPost">POST body</label>
-      <textarea id="reportPost">{"reportItems":[{"budgetCost":"2.000000","productCost":"1.000000","label":"dev-ui"}]}</textarea>
-      <button type="button" id="btnPostReport">POST …/reports</button>
-      <label for="reportId">reportId</label>
-      <input id="reportId" />
-      <button type="button" id="btnGetReport">GET …/reports/{id}</button>
+      <details class="step" id="step-webhook" open>
+        <summary>6 · Webhook</summary>
+        <label for="webhookUrl">Callback URL</label>
+        <input id="webhookUrl" value="http://127.0.0.1:9999/hook" autocomplete="off" />
+        <button type="button" id="btnPostWebhook">POST /api/v1/webhooks</button>
+        <label for="webhookId">webhookId (GET / DELETE)</label>
+        <input id="webhookId" autocomplete="off" />
+        <div class="row">
+          <button type="button" id="btnGetWebhook">GET webhook</button>
+          <button type="button" id="btnDelWebhook">DELETE webhook</button>
+        </div>
+      </details>
+
+      <details class="step" id="step-report" open>
+        <summary>7 · Report</summary>
+        <div class="json-field-head">
+          <label for="reportPost">POST body</label>
+          <div class="json-tools">
+            <button type="button" id="btnFormatReportPost">Format</button>
+          </div>
+        </div>
+        <textarea id="reportPost" class="json-input-sm">{
+  "reportItems": [
+    {
+      "budgetCost": "2.000000",
+      "productCost": "1.000000",
+      "label": "dev-ui"
+    }
+  ]
+}</textarea>
+        <button type="button" id="btnPostReport">POST …/reports</button>
+        <label for="reportId">reportId</label>
+        <input id="reportId" autocomplete="off" />
+        <button type="button" id="btnGetReport">GET …/reports/{id}</button>
+      </details>
     </main>
 
     <aside class="panel-out" aria-label="HTTP request and response">

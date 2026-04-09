@@ -3,6 +3,81 @@
   const outResponse = document.getElementById('outResponse');
   const jwtInput = document.getElementById('jwt');
 
+  const DEFAULT_BUDGET_MINIMAL = JSON.stringify(
+    {
+      productKey: 'dev-ui-product',
+      items: [{ creditsTotal: '150.000000', costToCreditRatio: '0.1' }],
+    },
+    null,
+    2,
+  );
+
+  const DEFAULT_BUDGET_FULL = JSON.stringify(
+    {
+      productKey: 'dev-ui-product',
+      items: [
+        {
+          creditsTotal: '100.000000',
+          costToCreditRatio: '0.1',
+          resetInterval: '30d',
+        },
+        {
+          creditsTotal: '50.000000',
+          costToCreditRatio: '0.066666',
+          expiresAt: '2027-12-31T23:59:59Z',
+        },
+      ],
+    },
+    null,
+    2,
+  );
+
+  function formatTextarea(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    try {
+      const o = JSON.parse(el.value);
+      el.value = JSON.stringify(o, null, 2);
+    } catch (e) {
+      log({ error: 'Invalid JSON: ' + String(e.message || e) });
+    }
+  }
+
+  function syncBudgetJsonProductKey() {
+    const pk = document.getElementById('productKey').value.trim();
+    const ta = document.getElementById('budgetPost');
+    if (!pk || !ta) return;
+    try {
+      const o = JSON.parse(ta.value);
+      if (!o || typeof o !== 'object' || Array.isArray(o)) {
+        log({ error: 'budget POST body must be a JSON object' });
+        return;
+      }
+      o.productKey = pk;
+      ta.value = JSON.stringify(o, null, 2);
+    } catch (e) {
+      log({ error: 'Invalid JSON: ' + String(e.message || e) });
+    }
+  }
+
+  function updateFlowButtons() {
+    const bid = document.getElementById('budgetId').value.trim();
+    const sid = document.getElementById('sessionId').value.trim();
+    const rid = document.getElementById('reportId').value.trim();
+    const itemId = document.getElementById('budgetItemId').value.trim();
+    const g = function (id) {
+      return document.getElementById(id);
+    };
+    if (g('btnGetBudget')) g('btnGetBudget').disabled = !bid;
+    if (g('btnPatchBudget')) g('btnPatchBudget').disabled = !bid;
+    if (g('btnGetBudgetItem')) g('btnGetBudgetItem').disabled = !bid || !itemId;
+    if (g('btnPostSession')) g('btnPostSession').disabled = !bid;
+    if (g('btnPatchSession')) g('btnPatchSession').disabled = !bid || !sid;
+    if (g('btnGetSession')) g('btnGetSession').disabled = !bid || !sid;
+    if (g('btnPostReport')) g('btnPostReport').disabled = !bid || !sid;
+    if (g('btnGetReport')) g('btnGetReport').disabled = !bid || !sid || !rid;
+  }
+
   function logExchange(request, response) {
     outRequest.classList.remove('empty');
     outResponse.classList.remove('empty');
@@ -150,6 +225,7 @@
       throw err;
     }
     populateFromResponse(method, path, data);
+    updateFlowButtons();
     return data;
   }
 
@@ -158,6 +234,31 @@
     if (j) sessionStorage.setItem('budget_e2e_jwt', j);
     else sessionStorage.removeItem('budget_e2e_jwt');
     log({ message: j ? 'JWT saved' : 'JWT cleared' });
+  };
+
+  document.getElementById('btnFormatBudgetPost').onclick = function () {
+    formatTextarea('budgetPost');
+  };
+  document.getElementById('btnFormatBudgetPatch').onclick = function () {
+    formatTextarea('budgetPatch');
+  };
+  document.getElementById('btnFormatSessionPost').onclick = function () {
+    formatTextarea('sessionPost');
+  };
+  document.getElementById('btnFormatSessionPatch').onclick = function () {
+    formatTextarea('sessionPatch');
+  };
+  document.getElementById('btnFormatReportPost').onclick = function () {
+    formatTextarea('reportPost');
+  };
+  document.getElementById('btnLoadMinimalBudget').onclick = function () {
+    document.getElementById('budgetPost').value = DEFAULT_BUDGET_MINIMAL;
+  };
+  document.getElementById('btnLoadFullBudget').onclick = function () {
+    document.getElementById('budgetPost').value = DEFAULT_BUDGET_FULL;
+  };
+  document.getElementById('btnSyncBudgetProductKey').onclick = function () {
+    syncBudgetJsonProductKey();
   };
 
   function fail(e) {
@@ -284,4 +385,18 @@
 
   const saved = sessionStorage.getItem('budget_e2e_jwt');
   if (saved) jwtInput.value = saved;
+
+  [
+    'budgetId',
+    'sessionId',
+    'reportId',
+    'budgetItemId',
+  ].forEach(function (id) {
+    const el = document.getElementById(id);
+    if (el)
+      el.addEventListener('input', function () {
+        updateFlowButtons();
+      });
+  });
+  updateFlowButtons();
 })();
