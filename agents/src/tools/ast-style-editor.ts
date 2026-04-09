@@ -474,6 +474,16 @@ export class ASTStyleEditor extends ASTEditorBase {
     }
 
     if (!elementFound) {
+      logger.warn('ast.style-editor.not-found', {
+        fileName: enhancedElementInfo.devContext.fileName,
+        lineNumber: enhancedElementInfo.devContext.lineNumber,
+        componentName: enhancedElementInfo.devContext.componentName,
+        tagName: enhancedElementInfo.tagName,
+        className: enhancedElementInfo.className?.substring(0, 200),
+        selector: selector?.substring(0, 200),
+        property: request.property,
+        value: request.value?.substring(0, 200),
+      });
       return {
         success: false,
         error: `Element not found at line ${enhancedElementInfo.devContext.lineNumber} in ${enhancedElementInfo.devContext.fileName}`

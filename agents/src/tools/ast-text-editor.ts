@@ -28,6 +28,12 @@ export interface TextEditResult extends BaseEditResult {
  */
 export class ASTTextEditor extends ASTEditorBase {
   private lastProcessResult: { oldText: string; newText: string } | null = null;
+  public lastDiagnostics: {
+    candidatesCount: number;
+    bestScore?: number;
+    bestMatchType?: string;
+    nearbyCandidates: Array<{ line: number; text: string }>;
+  } | null = null;
 
   /**
    * Extract occurrence index from precise selector
@@ -409,13 +415,17 @@ export class ASTTextEditor extends ASTEditorBase {
     }
 
     if (!elementFound) {
-      logger.warn('ast.text-editor.not-found', {
-        lineNumber: devContext.lineNumber,
+      // Store diagnostics for the route-level failure log
+      this.lastDiagnostics = {
         candidatesCount: candidates.length,
         bestScore: bestMatch?.score,
         bestMatchType: bestMatch?.matchType,
-        expectedText: normalizedOldText.slice(0, 80)
-      });
+        nearbyCandidates: candidates
+          .filter(c => Math.abs(c.line - devContext.lineNumber) <= 10 && c.text.trim().length > 0)
+          .sort((a, b) => Math.abs(a.line - devContext.lineNumber) - Math.abs(b.line - devContext.lineNumber))
+          .slice(0, 5)
+          .map(c => ({ line: c.line, text: c.text.slice(0, 80) })),
+      };
 
       return {
         success: false,
@@ -451,6 +461,9 @@ export class ASTTextEditor extends ASTEditorBase {
    * @returns Text edit result with old and new text
    */
   async editElementText(appPath: string, request: TextEditRequest, appId?: string): Promise<TextEditResult> {
+    this.lastProcessResult = null;
+    this.lastDiagnostics = null;
+
     const baseResult = await this.editTemplate<TextEditRequest, TextEditResult>(
       appPath,
       request,
@@ -460,10 +473,11 @@ export class ASTTextEditor extends ASTEditorBase {
       appId
     );
 
+    const processResult = this.lastProcessResult as { oldText: string; newText: string } | null;
     return {
       ...baseResult,
-      oldText: this.lastProcessResult?.oldText || request.oldText,
-      newText: this.lastProcessResult?.newText || request.newText
+      oldText: processResult?.oldText || request.oldText,
+      newText: processResult?.newText || request.newText
     };
   }
 }

@@ -1,29 +1,38 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { safePostMessage } from "../utils/postMessage";
+import { safePostMessage, isOriginAllowed } from "../utils/postMessage";
 import { generatePreciseSelector, extractDevContext } from "../utils/element-helpers";
 import { isClickable, isTextEditable, hasStyledChildren, isSingleLineElement, isDevToolsElement, generateSelector } from "../utils/element-detection";
 import { t } from "../utils/translations";
 
 const DEBOUNCE_SAVE_MS = 8000;
-const SAVE_INDICATOR_MS = 1500;
+const INDICATOR_MS = 1500;
 
-function showSaveIndicator(element: HTMLElement) {
+function showIndicator(element: HTMLElement, type: "success" | "error") {
   const existing = document.getElementById("edit-mode-save-indicator");
   if (existing) existing.remove();
 
   const rect = element.getBoundingClientRect();
   const indicator = document.createElement("div");
   indicator.id = "edit-mode-save-indicator";
-  indicator.textContent = t("devtools_saved", "Saved");
+
+  const isError = type === "error";
+  indicator.textContent = isError
+    ? t("devtools_edit_failed", "Edit failed")
+    : t("devtools_saved", "Saved");
+
+  const color = isError ? "#dc2626" : "var(--color-success)";
+  const bg = isError ? "#fef2f2" : "var(--color-success-bg)";
+  const border = isError ? "#fecaca" : "var(--color-success-border)";
+
   indicator.style.cssText = `
     position: fixed;
     top: ${rect.top - 24}px;
     right: ${window.innerWidth - rect.right}px;
     font-size: 11px;
     font-weight: 500;
-    color: var(--color-success);
-    background: var(--color-success-bg);
-    border: 1px solid var(--color-success-border);
+    color: ${color};
+    background: ${bg};
+    border: 1px solid ${border};
     padding: 2px 8px;
     border-radius: 4px;
     z-index: 10001;
@@ -41,7 +50,7 @@ function showSaveIndicator(element: HTMLElement) {
   setTimeout(() => {
     indicator.style.opacity = "0";
     setTimeout(() => indicator.remove(), 200);
-  }, SAVE_INDICATOR_MS);
+  }, INDICATOR_MS);
 }
 
 interface TextEditingState {
@@ -49,6 +58,12 @@ interface TextEditingState {
   originalContent: string | null;
   originalText: string | null;
   saveStatus: "idle" | "saving" | "saved";
+}
+
+interface PendingSave {
+  element: HTMLElement;
+  originalText: string;
+  originalContent: string;
 }
 
 /**
@@ -68,6 +83,7 @@ export function useTextEditing(isEditModeActive: boolean) {
   const stateRef = useRef(state);
   stateRef.current = state;
   const blurHandlerRef = useRef<(() => void) | null>(null);
+  const pendingSaveRef = useRef<PendingSave | null>(null);
 
   // ── Save logic ──
 
@@ -80,20 +96,19 @@ export function useTextEditing(isEditModeActive: boolean) {
       const selector = generateSelector(element);
       const preciseSelector = generatePreciseSelector(element);
 
+      // Store element + original content so we can revert on failure
+      pendingSaveRef.current = {
+        element,
+        originalText,
+        originalContent: stateRef.current.originalContent ?? element.innerHTML,
+      };
+
       setState((prev) => ({ ...prev, saveStatus: "saving" }));
 
       safePostMessage(window.parent, {
         type: "TEXT_UPDATED",
         data: { selector, preciseSelector, oldText: originalText, newText, devContext },
       });
-
-      showSaveIndicator(element);
-      setState((prev) => ({ ...prev, saveStatus: "saved" }));
-      setTimeout(() => {
-        setState((prev) =>
-          prev.saveStatus === "saved" ? { ...prev, saveStatus: "idle" } : prev,
-        );
-      }, SAVE_INDICATOR_MS);
     },
     [],
   );
@@ -104,6 +119,12 @@ export function useTextEditing(isEditModeActive: boolean) {
     (save: boolean) => {
       const { editingElement, originalText, originalContent } = stateRef.current;
       if (!editingElement) return;
+
+      // Clear any in-flight save so a late TEXT_EDIT_SUCCEEDED/FAILED
+      // doesn't fire on an already-ended edit session
+      if (!save) {
+        pendingSaveRef.current = null;
+      }
 
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
@@ -248,7 +269,7 @@ export function useTextEditing(isEditModeActive: boolean) {
     if (!isEditModeActive) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      const { editingElement, originalText } = stateRef.current;
+      const { editingElement } = stateRef.current;
       if (!editingElement) return;
 
       if (e.key === "Escape") {
@@ -280,6 +301,44 @@ export function useTextEditing(isEditModeActive: boolean) {
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
   }, [isEditModeActive, stopEditing, saveCurrentEdit]);
+
+  // ── Listen for save result from parent ──
+
+  useEffect(() => {
+    const handleEditResult = (event: MessageEvent) => {
+      if (!isOriginAllowed(event)) return;
+      if (!event.data?.type) return;
+
+      const pending = pendingSaveRef.current;
+      if (!pending) return;
+
+      if (event.data.type === "TEXT_EDIT_SUCCEEDED") {
+        showIndicator(pending.element, "success");
+        setState((prev) => ({ ...prev, saveStatus: "saved" }));
+        pendingSaveRef.current = null;
+        setTimeout(() => {
+          setState((prev) =>
+            prev.saveStatus === "saved" ? { ...prev, saveStatus: "idle" } : prev,
+          );
+        }, INDICATOR_MS);
+      } else if (event.data.type === "TEXT_EDIT_FAILED") {
+        // Revert the DOM to what it was before this edit, preserving child HTML structure
+        // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method, godaddy.js.jquery.security.frameworks.dom-text-interpreted-as-html
+        // Safe: originalContent is captured from this element's own innerHTML at save time (not user input)
+        pending.element.innerHTML = pending.originalContent;
+        showIndicator(pending.element, "error");
+        setState((prev) => ({
+          ...prev,
+          saveStatus: "idle",
+          originalText: pending.originalText,
+        }));
+        pendingSaveRef.current = null;
+      }
+    };
+
+    window.addEventListener("message", handleEditResult);
+    return () => window.removeEventListener("message", handleEditResult);
+  }, []);
 
   // ── Cleanup on deactivation ──
 

@@ -843,6 +843,14 @@ router.post('/:id/text/edit', async (req: Request, res: Response) => {
     if (!editResult.success) {
       contextLogger.error('route.apps.text-edit.failed', {
         error: editResult.error,
+        fileName: devContext.fileName,
+        lineNumber: devContext.lineNumber,
+        componentName: devContext.componentName,
+        selector: selector?.substring(0, 200),
+        preciseSelector: preciseSelector?.substring(0, 200),
+        oldText: oldText?.substring(0, 200),
+        newText: newText?.substring(0, 200),
+        ...astTextEditor.lastDiagnostics,
       });
       return res.status(400).json({
         error: 'Failed to edit text',
@@ -936,6 +944,14 @@ router.post('/:id/styles/edit', async (req: Request, res: Response) => {
     if (!editResult.success) {
       contextLogger.error('route.apps.style-edit.failed', {
         error: editResult.error,
+        fileName: elementInfo.devContext.fileName,
+        lineNumber: elementInfo.devContext.lineNumber,
+        componentName: elementInfo.devContext.componentName,
+        selector: selector?.substring(0, 200),
+        property,
+        value: value?.substring(0, 200),
+        tagName: elementInfo.tagName,
+        className: elementInfo.className?.substring(0, 200),
       });
       return res.status(400).json({
         error: 'Failed to edit style',
@@ -1058,6 +1074,12 @@ router.post('/:id/images/replace', async (req: Request, res: Response) => {
     if (!replaceResult.success) {
       contextLogger.warn('route.apps.image-replace.ast-failed', {
         error: replaceResult.error,
+        fileName: elementInfo.devContext.fileName,
+        lineNumber: elementInfo.devContext.lineNumber,
+        componentName: elementInfo.devContext.componentName,
+        imageType: imageInfo.type,
+        currentUrl: imageInfo.currentUrl?.substring(0, 200),
+        newImageUrl: newImageUrl?.substring(0, 200),
       });
       return res.status(400).json({
         success: false,

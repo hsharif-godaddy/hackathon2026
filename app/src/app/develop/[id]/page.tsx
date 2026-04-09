@@ -548,14 +548,23 @@ function DevelopPageContent() {
       hasComponentName: !!(textData.devContext && textData.devContext.componentName)
     })
 
+    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement | null
+
     try {
-      const result = await appService.updateText(appId, textData) /* eslint-disable-line @typescript-eslint/no-unused-vars */
-      logger.info('develop-page.text-update.success', { appId })
+      const result = await appService.updateText(appId, textData) as { success?: boolean }
+      if (result?.success) {
+        logger.info('develop-page.text-update.success', { appId })
+        if (iframe) postMessageToIframe(iframe, { type: 'TEXT_EDIT_SUCCEEDED' })
+      } else {
+        logger.error('develop-page.text-update.failed', { appId })
+        if (iframe) postMessageToIframe(iframe, { type: 'TEXT_EDIT_FAILED' })
+      }
     } catch (error) {
       logger.error('develop-page.text-update.error', {
         appId,
         error: error instanceof Error ? error.message : String(error)
       })
+      if (iframe) postMessageToIframe(iframe, { type: 'TEXT_EDIT_FAILED' })
     }
   }, [appId])
 
