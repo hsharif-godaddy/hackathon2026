@@ -1,15 +1,15 @@
 import express, { Request, Response, Router } from 'express';
 import multer from 'multer';
 
-import { validateGdToken } from '../auth/middleware';
-import gettyClient from '../clients/getty-client';
-import knowbClient from '../clients/knowb-client';
-import knowledgeServiceClient from '../clients/knowledge-service-client';
-import webScraperClient from '../clients/web-scraper-client';
-import { config } from '../config';
-import ssoValidationRoutes from './sso-validation';
-import logger from '../utils/logger';
-import { normalizePage, normalizePageSize } from '../utils/paramNormalization';
+import { validateGdToken } from '../auth/middleware.js';
+import gettyClient from '../clients/getty-client.js';
+import knowbClient from '../clients/knowb-client.js';
+import knowledgeServiceClient from '../clients/knowledge-service-client.js';
+import webScraperClient from '../clients/web-scraper-client.js';
+import { config } from '../config/index.js';
+import ssoValidationRoutes from './sso-validation.js';
+import logger from '../utils/logger.js';
+import { normalizePage, normalizePageSize } from '../utils/paramNormalization.js';
 import {
   AuthenticatedRequest,
   HealthStatus,
@@ -18,7 +18,7 @@ import {
   KnowBUploadParams,
   KnowledgeServiceSearchParams,
   WebScraperParams
-} from '../types';
+} from '../types/index.js';
 
 const upload = multer({ storage: multer.memoryStorage() });
 

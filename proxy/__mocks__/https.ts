@@ -1,22 +1,22 @@
-const https = jest.createMockFromModule<typeof import('https')>('https');
+import { vi } from 'vitest';
 
 interface MockServer {
   listen: (port: number, host: string, callback?: () => void) => MockServer;
   close: (callback?: () => void) => void;
-  on: jest.Mock;
+  on: ReturnType<typeof vi.fn>;
 }
 
 const mockServer: MockServer = {
-  listen: jest.fn((port: number, host: string, callback?: () => void) => {
+  listen: vi.fn((port: number, host: string, callback?: () => void) => {
     if (callback) callback();
     return mockServer;
   }),
-  close: jest.fn((callback?: () => void) => {
+  close: vi.fn((callback?: () => void) => {
     if (callback) callback();
   }),
-  on: jest.fn()
+  on: vi.fn()
 };
 
-(https.createServer as jest.Mock) = jest.fn(() => mockServer);
+export const createServer = vi.fn(() => mockServer);
 
-module.exports = https;
+export default { createServer };

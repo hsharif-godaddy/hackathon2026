@@ -1,7 +1,7 @@
 import pino from 'pino';
 import { pinoHttp } from 'pino-http';
-import { config } from '../config';
-import { LogMeta } from '../types';
+import { config } from '../config/index.js';
+import { LogMeta } from '../types/index.js';
 
 /**
  * Configure pino logger with appropriate settings based on environment

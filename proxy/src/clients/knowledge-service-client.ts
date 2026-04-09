@@ -1,7 +1,7 @@
-import { KnowledgeServiceSearchParams } from '../types';
-import logger from '../utils/logger';
-import { config } from '../config';
-import { BaseClient, BaseAPIResponse } from './base-client';
+import { KnowledgeServiceSearchParams } from '../types/index.js';
+import logger from '../utils/logger.js';
+import { config } from '../config/index.js';
+import { BaseClient, BaseAPIResponse } from './base-client.js';
 
 /**
  * Knowledge Service Client

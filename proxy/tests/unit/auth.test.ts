@@ -1,6 +1,6 @@
-import { validateGdToken } from '../../src/auth/middleware';
+import { validateGdToken } from '../../src/auth/middleware.js';
 import { Request, Response, NextFunction } from 'express';
-import { AuthenticatedRequest } from '../../src/types';
+import { AuthenticatedRequest } from '../../src/types/index.js';
 
 describe('Authentication Middleware', () => {
   let req: Partial<AuthenticatedRequest>;
@@ -14,10 +14,10 @@ describe('Authentication Middleware', () => {
       ip: '127.0.0.1'
     };
     res = {
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn()
+      status: vi.fn().mockReturnThis(),
+      json: vi.fn()
     };
-    next = jest.fn();
+    next = vi.fn();
   });
 
   describe('validateGdToken', () => {

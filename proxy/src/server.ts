@@ -1,11 +1,11 @@
 import express, { Application } from 'express';
-import https from 'https';
-import fs from 'fs';
+import * as https from 'node:https';
+import * as fs from 'node:fs';
 import helmet from 'helmet';
 
-import { config, validateConfig } from './config';
-import logger from './utils/logger';
-import routes from './routes';
+import { config, validateConfig } from './config/index.js';
+import logger from './utils/logger.js';
+import routes from './routes/index.js';
 
 // Validate configuration on startup
 try {

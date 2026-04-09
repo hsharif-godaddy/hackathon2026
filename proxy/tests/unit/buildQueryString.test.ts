@@ -1,4 +1,4 @@
-import { buildQueryString } from '../../src/clients/getty-client';
+import { buildQueryString } from '../../src/clients/getty-client.js';
 
 describe('buildQueryString', () => {
   it('should handle simple scalar params', () => {

@@ -1,6 +1,6 @@
-import { config } from '../config';
-import { BaseClient, BaseAPIResponse } from './base-client';
-import { GettySearchParams, GettyAPIResponse } from '../types';
+import { config } from '../config/index.js';
+import { BaseClient, BaseAPIResponse } from './base-client.js';
+import { GettySearchParams, GettyAPIResponse } from '../types/index.js';
 
 /**
  * Build a query string that correctly handles array values as repeated params.

@@ -1,8 +1,8 @@
-jest.mock('fs');
-jest.mock('https');
+vi.mock('fs');
+vi.mock('https');
 
 import request from 'supertest';
-import { app } from '../../src/server';
+import { app } from '../../src/server.js';
 
 describe('Getty Images API Integration', () => {
   const validToken = 'Bearer gd-test-token-123';

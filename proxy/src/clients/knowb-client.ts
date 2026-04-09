@@ -1,8 +1,8 @@
-import { KnowBSearchParams, KnowBAPIResponse, KnowBUploadParams } from '../types';
-import ssoClient from '../auth/sso-client';
-import logger from '../utils/logger';
-import { config } from '../config';
-import { BaseClient, BaseAPIResponse } from './base-client';
+import { KnowBSearchParams, KnowBAPIResponse, KnowBUploadParams } from '../types/index.js';
+import ssoClient from '../auth/sso-client.js';
+import logger from '../utils/logger.js';
+import { config } from '../config/index.js';
+import { BaseClient, BaseAPIResponse } from './base-client.js';
 
 /**
  * Decode JWT token payload (without verification)

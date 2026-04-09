@@ -1,4 +1,4 @@
-import { normalizePage, normalizePageSize } from '../../src/utils/paramNormalization';
+import { normalizePage, normalizePageSize } from '../../src/utils/paramNormalization.js';
 
 describe('Parameter Normalization', () => {
   describe('normalizePage', () => {

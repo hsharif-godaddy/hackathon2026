@@ -1,7 +1,7 @@
 // Configuration management with validation
 // Note: Cannot use logger here - circular dependency (logger imports config for log level)
-import { AppConfig, LogLevel, EnvironmentVariables } from '../types';
-import path from 'path';
+import { fileURLToPath } from 'node:url';
+import { AppConfig, LogLevel, EnvironmentVariables } from '../types/index.js';
 
 const env = process.env as EnvironmentVariables;
 
@@ -44,8 +44,8 @@ const config: AppConfig = {
     port: parseInt(env.PORT ?? '8888'),
     host: '0.0.0.0',
     ssl: {
-      keyPath: path.join(__dirname, '../../ssl/server.key'),
-      certPath: path.join(__dirname, '../../ssl/server.crt')
+      keyPath: fileURLToPath(new URL('../../ssl/server.key', import.meta.url)),
+      certPath: fileURLToPath(new URL('../../ssl/server.crt', import.meta.url))
     }
   },
 
@@ -54,8 +54,8 @@ const config: AppConfig = {
     appKey: env.GETTY_APP_KEY ?? 'airo-app-builder',
     userAgent: env.USER_AGENT ?? 'airo-proxy/2.0',
     certs: {
-      certPath: path.join(__dirname, '../../certs/getty-client.crt'),
-      keyPath: path.join(__dirname, '../../certs/getty-client.key')
+      certPath: fileURLToPath(new URL('../../certs/getty-client.crt', import.meta.url)),
+      keyPath: fileURLToPath(new URL('../../certs/getty-client.key', import.meta.url))
     }
   },
 

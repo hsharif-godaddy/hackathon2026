@@ -1,6 +1,6 @@
-import { config } from '../config';
-import { BaseClient, BinaryAPIResponse } from './base-client';
-import { WebScraperParams, WebScraperAPIResponse } from '../types';
+import { config } from '../config/index.js';
+import { BaseClient, BinaryAPIResponse } from './base-client.js';
+import { WebScraperParams, WebScraperAPIResponse } from '../types/index.js';
 
 /**
  * Web Scraper Client

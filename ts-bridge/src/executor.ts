@@ -51,6 +51,7 @@ export async function executeTool(
 
   const result = await tool.execute(input, {
     toolCallId,
+    messages: [],
     experimental_context: agentContext,
   });
 

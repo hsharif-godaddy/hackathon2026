@@ -8,8 +8,8 @@
  * - Header sanitization
  * - Request timing
  */
-import ssoClient from '../auth/sso-client';
-import logger from '../utils/logger';
+import ssoClient from '../auth/sso-client.js';
+import logger from '../utils/logger.js';
 
 /**
  * Base API response structure

@@ -1,7 +1,7 @@
 import { Response, NextFunction } from 'express';
-import { config } from '../config';
-import logger from '../utils/logger';
-import { AuthenticatedRequest } from '../types';
+import { config } from '../config/index.js';
+import logger from '../utils/logger.js';
+import { AuthenticatedRequest } from '../types/index.js';
 
 /**
  * Authentication middleware for validating tokens against exact match list

@@ -2,9 +2,9 @@ import { readFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 // @ts-expect-error - gd-auth-client is a CommonJS module without TypeScript definitions
 import { getTokenFromCertificate } from 'gd-auth-client';
-import { config } from '../config';
-import logger from '../utils/logger';
-import { TokenCache } from '../types';
+import { config } from '../config/index.js';
+import logger from '../utils/logger.js';
+import { TokenCache } from '../types/index.js';
 
 class SSOClient {
   // Cache tokens per SSO host (production vs test)
