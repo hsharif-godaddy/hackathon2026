@@ -134,6 +134,7 @@ func webhookToResponse(row *store.WebhookRow) map[string]any {
 		"productKey": row.ProductKey,
 		"url":        row.URL,
 		"createdAt":  row.CreatedAt.UTC().Format(time.RFC3339Nano),
+		"updatedAt":  row.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}
 }
 

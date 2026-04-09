@@ -101,6 +101,7 @@ type BudgetDetail struct {
 	ProductKey     string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	DeletedAt      *time.Time
 	CreditsTotal   string
 	CreditsUsed    string
 	CreditsPending string
@@ -116,6 +117,7 @@ type BudgetItemRow struct {
 	StartsAt        *time.Time
 	ResetsAt        *time.Time
 	ResetInterval   *string
+	DeletedAt       *time.Time
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }
@@ -262,15 +264,15 @@ func (s *Store) CreateBudget(ctx context.Context, budgetID, productKey string, i
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var productOK bool
+	var lock int
 	err = tx.QueryRowContext(ctx, `
-		SELECT EXISTS(SELECT 1 FROM products WHERE product_key = $1)
-	`, productKey).Scan(&productOK)
+		SELECT 1 FROM products WHERE product_key = $1 AND deleted_at IS NULL FOR UPDATE
+	`, productKey).Scan(&lock)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrUnknownProductKey
+		}
 		return err
-	}
-	if !productOK {
-		return ErrUnknownProductKey
 	}
 
 	if _, err := tx.ExecContext(ctx, `INSERT INTO budgets (id, product_key) VALUES ($1, $2)`, budgetID, productKey); err != nil {
@@ -295,9 +297,9 @@ func insertBudgetItem(ctx context.Context, tx *sql.Tx, budgetID string, in ItemI
 	return prepared.ID, nil
 }
 
-func insertBudgetItemHistory(ctx context.Context, tx *sql.Tx, itemID, budgetID string) error {
+func insertBudgetItemsHistory(ctx context.Context, tx *sql.Tx, itemID, budgetID string) error {
 	res, err := tx.ExecContext(ctx, `
-		INSERT INTO budget_item_history (
+		INSERT INTO budget_items_history (
 			budget_item_id, budget_id, credits_total, credits_used, cost_credit_ratio,
 			expires_at, starts_at, reset_interval, resets_at, item_created_at, item_updated_at
 		)
@@ -305,7 +307,7 @@ func insertBudgetItemHistory(ctx context.Context, tx *sql.Tx, itemID, budgetID s
 			id, budget_id, credits_total, credits_used, cost_credit_ratio,
 			expires_at, starts_at, reset_interval, resets_at, created_at, updated_at
 		FROM budget_items
-		WHERE id = $1 AND budget_id = $2
+		WHERE id = $1 AND budget_id = $2 AND deleted_at IS NULL
 	`, itemID, budgetID)
 	if err != nil {
 		return err
@@ -327,14 +329,16 @@ func (s *Store) GetBudget(ctx context.Context, budgetID string) (*BudgetDetail, 
 	var d BudgetDetail
 	var ct, cu, cp decimal.Decimal
 	var pk sql.NullString
+	var del sql.NullTime
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
 			b.id,
 			b.product_key,
 			b.created_at,
 			b.updated_at,
-			COALESCE((SELECT SUM(credits_total) FROM budget_items bi WHERE bi.budget_id = b.id), 0),
-			COALESCE((SELECT SUM(bi.credits_used) FROM budget_items bi WHERE bi.budget_id = b.id), 0),
+			b.deleted_at,
+			COALESCE((SELECT SUM(credits_total) FROM budget_items bi WHERE bi.budget_id = b.id AND bi.deleted_at IS NULL), 0),
+			COALESCE((SELECT SUM(bi.credits_used) FROM budget_items bi WHERE bi.budget_id = b.id AND bi.deleted_at IS NULL), 0),
 			COALESCE((
 				SELECT SUM(bsi.credits_charged)
 				FROM budget_session_items bsi
@@ -344,7 +348,7 @@ func (s *Store) GetBudget(ctx context.Context, budgetID string) (*BudgetDetail, 
 		FROM budgets b
 		WHERE b.id = $1
 	`, budgetID).Scan(
-		&d.BudgetID, &pk, &d.CreatedAt, &d.UpdatedAt,
+		&d.BudgetID, &pk, &d.CreatedAt, &d.UpdatedAt, &del,
 		&ct, &cu, &cp,
 	)
 	if err != nil {
@@ -352,6 +356,10 @@ func (s *Store) GetBudget(ctx context.Context, budgetID string) (*BudgetDetail, 
 	}
 	if pk.Valid {
 		d.ProductKey = pk.String
+	}
+	if del.Valid {
+		t := del.Time
+		d.DeletedAt = &t
 	}
 	d.CreditsTotal = credits.Format(ct)
 	d.CreditsUsed = credits.Format(cu)
@@ -363,7 +371,7 @@ func (s *Store) GetBudget(ctx context.Context, budgetID string) (*BudgetDetail, 
 			bi.credits_total,
 			bi.credits_used,
 			bi.cost_credit_ratio,
-			bi.expires_at, bi.starts_at, bi.resets_at, bi.reset_interval, bi.created_at, bi.updated_at
+			bi.expires_at, bi.starts_at, bi.resets_at, bi.reset_interval, bi.deleted_at, bi.created_at, bi.updated_at
 		FROM budget_items bi
 		WHERE bi.budget_id = $1
 		ORDER BY bi.created_at, bi.id
@@ -378,9 +386,10 @@ func (s *Store) GetBudget(ctx context.Context, budgetID string) (*BudgetDetail, 
 		var exp, st, rs sql.NullTime
 		var reset sql.NullString
 		var ctot, cusd, csr decimal.Decimal
+		var delItem sql.NullTime
 		if err := rows.Scan(
 			&r.ID, &ctot, &cusd, &csr,
-			&exp, &st, &rs, &reset, &r.CreatedAt, &r.UpdatedAt,
+			&exp, &st, &rs, &reset, &delItem, &r.CreatedAt, &r.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -403,6 +412,10 @@ func (s *Store) GetBudget(ctx context.Context, budgetID string) (*BudgetDetail, 
 			sv := reset.String
 			r.ResetInterval = &sv
 		}
+		if delItem.Valid {
+			t := delItem.Time
+			r.DeletedAt = &t
+		}
 		d.Items = append(d.Items, r)
 	}
 	return &d, rows.Err()
@@ -419,18 +432,19 @@ func (s *Store) GetBudgetItem(ctx context.Context, budgetID, itemID string) (*Bu
 	var exp, st, rs sql.NullTime
 	var reset sql.NullString
 	var ctot, cusd, csr decimal.Decimal
+	var delItem sql.NullTime
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
 			bi.id,
 			bi.credits_total,
 			bi.credits_used,
 			bi.cost_credit_ratio,
-			bi.expires_at, bi.starts_at, bi.resets_at, bi.reset_interval, bi.created_at, bi.updated_at
+			bi.expires_at, bi.starts_at, bi.resets_at, bi.reset_interval, bi.deleted_at, bi.created_at, bi.updated_at
 		FROM budget_items bi
 		WHERE bi.id = $1 AND bi.budget_id = $2
 	`, itemID, budgetID).Scan(
 		&r.ID, &ctot, &cusd, &csr,
-		&exp, &st, &rs, &reset, &r.CreatedAt, &r.UpdatedAt,
+		&exp, &st, &rs, &reset, &delItem, &r.CreatedAt, &r.UpdatedAt,
 	)
 	if err != nil {
 		return nil, mapNotFound(err)
@@ -454,6 +468,10 @@ func (s *Store) GetBudgetItem(ctx context.Context, budgetID, itemID string) (*Bu
 		sv := reset.String
 		r.ResetInterval = &sv
 	}
+	if delItem.Valid {
+		t := delItem.Time
+		r.DeletedAt = &t
+	}
 	return &r, nil
 }
 
@@ -468,7 +486,7 @@ func (s *Store) UpsertBudgetItems(ctx context.Context, budgetID string, items []
 	defer func() { _ = tx.Rollback() }()
 
 	var exists int
-	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM budgets WHERE id = $1`, budgetID).Scan(&exists); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM budgets WHERE id = $1 AND deleted_at IS NULL`, budgetID).Scan(&exists); err != nil {
 		return mapNotFound(err)
 	}
 
@@ -507,7 +525,7 @@ func (s *Store) UpsertBudgetItems(ctx context.Context, budgetID string, items []
 		if err != nil {
 			return err
 		}
-		if err := insertBudgetItemHistory(ctx, tx, itemID, budgetID); err != nil {
+		if err := insertBudgetItemsHistory(ctx, tx, itemID, budgetID); err != nil {
 			return err
 		}
 		res, err := tx.ExecContext(ctx, `
@@ -518,7 +536,7 @@ func (s *Store) UpsertBudgetItems(ctx context.Context, budgetID string, items []
 				starts_at = $4,
 				resets_at = $5,
 				reset_interval = $6
-			WHERE id = $7 AND budget_id = $8
+			WHERE id = $7 AND budget_id = $8 AND deleted_at IS NULL
 		`, it.CreditsTotal, it.CostCreditRatio,
 			exp, st, rs, resetInterval, itemID, budgetID)
 		if err != nil {
@@ -543,7 +561,7 @@ func (s *Store) InsertBudgetItem(ctx context.Context, budgetID string, in ItemIn
 	defer func() { _ = tx.Rollback() }()
 
 	var exists int
-	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM budgets WHERE id = $1`, budgetID).Scan(&exists); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM budgets WHERE id = $1 AND deleted_at IS NULL`, budgetID).Scan(&exists); err != nil {
 		return "", mapNotFound(err)
 	}
 	id, err := insertBudgetItem(ctx, tx, budgetID, in)
@@ -581,7 +599,7 @@ func (s *Store) UpdateBudgetItem(ctx context.Context, budgetID, itemID string, i
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := insertBudgetItemHistory(ctx, tx, itemID, budgetID); err != nil {
+	if err := insertBudgetItemsHistory(ctx, tx, itemID, budgetID); err != nil {
 		return err
 	}
 	res, err := tx.ExecContext(ctx, `
@@ -592,7 +610,7 @@ func (s *Store) UpdateBudgetItem(ctx context.Context, budgetID, itemID string, i
 			starts_at = $4,
 			resets_at = $5,
 			reset_interval = $6
-		WHERE id = $7 AND budget_id = $8
+		WHERE id = $7 AND budget_id = $8 AND deleted_at IS NULL
 	`, in.CreditsTotal, in.CostCreditRatio,
 		exp, st, rs, resetInterval, itemID, budgetID)
 	if err != nil {
@@ -619,7 +637,7 @@ func (s *Store) CreateBudgetSession(ctx context.Context, budgetID, sessionID str
 	defer func() { _ = tx.Rollback() }()
 
 	var budgetOK int
-	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM budgets WHERE id = $1 FOR UPDATE`, budgetID).Scan(&budgetOK); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM budgets WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, budgetID).Scan(&budgetOK); err != nil {
 		return mapNotFound(err)
 	}
 	if err := applyDueResetsForBudgetTx(ctx, tx, budgetID); err != nil {
@@ -657,7 +675,7 @@ func (s *Store) BudgetConsumptionPreview(ctx context.Context, budgetID string) (
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, cost_credit_ratio::text, reset_interval, expires_at
 		FROM budget_items
-		WHERE budget_id = $1
+		WHERE budget_id = $1 AND deleted_at IS NULL
 		ORDER BY (reset_interval IS NULL), expires_at ASC NULLS LAST, created_at, id
 	`, budgetID)
 	if err != nil {
@@ -767,7 +785,10 @@ func (s *Store) AppendSessionItems(ctx context.Context, budgetID, sessionID stri
 	// Serialize concurrent PATCHes against the same session + budget_items consumption state.
 	var sessLock int
 	err = tx.QueryRowContext(ctx, `
-		SELECT 1 FROM budget_sessions WHERE id = $1 AND budget_id = $2 AND reconciled_at IS NULL FOR UPDATE
+		SELECT 1 FROM budget_sessions bs
+		INNER JOIN budgets b ON b.id = bs.budget_id AND b.deleted_at IS NULL
+		WHERE bs.id = $1 AND bs.budget_id = $2 AND bs.reconciled_at IS NULL
+		FOR UPDATE OF bs
 	`, sessionID, budgetID).Scan(&sessLock)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -942,7 +963,11 @@ func (s *Store) CreateSessionReport(ctx context.Context, budgetID, sessionID str
 	var bid string
 	var rec sql.NullTime
 	err = tx.QueryRowContext(ctx, `
-		SELECT budget_id, reconciled_at FROM budget_sessions WHERE id = $1 FOR UPDATE
+		SELECT bs.budget_id, bs.reconciled_at
+		FROM budget_sessions bs
+		INNER JOIN budgets b ON b.id = bs.budget_id AND b.deleted_at IS NULL
+		WHERE bs.id = $1
+		FOR UPDATE OF bs
 	`, sessionID).Scan(&bid, &rec)
 	if err != nil {
 		return "", mapNotFound(err)
@@ -1057,7 +1082,7 @@ func (s *Store) GetSessionReport(ctx context.Context, budgetID, sessionID, repor
 		SELECT
 			COALESCE((SELECT SUM(budget_cost) FROM budget_session_report_items WHERE report_id = $1), 0),
 			COALESCE((SELECT SUM(product_cost) FROM budget_session_report_items WHERE report_id = $1), 0),
-			COALESCE((SELECT SUM(bi.credits_total - bi.credits_used) FROM budget_items bi WHERE bi.budget_id = $2), 0)
+			COALESCE((SELECT SUM(bi.credits_total - bi.credits_used) FROM budget_items bi WHERE bi.budget_id = $2 AND bi.deleted_at IS NULL), 0)
 	`, reportID, budgetID).Scan(&bcTot, &pcTot, &credAvail)
 	if err != nil {
 		return nil, err
@@ -1134,6 +1159,18 @@ func (s *Store) SoftDeleteBudget(ctx context.Context, budgetID string) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	var budgetDeleted sql.NullTime
+	if err := tx.QueryRowContext(ctx, `
+		SELECT deleted_at FROM budgets WHERE id = $1 FOR UPDATE
+	`, budgetID).Scan(&budgetDeleted); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if budgetDeleted.Valid {
+		return ErrNotFound
+	}
 	var openSessions int
 	if err := tx.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM budget_sessions WHERE budget_id = $1 AND reconciled_at IS NULL
@@ -1143,20 +1180,9 @@ func (s *Store) SoftDeleteBudget(ctx context.Context, budgetID string) error {
 	if openSessions > 0 {
 		return ErrBudgetHasUnreconciledSessions
 	}
-	var repCount int
-	if err := tx.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM budget_session_reports br
-		JOIN budget_sessions bs ON bs.id = br.session_id
-		WHERE bs.budget_id = $1
-	`, budgetID).Scan(&repCount); err != nil {
-		return err
-	}
-	if repCount > 0 {
-		return ErrBudgetHasReports
-	}
 	res, err := tx.ExecContext(ctx, `
-		INSERT INTO budgets_history (budget_id, product_key, created_at, updated_at)
-		SELECT id, product_key, created_at, updated_at FROM budgets WHERE id = $1
+		UPDATE budgets SET deleted_at = now(), updated_at = now()
+		WHERE id = $1 AND deleted_at IS NULL
 	`, budgetID)
 	if err != nil {
 		return err
@@ -1169,18 +1195,9 @@ func (s *Store) SoftDeleteBudget(ctx context.Context, budgetID string) error {
 		return ErrNotFound
 	}
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO budget_item_history (
-			budget_item_id, budget_id, credits_total, credits_used, cost_credit_ratio,
-			expires_at, starts_at, reset_interval, resets_at, item_created_at, item_updated_at
-		)
-		SELECT
-			id, budget_id, credits_total, credits_used, cost_credit_ratio,
-			expires_at, starts_at, reset_interval, resets_at, created_at, updated_at
-		FROM budget_items WHERE budget_id = $1
+		UPDATE budget_items SET deleted_at = now(), updated_at = now()
+		WHERE budget_id = $1 AND deleted_at IS NULL
 	`, budgetID); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM budgets WHERE id = $1`, budgetID); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -1198,24 +1215,30 @@ func (s *Store) SoftDeleteBudgetItem(ctx context.Context, budgetID, itemID strin
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var ref int
+	var budgetDeleted sql.NullTime
 	if err := tx.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM budget_session_report_item_allocations WHERE budget_item_id = $1
-	`, itemID).Scan(&ref); err != nil {
+		SELECT deleted_at FROM budgets WHERE id = $1 FOR UPDATE
+	`, budgetID).Scan(&budgetDeleted); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
 		return err
 	}
-	if ref > 0 {
-		return ErrBudgetItemInReport
+	if budgetDeleted.Valid {
+		return ErrNotFound
+	}
+	var openSessions int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM budget_sessions WHERE budget_id = $1 AND reconciled_at IS NULL
+	`, budgetID).Scan(&openSessions); err != nil {
+		return err
+	}
+	if openSessions > 0 {
+		return ErrBudgetHasUnreconciledSessions
 	}
 	res, err := tx.ExecContext(ctx, `
-		INSERT INTO budget_item_history (
-			budget_item_id, budget_id, credits_total, credits_used, cost_credit_ratio,
-			expires_at, starts_at, reset_interval, resets_at, item_created_at, item_updated_at
-		)
-		SELECT
-			id, budget_id, credits_total, credits_used, cost_credit_ratio,
-			expires_at, starts_at, reset_interval, resets_at, created_at, updated_at
-		FROM budget_items WHERE id = $1 AND budget_id = $2
+		UPDATE budget_items SET deleted_at = now(), updated_at = now()
+		WHERE id = $1 AND budget_id = $2 AND deleted_at IS NULL
 	`, itemID, budgetID)
 	if err != nil {
 		return err
@@ -1226,9 +1249,6 @@ func (s *Store) SoftDeleteBudgetItem(ctx context.Context, budgetID, itemID strin
 	}
 	if n == 0 {
 		return ErrNotFound
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM budget_items WHERE id = $1 AND budget_id = $2`, itemID, budgetID); err != nil {
-		return err
 	}
 	return tx.Commit()
 }

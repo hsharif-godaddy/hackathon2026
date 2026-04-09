@@ -142,14 +142,6 @@ func writeBudgetStoreError(w http.ResponseWriter, op string, err error) {
 		writeError(w, http.StatusConflict, "CONFLICT", "budget has unreconciled sessions")
 		return
 	}
-	if errors.Is(err, store.ErrBudgetHasReports) {
-		writeError(w, http.StatusConflict, "CONFLICT", "budget has session reports")
-		return
-	}
-	if errors.Is(err, store.ErrBudgetItemInReport) {
-		writeError(w, http.StatusConflict, "CONFLICT", "budget item referenced in a report")
-		return
-	}
 	if errors.Is(err, store.ErrNoSessionCapacity) {
 		writeError(w, http.StatusPaymentRequired, "NO_BUDGET_CAPACITY", "no credits available to open a session")
 		return
@@ -342,6 +334,9 @@ func budgetItemToResponse(r store.BudgetItemRow) map[string]any {
 	} else {
 		out["resetInterval"] = nil
 	}
+	if r.DeletedAt != nil {
+		out["deletedAt"] = r.DeletedAt.UTC().Format(time.RFC3339Nano)
+	}
 	return out
 }
 
@@ -350,7 +345,7 @@ func budgetToResponse(d *store.BudgetDetail) map[string]any {
 	for i := range d.Items {
 		items = append(items, budgetItemToResponse(d.Items[i]))
 	}
-	return map[string]any{
+	out := map[string]any{
 		"budgetId":       d.BudgetID,
 		"productKey":     d.ProductKey,
 		"creditsTotal":   d.CreditsTotal,
@@ -360,6 +355,10 @@ func budgetToResponse(d *store.BudgetDetail) map[string]any {
 		"createdAt":      d.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"items":          items,
 	}
+	if d.DeletedAt != nil {
+		out["deletedAt"] = d.DeletedAt.UTC().Format(time.RFC3339Nano)
+	}
+	return out
 }
 
 func budgetSessionToResponse(budgetID, sessionID string, d *store.BudgetSessionDetail) (map[string]any, error) {

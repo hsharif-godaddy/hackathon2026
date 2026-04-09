@@ -15,14 +15,10 @@ var (
 	ErrInsufficientCredits = errors.New("insufficient credits")
 	// ErrNoSessionCapacity is returned when POST session cannot proceed: no budget_items or no consumable pool (same walk as consumeBudgetCostUSD).
 	ErrNoSessionCapacity = errors.New("no session capacity")
-	// ErrProductHasActiveBudgets is returned when deleting a product that still has non-deleted budgets.
+	// ErrProductHasActiveBudgets is returned when deleting a product that still has active (non-deleted) budgets.
 	ErrProductHasActiveBudgets = errors.New("product has active budgets")
-	// ErrBudgetHasReports is returned when deleting a budget that has session reports.
-	ErrBudgetHasReports = errors.New("budget has session reports")
 	// ErrBudgetHasUnreconciledSessions is returned when deleting a budget that still has open sessions.
 	ErrBudgetHasUnreconciledSessions = errors.New("budget has unreconciled sessions")
-	// ErrBudgetItemInReport is returned when deleting a budget item referenced by report allocations.
-	ErrBudgetItemInReport = errors.New("budget item referenced in report")
 	// ErrDuplicateCallRequestID is returned when a session item reuses an existing callRequestId for that session.
 	ErrDuplicateCallRequestID = errors.New("duplicate callRequestId")
 )

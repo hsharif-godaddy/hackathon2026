@@ -2,10 +2,9 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
-
-	"github.com/lib/pq"
 )
 
 // ProductRow is a registered product key and timestamps.
@@ -15,19 +14,12 @@ type ProductRow struct {
 	UpdatedAt  time.Time
 }
 
-func mapUniqueViolation(err error) error {
-	var pqErr *pq.Error
-	if errors.As(err, &pqErr) && pqErr.Code == "23505" {
-		return ErrConflict
-	}
-	return err
-}
-
-// ListProducts returns all registered products ordered by product_key.
+// ListProducts returns active registered products ordered by product_key.
 func (s *Store) ListProducts(ctx context.Context) ([]ProductRow, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT product_key, created_at, updated_at
 		FROM products
+		WHERE deleted_at IS NULL
 		ORDER BY product_key
 	`)
 	if err != nil {
@@ -46,39 +38,35 @@ func (s *Store) ListProducts(ctx context.Context) ([]ProductRow, error) {
 	return out, rows.Err()
 }
 
-// CreateProduct inserts a new product key. Duplicate key returns ErrConflict.
+// CreateProduct inserts a new product key, or clears deleted_at on a soft-deleted row.
+// ErrConflict when an active row already exists for productKey.
 func (s *Store) CreateProduct(ctx context.Context, productKey string) (ProductRow, error) {
 	var r ProductRow
 	err := s.db.QueryRowContext(ctx, `
 		INSERT INTO products (product_key) VALUES ($1)
+		ON CONFLICT (product_key) DO UPDATE SET
+			deleted_at = NULL,
+			updated_at = now()
+		WHERE products.deleted_at IS NOT NULL
 		RETURNING product_key, created_at, updated_at
 	`, productKey).Scan(&r.ProductKey, &r.CreatedAt, &r.UpdatedAt)
 	if err != nil {
-		return ProductRow{}, mapUniqueViolation(err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ProductRow{}, ErrConflict
+		}
+		return ProductRow{}, err
 	}
 	return r, nil
 }
 
-// SoftDeleteProduct archives the product to products_history and deletes the row if no budgets reference it.
+// SoftDeleteProduct sets deleted_at when no active budgets reference the product.
 func (s *Store) SoftDeleteProduct(ctx context.Context, productKey string) error {
-	var n int
-	err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM budgets WHERE product_key = $1
-	`, productKey).Scan(&n)
-	if err != nil {
-		return err
-	}
-	if n > 0 {
-		return ErrProductHasActiveBudgets
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	res, err := tx.ExecContext(ctx, `
-		INSERT INTO products_history (product_key, created_at)
-		SELECT product_key, created_at FROM products WHERE product_key = $1
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE products SET deleted_at = now(), updated_at = now()
+		WHERE product_key = $1 AND deleted_at IS NULL
+		  AND NOT EXISTS (
+		    SELECT 1 FROM budgets WHERE product_key = $1 AND deleted_at IS NULL
+		  )
 	`, productKey)
 	if err != nil {
 		return err
@@ -87,11 +75,21 @@ func (s *Store) SoftDeleteProduct(ctx context.Context, productKey string) error 
 	if err != nil {
 		return err
 	}
-	if naff == 0 {
-		return ErrNotFound
+	if naff > 0 {
+		return nil
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM products WHERE product_key = $1`, productKey); err != nil {
+	var del sql.NullTime
+	err = s.db.QueryRowContext(ctx, `
+		SELECT deleted_at FROM products WHERE product_key = $1
+	`, productKey).Scan(&del)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
 		return err
 	}
-	return tx.Commit()
+	if del.Valid {
+		return ErrNotFound
+	}
+	return ErrProductHasActiveBudgets
 }

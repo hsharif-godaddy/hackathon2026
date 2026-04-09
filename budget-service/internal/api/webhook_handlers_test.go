@@ -72,7 +72,7 @@ func TestPostWebhookRejectsMissingEventType(t *testing.T) {
 	}
 }
 
-func TestDeleteWebhookInsertsWebhooksHistory(t *testing.T) {
+func TestDeleteWebhookSoftDeletesRow(t *testing.T) {
 	ctx := context.Background()
 	st := testStore(t)
 	pk := "wh-prod-" + uuid.NewString()
@@ -97,12 +97,12 @@ func TestDeleteWebhookInsertsWebhooksHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	var n int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM webhooks_history WHERE webhook_id = $1`, wid).Scan(&n); err != nil {
+	var delCount int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM webhooks WHERE id = $1 AND deleted_at IS NOT NULL`, wid).Scan(&delCount); err != nil {
 		t.Fatal(err)
 	}
-	if n != 1 {
-		t.Fatalf("webhooks_history rows %d want 1", n)
+	if delCount != 1 {
+		t.Fatalf("soft-deleted webhooks rows %d want 1", delCount)
 	}
 }
 

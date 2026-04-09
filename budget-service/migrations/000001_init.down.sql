@@ -17,6 +17,7 @@ DROP TABLE IF EXISTS public.budget_items;
 DROP TABLE IF EXISTS public.webhooks;
 DROP TABLE IF EXISTS public.budgets;
 DROP TABLE IF EXISTS public.budget_item_history;
+DROP TABLE IF EXISTS public.budget_items_history;
 DROP TABLE IF EXISTS public.budgets_history;
 DROP TABLE IF EXISTS public.products_history;
 DROP TABLE IF EXISTS public.webhooks_history;

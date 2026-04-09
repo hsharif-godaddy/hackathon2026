@@ -185,7 +185,7 @@ func loadBudgetConsumptionStatesTx(ctx context.Context, tx *sql.Tx, budgetID str
 	q := `
 			SELECT bi.id, bi.credits_total, bi.credits_used, bi.cost_credit_ratio, bi.expires_at, bi.reset_interval, bi.created_at
 			FROM budget_items bi
-			WHERE bi.budget_id = $1
+			WHERE bi.budget_id = $1 AND bi.deleted_at IS NULL
 			ORDER BY (bi.reset_interval IS NULL), bi.expires_at NULLS LAST, bi.created_at, bi.id
 		`
 	if forUpdate {

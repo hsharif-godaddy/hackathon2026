@@ -734,11 +734,11 @@ func TestPatchBudgetItemInsertsHistoryRow(t *testing.T) {
 		t.Fatalf("patch item: %d %s", rec.Code, rec.Body.String())
 	}
 	var revCount int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM budget_item_history WHERE budget_item_id = $1`, itemID).Scan(&revCount); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM budget_items_history WHERE budget_item_id = $1`, itemID).Scan(&revCount); err != nil {
 		t.Fatal(err)
 	}
 	if revCount != 1 {
-		t.Fatalf("budget_item_history count %d want 1", revCount)
+		t.Fatalf("budget_items_history count %d want 1", revCount)
 	}
 }
 

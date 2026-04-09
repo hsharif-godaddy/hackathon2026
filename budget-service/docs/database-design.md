@@ -127,6 +127,7 @@ flowchart TB
 ### `webhooks`
 
 - **PK:** `id`. **FK:** `product_key` → `products` **ON DELETE CASCADE**.
+- **Timestamps:** `created_at`, `updated_at` (both set on write; soft-delete updates `deleted_at` and `updated_at`).
 - **CHECK:** non-empty trimmed `url`, max length 2048.
 
 ---
@@ -188,31 +189,15 @@ For a due item with `credits_used > 0`, the processor inserts a `periodic_reset`
 
 ---
 
-## History tables (archive)
+## Soft-delete (`deleted_at`)
 
-History rows are **inserted by application logic** before destructive operations; there are **no** triggers that write `budget_item_history` when `credits_used` changes from the ledger.
+`budgets`, `budget_items`, `products`, and `webhooks` use nullable **`deleted_at`**. Rows are retained so foreign keys to sessions, reports, allocations, and product keys stay valid.
 
-### `budget_item_history`
+## `budget_items_history` (update audit only)
 
-- **Purpose:** Snapshot of a **budget item’s definition and point-in-time `credits_used`** when:
-  - The item is **updated** via PATCH / upsert-by-id (prior row copied **before** update), or
-  - The item is **deleted** (single-item delete), or
-  - The **budget** is deleted (all items copied).
-- **Not used for:** every ledger insert — **credit movement history** is `budget_item_credit_ledger`.
+Rows are **inserted by application logic** immediately before an **`UPDATE budget_items`** from PATCH / upsert-by-id (prior row copied). There are **no** triggers that write this table when `credits_used` changes from the ledger. **Soft-delete** of an item or budget does **not** insert here — tombstones use **`deleted_at`** on `budget_items`.
 
-### `budgets_history`
-
-- Snapshot of a budget row when the budget is **deleted**.
-
-### `products_history`
-
-- Snapshot when a **product** is **deleted**.
-
-### `webhooks_history`
-
-- Snapshot when a **webhook** is **deleted**; includes `removed_at`.
-
-**FKs:** History tables intentionally **do not** FK back to live rows (IDs are copied as values only), so archives survive after deletes.
+**Credit movement** remains **`budget_item_credit_ledger`** (append-only).
 
 ---
 
@@ -220,9 +205,9 @@ History rows are **inserted by application logic** before destructive operations
 
 These are implemented in the service layer, not as DB constraints:
 
-- **Delete budget:** rejected if any session has `reconciled_at` null or any session has a report.
-- **Delete budget item:** rejected if the item appears in `budget_session_report_item_allocations`.
-- **Delete product:** rejected if any budget references the product.
+- **Delete budget:** rejected if any session has `reconciled_at` null (open session).
+- **Delete budget item:** rejected if any open session exists for that budget.
+- **Delete product:** rejected if any **active** budget (`deleted_at` null) references the product.
 
 ---
 
@@ -234,11 +219,10 @@ These are implemented in the service layer, not as DB constraints:
 - `budget_session_items(session_id)` — lines per session.
 - `budget_session_reports(session_id)` — report by session.
 - `budget_session_report_items(report_id)` — lines per report.
-- `budget_session_report_item_allocations(budget_item_id)` — reverse lookup for delete guards.
+- `budget_session_report_item_allocations(budget_item_id)` — per-report line splits.
 - `budget_item_credit_ledger(budget_item_id)` — ledger by item.
-- `budget_item_history(budget_item_id)` — history by item.
+- `budget_items_history(budget_item_id)` — prior-row snapshots before item UPDATE.
 - `webhooks(product_key)`, `webhooks(product_key, event_type)` — webhook lookup.
-- `webhooks_history(product_key)`.
 
 ---
 
