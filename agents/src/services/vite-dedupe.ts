@@ -7,11 +7,8 @@
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { processAndGenerateViteConfig } from './ViteConfigModifier.js';
+import { processAndGenerateViteConfig, VITE_CONFIG_FILES } from './ViteConfigModifier.js';
 import { logger } from '../logging/index.js';
-
-/** Vite config file names to check */
-const VITE_CONFIG_FILES = ['vite.config.ts', 'vite.config.js', 'vite.config.mjs', 'vite.config.cjs'] as const;
 
 export function ensureViteResolveDedupe(appPath: string): void {
   try {

@@ -1,7 +1,19 @@
-import type { SkillToolDefinition } from '@airo/ai-skills';
+import type { SkillToolDefinition, SkillHooks } from '@airo/ai-skills';
 import { z } from 'zod';
 import { MySQLUtils, isSystemTable } from '../../../utils/mysql-utils.js';
 import { logger } from '../../../logging/index.js';
+import { ensureViteNodePackagesExcluded } from '../../../services/vite-node-externals.js';
+
+/** Node.js-only packages that must not be bundled into the browser */
+const NODE_PACKAGES = ['drizzle-orm', 'mysql2'] as const;
+
+export const hooks: SkillHooks = {
+  onInstall: async ({ appPath }) => {
+    if (appPath) {
+      ensureViteNodePackagesExcluded(appPath, NODE_PACKAGES);
+    }
+  },
+};
 
 const mysqlUtils = new MySQLUtils();
 

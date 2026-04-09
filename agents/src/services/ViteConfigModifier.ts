@@ -13,7 +13,7 @@ import { Logger } from '../logging/index.js';
 import type { DevSupervisorClient } from './DevSupervisorClient.js';
 
 /** Vite config file names to check for */
-const VITE_CONFIG_FILES = ['vite.config.js', 'vite.config.ts', 'vite.config.mjs', 'vite.config.cjs'] as const;
+export const VITE_CONFIG_FILES = ['vite.config.ts', 'vite.config.js', 'vite.config.mjs', 'vite.config.cjs'] as const;
 
 // Handle ES module default exports
 const traverse = _traverse.default || _traverse;
@@ -518,6 +518,162 @@ export function processViteConfigAST(
   }
 
   return { modified };
+}
+
+// =====================================================
+// Node Package Exclusion Helpers
+// =====================================================
+
+/**
+ * Ensure a string-array property on an object contains the given entries.
+ * Creates the property if missing, appends missing entries if partial.
+ * Returns true if modifications were made.
+ */
+export function ensureArrayPropertyContains(
+  objExpr: t.ObjectExpression,
+  propertyName: string,
+  packages: readonly string[]
+): boolean {
+  const prop = findProperty(objExpr.properties, propertyName);
+
+  if (!prop) {
+    objExpr.properties.push(
+      t.objectProperty(
+        t.identifier(propertyName),
+        t.arrayExpression(packages.map((pkg) => t.stringLiteral(pkg)))
+      )
+    );
+    return true;
+  }
+
+  if (!t.isArrayExpression(prop.value)) {
+    logger.warn(`vite-config.${propertyName}-not-array`, {
+      valueType: prop.value.type,
+    });
+    return false;
+  }
+
+  const existing = new Set(
+    prop.value.elements
+      .filter((el): el is t.StringLiteral => t.isStringLiteral(el))
+      .map((el) => el.value)
+  );
+
+  let modified = false;
+  for (const pkg of packages) {
+    if (!existing.has(pkg)) {
+      prop.value.elements.push(t.stringLiteral(pkg));
+      modified = true;
+    }
+  }
+  return modified;
+}
+
+/**
+ * Ensure a nested property path (parent.child) contains string array entries.
+ * Creates the parent object if missing.
+ * Returns true if modifications were made.
+ */
+export function ensureNestedArrayContains(
+  configObj: t.ObjectExpression,
+  parentKey: string,
+  childKey: string,
+  packages: readonly string[]
+): boolean {
+  const parentProp = findProperty(configObj.properties, parentKey);
+
+  if (!parentProp) {
+    configObj.properties.push(
+      t.objectProperty(
+        t.identifier(parentKey),
+        t.objectExpression([
+          t.objectProperty(
+            t.identifier(childKey),
+            t.arrayExpression(packages.map((pkg) => t.stringLiteral(pkg)))
+          ),
+        ])
+      )
+    );
+    return true;
+  }
+
+  if (!t.isObjectExpression(parentProp.value)) {
+    logger.warn(`vite-config.${parentKey}-not-object`, {
+      valueType: parentProp.value.type,
+    });
+    return false;
+  }
+
+  return ensureArrayPropertyContains(parentProp.value, childKey, packages);
+}
+
+/**
+ * Add packages to optimizeDeps.exclude and ssr.external in a vite config.
+ * Pure function - parses, modifies AST, and generates code.
+ *
+ * Used by skill onInstall hooks to prevent Node.js-only packages
+ * (e.g. drizzle-orm, mysql2) from being bundled into the browser.
+ */
+export function addNodePackageExclusions(
+  content: string,
+  isTypeScript: boolean,
+  packages: readonly string[]
+): { code: string; modified: boolean; error?: string } {
+  const ast = parse(content, {
+    sourceType: 'module',
+    plugins: isTypeScript ? ['typescript'] : [],
+  });
+
+  let modified = false;
+  let foundConfig = false;
+
+  const visitor = {
+    ExportDefaultDeclaration(path: NodePath<t.ExportDefaultDeclaration>) {
+      const declaration = path.node.declaration;
+
+      let configObj: t.ObjectExpression | null = null;
+
+      if (t.isObjectExpression(declaration)) {
+        configObj = declaration;
+      } else if (t.isCallExpression(declaration)) {
+        const callee = declaration.callee;
+        if (t.isIdentifier(callee) && callee.name === 'defineConfig') {
+          const arg = declaration.arguments[0];
+          if (t.isObjectExpression(arg)) {
+            configObj = arg;
+          } else if (t.isArrowFunctionExpression(arg) || t.isFunctionExpression(arg)) {
+            const body = arg.body;
+            if (t.isObjectExpression(body)) {
+              configObj = body;
+            } else if (t.isBlockStatement(body)) {
+              for (const stmt of body.body) {
+                if (t.isReturnStatement(stmt) && t.isObjectExpression(stmt.argument)) {
+                  configObj = stmt.argument;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (configObj) {
+        foundConfig = true;
+        const m1 = ensureNestedArrayContains(configObj, 'optimizeDeps', 'exclude', packages);
+        const m2 = ensureNestedArrayContains(configObj, 'ssr', 'external', packages);
+        modified = modified || m1 || m2;
+      }
+    },
+  };
+
+  traverse(ast, visitor);
+
+  if (!foundConfig) {
+    return { code: content, modified: false, error: 'Could not find vite config object to modify' };
+  }
+
+  const { code } = generate(ast, { retainLines: true, compact: false });
+  return { code, modified };
 }
 
 /**

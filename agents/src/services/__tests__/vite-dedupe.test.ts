@@ -9,6 +9,7 @@ vi.mock('node:fs', () => ({
 
 vi.mock('../ViteConfigModifier.js', () => ({
   processAndGenerateViteConfig: vi.fn(),
+  VITE_CONFIG_FILES: ['vite.config.ts', 'vite.config.js', 'vite.config.mjs', 'vite.config.cjs'],
 }));
 
 vi.mock('../../logging/index.js', () => ({

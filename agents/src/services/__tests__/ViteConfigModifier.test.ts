@@ -5,6 +5,7 @@ import {
   createPortExpression,
   isEnvPortExpression,
   extractPortFallback,
+  addNodePackageExclusions,
 } from '../ViteConfigModifier.js';
 import { parse } from '@babel/parser';
 import * as t from '@babel/types';
@@ -634,6 +635,172 @@ export default defineConfig(({ mode }) => ({
         expect(result.code).toContain('host');
         expect(result.code).toContain('"::"');
       });
+    });
+  });
+
+  describe('addNodePackageExclusions', () => {
+    const packages = ['drizzle-orm', 'mysql2'] as const;
+
+    it('should add optimizeDeps.exclude and ssr.external when neither exists', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  plugins: []
+});
+`;
+      const result = addNodePackageExclusions(input, true, packages);
+
+      expect(result.modified).toBe(true);
+      expect(result.code).toContain('optimizeDeps');
+      expect(result.code).toContain('exclude');
+      expect(result.code).toContain('"drizzle-orm"');
+      expect(result.code).toContain('"mysql2"');
+      expect(result.code).toContain('ssr');
+      expect(result.code).toContain('external');
+    });
+
+    it('should merge into existing optimizeDeps.exclude', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  optimizeDeps: {
+    exclude: ["some-package"]
+  }
+});
+`;
+      const result = addNodePackageExclusions(input, true, packages);
+
+      expect(result.modified).toBe(true);
+      expect(result.code).toContain('"some-package"');
+      expect(result.code).toContain('"drizzle-orm"');
+      expect(result.code).toContain('"mysql2"');
+    });
+
+    it('should merge into existing ssr.external', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  ssr: {
+    external: ["other-pkg"]
+  }
+});
+`;
+      const result = addNodePackageExclusions(input, true, packages);
+
+      expect(result.modified).toBe(true);
+      expect(result.code).toContain('"other-pkg"');
+      expect(result.code).toContain('"drizzle-orm"');
+      expect(result.code).toContain('"mysql2"');
+    });
+
+    it('should not modify when packages already present', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  optimizeDeps: {
+    exclude: ["drizzle-orm", "mysql2"]
+  },
+  ssr: {
+    external: ["drizzle-orm", "mysql2"]
+  }
+});
+`;
+      const result = addNodePackageExclusions(input, true, packages);
+
+      expect(result.modified).toBe(false);
+    });
+
+    it('should handle arrow function config', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig(({ mode }) => ({
+  plugins: []
+}));
+`;
+      const result = addNodePackageExclusions(input, true, packages);
+
+      expect(result.modified).toBe(true);
+      expect(result.code).toContain('"drizzle-orm"');
+    });
+
+    it('should handle direct object export', () => {
+      const input = `export default { plugins: [] };`;
+
+      const result = addNodePackageExclusions(input, false, packages);
+
+      expect(result.modified).toBe(true);
+      expect(result.code).toContain('"drizzle-orm"');
+    });
+
+    it('should return error when config object not found', () => {
+      const input = `const x = 1;`;
+
+      const result = addNodePackageExclusions(input, false, packages);
+
+      expect(result.modified).toBe(false);
+      expect(result.error).toContain('Could not find vite config');
+    });
+
+    it('should merge into config with existing exclusions in both sections', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  optimizeDeps: {
+    include: ["react"],
+    exclude: ["better-auth"]
+  },
+  ssr: {
+    noExternal: ["some-ui-lib"],
+    external: ["pg", "redis"]
+  }
+});
+`;
+      const result = addNodePackageExclusions(input, true, packages);
+
+      expect(result.modified).toBe(true);
+      // Existing entries preserved
+      expect(result.code).toContain('"better-auth"');
+      expect(result.code).toContain('"pg"');
+      expect(result.code).toContain('"redis"');
+      // New entries added
+      expect(result.code).toContain('"drizzle-orm"');
+      expect(result.code).toContain('"mysql2"');
+      // Other properties untouched
+      expect(result.code).toContain('include');
+      expect(result.code).toContain('noExternal');
+    });
+
+    it('should not overwrite non-array exclude value', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  optimizeDeps: {
+    exclude: computeExcludes()
+  }
+});
+`;
+      const result = addNodePackageExclusions(input, true, packages);
+
+      // ssr.external is added (didn't exist), but optimizeDeps.exclude is left alone
+      expect(result.modified).toBe(true);
+      expect(result.code).toContain('computeExcludes()');
+      expect(result.code).toContain('ssr');
+    });
+
+    it('should handle block-body arrow function with return', () => {
+      const input = `
+import { defineConfig } from 'vite';
+export default defineConfig(({ mode }) => {
+  return {
+    plugins: []
+  };
+});
+`;
+      const result = addNodePackageExclusions(input, true, packages);
+
+      expect(result.modified).toBe(true);
+      expect(result.code).toContain('optimizeDeps');
+      expect(result.code).toContain('ssr');
     });
   });
 });
