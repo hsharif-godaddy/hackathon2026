@@ -34,9 +34,16 @@ export interface LogSourceConfig {
   id: string;
   name: string;
   description: string;
-  endpoint: string;
-  apiKey: string;
-  index: string;
+  backendType: 'elasticsearch' | 'loki';
+  // Elasticsearch fields (optional, used when backendType === 'elasticsearch')
+  endpoint?: string;
+  apiKey?: string;
+  index?: string;
+  // Loki fields (optional, used when backendType === 'loki')
+  lokiEndpoint?: string;
+  lokiApiKey?: string;
+  lokiLabels?: Record<string, string>;
+  // Common fields
   environment?: 'dev' | 'prod' | 'test';
   fieldMapping: FieldMapping;
 }
@@ -160,6 +167,7 @@ function getESConfigForSource(sourceId: string): LogSourceConfig | null {
       id: 'airo-agents',
       name: 'Agent App',
       description: 'Logs from the Airo Agents service',
+      backendType: 'elasticsearch',
       endpoint: env.PIONEER_ES_ENDPOINT || '',
       apiKey: env.PIONEER_ES_API_KEY || '',
       index: isTestEnv ? 'airo-agents-dev' : 'airo-agents-prod',
@@ -170,6 +178,7 @@ function getESConfigForSource(sourceId: string): LogSourceConfig | null {
       id: 'airo-app',
       name: 'UI Client App',
       description: 'Logs from the Airo App Builder application',
+      backendType: 'elasticsearch',
       endpoint: env.AIRO_BUILDER_ES_ENDPOINT || '',
       apiKey: env.AIRO_BUILDER_ES_API_KEY || '',
       index: 'logs-*',
@@ -180,6 +189,7 @@ function getESConfigForSource(sourceId: string): LogSourceConfig | null {
       id: 'airo-preview',
       name: 'Preview App',
       description: 'Logs from the preview application containers',
+      backendType: 'elasticsearch',
       endpoint: env.PIONEER_ES_ENDPOINT || '',
       apiKey: env.PIONEER_ES_API_KEY || '',
       index: isTestEnv ? 'airo-preview-application-dev' : 'airo-preview-application-prod',
@@ -190,6 +200,7 @@ function getESConfigForSource(sourceId: string): LogSourceConfig | null {
       id: 'airo-publish',
       name: 'Publish App',
       description: 'Logs from the published application containers',
+      backendType: 'elasticsearch',
       endpoint: env.PIONEER_ES_ENDPOINT || '',
       apiKey: env.PIONEER_ES_API_KEY || '',
       index: isTestEnv ? 'airo-publish-application-dev' : 'airo-publish-application-prod',
@@ -200,6 +211,7 @@ function getESConfigForSource(sourceId: string): LogSourceConfig | null {
       id: 'control_plane',
       name: 'Control Plane',
       description: 'Logs from the hosting service',
+      backendType: 'elasticsearch',
       endpoint: env.CONTROL_PLANE_ES_ENDPOINT || '',
       apiKey: env.CONTROL_PLANE_ES_API_KEY || '',
       index: isTestEnv ? 'pagely-mgmt-worker-hosting-activity-dev,pagely-mgmt-worker-airo-activity-dev' : 'pagely-mgmt-worker-hosting-activity-prod,pagely-mgmt-worker-airo-activity-prod',
@@ -211,7 +223,83 @@ function getESConfigForSource(sourceId: string): LogSourceConfig | null {
   return sources[sourceId] || null;
 }
 
+/**
+ * Build Loki labels for a specific source based on actual Loki structure
+ * Returns null for unknown sources to prevent scanning all Loki streams
+ */
+function buildLokiLabelsForSource(sourceId: string, envName: string): Record<string, string> | null {
+  const env = envName === 'prod' ? 'prod' : 'dev';  // Map test/dev → dev
+
+  const labels: Record<string, Record<string, string>> = {
+    'airo-agents': {
+      job: 'airo-agents',
+      env: env
+    },
+    'airo-preview': {
+      job: 'airo-preview-application',
+      env: env
+    },
+    'airo-publish': {
+      job: 'airo-publish-application',
+      env: env
+    }
+  };
+
+  return labels[sourceId] || null;
+}
+
+/**
+ * Get Loki config for a specific source
+ */
+function getLokiConfigForSource(sourceId: string): LogSourceConfig | null {
+  const env = process.env;
+  const envName = env.ENVIRONMENT_NAME || 'dev';
+
+  const lokiEndpoint = env.LOKI_ENDPOINT || '';
+  const lokiApiKey = env.LOKI_API_KEY || '';
+
+  if (!lokiEndpoint) {
+    console.warn('[log-sources] LOKI_ENDPOINT not configured for source:', sourceId);
+    return null;
+  }
+
+  // Get base metadata for this source
+  const baseConfig = getESConfigForSource(sourceId);
+  if (!baseConfig) {
+    return null;
+  }
+
+  // Get Loki labels for this source
+  const lokiLabels = buildLokiLabelsForSource(sourceId, envName);
+  if (!lokiLabels) {
+    console.warn('[log-sources] Unknown Loki source ID:', sourceId, '- not mapped in buildLokiLabelsForSource');
+    return null;
+  }
+
+  return {
+    id: baseConfig.id,
+    name: baseConfig.name,
+    description: baseConfig.description,
+    backendType: 'loki',
+    lokiEndpoint,
+    lokiApiKey,
+    lokiLabels,
+    environment: envName === 'prod' ? 'prod' : 'dev',
+    fieldMapping: baseConfig.fieldMapping
+  };
+}
+
 export function getLogSourceConfig(sourceId: string): LogSourceConfig | null {
+  // Check if this source should use Loki
+  const lokiEnabledSources = (process.env.LOKI_ENABLED_SOURCES || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  if (lokiEnabledSources.includes(sourceId)) {
+    return getLokiConfigForSource(sourceId);
+  }
+
   return getESConfigForSource(sourceId);
 }
 
@@ -225,6 +313,7 @@ export function getAllLogSources(): LogSourceConfig[] {
       id: 'airo-agents',
       name: 'Agent App',
       description: 'Logs from the Airo Agents service',
+      backendType: 'elasticsearch',
       endpoint: env.PIONEER_ES_ENDPOINT || '',
       apiKey: env.PIONEER_ES_API_KEY || '',
       index: isTestEnv ? 'airo-agents-dev' : 'airo-agents-prod',
@@ -235,6 +324,7 @@ export function getAllLogSources(): LogSourceConfig[] {
       id: 'airo-preview',
       name: 'Preview App',
       description: 'Logs from the preview application containers',
+      backendType: 'elasticsearch',
       endpoint: env.PIONEER_ES_ENDPOINT || '',
       apiKey: env.PIONEER_ES_API_KEY || '',
       index: isTestEnv ? 'airo-preview-application-dev' : 'airo-preview-application-prod',
@@ -245,6 +335,7 @@ export function getAllLogSources(): LogSourceConfig[] {
       id: 'airo-publish',
       name: 'Publish App',
       description: 'Logs from the published application containers',
+      backendType: 'elasticsearch',
       endpoint: env.PIONEER_ES_ENDPOINT || '',
       apiKey: env.PIONEER_ES_API_KEY || '',
       index: isTestEnv ? 'airo-publish-application-dev' : 'airo-publish-application-prod',
@@ -255,6 +346,7 @@ export function getAllLogSources(): LogSourceConfig[] {
       id: 'airo-app',
       name: 'UI Client App',
       description: 'Logs from the Airo App Builder application',
+      backendType: 'elasticsearch',
       endpoint: env.AIRO_BUILDER_ES_ENDPOINT || '',
       apiKey: env.AIRO_BUILDER_ES_API_KEY || '',
       index: 'logs-*',
@@ -265,6 +357,7 @@ export function getAllLogSources(): LogSourceConfig[] {
       id: 'control_plane',
       name: 'Control Plane',
       description: 'Logs from the hosting service',
+      backendType: 'elasticsearch',
       endpoint: env.CONTROL_PLANE_ES_ENDPOINT || '',
       apiKey: env.CONTROL_PLANE_ES_API_KEY || '',
       index: isTestEnv ? 'pagely-mgmt-worker-hosting-activity-dev,pagely-mgmt-worker-airo-activity-dev' : 'pagely-mgmt-worker-hosting-activity-prod,pagely-mgmt-worker-airo-activity-prod',
