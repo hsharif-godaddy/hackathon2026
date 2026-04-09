@@ -270,6 +270,8 @@ describe('SecretsPanel', () => {
         // Both the new secret input and the edited secret input have the same placeholder
         const valueInputs = screen.getAllByPlaceholderText('builder_settings_secrets_placeholder_key_value');
         expect(valueInputs).toHaveLength(2);
+        expect(screen.getByRole('button', { name: 'builder_common_cancel' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'builder_common_save API_KEY' })).toBeInTheDocument();
       });
     });
 
@@ -286,6 +288,164 @@ describe('SecretsPanel', () => {
 
       const editButton = screen.getByRole('button', { name: 'builder_common_edit' });
       expect(editButton).toBeDisabled();
+    });
+
+    it('should save a single edited secret from row action', async function saveSingle() {
+      mockMutateAsync.mockResolvedValue({});
+      vi.mocked(useSecrets).mockReturnValue(createMockQueryResult({
+        data: [{ name: 'QUOTE_RECIPIENT_EMAIL', systemManaged: false, syncStatus: 'synced' }],
+      }));
+
+      const { user } = renderWithProviders(<SecretsPanel {...defaultProps} />);
+
+      await waitFor(function waitForSecret() {
+        expect(screen.getByDisplayValue('QUOTE_RECIPIENT_EMAIL')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: 'builder_common_edit' }));
+
+      const valueInputs = screen.getAllByPlaceholderText('builder_settings_secrets_placeholder_key_value');
+      await user.type(valueInputs[1], 'new@example.com');
+
+      await user.click(screen.getByRole('button', { name: 'builder_common_save QUOTE_RECIPIENT_EMAIL' }));
+
+      await waitFor(function waitForSubmit() {
+        expect(mockMutateAsync).toHaveBeenCalledWith({
+          appId: 'test-app-id',
+          variant: 'preview',
+          operations: {
+            updates: [{ name: 'QUOTE_RECIPIENT_EMAIL', value: 'new@example.com' }],
+            deletions: [],
+            additions: [],
+          },
+        });
+      });
+    });
+
+    it('should preserve other staged row changes after single-row save refetch', async function preserveStaged() {
+      mockMutateAsync.mockResolvedValue({});
+      const queryState = {
+        data: [
+          { name: 'FIRST_SECRET', systemManaged: false, syncStatus: 'synced' },
+          { name: 'SECOND_SECRET', systemManaged: false, syncStatus: 'synced' },
+        ],
+        dataUpdatedAt: 1000,
+      };
+
+      vi.mocked(useSecrets).mockImplementation(() => createMockQueryResult(queryState));
+
+      const { user, rerender } = renderWithProviders(<SecretsPanel {...defaultProps} />);
+
+      await waitFor(function waitForSecrets() {
+        expect(screen.getByDisplayValue('FIRST_SECRET')).toBeInTheDocument();
+        expect(screen.getByDisplayValue('SECOND_SECRET')).toBeInTheDocument();
+      });
+
+      const deleteButtons = screen.getAllByRole('button', { name: 'builder_common_delete' });
+      await user.click(deleteButtons[1]);
+
+      await waitFor(function waitForDeleteTag() {
+        expect(screen.getByText('builder_settings_secrets_tag_unsaved_delete')).toBeInTheDocument();
+      });
+
+      const editButtons = screen.getAllByRole('button', { name: 'builder_common_edit' });
+      await user.click(editButtons[0]);
+
+      const valueInputs = screen.getAllByPlaceholderText('builder_settings_secrets_placeholder_key_value');
+      await user.type(valueInputs[1], 'updated-first-secret');
+
+      await user.click(screen.getByRole('button', { name: 'builder_common_save FIRST_SECRET' }));
+
+      await waitFor(function waitForSingleSave() {
+        expect(mockMutateAsync).toHaveBeenCalledWith({
+          appId: 'test-app-id',
+          variant: 'preview',
+          operations: {
+            updates: [{ name: 'FIRST_SECRET', value: 'updated-first-secret' }],
+            deletions: [],
+            additions: [],
+          },
+        });
+      });
+
+      queryState.dataUpdatedAt = 2000;
+      rerender(<SecretsPanel {...defaultProps} />);
+
+      await waitFor(function waitForStagedState() {
+        expect(screen.getByText('builder_settings_secrets_tag_unsaved_delete')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'builder_common_undo' })).toBeInTheDocument();
+      });
+    });
+
+    it('should show error growl and keep row in edit mode when row save fails', async function saveSingleError() {
+      mockMutateAsync.mockRejectedValue(new Error('Row save failed'));
+      vi.mocked(useSecrets).mockReturnValue(createMockQueryResult({
+        data: [{ name: 'QUOTE_RECIPIENT_EMAIL', systemManaged: false, syncStatus: 'synced' }],
+      }));
+
+      const { user } = renderWithProviders(<SecretsPanel {...defaultProps} />);
+
+      await waitFor(function waitForSecret() {
+        expect(screen.getByDisplayValue('QUOTE_RECIPIENT_EMAIL')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: 'builder_common_edit' }));
+
+      const valueInputs = screen.getAllByPlaceholderText('builder_settings_secrets_placeholder_key_value');
+      await user.type(valueInputs[1], 'new@example.com');
+      await user.click(screen.getByRole('button', { name: 'builder_common_save QUOTE_RECIPIENT_EMAIL' }));
+
+      await waitFor(function waitForErrorGrowl() {
+        expect(Growl.addGrowlMessage).toHaveBeenCalledWith({
+          id: 'secrets-row-error-QUOTE_RECIPIENT_EMAIL',
+          title: 'builder_status_failed',
+          children: 'Row save failed',
+          emphasis: 'critical',
+        });
+      });
+
+      await waitFor(function waitForStillEditing() {
+        expect(screen.getByRole('button', { name: 'builder_common_save QUOTE_RECIPIENT_EMAIL' })).toBeInTheDocument();
+        expect(screen.getByText('builder_settings_secrets_tag_unsaved_edit')).toBeInTheDocument();
+      });
+    });
+
+    it('should cancel row edit without saving', async function cancel() {
+      vi.mocked(useSecrets).mockReturnValue(createMockQueryResult({
+        data: [{ name: 'QUOTE_RECIPIENT_EMAIL', systemManaged: false, syncStatus: 'synced' }],
+      }));
+
+      const { user } = renderWithProviders(<SecretsPanel {...defaultProps} />);
+
+      await waitFor(function waitForSecret() {
+        expect(screen.getByDisplayValue('QUOTE_RECIPIENT_EMAIL')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: 'builder_common_edit' }));
+      await user.click(screen.getByRole('button', { name: 'builder_common_cancel' }));
+
+      await waitFor(function waitForCancel() {
+        expect(screen.getByRole('button', { name: 'builder_common_edit' })).toBeInTheDocument();
+        expect(mockMutateAsync).not.toHaveBeenCalled();
+      });
+    });
+
+    it('should keep row save disabled when edited value is empty', async function disabledSave() {
+      vi.mocked(useSecrets).mockReturnValue(createMockQueryResult({
+        data: [{ name: 'QUOTE_RECIPIENT_EMAIL', systemManaged: false, syncStatus: 'synced' }],
+      }));
+
+      const { user } = renderWithProviders(<SecretsPanel {...defaultProps} />);
+
+      await waitFor(function waitForSecret() {
+        expect(screen.getByDisplayValue('QUOTE_RECIPIENT_EMAIL')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: 'builder_common_edit' }));
+
+      await waitFor(function waitForRowSave() {
+        expect(screen.getByRole('button', { name: 'builder_common_save QUOTE_RECIPIENT_EMAIL' })).toBeDisabled();
+      });
     });
   });
 

@@ -71,27 +71,33 @@ export class SitePollingService {
             return;
           }
 
-        // Check health of all services
-        const agentHealthy = site.agent_url ?
-          await this.checkUrlHealth(`${site.agent_url}/health`, 'Agent') : false;
+          // Check health of all services
+          const agentHealthy = site.agent_url ?
+            await this.checkUrlHealth(`${site.agent_url}/health`, 'Agent') : false;
 
-        const frontendHealthy = site.preview_url ?
-          await this.checkUrlHealth(`${site.preview_url}/airo/health`, 'Frontend') : false;
+          const frontendHealthy = site.preview_url ?
+            await this.checkUrlHealth(`${site.preview_url}/airo/health`, 'Frontend') : false;
 
-        // All services must be healthy to proceed
-        const allServicesReady = agentHealthy && frontendHealthy;
+          // All services must be healthy to proceed
+          const allServicesReady = agentHealthy && frontendHealthy;
+          let registrationComplete = false;
+          let registrationAttempted = false;
+          if (allServicesReady) {
+            registrationAttempted = true;
+            registrationComplete = await this.checkAppExists(siteId, site.agent_url);
+          }
 
-        const siteStatus: SitePollingSnapshot = {
-          siteId: site.id,
-          status: site.status, // Keep existing status from database
-          agent_url: site.agent_url,
-          backend_url: site.backend_url,
-          preview_url: site.preview_url,
-          ready: allServicesReady,
-          registrationComplete: false,
-          registrationAttempted: false,
-          message: `Agent: ${agentHealthy ? '✅' : '❌'}, Frontend: ${frontendHealthy ? '✅' : '❌'}`
-        };
+          const siteStatus: SitePollingSnapshot = {
+            siteId: site.id,
+            status: site.status, // Keep existing status from database
+            agent_url: site.agent_url,
+            backend_url: site.backend_url,
+            preview_url: site.preview_url,
+            ready: allServicesReady,
+            registrationComplete,
+            registrationAttempted,
+            message: `Agent: ${agentHealthy ? '✅' : '❌'}, Frontend: ${frontendHealthy ? '✅' : '❌'}`
+          };
 
           // Notify caller of status update
           if (onStatusUpdate) {
@@ -101,10 +107,7 @@ export class SitePollingService {
           // Check if agent is ready
           if (siteStatus.ready) {
             try {
-              // Check if app already exists
-              const appExists = await this.checkAppExists(siteId, site.agent_url);
-
-              if (appExists) {
+              if (registrationComplete) {
                 await this.updateSiteStatus(siteId, SiteStatus.Running);
                 resolve({
                   success: true,
@@ -203,7 +206,6 @@ export class SitePollingService {
       });
 
       if (response.ok) {
-        await response.json();
         return true;
       } else if (response.status === 404) {
         return false;
@@ -274,8 +276,13 @@ export class SitePollingService {
 
     const allServicesReady = agentHealthy && frontendHealthy;
 
-    // In V2 mode, agent registers automatically on startup
-    const registrationComplete = site.status === SiteStatus.Running;
+    // Treat registration as complete only when agents confirms app metadata exists.
+    let registrationComplete = false;
+    let registrationAttempted = false;
+    if (allServicesReady) {
+      registrationAttempted = true;
+      registrationComplete = await this.checkAppExists(siteId, site.agent_url);
+    }
 
     // Auto-update status to "running" if services are ready
     if (site.status === SiteStatus.Created && allServicesReady && site.agent_url && site.preview_url) {
@@ -291,7 +298,7 @@ export class SitePollingService {
       preview_url: site.preview_url,
       ready: allServicesReady,
       registrationComplete,
-      registrationAttempted: false,
+      registrationAttempted,
       message: `Agent: ${agentHealthy ? '✅' : '❌'}, Frontend: ${frontendHealthy ? '✅' : '❌'}`
     };
   }

@@ -5,8 +5,10 @@ import Alert from '@ux/alert';
 import Box from '@ux/box';
 import Button from '@ux/button';
 import Growl from '@ux/growl';
+import CheckmarkIcon from '@ux/icon/checkmark';
 import EditIcon from '@ux/icon/edit';
 import LockIcon from '@ux/icon/locked';
+import XIcon from '@ux/icon/x';
 import DeleteIcon from '@ux/icon/x-thick';
 import Tag from '@ux/tag';
 import text from '@ux/text';
@@ -61,7 +63,9 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [focusedSecretIndex, setFocusedSecretIndex] = useState<number | null>(null);
+  const submissionCountRef = useRef(0);
   const textareaRefs = useRef<{ [secretName: string]: HTMLTextAreaElement | null }>({});
+  const savingSecretsRef = useRef(new Set<string>());
 
   const {
     data: secrets = [],
@@ -73,8 +77,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
 
   const secretOperations = useSecretOperations();
 
-  // Initialize form state when secrets are loaded
-  // Only run when the actual secret names change, not on every render
+  // Merge latest server data without dropping local unsaved row state.
   useEffect(() => {
     if (!dataUpdatedAt) {
       return;
@@ -85,16 +88,31 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
       return;
     }
 
-    // Only update if the secrets have actually changed
-    setFormSecrets(() => {
-      // sort secrets with system-managed first
+    setFormSecrets((previousSecrets) => {
+      const byName = new Map(previousSecrets.map((secret) => [secret.name, secret]));
+
       return secrets
-        .map((secret) => ({
-          ...secret,
-          isEditing: false,
-          isNew: false,
-          markedForDeletion: false,
-        }))
+        .map((secret) => {
+          const isSystemManaged = Boolean(secret.systemManaged);
+          const previous = byName.get(secret.name);
+          if (!previous) {
+            return {
+              ...secret,
+              isEditing: false,
+              isNew: false,
+              markedForDeletion: false,
+              editedValue: undefined,
+            };
+          }
+
+          return {
+            ...secret,
+            isEditing: isSystemManaged ? false : previous.isEditing,
+            isNew: false,
+            markedForDeletion: isSystemManaged ? false : previous.markedForDeletion,
+            editedValue: !isSystemManaged && previous.isEditing ? previous.editedValue : undefined,
+          };
+        })
         .sort((a, b) => {
           // System-managed secrets first (true comes before false)
           if (a.systemManaged && !b.systemManaged) return -1;
@@ -103,7 +121,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
           return a.name.localeCompare(b.name);
         });
     });
-  }, [secrets.length, dataUpdatedAt]); /* eslint-disable-line react-hooks/exhaustive-deps */
+  }, [dataUpdatedAt, secrets]);
 
   const handleEdit = (secretName: string) => {
     setFormSecrets((prev) => {
@@ -154,21 +172,6 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
   const handleValueChange = (secretName: string, value: string) => {
     setFormSecrets((prev) =>
       prev.map((s) => (s.name === secretName ? { ...s, editedValue: value } : s))
-    );
-  };
-
-  const handleValueBlur = (secretName: string) => {
-    setFormSecrets((prev) =>
-      prev.map((s) => {
-        if (s.name === secretName && s.isEditing && (!s.editedValue || s.editedValue.trim() === '')) {
-          return {
-            ...s,
-            isEditing: false,
-            editedValue: undefined,
-          };
-        }
-        return s;
-      })
     );
   };
 
@@ -248,8 +251,92 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
     return null;
   };
 
+  const getErrorMessage = (err: unknown) => {
+    if (err instanceof Error) {
+      return err.message;
+    }
+    if (typeof err === 'string') {
+      return err;
+    }
+    return t('builder_settings_secrets_error_saving_description');
+  };
+
+  const startSubmit = () => {
+    submissionCountRef.current += 1;
+    if (submissionCountRef.current === 1) {
+      setIsSubmitting(true);
+    }
+  };
+
+  const endSubmit = () => {
+    submissionCountRef.current = Math.max(0, submissionCountRef.current - 1);
+    if (submissionCountRef.current === 0) {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveSingle = async (secretName: string) => {
+    const secret = formSecrets.find((s) => s.name === secretName);
+    if (
+      !secret?.editedValue ||
+      !isValueValid(secret.editedValue) ||
+      secret.systemManaged ||
+      submissionCountRef.current > 0 ||
+      savingSecretsRef.current.has(secretName)
+    ) {
+      return;
+    }
+
+    savingSecretsRef.current.add(secretName);
+    startSubmit();
+    try {
+      await secretOperations.mutateAsync({
+        appId,
+        variant,
+        operations: {
+          updates: [{ name: secretName, value: secret.editedValue }],
+          deletions: [],
+          additions: [],
+        },
+      });
+
+      setFormSecrets((prev) =>
+        prev.map((s) =>
+          s.name === secretName
+            ? { ...s, isEditing: false, editedValue: undefined }
+            : s
+        )
+      );
+
+      Growl.addGrowlMessage({
+        id: `secrets-row-success-${secretName}`,
+        title: t('builder_status_success'),
+        children: t('builder_settings_secrets_success_saving_description'),
+        emphasis: 'success',
+        lifetime: 5000
+      });
+    } catch (err) {
+      logger.error('secrets.single.submit.failed', {
+        appId,
+        variant,
+        secretName,
+        error: err instanceof Error ? err.message : String(err)
+      });
+
+      Growl.addGrowlMessage({
+        id: `secrets-row-error-${secretName}`,
+        title: t('builder_status_failed'),
+        children: getErrorMessage(err),
+        emphasis: 'critical'
+      });
+    } finally {
+      savingSecretsRef.current.delete(secretName);
+      endSubmit();
+    }
+  };
+
   const handleSubmit = async () => {
-    setIsSubmitting(true);
+    startSubmit();
     try {
       const validNewSecrets = newSecrets.filter(
         (s, index) => isValidSecretName(s.name) && isSecretNameUnique(s.name, index) && isValueValid(s.value)
@@ -302,24 +389,15 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
         error: err instanceof Error ? err.message : String(err)
       });
 
-      // Extract error message from the error object
-      let errorMessage = t('builder_settings_secrets_error_saving_description');
-
-      if (err instanceof Error) {
-        errorMessage = err.message;
-      } else if (typeof err === 'string') {
-        errorMessage = err;
-      }
-
       // Show error growl notification
       Growl.addGrowlMessage({
         id: 'secrets-error',
         title: t('builder_status_failed'),
-        children: errorMessage,
+        children: getErrorMessage(err),
         emphasis: 'critical'
       });
     } finally {
-      setIsSubmitting(false);
+      endSubmit();
     }
   };
 
@@ -526,7 +604,6 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                           ref={(el) => { textareaRefs.current[secret.name] = el; }}
                           value={secret.isEditing ? (secret.editedValue ?? '') : ''}
                           onChange={(value: string) => handleValueChange(secret.name, value)}
-                          onBlur={() => handleValueBlur(secret.name)}
                           disabled={!secret.isEditing}
                           size={secret.isEditing ? calculateRows(secret.editedValue) : 1}
                           placeholder={secret.isEditing ? t('builder_settings_secrets_placeholder_key_value') : '••••••••••••'}
@@ -542,28 +619,44 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                       </div>
                     </div>
                     <div className="flex flex-col md:flex-row items-center gap-0.5">
-                      <IconButton
-                        icon={<EditIcon />}
-                        label={secret.isEditing ? t('builder_common_cancel') : t('builder_common_edit')}
-                        onClick={() => handleEdit(secret.name)}
-                        onMouseDown={(e: React.MouseEvent) => {
-                          // Prevent blur from firing before onClick when canceling with empty value
-                          if (secret.isEditing) {
-                            e.preventDefault();
-                          }
-                        }}
-                        active={secret.isEditing}
-                        disabled={secret.systemManaged || secret.markedForDeletion}
-                        className="!border-0"
-                      />
-                      <IconButton
-                        icon={<DeleteIcon />}
-                        label={secret.markedForDeletion ? t('builder_common_undo') : t('builder_common_delete')}
-                        onClick={() => handleDelete(secret.name)}
-                        active={secret.markedForDeletion}
-                        disabled={secret.systemManaged || secret.isEditing}
-                        className="!border-0"
-                      />
+                      {secret.isEditing ? (
+                        <>
+                          <IconButton
+                            icon={<CheckmarkIcon />}
+                            label={`${t('builder_common_save')} ${secret.name}`}
+                            onClick={() => handleSaveSingle(secret.name)}
+                            showLabelAlways={true}
+                            disabled={secret.systemManaged || !secret.editedValue || !isValueValid(secret.editedValue) || isSubmitting}
+                            className="!border-0"
+                          />
+                          <IconButton
+                            icon={<XIcon />}
+                            label={t('builder_common_cancel')}
+                            onClick={() => handleEdit(secret.name)}
+                            showLabelAlways={true}
+                            disabled={isSubmitting}
+                            className="!border-0"
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <IconButton
+                            icon={<EditIcon />}
+                            label={t('builder_common_edit')}
+                            onClick={() => handleEdit(secret.name)}
+                            disabled={secret.systemManaged || secret.markedForDeletion || isSubmitting}
+                            className="!border-0"
+                          />
+                          <IconButton
+                            icon={<DeleteIcon />}
+                            label={secret.markedForDeletion ? t('builder_common_undo') : t('builder_common_delete')}
+                            onClick={() => handleDelete(secret.name)}
+                            active={secret.markedForDeletion}
+                            disabled={secret.systemManaged || isSubmitting}
+                            className="!border-0"
+                          />
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
