@@ -4,6 +4,7 @@ import '@testing-library/jest-dom';
  * @vitest-environment jsdom
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryClient } from '@tanstack/react-query';
 import { waitFor } from '@testing-library/react';
 
 import { renderHookWithProviders } from '@/tests/test-utils';
@@ -137,6 +138,56 @@ describe('useSubscription', function hooks() {
       expect(result.current.data?.plan).toBe(SubscriptionPlan.Free);
       expect(result.current.data?.isTrial).toBe(true);
       expect(result.current.subscriptions).toEqual([mockSubscription]);
+    });
+  });
+
+  describe('retry behavior', function retryBehavior() {
+    // Use a QueryClient without global retry:false so the hook's own retry config is exercised
+    function createRetryAwareClient() {
+      return new QueryClient({
+        defaultOptions: { queries: { gcTime: Infinity } },
+      });
+    }
+
+    it('does not retry on 4xx errors', async function noRetryOn4xx() {
+      vi.mocked(appFetch).mockResolvedValue({
+        ok: false,
+        status: 403,
+      } as Response);
+
+      const { result } = renderHookWithProviders(() => useSubscription(), {
+        queryClient: createRetryAwareClient(),
+      });
+
+      await waitFor(() => {
+        expect(result.current.isError).toBe(true);
+      });
+
+      expect(appFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('retries on 5xx errors', async function retriesOn5xx() {
+      vi.useFakeTimers();
+      try {
+        vi.mocked(appFetch).mockResolvedValue({
+          ok: false,
+          status: 500,
+        } as Response);
+
+        renderHookWithProviders(() => useSubscription(), {
+          queryClient: createRetryAwareClient(),
+        });
+
+        // Flush initial call + all retries (exponential backoff: 1s, 2s, 4s)
+        for (let i = 0; i < 3; i++) {
+          await vi.advanceTimersByTimeAsync(30_000);
+        }
+
+        // Initial call + up to 3 retries
+        expect(appFetch).toHaveBeenCalledTimes(4);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

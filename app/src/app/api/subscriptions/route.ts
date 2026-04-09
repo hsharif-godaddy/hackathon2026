@@ -88,12 +88,29 @@ export const GET = withCustomerAuth(async (
     }), origin);
 
   } catch (error) {
-    // Auth failures (401/403) are expected for unregistered/expired users — log at warn, not error
-    const isAuthError = error instanceof AiroHttpError && (error.status === 401 || error.status === 403);
+    // mgmt-airo returns 403 exclusively for unregistered customers ("Customer not
+    // registered with Airo"). If that contract ever changes, the logged errorMessage
+    // will surface the new reason in ES. See PR #2665.
+    if (error instanceof AiroHttpError && error.status === 403) {
+      logger.info('subscriptions.api.not-registered', {
+        message: 'Customer not registered - returning empty subscriptions',
+        customerId: authContext.user.customerId,
+        errorMessage: error.message,
+      });
+      return withCorsHeaders(NextResponse.json({
+        success: true,
+        data: {
+          subscriptions: [],
+          active: null,
+        }
+      }), origin);
+    }
+
+    const isAuthError = error instanceof AiroHttpError && error.status === 401;
     logger[isAuthError ? 'warn' : 'error']('subscriptions.api.error', {
       message: 'Failed to fetch subscriptions',
       customerId: authContext.user.customerId,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
 
     if (error instanceof AiroHttpError) {

@@ -1,14 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 
+import { HttpError } from '@/lib/errors';
 import { logger } from '@/lib/request-context';
 import type { CreditGrant } from '@/types/credits';
-
-class HttpError extends Error {
-  constructor(message: string, public status: number) {
-    super(message);
-    this.name = 'HttpError';
-  }
-}
 
 interface UseCreditGrantsOptions {
   subscriptionId: string | undefined;
@@ -78,7 +72,7 @@ export function useCreditGrants({
       throw new Error(data.error || 'Failed to get credit grants');
     },
     enabled: !!subscriptionId,
-    staleTime: 1 * 60 * 1000, // 1 minute
+    staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 5 * 60 * 1000,    // 5 minutes
     retry: function retryOnError(failureCount, error) {
       // Don't retry on 4xx errors (client errors)

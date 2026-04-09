@@ -7,6 +7,7 @@
 
 import { type QueryClient, useQuery } from '@tanstack/react-query';
 
+import { HttpError } from '@/lib/errors';
 import { appFetch } from '@/lib/gasket-config';
 import type { AiroSubscription } from '@/lib/mgmt-airo';
 
@@ -34,7 +35,7 @@ async function fetch() {
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch subscriptions: ${response.status}`);
+    throw new HttpError(`Failed to fetch subscriptions: ${response.status}`, response.status);
   }
 
   const json = await response.json();
@@ -59,6 +60,15 @@ export function useSubscription(options: UseSubscriptionOptions = {}): UseSubscr
     gcTime: GC_TIME,
     enabled,
     refetchInterval,
+    retry(failureCount, error) {
+      if (error instanceof HttpError && error.status >= 400 && error.status < 500) {
+        return false;
+      }
+      return failureCount < 3;
+    },
+    retryDelay(attemptIndex) {
+      return Math.min(1000 * 2 ** attemptIndex, 30000);
+    },
   });
 
   return {

@@ -10,3 +10,10 @@
 export function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+export class HttpError extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+    this.name = 'HttpError';
+  }
+}
