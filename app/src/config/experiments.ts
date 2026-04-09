@@ -2,7 +2,7 @@
  * Hivemind experiment IDs. Single source of truth for A/B and engagement experiments.
  */
 export const EXPERIMENT_IDS = {
-  homepageEngagement: 'airo-app-builder-homepage-engagement',
+  homepageEngagement: 'airo-app-builder-homepage-engagement-2',
   /** UPP / pricing: which paid tier is highlighted as recommended (Professional vs Ultimate) */
   recommendedPlan: 'aab_recommended_plan_uppdcx',
 } as const
