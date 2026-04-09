@@ -103,7 +103,14 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
     echo "1. Add to system keychain:"
     echo "   sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain $CA_CERT"
     echo ""
-    echo "2. For Firefox (separate trust store):"
+    echo "2. For Chrome (if preview still fails after trusting the CA):"
+    echo "   Chrome may not read the macOS keychain. Manually import the CA:"
+    echo "   - Go to chrome://certificate-manager/localcerts/usercerts"
+    echo "   - Click 'Import' on Trust Certificates"
+    echo "   - Select: $CA_CERT"
+    echo "   (press Cmd+Shift+. in the file picker to show hidden directories)"
+    echo ""
+    echo "3. For Firefox (separate trust store):"
     echo "   - Open about:preferences#privacy"
     echo "   - Scroll to 'Certificates' and click 'View Certificates'"
     echo "   - Go to 'Authorities' tab"
@@ -115,7 +122,8 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
     if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
         sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$CA_CERT"
         echo -e "${GREEN}✅ CA certificate added to system keychain${NC}"
-        echo -e "${YELLOW}⚠️  Firefox users still need to manually import it${NC}"
+        echo -e "${YELLOW}⚠️  Chrome may need manual import — see step 2 above${NC}"
+        echo -e "${YELLOW}⚠️  Firefox users still need to manually import it — see step 3 above${NC}"
     fi
 
 else

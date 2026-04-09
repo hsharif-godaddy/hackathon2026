@@ -296,6 +296,13 @@ export class CASetup {
 
       console.log(chalk.green('✅ CA certificate installed to system keychain'));
       console.log('');
+      console.log(chalk.yellow('⚠️  Chrome users:'));
+      console.log(chalk.gray('Chrome may not read the macOS keychain. If preview still fails, manually import the CA:'));
+      console.log(chalk.gray('  1. Go to chrome://certificate-manager/localcerts/usercerts'));
+      console.log(chalk.gray('  2. Click "Import" on Trust Certificates'));
+      console.log(chalk.gray('  3. Select:'), this.caCertPath);
+      console.log(chalk.gray('     (press Cmd+Shift+. in the file picker to show hidden directories)'));
+      console.log('');
       console.log(chalk.yellow('⚠️  Firefox users:'));
       console.log(chalk.gray('Firefox uses its own trust store. You need to:'));
       console.log(chalk.gray('  1. Open about:preferences#privacy'));
