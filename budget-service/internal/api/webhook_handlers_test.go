@@ -40,6 +40,38 @@ func TestPostWebhookRejectsRelativeURL(t *testing.T) {
 	}
 }
 
+func TestPostWebhookRejectsUnsupportedEventType(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	body := `{"eventType":"report.deleted","productKey":"x","url":"https://example.com/hook"}`
+	req := httptest.NewRequest(http.MethodPost, "/webhooks", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postWebhook(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "eventType must be one of:") {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
+func TestPostWebhookRejectsMissingEventType(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	body := `{"productKey":"x","url":"https://example.com/hook"}`
+	req := httptest.NewRequest(http.MethodPost, "/webhooks", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postWebhook(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "eventType is required") {
+		t.Fatalf("expected 'eventType is required' error, got %s", rec.Body.String())
+	}
+}
+
 func TestDeleteWebhookInsertsWebhooksHistory(t *testing.T) {
 	ctx := context.Background()
 	st := testStore(t)

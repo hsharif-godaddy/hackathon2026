@@ -11,6 +11,12 @@ import (
 // NewRouter: /health open; /api/v1 uses authMW (IAM / Cert / Cert2S when auth enabled).
 func NewRouter(s *Server, authMW *goauth.Middleware) http.Handler {
 	r := mux.NewRouter()
+	r.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "resource not found")
+	})
+	r.MethodNotAllowedHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+	})
 	r.HandleFunc("/health", s.getHealth).Methods(http.MethodGet, http.MethodHead)
 
 	v1 := r.PathPrefix("/api/v1").Subrouter()

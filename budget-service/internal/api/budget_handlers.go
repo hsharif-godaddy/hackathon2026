@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -202,6 +202,53 @@ func hasNonEmptyStringValue(p *string) bool {
 	return p != nil && strings.TrimSpace(*p) != ""
 }
 
+func hasMissingFlexAmountValue(p *flexAmount) bool {
+	return p == nil || strings.TrimSpace(string(*p)) == ""
+}
+
+// hydrateMissingBudgetItemUpdateFields loads the current DB record and fills only missing
+// update fields used by PATCH handlers.
+func (s *Server) hydrateMissingBudgetItemUpdateFields(ctx context.Context, budgetID, budgetItemID string, creditsTotal *flexAmount, costToCreditRatio **flexAmount, hydrateExpiresAt, hydrateStartsAt, hydrateResetsAt, hydrateResetInterval bool, expiresAt, startsAt, resetsAt, resetInterval **string) error {
+	missingCreditsTotal := strings.TrimSpace(string(*creditsTotal)) == ""
+	missingCostToCreditRatio := hasMissingFlexAmountValue(*costToCreditRatio)
+	missingExpiresAt := hydrateExpiresAt && *expiresAt == nil
+	missingStartsAt := hydrateStartsAt && *startsAt == nil
+	missingResetsAt := hydrateResetsAt && *resetsAt == nil
+	missingResetInterval := hydrateResetInterval && *resetInterval == nil
+	if !missingCreditsTotal && !missingCostToCreditRatio && !missingExpiresAt && !missingStartsAt && !missingResetsAt && !missingResetInterval {
+		return nil
+	}
+
+	existing, err := s.Store.GetBudgetItem(ctx, budgetID, budgetItemID)
+	if err != nil {
+		return err
+	}
+	if missingCreditsTotal {
+		*creditsTotal = flexAmount(existing.CreditsTotal)
+	}
+	if missingCostToCreditRatio {
+		ratio := flexAmount(existing.CreditSpendRatio)
+		*costToCreditRatio = &ratio
+	}
+	if missingExpiresAt && existing.ExpireAt != nil {
+		expires := existing.ExpireAt.UTC().Format(time.RFC3339Nano)
+		*expiresAt = &expires
+	}
+	if missingStartsAt && existing.StartsAt != nil {
+		starts := existing.StartsAt.UTC().Format(time.RFC3339Nano)
+		*startsAt = &starts
+	}
+	if missingResetsAt && existing.ResetsAt != nil {
+		resets := existing.ResetsAt.UTC().Format(time.RFC3339Nano)
+		*resetsAt = &resets
+	}
+	if missingResetInterval && existing.ResetInterval != nil {
+		interval := *existing.ResetInterval
+		*resetInterval = &interval
+	}
+	return nil
+}
+
 type budgetItemBody struct {
 	CreditsTotal      flexAmount  `json:"creditsTotal"`
 	CostToCreditRatio *flexAmount `json:"costToCreditRatio"`
@@ -225,20 +272,34 @@ func (b budgetItemBody) toItemInput(validateCreate bool) (store.ItemInput, strin
 	if msg := validateBudgetItemDates(b.ExpiresAt, b.StartsAt, b.ResetsAt); msg != "" {
 		return store.ItemInput{}, msg
 	}
-	ct, err := credits.ParseNonNegative(strings.TrimSpace(string(b.CreditsTotal)))
-	if err != nil {
-		return store.ItemInput{}, "creditsTotal must be a valid NUMERIC(20,6) non-negative value"
+	creditsTotalStr := strings.TrimSpace(string(b.CreditsTotal))
+	var formattedCreditsTotal string
+	if creditsTotalStr == "" && !validateCreate {
+		// creditsTotal is optional when updating; caller must fill it in before persisting.
+		formattedCreditsTotal = ""
+	} else {
+		ct, err := credits.ParseNonNegative(creditsTotalStr)
+		if err != nil {
+			return store.ItemInput{}, "creditsTotal must be a valid NUMERIC(20,6) non-negative value"
+		}
+		formattedCreditsTotal = credits.Format(ct)
 	}
 	ratioStr := "1"
-	if b.CostToCreditRatio != nil && strings.TrimSpace(string(*b.CostToCreditRatio)) != "" {
+	if !validateCreate && hasMissingFlexAmountValue(b.CostToCreditRatio) {
+		ratioStr = ""
+	} else if b.CostToCreditRatio != nil && strings.TrimSpace(string(*b.CostToCreditRatio)) != "" {
 		ratioStr = strings.TrimSpace(string(*b.CostToCreditRatio))
 	}
-	csr, err := parseCostToCreditRatio(ratioStr)
-	if err != nil {
-		return store.ItemInput{}, "costToCreditRatio must be a valid NUMERIC(20,6) positive value"
+	csr := ""
+	if ratioStr != "" {
+		var err error
+		csr, err = parseCostToCreditRatio(ratioStr)
+		if err != nil {
+			return store.ItemInput{}, "costToCreditRatio must be a valid NUMERIC(20,6) positive value"
+		}
 	}
 	out := store.ItemInput{
-		CreditsTotal:     credits.Format(ct),
+		CreditsTotal:     formattedCreditsTotal,
 		CreditSpendRatio: csr,
 		ExpireAt:         b.ExpiresAt,
 		StartsAt:         b.StartsAt,
@@ -344,14 +405,8 @@ type postBudgetBody struct {
 }
 
 func (s *Server) postBudget(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(io.LimitReader(r.Body, budgetMaxBodyBytes))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "failed to read body")
-		return
-	}
 	var payload postBudgetBody
-	if err := json.Unmarshal(body, &payload); err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body")
+	if !decodeJSONBody(w, r, &payload, false) {
 		return
 	}
 	if strings.TrimSpace(payload.ProductKey) == "" {
@@ -421,6 +476,45 @@ type patchBudgetItem struct {
 	StartsAt          *string     `json:"startsAt"`
 	ResetsAt          *string     `json:"resetsAt"`
 	ResetInterval     *string     `json:"resetInterval"`
+	expiresAtSet      bool        `json:"-"`
+	startsAtSet       bool        `json:"-"`
+	resetsAtSet       bool        `json:"-"`
+	resetIntervalSet  bool        `json:"-"`
+}
+
+// patchBudgetItemAllowedFields lists JSON keys accepted by patchBudgetItem.UnmarshalJSON.
+var patchBudgetItemAllowedFields = map[string]struct{}{
+	"budgetItemId":      {},
+	"creditsTotal":      {},
+	"costToCreditRatio": {},
+	"expiresAt":         {},
+	"startsAt":          {},
+	"resetsAt":          {},
+	"resetInterval":     {},
+}
+
+func (p *patchBudgetItem) UnmarshalJSON(data []byte) error {
+	type alias patchBudgetItem
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	// Reject unknown fields to match decodeJSONBody's DisallowUnknownFields behavior.
+	for key := range raw {
+		if _, ok := patchBudgetItemAllowedFields[key]; !ok {
+			return fmt.Errorf("json: unknown field %q", key)
+		}
+	}
+	var a alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	*p = patchBudgetItem(a)
+	_, p.expiresAtSet = raw["expiresAt"]
+	_, p.startsAtSet = raw["startsAt"]
+	_, p.resetsAtSet = raw["resetsAt"]
+	_, p.resetIntervalSet = raw["resetInterval"]
+	return nil
 }
 
 func (p patchBudgetItem) toPutItemInput(validateCreate bool) (store.PutItemInput, string) {
@@ -456,37 +550,76 @@ func (s *Server) patchBudget(w http.ResponseWriter, r *http.Request) {
 	if !requireUUIDParam(w, budgetID, "budgetId") {
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, budgetMaxBodyBytes))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "failed to read body")
-		return
-	}
 	var payload patchBudgetBody
-	if err := json.Unmarshal(body, &payload); err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body")
+	if !decodeJSONBody(w, r, &payload, false) {
 		return
 	}
 	if len(payload.Items) == 0 {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "items must contain at least one entry")
 		return
 	}
-	rows := make([]store.PutItemInput, len(payload.Items))
+
+	// Pre-hydration validation: validate all items eagerly before touching the store.
+	// creditsTotal is required for new items but optional for existing ones (toItemInput allows
+	// it when validateCreate=false); we resolve existing values from the DB further below.
+	// NOTE: The result of toPutItemInput here is intentionally discarded — this call validates
+	// the payload fields only. We call it again after hydration to get the final values.
 	for i := range payload.Items {
-		if strings.TrimSpace(string(payload.Items[i].CreditsTotal)) == "" {
-			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "each item requires creditsTotal")
+		isCreate := payload.Items[i].BudgetItemID == nil || strings.TrimSpace(*payload.Items[i].BudgetItemID) == ""
+		if isCreate && strings.TrimSpace(string(payload.Items[i].CreditsTotal)) == "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "each new item requires creditsTotal")
 			return
 		}
-		createItem := payload.Items[i].BudgetItemID == nil || strings.TrimSpace(*payload.Items[i].BudgetItemID) == ""
-		row, msg := payload.Items[i].toPutItemInput(createItem)
+		if _, msg := payload.Items[i].toPutItemInput(isCreate); msg != "" {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", msg)
+			return
+		}
+	}
+
+	if !s.requireStore(w) {
+		return
+	}
+
+	// For existing items missing update fields, fill in values from the current DB record.
+	// If resetInterval is explicitly cleared (set to null), don't hydrate resetsAt from DB —
+	// clearing one implicitly clears the other to avoid confusing validation errors.
+	for i := range payload.Items {
+		it := &payload.Items[i]
+		isCreate := it.BudgetItemID == nil || strings.TrimSpace(*it.BudgetItemID) == ""
+		if !isCreate {
+			hydrateResetsAt := !it.resetsAtSet && !(it.resetIntervalSet && it.ResetInterval == nil)
+			hydrateResetInterval := !it.resetIntervalSet && !(it.resetsAtSet && it.ResetsAt == nil)
+			err := s.hydrateMissingBudgetItemUpdateFields(
+				r.Context(),
+				budgetID,
+				strings.TrimSpace(*it.BudgetItemID),
+				&it.CreditsTotal,
+				&it.CostToCreditRatio,
+				!it.expiresAtSet,
+				!it.startsAtSet,
+				hydrateResetsAt,
+				hydrateResetInterval,
+				&it.ExpiresAt,
+				&it.StartsAt,
+				&it.ResetsAt,
+				&it.ResetInterval,
+			)
+			if err != nil {
+				writeBudgetStoreError(w, "budget.patch_budget_get_existing_item", err)
+				return
+			}
+		}
+	}
+
+	rows := make([]store.PutItemInput, len(payload.Items))
+	for i := range payload.Items {
+		isCreate := payload.Items[i].BudgetItemID == nil || strings.TrimSpace(*payload.Items[i].BudgetItemID) == ""
+		row, msg := payload.Items[i].toPutItemInput(isCreate)
 		if msg != "" {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", msg)
 			return
 		}
 		rows[i] = row
-	}
-
-	if !s.requireStore(w) {
-		return
 	}
 
 	if err := s.Store.UpsertBudgetItems(r.Context(), budgetID, rows); err != nil {
@@ -523,14 +656,8 @@ func (s *Server) postBudgetItem(w http.ResponseWriter, r *http.Request) {
 	if !requireUUIDParam(w, budgetID, "budgetId") {
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, budgetMaxBodyBytes))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "failed to read body")
-		return
-	}
 	var payload budgetItemBody
-	if err := json.Unmarshal(body, &payload); err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body")
+	if !decodeJSONBody(w, r, &payload, false) {
 		return
 	}
 	if strings.TrimSpace(string(payload.CreditsTotal)) == "" {
@@ -589,28 +716,60 @@ func (s *Server) patchBudgetItem(w http.ResponseWriter, r *http.Request) {
 	if !requireUUIDParam(w, budgetID, "budgetId") || !requireUUIDParam(w, budgetItemID, "budgetItemId") {
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, budgetMaxBodyBytes))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "failed to read body")
+	var payload patchBudgetItem
+	if !decodeJSONBody(w, r, &payload, false) {
 		return
 	}
-	var payload budgetItemBody
-	if err := json.Unmarshal(body, &payload); err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body")
-		return
-	}
-	if strings.TrimSpace(string(payload.CreditsTotal)) == "" {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "creditsTotal is required")
-		return
-	}
-	row, msg := payload.toItemInput(false)
-	if msg != "" {
+
+	// Pre-hydration validation: validate all fields eagerly. creditsTotal may be empty for updates
+	// (toItemInput allows it when validateCreate=false); we resolve the existing value from the DB
+	// further below. NOTE: The result here is intentionally discarded — this call validates the
+	// payload fields only. We call it again after hydration to get the final values.
+	if _, msg := payload.toPutItemInput(false); msg != "" {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", msg)
 		return
 	}
 
 	if !s.requireStore(w) {
 		return
+	}
+
+	// creditsTotal and costToCreditRatio are optional for PATCH: if omitted, retain current values.
+	// If resetInterval is explicitly cleared (set to null), don't hydrate resetsAt from DB —
+	// clearing one implicitly clears the other to avoid confusing validation errors.
+	hydrateResetsAt := !payload.resetsAtSet && !(payload.resetIntervalSet && payload.ResetInterval == nil)
+	hydrateResetInterval := !payload.resetIntervalSet && !(payload.resetsAtSet && payload.ResetsAt == nil)
+	if err := s.hydrateMissingBudgetItemUpdateFields(
+		r.Context(),
+		budgetID,
+		budgetItemID,
+		&payload.CreditsTotal,
+		&payload.CostToCreditRatio,
+		!payload.expiresAtSet,
+		!payload.startsAtSet,
+		hydrateResetsAt,
+		hydrateResetInterval,
+		&payload.ExpiresAt,
+		&payload.StartsAt,
+		&payload.ResetsAt,
+		&payload.ResetInterval,
+	); err != nil {
+		writeBudgetStoreError(w, "budget.patch_budget_item_get_existing", err)
+		return
+	}
+
+	putRow, msg := payload.toPutItemInput(false)
+	if msg != "" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", msg)
+		return
+	}
+	row := store.ItemInput{
+		CreditsTotal:     putRow.CreditsTotal,
+		CreditSpendRatio: putRow.CreditSpendRatio,
+		ExpireAt:         putRow.ExpireAt,
+		StartsAt:         putRow.StartsAt,
+		ResetsAt:         putRow.ResetsAt,
+		ResetInterval:    putRow.ResetInterval,
 	}
 
 	if err := s.Store.UpdateBudgetItem(r.Context(), budgetID, budgetItemID, row); err != nil {
@@ -651,20 +810,10 @@ func (s *Server) postBudgetSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, budgetMaxBodyBytes))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "failed to read body")
-		return
-	}
-	raw := bytes.TrimSpace(body)
-	if len(raw) == 0 {
-		raw = []byte("{}")
-	}
 	var postSess struct {
 		Metadata json.RawMessage `json:"metadata"`
 	}
-	if err := json.Unmarshal(raw, &postSess); err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body")
+	if !decodeJSONBody(w, r, &postSess, true) {
 		return
 	}
 	var metaBytes []byte
@@ -757,14 +906,8 @@ func (s *Server) patchBudgetSession(w http.ResponseWriter, r *http.Request) {
 	if !requireUUIDParam(w, budgetID, "budgetId") || !requireUUIDParam(w, sessionID, "sessionId") {
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, budgetMaxBodyBytes))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "failed to read body")
-		return
-	}
 	var payload patchBudgetSessionBody
-	if err := json.Unmarshal(body, &payload); err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body")
+	if !decodeJSONBody(w, r, &payload, false) {
 		return
 	}
 	appendedLines, ok := s.appendSessionLines(w, r, budgetID, sessionID, payload.SessionItems)
@@ -839,14 +982,8 @@ func (s *Server) postBudgetSessionReport(w http.ResponseWriter, r *http.Request)
 	if !requireUUIDParam(w, budgetID, "budgetId") || !requireUUIDParam(w, sessionID, "sessionId") {
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, budgetMaxBodyBytes))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "failed to read body")
-		return
-	}
 	var payload postSessionReportBody
-	if err := json.Unmarshal(body, &payload); err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body")
+	if !decodeJSONBody(w, r, &payload, false) {
 		return
 	}
 	if len(payload.ReportItems) == 0 {

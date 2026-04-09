@@ -1,9 +1,7 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -63,14 +61,8 @@ func (s *Server) getProducts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) postProduct(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(io.LimitReader(r.Body, budgetMaxBodyBytes))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "failed to read body")
-		return
-	}
 	var payload postProductBody
-	if err := json.Unmarshal(body, &payload); err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body")
+	if !decodeJSONBody(w, r, &payload, false) {
 		return
 	}
 	key := strings.TrimSpace(payload.ProductKey)

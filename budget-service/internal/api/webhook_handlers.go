@@ -19,6 +19,14 @@ import (
 )
 
 const webhookURLMaxLen = 2048
+const webhookEventReportCreated = "report.created"
+
+func normalizeWebhookEventType(raw string) (string, bool) {
+	if strings.TrimSpace(raw) == webhookEventReportCreated {
+		return webhookEventReportCreated, true
+	}
+	return "", false
+}
 
 func validateWebhookTargetURL(raw string) string {
 	u := strings.TrimSpace(raw)
@@ -130,18 +138,18 @@ func webhookToResponse(row *store.WebhookRow) map[string]any {
 }
 
 func (s *Server) postWebhook(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(io.LimitReader(r.Body, budgetMaxBodyBytes))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "failed to read body")
-		return
-	}
 	var payload postWebhookBody
-	if err := json.Unmarshal(body, &payload); err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body")
+	if !decodeJSONBody(w, r, &payload, false) {
 		return
 	}
-	if strings.TrimSpace(payload.EventType) == "" {
+	rawEventType := strings.TrimSpace(payload.EventType)
+	if rawEventType == "" {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "eventType is required")
+		return
+	}
+	eventType, ok := normalizeWebhookEventType(rawEventType)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "eventType must be one of: report.created")
 		return
 	}
 	pk := strings.TrimSpace(payload.ProductKey)
@@ -163,7 +171,7 @@ func (s *Server) postWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	webhookID := uuid.NewString()
-	if err := s.Store.CreateWebhook(r.Context(), webhookID, payload.EventType, pk, payload.URL); err != nil {
+	if err := s.Store.CreateWebhook(r.Context(), webhookID, eventType, pk, payload.URL); err != nil {
 		writeWebhookStoreError(w, "webhook.create", err)
 		return
 	}

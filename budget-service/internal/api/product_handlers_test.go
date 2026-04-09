@@ -26,6 +26,37 @@ func TestPostProductRejectsEmptyProductKey(t *testing.T) {
 	}
 }
 
+func TestPostProductRejectsUnknownField(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(`{"productKey":"abc","extra":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postProduct(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `unknown field`) {
+		t.Fatalf("expected unknown field error, got %s", rec.Body.String())
+	}
+}
+
+func TestPostProductRejectsLargeBody(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	body := `{"productKey":"` + strings.Repeat("a", budgetMaxBodyBytes) + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postProduct(rec, req)
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"code":"PAYLOAD_TOO_LARGE"`) {
+		t.Fatalf("expected PAYLOAD_TOO_LARGE code, got %s", rec.Body.String())
+	}
+}
+
 func TestPostProductAndGetProducts(t *testing.T) {
 	st := testStore(t)
 	s := &Server{Store: st}

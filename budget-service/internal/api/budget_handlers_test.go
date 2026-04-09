@@ -742,6 +742,387 @@ func TestPatchBudgetItemInsertsHistoryRow(t *testing.T) {
 	}
 }
 
+func TestBudgetItemBodyToItemInputAllowsMissingCostToCreditRatioOnUpdate(t *testing.T) {
+	body := budgetItemBody{CreditsTotal: "10.000000"}
+	row, msg := body.toItemInput(false)
+	if msg != "" {
+		t.Fatalf("unexpected validation message: %s", msg)
+	}
+	if row.CreditsTotal != "10.000000" {
+		t.Fatalf("creditsTotal %q want %q", row.CreditsTotal, "10.000000")
+	}
+	if row.CreditSpendRatio != "" {
+		t.Fatalf("creditSpendRatio %q want empty", row.CreditSpendRatio)
+	}
+}
+
+func TestPatchBudgetItemToPutItemInputAllowsMissingCostToCreditRatioOnUpdate(t *testing.T) {
+	body := patchBudgetItem{CreditsTotal: "10.000000"}
+	row, msg := body.toPutItemInput(false)
+	if msg != "" {
+		t.Fatalf("unexpected validation message: %s", msg)
+	}
+	if row.CreditsTotal != "10.000000" {
+		t.Fatalf("creditsTotal %q want %q", row.CreditsTotal, "10.000000")
+	}
+	if row.CreditSpendRatio != "" {
+		t.Fatalf("creditSpendRatio %q want empty", row.CreditSpendRatio)
+	}
+}
+
+func TestPatchBudgetItemKeepsExistingCostToCreditRatioWhenOmitted(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "patch-item-keep-ratio-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
+		CreditsTotal:     "100.000000",
+		CreditSpendRatio: "0.066666",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var itemID string
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if err := db.QueryRowContext(ctx, `SELECT id FROM budget_items WHERE budget_id = $1`, budgetID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(`{"creditsTotal":"120.000000"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch item: %d %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if got := body["creditsTotal"].(string); got != "120.000000" {
+		t.Fatalf("creditsTotal %q want %q", got, "120.000000")
+	}
+	if got := body["costToCreditRatio"].(string); got != "0.066666" {
+		t.Fatalf("costToCreditRatio %q want %q", got, "0.066666")
+	}
+	row, err := st.GetBudgetItem(ctx, budgetID, itemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.CreditSpendRatio != "0.066666" {
+		t.Fatalf("stored creditSpendRatio %q want %q", row.CreditSpendRatio, "0.066666")
+	}
+}
+
+func TestPatchBudgetExistingItemKeepsExistingCostToCreditRatioWhenOmitted(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "patch-budget-keep-ratio-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
+		CreditsTotal:     "100.000000",
+		CreditSpendRatio: "0.066666",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var itemID string
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if err := db.QueryRowContext(ctx, `SELECT id FROM budget_items WHERE budget_id = $1`, budgetID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}", s.patchBudget).Methods(http.MethodPatch)
+	body := `{"items":[{"budgetItemId":"` + itemID + `","creditsTotal":"111.000000"}]}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch budget: %d %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Items []struct {
+			BudgetItemID      string `json:"budgetItemId"`
+			CreditsTotal      string `json:"creditsTotal"`
+			CostToCreditRatio string `json:"costToCreditRatio"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Items) != 1 {
+		t.Fatalf("items len %d want 1", len(resp.Items))
+	}
+	if resp.Items[0].BudgetItemID != itemID {
+		t.Fatalf("budgetItemId %q want %q", resp.Items[0].BudgetItemID, itemID)
+	}
+	if resp.Items[0].CreditsTotal != "111.000000" {
+		t.Fatalf("creditsTotal %q want %q", resp.Items[0].CreditsTotal, "111.000000")
+	}
+	if resp.Items[0].CostToCreditRatio != "0.066666" {
+		t.Fatalf("costToCreditRatio %q want %q", resp.Items[0].CostToCreditRatio, "0.066666")
+	}
+	row, err := st.GetBudgetItem(ctx, budgetID, itemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.CreditSpendRatio != "0.066666" {
+		t.Fatalf("stored creditSpendRatio %q want %q", row.CreditSpendRatio, "0.066666")
+	}
+}
+
+func TestPatchBudgetItemKeepsExistingDateFieldsWhenOmitted(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "patch-item-keep-dates-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	expiresAt := "2031-01-01T00:00:00Z"
+	startsAt := "2030-01-01T00:00:00Z"
+	resetsAt := "2030-02-01T00:00:00Z"
+	resetInterval := "1mo"
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
+		CreditsTotal:     "100.000000",
+		CreditSpendRatio: "0.500000",
+		ExpireAt:         &expiresAt,
+		StartsAt:         &startsAt,
+		ResetsAt:         &resetsAt,
+		ResetInterval:    &resetInterval,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var itemID string
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if err := db.QueryRowContext(ctx, `SELECT id FROM budget_items WHERE budget_id = $1`, budgetID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(`{"creditsTotal":"120.000000"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch item: %d %s", rec.Code, rec.Body.String())
+	}
+
+	row, err := st.GetBudgetItem(ctx, budgetID, itemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.ExpireAt == nil || row.ExpireAt.UTC().Format(time.RFC3339) != expiresAt {
+		t.Fatalf("expireAt got %v want %s", row.ExpireAt, expiresAt)
+	}
+	if row.StartsAt == nil || row.StartsAt.UTC().Format(time.RFC3339) != startsAt {
+		t.Fatalf("startsAt got %v want %s", row.StartsAt, startsAt)
+	}
+	if row.ResetsAt == nil || row.ResetsAt.UTC().Format(time.RFC3339) != resetsAt {
+		t.Fatalf("resetsAt got %v want %s", row.ResetsAt, resetsAt)
+	}
+	if row.ResetInterval == nil || *row.ResetInterval != resetInterval {
+		t.Fatalf("resetInterval got %v want %s", row.ResetInterval, resetInterval)
+	}
+}
+
+func TestPatchBudgetExistingItemKeepsExistingDateFieldsWhenOmitted(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "patch-budget-keep-dates-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	expiresAt := "2031-01-01T00:00:00Z"
+	startsAt := "2030-01-01T00:00:00Z"
+	resetsAt := "2030-02-01T00:00:00Z"
+	resetInterval := "1mo"
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
+		CreditsTotal:     "100.000000",
+		CreditSpendRatio: "0.500000",
+		ExpireAt:         &expiresAt,
+		StartsAt:         &startsAt,
+		ResetsAt:         &resetsAt,
+		ResetInterval:    &resetInterval,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var itemID string
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if err := db.QueryRowContext(ctx, `SELECT id FROM budget_items WHERE budget_id = $1`, budgetID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}", s.patchBudget).Methods(http.MethodPatch)
+	body := `{"items":[{"budgetItemId":"` + itemID + `","creditsTotal":"111.000000"}]}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch budget: %d %s", rec.Code, rec.Body.String())
+	}
+
+	row, err := st.GetBudgetItem(ctx, budgetID, itemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.ExpireAt == nil || row.ExpireAt.UTC().Format(time.RFC3339) != expiresAt {
+		t.Fatalf("expireAt got %v want %s", row.ExpireAt, expiresAt)
+	}
+	if row.StartsAt == nil || row.StartsAt.UTC().Format(time.RFC3339) != startsAt {
+		t.Fatalf("startsAt got %v want %s", row.StartsAt, startsAt)
+	}
+	if row.ResetsAt == nil || row.ResetsAt.UTC().Format(time.RFC3339) != resetsAt {
+		t.Fatalf("resetsAt got %v want %s", row.ResetsAt, resetsAt)
+	}
+	if row.ResetInterval == nil || *row.ResetInterval != resetInterval {
+		t.Fatalf("resetInterval got %v want %s", row.ResetInterval, resetInterval)
+	}
+}
+
+func TestPatchBudgetItemExplicitNullClearsField(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "patch-item-clear-null-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	expiresAt := "2031-01-01T00:00:00Z"
+	startsAt := "2030-01-01T00:00:00Z"
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
+		CreditsTotal:     "100.000000",
+		CreditSpendRatio: "0.500000",
+		ExpireAt:         &expiresAt,
+		StartsAt:         &startsAt,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var itemID string
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if err := db.QueryRowContext(ctx, `SELECT id FROM budget_items WHERE budget_id = $1`, budgetID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(`{"creditsTotal":"120.000000","expiresAt":null}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch item: %d %s", rec.Code, rec.Body.String())
+	}
+
+	row, err := st.GetBudgetItem(ctx, budgetID, itemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.ExpireAt != nil {
+		t.Fatalf("expireAt got %v want nil", row.ExpireAt)
+	}
+	if row.StartsAt == nil || row.StartsAt.UTC().Format(time.RFC3339) != startsAt {
+		t.Fatalf("startsAt got %v want %s", row.StartsAt, startsAt)
+	}
+}
+
+func TestPatchBudgetExistingItemExplicitNullClearsField(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "patch-budget-clear-null-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	expiresAt := "2031-01-01T00:00:00Z"
+	startsAt := "2030-01-01T00:00:00Z"
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
+		CreditsTotal:     "100.000000",
+		CreditSpendRatio: "0.500000",
+		ExpireAt:         &expiresAt,
+		StartsAt:         &startsAt,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var itemID string
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if err := db.QueryRowContext(ctx, `SELECT id FROM budget_items WHERE budget_id = $1`, budgetID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}", s.patchBudget).Methods(http.MethodPatch)
+	body := `{"items":[{"budgetItemId":"` + itemID + `","creditsTotal":"111.000000","expiresAt":null}]}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch budget: %d %s", rec.Code, rec.Body.String())
+	}
+
+	row, err := st.GetBudgetItem(ctx, budgetID, itemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.ExpireAt != nil {
+		t.Fatalf("expireAt got %v want nil", row.ExpireAt)
+	}
+	if row.StartsAt == nil || row.StartsAt.UTC().Format(time.RFC3339) != startsAt {
+		t.Fatalf("startsAt got %v want %s", row.StartsAt, startsAt)
+	}
+}
+
 func TestPatchBudgetAddItemDefaultsStartsAtAndDerivesResetsAt(t *testing.T) {
 	ctx := context.Background()
 	st := testStore(t)
@@ -1197,4 +1578,151 @@ func TestWriteEndpointsReturnCanonicalGetPayloads(t *testing.T) {
 	}
 	getReportResp := decodeJSONMapUseNumber(t, recGetReport.Body.String())
 	assertJSONMapEqual(t, "post report vs get report", postReportResp, getReportResp)
+}
+
+func TestPatchBudgetItemRejectsUnknownField(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+	budgetID := uuid.NewString()
+	itemID := uuid.NewString()
+	body := `{"creditsTotal":"10","unknownField":"x"}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `unknown field`) {
+		t.Fatalf("expected unknown field error, got %s", rec.Body.String())
+	}
+}
+
+func TestPatchBudgetRejectsUnknownFieldInItem(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}", s.patchBudget).Methods(http.MethodPatch)
+	budgetID := uuid.NewString()
+	itemID := uuid.NewString()
+	body := `{"items":[{"budgetItemId":"` + itemID + `","creditsTotal":"10","unknownField":"x"}]}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `unknown field`) {
+		t.Fatalf("expected unknown field error, got %s", rec.Body.String())
+	}
+}
+
+func TestPatchBudgetItemClearResetIntervalAlsoClearsResetsAt(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "patch-clear-interval-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	resetsAt := "2030-02-01T00:00:00Z"
+	resetInterval := "1mo"
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
+		CreditsTotal:     "100.000000",
+		CreditSpendRatio: "0.500000",
+		ResetsAt:         &resetsAt,
+		ResetInterval:    &resetInterval,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var itemID string
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if err := db.QueryRowContext(ctx, `SELECT id FROM budget_items WHERE budget_id = $1`, budgetID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+	// Explicitly set resetInterval to null — should also clear resetsAt
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(`{"resetInterval":null}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch item: %d %s", rec.Code, rec.Body.String())
+	}
+
+	row, err := st.GetBudgetItem(ctx, budgetID, itemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.ResetInterval != nil {
+		t.Fatalf("resetInterval got %v want nil", row.ResetInterval)
+	}
+	if row.ResetsAt != nil {
+		t.Fatalf("resetsAt got %v want nil (should be cleared when resetInterval is cleared)", row.ResetsAt)
+	}
+}
+
+func TestPatchBudgetExistingItemClearResetIntervalAlsoClearsResetsAt(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "patch-budget-clear-interval-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	resetsAt := "2030-02-01T00:00:00Z"
+	resetInterval := "1mo"
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
+		CreditsTotal:     "100.000000",
+		CreditSpendRatio: "0.500000",
+		ResetsAt:         &resetsAt,
+		ResetInterval:    &resetInterval,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var itemID string
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if err := db.QueryRowContext(ctx, `SELECT id FROM budget_items WHERE budget_id = $1`, budgetID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}", s.patchBudget).Methods(http.MethodPatch)
+	// Explicitly set resetInterval to null via PATCH /budgets — should also clear resetsAt
+	body := `{"items":[{"budgetItemId":"` + itemID + `","resetInterval":null}]}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch budget: %d %s", rec.Code, rec.Body.String())
+	}
+
+	row, err := st.GetBudgetItem(ctx, budgetID, itemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.ResetInterval != nil {
+		t.Fatalf("resetInterval got %v want nil", row.ResetInterval)
+	}
+	if row.ResetsAt != nil {
+		t.Fatalf("resetsAt got %v want nil (should be cleared when resetInterval is cleared)", row.ResetsAt)
+	}
 }

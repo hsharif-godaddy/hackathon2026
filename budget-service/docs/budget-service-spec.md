@@ -15,7 +15,7 @@ Spec for API shape, flow, and numbers. Code lives under `budget-service/`; older
    - **`DELETE /api/v1/budgets/{budgetId}`** — copy budget/items to `budgets_history` / `budget_item_history`, then `DELETE` budget (cascade removes sessions); **409** if any session has `reconciled_at` null (open session) or any session has a report.
    - **`DELETE .../budget-items/{budgetItemId}`** — copy to `budget_item_history`, `DELETE` item; **409** if referenced in report allocations.
    - **`PATCH` item** (and upsert-by-id) copies the prior row into **`budget_item_history`** before updating the live row.
-8. **Webhooks** — `POST /api/v1/webhooks` with `eventType` `report.created`, `productKey`, `url` and returns the same body shape as `GET /webhooks/{webhookId}`. **`DELETE /webhooks/{webhookId}`** copies the row to **`webhooks_history`** then deletes the live webhook. After a successful report, matching URLs get `POST` JSON `{ "eventType": "reportCreated", "productKey", "data" }` (`data` = GET report body). Fire-and-forget; failures are logged only.
+8. **Webhooks** — `POST /api/v1/webhooks` with `eventType` `report.created`, `productKey`, `url` and returns the same body shape as `GET /webhooks/{webhookId}`. `eventType` is strict: unsupported values return **400**. **`DELETE /webhooks/{webhookId}`** copies the row to **`webhooks_history`** then deletes the live webhook. After a successful report, matching URLs get `POST` JSON `{ "eventType": "reportCreated", "productKey", "data" }` (`data` = GET report body). Fire-and-forget; failures are logged only.
 
 ### Response parity rule
 
@@ -49,6 +49,8 @@ For each resource with read/write APIs, successful `POST`/`PATCH` responses are 
 | `POST`, `GET`            | `.../sessions/{sessionId}/reports` and `.../reports/{reportId}` | `POST` response matches report `GET`                                                                                              |
 
 Auth: `packages/go-auth` `AuthenticateAWSIAMService` by default (`Bearer` or `sso-jwt`). `LOCAL_AUTH_DISABLE=true` skips auth (local only).
+
+Request decoding: write endpoints use strict JSON decoding (unknown fields are rejected with **400**) and enforce request-size limits (oversized payloads return **413** `PAYLOAD_TOO_LARGE`).
 
 ## Seed (`make data`)
 
