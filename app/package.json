@@ -46,7 +46,7 @@
     "@gasket/data": "^7.5.5",
     "@gasket/intl": "^7.5.3",
     "@gasket/nextjs": "^7.6.7",
-    "@gasket/plugin-command": "^7.6.3",
+    "@gasket/plugin-command": "^7.6.5",
     "@gasket/plugin-data": "^7.5.1",
     "@gasket/plugin-dynamic-plugins": "^7.5.0",
     "@gasket/plugin-https-proxy": "^7.5.0",

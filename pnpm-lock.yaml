@@ -447,8 +447,8 @@ importers:
         specifier: ^7.6.7
         version: 7.6.7(next@14.2.35(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(@playwright/test@1.59.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(sass@1.92.1))(react@19.1.0)
       '@gasket/plugin-command':
-        specifier: ^7.6.3
-        version: 7.6.3
+        specifier: ^7.6.5
+        version: 7.6.5
       '@gasket/plugin-data':
         specifier: ^7.5.1
         version: 7.5.1
@@ -3236,8 +3236,8 @@ packages:
       next: 14.2.35
       react: 19.1.0
 
-  '@gasket/plugin-command@7.6.3':
-    resolution: {integrity: sha512-HYc2FxQn0dlyyF/Dys0nCKKQyrsiqnGRaQf00iYTxqlVfYQS0rYSRW2R4amo+A8R3fcYu2IiQQ+65xVLJtq0WA==}
+  '@gasket/plugin-command@7.6.5':
+    resolution: {integrity: sha512-VEm0gaeV4OlWxBqL/+HjodwLJMkwyOWnTjvCeoqyElXPJFbVVERPneGiKIgK4PiOxiBHRJ9Gowv6J0Uc4a2GgQ==}
 
   '@gasket/plugin-data@7.5.1':
     resolution: {integrity: sha512-QFtvbi4NhImHP3I0R4kmITdTUxHCN2dzt8h+/Opcav5mF79Ig+pPKjgWcCursfeMOiJ2ppBVi6qMpo3R/H+ddA==}
@@ -15900,7 +15900,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@gasket/plugin-command@7.6.3':
+  '@gasket/plugin-command@7.6.5':
     dependencies:
       '@gasket/core': 7.7.4
       '@gasket/utils': 7.6.6
