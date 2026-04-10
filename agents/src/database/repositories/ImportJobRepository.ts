@@ -387,6 +387,14 @@ export class ImportJobRepository {
     errorStage: string,
     validationErrors?: ValidationError[]
   ): Promise<ImportJob> {
+    this.logger.error('import-job.markFailed', {
+      jobId: id,
+      errorMessage,
+      errorStage,
+      validationErrorCount: validationErrors?.length ?? 0,
+      validationErrors: validationErrors?.map(e => ({ key: e.key, message: e.message })),
+    });
+
     const params: UpdateImportJobParams = {
       status: ImportJobStatus.FAILED,
       errorMessage,
@@ -406,6 +414,10 @@ export class ImportJobRepository {
    * @returns Updated import job
    */
   async markCompleted(id: string): Promise<ImportJob> {
+    this.logger.info('import-job.markCompleted', {
+      jobId: id,
+    });
+
     return this.update(id, {
       status: ImportJobStatus.COMPLETED,
       completedAt: new Date(),

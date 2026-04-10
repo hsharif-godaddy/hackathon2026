@@ -773,15 +773,37 @@ export class GitTool {
    * @param repoUrl - Repository URL to configure
    */
   private async ensureRemoteConfigured(appPath: string, remoteName: string, repoUrl: string): Promise<void> {
+    // Note: hasRemote() and getRemoteUrl() don't throw - they return false/null on error
     const hasRemote = await this.gitUtils.hasRemote(appPath, remoteName);
     if (!hasRemote) {
-      // Add the remote
-      await this.gitUtils.addRemote(appPath, remoteName, repoUrl);
+      const addResult = await this.gitUtils.addRemote(appPath, remoteName, repoUrl);
+      if (!addResult.success) {
+        this.logger.error('git-tool.remote.add.failure', {
+          appPath,
+          remoteName,
+          stderr: addResult.stderr,
+          exitCode: addResult.exitCode,
+        });
+        throw new Error(
+          `Failed to add git remote '${remoteName}' (exit ${addResult.exitCode}): ${addResult.stderr || 'Unknown error'}`
+        );
+      }
     } else {
       // Update the remote URL in case it changed
       const currentUrl = await this.gitUtils.getRemoteUrl(appPath, remoteName);
       if (currentUrl !== repoUrl) {
-        await this.gitUtils.setRemoteUrl(appPath, remoteName, repoUrl);
+        const setUrlResult = await this.gitUtils.setRemoteUrl(appPath, remoteName, repoUrl);
+        if (!setUrlResult.success) {
+          this.logger.error('git-tool.remote.setUrl.failure', {
+            appPath,
+            remoteName,
+            stderr: setUrlResult.stderr,
+            exitCode: setUrlResult.exitCode,
+          });
+          throw new Error(
+            `Failed to update git remote '${remoteName}' URL (exit ${setUrlResult.exitCode}): ${setUrlResult.stderr || 'Unknown error'}`
+          );
+        }
       }
     }
   }

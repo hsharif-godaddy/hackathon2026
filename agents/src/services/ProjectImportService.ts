@@ -182,7 +182,7 @@ export class ProjectImportService {
       const securityValidation = await zipSecurityService.validate(zipPath);
 
       if (!securityValidation.valid) {
-        this.logger.warn('project-import.security-validation.failed', {
+        this.logger.error('project-import.security-validation.failed', {
           jobId,
           appId,
           errors: securityValidation.errors,
@@ -227,10 +227,17 @@ export class ProjectImportService {
       const extractResult = await this.extractZipInContainer(
         devSupervisor,
         containerZipPath,
-        containerExtractPath
+        containerExtractPath,
+        { jobId, appId }
       );
 
       if (!extractResult.success) {
+        this.logger.error('project-import.extraction.failed', {
+          jobId,
+          appId,
+          stage: ImportJobStatus.EXTRACTING,
+          errors: extractResult.errors,
+        });
         await this.importJobRepo.markFailed(
           jobId,
           'Zip extraction failed in container',
@@ -255,6 +262,12 @@ export class ProjectImportService {
       );
 
       if (!validation.valid) {
+        this.logger.error('project-import.validation.failed', {
+          jobId,
+          appId,
+          stage: ImportJobStatus.VALIDATING,
+          errors: validation.errors,
+        });
         await this.importJobRepo.markFailed(
           jobId,
           'Project validation failed',
@@ -317,6 +330,12 @@ export class ProjectImportService {
       );
 
       if (!copyResult.success) {
+        this.logger.error('project-import.copy.failed', {
+          jobId,
+          appId,
+          stage: ImportJobStatus.COPYING,
+          error: copyResult.error,
+        });
         await this.importJobRepo.markFailed(
           jobId,
           copyResult.error || 'Failed to copy files',
@@ -412,6 +431,13 @@ export class ProjectImportService {
       }
 
       if (!installResult.success) {
+        this.logger.error('project-import.install.failed', {
+          jobId,
+          appId,
+          stage: ImportJobStatus.INSTALLING,
+          error: installResult.error,
+          exitCode: installResult.exitCode,
+        });
         await this.gitRollback(appId, app.path);
         await this.importJobRepo.markFailed(
           jobId,
@@ -438,6 +464,13 @@ export class ProjectImportService {
         }
 
         if (!buildResult.success) {
+          this.logger.error('project-import.build.failed', {
+            jobId,
+            appId,
+            stage: ImportJobStatus.BUILDING,
+            error: buildResult.error,
+            exitCode: buildResult.exitCode,
+          });
           await this.gitRollback(appId, app.path);
           await this.importJobRepo.markFailed(
             jobId,
@@ -494,6 +527,12 @@ export class ProjectImportService {
       const commitResult = await this.gitCommit(appId, app.path);
 
       if (!commitResult.success) {
+        this.logger.error('project-import.commit.failed', {
+          jobId,
+          appId,
+          stage: ImportJobStatus.COMMITTING,
+          error: commitResult.error,
+        });
         await this.importJobRepo.markFailed(
           jobId,
           commitResult.error || 'Git commit failed',
@@ -576,7 +615,8 @@ export class ProjectImportService {
   private async extractZipInContainer(
     devSupervisor: DevSupervisorClient,
     zipPath: string,
-    extractPath: string
+    extractPath: string,
+    context: { jobId: string; appId: string }
   ): Promise<{ success: boolean; errors?: ValidationError[] }> {
     try {
       // Create extraction directory
@@ -603,6 +643,16 @@ export class ProjectImportService {
       });
 
       if (!unzipResult.success) {
+        this.logger.error('project-import.extract-in-container.failure', {
+          jobId: context.jobId,
+          appId: context.appId,
+          zipPath,
+          extractPath,
+          exitCode: unzipResult.exit_code,
+          stderr: unzipResult.stderr,
+          timedOut: unzipResult.timed_out,
+          executionTime: unzipResult.execution_time,
+        });
         return {
           success: false,
           errors: [{

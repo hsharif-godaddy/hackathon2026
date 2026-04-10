@@ -212,6 +212,11 @@ export class GitOpsService {
 
       const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
       if (!devSupervisor) {
+        logger.error('git-ops.push.devSupervisor.unavailable', {
+          appId,
+          jobId,
+          stage: 'pushing',
+        });
         await this.importJobRepo.markFailed(
           jobId,
           'Dev supervisor no longer available',
@@ -388,6 +393,11 @@ export class GitOpsService {
 
       const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
       if (!devSupervisor) {
+        logger.error('git-ops.pull.devSupervisor.unavailable', {
+          appId,
+          jobId,
+          stage: 'pulling',
+        });
         await this.importJobRepo.markFailed(
           jobId,
           'Dev supervisor no longer available',
@@ -428,7 +438,7 @@ export class GitOpsService {
       const matchedTool = SUPPORTED_BUILD_TOOLS.find(tool => matchesBuildToolOnHost(appPath, tool));
 
       if (!matchedTool) {
-        logger.warn('git-ops.pull.unsupported-project', { appId, jobId, supportedTools: supportedToolNames });
+        logger.error('git-ops.pull.unsupported-project', { appId, jobId, supportedTools: supportedToolNames });
 
         // Rollback the pull using ORIG_HEAD
         const rollbackResult = await gitTool.executeGitOperation(appPath, {
