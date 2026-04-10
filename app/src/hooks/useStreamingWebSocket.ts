@@ -309,14 +309,11 @@ export function useStreamingWebSocket() {
         return
       }
 
-      const hasText = Boolean(options.content?.trim())
-      const hasReferencedFiles = (options.customContext?.referencedFiles?.length ?? 0) > 0
-      const hasSelectedAssets = (options.selectedAssets?.length ?? 0) > 0
-      if (!hasText && !hasReferencedFiles && !hasSelectedAssets) {
+      if (!options.content?.trim()) {
         const error = new WebSocketError(WebSocketErrorCode.MESSAGE_EMPTY, {
           context: { appId: activeAppId }
         })
-        logger.warn('websocket.send_message.empty_content', error.toLogObject())
+        logger.error('websocket.send_message.empty_content', error.toLogObject())
         return
       }
 

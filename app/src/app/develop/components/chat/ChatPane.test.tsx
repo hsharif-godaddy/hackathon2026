@@ -27,7 +27,7 @@ vi.mock('@/app/develop/components/chat/ChatInput', () => ({
         placeholder="Type a message"
         disabled={isDisabled}
       />
-      <button onClick={onSendMessage}>Send</button>
+      <button onClick={() => onSendMessage()}>Send</button>
       {onLargePasteDetected && (
         <>
           <button data-testid="simulate-large-paste" onClick={() => onLargePasteDetected('x'.repeat(6000))}>Paste</button>
@@ -323,6 +323,46 @@ describe('ChatPane', () => {
     renderWithProviders(<ChatPane sendMessage={sendMessage} stopGeneration={vi.fn()} />);
 
     expect(screen.getByTestId('chat-input')).toBeInTheDocument();
+  });
+
+  describe('handleSendMessage empty prompt text', () => {
+    it('should not call sendMessage when Send clicked with empty input', async function emptyPromptOnSend() {
+      mockStreamingStore.inputValue = '';
+      const { user } = renderWithProviders(
+        <ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Send' }));
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('should not call sendMessage when input is whitespace only', async function whitespaceOnlyPrompt() {
+      mockStreamingStore.inputValue = '   \n\t  ';
+      const { user } = renderWithProviders(
+        <ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Send' }));
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('should not call sendMessage when referenced files exist but prompt text is empty', async function refsWithoutPrompt() {
+      const { user } = renderWithProviders(
+        <ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />
+      );
+
+      await user.click(screen.getByTestId('simulate-large-paste'));
+
+      await waitFor(function assertReferencedFile() {
+        expect(screen.getAllByTestId('referenced-file')).toHaveLength(1);
+      });
+
+      await user.click(screen.getByRole('button', { name: 'Send' }));
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
   });
 
   describe('input disabled during recovery', () => {

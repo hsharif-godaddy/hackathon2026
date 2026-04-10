@@ -341,7 +341,7 @@ describe('useStreamingWebSocket', () => {
       expect(mockSetIsLoadingAction).not.toHaveBeenCalled();
     });
 
-    it('should allow empty content when selectedAssets are present', async () => {
+    it('should not send when content is empty even if selectedAssets are present', async () => {
       vi.useFakeTimers();
       const { hook } = await setupWebSocketWithApp('test-app-assets-only');
 
@@ -354,7 +354,7 @@ describe('useStreamingWebSocket', () => {
         });
       });
 
-      expect(mockSetIsLoadingAction).toHaveBeenCalledWith(true);
+      expect(mockSetIsLoadingAction).not.toHaveBeenCalled();
       vi.useRealTimers();
     });
 

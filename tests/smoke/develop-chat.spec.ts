@@ -222,11 +222,17 @@ test.describe('Develop Page', () => {
       );
     }, tinyPngBase64);
 
-    await expect(page.getByTestId('chat-send-button')).not.toBeDisabled();
+    await expect(page.getByTestId('chat-send-button')).toBeDisabled();
     await expect(chatInputCard.getByRole('img', { name: 'e2e-drop.png' })).toBeVisible({
       timeout: DEFAULT_TIMEOUT,
     });
-    console.log('  ✓ Drop onto chat input stages file and enables send');
+    console.log('  ✓ Drop onto chat input stages file; send stays disabled until prompt text is entered');
+
+    await chatInput.fill('e2e prompt');
+    await expect(page.getByTestId('chat-send-button')).not.toBeDisabled();
+    await chatInput.clear();
+    await expect(page.getByTestId('chat-send-button')).toBeDisabled();
+    console.log('  ✓ Send enables once prompt text is entered with staged attachment');
 
     await page.getByTestId('chat-staged-file-clear').first().click();
     await expect(page.getByTestId('chat-send-button')).toBeDisabled();
@@ -245,13 +251,20 @@ test.describe('Develop Page', () => {
       el.dispatchEvent(ev);
     });
 
-    await expect(page.getByTestId('chat-send-button')).not.toBeDisabled();
+    await expect(page.getByTestId('chat-send-button')).toBeDisabled();
     await expect(page.getByText('e2e-paste.txt', { exact: true })).toBeVisible({
       timeout: DEFAULT_TIMEOUT,
     });
-    console.log('  ✓ Paste file from clipboard stages attachment');
+    console.log('  ✓ Paste file from clipboard stages attachment; send stays disabled until prompt text');
+
+    await chatInput.fill('e2e prompt');
+    await expect(page.getByTestId('chat-send-button')).not.toBeDisabled();
+    await chatInput.clear();
+    await expect(page.getByTestId('chat-send-button')).toBeDisabled();
+    console.log('  ✓ Send enables with pasted attachment once prompt text entered');
 
     await page.getByTestId('chat-staged-file-clear').first().click();
+    await expect(page.getByTestId('chat-send-button')).toBeDisabled();
     await chatInput.clear();
     console.log('  ✓ Cleared staged paste attachment');
 

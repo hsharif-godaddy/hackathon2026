@@ -568,9 +568,8 @@ export default function ChatPane({
   // Handle sending a message - accepts optional content for programmatic sends
   const handleSendMessage = useCallback(async (content?: string, options?: { isActionRequest?: boolean }) => {
     const messageToSend = content ?? inputValue
-    const userInitiated = !content
+    const userInitiated = content === undefined
     const hasText = Boolean(messageToSend?.trim())
-    const hasStaged = userInitiated && stagedFiles.length > 0
 
     logger.debug('chat-pane.send-message', {
       message: 'ChatPane handleSendMessage called',
@@ -578,9 +577,14 @@ export default function ChatPane({
       hasSendMessageFunction: !!sendMessage
     })
 
-    if (content) {
-      if (!hasText) return
-    } else if (!hasText && !hasStaged && selectedAssets.length === 0 && referencedFiles.length === 0) {
+    if (!hasText) {
+      logger.error('chat-pane.send-message.empty-content', {
+        appId,
+        userInitiated,
+        stagedFileCount: stagedFiles.length,
+        selectedAssetCount: selectedAssets.length,
+        referencedFileCount: referencedFiles.length,
+      })
       return
     }
 

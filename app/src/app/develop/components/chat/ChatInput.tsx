@@ -276,11 +276,7 @@ export default function ChatInput({
     onStageFiles(files)
   }
 
-  const canSubmit =
-    Boolean(inputValue?.trim()) ||
-    stagedFiles.length > 0 ||
-    selectedAssets.length > 0 ||
-    referencedFiles.length > 0
+  const canSubmit = Boolean(inputValue?.trim())
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'ArrowUp') {
