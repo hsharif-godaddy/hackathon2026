@@ -122,7 +122,6 @@ export function useStreamingWebSocket() {
   const connectionManagerRef = useRef<ConnectionManager | null>(null)
   const messageBuilderRef = useRef<ChatMessageBuilder | null>(null)
   const previousAppIdRef = useRef<string | null>(null)
-  const destroyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const webSocketState = useWebSocketState()
   const currentAppId = useCurrentAppId()
@@ -247,51 +246,21 @@ export function useStreamingWebSocket() {
       controller.disconnect();
     }
 
-    // Connect to the new app, but skip if previousAppId matches (StrictMode remount).
-    // In StrictMode, React runs mount→unmount→remount with the same appId. The first
-    // mount already established the connection; calling connect() again sends CONNECT
-    // to the XState machine, which resets from "connected" back to "connecting" and
-    // disrupts the live socket. Skipping the redundant connect avoids this.
-    // On real app switches (previousAppId !== currentAppId) or first mount (null),
-    // connect always runs.
-    if (previousAppId !== currentAppId) {
-      void controller.connect(currentAppId);
-    }
+    // Connect to the new app
+    void controller.connect(currentAppId);
 
     previousAppIdRef.current = currentAppId;
 
     return () => {
-      // Only disconnect if the app is actually changing or truly unmounting.
-      // During StrictMode remount, the store's currentAppId still matches
-      // capturedAppId, so we skip the disconnect to keep the socket alive.
-      // NOTE: On true unmount (not StrictMode), this may skip disconnect because
-      // the store's currentAppId hasn't changed yet. The [] effect's deferred
-      // destroy() handles cleanup in that case — see destroyTimerRef below.
-      const nextAppId = useStreamingConversationStore.getState().currentAppId;
-      if (nextAppId !== currentAppId) {
-        controller.disconnect();
-      }
+      controller.disconnect();
     };
   }, [currentAppId])
 
   useEffect(() => {
-    // Cancel any pending destroy from a StrictMode simulated unmount.
-    // StrictMode unmounts→remounts in the same microtask; the deferred destroy
-    // hasn't fired yet, so we can cancel it and keep the controller alive.
-    if (destroyTimerRef.current) {
-      clearTimeout(destroyTimerRef.current)
-      destroyTimerRef.current = null
-    }
-
     return () => {
-      // Defer destroy so StrictMode's remount can cancel it.
-      // On true unmount, no remount follows and the timer fires normally.
-      destroyTimerRef.current = setTimeout(() => {
-        controllerRef.current?.destroy()
-        controllerRef.current = null
-        clearController()
-        destroyTimerRef.current = null
-      }, 0)
+      controllerRef.current?.destroy()
+      controllerRef.current = null
+      clearController()
     }
   }, [])
 
