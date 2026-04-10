@@ -27,3 +27,4 @@ export { default as zipImportRouter } from './zip-import.js';
 export { default as shareRouter } from './share.js';
 export { default as mediaRouter } from './media.js';
 export { default as transferValidateRouter } from './transfer-validate.js';
+export { default as dbImportRouter } from './db-import.js';

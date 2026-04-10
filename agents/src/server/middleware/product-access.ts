@@ -42,6 +42,11 @@ const PAAS_ALLOWED_ROUTES: RoutePattern[] = [
 
   // Customer logs
   { method: 'GET', path: '/apps/:appId/customer-logs' },
+
+  // DB Import Routes
+  { method: 'POST', path: '/apps/:id/database/import' },
+  { method: 'GET', path: '/apps/:id/database/import/:jobId' },
+  { method: 'GET', path: '/apps/:id/database/import' },
 ];
 
 /**

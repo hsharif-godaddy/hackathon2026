@@ -3,6 +3,7 @@ import { Readable } from 'stream';
 import { logger } from '../logging/index.js';
 import mysql, { type ResultSetHeader } from 'mysql2/promise';
 import { join } from 'path';
+import { getNomadAllocConfig } from './nomad-config.js';
 
 /**
  * Database credentials interface
@@ -129,88 +130,58 @@ export class MySQLUtils {
   }
 
   /**
-   * Load MySQL credentials from an app's config.json file
-   *
-   * @param app - The app object containing the path to config.json
-   * @returns Database credentials extracted from config.json
-   * @throws Error if config.json file not found or credentials are incomplete
+   * Load MySQL credentials from an app's config.json file.
+   * Production: uses getNomadAllocConfig() (memoized).
+   * Local dev: reads from APPS_BASE_DIR/{appId}/local/preview/config.json.
    */
   async loadCredentialsFromApp(app: App): Promise<DatabaseCredentials> {
-    // Determine config path based on environment
-    let configPath: string;
-
-    if (process.env.NOMAD_ALLOC_DIR) {
-      // Production: container scripts symlink config.json from the variant-specific file
-      configPath = join(process.env.NOMAD_ALLOC_DIR, 'config.json');
-    } else {
-      // Local development: read from task-local path (matches NOMAD_TASK_DIR inside container)
-      // docker-container-manager pre-populates this, and it's bind-mounted into the container
-      const appsBaseDir = process.env.APPS_BASE_DIR || '/tmp/airo-app-builder';
-      configPath = join(appsBaseDir, app.id, 'local', 'preview', 'config.json');
+    // Production: reuse cached Nomad alloc config
+    const allocConfig = getNomadAllocConfig();
+    if (allocConfig) {
+      return this.extractCredentials(allocConfig, app.id);
     }
 
-    // Check if config.json file exists
+    // Local development: read from task-local path
+    const appsBaseDir = process.env.APPS_BASE_DIR || '/tmp/airo-app-builder';
+    // nosemgrep: path-traversal — app.id is loaded from internal SQLite DB (not user input);
+    // guard below rejects any path-traversal sequences as defense-in-depth.
+    if (/[/\\]|\.\./.test(app.id)) {
+      throw new Error(`Invalid app ID: ${app.id}`);
+    }
+    const configPath = join(appsBaseDir, app.id, 'local', 'preview', 'config.json');
+
     if (!existsSync(configPath)) {
       throw new Error(`No config.json file found for application at ${configPath}`);
     }
 
-    logger.debug('MySQL: Reading credentials from config.json', {
-      component: 'MySQLUtils',
-      appId: app.id,
-      configPath,
-    });
-
     try {
-      // Read and parse JSON config
-      const configContent = readFileSync(configPath, 'utf-8');
-      const config = JSON.parse(configContent);
-
-      // Extract database credentials from nested structure
-      const dbValue = config.DATABASE?.VALUE;
-      if (!dbValue) {
-        throw new Error('Invalid config.json structure: DATABASE.VALUE not found');
-      }
-
-      // Validate required fields exist
-      if (!dbValue.NAME || !dbValue.USERNAME || !dbValue.PASSWORD) {
-        throw new Error('Invalid config.json: NAME, USERNAME, and PASSWORD are required');
-      }
-
-      // Use localhost for local variant, otherwise use HOST from config
-      const isLocal = dbValue.VARIANT === 'local';
-      const credentials: DatabaseCredentials = {
-        host: isLocal ? 'localhost' : (dbValue.HOST ?? 'localhost'),
-        port: dbValue.PORT ?? 3306,
-        database: dbValue.NAME,
-        user: dbValue.USERNAME,
-        password: dbValue.PASSWORD,
-      };
-
-      logger.debug('MySQL: Loaded credentials from config.json', {
-        component: 'MySQLUtils',
-        appId: app.id,
-        host: credentials.host,
-        port: credentials.port,
-        database: credentials.database,
-        variant: dbValue.VARIANT,
-        isLocal,
-      });
-
-      return credentials;
+      const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+      return this.extractCredentials(config, app.id);
     } catch (error) {
-      logger.error('MySQL: Failed to read config.json', {
-        component: 'MySQLUtils',
-        appId: app.id,
-        configPath,
-        error: error instanceof Error ? error.message : String(error),
-      });
-
       if (error instanceof SyntaxError) {
         throw new Error(`Failed to parse ${configPath}: Invalid JSON format`);
       }
-
       throw error;
     }
+  }
+
+  /**
+   * Extract DatabaseCredentials from a parsed config object (DATABASE.VALUE).
+   */
+  private extractCredentials(config: Record<string, any>, appId: string): DatabaseCredentials {
+    const dbValue = config.DATABASE?.VALUE;
+    if (!dbValue || !dbValue.NAME || !dbValue.USERNAME || !dbValue.PASSWORD) {
+      throw new Error('Invalid config: DATABASE credentials (NAME, USERNAME, PASSWORD) not found');
+    }
+
+    const isLocal = dbValue.VARIANT === 'local';
+    return {
+      host: isLocal ? 'localhost' : (dbValue.HOST ?? 'localhost'),
+      port: dbValue.PORT ?? 3306,
+      database: dbValue.NAME,
+      user: dbValue.USERNAME,
+      password: dbValue.PASSWORD,
+    };
   }
 
   /**

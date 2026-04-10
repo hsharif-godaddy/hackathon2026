@@ -9,7 +9,7 @@ import type { Database } from 'better-sqlite3';
 import { Logger } from '../logging/index.js';
 import { SocialPlatform, PostState } from '../types/social.js';
 
-const logger = Logger.create({ component: 'database-schema' });
+const logger = Logger.create({ service: 'database-schema' });
 
 // ==================================================================================
 // TypeScript Interface Definitions
@@ -259,6 +259,7 @@ export function initializeSchema(db: Database): void {
   createFileContextTable(db);
   createMemoryTable(db);
   createImportJobsTable(db);
+  createDbImportJobsTable(db);
   createConversationSummariesTable(db);
   createGitRemoteConfigTable(db);
   createShareTokensTable(db);
@@ -461,6 +462,41 @@ function createImportJobsTable(db: Database): void {
 }
 
 /**
+ * Create the db_import_jobs table for tracking database import progress
+ *
+ * This table tracks the status of SQL file imports into app MySQL databases,
+ * including progress metrics, error details, and timing information.
+ * Separate from import_jobs (code import) to avoid schema bloat.
+ */
+function createDbImportJobsTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS db_import_jobs (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN (
+        'pending', 'validating', 'dropping_tables', 'importing', 'completed', 'failed'
+      )),
+      file_name TEXT,
+      file_size INTEGER,
+      tables_dropped INTEGER,
+      tables_imported INTEGER,
+      statements_executed INTEGER DEFAULT 0,
+      statements_total INTEGER,
+      bytes_processed INTEGER DEFAULT 0,
+      progress_updated_at DATETIME,
+      error_message TEXT,
+      error_stage TEXT,
+      error_code TEXT,
+      started_at DATETIME,
+      completed_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
+    )
+  `);
+}
+
+/**
  * Create the conversation_summaries table for incremental summarization
  */
 function createConversationSummariesTable(db: Database): void {
@@ -648,6 +684,19 @@ function createIndexes(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_import_jobs_created_at ON import_jobs(created_at)
   `);
 
+  // DB import jobs table indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_db_import_jobs_app_id ON db_import_jobs(app_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_db_import_jobs_status ON db_import_jobs(status)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_db_import_jobs_created_at ON db_import_jobs(created_at)
+  `);
+
   // Conversation summaries table indexes
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_conversation_summaries_app_id ON conversation_summaries(app_id)
@@ -797,6 +846,16 @@ function createTriggers(db: Database): void {
     FOR EACH ROW
     BEGIN
       UPDATE import_jobs SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END
+  `);
+
+  // Trigger to automatically update updated_at on db_import_jobs
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS update_db_import_jobs_updated_at
+    AFTER UPDATE ON db_import_jobs
+    FOR EACH ROW
+    BEGIN
+      UPDATE db_import_jobs SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
     END
   `);
 

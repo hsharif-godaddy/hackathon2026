@@ -14,6 +14,7 @@ vi.mock('../ViteConfigModifier.js', () => ({
 
 vi.mock('../../logging/index.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  Logger: { create: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }));
 
 const { addNodePackageExclusions } = await import('../ViteConfigModifier.js');
