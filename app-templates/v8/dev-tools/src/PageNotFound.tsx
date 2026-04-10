@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { injectDevToolsStyles } from './utils/injectDevToolsStyles';
-import { safePostMessage } from './utils/postMessage';
+import { isOriginAllowed, safePostMessage } from './utils/postMessage';
 import MessageOverlay from './components/MessageOverlay';
 import Button from './components/Button';
 
@@ -46,10 +46,26 @@ export default function PageNotFound() {
 
   const isEmbeddedInBuilder = window !== window.top;
   const [isBuilding, setIsBuilding] = React.useState(false);
+  const [isAgentProcessing, setIsAgentProcessing] = React.useState(false);
 
   useEffect(() => {
     injectDevToolsStyles();
   }, []);
+
+  useEffect(() => {
+    if (!isEmbeddedInBuilder) return;
+    function handleMessage(event: MessageEvent) {
+      if (!event.origin || !isOriginAllowed(event)) return;
+      if (event.data?.type === 'AGENT_PROCESSING_STATE') {
+        const processing = Boolean(event.data.isProcessing);
+        setIsAgentProcessing(processing);
+        if (!processing) setIsBuilding(false);
+      }
+    }
+    window.addEventListener('message', handleMessage);
+    safePostMessage(window.parent, { type: 'request-processing-state' });
+    return () => window.removeEventListener('message', handleMessage);
+  }, [isEmbeddedInBuilder]);
 
   const handleBuildPage = () => {
     setIsBuilding(true);
@@ -86,9 +102,9 @@ export default function PageNotFound() {
             variant="secondary"
           />
           <Button
-            text={isBuilding ? "Processing..." : "Build this page"}
+            text={(isBuilding || isAgentProcessing) ? "Processing..." : "Build this page"}
             onClick={handleBuildPage}
-            loading={isBuilding}
+            loading={isBuilding || isAgentProcessing}
           />
         </>
       ) : (

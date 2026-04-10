@@ -24,6 +24,7 @@ import { clearExpiredWidgetStates } from '@/app/develop/components/widgets'
 import { type PendingError,useErrorFixState } from '@/app/develop/hooks/useErrorFixState'
 import { useEvalSnapshotCapture } from '@/app/develop/hooks/useEvalSnapshotCapture'
 import { useInitialization } from '@/app/develop/hooks/useInitialization'
+import { broadcast as broadcastProcessingState, handle as handleProcessingState } from '@/app/develop/utils/iframeProcessingState'
 import { ProtectedRoute } from '@/components/auth'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { Feedback } from '@/components/feedback/Feedback'
@@ -410,6 +411,10 @@ function DevelopPageContent() {
   const isProcessingRef = useRef(isProcessing)
   isProcessingRef.current = isProcessing
 
+  useEffect(() => {
+    broadcastProcessingState(isProcessing)
+  }, [isProcessing])
+
   // Three-state error fix lifecycle: none → pending → unresolved (see useErrorFixState)
   const errorFixSendHandler = useCallback((error: PendingError) => {
     if (error.errorData) {
@@ -702,9 +707,13 @@ function DevelopPageContent() {
           }
           break
         }
+        case 'request-processing-state':
+          handleProcessingState('request-processing-state', iframe, isProcessingRef.current)
+          break
         case 'build-page-request':
           if (isProcessingRef.current) {
             logger.info('develop-page.build-page-request.skipped-processing', { appId })
+            handleProcessingState('build-page-request', iframe, true)
             break
           }
           if (event.data.pathToBuild) {

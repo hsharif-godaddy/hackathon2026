@@ -72,6 +72,7 @@ export enum ViewMode {
 export enum IframeMessageType {
   EDIT_MODE_ENABLED = 'EDIT_MODE_ENABLED',
   EDIT_MODE_DISABLED = 'EDIT_MODE_DISABLED',
+  AGENT_PROCESSING_STATE = 'AGENT_PROCESSING_STATE',
 }
 
 export enum MobileMode {
