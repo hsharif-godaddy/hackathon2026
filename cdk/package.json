@@ -13,11 +13,11 @@
     "verify:lambdas": "npx tsx lambda/build.ts --all && npx tsx lambda/verify.ts"
   },
   "devDependencies": {
-    "@types/node": "^22.18.12",
+    "@types/node": "catalog:",
     "aws-cdk": "^2.1115.0",
     "ts-node": "^10.9.2",
-    "tsx": "^4.21.0",
-    "typescript": "^5.6.3"
+    "tsx": "catalog:",
+    "typescript": "catalog:"
   },
   "dependencies": {
     "@aws-sdk/client-secrets-manager": "^3.1023.0",

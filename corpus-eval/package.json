@@ -25,17 +25,17 @@
   },
   "dependencies": {
     "@airo/agents": "workspace:*",
-    "commander": "^12.0.0",
-    "yaml": "^2.7.1",
-    "zod": "^3.23.8"
+    "commander": "catalog:",
+    "yaml": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@airo/eslint-config": "workspace:*",
-    "@types/node": "^22.18.12",
-    "eslint": "^8.54.0",
-    "tsx": "^4.6.0",
-    "typescript": "5.9.2",
-    "vitest": "3.2.4"
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

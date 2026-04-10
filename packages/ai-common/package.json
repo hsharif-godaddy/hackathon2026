@@ -22,16 +22,16 @@
     "dist"
   ],
   "dependencies": {
-    "@ai-sdk/provider": "^3.0.8"
+    "@ai-sdk/provider": "catalog:"
   },
   "devDependencies": {
     "@airo/eslint-config": "workspace:*",
-    "@types/node": "^22.18.12",
-    "@typescript-eslint/eslint-plugin": "^6.13.0",
-    "@typescript-eslint/parser": "^6.13.0",
-    "eslint": "^8.54.0",
-    "eslint-config-prettier": "^9.0.0",
-    "typescript": "5.9.2",
-    "vitest": "3.2.4"
+    "@types/node": "catalog:",
+    "@typescript-eslint/eslint-plugin": "catalog:",
+    "@typescript-eslint/parser": "catalog:",
+    "eslint": "catalog:",
+    "eslint-config-prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

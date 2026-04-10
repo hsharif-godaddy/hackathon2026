@@ -14,3 +14,79 @@ packages:
   - "ts-bridge"
   - "corpus-eval"
   - "!app-templates/**"
+
+catalog:
+  # Tooling - single source of truth for shared dev dependencies.
+  # Note: eslint, prettier, vitest, and dotenv also exist in pnpm.overrides
+  # (root package.json) to enforce versions for transitive deps pulled by
+  # plugins/configs. typescript, eslint-config-prettier, and @typescript-eslint/*
+  # are removed from overrides - nothing pulls them transitively.
+  typescript: 5.9.2
+  eslint: 8.57.1
+  eslint-config-prettier: 9.1.0
+  prettier: 3.4.2
+  tsx: ^4.21.0
+  vitest: 3.2.4
+  "@vitest/coverage-v8": ^3.2.4
+  "@vitest/ui": ^3.2.4
+  "@typescript-eslint/eslint-plugin": 8.54.0
+  "@typescript-eslint/parser": 8.54.0
+  "@types/node": ^22.18.12
+  "@types/express": ^4.17.21
+  "@types/jsonwebtoken": ^9.0.10
+
+  # AI SDK
+  ai: ^6.0.141
+  "@ai-sdk/openai": ^3.0.49
+  "@ai-sdk/provider": ^3.0.8
+  openai: ^6.0.0
+  ai-tokenizer: ^1.0.6
+
+  # Observability
+  "@langfuse/tracing": ^4.6.1
+  "@opentelemetry/api": ^1.9.0
+  "@godaddy/agent-observability-events": ^1.4.0
+  "@godaddy/agent-otel-sdk": ^1.3.0
+  "@godaddy/goknowb-client": ^1.0.9
+
+  # Auth
+  gd-auth: 1.5.0
+  gd-auth-client: ^2.1.1
+  jsonwebtoken: ^9.0.3
+  jwt-decode: ^4.0.0
+
+  # Shared runtime
+  "@babel/parser": ^7.28.0
+  "@babel/traverse": ^7.28.0
+  "@babel/types": ^7.28.0
+  commander: ^12.1.0
+  diff: ^8.0.4
+  dotenv: 17.2.3
+  execa: ^9.6.1
+  express: ^4.22.1
+  gray-matter: ^4.0.3
+  helmet: ^8.0.0
+  magic-string: 0.30.17
+  multer: ^2.1.1
+  next: ^14.2.35
+  react: ^18.3.1
+  react-dom: ^18.3.1
+  socket.io: ^4.8.3
+  socket.io-client: ^4.8.3
+  supertest: ^7.2.2
+  uuid: ^11.1.0
+  ws: ^8.18.3
+  yaml: ^2.7.1
+  zod: ^4.3.6
+
+  # Shared type definitions
+  "@types/multer": ^2.1.0
+  "@types/react": ^19.1.10
+  "@types/react-dom": ^19.1.7
+  "@types/supertest": ^7.2.0
+  "@types/ws": ^8.18.1
+  "@elastic/elasticsearch": ^8.19.1
+
+  # AWS SDK - not cataloged; pinned versions are sensitive to
+  # Artifactory mirror lag for transitive @smithy/* deps.
+  # Coordinate AWS SDK bumps manually across app/ and ai-lib/.

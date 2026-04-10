@@ -29,14 +29,14 @@
     "release": "cd release-manager && make build && ./dist/release-manager"
   },
   "devDependencies": {
-    "@babel/parser": "^7.26.3",
-    "@babel/traverse": "^7.26.4",
-    "@babel/types": "^7.26.3",
-    "@elastic/elasticsearch": "^8.19.1",
+    "@babel/parser": "catalog:",
+    "@babel/traverse": "catalog:",
+    "@babel/types": "catalog:",
+    "@elastic/elasticsearch": "catalog:",
     "@playwright/test": "^1.59.1",
     "husky": "^8.0.0",
     "lint-staged": "^15.2.0",
-    "prettier": "^3.0.0",
+    "prettier": "catalog:",
     "turbo": "^2.8.17"
   },
   "lint-staged": {
@@ -85,14 +85,10 @@
       }
     },
     "overrides": {
-      "@typescript-eslint/eslint-plugin": "8.54.0",
-      "@typescript-eslint/parser": "8.54.0",
-      "@vitest/ui": "3.2.4",
       "chai": "5.3.1",
       "caniuse-lite": "1.0.30001736",
       "dotenv": "17.2.3",
       "eslint": "8.57.1",
-      "eslint-config-prettier": "9.1.0",
       "glob": ">=10.5.0 <11 || >=11.1.0",
       "hono": "4.11.7",
       "jsdom": "26.1.0",
@@ -101,7 +97,6 @@
       "qs": "6.14.1",
       "react": "19.1.0",
       "react-dom": "19.1.0",
-      "typescript": "5.9.2",
       "vite": "6.4.1",
       "vitest": "3.2.4",
       "@ux/alert": "2500.11.1",
@@ -143,6 +138,6 @@
     ]
   },
   "dependencies": {
-    "dotenv": "^17.2.3"
+    "dotenv": "catalog:"
   }
 }

@@ -25,14 +25,14 @@
   "devDependencies": {
     "@gd-cypress/auth": "^1.0.0",
     "@testla/testla-cli": "^5.11.3",
-    "@types/node": "^22.10.2",
+    "@types/node": "catalog:",
     "@types/node-fetch": "^2.6.13",
     "cypress": "^15.7.1",
     "cypress-multi-reporters": "^2.0.4",
-    "dotenv": "^16.4.5",
+    "dotenv": "catalog:",
     "mocha-junit-reporter": "^2.2.1",
     "mochawesome": "^7.1.4",
-    "typescript": "^5.7.2"
+    "typescript": "catalog:"
   },
   "dependencies": {
     "node-fetch": "^2.7.0"

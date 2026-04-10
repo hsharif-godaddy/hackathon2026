@@ -11,10 +11,10 @@
   },
   "dependencies": {
     "@airo/agents": "workspace:*",
-    "ai": "^6.0.141"
+    "ai": "catalog:"
   },
   "devDependencies": {
-    "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "tsx": "catalog:",
+    "typescript": "catalog:"
   }
 }
