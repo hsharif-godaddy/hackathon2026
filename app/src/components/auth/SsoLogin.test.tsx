@@ -111,11 +111,11 @@ function setRedirectParam(value: string | null) {
   overrideWindowLocation(url.toString());
 }
 
-async function triggerAuth() {
+async function triggerAuth(data?: unknown) {
   await waitFor(function waitForDeck() {
     expect(latestOnAuth).toBeInstanceOf(Function);
   });
-  latestOnAuth?.();
+  latestOnAuth?.(data);
 }
 
 describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
@@ -147,6 +147,7 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
     await triggerAuth();
 
     expect(assignSpy).toHaveBeenCalledWith('https://airo-builder.test/develop/ghe4xo1sbb?siteId=ghe4xo1sbb');
+    expect(mockAuthUIState.closeSsoLogin).not.toHaveBeenCalled();
     assignSpy.mockRestore();
   });
 
@@ -217,6 +218,45 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
       redirect_url: 'https://airo-builder.test'
     });
     expect(mockLogger.warn).toHaveBeenCalledWith('sso-login.pageToLoadParams.invalid-redirect', expect.any(Object));
+  });
+
+  it('prefers store redirectUrl over SSO redirect_url pointing to root', async function storeOverSso() {
+    mockAuthUIState.redirectUrl = '/develop/abc123';
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+
+    renderWithProviders(<SsoLogin />);
+    await triggerAuth({ data: { redirect_url: 'https://airo-builder.test/' } });
+
+    expect(assignSpy).toHaveBeenCalledWith('/develop/abc123');
+    expect(mockAuthUIState.closeSsoLogin).not.toHaveBeenCalled();
+    expect(mockAuthUIState.setRedirectUrl).toHaveBeenCalledWith(null);
+    assignSpy.mockRestore();
+  });
+
+  it('uses SSO redirect_url when no store redirectUrl is set', async function ssoFallback() {
+    mockAuthUIState.redirectUrl = null;
+    overrideWindowLocation('https://airo-builder.test/');
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+
+    renderWithProviders(<SsoLogin />);
+    await triggerAuth({ data: { redirect_url: 'https://airo-builder.test/some-page' } });
+
+    expect(assignSpy).toHaveBeenCalledWith('https://airo-builder.test/some-page');
+    expect(mockAuthUIState.closeSsoLogin).toHaveBeenCalledWith('success');
+    assignSpy.mockRestore();
+  });
+
+  it('reloads current page when no redirect is available', async function reloadFallback() {
+    mockAuthUIState.redirectUrl = null;
+    overrideWindowLocation('https://airo-builder.test/develop/abc123');
+    const reloadSpy = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+
+    renderWithProviders(<SsoLogin />);
+    await triggerAuth();
+
+    expect(reloadSpy).toHaveBeenCalled();
+    expect(mockAuthUIState.closeSsoLogin).toHaveBeenCalledWith('success');
+    reloadSpy.mockRestore();
   });
 
   it('passes only currentOrigin when redirectUrl is null', async function passesOriginOnly() {

@@ -67,10 +67,9 @@ let mockGasketConfig = { ...defaultTestConfig };
 
 vi.mock('@/lib/gasket-config', () => ({
   getGasketConfig: vi.fn(() => Promise.resolve(mockGasketConfig)),
-  getLoginUrl: vi.fn((returnUrl?: string) => {
-    const redirect = returnUrl || mockGasketConfig.redirects.loginRedirectUrl;
-    return Promise.resolve(`${mockGasketConfig.sso.loginUrl}?app=airo-builder&redirect=${encodeURIComponent(redirect)}`);
-  }),
+  getLoginUrl: vi.fn((returnUrl?: string) =>
+    Promise.resolve(`${mockGasketConfig.sso.loginUrl}?app=airo-builder${returnUrl ? `&path=${encodeURIComponent(returnUrl)}` : ''}`)
+  ),
   getLogoutUrl: vi.fn(() => {
     return Promise.resolve(`${mockGasketConfig.sso.logoutUrl}?app=airo-builder&redirect=${encodeURIComponent(mockGasketConfig.redirects.logoutRedirectUrl)}`);
   }),

@@ -234,25 +234,31 @@ export default function SsoLogin() {
       data,
     });
 
+    // Priority 1: Use stored redirect URL (from AuthBoundary) or ?redirect= query param.
+    // Both paths inside applyRedirect() navigate via window.location.assign, so the page
+    // unloads entirely — cleanup (closeSsoLogin, clearRequiresAuth) is unnecessary and the
+    // SSO modal's loading state covers the visual transition until navigation completes.
+    if (applyRedirect()) {
+      return;
+    }
+
+    // Cleanup before fallback redirects (Priorities 2 & 3).
+    // Skipped above because applyRedirect() navigates away entirely.
     setError(null);
     closeSsoLogin('success');
     clearRequiresAuth(); // Allow sites store to refetch
 
-    // Use redirect_url from SSO if provided AND it matches our origin
-    // We pass the current origin to SSO Deck via pageToLoadParams to ensure it constructs
-    // the correct redirect URL. This validation is a safety net (defense in depth).
-    // This triggers a navigation with the new auth cookie, forcing Gasket Auth to do a
-    // fresh server-side check and bypassing the client-side 60-second cache that would
-    // otherwise delay authentication recognition
+    // Priority 2: Use redirect_url from SSO if provided AND it matches our origin
+    // This is a fallback for flows where no store redirect was captured (e.g. direct
+    // SSO modal open without AuthBoundary, or session extension)
     const ssoData = data as { data?: { redirect_url?: string } } | undefined;
     if (ssoData?.data?.redirect_url) {
-      // Validate that SSO's redirect URL matches our current origin (safety net)
       if (isValidRedirectUrl(ssoData.data.redirect_url)) {
         logger.info('sso-login.redirect.sso', {
           message: 'Navigating to SSO-provided redirect URL',
           url: ssoData.data.redirect_url,
         });
-        window.location.href = ssoData.data.redirect_url;
+        window.location.assign(ssoData.data.redirect_url);
         return;
       } else {
         logger.warn('sso-login.redirect.sso-rejected', {
@@ -260,16 +266,10 @@ export default function SsoLogin() {
           ssoRedirectUrl: ssoData.data.redirect_url,
           currentOrigin: window.location.origin,
         });
-        // Fall through to use our own redirect logic
       }
     }
 
-    // Apply redirect if one was captured from store
-    if (applyRedirect()) {
-      return;
-    }
-
-    // No redirect available - reload current page to pick up new auth cookie
+    // Priority 3: No redirect available - reload current page to pick up new auth cookie
     // This ensures Gasket Auth does a fresh check instead of using stale cached state
     logger.info('sso-login.reload', {
       message: 'No redirect available, reloading page to pick up new auth cookie',
