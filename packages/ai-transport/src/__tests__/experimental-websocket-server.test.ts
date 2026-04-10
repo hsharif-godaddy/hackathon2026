@@ -29,6 +29,12 @@ vi.mock('socket.io', () => ({
   Server: vi.fn().mockImplementation(() => mockIO)
 }))
 
+// Mock @signals/otel-sdk to capture createTraceContext calls for testing
+const mockCreateTraceContext = vi.fn().mockReturnValue(Symbol('trace-context'))
+vi.mock('@signals/otel-sdk', () => ({
+  createTraceContext: mockCreateTraceContext
+}))
+
 // Mock agent
 const mockAgent: AgentWrapper = {
   getName: () => 'test-agent',
@@ -2954,6 +2960,79 @@ describe('WebSocketServer - Stop Generation', () => {
     server.close()
   })
 })
+
+describe('BusinessContext Enrichment', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should call createTraceContext with businessContext when appId is present in context.metadata', async () => {
+    const httpServer = {
+      close: vi.fn()
+    } as any
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence()
+    })
+
+    // Send chat message WITH appId in context.metadata
+    const chatMessage = {
+      message: 'test prompt',
+      context: {
+        metadata: {
+          appId: 'test-app-id-123'
+        }
+      }
+    }
+
+    await messageHandler(chatMessage)
+
+    // Verify createTraceContext was called with businessContext
+    expect(mockCreateTraceContext).toHaveBeenCalled()
+    const callArgs = mockCreateTraceContext.mock.calls[0]?.[0]
+
+    expect(callArgs).toBeDefined()
+    expect(callArgs.businessContext).toBeDefined()
+    expect(callArgs.businessContext.schemaId).toBe('urn:shared:user:business-context:/airo-app-builder/v1')
+    expect(callArgs.businessContext.data.appId).toBe('test-app-id-123')
+
+    server.close()
+  })
+
+  it('should call createTraceContext without businessContext when appId is not present', async () => {
+    const httpServer = {
+      close: vi.fn()
+    } as any
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence()
+    })
+
+    // Send chat message WITHOUT appId in context.metadata
+    const chatMessage = {
+      message: 'test prompt',
+      context: {
+        metadata: {}
+      }
+    }
+
+    await messageHandler(chatMessage)
+
+    // Verify createTraceContext was called WITHOUT businessContext
+    expect(mockCreateTraceContext).toHaveBeenCalled()
+    const callArgs = mockCreateTraceContext.mock.calls[0]?.[0]
+
+    expect(callArgs).toBeDefined()
+    expect(callArgs.businessContext).toBeUndefined()
+
+    server.close()
+  })
+})
+
 
 describe('WebSocketServer - analyzeStreamError', () => {
   let server: WebSocketServer

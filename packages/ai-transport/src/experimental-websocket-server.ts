@@ -2029,8 +2029,17 @@ export class WebSocketServer {
 
     // Create trace context early so all events (including conversation_start) share the same trace ID.
     // Handshake headers are passed for extracting common Event Bus metadata like visitor ID, customer ID, etc.
+    // Business context includes app-specific metadata (appId) for Event Bus enrichment
+    const appId = extractAppIdFromMessageContext(data.context)
+    const BUSINESS_CONTEXT_SCHEMA_ID = 'urn:shared:user:business-context:/airo-app-builder/v1';
     const traceCtx = createTraceContext({
       headers: socket.handshake?.headers,
+      ...(appId && {
+        businessContext: {
+          schemaId: BUSINESS_CONTEXT_SCHEMA_ID,
+          data: { appId }
+        }
+      })
     })
 
     return otelContext.with(traceCtx, () =>

@@ -15,23 +15,30 @@ if (observabilityEnabled || langfuseConfigured) {
   const spanProcessors: SpanProcessor[] = [];
 
   if (observabilityEnabled) {
-    spanProcessors.push(createAgentSpanProcessor({
-      clientOptions: {
-        nodeEnv: nodeEnvMap[resolveEnv()],
-        // Use public event bus URLs 
-        // dxEnabled endpoints are not reachable from on-prem Nomad cells.
-        eventBusOptions: { dxEnabled: false },
-        globalContext: {
-          site: {
-            privateLabelId: 1,
-          },
-          context: {
-            userType: 'c1',
+    const apiKey = process.env.EVENTBUS_API_KEY;
+
+    if (!apiKey) {
+      logger.warn('instrumentation.init.missing_api_key', {
+        message: 'EVENTBUS_API_KEY is not set; disabling observability span processor'
+      });
+    } else {
+      spanProcessors.push(createAgentSpanProcessor({
+        clientOptions: {
+          nodeEnv: nodeEnvMap[resolveEnv()],
+
+          eventBusOptions: { dxEnabled: false, apiKey },
+          globalContext: {
+            site: {
+              privateLabelId: 1,
+            },
+            context: {
+              userType: 'c1',
+            },
           },
         },
-      },
-      logger: toPinoLogger(logger),
-    }));
+        logger: toPinoLogger(logger),
+      }));
+    }
   }
 
   if (langfuseConfigured) {
