@@ -267,9 +267,8 @@ describe('SecretsPanel', () => {
       await user.click(editButton);
 
       await waitFor(function waitForEdit() {
-        // Both the new secret input and the edited secret input have the same placeholder
         const valueInputs = screen.getAllByPlaceholderText('builder_settings_secrets_placeholder_key_value');
-        expect(valueInputs).toHaveLength(2);
+        expect(valueInputs).toHaveLength(1);
         expect(screen.getByRole('button', { name: 'builder_common_cancel' })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'builder_common_save API_KEY' })).toBeInTheDocument();
       });
@@ -304,8 +303,9 @@ describe('SecretsPanel', () => {
 
       await user.click(screen.getByRole('button', { name: 'builder_common_edit' }));
 
-      const valueInputs = screen.getAllByPlaceholderText('builder_settings_secrets_placeholder_key_value');
-      await user.type(valueInputs[1], 'new@example.com');
+      const editedValueInput = document.getElementById('secretValue-0');
+      expect(editedValueInput).not.toBeNull();
+      await user.type(editedValueInput as HTMLElement, 'new@example.com');
 
       await user.click(screen.getByRole('button', { name: 'builder_common_save QUOTE_RECIPIENT_EMAIL' }));
 
@@ -351,8 +351,9 @@ describe('SecretsPanel', () => {
       const editButtons = screen.getAllByRole('button', { name: 'builder_common_edit' });
       await user.click(editButtons[0]);
 
-      const valueInputs = screen.getAllByPlaceholderText('builder_settings_secrets_placeholder_key_value');
-      await user.type(valueInputs[1], 'updated-first-secret');
+      const editedValueInput = document.getElementById('secretValue-0');
+      expect(editedValueInput).not.toBeNull();
+      await user.type(editedValueInput as HTMLElement, 'updated-first-secret');
 
       await user.click(screen.getByRole('button', { name: 'builder_common_save FIRST_SECRET' }));
 
@@ -391,8 +392,9 @@ describe('SecretsPanel', () => {
 
       await user.click(screen.getByRole('button', { name: 'builder_common_edit' }));
 
-      const valueInputs = screen.getAllByPlaceholderText('builder_settings_secrets_placeholder_key_value');
-      await user.type(valueInputs[1], 'new@example.com');
+      const editedValueInput = document.getElementById('secretValue-0');
+      expect(editedValueInput).not.toBeNull();
+      await user.type(editedValueInput as HTMLElement, 'new@example.com');
       await user.click(screen.getByRole('button', { name: 'builder_common_save QUOTE_RECIPIENT_EMAIL' }));
 
       await waitFor(function waitForErrorGrowl() {
@@ -409,7 +411,6 @@ describe('SecretsPanel', () => {
         expect(screen.getByText('builder_settings_secrets_tag_unsaved_edit')).toBeInTheDocument();
       });
     });
-
     it('should cancel row edit without saving', async function cancel() {
       vi.mocked(useSecrets).mockReturnValue(createMockQueryResult({
         data: [{ name: 'QUOTE_RECIPIENT_EMAIL', systemManaged: false, syncStatus: 'synced' }],

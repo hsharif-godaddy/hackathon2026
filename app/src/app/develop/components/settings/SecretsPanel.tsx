@@ -336,6 +336,10 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
   };
 
   const handleSubmit = async () => {
+    if (submissionCountRef.current > 0) {
+      return;
+    }
+
     startSubmit();
     try {
       const validNewSecrets = newSecrets.filter(
@@ -606,7 +610,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                           onChange={(value: string) => handleValueChange(secret.name, value)}
                           disabled={!secret.isEditing}
                           size={secret.isEditing ? calculateRows(secret.editedValue) : 1}
-                          placeholder={secret.isEditing ? t('builder_settings_secrets_placeholder_key_value') : '••••••••••••'}
+                          placeholder={secret.isEditing ? '' : '••••••••••••'}
                           visualSize="sm"
                           multiline={true}
                         />
@@ -623,7 +627,8 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                         <>
                           <IconButton
                             icon={<CheckmarkIcon />}
-                            label={`${t('builder_common_save')} ${secret.name}`}
+                            label={t('builder_common_save')}
+                            aria-label={`${t('builder_common_save')} ${secret.name}`}
                             onClick={() => handleSaveSingle(secret.name)}
                             showLabelAlways={true}
                             disabled={secret.systemManaged || !secret.editedValue || !isValueValid(secret.editedValue) || isSubmitting}
