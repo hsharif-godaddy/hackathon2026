@@ -32,10 +32,10 @@ fi
 
 # --- Create worktree ---
 name="wt-$(date +%Y%m%d-%H%M%S)-$$"
-wt_dir="$REPO_ROOT/.claude/worktrees/$name"
+wt_dir="$REPO_ROOT/.worktrees/$name"
 branch="$name"
 
-mkdir -p "$REPO_ROOT/.claude/worktrees"
+mkdir -p "$REPO_ROOT/.worktrees"
 git -C "$REPO_ROOT" worktree add "$wt_dir" -b "$branch" >&2
 
 # Clean up worktree and branch on failure
