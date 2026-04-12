@@ -82,8 +82,8 @@
   },
   "devDependencies": {
     "@airo/eslint-config": "workspace:*",
-    "@aws-sdk/client-sts": "3.1023.0",
-    "@aws-sdk/credential-providers": "3.1023.0",
+    "@aws-sdk/client-sts": "3.1024.0",
+    "@aws-sdk/credential-providers": "3.1024.0",
     "@types/express": "catalog:",
     "@types/node": "catalog:",
     "@typescript-eslint/eslint-plugin": "catalog:",
