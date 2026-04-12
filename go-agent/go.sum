@@ -1,5 +1,5 @@
-github.com/anthropics/anthropic-sdk-go v1.29.0 h1:7h1ZyRflhtxyuFkdwkVuJ1LdFAYdmizvgg0gd1uvOfI=
-github.com/anthropics/anthropic-sdk-go v1.29.0/go.mod h1:dSIO7kSrOI7MA4fE6RRVaw8tyWP7HNQU5/H/KS4cax8=
+github.com/anthropics/anthropic-sdk-go v1.30.0 h1:5kGeZTNWE9UVChnM1xEbpjKEr9zka5C/W+QoZhP9BPo=
+github.com/anthropics/anthropic-sdk-go v1.30.0/go.mod h1:dSIO7kSrOI7MA4fE6RRVaw8tyWP7HNQU5/H/KS4cax8=
 github.com/coder/websocket v1.8.14 h1:9L0p0iKiNOibykf283eHkKUHHrpG7f65OE3BhhO7v9g=
 github.com/coder/websocket v1.8.14/go.mod h1:NX3SzP+inril6yawo5CQXx8+fk145lPDC6pumgx0mVg=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
