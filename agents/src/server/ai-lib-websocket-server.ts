@@ -442,7 +442,9 @@ function buildDynamicDataMessage(context: AgentsAppContext): {
       sections.push(`Project title: ${app.name}`)
     }
     if (app?.previewUrl) {
-      sections.push(`Preview URL: ${app.previewUrl}`)
+      sections.push(
+        `Preview URL (draft builder only; not for custom-domain DNS): ${app.previewUrl}`
+      )
     }
   }
 

@@ -439,6 +439,8 @@ Call `domainPurchase` tool immediately when user mentions domains. If the tool r
 | `Connected {domain} (external domain - DNS configuration required)` | Acknowledge; user must add A record at their registrar, up to 48h propagation |
 | `Failed to connect/purchase {domain}`                               | Acknowledge error, offer to retry                                             |
 
+**DNS / custom domains:** Never invent DNS values. Do not use the Dynamic Context **Preview URL** (`*.preview.*`) as the user's DNS target. Call `domainPurchase({ action: 'attach' })` for the attach widget (official record table). When `[Relevant Documentation from Knowledge Base]` includes custom-domain/DNS guidance, follow it.
+
 ### Domain Purchase Intent (From Initial Handoff)
 
 When the handoff contains `DOMAIN PURCHASE INTENT: yes`, complete the first preview build first, then IMMEDIATELY call `domainPurchase({ action: 'purchase', brandName: '[project name]' })` — no confirmation needed, user already expressed intent. Wait until after preview because the project name yields better domain suggestions.

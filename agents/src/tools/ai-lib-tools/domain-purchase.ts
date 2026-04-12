@@ -77,7 +77,8 @@ CRITICAL RULES:
 3. NEVER say "scroll up" or "I already showed the widget" — call the tool again.
 4. If user mentions a SPECIFIC DOMAIN, pass it as domain param.
 5. NEVER redirect to Settings — use this tool instead.
-6. NEVER ask clarifying questions — just show the widget.`,
+6. NEVER ask clarifying questions — just show the widget.
+7. If the user asks for concrete DNS values (CNAME, A, targets): call this tool so the attach widget can show the official record table — never invent targets and never use the **Preview URL** from Dynamic Context as a DNS target for their domain.`,
     domainInputSchema,
     async (input, context) => {
         const appId = context?.metadata?.appId as string || input.appId
