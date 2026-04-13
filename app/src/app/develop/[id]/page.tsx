@@ -839,12 +839,16 @@ function DevelopPageContent() {
     }
   }, [loadingPhase, searchParams, messages.length, router, setInputValue, scheduleMicrotask])
 
-  // Handle auto-send initial message for new apps (driven by init.ui.shouldAutoSendPrompt)
+  // Handle auto-send initial message for new apps (driven by init.ui.shouldAutoSendPrompt).
+  // Do not gate the whole effect on shouldAutoSendPrompt: after a WebSocket disconnect the init
+  // machine returns to waitingForWebSocket so shouldAutoSendPrompt is false, but pendingAutoSendRef
+  // may still hold the prompt (e.g. React StrictMode remount). The send branch must still run once
+  // the socket is connected again.
   useEffect(() => {
-    if (!init.ui.shouldAutoSendPrompt || !init.ui.autoSendPromptText || !appId) return
+    if (!appId) return
     if (searchParams.get('message')) return // Don't auto-send if there's a URL message
 
-    if (!pendingAutoSendRef.current) {
+    if (init.ui.shouldAutoSendPrompt && init.ui.autoSendPromptText && !pendingAutoSendRef.current) {
       const wasTriggered = autoSendInitialMessage(init.ui.autoSendPromptText, appId)
 
       if (wasTriggered) {

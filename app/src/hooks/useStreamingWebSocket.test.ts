@@ -1,8 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 /**
  * @vitest-environment jsdom
  */
+import { createElement, type ReactNode, StrictMode } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
+
+import {
+  cancelDeferredRegistryDestroy,
+  clearController,
+  getController,
+} from '@/services/websocket/controllerRegistry';
 
 const mockSetWebSocketState = vi.fn()
 const mockSetError = vi.fn()
@@ -263,6 +270,9 @@ vi.mock('../config/dynamic-api', () => ({
 
 describe('useStreamingWebSocket', () => {
   beforeEach(() => {
+    cancelDeferredRegistryDestroy();
+    getController()?.destroy();
+    clearController();
     streamingStoreState = createStreamingStoreState()
     vi.clearAllMocks();
     mockSetIsLoadingAction.mockReset();
@@ -564,6 +574,157 @@ describe('useStreamingWebSocket', () => {
 
       // Should unmount without errors
       expect(() => unmount()).not.toThrow();
+    });
+  });
+
+  describe('StrictMode lifecycle', () => {
+    it('completes hook setup when mount effect runs twice', async () => {
+      vi.useFakeTimers();
+      const { useStreamingWebSocket } = await import('./useStreamingWebSocket');
+      const { useCurrentAppId } = await import('@/stores/useStreamingConversationStore');
+      const registry = await import('@/services/websocket/controllerRegistry');
+      const setControllerSpy = vi.spyOn(registry, 'setController');
+
+      vi.mocked(useCurrentAppId).mockReturnValue('app-strict-lifecycle');
+      streamingStoreState.currentAppId = 'app-strict-lifecycle';
+
+      const { StreamingWebSocketController } = await import('@/services/websocket/StreamingWebSocketController');
+      const connectSpy = vi.spyOn(StreamingWebSocketController.prototype, 'connect');
+
+      const wrapper = function strictWrapper({ children }: { children: ReactNode }) {
+        return createElement(StrictMode, null, children);
+      };
+
+      const { result, unmount } = renderHook(() => useStreamingWebSocket(), { wrapper });
+
+      await act(async () => {
+        vi.runAllTimers();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(result.current.actions.send).toBeInstanceOf(Function);
+      expect(connectSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+      expect(setControllerSpy).toHaveBeenCalledTimes(1);
+
+      connectSpy.mockRestore();
+      setControllerSpy.mockRestore();
+      unmount();
+      await act(async () => {
+        vi.runAllTimers();
+        await Promise.resolve();
+      });
+      vi.useRealTimers();
+    });
+  });
+
+  describe('rapid app id switching', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('establishes transport for final app after three back-to-back id changes', async function threeBackToBack() {
+      vi.useFakeTimers();
+      const { useStreamingWebSocket } = await import('./useStreamingWebSocket');
+      const { useCurrentAppId } = await import('@/stores/useStreamingConversationStore');
+      const { ConnectionManager } = await import('@/services/websocket/ConnectionManager');
+
+      vi.mocked(useCurrentAppId).mockImplementation(() => streamingStoreState.currentAppId);
+
+      const connectSpy = vi.spyOn(ConnectionManager.prototype, 'connect');
+
+      streamingStoreState.currentAppId = 'rapid-chain-a';
+      const { rerender } = renderHook(() => useStreamingWebSocket());
+
+      streamingStoreState.currentAppId = 'rapid-chain-b';
+      rerender();
+
+      streamingStoreState.currentAppId = 'rapid-chain-c';
+      rerender();
+
+      await act(async () => {
+        vi.runAllTimers();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const connectCallsForFinal = connectSpy.mock.calls.filter((c) => c[0] === 'rapid-chain-c');
+      expect(connectCallsForFinal.length).toBeGreaterThanOrEqual(1);
+
+      const socket = getLatestMockSocket();
+      expect(socket).toBeDefined();
+
+      await act(async () => {
+        socket.trigger('connect');
+        socket.connected = true;
+        await Promise.resolve();
+        socket.trigger('authenticateSuccess', { socketId: socket.id });
+        await Promise.resolve();
+        vi.runAllTimers();
+        await Promise.resolve();
+      });
+
+      const reachedConnected = mockSetWebSocketState.mock.calls.some(
+        (call) =>
+          call[0] &&
+          typeof call[0] === 'object' &&
+          (call[0] as { connected?: boolean }).connected === true
+      );
+      expect(reachedConnected).toBe(true);
+
+      connectSpy.mockRestore();
+    });
+
+    it('establishes final app when ids change during ConnectionManager connect delay', async function duringDelay() {
+      vi.useFakeTimers();
+      const { useStreamingWebSocket } = await import('./useStreamingWebSocket');
+      const { useCurrentAppId } = await import('@/stores/useStreamingConversationStore');
+
+      vi.mocked(useCurrentAppId).mockImplementation(() => streamingStoreState.currentAppId);
+
+      streamingStoreState.currentAppId = 'midload-a';
+      const { rerender } = renderHook(() => useStreamingWebSocket());
+
+      await act(() => {
+        vi.advanceTimersByTime(100);
+      });
+
+      streamingStoreState.currentAppId = 'midload-b';
+      rerender();
+
+      await act(() => {
+        vi.advanceTimersByTime(100);
+      });
+
+      streamingStoreState.currentAppId = 'midload-c';
+      rerender();
+
+      await act(async () => {
+        vi.runAllTimers();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const socket = getLatestMockSocket();
+      expect(socket).toBeDefined();
+
+      await act(async () => {
+        socket.trigger('connect');
+        socket.connected = true;
+        await Promise.resolve();
+        socket.trigger('authenticateSuccess', { socketId: socket.id });
+        await Promise.resolve();
+        vi.runAllTimers();
+        await Promise.resolve();
+      });
+
+      const reachedConnected = mockSetWebSocketState.mock.calls.some(
+        (call) =>
+          call[0] &&
+          typeof call[0] === 'object' &&
+          (call[0] as { connected?: boolean }).connected === true
+      );
+      expect(reachedConnected).toBe(true);
     });
   });
 

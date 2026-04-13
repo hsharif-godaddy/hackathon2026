@@ -248,7 +248,10 @@ describe('WebSocket Recovery Integration', () => {
     })
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    const { clearController, getController } = await import('@/services/websocket/controllerRegistry')
+    getController()?.destroy()
+    clearController()
     vi.runOnlyPendingTimers()
     vi.useRealTimers()
     vi.clearAllMocks()
@@ -469,8 +472,17 @@ describe('WebSocket Recovery Integration', () => {
       // Clear previous mock calls
       storeState.setWebSocketState.mockClear()
       storeState.markUpstreamError.mockClear()
-      storeState.finalizeStream.mockClear()
+      mockFinalizeStream.mockClear()
       storeState.clearConnectionRetry.mockClear()
+
+      // Real finalizeStream sets streamingState to idle in Zustand; the mock alone does not.
+      // STREAM_ERROR from escalation is only handled in machine state streaming.receiving, which
+      // this scenario does not enter without a real SEND_MESSAGE — so sync never calls setStreamingState.
+      storeState.finalizeStream = vi.fn(function finalizeOnEscalation(...args: unknown[]) {
+        mockFinalizeStream(...args)
+        storeState.streamingState = 'idle'
+        storeState.activeStream = null
+      })
 
       // Simulate connection drop during streaming
       await act(async () => {
@@ -516,10 +528,10 @@ describe('WebSocket Recovery Integration', () => {
       )
 
       // OBSERVABLE: Verify stream was finalized
-      expect(storeState.finalizeStream).toHaveBeenCalled()
+      expect(mockFinalizeStream).toHaveBeenCalled()
 
-      // OBSERVABLE: Verify streaming state was reset
-      expect(storeState.setStreamingState).toHaveBeenCalledWith('idle')
+      // OBSERVABLE: Verify streaming state was reset (via finalizeStream, not machine sync)
+      expect(storeState.streamingState).toBe('idle')
 
       // OBSERVABLE: Verify retry state was cleared
       expect(storeState.clearConnectionRetry).toHaveBeenCalled()

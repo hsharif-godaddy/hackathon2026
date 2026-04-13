@@ -5,7 +5,7 @@
  * Tests all state transitions, guards, actions, and parallel states.
  */
 
-import { afterEach, beforeEach, describe, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { StateMachineTestHarness } from './StateMachineTestUtils'
 import { MAX_RETRY_COUNT, MAX_RETRY_DELAY_MS, webSocketMachine } from '../webSocketMachine'
@@ -50,6 +50,23 @@ describe('webSocketMachine', () => {
       )
       harness.assertContext((ctx) => ctx.socketId === 'socket-456')
       harness.assertContext((ctx) => ctx.retryCount === 0)
+
+      harness.destroy()
+    })
+
+    it('matches { transport: "connected" } for every transport.connected substate (XState v5 parent match)', function parentConnectedMatch() {
+      const harness = new StateMachineTestHarness(webSocketMachine)
+
+      harness.simulateConnect('app-123')
+      harness.simulateConnectionEstablished('socket-456')
+      harness.actor.send({ type: 'AUTH_SUCCESS', socketId: 'socket-456' })
+      expect(harness.getSnapshot().matches({ transport: 'connected' })).toBe(true)
+
+      harness.simulateRecoveryFlow('recovery-1', 2)
+      expect(harness.getSnapshot().matches({ transport: 'connected' })).toBe(true)
+
+      harness.simulateCatchupStatus('catchup-1')
+      expect(harness.getSnapshot().matches({ transport: 'connected' })).toBe(true)
 
       harness.destroy()
     })

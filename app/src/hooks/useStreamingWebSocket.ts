@@ -24,7 +24,16 @@ import type {
 } from '@/services/websocket/ChatMessageBuilder'
 import { ChatMessageBuilder } from '@/services/websocket/ChatMessageBuilder'
 import { ConnectionManager } from '@/services/websocket/ConnectionManager'
-import { clearController, setController } from '@/services/websocket/controllerRegistry'
+import {
+  cancelDeferredRegistryDestroy,
+  clearController,
+  getController,
+  getControllerAppId,
+  registerStreamingWebSocketHookPresence,
+  scheduleDeferredRegistryDestroy,
+  setController,
+  unregisterStreamingWebSocketHookPresence,
+} from '@/services/websocket/controllerRegistry'
 import {
   bufferStoreUpdate,
   bufferTextChunk,
@@ -159,75 +168,86 @@ export function useStreamingWebSocket() {
     getConversationIdFromCookie,
   }
 
-  // Initialize services once
-  if (!connectionManagerRef.current) {
-    connectionManagerRef.current = new ConnectionManager({
-      getConversationId: (appId: string) => getConversationIdFromCookie(appId),
-    })
-  }
-
-  if (!messageBuilderRef.current) {
-    messageBuilderRef.current = new ChatMessageBuilder()
-  }
-
-  if (!controllerRef.current) {
-    controllerRef.current = new StreamingWebSocketController({
-      connectionManager: connectionManagerRef.current,
-      messageBuilder: messageBuilderRef.current,
-      getActions: () => {
-        const state = useStreamingConversationStore.getState()
-        return {
-          setWebSocketState: state.setWebSocketState,
-          setStreamingState: state.setStreamingState,
-          setIsLoading: state.setIsLoading,
-          startNewStream: state.startNewStream,
-          // Hot-path actions buffered via RAF to avoid React Error #185
-          appendTextSegment: (content: string) => bufferTextChunk(content),
-          addToolStartSegment: (tc: Parameters<typeof state.addToolStartSegment>[0]) =>
-            bufferStoreUpdate(() => state.addToolStartSegment(tc)),
-          addToolCallSegment: (tc: Parameters<typeof state.addToolCallSegment>[0]) =>
-            bufferStoreUpdate(() => state.addToolCallSegment(tc)),
-          addToolResultSegment: (tc: Parameters<typeof state.addToolResultSegment>[0]) =>
-            bufferStoreUpdate(() => state.addToolResultSegment(tc)),
-          markMaxStepsReached: state.markMaxStepsReached,
-          markUpstreamError: state.markUpstreamError,
-          markBudgetExceeded: state.markBudgetExceeded,
-          finalizeStream: state.finalizeStream,
-          flushToolDeltaBufferImmediate: () => {
-            flushToolDeltaBufferImmediate()
-            flushStoreUpdateBufferImmediate()
-          },
-          scheduleToolDeltaFlush,
-        }
-      },
-      getHelpers: () => helpersRef.current,
-      t,
-      toolDeltaBufferRef: { current: getToolDeltaBuffer() },
-      getStoreState: () => {
-        const state = useStreamingConversationStore.getState()
-        return {
-          streamingState: state.streamingState,
-          activeStream: state.activeStream,
-          buildErrorContext: state.buildErrorContext,
-          connectionRetry: state.connectionRetry,
-          // Lifecycle actions (Tier 1)
-          setWebSocketState: state.setWebSocketState,
-          setStreamingState: state.setStreamingState,
-          setIsLoading: state.setIsLoading,
-          markUpstreamError: state.markUpstreamError,
-          finalizeStream: state.finalizeStream,
-          startStream: state.startStream,
-          setError: state.setError,
-          setRecoveryState: state.setRecoveryState,
-          setRetryState: state.setRetryState,
-          // Application-level actions
-          startConnectionRetry: state.startConnectionRetry,
-          clearConnectionRetry: state.clearConnectionRetry,
-          setEscalationTimeout: state.setEscalationTimeout,
-        }
-      },
-    })
-    setController(controllerRef.current, currentAppId ?? null)
+  if (!controllerRef.current && currentAppId) {
+    const registryController = getController()
+    const registryAppId = getControllerAppId()
+    if (registryController && registryAppId === currentAppId) {
+      controllerRef.current = registryController
+    } else {
+      if (registryController) {
+        registryController.destroy()
+        clearController()
+      }
+      let connectionManager = connectionManagerRef.current
+      if (!connectionManager) {
+        connectionManager = new ConnectionManager({
+          getConversationId: (appId: string) => getConversationIdFromCookie(appId),
+        })
+        connectionManagerRef.current = connectionManager
+      }
+      let messageBuilder = messageBuilderRef.current
+      if (!messageBuilder) {
+        messageBuilder = new ChatMessageBuilder()
+        messageBuilderRef.current = messageBuilder
+      }
+      controllerRef.current = new StreamingWebSocketController({
+        connectionManager,
+        messageBuilder,
+        getActions: () => {
+          const state = useStreamingConversationStore.getState()
+          return {
+            setWebSocketState: state.setWebSocketState,
+            setStreamingState: state.setStreamingState,
+            setIsLoading: state.setIsLoading,
+            startNewStream: state.startNewStream,
+            // Hot-path actions buffered via RAF to avoid React Error #185
+            appendTextSegment: (content: string) => bufferTextChunk(content),
+            addToolStartSegment: (tc: Parameters<typeof state.addToolStartSegment>[0]) =>
+              bufferStoreUpdate(() => state.addToolStartSegment(tc)),
+            addToolCallSegment: (tc: Parameters<typeof state.addToolCallSegment>[0]) =>
+              bufferStoreUpdate(() => state.addToolCallSegment(tc)),
+            addToolResultSegment: (tc: Parameters<typeof state.addToolResultSegment>[0]) =>
+              bufferStoreUpdate(() => state.addToolResultSegment(tc)),
+            markMaxStepsReached: state.markMaxStepsReached,
+            markUpstreamError: state.markUpstreamError,
+            markBudgetExceeded: state.markBudgetExceeded,
+            finalizeStream: state.finalizeStream,
+            flushToolDeltaBufferImmediate: () => {
+              flushToolDeltaBufferImmediate()
+              flushStoreUpdateBufferImmediate()
+            },
+            scheduleToolDeltaFlush,
+          }
+        },
+        getHelpers: () => helpersRef.current,
+        t,
+        toolDeltaBufferRef: { current: getToolDeltaBuffer() },
+        getStoreState: () => {
+          const state = useStreamingConversationStore.getState()
+          return {
+            streamingState: state.streamingState,
+            activeStream: state.activeStream,
+            buildErrorContext: state.buildErrorContext,
+            connectionRetry: state.connectionRetry,
+            // Lifecycle actions (Tier 1)
+            setWebSocketState: state.setWebSocketState,
+            setStreamingState: state.setStreamingState,
+            setIsLoading: state.setIsLoading,
+            markUpstreamError: state.markUpstreamError,
+            finalizeStream: state.finalizeStream,
+            startStream: state.startStream,
+            setError: state.setError,
+            setRecoveryState: state.setRecoveryState,
+            setRetryState: state.setRetryState,
+            // Application-level actions
+            startConnectionRetry: state.startConnectionRetry,
+            clearConnectionRetry: state.clearConnectionRetry,
+            setEscalationTimeout: state.setEscalationTimeout,
+          }
+        },
+      })
+      setController(controllerRef.current, currentAppId)
+    }
   }
 
   useEffect(() => {
@@ -257,10 +277,12 @@ export function useStreamingWebSocket() {
   }, [currentAppId])
 
   useEffect(() => {
+    registerStreamingWebSocketHookPresence()
+    cancelDeferredRegistryDestroy()
+
     return () => {
-      controllerRef.current?.destroy()
-      controllerRef.current = null
-      clearController()
+      unregisterStreamingWebSocketHookPresence()
+      scheduleDeferredRegistryDestroy()
     }
   }, [])
 

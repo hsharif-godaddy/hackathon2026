@@ -218,6 +218,11 @@ export class StreamingWebSocketController extends EventEmitter {
    * Connect to WebSocket for the given appId
    */
   async connect(appId: string): Promise<void> {
+    if (this.transportConnectedForApp(appId)) {
+      this.currentAppId = appId
+      return
+    }
+
     this.currentAppId = appId
 
     // Record connect start for quality monitoring (pass appId so slow_connect warnings include it)
@@ -228,6 +233,18 @@ export class StreamingWebSocketController extends EventEmitter {
 
     // Delegate to supervisor
     await this.supervisor.connect(appId)
+  }
+
+  private transportConnectedForApp(appId: string): boolean {
+    const snapshot = this.machine.getSnapshot()
+    if (snapshot.context.appId !== appId) {
+      return false
+    }
+    // Parent match for transport.connected (any substate); see webSocketMachine.test.ts (XState v5.30).
+    if (!snapshot.matches({ transport: 'connected' })) {
+      return false
+    }
+    return Boolean(this.supervisor.getSocket()?.connected)
   }
 
   /**

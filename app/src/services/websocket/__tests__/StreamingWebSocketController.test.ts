@@ -179,6 +179,51 @@ describe('StreamingWebSocketController', () => {
       expect(onFailedSpy).toHaveBeenCalledWith({ error })
     })
 
+    it('does not call ConnectionManager.connect again when already transport-connected for same app', async () => {
+      await controller.connect('app-dup')
+      const callbacks = (mockConnectionManager.connect as any).mock.calls[0][1] as ConnectionCallbacks
+      mockSocket.connected = true
+      callbacks.onSocketReady?.(mockSocket, { isNew: true })
+      callbacks.onConnect?.({ socket: mockSocket, recovered: false })
+      callbacks.onAuthenticated?.({ socket: mockSocket })
+
+      mockConnectionManager.connect.mockClear()
+
+      await controller.connect('app-dup')
+
+      expect(mockConnectionManager.connect).not.toHaveBeenCalled()
+    })
+
+    it('calls ConnectionManager.connect again when same app is still authenticating', async () => {
+      await controller.connect('app-reauth')
+      const firstCallbacks = (mockConnectionManager.connect as any).mock.calls[0][1] as ConnectionCallbacks
+      mockSocket.connected = true
+      firstCallbacks.onSocketReady?.(mockSocket, { isNew: true })
+      firstCallbacks.onConnect?.({ socket: mockSocket, recovered: false })
+
+      mockConnectionManager.connect.mockClear()
+
+      await controller.connect('app-reauth')
+
+      expect(mockConnectionManager.connect).toHaveBeenCalledTimes(1)
+    })
+
+    it('calls ConnectionManager.connect again after disconnect for the same appId', async () => {
+      await controller.connect('app-rejoin')
+      const callbacks = (mockConnectionManager.connect as any).mock.calls[0][1] as ConnectionCallbacks
+      mockSocket.connected = true
+      callbacks.onSocketReady?.(mockSocket, { isNew: true })
+      callbacks.onConnect?.({ socket: mockSocket, recovered: false })
+      callbacks.onAuthenticated?.({ socket: mockSocket })
+
+      mockConnectionManager.connect.mockClear()
+      controller.disconnect()
+
+      await controller.connect('app-rejoin')
+
+      expect(mockConnectionManager.connect).toHaveBeenCalledTimes(1)
+    })
+
     // Lifecycle state updates removed - this test is now redundant with "should emit connection:established event"
     // StoreSyncAdapter handles all lifecycle state, adapter tests verify state updates
   })

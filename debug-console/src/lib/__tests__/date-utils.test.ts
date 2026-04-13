@@ -70,7 +70,12 @@ describe('date-utils', () => {
 
             expect(result).toContain('2026');
             expect(result).toContain('Apr');
-            expect(result).toContain('04');
+            // 15:21Z → calendar rolls to Apr 5 local for UTC+9 and east; stays Apr 4 through UTC+8.
+            if (new Date().getTimezoneOffset() / 60 < -8) {
+                expect(result).toContain('05');
+            } else {
+                expect(result).toContain('04');
+            }
         });
 
         it('should return the original string on invalid input', () => {

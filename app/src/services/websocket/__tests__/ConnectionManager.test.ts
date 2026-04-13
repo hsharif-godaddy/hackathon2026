@@ -222,6 +222,65 @@ describe('ConnectionManager', () => {
     expect(getSharedSocket()).toBeNull()
   })
 
+  it('does not let a superseded initializeSocket finally clear a newer connectPromise', async () => {
+    let releaseFirstConfig: (value: { baseUrl: string }) => void
+    const firstConfigHold = new Promise<{ baseUrl: string }>((resolve) => {
+      releaseFirstConfig = resolve
+    })
+    let releaseNextToken: () => void
+    const nextTokenHold = new Promise<void>((resolve) => {
+      releaseNextToken = resolve
+    })
+    const fetchAgentToken = vi.fn().mockImplementation((siteId: string) => {
+      if (siteId === 'app-next') {
+        return nextTokenHold.then(() => 'token-for-next')
+      }
+      return Promise.resolve('token-default')
+    })
+    const configMock = vi
+      .fn()
+      .mockReturnValueOnce(firstConfigHold)
+      .mockResolvedValue({ baseUrl: 'http://localhost:4000' })
+
+    const { manager, createSocket } = createManager({
+      delayMs: 0,
+      getConfigForSite: configMock,
+      fetchAgentToken,
+    })
+
+    const firstConnect = manager.connect('app-stale', { onSocketReady: vi.fn() })
+
+    await flushPromises()
+
+    manager.disconnect()
+
+    const secondConnect = manager.connect('app-next', { onSocketReady: vi.fn() })
+
+    await flushPromises()
+
+    expect(createSocket).toHaveBeenCalledTimes(1)
+
+    releaseFirstConfig!({ baseUrl: 'http://localhost:4000' })
+
+    await flushPromises()
+
+    void manager.connect('app-intruder', { onSocketReady: vi.fn() })
+
+    await flushPromises()
+
+    expect(createSocket).toHaveBeenCalledTimes(1)
+
+    releaseNextToken!()
+
+    await Promise.all([firstConnect, secondConnect])
+
+    expect(configMock).toHaveBeenCalledWith('app-next')
+
+    await manager.connect('app-third', { onSocketReady: vi.fn() })
+
+    expect(configMock).toHaveBeenCalledWith('app-third')
+  })
+
   it('forwards reconnection lifecycle events', async () => {
     const { manager, sockets } = createManager()
 

@@ -200,6 +200,12 @@ export class ConnectionManager {
   private tokenRefreshCount = 0
   private socketUrl: string | null = null
   private connectPromise: Promise<void> | null = null
+  /**
+   * Incremented when a new delayed init starts and when disconnect() invalidates in-flight work.
+   * initializeSocket's finally only clears connectPromise when its captured generation matches,
+   * so a stale async completion cannot wipe a newer connect's promise.
+   */
+  private connectOpGeneration = 0
   private connectionPhases: ConnectionPhases | null = null
   private connectAttemptStart: number | null = null
   private cachedToken: string | null = null
@@ -298,11 +304,15 @@ export class ConnectionManager {
       return this.connectPromise
     }
 
+    const opGen = ++this.connectOpGeneration
+
     this.connectPromise = new Promise<void>((resolve) => {
       this.initTimer = setTimeout(() => {
         this.initTimer = null
         void this.initializeSocket(appId).finally(() => {
-          this.connectPromise = null
+          if (opGen === this.connectOpGeneration) {
+            this.connectPromise = null
+          }
           resolve()
         })
       }, this.deps.delayMs)
@@ -323,6 +333,7 @@ export class ConnectionManager {
       clearTimeout(this.initTimer)
       this.initTimer = null
     }
+    this.connectOpGeneration++
     this.connectPromise = null
 
     if (this.socket) {
