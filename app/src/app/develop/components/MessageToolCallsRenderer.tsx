@@ -22,7 +22,7 @@ interface MessageToolCallsRendererProps {
  * @returns React element for the tool call
  */
 function renderToolCall(toolCall: ToolCall, index?: number, isActiveStream?: boolean, isLastAssistantMessage?: boolean) {
-  if (toolCall.name === 'suggestedResponse' && !isLastAssistantMessage) {
+  if (toolCall.name === 'suggestedResponse') {
     return null
   }
 

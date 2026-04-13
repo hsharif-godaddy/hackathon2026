@@ -377,7 +377,7 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
       expect(screen.getByRole('button', { name: 'Show 2 actions' })).toBeInTheDocument();
     });
 
-    it('preserves suggestedResponse in blocks when it is the last assistant message', function suggestedResponsePreservedWhenLast() {
+    it('always filters suggestedResponse from blocks (NBAs now render in InputActionsPanel)', function suggestedResponseAlwaysFiltered() {
       renderWithProviders(
         <StreamingIntegratedResponse
           message={{
@@ -414,9 +414,9 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
         />
       );
 
-      // suggestedResponse is NOT filtered — it acts as a boundary, so fileRead is standalone
-      // and fileEdit is standalone (no group of 2+ consecutive eligible tools)
-      expect(screen.queryByRole('button', { name: /actions/ })).not.toBeInTheDocument();
+      // suggestedResponse is always filtered out — fileRead and fileEdit are consecutive
+      // and grouped together (2 eligible tools)
+      expect(screen.getByRole('button', { name: 'Show 2 actions' })).toBeInTheDocument();
     });
 
     it('keeps completed tools grouped while trailing running tool renders standalone', function staysCollapsedWhileStreaming() {

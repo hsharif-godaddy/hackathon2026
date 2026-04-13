@@ -12,6 +12,7 @@ import AssetInline, { AssetMode } from '@/app/develop/components/chat/AssetInlin
 import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/AssetTypes'
 import ChatAttachmentMenu from '@/app/develop/components/chat/ChatAttachmentMenu'
 import type { SendMessageOptions } from '@/app/develop/components/chat/ChatContext'
+import InputActionsPanel from '@/app/develop/components/chat/InputActionsPanel'
 import UsageGauge from '@/app/develop/components/chat/usage-gauge/UsageGauge'
 import { useChatHistoryNavigation } from '@/app/develop/components/chat/useChatHistoryNavigation'
 import type { AiEditContext } from '@/app/develop/components/types'
@@ -327,6 +328,9 @@ export default function ChatInput({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
+          {/* Combined NBA + Plan panel */}
+          <InputActionsPanel />
+
           {/* AI Edit Context - shows screenshot (works for both Edit with AI and Replace Image) */}
           {aiEditContext && aiEditContext.screenshot && (
             <div className="mb-1">

@@ -176,19 +176,19 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
       })
     }
 
-    // Filter suggestedResponse tool blocks before grouping so they don't act as
-    // boundaries that split consecutive action tools into separate groups.
-    // When it IS the last assistant message, suggestedResponse renders normally.
-    const filteredBlocks = isLastAssistantMessage
-      ? blocks
-      : blocks.filter((block) => !(block.type === 'tool' && block.toolCall?.name === 'suggestedResponse'))
+    // Always filter suggestedResponse tool blocks — NBAs are now rendered in the
+    // InputActionsPanel inside the chat input card. Filtering also prevents them from
+    // acting as boundaries that split consecutive action tools into separate groups.
+    const filteredBlocks = blocks.filter(
+      (block) => !(block.type === 'tool' && block.toolCall?.name === 'suggestedResponse')
+    )
 
     // Order matters here: media tools must be collapsed into tool-group blocks first,
     // then compact action rows are grouped. Reversing this would let raw media tool
     // blocks participate in action grouping before their richer media renderer takes over.
     const sortedBlocks = filteredBlocks.sort((a, b) => a.order - b.order)
     return groupConsecutiveActionTools(groupConsecutiveMediaTools(sortedBlocks))
-  }, [hasSegments, isLastAssistantMessage, message.segments])
+  }, [hasSegments, message.segments])
 
   const getFullResponseText = () => {
     return chronologicalContent
