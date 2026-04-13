@@ -4,7 +4,7 @@
  */
 
 import { Server as HTTPServer } from 'node:http'
-import { calculateCostEstimate } from '@airo/ai-lib'
+import { calculateCostEstimate, type AgentWrapper } from '@airo/ai-lib'
 import {
   createWebSocketServer,
   type MessageProvider,
@@ -50,9 +50,14 @@ import { ConversationContextManager } from '../services/ConversationContextManag
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
 import { fileUploadService } from '../services/FileUploadService.js'
 import { logger, log } from '../logging/index.js'
-import { jwtAuthMiddleware, coerceProductType } from './middleware/jwt-auth.js'
+import { jwtAuthMiddleware, buildAgentContext, type AgentContext } from './middleware/jwt-auth.js'
 import { getAgentConfig } from '../services/features.js'
+import { runWithModelOverride } from '@airo/ai-lib'
 import { getModelOverride } from '../utils/model-selection.js'
+import {
+  guardAllowedOverrideModel,
+  resolveOverride,
+} from './model-override.js'
 import { todoListIdFromContextAttachments } from '../utils/todo-list-id-from-context-attachments.js'
 import {
   calculateCacheMetrics,
@@ -2108,8 +2113,46 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           connectionTransaction.setLabel('error_message', error.message)
           connectionTransaction.setLabel('has_error', 'true')
         }
+      },
+
+      // messageMiddleware reads metadata.modelOverride from the raw incoming
+      // data.context (before processContext runs). This field is client-owned
+      // metadata that passes through context processing unchanged. If context
+      // extraction is ever modified to strip or transform client metadata,
+      // this must be updated to resolve from post-extraction context instead.
+      messageMiddleware: async (
+        socketId: string,
+        context: Record<string, unknown> | undefined,
+        execute: () => Promise<void>
+      ) => {
+        const socket = getSocket(socketId)
+        const agentContext = socket?.handshake?.auth?.agentContext
+
+        const effectiveOverride = resolveOverride({
+          modelSelectorEnabled: !!agentContext?.modelSelectorEnabled,
+          perProjectModel: (context as any)?.metadata?.modelOverride as string | undefined,
+          jwtModelOverride: agentContext?.modelOverride as string | undefined,
+        })
+
+        if (effectiveOverride) {
+          const allowed = guardAllowedOverrideModel(
+            effectiveOverride,
+            'messageMiddleware',
+            function logReject(event: string, data: Record<string, unknown>) {
+              logger.warn(event, data)
+            },
+          )
+          if (allowed) {
+            logger.info('model.override.context.active', { effectiveOverride: allowed, socketId })
+            await runWithModelOverride(allowed, execute)
+            return
+          }
+        }
+
+        await execute()
       }
     }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const wsServer = createWebSocketServer(httpServer, wsServerConfig as any)
 
@@ -2456,20 +2499,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       valid: boolean;
       error?: string;
       claims?: any;
-      agentContext?: {
-        siteId: string;
-        canDownload: boolean;
-        canPublish: boolean;
-        canPurchaseDomain: boolean;
-        isE2S: boolean;
-        authType?: TokenAuthType;
-        useTestBudget?: boolean;
-        enableAssessmentAgent?: boolean;
-        enableAssessmentOverride?: boolean;
-        product: ProductType;
-        exp: number;
-        iat: number;
-      };
+      agentContext?: AgentContext;
     }> => {
       logger.info('websocket.auth.jwt_validation.start', {
         message: 'Validating JWT token using public key'
@@ -2485,20 +2515,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         return { valid: false, error: `JWT validation failed: ${validationResult.reason}` };
       }
 
-      const agentContext = {
-        siteId: validationResult.claims?.siteId || '',
-        canDownload: validationResult.claims?.canDownload ?? false,
-        canPublish: validationResult.claims?.canPublish ?? false,
-        canPurchaseDomain: validationResult.claims?.canPurchaseDomain ?? false,
-        isE2S: validationResult.claims?.isE2S ?? false,
-        authType: validationResult.claims?.authType ?? 'basic',
-        useTestBudget: validationResult.claims?.useTestBudget ?? false,
-        enableAssessmentAgent: validationResult.claims?.enableAssessmentAgent ?? false,
-        enableAssessmentOverride: validationResult.claims?.enableAssessmentOverride ?? false,
-        product: coerceProductType(validationResult.claims?.product),
-        exp: validationResult.claims?.exp || 0,
-        iat: validationResult.claims?.iat || 0
-      };
+      const agentContext = buildAgentContext((validationResult.claims ?? {}) as unknown as Record<string, unknown>);
 
       const ttlValidation = jwtAuthMiddleware.validateWebSocketTokenTTL(agentContext);
       if (!ttlValidation.valid) {
@@ -2556,20 +2573,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             return;
           }
 
-          const refreshAgentContext = {
-            siteId: refreshResult.claims?.siteId || '',
-            canDownload: refreshResult.claims?.canDownload ?? false,
-            canPublish: refreshResult.claims?.canPublish ?? false,
-            canPurchaseDomain: refreshResult.claims?.canPurchaseDomain ?? false,
-            isE2S: refreshResult.claims?.isE2S ?? false,
-            authType: refreshResult.claims?.authType ?? 'basic',
-            useTestBudget: refreshResult.claims?.useTestBudget ?? false,
-            enableAssessmentAgent: refreshResult.claims?.enableAssessmentAgent ?? false,
-            enableAssessmentOverride: refreshResult.claims?.enableAssessmentOverride ?? false,
-            product: coerceProductType(refreshResult.claims?.product),
-            exp: refreshResult.claims?.exp || 0,
-            iat: refreshResult.claims?.iat || 0
-          };
+          const refreshAgentContext = buildAgentContext((refreshResult.claims ?? {}) as unknown as Record<string, unknown>);
 
           const refreshTTLValidation = jwtAuthMiddleware.validateWebSocketTokenTTL(refreshAgentContext);
           if (!refreshTTLValidation.valid) {
@@ -2656,12 +2660,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const authType = auth.getType();
 
         if (authType === AuthType.NONE) {
-          // No authentication required (local development)
-          // Create agentContext with same structure as JWT auth for consistency
           const siteId = auth.getSiteId(AuthType.NONE);
           const now = Math.floor(Date.now() / 1000);
           socket.handshake.auth = {
-            ...socket.handshake.auth, // Keep previousSocketId!
+            ...socket.handshake.auth,
             siteId,
             agentContext: {
               siteId,
@@ -2670,6 +2672,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               canPurchaseDomain: true,
               isE2S: false,
               product: 'AiroAppBuilder' as ProductType,
+              modelSelectorEnabled: true,
               exp: now + 3600,
               iat: now
             }
@@ -2679,12 +2682,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         }
 
         if (authType === AuthType.MOCK) {
-          // Mock authentication for testing
-          // Create agentContext with same structure as JWT auth for consistency
           const siteId = auth.getSiteId(AuthType.MOCK);
           const now = Math.floor(Date.now() / 1000);
           socket.handshake.auth = {
-            ...socket.handshake.auth, // Keep previousSocketId!
+            ...socket.handshake.auth,
             siteId,
             agentContext: {
               siteId,
@@ -2693,6 +2694,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               canPurchaseDomain: true,
               isE2S: false,
               product: 'AiroAppBuilder' as ProductType,
+              modelSelectorEnabled: true,
               exp: now + 3600,
               iat: now
             }

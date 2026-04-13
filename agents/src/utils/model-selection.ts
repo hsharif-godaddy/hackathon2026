@@ -11,7 +11,7 @@ import path from 'node:path'
 import type { LanguageModel } from 'ai'
 import { wrapLanguageModel } from 'ai'
 import { devToolsMiddleware } from '@ai-sdk/devtools'
-import { getModel, getModelInfo } from '@airo/ai-lib'
+import { getActiveModelOverride, getModel, getModelInfo } from '@airo/ai-lib'
 
 import { logger } from '../logging/index.js'
 
@@ -166,13 +166,15 @@ export function getModelOverride(): string | null {
 export async function getAgentModel(tier: ModelTier): Promise<LanguageModel> {
   const config = MODEL_MAPPINGS[tier]
 
-  // Check for model override first (for testing new models)
-  const overrideModel = getModelOverride()
+  const envOverride = getModelOverride()
+  const overrideModel = envOverride || getActiveModelOverride()
   if (overrideModel) {
     logger.info('model.override.active', {
       overrideModel,
       tier,
-      reason: 'AI_MODEL_OVERRIDE environment variable set'
+      reason: envOverride
+        ? 'AI_MODEL_OVERRIDE environment variable'
+        : 'runtime context override (Switchboard/per-project)',
     })
 
     try {
@@ -275,14 +277,16 @@ export async function getAgentModel(tier: ModelTier): Promise<LanguageModel> {
 export async function getAgentModelWithName(tier: ModelTier): Promise<{model: any, modelName: string}> {
   const config = MODEL_MAPPINGS[tier]
 
-  // Check for model override first (for testing new models)
-  const overrideModel = getModelOverride()
+  const envOverride = getModelOverride()
+  const overrideModel = envOverride || getActiveModelOverride()
   if (overrideModel) {
     logger.info('model.override.active', {
       overrideModel,
       tier,
       operation: 'with_name',
-      reason: 'AI_MODEL_OVERRIDE environment variable set'
+      reason: envOverride
+        ? 'AI_MODEL_OVERRIDE environment variable'
+        : 'runtime context override (Switchboard/per-project)',
     })
 
     try {

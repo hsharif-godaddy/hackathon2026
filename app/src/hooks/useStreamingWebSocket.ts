@@ -92,6 +92,9 @@ export interface SendMessageOptions {
 
   /** Template ID for custom initial agent prompts */
   templateId?: string
+
+  /** Per-project model override (from model selector in settings) */
+  modelOverride?: string
 }
 
 /**
@@ -365,6 +368,13 @@ export function useStreamingWebSocket() {
       }
 
       try {
+        // Resolve per-project model override: explicit param > store selection > undefined
+        let resolvedModelOverride = options.modelOverride
+        if (resolvedModelOverride === undefined) {
+          const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore')
+          resolvedModelOverride = useDevelopPageStore.getState().selectedModel ?? undefined
+        }
+
         await controller.sendMessage({
           content: options.content,
           visualContext,
@@ -374,6 +384,7 @@ export function useStreamingWebSocket() {
           isActionRequest: options.isActionRequest,
           customContext: options.customContext,
           templateId: options.templateId,
+          modelOverride: resolvedModelOverride,
         })
       } catch (error) {
         // Convert to structured error with context

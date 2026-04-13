@@ -14,7 +14,7 @@ import { clearSiteValidationCache } from '../site-validation-cache';
 /**
  * Mock dependencies using vi.hoisted to avoid hoisting issues
  */
-const { mockJWTService, mockAuthenticateCustomer, mockControlPlaneAdapter, mockCheckSwitchboardFlag } = vi.hoisted(function setup() {
+const { mockJWTService, mockAuthenticateCustomer, mockControlPlaneAdapter, mockCheckSwitchboardFlag, mockCheckSwitchboardValue } = vi.hoisted(function setup() {
   return {
     mockJWTService: {
       getToken: vi.fn(),
@@ -25,7 +25,8 @@ const { mockJWTService, mockAuthenticateCustomer, mockControlPlaneAdapter, mockC
       appExists: vi.fn()
     },
     mockAuthenticateCustomer: vi.fn(),
-    mockCheckSwitchboardFlag: vi.fn()
+    mockCheckSwitchboardFlag: vi.fn(),
+    mockCheckSwitchboardValue: vi.fn()
   };
 });
 
@@ -72,7 +73,8 @@ vi.mock('@/lib/paywall/server-provider', function mockPaywallProviderModule() {
  */
 vi.mock('@/lib/switchboard/server', function mockSwitchboardModule() {
   return {
-    checkSwitchboardFlag: mockCheckSwitchboardFlag
+    checkSwitchboardFlag: mockCheckSwitchboardFlag,
+    checkSwitchboardValue: mockCheckSwitchboardValue
   };
 });
 
@@ -160,6 +162,7 @@ describe('agent-token', function packageTests() {
 
       // Default mock implementations
       mockCheckSwitchboardFlag.mockResolvedValue(false);
+      mockCheckSwitchboardValue.mockResolvedValue(null);
       mockControlPlaneAdapter.appExists.mockResolvedValue(true);
       mockJWTService.getToken.mockResolvedValue({
         token: MOCK_JWT_TOKEN,
@@ -205,7 +208,9 @@ describe('agent-token', function packageTests() {
         subscriptionId: undefined,
         enableAssessmentAgent: false,
         enableAssessmentOverride: false,
-        product: 'AiroAppBuilder'
+        product: 'AiroAppBuilder',
+        modelSelectorEnabled: false,
+        modelOverride: undefined,
       });
     });
 
@@ -350,7 +355,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBe(expiresInSeconds);
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID, customerId: 'customer-789', canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false, budgetServiceEnabled: false, subscriptionId: undefined, enableAssessmentAgent: false, enableAssessmentOverride: false, product: 'AiroAppBuilder' },
+          { siteId: MOCK_SITE_ID, customerId: 'customer-789', canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false, budgetServiceEnabled: false, subscriptionId: undefined, enableAssessmentAgent: false, enableAssessmentOverride: false, product: 'AiroAppBuilder', modelSelectorEnabled: false, modelOverride: undefined },
           expiresInSeconds
         );
         expect(mockJWTService.getToken).not.toHaveBeenCalled();
@@ -429,7 +434,9 @@ describe('agent-token', function packageTests() {
           subscriptionId: undefined,
           enableAssessmentAgent: false,
           enableAssessmentOverride: false,
-          product: 'AiroAppBuilder'
+          product: 'AiroAppBuilder',
+          modelSelectorEnabled: false,
+          modelOverride: undefined,
         });
       });
 
@@ -463,7 +470,9 @@ describe('agent-token', function packageTests() {
           subscriptionId: undefined,
           enableAssessmentAgent: false,
           enableAssessmentOverride: false,
-          product: 'AiroAppBuilder'
+          product: 'AiroAppBuilder',
+          modelSelectorEnabled: false,
+          modelOverride: undefined,
         });
       });
     });
@@ -620,6 +629,79 @@ describe('agent-token', function packageTests() {
             budgetServiceEnabled: false,
             subscriptionId: undefined
           })
+        );
+      });
+    });
+
+    describe('model override flags', function modelOverrideTests() {
+      beforeEach(function authSetup() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+      });
+
+      it('should set modelSelectorEnabled when switchboard returns true', async function modelSelectorEnabled() {
+        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
+          Promise.resolve(flag === 'appbuilder-model-selector')
+        );
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ modelSelectorEnabled: true })
+        );
+      });
+
+      it('should set modelOverride when switchboard returns a model name', async function modelOverrideSet() {
+        mockCheckSwitchboardValue.mockResolvedValue('claude-sonnet-4-5');
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ modelOverride: 'claude-sonnet-4-5' })
+        );
+      });
+
+      it('should omit modelOverride when switchboard returns "default"', async function modelOverrideDefault() {
+        mockCheckSwitchboardValue.mockResolvedValue('default');
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ modelOverride: undefined })
+        );
+      });
+
+      it('should omit modelOverride when checkSwitchboardValue rejects', async function modelOverrideReject() {
+        mockCheckSwitchboardValue.mockRejectedValue(new Error('switchboard down'));
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ modelOverride: undefined })
+        );
+      });
+
+      it('should set modelSelectorEnabled false when checkSwitchboardFlag rejects', async function modelSelectorReject() {
+        mockCheckSwitchboardFlag.mockRejectedValue(new Error('switchboard down'));
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ modelSelectorEnabled: false })
         );
       });
     });

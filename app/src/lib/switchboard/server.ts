@@ -27,40 +27,35 @@ const SERVER_LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'app-builder-budget-service': false, // opt-in: requires running Budget Service
   'appbuilder-assessment-agent': true,
   'appbuilder-assessment-override': true,
+  'appbuilder-model-selector': true,
 };
 
 /**
- * Check if a feature flag is enabled on the server
- *
- * @param featureName - Name of the feature flag (e.g., 'appbuilder-manage-plan')
- * @param jwt - JWT token for authentication
- * @param headers - Request headers to extract root domain
- * @returns Promise resolving to boolean indicating if flag is enabled
+ * Server-side local development string value overrides.
+ * Applied when NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true.
  */
-export async function checkSwitchboardFlag(
+const SERVER_LOCAL_VALUE_OVERRIDES: Record<string, string> = {
+  'appbuilder-model-override': 'default',
+};
+
+/**
+ * Fetch a raw feature flag value from Switchboard.
+ * Shared implementation for both boolean and string flag lookups.
+ */
+async function fetchSwitchboardSetting<T>(
   featureName: string,
   jwt: string,
-  headers: Headers
-): Promise<boolean> {
-  // Local development override
-  if (process.env.NEXT_PUBLIC_ENABLE_LOCAL_FEATURES === 'true') {
-    if (featureName in SERVER_LOCAL_FEATURE_OVERRIDES) {
-      logger.info('switchboard.server.local-override', {
-        featureName,
-        value: SERVER_LOCAL_FEATURE_OVERRIDES[featureName],
-      });
-      return SERVER_LOCAL_FEATURE_OVERRIDES[featureName];
-    }
-  }
-
+  headers: Headers,
+  fallback: T,
+): Promise<T> {
   const rootDomain = getRootDomainFromHeaders(headers);
 
   if (!rootDomain) {
     logger.warn('switchboard.server.no-root-domain', {
       featureName,
-      message: 'Cannot check feature flag: no root domain',
+      message: 'Cannot check feature: no root domain',
     });
-    return false;
+    return fallback;
   }
 
   const url = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/${featureName}?app=${SWITCHBOARD_APP}`;
@@ -78,16 +73,71 @@ export async function checkSwitchboardFlag(
         status: response.status,
         url,
       });
-      return false;
+      return fallback;
     }
 
     const data = await response.json();
-    return data?.setting ?? false;
+    return data?.setting ?? fallback;
   } catch (error) {
     logger.error('switchboard.server.fetch-error', {
       featureName,
       error: error instanceof Error ? error.message : String(error),
     });
-    return false;
+    return fallback;
   }
+}
+
+/**
+ * Fetch a string-valued feature flag from the server
+ *
+ * Unlike checkSwitchboardFlag (boolean), this returns the raw string value
+ * or null if unavailable. Used for flags that carry data (e.g., model names).
+ *
+ * @param featureName - Name of the feature flag
+ * @param jwt - JWT token for authentication
+ * @param headers - Request headers to extract root domain
+ * @returns Promise resolving to string value or null
+ */
+export async function checkSwitchboardValue(
+  featureName: string,
+  jwt: string,
+  headers: Headers
+): Promise<string | null> {
+  if (process.env.NEXT_PUBLIC_ENABLE_LOCAL_FEATURES === 'true') {
+    if (featureName in SERVER_LOCAL_VALUE_OVERRIDES) {
+      logger.info('switchboard.server.local-override', {
+        featureName,
+        value: SERVER_LOCAL_VALUE_OVERRIDES[featureName],
+      });
+      return SERVER_LOCAL_VALUE_OVERRIDES[featureName];
+    }
+  }
+
+  return fetchSwitchboardSetting(featureName, jwt, headers, null);
+}
+
+/**
+ * Check if a feature flag is enabled on the server
+ *
+ * @param featureName - Name of the feature flag (e.g., 'appbuilder-manage-plan')
+ * @param jwt - JWT token for authentication
+ * @param headers - Request headers to extract root domain
+ * @returns Promise resolving to boolean indicating if flag is enabled
+ */
+export async function checkSwitchboardFlag(
+  featureName: string,
+  jwt: string,
+  headers: Headers
+): Promise<boolean> {
+  if (process.env.NEXT_PUBLIC_ENABLE_LOCAL_FEATURES === 'true') {
+    if (featureName in SERVER_LOCAL_FEATURE_OVERRIDES) {
+      logger.info('switchboard.server.local-override', {
+        featureName,
+        value: SERVER_LOCAL_FEATURE_OVERRIDES[featureName],
+      });
+      return SERVER_LOCAL_FEATURE_OVERRIDES[featureName];
+    }
+  }
+
+  return fetchSwitchboardSetting(featureName, jwt, headers, false);
 }

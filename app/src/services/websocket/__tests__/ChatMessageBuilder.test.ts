@@ -529,6 +529,47 @@ describe('ChatMessageBuilder', () => {
     })
   })
 
+  describe('modelOverride', () => {
+    it('includes modelOverride in context.metadata when provided in params', function includesModelOverrideWhenProvided() {
+      const params: BuildMessageParams = {
+        content: 'Test',
+        appId: 'app-123',
+        sessionId: 'session-456',
+        modelOverride: 'gpt-4.1',
+      }
+
+      const result = builder.build(params)
+
+      expect(result.context?.metadata?.modelOverride).toBe('gpt-4.1')
+    })
+
+    it('does not include modelOverride in context.metadata when undefined in params', function omitsModelOverrideWhenUndefined() {
+      const params: BuildMessageParams = {
+        content: 'Test',
+        appId: 'app-123',
+        sessionId: 'session-456',
+        modelOverride: undefined,
+      }
+
+      const result = builder.build(params)
+
+      expect(result.context?.metadata).not.toHaveProperty('modelOverride')
+    })
+
+    it('does not include modelOverride in context.metadata when empty string', function omitsModelOverrideWhenEmptyString() {
+      const params: BuildMessageParams = {
+        content: 'Test',
+        appId: 'app-123',
+        sessionId: 'session-456',
+        modelOverride: '',
+      }
+
+      const result = builder.build(params)
+
+      expect(result.context?.metadata).not.toHaveProperty('modelOverride')
+    })
+  })
+
   describe('edge cases', () => {
     it('should handle empty content', () => {
       const params: BuildMessageParams = {

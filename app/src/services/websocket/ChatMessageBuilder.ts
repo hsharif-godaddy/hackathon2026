@@ -52,6 +52,7 @@ export interface BuildMessageParams<
   isActionRequest?: boolean
   customContext?: CustomContext
   templateId?: string
+  modelOverride?: string
 }
 
 export class ChatMessageBuilder {
@@ -228,6 +229,7 @@ export class ChatMessageBuilder {
         sessionId: params.sessionId,
         userTimezone: ChatMessageBuilder.cachedTimezone,
         ...(params.templateId && { templateId: params.templateId }),
+        ...(params.modelOverride && { modelOverride: params.modelOverride }),
       },
 
       conversation: {

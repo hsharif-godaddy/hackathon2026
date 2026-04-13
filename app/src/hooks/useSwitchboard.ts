@@ -39,6 +39,7 @@ const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-unpublish': true,
   'app-builder-budget-service': false, // opt-in: requires running Budget Service
   'appbuilder-template-selector': true,
+  'appbuilder-model-selector': true,
 };
 
 interface FetchOptions {

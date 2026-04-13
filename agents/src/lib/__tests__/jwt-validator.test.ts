@@ -176,3 +176,57 @@ describe('JWTValidator JWKS cache-busting', () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('JWTValidator model override claims', () => {
+  let validator: JWTValidator;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    validator = new JWTValidator();
+    mockFetch.mockReturnValue(mockFetchResponse([testJwk]));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function createTokenWithClaims(claims: Record<string, unknown>): string {
+    return jwt.sign(
+      { iss: 'airo-app', aud: 'agents-service', siteId: 'bypass-site', ...claims },
+      privateKey,
+      { algorithm: 'RS256', expiresIn: '1h', header: { kid: 'test-kid-1' } }
+    );
+  }
+
+  it('should extract modelOverride claim from signed token', async function extractModelOverride() {
+    const token = createTokenWithClaims({ modelOverride: 'claude-sonnet-4-5' });
+    const result = await validator.validateToken(token);
+
+    expect(result.valid).toBe(true);
+    expect(result.claims?.modelOverride).toBe('claude-sonnet-4-5');
+  });
+
+  it('should extract modelSelectorEnabled claim from signed token', async function extractModelSelectorEnabled() {
+    const token = createTokenWithClaims({ modelSelectorEnabled: true });
+    const result = await validator.validateToken(token);
+
+    expect(result.valid).toBe(true);
+    expect(result.claims?.modelSelectorEnabled).toBe(true);
+  });
+
+  it('should default modelOverride to undefined when missing', async function defaultModelOverride() {
+    const token = createTokenWithClaims({});
+    const result = await validator.validateToken(token);
+
+    expect(result.valid).toBe(true);
+    expect(result.claims?.modelOverride).toBeUndefined();
+  });
+
+  it('should default modelSelectorEnabled to undefined when missing', async function defaultModelSelectorEnabled() {
+    const token = createTokenWithClaims({});
+    const result = await validator.validateToken(token);
+
+    expect(result.valid).toBe(true);
+    expect(result.claims?.modelSelectorEnabled).toBeUndefined();
+  });
+});

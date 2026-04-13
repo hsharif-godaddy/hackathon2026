@@ -23,7 +23,8 @@ import { createDuplicateResponseStopCondition } from './duplicate-detection.js'
 import { supportsEffort } from '../utils/model-normalization.js'
 import { createLogger, serializeError, isBudgetExceededAPIError, BudgetExceededError, retryWithBackoff, type RetryContext } from '@airo/ai-common'
 import { addCacheControlToSystemPrompt, logCachingStats } from '../utils/prompt-caching.js'
-import { llmMetadataContext, type LitellmMetadata } from '../providers/unified-provider.js'
+import { getModel, llmMetadataContext, type LitellmMetadata } from '../providers/unified-provider.js'
+import { getActiveModelOverride } from './model-override-context.js'
 import {
   buildLitellmMetadataFromContext,
   LlmCallSource,
@@ -239,6 +240,7 @@ export class AgentWrapper {
   private currentBaseToolNames: string[] | undefined
   private turnCount: number = 0
   private pipeline: ContextPipeline
+  private overrideAgents = new Map<string, AgentWrapper>()
 
   constructor(config: AgentConfig, skillToolProvider?: GlobalAgentConfig['skillToolProvider']) {
     this.config = config
@@ -717,6 +719,42 @@ export class AgentWrapper {
   }
 
   /**
+   * Create a new AgentWrapper with a different model.
+   * Preserves all other config (tools, system prompt, temperature, etc.).
+   * The new instance gets its own ToolLoopAgent with correct filterProviderOptions,
+   * addCacheControlToSystemPrompt, and prepareCall closure for the new model.
+   */
+  withModel(model: import('ai').LanguageModel, modelName: string): AgentWrapper {
+    return new AgentWrapper(
+      { ...this.config, model, modelName },
+      this.skillToolProvider
+    )
+  }
+
+  private async getOrCreateOverrideAgent(modelName: string): Promise<AgentWrapper | undefined> {
+    const cached = this.overrideAgents.get(modelName)
+    if (cached) return cached
+
+    try {
+      const model = await getModel(modelName)
+      const created = this.withModel(model, modelName)
+      this.overrideAgents.set(modelName, created)
+      logger.info('agent.override.created', {
+        agentName: this.config.name,
+        overrideModel: modelName,
+      })
+      return created
+    } catch (error) {
+      logger.warn('agent.override.failed', {
+        agentName: this.config.name,
+        overrideModel: modelName,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return undefined
+    }
+  }
+
+  /**
    * Generate a response (non-streaming)
    */
   async generate(prompt: string, options?: {
@@ -734,6 +772,15 @@ export class AgentWrapper {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     toolCalls: any
   }> {
+    // env var > AsyncLocalStorage > configured model
+    const override = process.env.AI_MODEL_OVERRIDE || getActiveModelOverride()
+    if (override && override !== this.config.modelName) {
+      const effective = await this.getOrCreateOverrideAgent(override)
+      if (effective) {
+        return effective.generate(prompt, options)
+      }
+    }
+
     const callOptions: AgentCallOptions = {
       basePrompt: prompt
     }
@@ -819,6 +866,15 @@ export class AgentWrapper {
       toolCalls: any
     }>
   }> {
+    // env var > AsyncLocalStorage > configured model
+    const override = process.env.AI_MODEL_OVERRIDE || getActiveModelOverride()
+    if (override && override !== this.config.modelName) {
+      const effective = await this.getOrCreateOverrideAgent(override)
+      if (effective) {
+        return effective.streamGenerate(prompt, options)
+      }
+    }
+
     return this._executeStreamGenerate(prompt, options)
   }
 

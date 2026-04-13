@@ -16,6 +16,7 @@ export interface AgentsAppContext {
     appId?: string
     userId?: string
     sessionId?: string
+    modelOverride?: string
     [key: string]: unknown
   }
 

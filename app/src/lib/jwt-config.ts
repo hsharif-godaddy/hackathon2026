@@ -31,6 +31,8 @@ export interface JWTClaims {
   enableAssessmentAgent?: boolean; // When true, enable assessment agent for prompt classification (switchboard: appbuilder-assessment-agent)
   enableAssessmentOverride?: boolean; // When true, apply budget override from assessment (switchboard: appbuilder-assessment-override). Requires enableAssessmentAgent.
   product?: ProductType; // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
+  modelOverride?: string; // When set, override the default agent model (switchboard: appbuilder-model-override)
+  modelSelectorEnabled?: boolean; // When true, allow per-project model selection from frontend (switchboard: appbuilder-model-selector)
 }
 
 /**

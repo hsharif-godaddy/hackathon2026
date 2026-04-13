@@ -9,6 +9,7 @@ import RefreshIcon from '@ux/icon/refresh'
 import Users3Icon from '@ux/icon/users3';
 import Spinner from '@ux/spinner'
 
+import ModelSelector from '@/app/develop/components/settings/ModelSelector'
 import SettingsSection from '@/app/develop/components/settings/SettingsSection'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useDownloadApp } from '@/hooks/useDownloadApp'
@@ -182,6 +183,7 @@ export default function ProjectPanel() {
             }
           />
         )}
+        <ModelSelector />
       </Box>
     </>
   )

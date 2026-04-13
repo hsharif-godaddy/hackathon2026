@@ -1,6 +1,7 @@
 // Core exports
 export * from './core/types.js'
 export * from './core/agent-factory.js'
+export { runWithModelOverride, getActiveModelOverride } from './core/model-override-context.js'
 export type {
   ContextPipeline,
   TransformContextInput,

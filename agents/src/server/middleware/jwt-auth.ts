@@ -36,12 +36,40 @@ export interface AgentContext {
   enableAssessmentAgent?: boolean; // Enable assessment agent for prompt classification
   enableAssessmentOverride?: boolean; // Apply budget override from assessment (requires enableAssessmentAgent)
   product: ProductType;    // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
+  modelOverride?: string; // Override the default agent model (switchboard: appbuilder-model-override)
+  modelSelectorEnabled?: boolean; // Allow per-project model selection from frontend (switchboard: appbuilder-model-selector)
   exp: number;
   iat: number;
 }
 
 export interface AuthenticatedRequest extends Request {
   agentContext?: AgentContext;
+}
+
+/**
+ * Build an AgentContext from raw JWT claims.
+ * Single source of truth — used by HTTP middleware, WebSocket auth, and token refresh.
+ */
+export function buildAgentContext(raw: Record<string, unknown>): AgentContext {
+  return {
+    siteId: (raw.siteId as string) || '',
+    customerId: raw.customerId as string | undefined,
+    canDownload: (raw.canDownload as boolean) ?? false,
+    canPublish: (raw.canPublish as boolean) ?? false,
+    canPurchaseDomain: (raw.canPurchaseDomain as boolean) ?? false,
+    isE2S: (raw.isE2S as boolean) ?? false,
+    authType: (raw.authType as TokenAuthType) ?? 'basic',
+    useTestBudget: (raw.useTestBudget as boolean) ?? false,
+    budgetServiceEnabled: (raw.budgetServiceEnabled as boolean) ?? false,
+    subscriptionId: raw.subscriptionId as string | undefined,
+    enableAssessmentAgent: (raw.enableAssessmentAgent as boolean) ?? false,
+    enableAssessmentOverride: (raw.enableAssessmentOverride as boolean) ?? false,
+    product: coerceProductType(raw.product as string | undefined),
+    modelOverride: raw.modelOverride as string | undefined,
+    modelSelectorEnabled: (raw.modelSelectorEnabled as boolean) ?? false,
+    exp: (raw.exp as number) || 0,
+    iat: (raw.iat as number) || 0,
+  };
 }
 
 export class JWTAuthMiddleware {
@@ -108,8 +136,6 @@ export class JWTAuthMiddleware {
       const authType = auth.getType();
 
       if (authType === AuthType.NONE) {
-        // No authentication required (local development)
-        // Grant all permissions for local development
         const now = Math.floor(Date.now() / 1000);
         (req as AuthenticatedRequest).agentContext = {
           siteId: auth.getSiteId(AuthType.NONE),
@@ -118,6 +144,7 @@ export class JWTAuthMiddleware {
           canPurchaseDomain: true,
           isE2S: false,
           product: 'AiroAppBuilder',
+          modelSelectorEnabled: true,
           exp: now + 3600,
           iat: now
         };
@@ -126,8 +153,6 @@ export class JWTAuthMiddleware {
       }
 
       if (authType === AuthType.MOCK) {
-        // Mock authentication for testing
-        // Grant all permissions for testing
         const now = Math.floor(Date.now() / 1000);
         (req as AuthenticatedRequest).agentContext = {
           siteId: auth.getSiteId(AuthType.MOCK),
@@ -136,6 +161,7 @@ export class JWTAuthMiddleware {
           canPurchaseDomain: true,
           isE2S: false,
           product: 'AiroAppBuilder',
+          modelSelectorEnabled: true,
           exp: now + 3600,
           iat: now
         };
@@ -186,25 +212,7 @@ export class JWTAuthMiddleware {
           return;
         }
 
-        // Extract context from JWT claims
-        const claims = validationResult.claims;
-        const agentContext: AgentContext = {
-          siteId: claims.siteId,
-          customerId: claims.customerId,
-          canDownload: claims.canDownload ?? false,
-          canPublish: claims.canPublish ?? false,
-          canPurchaseDomain: claims.canPurchaseDomain ?? false,
-          isE2S: claims.isE2S ?? false,
-          authType: claims.authType ?? 'basic',
-          useTestBudget: claims.useTestBudget ?? false,
-          budgetServiceEnabled: claims.budgetServiceEnabled ?? false,
-          subscriptionId: claims.subscriptionId,
-          enableAssessmentAgent: claims.enableAssessmentAgent ?? false,
-          enableAssessmentOverride: claims.enableAssessmentOverride ?? false,
-          product: coerceProductType(claims.product),
-          exp: claims.exp,
-          iat: claims.iat
-        };
+        const agentContext = buildAgentContext(validationResult.claims as unknown as Record<string, unknown>);
 
         if (agentContext.budgetServiceEnabled && !agentContext.subscriptionId) {
           logger.warn('jwt-auth.budget-service.missing-subscription-id', {

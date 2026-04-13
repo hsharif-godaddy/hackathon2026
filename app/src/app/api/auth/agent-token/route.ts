@@ -19,7 +19,7 @@ import { checkPaywallEligibility, PaywallAction } from '@/lib/paywall/core';
 import { ServerPaywallProvider } from '@/lib/paywall/server-provider';
 import { PaywallDenialReason } from '@/lib/paywall/shared';
 import { logger } from '@/lib/request-context';
-import { checkSwitchboardFlag } from '@/lib/switchboard/server';
+import { checkSwitchboardFlag, checkSwitchboardValue } from '@/lib/switchboard/server';
 import { getSiteValidationFromCache, setSiteValidationCache } from './site-validation-cache';
 
 export interface CreateAgentTokenRequest {
@@ -151,6 +151,23 @@ function resolveBooleanFlag(
   return result.value;
 }
 
+function resolveStringFlag(
+  result: PromiseSettledResult<string | null>,
+  logEvent: string,
+  siteId: string,
+  customerId: string
+): string | null {
+  if (result.status === 'rejected') {
+    logger.warn(logEvent, {
+      siteId,
+      customerId,
+      error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+    });
+    return null;
+  }
+  return result.value;
+}
+
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext): Promise<NextResponse> => {
   const routeStart = Date.now();
   const timing: Record<string, number> = {};
@@ -208,11 +225,13 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     let subscriptionId: string | undefined;
     let enableAssessmentAgent = false;
     let enableAssessmentOverride = false;
+    let modelSelectorEnabled = false;
+    let modelOverride: string | undefined;
 
     if (siteValidationCacheHit) {
       // Cache hit: skip site validation, run paywall + switchboard + subscription lookup in parallel
       const parallelStart = Date.now();
-      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult] = await Promise.allSettled([
+      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, modelSelectorResult, modelOverrideResult] = await Promise.allSettled([
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
           body.siteId,
@@ -224,6 +243,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         adapter.getSite(body.siteId, authContext.jwt || '', body.owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER),
         checkSwitchboardFlag('appbuilder-assessment-agent', authContext.jwt || '', request.headers),
         checkSwitchboardFlag('appbuilder-assessment-override', authContext.jwt || '', request.headers),
+        checkSwitchboardFlag('appbuilder-model-selector', authContext.jwt || '', request.headers),
+        checkSwitchboardValue('appbuilder-model-override', authContext.jwt || '', request.headers),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
@@ -234,10 +255,13 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       subscriptionId = resolveSubscriptionId(siteInfoResult, body.siteId, user.customerId);
       enableAssessmentAgent = resolveBooleanFlag(assessmentAgentResult, 'agent-token.assessment-agent-flag-check-failed', body.siteId, user.customerId);
       enableAssessmentOverride = resolveBooleanFlag(assessmentOverrideResult, 'agent-token.assessment-override-flag-check-failed', body.siteId, user.customerId);
+      modelSelectorEnabled = resolveBooleanFlag(modelSelectorResult, 'agent-token.model-selector-flag-check-failed', body.siteId, user.customerId);
+      const rawModelOverride = resolveStringFlag(modelOverrideResult, 'agent-token.model-override-flag-check-failed', body.siteId, user.customerId);
+      modelOverride = rawModelOverride && rawModelOverride !== 'default' ? rawModelOverride : undefined;
     } else {
       // Cache miss: run site validation, paywall, switchboard, and subscription lookup all in parallel
       const parallelStart = Date.now();
-      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult,  budgetServiceResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult] = await Promise.allSettled([
+      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, modelSelectorResult, modelOverrideResult] = await Promise.allSettled([
         validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct),
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
@@ -250,6 +274,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         adapter.getSite(body.siteId, authContext.jwt || '', body.owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER),
         checkSwitchboardFlag('appbuilder-assessment-agent', authContext.jwt || '', request.headers),
         checkSwitchboardFlag('appbuilder-assessment-override', authContext.jwt || '', request.headers),
+        checkSwitchboardFlag('appbuilder-model-selector', authContext.jwt || '', request.headers),
+        checkSwitchboardValue('appbuilder-model-override', authContext.jwt || '', request.headers),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
@@ -269,6 +295,9 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       subscriptionId = resolveSubscriptionId(siteInfoResult, body.siteId, user.customerId);
       enableAssessmentAgent = resolveBooleanFlag(assessmentAgentResult, 'agent-token.assessment-agent-flag-check-failed', body.siteId, user.customerId);
       enableAssessmentOverride = resolveBooleanFlag(assessmentOverrideResult, 'agent-token.assessment-override-flag-check-failed', body.siteId, user.customerId);
+      modelSelectorEnabled = resolveBooleanFlag(modelSelectorResult, 'agent-token.model-selector-flag-check-failed', body.siteId, user.customerId);
+      const rawModelOverride = resolveStringFlag(modelOverrideResult, 'agent-token.model-override-flag-check-failed', body.siteId, user.customerId);
+      modelOverride = rawModelOverride && rawModelOverride !== 'default' ? rawModelOverride : undefined;
     }
 
     // Fail-safe: disable budget service and fall back to legacy grants
@@ -303,7 +332,9 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       subscriptionId,
       enableAssessmentAgent,
       enableAssessmentOverride,
-      product
+      product,
+      modelSelectorEnabled,
+      modelOverride,
     };
 
     const result = body.expiresInSeconds

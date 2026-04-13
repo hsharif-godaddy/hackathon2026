@@ -27,6 +27,8 @@ export interface CreateTokenOptions {
   enableAssessmentAgent?: boolean; // Enable assessment agent for prompt classification
   enableAssessmentOverride?: boolean; // Apply budget override from assessment (requires enableAssessmentAgent)
   product?: ProductType; // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
+  modelOverride?: string; // Override the default agent model (switchboard: appbuilder-model-override)
+  modelSelectorEnabled?: boolean; // Allow per-project model selection from frontend (switchboard: appbuilder-model-selector)
 }
 
 export interface TokenResult {
@@ -179,7 +181,9 @@ export class JWTService {
       subscriptionId: options.subscriptionId,
       enableAssessmentAgent: options.enableAssessmentAgent ?? false,
       enableAssessmentOverride: options.enableAssessmentOverride ?? false,
-      product: options.product || 'AiroAppBuilder'
+      product: options.product || 'AiroAppBuilder',
+      ...(options.modelOverride && { modelOverride: options.modelOverride }),
+      modelSelectorEnabled: options.modelSelectorEnabled ?? false,
     };
 
     const headerBase64 = Buffer.from(JSON.stringify(header)).toString('base64url');
@@ -241,7 +245,7 @@ export class JWTService {
    */
   private getCacheKey(options: CreateTokenOptions): string {
     const authType = options.authType || 'basic';
-    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.product || 'AiroAppBuilder'}`;
+    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.product || 'AiroAppBuilder'}:${options.modelOverride || ''}:${options.modelSelectorEnabled ?? false}`;
   }
 
   /**

@@ -750,4 +750,40 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       });
     });
   });
+
+  describe('#selectedModel', function selectedModelTests() {
+    it('should default to null', function defaultsNull() {
+      expect(useDevelopPageStore.getState().selectedModel).toBeNull();
+    });
+
+    it('should update via setSelectedModel', function setsModel() {
+      act(function select() {
+        useDevelopPageStore.getState().setSelectedModel('claude-sonnet-4-5');
+      });
+
+      expect(useDevelopPageStore.getState().selectedModel).toBe('claude-sonnet-4-5');
+    });
+
+    it('should clear selection via setSelectedModel(null)', function clearsModel() {
+      act(function select() {
+        useDevelopPageStore.getState().setSelectedModel('claude-sonnet-4-5');
+      });
+      act(function clear() {
+        useDevelopPageStore.getState().setSelectedModel(null);
+      });
+
+      expect(useDevelopPageStore.getState().selectedModel).toBeNull();
+    });
+
+    it('should reset selectedModel on resetForNewApp', function resetsOnAppSwitch() {
+      act(function select() {
+        useDevelopPageStore.getState().setSelectedModel('claude-sonnet-4-5');
+      });
+      act(function reset() {
+        useDevelopPageStore.getState().resetForNewApp('new-app-id');
+      });
+
+      expect(useDevelopPageStore.getState().selectedModel).toBeNull();
+    });
+  });
 });

@@ -30,7 +30,9 @@ vi.mock('socket.io', () => ({
 }))
 
 // Mock @signals/otel-sdk to capture createTraceContext calls for testing
-const mockCreateTraceContext = vi.fn().mockReturnValue(Symbol('trace-context'))
+const { mockCreateTraceContext } = vi.hoisted(() => ({
+  mockCreateTraceContext: vi.fn().mockReturnValue(Symbol('trace-context'))
+}))
 vi.mock('@signals/otel-sdk', () => ({
   createTraceContext: mockCreateTraceContext
 }))
@@ -78,7 +80,13 @@ function createDisconnectedConnectionState(
  */
 async function setupServerWithConnection(
   httpServer: HTTPServer,
-  config: { agents: typeof mockAgents; defaultAgent: string; messagePersistence?: any }
+  config: {
+    agents: typeof mockAgents
+    defaultAgent: string
+    messagePersistence?: any
+    messageMiddleware?: any
+  },
+  eventName: 'chat' | 'chat_message' = 'chat'
 ): Promise<{ server: WebSocketServer; messageHandler: (data: any) => Promise<void> }> {
   let connectionHandler: ((socket: any) => Promise<void>) | null = null
 
@@ -101,10 +109,10 @@ async function setupServerWithConnection(
     await connectionHandler(mockSocket)
   }
 
-  // Find the chat handler after async connection setup completes
-  const onCall = mockSocket.on.mock.calls.find((call: any[]) => call[0] === 'chat')
+  // Find the handler for the requested event after async connection setup completes
+  const onCall = mockSocket.on.mock.calls.find((call: any[]) => call[0] === eventName)
   if (!onCall) {
-    throw new Error('Chat handler not found after connection setup')
+    throw new Error(`${eventName} handler not found after connection setup`)
   }
 
   return { server, messageHandler: onCall[1] }
@@ -3234,3 +3242,89 @@ describe('WebSocketServer - extractResponseMetadata', () => {
     vi.useRealTimers()
   })
 })
+
+describe('WebSocketServer - messageMiddleware', function middlewareTests() {
+  let httpServer: HTTPServer
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockSocket.on.mockReset()
+    mockSocket.emit.mockReset()
+    mockSocket.connected = true
+    mockSocket.data = {}
+    mockSocket.handshake = { auth: {} }
+    httpServer = new HTTPServer()
+  })
+
+  it('should invoke messageMiddleware for chat_message events', async function invokesMiddleware() {
+    const middleware = vi.fn(async (_socketId: string, _context: any, _execute: () => Promise<void>) => {
+      // Don't call execute — just verify middleware is invoked with correct args
+    })
+
+    const { messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messageMiddleware: middleware,
+    }, 'chat_message')
+
+    const chatData = { message: 'hello', context: { metadata: { modelOverride: 'claude-sonnet-4-6' } } }
+    await messageHandler(chatData)
+
+    expect(middleware).toHaveBeenCalledOnce()
+    expect(middleware).toHaveBeenCalledWith(
+      'test-socket-id',
+      chatData.context,
+      expect.any(Function)
+    )
+  })
+
+  it('should pass context to messageMiddleware from chat_message data', async function passesContext() {
+    let capturedContext: any = null
+    const middleware = vi.fn(async (_socketId: string, context: any, _execute: () => Promise<void>) => {
+      capturedContext = context
+    })
+
+    const { messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messageMiddleware: middleware,
+    }, 'chat_message')
+
+    const expectedContext = { metadata: { modelOverride: 'haiku' } }
+    await messageHandler({ message: 'test', context: expectedContext })
+
+    expect(capturedContext).toEqual(expectedContext)
+  })
+
+  it('should register both chat and chat_message handlers on connection', async function registersBoth() {
+    mockIO.on.mockImplementation((event: string, handler: any) => {
+      if (event === 'connection') handler(mockSocket)
+    })
+
+    new WebSocketServer(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence(),
+    })
+
+    const registeredEvents = mockSocket.on.mock.calls.map((call: any[]) => call[0])
+    expect(registeredEvents).toContain('chat')
+    expect(registeredEvents).toContain('chat_message')
+  })
+
+  it('should not invoke messageMiddleware for legacy chat events', async function legacyChat() {
+    const middleware = vi.fn()
+    ;(mockAgent.streamGenerate as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('mock'))
+
+    const { messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messageMiddleware: middleware,
+    }, 'chat')
+
+    await messageHandler({ message: 'hello' })
+
+    expect(middleware).not.toHaveBeenCalled()
+  })
+})
+

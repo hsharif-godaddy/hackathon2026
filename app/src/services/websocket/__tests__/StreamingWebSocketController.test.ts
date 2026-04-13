@@ -446,6 +446,29 @@ describe('StreamingWebSocketController', () => {
 
       expect(mockMessageBuilder.build).not.toHaveBeenCalled()
     })
+
+    it('should pass modelOverride through to ChatMessageBuilder', async () => {
+      await controller.sendMessage({
+        content: 'Test',
+        visualContext: null,
+        modelOverride: 'claude-sonnet-4-5',
+      })
+
+      expect(mockMessageBuilder.build).toHaveBeenCalledWith(
+        expect.objectContaining({ modelOverride: 'claude-sonnet-4-5' })
+      )
+    })
+
+    it('should pass undefined modelOverride when not provided', async () => {
+      await controller.sendMessage({
+        content: 'Test',
+        visualContext: null,
+      })
+
+      expect(mockMessageBuilder.build).toHaveBeenCalledWith(
+        expect.objectContaining({ modelOverride: undefined })
+      )
+    })
   })
 
   describe('event emission', () => {

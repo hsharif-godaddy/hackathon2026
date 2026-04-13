@@ -325,6 +325,17 @@ export interface WebSocketConfig {
     | { refreshRequired: false; payload: Record<string, unknown> }
     | { refreshRequired: true }
   >
+
+  /**
+   * Wrap the entire message execution pipeline. Called once per chat_message,
+   * surrounding agent execution, tool calls, summarization, and all post-processing.
+   * Use to establish per-request context (e.g. AsyncLocalStorage for model overrides).
+   */
+  messageMiddleware?: (
+    socketId: string,
+    context: Record<string, unknown> | undefined,
+    execute: () => Promise<void>
+  ) => Promise<void>
 }
 
 /**
@@ -510,7 +521,15 @@ export class WebSocketServer {
       })
 
       socket.on('chat_message', async (data: ChatMessage) => {
-        await this.handleChatMessage(socket, data)
+        if (this.config.messageMiddleware) {
+          await this.config.messageMiddleware(
+            socketId,
+            data.context as Record<string, unknown> | undefined,
+            () => this.handleChatMessage(socket, data)
+          )
+        } else {
+          await this.handleChatMessage(socket, data)
+        }
       })
 
       socket.on('stop_generation', (_data: Record<string, unknown>, ack?: (response: { success?: boolean; error?: string }) => void) => {
@@ -2233,7 +2252,7 @@ export class WebSocketServer {
       while (iterationCount < maxHandoffs) {
         iterationCount++
 
-        // Get current agent
+        // Get current agent, applying model override if configured
         const agent = this.config.agents.get(agentName)
         if (!agent) {
           throw new Error(`Agent '${agentName}' not found`)

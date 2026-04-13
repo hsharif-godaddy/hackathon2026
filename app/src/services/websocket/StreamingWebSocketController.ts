@@ -407,6 +407,7 @@ export class StreamingWebSocketController extends EventEmitter {
     isActionRequest?: boolean
     customContext?: CustomContext
     templateId?: string
+    modelOverride?: string
   }): Promise<void> {
     const { content } = params
 
@@ -480,6 +481,7 @@ export class StreamingWebSocketController extends EventEmitter {
         isActionRequest: params.isActionRequest,
         customContext: params.customContext,
         templateId: params.templateId,
+        modelOverride: params.modelOverride,
       }
 
       const chatMessage = this.deps.messageBuilder.build(messageParams)
