@@ -24,6 +24,7 @@ export function coerceProductType(raw: string | undefined | null): ProductType {
 
 export interface AgentContext {
   siteId: string;          // Custom claim
+  customerId?: string;     // GoDaddy Customer ID
   canDownload: boolean;    // Permission to download app files
   canPublish: boolean;     // Permission to publish app
   canPurchaseDomain?: boolean; // Permission to purchase and attach custom domains
@@ -189,6 +190,7 @@ export class JWTAuthMiddleware {
         const claims = validationResult.claims;
         const agentContext: AgentContext = {
           siteId: claims.siteId,
+          customerId: claims.customerId,
           canDownload: claims.canDownload ?? false,
           canPublish: claims.canPublish ?? false,
           canPurchaseDomain: claims.canPurchaseDomain ?? false,

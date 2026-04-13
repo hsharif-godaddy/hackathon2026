@@ -292,6 +292,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     const product = body.owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER;
     const tokenOptions = {
       siteId: body.siteId,
+      customerId: user.customerId,
       canDownload,
       canPublish,
       canPurchaseDomain,

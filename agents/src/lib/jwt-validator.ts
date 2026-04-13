@@ -107,6 +107,7 @@ export interface JWTClaims {
 
   // Custom claims
   siteId: string;          // Site ID
+  customerId?: string;     // GoDaddy Customer ID
   canDownload?: boolean;   // Permission to download app files
   canPublish?: boolean;    // Permission to publish app
   canPurchaseDomain?: boolean; // Permission to purchase and attach custom domains

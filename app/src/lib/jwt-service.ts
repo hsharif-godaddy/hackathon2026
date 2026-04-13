@@ -15,6 +15,7 @@ import { logger } from './request-context';
 
 export interface CreateTokenOptions {
   siteId: string;
+  customerId?: string;
   canDownload: boolean;
   canPublish: boolean;
   canPurchaseDomain?: boolean;
@@ -167,6 +168,7 @@ export class JWTService {
       exp,
       iat: now,
       siteId: options.siteId,
+      customerId: options.customerId,
       canDownload: options.canDownload,
       canPublish: options.canPublish,
       canPurchaseDomain: options.canPurchaseDomain ?? false,
@@ -239,7 +241,7 @@ export class JWTService {
    */
   private getCacheKey(options: CreateTokenOptions): string {
     const authType = options.authType || 'basic';
-    return `${options.siteId}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.product || 'AiroAppBuilder'}`;
+    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.product || 'AiroAppBuilder'}`;
   }
 
   /**

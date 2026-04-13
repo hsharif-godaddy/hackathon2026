@@ -194,6 +194,7 @@ describe('agent-token', function packageTests() {
       expect(mockControlPlaneAdapter.appExists).toHaveBeenCalledWith(MOCK_SITE_ID, 'user-jwt-token', 'AiroAppBuilder');
       expect(mockJWTService.getToken).toHaveBeenCalledWith({
         siteId: MOCK_SITE_ID,
+        customerId: 'customer-789',
         canDownload: false,
         canPublish: false,
         canPurchaseDomain: false,
@@ -349,7 +350,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBe(expiresInSeconds);
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false, budgetServiceEnabled: false, subscriptionId: undefined, enableAssessmentAgent: false, enableAssessmentOverride: false, product: 'AiroAppBuilder' },
+          { siteId: MOCK_SITE_ID, customerId: 'customer-789', canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false, budgetServiceEnabled: false, subscriptionId: undefined, enableAssessmentAgent: false, enableAssessmentOverride: false, product: 'AiroAppBuilder' },
           expiresInSeconds
         );
         expect(mockJWTService.getToken).not.toHaveBeenCalled();
@@ -417,6 +418,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(mockJWTService.getToken).toHaveBeenCalledWith({
           siteId: MOCK_SITE_ID,
+          customerId: 'customer-789',
           canDownload: false,
           canPublish: false,
           canPurchaseDomain: false,
@@ -450,6 +452,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(mockJWTService.getToken).toHaveBeenCalledWith({
           siteId: MOCK_SITE_ID,
+          customerId: 'customer-789',
           canDownload: false,
           canPublish: false,
           canPurchaseDomain: false,
