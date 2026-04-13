@@ -370,6 +370,139 @@ describe("MediaManifestService - importSlot", () => {
     expect(result.slotPath).toBe("pages/home/dog-photo");
   });
 
+  it("maps layouts/parts/Header.tsx to layouts/header", async () => {
+    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.rename).mockResolvedValue(undefined);
+
+    const result = await service.importSlot("test-app", {
+      imageUrl: "https://example.com/logo.png",
+      imageAlt: "Site logo",
+      devContext: {
+        fileName: "src/layouts/parts/Header.tsx",
+        componentName: "Header",
+        lineNumber: 8,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.slotPath).toBe("layouts/header/site-logo");
+  });
+
+  it("maps layouts/parts/Footer.tsx to layouts/footer", async () => {
+    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.rename).mockResolvedValue(undefined);
+
+    const result = await service.importSlot("test-app", {
+      imageUrl: "https://example.com/logo.png",
+      imageAlt: "Footer logo",
+      devContext: {
+        fileName: "src/layouts/parts/Footer.tsx",
+        componentName: "Footer",
+        lineNumber: 12,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.slotPath).toBe("layouts/footer/footer-logo");
+  });
+
+  it("maps layouts/Website.tsx to layouts/website", async () => {
+    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.rename).mockResolvedValue(undefined);
+
+    const result = await service.importSlot("test-app", {
+      imageUrl: "https://example.com/bg.jpg",
+      imageAlt: "Background",
+      devContext: {
+        fileName: "src/layouts/Website.tsx",
+        componentName: "Website",
+        lineNumber: 5,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.slotPath).toBe("layouts/website/background");
+  });
+
+  it("maps components/HeroSection.tsx to components/herosection", async () => {
+    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.rename).mockResolvedValue(undefined);
+
+    const result = await service.importSlot("test-app", {
+      imageUrl: "https://example.com/hero.jpg",
+      imageAlt: "Hero banner",
+      devContext: {
+        fileName: "src/components/HeroSection.tsx",
+        componentName: "HeroSection",
+        lineNumber: 15,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.slotPath).toBe("components/herosection/hero-banner");
+  });
+
+  it("maps components/ui/Card.tsx to components/card", async () => {
+    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.rename).mockResolvedValue(undefined);
+
+    const result = await service.importSlot("test-app", {
+      imageUrl: "https://example.com/placeholder.jpg",
+      imageAlt: "Card image",
+      devContext: {
+        fileName: "src/components/ui/Card.tsx",
+        componentName: "Card",
+        lineNumber: 20,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.slotPath).toBe("components/card/card-image");
+  });
+
+  it("maps sections/AboutSection.tsx to sections/aboutsection", async () => {
+    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.rename).mockResolvedValue(undefined);
+
+    const result = await service.importSlot("test-app", {
+      imageUrl: "https://example.com/team.jpg",
+      imageAlt: "Team photo",
+      devContext: {
+        fileName: "src/sections/AboutSection.tsx",
+        componentName: "AboutSection",
+        lineNumber: 25,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.slotPath).toBe("sections/aboutsection/team-photo");
+  });
+
+  it("falls back to pages/unknown for unrecognized directories", async () => {
+    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.rename).mockResolvedValue(undefined);
+
+    const result = await service.importSlot("test-app", {
+      imageUrl: "https://example.com/photo.jpg",
+      imageAlt: "Photo",
+      devContext: {
+        fileName: "src/utils/helpers.tsx",
+        componentName: "unknown",
+        lineNumber: 5,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.slotPath).toBe("pages/unknown/photo");
+  });
+
   describe("AST source update", () => {
     it("calls astImageEditor.replaceImage with slot URL as newImageUrl", async () => {
       vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));

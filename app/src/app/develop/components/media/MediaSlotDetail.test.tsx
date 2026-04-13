@@ -9,7 +9,7 @@ import { screen, waitFor } from '@testing-library/react';
 import { useMediaManifest } from '@/hooks/useMediaManifest';
 import { useMediaSlot } from '@/hooks/useMediaSlot';
 import { renderWithProviders } from '@/tests/test-utils';
-import { MediaSlotDetail } from './MediaSlotDetail';
+import { formatSlotName, MediaSlotDetail } from './MediaSlotDetail';
 
 const mockAppId = 'app-123';
 const mockSlotName = 'hero/image';
@@ -229,5 +229,35 @@ describe('MediaSlotDetail', () => {
       expect(screen.getByText('Upload file not found')).toBeInTheDocument();
       expect(mockLogImpressionEvent).toHaveBeenCalledWith('uploads.mediaslot.failed');
     });
+  });
+});
+
+describe('formatSlotName', () => {
+  it('should strip pages prefix and capitalize segments', () => {
+    expect(formatSlotName('pages/home/hero')).toBe('Home Hero');
+  });
+
+  it('should strip components prefix', () => {
+    expect(formatSlotName('components/footer/logo')).toBe('Footer Logo');
+  });
+
+  it('should strip sections prefix', () => {
+    expect(formatSlotName('sections/about/background')).toBe('About Background');
+  });
+
+  it('should strip layouts prefix', () => {
+    expect(formatSlotName('layouts/header/site-logo')).toBe('Header Site logo');
+  });
+
+  it('should replace hyphens with spaces', () => {
+    expect(formatSlotName('pages/home/hero-image')).toBe('Home Hero image');
+  });
+
+  it('should handle paths without known prefixes', () => {
+    expect(formatSlotName('logo/primary')).toBe('Logo Primary');
+  });
+
+  it('should handle single segment', () => {
+    expect(formatSlotName('hero')).toBe('Hero');
   });
 });

@@ -30,7 +30,7 @@ export function formatSlotName(slot: string): string {
     .split('/')
     .filter(
       (part) =>
-        part && part !== 'pages' && part !== 'components' && part !== 'sections'
+        part && part !== 'pages' && part !== 'components' && part !== 'sections' && part !== 'layouts'
     )
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1).replace(/-/g, ' '))
     .join(' ')
@@ -416,13 +416,17 @@ export function MediaSlotDetail({
                   className="w-full flex items-center py-2 justify-between hover:cursor-pointer"
                 >
                   <span className="font-medium flex items-center">
-                    <FormattedMessage
-                      id="builder_mediaslot_options_getty"
-                      defaultMessage="Options by <getty></getty>"
-                      values={{
-                        getty: () => <span style={{ marginLeft: '4px' }}><GettyImagesLogo className="inline-block h-2 w-auto" /></span>
-                      }}
-                    />
+                    {slot.mediaType === 'logo' ? (
+                      t('builder_mediaslot_options_generated')
+                    ) : (
+                      <FormattedMessage
+                        id="builder_mediaslot_options_getty"
+                        defaultMessage="Options by <getty></getty>"
+                        values={{
+                          getty: () => <span style={{ marginLeft: '4px' }}><GettyImagesLogo className="inline-block h-2 w-auto" /></span>
+                        }}
+                      />
+                    )}
                   </span>
                   {alternativesOpen ? (
                     <ChevronUpIcon className="size-2.5" />

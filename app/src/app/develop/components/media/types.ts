@@ -7,7 +7,7 @@
  */
 export interface MediaSlot {
   /** Type of media in this slot */
-  mediaType: 'image' | 'video' | 'generated';
+  mediaType: 'image' | 'video' | 'generated' | 'logo';
   /** Current URL being used */
   currentUrl: string;
   /** For videos: thumbnail image URL for preview display */
@@ -45,6 +45,9 @@ export interface MediaSlot {
   alternativeGettyIds?: string[];
   /** Maps upload URLs to original chat upload filenames for dedup display */
   uploadSources?: Record<string, string>;
+  /** Maps transparent URL → solid-background URL for logo variants.
+   *  Only populated when mediaType === 'logo'. */
+  solidUrlMap?: Record<string, string>;
 }
 
 /**

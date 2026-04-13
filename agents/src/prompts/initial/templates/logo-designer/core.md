@@ -114,11 +114,16 @@ Load the `media` skill, then call `media__generate_logo` with these parameters:
 - brandAudience: \"[Target audience description]\"
 - count: 4
 
-Wait for the user to select their preferred logo before proceeding to Phase 2.
+The tool auto-saves logo 1 as the default. Place the slot URL in source code immediately — do not wait for user interaction:
+- Use `/airo-assets/images/logo/primary` in all `<img>` src attributes where the logo should appear
+- For dark backgrounds, use `/airo-assets/images/logo/primary?variant=solid`
+The user can swap logos later via the widget; the slot URL stays the same.
+
+Then proceed directly to Phase 2.
 
 === PHASE 2: SHOWCASE WEBSITE ===
 
-After the logo is selected, build a single-page showcase website that presents the logo in real-world contexts. This is a BRAND SHOWCASE — not a business website. Think of it like a brand guidelines page or portfolio presentation.
+Build a single-page showcase website that presents the logo in real-world contexts. This is a BRAND SHOWCASE — not a business website. Think of it like a brand guidelines page or portfolio presentation.
 
 PROJECT DETAILS:
 - Brand name: [name]
@@ -180,7 +185,7 @@ Phase 4 — Finalize:
 - Mark items as COMPLETE via todoList
 - Show completed site via suggestedResponse
 
-CRITICAL: Use the actual logo URLs from Phase 1 (the `transparentUrl` for most placements, `solidUrl` for dark backgrounds, `mockupUrl` for the hero if it looks good). Do NOT use placeholder images for the logo.
+CRITICAL: `media__generate_logo` automatically saves all generated logos to the media slot system. Use the returned `slotUrl` (`/airo-assets/images/logo/primary`) in all components. For solid backgrounds, use `/airo-assets/images/logo/primary?variant=solid`. The user can swap between logos via the widget. Do NOT embed CDN URLs directly in source code or use `str_replace_based_edit_tool` to create image files.
 
 SUGGESTED RESPONSES:
 After showing the completed site, use suggestedResponse:

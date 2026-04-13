@@ -2,7 +2,7 @@
  * Media Skill Tools
  *
  * Provides tools for:
- * - Logo generation (direct REST API call via LogoService with S2S auth)
+ * - Logo generation (auto-saves all variants into a media slot)
  * - Image generation (direct REST API call via ImagegenService with S2S auth)
  * - Image editing (direct REST API call via ImagegenService with S2S auth)
  * - Video generation (direct REST API call via ImagegenService with S2S auth, internal polling)
@@ -14,8 +14,22 @@ import { grantSessionManager } from '@airo/ai-grants';
 import type { SkillToolDefinition } from '@airo/ai-skills';
 import { logoService } from '../../../services/LogoService.js';
 import { imagegenService } from '../../../services/ImagegenService.js';
+import { mediaManifestService } from '../../../services/MediaManifestService.js';
 import { appRepository } from '../../../database/repositories/index.js';
 import { appPlanTool } from '../../../tools/app-plan-tool.js';
+
+// Keep in sync with editImageTool.config.validate which uses isAllowedLogoUrl() to block logo editing
+const LOGO_PATH_PATTERN = /genai-assistant\/.*logo/i;
+const ALLOWED_LOGO_HOSTNAMES = new Set(['isteam.wsimg.com', 'isteam.test-wsimg.com', 'isteam.dev-wsimg.com']);
+
+function isAllowedLogoUrl(urlString: string): boolean {
+  try {
+    const { hostname, pathname } = new URL(urlString);
+    return ALLOWED_LOGO_HOSTNAMES.has(hostname) && LOGO_PATH_PATTERN.test(pathname);
+  } catch {
+    return false;
+  }
+}
 
 // ============================================================================
 // Input Schemas
@@ -170,10 +184,12 @@ type GenerateVideoInput = z.infer<typeof GenerateVideoInputSchema>;
 /**
  * Logo generation tool using direct REST API call via LogoService
  */
+const LOGO_SLOT_PATH = 'logo/primary';
+
 export const generateLogoTool: SkillToolDefinition = {
   name: 'generate_logo',
   description:
-    'Generate professional logos for a business using AI. Returns URLs to generated logo images. Requires business name and description.',
+    'Generate professional logos for a business using AI. Automatically saves all generated logos into the media slot system. Returns slot URL for use in source code, plus logo preview data. Requires business name and description.',
 
   parameters: GenerateLogoInputSchema,
 
@@ -197,13 +213,11 @@ export const generateLogoTool: SkillToolDefinition = {
     }
 
     // 2. Get budget user from grant system (required — logo generation must be billed)
-    // getCurrentUserId returns: grant's llmBudgetUserId > fallback customerId > undefined (all exhausted)
     const budgetUserId = socketId
       ? grantSessionManager.getCurrentUserId(socketId, customerId)
       : customerId;
 
     if (!budgetUserId) {
-      // undefined means all grants exhausted — fail-closed, same as normal LLM calls
       logger.error('skills.media.tools.generate_logo.grants_exhausted', { appId, socketId, budgetUserId });
       return { error: 'All credit grants have been exhausted. Please purchase additional credits to generate logos.' };
     }
@@ -239,25 +253,80 @@ export const generateLogoTool: SkillToolDefinition = {
     logger.info('skills.media.tools.generate_logo.success', {
       brandName: input.brandName,
       sessionId: result.sessionId,
+      logoCount: result.logos.length,
     });
 
-    // 5. Return structured result for the frontend
+    // 5. Auto-save all logos into a single media slot (merge with existing)
+    const slotUrl = `/airo-assets/images/${LOGO_SLOT_PATH}`;
+    if (appId && result.logos.length > 0) {
+      try {
+        const transparentUrls = result.logos.map(l => l.transparentUrl);
+        const solidUrlMap: Record<string, string> = {};
+        for (const logo of result.logos) {
+          solidUrlMap[logo.transparentUrl] = logo.solidUrl;
+        }
+
+        // Merge with existing slot so regeneration appends instead of overwriting
+        const existingResult = await mediaManifestService.getSlot(appId, LOGO_SLOT_PATH);
+        const existingSlot = existingResult.success ? existingResult.slot : undefined;
+        let mergedAlternatives = transparentUrls.slice(1);
+        let mergedSolidUrlMap = { ...solidUrlMap };
+
+        if (existingSlot) {
+          const existingUrls = [existingSlot.currentUrl, ...(existingSlot.alternatives || [])];
+          const newUrlSet = new Set(transparentUrls);
+          const oldUrls = existingUrls.filter(url => !newUrlSet.has(url));
+          mergedAlternatives = [...mergedAlternatives, ...oldUrls];
+          mergedSolidUrlMap = { ...(existingSlot.solidUrlMap || {}), ...solidUrlMap };
+        }
+
+        const now = new Date().toISOString();
+
+        await mediaManifestService.setSlot(appId, LOGO_SLOT_PATH, {
+          mediaType: 'logo',
+          currentUrl: transparentUrls[0]!,
+          searchQuery: input.brandName,
+          alternatives: mergedAlternatives,
+          solidUrlMap: mergedSolidUrlMap,
+          userModified: false,
+          createdAt: now,
+          lastUpdated: now,
+        });
+
+        logger.info('skills.media.tools.generate_logo.slot_saved', {
+          appId,
+          slotPath: LOGO_SLOT_PATH,
+          logoCount: result.logos.length,
+          totalLogos: mergedAlternatives.length + 1,
+        });
+      } catch (e) {
+        logger.warn('skills.media.tools.generate_logo.slot_save_failed', {
+          appId,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
+    // 6. Return structured result for the frontend + instructions for the agent
     return {
+      text: `Generated ${result.logos.length} logos and saved to slot "${LOGO_SLOT_PATH}". ` +
+        `Logo 1 is set as the default. Slot URL: ${slotUrl} (transparent), ${slotUrl}?variant=solid (solid background). ` +
+        `If the user's request includes placement (e.g. "add logo to header"), place the slot URL in source code now. ` +
+        `Otherwise, present the logos and let the user decide — they can swap via the widget and ask you to place it later.`,
       structuredContent: {
         logos: result.logos,
         sessionId: result.sessionId,
+        slotUrl,
+        slotPath: LOGO_SLOT_PATH,
       },
     };
   },
 
   config: {
-    timeout: 120000, // 2 minutes for logo generation
+    timeout: 120000,
   },
 };
 
-/**
- * Image generation tool using direct REST API call via ImagegenService
- */
 export const generateImageTool: SkillToolDefinition = {
   name: 'generate_image',
   description:
@@ -332,7 +401,7 @@ export const editImageTool: SkillToolDefinition = {
   description:
     'Edit an existing image using AI-powered modifications. Provide the image URL and describe the changes you want to make. ' +
     'This tool renders edits onto an opaque canvas, so it cannot produce transparent backgrounds. ' +
-    'For logos, use media__generate_logo instead - it returns both transparent and solid variants.',
+    'Do NOT use this for logos — generate_logo already provides transparent and solid variants.',
 
   parameters: EditImageInputSchema,
 
@@ -388,6 +457,14 @@ export const editImageTool: SkillToolDefinition = {
 
   config: {
     timeout: 120000, // 2 minutes for image editing
+    validate(input: EditImageInput) {
+      if (isAllowedLogoUrl(input.imageUrl)) {
+        throw new Error(
+          'This URL is a generated logo. The edit_image tool cannot reliably modify logos — it renders onto an opaque canvas (losing transparency) and produces poor results for text and layout changes. ' +
+          'Instead, regenerate with media__generate_logo using adjusted parameters (style, styleDescription, brandColors, symbol) to get the desired design. Logos are automatically saved to the slot system.'
+        );
+      }
+    },
   },
 };
 

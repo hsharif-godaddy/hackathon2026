@@ -29,6 +29,7 @@ type ImageSize struct {
 // ImageSlot represents a single image slot entry in the manifest.
 type ImageSlot struct {
 	CurrentURL          string     `json:"currentUrl"`
+	MediaType           string     `json:"mediaType"`
 	SearchQuery         string     `json:"searchQuery"`
 	RequestedSize       *ImageSize `json:"requestedSize,omitempty"`
 	Alternatives        []string   `json:"alternatives,omitempty"`
@@ -37,6 +38,9 @@ type ImageSlot struct {
 	LastUpdated         string     `json:"lastUpdated"`
 	GettyID             string     `json:"gettyId,omitempty"`
 	AlternativeGettyIDs []string   `json:"alternativeGettyIds,omitempty"`
+	// SolidURLMap maps transparent URL → solid-background URL for logo variants.
+	// Only populated when MediaType == "logo".
+	SolidURLMap map[string]string `json:"solidUrlMap,omitempty"`
 }
 
 // ImageManifest maps slot paths to their slot data.
@@ -197,7 +201,7 @@ func (h *mediaSlotHandler) serveSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine which URL to serve: ?src= parameter or currentUrl
+	// Determine which URL to serve: ?src= parameter, ?variant= parameter, or currentUrl
 	targetURL := slot.CurrentURL
 	if srcParam := r.URL.Query().Get("src"); srcParam != "" {
 		// Validate that the requested URL is associated with this slot
@@ -209,6 +213,11 @@ func (h *mediaSlotHandler) serveSlot(w http.ResponseWriter, r *http.Request) {
 		}
 		targetURL = srcParam
 		slog.Debug(h.mediaType+"_slot.using_src_param", "slot", slotPath, "src", srcParam)
+	} else if variant := r.URL.Query().Get("variant"); variant == "solid" && slot.MediaType == "logo" && len(slot.SolidURLMap) > 0 {
+		if solidURL, ok := slot.SolidURLMap[slot.CurrentURL]; ok {
+			targetURL = solidURL
+		}
+		slog.Debug(h.mediaType+"_slot.using_variant", "slot", slotPath, "variant", variant)
 	}
 
 	// Handle local uploads (serve directly instead of redirecting)
@@ -351,6 +360,9 @@ var allowedImageRedirectHosts = map[string]struct{}{
 	"oaidalleapiprodscus.blob.core.windows.net": {}, // DALL-E
 	"blobby.wsimg.com":                          {}, // GoDaddy image hosting
 	"img1.wsimg.com":                            {}, // isteam CDN (Getty licensed images)
+	"isteam.wsimg.com":                          {}, // Logo CDN (genai-assistant logos)
+	"isteam.test-wsimg.com":                     {}, // Logo CDN (test environment)
+	"isteam.dev-wsimg.com":                      {}, // Logo CDN (dev environment)
 }
 
 // ImageSlotHandler handles requests for image slots.

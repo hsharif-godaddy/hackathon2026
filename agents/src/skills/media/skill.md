@@ -27,13 +27,16 @@ Each tool in this skill is backed by a dedicated service. Understanding which se
 
 ## Choosing the Right Tool
 
-| User request                               | Tool to use             |
-| ------------------------------------------ | ----------------------- |
-| "Generate a logo for my business"          | `media__generate_logo`  |
-| "Create an AI image of a sunset"           | `media__generate_image` |
-| "Design a custom banner"                   | `media__generate_image` |
-| "Add a vintage filter to this photo"       | `media__edit_image`     |
-| "Generate a short video clip"              | `media__generate_video` |
+| User request                         | Tool to use                                                  |
+| ------------------------------------ | ------------------------------------------------------------ |
+| "Generate a logo for my business"    | `media__generate_logo` (auto-saves to slot)                  |
+| "Use logo 1" (after generation)      | Click in LogoGridWidget swaps slot automatically             |
+| "Make the logo transparent"          | Use the slot URL with no `?variant` (default is transparent) |
+| "Use the solid version"              | Use the slot URL with `?variant=solid`                       |
+| "Create an AI image of a sunset"     | `media__generate_image`                                      |
+| "Design a custom banner"             | `media__generate_image`                                      |
+| "Add a vintage filter to this photo" | `media__edit_image`                                          |
+| "Generate a short video clip"        | `media__generate_video`                                      |
 
 ---
 
@@ -41,7 +44,7 @@ Each tool in this skill is backed by a dedicated service. Understanding which se
 
 ### Logo Generation
 
-**`media__generate_logo`** — Generate professional logos for a business
+**`media__generate_logo`** — Generate professional logos and auto-save to the media slot system
 
 **Backed by:** `LogoService` → `logo-agent` API (`POST /api/logo`)
 
@@ -86,12 +89,26 @@ media__generate_logo({
         solidUrl: string,        // PNG with solid background
         mockupUrl: string        // Mockup showing logo in context
       }
-    ]
+    ],
+    slotUrl: string,   // e.g. "/airo-assets/images/logo/primary"
+    slotPath: string   // e.g. "logo/primary"
   }
 }
 ```
 
-Use `transparentUrl` or `solidUrl` for placing the logo. The `mockupUrl` shows the logo in a realistic context.
+All generated logos are **automatically saved** to the media slot system. The first logo's `transparentUrl` is set as the slot's `currentUrl`, with all other logos as alternatives. A `solidUrlMap` (keyed by transparent URL) stores each logo's solid-background variant, so swapping alternatives preserves the correct solid mapping.
+
+**Placement is context-dependent:** See the "Logo Placement Flow" section below for when to place immediately vs. wait for the user.
+
+**Use the `slotUrl` in source code:**
+
+```tsx
+// Transparent variant (default):
+<img src="/airo-assets/images/logo/primary" alt="Sunrise Cafe logo" />
+
+// Solid variant (for dark backgrounds):
+<img src="/airo-assets/images/logo/primary?variant=solid" alt="Sunrise Cafe logo" />
+```
 
 > **Note:** Do NOT use `media__generate_image` for logos. `LogoService` produces structured multi-variant output (transparent/solid/mockup) that the generic image generation API cannot provide.
 
@@ -165,7 +182,7 @@ media__edit_image({
 }
 ```
 
-> **Transparency limitation:** This tool renders onto an opaque canvas, so edited images always have a solid background. For logos that need transparency, regenerate with `media__generate_logo` - it returns a `transparentUrl` variant that's already transparent with no post-processing needed.
+> **Transparency limitation:** This tool renders onto an opaque canvas, so edited images always have a solid background. For logos that need transparency, regenerate with `media__generate_logo` — it returns a `transparentUrl` variant that's already transparent with no post-processing needed.
 
 ---
 
@@ -208,14 +225,11 @@ media__generate_video({
 
 ## Using Generated Media
 
-URLs returned by media generation tools are persistent and already optimized for delivery. Use them directly in source code - there's no need to download or re-host them.
-
-### Using Generated Media URLs Directly
+Logo outputs are **automatically saved to the media slot system**. Always use the returned `slotUrl` (`/airo-assets/images/logo/primary`) in source code. For other generated media (images, videos), use the returned URLs directly — they're persistent and optimized for delivery.
 
 ```tsx
-// Logo - use transparentUrl for most placements, solidUrl for dark backgrounds
-// (transparentUrl and solidUrl are returned by media__generate_logo)
-<img src={transparentUrl} alt="Company Logo" />
+// Logo — use slot URL from tool output
+<img src="/airo-assets/images/logo/primary" alt="Company Logo" />
 
 // Generated image (url returned by media__generate_image)
 <img src={generatedImageUrl} alt="Description" />
@@ -223,6 +237,26 @@ URLs returned by media generation tools are persistent and already optimized for
 // Video (url returned by media__generate_video)
 <video src={videoUrl} controls />
 ```
+
+---
+
+## Logo Placement Flow
+
+After `media__generate_logo` returns, **decide based on context** whether to place the logo in source code immediately or wait for the user:
+
+**Place immediately** when the conversation context implies placement — e.g., the user asked to "build a site with a logo," or you're following a handoff that includes building pages. In this case:
+
+1. Place `/airo-assets/images/logo/primary` in the appropriate `<img>` `src` attributes (header, navbar, footer)
+2. For placements on dark backgrounds, use `/airo-assets/images/logo/primary?variant=solid`
+3. Continue with remaining build tasks
+
+**Present and wait** when the user only asked to generate a logo — e.g., "generate a logo for my brand." Show the logos and let the user browse them. When the user later asks to place it (e.g., "add the logo to the header"), use the pre-generated slot URL.
+
+The user can swap between logos at any time using the Save button in the LogoGridWidget. The slot URL in source code stays the same — only the underlying image changes.
+
+### Logo Changes
+
+When a user wants to change their logo, **regenerate with `media__generate_logo`** using adjusted parameters (different `style`, `styleDescription`, `symbol`, or `brandColors`) — do not use `media__edit_image` on logos. The user can also swap between previously generated logos via the LogoGridWidget or Image Manager.
 
 ---
 
@@ -244,17 +278,21 @@ Only ask the user for information that isn't already available in the context. T
 
 - Use known brand data from context before asking the user
 - Generate multiple variations (3-4) so user has choices
-- Use `transparentUrl` for most placements, `solidUrl` for dark backgrounds
-- Use the returned URLs directly in components - they're persistent and optimized for delivery
+- Use the returned `slotUrl` in all source code placements
+- For transparent background: use slot URL as-is (default is `transparentUrl`)
+- For solid background: append `?variant=solid` to the slot URL
+- Decide which variant to use based on placement context (background color, container style)
 - Fill in aesthetic and style details to get the best results
-- **Regenerate with adjusted parameters when the user wants a logo change** - different `style`, `styleDescription`, `symbol`, or `brandColors` let you iterate on the design without manual editing
+- **Regenerate with adjusted parameters when the user wants a logo change** — different `style`, `styleDescription`, `symbol`, or `brandColors`
 
 **DON'T:**
 
 - Ask for brand name/description if already known from context
-- Use `media__generate_image` for logos - it won't return transparent/solid/mockup variants
-- Use `media__edit_image` on logos - the opaque canvas loses transparency, and spatial edits (repositioning text, resizing elements) are unreliable
-- Download logo URLs locally or process images with terminal commands - the URLs are already permanent and optimized
+- Use `media__generate_image` for logos — it won't return transparent/solid/mockup variants
+- Use `str_replace_based_edit_tool` to create image files — it only writes UTF-8 text and will produce a broken file
+- Use `media__edit_image` on logo URLs — the opaque canvas loses transparency, and spatial edits are unreliable. Regenerate with `media__generate_logo` instead
+- Use `curl` or `terminalCommand` to download logos to `public/assets/` — files there are gitignored and lost on redeployment
+- Assume business details beyond what's in context — ask the user for unknowns
 
 <example>
 User: "Move the company name to the right of the icon and make the background transparent"
@@ -266,22 +304,24 @@ media__generate_logo({
   brandName: 'Sunrise Cafe',
   brandDescription: 'A cozy neighborhood coffee shop',
   style: 'handmade',
-  styleDescription: 'Icon on the left, company name "Sunrise Cafe" on the right in a horizontal side-by-side layout.',
+  styleDescription:
+    'Icon on the left, company name "Sunrise Cafe" on the right in a horizontal side-by-side layout.',
   symbol: 'coffee cup with sunrise',
   brandColors: 'warm earth tones with orange accents',
   count: 4,
 });
-// Then use transparentUrl from the result - it's already transparent
+// Use the returned slotUrl in source code — transparentUrl is the default
 ```
 
 Wrong approach - editing the existing logo:
 
 ```typescript
 // These will fail or produce poor results:
-media__edit_image({ prompt: 'Move text to the right...', imageUrl: '...' })  // Can't reposition reliably, loses transparency
-terminalCommand({ command: 'curl ... -o public/assets/logo.png' })  // Bypasses delivery infrastructure
-terminalCommand({ command: 'npm install jimp' })  // Don't install packages to process images
+media__edit_image({ prompt: 'Move text to the right...', imageUrl: '...' }); // Can't reposition reliably, loses transparency
+terminalCommand({ command: 'curl ... -o public/assets/logo.png' }); // Bypasses delivery infrastructure
+terminalCommand({ command: 'npm install jimp' }); // Don't install packages to process images
 ```
+
 </example>
 
 ### Video Generation (ImagegenService)
@@ -317,9 +357,9 @@ If generation fails:
 
 ## Summary
 
-| Tool                    | Service           | Use Case                                                             |
-| ----------------------- | ----------------- | -------------------------------------------------------------------- |
-| `media__generate_logo`  | `LogoService`     | Professional logos — multi-variant output (transparent/solid/mockup) |
-| `media__generate_image` | `ImagegenService` | Custom AI-generated images                                           |
-| `media__edit_image`     | `ImagegenService` | Modify existing images with AI                                       |
-| `media__generate_video` | `ImagegenService` | AI-generated video (async, up to 5min)                               |
+| Tool                    | Service           | Use Case                                                        |
+| ----------------------- | ----------------- | --------------------------------------------------------------- |
+| `media__generate_logo`  | `LogoService`     | Professional logos — auto-saved with transparent/solid variants |
+| `media__generate_image` | `ImagegenService` | Custom AI-generated images                                      |
+| `media__edit_image`     | `ImagegenService` | Modify existing images with AI (NOT for logos)                  |
+| `media__generate_video` | `ImagegenService` | AI-generated video (async, up to 5min)                          |

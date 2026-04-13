@@ -327,17 +327,8 @@ When a user uploads an image and wants to use it for a specific location:
 - **Keep HTML `src`/`poster` attributes pointing to slot URLs** (e.g., `/airo-assets/images/{slot}`). Never change them to external/resolved URLs - let the slot system handle URL resolution.
 - **NEVER embed Getty/external URLs directly in code** - always use the slot URL pattern (`/airo-assets/images/{slot}`)
 - **When changing an image, UPDATE the existing slot via the `media` tool** - don't create a new slot or change HTML to a different URL
-- **Logo URLs are an exception to the slot rule** - URLs returned by `media__generate_logo` are permanent and don't go through the media slot system. Use them directly in code. The slot URL pattern (`/airo-assets/images/{slot}`, `/airo-assets/videos/{slot}`) applies to stock media from the `media` search tool.
-
-### Logo Changes
-
-URLs returned by `media__generate_logo` are persistent and already optimized for delivery - use them directly in source code.
-
-When a user wants to change their logo (different layout, colors, transparency, or style), **regenerate with `media__generate_logo`** using adjusted parameters. The `styleDescription` field accepts natural language layout instructions like "icon on the left, name on the right, horizontal layout." The tool returns both `transparentUrl` and `solidUrl` variants, so transparency requires no post-processing.
-
-`media__edit_image` renders onto an opaque canvas and cannot preserve or create transparency, so it's not suitable for logo modifications. Similarly, downloading and processing logo files locally (with curl, jimp, sharp, or Node.js scripts) bypasses the delivery infrastructure and produces lower-quality results than regeneration.
-
-If the user requests a change that `styleDescription` can't fully express, explain this and offer to regenerate with the closest description. Regeneration produces up to 4 variations, giving the user options to choose from.
+- **Logos are auto-saved to slots** — use the returned `slotUrl` in source code. See the `media` skill for the full logo placement flow.
+- **NEVER use `media__edit_image` on logo URLs** — regenerate with `media__generate_logo` instead.
 
 ### Animations
 

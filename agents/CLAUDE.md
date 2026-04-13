@@ -81,7 +81,7 @@ Base class: `src/base/base-agent.ts` — `getSystemPrompt()` → `loadSystemProm
 
 44 tools registered in `src/tools/ai-lib-tools/index.ts` (`allAILibTools`). Each agent declares which tools it uses in its config.
 
-**Stop-after tools:** `handoff`, `suggestedResponse`, `media__generate_logo`, `requestSecrets` — agent pauses for user confirmation. Other agents may define different stop-after sets.
+**Stop-after tools:** `handoff`, `suggestedResponse`, `requestSecrets` — agent pauses for user confirmation. Other agents may define different stop-after sets.
 
 **Skills system:** Dynamic tool loading via `skillToolManager`. Skills activated/deactivated per conversation. Tool names prefixed `skill__{skillName}`. 17 skills in `src/skills/`: authentication, blog, blog-writing, commerce, commerce-one-time-payment, commerce-storefront, database, email, google-maps, i18n, media, online-appointments, seo, social-platform, social-posts, social-publish, stripe. See `src/skills/README.md`.
 

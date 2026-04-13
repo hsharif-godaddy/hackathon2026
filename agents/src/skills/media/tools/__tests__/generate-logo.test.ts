@@ -59,11 +59,21 @@ vi.mock('../../../../services/ImagegenService.js', () => ({
   },
 }));
 
+// Mock MediaManifestService
+const mockSetSlot = vi.fn();
+const mockGetSlot = vi.fn();
+vi.mock('../../../../services/MediaManifestService.js', () => ({
+  mediaManifestService: {
+    importSlot: vi.fn(),
+    setSlot: mockSetSlot,
+    getSlot: mockGetSlot,
+  },
+}));
+
 describe('generateLogoTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Default mock returns
     mockFindById.mockReturnValue({
       id: 'app-123',
       customerId: 'cust-abc',
@@ -83,15 +93,22 @@ describe('generateLogoTool', () => {
       logos: [
         {
           id: 'logo-1',
-          transparentUrl: 'https://cdn/t.png',
-          solidUrl: 'https://cdn/s.png',
-          mockupUrl: 'https://cdn/m.png',
+          transparentUrl: 'https://cdn/t1.png',
+          solidUrl: 'https://cdn/s1.png',
+          mockupUrl: 'https://cdn/m1.png',
+        },
+        {
+          id: 'logo-2',
+          transparentUrl: 'https://cdn/t2.png',
+          solidUrl: 'https://cdn/s2.png',
+          mockupUrl: 'https://cdn/m2.png',
         },
       ],
     });
 
-    // Default: no app plan enrichment
     mockAppPlanExecute.mockResolvedValue({ success: false });
+    mockSetSlot.mockResolvedValue({ success: true });
+    mockGetSlot.mockResolvedValue({ success: false });
   });
 
   it('should call logoService with brand inputs and context headers', async () => {
@@ -122,7 +139,7 @@ describe('generateLogoTool', () => {
     );
   });
 
-  it('should return structured content on success', async () => {
+  it('should return structured content with slotUrl on success', async () => {
     const { generateLogoTool } = await import('../index.js');
 
     const context = {
@@ -140,18 +157,70 @@ describe('generateLogoTool', () => {
     );
 
     expect(result).toEqual({
+      text: expect.stringContaining('Generated 2 logos and saved to slot'),
       structuredContent: {
         sessionId: 'sess-123',
-        logos: [
-          {
-            id: 'logo-1',
-            transparentUrl: 'https://cdn/t.png',
-            solidUrl: 'https://cdn/s.png',
-            mockupUrl: 'https://cdn/m.png',
-          },
-        ],
+        logos: expect.arrayContaining([
+          expect.objectContaining({ id: 'logo-1' }),
+          expect.objectContaining({ id: 'logo-2' }),
+        ]),
+        slotUrl: '/airo-assets/images/logo/primary',
+        slotPath: 'logo/primary',
       },
     });
+  });
+
+  it('should auto-save logos into the media slot system', async () => {
+    const { generateLogoTool } = await import('../index.js');
+
+    const context = {
+      socketId: 'socket-1',
+      metadata: { appId: 'app-123' },
+    };
+
+    await generateLogoTool.execute(
+      {
+        brandName: 'My Brand',
+        brandDescription: 'A cool brand',
+        style: 'flat',
+      },
+      context
+    );
+
+    expect(mockSetSlot).toHaveBeenCalledWith('app-123', 'logo/primary', expect.objectContaining({
+      mediaType: 'logo',
+      currentUrl: 'https://cdn/t1.png',
+      searchQuery: 'My Brand',
+      alternatives: ['https://cdn/t2.png'],
+      solidUrlMap: {
+        'https://cdn/t1.png': 'https://cdn/s1.png',
+        'https://cdn/t2.png': 'https://cdn/s2.png',
+      },
+      userModified: false,
+    }));
+  });
+
+  it('should still return result when slot save fails', async () => {
+    mockSetSlot.mockRejectedValue(new Error('Manifest write failed'));
+
+    const { generateLogoTool } = await import('../index.js');
+
+    const context = {
+      socketId: 'socket-1',
+      metadata: { appId: 'app-123' },
+    };
+
+    const result = await generateLogoTool.execute(
+      {
+        brandName: 'My Brand',
+        brandDescription: 'A cool brand',
+        style: 'flat',
+      },
+      context
+    );
+
+    expect(result).toHaveProperty('structuredContent.logos');
+    expect(result).toHaveProperty('structuredContent.slotUrl');
   });
 
   it('should return error when customerId not found', async () => {
@@ -177,6 +246,7 @@ describe('generateLogoTool', () => {
       error: 'Unable to determine customer identity for logo generation',
     });
     expect(mockGenerateLogos).not.toHaveBeenCalled();
+    expect(mockSetSlot).not.toHaveBeenCalled();
   });
 
   it('should propagate error when logoService throws', async () => {
@@ -228,6 +298,48 @@ describe('generateLogoTool', () => {
     expect(mockGenerateLogos).not.toHaveBeenCalled();
   });
 
+  it('should merge with existing logos when slot already exists', async () => {
+    mockGetSlot.mockResolvedValue({
+      success: true,
+      slot: {
+        mediaType: 'logo',
+        currentUrl: 'https://cdn/old-t1.png',
+        alternatives: ['https://cdn/old-t2.png'],
+        solidUrlMap: {
+          'https://cdn/old-t1.png': 'https://cdn/old-s1.png',
+          'https://cdn/old-t2.png': 'https://cdn/old-s2.png',
+        },
+      },
+    });
+
+    const { generateLogoTool } = await import('../index.js');
+
+    const context = {
+      socketId: 'socket-1',
+      metadata: { appId: 'app-123' },
+    };
+
+    await generateLogoTool.execute(
+      {
+        brandName: 'My Brand',
+        brandDescription: 'A cool brand',
+        style: 'flat',
+      },
+      context
+    );
+
+    expect(mockSetSlot).toHaveBeenCalledWith('app-123', 'logo/primary', expect.objectContaining({
+      currentUrl: 'https://cdn/t1.png',
+      alternatives: ['https://cdn/t2.png', 'https://cdn/old-t1.png', 'https://cdn/old-t2.png'],
+      solidUrlMap: {
+        'https://cdn/old-t1.png': 'https://cdn/old-s1.png',
+        'https://cdn/old-t2.png': 'https://cdn/old-s2.png',
+        'https://cdn/t1.png': 'https://cdn/s1.png',
+        'https://cdn/t2.png': 'https://cdn/s2.png',
+      },
+    }));
+  });
+
   describe('brand data enrichment', () => {
     it('should enrich brandColors from app plan when not provided', async () => {
       mockAppPlanExecute.mockResolvedValue({
@@ -256,6 +368,5 @@ describe('generateLogoTool', () => {
         })
       );
     });
-
   });
 });

@@ -27,6 +27,14 @@ vi.mock('../../../../services/LogoService.js', () => ({
   },
 }));
 
+// Mock MediaManifestService (needed because same file exports tools that use it)
+vi.mock('../../../../services/MediaManifestService.js', () => ({
+  mediaManifestService: {
+    importSlot: vi.fn(),
+    setSlot: vi.fn(),
+  },
+}));
+
 // Mock AppRepository
 const mockFindById = vi.fn();
 vi.mock('../../../../database/repositories/index.js', () => ({

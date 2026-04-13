@@ -18,6 +18,7 @@ func TestImageSlot_Types(t *testing.T) {
 	// Verify types compile and can be instantiated with all fields
 	slot := httpproxy.ImageSlot{
 		CurrentURL:  "https://media.gettyimages.com/id/abc123/photo.jpg",
+		MediaType:   "image",
 		SearchQuery: "modern office",
 		RequestedSize: &httpproxy.ImageSize{
 			Width:  1920,
@@ -44,6 +45,9 @@ func TestImageSlot_Types(t *testing.T) {
 	if decoded.CurrentURL != slot.CurrentURL {
 		t.Errorf("CurrentURL mismatch: got %s, want %s", decoded.CurrentURL, slot.CurrentURL)
 	}
+	if decoded.MediaType != "image" {
+		t.Errorf("MediaType mismatch: got %s, want image", decoded.MediaType)
+	}
 	if decoded.SearchQuery != slot.SearchQuery {
 		t.Errorf("SearchQuery mismatch: got %s, want %s", decoded.SearchQuery, slot.SearchQuery)
 	}
@@ -61,6 +65,61 @@ func TestImageSlot_Types(t *testing.T) {
 	}
 	if decoded.LastUpdated != slot.LastUpdated {
 		t.Errorf("LastUpdated mismatch: got %s", decoded.LastUpdated)
+	}
+}
+
+func TestImageSlot_LogoType_WithSolidURLMap(t *testing.T) {
+	slot := httpproxy.ImageSlot{
+		CurrentURL:   "https://isteam.wsimg.com/genai-assistant/t1.png",
+		MediaType:    "logo",
+		SearchQuery:  "My Brand",
+		Alternatives: []string{"https://isteam.wsimg.com/genai-assistant/t2.png"},
+		SolidURLMap: map[string]string{
+			"https://isteam.wsimg.com/genai-assistant/t1.png": "https://isteam.wsimg.com/genai-assistant/s1.png",
+			"https://isteam.wsimg.com/genai-assistant/t2.png": "https://isteam.wsimg.com/genai-assistant/s2.png",
+		},
+		CreatedAt:   "2025-04-13T10:00:00Z",
+		LastUpdated: "2025-04-13T10:00:00Z",
+	}
+
+	data, err := json.Marshal(slot)
+	if err != nil {
+		t.Fatalf("failed to marshal logo slot: %v", err)
+	}
+
+	var decoded httpproxy.ImageSlot
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal logo slot: %v", err)
+	}
+
+	if decoded.MediaType != "logo" {
+		t.Errorf("MediaType mismatch: got %s, want logo", decoded.MediaType)
+	}
+	if len(decoded.SolidURLMap) != 2 {
+		t.Fatalf("SolidURLMap length mismatch: got %d, want 2", len(decoded.SolidURLMap))
+	}
+	t1Key := "https://isteam.wsimg.com/genai-assistant/t1.png"
+	if decoded.SolidURLMap[t1Key] != "https://isteam.wsimg.com/genai-assistant/s1.png" {
+		t.Errorf("SolidURLMap[t1] mismatch: got %s", decoded.SolidURLMap[t1Key])
+	}
+}
+
+func TestImageSlot_SolidURLMap_OmittedWhenEmpty(t *testing.T) {
+	slot := httpproxy.ImageSlot{
+		CurrentURL:  "https://media.gettyimages.com/photo.jpg",
+		MediaType:   "image",
+		SearchQuery: "test",
+		CreatedAt:   "2025-04-13T10:00:00Z",
+		LastUpdated: "2025-04-13T10:00:00Z",
+	}
+
+	data, err := json.Marshal(slot)
+	if err != nil {
+		t.Fatalf("failed to marshal slot: %v", err)
+	}
+
+	if strings.Contains(string(data), "solidUrlMap") {
+		t.Errorf("solidUrlMap should be omitted when empty, got: %s", string(data))
 	}
 }
 
@@ -492,6 +551,46 @@ func TestHandleImageSlot_SrcParam_InvalidURL(t *testing.T) {
 	}
 }
 
+func TestHandleImageSlot_LogoCDNRedirect(t *testing.T) {
+	tmpDir := t.TempDir()
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
+
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{"prod logo CDN", "https://isteam.wsimg.com/genai-assistant/logoacent/customer/abc123/logo.png"},
+		{"test logo CDN", "https://isteam.test-wsimg.com/genai-assistant/logoacent/customer/abc123/logo.png"},
+		{"dev logo CDN", "https://isteam.dev-wsimg.com/genai-assistant/logoacent/customer/abc123/logo.png"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manifest := httpproxy.ImageManifest{
+				"pages/unknown/my-logo": {CurrentURL: tt.url},
+			}
+			data, _ := json.Marshal(manifest)
+			_ = os.WriteFile(manifestPath, data, 0600)
+
+			cache := httpproxy.NewManifestCache(manifestPath)
+			handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
+
+			req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/pages/unknown/my-logo", nil)
+			rec := httptest.NewRecorder()
+
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusFound {
+				t.Errorf("expected status 302, got: %d", rec.Code)
+			}
+			location := rec.Header().Get("Location")
+			if location != tt.url {
+				t.Errorf("expected redirect to %s, got: %s", tt.url, location)
+			}
+		})
+	}
+}
+
 func TestHandleImageSlot_SrcParam_LocalUpload(t *testing.T) {
 	tmpDir := t.TempDir()
 	manifestPath := filepath.Join(tmpDir, "airo-media.json")
@@ -523,5 +622,111 @@ func TestHandleImageSlot_SrcParam_LocalUpload(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected status 200 for local upload, got: %d", rec.Code)
+	}
+}
+
+func TestHandleImageSlot_VariantSolid_LogoSlot(t *testing.T) {
+	tmpDir := t.TempDir()
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
+
+	manifest := httpproxy.ImageManifest{
+		"logo/primary": {
+			CurrentURL:   "https://isteam.wsimg.com/genai-assistant/t1.png",
+			MediaType:    "logo",
+			SearchQuery:  "My Brand",
+			Alternatives: []string{"https://isteam.wsimg.com/genai-assistant/t2.png"},
+			SolidURLMap: map[string]string{
+				"https://isteam.wsimg.com/genai-assistant/t1.png": "https://isteam.wsimg.com/genai-assistant/s1.png",
+				"https://isteam.wsimg.com/genai-assistant/t2.png": "https://isteam.wsimg.com/genai-assistant/s2.png",
+			},
+			CreatedAt:   "2025-04-13T10:00:00Z",
+			LastUpdated: "2025-04-13T10:00:00Z",
+		},
+	}
+	data, _ := json.Marshal(manifest)
+	_ = os.WriteFile(manifestPath, data, 0600)
+
+	cache := httpproxy.NewManifestCache(manifestPath)
+	handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
+
+	req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/logo/primary?variant=solid", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Errorf("expected 302, got: %d", rec.Code)
+	}
+	location := rec.Header().Get("Location")
+	if location != "https://isteam.wsimg.com/genai-assistant/s1.png" {
+		t.Errorf("expected solid URL redirect, got: %s", location)
+	}
+}
+
+func TestHandleImageSlot_VariantSolid_NonLogoSlot(t *testing.T) {
+	tmpDir := t.TempDir()
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
+
+	manifest := httpproxy.ImageManifest{
+		"pages/home/hero": {
+			CurrentURL:  "https://media.gettyimages.com/photo.jpg",
+			MediaType:   "image",
+			SearchQuery: "office",
+			CreatedAt:   "2025-04-13T10:00:00Z",
+			LastUpdated: "2025-04-13T10:00:00Z",
+		},
+	}
+	data, _ := json.Marshal(manifest)
+	_ = os.WriteFile(manifestPath, data, 0600)
+
+	cache := httpproxy.NewManifestCache(manifestPath)
+	handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
+
+	// ?variant=solid on a non-logo slot should return the default currentUrl
+	req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/pages/home/hero?variant=solid", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Errorf("expected 302, got: %d", rec.Code)
+	}
+	location := rec.Header().Get("Location")
+	if location != "https://media.gettyimages.com/photo.jpg" {
+		t.Errorf("expected default URL for non-logo slot, got: %s", location)
+	}
+}
+
+func TestHandleImageSlot_VariantSolid_EmptySolidURLMap(t *testing.T) {
+	tmpDir := t.TempDir()
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
+
+	manifest := httpproxy.ImageManifest{
+		"logo/primary": {
+			CurrentURL:  "https://isteam.wsimg.com/genai-assistant/t1.png",
+			MediaType:   "logo",
+			SearchQuery: "My Brand",
+			CreatedAt:   "2025-04-13T10:00:00Z",
+			LastUpdated: "2025-04-13T10:00:00Z",
+		},
+	}
+	data, _ := json.Marshal(manifest)
+	_ = os.WriteFile(manifestPath, data, 0600)
+
+	cache := httpproxy.NewManifestCache(manifestPath)
+	handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
+
+	// ?variant=solid on a logo slot with no solidUrlMap should fall back to currentUrl
+	req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/logo/primary?variant=solid", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Errorf("expected 302, got: %d", rec.Code)
+	}
+	location := rec.Header().Get("Location")
+	if location != "https://isteam.wsimg.com/genai-assistant/t1.png" {
+		t.Errorf("expected fallback to currentUrl when no solidUrlMap, got: %s", location)
 	}
 }

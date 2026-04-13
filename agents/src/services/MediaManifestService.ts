@@ -33,7 +33,7 @@ export interface MediaSize {
  * A single slot entry in the manifest
  */
 export interface MediaSlot {
-  mediaType: 'image' | 'video' | 'generated';
+  mediaType: 'image' | 'video' | 'generated' | 'logo';
   currentUrl: string;
   /** For videos: thumbnail image URL for preview display */
   thumbnailUrl?: string;
@@ -64,6 +64,9 @@ export interface MediaSlot {
   /** Maps upload URLs to original chat upload filenames for dedup display.
    *  Key: persistent upload URL (/airo-assets/uploads/...), Value: original chat filename */
   uploadSources?: Record<string, string>;
+  /** Maps transparent URL → solid-background URL for logo variants.
+   *  Only populated when mediaType === 'logo'. */
+  solidUrlMap?: Record<string, string>;
 }
 
 /**
@@ -122,10 +125,21 @@ async function acquireLock(appId: string): Promise<() => void> {
 }
 
 /**
+ * Known source directories mapped to their slot category.
+ * Matched in order — first match wins.
+ */
+const SOURCE_DIR_CATEGORIES: [RegExp, string][] = [
+  [/pages\/(.+?)\.[tj]sx?$/, 'pages'],
+  [/layouts\/(?:parts\/)?(.+?)\.[tj]sx?$/, 'layouts'],
+  [/components\/(?:ui\/)?(.+?)\.[tj]sx?$/, 'components'],
+  [/sections\/(.+?)\.[tj]sx?$/, 'sections'],
+];
+
+/**
  * Derive a media slot path from dev context and image metadata.
  *
- * Existing slot paths follow the pattern: pages/{pageName}/{descriptiveName}
- * e.g. "pages/home/hero", "pages/home/dog"
+ * Slot paths follow the pattern: {category}/{name}/{descriptiveName}
+ * e.g. "pages/home/hero", "layouts/header/logo", "components/hero/banner"
  *
  * Priority for the image name segment:
  *  1. Image alt text (most descriptive, e.g. "A happy dog" → "a-happy-dog")
@@ -141,15 +155,21 @@ function deriveSlotPath(
     return `imported/image-${Date.now()}`;
   }
 
-  // Page segment from file path
-  let pageName = 'unknown';
-  const pageMatch = devContext.fileName.match(/pages\/(.+?)\.[tj]sx?$/);
-  if (pageMatch?.[1]) {
-    pageName = pageMatch[1]
-      .replace(/\.page$/, '')     // strip .page suffix if present
-      .replace(/\/index$/, '')    // strip /index suffix
-      .replace(/^index$/, 'home') // top-level index = home
-      .replace(/\//g, '-');       // flatten nested paths
+  let category = 'pages';
+  let segmentName = 'unknown';
+
+  for (const [pattern, cat] of SOURCE_DIR_CATEGORIES) {
+    const match = devContext.fileName.match(pattern);
+    if (match?.[1]) {
+      category = cat;
+      segmentName = match[1]
+        .replace(/\.page$/, '')     // strip .page suffix if present
+        .replace(/\/index$/, '')    // strip /index suffix
+        .replace(/^index$/, 'home') // top-level index = home
+        .replace(/\//g, '-')       // flatten nested paths
+        .toLowerCase();
+      break;
+    }
   }
 
   // Image name segment — prefer alt text, then URL filename, then line number
@@ -183,7 +203,7 @@ function deriveSlotPath(
     imageName = `image-${devContext.lineNumber || Date.now()}`;
   }
 
-  return `pages/${pageName}/${imageName}`;
+  return `${category}/${segmentName}/${imageName}`;
 }
 
 /**

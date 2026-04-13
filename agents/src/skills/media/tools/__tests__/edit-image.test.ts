@@ -27,6 +27,14 @@ vi.mock('../../../../services/LogoService.js', () => ({
   },
 }));
 
+// Mock MediaManifestService (needed because same file exports tools that use it)
+vi.mock('../../../../services/MediaManifestService.js', () => ({
+  mediaManifestService: {
+    importSlot: vi.fn(),
+    setSlot: vi.fn(),
+  },
+}));
+
 // Mock AppRepository
 const mockFindById = vi.fn();
 vi.mock('../../../../database/repositories/index.js', () => ({
@@ -192,5 +200,31 @@ describe('editImageTool', () => {
         context
       )
     ).rejects.toThrow('Imagegen API error (image.edit): 500 Internal Server Error');
+  });
+
+  describe('logo URL guardrail', function logoGuardrail() {
+    it('should reject logo CDN URLs via config.validate', async function rejectLogo() {
+      const { editImageTool } = await import('../index.js');
+
+      expect(editImageTool.config?.validate).toBeDefined();
+
+      expect(() =>
+        editImageTool.config!.validate!({
+          prompt: 'Make the background transparent',
+          imageUrl: 'https://isteam.wsimg.com/genai-assistant/mcp/generated_logos/abc123-transparent.png',
+        })
+      ).toThrow('This URL is a generated logo');
+    });
+
+    it('should allow non-logo URLs through config.validate', async function allowNonLogo() {
+      const { editImageTool } = await import('../index.js');
+
+      expect(() =>
+        editImageTool.config!.validate!({
+          prompt: 'Remove the background',
+          imageUrl: 'https://example.com/photo.png',
+        })
+      ).not.toThrow();
+    });
   });
 });

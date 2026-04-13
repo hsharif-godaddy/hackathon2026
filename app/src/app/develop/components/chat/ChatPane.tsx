@@ -8,6 +8,7 @@ import Growl from '@ux/growl'
 import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/AssetTypes'
 import ChatBanners from '@/app/develop/components/chat/banners/ChatBanners'
 import BudgetExceededBanner from '@/app/develop/components/chat/BudgetExceededBanner'
+import type { SendMessageOptions as ChatSendMessageOptions } from '@/app/develop/components/chat/ChatContext'
 import { ChatContext } from '@/app/develop/components/chat/ChatContext'
 import ChatInput, { type StagedChatFile } from '@/app/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
@@ -566,7 +567,7 @@ export default function ChatPane({
   }, [])
 
   // Handle sending a message - accepts optional content for programmatic sends
-  const handleSendMessage = useCallback(async (content?: string, options?: { isActionRequest?: boolean }) => {
+  const handleSendMessage = useCallback(async (content?: string, options?: ChatSendMessageOptions) => {
     const messageToSend = content ?? inputValue
     const userInitiated = content === undefined
     const hasText = Boolean(messageToSend?.trim())
@@ -696,19 +697,25 @@ export default function ChatPane({
 
     const outboundContent = messageToSend.trim()
 
+    const mergedCustomContext = {
+      ...(options?.customContext),
+      ...(referencedFiles.length > 0 ? { referencedFiles } : {}),
+    }
+    const resolvedCustomContext = Object.keys(mergedCustomContext).length > 0 ? mergedCustomContext : undefined
+
     if (content) {
       void sendMessage({
         content: outboundContent,
         aiEditContext: { screenshot: null },
         isActionRequest: options?.isActionRequest,
-        customContext: referencedFiles.length > 0 ? { referencedFiles } : undefined
+        customContext: resolvedCustomContext,
       })
     } else {
       void sendMessage({
         content: outboundContent,
         aiEditContext: { ...safeAiEditContext, screenshot: null },
         selectedAssets: mergedAssets,
-        customContext: referencedFiles.length > 0 ? { referencedFiles } : undefined
+        customContext: resolvedCustomContext,
       })
 
       // Clear contexts only for user input sends

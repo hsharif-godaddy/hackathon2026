@@ -2,12 +2,18 @@
 
 import { createContext, useContext } from 'react'
 
+import type { CustomContext } from '@/services/websocket/ChatMessageBuilder'
+
 interface SendMessageOptions {
   /**
    * When true, marks this as an action request
    * This tells the agent to execute the request immediately.
    */
   isActionRequest?: boolean
+  /**
+   * Context data sent to the agent but not displayed in the chat bubble.
+   */
+  customContext?: CustomContext
 }
 
 interface ChatContextValue {
