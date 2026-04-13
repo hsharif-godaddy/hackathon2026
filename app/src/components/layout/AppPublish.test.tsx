@@ -39,6 +39,8 @@ const mockDevelopStore = {
   clearPublishStatus: vi.fn(),
   setDeploymentsRefetch: vi.fn(),
   setFirstPublishDeployPending: vi.fn(),
+  openFeedbackModal: vi.fn(),
+  setShowFeedbackBanner: vi.fn(),
 };
 
 let mockDeploymentsData: Array<{ id: string; status: string }> = [];
@@ -170,6 +172,7 @@ vi.mock('@ux/growl', () => ({
 describe('AppPublish', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.removeItem('airo-feedback-shown:airo#app-builder');
     mockPathname = '/develop/app-123';
     mockDevelopStore.currentAppId = 'app-123';
     mockDevelopStore.publishStates = {};
@@ -296,6 +299,79 @@ describe('AppPublish', () => {
 
     await waitFor(() => {
       expect(Growl.addGrowlMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  it('should show feedback link during publishing', async function feedbackLinkDuringPublish() {
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
+    mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
+
+    const { user } = renderWithProviders(<AppPublish />);
+
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button_publishing' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_settings_nav_feedback')).toBeInTheDocument();
+    });
+  });
+
+  it('should not show feedback link when not publishing', async function noFeedbackLinkWhenIdle() {
+    const { user } = renderWithProviders(<AppPublish />);
+
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('builder_settings_nav_feedback')).not.toBeInTheDocument();
+  });
+
+  it('should open feedback modal when feedback link is clicked', async function feedbackLinkClick() {
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
+    mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
+
+    const { user } = renderWithProviders(<AppPublish />);
+
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button_publishing' });
+    await user.click(trigger);
+
+    const feedbackLink = await screen.findByText('builder_settings_nav_feedback');
+    await user.click(feedbackLink);
+
+    expect(mockDevelopStore.openFeedbackModal).toHaveBeenCalledWith('airo#app-builder', 'Publish Popover');
+  });
+
+  it('should trigger feedback banner on successful publish when feedback not given', async function postPublishFeedbackBanner() {
+    mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
+
+    const { rerender } = renderWithProviders(<AppPublish />);
+
+    mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: false };
+    rerender(<AppPublish />);
+
+    await waitFor(() => {
+      expect(mockDevelopStore.setShowFeedbackBanner).toHaveBeenCalledWith(true);
+    });
+  });
+
+  it('should not trigger feedback banner on successful publish when feedback already given', async function noPostPublishBannerWhenFeedbackGiven() {
+    localStorage.setItem('airo-feedback-shown:airo#app-builder', 'true');
+    mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
+
+    const { rerender } = renderWithProviders(<AppPublish />);
+
+    mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: false };
+    rerender(<AppPublish />);
+
+    await waitFor(() => {
+      expect(mockDevelopStore.setShowFeedbackBanner).not.toHaveBeenCalled();
     });
   });
 });

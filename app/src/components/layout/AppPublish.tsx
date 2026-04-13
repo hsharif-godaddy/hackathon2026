@@ -1,5 +1,6 @@
 'use client';
 
+import { AnimatePresence, motion } from 'framer-motion';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FormattedMessage } from 'react-intl';
@@ -11,6 +12,7 @@ import AlertIcon from '@ux/icon/alert';
 import CheckmarkIcon from '@ux/icon/checkmark';
 import ChevronRightIcon from '@ux/icon/chevron-right';
 import CloudUploadIcon from '@ux/icon/cloud-upload';
+import CommentsIcon from '@ux/icon/comments';
 import HistoryIcon from '@ux/icon/history';
 import InlineEditIcon from '@ux/icon/inline-edit';
 import WindowNewIcon from '@ux/icon/window-new';
@@ -21,6 +23,7 @@ import TextLockup from '@ux/text-lockup';
 
 import IconButton from '@/app/develop/components/IconButton';
 import { ChatTab, SettingsSection } from '@/app/develop/components/types';
+import { FEEDBACK_ID } from '@/components/feedback/utils';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
 import { useGitHistoryQuery } from '@/hooks/useGitHistory';
@@ -74,6 +77,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const openRef = useRef(false);
   const prevAppIdRef = useRef<string | null>(null);
   const prevPublishingRef = useRef(false);
+  const feedbackAnimatedRef = useRef(false);
   const pathname = usePathname();
   const isDevelopPage = pathname?.includes('/develop');
   const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
@@ -83,6 +87,8 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
   const clearPublishStatus = useDevelopPageStore((state) => state.clearPublishStatus);
   const setDeploymentsRefetch = useDevelopPageStore((state) => state.setDeploymentsRefetch);
+  const openFeedbackModal = useDevelopPageStore((state) => state.openFeedbackModal);
+  const setShowFeedbackBanner = useDevelopPageStore((state) => state.setShowFeedbackBanner);
 
   // Switchboard flags
   // Coerce to boolean to prevent React Query errors when undefined
@@ -281,12 +287,27 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
     if (!wasPublishing || isPublishingOrDeploying) return;
 
+    feedbackAnimatedRef.current = false;
+
     const failed = publishError || mostRecentDeployment?.status === DeploymentStatus.FAILED;
     const succeeded = mostRecentDeployment?.status === DeploymentStatus.DEPLOYED;
 
     if (!failed && !succeeded) return;
 
     const outcome: 'success' | 'failed' = failed ? 'failed' : 'success';
+
+    // Trigger chat feedback banner on successful publish if user hasn't seen feedback prompt
+    if (outcome === 'success') {
+      let hasSeenFeedbackPrompt = false;
+      try {
+        hasSeenFeedbackPrompt = localStorage.getItem(`airo-feedback-shown:${FEEDBACK_ID}`) === 'true';
+      } catch {
+        // storage unavailable — skip banner trigger
+      }
+      if (!hasSeenFeedbackPrompt) {
+        setShowFeedbackBanner(true);
+      }
+    }
 
     if (
       currentAppId &&
@@ -340,7 +361,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       ),
       emphasis: 'critical',
     });
-  }, [currentAppId, isPublishingOrDeploying, mostRecentDeployment?.status, publishError, fqdn, t, handleDeploy]);
+  }, [currentAppId, isPublishingOrDeploying, mostRecentDeployment?.status, publishError, fqdn, t, handleDeploy, setShowFeedbackBanner]);
 
   /**
    * Navigate to version history tab
@@ -355,6 +376,15 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     setActiveSettingsSection(SettingsSection.DOMAIN);
     setActiveChatTab(ChatTab.SETTINGS);
   }, [setOpen, setActiveSettingsSection, setActiveChatTab]);
+
+  const handlePublishFeedbackClick = useCallback(() => {
+    try {
+      localStorage.removeItem(`airo-feedback-shown:${FEEDBACK_ID}`);
+    } catch {
+      // storage unavailable
+    }
+    openFeedbackModal(FEEDBACK_ID, 'Publish Popover');
+  }, [openFeedbackModal]);
 
   // Register deployments refetch function in store for retry functionality
   useEffect(() => {
@@ -630,6 +660,30 @@ export default function AppPublish({ location = 'develop' }: { location?: string
                 </text.span>
               </Box>
             )}
+
+            <AnimatePresence>
+              {isPublishingOrDeploying && publishResult === null && (
+                <motion.div
+                  initial={feedbackAnimatedRef.current ? false : { opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2, ease: 'easeInOut', delay: feedbackAnimatedRef.current ? 0 : 0.5 }}
+                  onAnimationComplete={() => { feedbackAnimatedRef.current = true; }}
+                >
+                  <button
+                    type='button'
+                    className='w-full pt-1 pb-0.5 flex items-center justify-center gap-1 cursor-pointer'
+                    data-eid={generateClickEID(`${location}.header.publish_feedback`)}
+                    onClick={handlePublishFeedbackClick}
+                  >
+                    <CommentsIcon className='size-2' />
+                    <text.span as='action' size={-1}>
+                      {t('builder_settings_nav_feedback')}
+                    </text.span>
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </PopoverContent>
       </Popover>
