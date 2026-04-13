@@ -41,6 +41,10 @@ import {
 } from '../agents/ai-lib-agents/index.js'
 import { AILibContextManager } from '../agents/ai-lib-agents/context-manager.js'
 import { AgentsMessagePersistence } from './conversation-persistence.js'
+import {
+  attachConnectThenAuthPendingInboundGate,
+  finalizeConnectThenAuthSessionReady,
+} from './connect-then-auth-session.js'
 import { ConversationContextManager } from '../services/ConversationContextManager.js'
 
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
@@ -454,8 +458,6 @@ function buildDynamicDataMessage(context: AgentsAppContext): {
     insertionOrder: 'after_history'
   }
 }
-
-
 
 /**
  * Create and setup the AI-Lib WebSocket server
@@ -2320,18 +2322,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         }
       }, AUTH_TIMEOUT_MS);
 
-      socket.use(([event]: [string, ...any[]], next: (err?: Error) => void) => {
-        if (socket.handshake.auth?.pendingAuth && event !== 'authenticate' && event !== 'disconnect') {
-          logger.debug('websocket.auth.blocked_event', {
-            message: 'Blocked event from unauthenticated socket',
-            event,
-            socketId: socket.id,
-          });
-          next(new Error('Authentication required'));
-          return;
-        }
-        next();
-      });
+      attachConnectThenAuthPendingInboundGate(socket);
 
       let authInProgress = false;
 
@@ -2380,12 +2371,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           const originalAuth = socket.handshake.auth;
           socket.handshake.auth = {
             ...originalAuth,
-            pendingAuth: false,
+            pendingAuth: true,
             token: data.token,
             decoded: authResult.claims,
             agentContext: authResult.agentContext,
           };
-          pendingAuthCount = Math.max(0, pendingAuthCount - 1)
 
           logger.info('websocket.auth.connection_approved', {
             message: 'Connection approved: JWT validation passed (authenticate event)',
@@ -2397,11 +2387,6 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
           registerTokenRefreshHandler(socket);
 
-          socket.emit('authenticateSuccess', {
-            siteId: authResult.agentContext!.siteId,
-            socketId: socket.id,
-          });
-
           if (!socket.connected) {
             logger.warn('websocket.auth.disconnected_during_auth', {
               message: 'Socket disconnected during authentication - skipping connection setup',
@@ -2410,10 +2395,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             return;
           }
 
-          // Install tenant validation before completeConnectionSetup so that any
-          // chat event arriving immediately after authenticateSuccess is already
-          // guarded — socket.use() middleware fires on all inbound events regardless
-          // of when handlers are registered.
+          // Tenant validation must be installed before chat is allowed. Inbound chat stays
+          // blocked via pendingAuth until completeConnectionSetup finishes so the client
+          // cannot race recovery / subscriber wiring with the first chat_message.
           addTenantValidationMiddleware(socket);
 
           let setupFailed = false
@@ -2432,6 +2416,17 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             socket.disconnect(true)
             return
           }
+
+          if (!socket.connected) {
+            logger.warn('websocket.auth.disconnected_during_setup', {
+              message: 'Socket disconnected during connection setup - skipping authenticateSuccess',
+              socketId: socket.id,
+            });
+            return;
+          }
+
+          pendingAuthCount = Math.max(0, pendingAuthCount - 1)
+          finalizeConnectThenAuthSessionReady(socket, authResult.agentContext!.siteId)
         } catch (error) {
           clearTimeout(authTimeout);
           const errorMessage = error instanceof Error ? error.message : String(error);
