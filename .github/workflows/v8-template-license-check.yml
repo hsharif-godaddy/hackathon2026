@@ -31,10 +31,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set up Node.js 22.12
+      - name: Set up Node.js 22
         uses: actions/setup-node@v6
         with:
-          node-version: "22.12"
+          node-version: "22"
 
       - name: Enable Corepack and verify pnpm version
         run: |
