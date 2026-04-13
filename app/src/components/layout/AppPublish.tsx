@@ -82,7 +82,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const isDevelopPage = pathname?.includes('/develop');
   const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
-  const isHistoryDisabled = useIsHistoryDisabled(currentAppId || '');
+  const { isDisabled: isHistoryDisabled } = useIsHistoryDisabled(currentAppId || '');
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
   const clearPublishStatus = useDevelopPageStore((state) => state.clearPublishStatus);

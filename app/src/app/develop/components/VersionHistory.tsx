@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import Alert from '@ux/alert'
 import Button from '@ux/button'
@@ -10,10 +10,12 @@ import ChevronRightIcon from '@ux/icon/chevron-right'
 import EditIcon from '@ux/icon/edit'
 import Spinner from '@ux/spinner'
 import Tag from '@ux/tag'
+import Tooltip from '@ux/tooltip'
 
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
+import { useIsHistoryDisabled } from '@/hooks/useIsHistoryDisabled'
 import { useRestoreCommitMutation } from '@/hooks/useRestoreCommitMutation'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -64,6 +66,158 @@ function groupCommitsByDate(commits: Commit[]): Record<string, Commit[]> {
   return groups
 }
 
+interface CommitItemProps {
+  message: string
+  description?: string | React.ReactNode
+  isSelected: boolean
+  onClick: () => void
+  canEdit?: boolean
+  isEditing?: boolean
+  onEdit?: () => void
+  onSave?: () => void
+  disabled?: boolean
+  showDisabledTooltip?: boolean
+  isRestoring: boolean
+  isSelectingCommit: boolean
+  updateCommitMessageMutation: ReturnType<typeof useUpdateCommitMessageMutation>
+  editingInputRef: React.RefObject<HTMLInputElement>
+  editingMessage: string
+  setEditingMessage: (message: string) => void
+  cancelEdit: () => void
+  isSavingEditRef: React.RefObject<boolean>
+}
+
+function CommitItem({
+  message,
+  description,
+  isSelected,
+  onClick,
+  canEdit = false,
+  isEditing = false,
+  onEdit,
+  onSave,
+  disabled = false,
+  showDisabledTooltip = false,
+  isRestoring,
+  isSelectingCommit,
+  updateCommitMessageMutation,
+  editingInputRef,
+  editingMessage,
+  setEditingMessage,
+  cancelEdit,
+  isSavingEditRef
+}: CommitItemProps) {
+  const t = useTranslations()
+  const [showTooltip, setShowTooltip] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const tooltipId = useId()
+
+  return (
+    <>
+      <div
+        ref={containerRef}
+        onMouseEnter={() => showDisabledTooltip && setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+        onFocus={() => showDisabledTooltip && setShowTooltip(true)}
+        onBlur={() => setShowTooltip(false)}
+        aria-describedby={showTooltip ? tooltipId : undefined}
+        className={`rounded-md overflow-auto border transition-colors duration-200 ${
+          isSelected
+            ? 'border-intents-ux-boxHighContrast-borderColor'
+            : 'border-intents-ux-boxLowContrast-borderColor'
+        } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      >
+        <div className="flex flex-col">
+          {!isEditing && (
+            <div className="relative">
+              <button
+                data-testid="commit-selection-button"
+                onClick={onClick}
+                disabled={isSelectingCommit || disabled}
+                className={`relative pl-2 py-1.5 pr-7 text-left w-full transition-colors duration-200 ${
+                  isSelectingCommit || disabled
+                    ? 'cursor-not-allowed'
+                    : 'hover:bg-intents-ux-boxLowContrastOverlay-backgroundColor hover:cursor-pointer'
+                }`}
+              >
+                <p className="text-sm font-medium line-clamp-1">
+                  {message}
+                </p>
+                { description && (
+                  <div className="text-xs">
+                    {description}
+                  </div>
+                )}
+                { isSelected && <CheckboxFilledIcon className="w-2.5 h-2.5 top-0.5 right-0.5 absolute text-intents-ux-feedbackHighContrastSuccess-feedbackColor" /> }
+              </button>
+              {canEdit && onEdit && (
+                <button
+                  type="button"
+                  aria-label={t('builder_common_edit')}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onEdit()
+                  }}
+                  disabled={isSelectingCommit || updateCommitMessageMutation.isPending || disabled}
+                  className={`absolute top-3.5 right-0.5 p-0.5 rounded transition-colors duration-200 ${
+                    isSelectingCommit || updateCommitMessageMutation.isPending || disabled
+                      ? 'cursor-not-allowed'
+                      : 'hover:bg-intents-ux-boxLowContrastOverlay-backgroundColor'
+                  }`}
+                >
+                  <EditIcon className="w-2.5 h-2.5" />
+                </button>
+              )}
+            </div>
+          )}
+          {isEditing && onSave && (
+            <div className="pl-2 py-1.5 pr-2">
+              <input
+                ref={editingInputRef}
+                aria-label={t('builder_tools_publish_commit')}
+                value={editingMessage}
+                onChange={(event) => setEditingMessage(event.target.value)}
+                onBlur={() => {
+                  if (!updateCommitMessageMutation.isPending && !isSavingEditRef.current) {
+                    cancelEdit()
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    void onSave()
+                  }
+                  if (event.key === 'Escape') {
+                    event.preventDefault()
+                    cancelEdit()
+                  }
+                }}
+                disabled={updateCommitMessageMutation.isPending || disabled}
+                className="w-full text-sm font-medium px-1 py-0.5 rounded border border-intents-ux-boxHighContrast-borderColor bg-intents-ux-container-background text-intents-ux-textColor"
+                autoFocus
+              />
+              {description && (
+                <div className="text-xs mt-1">
+                  {description}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      {showTooltip && showDisabledTooltip && (
+        <Tooltip anchorRef={containerRef}>
+          <div id={tooltipId} role="tooltip" className="p-1 max-w-[30ch] break-words text-sm">
+            {isRestoring
+              ? t('builder_version_history_disabled_during_restore', undefined, 'Cannot interact with version history while restoration is in progress')
+              : t('builder_version_history_disabled_during_publish', undefined, 'Cannot interact with version history while publish is in progress')}
+          </div>
+        </Tooltip>
+      )}
+    </>
+  )
+}
+
 export default function VersionHistory() {
   const t = useTranslations();
   const editingInputRef = useRef<HTMLInputElement>(null)
@@ -83,8 +237,9 @@ export default function VersionHistory() {
   const updateCommitMessageMutation = useUpdateCommitMessageMutation()
 
   const site = useSiteStore((state) => appId ? state.getSite(appId) : null)
-  // Coerce to boolean to prevent React Query errors when undefined
   const isHistoryTabActive = activeChatTab === ChatTab.HISTORY;
+  const restoreMutation = useRestoreCommitMutation();
+  const { isDisabled: isHistoryDisabled, isPublishing } = useIsHistoryDisabled(appId || '', restoreMutation.isPending);
 
   // Only fetch when the history tab is actually open — VersionHistory is always mounted
   // (display:none-based tab switching), so without this guard the flag fires on every page load.
@@ -298,9 +453,6 @@ export default function VersionHistory() {
     }
   }
 
-  // Restore commit logic
-  const restoreMutation = useRestoreCommitMutation();
-
   const handleRestoreCommit = (commit: Commit) => {
     setRestoreError(null)
     setRestoringHash(commit.hash)
@@ -345,111 +497,6 @@ export default function VersionHistory() {
   const isLatestCommit = (commit: Commit) => {
     return allCommits.length > 0 && allCommits[0].hash === commit.hash;
   };
-
-  const renderCommitItem = ({
-    message,
-    description,
-    isSelected,
-    onClick,
-    canEdit = false,
-    isEditing = false,
-    onEdit,
-    onSave
-  }: {
-    message: string
-    description?: string | React.ReactNode
-    isSelected: boolean
-    onClick: () => void
-    canEdit?: boolean
-    isEditing?: boolean
-    onEdit?: () => void
-    onSave?: () => void
-  }) => (
-    <div
-      className={`rounded-md overflow-auto border transition-colors duration-200 ${
-        isSelected
-          ? 'border-intents-ux-boxHighContrast-borderColor'
-          : 'border-intents-ux-boxLowContrast-borderColor'
-      }`}
-    >
-      <div className="flex flex-col">
-        {!isEditing && (
-          <div className="relative">
-            <button
-              onClick={onClick}
-              disabled={isSelectingCommit}
-              className={`relative pl-2 py-1.5 pr-7 text-left w-full transition-colors duration-200 ${
-                isSelectingCommit
-                  ? 'opacity-50 cursor-not-allowed'
-                  : 'hover:bg-intents-ux-boxLowContrastOverlay-backgroundColor hover:cursor-pointer'
-              }`}
-            >
-              <p className="text-sm font-medium line-clamp-1">
-                {message}
-              </p>
-              { description && (
-                <div className="text-xs">
-                  {description}
-                </div>
-              )}
-              { isSelected && <CheckboxFilledIcon className="w-2.5 h-2.5 top-0.5 right-0.5 absolute text-intents-ux-feedbackHighContrastSuccess-feedbackColor" /> }
-            </button>
-            {canEdit && onEdit && (
-              <button
-                type="button"
-                aria-label={t('builder_common_edit')}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onEdit()
-                }}
-                disabled={isSelectingCommit || updateCommitMessageMutation.isPending}
-                className={`absolute top-3.5 right-0.5 p-0.5 rounded transition-colors duration-200 ${
-                  isSelectingCommit || updateCommitMessageMutation.isPending
-                    ? 'opacity-50 cursor-not-allowed'
-                    : 'hover:bg-intents-ux-boxLowContrastOverlay-backgroundColor'
-                }`}
-              >
-                <EditIcon className="w-2.5 h-2.5" />
-              </button>
-            )}
-          </div>
-        )}
-        {isEditing && onSave && (
-          <div className="pl-2 py-1.5 pr-2">
-            <input
-              ref={editingInputRef}
-              aria-label={t('builder_tools_publish_commit')}
-              value={editingMessage}
-              onChange={(event) => setEditingMessage(event.target.value)}
-              onBlur={() => {
-                if (!updateCommitMessageMutation.isPending && !isSavingEditRef.current) {
-                  cancelEdit()
-                }
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  void onSave()
-                }
-                if (event.key === 'Escape') {
-                  event.preventDefault()
-                  cancelEdit()
-                }
-              }}
-              disabled={updateCommitMessageMutation.isPending}
-              className="w-full text-sm font-medium px-1 py-0.5 rounded border border-intents-ux-boxHighContrast-borderColor bg-intents-ux-container-background text-intents-ux-textColor"
-              autoFocus
-            />
-            {description && (
-              <div className="text-xs mt-1">
-                {description}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  )
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-y-auto">
@@ -511,8 +558,14 @@ export default function VersionHistory() {
             return (
               <div key={dateGroup}>
                 <button
+                  data-testid="date-group-toggle"
                   onClick={() => toggleDateGroup(dateGroup)}
-                  className="w-full flex items-center gap-1.5 text-xs font-semibold text-intents-ux-textMediumEmphasis-textColor mb-1 px-1 hover:text-intents-ux-textHighEmphasis-textColor transition-colors"
+                  disabled={isHistoryDisabled}
+                  className={`w-full flex items-center gap-1.5 text-xs font-semibold text-intents-ux-textMediumEmphasis-textColor mb-1 px-1 transition-colors ${
+                    isHistoryDisabled
+                      ? 'opacity-50 cursor-not-allowed'
+                      : 'hover:text-intents-ux-textHighEmphasis-textColor'
+                  }`}
                 >
                   {isCollapsed ? (
                     <ChevronRightIcon className="w-3 h-3" />
@@ -535,14 +588,14 @@ export default function VersionHistory() {
 
                       return (
                         <li key={commit.hash} className="space-y-1">
-                          {renderCommitItem({
-                            onClick: () => handleSelectCommit(commit),
-                            message: commit.message,
-                            canEdit: commitIndex === 0 && commit.hash === currentCommit,
-                            isEditing: editingCommitHash === commit.hash,
-                            onEdit: () => startEdit(commit),
-                            onSave: () => saveEdit(commit),
-                            description: (
+                          <CommitItem
+                            onClick={() => handleSelectCommit(commit)}
+                            message={commit.message}
+                            canEdit={commitIndex === 0 && commit.hash === currentCommit}
+                            isEditing={editingCommitHash === commit.hash}
+                            onEdit={() => startEdit(commit)}
+                            onSave={() => saveEdit(commit)}
+                            description={
                               <div className="flex items-center gap-1">
                                 <Tag type="info">{commit.hash.substring(0, 7)}</Tag>
                                 {isPublished && (
@@ -554,16 +607,26 @@ export default function VersionHistory() {
                                   {formatDate(commit.date, true)}
                                 </span>
                               </div>
-                            ),
-                            isSelected
-                          })}
+                            }
+                            isSelected={isSelected}
+                            disabled={isHistoryDisabled}
+                            showDisabledTooltip={isPublishing || restoreMutation.isPending}
+                            isRestoring={restoreMutation.isPending}
+                            isSelectingCommit={isSelectingCommit}
+                            updateCommitMessageMutation={updateCommitMessageMutation}
+                            editingInputRef={editingInputRef}
+                            editingMessage={editingMessage}
+                            setEditingMessage={setEditingMessage}
+                            cancelEdit={cancelEdit}
+                            isSavingEditRef={isSavingEditRef}
+                          />
                           {showRestore && (
                             <div className="px-2 pb-1">
                               <Button
                                 design="secondary"
                                 size="sm"
                                 onClick={() => handleRestoreCommit(commit)}
-                                disabled={restoreMutation.isPending}
+                                disabled={restoreMutation.isPending || isHistoryDisabled}
                               >
                                 {isRestoringThisCommit ? t('builder_preview_error_restoring') : t('builder_preview_error_restore')}
                               </Button>
@@ -585,7 +648,7 @@ export default function VersionHistory() {
               design="tertiary"
               size="md"
               onClick={() => setOffset(prev => prev + GIT_HISTORY_PAGE_SIZE)}
-              disabled={isFetching}
+              disabled={isFetching || isHistoryDisabled}
             >
               {isFetching ? t('builder_common_loading') : t('builder_version_history_load_more')}
             </Button>

@@ -12,6 +12,8 @@ import VersionHistory from './VersionHistory';
 let selectedCommitHash: string | null = null;
 let mockAppId = 'app-123'
 let mockActiveChatTab = 'history'
+let mockIsHistoryDisabled = false
+let mockIsPublishing = false
 
 const mockGitStore = {
   getSelectedCommitHash: vi.fn(),
@@ -25,6 +27,11 @@ const mockGitStore = {
 const mockUpdateCommitMessageMutation = {
   isPending: false,
   mutateAsync: vi.fn(),
+};
+
+const mockRestoreMutation = {
+  mutate: vi.fn(),
+  isPending: false,
 };
 
 let mockHistory = {
@@ -55,10 +62,7 @@ vi.mock('@/hooks/useChatTabs', () => ({
 }));
 
 vi.mock('@/hooks/useRestoreCommitMutation', () => ({
-  useRestoreCommitMutation: () => ({
-    mutate: vi.fn(),
-    isPending: false,
-  }),
+  useRestoreCommitMutation: () => mockRestoreMutation,
 }));
 
 vi.mock('@/hooks/useDeploymentsQuery', () => ({
@@ -91,6 +95,13 @@ vi.mock('@/hooks/useUpdateCommitMessageMutation', () => ({
   useUpdateCommitMessageMutation: () => mockUpdateCommitMessageMutation,
 }));
 
+vi.mock('@/hooks/useIsHistoryDisabled', () => ({
+  useIsHistoryDisabled: (_appId: string, _isRestoring?: boolean) => ({
+    isDisabled: mockIsHistoryDisabled,
+    isPublishing: mockIsPublishing,
+  }),
+}));
+
 describe('VersionHistory', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -99,6 +110,8 @@ describe('VersionHistory', () => {
     selectedCommitHash = null;
     mockAppId = 'app-123'
     mockActiveChatTab = 'history'
+    mockIsHistoryDisabled = false
+    mockIsPublishing = false
     mockHistory = {
       commits: [
         { hash: 'new-hash', message: 'New commit', author: 'A', date: '2024-01-01' },
@@ -120,6 +133,8 @@ describe('VersionHistory', () => {
       success: true,
       newCommitHash: 'updated-hash',
     });
+    mockRestoreMutation.isPending = false;
+    mockRestoreMutation.mutate.mockClear();
   });
 
   it('auto-selects currentCommit on initial load', async () => {
@@ -384,5 +399,182 @@ describe('VersionHistory', () => {
       expect(screen.queryByText('A2')).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'builder_version_history_load_more' })).not.toBeInTheDocument()
     })
+  })
+
+  describe('when history is disabled', () => {
+    beforeEach(() => {
+      mockIsHistoryDisabled = true
+      mockIsPublishing = true
+      selectedCommitHash = 'old-hash'
+    })
+
+    it('does not select commit when clicking on commit row', async () => {
+      const { user } = renderWithProviders(<VersionHistory />);
+
+      await waitFor(() => {
+        expect(screen.getByText('New commit')).toBeInTheDocument()
+      })
+
+      const commitButtons = screen.getAllByTestId('commit-selection-button')
+      expect(commitButtons[0]).toBeDisabled()
+
+      await user.click(commitButtons[0])
+
+      expect(mockGitStore.selectCommit).not.toHaveBeenCalled()
+    })
+
+    it('disables edit button on latest commit', async () => {
+      mockHistory = {
+        ...mockHistory,
+        currentCommit: 'new-hash',
+      }
+
+      const { user } = renderWithProviders(<VersionHistory />);
+
+      await waitFor(() => {
+        const editButton = screen.getByRole('button', { name: 'builder_common_edit' })
+        expect(editButton).toBeDisabled()
+      })
+
+      const editButton = screen.getByRole('button', { name: 'builder_common_edit' })
+      await user.click(editButton)
+
+      // Should not enter edit mode
+      expect(screen.queryByDisplayValue('New commit')).not.toBeInTheDocument()
+    })
+
+    it('disables load more button', async () => {
+      mockHistory = {
+        ...mockHistory,
+        hasMore: true,
+      }
+
+      const { user } = renderWithProviders(<VersionHistory />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'builder_version_history_load_more' })).toBeInTheDocument()
+      })
+
+      const loadMoreButton = screen.getByRole('button', { name: 'builder_version_history_load_more' })
+      expect(loadMoreButton).toBeDisabled()
+
+      await user.click(loadMoreButton)
+
+      // Should not trigger pagination
+      expect(screen.getAllByText(/commit/i)).toHaveLength(2)
+    })
+
+    it('disables date group collapse buttons', async () => {
+      const { user } = renderWithProviders(<VersionHistory />);
+
+      await waitFor(() => {
+        expect(screen.getByText('New commit')).toBeInTheDocument()
+      })
+
+      const dateGroupButtons = screen.getAllByTestId('date-group-toggle')
+      expect(dateGroupButtons.length).toBeGreaterThan(0)
+
+      const dateGroupButton = dateGroupButtons[0]
+      expect(dateGroupButton).toBeDisabled()
+
+      // Get initial state - should show commits
+      const commitsBefore = screen.getAllByText(/commit/i)
+      expect(commitsBefore.length).toBeGreaterThan(0)
+
+      await user.click(dateGroupButton)
+
+      // Commits should still be visible (not collapsed)
+      const commitsAfter = screen.getAllByText(/commit/i)
+      expect(commitsAfter.length).toBe(commitsBefore.length)
+    })
+
+    it('disables restore button for non-latest commits', async () => {
+      mockHistory = {
+        commits: [
+          { hash: 'latest-hash', message: 'Latest', author: 'A', date: '2024-01-02' },
+          { hash: 'old-hash', message: 'Old commit', author: 'B', date: '2024-01-01' },
+        ],
+        currentCommit: 'latest-hash',
+        hasMore: false,
+      }
+      selectedCommitHash = 'old-hash'
+
+      const { user } = renderWithProviders(<VersionHistory />);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_preview_error_restore')).toBeInTheDocument()
+      })
+
+      const restoreButton = screen.getByRole('button', { name: 'builder_preview_error_restore' })
+      expect(restoreButton).toBeDisabled()
+
+      await user.click(restoreButton)
+
+      // Should not trigger restore
+      await waitFor(() => {
+        expect(restoreButton).toHaveTextContent('builder_preview_error_restore')
+      })
+    })
+
+    it('disables all history interactions while a restore is in progress', async () => {
+      mockHistory = {
+        commits: [
+          { hash: 'latest-hash', message: 'Latest', author: 'A', date: '2024-01-02' },
+          { hash: 'old-hash', message: 'Old commit', author: 'B', date: '2024-01-01' },
+        ],
+        currentCommit: 'latest-hash',
+        hasMore: false,
+      }
+      selectedCommitHash = 'old-hash'
+      mockRestoreMutation.isPending = true
+      mockIsHistoryDisabled = true
+
+      const { user } = renderWithProviders(<VersionHistory />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Latest')).toBeInTheDocument()
+      })
+
+      // All commit buttons should be disabled
+      const commitButtons = screen.getAllByTestId('commit-selection-button')
+      commitButtons.forEach(btn => {
+        expect(btn).toBeDisabled()
+      })
+
+      // Try clicking on a commit
+      await user.click(commitButtons[0])
+      expect(mockGitStore.selectCommit).not.toHaveBeenCalled()
+
+      // Restore button should be disabled
+      const restoreButton = screen.getByRole('button', { name: 'builder_preview_error_restore' })
+      expect(restoreButton).toBeDisabled()
+    })
+  })
+
+  it('triggers restore mutation when restore button is clicked', async () => {
+    mockHistory = {
+      commits: [
+        { hash: 'latest-hash', message: 'Latest', author: 'A', date: '2024-01-02' },
+        { hash: 'old-hash', message: 'Old commit', author: 'B', date: '2024-01-01' },
+      ],
+      currentCommit: 'latest-hash',
+      hasMore: false,
+    }
+    selectedCommitHash = 'old-hash'
+
+    const { user } = renderWithProviders(<VersionHistory />);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_preview_error_restore')).toBeInTheDocument()
+    })
+
+    const restoreButton = screen.getByRole('button', { name: 'builder_preview_error_restore' })
+    await user.click(restoreButton)
+
+    // Should trigger the restore mutation
+    expect(mockRestoreMutation.mutate).toHaveBeenCalledWith(
+      { appId: 'app-123', commitHash: 'old-hash' },
+      expect.any(Object)
+    )
   })
 });

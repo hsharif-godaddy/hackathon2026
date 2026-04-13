@@ -55,54 +55,62 @@ describe('useIsHistoryDisabled', () => {
 
   it('should return false when no conditions are met', () => {
     const { result } = renderHook(() => useIsHistoryDisabled('app-123'));
-    expect(result.current).toBe(false);
+    expect(result.current.isDisabled).toBe(false);
+    expect(result.current.isPublishing).toBe(false);
   });
 
   it('should return true when conversation is loading', () => {
     mockIsLoading = true;
     const { result } = renderHook(() => useIsHistoryDisabled('app-123'));
-    expect(result.current).toBe(true);
+    expect(result.current.isDisabled).toBe(true);
   });
 
   it('should return true when actively streaming', () => {
     mockIsStreaming = true;
     const { result } = renderHook(() => useIsHistoryDisabled('app-123'));
-    expect(result.current).toBe(true);
+    expect(result.current.isDisabled).toBe(true);
   });
 
   it('should return true when history recovery is incomplete', () => {
     mockHistoryLoadingComplete = false;
     const { result } = renderHook(() => useIsHistoryDisabled('app-123'));
-    expect(result.current).toBe(true);
+    expect(result.current.isDisabled).toBe(true);
   });
 
   it('should return true when commits are loading', () => {
     mockIsLoadingCommits = true;
     const { result } = renderHook(() => useIsHistoryDisabled('app-123'));
-    expect(result.current).toBe(true);
+    expect(result.current.isDisabled).toBe(true);
   });
 
   it('should return true when selecting a commit', () => {
     mockIsSelectingCommit = true;
     const { result } = renderHook(() => useIsHistoryDisabled('app-123'));
-    expect(result.current).toBe(true);
+    expect(result.current.isDisabled).toBe(true);
   });
 
   it('should return true when in code view mode', () => {
     mockViewMode = ViewMode.CODE;
     const { result } = renderHook(() => useIsHistoryDisabled('app-123'));
-    expect(result.current).toBe(true);
+    expect(result.current.isDisabled).toBe(true);
   });
 
   it('should return true when publishing', () => {
     mockIsPublishing = true;
     const { result } = renderHook(() => useIsHistoryDisabled('app-123'));
-    expect(result.current).toBe(true);
+    expect(result.current.isDisabled).toBe(true);
+    expect(result.current.isPublishing).toBe(true);
+  });
+
+  it('should return true when restoring', () => {
+    const { result } = renderHook(() => useIsHistoryDisabled('app-123', true));
+    expect(result.current.isDisabled).toBe(true);
   });
 
   it('should ignore publishing state when appId is empty', () => {
     mockIsPublishing = true;
     const { result } = renderHook(() => useIsHistoryDisabled(''));
-    expect(result.current).toBe(false);
+    expect(result.current.isDisabled).toBe(false);
+    expect(result.current.isPublishing).toBe(false);
   });
 });

@@ -15,12 +15,11 @@ import { ButtonGroup } from '@/app/develop/components/ButtonGroup'
 import IconButton from '@/app/develop/components/IconButton'
 import DomainMenu from '@/app/develop/components/layout/DomainMenu'
 import SettingsMenu, { SettingsMenuRef } from '@/app/develop/components/settings/SettingsMenu'
-import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/develop/components/types'
+import { ChatTab, MobileMode, ViewMode } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import AppPublish from '@/components/layout/AppPublish'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
-import { useIsHistoryDisabled } from '@/hooks/useIsHistoryDisabled'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
@@ -55,7 +54,6 @@ export default function ChatToolbar({
   const viewMode = useDevelopPageStore((state) => state.viewMode);
   const returnToMain = useGitStore((state) => state.returnToMain);
   const setSelectedCommitHash = useGitStore((state) => state.setSelectedCommitHash);
-  const isHistoryDisabled = useIsHistoryDisabled(appId || '');
   const { data: isAnalyticsEnabled } = useSwitchboard('appbuilder-analytics');
 
   const { data: gitHistoryData } = useGitHistoryQuery({
@@ -156,7 +154,6 @@ export default function ChatToolbar({
               value={ChatTab.HISTORY}
               icon={<HistoryIcon className="size-2.5" />}
               label={t('builder_chat_toolbar_button_history')}
-              disabled={isHistoryDisabled}
               data-eid={generateClickEID('develop.chat_toolbar.history')}
             />
             {isAnalyticsEnabled && (
