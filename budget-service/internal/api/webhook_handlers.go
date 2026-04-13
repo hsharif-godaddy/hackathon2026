@@ -135,7 +135,7 @@ func (s *Server) deliverReportCreatedWebhooks(budgetID, sessionID, reportID, pro
 		return
 	}
 
-	d, err := s.Store.GetSessionReport(ctx, budgetID, sessionID, reportID)
+	d, err := s.Store.GetSessionReport(ctx, sessionID, reportID)
 	if err != nil {
 		slog.Error("webhook.load_report_payload", "error", err,
 			"budgetId", budgetID, "sessionId", sessionID, "reportId", reportID)

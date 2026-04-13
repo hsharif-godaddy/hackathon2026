@@ -58,7 +58,7 @@ func (s *Server) appendSessionDebug(ctx context.Context, out map[string]any, bud
 	if err != nil {
 		return "budget.get_session_debug_consumption", err
 	}
-	replayed, err := s.Store.DebugSessionCreditsReplay(ctx, budgetID, sessionID)
+	replayed, err := s.Store.DebugSessionCreditsReplay(ctx, sessionID)
 	if err != nil {
 		return "budget.get_session_debug_replay", err
 	}
@@ -361,7 +361,7 @@ func budgetToResponse(d *store.BudgetDetail) map[string]any {
 	return out
 }
 
-func budgetSessionToResponse(budgetID, sessionID string, d *store.BudgetSessionDetail) (map[string]any, error) {
+func budgetSessionToResponse(sessionID string, d *store.BudgetSessionDetail) (map[string]any, error) {
 	costTotalNum, err := sessionCostJSONNumber(d.CostTotal)
 	if err != nil {
 		return nil, err
@@ -378,7 +378,7 @@ func budgetSessionToResponse(budgetID, sessionID string, d *store.BudgetSessionD
 		}
 	}
 	out := map[string]any{
-		"budgetId":     budgetID,
+		"budgetId":     d.BudgetID,
 		"sessionId":    sessionID,
 		"costTotal":    costTotalNum,
 		"updatedAt":    d.UpdatedAt.UTC().Format(time.RFC3339Nano),
@@ -804,15 +804,15 @@ func (s *Server) deleteBudgetItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) postBudgetSession(w http.ResponseWriter, r *http.Request) {
-	budgetID := strings.TrimSpace(mux.Vars(r)["budgetId"])
-	if !requireUUIDParam(w, budgetID, "budgetId") {
-		return
-	}
-
 	var postSess struct {
+		BudgetID string          `json:"budgetId"`
 		Metadata json.RawMessage `json:"metadata"`
 	}
 	if !decodeJSONBody(w, r, &postSess, true) {
+		return
+	}
+	budgetID := strings.TrimSpace(postSess.BudgetID)
+	if !requireUUIDParam(w, budgetID, "budgetId") {
 		return
 	}
 	var metaBytes []byte
@@ -834,13 +834,13 @@ func (s *Server) postBudgetSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d, err := s.Store.GetBudgetSession(r.Context(), budgetID, sessionID)
+	d, err := s.Store.GetBudgetSession(r.Context(), sessionID)
 	if err != nil {
 		slog.Error("budget.post_budget_session_get", "error", err)
 		writeJSON(w, http.StatusCreated, map[string]string{"budgetId": budgetID, "sessionId": sessionID})
 		return
 	}
-	out, err := budgetSessionToResponse(budgetID, sessionID, d)
+	out, err := budgetSessionToResponse(sessionID, d)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "session response")
 		return
@@ -857,31 +857,31 @@ type patchBudgetSessionBody struct {
 	SessionItems []sessionItemBody `json:"sessionItems"`
 }
 
-func (s *Server) appendSessionLines(w http.ResponseWriter, r *http.Request, budgetID, sessionID string, items []sessionItemBody) ([]store.SessionAppendMathLine, bool) {
+func (s *Server) appendSessionLines(w http.ResponseWriter, r *http.Request, sessionID string, items []sessionItemBody) ([]store.SessionAppendMathLine, string, bool) {
 	if len(items) == 0 {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "sessionItems must contain at least one entry")
-		return nil, false
+		return nil, "", false
 	}
 	seenCallRequest := make(map[string]struct{}, len(items))
 	for i := range items {
 		if strings.TrimSpace(items[i].CallRequestID) == "" {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "each sessionItem requires callRequestId")
-			return nil, false
+			return nil, "", false
 		}
 		if strings.TrimSpace(string(items[i].Cost)) == "" {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "each sessionItem requires cost")
-			return nil, false
+			return nil, "", false
 		}
 		key := strings.TrimSpace(items[i].CallRequestID)
 		if _, dup := seenCallRequest[key]; dup {
 			writeError(w, http.StatusBadRequest, "DUPLICATE_CALL_REQUEST_ID", "duplicate callRequestId in sessionItems")
-			return nil, false
+			return nil, "", false
 		}
 		seenCallRequest[key] = struct{}{}
 	}
 
 	if !s.requireStore(w) {
-		return nil, false
+		return nil, "", false
 	}
 
 	lines := make([]store.SessionLine, len(items))
@@ -891,42 +891,41 @@ func (s *Server) appendSessionLines(w http.ResponseWriter, r *http.Request, budg
 			CallRequestID: strings.TrimSpace(items[i].CallRequestID),
 		}
 	}
-	mathLines, err := s.Store.AppendSessionItems(r.Context(), budgetID, sessionID, lines)
+	mathLines, budgetID, err := s.Store.AppendSessionItems(r.Context(), sessionID, lines)
 	if err != nil {
 		writeBudgetStoreError(w, "budget.append_session_items", err)
-		return nil, false
+		return nil, "", false
 	}
-	return mathLines, true
+	return mathLines, budgetID, true
 }
 
 func (s *Server) patchBudgetSession(w http.ResponseWriter, r *http.Request) {
-	budgetID := strings.TrimSpace(mux.Vars(r)["budgetId"])
 	sessionID := strings.TrimSpace(mux.Vars(r)["sessionId"])
-	if !requireUUIDParam(w, budgetID, "budgetId") || !requireUUIDParam(w, sessionID, "sessionId") {
+	if !requireUUIDParam(w, sessionID, "sessionId") {
 		return
 	}
 	var payload patchBudgetSessionBody
 	if !decodeJSONBody(w, r, &payload, false) {
 		return
 	}
-	appendedLines, ok := s.appendSessionLines(w, r, budgetID, sessionID, payload.SessionItems)
+	appendedLines, appendBudgetID, ok := s.appendSessionLines(w, r, sessionID, payload.SessionItems)
 	if !ok {
 		return
 	}
-	d, err := s.Store.GetBudgetSession(r.Context(), budgetID, sessionID)
+	d, err := s.Store.GetBudgetSession(r.Context(), sessionID)
 	if err != nil {
 		slog.Error("budget.patch_budget_session_get", "error", err)
-		writeJSON(w, http.StatusOK, map[string]string{"budgetId": budgetID, "sessionId": sessionID})
+		writeJSON(w, http.StatusOK, map[string]string{"budgetId": appendBudgetID, "sessionId": sessionID})
 		return
 	}
-	out, err := budgetSessionToResponse(budgetID, sessionID, d)
+	out, err := budgetSessionToResponse(sessionID, d)
 	if err != nil {
 		slog.Error("budget.patch_budget_session_response", "error", err)
-		writeJSON(w, http.StatusOK, map[string]string{"budgetId": budgetID, "sessionId": sessionID})
+		writeJSON(w, http.StatusOK, map[string]string{"budgetId": d.BudgetID, "sessionId": sessionID})
 		return
 	}
 	if sessionDebugQuery(r) {
-		if op, err := s.appendSessionDebug(r.Context(), out, budgetID, sessionID, d.Lines, appendedLines); err != nil {
+		if op, err := s.appendSessionDebug(r.Context(), out, d.BudgetID, sessionID, d.Lines, appendedLines); err != nil {
 			writeBudgetStoreError(w, op, err)
 			return
 		}
@@ -935,29 +934,28 @@ func (s *Server) patchBudgetSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getBudgetSession(w http.ResponseWriter, r *http.Request) {
-	budgetID := strings.TrimSpace(mux.Vars(r)["budgetId"])
 	sessionID := strings.TrimSpace(mux.Vars(r)["sessionId"])
-	if !requireUUIDParam(w, budgetID, "budgetId") || !requireUUIDParam(w, sessionID, "sessionId") {
+	if !requireUUIDParam(w, sessionID, "sessionId") {
 		return
 	}
 	if !s.requireStore(w) {
 		return
 	}
 
-	d, err := s.Store.GetBudgetSession(r.Context(), budgetID, sessionID)
+	d, err := s.Store.GetBudgetSession(r.Context(), sessionID)
 	if err != nil {
 		writeBudgetStoreError(w, "budget.get_budget_session", err)
 		return
 	}
 
-	out, err := budgetSessionToResponse(budgetID, sessionID, d)
+	out, err := budgetSessionToResponse(sessionID, d)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "session response")
 		return
 	}
 	// ?debug=1: expose consumption order and replay math (no weighted "effective" ratio).
 	if sessionDebugQuery(r) {
-		if op, err := s.appendSessionDebug(r.Context(), out, budgetID, sessionID, d.Lines, nil); err != nil {
+		if op, err := s.appendSessionDebug(r.Context(), out, d.BudgetID, sessionID, d.Lines, nil); err != nil {
 			writeBudgetStoreError(w, op, err)
 			return
 		}
@@ -976,9 +974,8 @@ type postSessionReportBody struct {
 }
 
 func (s *Server) postBudgetSessionReport(w http.ResponseWriter, r *http.Request) {
-	budgetID := strings.TrimSpace(mux.Vars(r)["budgetId"])
 	sessionID := strings.TrimSpace(mux.Vars(r)["sessionId"])
-	if !requireUUIDParam(w, budgetID, "budgetId") || !requireUUIDParam(w, sessionID, "sessionId") {
+	if !requireUUIDParam(w, sessionID, "sessionId") {
 		return
 	}
 	var payload postSessionReportBody
@@ -1019,7 +1016,7 @@ func (s *Server) postBudgetSessionReport(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	reportID, err := s.Store.CreateSessionReport(r.Context(), budgetID, sessionID, lines)
+	reportID, budgetID, err := s.Store.CreateSessionReport(r.Context(), sessionID, lines)
 	if err != nil {
 		writeBudgetStoreError(w, "budget.post_session_report", err)
 		return
@@ -1033,7 +1030,7 @@ func (s *Server) postBudgetSessionReport(w http.ResponseWriter, r *http.Request)
 	}
 	go s.deliverReportCreatedWebhooks(budgetID, sessionID, reportID, productKey)
 
-	d, err := s.Store.GetSessionReport(r.Context(), budgetID, sessionID, reportID)
+	d, err := s.Store.GetSessionReport(r.Context(), sessionID, reportID)
 	if err != nil {
 		slog.Error("budget.post_session_report_get", "error", err)
 		// Write succeeded — return minimal payload so client has reportId
@@ -1056,17 +1053,16 @@ func (s *Server) postBudgetSessionReport(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) getBudgetSessionReport(w http.ResponseWriter, r *http.Request) {
-	budgetID := strings.TrimSpace(mux.Vars(r)["budgetId"])
 	sessionID := strings.TrimSpace(mux.Vars(r)["sessionId"])
 	reportID := strings.TrimSpace(mux.Vars(r)["reportId"])
-	if !requireUUIDParam(w, budgetID, "budgetId") || !requireUUIDParam(w, sessionID, "sessionId") || !requireUUIDParam(w, reportID, "reportId") {
+	if !requireUUIDParam(w, sessionID, "sessionId") || !requireUUIDParam(w, reportID, "reportId") {
 		return
 	}
 	if !s.requireStore(w) {
 		return
 	}
 
-	d, err := s.Store.GetSessionReport(r.Context(), budgetID, sessionID, reportID)
+	d, err := s.Store.GetSessionReport(r.Context(), sessionID, reportID)
 	if err != nil {
 		writeBudgetStoreError(w, "budget.get_session_report", err)
 		return

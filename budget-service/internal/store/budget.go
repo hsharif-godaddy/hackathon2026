@@ -123,6 +123,7 @@ type BudgetItemRow struct {
 }
 
 type BudgetSessionDetail struct {
+	BudgetID            string
 	CostTotal           string
 	CreditsChargedTotal string
 	Metadata            []byte
@@ -708,10 +709,7 @@ func (s *Store) BudgetConsumptionPreview(ctx context.Context, budgetID string) (
 
 // DebugSessionCreditsReplay re-runs consumeBudgetCostUSD for each stored line in id order against current
 // budget_items.credits_used (read-only). Mismatch vs credits_charged means items/ratios changed after append.
-func (s *Store) DebugSessionCreditsReplay(ctx context.Context, budgetID, sessionID string) ([]string, error) {
-	if _, err := uuid.Parse(budgetID); err != nil {
-		return nil, err
-	}
+func (s *Store) DebugSessionCreditsReplay(ctx context.Context, sessionID string) ([]string, error) {
 	if _, err := uuid.Parse(sessionID); err != nil {
 		return nil, err
 	}
@@ -721,15 +719,12 @@ func (s *Store) DebugSessionCreditsReplay(ctx context.Context, budgetID, session
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var bid string
+	var budgetID string
 	err = tx.QueryRowContext(ctx, `
 		SELECT budget_id FROM budget_sessions WHERE id = $1 AND reconciled_at IS NULL
-	`, sessionID).Scan(&bid)
+	`, sessionID).Scan(&budgetID)
 	if err != nil {
 		return nil, mapNotFound(err)
-	}
-	if bid != budgetID {
-		return nil, ErrNotFound
 	}
 
 	states, err := loadBudgetConsumptionStatesTx(ctx, tx, budgetID, false)
@@ -769,51 +764,49 @@ func (s *Store) DebugSessionCreditsReplay(ctx context.Context, budgetID, session
 
 // AppendSessionItems records GoCode USD per line and credits_charged from priority consumption.
 // Prior lines are replayed first so a second PATCH sees the same virtual pool as if one batch had been sent.
-func (s *Store) AppendSessionItems(ctx context.Context, budgetID, sessionID string, lines []SessionLine) ([]SessionAppendMathLine, error) {
-	if _, err := uuid.Parse(budgetID); err != nil {
-		return nil, err
-	}
+// On success, the returned budgetID is the session's budget (for callers that need it without a follow-up load).
+func (s *Store) AppendSessionItems(ctx context.Context, sessionID string, lines []SessionLine) ([]SessionAppendMathLine, string, error) {
 	if _, err := uuid.Parse(sessionID); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	// Serialize concurrent PATCHes against the same session + budget_items consumption state.
-	var sessLock int
+	var budgetID string
 	err = tx.QueryRowContext(ctx, `
-		SELECT 1 FROM budget_sessions bs
+		SELECT bs.budget_id FROM budget_sessions bs
 		INNER JOIN budgets b ON b.id = bs.budget_id AND b.deleted_at IS NULL
-		WHERE bs.id = $1 AND bs.budget_id = $2 AND bs.reconciled_at IS NULL
+		WHERE bs.id = $1 AND bs.reconciled_at IS NULL
 		FOR UPDATE OF bs
-	`, sessionID, budgetID).Scan(&sessLock)
+	`, sessionID).Scan(&budgetID)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
-			return nil, err
+			return nil, "", err
 		}
 		var rec sql.NullTime
 		err = tx.QueryRowContext(ctx, `
-			SELECT reconciled_at FROM budget_sessions WHERE id = $1 AND budget_id = $2
-		`, sessionID, budgetID).Scan(&rec)
+			SELECT reconciled_at FROM budget_sessions WHERE id = $1
+		`, sessionID).Scan(&rec)
 		if err != nil {
-			return nil, mapNotFound(err)
+			return nil, "", mapNotFound(err)
 		}
 		if rec.Valid {
-			return nil, ErrAlreadyReconciled
+			return nil, "", ErrAlreadyReconciled
 		}
 		// Row exists with reconciled_at null but first query missed it: should be unreachable; surface as not found.
-		return nil, ErrNotFound
+		return nil, "", ErrNotFound
 	}
 	if err := applyDueResetsForBudgetTx(ctx, tx, budgetID); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	states, err := loadBudgetConsumptionStatesTx(ctx, tx, budgetID, true)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	now := time.Now()
@@ -823,36 +816,36 @@ func (s *Store) AppendSessionItems(ctx context.Context, budgetID, sessionID stri
 		SELECT cost_usd FROM budget_session_items WHERE session_id = $1 ORDER BY id
 	`, sessionID)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	for priorRows.Next() {
 		var costD decimal.Decimal
 		if err := priorRows.Scan(&costD); err != nil {
 			_ = priorRows.Close()
-			return nil, err
+			return nil, "", err
 		}
 		if _, err := consumeBudgetCostUSD(costD, states, now); err != nil {
 			_ = priorRows.Close()
-			return nil, err
+			return nil, "", err
 		}
 	}
 	if err := priorRows.Close(); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if err := priorRows.Err(); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	out := make([]SessionAppendMathLine, 0, len(lines))
 	for i := range lines {
 		costD, err := credits.ParseNonNegative(lines[i].Cost)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		costStr := credits.Format(costD)
 		chunks, err := consumeBudgetCostUSD(costD, states, now)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		var chargedSum decimal.Decimal
 		for j := range chunks {
@@ -863,7 +856,7 @@ func (s *Store) AppendSessionItems(ctx context.Context, budgetID, sessionID stri
 			INSERT INTO budget_session_items (session_id, cost_usd, credits_charged, call_request_id)
 			VALUES ($1, $2, $3, $4)
 		`, sessionID, costStr, chargedStr, lines[i].CallRequestID); err != nil {
-			return nil, mapSessionCallRequestUnique(err)
+			return nil, "", mapSessionCallRequestUnique(err)
 		}
 		math := SessionAppendMathLine{CostUsd: costStr, CreditsCharged: chargedStr}
 		for j := range chunks {
@@ -880,18 +873,15 @@ func (s *Store) AppendSessionItems(ctx context.Context, budgetID, sessionID stri
 		out = append(out, math)
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE budget_sessions SET updated_at = now() WHERE id = $1`, sessionID); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return out, nil
+	return out, budgetID, nil
 }
 
-func (s *Store) GetBudgetSession(ctx context.Context, budgetID, sessionID string) (*BudgetSessionDetail, error) {
-	if _, err := uuid.Parse(budgetID); err != nil {
-		return nil, err
-	}
+func (s *Store) GetBudgetSession(ctx context.Context, sessionID string) (*BudgetSessionDetail, error) {
 	if _, err := uuid.Parse(sessionID); err != nil {
 		return nil, err
 	}
@@ -901,6 +891,7 @@ func (s *Store) GetBudgetSession(ctx context.Context, budgetID, sessionID string
 	var metadata []byte
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
+			bs.budget_id,
 			bs.metadata,
 			bs.created_at,
 			bs.updated_at,
@@ -908,8 +899,8 @@ func (s *Store) GetBudgetSession(ctx context.Context, budgetID, sessionID string
 			COALESCE((SELECT SUM(cost_usd) FROM budget_session_items WHERE session_id = bs.id), 0),
 			COALESCE((SELECT SUM(credits_charged) FROM budget_session_items WHERE session_id = bs.id), 0)
 		FROM budget_sessions bs
-		WHERE bs.id = $1 AND bs.budget_id = $2 AND bs.reconciled_at IS NULL
-	`, sessionID, budgetID).Scan(&metadata, &d.CreatedAt, &d.UpdatedAt, &rec, &costSum, &creditSum)
+		WHERE bs.id = $1 AND bs.reconciled_at IS NULL
+	`, sessionID).Scan(&d.BudgetID, &metadata, &d.CreatedAt, &d.UpdatedAt, &rec, &costSum, &creditSum)
 	if err != nil {
 		return nil, mapNotFound(err)
 	}
@@ -943,24 +934,21 @@ func (s *Store) GetBudgetSession(ctx context.Context, budgetID, sessionID string
 }
 
 // CreateSessionReport applies each report line’s budgetCost USD using the same per-item consumption rules as session PATCH.
-func (s *Store) CreateSessionReport(ctx context.Context, budgetID, sessionID string, items []ReportLineInput) (string, error) {
-	if _, err := uuid.Parse(budgetID); err != nil {
-		return "", err
-	}
+func (s *Store) CreateSessionReport(ctx context.Context, sessionID string, items []ReportLineInput) (string, string, error) {
 	if _, err := uuid.Parse(sessionID); err != nil {
-		return "", err
+		return "", "", err
 	}
 	if len(items) == 0 {
-		return "", credits.ErrInvalid
+		return "", "", credits.ErrInvalid
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var bid string
+	var budgetID string
 	var rec sql.NullTime
 	err = tx.QueryRowContext(ctx, `
 		SELECT bs.budget_id, bs.reconciled_at
@@ -968,41 +956,38 @@ func (s *Store) CreateSessionReport(ctx context.Context, budgetID, sessionID str
 		INNER JOIN budgets b ON b.id = bs.budget_id AND b.deleted_at IS NULL
 		WHERE bs.id = $1
 		FOR UPDATE OF bs
-	`, sessionID).Scan(&bid, &rec)
+	`, sessionID).Scan(&budgetID, &rec)
 	if err != nil {
-		return "", mapNotFound(err)
-	}
-	if bid != budgetID {
-		return "", ErrNotFound
+		return "", "", mapNotFound(err)
 	}
 	if rec.Valid {
-		return "", ErrAlreadyReconciled
+		return "", "", ErrAlreadyReconciled
 	}
 	if err := applyDueResetsForBudgetTx(ctx, tx, budgetID); err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// One mutable snapshot across all report lines; later lines see credits_used from earlier lines in this tx (trigger bumps column on ledger insert).
 	budgetItems, err := loadBudgetConsumptionStatesTx(ctx, tx, budgetID, true)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	now := time.Now()
 
 	reportID := uuid.NewString()
 	if _, err := tx.ExecContext(ctx, `INSERT INTO budget_session_reports (id, session_id) VALUES ($1, $2)`, reportID, sessionID); err != nil {
-		return "", mapReportSessionUnique(err)
+		return "", "", mapReportSessionUnique(err)
 	}
 
 	for i := range items {
 		bc, err := credits.ParseNonNegative(items[i].BudgetCost)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		pc, err := credits.ParseNonNegative(items[i].ProductCost)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		itemID := uuid.NewString()
 		_, err = tx.ExecContext(ctx, `
@@ -1010,12 +995,12 @@ func (s *Store) CreateSessionReport(ctx context.Context, budgetID, sessionID str
 			VALUES ($1, $2, $3, $4, $5)
 		`, itemID, reportID, credits.Format(bc), credits.Format(pc), strings.TrimSpace(items[i].Label))
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 
 		chunks, err := consumeBudgetCostUSD(bc, budgetItems, now)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		for j := range chunks {
 			takeStr := credits.Format(chunks[j].credits)
@@ -1023,13 +1008,13 @@ func (s *Store) CreateSessionReport(ctx context.Context, budgetID, sessionID str
 				INSERT INTO budget_session_report_item_allocations (report_item_id, budget_item_id, credits_used)
 				VALUES ($1, $2, $3)
 			`, itemID, chunks[j].budgetItemID, takeStr); err != nil {
-				return "", err
+				return "", "", err
 			}
 			if _, err = tx.ExecContext(ctx, `
 				INSERT INTO budget_item_credit_ledger (id, budget_item_id, entry_kind, credits_delta, report_item_id)
 				VALUES ($1, $2, 'session_spend', $3, $4)
 			`, uuid.NewString(), chunks[j].budgetItemID, takeStr, itemID); err != nil {
-				return "", err
+				return "", "", err
 			}
 		}
 	}
@@ -1039,22 +1024,19 @@ func (s *Store) CreateSessionReport(ctx context.Context, budgetID, sessionID str
 		SET reconciled_at = COALESCE(reconciled_at, now()), updated_at = now()
 		WHERE id = $1
 	`, sessionID); err != nil {
-		return "", err
+		return "", "", err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE budgets SET updated_at = now() WHERE id = $1`, budgetID); err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	if err := tx.Commit(); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return reportID, nil
+	return reportID, budgetID, nil
 }
 
-func (s *Store) GetSessionReport(ctx context.Context, budgetID, sessionID, reportID string) (*SessionReportDetail, error) {
-	if _, err := uuid.Parse(budgetID); err != nil {
-		return nil, err
-	}
+func (s *Store) GetSessionReport(ctx context.Context, sessionID, reportID string) (*SessionReportDetail, error) {
 	if _, err := uuid.Parse(sessionID); err != nil {
 		return nil, err
 	}
@@ -1068,8 +1050,8 @@ func (s *Store) GetSessionReport(ctx context.Context, budgetID, sessionID, repor
 		FROM budget_session_reports br
 		JOIN budget_sessions bs ON bs.id = br.session_id
 		JOIN budgets b ON b.id = bs.budget_id
-		WHERE br.id = $1 AND bs.id = $2 AND b.id = $3
-	`, reportID, sessionID, budgetID).Scan(&d.ReportID, &d.BudgetID, &d.SessionID, &pk)
+		WHERE br.id = $1 AND bs.id = $2
+	`, reportID, sessionID).Scan(&d.ReportID, &d.BudgetID, &d.SessionID, &pk)
 	if err != nil {
 		return nil, mapNotFound(err)
 	}
@@ -1078,6 +1060,7 @@ func (s *Store) GetSessionReport(ctx context.Context, budgetID, sessionID, repor
 	}
 
 	var bcTot, pcTot, credAvail decimal.Decimal
+	budgetID := d.BudgetID
 	err = s.db.QueryRowContext(ctx, `
 		SELECT
 			COALESCE((SELECT SUM(budget_cost) FROM budget_session_report_items WHERE report_id = $1), 0),

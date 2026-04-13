@@ -10,22 +10,22 @@ HTTP API for budgets, LLM sessions, session spend lines, session reports (reconc
 
 ## API summary
 
-| Method                    | Path                                                            | Notes                                             |
-| ------------------------- | --------------------------------------------------------------- | ------------------------------------------------- |
-| `GET`                     | `/openapi.yaml`                                                 | OpenAPI 3 spec; no auth                           |
-| `GET`                     | `/swagger/`, `/swagger`                                         | Swagger UI → `/openapi.yaml`; no auth             |
-| `GET`, `HEAD`             | `/health`                                                       | No auth                                           |
-| `GET`                     | `/api/v1/auth-check`                                            | Auth probe                                        |
-| `GET`, `POST`             | `/api/v1/products`                                              | POST revives soft-deleted key when safe; else 409 |
-| `DELETE`                  | `/api/v1/products/{productKey}`                                 | 409 if active budgets reference product           |
-| `POST`                    | `/api/v1/webhooks`                                              | Register webhook; response matches webhook GET    |
-| `GET`, `DELETE`           | `/api/v1/webhooks/{webhookId}`                                  | DELETE soft-deletes webhook row                   |
-| `POST`                    | `/api/v1/budgets`                                               | Response matches budget GET                       |
-| `GET`, `PATCH`, `DELETE`  | `/api/v1/budgets/{budgetId}`                                    | DELETE soft-deletes; 409 if open sessions         |
-| `POST`, `PATCH`, `DELETE` | `/api/v1/budgets/{budgetId}/budget-items`, `.../{budgetItemId}` | POST/PATCH responses match item GET               |
-| `POST`                    | `/api/v1/budgets/{budgetId}/sessions`                           | Response matches session GET                      |
-| `GET`, `PATCH`            | `/api/v1/budgets/{budgetId}/sessions/{sessionId}`               | PATCH response matches GET; GET 404 when closed   |
-| `POST`, `GET`             | `.../sessions/{sessionId}/reports`, `.../reports/{reportId}`    | POST response matches report GET                  |
+| Method                    | Path                                                             | Notes                                             |
+| ------------------------- | ---------------------------------------------------------------- | ------------------------------------------------- |
+| `GET`                     | `/openapi.yaml`                                                  | OpenAPI 3 spec; no auth                           |
+| `GET`                     | `/swagger/`, `/swagger`                                          | Swagger UI → `/openapi.yaml`; no auth             |
+| `GET`, `HEAD`             | `/health`                                                        | No auth                                           |
+| `GET`                     | `/api/v1/auth-check`                                             | Auth probe                                        |
+| `GET`, `POST`             | `/api/v1/products`                                               | POST revives soft-deleted key when safe; else 409 |
+| `DELETE`                  | `/api/v1/products/{productKey}`                                  | 409 if active budgets reference product           |
+| `POST`                    | `/api/v1/webhooks`                                               | Register webhook; response matches webhook GET    |
+| `GET`, `DELETE`           | `/api/v1/webhooks/{webhookId}`                                   | DELETE soft-deletes webhook row                   |
+| `POST`                    | `/api/v1/budgets`                                                | Response matches budget GET                       |
+| `GET`, `PATCH`, `DELETE`  | `/api/v1/budgets/{budgetId}`                                     | DELETE soft-deletes; 409 if open sessions         |
+| `POST`, `PATCH`, `DELETE` | `/api/v1/budgets/{budgetId}/budget-items`, `.../{budgetItemId}`  | POST/PATCH responses match item GET               |
+| `POST`                    | `/api/v1/sessions`                                               | Body: `budgetId`; response matches session GET    |
+| `GET`, `PATCH`            | `/api/v1/sessions/{sessionId}`                                   | PATCH response matches GET; GET 404 when closed   |
+| `POST`, `GET`             | `/api/v1/sessions/{sessionId}/reports`, `.../reports/{reportId}` | POST response matches report GET                  |
 
 Successful write endpoints (`POST`/`PATCH`) return the same payload format as the corresponding resource `GET`.
 

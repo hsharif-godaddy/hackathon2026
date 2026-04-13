@@ -72,10 +72,10 @@
     if (g('btnPatchBudget')) g('btnPatchBudget').disabled = !bid;
     if (g('btnGetBudgetItem')) g('btnGetBudgetItem').disabled = !bid || !itemId;
     if (g('btnPostSession')) g('btnPostSession').disabled = !bid;
-    if (g('btnPatchSession')) g('btnPatchSession').disabled = !bid || !sid;
-    if (g('btnGetSession')) g('btnGetSession').disabled = !bid || !sid;
-    if (g('btnPostReport')) g('btnPostReport').disabled = !bid || !sid;
-    if (g('btnGetReport')) g('btnGetReport').disabled = !bid || !sid || !rid;
+    if (g('btnPatchSession')) g('btnPatchSession').disabled = !sid;
+    if (g('btnGetSession')) g('btnGetSession').disabled = !sid;
+    if (g('btnPostReport')) g('btnPostReport').disabled = !sid;
+    if (g('btnGetReport')) g('btnGetReport').disabled = !sid || !rid;
   }
 
   function logExchange(request, response) {
@@ -152,36 +152,30 @@
       setInput('budgetItemId', data.budgetItemId);
     }
 
-    const sessionCollection = path.match(/^\/api\/v1\/budgets\/([^/]+)\/sessions$/);
+    const sessionCollection = path.match(/^\/api\/v1\/sessions$/);
     if (sessionCollection && method === 'POST' && data.sessionId) {
-      setInput('budgetId', sessionCollection[1]);
+      setInput('budgetId', data.budgetId);
       setInput('sessionId', data.sessionId);
     }
 
-    const sessionOne = path.match(
-      /^\/api\/v1\/budgets\/([^/]+)\/sessions\/([^/]+)$/,
-    );
+    const sessionOne = path.match(/^\/api\/v1\/sessions\/([^/]+)$/);
     if (sessionOne) {
-      setInput('budgetId', data.budgetId || sessionOne[1]);
-      setInput('sessionId', data.sessionId || sessionOne[2]);
+      setInput('budgetId', data.budgetId);
+      setInput('sessionId', data.sessionId || sessionOne[1]);
     }
 
-    const reportCollection = path.match(
-      /^\/api\/v1\/budgets\/([^/]+)\/sessions\/([^/]+)\/reports$/,
-    );
+    const reportCollection = path.match(/^\/api\/v1\/sessions\/([^/]+)\/reports$/);
     if (reportCollection && method === 'POST') {
-      setInput('budgetId', data.budgetId || reportCollection[1]);
-      setInput('sessionId', data.sessionId || reportCollection[2]);
+      setInput('budgetId', data.budgetId);
+      setInput('sessionId', data.sessionId || reportCollection[1]);
       setInput('reportId', data.reportId);
     }
 
-    const reportOne = path.match(
-      /^\/api\/v1\/budgets\/([^/]+)\/sessions\/([^/]+)\/reports\/([^/]+)$/,
-    );
+    const reportOne = path.match(/^\/api\/v1\/sessions\/([^/]+)\/reports\/([^/]+)$/);
     if (reportOne && method === 'GET') {
-      setInput('budgetId', data.budgetId || reportOne[1]);
-      setInput('sessionId', data.sessionId || reportOne[2]);
-      setInput('reportId', data.reportId || reportOne[3]);
+      setInput('budgetId', data.budgetId);
+      setInput('sessionId', data.sessionId || reportOne[1]);
+      setInput('reportId', data.reportId || reportOne[2]);
       setInput('productKey', data.productKey);
     }
 
@@ -306,34 +300,24 @@
 
   document.getElementById('btnPostSession').onclick = function () {
     const bid = document.getElementById('budgetId').value.trim();
-    const raw = document.getElementById('sessionPost').value;
-    req('POST', '/api/v1/budgets/' + encodeURIComponent(bid) + '/sessions', raw).catch(
-      fail,
-    );
+    let body = {};
+    try {
+      body = JSON.parse(document.getElementById('sessionPost').value || '{}');
+    } catch (e) {
+      fail(e);
+      return;
+    }
+    body.budgetId = bid;
+    req('POST', '/api/v1/sessions', JSON.stringify(body)).catch(fail);
   };
   document.getElementById('btnPatchSession').onclick = function () {
-    const bid = document.getElementById('budgetId').value.trim();
     const sid = document.getElementById('sessionId').value.trim();
     const raw = document.getElementById('sessionPatch').value;
-    req(
-      'PATCH',
-      '/api/v1/budgets/' +
-        encodeURIComponent(bid) +
-        '/sessions/' +
-        encodeURIComponent(sid),
-      raw,
-    ).catch(fail);
+    req('PATCH', '/api/v1/sessions/' + encodeURIComponent(sid), raw).catch(fail);
   };
   document.getElementById('btnGetSession').onclick = function () {
-    const bid = document.getElementById('budgetId').value.trim();
     const sid = document.getElementById('sessionId').value.trim();
-    req(
-      'GET',
-      '/api/v1/budgets/' +
-        encodeURIComponent(bid) +
-        '/sessions/' +
-        encodeURIComponent(sid),
-    ).catch(fail);
+    req('GET', '/api/v1/sessions/' + encodeURIComponent(sid)).catch(fail);
   };
 
   document.getElementById('btnPostWebhook').onclick = function () {
@@ -355,28 +339,20 @@
   };
 
   document.getElementById('btnPostReport').onclick = function () {
-    const bid = document.getElementById('budgetId').value.trim();
     const sid = document.getElementById('sessionId').value.trim();
     const raw = document.getElementById('reportPost').value;
     req(
       'POST',
-      '/api/v1/budgets/' +
-        encodeURIComponent(bid) +
-        '/sessions/' +
-        encodeURIComponent(sid) +
-        '/reports',
+      '/api/v1/sessions/' + encodeURIComponent(sid) + '/reports',
       raw,
     ).catch(fail);
   };
   document.getElementById('btnGetReport').onclick = function () {
-    const bid = document.getElementById('budgetId').value.trim();
     const sid = document.getElementById('sessionId').value.trim();
     const rid = document.getElementById('reportId').value.trim();
     req(
       'GET',
-      '/api/v1/budgets/' +
-        encodeURIComponent(bid) +
-        '/sessions/' +
+      '/api/v1/sessions/' +
         encodeURIComponent(sid) +
         '/reports/' +
         encodeURIComponent(rid),

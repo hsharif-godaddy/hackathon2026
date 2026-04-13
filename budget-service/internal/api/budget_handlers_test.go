@@ -100,6 +100,30 @@ func TestPostBudgetRejectsEmptyItems(t *testing.T) {
 	}
 }
 
+func TestPostBudgetSessionRejectsMissingBudgetId(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postBudgetSession(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPostBudgetSessionRejectsInvalidBudgetId(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"not-a-uuid"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postBudgetSession(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestPostBudgetRejectsInvalidResetInterval(t *testing.T) {
 	t.Parallel()
 	s := &Server{}
@@ -301,16 +325,15 @@ func TestBudgetSessionReportPathNotShadowedBySessionPatch(t *testing.T) {
 	t.Parallel()
 	var handlerName string
 	r := mux.NewRouter()
-	r.Methods(http.MethodPost).Path("/budgets/{budgetId}/sessions/{sessionId}/reports").HandlerFunc(func(http.ResponseWriter, *http.Request) {
+	r.Methods(http.MethodPost).Path("/sessions/{sessionId}/reports").HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		handlerName = "report"
 	})
-	r.Methods(http.MethodPatch).Path("/budgets/{budgetId}/sessions/{sessionId}").HandlerFunc(func(http.ResponseWriter, *http.Request) {
+	r.Methods(http.MethodPatch).Path("/sessions/{sessionId}").HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		handlerName = "patch"
 	})
-	bid := "11111111-1111-1111-1111-111111111111"
 	sid := "22222222-2222-2222-2222-222222222222"
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/budgets/"+bid+"/sessions/"+sid+"/reports", strings.NewReader("{}"))
+	req := httptest.NewRequest(http.MethodPost, "/sessions/"+sid+"/reports", strings.NewReader("{}"))
 	r.ServeHTTP(rec, req)
 	if handlerName != "report" {
 		t.Fatalf("expected report route, got %q", handlerName)
@@ -333,7 +356,7 @@ func TestPostSessionReturns402WhenBudgetExhausted(t *testing.T) {
 	auth := auth.NewMiddleware("none")
 	h := NewRouter(&Server{Store: st}, auth)
 
-	reqS1 := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/sessions", strings.NewReader(`{}`))
+	reqS1 := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+budgetID+`"}`))
 	reqS1.Header.Set("Content-Type", "application/json")
 	recS1 := httptest.NewRecorder()
 	h.ServeHTTP(recS1, reqS1)
@@ -348,7 +371,7 @@ func TestPostSessionReturns402WhenBudgetExhausted(t *testing.T) {
 	}
 
 	repBody := `{"reportItems":[{"budgetCost":"1","productCost":"0","label":"close"}]}`
-	reqRep := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/sessions/"+s1.SessionID+"/reports", strings.NewReader(repBody))
+	reqRep := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+s1.SessionID+"/reports", strings.NewReader(repBody))
 	reqRep.Header.Set("Content-Type", "application/json")
 	recRep := httptest.NewRecorder()
 	h.ServeHTTP(recRep, reqRep)
@@ -356,7 +379,7 @@ func TestPostSessionReturns402WhenBudgetExhausted(t *testing.T) {
 		t.Fatalf("post report: %d %s", recRep.Code, recRep.Body.String())
 	}
 
-	reqS2 := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/sessions", strings.NewReader(`{}`))
+	reqS2 := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+budgetID+`"}`))
 	reqS2.Header.Set("Content-Type", "application/json")
 	recS2 := httptest.NewRecorder()
 	h.ServeHTTP(recS2, reqS2)
@@ -392,7 +415,7 @@ func TestPatchReconciledSessionReturns409(t *testing.T) {
 	h := NewRouter(&Server{Store: st}, auth)
 
 	recS := httptest.NewRecorder()
-	reqS := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/sessions", strings.NewReader(`{}`))
+	reqS := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+budgetID+`"}`))
 	reqS.Header.Set("Content-Type", "application/json")
 	h.ServeHTTP(recS, reqS)
 	if recS.Code != http.StatusCreated {
@@ -406,7 +429,7 @@ func TestPatchReconciledSessionReturns409(t *testing.T) {
 	}
 	repBody := `{"reportItems":[{"budgetCost":"1","productCost":"0","label":"x"}]}`
 	recRep := httptest.NewRecorder()
-	reqRep := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/sessions/"+sess.SessionID+"/reports", strings.NewReader(repBody))
+	reqRep := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.SessionID+"/reports", strings.NewReader(repBody))
 	reqRep.Header.Set("Content-Type", "application/json")
 	h.ServeHTTP(recRep, reqRep)
 	if recRep.Code != http.StatusCreated {
@@ -414,7 +437,7 @@ func TestPatchReconciledSessionReturns409(t *testing.T) {
 	}
 
 	recPatch := httptest.NewRecorder()
-	reqPatch := httptest.NewRequest(http.MethodPatch, "/api/v1/budgets/"+budgetID+"/sessions/"+sess.SessionID, strings.NewReader(`{"sessionItems":[{"cost":"1","callRequestId":"late-req"}]}`))
+	reqPatch := httptest.NewRequest(http.MethodPatch, "/api/v1/sessions/"+sess.SessionID, strings.NewReader(`{"sessionItems":[{"cost":"1","callRequestId":"late-req"}]}`))
 	reqPatch.Header.Set("Content-Type", "application/json")
 	h.ServeHTTP(recPatch, reqPatch)
 	if recPatch.Code != http.StatusConflict {
@@ -450,7 +473,7 @@ func TestPatchNonexistentSessionReturns404(t *testing.T) {
 
 	fakeSessionID := uuid.NewString()
 	recPatch := httptest.NewRecorder()
-	reqPatch := httptest.NewRequest(http.MethodPatch, "/api/v1/budgets/"+budgetID+"/sessions/"+fakeSessionID, strings.NewReader(`{"sessionItems":[{"cost":"1","callRequestId":"req"}]}`))
+	reqPatch := httptest.NewRequest(http.MethodPatch, "/api/v1/sessions/"+fakeSessionID, strings.NewReader(`{"sessionItems":[{"cost":"1","callRequestId":"req"}]}`))
 	reqPatch.Header.Set("Content-Type", "application/json")
 	h.ServeHTTP(recPatch, reqPatch)
 	if recPatch.Code != http.StatusNotFound {
@@ -485,7 +508,7 @@ func TestPatchSessionDuplicateCallRequestID(t *testing.T) {
 	h := NewRouter(&Server{Store: st}, auth)
 
 	recS := httptest.NewRecorder()
-	reqS := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/sessions", strings.NewReader(`{}`))
+	reqS := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+budgetID+`"}`))
 	reqS.Header.Set("Content-Type", "application/json")
 	h.ServeHTTP(recS, reqS)
 	if recS.Code != http.StatusCreated {
@@ -499,7 +522,7 @@ func TestPatchSessionDuplicateCallRequestID(t *testing.T) {
 	}
 
 	recDupInBody := httptest.NewRecorder()
-	reqDupInBody := httptest.NewRequest(http.MethodPatch, "/api/v1/budgets/"+budgetID+"/sessions/"+sess.SessionID, strings.NewReader(
+	reqDupInBody := httptest.NewRequest(http.MethodPatch, "/api/v1/sessions/"+sess.SessionID, strings.NewReader(
 		`{"sessionItems":[{"cost":"1","callRequestId":"same"},{"cost":"1","callRequestId":"same"}]}`,
 	))
 	reqDupInBody.Header.Set("Content-Type", "application/json")
@@ -519,7 +542,7 @@ func TestPatchSessionDuplicateCallRequestID(t *testing.T) {
 	}
 
 	recFirst := httptest.NewRecorder()
-	reqFirst := httptest.NewRequest(http.MethodPatch, "/api/v1/budgets/"+budgetID+"/sessions/"+sess.SessionID, strings.NewReader(
+	reqFirst := httptest.NewRequest(http.MethodPatch, "/api/v1/sessions/"+sess.SessionID, strings.NewReader(
 		`{"sessionItems":[{"cost":"1","callRequestId":"idempotent-req"}]}`,
 	))
 	reqFirst.Header.Set("Content-Type", "application/json")
@@ -529,7 +552,7 @@ func TestPatchSessionDuplicateCallRequestID(t *testing.T) {
 	}
 
 	recSecond := httptest.NewRecorder()
-	reqSecond := httptest.NewRequest(http.MethodPatch, "/api/v1/budgets/"+budgetID+"/sessions/"+sess.SessionID, strings.NewReader(
+	reqSecond := httptest.NewRequest(http.MethodPatch, "/api/v1/sessions/"+sess.SessionID, strings.NewReader(
 		`{"sessionItems":[{"cost":"1","callRequestId":"idempotent-req"}]}`,
 	))
 	reqSecond.Header.Set("Content-Type", "application/json")
@@ -585,7 +608,7 @@ func TestGoCodeSpendMathOverHTTP(t *testing.T) {
 	}
 	budgetID := budgetResp.BudgetID
 
-	reqS := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/sessions", strings.NewReader(`{"metadata":{"run":"integration"}}`))
+	reqS := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+budgetID+`","metadata":{"run":"integration"}}`))
 	reqS.Header.Set("Content-Type", "application/json")
 	recS := httptest.NewRecorder()
 	h.ServeHTTP(recS, reqS)
@@ -605,7 +628,7 @@ func TestGoCodeSpendMathOverHTTP(t *testing.T) {
 	}
 
 	patchBody := `{"sessionItems":[{"cost":2,"callRequestId":"gocode-req-1"}]}`
-	reqSp := httptest.NewRequest(http.MethodPatch, "/api/v1/budgets/"+budgetID+"/sessions/"+sessionID, strings.NewReader(patchBody))
+	reqSp := httptest.NewRequest(http.MethodPatch, "/api/v1/sessions/"+sessionID, strings.NewReader(patchBody))
 	reqSp.Header.Set("Content-Type", "application/json")
 	recSp := httptest.NewRecorder()
 	h.ServeHTTP(recSp, reqSp)
@@ -613,7 +636,7 @@ func TestGoCodeSpendMathOverHTTP(t *testing.T) {
 		t.Fatalf("patch session: %d %s", recSp.Code, recSp.Body.String())
 	}
 
-	reqG := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/"+budgetID+"/sessions/"+sessionID+"?debug=1", nil)
+	reqG := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+sessionID+"?debug=1", nil)
 	recG := httptest.NewRecorder()
 	h.ServeHTTP(recG, reqG)
 	if recG.Code != http.StatusOK {
@@ -654,7 +677,7 @@ func TestGoCodeSpendMathOverHTTP(t *testing.T) {
 	}
 
 	repBody := `{"reportItems":[{"budgetCost":2,"productCost":1,"label":"usage"}]}`
-	reqRep := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/sessions/"+sessionID+"/reports", strings.NewReader(repBody))
+	reqRep := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sessionID+"/reports", strings.NewReader(repBody))
 	reqRep.Header.Set("Content-Type", "application/json")
 	recRep := httptest.NewRecorder()
 	h.ServeHTTP(recRep, reqRep)
@@ -671,7 +694,7 @@ func TestGoCodeSpendMathOverHTTP(t *testing.T) {
 		t.Fatal("missing reportId")
 	}
 
-	reqGR := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/"+budgetID+"/sessions/"+sessionID+"/reports/"+reportResp.ReportID, nil)
+	reqGR := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+sessionID+"/reports/"+reportResp.ReportID, nil)
 	recGR := httptest.NewRecorder()
 	h.ServeHTTP(recGR, reqGR)
 	if recGR.Code != http.StatusOK {
@@ -690,7 +713,7 @@ func TestGoCodeSpendMathOverHTTP(t *testing.T) {
 		t.Fatalf("report label")
 	}
 
-	reqGS404 := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/"+budgetID+"/sessions/"+sessionID, nil)
+	reqGS404 := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+sessionID, nil)
 	recGS404 := httptest.NewRecorder()
 	h.ServeHTTP(recGS404, reqGS404)
 	if recGS404.Code != http.StatusNotFound {
@@ -1380,7 +1403,7 @@ func TestReportAllocatesRenewalItemBeforePlainItem(t *testing.T) {
 	}
 	renewalItemID := budgetGet.Items[0].BudgetItemID
 
-	reqS := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/sessions", strings.NewReader(`{}`))
+	reqS := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+budgetID+`"}`))
 	reqS.Header.Set("Content-Type", "application/json")
 	recS := httptest.NewRecorder()
 	h.ServeHTTP(recS, reqS)
@@ -1396,7 +1419,7 @@ func TestReportAllocatesRenewalItemBeforePlainItem(t *testing.T) {
 	sessionID := sessResp.SessionID
 
 	repBody := `{"reportItems":[{"budgetCost":"0.10","productCost":"0","label":"p"}]}`
-	reqRep := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/sessions/"+sessionID+"/reports", strings.NewReader(repBody))
+	reqRep := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sessionID+"/reports", strings.NewReader(repBody))
 	reqRep.Header.Set("Content-Type", "application/json")
 	recRep := httptest.NewRecorder()
 	h.ServeHTTP(recRep, reqRep)
@@ -1410,7 +1433,7 @@ func TestReportAllocatesRenewalItemBeforePlainItem(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reqGR := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/"+budgetID+"/sessions/"+sessionID+"/reports/"+reportResp.ReportID, nil)
+	reqGR := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+sessionID+"/reports/"+reportResp.ReportID, nil)
 	recGR := httptest.NewRecorder()
 	h.ServeHTTP(recGR, reqGR)
 	if recGR.Code != http.StatusOK {
@@ -1523,7 +1546,7 @@ func TestWriteEndpointsReturnCanonicalGetPayloads(t *testing.T) {
 	assertJSONMapEqual(t, "patch budget item vs get budget item", patchItemResp, getItemResp2)
 
 	recPostSession := httptest.NewRecorder()
-	reqPostSession := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/sessions", strings.NewReader(`{"metadata":{"source":"parity"}}`))
+	reqPostSession := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+budgetID+`","metadata":{"source":"parity"}}`))
 	reqPostSession.Header.Set("Content-Type", "application/json")
 	h.ServeHTTP(recPostSession, reqPostSession)
 	if recPostSession.Code != http.StatusCreated {
@@ -1533,7 +1556,7 @@ func TestWriteEndpointsReturnCanonicalGetPayloads(t *testing.T) {
 	sessionID := postSessionResp["sessionId"].(string)
 
 	recGetSession := httptest.NewRecorder()
-	reqGetSession := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/"+budgetID+"/sessions/"+sessionID, nil)
+	reqGetSession := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+sessionID, nil)
 	h.ServeHTTP(recGetSession, reqGetSession)
 	if recGetSession.Code != http.StatusOK {
 		t.Fatalf("get session: %d %s", recGetSession.Code, recGetSession.Body.String())
@@ -1542,7 +1565,7 @@ func TestWriteEndpointsReturnCanonicalGetPayloads(t *testing.T) {
 	assertJSONMapEqual(t, "post session vs get session", postSessionResp, getSessionResp)
 
 	recPatchSession := httptest.NewRecorder()
-	reqPatchSession := httptest.NewRequest(http.MethodPatch, "/api/v1/budgets/"+budgetID+"/sessions/"+sessionID, strings.NewReader(`{"sessionItems":[{"cost":2,"callRequestId":"parity-req-1"}]}`))
+	reqPatchSession := httptest.NewRequest(http.MethodPatch, "/api/v1/sessions/"+sessionID, strings.NewReader(`{"sessionItems":[{"cost":2,"callRequestId":"parity-req-1"}]}`))
 	reqPatchSession.Header.Set("Content-Type", "application/json")
 	h.ServeHTTP(recPatchSession, reqPatchSession)
 	if recPatchSession.Code != http.StatusOK {
@@ -1551,7 +1574,7 @@ func TestWriteEndpointsReturnCanonicalGetPayloads(t *testing.T) {
 	patchSessionResp := decodeJSONMapUseNumber(t, recPatchSession.Body.String())
 
 	recGetSession2 := httptest.NewRecorder()
-	reqGetSession2 := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/"+budgetID+"/sessions/"+sessionID, nil)
+	reqGetSession2 := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+sessionID, nil)
 	h.ServeHTTP(recGetSession2, reqGetSession2)
 	if recGetSession2.Code != http.StatusOK {
 		t.Fatalf("get session after patch: %d %s", recGetSession2.Code, recGetSession2.Body.String())
@@ -1560,7 +1583,7 @@ func TestWriteEndpointsReturnCanonicalGetPayloads(t *testing.T) {
 	assertJSONMapEqual(t, "patch session vs get session", patchSessionResp, getSessionResp2)
 
 	recPostReport := httptest.NewRecorder()
-	reqPostReport := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/sessions/"+sessionID+"/reports", strings.NewReader(`{"reportItems":[{"budgetCost":"1.500000","productCost":"1.000000","label":"parity"}]}`))
+	reqPostReport := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sessionID+"/reports", strings.NewReader(`{"reportItems":[{"budgetCost":"1.500000","productCost":"1.000000","label":"parity"}]}`))
 	reqPostReport.Header.Set("Content-Type", "application/json")
 	h.ServeHTTP(recPostReport, reqPostReport)
 	if recPostReport.Code != http.StatusCreated {
@@ -1570,7 +1593,7 @@ func TestWriteEndpointsReturnCanonicalGetPayloads(t *testing.T) {
 	reportID := postReportResp["reportId"].(string)
 
 	recGetReport := httptest.NewRecorder()
-	reqGetReport := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/"+budgetID+"/sessions/"+sessionID+"/reports/"+reportID, nil)
+	reqGetReport := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+sessionID+"/reports/"+reportID, nil)
 	h.ServeHTTP(recGetReport, reqGetReport)
 	if recGetReport.Code != http.StatusOK {
 		t.Fatalf("get report: %d %s", recGetReport.Code, recGetReport.Body.String())

@@ -47,13 +47,13 @@ BUDGET_JSON=$(api POST /api/v1/budgets "{\"productKey\":\"${PRODUCT_KEY}\",\"ite
 BUDGET_ID=$(echo "$BUDGET_JSON" | jq -r .budgetId)
 echo "e2e-local: budgetId=${BUDGET_ID}"
 
-echo "e2e-local: POST /api/v1/budgets/.../sessions"
-SESS_JSON=$(api POST "/api/v1/budgets/${BUDGET_ID}/sessions" '{}')
+echo "e2e-local: POST /api/v1/sessions"
+SESS_JSON=$(api POST "/api/v1/sessions" "{\"budgetId\":\"${BUDGET_ID}\"}")
 SESSION_ID=$(echo "$SESS_JSON" | jq -r .sessionId)
 echo "e2e-local: sessionId=${SESSION_ID}"
 
 echo "e2e-local: PATCH session (GoCode spend)"
-api PATCH "/api/v1/budgets/${BUDGET_ID}/sessions/${SESSION_ID}" \
+api PATCH "/api/v1/sessions/${SESSION_ID}" \
   '{"sessionItems":[{"cost":"2.000000","callRequestId":"e2e-gocode-1"}]}' >/dev/null
 
 echo "e2e-local: POST /api/v1/webhooks -> ${WEBHOOK_TARGET}"
@@ -61,7 +61,7 @@ WH_JSON=$(api POST /api/v1/webhooks "{\"eventType\":\"report.created\",\"product
 echo "$WH_JSON" | jq .
 
 echo "e2e-local: POST report"
-REP_JSON=$(api POST "/api/v1/budgets/${BUDGET_ID}/sessions/${SESSION_ID}/reports" \
+REP_JSON=$(api POST "/api/v1/sessions/${SESSION_ID}/reports" \
   '{"reportItems":[{"budgetCost":"2.000000","productCost":"1.000000","label":"e2e"}]}')
 REPORT_ID=$(echo "$REP_JSON" | jq -r .reportId)
 echo "e2e-local: reportId=${REPORT_ID}"
@@ -70,7 +70,7 @@ echo "e2e-local: reportId=${REPORT_ID}"
 sleep 2
 
 echo "e2e-local: GET report (verify API)"
-GOT=$(api GET "/api/v1/budgets/${BUDGET_ID}/sessions/${SESSION_ID}/reports/${REPORT_ID}")
+GOT=$(api GET "/api/v1/sessions/${SESSION_ID}/reports/${REPORT_ID}")
 echo "$GOT" | jq .
 [[ "$(echo "$GOT" | jq -r .reportId)" == "$REPORT_ID" ]]
 

@@ -38,11 +38,11 @@ func NewRouter(s *Server, authMW *auth.Middleware) http.Handler {
 	v1.HandleFunc("/webhooks/{webhookId}", s.deleteWebhook).Methods(http.MethodDelete)
 	v1.HandleFunc("/webhooks", s.postWebhook).Methods(http.MethodPost)
 
-	v1.HandleFunc("/budgets/{budgetId}/sessions/{sessionId}/reports/{reportId}", s.getBudgetSessionReport).Methods(http.MethodGet)
-	v1.HandleFunc("/budgets/{budgetId}/sessions/{sessionId}/reports", s.postBudgetSessionReport).Methods(http.MethodPost)
-	v1.HandleFunc("/budgets/{budgetId}/sessions/{sessionId}", s.getBudgetSession).Methods(http.MethodGet)
-	v1.HandleFunc("/budgets/{budgetId}/sessions/{sessionId}", s.patchBudgetSession).Methods(http.MethodPatch)
-	v1.HandleFunc("/budgets/{budgetId}/sessions", s.postBudgetSession).Methods(http.MethodPost)
+	v1.HandleFunc("/sessions/{sessionId}/reports/{reportId}", s.getBudgetSessionReport).Methods(http.MethodGet)
+	v1.HandleFunc("/sessions/{sessionId}/reports", s.postBudgetSessionReport).Methods(http.MethodPost)
+	v1.HandleFunc("/sessions/{sessionId}", s.getBudgetSession).Methods(http.MethodGet)
+	v1.HandleFunc("/sessions/{sessionId}", s.patchBudgetSession).Methods(http.MethodPatch)
+	v1.HandleFunc("/sessions", s.postBudgetSession).Methods(http.MethodPost)
 	// Future credit reimbursements (not implemented): POST /api/v1/budgets/{budgetId}/budget-items/{budgetItemId}/credit-reimbursements
 	// Body: { "credits": "<decimal>", "reason": "..." } → inserts budget_item_credit_ledger entry_kind=reimbursement (negative credits_delta).
 

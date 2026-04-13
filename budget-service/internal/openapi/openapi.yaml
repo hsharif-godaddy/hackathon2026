@@ -377,18 +377,21 @@ paths:
         "409":
           $ref: "#/components/responses/Error"
 
-  /api/v1/budgets/{budgetId}/sessions:
+  /api/v1/sessions:
     post:
       tags: [v1]
       summary: Open session (402 if no consumable capacity)
-      parameters:
-        - $ref: "#/components/parameters/budgetIdPath"
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
+              required: [budgetId]
               properties:
+                budgetId:
+                  type: string
+                  format: uuid
                 metadata:
                   type: object
                   nullable: true
@@ -412,12 +415,11 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
 
-  /api/v1/budgets/{budgetId}/sessions/{sessionId}:
+  /api/v1/sessions/{sessionId}:
     get:
       tags: [v1]
       summary: Get session (404 if reconciled)
       parameters:
-        - $ref: "#/components/parameters/budgetIdPath"
         - $ref: "#/components/parameters/sessionIdPath"
         - name: debug
           in: query
@@ -438,7 +440,6 @@ paths:
       tags: [v1]
       summary: Append spend lines
       parameters:
-        - $ref: "#/components/parameters/budgetIdPath"
         - $ref: "#/components/parameters/sessionIdPath"
       requestBody:
         required: true
@@ -475,12 +476,11 @@ paths:
         "409":
           $ref: "#/components/responses/Error"
 
-  /api/v1/budgets/{budgetId}/sessions/{sessionId}/reports:
+  /api/v1/sessions/{sessionId}/reports:
     post:
       tags: [v1]
       summary: Close session with report (sets reconciled_at)
       parameters:
-        - $ref: "#/components/parameters/budgetIdPath"
         - $ref: "#/components/parameters/sessionIdPath"
       requestBody:
         required: true
@@ -516,12 +516,11 @@ paths:
         "409":
           $ref: "#/components/responses/Error"
 
-  /api/v1/budgets/{budgetId}/sessions/{sessionId}/reports/{reportId}:
+  /api/v1/sessions/{sessionId}/reports/{reportId}:
     get:
       tags: [v1]
       summary: Get report
       parameters:
-        - $ref: "#/components/parameters/budgetIdPath"
         - $ref: "#/components/parameters/sessionIdPath"
         - $ref: "#/components/parameters/reportIdPath"
       responses:

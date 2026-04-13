@@ -386,7 +386,7 @@
           <button type="button" id="btnPostBudget">POST /api/v1/budgets</button>
           <button type="button" id="btnGetBudget">GET /api/v1/budgets/{id}</button>
         </div>
-        <label for="budgetId">budgetId (GET / PATCH / sessions)</label>
+        <label for="budgetId">budgetId (budget GET/PATCH; merged into POST /sessions body)</label>
         <input id="budgetId" placeholder="from POST response" autocomplete="off" />
 
         <h2>Budget PATCH</h2>
@@ -421,7 +421,7 @@
           </div>
         </div>
         <textarea id="sessionPost" class="json-input-sm">{}</textarea>
-        <button type="button" id="btnPostSession">POST /api/v1/budgets/{id}/sessions</button>
+        <button type="button" id="btnPostSession">POST /api/v1/sessions</button>
         <label for="sessionId">sessionId</label>
         <input id="sessionId" placeholder="from POST session" autocomplete="off" />
       </details>
