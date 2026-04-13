@@ -9,10 +9,92 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { ZipSecurityService } from '../ZipSecurityService.js';
 import { ValidationErrorKey } from '../../types/import.js';
 import archiver from 'archiver';
 import { createWriteStream } from 'node:fs';
+
+/**
+ * Tests for path traversal detection logic (defense-in-depth)
+ *
+ * The service uses path.posix.normalize to resolve .. segments, then checks if the
+ * normalized path escapes the extraction root (starts with ../ or equals ..).
+ *
+ * This approach correctly distinguishes:
+ * - Dangerous: ../etc/passwd → ../etc/passwd (escapes root)
+ * - Safe: foo/../bar → bar (stays inside root)
+ * - Safe: _.._kXkB4JI1.mjs → unchanged (.. is part of filename, not a segment)
+ *
+ * yauzl typically rejects traversal paths before our check runs, but this is
+ * defense-in-depth in case yauzl's behavior changes.
+ */
+describe('Path traversal detection (defense-in-depth)', () => {
+  /**
+   * Helper that replicates the service's traversal detection logic
+   * for direct unit testing without needing real zip files.
+   */
+  function isPathTraversal(fileName: string): boolean {
+    const normalized = path.posix.normalize(fileName.replaceAll('\\', '/'));
+    return normalized.startsWith('../') || normalized === '..';
+  }
+
+  describe('should DETECT paths that escape extraction root', () => {
+    const dangerousPaths = [
+      '../etc/passwd',
+      '../../etc/passwd',
+      '..',
+      // Windows-style separators
+      '..\\etc\\passwd',
+      '..\\..\\etc\\passwd',
+      // Mixed separators
+      '..\\../etc/passwd',
+      // Paths that normalize to escaping
+      'foo/../../etc/passwd',        // → ../etc/passwd
+      'a/b/c/../../../../etc/passwd', // → ../etc/passwd
+    ];
+
+    it.each(dangerousPaths)('detects traversal in: %s', (pathStr) => {
+      expect(isPathTraversal(pathStr)).toBe(true);
+    });
+  });
+
+  describe('should ALLOW paths that stay within extraction root', () => {
+    const safePaths = [
+      // Paths with .. that resolve safely (stay inside root)
+      'foo/../bar',          // → bar
+      'foo/bar/../baz',      // → foo/baz
+      'foo/..',              // → .
+      'a/b/../c/d/../e',     // → a/c/e
+      // Windows-style that resolve safely
+      'foo\\..\\bar',        // → bar
+      'foo\\..',             // → .
+      // Bundler-generated chunk names (the original false positive issue)
+      'dist/server/chunks/_.._kXkB4JI1.mjs',
+      'dist/chunks/foo..bar.js',
+      'assets/style..module.css',
+      // Filenames starting with .. (not a path segment)
+      '..hidden/file.txt',
+      'dir/..config',
+      '..foo',
+      // Triple dots (not traversal)
+      'dir/.../file.txt',
+      '...hidden',
+      // Double dots within filename
+      'file..name.txt',
+      'data..backup.json',
+      'test..spec.ts',
+      // Normal paths
+      'src/index.js',
+      'node_modules/@types/node/index.d.ts',
+      'package.json',
+    ];
+
+    it.each(safePaths)('allows: %s', (pathStr) => {
+      expect(isPathTraversal(pathStr)).toBe(false);
+    });
+  });
+});
 
 describe('ZipSecurityService', () => {
   let service: ZipSecurityService;
@@ -198,6 +280,51 @@ describe('ZipSecurityService', () => {
         (e) => e.key === ValidationErrorKey.ZIP_PATH_TRAVERSAL
       );
       expect(traversalError).toBeUndefined();
+    });
+
+    it('should allow bundler-generated filenames containing .. in the name', async () => {
+      // Vite/Rollup generate chunk names like _.._kXkB4JI1.mjs where .. is part of the name
+      const zipPath = await createTestZip('bundler-chunks.zip', [
+        { name: 'dist/server/chunks/_.._kXkB4JI1.mjs', content: 'export default {}' },
+        { name: 'dist/server/chunks/foo..bar.js', content: 'export default {}' },
+        { name: 'dist/assets/style..module.css', content: '.class {}' },
+      ]);
+
+      const result = await service.validate(zipPath);
+
+      expect(result.valid).toBe(true);
+      const traversalError = result.errors.find(
+        (e) => e.key === ValidationErrorKey.ZIP_PATH_TRAVERSAL
+      );
+      expect(traversalError).toBeUndefined();
+    });
+
+    it('should allow filenames starting with dots that are not traversal', async () => {
+      // Directory/file names starting with .. but not being exactly ..
+      const zipPath = await createTestZip('dotdot-prefix.zip', [
+        { name: '..hidden/file.txt', content: 'content' },
+        { name: 'dir/...triple/file.txt', content: 'content' },
+        { name: 'dir/..suffix.txt', content: 'content' },
+      ]);
+
+      const result = await service.validate(zipPath);
+
+      expect(result.valid).toBe(true);
+      const traversalError = result.errors.find(
+        (e) => e.key === ValidationErrorKey.ZIP_PATH_TRAVERSAL
+      );
+      expect(traversalError).toBeUndefined();
+    });
+
+    it('should allow scoped npm packages with @ symbol', async () => {
+      const zipPath = await createTestZip('scoped-packages.zip', [
+        { name: 'node_modules/@types/node/index.d.ts', content: 'export {}' },
+        { name: 'node_modules/@babel/core/lib/index.js', content: 'module.exports = {}' },
+      ]);
+
+      const result = await service.validate(zipPath);
+
+      expect(result.valid).toBe(true);
     });
   });
 

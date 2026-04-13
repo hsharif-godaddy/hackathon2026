@@ -14,6 +14,7 @@
 
 import { createReadStream, statSync } from 'node:fs';
 import { access } from 'node:fs/promises';
+import path from 'node:path';
 import yauzl from 'yauzl';
 import { Logger } from '../logging/index.js';
 import { getZipImportLimits } from './features.js';
@@ -28,6 +29,7 @@ import { codeSyncFileCleanupService } from './CodeSyncFileCleanupService.js';
 // Security constants
 const UNIX_MODE_MASK = 0xFFFF; // Mask to extract Unix file mode from external file attributes
 const S_IFLNK = 0xA000; // Unix file type constant for symbolic links
+
 
 export class ZipSecurityService {
   private logger = Logger.create({ component: 'zip-security' });
@@ -333,14 +335,21 @@ export class ZipSecurityService {
 
   /**
    * Check for path traversal attempts
+   *
+   * This is defense-in-depth: yauzl typically rejects path traversal before this check runs,
+   * but we keep this validation in case yauzl's behavior changes in future versions.
    */
   private checkPathTraversal(fileName: string): ValidationError | null {
-    // Check for .. sequences
-    if (fileName.includes('..')) {
+    // Normalize path to resolve .. segments using Node.js stdlib
+    // replaceAll('\\', '/') handles Windows-style separators
+    // path.posix.normalize resolves: foo/../bar -> bar, ../bar -> ../bar
+    // If normalized path escapes the root (starts with ../ or equals ..), it's traversal
+    const normalized = path.posix.normalize(fileName.replaceAll('\\', '/'));
+    if (normalized.startsWith('../') || normalized === '..') {
       return {
         key: ValidationErrorKey.ZIP_PATH_TRAVERSAL,
         message: `Path traversal detected: ${fileName}`,
-        details: { fileName, pattern: '..' },
+        details: { fileName, normalized },
       };
     }
 
