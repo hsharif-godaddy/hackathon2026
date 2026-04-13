@@ -92,6 +92,31 @@ export default function BudgetExceededBanner({ onClose }: BudgetExceededBannerPr
     return undefined
   }, [intl, t, grants, isBudgetServiceEnabled, budgetData])
 
+  const actions = useMemo(() => {
+    const buyCreditsButton = (
+      <Button
+        size="sm"
+        design="secondary"
+        onClick={() => openCreditsModal('budget_exceeded.buy_credits', PAYWALL_ITC.CREDITS)}
+        text={t('builder_usage_gauge_buy_tokens')}
+        disabled={isPurchaseDisabled}
+      />
+    )
+
+    return isNotUltimatePlan ? (
+      <>
+        <Button
+          size="sm"
+          design="secondary"
+          onClick={() => openUpgradeModal('budget_exceeded.upgrade', PAYWALL_ITC.UPGRADE)}
+          text={t('builder_usage_gauge_upgrade')}
+          disabled={isPurchaseDisabled}
+        />
+        {buyCreditsButton}
+      </>
+    ) : buyCreditsButton
+  }, [isNotUltimatePlan, isPurchaseDisabled, t, openUpgradeModal, openCreditsModal])
+
   return (
     <StreamingAlertMessage
       type="Critical"
@@ -112,27 +137,7 @@ export default function BudgetExceededBanner({ onClose }: BudgetExceededBannerPr
           t('builder_usage_limit_message_no_reset_time')
         )
       }
-      actions={(
-        <div className="flex gap-2">
-          {/* Only show upgrade button if user can upgrade to a higher plan */}
-          {isNotUltimatePlan && (
-            <Button
-              design="primary"
-              size="sm"
-              onClick={() => openUpgradeModal('budget_exceeded.upgrade', PAYWALL_ITC.UPGRADE)}
-              text={t('builder_usage_gauge_upgrade')}
-              disabled={isPurchaseDisabled}
-            />
-          )}
-          <Button
-            design={isNotUltimatePlan ? 'secondary' : 'primary'}
-            size="sm"
-            onClick={() => openCreditsModal('budget_exceeded.buy_credits', PAYWALL_ITC.CREDITS)}
-            text={t('builder_usage_gauge_buy_tokens')}
-            disabled={isPurchaseDisabled}
-          />
-        </div>
-      )}
+      actions={actions}
     />
   )
 }
