@@ -18,6 +18,7 @@ import {
 } from '@/app/develop/components/chat/stagedFilePreviewUrl'
 import { uploadChatFiles } from '@/app/develop/components/chat/uploadChatFiles'
 import MediaPanel from '@/app/develop/components/media/MediaPanel'
+import PersistentTodoList from '@/app/develop/components/PersistentTodoList'
 import PlanTracker from '@/app/develop/components/PlanTracker'
 import AnalyticsPanel from '@/app/develop/components/settings/Analytics/AnalyticsPanel'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
@@ -32,7 +33,6 @@ import { useCreditGrants } from '@/hooks/useCreditGrants'
 import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
-import { useTodoListLoader } from '@/hooks/useTodoListLoader'
 import { useTranslations } from '@/hooks/useTranslations'
 import { appFetch } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
@@ -222,7 +222,6 @@ export default function ChatPane({
   const { activeChatTab, setActiveChatTab } = useChatTabs()
 
   const appId = useAppIdFromParams()
-  useTodoListLoader(appId)
 
   // Get site data to access agent_url for file URLs
   const getSite = useSiteStore((state) => state.getSite)
@@ -1003,6 +1002,10 @@ export default function ChatPane({
           style={{ display: activeChatTab === ChatTab.CHAT ? 'flex' : 'none' }}
         >
           <div className="flex-1 flex flex-col min-h-0">
+            <div className="px-2 md:px-0">
+              <PersistentTodoList />
+            </div>
+
             <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} />
           </div>
 
