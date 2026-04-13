@@ -243,6 +243,7 @@ func (s *Server) hydrateMissingBudgetItemUpdateFields(ctx context.Context, budge
 
 type budgetItemBody struct {
 	CreditsTotal      flexAmount  `json:"creditsTotal"`
+	CreditsUsed       *flexAmount `json:"creditsUsed"`
 	CostToCreditRatio *flexAmount `json:"costToCreditRatio"`
 	ExpiresAt         *string     `json:"expiresAt"`
 	StartsAt          *string     `json:"startsAt"`
@@ -276,6 +277,27 @@ func (b budgetItemBody) toItemInput(validateCreate bool) (store.ItemInput, strin
 		}
 		formattedCreditsTotal = credits.Format(ct)
 	}
+
+	// Parse creditsUsed (optional, only valid for create).
+	var formattedCreditsUsed string
+	if b.CreditsUsed != nil && strings.TrimSpace(string(*b.CreditsUsed)) != "" {
+		if !validateCreate {
+			return store.ItemInput{}, "creditsUsed can only be set when creating a budget item"
+		}
+		cu, err := credits.ParseNonNegative(strings.TrimSpace(string(*b.CreditsUsed)))
+		if err != nil {
+			return store.ItemInput{}, "creditsUsed must be a valid NUMERIC(20,6) non-negative value"
+		}
+		formattedCreditsUsed = credits.Format(cu)
+		// Validate creditsUsed <= creditsTotal
+		if formattedCreditsTotal != "" {
+			ct, _ := credits.ParseNonNegative(formattedCreditsTotal)
+			if cu.GreaterThan(ct) {
+				return store.ItemInput{}, "creditsUsed cannot exceed creditsTotal"
+			}
+		}
+	}
+
 	ratioStr := "1"
 	if !validateCreate && hasMissingFlexAmountValue(b.CostToCreditRatio) {
 		ratioStr = ""
@@ -292,6 +314,7 @@ func (b budgetItemBody) toItemInput(validateCreate bool) (store.ItemInput, strin
 	}
 	out := store.ItemInput{
 		CreditsTotal:    formattedCreditsTotal,
+		CreditsUsed:     formattedCreditsUsed,
 		CostCreditRatio: csr,
 		ExpiresAt:       b.ExpiresAt,
 		StartsAt:        b.StartsAt,
@@ -470,6 +493,7 @@ func (s *Server) getBudget(w http.ResponseWriter, r *http.Request) {
 type patchBudgetItem struct {
 	BudgetItemID      *string     `json:"budgetItemId"`
 	CreditsTotal      flexAmount  `json:"creditsTotal"`
+	CreditsUsed       *flexAmount `json:"creditsUsed"`
 	CostToCreditRatio *flexAmount `json:"costToCreditRatio"`
 	ExpiresAt         *string     `json:"expiresAt"`
 	StartsAt          *string     `json:"startsAt"`
@@ -485,6 +509,7 @@ type patchBudgetItem struct {
 var patchBudgetItemAllowedFields = map[string]struct{}{
 	"budgetItemId":      {},
 	"creditsTotal":      {},
+	"creditsUsed":       {},
 	"costToCreditRatio": {},
 	"expiresAt":         {},
 	"startsAt":          {},
@@ -519,6 +544,7 @@ func (p *patchBudgetItem) UnmarshalJSON(data []byte) error {
 func (p patchBudgetItem) toPutItemInput(validateCreate bool) (store.PutItemInput, string) {
 	body := budgetItemBody{
 		CreditsTotal:      p.CreditsTotal,
+		CreditsUsed:       p.CreditsUsed,
 		CostToCreditRatio: p.CostToCreditRatio,
 		ExpiresAt:         p.ExpiresAt,
 		StartsAt:          p.StartsAt,
@@ -532,6 +558,7 @@ func (p patchBudgetItem) toPutItemInput(validateCreate bool) (store.PutItemInput
 	return store.PutItemInput{
 		BudgetItemID:    p.BudgetItemID,
 		CreditsTotal:    row.CreditsTotal,
+		CreditsUsed:     row.CreditsUsed,
 		CostCreditRatio: row.CostCreditRatio,
 		ExpiresAt:       row.ExpiresAt,
 		StartsAt:        row.StartsAt,

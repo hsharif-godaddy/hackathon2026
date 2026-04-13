@@ -1748,3 +1748,293 @@ func TestPatchBudgetExistingItemClearResetIntervalAlsoClearsResetsAt(t *testing.
 		t.Fatalf("resetsAt got %v want nil (should be cleared when resetInterval is cleared)", row.ResetsAt)
 	}
 }
+
+func TestPostBudgetWithCreditsUsed(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "budget-credits-used-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{Store: st}
+	body := `{"productKey":"` + key + `","items":[{"creditsTotal":"100.000000","creditsUsed":"50.000000","costToCreditRatio":"1"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/budgets", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postBudget(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		BudgetID string `json:"budgetId"`
+		Items    []struct {
+			BudgetItemID string `json:"budgetItemId"`
+			CreditsTotal string `json:"creditsTotal"`
+			CreditsUsed  string `json:"creditsUsed"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Items) != 1 {
+		t.Fatalf("items len %d want 1", len(resp.Items))
+	}
+	if resp.Items[0].CreditsUsed != "50.000000" {
+		t.Fatalf("creditsUsed %q want %q", resp.Items[0].CreditsUsed, "50.000000")
+	}
+
+	// Verify the ledger entry was created
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var entryKind string
+	var creditsDelta string
+	if err := db.QueryRowContext(ctx, `
+		SELECT entry_kind, credits_delta::text FROM budget_item_credit_ledger
+		WHERE budget_item_id = $1
+	`, resp.Items[0].BudgetItemID).Scan(&entryKind, &creditsDelta); err != nil {
+		t.Fatal(err)
+	}
+	if entryKind != "initial_spend" {
+		t.Fatalf("entry_kind %q want %q", entryKind, "initial_spend")
+	}
+	if creditsDelta != "50.000000" {
+		t.Fatalf("credits_delta %q want %q", creditsDelta, "50.000000")
+	}
+}
+
+func TestPostBudgetItemWithCreditsUsed(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "item-credits-used-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
+		CreditsTotal:    "10.000000",
+		CostCreditRatio: "1.000000",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items", s.postBudgetItem).Methods(http.MethodPost)
+	req := httptest.NewRequest(http.MethodPost, "/budgets/"+budgetID+"/budget-items", strings.NewReader(`{"creditsTotal":"200.000000","creditsUsed":"75.500000","costToCreditRatio":"0.5"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		BudgetItemID string `json:"budgetItemId"`
+		CreditsUsed  string `json:"creditsUsed"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.CreditsUsed != "75.500000" {
+		t.Fatalf("creditsUsed %q want %q", resp.CreditsUsed, "75.500000")
+	}
+}
+
+func TestPostBudgetCreditsUsedCannotExceedCreditsTotal(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	body := `{"productKey":"x","items":[{"creditsTotal":"100.000000","creditsUsed":"150.000000","costToCreditRatio":"1"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/budgets", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postBudget(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "creditsUsed cannot exceed creditsTotal") {
+		t.Fatalf("expected clear error, got %s", rec.Body.String())
+	}
+}
+
+func TestPatchBudgetItemRejectsCreditsUsed(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
+	budgetID := uuid.NewString()
+	itemID := uuid.NewString()
+	body := `{"creditsTotal":"100.000000","creditsUsed":"50.000000"}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID+"/budget-items/"+itemID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	// creditsUsed is only valid when creating a budget item, not when updating
+	if !strings.Contains(rec.Body.String(), "creditsUsed can only be set when creating") {
+		t.Fatalf("expected creditsUsed create-only error, got %s", rec.Body.String())
+	}
+}
+
+func TestPatchBudgetAddNewItemWithCreditsUsed(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "patch-budget-new-item-credits-used-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{{
+		CreditsTotal:    "10.000000",
+		CostCreditRatio: "1.000000",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: st}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}", s.patchBudget).Methods(http.MethodPatch)
+	// Add a new item (no budgetItemId) with creditsUsed
+	body := `{"items":[{"creditsTotal":"100.000000","creditsUsed":"25.000000","costToCreditRatio":"0.5"}]}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Items []struct {
+			BudgetItemID string `json:"budgetItemId"`
+			CreditsTotal string `json:"creditsTotal"`
+			CreditsUsed  string `json:"creditsUsed"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	// Should have 2 items now (original + new)
+	if len(resp.Items) != 2 {
+		t.Fatalf("items len %d want 2", len(resp.Items))
+	}
+	// Find the new item with creditsUsed
+	var found bool
+	for _, item := range resp.Items {
+		if item.CreditsUsed == "25.000000" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("new item with creditsUsed=25.000000 not found in response: %s", rec.Body.String())
+	}
+}
+
+func TestPatchBudgetExistingItemRejectsCreditsUsed(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/budgets/{budgetId}", s.patchBudget).Methods(http.MethodPatch)
+	budgetID := uuid.NewString()
+	itemID := uuid.NewString()
+	// Update an existing item (budgetItemId set) with creditsUsed — should be rejected
+	body := `{"items":[{"budgetItemId":"` + itemID + `","creditsTotal":"100.000000","creditsUsed":"50.000000"}]}`
+	req := httptest.NewRequest(http.MethodPatch, "/budgets/"+budgetID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "creditsUsed can only be set when creating") {
+		t.Fatalf("expected creditsUsed create-only error, got %s", rec.Body.String())
+	}
+}
+
+func TestPostBudgetCreditsUsedEqualsCreditsTotal(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "budget-credits-used-equal-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{Store: st}
+	// creditsUsed == creditsTotal should be allowed (boundary case)
+	body := `{"productKey":"` + key + `","items":[{"creditsTotal":"100.000000","creditsUsed":"100.000000","costToCreditRatio":"1"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/budgets", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postBudget(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Items []struct {
+			CreditsTotal string `json:"creditsTotal"`
+			CreditsUsed  string `json:"creditsUsed"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Items) != 1 {
+		t.Fatalf("items len %d want 1", len(resp.Items))
+	}
+	if resp.Items[0].CreditsUsed != "100.000000" {
+		t.Fatalf("creditsUsed %q want %q", resp.Items[0].CreditsUsed, "100.000000")
+	}
+}
+
+func TestPostBudgetCreditsUsedZeroSkipsLedger(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "budget-credits-used-zero-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{Store: st}
+	// creditsUsed = 0 should be accepted but no ledger entry created
+	body := `{"productKey":"` + key + `","items":[{"creditsTotal":"100.000000","creditsUsed":"0.000000","costToCreditRatio":"1"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/budgets", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.postBudget(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Items []struct {
+			BudgetItemID string `json:"budgetItemId"`
+			CreditsUsed  string `json:"creditsUsed"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Items) != 1 {
+		t.Fatalf("items len %d want 1", len(resp.Items))
+	}
+	if resp.Items[0].CreditsUsed != "0.000000" {
+		t.Fatalf("creditsUsed %q want %q", resp.Items[0].CreditsUsed, "0.000000")
+	}
+
+	// Verify no ledger entry was created (zero is a no-op)
+	db, err := sql.Open("postgres", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var count int
+	if err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM budget_item_credit_ledger
+		WHERE budget_item_id = $1
+	`, resp.Items[0].BudgetItemID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("ledger entry count %d want 0 (zero creditsUsed should skip ledger)", count)
+	}
+}

@@ -18,6 +18,7 @@ const lazyResetBatchSize = 500
 
 type ItemInput struct {
 	CreditsTotal    string
+	CreditsUsed     string // optional: initial credits spent (for migration)
 	CostCreditRatio string
 	ExpiresAt       *string
 	StartsAt        *string
@@ -28,6 +29,7 @@ type ItemInput struct {
 type PutItemInput struct {
 	BudgetItemID    *string
 	CreditsTotal    string
+	CreditsUsed     string // only for new items (insert)
 	CostCreditRatio string
 	ExpiresAt       *string
 	StartsAt        *string
@@ -295,6 +297,25 @@ func insertBudgetItem(ctx context.Context, tx *sql.Tx, budgetID string, in ItemI
 	if err := insertPreparedBudgetItem(ctx, tx, budgetID, prepared); err != nil {
 		return "", err
 	}
+
+	// Insert initial_spend ledger entry if creditsUsed > 0.
+	// The ledger trigger will automatically bump budget_items.credits_used.
+	if in.CreditsUsed != "" {
+		cu, err := decimal.NewFromString(in.CreditsUsed)
+		if err != nil {
+			return "", err
+		}
+		if cu.IsPositive() {
+			_, err = tx.ExecContext(ctx, `
+				INSERT INTO budget_item_credit_ledger (id, budget_item_id, entry_kind, credits_delta)
+				VALUES ($1, $2, 'initial_spend', $3)
+			`, uuid.NewString(), prepared.ID, credits.Format(cu))
+			if err != nil {
+				return "", err
+			}
+		}
+	}
+
 	return prepared.ID, nil
 }
 
@@ -496,6 +517,7 @@ func (s *Store) UpsertBudgetItems(ctx context.Context, budgetID string, items []
 		if it.BudgetItemID == nil || strings.TrimSpace(*it.BudgetItemID) == "" {
 			if _, err := insertBudgetItem(ctx, tx, budgetID, ItemInput{
 				CreditsTotal:    it.CreditsTotal,
+				CreditsUsed:     it.CreditsUsed,
 				CostCreditRatio: it.CostCreditRatio,
 				ExpiresAt:       it.ExpiresAt,
 				StartsAt:        it.StartsAt,

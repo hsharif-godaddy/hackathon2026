@@ -646,6 +646,9 @@ components:
         creditsTotal:
           type: string
           description: NUMERIC(20,6) non-negative
+        creditsUsed:
+          type: string
+          description: Optional initial credits spent (for migration); must be <= creditsTotal
         costToCreditRatio:
           type: string
           description: USD per credit (positive); defaults to 1 when omitted on create
@@ -671,6 +674,9 @@ components:
           nullable: true
         creditsTotal:
           type: string
+        creditsUsed:
+          type: string
+          description: Optional initial credits spent (for migration); only valid when creating a new item (budgetItemId absent)
         costToCreditRatio:
           type: string
         expiresAt:
