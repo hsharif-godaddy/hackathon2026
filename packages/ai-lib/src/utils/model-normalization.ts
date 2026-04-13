@@ -149,7 +149,7 @@ const ALIASES: Record<string, string> = {
   'claude-haiku-4-5-20251001': 'claude-haiku-4-5',
   'claude-3.5-sonnet': 'claude-3-5-sonnet',
   'claude35-sonnet': 'claude-3-5-sonnet',
-  'sonnet': 'claude-sonnet-4-5',
+  'sonnet': 'claude-sonnet-4-6',
   'claude-haiku': 'claude-3-5-haiku',
   'haiku': 'claude-haiku-4-5',
   'claude3-haiku': 'claude-3-haiku'
