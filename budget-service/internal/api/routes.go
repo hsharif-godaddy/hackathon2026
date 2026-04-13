@@ -55,5 +55,5 @@ func NewRouter(s *Server, authMW *auth.Middleware) http.Handler {
 	v1.HandleFunc("/budgets/{budgetId}", s.deleteBudget).Methods(http.MethodDelete)
 	v1.HandleFunc("/budgets", s.postBudget).Methods(http.MethodPost)
 
-	return r
+	return LoggingMiddleware(r)
 }

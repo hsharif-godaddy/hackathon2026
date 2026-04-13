@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
@@ -61,6 +62,46 @@ func TestLoadAutoMigrateFalseWhenDATABASEURLEmpty(t *testing.T) {
 	}
 	if cfg.AutoMigrate {
 		t.Fatal("AutoMigrate: want false when DATABASE_URL is empty")
+	}
+}
+
+func TestLoadLogLevelFromEnv(t *testing.T) {
+	t.Setenv("LOCAL_AUTH_DISABLE", "true")
+	t.Setenv("SSO_HOST", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("LOG_LEVEL", "debug")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.LogLevel != "debug" {
+		t.Fatalf("LogLevel: want debug, got %q", cfg.LogLevel)
+	}
+}
+
+func TestLoadLogLevelDefaultInfo(t *testing.T) {
+	t.Setenv("LOCAL_AUTH_DISABLE", "true")
+	t.Setenv("SSO_HOST", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("LOG_LEVEL", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.LogLevel != "info" {
+		t.Fatalf("LogLevel: want default info, got %q", cfg.LogLevel)
+	}
+}
+
+func TestSlogLevel(t *testing.T) {
+	if SlogLevel("debug") != slog.LevelDebug {
+		t.Fatal("debug")
+	}
+	if SlogLevel("WARN") != slog.LevelWarn {
+		t.Fatal("warn")
+	}
+	if SlogLevel("") != slog.LevelInfo {
+		t.Fatal("default info")
 	}
 }
 

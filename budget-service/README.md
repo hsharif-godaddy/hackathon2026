@@ -8,6 +8,17 @@ HTTP API for budgets, LLM sessions, session spend lines, session reports (reconc
 - **Database:** Optional. If `DATABASE_URL` is unset, `Store` is nil: `/health` reports DB unconfigured; budget/product/webhook handlers return 503 on write paths.
 - **Local E2E:** [docs/local-e2e.md](docs/local-e2e.md) — Docker profile `e2e` (webhook sink), `make e2e-local`, optional `make dev-budget-ui` (proxied CRUD UI). Not used in production.
 
+## Observability
+
+- **Logs:** Structured JSON to **stdout** via `log/slog` (same idea as `knowledge-service`). Default level is **info**. The logger is configured from **`LOG_LEVEL`** before config load so early failures (e.g. invalid env) still emit JSON on stdout.
+- **HTTP access:** The mux router is wrapped so **every response** (including **404** / **405** and OpenAPI routes) emits **`http.request.complete`** with `method`, `path`, `status`, `durationMs`, `userAgent`. Path and user-agent are sanitized and truncated for log safety.
+- **Shutdown:** `SIGINT` / `SIGTERM` triggers graceful **`http.Server.Shutdown`** (15s timeout).
+
+## Session API (routing vs create)
+
+- **`GET` / `PATCH` / session reports** use **`/api/v1/sessions/{sessionId}`** (and `.../reports/...`) only — no `budgetId` in the path; the service resolves the budget from the session row.
+- **`POST /api/v1/sessions`** still requires **`budgetId` in the JSON body** because `budget_sessions.budget_id` is non-null at insert time. Dropping `budgetId` from clients would need a product decision (e.g. nullable `budget_id`, or server-derived budget from auth/context) plus schema and OpenAPI updates.
+
 ## API summary
 
 | Method                    | Path                                                             | Notes                                             |
@@ -70,7 +81,7 @@ Server: `SSO_HOST` (unless `LOCAL_AUTH_DISABLE=true`), then `go run ./cmd/server
 curl -sS -H "Authorization: sso-jwt YOUR_JWT" "http://localhost:8080/api/v1/auth-check"
 ```
 
-With **`AUTH_LOG_LEVEL=debug`**, look for **`branch=sso_service_bearer`** / **`sso_service_sso_jwt`** and **`domain=sso_service`**.
+With **`LOG_LEVEL=debug`**, look for **`branch=sso_service_bearer`** / **`sso_service_sso_jwt`** and **`domain=sso_service`** in auth-related slog output.
 
 ### Cert JWT (`cmd/mint-cert-jwt`)
 
@@ -101,24 +112,24 @@ curl -sS -H "Authorization: sso-jwt $TOKEN" "http://localhost:8080/api/v1/auth-c
 
 ## Environment
 
-| Variable                              | Default | Notes                                                                                           |
-| ------------------------------------- | ------- | ----------------------------------------------------------------------------------------------- |
-| `BUDGET_SERVICE_ADDR`                 | `:8080` | Listen address                                                                                  |
-| `LOCAL_AUTH_DISABLE`                  | —       | `true`/`1`/`yes`/`on` skips JWT (local dev only)                                                |
-| `AUTH_LOG_LEVEL`                      | `info`  | `debug` → more auth slog output                                                                 |
-| `SSO_HOST`                            | —       | Required when auth enabled; e.g. `sso.dev-godaddy.com`                                          |
-| `AWS_PROFILE`                         | —       | **`mint-iam-jwt`** / AWS CLI                                                                    |
-| `CERT_PEM_PATH`, `CERT_KEY_PATH`      | —       | **`mint-cert-jwt` only**                                                                        |
-| `DATABASE_URL`                        | —       | If unset, no Store                                                                              |
-| `AUTO_MIGRATE`                        | —       | If unset and `DATABASE_URL` is set, **on**: run golang-migrate after ping. Set `false` to skip. |
-| `MIGRATE_DATABASE_URL`                | —       | Optional DDL-capable DSN for migrations only; requires `DATABASE_URL` for the app pool.         |
-| `DB_MAX_OPEN_CONNS`                   | `25`    |                                                                                                 |
-| `DB_MAX_IDLE_CONNS`                   | `5`     |                                                                                                 |
-| `DB_CONN_MAX_LIFETIME`                | `5m`    | Go duration                                                                                     |
-| `SERVER_CERT_PATH`, `SERVER_KEY_PATH` | —       | Both or neither → TLS                                                                           |
-| `HTTP_READ_TIMEOUT`                   | `30s`   |                                                                                                 |
-| `HTTP_WRITE_TIMEOUT`                  | `60s`   |                                                                                                 |
-| `HTTP_IDLE_TIMEOUT`                   | `120s`  |                                                                                                 |
+| Variable                              | Default | Notes                                                                                                         |
+| ------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------- |
+| `BUDGET_SERVICE_ADDR`                 | `:8080` | Listen address                                                                                                |
+| `LOCAL_AUTH_DISABLE`                  | —       | `true`/`1`/`yes`/`on` skips JWT (local dev only)                                                              |
+| `LOG_LEVEL`                           | `info`  | slog level for the process: `debug` / `info` / `warn` / `error` (includes auth middleware noise when `debug`) |
+| `SSO_HOST`                            | —       | Required when auth enabled; e.g. `sso.dev-godaddy.com`                                                        |
+| `AWS_PROFILE`                         | —       | **`mint-iam-jwt`** / AWS CLI                                                                                  |
+| `CERT_PEM_PATH`, `CERT_KEY_PATH`      | —       | **`mint-cert-jwt` only**                                                                                      |
+| `DATABASE_URL`                        | —       | If unset, no Store                                                                                            |
+| `AUTO_MIGRATE`                        | —       | If unset and `DATABASE_URL` is set, **on**: run golang-migrate after ping. Set `false` to skip.               |
+| `MIGRATE_DATABASE_URL`                | —       | Optional DDL-capable DSN for migrations only; requires `DATABASE_URL` for the app pool.                       |
+| `DB_MAX_OPEN_CONNS`                   | `25`    |                                                                                                               |
+| `DB_MAX_IDLE_CONNS`                   | `5`     |                                                                                                               |
+| `DB_CONN_MAX_LIFETIME`                | `5m`    | Go duration                                                                                                   |
+| `SERVER_CERT_PATH`, `SERVER_KEY_PATH` | —       | Both or neither → TLS                                                                                         |
+| `HTTP_READ_TIMEOUT`                   | `30s`   |                                                                                                               |
+| `HTTP_WRITE_TIMEOUT`                  | `60s`   |                                                                                                               |
+| `HTTP_IDLE_TIMEOUT`                   | `120s`  |                                                                                                               |
 
 ## Postgres
 

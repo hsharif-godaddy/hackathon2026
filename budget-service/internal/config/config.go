@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -29,7 +30,8 @@ type Config struct {
 	HTTPWriteTimeout time.Duration
 	HTTPIdleTimeout  time.Duration
 
-	AuthLogLevel string
+	// LogLevel controls slog level for the whole process (JSON logs). From LOG_LEVEL, default "info".
+	LogLevel string
 }
 
 // Load reads env and checks LOCAL_AUTH_DISABLE / SSO_HOST / TLS pair consistency.
@@ -48,7 +50,7 @@ func Load() (Config, error) {
 		HTTPReadTimeout:    getEnvDuration("HTTP_READ_TIMEOUT", 30*time.Second),
 		HTTPWriteTimeout:   getEnvDuration("HTTP_WRITE_TIMEOUT", 60*time.Second),
 		HTTPIdleTimeout:    getEnvDuration("HTTP_IDLE_TIMEOUT", 120*time.Second),
-		AuthLogLevel:       getEnv("AUTH_LOG_LEVEL", "info"),
+		LogLevel:           getEnv("LOG_LEVEL", "info"),
 	}
 	if cfg.MigrateDatabaseURL != "" && cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("MIGRATE_DATABASE_URL requires DATABASE_URL")
@@ -108,5 +110,19 @@ func getEnvBool(key string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// SlogLevel maps config strings (debug, warn, error, info) to slog.Level.
+func SlogLevel(s string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
 	}
 }

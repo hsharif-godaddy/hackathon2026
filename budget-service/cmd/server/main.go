@@ -4,11 +4,14 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/api"
@@ -23,15 +26,14 @@ import (
 func main() {
 	dotenvErr := godotenv.Load()
 
+	setupLogger(bootstrapLogLevel())
+
 	cfg, err := config.Load()
 	if err != nil {
-		slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})).
-			Error("config.load", "error", err)
+		slog.Error("config.load", "error", err)
 		os.Exit(1)
 	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: authSlogLevel(cfg.AuthLogLevel),
-	})))
+	setupLogger(cfg.LogLevel)
 	if dotenvErr != nil {
 		slog.Debug("budget_service.dotenv", "message", "no .env file or read error", "error", dotenvErr)
 	}
@@ -122,31 +124,54 @@ func main() {
 		IdleTimeout:  cfg.HTTPIdleTimeout,
 	}
 
-	var listenErr error
-	// App TLS when SERVER_CERT_PATH and SERVER_KEY_PATH are both set.
-	if cfg.TLSCertPath != "" && cfg.TLSKeyPath != "" {
-		slog.Info("budget_service.listen.tls", "addr", cfg.Addr, "localAuthDisable", cfg.LocalAuthDisable, "certPath", cfg.TLSCertPath)
-		listenErr = httpSrv.ListenAndServeTLS(cfg.TLSCertPath, cfg.TLSKeyPath)
-	} else {
-		slog.Info("budget_service.listen", "addr", cfg.Addr, "localAuthDisable", cfg.LocalAuthDisable)
-		listenErr = httpSrv.ListenAndServe()
-	}
-	// Ignore ErrServerClosed until graceful shutdown exists.
-	if listenErr != nil && listenErr != http.ErrServerClosed {
-		slog.Error("http.server", "error", listenErr)
+	slog.Info("budget_service.start", "addr", cfg.Addr)
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	errCh := make(chan error, 1)
+	go func() {
+		var listenErr error
+		if cfg.TLSCertPath != "" && cfg.TLSKeyPath != "" {
+			slog.Info("budget_service.listen.tls", "addr", cfg.Addr, "localAuthDisable", cfg.LocalAuthDisable, "certPath", cfg.TLSCertPath)
+			listenErr = httpSrv.ListenAndServeTLS(cfg.TLSCertPath, cfg.TLSKeyPath)
+		} else {
+			slog.Info("budget_service.listen", "addr", cfg.Addr, "localAuthDisable", cfg.LocalAuthDisable)
+			listenErr = httpSrv.ListenAndServe()
+		}
+		if listenErr != nil && !errors.Is(listenErr, http.ErrServerClosed) {
+			errCh <- listenErr
+		}
+	}()
+
+	select {
+	case sig := <-quit:
+		slog.Info("budget_service.shutdown.signal", "signal", sig.String())
+	case err := <-errCh:
+		slog.Error("http.server", "error", err)
 		os.Exit(1)
 	}
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	errShutdown := httpSrv.Shutdown(shutdownCtx)
+	shutdownCancel()
+	if errShutdown != nil {
+		slog.Error("budget_service.shutdown.failed", "error", errShutdown)
+		os.Exit(1)
+	}
+
+	slog.Info("budget_service.stopped")
 }
 
-func authSlogLevel(s string) slog.Level {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "debug":
-		return slog.LevelDebug
-	case "warn", "warning":
-		return slog.LevelWarn
-	case "error":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
+func bootstrapLogLevel() string {
+	s := strings.TrimSpace(os.Getenv("LOG_LEVEL"))
+	if s == "" {
+		return "info"
 	}
+	return s
+}
+
+func setupLogger(level string) {
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: config.SlogLevel(level)})
+	slog.SetDefault(slog.New(handler))
 }
