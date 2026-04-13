@@ -552,8 +552,8 @@ export class GitUtils {
    * The output directory will be created if it doesn't exist.
    *
    * Archive strategy is auto-detected based on build output:
-   * - If dist/server.bundle.mjs exists → dist/ only (fast path)
-   * - If dist/server.bundle.mjs missing → full source (fallback path needs source)
+   * - If dist/server.bundle.mjs exists → dist/ only (fast path, requires dist/ folder)
+   * - If dist/server.bundle.mjs missing → full source (fallback path, dist/ not required)
    *
    * Auto-detection can be overridden by explicitly setting includeSource option.
    *
@@ -562,7 +562,7 @@ export class GitUtils {
    * @param outputDir - Directory to store the archive (default: DIST_DIR env var or '/publish/dist'). Will be created if it doesn't exist.
    * @param options - Archive options. If includeSource is undefined, auto-detects based on dist/server.bundle.mjs
    * @returns GitArchiveResult with the archive path and commit hash
-   * @throws Error if dev-supervisor is not available, dist/ folder doesn't exist, or command fails
+   * @throws Error if dev-supervisor is not available, dist/ folder doesn't exist (for dist-only archives), or command fails
    */
   async createArchive(
     repoPath: string,
@@ -587,19 +587,28 @@ export class GitUtils {
 
     const archivePath = `${outputDir}/${commitHash}.tar.gz`;
 
-    // Verify dist/ folder exists (required for both strategies)
-    const distCheckResult = await this.devSupervisor!.exec({
-      command: buildShellCommand(['test', '-d', 'dist']),
-      working_dir: '/app',
-      timeout: 5,
-      capture_output: true
-    });
-    if (!distCheckResult.success) {
-      throw new Error('dist/ folder not found - application must be built before publishing');
-    }
-
-    // Determine archive strategy: auto-detect or use explicit override
+    // Determine archive strategy first: auto-detect or use explicit override
     const includeSource = await this.shouldIncludeSource(options.includeSource);
+
+    // Only verify dist/ folder exists for dist-only archives
+    // Full source archives include everything in /app, so dist/ is not required
+    if (!includeSource) {
+      const distCheckResult = await this.devSupervisor!.exec({
+        command: buildShellCommand(['test', '-d', 'dist']),
+        working_dir: '/app',
+        timeout: 5,
+        capture_output: true
+      });
+      if (!distCheckResult.success) {
+        logger.error('git.archive.dist_check.failed', {
+          message: 'dist/ folder not found - application must be built before publishing',
+          repoPath,
+          commitHash,
+          includeSource,
+        });
+        throw new Error('dist/ folder not found - application must be built before publishing');
+      }
+    }
 
     // Create archive using appropriate strategy
     if (includeSource) {
