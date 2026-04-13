@@ -11,6 +11,7 @@ on:
         options:
           - "pre-dev"
           - "dev-private-ecs"
+          - "pre-test"
           - "test"
 
 run-name: "[PROXY - ${{ inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"

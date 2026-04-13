@@ -23,6 +23,7 @@ on:
         type: choice
         options:
           - "dev-private"
+          - "pre-test"
           - "test"
           - "prod"
       artifact_id:
@@ -72,6 +73,7 @@ jobs:
             {
               "app": {
                 "dev-private": "dev-private-ecs",
+                "pre-test": "pre-test",
                 "test": "test",
                 "prod": "prod-ecs"
               },
@@ -98,6 +100,7 @@ jobs:
               },
               "proxy": {
                 "dev-private": "dev-private-ecs",
+                "pre-test": "pre-test",
                 "test": "test",
                 "prod": "prod-ecs"
               }

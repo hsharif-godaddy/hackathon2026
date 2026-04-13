@@ -10,6 +10,7 @@ on:
         type: choice
         options:
           - "dev-private-ecs"
+          - "pre-test"
           - "test"
           - "NA"
       sha:
