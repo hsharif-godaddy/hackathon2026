@@ -277,6 +277,9 @@ export function useDeploymentsQuery({
         // Refetch site after deploy (first-publish congrats is not gated on go-live)
         fetchSite(appId, true)
           .then(async function handleRefetchSuccess() {
+            // Always clear publishing state on successful deployment
+            setPublishSuccess(appId, true);
+
             const isGoLiveEnabled = await fetchFeatureFlag('appbuilder-go-live');
             const userHasGoneLive = hasGoneLive(appId);
             const wasDismissed = getPublishState(appId).goLiveModalDismissed;
@@ -288,8 +291,6 @@ export function useDeploymentsQuery({
                 isFirstPublish,
                 userHasGoneLive
               });
-            } else {
-              setPublishSuccess(appId, true);
             }
           })
           .catch(function handleFetchError(error) {
