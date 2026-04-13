@@ -66,7 +66,7 @@ export default function RumProvider({
 
           breakdownMetrics: true,
 
-          transactionSampleRate: environment === 'production' ? 0.5 : 1.0,
+          transactionSampleRate: environment === 'production' ? 0.1 : 1.0,
 
           logLevel: 'warn',
         });
