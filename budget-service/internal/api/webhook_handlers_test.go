@@ -3,13 +3,16 @@ package api
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 
-	goauth "github.com/gdcorp-partners/airo-app-builder/packages/go-auth"
+	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/auth"
+	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/store"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
@@ -106,6 +109,104 @@ func TestDeleteWebhookSoftDeletesRow(t *testing.T) {
 	}
 }
 
+func TestIsAllowedWebhookDomain(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		host    string
+		allowed bool
+	}{
+		// Attack vectors - subdomain spoofing (must be BLOCKED)
+		{"blocks spoofed godaddy.com", "evilgodaddy.com", false},
+		{"blocks spoofed gdcorp.tools", "attacker-gdcorp.tools", false},
+		{"blocks fake gdcorp.tools", "fakegdcorp.tools", false},
+		{"blocks similar domain", "notgodaddy.com", false},
+		{"blocks subdomain of spoofed domain", "sub.evilgodaddy.com", false},
+
+		// Base domains (must be ALLOWED)
+		{"allows godaddy.com", "godaddy.com", true},
+		{"allows gdcorp.tools", "gdcorp.tools", true},
+
+		// Subdomains (must be ALLOWED)
+		{"allows subdomain of godaddy.com", "api.godaddy.com", true},
+		{"allows subdomain of gdcorp.tools", "webhook.gdcorp.tools", true},
+		{"allows deep subdomain", "deep.sub.godaddy.com", true},
+
+		// Environment variants - exact match (must be ALLOWED)
+		{"allows dev-godaddy.com", "dev-godaddy.com", true},
+		{"allows test-godaddy.com", "test-godaddy.com", true},
+		{"allows stg-godaddy.com", "stg-godaddy.com", true},
+		{"allows ote-godaddy.com", "ote-godaddy.com", true},
+		{"allows dev-gdcorp.tools", "dev-gdcorp.tools", true},
+		{"allows test-gdcorp.tools", "test-gdcorp.tools", true},
+		{"allows stg-gdcorp.tools", "stg-gdcorp.tools", true},
+		{"allows ote-gdcorp.tools", "ote-gdcorp.tools", true},
+
+		// Environment variants - subdomains (must be ALLOWED)
+		{"allows subdomain of dev-godaddy.com", "api.dev-godaddy.com", true},
+		{"allows subdomain of test-gdcorp.tools", "webhook.test-gdcorp.tools", true},
+		{"allows deep subdomain of env variant", "a.b.stg-godaddy.com", true},
+
+		// Invalid environment prefixes (must be BLOCKED)
+		{"blocks unknown env prefix", "prod-godaddy.com", false},
+		{"blocks unknown env prefix for gdcorp", "staging-gdcorp.tools", false},
+
+		// Edge cases
+		{"blocks empty string", "", false},
+		{"blocks unrelated domain", "example.com", false},
+		{"blocks partial match at start", "godaddy.com.evil.com", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := isAllowedWebhookDomain(tc.host)
+			if result != tc.allowed {
+				t.Errorf("isAllowedWebhookDomain(%q) = %v, want %v", tc.host, result, tc.allowed)
+			}
+		})
+	}
+}
+
+func TestValidateWebhookTargetURL_DomainValidation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		url       string
+		localAuth bool
+		wantErr   string
+	}{
+		// Production mode (localAuth=false) - domain restrictions apply
+		{"prod rejects spoofed domain", "https://evilgodaddy.com/hook", false, "url must be a *.gdcorp.tools or *.godaddy.com domain"},
+		{"prod rejects attacker domain", "https://attacker-gdcorp.tools/hook", false, "url must be a *.gdcorp.tools or *.godaddy.com domain"},
+		{"prod allows godaddy.com", "https://godaddy.com/hook", false, ""},
+		{"prod allows subdomain", "https://api.godaddy.com/hook", false, ""},
+		{"prod allows env variant", "https://api.dev-godaddy.com/hook", false, ""},
+		{"prod allows gdcorp.tools", "https://webhook.gdcorp.tools/hook", false, ""},
+
+		// Local dev mode (localAuth=true) - no domain restrictions
+		{"local allows any https domain", "https://example.com/hook", true, ""},
+		{"local allows loopback http", "http://localhost:8080/hook", true, ""},
+		{"local rejects non-loopback http", "http://example.com/hook", true, "http is only allowed for loopback addresses (127.0.0.1, localhost, ::1)"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := validateWebhookTargetURL(tc.url, tc.localAuth)
+			if tc.wantErr == "" {
+				if result != "" {
+					t.Errorf("validateWebhookTargetURL(%q, %v) = %q, want empty", tc.url, tc.localAuth, result)
+				}
+			} else {
+				if result != tc.wantErr {
+					t.Errorf("validateWebhookTargetURL(%q, %v) = %q, want %q", tc.url, tc.localAuth, result, tc.wantErr)
+				}
+			}
+		})
+	}
+}
+
 func TestPostWebhookReturnsSamePayloadAsGetWebhook(t *testing.T) {
 	ctx := context.Background()
 	st := testStore(t)
@@ -114,8 +215,8 @@ func TestPostWebhookReturnsSamePayloadAsGetWebhook(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	auth := goauth.NewMiddleware("none", "")
-	h := NewRouter(&Server{Store: st}, auth)
+	authMW := auth.NewMiddleware("none")
+	h := NewRouter(&Server{Store: st}, authMW)
 
 	body := `{"eventType":"report.created","productKey":"` + pk + `","url":"https://example.com/hook"}`
 	recPost := httptest.NewRecorder()
@@ -136,4 +237,348 @@ func TestPostWebhookReturnsSamePayloadAsGetWebhook(t *testing.T) {
 	}
 	getResp := decodeJSONMapUseNumber(t, recGet.Body.String())
 	assertJSONMapEqual(t, "post webhook vs get webhook", postResp, getResp)
+}
+
+// stubTokenGenerator implements TokenProvider for testing.
+type stubTokenGenerator struct {
+	token   string
+	err     error
+	healthy bool
+	lastErr error
+}
+
+func (s *stubTokenGenerator) GetToken() (string, error) {
+	return s.token, s.err
+}
+
+func (s *stubTokenGenerator) Healthy() bool {
+	return s.healthy
+}
+
+func (s *stubTokenGenerator) LastError() error {
+	return s.lastErr
+}
+
+func TestDoWebhookRequest_AuthorizationHeader(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		token          string
+		wantAuthHeader string
+	}{
+		{"includes auth header when token provided", "test-jwt-token", "sso-jwt test-jwt-token"},
+		{"omits auth header when token empty", "", ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var receivedAuth string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				receivedAuth = r.Header.Get("Authorization")
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer srv.Close()
+
+			s := &Server{WebhookClient: srv.Client()}
+			resp, err := s.doWebhookRequest(context.Background(), srv.URL, []byte(`{}`), tc.token)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			_ = resp.Body.Close()
+
+			if receivedAuth != tc.wantAuthHeader {
+				t.Errorf("Authorization header = %q, want %q", receivedAuth, tc.wantAuthHeader)
+			}
+		})
+	}
+}
+
+func TestDoWebhookRequest_SetsContentTypeAndUserAgent(t *testing.T) {
+	t.Parallel()
+
+	var receivedContentType, receivedUserAgent string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedContentType = r.Header.Get("Content-Type")
+		receivedUserAgent = r.Header.Get("User-Agent")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	s := &Server{WebhookClient: srv.Client()}
+	resp, err := s.doWebhookRequest(context.Background(), srv.URL, []byte(`{"test":true}`), "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if receivedContentType != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", receivedContentType)
+	}
+	if receivedUserAgent != "budget-service/1.0" {
+		t.Errorf("User-Agent = %q, want budget-service/1.0", receivedUserAgent)
+	}
+}
+
+func TestDeliverWebhook_HTTPSRequiredWithTokenGenerator(t *testing.T) {
+	t.Parallel()
+
+	s := &Server{
+		TokenGenerator: &stubTokenGenerator{token: "test-token", healthy: true},
+	}
+
+	wh := store.WebhookRow{
+		ID:  uuid.NewString(),
+		URL: "http://example.com/hook",
+	}
+
+	err := s.deliverWebhook(context.Background(), wh, []byte(`{}`))
+	if err == nil {
+		t.Fatal("expected error for HTTP URL with TokenGenerator")
+	}
+	if !strings.Contains(err.Error(), "must use HTTPS") {
+		t.Errorf("error = %q, want 'must use HTTPS'", err)
+	}
+}
+
+func TestDeliverWebhook_DomainAllowlistWithTokenGenerator(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		url     string
+		wantErr bool
+		errMsg  string
+	}{
+		{"rejects untrusted domain", "https://evil.com/hook", true, "domain not in allowlist"},
+		{"rejects spoofed domain", "https://evilgodaddy.com/hook", true, "domain not in allowlist"},
+		{"allows godaddy.com subdomain", "https://api.godaddy.com/hook", false, ""},
+		{"allows gdcorp.tools subdomain", "https://webhook.gdcorp.tools/hook", false, ""},
+		{"allows env variant", "https://api.dev-godaddy.com/hook", false, ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer srv.Close()
+
+			s := &Server{
+				TokenGenerator: &stubTokenGenerator{token: "test-token", healthy: true},
+				WebhookClient:  srv.Client(),
+			}
+
+			wh := store.WebhookRow{
+				ID:  uuid.NewString(),
+				URL: tc.url,
+			}
+
+			err := s.deliverWebhook(context.Background(), wh, []byte(`{}`))
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for URL %s", tc.url)
+				}
+				if !strings.Contains(err.Error(), tc.errMsg) {
+					t.Errorf("error = %q, want %q", err, tc.errMsg)
+				}
+			} else {
+				// For allowed domains, we expect a connection error since the URL
+				// doesn't match the test server, but NOT a domain validation error
+				if err != nil && strings.Contains(err.Error(), "domain not in allowlist") {
+					t.Errorf("unexpected domain error for allowed URL %s: %v", tc.url, err)
+				}
+			}
+		})
+	}
+}
+
+func TestDeliverWebhook_HTTPLoopbackAllowedWithoutTokenGenerator(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	s := &Server{
+		TokenGenerator: nil, // local dev mode
+		WebhookClient:  srv.Client(),
+	}
+
+	// httptest.NewServer uses 127.0.0.1 which is loopback
+	wh := store.WebhookRow{
+		ID:  uuid.NewString(),
+		URL: srv.URL + "/hook",
+	}
+
+	err := s.deliverWebhook(context.Background(), wh, []byte(`{}`))
+	if err != nil {
+		t.Errorf("unexpected error for HTTP loopback without TokenGenerator: %v", err)
+	}
+}
+
+func TestDeliverWebhook_HTTPNonLoopbackRejectedWithoutTokenGenerator(t *testing.T) {
+	t.Parallel()
+
+	s := &Server{
+		TokenGenerator: nil, // local dev mode
+	}
+
+	wh := store.WebhookRow{
+		ID:  uuid.NewString(),
+		URL: "http://example.com/hook",
+	}
+
+	err := s.deliverWebhook(context.Background(), wh, []byte(`{}`))
+	if err == nil {
+		t.Fatal("expected error for HTTP non-loopback URL without TokenGenerator")
+	}
+	if !strings.Contains(err.Error(), "loopback addresses") {
+		t.Errorf("error = %q, want 'loopback addresses'", err)
+	}
+}
+
+func TestDeliverWebhook_Non2xxReturnsError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		statusCode int
+		wantErr    bool
+	}{
+		{"200 OK succeeds", http.StatusOK, false},
+		{"201 Created succeeds", http.StatusCreated, false},
+		{"204 No Content succeeds", http.StatusNoContent, false},
+		{"400 Bad Request fails", http.StatusBadRequest, true},
+		{"401 Unauthorized fails", http.StatusUnauthorized, true},
+		{"500 Internal Server Error fails", http.StatusInternalServerError, true},
+		{"503 Service Unavailable fails", http.StatusServiceUnavailable, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.statusCode)
+			}))
+			defer srv.Close()
+
+			s := &Server{
+				TokenGenerator: nil,
+				WebhookClient:  srv.Client(),
+			}
+
+			wh := store.WebhookRow{
+				ID:  uuid.NewString(),
+				URL: srv.URL + "/hook",
+			}
+
+			err := s.deliverWebhook(context.Background(), wh, []byte(`{}`))
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for status %d", tc.statusCode)
+				}
+				if !strings.Contains(err.Error(), "returned status") {
+					t.Errorf("error = %q, want 'returned status'", err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error for status %d: %v", tc.statusCode, err)
+				}
+			}
+		})
+	}
+}
+
+func TestDeliverWebhook_TokenGenerationError(t *testing.T) {
+	t.Parallel()
+
+	s := &Server{
+		TokenGenerator: &stubTokenGenerator{
+			err:     errors.New("token refresh failed"),
+			healthy: false,
+		},
+	}
+
+	wh := store.WebhookRow{
+		ID:  uuid.NewString(),
+		URL: "https://example.gdcorp.tools/hook",
+	}
+
+	err := s.deliverWebhook(context.Background(), wh, []byte(`{}`))
+	if err == nil {
+		t.Fatal("expected error when token generation fails")
+	}
+	if !strings.Contains(err.Error(), "token generation failed") {
+		t.Errorf("error = %q, want 'token generation failed'", err)
+	}
+}
+
+// captureTransport is an http.RoundTripper that captures request headers and returns a mock response.
+type captureTransport struct {
+	capturedAuth string
+	statusCode   int
+}
+
+func (t *captureTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.capturedAuth = req.Header.Get("Authorization")
+	return &http.Response{
+		StatusCode: t.statusCode,
+		Body:       io.NopCloser(strings.NewReader("")),
+		Header:     make(http.Header),
+	}, nil
+}
+
+func TestDeliverWebhook_SendsAuthHeaderWhenTokenGeneratorPresent(t *testing.T) {
+	t.Parallel()
+
+	transport := &captureTransport{statusCode: http.StatusOK}
+	s := &Server{
+		TokenGenerator: &stubTokenGenerator{token: "my-jwt-token", healthy: true},
+		WebhookClient:  &http.Client{Transport: transport},
+	}
+
+	wh := store.WebhookRow{
+		ID:  uuid.NewString(),
+		URL: "https://webhook.gdcorp.tools/hook", // allowed domain
+	}
+
+	err := s.deliverWebhook(context.Background(), wh, []byte(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if transport.capturedAuth != "sso-jwt my-jwt-token" {
+		t.Errorf("Authorization header = %q, want 'sso-jwt my-jwt-token'", transport.capturedAuth)
+	}
+}
+
+func TestDeliverWebhook_OmitsAuthHeaderWithoutTokenGenerator(t *testing.T) {
+	t.Parallel()
+
+	var receivedAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	s := &Server{
+		TokenGenerator: nil,
+		WebhookClient:  srv.Client(),
+	}
+
+	wh := store.WebhookRow{
+		ID:  uuid.NewString(),
+		URL: srv.URL + "/hook",
+	}
+
+	err := s.deliverWebhook(context.Background(), wh, []byte(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if receivedAuth != "" {
+		t.Errorf("Authorization header = %q, want empty", receivedAuth)
+	}
 }

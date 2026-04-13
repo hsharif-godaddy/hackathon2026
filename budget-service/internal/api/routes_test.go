@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	goauth "github.com/gdcorp-partners/airo-app-builder/packages/go-auth"
+	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/auth"
 )
 
 func TestRouterNotFoundReturnsJSONEnvelope(t *testing.T) {
 	t.Parallel()
-	h := NewRouter(&Server{}, goauth.NewMiddleware("none", ""))
+	h := NewRouter(&Server{}, auth.NewMiddleware("none"))
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/not-a-route", nil)
@@ -27,7 +27,7 @@ func TestRouterNotFoundReturnsJSONEnvelope(t *testing.T) {
 
 func TestRouterMethodNotAllowedReturnsJSONEnvelope(t *testing.T) {
 	t.Parallel()
-	h := NewRouter(&Server{}, goauth.NewMiddleware("none", ""))
+	h := NewRouter(&Server{}, auth.NewMiddleware("none"))
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/health", nil)
@@ -43,7 +43,7 @@ func TestRouterMethodNotAllowedReturnsJSONEnvelope(t *testing.T) {
 
 func TestRouterOpenAPIPublic(t *testing.T) {
 	t.Parallel()
-	h := NewRouter(&Server{}, goauth.NewMiddleware("none", ""))
+	h := NewRouter(&Server{}, auth.NewMiddleware("none"))
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/openapi.yaml", nil)

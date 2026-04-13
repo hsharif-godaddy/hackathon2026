@@ -30,8 +30,6 @@ type Config struct {
 	HTTPIdleTimeout  time.Duration
 
 	AuthLogLevel string
-
-	WebhookSecret string
 }
 
 // Load reads env and checks LOCAL_AUTH_DISABLE / SSO_HOST / TLS pair consistency.
@@ -51,7 +49,6 @@ func Load() (Config, error) {
 		HTTPWriteTimeout:   getEnvDuration("HTTP_WRITE_TIMEOUT", 60*time.Second),
 		HTTPIdleTimeout:    getEnvDuration("HTTP_IDLE_TIMEOUT", 120*time.Second),
 		AuthLogLevel:       getEnv("AUTH_LOG_LEVEL", "info"),
-		WebhookSecret:      strings.TrimSpace(os.Getenv("WEBHOOK_SECRET")),
 	}
 	if cfg.MigrateDatabaseURL != "" && cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("MIGRATE_DATABASE_URL requires DATABASE_URL")

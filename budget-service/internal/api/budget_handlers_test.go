@@ -18,8 +18,7 @@ import (
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 
-	goauth "github.com/gdcorp-partners/airo-app-builder/packages/go-auth"
-
+	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/auth"
 	schemamigrate "github.com/gdcorp-partners/airo-app-builder/budget-service/internal/migrate"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/store"
 )
@@ -331,7 +330,7 @@ func TestPostSessionReturns402WhenBudgetExhausted(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	auth := goauth.NewMiddleware("none", "")
+	auth := auth.NewMiddleware("none")
 	h := NewRouter(&Server{Store: st}, auth)
 
 	reqS1 := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/sessions", strings.NewReader(`{}`))
@@ -389,7 +388,7 @@ func TestPatchReconciledSessionReturns409(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	auth := goauth.NewMiddleware("none", "")
+	auth := auth.NewMiddleware("none")
 	h := NewRouter(&Server{Store: st}, auth)
 
 	recS := httptest.NewRecorder()
@@ -446,7 +445,7 @@ func TestPatchNonexistentSessionReturns404(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	auth := goauth.NewMiddleware("none", "")
+	auth := auth.NewMiddleware("none")
 	h := NewRouter(&Server{Store: st}, auth)
 
 	fakeSessionID := uuid.NewString()
@@ -482,7 +481,7 @@ func TestPatchSessionDuplicateCallRequestID(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	auth := goauth.NewMiddleware("none", "")
+	auth := auth.NewMiddleware("none")
 	h := NewRouter(&Server{Store: st}, auth)
 
 	recS := httptest.NewRecorder()
@@ -552,7 +551,7 @@ func TestPatchSessionDuplicateCallRequestID(t *testing.T) {
 
 func TestGoCodeSpendMathOverHTTP(t *testing.T) {
 	st := testStore(t)
-	auth := goauth.NewMiddleware("none", "")
+	auth := auth.NewMiddleware("none")
 	srv := &Server{Store: st}
 	h := NewRouter(srv, auth)
 
@@ -1324,7 +1323,7 @@ func TestGetBudgetItem(t *testing.T) {
 
 func TestReportAllocatesRenewalItemBeforePlainItem(t *testing.T) {
 	st := testStore(t)
-	auth := goauth.NewMiddleware("none", "")
+	auth := auth.NewMiddleware("none")
 	srv := &Server{Store: st}
 	h := NewRouter(srv, auth)
 
@@ -1438,7 +1437,7 @@ func TestReportAllocatesRenewalItemBeforePlainItem(t *testing.T) {
 
 func TestWriteEndpointsReturnCanonicalGetPayloads(t *testing.T) {
 	st := testStore(t)
-	auth := goauth.NewMiddleware("none", "")
+	auth := auth.NewMiddleware("none")
 	h := NewRouter(&Server{Store: st}, auth)
 
 	productKey := "parity-" + uuid.NewString()

@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/api"
+	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/auth"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/config"
 	schemamigrate "github.com/gdcorp-partners/airo-app-builder/budget-service/internal/migrate"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/store"
-	goauth "github.com/gdcorp-partners/airo-app-builder/packages/go-auth"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
@@ -88,8 +88,30 @@ func main() {
 	if cfg.LocalAuthDisable {
 		authType = "none"
 	}
-	authMW := goauth.NewMiddleware(authType, cfg.SSOHost)
-	srv := &api.Server{Store: st, WebhookSecret: cfg.WebhookSecret}
+
+	// Initialize singleton GDAuth client (used by middleware, token generator, and auth validator)
+	if !cfg.LocalAuthDisable {
+		if err := auth.InitClient(cfg.SSOHost); err != nil {
+			slog.Error("auth.client.init.failed", "error", err)
+			os.Exit(1)
+		}
+	}
+
+	authMW := auth.NewMiddleware(authType)
+
+	// Token generator is required for webhook delivery when auth is enabled.
+	// Fail fast at startup if token generation is not working.
+	var tokenGen *auth.TokenGenerator
+	if !cfg.LocalAuthDisable {
+		var err error
+		tokenGen, err = auth.NewTokenGenerator()
+		if err != nil {
+			slog.Error("token_generator.init.failed", "error", err)
+			os.Exit(1)
+		}
+	}
+
+	srv := &api.Server{Store: st, TokenGenerator: tokenGen, LocalAuthDisable: cfg.LocalAuthDisable}
 	handler := api.NewRouter(srv, authMW)
 
 	httpSrv := &http.Server{

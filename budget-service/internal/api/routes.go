@@ -4,13 +4,13 @@ package api
 import (
 	"net/http"
 
+	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/auth"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/openapi"
-	goauth "github.com/gdcorp-partners/airo-app-builder/packages/go-auth"
 	"github.com/gorilla/mux"
 )
 
 // NewRouter: /health open; /api/v1 uses authMW (IAM / Cert / Cert2S when auth enabled).
-func NewRouter(s *Server, authMW *goauth.Middleware) http.Handler {
+func NewRouter(s *Server, authMW *auth.Middleware) http.Handler {
 	r := mux.NewRouter()
 	r.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "resource not found")

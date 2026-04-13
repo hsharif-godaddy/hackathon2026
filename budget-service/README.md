@@ -4,7 +4,7 @@ HTTP API for budgets, LLM sessions, session spend lines, session reports (reconc
 
 - **Spec (flow, numbers, routes):** [`docs/budget-service-spec.md`](docs/budget-service-spec.md)
 - **OpenAPI / Swagger:** [`internal/openapi/openapi.yaml`](internal/openapi/openapi.yaml) — `GET /openapi.yaml` (raw YAML), `GET /swagger/` (Swagger UI). Same host, **no auth** on those routes; **`/api/v1/*` still uses JWT** for actual API calls (use Authorize in Swagger or `LOCAL_AUTH_DISABLE=true` locally).
-- **Auth:** [`packages/go-auth`](../packages/go-auth). By default `/api/v1/*` uses **`AuthenticateAWSIAMService`** — AWS IAM, Cert, or Cert2S JWT via **`Authorization: Bearer`** or **`Authorization: sso-jwt`**. The middleware does **not** read the **`auth_idp`** cookie. Set **`LOCAL_AUTH_DISABLE=true`** (local only) to skip JWT validation.
+- **Auth:** Uses `gd-auth-lib` (via `internal/auth`). By default `/api/v1/*` uses **`AuthenticateAWSIAMService`** — AWS IAM, Cert, or Cert2S JWT via **`Authorization: Bearer`** or **`Authorization: sso-jwt`**. The middleware does **not** read the **`auth_idp`** cookie. Set **`LOCAL_AUTH_DISABLE=true`** (local only) to skip JWT validation.
 - **Database:** Optional. If `DATABASE_URL` is unset, `Store` is nil: `/health` reports DB unconfigured; budget/product/webhook handlers return 503 on write paths.
 - **Local E2E:** [docs/local-e2e.md](docs/local-e2e.md) — Docker profile `e2e` (webhook sink), `make e2e-local`, optional `make dev-budget-ui` (proxied CRUD UI). Not used in production.
 
@@ -45,18 +45,18 @@ make dev
 
 ### Private modules (JFrog Artifactory)
 
-`github.com/gdcorp-golang/*` resolves through GoDaddy’s Artifactory Go virtual repo (`go-virt`), same as [`Dockerfile`](Dockerfile) builds. To match **`go.sum`** checksums, use that proxy (not a direct Git fetch) and skip the public sum DB for those paths.
+`github.com/gdcorp-identity/*` resolves through GoDaddy's Artifactory Go virtual repo (`go-virt`), same as [`Dockerfile`](Dockerfile) builds. To match **`go.sum`** checksums, use that proxy (not a direct Git fetch) and skip the public sum DB for those paths.
 
 **Recommended — persist for all `go` commands on this machine** (writes `go env GOENV`, usually under your user config dir; no shell variable expansion, so embed the token in `GOPROXY`):
 
 ```bash
 go env -w GOPROXY='https://:YOUR_JFROG_TOKEN@gdartifactory1.jfrog.io/artifactory/api/go/go-virt,direct'
 go env -w GONOPROXY=none
-go env -w GONOSUMDB='github.com/gdcorp-golang/*'
+go env -w GONOSUMDB='github.com/gdcorp-identity/*'
 go env -u GOPRIVATE
 ```
 
-Use a real JFrog identity token for `YOUR_JFROG_TOKEN`. If you previously set `GOPRIVATE` for `gdcorp-golang`, clear it (`go env -u GOPRIVATE`); leaving it set can pull different zips than CI and cause **checksum mismatch** against `go.sum`.
+Use a real JFrog identity token for `YOUR_JFROG_TOKEN`. If you previously set `GOPRIVATE` for `gdcorp-identity`, clear it (`go env -u GOPRIVATE`); leaving it set can pull different zips than CI and cause **checksum mismatch** against `go.sum`.
 
 Inspect or clear: `go env GOPROXY GONOPROXY GOPRIVATE GONOSUMDB`, `go env -u GOPROXY`, etc.
 
@@ -67,7 +67,7 @@ Inspect or clear: `go env GOPROXY GONOPROXY GOPRIVATE GONOSUMDB`, `go env -u GOP
 Server: `SSO_HOST` (unless `LOCAL_AUTH_DISABLE=true`), then `go run ./cmd/server`.
 
 ```bash
-curl -sS -H "Authorization: Bearer YOUR_JWT" "http://localhost:8080/api/v1/auth-check"
+curl -sS -H "Authorization: sso-jwt YOUR_JWT" "http://localhost:8080/api/v1/auth-check"
 ```
 
 With **`AUTH_LOG_LEVEL=debug`**, look for **`branch=sso_service_bearer`** / **`sso_service_sso_jwt`** and **`domain=sso_service`**.
@@ -81,14 +81,14 @@ PEM cert/key under **`./.certs/`** (gitignored). **`SSO_HOST`** must match the s
 ```bash
 cd budget-service
 TOKEN="$(go run ./cmd/mint-cert-jwt)"
-curl -sS -H "Authorization: Bearer $TOKEN" "http://localhost:8080/api/v1/auth-check"
+curl -sS -H "Authorization: sso-jwt $TOKEN" "http://localhost:8080/api/v1/auth-check"
 ```
 
 `gdmock`-signed tokens do not validate against real **`gdsso`**.
 
 ### IAM JWT (`cmd/mint-iam-jwt`)
 
-Run from **`budget-service`** so **`.env`** loads (`godotenv`). Required: **`SSO_HOST`**. Optional: **`IAM_ROLE_ARN`** (`sts:AssumeRole` before exchange), **`AWS_PROFILE`**.
+Run from **`budget-service`** so **`.env`** loads (`godotenv`). Required: **`SSO_HOST`**. Optional: **`AWS_PROFILE`** (or other AWS credential chain config).
 
 ```bash
 aws sso login --profile airobuild-dev-private-sso
@@ -96,10 +96,8 @@ export AWS_PROFILE=airobuild-dev-private-sso
 # JFrog / module proxy: configure once via go env -w (see "Private modules" above).
 
 TOKEN="$(go run ./cmd/mint-iam-jwt)"
-curl -sS -H "Authorization: Bearer $TOKEN" "http://localhost:8080/api/v1/auth-check"
+curl -sS -H "Authorization: sso-jwt $TOKEN" "http://localhost:8080/api/v1/auth-check"
 ```
-
-**`IAM_ROLE_ARN`** must be an **IAM role ARN**, not an `sts:...assumed-role/...` session ARN.
 
 ## Environment
 
@@ -107,9 +105,8 @@ curl -sS -H "Authorization: Bearer $TOKEN" "http://localhost:8080/api/v1/auth-ch
 | ------------------------------------- | ------- | ----------------------------------------------------------------------------------------------- |
 | `BUDGET_SERVICE_ADDR`                 | `:8080` | Listen address                                                                                  |
 | `LOCAL_AUTH_DISABLE`                  | —       | `true`/`1`/`yes`/`on` skips JWT (local dev only)                                                |
-| `AUTH_LOG_LEVEL`                      | `info`  | `debug` → more `go-auth` slog                                                                   |
+| `AUTH_LOG_LEVEL`                      | `info`  | `debug` → more auth slog output                                                                 |
 | `SSO_HOST`                            | —       | Required when auth enabled; e.g. `sso.dev-godaddy.com`                                          |
-| `IAM_ROLE_ARN`                        | —       | **`mint-iam-jwt` only**                                                                         |
 | `AWS_PROFILE`                         | —       | **`mint-iam-jwt`** / AWS CLI                                                                    |
 | `CERT_PEM_PATH`, `CERT_KEY_PATH`      | —       | **`mint-cert-jwt` only**                                                                        |
 | `DATABASE_URL`                        | —       | If unset, no Store                                                                              |
@@ -122,7 +119,6 @@ curl -sS -H "Authorization: Bearer $TOKEN" "http://localhost:8080/api/v1/auth-ch
 | `HTTP_READ_TIMEOUT`                   | `30s`   |                                                                                                 |
 | `HTTP_WRITE_TIMEOUT`                  | `60s`   |                                                                                                 |
 | `HTTP_IDLE_TIMEOUT`                   | `120s`  |                                                                                                 |
-| `WEBHOOK_SECRET`                      | —       | Secret token sent as `X-BMS-Secret` header on webhooks                                          |
 
 ## Postgres
 
@@ -142,5 +138,4 @@ Targets: `up`, `down`, `logs` (Postgres), `data` (seed), `dev` (Air), `build`, `
 
 ## Related
 
-- Other `go-auth` helpers (`AuthenticateCert`, etc.) live in `packages/go-auth` for other apps.
-- Older service: `budget-service/`.
+- Auth implementation uses `gd-auth-lib` wrapped by `internal/auth`.

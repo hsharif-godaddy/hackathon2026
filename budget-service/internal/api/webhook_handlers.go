@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -28,7 +29,15 @@ func normalizeWebhookEventType(raw string) (string, bool) {
 	return "", false
 }
 
-func validateWebhookTargetURL(raw string) string {
+// validateWebhookTargetURL validates webhook registration URLs.
+// When localAuthDisable is false (production), enforces:
+//   - HTTPS only
+//   - Domain must end with .gdcorp.tools or .godaddy.com
+//
+// When localAuthDisable is true (local dev), allows:
+//   - HTTP for loopback addresses (127.0.0.1, localhost, ::1)
+//   - Any domain
+func validateWebhookTargetURL(raw string, localAuthDisable bool) string {
 	u := strings.TrimSpace(raw)
 	if u == "" {
 		return "url is required"
@@ -38,12 +47,67 @@ func validateWebhookTargetURL(raw string) string {
 	}
 	parsed, err := url.Parse(u)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return "url must be an absolute http or https URL"
+		return "url must be an absolute URL"
 	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return "url must use http or https"
+
+	host := strings.ToLower(parsed.Hostname())
+
+	if localAuthDisable {
+		// Local dev: allow HTTP for loopback, HTTPS for any
+		if parsed.Scheme == "http" {
+			if !isLoopback(host) {
+				return "http is only allowed for loopback addresses (127.0.0.1, localhost, ::1)"
+			}
+		} else if parsed.Scheme != "https" {
+			return "url must use http or https"
+		}
+		return ""
+	}
+
+	// Production: HTTPS only, restricted domains
+	if parsed.Scheme != "https" {
+		return "url must use https"
+	}
+	if !isAllowedWebhookDomain(host) {
+		return "url must be a *.gdcorp.tools or *.godaddy.com domain"
 	}
 	return ""
+}
+
+// isLoopback returns true if the host is a loopback address.
+func isLoopback(host string) bool {
+	return host == "127.0.0.1" || host == "localhost" || host == "::1"
+}
+
+// allowedWebhookDomains defines the allowed base domains and their environment variants.
+// Each entry supports: exact match, subdomains (.<domain>), and env variants (.<env>-<domain>).
+var allowedWebhookDomains = []string{"gdcorp.tools", "godaddy.com"}
+var allowedWebhookEnvs = []string{"dev", "test", "stg", "ote"}
+
+// isAllowedWebhookDomain returns true if the host is an allowed webhook domain.
+// Allowed patterns for each base domain (e.g., "godaddy.com"):
+//   - Exact match: "godaddy.com"
+//   - Subdomain: "*.godaddy.com" (e.g., "api.godaddy.com")
+//   - Environment variant: "*.<env>-godaddy.com" (e.g., "api.dev-godaddy.com")
+func isAllowedWebhookDomain(host string) bool {
+	for _, domain := range allowedWebhookDomains {
+		// Exact match: "godaddy.com"
+		if host == domain {
+			return true
+		}
+		// Subdomain match: ".godaddy.com" (requires leading dot to prevent spoofing)
+		if strings.HasSuffix(host, "."+domain) {
+			return true
+		}
+		// Environment variants: ".dev-godaddy.com", ".test-godaddy.com", etc.
+		for _, env := range allowedWebhookEnvs {
+			envDomain := env + "-" + domain
+			if host == envDomain || strings.HasSuffix(host, "."+envDomain) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (s *Server) webhookHTTPClient() *http.Client {
@@ -58,6 +122,7 @@ func (s *Server) deliverReportCreatedWebhooks(budgetID, sessionID, reportID, pro
 	if s.Store == nil || strings.TrimSpace(productKey) == "" {
 		return
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -93,32 +158,80 @@ func (s *Server) deliverReportCreatedWebhooks(budgetID, sessionID, reportID, pro
 		return
 	}
 
-	client := s.webhookHTTPClient()
 	for i := range hooks {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, hooks[i].URL, bytes.NewReader(body))
-		if err != nil {
-			slog.Warn("webhook.request_build", "error", err, "webhookId", hooks[i].ID)
-			continue
-		}
-		req.Header.Set("Content-Type", "application/json")
-		if s.WebhookSecret != "" {
-			if req.URL != nil && strings.EqualFold(req.URL.Scheme, "https") {
-				req.Header.Set("X-BMS-Secret", s.WebhookSecret)
-			} else {
-				slog.Warn("webhook.secret_skipped_insecure_transport", "webhookId", hooks[i].ID, "url", hooks[i].URL)
-			}
-		}
-		resp, err := client.Do(req)
-		if err != nil {
-			slog.Warn("webhook.delivery_failed", "error", err, "webhookId", hooks[i].ID, "url", hooks[i].URL)
-			continue
-		}
-		_, _ = io.Copy(io.Discard, resp.Body)
-		_ = resp.Body.Close()
-		if resp.StatusCode < 200 || resp.StatusCode > 299 {
-			slog.Warn("webhook.delivery_status", "status", resp.StatusCode, "webhookId", hooks[i].ID, "url", hooks[i].URL)
+		if err := s.deliverWebhook(ctx, hooks[i], body); err != nil {
+			slog.Warn("webhook.delivery_failed",
+				"error", err,
+				"webhookId", hooks[i].ID,
+				"url", hooks[i].URL)
 		}
 	}
+}
+
+// deliverWebhook sends a webhook request with token authentication.
+// When TokenGenerator is nil (local dev with auth disabled), sends without Authorization header.
+func (s *Server) deliverWebhook(ctx context.Context, wh store.WebhookRow, payload []byte) error {
+	parsedURL, err := url.Parse(wh.URL)
+	if err != nil {
+		return fmt.Errorf("invalid webhook URL: %w", err)
+	}
+
+	host := strings.ToLower(parsedURL.Hostname())
+
+	// Enforce scheme and domain based on whether auth is enabled
+	if s.TokenGenerator != nil {
+		// Production: require HTTPS
+		if !strings.EqualFold(parsedURL.Scheme, "https") {
+			return fmt.Errorf("webhook URL must use HTTPS")
+		}
+		// Production: require allowed domain (defense-in-depth for legacy rows or direct DB writes)
+		if !isAllowedWebhookDomain(host) {
+			return fmt.Errorf("webhook URL domain not in allowlist")
+		}
+	} else {
+		// Local dev: allow HTTP for loopback only
+		if strings.EqualFold(parsedURL.Scheme, "http") && !isLoopback(host) {
+			return fmt.Errorf("HTTP webhooks only allowed for loopback addresses in local dev")
+		}
+	}
+
+	// Get auth token if available
+	var token string
+	if s.TokenGenerator != nil {
+		token, err = s.TokenGenerator.GetToken()
+		if err != nil {
+			return fmt.Errorf("token generation failed: %w", err)
+		}
+	}
+
+	// Attempt delivery
+	resp, err := s.doWebhookRequest(ctx, wh.URL, payload, token)
+	if err != nil {
+		return err
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return fmt.Errorf("webhook returned status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+func (s *Server) doWebhookRequest(ctx context.Context, targetURL string, payload []byte, token string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "budget-service/1.0")
+	if token != "" {
+		req.Header.Set("Authorization", "sso-jwt "+token)
+	}
+
+	return s.webhookHTTPClient().Do(req)
 }
 
 type postWebhookBody struct {
@@ -162,7 +275,7 @@ func (s *Server) postWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey exceeds maximum length")
 		return
 	}
-	if msg := validateWebhookTargetURL(payload.URL); msg != "" {
+	if msg := validateWebhookTargetURL(payload.URL, s.LocalAuthDisable); msg != "" {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", msg)
 		return
 	}
