@@ -6,14 +6,14 @@ import { renderHook } from '@testing-library/react'
 
 import { useToolResultSync } from './useToolResultSync'
 
-const mockAppFetch = vi.fn()
+const mockAgentFetch = vi.fn()
 const mockBuildDynamicAgentUrl = vi.fn()
 const mockLoggerDebug = vi.fn()
 const mockLoggerWarn = vi.fn()
 const mockLoggerError = vi.fn()
 
-vi.mock('@/lib/gasket-config', () => ({
-  appFetch: (...args: unknown[]) => mockAppFetch(...args)
+vi.mock('@/lib/agent-fetch', () => ({
+  agentFetch: (...args: unknown[]) => mockAgentFetch(...args)
 }))
 
 vi.mock('@/config/dynamic-api', () => ({
@@ -32,7 +32,7 @@ describe('useToolResultSync', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockBuildDynamicAgentUrl.mockResolvedValue('https://agent.example.com/api/conversations/conv-123/tools/tool-456?appId=app-789')
-    mockAppFetch.mockResolvedValue({
+    mockAgentFetch.mockResolvedValue({
       ok: true,
       status: 200
     })
@@ -62,14 +62,11 @@ describe('useToolResultSync', () => {
         'api/conversations/conv-123/tools/tool-456?appId=app-789',
         'app-789'
       )
-      expect(mockAppFetch).toHaveBeenCalledWith(
+      expect(mockAgentFetch).toHaveBeenCalledWith(
         'https://agent.example.com/api/conversations/conv-123/tools/tool-456?appId=app-789',
         {
+          siteId: 'app-789',
           method: 'PATCH',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json'
-          },
           body: JSON.stringify({ result: testState })
         }
       )
@@ -95,12 +92,12 @@ describe('useToolResultSync', () => {
       // First call should sync
       const firstResult = await syncResult(testState)
       expect(firstResult).toBe(true)
-      expect(mockAppFetch).toHaveBeenCalledTimes(1)
+      expect(mockAgentFetch).toHaveBeenCalledTimes(1)
 
       // Second call should also sync (caller manages frequency)
       const secondResult = await syncResult({ ...testState, publishStatus: 'Error' })
       expect(secondResult).toBe(true)
-      expect(mockAppFetch).toHaveBeenCalledTimes(2)
+      expect(mockAgentFetch).toHaveBeenCalledTimes(2)
     })
   })
 
@@ -118,7 +115,7 @@ describe('useToolResultSync', () => {
       const success = await syncResult({ action: 'publish' })
 
       expect(success).toBe(false)
-      expect(mockAppFetch).not.toHaveBeenCalled()
+      expect(mockAgentFetch).not.toHaveBeenCalled()
       expect(mockLoggerWarn).toHaveBeenCalledWith('tool-result-sync.missing-params', {
         hasConversationId: false,
         hasToolId: true,
@@ -139,7 +136,7 @@ describe('useToolResultSync', () => {
       const success = await syncResult({ action: 'publish' })
 
       expect(success).toBe(false)
-      expect(mockAppFetch).not.toHaveBeenCalled()
+      expect(mockAgentFetch).not.toHaveBeenCalled()
     })
 
     it('returns false when appId is missing', async () => {
@@ -155,13 +152,13 @@ describe('useToolResultSync', () => {
       const success = await syncResult({ action: 'publish' })
 
       expect(success).toBe(false)
-      expect(mockAppFetch).not.toHaveBeenCalled()
+      expect(mockAgentFetch).not.toHaveBeenCalled()
     })
   })
 
   describe('error handling', () => {
     it('returns false when API call fails with non-ok response', async () => {
-      mockAppFetch.mockResolvedValue({
+      mockAgentFetch.mockResolvedValue({
         ok: false,
         status: 500,
         text: async () => 'Internal Server Error'
@@ -188,7 +185,7 @@ describe('useToolResultSync', () => {
     })
 
     it('returns false when API call throws exception', async () => {
-      mockAppFetch.mockRejectedValue(new Error('Network error'))
+      mockAgentFetch.mockRejectedValue(new Error('Network error'))
 
       const { result } = renderHook(() =>
         useToolResultSync({
@@ -225,7 +222,7 @@ describe('useToolResultSync', () => {
       const success = await syncResult({ action: 'publish' })
 
       expect(success).toBe(false)
-      expect(mockAppFetch).not.toHaveBeenCalled()
+      expect(mockAgentFetch).not.toHaveBeenCalled()
       expect(mockLoggerError).toHaveBeenCalledWith('tool-result-sync.error', {
         conversationId: 'conv-123',
         toolId: 'tool-456',

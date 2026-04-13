@@ -3,7 +3,7 @@
 import { useCallback } from 'react'
 
 import { buildDynamicAgentUrl } from '@/config/dynamic-api'
-import { appFetch } from '@/lib/gasket-config'
+import { agentFetch } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
 
 export interface ToolResultSyncParams {
@@ -36,12 +36,9 @@ export function useToolResultSync(params: ToolResultSyncParams) {
         return false
       }
 
-      const response = await appFetch(url, {
+      const response = await agentFetch(url, {
+        siteId: appId,
         method: 'PATCH',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        },
         body: JSON.stringify({ result: state })
       })
 
