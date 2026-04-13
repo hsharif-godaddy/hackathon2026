@@ -75,7 +75,7 @@ export function AnalyticsDetailTable<T>({
         style={maxHeight ? { maxHeight: `${maxHeight}px`, overflowY: 'auto' } : undefined}
       >
         <table className="w-full border-collapse text-xs min-w-0">
-          <thead className={maxHeight ? 'sticky top-0 z-10 bg-intents-ux-box-backgroundColor' : ''}>
+          <thead className={maxHeight ? 'sticky -top-px bg-intents-ux-box-backgroundColor' : ''}>
             <tr
               className="border-y border-border/60"
               style={{

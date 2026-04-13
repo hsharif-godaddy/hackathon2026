@@ -39,6 +39,7 @@ export const PreviewTabs = memo(({
     <Tabs
       id="preview-tabs"
       design="manila"
+      portalElem={document.body}
       selected={selectedPlatform}
       onChange={onPlatformChange}
       items={items}

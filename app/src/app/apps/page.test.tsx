@@ -40,11 +40,12 @@ vi.mock('@/app/apps/components/AcceptTransferDialog', () => ({
 }));
 
 vi.mock('@ux/modal', () => ({
-  default: ({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) => (
+  default: ({ title, children, onClose, actions }: { title: string; children: React.ReactNode; onClose: () => void; actions?: React.ReactNode }) => (
     <div role="dialog" aria-label={title}>
       <h2>{title}</h2>
       <button data-testid="modal-close" onClick={onClose}>Close</button>
       {children}
+      {actions && <div data-testid="modal-actions">{actions}</div>}
     </div>
   ),
 }));

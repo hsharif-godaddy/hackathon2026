@@ -312,15 +312,6 @@ function ManagePlanContent() {
 
   return (
     <>
-      {/* Polling overlay while waiting for new grant after credit purchase */}
-      {isCreditPolling && <GrantPollingModal />}
-
-      {/* Polling overlay while waiting for plan change after upgrade purchase */}
-      {isUpgradePolling && <UpgradePollingModal />}
-
-      {/* Polling overlay while waiting for subscription renewal */}
-      {isRenewalPolling && <RenewalPollingModal />}
-
       {/* Upgrade Modal (for plan upgrades) */}
       {showPaywallModal && paywallType === "upgrade" && (
         <UpgradeContainer
@@ -558,6 +549,15 @@ function ManagePlanContent() {
           </div>
         </div>
       </PageLayout>
+
+      {/* Polling overlay while waiting for new grant after credit purchase */}
+      {isCreditPolling && <GrantPollingModal />}
+
+      {/* Polling overlay while waiting for plan change after upgrade purchase */}
+      {isUpgradePolling && <UpgradePollingModal />}
+
+      {/* Polling overlay while waiting for subscription renewal */}
+      {isRenewalPolling && <RenewalPollingModal />}
     </>
   );
 }

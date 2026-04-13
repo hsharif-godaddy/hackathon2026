@@ -1,11 +1,8 @@
 'use client'
 
-import { AnimatePresence, motion } from 'framer-motion'
 import { Image, Sparkles, SquarePlay } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
-import Button from '@ux/button'
-import XThickIcon from '@ux/icon/x-thick'
+import Modal from '@ux/modal'
 
 import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
@@ -149,7 +146,6 @@ export default function MediaSearchToolRenderer({
   const hasVideo = video !== null
   const hasDetails = hasImages || hasVideo || isMarkdownFormat
 
-  // Helper function to ensure URLs have proper protocol
   const ensureHttps = (url: string): string => {
     if (!url) return url
     if (url.startsWith('http://') || url.startsWith('https://')) {
@@ -219,123 +215,11 @@ export default function MediaSearchToolRenderer({
     }
   }, [selectedImageIndex, isModalOpen])
 
-  const modalContent = typeof document !== 'undefined' && (
-    <AnimatePresence>
-      {isModalOpen && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            className="fixed inset-0 z-50 bg-intents-ux-boxHighContrastOverlay-backgroundColor"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            onClick={handleModalClose}
-          />
-
-          {/* Modal Container */}
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-2"
-            onClick={handleModalClose}
-          >
-            <motion.div
-              className="max-w-5xl w-full bg-intents-ux-box-backgroundColor p-3 rounded-lg shadow-xl relative max-h-[90vh] flex flex-col"
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              transition={{ type: 'tween', duration: 0.2, ease: 'easeOut' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Close button */}
-              <div className="absolute top-1.5 right-1.5">
-                <Button
-                  onClick={handleModalClose}
-                  icon={<XThickIcon className="h-3 w-3" />}
-                  design="control"
-                  aria-label="Close"
-                  size="sm"
-                />
-              </div>
-
-              {/* Title */}
-              <h2 className="text-xl font-bold mb-2">
-                {mediaType === 'video' ? t('builder_tools_media_video_result') : isGeneratedImage ? t('builder_tools_media_ai_result') : t('builder_tools_media_image_result')}
-              </h2>
-
-              {/* Markdown format (backwards compatibility - images only) */}
-              {isMarkdownFormat && (
-                <div className="flex-1 overflow-y-auto">
-                  <MarkdownRenderer content={markdownContent} fullscreen={true} />
-                </div>
-              )}
-
-              {/* Video display */}
-              {!isMarkdownFormat && mediaType === 'video' && hasVideo && video && (
-                <div className="flex-1 overflow-y-auto flex flex-col items-center">
-                  <div className="relative max-w-full">
-                    {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                    <video
-                      ref={modalVideoRef}
-                      src={video.url}
-                      poster={video.thumbnailUrl ? ensureHttps(video.thumbnailUrl) : undefined}
-                      className="max-w-full max-h-[70vh] rounded-lg shadow-lg"
-                      controls
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Image display (for both searched and generated images) */}
-              {!isMarkdownFormat && (mediaType === 'image' || mediaType === 'generate') && hasImages && (
-                <>
-                  {/* Image navigation */}
-                  {images.length > 1 && (
-                    <div className="flex flex-nowrap gap-1 mb-2 overflow-x-auto pb-1 w-full">
-                      {images.map((img, index) => (
-                        <button
-                          key={index}
-                          ref={(el) => { thumbnailRefs.current[index] = el }}
-                          onClick={() => setSelectedImageIndex(index)}
-                          className={`flex-shrink-0 w-10 h-10 rounded border-4 overflow-hidden transition-all hover:cursor-pointer hover:opacity-100 ${
-                            selectedImageIndex === index ? 'border-primary' : 'border-border opacity-70'
-                          }`}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={ensureHttps(img.url)}
-                            alt={img.prompt}
-                            className="w-full h-full object-cover"
-                          />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Main image display */}
-                  <div className="flex-1 overflow-y-auto flex flex-col items-center">
-                    <div className="text-sm font-semibold italic mb-1 text-foreground/70">
-                      {images[selectedImageIndex]?.prompt}
-                    </div>
-                    {images[selectedImageIndex]?.analysis?.description && (
-                      <div className="text-sm text-foreground/60 mb-2 max-w-2xl text-center">
-                        {images[selectedImageIndex].analysis.description}
-                      </div>
-                    )}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={ensureHttps(images[selectedImageIndex]?.url)}
-                      alt={images[selectedImageIndex]?.prompt}
-                      className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg"
-                    />
-                  </div>
-                </>
-              )}
-            </motion.div>
-          </div>
-        </>
-      )}
-    </AnimatePresence>
-  )
+  const modalTitle = mediaType === 'video'
+    ? t('builder_tools_media_video_result')
+    : isGeneratedImage
+      ? t('builder_tools_media_ai_result')
+      : t('builder_tools_media_image_result')
 
   let displayName = 'Media'
   let icon = <Image className="w-2 h-2" /> /* eslint-disable-line jsx-a11y/alt-text */
@@ -353,11 +237,8 @@ export default function MediaSearchToolRenderer({
     }
   }
 
-  // Determine which images to show in the gallery
   const shouldShowSeeAll = imageCount > 4
   const displayedImages = shouldShowSeeAll ? images.slice(0, 3) : images
-
-  // Only show header when not completed or no media to display
   const shouldShowHeader = toolStatus !== 'completed' || (!hasImages && !hasVideo)
 
   return (
@@ -424,7 +305,80 @@ export default function MediaSearchToolRenderer({
         </div>
       )}
 
-      {createPortal(modalContent, document.body)}
+      {isModalOpen && (
+        <Modal title={modalTitle} onClose={handleModalClose} focusLock={false} portalElem={document.body}>
+          <div className="w-full flex flex-col max-h-[75vh]">
+            {/* Markdown format (backwards compatibility - images only) */}
+            {isMarkdownFormat && (
+              <div className="flex-1 overflow-y-auto">
+                <MarkdownRenderer content={markdownContent} fullscreen={true} />
+              </div>
+            )}
+
+            {/* Video display */}
+            {!isMarkdownFormat && mediaType === 'video' && hasVideo && video && (
+              <div className="flex-1 overflow-y-auto flex flex-col items-center">
+                <div className="relative max-w-full">
+                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                  <video
+                    ref={modalVideoRef}
+                    src={video.url}
+                    poster={video.thumbnailUrl ? ensureHttps(video.thumbnailUrl) : undefined}
+                    className="max-w-full max-h-[60vh] rounded-lg shadow-lg"
+                    controls
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Image display (for both searched and generated images) */}
+            {!isMarkdownFormat && (mediaType === 'image' || mediaType === 'generate') && hasImages && (
+              <>
+                {/* Image navigation */}
+                {images.length > 1 && (
+                  <div className="flex flex-nowrap gap-1 mb-2 overflow-x-auto pb-1 w-full">
+                    {images.map((img, index) => (
+                      <button
+                        key={index}
+                        ref={(el) => { thumbnailRefs.current[index] = el }}
+                        onClick={() => setSelectedImageIndex(index)}
+                        className={`flex-shrink-0 w-10 h-10 rounded border-4 overflow-hidden transition-all hover:cursor-pointer hover:opacity-100 ${
+                          selectedImageIndex === index ? 'border-primary' : 'border-border opacity-70'
+                        }`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={ensureHttps(img.url)}
+                          alt={img.prompt}
+                          className="w-full h-full object-cover"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Main image display */}
+                <div className="flex-1 overflow-y-auto flex flex-col items-center">
+                  <div className="text-sm font-semibold italic mb-1 text-foreground/70">
+                    {images[selectedImageIndex]?.prompt}
+                  </div>
+                  {images[selectedImageIndex]?.analysis?.description && (
+                    <div className="text-sm text-foreground/60 mb-2 max-w-2xl text-center">
+                      {images[selectedImageIndex].analysis.description}
+                    </div>
+                  )}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={ensureHttps(images[selectedImageIndex]?.url)}
+                    alt={images[selectedImageIndex]?.prompt}
+                    className="max-w-full max-h-[60vh] object-contain rounded-lg shadow-lg"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

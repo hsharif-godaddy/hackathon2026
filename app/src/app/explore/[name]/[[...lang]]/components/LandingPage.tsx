@@ -238,12 +238,12 @@ function LandingPageContent({ data }: LandingPageProps) {
 
   return (
     <div
-      className="relative w-full overflow-hidden bg-gradient bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor"
+      className="isolate relative w-full overflow-hidden bg-gradient bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor"
       style={themeStyle}
     >
-      <div className="w-full h-full relative z-10">
+      <div className="w-full h-full relative">
         <Header
-          className="absolute top-0 left-0 w-full !border-0 z-20"
+          className="absolute top-0 left-0 w-full !border-0"
           onShowMockLogin={() => setShowMockLogin(true)}
           location={data.header.location}
         />

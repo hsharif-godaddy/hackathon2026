@@ -142,6 +142,7 @@ export const SchedulingView = memo(({
                 onChange={onDateChange}
                 locale={getUserLocale()}
                 shouldDisableDate={shouldDisableDate}
+                portalElem={document.body}
                 required
               />
             </Box>

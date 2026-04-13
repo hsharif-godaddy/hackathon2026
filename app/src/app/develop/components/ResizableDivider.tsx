@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 interface ResizableDividerProps {
   onResize: (leftWidth: number) => void
@@ -16,17 +17,44 @@ export default function ResizableDivider({
   style,
 }: ResizableDividerProps) {
   const [isDragging, setIsDragging] = useState(false)
+  const [isMounted, setIsMounted] = useState(false)
+  const [dividerPosition, setDividerPosition] = useState({ left: 0, top: 0, height: 0 })
   const isDraggingRef = useRef(false)
-  const dividerRef = useRef<HTMLDivElement>(null)
+  const placeholderRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const animationFrameRef = useRef<number | null>(null)
 
-  // Find the container element on mount
+  // Mark as mounted for portal
   useEffect(() => {
-    if (dividerRef.current) {
-      containerRef.current = dividerRef.current.parentElement as HTMLDivElement
-    }
+    setIsMounted(true)
   }, [])
+
+  // Track placeholder position and update portal position
+  useEffect(() => {
+    if (placeholderRef.current) {
+      containerRef.current = placeholderRef.current.parentElement as HTMLDivElement
+    }
+
+    const updatePosition = () => {
+      if (!placeholderRef.current) return
+
+      const rect = placeholderRef.current.getBoundingClientRect()
+      setDividerPosition({
+        left: rect.left + rect.width / 2, // Center of the placeholder
+        top: rect.top,
+        height: rect.height,
+      })
+    }
+
+    updatePosition()
+
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, { passive: true })
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition)
+    }
+  }, [style?.left])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -37,37 +65,40 @@ export default function ResizableDivider({
     document.body.style.userSelect = 'none'
   }, [])
 
-  const updateWidth = useCallback((clientX: number) => {
-    if (!containerRef.current) return
+  const updateWidth = useCallback(
+    (clientX: number) => {
+      if (!containerRef.current) return
 
-    const containerRect = containerRef.current.getBoundingClientRect()
-    const containerWidth = containerRect.width
-    const newLeftWidth = clientX - containerRect.left
+      const containerRect = containerRef.current.getBoundingClientRect()
+      const containerWidth = containerRect.width
+      const newLeftWidth = clientX - containerRect.left
 
-    // Calculate dynamic max width based on container size
-    const maxLeftWidth = containerWidth - minRightWidth
+      // Calculate dynamic max width based on container size
+      const maxLeftWidth = containerWidth - minRightWidth
 
-    // Apply constraints
-    const constrainedWidth = Math.max(
-      minLeftWidth,
-      Math.min(maxLeftWidth, newLeftWidth)
-    )
+      // Apply constraints
+      const constrainedWidth = Math.max(minLeftWidth, Math.min(maxLeftWidth, newLeftWidth))
 
-    onResize(constrainedWidth)
-  }, [minLeftWidth, minRightWidth, onResize])
+      onResize(constrainedWidth)
+    },
+    [minLeftWidth, minRightWidth, onResize]
+  )
 
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDraggingRef.current) return
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (!isDraggingRef.current) return
 
-    // Throttle updates using requestAnimationFrame
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current)
-    }
+      // Throttle updates using requestAnimationFrame
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
 
-    animationFrameRef.current = requestAnimationFrame(() => {
-      updateWidth(e.clientX)
-    })
-  }, [updateWidth])
+      animationFrameRef.current = requestAnimationFrame(() => {
+        updateWidth(e.clientX)
+      })
+    },
+    [updateWidth]
+  )
 
   const handleMouseUp = useCallback(() => {
     if (!isDraggingRef.current) return
@@ -87,11 +118,9 @@ export default function ResizableDivider({
   // Global mouse events for smooth dragging
   useEffect(() => {
     if (isDragging) {
-      // Use capture phase to catch events even over iframes and other elements
       document.addEventListener('mousemove', handleMouseMove, { passive: true, capture: true })
       document.addEventListener('mouseup', handleMouseUp, { passive: true, capture: true })
 
-      // Stop dragging if window loses focus or visibility
       const handleBlur = () => handleMouseUp()
       const handleVisibilityChange = () => {
         if (document.hidden) handleMouseUp()
@@ -100,7 +129,6 @@ export default function ResizableDivider({
       window.addEventListener('blur', handleBlur)
       document.addEventListener('visibilitychange', handleVisibilityChange)
 
-      // Prevent context menu during drag
       const preventContextMenu = (e: Event) => e.preventDefault()
       document.addEventListener('contextmenu', preventContextMenu, { capture: true })
 
@@ -134,34 +162,50 @@ export default function ResizableDivider({
 
   return (
     <>
-      {/* Transparent overlay during dragging to prevent iframe interaction */}
-      {isDragging && (
-        <div
-          className="fixed inset-0 z-50"
-          style={{
-            cursor: 'col-resize',
-            // Transparent but blocks pointer events to iframes
-            background: 'transparent',
-          }}
-        />
-      )}
-
+      {/* Invisible placeholder in layout - this reserves space and tracks position */}
       <div
-        ref={dividerRef}
-        className="absolute top-2 bottom-2 z-10 cursor-col-resize flex-shrink-0 group"
-        onMouseDown={handleMouseDown}
+        ref={placeholderRef}
+        className="absolute top-2 bottom-2 pointer-events-none"
         style={{
           ...style,
-          // Wider hit area for easier grabbing (centered on position)
           width: '16px',
           transform: 'translateX(-8px)',
-          // Increase z-index during dragging
-          zIndex: isDragging ? 51 : 10,
         }}
-      >
-        {/* Visual divider line - centered within hit area */}
-        <div className="absolute left-1/2 top-0 bottom-0 w-0.5 -translate-x-1/2 bg-transparent rounded-lg transition-colors duration-200 group-hover:bg-border group-active:bg-border" />
-      </div>
+      />
+
+      {/* Portal: Renders divider at end of document body (naturally on top, no z-index, modals attach later in document so no stacking issue) */}
+      {isMounted &&
+        createPortal(
+          <>
+            {/* Transparent overlay during drag - prevents iframe/input interference */}
+            {isDragging && (
+              <div
+                className="fixed inset-0"
+                style={{
+                  cursor: 'col-resize',
+                  background: 'transparent',
+                }}
+              />
+            )}
+
+            {/* Draggable divider - positioned at center of placeholder */}
+            <div
+              className="fixed flex items-center justify-center cursor-col-resize group"
+              onMouseDown={handleMouseDown}
+              style={{
+                left: dividerPosition.left,
+                top: dividerPosition.top,
+                width: '16px',
+                height: dividerPosition.height,
+                transform: 'translateX(-50%)', // Center on the position
+              }}
+            >
+              {/* Visual line - flexbox centers this within the 16px hit area */}
+              <div className="w-0.5 h-full bg-transparent rounded-lg transition-colors duration-200 group-hover:bg-border group-active:bg-border" />
+            </div>
+          </>,
+          document.body
+        )}
     </>
   )
 }

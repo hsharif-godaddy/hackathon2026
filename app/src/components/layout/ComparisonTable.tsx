@@ -90,7 +90,7 @@ export default function ComparisonTable({ title, subtitle, ariaLabel, tiers, fea
           <table className="w-full min-w-[640px]" role="table" aria-label={ ariaLabel }>
             <thead>
               <tr>
-                <th scope="col" className="sticky left-0 z-10 backdrop-blur-md text-left py-3 w-1/3">
+                <th scope="col" className="sticky left-0 backdrop-blur-md text-left py-3 w-1/3">
                   <div>
                     <text.h2 as="heading" size={0} className="mb-2">
                       {title}
@@ -127,7 +127,7 @@ export default function ComparisonTable({ title, subtitle, ariaLabel, tiers, fea
                   <React.Fragment key={groupIndex}>
                     {group.title && (
                       <AnimatedRow index={previousFeaturesCount}>
-                        <td className="sticky left-0 z-10 backdrop-blur-md pb-3 pt-4">
+                        <td className="sticky left-0 backdrop-blur-md pb-3 pt-4">
                           <text.h4 as="heading" size={-2}>
                             {group.title}
                           </text.h4>
@@ -141,7 +141,7 @@ export default function ComparisonTable({ title, subtitle, ariaLabel, tiers, fea
                       const rowIndex = previousFeaturesCount + (group.title ? 1 : 0) + featureIndex
                       return (
                         <AnimatedRow key={`${groupIndex}-${featureIndex}`} index={rowIndex}>
-                      <td className="sticky left-0 z-10 backdrop-blur-md pt-3 py-2">
+                      <td className="sticky left-0 backdrop-blur-md pt-3 py-2">
                         <div className="flex items-center gap-1">
                           <text.p size={1}>{feature.name}</text.p>
                           {feature.tooltip && (

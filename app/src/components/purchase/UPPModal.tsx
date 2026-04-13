@@ -152,7 +152,7 @@ export default function UPPModal({
           ref={iframeRef}
           src={getUPPUrl()}
           title={`Purchase ${domain}`}
-          className="relative w-full h-[500px] border-0 z-10"
+          className="relative w-full h-[500px] border-0"
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
           onLoad={() => {
             setIsLoading(false)

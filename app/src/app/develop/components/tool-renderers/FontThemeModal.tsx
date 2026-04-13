@@ -1,10 +1,6 @@
 'use client'
 
-import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect } from 'react'
-import { createPortal } from 'react-dom'
-import Button from '@ux/button'
-import XThickIcon from '@ux/icon/x-thick'
+import Modal from '@ux/modal'
 
 import { useTranslations } from '@/hooks/useTranslations'
 
@@ -58,100 +54,42 @@ export default function FontThemeModal({
     ? resolvedHeaderFont
     : `${resolvedHeaderFont} + ${resolvedBodyFont}`
 
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = 'unset'
-    }
+  if (!isOpen) return null
 
-    return () => {
-      document.body.style.overflow = 'unset'
-    }
-  }, [isOpen])
-
-  if (typeof document === 'undefined') return null
-
-  const modalContent = (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            className="fixed inset-0 z-50 bg-intents-ux-boxHighContrastOverlay-backgroundColor"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            onClick={onClose}
-          />
-
-          {/* Modal Container */}
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-2"
-            onClick={onClose}
-          >
-            <motion.div
-              className="max-w-2xl w-full bg-intents-ux-box-backgroundColor p-3 rounded-lg shadow-xl relative max-h-[80vh] flex flex-col"
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              transition={{ type: 'tween', duration: 0.2, ease: 'easeOut' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Close button */}
-              <div className="absolute top-1.5 right-1.5">
-                <Button
-                  onClick={onClose}
-                  icon={<XThickIcon className="h-3 w-3" />}
-                  design="control"
-                  aria-label={t('builder_common_close')}
-                  size="sm"
-                />
-              </div>
-
-              {/* Title */}
-              <h2
-                className="text-xl font-bold mb-3"
-                style={{ fontFamily: headerFontFamily }}
-              >
-                {displayTitle}
-              </h2>
-
-              {/* Content area with scroll */}
-              <div className="flex-1 overflow-y-auto">
-                {/* Type Scale Section */}
-                <div className="space-y-3 border rounded-lg p-3 bg-intents-ux-boxLowContrast-backgroundColor">
-                  {fontSamples.map((sample, index) => (
-                    <div key={index} className="border-b border-border last:border-b-0 pb-2 last:pb-0">
-                      <div className="text-xs text-intents-ux-textSubtle-textColor mb-1">
-                        {sample.label} ({sample.size})
-                        {resolvedHeaderFont !== resolvedBodyFont && (
-                          <span className="ml-1 text-intents-ux-textSubtle-textColor">
-                            — {sample.isHeader ? resolvedHeaderFont : resolvedBodyFont}
-                          </span>
-                        )}
-                      </div>
-                      <div
-                        style={{
-                          fontFamily: sample.isHeader ? headerFontFamily : bodyFontFamily,
-                          fontSize: sample.size,
-                          fontWeight: sample.weight,
-                          lineHeight: 1.3
-                        }}
-                      >
-                        {sample.sampleText}
-                      </div>
-                    </div>
-                  ))}
+  return (
+    <Modal
+      title={<span style={{ fontFamily: headerFontFamily }}>{displayTitle}</span>}
+      onClose={onClose}
+      portalElem={document.body}
+    >
+      <div className="w-full max-w-2xl flex flex-col max-h-[70vh]">
+        <div className="flex-1 overflow-y-auto">
+          <div className="space-y-3 border rounded-lg p-3 bg-intents-ux-boxLowContrast-backgroundColor">
+            {fontSamples.map((sample, index) => (
+              <div key={index} className="border-b border-border last:border-b-0 pb-2 last:pb-0">
+                <div className="text-xs text-intents-ux-textSubtle-textColor mb-1">
+                  {sample.label} ({sample.size})
+                  {resolvedHeaderFont !== resolvedBodyFont && (
+                    <span className="ml-1 text-intents-ux-textSubtle-textColor">
+                      — {sample.isHeader ? resolvedHeaderFont : resolvedBodyFont}
+                    </span>
+                  )}
+                </div>
+                <div
+                  style={{
+                    fontFamily: sample.isHeader ? headerFontFamily : bodyFontFamily,
+                    fontSize: sample.size,
+                    fontWeight: sample.weight,
+                    lineHeight: 1.3
+                  }}
+                >
+                  {sample.sampleText}
                 </div>
               </div>
-            </motion.div>
+            ))}
           </div>
-        </>
-      )}
-    </AnimatePresence>
+        </div>
+      </div>
+    </Modal>
   )
-
-  return createPortal(modalContent, document.body)
 }

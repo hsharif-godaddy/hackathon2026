@@ -157,7 +157,6 @@ export default function LogoGeneratorToolRenderer({
         isOpen={isModalOpen}
         onClose={handleModalClose}
         title="Generated Logos"
-        maxWidth="max-w-2xl"
       >
         {/* Logo thumbnails navigation */}
         {logos.length > 1 && (

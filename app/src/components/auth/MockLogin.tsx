@@ -35,6 +35,7 @@ export function MockLoginDialog({
       title={title}
       description={message}
       onClose={onClose}
+      portalElem={document.body}
       actions={
         <>
           <Button

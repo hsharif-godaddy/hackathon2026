@@ -287,33 +287,6 @@
     z-index: 1;
   }
 
-  /* Ensure SSO login modal backdrop appears above all page content.
-   * The backdrop gets position: fixed from inline styles when strategy='fixed'.
-   * Using :has() to scope this only to the SSO modal, not all modals. */
-  .ux-disrupt-backdrop[data-version]:has(.sso-login-modal) {
-    z-index: 9999;
-  }
-
-  /* Ensure Invite Friends modal backdrop appears above all page content */
-  .ux-disrupt-backdrop[data-version]:has(.invite-friends-modal) {
-    z-index: 9999;
-  }
-
-  /* Ensure Domain Purchase checkout modal appears above chat tool renderers */
-  .ux-disrupt-backdrop[data-version]:has(.domain-purchase-checkout-modal) {
-    z-index: 9999;
-  }
-
-  /* Ensure Single Plan Upgrade modal backdrop appears above landing page content */
-  #UpgradeLibraryPortal .ux-disrupt-backdrop[data-version] {
-    z-index: 9999;
-  }
-
-  /* Tooltip z-index override when upgrade modal is open - uses :has() to detect modal visibility */
-  body:has(#UpgradeLibraryPortal .ux-modal:not([hidden])) .tooltip[role="tooltip"] {
-    z-index: 9999 !important;
-  }
-
   /* Ensure tooltip icons are inline with text in upgrade library portal */
   #UpgradeLibraryPortal {
     .tooltip-help-icon svg,

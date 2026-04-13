@@ -14,6 +14,19 @@ vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string) => key,
 }));
 
+vi.mock('@/app/develop/components/tool-renderers/MediaModal', () => ({
+  default: ({ isOpen, onClose, title, children }: { isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode }) => {
+    if (!isOpen) return null;
+    return (
+      <div data-testid="media-modal" role="dialog" aria-label={title}>
+        <h2>{title}</h2>
+        <button onClick={onClose}>Close</button>
+        {children}
+      </div>
+    );
+  },
+}));
+
 describe('AttachmentBadge', () => {
   it('should render badge with filename and size', () => {
     const asset = {

@@ -5,6 +5,7 @@ import { useIntl } from 'react-intl'
 import Box from '@ux/box'
 import AlertIcon from '@ux/icon/alert'
 import Select from '@ux/select'
+import Spinner from '@ux/spinner'
 import text from '@ux/text'
 
 import { SettingsLoadingState } from '@/app/develop/components/settings/components/SettingsLoadingState'
@@ -538,9 +539,9 @@ export default function RUM() {
     <SettingsSection
       title={t('builder_analytics_rum_title')}
       description={t('builder_analytics_rum_description')}
-      hideStatus={true}
+      hideStatus
       button={(
-        <div className="relative flex items-end gap-2">
+        <div className="flex items-end gap-2">
           {/* TODO: Re-enable filter dropdowns once cross-filter backend support is added
           <Select
             value={filterCountry}
@@ -577,6 +578,14 @@ export default function RUM() {
             {deviceOptions.map((d) => <option key={d} value={d}>{d}</option>)}
           </Select>
           */}
+          {isRefreshing && (
+            <div className="flex items-center gap-1.5 pb-1">
+              <Spinner size="sm" />
+              <text.span className="!text-xs !text-intents-ux-feedbackHighContrastPassive-feedbackColor hidden @lg:inline">
+                {t('builder_common_loading')}
+              </text.span>
+            </div>
+          )}
           <Select
             value={selectedPeriod}
             id="period-select"
@@ -596,13 +605,7 @@ export default function RUM() {
     >
       <TooltipProvider>
         <div className="h-full overflow-y-auto @container">
-          <Box gap="md" className="relative">
-            {isRefreshing && (
-              <div className="absolute z-50 inset-0 flex items-center justify-center w-full bg-intents-ux-boxLowContrastOverlay-backgroundColor">
-                <SettingsLoadingState />
-              </div>
-            )}
-
+          <Box gap="md">
             {/* Key Metrics — Row 1: Core Overview */}
             <div className="grid grid-cols-2 @md:grid-cols-3 gap-2">
               <MetricCard
@@ -1093,7 +1096,6 @@ export default function RUM() {
             />
             </>
             }
-
           </Box>
         </div>
       </TooltipProvider>

@@ -1,9 +1,10 @@
 'use client'
 
 import clsx from 'clsx'
-import { Check, ClipboardCopy, Expand, X } from 'lucide-react'
+import { Check, ClipboardCopy, Expand } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import Button from '@ux/button'
+import Modal from '@ux/modal'
 
 import { AttachmentList } from '@/app/develop/components/chat/AttachmentBadge'
 import { FileReferenceList } from '@/app/develop/components/chat/FileReferenceBadge'
@@ -80,56 +81,33 @@ function FullMessageModal({ content, isOpen, onClose }: { content: string; isOpe
     }
   }
 
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
-    }
-    return () => {
-      document.body.style.overflow = ''
-    }
-  }, [isOpen])
-
   if (!isOpen) return null
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center backdrop-blur-sm"
-      onClick={onClose}
+    <Modal
+      onClose={onClose}
+      title={t('builder_settings_logs_expanded_full_message')}
+      portalElem={document.body}
+      actions={
+        <Button
+          onClick={handleCopyMessage}
+          title={t('builder_common_copy_clipboard', undefined, 'Copy to clipboard')}
+          aria-label={t('builder_common_copy_clipboard', undefined, 'Copy to clipboard')}
+          icon={copiedToClipboard ? <Check /> : <ClipboardCopy />}
+          text={t('builder_common_copy_clipboard', undefined, 'Copy to clipboard')}
+          size="sm"
+        />
+      }
     >
       <div
-        className="bg-intents-ux-box-backgroundColor border border-intents-ux-box-borderColor rounded-lg shadow-xl max-w-3xl w-full mx-4 max-h-[80vh] flex flex-col"
+        className="max-w-3xl w-full mx-4 max-h-[80vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between pl-3 pr-2 py-2 border-b border-intents-ux-box-borderColor">
-          <span className="font-medium">{t('builder_settings_logs_expanded_full_message')}</span>
-          <div className="flex items-center gap-1">
-            <Button
-              onClick={handleCopyMessage}
-              title={t('builder_common_copy_clipboard', undefined, 'Copy to clipboard')}
-              aria-label={t('builder_common_copy_clipboard', undefined, 'Copy to clipboard')}
-              icon={copiedToClipboard ? <Check /> : <ClipboardCopy />}
-              size="sm"
-            />
-            <Button
-              onClick={onClose}
-              title={t('builder_common_close', undefined, 'Close')}
-              aria-label={t('builder_common_close', undefined, 'Close')}
-              icon={<X />}
-              size="sm"
-            />
-          </div>
-        </div>
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-3">
-          <pre className="text-sm whitespace-pre-wrap break-words font-sans leading-relaxed">
-            {content}
-          </pre>
-        </div>
+        <pre className="text-sm whitespace-pre-wrap break-words font-sans leading-relaxed">
+          {content}
+        </pre>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -170,7 +148,7 @@ function UserMessage({ content, selectedAssets, referencedFiles }: { content: st
             )}
           </div>
           {isTruncated && (
-            <div className="flex items-center justify-center w-full gap-1 pt-1 z-10">
+            <div className="flex items-center justify-center w-full gap-1 pt-1">
               <button
                 onClick={() => setIsModalOpen(true)}
                 className="text-xs text-intents-ux-link-foregroundColor hover:cursor-pointer flex items-center gap-0.5 group"

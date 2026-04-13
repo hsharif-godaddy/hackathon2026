@@ -452,7 +452,7 @@ Create a todo list to track these ${taskCount} specific task${taskCount === 1 ? 
     >
       {/* Confetti decoration at top of modal (on confirm step only) */}
       {goLiveModalStep === 'confirm' && (
-        <div className="absolute top-0 left-0 right-0 h-20 overflow-hidden pointer-events-none z-10">
+        <div className="absolute top-0 left-0 right-0 h-20 overflow-hidden pointer-events-none">
           <Confetti />
         </div>
       )}

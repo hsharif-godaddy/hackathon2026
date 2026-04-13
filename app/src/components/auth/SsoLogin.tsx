@@ -301,6 +301,7 @@ export default function SsoLogin() {
       onClose={dismissSsoModal}
       strategy='fixed'
       stretch={!isSmBreakpoint}
+      portalElem={document.body}
     >
       <>
         {error && (

@@ -60,7 +60,7 @@ export default function CalendarDay({
         <div className={cn(
           'hidden xl:flex absolute inset-0 p-1',
           'bg-intents-ux-boxLowContrastOverlay-backgroundColor text-intents-ux-boxLowContrastOverlay-foregroundColor',
-          'backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 items-center justify-center pointer-events-none z-10'
+          'backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 items-center justify-center pointer-events-none'
         )}>
           <div className="flex flex-col items-center gap-1">
             <div className="size-6 rounded-full intents-ux-actionPrimary flex items-center justify-center">

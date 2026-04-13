@@ -295,7 +295,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
     confirmLabel?: string
     isLoading?: boolean
   }) => (
-    <div data-testid="inline-confirmation" onClick={(e) => e.stopPropagation()} className="absolute inset-0 bg-intents-ux-box-backgroundColor rounded-lg flex flex-col items-center justify-center p-2 z-10">
+    <div data-testid="inline-confirmation" onClick={(e) => e.stopPropagation()} className="absolute inset-0 bg-intents-ux-box-backgroundColor rounded-lg flex flex-col items-center justify-center p-2">
       <p className="mb-2 text-center">{message}</p>
       <Box orientation="horizontal" gap="sm">
         <Button
@@ -633,6 +633,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
           onClose={closeRenameDialog}
           centered
           focusLock={false}
+          portalElem={document.body}
         >
           <Box orientation="vertical" gap="md" className="max-w-md">
             <text.p size={0} emphasis="passive">
@@ -706,7 +707,7 @@ export const AppCardEmptyState = ({ onAcceptTransfer, isTransferEnabled }: { onA
   return (
     <Card className="items-center justify-center relative">
       {isTransferEnabled && onAcceptTransfer && (
-        <div className="absolute top-2 right-2 z-10">
+        <div className="absolute top-2 right-2">
           <Menu id="empty-card-menu" size="sm" closeOnSelect>
             <MenuButton
               aria-label={t('builder_apps_menu_actions', undefined, 'Actions')}

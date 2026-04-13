@@ -514,7 +514,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 id="prompt-char-count"
                 role="status"
                 aria-live="polite"
-                className="absolute top-2.5 right-2 sm:top-3 sm:right-3 md:right-3.5 z-10"
+                className="absolute top-2.5 right-2 sm:top-3 sm:right-3 md:right-3.5"
               >
                 {showCharCount && (
                   <text.p

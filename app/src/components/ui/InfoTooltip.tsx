@@ -44,7 +44,7 @@ export function InfoTooltip({
         <InfoIcon className={iconClassName} />
       </button>
       {show && (
-        <Tooltip anchorRef={anchorRef}>
+        <Tooltip anchorRef={anchorRef} portalElem={document.body}>
           <div id={tooltipId} role="tooltip" className={contentClassName}>{content}</div>
         </Tooltip>
       )}

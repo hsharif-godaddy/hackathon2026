@@ -523,7 +523,7 @@ export function HeroContentImprovementHomePage({ serverFeatures }: HomeContentPr
       >
         <div className="w-full h-full relative">
           <Header
-            className="absolute top-0 left-0 w-full z-10 border-0!"
+            className="absolute top-0 left-0 w-full border-0!"
             onShowMockLogin={() => setShowMockLogin(true)}
             location='homepage'
           />

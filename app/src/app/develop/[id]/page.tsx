@@ -974,7 +974,7 @@ function DevelopPageContent() {
           <div className="relative h-full w-full overflow-hidden">
             {/* Sidebar (Chat, History, Settings menu) */}
             <motion.div
-              className="absolute top-0 left-0 bottom-0"
+              className="absolute top-0 left-0 bottom-0 isolate"
               animate={{
                 x: isChatPaneCollapsed ? -(chatPaneWidth + 16) : 0,
                 width: chatPaneWidth
@@ -1062,7 +1062,7 @@ function DevelopPageContent() {
                 {/* Preview/Code View */}
                 <div
                   id="preview-pane-container"
-                  className="absolute inset-0 flex flex-col"
+                  className="absolute inset-0 flex flex-col isolate"
                 >
                   <PreviewPane
                     onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
@@ -1132,7 +1132,7 @@ function DevelopPageContent() {
                   <div className="flex-1 relative min-h-0">
                     {/* Preview Tab */}
                     <div
-                      className="absolute inset-0 flex flex-col transition-opacity duration-150"
+                      className="absolute inset-0 flex flex-col transition-opacity duration-150 isolate"
                       style={{
                         opacity: mobileMode === MobileMode.PREVIEW ? 1 : 0,
                         pointerEvents: mobileMode === MobileMode.PREVIEW ? 'auto' : 'none',

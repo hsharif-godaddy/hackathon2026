@@ -703,7 +703,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
         <>
           {showFileTree && (
             <div
-              className="absolute inset-0 bg-intents-ux-boxHighContrastOverlay-backgroundColor bg-opacity-4 z-10"
+              className="absolute inset-0 bg-intents-ux-boxHighContrastOverlay-backgroundColor bg-opacity-4"
               onClick={() => setShowFileTree(false)}
             />
           )}

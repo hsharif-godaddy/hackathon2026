@@ -52,7 +52,7 @@ const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconB
   }, [forwardedRef])
 
   const tooltipComponent = (
-    <Tooltip className="z-50" anchorRef={internalRef}>
+    <Tooltip anchorRef={internalRef} portalElem={document.body}>
       <div className="flex flex-col gap-0 p-1">
         <div className="text-sm font-bold leading-none">{label}</div>
         {tooltipDescription && <div className="text-sm font-thin">{tooltipDescription}</div>}

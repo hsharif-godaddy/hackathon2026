@@ -1,11 +1,9 @@
 'use client'
 
-import { AnimatePresence, motion } from 'framer-motion'
 import { Download, QrCode } from 'lucide-react'
 import { useState } from 'react'
-import { createPortal } from 'react-dom'
 import Button from '@ux/button'
-import XThickIcon from '@ux/icon/x-thick'
+import Modal from '@ux/modal'
 
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
 import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
@@ -80,116 +78,18 @@ export default function QRCodeToolRenderer({
     document.body.removeChild(link)
   }
 
-  const handleModalOpen = () => {
-    setIsModalOpen(true)
-  }
-
-  const handleModalClose = () => {
-    setIsModalOpen(false)
-  }
-
-  const modalContent = typeof document !== 'undefined' && (
-    <AnimatePresence>
-      {isModalOpen && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            className="fixed inset-0 z-50 bg-intents-ux-boxHighContrastOverlay-backgroundColor"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            onClick={handleModalClose}
-          />
-
-          {/* Modal Container */}
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-2"
-            onClick={handleModalClose}
-          >
-            <motion.div
-              className="max-w-2xl w-full bg-intents-ux-box-backgroundColor p-3 rounded-lg shadow-xl relative flex flex-col"
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              transition={{ type: 'tween', duration: 0.2, ease: 'easeOut' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Close button */}
-              <div className="absolute top-1.5 right-1.5">
-                <Button
-                  onClick={handleModalClose}
-                  icon={<XThickIcon className="h-3 w-3" />}
-                  design="control"
-                  aria-label={t('builder_qr_code_close_button_aria')}
-                  size="sm"
-                />
-              </div>
-
-              {/* Title */}
-              <h2 className="text-xl font-bold mb-2">
-                {t('builder_qr_code_title_for_page', { pageName })}
-              </h2>
-
-              {/* QR Code Display */}
-              {hasQRCode && parsedResult && (
-                <div className="flex flex-col items-center gap-3">
-                  {/* QR Code Image */}
-                  <div className="flex items-center justify-center">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={parsedResult.base64}
-                      alt={t('builder_qr_code_image_alt', { targetUrl: parsedResult.targetUrl })}
-                      className="w-full max-w-md"
-                      style={{ imageRendering: 'pixelated' }}
-                    />
-                  </div>
-
-                  {/* Target URL Info */}
-                  <div className="text-center w-full">
-                    <p className="text-sm text-foreground/70 mb-1">{t('builder_qr_code_scans_to_label')}</p>
-                    <a
-                      href={parsedResult.targetUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm font-mono text-primary hover:underline break-all"
-                    >
-                      {parsedResult.targetUrl}
-                    </a>
-                  </div>
-
-                  {/* Download Button */}
-                  <Button
-                    onClick={handleDownload}
-                    icon={<Download className="w-3 h-3" />}
-                    design="primary"
-                    size="md"
-                  >
-                    {t('builder_qr_code_download_button')}
-                  </Button>
-                </div>
-              )}
-            </motion.div>
-          </div>
-        </>
-      )}
-    </AnimatePresence>
-  )
-
   const displayName = toolStatus === 'completed' && hasQRCode
     ? t('builder_qr_code_title_for_page', { pageName })
     : t('builder_qr_code_title')
 
-  const icon = <QrCode className="w-2 h-2" />
-
   return (
     <div>
       <ToolHeader
-        icon={icon}
+        icon={<QrCode className="w-2 h-2" />}
         displayName={displayName}
         toolStatus={toolStatus}
         hasDetails={hasQRCode}
-        onOpenModal={hasQRCode ? handleModalOpen : undefined}
+        onOpenModal={hasQRCode ? () => setIsModalOpen(true) : undefined}
       />
 
       {/* Inline QR Code Display */}
@@ -198,7 +98,7 @@ export default function QRCodeToolRenderer({
           <div className="flex flex-col gap-2">
             {/* QR Code Image */}
             <button
-              onClick={handleModalOpen}
+              onClick={() => setIsModalOpen(true)}
               className="cursor-pointer hover:opacity-80 transition-opacity"
               title={t('builder_qr_code_enlarge_hint')}
             >
@@ -237,7 +137,47 @@ export default function QRCodeToolRenderer({
         </div>
       )}
 
-      {typeof document !== 'undefined' && modalContent && createPortal(modalContent, document.body)}
+      {isModalOpen && parsedResult && (
+        <Modal
+          title={t('builder_qr_code_title_for_page', { pageName })}
+          onClose={() => setIsModalOpen(false)}
+          centered
+          portalElem={document.body}
+        >
+          <div className="flex flex-col items-center gap-3">
+            <div className="flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={parsedResult.base64}
+                alt={t('builder_qr_code_image_alt', { targetUrl: parsedResult.targetUrl })}
+                className="w-full max-w-md"
+                style={{ imageRendering: 'pixelated' }}
+              />
+            </div>
+
+            <div className="text-center w-full">
+              <p className="text-sm text-foreground/70 mb-1">{t('builder_qr_code_scans_to_label')}</p>
+              <a
+                href={parsedResult.targetUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-mono text-primary hover:underline break-all"
+              >
+                {parsedResult.targetUrl}
+              </a>
+            </div>
+
+            <Button
+              onClick={handleDownload}
+              icon={<Download className="w-3 h-3" />}
+              design="primary"
+              size="md"
+            >
+              {t('builder_qr_code_download_button')}
+            </Button>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }
