@@ -427,7 +427,7 @@ export class WebSocketServer {
 
     // TTL guard: warn if configured TTL was clamped up to recovery window
     if (config.eventBufferTTL !== undefined && config.eventBufferTTL < this.STREAM_RECOVERY_WINDOW) {
-      this.logger.warn('eventChannel.ttl_clamped_to_recovery_window', {
+      this.logger.warn('event_channel.ttl_clamped', {
         configuredTTL: config.eventBufferTTL,
         effectiveTTL: eventBufferTTL,
         recoveryWindow: this.STREAM_RECOVERY_WINDOW,
@@ -466,7 +466,7 @@ export class WebSocketServer {
     this.cleanupInterval = setInterval(() => {
       const removed = this.eventChannel.cleanup()
       if (removed > 0) {
-        this.logger.debug('eventChannel.cleanup', { removedConversations: removed })
+        this.logger.debug('event_channel.cleanup', { removedConversations: removed })
       }
     }, 60_000)
 
@@ -521,7 +521,7 @@ export class WebSocketServer {
         }
         this.stateManager.updateConnection(socketId, { userStopped: true })
         stateData.abortController.abort('user_stopped')
-        this.logger.info('websocket.stop_generation', { socketId })
+        this.logger.info('stop_generation', { socketId })
         ack?.({ success: true })
       })
 
@@ -543,7 +543,7 @@ export class WebSocketServer {
         const isPagination = !!data.cursor
         const completionEvent = isPagination ? 'history_complete' : 'history_loaded'
 
-        this.logger.debug('load_history requested', {
+        this.logger.debug('history.load.begin', {
           socketId,
           conversationId: data.conversationId,
           cursor: data.cursor,
@@ -552,7 +552,7 @@ export class WebSocketServer {
         })
 
         if (!this.config.historyProvider) {
-          this.logger.warn('load_history failed: no historyProvider configured', { socketId })
+          this.logger.warn('history.load.no_provider', { socketId })
           socket.emit('message', {
             type: completionEvent,
             content: '',
@@ -574,7 +574,7 @@ export class WebSocketServer {
         }
 
         if (!appId) {
-          this.logger.warn('load_history failed: no appId', { socketId })
+          this.logger.warn('history.load.no_app_id', { socketId })
           socket.emit('message', {
             type: completionEvent,
             content: '',
@@ -636,7 +636,7 @@ export class WebSocketServer {
             }
           })
 
-          this.logger.debug('load_history completed', {
+          this.logger.debug('history.load.success', {
             socketId,
             conversationId: data.conversationId,
             messageCount: messages.length,
@@ -644,7 +644,7 @@ export class WebSocketServer {
             isPagination
           })
         } catch (error) {
-          this.logger.error('load_history failed', {
+          this.logger.error('history.load.failure', {
             socketId,
             conversationId: data.conversationId,
             error: error instanceof Error ? error.message : String(error)
@@ -677,12 +677,12 @@ export class WebSocketServer {
 
       socket.on('disconnect', async (reason) => {
         if (reason === 'ping timeout') {
-          this.logger.warn('websocket.quality.ping_timeout_disconnect', {
+          this.logger.warn('quality.ping_timeout_disconnect', {
             socketId,
             reason,
           })
         }
-        this.logger.info('Socket disconnected', { socketId, reason })
+        this.logger.info('socket.disconnect', { socketId, reason })
 
         // Check if there's an active stream for this socket via state manager
         const stateData = this.stateManager.getStateData(socketId)
@@ -690,7 +690,7 @@ export class WebSocketServer {
 
         if (hasActiveStream && stateData) {
           // Don't abort immediately - transition to disconnected state with timeout
-          this.logger.info('Active stream detected, starting recovery window', {
+          this.logger.info('socket.disconnect.recovery_start', {
             socketId,
             recoveryWindow: `${this.STREAM_RECOVERY_WINDOW}ms`,
             conversationId: stateData.conversationId
@@ -698,7 +698,7 @@ export class WebSocketServer {
 
           // Set timeout to abort if client doesn't reconnect
           const timeoutId = setTimeout(() => {
-            this.logger.warn('Recovery window expired, aborting stream', { socketId })
+            this.logger.warn('socket.disconnect.recovery_expired', { socketId })
             stateData.abortController?.abort()
             // Don't call cleanupConversation here — it races with completeConversation
             // in handleChatMessageInternal. completeConversation persists the message
@@ -711,7 +711,7 @@ export class WebSocketServer {
           })
         } else if (stateData && !hasActiveStream) {
           // Conversation exists but stream not yet registered - setup still in progress
-          this.logger.info('websocket.disconnect.during_setup', {
+          this.logger.info('disconnect.during_setup', {
             socketId,
             conversationId: stateData.conversationId
           })
@@ -720,10 +720,10 @@ export class WebSocketServer {
           const placeholderController = new AbortController()
 
           const timeoutId = setTimeout(() => {
-            this.logger.warn('websocket.deferred_cleanup.expired', { socketId })
+            this.logger.warn('deferred_cleanup.expired', { socketId })
             placeholderController.abort()
             this.cleanupConversation(socketId).catch((error) => {
-              this.logger.error('websocket.deferred_cleanup.error', error)
+              this.logger.error('deferred_cleanup.error', error)
             })
           }, this.STREAM_RECOVERY_WINDOW)
 
@@ -734,7 +734,7 @@ export class WebSocketServer {
           })
         } else {
           // No state - connection closed before chat started
-          this.logger.info('Socket disconnected with no active conversation', { socketId })
+          this.logger.info('socket.disconnect.idle', { socketId })
         }
 
         // Clean up APM spans (these can't be recovered)
@@ -743,12 +743,12 @@ export class WebSocketServer {
         try {
           await this.config.onDisconnection?.(socketId)
         } catch (error) {
-          this.logger.error('Error in onDisconnection handler', error)
+          this.logger.error('socket.disconnect.handler_error', error)
         }
       })
 
       // Debug logging for all connections
-      this.logger.info('Socket connection established', {
+      this.logger.info('socket.connect', {
         socketId,
         hasAuth: !!auth,
         authKeys: Object.keys(auth),
@@ -763,7 +763,7 @@ export class WebSocketServer {
 
       // Debug logging for recovery
       if (previousSocketId) {
-        this.logger.info('Connection with previousSocketId detected', {
+        this.logger.info('socket.reconnect', {
           socketId,
           previousSocketId,
           hasDisconnectedStream: this.stateManager.isDisconnected(previousSocketId),
@@ -806,7 +806,7 @@ export class WebSocketServer {
   async completeConnectionSetup(socket: Socket, signal?: AbortSignal): Promise<void> {
     // Idempotency guard — prevent duplicate setup if called more than once
     if (socket.data?.connectionSetupComplete) {
-      this.logger.debug('websocket.setup.already_complete', { socketId: socket.id })
+      this.logger.debug('setup.already_complete', { socketId: socket.id })
       return
     }
     // Set flag eagerly BEFORE async work to prevent interleaving
@@ -868,7 +868,7 @@ export class WebSocketServer {
     socketId: string,
     auth: Record<string, any>
   ): Promise<void> {
-    this.logger.info('Recovery attempted but no buffered events found', {
+    this.logger.info('recovery.no_events', {
       newSocketId: socketId,
       previousSocketId: auth.previousSocketId,
       hasConversationId: !!auth.conversationId
@@ -1042,7 +1042,7 @@ export class WebSocketServer {
       return event.sequence
     } catch (err) {
       // Log as warning - event channel failed but we continue
-      this.logger.warn('eventChannel.publish.failed', {
+      this.logger.warn('event_channel.publish.failure', {
         conversationId: stateData.conversationId,
         type,
         error: err instanceof Error ? err.message : String(err)
@@ -1072,7 +1072,7 @@ export class WebSocketServer {
 
     // Idempotency guard via state manager
     if (this.stateManager.isCleanupInProgress(effectiveId)) {
-      this.logger.debug('websocket.cleanup.already_in_progress', { socketId: effectiveId })
+      this.logger.debug('cleanup.already_in_progress', { socketId: effectiveId })
       return
     }
 
@@ -1220,7 +1220,7 @@ export class WebSocketServer {
     const agentMessageId = conversation.context.agentMessageId
 
     if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-      this.logger.debug('Event tracked for conversation', {
+      this.logger.debug('event_channel.track', {
         type,
         hasAgentMessageId: !!agentMessageId,
         hasUpdateMethod: !!this.config.messagePersistence.updateAgentTurn,
@@ -1286,7 +1286,7 @@ export class WebSocketServer {
 
           try {
             if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-              this.logger.debug('Updating agent turn with tool result', {
+              this.logger.debug('turn.tool_result.update', {
                 messageId: agentMessageId,
                 toolId,
                 toolName: existingTool.name,
@@ -1306,7 +1306,7 @@ export class WebSocketServer {
               conversation.context
             )
           } catch (error) {
-            this.logger.warn('Failed to update agent turn with tool result', error)
+            this.logger.warn('turn.tool_result.failure', error)
           }
         }
       }
@@ -1355,7 +1355,7 @@ export class WebSocketServer {
           this.activeObservabilityToolSpans.set(spanKey, result)
         }
       } catch (hookError) {
-        this.logger.warn('websocket.tool_start_hook.failed', { error: hookError })
+        this.logger.warn('tool.hook.start.failure', { error: hookError })
       }
     }
   }
@@ -1411,7 +1411,7 @@ export class WebSocketServer {
 
         await this.config.onToolEnd(params)
       } catch (hookError) {
-        this.logger.warn('websocket.tool_end_hook.failed', { error: hookError })
+        this.logger.warn('tool.hook.end.failure', { error: hookError })
       }
     }
 
@@ -1452,7 +1452,7 @@ export class WebSocketServer {
       while (true) { // Intentional infinite loop until stream is done
         // Check if the stream was cancelled
         if (abortController?.signal.aborted) {
-          this.logger.warn('Stream processing cancelled by client')
+          this.logger.warn('stream.cancelled')
           break
         }
 
@@ -1463,7 +1463,7 @@ export class WebSocketServer {
           // Handle specific stream read errors
           if (this.isNetworkError(readError)) {
             const errorMessage = readError instanceof Error ? readError.message : String(readError)
-            this.logger.warn('stream.read.networkError', {
+            this.logger.warn('stream.read.network_error', {
               socketId,
               agentName,
               error: errorMessage,
@@ -1494,7 +1494,7 @@ export class WebSocketServer {
 
               // Check if it's AI SDK's native APICallError with budget pattern
               if (isBudgetExceededAPIError(error)) {
-                this.logger.error('Budget exceeded error detected', {
+                this.logger.error('budget.exceeded', {
                   message: error.message,
                   statusCode: error.statusCode
                 })
@@ -1508,7 +1508,7 @@ export class WebSocketServer {
               }
 
               // Log and re-throw other errors unchanged
-              this.logger.error('Stream error part received', {
+              this.logger.error('stream.error.part', {
                 message: error instanceof Error ? error.message : String(error),
                 statusCode: APICallError.isInstance(error) ? error.statusCode : undefined
               })
@@ -1584,7 +1584,7 @@ export class WebSocketServer {
               try {
                 parsedInput = JSON.parse(fullInput)
               } catch (error) {
-                this.logger.error('Failed to parse tool input', { fullInput })
+                this.logger.error('tool.input.parse_failure', { fullInput })
               }
 
               const toolCallData = {
@@ -1683,7 +1683,7 @@ export class WebSocketServer {
       if (!classification.retryable) {
         // Check if it's a budget error from APICallError
         if (isBudgetExceededAPIError(error)) {
-          this.logger.error('Non-retryable budget error - propagating', {
+          this.logger.error('budget.exceeded.non_retryable', {
             category: classification.category,
             message: error.message,
             statusCode: error.statusCode
@@ -1697,7 +1697,7 @@ export class WebSocketServer {
         }
 
         if (!abortController?.signal.aborted) {
-          this.logger.error('Non-retryable error in stream processing - propagating', {
+          this.logger.error('stream.error.non_retryable', {
             category: classification.category,
             message: error instanceof Error ? error.message : String(error)
           });
@@ -1715,7 +1715,7 @@ export class WebSocketServer {
       // Settled inline via .then() so the log is emitted after metadata is available,
       // but the fallback attempt is NOT delayed.
       this.extractResponseMetadata(streamResult).then(responseMeta => {
-        this.logger.error('stream.baseStream.error', {
+        this.logger.error('stream.base_stream.error', {
           socketId,
           appId: convAppId,
           agentName,
@@ -1744,7 +1744,7 @@ export class WebSocketServer {
       } catch (fallbackError: unknown) {
         const fallbackInfo = this.analyzeStreamError(fallbackError);
         this.extractResponseMetadata(streamResult).then(responseMeta => {
-          this.logger.error('stream.textFallback.error', {
+          this.logger.error('stream.text_fallback.error', {
             socketId,
             appId: convAppId,
             agentName,
@@ -1788,7 +1788,7 @@ export class WebSocketServer {
       for await (const chunk of streamResult.textStream) {
         // Check if the stream was cancelled
         if (abortController?.signal.aborted) {
-          this.logger.warn('Text stream processing cancelled by client')
+          this.logger.warn('stream.text.cancelled')
           break
         }
 
@@ -1811,7 +1811,7 @@ export class WebSocketServer {
           ? (activeConv.context.metadata as any).appId
           : undefined
         this.extractResponseMetadata(streamResult).then(responseMeta => {
-          this.logger.error('stream.textOnly.error', {
+          this.logger.error('stream.text_only.error', {
             socketId,
             appId: convAppId,
             agentName,
@@ -1999,7 +1999,7 @@ export class WebSocketServer {
     } catch (cancelError: unknown) {
       // Ignore cancel errors - reader might already be closed
       const errorMessage = cancelError instanceof Error ? cancelError.message : String(cancelError)
-      this.logger.debug('Reader cancel error (expected if already closed)', { error: errorMessage })
+      this.logger.debug('reader.cancel.error', { error: errorMessage })
     }
 
     try {
@@ -2008,7 +2008,7 @@ export class WebSocketServer {
     } catch (releaseError: unknown) {
       // Ignore release errors - lock might already be released
       const errorMessage = releaseError instanceof Error ? releaseError.message : String(releaseError)
-      this.logger.debug('Reader release error (expected if already released)', { error: errorMessage })
+      this.logger.debug('reader.release.error', { error: errorMessage })
     }
   }
 
@@ -2020,7 +2020,7 @@ export class WebSocketServer {
     const socketId = socket.id
 
     // Diagnostic: Log that message was received
-    this.logger.info('websocket.chat_message.received', {
+    this.logger.info('chat_message.received', {
       socketId,
       messageLength: data.message?.length ?? 0,
       hasContext: !!data.context,
@@ -2156,7 +2156,7 @@ export class WebSocketServer {
           }
         } as WebSocketMessage, (ackError?: string) => {
           if (ackError) {
-            this.logger.warn('websocket.conversation_info.ack_failed', {
+            this.logger.warn('conversation_info.ack_failure', {
               socketId,
               conversationId,
               error: ackError
@@ -2205,7 +2205,7 @@ export class WebSocketServer {
           // Replace placeholder controller with the real stream controller
           // Reset timeout for the full recovery window
           const newTimeoutId = setTimeout(() => {
-            this.logger.warn('Recovery window expired after early disconnect', { socketId })
+            this.logger.warn('disconnect.recovery_expired_early', { socketId })
             controller.abort()
             // Don't call cleanupConversation here — same race as the primary timeout.
             // handleChatMessageInternal cleans up after completeConversation finishes.
@@ -2216,12 +2216,12 @@ export class WebSocketServer {
             recoveryTimeoutId: newTimeoutId
           })
 
-          this.logger.info('websocket.pending_setup.converted_to_disconnected', {
+          this.logger.info('pending_setup.converted_to_disconnected', {
             socketId,
             conversationId: stateData.conversationId
           })
         } else {
-          this.logger.info('websocket.pending_setup.cleared', { socketId })
+          this.logger.info('pending_setup.cleared', { socketId })
         }
       }
 
@@ -2294,7 +2294,7 @@ export class WebSocketServer {
           delete (updatedContext.metadata as any).__autoContinue
           delete (updatedContext.metadata as any).__continuationPrompt
 
-          this.logger.info('websocket.auto_continuation.detected', {
+          this.logger.info('auto_continuation.detected', {
             socketId,
             agentName,
             conversationId: conversationAfterStream?.conversationId,
@@ -2333,7 +2333,7 @@ export class WebSocketServer {
         }
 
         // Prepare for next iteration
-        this.logger.info(`Handoff detected: ${agentName} -> ${handoffDetails.newAgentName}`)
+        this.logger.info('handoff.detect', { fromAgent: agentName, toAgent: handoffDetails.newAgentName })
 
         emitHandoff({
           conversationId: conversationIdForCleanup,
@@ -2364,7 +2364,7 @@ export class WebSocketServer {
       }
 
       if (iterationCount >= maxHandoffs) {
-        this.logger.warn(`Maximum handoff limit (${maxHandoffs}) reached`)
+        this.logger.warn('handoff.limit', { maxHandoffs })
       }
 
       // 8. Budget reconciliation BEFORE completion so credits are updated
@@ -2407,7 +2407,7 @@ export class WebSocketServer {
       // to here so it doesn't race with completeConversation above.
       if (abortSignal.aborted) {
         await this.cleanupConversation(socketId).catch((error) => {
-          this.logger.error('websocket.abort.cleanup_failed', {
+          this.logger.error('abort.cleanup_failure', {
             socketId,
             error: error instanceof Error ? error.message : String(error)
           })
@@ -2462,7 +2462,7 @@ export class WebSocketServer {
       }
 
       const topLevelErrorInfo = this.analyzeStreamError(error)
-      this.logger.warn('websocket.agent.error', {
+      this.logger.warn('agent.error', {
         message: errorMessage,
         errorType,
         statusCode,
@@ -2600,7 +2600,7 @@ export class WebSocketServer {
         const sessionAppId = this.config.stateManager.getSessionMetadata?.(socketId)?.appId
 
         if (sessionAppId && currentAppId && sessionAppId !== currentAppId) {
-          this.logger.debug('App ID changed, clearing state manager session', {
+          this.logger.debug('session.app_id_changed', {
             socketId,
             oldAppId: sessionAppId,
             newAppId: currentAppId,
@@ -2791,7 +2791,7 @@ export class WebSocketServer {
 
       data.conversationHistory = conversationHistory
     } catch (error) {
-      this.logger.warn('Failed to load conversation history', error)
+      this.logger.warn('history.load.failure', error)
     }
   }
 
@@ -2814,7 +2814,7 @@ export class WebSocketServer {
     // Handoff occurred - get the prompt
     const handoffPrompt = this.config.stateManager.getLastHandoffPrompt?.(socketId)
     if (!handoffPrompt) {
-      this.logger.warn(`Handoff to ${newAgentName} detected but no prompt available`)
+      this.logger.warn('handoff.no_prompt', { newAgentName })
       return null
     }
 
@@ -2984,10 +2984,14 @@ export class WebSocketServer {
           }
         }
 
-        this.logger.info(`Loaded ${loadedContextMessages.length} context messages (${beforeHistoryMessages.length} before history, ${afterHistoryMessages.length} after history)`)
-        this.logger.info(`Cache points: ${loadedContextMessages.filter(m => m.cachePoint).length} messages with caching enabled`)
+        this.logger.info('context.load', {
+          total: loadedContextMessages.length,
+          beforeHistory: beforeHistoryMessages.length,
+          afterHistory: afterHistoryMessages.length,
+          cachePoints: loadedContextMessages.filter(m => m.cachePoint).length
+        })
       } catch (error) {
-        this.logger.error('Error loading context messages', error)
+        this.logger.error('context.load.failure', error)
         // Continue without context if loading fails
       }
     }
@@ -3001,7 +3005,7 @@ export class WebSocketServer {
     // addCacheControlToMessages() in prompt-caching.ts which handles the last message caching.
     // Adding cache points here caused exceeding Anthropic's 4 breakpoint limit (5 total).
     if (data.conversationHistory && data.conversationHistory.length > 0) {
-      this.logger.info(`Adding ${data.conversationHistory.length} conversation history messages`)
+      this.logger.info('history.add', { messageCount: data.conversationHistory.length })
       const convertedHistoryMessages = data.conversationHistory.map((msg) => {
         const converted: any = {
           role: msg.role,
@@ -3031,14 +3035,14 @@ export class WebSocketServer {
     while (messages.length > 0 && messages[0]?.role === 'tool') {
       const removedMessage = messages.shift()
       if (removedMessage) {
-        this.logger.warn('Stripped leading tool message without preceding assistant message', {
+        this.logger.warn('history.strip_orphan_tool', {
           toolCallId: (removedMessage as any).tool_call_id,
           reason: 'Tool results must follow assistant tool calls, cannot be first message'
         })
       }
     }
 
-    this.logger.info('Message assembly complete', {
+    this.logger.info('message.assembly.complete', {
       contextMessages: contextMessages.length,
       messages: messages.length,
       cachePoints: contextMessages.filter(m => m.cachePoint).length + messages.filter(m => (m as any).cachePoint).length
@@ -3096,7 +3100,7 @@ export class WebSocketServer {
         activeConversation.pendingToolCalls = new Map()
         activeConversation.accumulatedContent = ''
       } catch (error) {
-        this.logger.warn('Failed to start agent turn', error)
+        this.logger.warn('turn.start.failure', error)
       }
     }
 
@@ -3136,11 +3140,11 @@ export class WebSocketServer {
             })
           }
         } catch (error) {
-          this.logger.error('Failed to process screenshot', error)
+          this.logger.error('screenshot.process.failure', error)
         }
       }
       if (processedFiles.length > 0) {
-        this.logger.info(`Attached ${processedFiles.length} image(s) for vision processing (screenshots + asset images)`)
+        this.logger.info('vision.attach', { count: processedFiles.length })
       }
     }
 
@@ -3159,7 +3163,7 @@ export class WebSocketServer {
         providerName = 'openai'
       }
     } catch (error) {
-      this.logger.warn(`Failed to get model info from agent config: ${error}`)
+      this.logger.warn('model.info.failure', { error: error instanceof Error ? error.message : String(error) })
     }
 
     // Extract identifiers from context for observability
@@ -3223,7 +3227,7 @@ export class WebSocketServer {
           llmSpanInfo = result
         }
       } catch (hookError) {
-        this.logger.warn('websocket.llm_start_hook.failed', { error: hookError })
+        this.logger.warn('llm.hook.start.failure', { error: hookError })
       }
     }
 
@@ -3300,7 +3304,7 @@ export class WebSocketServer {
     } catch (error: any) {
       // Handle API call errors (like tool input validation failures)
       if (isBudgetExceededAPIError(error)) {
-        this.logger.error('Budget exceeded error before streaming started', {
+        this.logger.error('budget.exceeded.pre_stream', {
           statusCode: error.statusCode,
           message: error.message
         })
@@ -3343,7 +3347,7 @@ export class WebSocketServer {
       }
 
       if (isToolValidationError) {
-        this.logger.error('Tool input validation error', { message: error.message })
+        this.logger.error('tool.validation.failure', { message: error.message })
 
         // Publish step start for the failed tool call - subscribers handle delivery and persistence
         const stepStartData = {
@@ -3418,7 +3422,7 @@ Please try again with corrected formatting.`
           )
         } catch (retryError: any) {
           // If retry also fails, fall back to error handling
-          this.logger.error('Retry also failed', { message: retryError.message })
+          this.logger.error('stream.retry.failure', { message: retryError.message })
           // End invocation span with error before throwing
           invocation.end({ error: retryError, success: false })
           throw retryError
@@ -3438,8 +3442,8 @@ Please try again with corrected formatting.`
         }
 
         if (!streamErrorClassification.retryable) {
-          this.logger.warn(`Non-retryable error in streamGenerate: ${streamErrorClassification.category || 'unknown'}`, {
-            category: streamErrorClassification.category,
+          this.logger.warn('stream.error.non_retryable', {
+            category: streamErrorClassification.category || 'unknown',
             statusCode: streamErrorClassification.statusCode
           });
         }
@@ -3481,7 +3485,7 @@ Please try again with corrected formatting.`
       // Debug log for accumulated content and tool calls
       const toolCallCount = conversationAfterStream?.pendingToolCalls?.size || 0
       if (fullContent.length > 0 || toolCallCount > 0) {
-        this.logger.debug('LLM response accumulated', {
+        this.logger.debug('llm.response.accumulated', {
           fullContentLength: fullContent.length,
           toolCallCount,
           toolNames: toolCallCount > 0 ? Array.from(conversationAfterStream!.pendingToolCalls!.values()).map((tc: any) => tc.name) : [],
@@ -3544,11 +3548,11 @@ Please try again with corrected formatting.`
           const agentConfig = agent.getConfig()
           modelName = agentConfig.modelName || agentName || 'unknown'
         } catch (error) {
-          this.logger.warn(`Failed to get model name from agent config: ${error}`)
+          this.logger.warn('model.name.failure', { error: error instanceof Error ? error.message : String(error) })
           modelName = agentName || 'unknown'
         }
 
-        this.logger.info('Token Usage Statistics', {
+        this.logger.info('token.usage', {
           inputTokens: usage.inputTokens || 0,
           outputTokens: usage.outputTokens || 0,
           totalTokens: usage.totalTokens || 0
@@ -3570,16 +3574,16 @@ Please try again with corrected formatting.`
           } else if (usage.cachedInputTokensWrite) {
             cacheDetails.write = usage.cachedInputTokensWrite
           }
-          this.logger.info('Cache usage', cacheDetails)
+          this.logger.info('token.cache', cacheDetails)
         } else {
-          this.logger.info('No cache usage detected')
+          this.logger.info('token.cache.none')
         }
 
         // Calculate and log cost estimate using accurate model pricing
         const costEstimate = calculateCostEstimate(usage, modelName)
         costEstimateTotalCost = costEstimate.totalCost
         const costLines = formatCostEstimate(costEstimate, usage)
-        this.logger.info(costLines.join('\n'))
+        this.logger.info('token.cost', { details: costLines.join('; ') })
 
         // Call onTokenUsage callback with accurate multi-step usage
         if (this.config.onTokenUsage) {
@@ -3604,7 +3608,7 @@ Please try again with corrected formatting.`
               }
             )
           } catch (error) {
-            this.logger.error('Error in onTokenUsage callback', { error })
+            this.logger.error('token.usage.callback_error', { error })
           }
         }
       }
@@ -3666,7 +3670,7 @@ Please try again with corrected formatting.`
 
           await this.config.onLlmEnd(llmEndParams)
         } catch (hookError) {
-          this.logger.warn('websocket.llm_end_hook.failed', { error: hookError })
+          this.logger.warn('llm.hook.end.failure', { error: hookError })
         }
       }
 
@@ -3738,7 +3742,7 @@ Please try again with corrected formatting.`
       }
 
       const postErrorInfo = this.analyzeStreamError(postStreamError)
-      this.logger.error('stream.postStream.error', {
+      this.logger.error('stream.post_stream.error', {
         socketId: socket.id,
         appId,
         agentName,

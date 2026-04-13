@@ -50,12 +50,12 @@ export function createBackgroundDelegateTool(
 
       const totalTasks = tasks.length
 
-      logger.info('Delegating tasks for background processing', {
+      logger.info('delegate.begin', {
         sourceAgent: sourceAgentId,
         targetAgent: targetAgentId,
         taskCount: totalTasks
       })
-      logger.debug('Tasks queued', { tasks: tasks.map((t, i) => ({ index: i + 1, task: t })) })
+      logger.debug('delegate.queued', { tasks: tasks.map((t, i) => ({ index: i + 1, task: t })) })
 
       try {
         // Convert execution context to AgentContext format for BackgroundQueue
@@ -72,12 +72,12 @@ export function createBackgroundDelegateTool(
         // Create background queue and enqueue all tasks
         const backgroundQueue = new BackgroundQueue(factory, sourceAgentId, targetAgentId)
 
-        logger.info('Queueing tasks for background processing', { taskCount: totalTasks })
+        logger.info('delegate.enqueue', { taskCount: totalTasks })
 
         for (const taskToQueue of tasks) {
           backgroundQueue.enqueue(taskToQueue, agentContext, context)
             .catch(error => {
-              logger.error('Background task failed', { task: taskToQueue, error })
+              logger.error('delegate.task.failure', { task: taskToQueue, error })
             })
         }
 
@@ -92,7 +92,7 @@ export function createBackgroundDelegateTool(
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
-        logger.error('Background delegation error', { error: errorMessage })
+        logger.error('delegate.failure', { error: errorMessage })
 
         return {
           success: false,

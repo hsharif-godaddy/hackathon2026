@@ -55,13 +55,15 @@ export class SimpleMessageBuilder implements MessageBuilder {
     // Add user input with vision support if files are provided
     if (context?.files && context.files.length > 0) {
       const visionMessage = buildHybridContent(input, context.files)
-      logger.debug(`Building vision message with ${context.files.length} files`)
-      logger.debug(`Content type: ${typeof visionMessage.content}`)
-      logger.debug(`Content blocks: ${Array.isArray(visionMessage.content) ? visionMessage.content.length : 'string'}`)
-      if (Array.isArray(visionMessage.content)) {
-        logger.debug(`First block type: ${visionMessage.content[0]?.type}`)
-        logger.debug(`Has image block: ${visionMessage.content.some((b: any) => b.type === 'image')}`)
-      }
+      logger.debug('vision.build', {
+        fileCount: context.files.length,
+        contentType: typeof visionMessage.content,
+        contentBlocks: Array.isArray(visionMessage.content) ? visionMessage.content.length : 'string',
+        ...(Array.isArray(visionMessage.content) && {
+          firstBlockType: visionMessage.content[0]?.type,
+          hasImageBlock: visionMessage.content.some((b: any) => b.type === 'image')
+        })
+      })
       messages.push(visionMessage as ModelMessage)
     } else {
       messages.push({

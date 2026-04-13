@@ -321,8 +321,7 @@ export async function createDevelopAgentFactory(options?: {
 
   // Create state manager if not provided
   const stateManager = options?.stateManager || createSessionStateManager({
-    defaultAgentId: 'develop',
-    enableLogging: true
+    defaultAgentId: 'develop'
   })
 
   const developConfig = await createDevelopAgent(options)

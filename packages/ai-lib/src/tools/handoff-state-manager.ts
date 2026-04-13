@@ -101,8 +101,6 @@ export interface SessionStateManagerConfig {
   defaultAgentId?: string
   /** Session timeout in milliseconds (default: 1 hour) */
   sessionTimeout?: number
-  /** Whether to log state events (default: true) */
-  enableLogging?: boolean
   /** Callback when agent switches */
   onAgentSwitch?: (sessionId: string, fromAgentId: string, toAgentId: string, reason?: string) => void
   /** Callback when todo list is selected */
@@ -145,7 +143,6 @@ export class SessionStateManager implements HandoffStateManager {
     this.config = {
       defaultAgentId: config.defaultAgentId || 'default',
       sessionTimeout: config.sessionTimeout || 60 * 60 * 1000, // 1 hour
-      enableLogging: config.enableLogging ?? true,
       onAgentSwitch: config.onAgentSwitch || (() => {}),
       onTodoListSelect: config.onTodoListSelect || (() => {})
     }
@@ -170,12 +167,7 @@ export class SessionStateManager implements HandoffStateManager {
     const session = this.sessions.get(sessionId)
     const fromAgentId = session?.currentAgentId || this.config.defaultAgentId
 
-    if (this.config.enableLogging) {
-      logger.info(`Handoff: ${fromAgentId} -> ${targetAgentId} (session: ${sessionId})`)
-      if (prompt) {
-        logger.info(`   Prompt: ${prompt}`)
-      }
-    }
+    logger.info('handoff.begin', { fromAgentId, targetAgentId, sessionId, ...(prompt && { prompt }) })
 
     // Create or update session
     if (session) {
@@ -260,9 +252,7 @@ export class SessionStateManager implements HandoffStateManager {
       session.selectedTodoListId = todoListId
       session.lastActivityAt = new Date()
 
-      if (this.config.enableLogging) {
-        logger.info(`Session ${sessionId} selected todo list: ${todoListId}`)
-      }
+      logger.info('todolist.select', { sessionId, todoListId })
 
       this.config.onTodoListSelect(sessionId, todoListId)
     } else {
@@ -272,9 +262,7 @@ export class SessionStateManager implements HandoffStateManager {
       if (newSession) {
         newSession.selectedTodoListId = todoListId
 
-        if (this.config.enableLogging) {
-          logger.info(`Created session ${sessionId} with todo list: ${todoListId}`)
-        }
+        logger.info('session.create', { sessionId, todoListId })
 
         this.config.onTodoListSelect(sessionId, todoListId)
       }
@@ -302,9 +290,7 @@ export class SessionStateManager implements HandoffStateManager {
     if (session) {
       delete session.selectedTodoListId
 
-      if (this.config.enableLogging) {
-        logger.info(`Cleared selected todo list for session: ${sessionId}`)
-      }
+      logger.info('todolist.clear', { sessionId })
     }
   }
 
@@ -328,9 +314,7 @@ export class SessionStateManager implements HandoffStateManager {
       }
       this.sessions.set(sessionId, session)
 
-      if (this.config.enableLogging) {
-        logger.info(`Created new session ${sessionId} with agent: ${initialAgentId}`)
-      }
+      logger.info('session.create', { sessionId, agentId: initialAgentId })
     } else {
       // Update last activity
       session.lastActivityAt = new Date()
@@ -414,9 +398,7 @@ export class SessionStateManager implements HandoffStateManager {
   clearSession(sessionId: string): void {
     this.sessions.delete(sessionId)
 
-    if (this.config.enableLogging) {
-      logger.info(`Cleared session: ${sessionId}`)
-    }
+    logger.info('session.clear', { sessionId })
   }
 
   /**
@@ -426,9 +408,7 @@ export class SessionStateManager implements HandoffStateManager {
     const count = this.sessions.size
     this.sessions.clear()
 
-    if (this.config.enableLogging) {
-      logger.info(`Cleared ${count} sessions`)
-    }
+    logger.info('session.clear_all', { count })
   }
 
   /**
@@ -450,9 +430,7 @@ export class SessionStateManager implements HandoffStateManager {
         this.sessions.delete(sessionId)
       }
 
-      if (this.config.enableLogging) {
-        logger.info(`Cleaned up ${expiredSessions.length} expired sessions`)
-      }
+      logger.info('session.cleanup', { count: expiredSessions.length })
     }
   }
 
@@ -489,9 +467,7 @@ export class SessionStateManager implements HandoffStateManager {
       }
       this.sessions.set(sessionId, session)
 
-      if (this.config.enableLogging) {
-        logger.info(`Created new session ${sessionId} with agent: ${this.config.defaultAgentId}`)
-      }
+      logger.info('session.create', { sessionId, agentId: this.config.defaultAgentId })
     } else {
       // Update last activity
       session.lastActivityAt = new Date()
@@ -519,9 +495,7 @@ export class SessionStateManager implements HandoffStateManager {
 
     session.lastActivityAt = new Date()
 
-    if (this.config.enableLogging) {
-      logger.info(`[SessionState] Stored ${palettes.length} palette(s) for session ${sessionId}`)
-    }
+    logger.info('palette.store', { count: palettes.length, sessionId })
   }
 
   /**
@@ -566,9 +540,7 @@ export class SessionStateManager implements HandoffStateManager {
       session.suggestedPalettes = new Map()
       session.lastActivityAt = new Date()
 
-      if (this.config.enableLogging) {
-        logger.info(`[SessionState] Cleared palettes for session ${sessionId}`)
-      }
+      logger.info('palette.clear', { sessionId })
     }
   }
 
@@ -591,9 +563,7 @@ export class SessionStateManager implements HandoffStateManager {
 
     session.lastActivityAt = new Date()
 
-    if (this.config.enableLogging) {
-      logger.info(`[SessionState] Stored ${fonts.length} font(s) for session ${sessionId}`)
-    }
+    logger.info('font.store', { count: fonts.length, sessionId })
   }
 
   /**
@@ -638,9 +608,7 @@ export class SessionStateManager implements HandoffStateManager {
       session.suggestedFonts = new Map()
       session.lastActivityAt = new Date()
 
-      if (this.config.enableLogging) {
-        logger.info(`[SessionState] Cleared fonts for session ${sessionId}`)
-      }
+      logger.info('font.clear', { sessionId })
     }
   }
 

@@ -24,7 +24,7 @@ export class WebSearchTool extends BaseTool {
 
     try {
       // Placeholder implementation - in real usage, integrate with search API
-      logger.info(`Searching for: "${query}" (max: ${maxResults})`)
+      logger.info('search.begin', { query, maxResults })
 
       // Mock results for now
       const mockResults = [

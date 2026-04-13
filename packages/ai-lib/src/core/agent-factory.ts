@@ -371,7 +371,7 @@ export class AgentWrapper {
               }
             }
           } catch (error) {
-            logger.error('agent.prepareCall.activeTools_snapshot_failed', {
+            logger.error('agent.prepare_call.active_tools_snapshot_failure', {
               error: error instanceof Error ? error.message : String(error)
             })
           }
@@ -398,7 +398,7 @@ export class AgentWrapper {
 
     for (const [toolName, toolDefinition] of Object.entries(tools)) {
       if (!toolDefinition) {
-        logger.warn(`Skipping invalid tool definition: ${toolName}`)
+        logger.warn('tool.invalid', { toolName })
         continue
       }
 
@@ -429,7 +429,7 @@ export class AgentWrapper {
               processedArgs = hookResult
             }
           } catch (error) {
-            logger.error('Error in beforeToolExecution hook', { toolName, error })
+            logger.error('tool.hook.before.failure', { toolName, error })
           }
         }
 
@@ -441,7 +441,7 @@ export class AgentWrapper {
         } catch (error) {
           toolCallError = error
           const serializedError = serializeError(error)
-          logger.error('Tool execution failed', {
+          logger.error('tool.execution.failure', {
             toolName,
             args: processedArgs,
             error: serializedError,
@@ -477,7 +477,7 @@ export class AgentWrapper {
                 toolCallResult = hookResult
               }
             } catch (error) {
-              logger.error('Error in afterToolExecution hook', { toolName, error })
+              logger.error('tool.hook.after.failure', { toolName, error })
             }
           }
         }
@@ -1102,7 +1102,7 @@ export class AgentWrapper {
         error?.message?.includes('toolUse.input is invalid')
 
       if (isToolValidationError) {
-        logger.error('Tool input validation error in AgentWrapper.streamGenerate', {
+        logger.error('tool.validation.failure', {
           message: error.message,
           statusCode: APICallError.isInstance(error) ? error.statusCode : undefined
         })
@@ -1395,8 +1395,7 @@ export class AgentFactory {
     this.handoffHistory.push(historyEntry)
 
     try {
-      logger.info(`Executing handoff: ${sourceAgentId} -> ${targetAgentId}`)
-      logger.info(`Task: ${handoffContext.task}`)
+      logger.info('handoff.begin', { sourceAgentId, targetAgentId, task: handoffContext.task })
 
       // Execute the task on the target agent with only the provided context
       const streamOptions: {
@@ -1446,7 +1445,7 @@ export class AgentFactory {
       historyEntry.result = handoffResult
       historyEntry.status = 'completed'
 
-      logger.info(`Handoff completed successfully: ${sourceAgentId} -> ${targetAgentId}`)
+      logger.info('handoff.success', { sourceAgentId, targetAgentId })
 
       return handoffResult
 
@@ -1466,8 +1465,7 @@ export class AgentFactory {
       historyEntry.result = handoffResult
       historyEntry.status = 'failed'
 
-      logger.error(`Handoff failed: ${sourceAgentId} -> ${targetAgentId}`)
-      logger.error(`Error: ${handoffResult.error}`)
+      logger.error('handoff.failure', { sourceAgentId, targetAgentId, error: handoffResult.error })
 
       return handoffResult
     }

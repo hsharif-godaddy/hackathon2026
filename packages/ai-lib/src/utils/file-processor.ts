@@ -147,7 +147,7 @@ async function processPdfFile(
   // This is a placeholder implementation
   // In production, you would use a library like pdf-parse or pdf2pic
   
-  logger.warn('PDF processing requires additional dependencies. Install pdf-parse for full PDF support.')
+  logger.warn('pdf.unsupported', { message: 'Install pdf-parse for full PDF support' })
   
   return {
     textContent: 'PDF content extraction not implemented. Please install pdf-parse library.',
@@ -175,7 +175,7 @@ async function processOfficeDocument(
   const docType = mimeType.includes('word') ? 'Word' : 
                   mimeType.includes('sheet') ? 'Excel' : 'PowerPoint'
   
-  logger.warn(`${docType} document processing requires additional dependencies.`)
+  logger.warn('document.unsupported', { docType })
   
   return {
     textContent: `${docType} document content extraction not implemented. Install appropriate libraries for full document support.`,

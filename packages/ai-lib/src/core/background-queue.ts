@@ -177,7 +177,7 @@ export class BackgroundQueue {
       }
 
       try {
-        logger.info('Background: Executing task', { task: task.task })
+        logger.info('task.execute', { task: task.task })
 
         // Execute handoff with execution context
         // Convert AgentContext to Record<string, unknown> for executeHandoff
@@ -215,16 +215,16 @@ export class BackgroundQueue {
         )
 
         if (result.success) {
-          logger.info('Background: Task completed', { task: task.task })
+          logger.info('task.success', { task: task.task })
           task.resolve(result.result)
         } else {
           const error = new Error(result.error || 'Failed to execute background task')
-          logger.error('Background: Failed to execute task', { task: task.task, error })
+          logger.error('task.failure', { task: task.task, error })
           task.reject(error)
         }
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error))
-        logger.error('Background: Error executing task', { task: task.task, error: err })
+        logger.error('task.error', { task: task.task, error: err })
         task.reject(err)
       }
     }

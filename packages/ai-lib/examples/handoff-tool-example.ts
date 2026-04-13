@@ -21,7 +21,6 @@ async function basicHandoffToolExample() {
   // Create state manager to track which agent is handling each session
   const stateManager = createInMemoryHandoffStateManager({
     defaultAgentId: 'coordinator',
-    enableLogging: true,
     onAgentSwitch: (sessionId, from, to, reason) => {
       console.log(`\n✨ Agent switched for session ${sessionId}`)
       console.log(`   ${from} → ${to}`)

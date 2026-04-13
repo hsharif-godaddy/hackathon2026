@@ -1,5 +1,5 @@
 // Logger
-export { Logger, logger, createLogger, type LogLevel, type LoggerConfig } from './logger.js'
+export { Logger, logger, createLogger, setLoggerFactory, type LogLevel, type LoggerConfig, type LoggerLike } from './logger.js'
 
 // Errors
 export {

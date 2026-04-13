@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { Logger, createLogger } from '../logger.js'
+import { Logger, createLogger, setLoggerFactory, type LoggerLike } from '../logger.js'
 
 describe('logger', () => {
   describe('JSON format', () => {
@@ -122,9 +122,12 @@ describe('logger', () => {
     it('should respect format config', () => {
       const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true)
       const logger = createLogger('my-module')
-      // createLogger doesn't set format, so it defaults to text (no LOG_FORMAT env)
-      // Just verify it creates without error
-      expect(logger).toBeInstanceOf(Logger)
+      // createLogger returns a forwarding wrapper with the same interface as Logger
+      expect(logger).toHaveProperty('info')
+      expect(logger).toHaveProperty('debug')
+      expect(logger).toHaveProperty('warn')
+      expect(logger).toHaveProperty('error')
+      expect(logger).toHaveProperty('fatal')
       vi.restoreAllMocks()
     })
   })
@@ -171,4 +174,165 @@ describe('logger', () => {
       }
     })
   })
+})
+
+describe('setLoggerFactory', () => {
+  afterEach(() => {
+    setLoggerFactory(null)
+  })
+
+  it('should forward calls to factory-provided logger', () => {
+    const mockLogger: LoggerLike = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      fatal: vi.fn(),
+    }
+    setLoggerFactory(() => mockLogger)
+
+    const log = createLogger('test-mod')
+    log.info('some.event', { key: 'val' })
+
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'ai-lib.test-mod.some.event',
+      { key: 'val' }
+    )
+  })
+
+  it('should pass moduleName to factory', () => {
+    const factory = vi.fn().mockReturnValue({
+      debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(),
+    })
+    setLoggerFactory(factory)
+
+    const log = createLogger('my-module')
+    log.debug('ping')
+
+    expect(factory).toHaveBeenCalledWith('my-module')
+  })
+
+  it('should normalize event names with ai-lib prefix', () => {
+    const mockLogger: LoggerLike = {
+      debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(),
+    }
+    setLoggerFactory(() => mockLogger)
+
+    const log = createLogger('websocket')
+    log.info('socket.connect', { id: '1' })
+
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'ai-lib.websocket.socket.connect',
+      { id: '1' }
+    )
+  })
+
+  it('should strip module prefix to avoid double-prefixing', () => {
+    const mockLogger: LoggerLike = {
+      debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(),
+    }
+    setLoggerFactory(() => mockLogger)
+
+    const log = createLogger('websocket')
+    log.info('websocket.quality.ping_timeout')
+
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'ai-lib.websocket.quality.ping_timeout',
+      undefined
+    )
+  })
+
+  it('should pass through events already prefixed with ai-lib.{module}.', () => {
+    const mockLogger: LoggerLike = {
+      debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(),
+    }
+    setLoggerFactory(() => mockLogger)
+
+    const log = createLogger('websocket')
+    log.info('ai-lib.websocket.quality.check')
+
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'ai-lib.websocket.quality.check',
+      undefined
+    )
+  })
+
+  it('should resolve lazily - factory set after createLogger but before first log', () => {
+    const log = createLogger('lazy-mod')
+
+    const mockLogger: LoggerLike = {
+      debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(),
+    }
+    setLoggerFactory(() => mockLogger)
+
+    log.info('event.name')
+
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'ai-lib.lazy-mod.event.name',
+      undefined
+    )
+  })
+
+  it('should fall back to default Logger when no factory is set', () => {
+    const consoleSpy = vi.spyOn(console, 'info').mockReturnValue()
+    const log = createLogger('fallback-mod')
+    log.info('hello')
+
+    expect(consoleSpy).toHaveBeenCalledOnce()
+    const output = consoleSpy.mock.calls[0][0] as string
+    expect(output).toContain('[@airo/ai-lib:fallback-mod]')
+    expect(output).toContain('hello')
+
+    vi.restoreAllMocks()
+  })
+
+  it('should not normalize events when no factory is set', () => {
+    const consoleSpy = vi.spyOn(console, 'info').mockReturnValue()
+    const log = createLogger('mod')
+    log.info('raw.event.name')
+
+    const output = consoleSpy.mock.calls[0][0] as string
+    expect(output).toContain('raw.event.name')
+    expect(output).not.toContain('ai-lib.mod.')
+
+    vi.restoreAllMocks()
+  })
+
+  it('should reset factory when set to null', () => {
+    const mockLogger: LoggerLike = {
+      debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(),
+    }
+    setLoggerFactory(() => mockLogger)
+    setLoggerFactory(null)
+
+    const consoleSpy = vi.spyOn(console, 'info').mockReturnValue()
+    const log = createLogger('reset-test')
+    log.info('after-reset')
+
+    expect(mockLogger.info).not.toHaveBeenCalled()
+    expect(consoleSpy).toHaveBeenCalledOnce()
+
+    vi.restoreAllMocks()
+  })
+
+  it('should normalize all log levels', () => {
+    const mockLogger: LoggerLike = {
+      debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), fatal: vi.fn(),
+    }
+    setLoggerFactory(() => mockLogger)
+
+    const log = createLogger('mod')
+    log.debug('d')
+    log.info('i')
+    log.warn('w')
+    log.error('e')
+    log.fatal!('f')
+
+    expect(mockLogger.debug).toHaveBeenCalledWith('ai-lib.mod.d', undefined)
+    expect(mockLogger.info).toHaveBeenCalledWith('ai-lib.mod.i', undefined)
+    expect(mockLogger.warn).toHaveBeenCalledWith('ai-lib.mod.w', undefined)
+    expect(mockLogger.error).toHaveBeenCalledWith('ai-lib.mod.e', undefined)
+    expect(mockLogger.fatal).toHaveBeenCalledWith('ai-lib.mod.f', undefined)
+  })
+
 })

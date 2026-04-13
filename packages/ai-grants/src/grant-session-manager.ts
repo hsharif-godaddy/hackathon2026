@@ -1,6 +1,8 @@
 import type { CreditGrant } from '@airo/shared/grants'
 import { GrantManager } from '@airo/shared/grants'
-import { logger } from '@airo/ai-common'
+import { createLogger } from '@airo/ai-common'
+
+const logger = createLogger('ai-grants')
 
 /**
  * Special subscription IDs for non-standard billing

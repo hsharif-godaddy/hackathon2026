@@ -1,5 +1,7 @@
 import { grantSessionManager, BudgetOverride } from './grant-session-manager.js'
-import { logger, type LitellmMetadata } from '@airo/ai-common'
+import { createLogger, type LitellmMetadata } from '@airo/ai-common'
+
+const logger = createLogger('ai-grants')
 import { LlmCallSource } from '@airo/shared/grants'
 
 /**

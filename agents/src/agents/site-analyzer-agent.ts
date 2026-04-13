@@ -122,8 +122,7 @@ export async function createSiteAnalyzerAgentFactory(options?: {
   const factory = createAgentFactory()
 
   const stateManager = options?.stateManager || createSessionStateManager({
-    defaultAgentId: 'site-analyzer',
-    enableLogging: true
+    defaultAgentId: 'site-analyzer'
   })
 
   const siteAnalyzerConfig = await createSiteAnalyzerAgent()

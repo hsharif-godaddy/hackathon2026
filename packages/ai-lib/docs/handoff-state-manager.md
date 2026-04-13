@@ -5,6 +5,7 @@ The `SessionStateManager` (created via `createSessionStateManager`) provides a d
 ## Overview
 
 When agents use the handoff tool to switch control, the state manager:
+
 1. Tracks which agent is currently active for each session
 2. Records handoff history (who handed off to whom, when, and why)
 3. Automatically cleans up expired sessions
@@ -13,60 +14,57 @@ When agents use the handoff tool to switch control, the state manager:
 ## Basic Usage
 
 ```typescript
-import { 
+import {
   createSessionStateManager,
   createHandoffTool,
   createAgentFactory,
-  getModel
-} from '@airo/ai-lib'
+  getModel,
+} from "@airo/ai-lib";
 
 // Create state manager
 const stateManager = createSessionStateManager({
-  defaultAgentId: 'coordinator',
+  defaultAgentId: "coordinator",
   sessionTimeout: 30 * 60 * 1000, // 30 minutes
-  enableLogging: true
-})
+});
 
 // Create agents
-const factory = createAgentFactory()
+const factory = createAgentFactory();
 const agents = factory.defineAgents({
   coordinator: {
-    name: 'Coordinator',
-    system: 'Use handoff tool to switch to specialists',
-    model: await getModel('gpt4o'),
+    name: "Coordinator",
+    system: "Use handoff tool to switch to specialists",
+    model: await getModel("gpt4o"),
     tools: {
       handoff: createHandoffTool({
-        sourceAgentId: 'coordinator',
-        validTargets: ['developer'],
+        sourceAgentId: "coordinator",
+        validTargets: ["developer"],
         stateManager,
-        sessionId: 'user-session-123'
-      })
+        sessionId: "user-session-123",
+      }),
     },
-    handoffs: [
-      { agentName: 'developer', description: 'Development tasks' }
-    ]
+    handoffs: [{ agentName: "developer", description: "Development tasks" }],
   },
   developer: {
-    name: 'Developer',
-    system: 'Handle development tasks',
-    model: await getModel('gpt4o'),
+    name: "Developer",
+    system: "Handle development tasks",
+    model: await getModel("gpt4o"),
     tools: {},
-    handoffs: []
-  }
-})
+    handoffs: [],
+  },
+});
 
 // Initialize session
-const sessionId = 'user-session-123'
-stateManager.getOrCreateSession(sessionId, 'coordinator')
+const sessionId = "user-session-123";
+stateManager.getOrCreateSession(sessionId, "coordinator");
 
 // When agent uses handoff tool, state manager automatically tracks the switch
-const result = await agents.get('coordinator').generate(
-  'I need help with a coding task'
-)
+const result = await agents
+  .get("coordinator")
+  .generate("I need help with a coding task");
 
 // Check which agent is now active
-const currentAgent = stateManager.getCurrentAgent(sessionId)
-console.log(`Current agent: ${currentAgent}`) // 'developer'
+const currentAgent = stateManager.getCurrentAgent(sessionId);
+console.log(`Current agent: ${currentAgent}`); // 'developer'
 ```
 
 ## Configuration Options
@@ -74,24 +72,21 @@ console.log(`Current agent: ${currentAgent}`) // 'developer'
 ```typescript
 interface SessionStateManagerConfig {
   /** Default agent ID for new sessions */
-  defaultAgentId?: string
+  defaultAgentId?: string;
 
   /** Session timeout in milliseconds (default: 1 hour) */
-  sessionTimeout?: number
-
-  /** Whether to log handoff events (default: true) */
-  enableLogging?: boolean
+  sessionTimeout?: number;
 
   /** Callback when agent switches */
   onAgentSwitch?: (
     sessionId: string,
     fromAgentId: string,
     toAgentId: string,
-    prompt?: string
-  ) => void
+    prompt?: string,
+  ) => void;
 
   /** Callback when todo list is selected */
-  onTodoListSelect?: (sessionId: string, todoListId: string) => void
+  onTodoListSelect?: (sessionId: string, todoListId: string) => void;
 }
 ```
 
@@ -102,7 +97,11 @@ interface SessionStateManagerConfig {
 Switch the active agent for a session.
 
 ```typescript
-await stateManager.switchAgent('session-123', 'developer', 'User needs coding help')
+await stateManager.switchAgent(
+  "session-123",
+  "developer",
+  "User needs coding help",
+);
 // Returns: true if successful
 ```
 
@@ -111,7 +110,7 @@ await stateManager.switchAgent('session-123', 'developer', 'User needs coding he
 Get the current agent for a session.
 
 ```typescript
-const agentId = stateManager.getCurrentAgent('session-123')
+const agentId = stateManager.getCurrentAgent("session-123");
 // Returns: 'developer' or undefined
 ```
 
@@ -120,7 +119,10 @@ const agentId = stateManager.getCurrentAgent('session-123')
 Get or create a session with a default agent.
 
 ```typescript
-const currentAgent = stateManager.getOrCreateSession('session-123', 'coordinator')
+const currentAgent = stateManager.getOrCreateSession(
+  "session-123",
+  "coordinator",
+);
 // Returns: current agent ID for the session
 ```
 
@@ -129,7 +131,7 @@ const currentAgent = stateManager.getOrCreateSession('session-123', 'coordinator
 Get handoff history for a session.
 
 ```typescript
-const history = stateManager.getSessionHistory('session-123')
+const history = stateManager.getSessionHistory("session-123");
 // Returns: Array of handoff events
 // [
 //   {
@@ -146,7 +148,7 @@ const history = stateManager.getSessionHistory('session-123')
 Get all active session IDs.
 
 ```typescript
-const sessions = stateManager.getActiveSessions()
+const sessions = stateManager.getActiveSessions();
 // Returns: ['session-123', 'session-456', ...]
 ```
 
@@ -155,7 +157,7 @@ const sessions = stateManager.getActiveSessions()
 Get number of active sessions.
 
 ```typescript
-const count = stateManager.getSessionCount()
+const count = stateManager.getSessionCount();
 // Returns: 42
 ```
 
@@ -164,7 +166,7 @@ const count = stateManager.getSessionCount()
 Get statistics about the state manager.
 
 ```typescript
-const stats = stateManager.getStats()
+const stats = stateManager.getStats();
 // Returns: {
 //   totalSessions: 42,
 //   oldestSession: Date,
@@ -178,7 +180,7 @@ const stats = stateManager.getStats()
 Clear a specific session.
 
 ```typescript
-stateManager.clearSession('session-123')
+stateManager.clearSession("session-123");
 ```
 
 ### `clearAllSessions()`
@@ -186,7 +188,7 @@ stateManager.clearSession('session-123')
 Clear all sessions.
 
 ```typescript
-stateManager.clearAllSessions()
+stateManager.clearAllSessions();
 ```
 
 ### `stopCleanup()`
@@ -194,7 +196,7 @@ stateManager.clearAllSessions()
 Stop automatic cleanup of expired sessions.
 
 ```typescript
-stateManager.stopCleanup()
+stateManager.stopCleanup();
 ```
 
 ## WebSocket Integration
@@ -207,11 +209,11 @@ In a WebSocket application, you would typically:
 4. Check current agent before processing messages
 
 ```typescript
-import { createWebSocketServer } from '@airo/ai-transport'
+import { createWebSocketServer } from "@airo/ai-transport";
 
 const stateManager = createSessionStateManager({
-  defaultAgentId: 'coordinator'
-})
+  defaultAgentId: "coordinator",
+});
 
 // When creating agents for WebSocket
 const agents = factory.defineAgents({
@@ -219,24 +221,25 @@ const agents = factory.defineAgents({
     // ... config
     tools: {
       handoff: createHandoffTool({
-        sourceAgentId: 'coordinator',
-        validTargets: ['developer'],
+        sourceAgentId: "coordinator",
+        validTargets: ["developer"],
         stateManager,
-        sessionId: socket.id // Use socket ID as session ID
-      })
-    }
-  }
-})
+        sessionId: socket.id, // Use socket ID as session ID
+      }),
+    },
+  },
+});
 
 // Before processing message, check which agent should handle it
-socket.on('chat_message', async (data) => {
-  const currentAgentId = stateManager.getCurrentAgent(socket.id) || 'coordinator'
-  const agent = agents.get(currentAgentId)
-  
+socket.on("chat_message", async (data) => {
+  const currentAgentId =
+    stateManager.getCurrentAgent(socket.id) || "coordinator";
+  const agent = agents.get(currentAgentId);
+
   // Process with current agent
-  const result = await agent.generate(data.message)
-  socket.emit('response', result)
-})
+  const result = await agent.generate(data.message);
+  socket.emit("response", result);
+});
 ```
 
 ## Session Lifecycle
@@ -248,19 +251,10 @@ socket.on('chat_message', async (data) => {
 
 ## Monitoring and Debugging
 
-### Enable Logging
+### Logging
 
-```typescript
-const stateManager = createSessionStateManager({
-  enableLogging: true
-})
-
-// Logs will show:
-// Handoff: coordinator -> developer (session: session-123)
-//    Prompt: User needs coding help
-// Created new session session-456 with agent: coordinator
-// Cleaned up 3 expired sessions
-```
+Logging is always enabled. Control log output via `LOG_LEVEL` and `LOG_DOMAINS` environment variables.
+When running in the agents service, logs are routed through the structured logger via `setLoggerFactory`.
 
 ### Custom Callbacks
 
@@ -268,40 +262,42 @@ const stateManager = createSessionStateManager({
 const stateManager = createSessionStateManager({
   onAgentSwitch: (sessionId, from, to, prompt) => {
     // Log to analytics
-    analytics.track('agent_handoff', {
+    analytics.track("agent_handoff", {
       session: sessionId,
       from,
       to,
-      prompt
-    })
-    
+      prompt,
+    });
+
     // Update UI
-    notifyUser(`Switching to ${to} agent`)
-  }
-})
+    notifyUser(`Switching to ${to} agent`);
+  },
+});
 ```
 
 ### Statistics Dashboard
 
 ```typescript
 setInterval(() => {
-  const stats = stateManager.getStats()
-  console.log('📊 State Manager Stats:', {
+  const stats = stateManager.getStats();
+  console.log("📊 State Manager Stats:", {
     sessions: stats.totalSessions,
     handoffs: stats.totalHandoffs,
-    oldestSession: stats.oldestSession?.toISOString()
-  })
-}, 60000) // Every minute
+    oldestSession: stats.oldestSession?.toISOString(),
+  });
+}, 60000); // Every minute
 ```
 
 ## Production Considerations
 
 The in-memory state manager is suitable for:
+
 - ✅ Single-process applications
 - ✅ Development and testing
 - ✅ Prototyping
 
 For production multi-process/distributed systems, consider implementing a custom `HandoffStateManager` backed by:
+
 - Redis (for distributed state)
 - Database (for persistence)
 - Message queue (for event-driven architecture)
@@ -309,27 +305,27 @@ For production multi-process/distributed systems, consider implementing a custom
 ### Custom Implementation Example
 
 ```typescript
-import type { HandoffStateManager } from '@airo/ai-lib'
-import Redis from 'ioredis'
+import type { HandoffStateManager } from "@airo/ai-lib";
+import Redis from "ioredis";
 
 class RedisHandoffStateManager implements HandoffStateManager {
-  private redis: Redis
-  
+  private redis: Redis;
+
   constructor(redisUrl: string) {
-    this.redis = new Redis(redisUrl)
+    this.redis = new Redis(redisUrl);
   }
-  
+
   async switchAgent(
     sessionId: string,
     targetAgentId: string,
-    prompt?: string
+    prompt?: string,
   ): Promise<boolean> {
     await this.redis.set(
       `session:${sessionId}:agent`,
       targetAgentId,
-      'EX',
-      3600 // 1 hour expiry
-    )
+      "EX",
+      3600, // 1 hour expiry
+    );
 
     // Store history
     await this.redis.rpush(
@@ -337,20 +333,20 @@ class RedisHandoffStateManager implements HandoffStateManager {
       JSON.stringify({
         targetAgentId,
         prompt,
-        timestamp: new Date().toISOString()
-      })
-    )
-    
-    return true
+        timestamp: new Date().toISOString(),
+      }),
+    );
+
+    return true;
   }
-  
+
   async getCurrentAgent(sessionId: string): Promise<string | undefined> {
-    return await this.redis.get(`session:${sessionId}:agent`) || undefined
+    return (await this.redis.get(`session:${sessionId}:agent`)) || undefined;
   }
 }
 
 // Use custom implementation
-const stateManager = new RedisHandoffStateManager('redis://localhost:6379')
+const stateManager = new RedisHandoffStateManager("redis://localhost:6379");
 ```
 
 ## Best Practices
@@ -365,36 +361,38 @@ const stateManager = new RedisHandoffStateManager('redis://localhost:6379')
 ## Troubleshooting
 
 ### Session not found
+
 ```typescript
-const currentAgent = stateManager.getCurrentAgent('session-123')
+const currentAgent = stateManager.getCurrentAgent("session-123");
 if (!currentAgent) {
   // Session expired or never created
-  stateManager.getOrCreateSession('session-123', 'coordinator')
+  stateManager.getOrCreateSession("session-123", "coordinator");
 }
 ```
 
 ### Handoff not working
+
 ```typescript
 // Check if handoff is configured
-const coordinator = agents.get('coordinator')
-const handoffs = coordinator.getConfig().handoffs
-console.log('Available handoffs:', handoffs)
+const coordinator = agents.get("coordinator");
+const handoffs = coordinator.getConfig().handoffs;
+console.log("Available handoffs:", handoffs);
 
 // Verify state manager is passed to tool
 const tool = createHandoffTool({
-  sourceAgentId: 'coordinator',
-  validTargets: ['developer'],
+  sourceAgentId: "coordinator",
+  validTargets: ["developer"],
   stateManager, // Must be provided!
-  sessionId: 'session-123'
-})
+  sessionId: "session-123",
+});
 ```
 
 ### Memory leaks
+
 ```typescript
 // Always stop cleanup when shutting down
-process.on('SIGTERM', () => {
-  stateManager.stopCleanup()
-  stateManager.clearAllSessions()
-})
+process.on("SIGTERM", () => {
+  stateManager.stopCleanup();
+  stateManager.clearAllSessions();
+});
 ```
-

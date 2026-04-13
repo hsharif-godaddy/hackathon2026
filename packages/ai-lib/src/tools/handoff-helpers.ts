@@ -103,11 +103,12 @@ export function createHandoffTool(config: HandoffToolConfig): Tool {
       prompt: z.string().describe('Brief summary of what you completed. Do NOT add new instructions or tasks.')
     }),
     async ({ targetAgent, prompt }, context) => {
-      logger.debug(`${sourceAgentId} initiating handoff to ${targetAgent}`)
-      logger.debug(`Prompt: ${prompt}`)
-      logger.debug(`Context keys: ${context ? Object.keys(context).join(', ') : 'no context'}`)
-      logger.debug(`Context.socketId: ${(context as any)?.socketId}`)
-      logger.debug(`Context.sessionId: ${(context as any)?.sessionId}`)
+      logger.debug('handoff.begin', { sourceAgentId, targetAgent, prompt })
+      logger.debug('handoff.context', {
+        contextKeys: context ? Object.keys(context).join(', ') : 'none',
+        socketId: (context as any)?.socketId,
+        sessionId: (context as any)?.sessionId
+      })
 
       // Filter out non-serializable properties from metadata for logging
       const metadata = (context as any)?.metadata
@@ -124,14 +125,14 @@ export function createHandoffTool(config: HandoffToolConfig): Tool {
           }
           return acc
         }, {} as Record<string, any>)
-        logger.debug(`Context.metadata: ${JSON.stringify(serializableMetadata)}`)
+        logger.debug('handoff.metadata', serializableMetadata)
       } else {
-        logger.debug('Context.metadata: none')
+        logger.debug('handoff.metadata', { metadata: 'none' })
       }
 
       // Prevent self-handoff - agents cannot hand off to themselves
       if (targetAgent === sourceAgentId) {
-        logger.warn(`${sourceAgentId} attempted to hand off to itself`)
+        logger.warn('handoff.self_rejected', { sourceAgentId })
         return {
           success: false,
           error: 'Self-handoff not allowed',
@@ -157,30 +158,29 @@ export function createHandoffTool(config: HandoffToolConfig): Tool {
       let resolvedSessionId: string | undefined
       if (typeof sessionId === 'function') {
         resolvedSessionId = sessionId(context as Record<string, unknown> | undefined)
-        logger.debug(`Resolved sessionId from function: ${resolvedSessionId}`)
+        logger.debug('session.resolve', { source: 'function', resolvedSessionId })
       } else if (typeof sessionId === 'string') {
         resolvedSessionId = sessionId
-        logger.debug(`Using sessionId from config: ${resolvedSessionId}`)
+        logger.debug('session.resolve', { source: 'config', resolvedSessionId })
       } else if (context?.sessionId) {
         resolvedSessionId = context.sessionId as string
-        logger.debug(`Using context.sessionId: ${resolvedSessionId}`)
+        logger.debug('session.resolve', { source: 'context', resolvedSessionId })
       } else if (context?.metadata?.sessionId) {
         resolvedSessionId = context.metadata.sessionId as string
-        logger.debug(`Using context.metadata.sessionId: ${resolvedSessionId}`)
+        logger.debug('session.resolve', { source: 'context_metadata', resolvedSessionId })
       } else if ((context as any)?.socketId) {
         resolvedSessionId = (context as any).socketId
-        logger.debug(`Using context.socketId: ${resolvedSessionId}`)
+        logger.debug('session.resolve', { source: 'socket', resolvedSessionId })
       }
 
-      logger.debug(`Final resolved sessionId: ${resolvedSessionId}`)
-      logger.debug(`Has stateManager: ${!!stateManager}`)
+      logger.debug('session.resolved', { resolvedSessionId, hasStateManager: !!stateManager })
 
       // If state manager is provided (WebSocket integration), use it to switch agents
       if (stateManager && resolvedSessionId) {
-        logger.info(`Calling stateManager.switchAgent(${resolvedSessionId}, ${targetAgent}, ${prompt.substring(0, 50)}...)`)
+        logger.info('handoff.switch.begin', { sessionId: resolvedSessionId, targetAgent })
         try {
           const switched = await stateManager.switchAgent(resolvedSessionId, targetAgent, prompt)
-          logger.info(`stateManager.switchAgent returned: ${switched}`)
+          logger.info('handoff.switch.success', { switched, sessionId: resolvedSessionId, targetAgent })
 
           if (switched) {
             return {
@@ -200,7 +200,7 @@ export function createHandoffTool(config: HandoffToolConfig): Tool {
           }
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error)
-          logger.error(`Handoff error: ${errorMessage}`)
+          logger.error('handoff.switch.failure', { error: errorMessage, targetAgent, sessionId: resolvedSessionId })
 
           return {
             success: false,
@@ -333,7 +333,7 @@ export function createEndConversationTool(config: EndConversationToolConfig = {}
           await stateManager.switchAgent(currentSessionId, defaultAgentId)
         } catch (error) {
           // Log but don't fail - the conversation is ending anyway
-          logger.warn('Failed to reset to default agent', error)
+          logger.warn('agent.reset.failure', error)
         }
       }
 

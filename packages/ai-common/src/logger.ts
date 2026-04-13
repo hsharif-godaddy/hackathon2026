@@ -9,6 +9,18 @@
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 
 /**
+ * Minimal logger interface satisfied by both ai-common Logger and external loggers
+ * (e.g., agents service Logger). Used by setLoggerFactory to accept any compatible logger.
+ */
+export interface LoggerLike {
+  debug(message: string, data?: any): void
+  info(message: string, data?: any): void
+  warn(message: string, data?: any): void
+  error(message: string, data?: any): void
+  fatal?(message: string, data?: any): void
+}
+
+/**
  * Logger configuration
  */
 export interface LoggerConfig {
@@ -254,12 +266,78 @@ export class Logger {
 export const logger = new Logger();
 
 /**
- * Create a logger for a specific module
- * 
- * @param moduleName - Name of the module
- * @returns Logger instance
+ * Pluggable logger factory. When set, createLogger delegates to this factory
+ * instead of creating an ai-common Logger. This allows host applications
+ * (e.g., agents service) to route all ai-lib logging through their own
+ * structured logger.
  */
-export function createLogger(moduleName: string): Logger {
-  return new Logger({ prefix: `@airo/ai-lib:${moduleName}` });
+let loggerFactory: ((moduleName: string) => LoggerLike) | null = null;
+
+/**
+ * Set a custom logger factory for all future createLogger calls.
+ * Module-level loggers created before this call resolve lazily on first use,
+ * so they will pick up the factory as long as it is set before any logging occurs.
+ *
+ * @param factory - Function that returns a LoggerLike for a given module name
+ */
+export function setLoggerFactory(factory: ((moduleName: string) => LoggerLike) | null): void {
+  loggerFactory = factory;
+}
+
+/**
+ * Prefix event names with ai-lib.{moduleName}. to namespace them in Elastic.
+ * Strips the module name prefix OR the full ai-lib.{moduleName}. prefix if the
+ * event already starts with either (avoids double-prefixing).
+ */
+function normalizeEvent(moduleName: string, event: string): string {
+  const fullPrefix = `ai-lib.${moduleName}.`;
+  if (event.startsWith(fullPrefix)) return event;
+  const modulePrefix = `${moduleName}.`;
+  const stripped = event.startsWith(modulePrefix) ? event.slice(modulePrefix.length) : event;
+  return `ai-lib.${moduleName}.${stripped}`;
+}
+
+/**
+ * Create a logger for a specific module.
+ *
+ * When a logger factory has been set via setLoggerFactory, returns a thin
+ * forwarding wrapper that resolves the factory-provided logger on first use
+ * and normalizes event names to dot-delimited format with an ai-lib. prefix.
+ *
+ * When no factory is set, returns the default ai-common Logger (existing behavior).
+ *
+ * @param moduleName - Name of the module
+ * @returns Logger-compatible instance
+ */
+export function createLogger(moduleName: string): LoggerLike {
+  let delegate: LoggerLike | null = null;
+
+  // Captured at resolve-time so normalization stays consistent with the delegate,
+  // even if loggerFactory were ever reassigned after resolution.
+  let useNormalization = false;
+
+  const resolve = (): LoggerLike => {
+    if (!delegate) {
+      useNormalization = !!loggerFactory;
+      delegate = loggerFactory
+        ? loggerFactory(moduleName)
+        : new Logger({ prefix: `@airo/ai-lib:${moduleName}` });
+    }
+    return delegate;
+  };
+
+  const emit = (level: 'debug' | 'info' | 'warn' | 'error' | 'fatal', message: string, data?: any) => {
+    const d = resolve();
+    const event = useNormalization ? normalizeEvent(moduleName, message) : message;
+    d[level]?.(event, data);
+  };
+
+  return {
+    debug(message: string, data?: any) { emit('debug', message, data); },
+    info(message: string, data?: any) { emit('info', message, data); },
+    warn(message: string, data?: any) { emit('warn', message, data); },
+    error(message: string, data?: any) { emit('error', message, data); },
+    fatal(message: string, data?: any) { emit('fatal', message, data); },
+  };
 }
 

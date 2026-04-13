@@ -285,8 +285,7 @@ export async function createPagePromptAgentFactory(options?: {
   const isFirstPage = options?.isFirstPage ?? true
 
   const stateManager = options?.stateManager || createSessionStateManager({
-    defaultAgentId: 'page-prompt',
-    enableLogging: true
+    defaultAgentId: 'page-prompt'
   })
 
   const pagePromptConfig = await createPagePromptAgent(isFirstPage)

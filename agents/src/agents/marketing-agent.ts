@@ -115,8 +115,7 @@ export async function createMarketingAgentFactory(options?: {
 }) {
   const factory = createAgentFactory()
   const stateManager = options?.stateManager || createSessionStateManager({
-    defaultAgentId: 'marketing',
-    enableLogging: true
+    defaultAgentId: 'marketing'
   })
 
   const marketingConfig = await createMarketingAgent()

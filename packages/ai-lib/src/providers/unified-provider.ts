@@ -238,7 +238,7 @@ function resolveCurrentUser(metadata: LitellmMetadata): string | undefined {
 function injectLitellmMetadata(metadata: LitellmMetadata, body: Record<string, unknown>, url: string): void {
   const currentUser = resolveCurrentUser(metadata)
   body.litellm_metadata = { user: currentUser, tags: metadata.tags }
-  logger.info('litellm_metadata injected into API request', { user: currentUser, tags: metadata.tags, url })
+  logger.info('metadata.inject', { user: currentUser, tags: metadata.tags, url })
 }
 
 /**
@@ -379,10 +379,10 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
         injectLitellmMetadata(metadata, body, typeof url === 'string' ? url : url.toString())
         modifiedInit.body = JSON.stringify(body)
       } catch (error) {
-        logger.warn('Failed to inject litellm_metadata', { error: error instanceof Error ? error.message : String(error) })
+        logger.warn('metadata.inject.failure', { error: error instanceof Error ? error.message : String(error) })
       }
     } else if (!metadata && init?.body) {
-      logger.warn('No litellm_metadata in AsyncLocalStorage context - cost tracking may be incomplete', {
+      logger.warn('metadata.missing', {
         url: typeof url === 'string' ? url : url.toString()
       })
     }
@@ -450,7 +450,7 @@ function createSelectiveBetaHeaderFetch(blockedHeaders?: string[]): typeof fetch
         injectLitellmMetadata(metadata, body, typeof url === 'string' ? url : url.toString())
         modifiedInit.body = JSON.stringify(body)
       } catch (error) {
-        logger.warn('Failed to inject litellm_metadata', { error: error instanceof Error ? error.message : String(error) })
+        logger.warn('metadata.inject.failure', { error: error instanceof Error ? error.message : String(error) })
       }
     }
 
@@ -518,7 +518,7 @@ async function createOpenAIProvider(config?: ProviderConfig) {
       includeUsage: true // Include token usage in streaming responses
     }
 
-    logger.info(`Using S2S authentication with GoCode endpoint: ${openaiConfig.baseURL}`)
+    logger.info('provider.s2s.openai', { baseURL: openaiConfig.baseURL })
     return createOpenAICompatible(openaiConfig)
 
   } else {
@@ -582,7 +582,7 @@ export async function getModel(
       if (shouldUseClaudeProxy(modelName, config)) {
         // Use Claude proxy model name
         modelNameToUse = CLAUDE_PROXY_MODELS[modelName as keyof typeof CLAUDE_PROXY_MODELS]
-        logger.info(`Routing Claude model '${modelName}' through OpenAI proxy as '${modelNameToUse}'`)
+        logger.info('provider.proxy.openai', { modelName, modelNameToUse })
       } else {
         // Use regular OpenAI model mapping
         modelNameToUse = MODEL_MAPPINGS[modelName as ModelShortName] || modelName
@@ -603,7 +603,7 @@ export async function getModel(
       if (modelName in CLAUDE_PROXY_MODELS) {
         // Use Claude proxy model name for Anthropic API
         modelNameToUse = CLAUDE_PROXY_MODELS[modelName as keyof typeof CLAUDE_PROXY_MODELS]
-        logger.info(`Using Anthropic API for Claude model '${modelName}' as '${modelNameToUse}'`)
+        logger.info('provider.anthropic', { modelName, modelNameToUse })
       } else {
         // Use regular model mapping
         modelNameToUse = MODEL_MAPPINGS[modelName as ModelShortName] || modelName
@@ -701,7 +701,7 @@ async function createAnthropicProvider(config?: ProviderConfig) {
       fetch: anthropicFetch
     }
 
-    logger.info(`Using S2S authentication with GoCode endpoint (Anthropic): ${anthropicConfig.baseURL}`)
+    logger.info('provider.s2s.anthropic', { baseURL: anthropicConfig.baseURL })
     return createAnthropic(anthropicConfig)
 
   } else {
@@ -718,7 +718,7 @@ async function createAnthropicProvider(config?: ProviderConfig) {
     if (baseURL) {
       // Ensure URL ends with /v1 for Anthropic API compatibility
       anthropicConfig.baseURL = baseURL.endsWith('/v1') ? baseURL : baseURL + '/v1'
-      logger.info(`Using Anthropic proxy endpoint: ${anthropicConfig.baseURL}`)
+      logger.info('provider.proxy.anthropic', { baseURL: anthropicConfig.baseURL })
 
       // Use custom fetch to selectively block anthropic-beta headers for proxy compatibility
       anthropicConfig.fetch = anthropicFetch

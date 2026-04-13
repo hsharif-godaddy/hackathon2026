@@ -1,9 +1,15 @@
+// Route all ai-lib/ai-transport logging through the agents structured logger.
+// Module-level loggers created by createLogger() resolve lazily on first use,
+// so they pick up this factory as long as it's set before any logging occurs.
+import { Logger } from '../logging/index.js';
+import { setLoggerFactory } from '@airo/ai-common';
+setLoggerFactory((moduleName) => Logger.create({ component: `ai-lib.${moduleName}` }));
+
 // Initialize OpenTelemetry with Langfuse (imported from instrumentation.ts)
 import './instrumentation.js';
 
 // Initialize Elastic APM
 import apmAgent from 'elastic-apm-node';
-import { Logger } from '../logging/index.js';
 
 const isApmEnabled = !!(process.env.ELASTIC_APM_SECRET_TOKEN && process.env.ELASTIC_APM_SERVER_URL);
 const serviceName = 'airo-agents';

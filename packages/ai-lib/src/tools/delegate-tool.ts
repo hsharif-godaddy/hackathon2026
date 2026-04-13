@@ -40,8 +40,7 @@ export function createDelegateTool(
       const clonedContext = executionContext
         ? { ...executionContext, metadata: executionContext.metadata ? { ...executionContext.metadata } : undefined }
         : undefined
-      logger.info(`${sourceAgentId} delegating task to ${targetAgent}`)
-      logger.info(`Task: ${task}`)
+      logger.info('delegate.begin', { sourceAgentId, targetAgent, task })
 
       const handoffContext: HandoffContext = {
         task,
@@ -82,7 +81,7 @@ export function createDelegateTool(
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
-        logger.error(`Delegation error: ${errorMessage}`)
+        logger.error('delegate.failure', { error: errorMessage, sourceAgentId, targetAgent })
 
         return {
           success: false,

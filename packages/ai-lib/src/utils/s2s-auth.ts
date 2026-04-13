@@ -247,7 +247,7 @@ export async function getS2SToken(config?: S2SAuthConfig): Promise<string> {
 
       // Listen for primary region failures to capture the real error
       client.once('background_error', (primaryError: any) => {
-        logger.error('s2s.auth.token.primaryRegionFailure', {
+        logger.error('s2s.auth.token.primary_region_failure', {
           message: primaryError.message,
           code: primaryError.code,
           ssoHost: finalConfig.ssoHost,

@@ -133,7 +133,7 @@ async function generateOpenAIEmbeddings(
       }
     }
   } catch (error) {
-    logger.error('OpenAI embeddings error', error)
+    logger.error('openai.failure', error)
     throw new Error(`Failed to generate OpenAI embeddings: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
@@ -191,7 +191,7 @@ async function generateGenericEmbeddings(
       }
     }
   } catch (error) {
-    logger.error('Generic embeddings error', error)
+    logger.error('generic.failure', error)
     throw new Error(`Failed to generate embeddings: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
