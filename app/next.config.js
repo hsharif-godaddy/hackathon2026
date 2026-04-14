@@ -44,6 +44,7 @@ export default gasket.actions.getNextConfig({
       config.externals = config.externals || [];
       config.externals.push({
         '@azure/functions-core': 'commonjs @azure/functions-core',
+        '@godaddy/gd-auth-lib': 'commonjs @godaddy/gd-auth-lib',
       });
     }
 

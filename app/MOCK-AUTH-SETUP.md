@@ -24,6 +24,22 @@ This document explains how the mock authentication system works for local develo
 
 3. **Use Mock Login**: You'll see a "Mock Sign In" button instead of regular authentication.
 
+## Preview Container Auth
+
+When `AUTH_TYPE=mock` (or `none`) is set, the `local-control-plane` also reads this
+value and disables JWT authentication on preview containers. This means preview
+iframes load without requiring a valid JWT token from the app.
+
+The value is resolved in this order:
+
+1. `AUTH_TYPE` environment variable
+2. `AUTH_TYPE` key in `app/.env`
+3. Default: `jwt`
+
+**Note:** The value must be set in `app/.env` or as an environment variable.
+Setting it in `app/.env.local.dev` alone will not affect preview container auth
+because `local-control-plane` reads `app/.env` directly.
+
 ## How it Works
 
 The mock system is designed to be minimal and non-intrusive:

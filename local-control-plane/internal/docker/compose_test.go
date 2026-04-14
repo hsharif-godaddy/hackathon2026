@@ -1,6 +1,8 @@
 package docker
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -72,6 +74,7 @@ func TestGetEnvOrDefault(t *testing.T) {
 }
 
 func TestGeneratePreviewEnvironment(t *testing.T) {
+	t.Setenv("AUTH_TYPE", "jwt")
 	t.Setenv("NEXT_PUBLIC_APP_URL", "https://test.example.com")
 	t.Setenv("AGENTS_BASE_URL", "http://agents:4000")
 
@@ -84,13 +87,13 @@ func TestGeneratePreviewEnvironment(t *testing.T) {
 	env := generatePreviewEnvironment(app)
 
 	checks := map[string]string{
-		"SITE_ID":  "test123",
-		"NODE_ENV": "development",
-		"PORT":     "20010",
-		"HOST":     "127.0.0.1",
-		"DEV_SUPERVISOR_PROXY_PORT":       "5000",
-		"DEV_SUPERVISOR_USE_TCP":          "true",
-		"DEV_SUPERVISOR_TCP_PORT":         "8877",
+		"SITE_ID":                        "test123",
+		"NODE_ENV":                       "development",
+		"PORT":                           "20010",
+		"HOST":                           "127.0.0.1",
+		"DEV_SUPERVISOR_PROXY_PORT":      "5000",
+		"DEV_SUPERVISOR_USE_TCP":         "true",
+		"DEV_SUPERVISOR_TCP_PORT":        "8877",
 		"VITE_PARENT_ORIGIN":             "https://test.example.com",
 		"DEV_SUPERVISOR_AGENTS_BASE_URL": "http://agents:4000",
 		"NOMAD_TASK_NAME":                "preview",
@@ -204,5 +207,237 @@ func TestGenerateComposeFile(t *testing.T) {
 	// Volumes should reference the base path
 	if !strings.Contains(compose, "/tmp/airo-app-builder/testapp/preview:/app") {
 		t.Error("expected preview volume mount")
+	}
+}
+
+func TestReadDotenvValue(t *testing.T) {
+	t.Run("reads existing key", func(t *testing.T) {
+		f := filepath.Join(t.TempDir(), ".env")
+		if err := os.WriteFile(f, []byte("FOO=bar\nBAZ=qux\n"), 0644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		if got := readDotenvValue(f, "FOO"); got != "bar" {
+			t.Errorf("got %q, want \"bar\"", got)
+		}
+	})
+
+	t.Run("skips comment lines", func(t *testing.T) {
+		f := filepath.Join(t.TempDir(), ".env")
+		if err := os.WriteFile(f, []byte("# FOO=commented\nFOO=real\n"), 0644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		if got := readDotenvValue(f, "FOO"); got != "real" {
+			t.Errorf("got %q, want \"real\"", got)
+		}
+	})
+
+	t.Run("strips inline comments", func(t *testing.T) {
+		f := filepath.Join(t.TempDir(), ".env")
+		if err := os.WriteFile(f, []byte("FOO=bar # a comment\n"), 0644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		if got := readDotenvValue(f, "FOO"); got != "bar" {
+			t.Errorf("got %q, want \"bar\"", got)
+		}
+	})
+
+	t.Run("strips double quotes", func(t *testing.T) {
+		f := filepath.Join(t.TempDir(), ".env")
+		if err := os.WriteFile(f, []byte("FOO=\"bar\"\n"), 0644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		if got := readDotenvValue(f, "FOO"); got != "bar" {
+			t.Errorf("got %q, want \"bar\"", got)
+		}
+	})
+
+	t.Run("strips single quotes", func(t *testing.T) {
+		f := filepath.Join(t.TempDir(), ".env")
+		if err := os.WriteFile(f, []byte("FOO='bar'\n"), 0644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		if got := readDotenvValue(f, "FOO"); got != "bar" {
+			t.Errorf("got %q, want \"bar\"", got)
+		}
+	})
+
+	t.Run("returns empty for missing key", func(t *testing.T) {
+		f := filepath.Join(t.TempDir(), ".env")
+		if err := os.WriteFile(f, []byte("BAR=baz\n"), 0644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		if got := readDotenvValue(f, "MISSING"); got != "" {
+			t.Errorf("got %q, want empty string", got)
+		}
+	})
+
+	t.Run("returns empty for nonexistent file", func(t *testing.T) {
+		got := readDotenvValue("/nonexistent/path/.env", "KEY")
+		if got != "" {
+			t.Errorf("got %q, want empty string", got)
+		}
+	})
+}
+
+func TestResolveAuthType(t *testing.T) {
+	t.Run("env var takes priority", func(t *testing.T) {
+		t.Setenv("AUTH_TYPE", "mock")
+		if got := resolveAuthType(); got != "mock" {
+			t.Errorf("got %q, want \"mock\"", got)
+		}
+	})
+
+	t.Run("reads from dotenv file when env var unset", func(t *testing.T) {
+		t.Setenv("AUTH_TYPE", "")
+		dir := t.TempDir()
+		appDir := filepath.Join(dir, "app")
+		if err := os.MkdirAll(appDir, 0755); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(appDir, ".env"), []byte("AUTH_TYPE=mock\n"), 0644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		t.Setenv("PROJECT_ROOT", dir)
+		if got := resolveAuthType(); got != "mock" {
+			t.Errorf("got %q, want \"mock\"", got)
+		}
+	})
+
+	t.Run("normalizes to lowercase", func(t *testing.T) {
+		t.Setenv("AUTH_TYPE", "MOCK")
+		if got := resolveAuthType(); got != "mock" {
+			t.Errorf("got %q, want \"mock\"", got)
+		}
+	})
+
+	t.Run("defaults to jwt when no env var and no dotenv", func(t *testing.T) {
+		t.Setenv("AUTH_TYPE", "")
+		t.Setenv("PROJECT_ROOT", t.TempDir()) // empty dir, no app/.env
+		if got := resolveAuthType(); got != "jwt" {
+			t.Errorf("got %q, want \"jwt\"", got)
+		}
+	})
+}
+
+func TestGeneratePreviewEnvironmentMockAuthType(t *testing.T) {
+	t.Setenv("AUTH_TYPE", "mock")
+	t.Setenv("NEXT_PUBLIC_APP_URL", "https://test.example.com")
+	t.Setenv("AGENTS_BASE_URL", "http://agents:4000")
+
+	app := &store.App{
+		ID:             "test123",
+		PreviewPort:    5000,
+		SupervisorPort: 8877,
+	}
+	env := generatePreviewEnvironment(app)
+
+	got, ok := env["DEV_SUPERVISOR_ENABLE_JWT_AUTH"]
+	if !ok {
+		t.Fatal("missing DEV_SUPERVISOR_ENABLE_JWT_AUTH")
+	}
+	if got != "false" {
+		t.Errorf(
+			"DEV_SUPERVISOR_ENABLE_JWT_AUTH = %q, want \"false\"",
+			got,
+		)
+	}
+}
+
+func TestGeneratePreviewEnvironmentJWTAuthType(t *testing.T) {
+	t.Setenv("AUTH_TYPE", "jwt")
+	t.Setenv("NEXT_PUBLIC_APP_URL", "https://test.example.com")
+	t.Setenv("AGENTS_BASE_URL", "http://agents:4000")
+
+	app := &store.App{
+		ID:             "test123",
+		PreviewPort:    5000,
+		SupervisorPort: 8877,
+	}
+	env := generatePreviewEnvironment(app)
+
+	got, ok := env["DEV_SUPERVISOR_ENABLE_JWT_AUTH"]
+	if !ok {
+		t.Fatal("missing DEV_SUPERVISOR_ENABLE_JWT_AUTH")
+	}
+	if got != "true" {
+		t.Errorf(
+			"DEV_SUPERVISOR_ENABLE_JWT_AUTH = %q, want \"true\"",
+			got,
+		)
+	}
+
+	present := []string{
+		"DEV_SUPERVISOR_JWKS_URL",
+		"DEV_SUPERVISOR_JWKS_SKIP_TLS_VERIFY",
+		"DEV_SUPERVISOR_JWT_ISSUER",
+		"DEV_SUPERVISOR_JWT_AUDIENCE",
+		"DEV_SUPERVISOR_JWT_EXCLUDED_PATHS",
+		"DEV_SUPERVISOR_ENABLE_SHARE_TOKENS",
+		"DEV_SUPERVISOR_AGENTS_BASE_URL",
+	}
+	for _, key := range present {
+		if _, ok := env[key]; !ok {
+			t.Errorf("key %q must be present in JWT mode", key)
+		}
+	}
+}
+
+func TestGeneratePreviewEnvironmentNoneAuthType(t *testing.T) {
+	t.Setenv("AUTH_TYPE", "none")
+	t.Setenv("NEXT_PUBLIC_APP_URL", "https://test.example.com")
+
+	app := &store.App{
+		ID:             "test123",
+		PreviewPort:    5000,
+		SupervisorPort: 8877,
+	}
+	env := generatePreviewEnvironment(app)
+
+	got, ok := env["DEV_SUPERVISOR_ENABLE_JWT_AUTH"]
+	if !ok {
+		t.Fatal("missing DEV_SUPERVISOR_ENABLE_JWT_AUTH")
+	}
+	if got != "false" {
+		t.Errorf(
+			"DEV_SUPERVISOR_ENABLE_JWT_AUTH = %q, want \"false\"",
+			got,
+		)
+	}
+
+	absent := []string{
+		"DEV_SUPERVISOR_JWKS_URL",
+		"DEV_SUPERVISOR_JWKS_SKIP_TLS_VERIFY",
+		"DEV_SUPERVISOR_JWT_ISSUER",
+		"DEV_SUPERVISOR_JWT_AUDIENCE",
+		"DEV_SUPERVISOR_JWT_EXCLUDED_PATHS",
+		"DEV_SUPERVISOR_ENABLE_SHARE_TOKENS",
+		"DEV_SUPERVISOR_AGENTS_BASE_URL",
+	}
+	for _, key := range absent {
+		if _, ok := env[key]; ok {
+			t.Errorf("key %q must be absent in none mode", key)
+		}
+	}
+}
+
+func TestGeneratePreviewEnvironmentJWKSOmittedInMockMode(t *testing.T) {
+	t.Setenv("AUTH_TYPE", "mock")
+
+	app := &store.App{ID: "test123"}
+	env := generatePreviewEnvironment(app)
+
+	absent := []string{
+		"DEV_SUPERVISOR_JWKS_URL",
+		"DEV_SUPERVISOR_JWKS_SKIP_TLS_VERIFY",
+		"DEV_SUPERVISOR_JWT_ISSUER",
+		"DEV_SUPERVISOR_JWT_AUDIENCE",
+		"DEV_SUPERVISOR_JWT_EXCLUDED_PATHS",
+		"DEV_SUPERVISOR_ENABLE_SHARE_TOKENS",
+		"DEV_SUPERVISOR_AGENTS_BASE_URL",
+	}
+	for _, key := range absent {
+		if _, ok := env[key]; ok {
+			t.Errorf("key %q must be absent in mock mode", key)
+		}
 	}
 }

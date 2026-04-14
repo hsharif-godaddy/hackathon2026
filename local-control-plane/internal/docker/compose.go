@@ -3,6 +3,7 @@ package docker
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -161,8 +162,15 @@ func generatePublishService(app *store.App, basePath string) string {
 }
 
 func generatePreviewEnvironment(app *store.App) map[string]string {
-	appURL := getEnvOrDefault("NEXT_PUBLIC_APP_URL", "https://local.gasket.dev-godaddy.com:8443")
-	agentsBaseURL := getEnvOrDefault("AGENTS_BASE_URL", "http://host.docker.internal:4000")
+	appURL := getEnvOrDefault(
+		"NEXT_PUBLIC_APP_URL",
+		"https://local.gasket.dev-godaddy.com:8443",
+	)
+	agentsBaseURL := getEnvOrDefault(
+		"AGENTS_BASE_URL",
+		"http://host.docker.internal:4000",
+	)
+	authType := resolveAuthType()
 
 	env := map[string]string{
 		"HOST":     "127.0.0.1",
@@ -189,39 +197,29 @@ func generatePreviewEnvironment(app *store.App) map[string]string {
 		"VITE_PARENT_ORIGIN": appURL,
 
 		// HTTP proxy
-		"DEV_SUPERVISOR_ENABLE_PROXY":       "true",
-		"DEV_SUPERVISOR_PROXY_PORT":         fmt.Sprintf("%d", app.PreviewPort),
-		"DEV_SUPERVISOR_PROXY_TARGET_HOST":  "localhost",
-		"DEV_SUPERVISOR_PROXY_TARGET_PORT":  fmt.Sprintf("%d", previewInternalPort),
-		"DEV_SUPERVISOR_PROXY_CERT_PATH":    "/app/.ssl/cert.pem",
-		"DEV_SUPERVISOR_PROXY_KEY_PATH":     "/app/.ssl/key.pem",
-		"DEV_SUPERVISOR_LOG_LEVEL":          "debug",
-		"DEV_SUPERVISOR_PROXY_MAX_RETRIES":  "10",
+		"DEV_SUPERVISOR_ENABLE_PROXY":      "true",
+		"DEV_SUPERVISOR_PROXY_PORT":        fmt.Sprintf("%d", app.PreviewPort),
+		"DEV_SUPERVISOR_PROXY_TARGET_HOST": "localhost",
+		"DEV_SUPERVISOR_PROXY_TARGET_PORT": fmt.Sprintf(
+			"%d", previewInternalPort,
+		),
+		"DEV_SUPERVISOR_PROXY_CERT_PATH":          "/app/.ssl/cert.pem",
+		"DEV_SUPERVISOR_PROXY_KEY_PATH":           "/app/.ssl/key.pem",
+		"DEV_SUPERVISOR_LOG_LEVEL":                "debug",
+		"DEV_SUPERVISOR_PROXY_MAX_RETRIES":        "10",
 		"DEV_SUPERVISOR_PROXY_INITIAL_BACKOFF_MS": "200",
 		"DEV_SUPERVISOR_PROXY_MAX_BACKOFF_MS":     "5000",
 
 		// Go memory limit
 		"GOMEMLIMIT": fmt.Sprintf("%dMiB", goMemLimitMB),
 
-		// JWT auth
-		"DEV_SUPERVISOR_ENABLE_JWT_AUTH":         "true",
-		"DEV_SUPERVISOR_JWKS_URL":               appURL + "/.well-known/jwks.json",
-		"DEV_SUPERVISOR_JWKS_SKIP_TLS_VERIFY":   "true",
-		"DEV_SUPERVISOR_JWT_ISSUER":             "airo-app",
-		"DEV_SUPERVISOR_JWT_AUDIENCE":           "agents-service",
-		"DEV_SUPERVISOR_JWT_EXCLUDED_PATHS":     "/airo/health",
-
-		// Share tokens
-		"DEV_SUPERVISOR_ENABLE_SHARE_TOKENS": "true",
-		"DEV_SUPERVISOR_AGENTS_BASE_URL":     agentsBaseURL,
-
-		// Site ID (same as app id); also read by Vite client when envPrefix includes SITE_
+		// Site ID (same as app id); also read by Vite client
 		"SITE_ID": app.ID,
 
 		// Nomad compatibility
-		"NOMAD_ALLOC_DIR":  "/alloc",
-		"NOMAD_TASK_DIR":   "/local",
-		"NOMAD_TASK_NAME":  "preview",
+		"NOMAD_ALLOC_DIR": "/alloc",
+		"NOMAD_TASK_DIR":  "/local",
+		"NOMAD_TASK_NAME": "preview",
 
 		// Start-on-request
 		"DEV_SUPERVISOR_ENABLE_START_ON_REQUEST": "true",
@@ -229,13 +227,26 @@ func generatePreviewEnvironment(app *store.App) map[string]string {
 		"DEV_SUPERVISOR_IDLE_CHECK_INTERVAL":     "30s",
 
 		// Mode-based startup
-		"CUSTOMER_APP_DIR":                    "/app",
-		"BASE_APP_DIR":                        "/app-template",
-		"DEV_SUPERVISOR_SETUP_SCRIPT":         "/management-scripts/nomad_setup.sh",
-		"DEV_SUPERVISOR_DEFER_RESTART_SETUP":  "true",
+		"CUSTOMER_APP_DIR":                   "/app",
+		"BASE_APP_DIR":                       "/app-template",
+		"DEV_SUPERVISOR_SETUP_SCRIPT":        "/management-scripts/nomad_setup.sh",
+		"DEV_SUPERVISOR_DEFER_RESTART_SETUP": "true",
 
 		// Persistent assets mount location (matches container volume mount)
 		"SHARED_STORAGE_DIR": "/shared-storage",
+	}
+
+	if authType == "mock" || authType == "none" {
+		env["DEV_SUPERVISOR_ENABLE_JWT_AUTH"] = "false"
+	} else {
+		env["DEV_SUPERVISOR_ENABLE_JWT_AUTH"] = "true"
+		env["DEV_SUPERVISOR_JWKS_URL"] = appURL + "/.well-known/jwks.json"
+		env["DEV_SUPERVISOR_JWKS_SKIP_TLS_VERIFY"] = "true"
+		env["DEV_SUPERVISOR_JWT_ISSUER"] = "airo-app"
+		env["DEV_SUPERVISOR_JWT_AUDIENCE"] = "agents-service"
+		env["DEV_SUPERVISOR_JWT_EXCLUDED_PATHS"] = "/airo/health"
+		env["DEV_SUPERVISOR_ENABLE_SHARE_TOKENS"] = "true"
+		env["DEV_SUPERVISOR_AGENTS_BASE_URL"] = agentsBaseURL
 	}
 
 	if v := os.Getenv("GODADDY_API_BASE_URL"); v != "" {
@@ -247,16 +258,16 @@ func generatePreviewEnvironment(app *store.App) map[string]string {
 
 func generatePublishEnvironment(app *store.App) map[string]string {
 	env := map[string]string{
-		"HOST":           "127.0.0.1",
-		"NODE_ENV":       "production",
-		"PORT":           fmt.Sprintf("%d", publishInternalPort),
-		"DIST_DIR":       "/dist",
-		"NOMAD_ALLOC_DIR": "/alloc",
-		"NOMAD_TASK_DIR":  "/local",
-		"NOMAD_TASK_NAME": "publish",
-		"CUSTOMER_APP_DIR":           "",
+		"HOST":                        "127.0.0.1",
+		"NODE_ENV":                    "production",
+		"PORT":                        fmt.Sprintf("%d", publishInternalPort),
+		"DIST_DIR":                    "/dist",
+		"NOMAD_ALLOC_DIR":             "/alloc",
+		"NOMAD_TASK_DIR":              "/local",
+		"NOMAD_TASK_NAME":             "publish",
+		"CUSTOMER_APP_DIR":            "",
 		"DEV_SUPERVISOR_SETUP_SCRIPT": "",
-		"GOMEMLIMIT":     fmt.Sprintf("%dMiB", goMemLimitMB),
+		"GOMEMLIMIT":                  fmt.Sprintf("%dMiB", goMemLimitMB),
 
 		// Persistent assets mount location (matches container volume mount)
 		"SHARED_STORAGE_DIR": "/shared-storage",
@@ -317,4 +328,50 @@ func getEnvOrDefault(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// readDotenvValue parses a single key from a dotenv file.
+// Lines starting with '#' are skipped. Returns "" if not found
+// or if the file cannot be read.
+func readDotenvValue(filePath, key string) string {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return ""
+	}
+	prefix := key + "="
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.HasPrefix(line, prefix) {
+			val := strings.TrimPrefix(line, prefix)
+			if idx := strings.Index(val, " #"); idx != -1 {
+				val = val[:idx]
+			}
+			val = strings.Trim(val, `"'`)
+			return strings.TrimSpace(val)
+		}
+	}
+	return ""
+}
+
+// resolveAuthType returns the auth type for preview containers.
+// Resolution order:
+//  1. AUTH_TYPE env var
+//  2. AUTH_TYPE key in {PROJECT_ROOT}/app/.env
+//  3. Default: "jwt"
+func resolveAuthType() string {
+	if v := os.Getenv("AUTH_TYPE"); v != "" {
+		return strings.ToLower(strings.TrimSpace(v))
+	}
+	projectRoot := os.Getenv("PROJECT_ROOT")
+	if projectRoot == "" {
+		projectRoot = ".."
+	}
+	dotenvPath := filepath.Join(projectRoot, "app", ".env")
+	if v := readDotenvValue(dotenvPath, "AUTH_TYPE"); v != "" {
+		return strings.ToLower(strings.TrimSpace(v))
+	}
+	return "jwt"
 }
