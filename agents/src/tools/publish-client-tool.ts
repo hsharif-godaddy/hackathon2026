@@ -45,7 +45,8 @@ export async function executePublish(
       params: {
         appId,
       },
-      timeoutMs: 120000, // 2 minutes - publishing can take a while
+      // Archive/build + wait for mgmt-airo terminal deployment (up to 5m) — must exceed browser publishAction
+      timeoutMs: 420000,
     })
 
     if (!clientResult.success) {

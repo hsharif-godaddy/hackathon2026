@@ -14,7 +14,7 @@ import {
 } from '@/hooks/useAppDetails'
 import { appFetch } from '@/lib/gasket-config'
 import { regenerateToken } from '@/lib/jwt-regeneration'
-import type { AiroSubscription } from '@/lib/mgmt-airo/types'
+import { type AiroSubscription,DeploymentStatus } from '@/lib/mgmt-airo/types'
 import { ClientPaywallProvider } from '@/lib/paywall/client-provider'
 import { checkPaywallEligibility, PaywallAction } from '@/lib/paywall/core'
 import { PAYWALL_ITC, PaywallDenialReason } from '@/lib/paywall/shared'
@@ -28,6 +28,41 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { logAiroHQEvent } from '@/utils/instrumentation'
 import { hasBeenPublished } from '@/utils/site'
 import type { ClientActionExecutor } from './types'
+
+const MAX_PUBLISH_WAIT_MS = 5 * 60 * 1000;
+
+/**
+ * Subscribes to useDevelopPageStore and resolves when the existing
+ * useDeploymentsQuery polling detects a terminal deployment status
+ * (signaled by deploymentInProgressId being cleared to null).
+ *
+ * @throws Error if deployment fails or the wait exceeds MAX_PUBLISH_WAIT_MS
+ */
+function waitForPublishResult(appId: string): Promise<DeploymentStatus> {
+  return new Promise(function awaitTerminalStatus(resolve, reject) {
+    const timeout = setTimeout(function handleTimeout() {
+      unsubscribe();
+      logger.warn('publish-action.deployment-wait.timeout', { appId, elapsedMs: MAX_PUBLISH_WAIT_MS });
+      reject(new Error(
+        'Deployment did not reach a finished state within the time limit. Check the Publish panel or try again.',
+      ));
+    }, MAX_PUBLISH_WAIT_MS);
+
+    const unsubscribe = useDevelopPageStore.subscribe(function checkPublishState(state) {
+      const publishState = state.publishStates[appId];
+      if (!publishState || publishState.deploymentInProgressId !== null) return;
+
+      clearTimeout(timeout);
+      unsubscribe();
+
+      if (publishState.publishError) {
+        reject(new Error('Deployment failed. Check the Publish panel for details.'));
+      } else {
+        resolve(DeploymentStatus.DEPLOYED);
+      }
+    });
+  });
+}
 
 export const publishAction: ClientActionExecutor = async (params) => {
   const { appId } = params
@@ -418,6 +453,9 @@ export const publishAction: ClientActionExecutor = async (params) => {
         appId,
         deploymentId: result.deployment.deploymentId,
       })
+
+      const finalDeploymentStatus = await waitForPublishResult(appId)
+      result.deployment.status = finalDeploymentStatus
     } else {
       // No deployment tracking available (local dev or deployment creation failure),
       // show success immediately instead of polling

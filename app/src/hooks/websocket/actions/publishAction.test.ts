@@ -25,6 +25,7 @@ vi.mock('@/services/AppService', () => ({
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: {
     getState: vi.fn(),
+    subscribe: vi.fn(),
   },
 }))
 
@@ -75,6 +76,7 @@ import { getQueryClient } from '@/components/providers/QueryClientProvider'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
 import { appFetch } from '@/lib/gasket-config'
 import { regenerateToken } from '@/lib/jwt-regeneration'
+import { DeploymentStatus } from '@/lib/mgmt-airo/types'
 import { checkPaywallEligibility } from '@/lib/paywall/core'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -186,6 +188,23 @@ describe('publishAction', () => {
 
     // Default analytics logging - mock to return a function
     vi.mocked(logAiroHQEvent).mockReturnValue(() => {})
+
+    // Default: simulate successful deployment completion via store subscription.
+    // useDeploymentsQuery already polls mgmt-airo; publishAction subscribes to the
+    // store and resolves when deploymentInProgressId is cleared.
+    vi.mocked(useDevelopPageStore.subscribe).mockImplementation((callback: any) => {
+      Promise.resolve().then(() => {
+        callback({
+          publishStates: {
+            'app-123': {
+              deploymentInProgressId: null,
+              publishError: false,
+            },
+          },
+        });
+      });
+      return vi.fn();
+    })
   })
 
   describe('parameter validation', () => {
@@ -629,11 +648,12 @@ describe('publishAction', () => {
 
       const result = await publishAction(params, context)
 
+      expect(useDevelopPageStore.subscribe).toHaveBeenCalled()
       expect(result).toEqual({
         commitHash: 'abc123',
         archivePath: '/path/to/archive',
         deploymentId: 'deploy-456',
-        deploymentStatus: 'in_progress',
+        deploymentStatus: DeploymentStatus.DEPLOYED,
         deploymentMessage: 'Deploying...',
       })
     })
@@ -1126,6 +1146,101 @@ describe('publishAction', () => {
       // Should not throw - continues despite query error
       await expect(publishAction(params, context)).resolves.toBeDefined()
     })
+
+    it('should reject when deployment wait reports failed', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      vi.mocked(useDevelopPageStore.subscribe).mockImplementation((callback: any) => {
+        Promise.resolve().then(() => {
+          callback({
+            publishStates: {
+              'app-123': {
+                deploymentInProgressId: null,
+                publishError: true,
+              },
+            },
+          });
+        });
+        return vi.fn();
+      })
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          commitHash: 'abc123',
+          deployment: { deploymentId: 'deploy-456', status: 'deploying' },
+        }),
+      } as Response)
+
+      vi.mocked(useDevelopPageStore.getState).mockReturnValue({
+        ...mockStoreActions,
+        publishStates: {
+          'app-123': {
+            showPaywallModal: false,
+            isPublishing: false,
+            publishError: false,
+          },
+        },
+      })
+
+      await expect(publishAction(params, context)).rejects.toThrow(
+        'Deployment failed. Check the Publish panel for details.'
+      )
+
+      expect(mockStoreActions.setPublishError).toHaveBeenCalledWith('app-123', true)
+      expect(mockStoreActions.setIsPublishing).toHaveBeenCalledWith('app-123', false)
+    })
+
+    it('should reject when deployment wait times out', async () => {
+      vi.useFakeTimers()
+
+      try {
+        const context = createMockMessageContext()
+        const params = { appId: 'app-123', commitHash: 'abc123' }
+
+        // Subscribe never fires - simulates deployment that never completes
+        vi.mocked(useDevelopPageStore.subscribe).mockReturnValue(vi.fn())
+
+        vi.mocked(global.fetch).mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            commitHash: 'abc123',
+            deployment: { deploymentId: 'deploy-456' },
+          }),
+        } as Response)
+
+        vi.mocked(useDevelopPageStore.getState).mockReturnValue({
+          ...mockStoreActions,
+          publishStates: {
+            'app-123': {
+              showPaywallModal: false,
+              isPublishing: false,
+              publishError: false,
+            },
+          },
+        })
+
+        const promise = publishAction(params, context)
+        // Attach rejection handler early to prevent Node.js unhandled-rejection
+        // warning during timer advancement (the assertion below still observes
+        // the original rejection).
+        promise.catch(() => {})
+
+        // Flush microtasks so publishAction reaches waitForPublishResult
+        await vi.advanceTimersByTimeAsync(0)
+        // Advance past the 5-minute timeout
+        await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1)
+
+        await expect(promise).rejects.toThrow(
+          'Deployment did not reach a finished state within the time limit. Check the Publish panel or try again.'
+        )
+
+        expect(mockStoreActions.setPublishError).toHaveBeenCalledWith('app-123', true)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
   })
 
   describe('analytics tracking', () => {
@@ -1319,11 +1434,12 @@ describe('publishAction', () => {
       )
 
       // Verify result
+      expect(useDevelopPageStore.subscribe).toHaveBeenCalled()
       expect(result).toEqual({
         commitHash: 'fetched-hash',
         archivePath: '/archive/path',
         deploymentId: 'deploy-789',
-        deploymentStatus: 'in_progress',
+        deploymentStatus: DeploymentStatus.DEPLOYED,
         deploymentMessage: 'Deploying to production',
       })
     })

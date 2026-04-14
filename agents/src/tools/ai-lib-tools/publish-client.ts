@@ -57,7 +57,10 @@ AFTER SUCCESSFUL PUBLISH:
 - If NO custom domain exists and ENABLE_DOMAIN_ATTACH is enabled, offer "Add a custom domain" as a next step using suggestedResponse
 - If custom domain exists, skip domain suggestion and offer other next steps
 
-IMPORTANT: Always call publishStatus after this tool to verify the app started successfully.`,
+DIAGNOSTICS (publishStatus):
+- This tool waits for deployment to finish and returns errors directly.
+- On failure: call publishStatus to retrieve production logs and diagnose the issue.
+- On success: publishStatus is optional — only use if the user asks about production health or logs.`,
   z.object({
     commitHash: z
       .string()
@@ -290,7 +293,7 @@ IMPORTANT: Always call publishStatus after this tool to verify the app started s
       }
     }
 
-    message += '\n\nUse publishStatus to verify the app started successfully.'
+    message += '\n\nYou can call publishStatus if the user wants production logs or health details (optional).'
 
     return {
       success: true,
