@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/airo-ai-builder/local-control-plane/internal/auth"
 	"github.com/airo-ai-builder/local-control-plane/internal/docker"
@@ -17,6 +18,11 @@ type Server struct {
 	DockerManager *docker.Manager
 	TemplateSetup *setup.TemplateSetup
 	JWT           *auth.JWTService
+
+	// retryDelay returns how long to wait before the given attempt (1-indexed).
+	// Defaults to exponential backoff (registerBaseDelay..registerMaxDelay).
+	// Override in tests to eliminate real delays.
+	retryDelay func(attempt int) time.Duration
 }
 
 func NewRouter(db *store.DB, jwtService *auth.JWTService) *mux.Router {

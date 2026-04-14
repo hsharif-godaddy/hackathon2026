@@ -2,11 +2,14 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -22,6 +25,12 @@ import (
 const (
 	previewReadyTimeout      = 45 * time.Second
 	previewReadyPollInterval = 500 * time.Millisecond
+
+	registerMaxAttempts     = 5
+	registerBaseDelay      = 2 * time.Second
+	registerMaxDelay       = 15 * time.Second
+	registerHTTPTimeout    = 30 * time.Second
+	registerOverallTimeout = 3 * time.Minute
 )
 
 var previewReadyHTTPClient = &http.Client{
@@ -582,7 +591,9 @@ func (s *Server) provisionApp(app *store.App) error {
 	if err == nil {
 		s.seedSystemSecrets(app.ID, dbCreds)
 	}
-	s.registerWithAgent(app)
+	if err := s.registerWithAgent(app); err != nil {
+		return fmt.Errorf("register with agent: %w", err)
+	}
 
 	if err := s.DockerManager.Up(app); err != nil {
 		return fmt.Errorf("docker up: %w", err)
@@ -640,7 +651,10 @@ func waitForHTTPSReady(port int, variant string) error {
 	return fmt.Errorf("%s at %s not ready: %w", variant, healthURL, lastErr)
 }
 
-func (s *Server) registerWithAgent(app *store.App) {
+func (s *Server) registerWithAgent(app *store.App) error {
+	ctx, cancel := context.WithTimeout(context.Background(), registerOverallTimeout)
+	defer cancel()
+
 	agentsURL := os.Getenv("AGENTS_BASE_URL")
 	if agentsURL == "" {
 		agentsURL = "http://localhost:4000"
@@ -661,41 +675,97 @@ func (s *Server) registerWithAgent(app *store.App) {
 		payload["publishSupervisorPath"] = fmt.Sprintf("tcp://localhost:%d", app.PublishSupervisorPort)
 	}
 
-	body, _ := json.Marshal(payload)
-
-	req, err := http.NewRequest("POST", agentsURL+"/apps/register", bytes.NewReader(body))
+	body, err := json.Marshal(payload)
 	if err != nil {
-		slog.Warn("agent.register.failed", "app_id", app.ID, "error", err)
-		return
+		return fmt.Errorf("marshal payload: %w", err)
+	}
+
+	client := &http.Client{Timeout: registerHTTPTimeout}
+	var lastErr error
+
+	for attempt := 1; attempt <= registerMaxAttempts; attempt++ {
+		lastErr = s.attemptRegister(ctx, client, agentsURL+"/apps/register", body, app.ID)
+		if lastErr == nil {
+			slog.Info("agent.register.success", "app_id", app.ID, "attempt", attempt)
+			return nil
+		}
+
+		if ctx.Err() != nil {
+			return fmt.Errorf("agent registration canceled after %d attempts: %w", attempt, ctx.Err())
+		}
+
+		var connErr *connectionError
+		if errors.As(lastErr, &connErr) {
+			return lastErr
+		}
+
+		if attempt < registerMaxAttempts {
+			delay := s.backoffRetryDelay(attempt)
+			slog.Warn("agent.register.retrying", "app_id", app.ID, "attempt", attempt,
+				"error", lastErr, "retry_in", delay)
+
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return fmt.Errorf("agent registration canceled during backoff: %w", ctx.Err())
+			}
+		}
+	}
+
+	return fmt.Errorf("agent registration failed after %d attempts: %w", registerMaxAttempts, lastErr)
+}
+
+func (s *Server) backoffRetryDelay(attempt int) time.Duration {
+	if s.retryDelay != nil {
+		return s.retryDelay(attempt)
+	}
+	delay := registerBaseDelay * time.Duration(1<<(attempt-1))
+	if delay > registerMaxDelay {
+		delay = registerMaxDelay
+	}
+	return delay
+}
+
+type connectionError struct {
+	err error
+}
+
+func (e *connectionError) Error() string { return e.err.Error() }
+func (e *connectionError) Unwrap() error { return e.err }
+
+func (s *Server) attemptRegister(ctx context.Context, client *http.Client, url string, body []byte, appID string) error {
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	if s.JWT != nil {
-		token, err := s.JWT.Mint(app.ID)
+		token, err := s.JWT.Mint(appID)
 		if err != nil {
-			slog.Error("agent.register.jwt_mint_failed", "app_id", app.ID, "error", err)
-			return
+			return fmt.Errorf("jwt mint: %w", err)
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
-		slog.Warn("agent.register.failed", "app_id", app.ID, "error", err)
-		return
+		var opErr *net.OpError
+		if errors.As(err, &opErr) {
+			return &connectionError{err: fmt.Errorf("connection failed (VPN? agents running?): %w", err)}
+		}
+		return fmt.Errorf("http request: %w", err)
 	}
 	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode == 401 {
-		slog.Error("agent.register.auth_failed", "app_id", app.ID,
-			"hint", "JWT rejected by agent. Verify JWKS_URL in agents/.env serves the matching public key.")
-		return
+		return fmt.Errorf("auth failed (HTTP 401) — verify JWKS_URL in agents/.env serves the matching public key")
 	}
 
 	if resp.StatusCode >= 300 {
-		slog.Warn("agent.register.unexpected_status", "app_id", app.ID, "status", resp.StatusCode)
-		return
+		return fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
 
-	slog.Info("agent.register.success", "app_id", app.ID)
+	return nil
 }
