@@ -37,7 +37,7 @@ print_header() {
     echo ""
 }
 
-# Detect WSL2 environment (matches pattern in scripts/trust-dev-ca.sh)
+# Detect WSL2 environment
 is_wsl2() {
     [ -d "/mnt/c" ] && command -v powershell.exe &> /dev/null
 }
@@ -265,25 +265,6 @@ check_hosts_file() {
     fi
 }
 
-# Check mkcert installation
-check_mkcert() {
-    if is_wsl2; then
-        print_status "mkcert check skipped (WSL2 — certificates managed by Windows)"
-        return 0
-    fi
-
-    print_info "Checking mkcert installation..."
-
-    if command -v mkcert &> /dev/null; then
-        MKCERT_VERSION=$(mkcert -version 2>&1 | head -n1)
-        print_status "mkcert is installed ($MKCERT_VERSION)"
-        return 0
-    else
-        print_warning "mkcert is not installed (recommended for HTTPS)"
-        show_mkcert_install_instructions
-        return 1
-    fi
-}
 
 # Check direnv installation
 check_direnv() {
@@ -415,47 +396,6 @@ show_go_install_instructions() {
     echo ""
 }
 
-# Show mkcert installation instructions
-show_mkcert_install_instructions() {
-    echo ""
-    print_warning "mkcert installation recommended for HTTPS development"
-    echo ""
-    print_info "mkcert creates locally-trusted development certificates"
-    print_info "This enables HTTPS without browser warnings during development"
-    echo ""
-    echo "For macOS:"
-    echo ""
-    echo "  # Using Homebrew"
-    echo "  brew install mkcert"
-    echo "  mkcert -install"
-    echo ""
-    echo "For Ubuntu/Debian:"
-    echo ""
-    echo "  # Install certutil (required by mkcert)"
-    echo "  sudo apt update"
-    echo "  sudo apt install -y libnss3-tools"
-    echo ""
-    echo "  # Download and install mkcert"
-    echo "  curl -JLO \"https://dl.filippo.io/mkcert/latest?for=linux/amd64\""
-    echo "  chmod +x mkcert-v*-linux-amd64"
-    echo "  sudo mv mkcert-v*-linux-amd64 /usr/local/bin/mkcert"
-    echo ""
-    echo "  # Install local CA"
-    echo "  mkcert -install"
-    echo ""
-    print_warning "If Chrome still shows certificate warnings after installation:"
-    echo ""
-    echo "  1. Go to chrome://certificate-manager/localcerts/usercerts"
-    echo "  2. Click on 'Import on Trust Certificates'"
-    echo "  3. Select airo-app-builder/.dev-ca/ca-cert.pem"
-    echo "     (You might need to press Command + Shift + . to show the .dev-ca directory)"
-    echo ""
-    print_info "Note: Without mkcert, the system will fall back to OpenSSL self-signed certificates"
-    print_info "Self-signed certificates work but will show browser warnings"
-    echo ""
-    print_info "Learn more at: https://github.com/FiloSottile/mkcert"
-    echo ""
-}
 
 # Show direnv installation instructions
 show_direnv_install_instructions() {
@@ -540,10 +480,6 @@ main() {
             echo ""
         fi
     done
-
-    # Optional — doesn't bail
-    check_mkcert
-    echo ""
 
     if [ "$integrated_mode" = false ]; then
         echo ""

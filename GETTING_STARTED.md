@@ -25,8 +25,8 @@ pnpm run dev
 
 This launches the **Dev Runner** TUI, which runs preflight checks on startup and offers to auto-fix any issues inline:
 
-1. **Tools** — Verifies Node.js, pnpm, Go, make, Docker, AWS CLI v2, mkcert, Artifactory auth
-2. **Environment** — Checks /etc/hosts, AWS SSO session, .env files, JWT keys, TLS certificates, S2S certs, Commerce OAuth, Getty proxy, KnowB, Design RAG
+1. **Tools** — Verifies Node.js, pnpm, Go, make, Docker, AWS CLI v2, Artifactory auth
+2. **Environment** — Checks /etc/hosts, AWS SSO session, .env files, JWT keys, Gasket dev certs, S2S certs, Commerce OAuth, Getty proxy, KnowB, Design RAG
 3. **Services** — Ensures required ports are free and MySQL is running
 
 If anything fails or warns, you'll see a dashboard with a fix selector — choose what to fix and the TUI handles it (generates .env files, runs `aws sso login`, creates certs, starts containers, etc.). On subsequent runs, all checks pass in ~2 seconds and auto-advance to launching services.
@@ -271,20 +271,9 @@ The grant system is always-on (the `app-builder-grants` feature flag OFF branche
 - You only need to update `.env.local` to change which SSO system you authenticate with.
 - **No need to regenerate apps when switching environments** - the same app works in dev, test, and prod!
 
-**Generated App Certificate Warnings (Dev):**
+**Generated App Certificates (Dev):**
 
-Generated apps run on `https://localhost:5XXX` with certificates signed by a local development CA.
-
-**Recommended Solution: Trust the Development CA** (is done during the full setup or can be done using the command below for one-time setup):
-
-```bash
-# Run this script to trust the CA certificate
-./scripts/trust-dev-ca.sh
-```
-
-This adds the CA to your system trust store, eliminating certificate warnings for **ALL** generated apps.
-
-**Note:** The CA certificate is automatically generated when you create your first app and is stored in `.dev-ca/` (gitignored). Test/prod environments use trusted certificates and don't have this issue.
+Generated apps run on `https://local.gasket.dev-godaddy.com:5XXX` using the GoDaddy-signed Gasket dev cert (`*.gasket.dev-godaddy.com`). This certificate is trusted natively by browsers - no manual CA trust steps needed.
 
 **General:**
 
@@ -401,41 +390,15 @@ pnpm --filter airo-setup start
 ### Generated App Certificate Error (NET::ERR_CERT_AUTHORITY_INVALID)
 
 **Issue**: Generated app preview shows certificate error or blank iframe
-**Cause**: Browser doesn't trust the local development CA that signs certificates for `https://localhost:5XXX`
 
-**Recommended Solution: Trust the Development CA** (one-time fix for all apps or is run as part of the setup script):
+**Check**: Ensure you're accessing the app via `https://local.gasket.dev-godaddy.com:5XXX` (not `https://localhost:5XXX`). The Gasket dev cert is a GoDaddy-signed wildcard for `*.gasket.dev-godaddy.com` and won't match `localhost`.
+
+Also verify `/etc/hosts` maps `local.gasket.dev-godaddy.com` to `127.0.0.1`:
 
 ```bash
-# From project root, run:
-./scripts/trust-dev-ca.sh
+grep local.gasket.dev-godaddy.com /etc/hosts
+# Should show: 127.0.0.1  local.gasket.dev-godaddy.com
 ```
-
-This script will:
-
-- Locate your development CA certificate (`.dev-ca/ca-cert.pem`)
-- Add it to your system trust store (macOS keychain or Linux ca-certificates)
-- Provide browser-specific instructions if needed
-
-**After trusting the CA:**
-
-- ✅ No more certificate warnings for ANY generated app
-- ✅ Apps load directly in iframes without manual acceptance
-- ✅ One-time setup that works for all ports
-
-**Why this happens**: Generated apps use certificates signed by a local development CA. Browsers block untrusted certificates in iframes until you either trust the CA or manually accept each certificate.
-
-**Chrome not loading the CA from macOS keychain:**
-
-If the preview still won't load after running `trust-dev-ca.sh`, Chrome may not be reading the macOS certificate store. Manually import the CA into Chrome:
-
-1. Go to `chrome://certificate-manager/localcerts/usercerts`
-2. Click **Import** on Trust Certificates
-3. Select `airo-app-builder/.dev-ca/ca-cert.pem` (press `Cmd+Shift+.` in the file picker to show hidden directories)
-
-**Note**:
-
-- The CA is automatically generated when you create your first app
-- This only affects local dev. Test/prod environments use trusted certificates and don't have this issue.
 
 ### Database connection errors
 

@@ -12,7 +12,6 @@ import { GettyConfigSetup } from './getty-config.js';
 import { CommerceConfigSetup } from './commerce-config.js';
 import { CertConfigSetup } from './cert-config.js';
 import { JWTKeysGenerator } from './jwt-keys-generator.js';
-import { CASetup } from './ca-setup.js';
 import { KnowBConfigSetup } from './knowb-config.js';
 import { DesignRagConfigSetup } from './design-rag-config.js';
 
@@ -96,7 +95,6 @@ async function selectiveConfiguration(): Promise<void> {
   const commerceSetup = new CommerceConfigSetup();
   const certSetup = new CertConfigSetup();
   const jwtGenerator = new JWTKeysGenerator(projectRoot);
-  const caSetup = new CASetup(projectRoot);
   const knowbSetup = new KnowBConfigSetup();
   const designRagSetup = new DesignRagConfigSetup();
 
@@ -108,7 +106,6 @@ async function selectiveConfiguration(): Promise<void> {
 
     const choices = [
       { name: '🔍 Check Docker Dependencies', value: 'docker-deps' },
-      { name: '🔒 Setup Development CA (SSL Certificates)', value: 'ca-setup' },
       { name: '📱 Configure App Environment (.env)', value: 'app-env' },
       { name: '🤖 Configure Agents Environment (.env)', value: 'agents-env' },
       { name: '🔎 Configure Image Search Service (.env)', value: 'image-search-env' },
@@ -148,9 +145,6 @@ async function selectiveConfiguration(): Promise<void> {
         case 'docker-deps':
           await configureDockerDeps(depChecker);
           break;
-        case 'ca-setup':
-          await caSetup.setup();
-          break;
         case 'app-env':
           await envGenerator.generateAppEnv();
           break;
@@ -185,7 +179,7 @@ async function selectiveConfiguration(): Promise<void> {
           await startMySQLContainer();
           break;
         case 'status-check':
-          await checkCurrentStatus(envGenerator, gettySetup, knowbSetup, designRagSetup, commerceSetup, certSetup, jwtGenerator, caSetup);
+          await checkCurrentStatus(envGenerator, gettySetup, knowbSetup, designRagSetup, commerceSetup, certSetup, jwtGenerator);
           break;
         case 'artifactory-auth':
           await reauthenticateArtifactory();
@@ -313,12 +307,8 @@ async function configureDesignRag(designRagSetup: DesignRagConfigSetup): Promise
   }
 }
 
-async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyConfigSetup, knowbSetup: KnowBConfigSetup, designRagSetup: DesignRagConfigSetup, commerceSetup: CommerceConfigSetup, certSetup: CertConfigSetup, jwtGenerator: JWTKeysGenerator, caSetup: CASetup): Promise<void> {
+async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyConfigSetup, knowbSetup: KnowBConfigSetup, designRagSetup: DesignRagConfigSetup, commerceSetup: CommerceConfigSetup, certSetup: CertConfigSetup, jwtGenerator: JWTKeysGenerator): Promise<void> {
   console.log(chalk.cyan('🔍 Current Configuration Status'));
-  console.log('');
-
-  // Check CA
-  await caSetup.checkStatus();
   console.log('');
 
   // Check .env files
@@ -436,7 +426,6 @@ async function fullSetup(yesToAll: boolean = false): Promise<void> {
   console.log(chalk.yellow('This full setup will:'));
   console.log('• Check Docker and Docker Compose installation');
   console.log('• Verify Docker daemon is running');
-  console.log('• Generate and trust development CA for SSL certificates');
   console.log('• Configure GoDaddy Commerce OAuth credentials (optional)');
   console.log('• Generate app/.env configuration file');
   console.log('  - AI model provider settings');
@@ -481,16 +470,7 @@ async function fullSetup(yesToAll: boolean = false): Promise<void> {
 
   printSeparator();
 
-  // Step 2: Setup Development CA
-  const caSetup = new CASetup(projectRoot);
-  console.log(chalk.cyan('🔒 Development Certificate Authority Setup'));
-  console.log('Setting up CA for trusted HTTPS certificates...\n');
-
-  await caSetup.setup(yesToAll);
-
-  printSeparator();
-
-  // Step 3: Commerce Configuration (ask once for full setup)
+  // Step 2: Commerce Configuration (ask once for full setup)
   console.log(chalk.cyan('🛒 GoDaddy Commerce Configuration'));
 
   let configureCommerce = yesToAll;

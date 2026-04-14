@@ -40,6 +40,7 @@ export function isOriginAllowed(event: MessageEvent): boolean {
 
     return origin.startsWith('http://localhost:') ||
            origin.startsWith('https://localhost:') ||
+           origin.startsWith('https://local.gasket.dev-godaddy.com:') ||
            origin === 'http://127.0.0.1:3000' ||
            origin === 'https://127.0.0.1:3000' ||
            airoBuilderPattern.test(origin)

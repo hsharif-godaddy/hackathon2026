@@ -365,7 +365,7 @@ export const useServerPollingStore = create<ServerPollingStore>()(
         // This allows dev-supervisor JWT middleware to:
         // 1. Validate the site-scoped JWT from Authorization header
         // 2. Verify siteId claim matches the container's SITE_ID
-        // 3. Set auth_idp cookie on preview app's domain
+        // 3. Set airo_preview cookie on preview app's domain
         // 4. Subsequent iframe navigation uses the cookie automatically
         const token = await getPreviewAppToken(appId)
         

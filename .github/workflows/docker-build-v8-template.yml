@@ -41,18 +41,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.0.0
 
-      - name: Install mkcert
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mkcert
-
-      - name: Generate local dev certificates
-        run: |
-          mkdir -p .dev-ca
-          cd .dev-ca
-          mkcert -cert-file cert.pem -key-file key.pem localhost 127.0.0.1 ::1
-          mkcert -CAROOT | xargs -I {} cp {}/rootCA.pem ./ca-cert.pem
-
       - name: Assume Role and Login to ECR
         run: |
           set -e
@@ -74,7 +62,6 @@ jobs:
         run: |
           echo "Building Docker image for v8 template (includes dev-supervisor)..."
           docker build --platform linux/amd64 \
-            --build-context dev-ca=.dev-ca \
             --build-context dev-supervisor=dev-supervisor \
             --build-context container-scripts=container-scripts \
             -t airo-v8-template:latest \

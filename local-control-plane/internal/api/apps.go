@@ -37,8 +37,8 @@ var previewReadyHTTPClient = &http.Client{
 	Timeout: 2 * time.Second,
 	Transport: &http.Transport{
 		TLSClientConfig: &tls.Config{
-			// InsecureSkipVerify is required because preview/publish containers use
-			// locally-generated self-signed certificates that cannot be system-verified.
+			// InsecureSkipVerify avoids requiring the host CA store to include the
+			// Gasket cert chain (GoDaddy-signed, but not all dev environments trust it).
 			InsecureSkipVerify: true, //nolint:gosec // nosemgrep: problem-based-packs.insecure-transport.go-stdlib.bypass-tls-verification.bypass-tls-verification
 			MinVersion:         tls.VersionTLS12,
 		},
@@ -69,10 +69,10 @@ func appToResponse(app *store.App) map[string]any {
 		"backend": "http://localhost:4000",
 	}
 	if app.PreviewPort > 0 {
-		urls["preview"] = fmt.Sprintf("https://localhost:%d", app.PreviewPort)
+		urls["preview"] = fmt.Sprintf("https://local.gasket.dev-godaddy.com:%d", app.PreviewPort)
 	}
 	if app.PublishPort > 0 {
-		urls["publish"] = fmt.Sprintf("https://localhost:%d", app.PublishPort)
+		urls["publish"] = fmt.Sprintf("https://local.gasket.dev-godaddy.com:%d", app.PublishPort)
 	}
 	resp["urls"] = urls
 
@@ -624,7 +624,7 @@ func waitForHTTPSReady(port int, variant string) error {
 		return fmt.Errorf("%s port not allocated", variant)
 	}
 
-	healthURL := fmt.Sprintf("https://localhost:%d/airo/health", port)
+	healthURL := fmt.Sprintf("https://local.gasket.dev-godaddy.com:%d/airo/health", port)
 	deadline := time.Now().Add(previewReadyTimeout)
 	var lastErr error
 
@@ -665,7 +665,7 @@ func (s *Server) registerWithAgent(app *store.App) error {
 		"name":       fmt.Sprintf("App %s", app.ID),
 		"appPath":    s.TemplateSetup.GetBasePath(app.ID) + "/preview",
 		"port":       app.PreviewPort,
-		"previewUrl": fmt.Sprintf("https://localhost:%d", app.PreviewPort),
+		"previewUrl": fmt.Sprintf("https://local.gasket.dev-godaddy.com:%d", app.PreviewPort),
 	}
 
 	if app.SupervisorPort > 0 {

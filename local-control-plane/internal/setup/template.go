@@ -1,21 +1,12 @@
 package setup
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"log/slog"
-	"math/big"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"time"
 )
 
 // DBCredentials holds MySQL database credentials from provisioning.
@@ -289,9 +280,8 @@ func sanitizeForDB(appID string) string {
 	return string(result)
 }
 
-// generateSSLCerts creates TLS certificates for dev-supervisor HTTPS proxy.
-// Writes cert.pem + key.pem to both {preview}/.ssl/ and {alloc}/.ssl/.
-// Uses the project-level CA from .dev-ca/ if available; otherwise generates self-signed.
+// generateSSLCerts copies Gasket dev certs for dev-supervisor HTTPS proxy.
+// Writes cert.pem (leaf + intermediate chain) and key.pem to both {preview}/.ssl/ and {alloc}/.ssl/.
 func (t *TemplateSetup) generateSSLCerts(appID, basePath string) error {
 	previewSSL := filepath.Join(basePath, "preview", ".ssl")
 	allocSSL := filepath.Join(basePath, "alloc", ".ssl")
@@ -302,15 +292,27 @@ func (t *TemplateSetup) generateSSLCerts(appID, basePath string) error {
 		}
 	}
 
-	// Check if certs already exist in preview
-	if _, err := os.Stat(filepath.Join(previewSSL, "cert.pem")); err == nil {
+	// Check if certs already exist in both directories
+	allPresent := true
+	for _, dir := range []string{previewSSL, allocSSL} {
+		for _, name := range []string{"cert.pem", "key.pem"} {
+			if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+				allPresent = false
+				break
+			}
+		}
+		if !allPresent {
+			break
+		}
+	}
+	if allPresent {
 		slog.Info("setup.ssl.skip", "app_id", appID, "reason", "certs already exist")
 		return nil
 	}
 
-	certPEM, keyPEM, err := t.createCertificate()
+	certPEM, keyPEM, err := loadGasketCert()
 	if err != nil {
-		return fmt.Errorf("create certificate: %w", err)
+		return fmt.Errorf("load gasket cert: %w", err)
 	}
 
 	// Write to both locations (preview mounts /app, publish mounts /alloc/.ssl)
@@ -327,100 +329,41 @@ func (t *TemplateSetup) generateSSLCerts(appID, basePath string) error {
 	return nil
 }
 
-// createCertificate generates a TLS cert+key pair.
-// If a project CA exists at {PROJECT_ROOT}/.dev-ca/, uses it to sign the cert.
-// Otherwise creates a self-signed certificate.
-func (t *TemplateSetup) createCertificate() (certPEM, keyPEM []byte, err error) {
+// gasketCertDir returns the path to the Gasket dev cert directory.
+func gasketCertDir() string {
 	projectRoot := os.Getenv("PROJECT_ROOT")
 	if projectRoot == "" {
 		projectRoot = ".."
 	}
-
-	caDir := filepath.Join(projectRoot, ".dev-ca")
-	caCertPath := filepath.Join(caDir, "ca-cert.pem")
-	caKeyPath := filepath.Join(caDir, "ca-key.pem")
-
-	// Generate leaf key
-	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, nil, fmt.Errorf("generate key: %w", err)
-	}
-
-	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
-	if err != nil {
-		return nil, nil, fmt.Errorf("generate serial number: %w", err)
-	}
-
-	template := &x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject:      pkix.Name{CommonName: "localhost"},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(365 * 24 * time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-		DNSNames:     []string{"localhost"},
-		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
-	}
-
-	var certDER []byte
-
-	// Try CA-signed first
-	if caCertPEM, err := os.ReadFile(caCertPath); err == nil {
-		if caKeyPEMData, err := os.ReadFile(caKeyPath); err == nil {
-			certDER, err = signWithCA(template, leafKey, caCertPEM, caKeyPEMData)
-			if err != nil {
-				slog.Warn("setup.ssl.ca_sign_failed", "error", err, "fallback", "self-signed")
-			}
-		}
-	}
-
-	// Fallback to self-signed
-	if certDER == nil {
-		template.IsCA = false
-		template.BasicConstraintsValid = true
-		certDER, err = x509.CreateCertificate(rand.Reader, template, template, &leafKey.PublicKey, leafKey)
-		if err != nil {
-			return nil, nil, fmt.Errorf("self-sign: %w", err)
-		}
-		slog.Info("setup.ssl.self_signed")
-	}
-
-	keyDER, err := x509.MarshalECPrivateKey(leafKey)
-	if err != nil {
-		return nil, nil, fmt.Errorf("marshal key: %w", err)
-	}
-
-	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
-
-	return certPEM, keyPEM, nil
+	return filepath.Join(projectRoot, "app", "node_modules", "@godaddy", "gasket-plugin-dev-certs", "certs")
 }
 
-func signWithCA(template *x509.Certificate, leafKey *ecdsa.PrivateKey, caCertPEM, caKeyPEM []byte) ([]byte, error) {
-	caBlock, _ := pem.Decode(caCertPEM)
-	if caBlock == nil {
-		return nil, fmt.Errorf("decode CA cert PEM")
-	}
-	caCert, err := x509.ParseCertificate(caBlock.Bytes)
+// loadGasketCert reads the Gasket wildcard dev cert files and returns
+// certPEM (leaf + intermediate chain concatenated) and keyPEM.
+func loadGasketCert() (certPEM, keyPEM []byte, err error) {
+	dir := gasketCertDir()
+
+	leafCert, err := os.ReadFile(filepath.Join(dir, "_.gasket.dev-godaddy.com.crt"))
 	if err != nil {
-		return nil, fmt.Errorf("parse CA cert: %w", err)
+		return nil, nil, fmt.Errorf("read leaf cert: %w (run pnpm install first)", err)
 	}
 
-	keyBlock, _ := pem.Decode(caKeyPEM)
-	if keyBlock == nil {
-		return nil, fmt.Errorf("decode CA key PEM")
-	}
-
-	// The TypeScript version uses node-forge which generates RSA keys
-	caKey, err := x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
+	chain, err := os.ReadFile(filepath.Join(dir, "_.gasket.dev-godaddy.com_intermediate_chain.crt"))
 	if err != nil {
-		// Try PKCS8 as fallback
-		caKeyAny, err2 := x509.ParsePKCS8PrivateKey(keyBlock.Bytes)
-		if err2 != nil {
-			return nil, fmt.Errorf("parse CA key (PKCS1: %v, PKCS8: %v)", err, err2)
-		}
-		return x509.CreateCertificate(rand.Reader, template, caCert, &leafKey.PublicKey, caKeyAny)
+		return nil, nil, fmt.Errorf("read intermediate chain: %w (run pnpm install first)", err)
 	}
 
-	return x509.CreateCertificate(rand.Reader, template, caCert, &leafKey.PublicKey, caKey)
+	keyPEM, err = os.ReadFile(filepath.Join(dir, "_.gasket.dev-godaddy.com.key"))
+	if err != nil {
+		return nil, nil, fmt.Errorf("read key: %w (run pnpm install first)", err)
+	}
+
+	// Concatenate leaf + chain for full cert PEM, ensuring newline separator
+	certPEM = append([]byte{}, leafCert...)
+	if len(certPEM) > 0 && certPEM[len(certPEM)-1] != '\n' {
+		certPEM = append(certPEM, '\n')
+	}
+	certPEM = append(certPEM, chain...)
+
+	return certPEM, keyPEM, nil
 }

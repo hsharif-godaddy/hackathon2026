@@ -13,7 +13,7 @@ import apiRoutes from "vite-plugin-api-routes";
 function extractHostname(value: string): string {
 	try {
 		if (value.includes("://")) {
-			return new URL(value).host;
+			return new URL(value).hostname;
 		}
 		return value;
 	} catch {

@@ -152,7 +152,6 @@ func (m *Manager) buildImage(imageName, projectRoot string) error {
 		"--load",
 		"--build-arg", fmt.Sprintf("HOST_UID=%d", uid),
 		"--build-arg", fmt.Sprintf("HOST_GID=%d", gid),
-		"--build-context", "dev-ca="+filepath.Join(projectRoot, ".dev-ca"),
 		"--build-context", "dev-supervisor="+filepath.Join(projectRoot, "dev-supervisor"),
 		"--build-context", "container-scripts="+filepath.Join(projectRoot, "container-scripts"),
 		"-f", filepath.Join(templateDir, "Dockerfile.dev"),

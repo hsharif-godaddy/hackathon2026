@@ -79,9 +79,9 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 		token := tokenFromHeader
 
 		// Fallback to cookie if no Authorization header (for iframe navigation)
-		// GoDaddy SSO uses "auth_idp" cookie name
+		// Uses a distinct name to avoid colliding with GoDaddy SSO's "auth_idp" cookie
 		if token == "" {
-			if cookie, err := r.Cookie("auth_idp"); err == nil && cookie.Value != "" {
+			if cookie, err := r.Cookie("airo_preview"); err == nil && cookie.Value != "" {
 				token = cookie.Value
 				slog.Debug("jwt.middleware.token_from_cookie", "path", r.URL.Path)
 			}
@@ -124,9 +124,9 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 			"path", r.URL.Path,
 			"siteID", result.Claims.SiteID)
 
-		// Set cookie on localhost domain for iframe navigation
-		// The GoDaddy SSO auth_idp cookie is on .dev-godaddy.com and won't be sent to localhost
-		// So we need to set a cookie on the preview app's domain when valid auth is received
+		// Set cookie on preview domain for iframe navigation
+		// Named "airo_preview" to avoid colliding with GoDaddy SSO's "auth_idp" cookie
+		// which shares the .dev-godaddy.com domain in local dev
 		if tokenFromHeader != "" {
 			// Only set cookie if token came from Authorization header (not from cookie itself to avoid loops)
 			// SameSite=None is required for cross-origin cookie access: both variants set it.
@@ -136,7 +136,7 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 
 			// Unpartitioned cookie for top-level navigation (PaaS: user opens preview URL directly).
 			http.SetCookie(w, &http.Cookie{
-				Name:     "auth_idp",
+				Name:     "airo_preview",
 				Value:    token,
 				Path:     "/",
 				HttpOnly: true,
@@ -148,7 +148,7 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 			// Partitioned (CHIPS) cookie for iframe embedding (AAB: builder embeds preview).
 			// Works even when third-party cookies are blocked (e.g. incognito).
 			http.SetCookie(w, &http.Cookie{
-				Name:        "auth_idp",
+				Name:        "airo_preview",
 				Value:       token,
 				Path:        "/",
 				HttpOnly:    true,

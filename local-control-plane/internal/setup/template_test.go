@@ -1,16 +1,9 @@
 package setup
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
-	"math/big"
-	"net"
+	"os"
+	"path/filepath"
 	"testing"
-	"time"
 )
 
 func TestSanitizeForDB(t *testing.T) {
@@ -38,178 +31,176 @@ func TestSanitizeForDB(t *testing.T) {
 	}
 }
 
-func TestCreateCertificate(t *testing.T) {
-	// Use a TemplateSetup with a non-existent CA dir so it falls back to self-signed
-	ts := &TemplateSetup{
-		appsBaseDir: t.TempDir(),
-		templateDir: t.TempDir(),
+func TestGasketCertDir(t *testing.T) {
+	t.Setenv("PROJECT_ROOT", "/fake/root")
+	got := gasketCertDir()
+	want := "/fake/root/app/node_modules/@godaddy/gasket-plugin-dev-certs/certs"
+	if got != want {
+		t.Errorf("gasketCertDir() = %q, want %q", got, want)
 	}
+}
+
+func TestGasketCertDirDefault(t *testing.T) {
+	t.Setenv("PROJECT_ROOT", "")
+	got := gasketCertDir()
+	want := filepath.Join("..", "app", "node_modules", "@godaddy", "gasket-plugin-dev-certs", "certs")
+	if got != want {
+		t.Errorf("gasketCertDir() = %q, want %q", got, want)
+	}
+}
+
+func TestLoadGasketCert(t *testing.T) {
+	// Create a temp dir with fake cert files
+	certDir := t.TempDir()
+	leafContent := []byte("-----BEGIN CERTIFICATE-----\nleaf\n-----END CERTIFICATE-----\n")
+	chainContent := []byte("-----BEGIN CERTIFICATE-----\nchain\n-----END CERTIFICATE-----\n")
+	keyContent := []byte("-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----\n")
+
+	for _, f := range []struct {
+		name string
+		data []byte
+		perm os.FileMode
+	}{
+		{"_.gasket.dev-godaddy.com.crt", leafContent, 0644},
+		{"_.gasket.dev-godaddy.com_intermediate_chain.crt", chainContent, 0644},
+		{"_.gasket.dev-godaddy.com.key", keyContent, 0600},
+	} {
+		if err := os.WriteFile(filepath.Join(certDir, f.name), f.data, f.perm); err != nil {
+			t.Fatalf("WriteFile %s: %v", f.name, err)
+		}
+	}
+
+	// Point PROJECT_ROOT so gasketCertDir() resolves to our temp dir
+	// gasketCertDir = PROJECT_ROOT/app/node_modules/@godaddy/gasket-plugin-dev-certs/certs
+	// So we need to create that structure
+	projectRoot := t.TempDir()
+	targetDir := filepath.Join(projectRoot, "app", "node_modules", "@godaddy", "gasket-plugin-dev-certs", "certs")
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	for _, f := range []struct {
+		name string
+		data []byte
+		perm os.FileMode
+	}{
+		{"_.gasket.dev-godaddy.com.crt", leafContent, 0644},
+		{"_.gasket.dev-godaddy.com_intermediate_chain.crt", chainContent, 0644},
+		{"_.gasket.dev-godaddy.com.key", keyContent, 0600},
+	} {
+		if err := os.WriteFile(filepath.Join(targetDir, f.name), f.data, f.perm); err != nil {
+			t.Fatalf("WriteFile %s: %v", f.name, err)
+		}
+	}
+
+	t.Setenv("PROJECT_ROOT", projectRoot)
+
+	certPEM, keyPEM, err := loadGasketCert()
+	if err != nil {
+		t.Fatalf("loadGasketCert: %v", err)
+	}
+
+	// cert.pem should be leaf + chain concatenated
+	expectedCert := append(leafContent, chainContent...)
+	if string(certPEM) != string(expectedCert) {
+		t.Errorf("certPEM = %q, want %q", certPEM, expectedCert)
+	}
+
+	if string(keyPEM) != string(keyContent) {
+		t.Errorf("keyPEM = %q, want %q", keyPEM, keyContent)
+	}
+}
+
+func TestLoadGasketCertMissing(t *testing.T) {
 	t.Setenv("PROJECT_ROOT", t.TempDir())
 
-	certPEM, keyPEM, err := ts.createCertificate()
-	if err != nil {
-		t.Fatalf("createCertificate: %v", err)
-	}
-
-	// Verify cert PEM
-	certBlock, _ := pem.Decode(certPEM)
-	if certBlock == nil {
-		t.Fatal("failed to decode cert PEM")
-	}
-	if certBlock.Type != "CERTIFICATE" {
-		t.Fatalf("expected CERTIFICATE block, got %s", certBlock.Type)
-	}
-
-	cert, err := x509.ParseCertificate(certBlock.Bytes)
-	if err != nil {
-		t.Fatalf("ParseCertificate: %v", err)
-	}
-
-	if cert.Subject.CommonName != "localhost" {
-		t.Errorf("expected CN=localhost, got %s", cert.Subject.CommonName)
-	}
-
-	if len(cert.DNSNames) == 0 || cert.DNSNames[0] != "localhost" {
-		t.Errorf("expected DNSNames=[localhost], got %v", cert.DNSNames)
-	}
-
-	if len(cert.IPAddresses) < 2 {
-		t.Errorf("expected at least 2 IP addresses (127.0.0.1 and ::1), got %v", cert.IPAddresses)
-	}
-
-	hasLoopback := false
-	for _, ip := range cert.IPAddresses {
-		if ip.Equal(net.ParseIP("127.0.0.1")) {
-			hasLoopback = true
-		}
-	}
-	if !hasLoopback {
-		t.Error("expected 127.0.0.1 in IPAddresses")
-	}
-
-	if cert.NotAfter.Before(time.Now().Add(364 * 24 * time.Hour)) {
-		t.Error("expected cert valid for ~1 year")
-	}
-
-	// Verify key PEM
-	keyBlock, _ := pem.Decode(keyPEM)
-	if keyBlock == nil {
-		t.Fatal("failed to decode key PEM")
-	}
-	if keyBlock.Type != "EC PRIVATE KEY" {
-		t.Fatalf("expected EC PRIVATE KEY block, got %s", keyBlock.Type)
-	}
-
-	_, err = x509.ParseECPrivateKey(keyBlock.Bytes)
-	if err != nil {
-		t.Fatalf("ParseECPrivateKey: %v", err)
+	_, _, err := loadGasketCert()
+	if err == nil {
+		t.Fatal("expected error for missing cert files")
 	}
 }
 
-func TestSignWithCA(t *testing.T) {
-	// Generate a test CA
-	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+func TestGenerateSSLCertsSkipsExisting(t *testing.T) {
+	base := t.TempDir()
+	previewSSL := filepath.Join(base, "preview", ".ssl")
+	allocSSL := filepath.Join(base, "alloc", ".ssl")
+	for _, dir := range []string{previewSSL, allocSSL} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("MkdirAll %s: %v", dir, err)
+		}
+		for _, name := range []string{"cert.pem", "key.pem"} {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte("existing"), 0644); err != nil {
+				t.Fatalf("WriteFile %s/%s: %v", dir, name, err)
+			}
+		}
+	}
+
+	ts := &TemplateSetup{appsBaseDir: base, templateDir: t.TempDir()}
+	err := ts.generateSSLCerts("test-app", base)
 	if err != nil {
-		t.Fatalf("generate CA key: %v", err)
+		t.Fatalf("generateSSLCerts: %v", err)
 	}
 
-	caTemplate := &x509.Certificate{
-		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "Test CA"},
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour),
-		IsCA:                  true,
-		BasicConstraintsValid: true,
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
-	}
-
-	caCertDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caKey.PublicKey, caKey)
-	if err != nil {
-		t.Fatalf("create CA cert: %v", err)
-	}
-
-	caCertPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caCertDER})
-
-	caKeyDER, err := x509.MarshalPKCS8PrivateKey(caKey)
-	if err != nil {
-		t.Fatalf("marshal CA key: %v", err)
-	}
-	caKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: caKeyDER})
-
-	// Generate a leaf key and template
-	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("generate leaf key: %v", err)
-	}
-
-	leafTemplate := &x509.Certificate{
-		SerialNumber: big.NewInt(2),
-		Subject:      pkix.Name{CommonName: "localhost"},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(365 * 24 * time.Hour),
-		DNSNames:     []string{"localhost"},
-		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
-	}
-
-	// Sign with CA
-	certDER, err := signWithCA(leafTemplate, leafKey, caCertPEM, caKeyPEM)
-	if err != nil {
-		t.Fatalf("signWithCA: %v", err)
-	}
-	if certDER == nil {
-		t.Fatal("expected non-nil cert DER")
-	}
-
-	// Parse and verify
-	cert, err := x509.ParseCertificate(certDER)
-	if err != nil {
-		t.Fatalf("ParseCertificate: %v", err)
-	}
-
-	caCert, _ := x509.ParseCertificate(caCertDER)
-	pool := x509.NewCertPool()
-	pool.AddCert(caCert)
-
-	_, err = cert.Verify(x509.VerifyOptions{
-		Roots: pool,
-	})
-	if err != nil {
-		t.Fatalf("cert verification failed: %v", err)
+	// Verify it wasn't overwritten
+	content, _ := os.ReadFile(filepath.Join(previewSSL, "cert.pem"))
+	if string(content) != "existing" {
+		t.Error("existing cert.pem was overwritten")
 	}
 }
 
-func TestSignWithCAInvalidPEM(t *testing.T) {
-	leafKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	template := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "localhost"},
+func TestGenerateSSLCertsWritesBothDirs(t *testing.T) {
+	// Set up fake Gasket cert files
+	projectRoot := t.TempDir()
+	certDir := filepath.Join(projectRoot, "app", "node_modules", "@godaddy", "gasket-plugin-dev-certs", "certs")
+	if err := os.MkdirAll(certDir, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
 	}
 
-	t.Run("invalid cert PEM", func(t *testing.T) {
-		_, err := signWithCA(template, leafKey, []byte("not-pem"), []byte("not-pem"))
-		if err == nil {
-			t.Fatal("expected error for invalid PEM")
+	leafContent := []byte("leaf-cert\n")
+	chainContent := []byte("chain-cert\n")
+	keyContent := []byte("private-key\n")
+	for _, f := range []struct {
+		name string
+		data []byte
+		perm os.FileMode
+	}{
+		{"_.gasket.dev-godaddy.com.crt", leafContent, 0644},
+		{"_.gasket.dev-godaddy.com_intermediate_chain.crt", chainContent, 0644},
+		{"_.gasket.dev-godaddy.com.key", keyContent, 0600},
+	} {
+		if err := os.WriteFile(filepath.Join(certDir, f.name), f.data, f.perm); err != nil {
+			t.Fatalf("WriteFile %s: %v", f.name, err)
 		}
-	})
+	}
 
-	t.Run("valid cert but invalid key PEM", func(t *testing.T) {
-		// Generate a valid CA cert PEM
-		caKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-		caTemplate := &x509.Certificate{
-			SerialNumber:          big.NewInt(1),
-			Subject:               pkix.Name{CommonName: "Test CA"},
-			NotBefore:             time.Now(),
-			NotAfter:              time.Now().Add(time.Hour),
-			IsCA:                  true,
-			BasicConstraintsValid: true,
-			KeyUsage:              x509.KeyUsageCertSign,
-		}
-		caCertDER, _ := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caKey.PublicKey, caKey)
-		caCertPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caCertDER})
+	t.Setenv("PROJECT_ROOT", projectRoot)
 
-		_, err := signWithCA(template, leafKey, caCertPEM, []byte("not-pem"))
-		if err == nil {
-			t.Fatal("expected error for invalid key PEM")
+	base := t.TempDir()
+	ts := &TemplateSetup{appsBaseDir: base, templateDir: t.TempDir()}
+	err := ts.generateSSLCerts("test-app", base)
+	if err != nil {
+		t.Fatalf("generateSSLCerts: %v", err)
+	}
+
+	expectedCert := string(leafContent) + string(chainContent)
+
+	for _, dir := range []string{
+		filepath.Join(base, "preview", ".ssl"),
+		filepath.Join(base, "alloc", ".ssl"),
+	} {
+		cert, err := os.ReadFile(filepath.Join(dir, "cert.pem"))
+		if err != nil {
+			t.Fatalf("read cert.pem from %s: %v", dir, err)
 		}
-	})
+		if string(cert) != expectedCert {
+			t.Errorf("%s/cert.pem = %q, want %q", dir, cert, expectedCert)
+		}
+
+		key, err := os.ReadFile(filepath.Join(dir, "key.pem"))
+		if err != nil {
+			t.Fatalf("read key.pem from %s: %v", dir, err)
+		}
+		if string(key) != string(keyContent) {
+			t.Errorf("%s/key.pem = %q, want %q", dir, key, keyContent)
+		}
+	}
 }

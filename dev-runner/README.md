@@ -38,8 +38,8 @@ On startup, dev-runner runs a comprehensive set of preflight checks before launc
 
 **Check categories:**
 
-- **Tools** — Node.js (via fnm/nvm), pnpm, Go, make, Docker, AWS CLI, mkcert, Artifactory auth
-- **Environment** — /etc/hosts entry, AWS SSO session, app/.env & agents/.env files, JWT keys, TLS certificates, Dev CA, S2S client certs, Commerce OAuth, Getty proxy, KnowB config, Design RAG
+- **Tools** — Node.js (via fnm/nvm), pnpm, Go, make, Docker, AWS CLI, Artifactory auth
+- **Environment** — /etc/hosts entry, AWS SSO session, app/.env & agents/.env files, JWT keys, Gasket dev certs, S2S client certs, Commerce OAuth, Getty proxy, KnowB config, Design RAG
 - **Services** — Required ports (3000, 4000, 4100, 8443) are available, MySQL container running
 
 **Lifecycle phases:**

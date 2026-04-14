@@ -1030,10 +1030,10 @@ func TestAppToResponse(t *testing.T) {
 	}
 
 	urls := resp["urls"].(map[string]string)
-	if urls["preview"] != "https://localhost:5001" {
+	if urls["preview"] != "https://local.gasket.dev-godaddy.com:5001" {
 		t.Errorf("expected preview url, got %v", urls["preview"])
 	}
-	if urls["publish"] != "https://localhost:5501" {
+	if urls["publish"] != "https://local.gasket.dev-godaddy.com:5501" {
 		t.Errorf("expected publish url, got %v", urls["publish"])
 	}
 
