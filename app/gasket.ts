@@ -34,11 +34,19 @@ export default makeGasket({
       dynamicPlugins: [
         '@gasket/plugin-analyze'
       ],
+      elasticApm: {
+        serverUrl: 'https://0556df897be249269f7818244b522474.apm.us-west-2.aws.cloud.es.io:443',
+        environment: 'development'
+      },
       switchboard: {
         env: 'development'
       }
     },
     'local.dev': {
+      elasticApm: {
+        serverUrl: 'https://0556df897be249269f7818244b522474.apm.us-west-2.aws.cloud.es.io:443',
+        environment: 'development'
+      },
       insightsApiUrl: 'https://uip.api.int.test-godaddy.com/v1/insights/graphql',
       insightsSsoHost: 'sso.test-godaddy.com',
       http: false,
@@ -68,6 +76,10 @@ export default makeGasket({
     },
     'local.test': {
       airoAppDomain: 'test-airoapp.ai',
+      elasticApm: {
+        serverUrl: 'https://0556df897be249269f7818244b522474.apm.us-west-2.aws.cloud.es.io:443',
+        environment: 'test'
+      },
       insightsApiUrl: 'https://uip.api.int.test-godaddy.com/v1/insights/graphql',
       insightsSsoHost: 'sso.test-godaddy.com',
       http: false,
@@ -113,6 +125,10 @@ export default makeGasket({
     },
     'local.prod': {
       airoAppDomain: 'airoapp.ai',
+      elasticApm: {
+        serverUrl: 'https://144cf045186b41c4a2a4aa3df8f92131.apm.us-west-2.aws.cloud.es.io:443',
+        environment: 'production'
+      },
       insightsApiUrl: 'https://uip.api.int.godaddy.com/v1/insights/graphql',
       insightsSsoHost: 'sso.godaddy.com',
       http: false,
@@ -158,6 +174,10 @@ export default makeGasket({
     },
     // Deployed environments
     'development': {
+      elasticApm: {
+        serverUrl: 'https://0556df897be249269f7818244b522474.apm.us-west-2.aws.cloud.es.io:443',
+        environment: 'development'
+      },
       insightsApiUrl: 'https://uip.api.int.test-godaddy.com/v1/insights/graphql',
       insightsSsoHost: 'sso.test-godaddy.com',
       switchboard: {
@@ -166,6 +186,10 @@ export default makeGasket({
     },
     'test': {
       airoAppDomain: 'test-airoapp.ai',
+      elasticApm: {
+        serverUrl: 'https://0556df897be249269f7818244b522474.apm.us-west-2.aws.cloud.es.io:443',
+        environment: 'test'
+      },
       insightsApiUrl: 'https://uip.api.int.test-godaddy.com/v1/insights/graphql',
       insightsSsoHost: 'sso.test-godaddy.com',
       switchboard: {
@@ -174,6 +198,10 @@ export default makeGasket({
     },
     'production': {
       airoAppDomain: 'airoapp.ai',
+      elasticApm: {
+        serverUrl: 'https://144cf045186b41c4a2a4aa3df8f92131.apm.us-west-2.aws.cloud.es.io:443',
+        environment: 'production'
+      },
       insightsApiUrl: 'https://uip.api.int.godaddy.com/v1/insights/graphql',
       insightsSsoHost: 'sso.godaddy.com',
       switchboard: {
