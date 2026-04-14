@@ -19,6 +19,19 @@ on:
         type: string
         default: ""
 
+  # Allow triggering from other workflows (e.g. deploy-test-e2e)
+  workflow_call:
+    inputs:
+      DEPLOY_TO_ENV:
+        description: "Environment to deploy the artifact"
+        required: true
+        type: string
+      sha:
+        description: "Commit SHA to build (defaults to branch tip)"
+        required: false
+        type: string
+        default: ""
+
 run-name: "[APP - ${{ inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
 
 permissions:

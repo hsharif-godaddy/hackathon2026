@@ -1,0 +1,58 @@
+name: Deploy to Test + E2E
+
+run-name: "Deploy to Test + E2E (merge ${{ github.sha }})"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "agents/**"
+      - "app-templates/**"
+      - "tests/**"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to Test
+    uses: ./.github/workflows/aws-deploy-app.yml
+    with:
+      DEPLOY_TO_ENV: "test"
+      # sha omitted; aws-deploy-app falls back to github.sha
+    permissions:
+      id-token: write
+      contents: read
+
+  e2e:
+    name: E2E Tests (test)
+    needs: [deploy]
+    uses: ./.github/workflows/playwright-e2e.yml
+    with:
+      environment: "test"
+      test_filter: "all"
+    permissions:
+      id-token: write
+      contents: read
+
+  slack-notify:
+    name: Notify on Failure
+    if: always() && (needs.deploy.result == 'failure' || needs.e2e.result == 'failure')
+    needs: [deploy, e2e]
+    uses: ./.github/workflows/slack-notify.yml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      result: "failure"
+      environment: "test"
+      title: "Deploy to Test + E2E"
+      message: |
+        *Deploy:* ${{ needs.deploy.result }}
+        *E2E:* ${{ needs.e2e.result }}
+        *Commit:* ${{ github.sha }}
+        *Actor:* ${{ github.actor }}
+        *Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>
+      footer: "airo-app-builder | Post-Merge Pipeline"

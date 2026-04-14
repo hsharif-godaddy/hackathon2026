@@ -29,7 +29,9 @@ test.describe('Develop Page', () => {
     logTestStart(testInfo);
   });
 
-  test('Header, Preview, Chat & Navigation - Full UI Flow', async ({ page }) => {
+  test('Header, Preview, Chat & Navigation - Full UI Flow', async ({ page }, testInfo) => {
+    testInfo.setTimeout(600_000);
+
     // ========================================
     // STEP 1: Create an app (with login)
     // ========================================

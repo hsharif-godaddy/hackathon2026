@@ -75,8 +75,10 @@ jobs:
       - name: Determine test environment and URL
         id: env-config
         env:
-          # Use env to safely pass github context data (prevents shell injection)
-          INPUT_ENVIRONMENT: ${{ github.event.inputs.environment || 'prod' }}
+          # Assigned via env: to safely pass github context data (prevents shell injection).
+          # `inputs` works for both workflow_dispatch and workflow_call;
+          # falls back to 'prod' for schedule (where inputs is empty).
+          INPUT_ENVIRONMENT: ${{ inputs.environment || 'prod' }}
         run: |
           # Use 'prod' as default for scheduled runs, otherwise use manual input
           ENV="$INPUT_ENVIRONMENT"
