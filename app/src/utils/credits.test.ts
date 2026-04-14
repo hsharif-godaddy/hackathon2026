@@ -6,6 +6,7 @@ import {
   formatCreditDate,
   formatFullCreditDate,
   getActiveGrant,
+  getActiveGrants,
   getBillingPeriod,
   getCreditPackGrants,
   getEffectiveCreditsSpent,
@@ -215,6 +216,189 @@ describe('credits', function creditsTests() {
       const result = getActiveGrant([]);
 
       expect(result).toBeUndefined();
+    });
+  });
+
+  describe('#getActiveGrants', function getActiveGrantsTests() {
+    it('should filter out consumed grants', function filterConsumed() {
+      const now = new Date();
+      const futureDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      const consumedGrant = createMockGrant({
+        id: 'consumed-1',
+        isAvailable: false,
+        finalState: GrantFinalState.Consumed,
+        useBefore: futureDate,
+      });
+      const activeGrant = createMockGrant({
+        id: 'active-1',
+        isAvailable: true,
+        finalState: null,
+        useBefore: futureDate,
+      });
+      const grants = [consumedGrant, activeGrant];
+
+      const result = getActiveGrants(grants);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('active-1');
+    });
+
+    it('should filter out expired grants by finalState', function filterExpired() {
+      const now = new Date();
+      const futureDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      const expiredGrant = createMockGrant({
+        id: 'expired-1',
+        isAvailable: true,
+        finalState: GrantFinalState.Expired,
+        useBefore: futureDate,
+      });
+      const activeGrant = createMockGrant({
+        id: 'active-1',
+        isAvailable: true,
+        finalState: null,
+        useBefore: futureDate,
+      });
+      const grants = [expiredGrant, activeGrant];
+
+      const result = getActiveGrants(grants);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('active-1');
+    });
+
+    it('should filter out unavailable grants', function filterUnavailable() {
+      const now = new Date();
+      const futureDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      const unavailableGrant = createMockGrant({
+        id: 'unavailable-1',
+        isAvailable: false,
+        finalState: null,
+        useBefore: futureDate,
+      });
+      const activeGrant = createMockGrant({
+        id: 'active-1',
+        isAvailable: true,
+        finalState: null,
+        useBefore: futureDate,
+      });
+      const grants = [unavailableGrant, activeGrant];
+
+      const result = getActiveGrants(grants);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('active-1');
+    });
+
+    it('should filter out grants past expiration date', function filterPastExpiration() {
+      const now = new Date();
+      const futureDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const pastDate = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString();
+
+      const expiredByDateGrant = createMockGrant({
+        id: 'expired-date-1',
+        isAvailable: true,
+        finalState: null,
+        useBefore: pastDate,
+      });
+      const activeGrant = createMockGrant({
+        id: 'active-1',
+        isAvailable: true,
+        finalState: null,
+        useBefore: futureDate,
+      });
+      const grants = [expiredByDateGrant, activeGrant];
+
+      const result = getActiveGrants(grants);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('active-1');
+    });
+
+    it('should return all grants when all are active', function allActive() {
+      const now = new Date();
+      const futureDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      const grant1 = createMockGrant({
+        id: 'active-1',
+        isAvailable: true,
+        finalState: null,
+        useBefore: futureDate,
+      });
+      const grant2 = createMockGrant({
+        id: 'active-2',
+        isAvailable: true,
+        finalState: null,
+        useBefore: futureDate,
+      });
+      const grants = [grant1, grant2];
+
+      const result = getActiveGrants(grants);
+
+      expect(result).toHaveLength(2);
+      expect(result.map((g) => g.id)).toEqual(['active-1', 'active-2']);
+    });
+
+    it('should return empty array when all grants are inactive', function allInactive() {
+      const now = new Date();
+      const futureDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      const consumedGrant = createMockGrant({
+        id: 'consumed-1',
+        isAvailable: false,
+        finalState: GrantFinalState.Consumed,
+        useBefore: futureDate,
+      });
+      const expiredGrant = createMockGrant({
+        id: 'expired-1',
+        isAvailable: true,
+        finalState: GrantFinalState.Expired,
+        useBefore: futureDate,
+      });
+      const grants = [consumedGrant, expiredGrant];
+
+      const result = getActiveGrants(grants);
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('should return empty array for empty input', function emptyInput() {
+      const result = getActiveGrants([]);
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('should handle mixed consumed and expired grants correctly', function mixedInactive() {
+      const now = new Date();
+      const futureDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      const grants = [
+        createMockGrant({
+          id: 'consumed-1',
+          isAvailable: false,
+          finalState: GrantFinalState.Consumed,
+          useBefore: futureDate,
+        }),
+        createMockGrant({
+          id: 'expired-1',
+          isAvailable: true,
+          finalState: GrantFinalState.Expired,
+          useBefore: futureDate,
+        }),
+        createMockGrant({
+          id: 'active-1',
+          isAvailable: true,
+          finalState: null,
+          useBefore: futureDate,
+        }),
+      ];
+
+      const result = getActiveGrants(grants);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('active-1');
     });
   });
 

@@ -6,7 +6,7 @@ import { useBudgetService } from '@/hooks/useBudgetService'
 import { useCreditGrants } from '@/hooks/useCreditGrants'
 import { useSubscription } from '@/hooks/useSubscription'
 import { WarningLevel } from '@/types/usage'
-import { getEffectiveCreditsSpent } from '@/utils/credits'
+import { getActiveGrants, getEffectiveCreditsSpent } from '@/utils/credits'
 
 /** Warning level thresholds (percentage) */
 const CAUTION_THRESHOLD = 50
@@ -75,12 +75,15 @@ export function useUsage({
   const isSubscriptionMissing = enabled && !isBudgetServiceEnabled && !isSubscriptionLoading && !subscription
 
   const grantsResult = useMemo(() => {
-    const totalCreditsSpent = grants?.reduce(
+    const activeGrants = getActiveGrants(grants ?? [])
+    const totalCreditsSpent = activeGrants.reduce(
       (sum, g) => sum + getEffectiveCreditsSpent(g.creditsSpent, g.creditsMax),
       0
-    ) ?? 0
-    const totalCreditsMax = grants?.reduce((sum, g) => sum + g.creditsMax, 0) ?? 0
-    const percentage = totalCreditsMax > 0 ? (totalCreditsSpent / totalCreditsMax) * 100 : 0
+    )
+    const totalCreditsMax = activeGrants.reduce((sum, g) => sum + g.creditsMax, 0)
+    // When no active grants remain, show 100% (exhausted) instead of 0% (available).
+    // Semantically: 0% = credits available but not used; 100% = no usable credits left.
+    const percentage = totalCreditsMax > 0 ? (totalCreditsSpent / totalCreditsMax) * 100 : 100
 
     return { percentage, ...computeWarningLevel(percentage) }
   }, [grants])

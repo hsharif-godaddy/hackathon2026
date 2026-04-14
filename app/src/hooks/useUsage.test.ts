@@ -31,6 +31,26 @@ const mockUseSubscription = vi.mocked(useSubscription)
 const mockUseCreditGrants = vi.mocked(useCreditGrants)
 const mockUseBudgetService = vi.mocked(useBudgetService)
 
+function createMockGrant(overrides: Partial<any> = {}) {
+  const now = new Date()
+  const futureDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
+  return {
+    id: 'grant-1',
+    subscriptionId: 'sub-1',
+    type: 'credit-pack',
+    llmBudgetUserId: 'user-1',
+    llmBudgetId: 'budget-1',
+    creditsMax: 100,
+    creditsSpent: 0,
+    isAvailable: true,
+    finalState: null,
+    useBefore: futureDate,
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    ...overrides,
+  }
+}
+
 function defaultGrantsMock(overrides = {}) {
   return {
     data: undefined,
@@ -74,8 +94,8 @@ describe('useUsage', () => {
     it('calculates percentage from grants data', () => {
       vi.mocked(useCreditGrants).mockReturnValue({
         data: [
-          { id: 'grant-1', creditsSpent: 30, creditsMax: 100 },
-          { id: 'grant-2', creditsSpent: 20, creditsMax: 100 },
+          createMockGrant({ id: 'grant-1', creditsSpent: 30, creditsMax: 100 }),
+          createMockGrant({ id: 'grant-2', creditsSpent: 20, creditsMax: 100 }),
         ],
         isLoading: false,
       } as ReturnType<typeof useCreditGrants>)
@@ -89,7 +109,7 @@ describe('useUsage', () => {
     it('returns NONE warning level below 50%', () => {
       vi.mocked(useCreditGrants).mockReturnValue({
         data: [
-          { id: 'grant-1', creditsSpent: 40, creditsMax: 100 },
+          createMockGrant({ id: 'grant-1', creditsSpent: 40, creditsMax: 100 }),
         ],
         isLoading: false,
       } as ReturnType<typeof useCreditGrants>)
@@ -103,7 +123,7 @@ describe('useUsage', () => {
     it('returns CAUTION warning level at 50-74%', () => {
       vi.mocked(useCreditGrants).mockReturnValue({
         data: [
-          { id: 'grant-1', creditsSpent: 60, creditsMax: 100 },
+          createMockGrant({ id: 'grant-1', creditsSpent: 60, creditsMax: 100 }),
         ],
         isLoading: false,
       } as ReturnType<typeof useCreditGrants>)
@@ -117,7 +137,7 @@ describe('useUsage', () => {
     it('returns WARNING level at 75-99%', () => {
       vi.mocked(useCreditGrants).mockReturnValue({
         data: [
-          { id: 'grant-1', creditsSpent: 80, creditsMax: 100 },
+          createMockGrant({ id: 'grant-1', creditsSpent: 80, creditsMax: 100 }),
         ],
         isLoading: false,
       } as ReturnType<typeof useCreditGrants>)
@@ -131,7 +151,7 @@ describe('useUsage', () => {
     it('returns isWarningBannerActive true at 90-99%', () => {
       vi.mocked(useCreditGrants).mockReturnValue({
         data: [
-          { id: 'grant-1', creditsSpent: 95, creditsMax: 100 },
+          createMockGrant({ id: 'grant-1', creditsSpent: 95, creditsMax: 100 }),
         ],
         isLoading: false,
       } as ReturnType<typeof useCreditGrants>)
@@ -142,22 +162,24 @@ describe('useUsage', () => {
       expect(result.current.isWarningBannerActive).toBe(true)
     })
 
-    it('returns EXCEEDED warning level at 100%+', () => {
+    it('returns EXCEEDED warning level when all grants consumed (exhausted)', () => {
       vi.mocked(useCreditGrants).mockReturnValue({
         data: [
-          { id: 'grant-1', creditsSpent: 100, creditsMax: 100 },
+          createMockGrant({ id: 'grant-1', creditsSpent: 100, creditsMax: 100 }),
         ],
         isLoading: false,
       } as ReturnType<typeof useCreditGrants>)
 
       const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
 
+      // When all grants are exhausted (creditsSpent >= creditsMax), getActiveGrants filters them out
+      // resulting in totalCreditsMax === 0, which returns 100% to indicate "no usable credits"
       expect(result.current.percentage).toBe(100)
       expect(result.current.warningLevel).toBe(WarningLevel.EXCEEDED)
       expect(result.current.isWarningBannerActive).toBe(false)
     })
 
-    it('returns 0% when no grants data', () => {
+    it('returns 100% when no active grants (exhausted state)', () => {
       vi.mocked(useCreditGrants).mockReturnValue({
         data: [],
         isLoading: false,
@@ -165,8 +187,10 @@ describe('useUsage', () => {
 
       const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
 
-      expect(result.current.percentage).toBe(0)
-      expect(result.current.warningLevel).toBe(WarningLevel.NONE)
+      // When there are no active grants (either empty array or all filtered as exhausted),
+      // totalCreditsMax === 0, which returns 100% to indicate "no usable credits"
+      expect(result.current.percentage).toBe(100)
+      expect(result.current.warningLevel).toBe(WarningLevel.EXCEEDED)
     })
 
     it('passes subscription id to useCreditGrants', () => {
@@ -252,7 +276,189 @@ describe('useUsage', () => {
       const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
 
       expect(result.current.isLoading).toBe(true)
-      expect(result.current.percentage).toBe(0)
+      // When data is undefined, isLoading takes precedence in the return value
+      // (see useUsage.ts logic for isLoading handling), but if we reach percentage calculation,
+      // no active grants → returns 100% to indicate no usable credits
+      expect(result.current.percentage).toBe(100)
+    })
+  })
+
+  describe('multiple credit packs with consumed/expired grants', () => {
+    it('excludes consumed grants from percentage calculation', () => {
+      vi.mocked(useCreditGrants).mockReturnValue({
+        data: [
+          createMockGrant({
+            id: 'pack-1',
+            type: 'credit-pack',
+            creditsSpent: 100,
+            creditsMax: 100,
+            isAvailable: false,
+            finalState: 'consumed',
+            useBefore: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+          }),
+          createMockGrant({
+            id: 'pack-2',
+            creditsSpent: 20,
+            creditsMax: 100,
+            isAvailable: true,
+            finalState: null,
+          }),
+        ],
+        isLoading: false,
+      } as ReturnType<typeof useCreditGrants>)
+
+      const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
+
+      expect(result.current.percentage).toBe(20)
+      expect(result.current.warningLevel).toBe(WarningLevel.NONE)
+      expect(result.current.isWarningBannerActive).toBe(false)
+    })
+
+    it('excludes expired grants from percentage calculation', () => {
+      vi.mocked(useCreditGrants).mockReturnValue({
+        data: [
+          createMockGrant({
+            id: 'pack-1',
+            creditsSpent: 100,
+            creditsMax: 100,
+            isAvailable: true,
+            finalState: 'expired',
+            useBefore: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+          }),
+          createMockGrant({
+            id: 'pack-2',
+            creditsSpent: 20,
+            creditsMax: 100,
+            isAvailable: true,
+            finalState: null,
+          }),
+        ],
+        isLoading: false,
+      } as ReturnType<typeof useCreditGrants>)
+
+      const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
+
+      expect(result.current.percentage).toBe(20)
+      expect(result.current.warningLevel).toBe(WarningLevel.NONE)
+    })
+
+    it('excludes unavailable grants from percentage calculation', () => {
+      vi.mocked(useCreditGrants).mockReturnValue({
+        data: [
+          createMockGrant({
+            id: 'pack-1',
+            creditsSpent: 50,
+            creditsMax: 100,
+            isAvailable: false,
+            finalState: null,
+          }),
+          createMockGrant({
+            id: 'pack-2',
+            creditsSpent: 30,
+            creditsMax: 100,
+            isAvailable: true,
+            finalState: null,
+          }),
+        ],
+        isLoading: false,
+      } as ReturnType<typeof useCreditGrants>)
+
+      const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
+
+      expect(result.current.percentage).toBe(30)
+      expect(result.current.warningLevel).toBe(WarningLevel.NONE)
+    })
+
+    it('excludes expired-by-date grants from percentage calculation', () => {
+      vi.mocked(useCreditGrants).mockReturnValue({
+        data: [
+          createMockGrant({
+            id: 'pack-1',
+            creditsSpent: 80,
+            creditsMax: 100,
+            isAvailable: true,
+            finalState: null,
+            useBefore: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+          }),
+          createMockGrant({
+            id: 'pack-2',
+            creditsSpent: 40,
+            creditsMax: 100,
+            isAvailable: true,
+            finalState: null,
+          }),
+        ],
+        isLoading: false,
+      } as ReturnType<typeof useCreditGrants>)
+
+      const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
+
+      expect(result.current.percentage).toBe(40)
+      expect(result.current.warningLevel).toBe(WarningLevel.NONE)
+      expect(result.current.isWarningBannerActive).toBe(false)
+    })
+
+    it('no warning when multiple packs but only active has low usage', () => {
+      vi.mocked(useCreditGrants).mockReturnValue({
+        data: [
+          createMockGrant({
+            id: 'pack-1',
+            creditsSpent: 100,
+            creditsMax: 100,
+            isAvailable: false,
+            finalState: 'consumed',
+          }),
+          createMockGrant({
+            id: 'pack-2',
+            creditsSpent: 100,
+            creditsMax: 100,
+            isAvailable: false,
+            finalState: 'consumed',
+          }),
+          createMockGrant({
+            id: 'pack-3',
+            creditsSpent: 10,
+            creditsMax: 100,
+            isAvailable: true,
+            finalState: null,
+          }),
+        ],
+        isLoading: false,
+      } as ReturnType<typeof useCreditGrants>)
+
+      const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
+
+      expect(result.current.percentage).toBe(10)
+      expect(result.current.warningLevel).toBe(WarningLevel.NONE)
+      expect(result.current.isWarningBannerActive).toBe(false)
+    })
+
+    it('shows warning when active pack usage is high', () => {
+      vi.mocked(useCreditGrants).mockReturnValue({
+        data: [
+          createMockGrant({
+            id: 'pack-1',
+            creditsSpent: 100,
+            creditsMax: 100,
+            isAvailable: false,
+            finalState: 'consumed',
+          }),
+          createMockGrant({
+            id: 'pack-2',
+            creditsSpent: 95,
+            creditsMax: 100,
+            isAvailable: true,
+            finalState: null,
+          }),
+        ],
+        isLoading: false,
+      } as ReturnType<typeof useCreditGrants>)
+
+      const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
+
+      expect(result.current.percentage).toBe(95)
+      expect(result.current.warningLevel).toBe(WarningLevel.WARNING)
+      expect(result.current.isWarningBannerActive).toBe(true)
     })
   })
 

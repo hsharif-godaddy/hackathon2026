@@ -14,7 +14,7 @@ import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { SubscriptionPlan } from '@/types/credits'
-import { getEffectiveCreditsSpent, getPlanFromSubscription } from '@/utils/credits'
+import { getActiveGrants, getEffectiveCreditsSpent, getPlanFromSubscription } from '@/utils/credits'
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
 import { BudgetPopoverContent, GrantsPopoverContent } from '.'
 
@@ -58,15 +58,19 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
 
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : SubscriptionPlan.None
 
-  // Dual-path percentage computation
+  // Dual-path percentage computation:
+  // Semantically: 0% = credits available but not used; 100% = no usable credits left
   let percentage: number
   if (isBudgetServiceEnabled && budgetData) {
     const used = Math.min(budgetData.creditsUsedNumeric, budgetData.creditsTotalNumeric)
-    percentage = budgetData.creditsTotalNumeric > 0 ? (used / budgetData.creditsTotalNumeric) * 100 : 0
+    // When no budget total, show 100% (exhausted) instead of 0% (available)
+    percentage = budgetData.creditsTotalNumeric > 0 ? (used / budgetData.creditsTotalNumeric) * 100 : 100
   } else {
-    const totalCreditsSpent = grants?.reduce((sum, g) => sum + getEffectiveCreditsSpent(g.creditsSpent, g.creditsMax), 0) ?? 0
-    const totalCreditsMax = grants?.reduce((sum, g) => sum + g.creditsMax, 0) ?? 0
-    percentage = totalCreditsMax > 0 ? (totalCreditsSpent / totalCreditsMax) * 100 : 0
+    const activeGrants = grants ? getActiveGrants(grants) : []
+    const totalCreditsSpent = activeGrants.reduce((sum, g) => sum + getEffectiveCreditsSpent(g.creditsSpent, g.creditsMax), 0)
+    const totalCreditsMax = activeGrants.reduce((sum, g) => sum + g.creditsMax, 0)
+    // When no active grants remain, show 100% (exhausted) instead of 0% (available)
+    percentage = totalCreditsMax > 0 ? (totalCreditsSpent / totalCreditsMax) * 100 : 100
   }
 
   const showLoading = isBudgetServiceEnabled
