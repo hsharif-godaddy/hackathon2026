@@ -246,7 +246,7 @@ Phase 3 — Pages (after Phase 1 & 2, build sequentially):
 
 Phase 4 — Finalize:
 - Wire up routing for all pages
-- Run type-check and fix errors
+- The type checker runs continuously - if type errors remain, they will be reported automatically. Do NOT run `npm run type-check` manually.
 - Mark ALL page items as COMPLETE via todoList tool
 - Show completed site via suggestedResponse
 

@@ -181,7 +181,7 @@ Phase 3 — Page (after Phase 1 & 2):
 - Build the single showcase page with all sections
 
 Phase 4 — Finalize:
-- Run type-check and fix errors
+- The type checker runs continuously - if type errors remain, they will be reported automatically. Do NOT run `npm run type-check` manually.
 - Mark items as COMPLETE via todoList
 - Show completed site via suggestedResponse
 

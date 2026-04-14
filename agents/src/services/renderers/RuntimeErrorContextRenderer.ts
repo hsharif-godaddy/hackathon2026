@@ -69,14 +69,17 @@ export class RuntimeErrorContextRenderer implements ContextAttachmentRenderer<Ru
         return null
       }
 
+      const isCompileError = name === 'CompileError'
       const sections: string[] = []
 
       // Header
-      sections.push('### Runtime Error Occurred')
+      sections.push(isCompileError ? '### Compile Error Detected' : '### Runtime Error Occurred')
       sections.push('')
 
       // Error details
-      sections.push(`**Error Type:** ${name}`)
+      if (!isCompileError) {
+        sections.push(`**Error Type:** ${name}`)
+      }
       sections.push(`**Error Message:** ${message}`)
 
       if (url) {
@@ -112,15 +115,20 @@ export class RuntimeErrorContextRenderer implements ContextAttachmentRenderer<Ru
       sections.push('')
       sections.push('**Required Workflow:**')
       sections.push('')
-      sections.push('1. Analyze: Examine stack trace (topmost frame = error location), review component stack, identify root cause')
-      sections.push('')
-      sections.push('2. Fix: Make minimal changes following existing patterns')
-      sections.push('')
-      sections.push('3. **Verify (REQUIRED):** Run `npm run type-check` and `npm run build`')
-      sections.push('   - If verification fails: analyze, fix, re-verify')
-      sections.push('   - Iterate until both pass with zero errors')
-      sections.push('')
-      sections.push('4. Complete only when: original error fixed + type-check passes + build succeeds + no new errors')
+
+      if (isCompileError) {
+        sections.push('1. Analyze: Read the error message and file location, identify the TypeScript or compilation issue')
+        sections.push('')
+        sections.push('2. Fix: Make minimal changes to resolve the type or compilation error')
+        sections.push('')
+        sections.push('3. The type checker runs continuously - if errors remain after your fix, they will be reported automatically. Do NOT run `npm run type-check` manually.')
+      } else {
+        sections.push('1. Analyze: Examine stack trace (topmost frame = error location), review component stack, identify root cause')
+        sections.push('')
+        sections.push('2. Fix: Make minimal changes following existing patterns')
+        sections.push('')
+        sections.push('3. The type checker runs continuously - if type errors remain after your fix, they will be reported automatically. Do NOT run `npm run type-check` manually.')
+      }
       sections.push('')
       
       const content = sections.join('\n')

@@ -394,7 +394,6 @@ Follow the BUILD ORDER phases in the handoff prompt. Each phase lists tasks that
 4. Build incrementally with semantic HTML
 5. Add navigation and SEO metadata
 6. Verify accessibility
-7. Run `npm run type-check`
 
 ### Making Edits
 
@@ -402,8 +401,7 @@ Follow the BUILD ORDER phases in the handoff prompt. Each phase lists tasks that
 2. Explore with directoryListing, grepSearch, readFile as needed
 3. Read files before editing for exact content
 4. Make minimal focused changes, reuse components
-5. Run `npm run type-check`
-6. Provide brief summary
+5. Provide brief summary
 
 ### Action Requests
 

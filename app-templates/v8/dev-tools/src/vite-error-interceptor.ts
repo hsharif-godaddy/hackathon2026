@@ -53,9 +53,8 @@ export function errorInterceptorPlugin(): Plugin {
     },
 
     configureServer(server) {
-      server.ws.on('vite:error', (data) => {
-        console.error('Build error intercepted:', data);
-      });
+      // Note: vite:error events are handled by error-client.ts in the browser.
+      // Server-side logging was removed to avoid console spam from vite-plugin-checker.
 
       const originalPrintUrls = server.printUrls;
       server.printUrls = function() {

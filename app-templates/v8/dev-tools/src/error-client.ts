@@ -1,26 +1,33 @@
 import { safePostMessage } from './utils/postMessage';
 
-function formatErrorMessage(data: any): string {
+function parseViteError(data: any): { message: string; file?: string; frame?: string } {
   const err = data?.err || data || {};
   const message = err.message || 'Unknown compilation error occurred';
   const frame = err.frame || '';
 
   const loc = err.loc;
-  const locString =
+  const file =
     loc && loc.file
-      ? `\n\nFile: ${loc.file}${loc.line != null ? `:${loc.line}` : ''}${
-          loc.column != null ? `:${loc.column}` : ''
-        }`
-      : '';
+      ? `${loc.file}${loc.line != null ? `:${loc.line}` : ''}${loc.column != null ? `:${loc.column}` : ''}`
+      : undefined;
 
-  return `${message}${frame ? `\n\n${frame}` : ''}${locString}`.trim();
+  return { message, file, frame };
 }
 
-function sendErrorToParent(errorMessage: string) {
+function sendCompileErrorToParent(data: any) {
   try {
+    const { message, file, frame } = parseViteError(data);
+    const stack = [file && `  at ${file}`, frame && `\n${frame}`].filter(Boolean).join('\n');
+
     safePostMessage(window.parent, {
       type: 'error-fix-request',
-      errorMessage,
+      errorData: {
+        message,
+        name: 'CompileError',
+        stack: stack || undefined,
+        url: file,
+        timestamp: Date.now(),
+      },
     });
   } catch (err) {
     console.error('Failed to send message to parent from error-client:', err);
@@ -65,8 +72,16 @@ if (import.meta.env.MODE === 'development') {
   window.addEventListener('vite:initial-error', ((event: CustomEvent) => {
     if (hasDetailedError) return; // HMR already sent a detailed error; ignore the generic import failure
     showInactiveOverlay();
-    sendErrorToParent(formatErrorMessage(event.detail));
+    sendCompileErrorToParent(event.detail);
   }) as EventListener);
+
+  // After a full page reload (e.g., recovering from a compile error), the module
+  // re-initializes with clean state and the parent never receives error-fix-resolved.
+  // Fires on every load (even without a prior error) since we can't know post-reload
+  // whether one existed. The parent handles this idempotently.
+  window.addEventListener('load', () => {
+    safePostMessage(window.parent, { type: 'error-fix-resolved' });
+  });
 }
 
 // Hook into Vite HMR for errors during development
@@ -74,11 +89,12 @@ if (import.meta.env.MODE === 'development' && import.meta.hot) {
   let hasErrorOverlay = false;
 
   const handleHmrError = (data: any) => {
-    console.error('Vite compile error:', formatErrorMessage(data));
+    const { message, file } = parseViteError(data);
+    console.error('Vite compile error:', file ? `${message} (${file})` : message);
     hasErrorOverlay = true;
     hasDetailedError = true;
     showInactiveOverlay();
-    sendErrorToParent(formatErrorMessage(data));
+    sendCompileErrorToParent(data);
   };
 
   const handleAfterUpdate = () => {
@@ -92,11 +108,42 @@ if (import.meta.env.MODE === 'development' && import.meta.hot) {
     }
   };
 
+  // Handle on-demand tsc type check results from vite-tsc-plugin
+  const handleTscError = (data: any) => {
+    const errors = data?.errors;
+    if (!errors || errors.length === 0) return;
+
+    const first = errors[0];
+    const errorLines = errors
+      .map((e: any) => `${e.file}(${e.line},${e.column}): error ${e.code}: ${e.message}`);
+    if (errors.length > 1) {
+      const fileCount = new Set(errors.map((e: any) => e.file)).size;
+      errorLines.push(`[+${errors.length - 1} more error${errors.length > 2 ? 's' : ''} across ${fileCount} file${fileCount > 1 ? 's' : ''}]`);
+    }
+    const message = errorLines.join('\n');
+
+    hasErrorOverlay = true;
+    hasDetailedError = true;
+    showInactiveOverlay();
+    sendCompileErrorToParent({
+      err: {
+        message,
+        loc: { file: first.file, line: first.line, column: first.column },
+      },
+    });
+  };
+
   // Standard Vite error event
   import.meta.hot.on('vite:error', handleHmrError);
 
   // Custom compile error event emitted by our error interceptor plugin
   import.meta.hot.on('compile-error', handleHmrError);
+
+  // On-demand tsc type check errors from vite-tsc-plugin
+  import.meta.hot.on('tsc-error', handleTscError);
+
+  // tsc errors resolved (0 errors after a previous failure)
+  import.meta.hot.on('tsc-error-resolved', handleAfterUpdate);
 
   // Recover after a successful HMR update clears a previous error
   import.meta.hot.on('vite:afterUpdate', handleAfterUpdate);
@@ -108,6 +155,8 @@ if (import.meta.env.MODE === 'development' && import.meta.hot) {
     removeInactiveOverlay();
     import.meta.hot!.off('vite:error', handleHmrError);
     import.meta.hot!.off('compile-error', handleHmrError);
+    import.meta.hot!.off('tsc-error', handleTscError);
+    import.meta.hot!.off('tsc-error-resolved', handleAfterUpdate);
     import.meta.hot!.off('vite:afterUpdate', handleAfterUpdate);
   });
 }
