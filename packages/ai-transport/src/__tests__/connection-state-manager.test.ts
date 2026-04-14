@@ -219,6 +219,37 @@ describe('ConnectionStateManager', () => {
         expect(manager.getStateData('socket-1')?.lastDeliveredSequence).toBe(42)
       })
     })
+
+    describe('disconnectTime tracking', () => {
+      it('initializes disconnectTime as null', () => {
+        expect(manager.getStateData('socket-1')?.disconnectTime).toBeNull()
+      })
+
+      it('sets disconnectTime when transitioning to disconnected', () => {
+        const before = Date.now()
+        manager.transitionTo('socket-1', 'disconnected')
+        const after = Date.now()
+
+        const disconnectTime = manager.getStateData('socket-1')?.disconnectTime
+        expect(disconnectTime).toBeGreaterThanOrEqual(before)
+        expect(disconnectTime).toBeLessThanOrEqual(after)
+      })
+
+      it('clears disconnectTime when transitioning back to connected', () => {
+        manager.transitionTo('socket-1', 'disconnected')
+        expect(manager.getStateData('socket-1')?.disconnectTime).not.toBeNull()
+
+        manager.transitionTo('socket-1', 'connected')
+        expect(manager.getStateData('socket-1')?.disconnectTime).toBeNull()
+      })
+
+      it('clears disconnectTime after recovering -> connected', () => {
+        manager.transitionTo('socket-1', 'disconnected')
+        manager.transitionTo('socket-1', 'recovering')
+        manager.transitionTo('socket-1', 'connected')
+        expect(manager.getStateData('socket-1')?.disconnectTime).toBeNull()
+      })
+    })
   })
 
   describe('updateConnection', () => {

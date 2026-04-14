@@ -194,8 +194,8 @@ export interface WebSocketConfig {
   agentRouter?: (socketId: string, data: ChatMessage) => string | undefined
 
   /** Event handlers */
-  onConnection?: (socketId: string) => void | Promise<void>
-  onDisconnection?: (socketId: string) => void | Promise<void>
+  onConnection?: (socketId: string, meta?: { recoveryMode?: string; previousSocketId?: string }) => void | Promise<void>
+  onDisconnection?: (socketId: string, meta?: { reason?: string; transport?: string | undefined }) => void | Promise<void>
   onMessageStart?: (socketId: string, message: string, agentName?: string, context?: Record<string, unknown>) => void | Promise<void>
   /**
    * Called BEFORE message completion to allow for pre-completion operations
@@ -695,13 +695,18 @@ export class WebSocketServer {
       })
 
       socket.on('disconnect', async (reason) => {
+        const transport = this.getTransportName(socket)
         if (reason === 'ping timeout') {
+          const pingStateData = this.stateManager.getStateData(socketId)
           this.logger.warn('quality.ping_timeout_disconnect', {
             socketId,
             reason,
+            transport,
+            conversationId: pingStateData?.conversationId,
+            agentName: pingStateData?.agentName,
           })
         }
-        this.logger.info('socket.disconnect', { socketId, reason })
+        this.logger.info('socket.disconnect', { socketId, reason, transport })
 
         // Check if there's an active stream for this socket via state manager
         const stateData = this.stateManager.getStateData(socketId)
@@ -712,7 +717,8 @@ export class WebSocketServer {
           this.logger.info('socket.disconnect.recovery_start', {
             socketId,
             recoveryWindow: `${this.STREAM_RECOVERY_WINDOW}ms`,
-            conversationId: stateData.conversationId
+            conversationId: stateData.conversationId,
+            transport,
           })
 
           // Set timeout to abort if client doesn't reconnect
@@ -732,7 +738,10 @@ export class WebSocketServer {
           // Conversation exists but stream not yet registered - setup still in progress
           this.logger.info('disconnect.during_setup', {
             socketId,
-            conversationId: stateData.conversationId
+            conversationId: stateData.conversationId,
+            reason,
+            transport,
+            connectionState: stateData.state,
           })
 
           // Create a placeholder AbortController for the disconnected state
@@ -752,26 +761,23 @@ export class WebSocketServer {
             abortController: placeholderController
           })
         } else {
-          // No state - connection closed before chat started
-          this.logger.info('socket.disconnect.idle', { socketId })
+          this.logger.debug('socket.disconnect.idle', { socketId })
         }
 
         // Clean up APM spans (these can't be recovered)
         this.cleanupToolSpans(socketId)
 
         try {
-          await this.config.onDisconnection?.(socketId)
+          await this.config.onDisconnection?.(socketId, { reason, transport })
         } catch (error) {
           this.logger.error('socket.disconnect.handler_error', error)
         }
       })
 
-      // Debug logging for all connections
       this.logger.info('socket.connect', {
         socketId,
-        hasAuth: !!auth,
-        authKeys: Object.keys(auth),
-        previousSocketId: previousSocketId || 'none',
+        previousSocketId: previousSocketId || undefined,
+        transport: this.getTransportName(socket),
       })
 
       // Send server_config immediately — client needs timeout values (ackTimeout) and
@@ -782,12 +788,11 @@ export class WebSocketServer {
 
       // Debug logging for recovery
       if (previousSocketId) {
-        this.logger.info('socket.reconnect', {
+        this.logger.debug('socket.reconnect', {
           socketId,
           previousSocketId,
           hasDisconnectedStream: this.stateManager.isDisconnected(previousSocketId),
           disconnectedStreamsCount: this.stateManager.getDisconnectedCount(),
-          disconnectedStreamKeys: Array.from(this.stateManager.getDisconnectedSocketIds())
         })
       }
 
@@ -798,6 +803,20 @@ export class WebSocketServer {
         await this.completeConnectionSetup(socket)
       }
     })
+  }
+
+  private getTransportName(socket: Socket): string | undefined {
+    // Best-effort access to Engine.IO internals; falls back to undefined if shape changes.
+    const s = socket as Socket & { conn?: { transport?: { name?: string } } }
+    return s.conn?.transport?.name
+  }
+
+  private async fireOnConnection(socketId: string, meta?: { recoveryMode?: string; previousSocketId?: string }): Promise<void> {
+    try {
+      await this.config.onConnection?.(socketId, meta)
+    } catch (error) {
+      this.logger.error('socket.connect.handler_error', error)
+    }
   }
 
   private emitServerConfig(socket: Socket): void {
@@ -839,6 +858,7 @@ export class WebSocketServer {
 
     if (detectedRecoveryMode === 'manual') {
       await this.runManualRecovery(socket, auth.previousSocketId!)
+      await this.fireOnConnection(socket.id, { recoveryMode: 'manual', previousSocketId: auth.previousSocketId })
       return
     }
 
@@ -850,19 +870,20 @@ export class WebSocketServer {
     if (detectedRecoveryMode === 'conversation') {
       signal?.throwIfAborted()
       await this.runConversationRecovery(socket, socketId, auth)
+      await this.fireOnConnection(socket.id, { recoveryMode: 'conversation', previousSocketId: auth.previousSocketId })
       return
     }
 
     if (detectedRecoveryMode === 'initial') {
       signal?.throwIfAborted()
       await this.runInitialRecovery(socket, socketId, auth)
+      await this.fireOnConnection(socket.id, { recoveryMode: 'initial', previousSocketId: auth.previousSocketId })
       return
     }
 
     signal?.throwIfAborted()
 
-    // Call connection handler (await to ensure async initialization completes before subsequent handlers)
-    await this.config.onConnection?.(socketId)
+    await this.fireOnConnection(socketId)
 
     this.sendAvailableAgents(socket)
   }
@@ -887,7 +908,7 @@ export class WebSocketServer {
     socketId: string,
     auth: Record<string, any>
   ): Promise<void> {
-    this.logger.info('recovery.no_events', {
+    this.logger.debug('recovery.no_events', {
       newSocketId: socketId,
       previousSocketId: auth.previousSocketId,
       hasConversationId: !!auth.conversationId

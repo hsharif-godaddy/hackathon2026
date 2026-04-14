@@ -344,8 +344,14 @@ interface WebSocketConfig {
 
   // === Event Handlers ===
 
-  onConnection?: (socketId: string) => void | Promise<void>;
-  onDisconnection?: (socketId: string) => void | Promise<void>;
+  onConnection?: (
+    socketId: string,
+    meta?: { recoveryMode?: string; previousSocketId?: string },
+  ) => void | Promise<void>;
+  onDisconnection?: (
+    socketId: string,
+    meta?: { reason?: string; transport?: string | undefined },
+  ) => void | Promise<void>;
   onMessageStart?: (
     socketId: string,
     message: string,

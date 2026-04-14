@@ -327,6 +327,200 @@ describe('WebSocketServer - Error Handling', () => {
       testServer.close()
     })
 
+    it('should call onConnection with recovery metadata for manual recovery', async () => {
+      vi.clearAllMocks()
+
+      let connectionHandler: any
+      mockIO.on.mockImplementation((event: string, handler: any) => {
+        if (event === 'connection') {
+          connectionHandler = handler
+        }
+      })
+
+      const onConnectionSpy = vi.fn()
+
+      const testServer = new WebSocketServer(httpServer, {
+        agents: mockAgents,
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence(),
+        onConnection: onConnectionSpy
+      })
+
+      const eventChannel = (testServer as any).eventChannel
+      const stateManager = (testServer as any).stateManager
+
+      // Set up disconnected connection state
+      createDisconnectedConnectionState(stateManager, 'prev-socket', 'recovery-conv-id', 'test-agent', 3)
+
+      vi.spyOn(eventChannel, 'getEventsSince')
+        .mockReturnValue([])
+
+      const mockRecoverySocket = {
+        id: 'new-socket',
+        emit: vi.fn(),
+        on: vi.fn(),
+        once: vi.fn(),
+        off: vi.fn(),
+        handshake: { auth: { previousSocketId: 'prev-socket' } },
+        volatile: { emit: vi.fn() },
+        data: {}
+      }
+
+      if (connectionHandler) {
+        await connectionHandler(mockRecoverySocket)
+
+        expect(onConnectionSpy).toHaveBeenCalledWith('new-socket', {
+          recoveryMode: 'manual',
+          previousSocketId: 'prev-socket'
+        })
+      }
+
+      testServer.close()
+    })
+
+    it('should call onConnection with recovery metadata for conversation recovery', async () => {
+      vi.clearAllMocks()
+
+      let connectionHandler: any
+      mockIO.on.mockImplementation((event: string, handler: any) => {
+        if (event === 'connection') {
+          connectionHandler = handler
+        }
+      })
+
+      const onConnectionSpy = vi.fn()
+
+      const testServer = new WebSocketServer(httpServer, {
+        agents: mockAgents,
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence(),
+        onConnection: onConnectionSpy
+      })
+
+      const eventChannel = (testServer as any).eventChannel
+      const stateManager = (testServer as any).stateManager
+
+      // Set up disconnected connection state keyed by conversation ID
+      createDisconnectedConnectionState(stateManager, 'old-socket-conv', 'conv-recovery-id', 'test-agent', 3)
+
+      vi.spyOn(eventChannel, 'getEventsSince')
+        .mockReturnValue([])
+
+      // Conversation recovery: conversationId in auth, NO previousSocketId
+      const mockConvSocket = {
+        id: 'new-conv-socket',
+        emit: vi.fn(),
+        on: vi.fn(),
+        once: vi.fn(),
+        off: vi.fn(),
+        handshake: { auth: { conversationId: 'conv-recovery-id' } },
+        volatile: { emit: vi.fn() },
+        data: {}
+      }
+
+      if (connectionHandler) {
+        await connectionHandler(mockConvSocket)
+
+        expect(onConnectionSpy).toHaveBeenCalledWith('new-conv-socket', {
+          recoveryMode: 'conversation',
+          previousSocketId: undefined
+        })
+      }
+
+      testServer.close()
+    })
+
+    it('should call onConnection with recovery metadata for initial recovery', async () => {
+      vi.clearAllMocks()
+
+      let connectionHandler: any
+      mockIO.on.mockImplementation((event: string, handler: any) => {
+        if (event === 'connection') {
+          connectionHandler = handler
+        }
+      })
+
+      const onConnectionSpy = vi.fn()
+
+      const testServer = new WebSocketServer(httpServer, {
+        agents: mockAgents,
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence(),
+        onConnection: onConnectionSpy
+      })
+
+      // Initial recovery: conversationId in auth but NO disconnected state in memory
+      // (e.g., server restart or recovery window expired)
+      const mockInitialSocket = {
+        id: 'new-initial-socket',
+        emit: vi.fn(),
+        on: vi.fn(),
+        once: vi.fn(),
+        off: vi.fn(),
+        handshake: { auth: { conversationId: 'initial-conv-id' } },
+        volatile: { emit: vi.fn() },
+        data: {}
+      }
+
+      if (connectionHandler) {
+        await connectionHandler(mockInitialSocket)
+
+        expect(onConnectionSpy).toHaveBeenCalledWith('new-initial-socket', {
+          recoveryMode: 'initial',
+          previousSocketId: undefined
+        })
+      }
+
+      testServer.close()
+    })
+
+    it('should not throw when onConnection handler errors during recovery', async () => {
+      vi.clearAllMocks()
+
+      let connectionHandler: any
+      mockIO.on.mockImplementation((event: string, handler: any) => {
+        if (event === 'connection') {
+          connectionHandler = handler
+        }
+      })
+
+      const onConnectionSpy = vi.fn().mockRejectedValue(new Error('callback failed'))
+
+      const testServer = new WebSocketServer(httpServer, {
+        agents: mockAgents,
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence(),
+        onConnection: onConnectionSpy
+      })
+
+      const eventChannel = (testServer as any).eventChannel
+      const stateManager = (testServer as any).stateManager
+
+      createDisconnectedConnectionState(stateManager, 'err-prev-socket', 'err-conv-id', 'test-agent', 3)
+
+      vi.spyOn(eventChannel, 'getEventsSince')
+        .mockReturnValue([])
+
+      const mockErrSocket = {
+        id: 'err-new-socket',
+        emit: vi.fn(),
+        on: vi.fn(),
+        once: vi.fn(),
+        off: vi.fn(),
+        handshake: { auth: { previousSocketId: 'err-prev-socket' } },
+        volatile: { emit: vi.fn() },
+        data: {}
+      }
+
+      if (connectionHandler) {
+        // Should not throw despite onConnection failing
+        await expect(connectionHandler(mockErrSocket)).resolves.toBeUndefined()
+        expect(onConnectionSpy).toHaveBeenCalled()
+      }
+
+      testServer.close()
+    })
+
     it('should require acknowledgement for manual recovery and deliver catch-up events', async () => {
       vi.clearAllMocks()
 

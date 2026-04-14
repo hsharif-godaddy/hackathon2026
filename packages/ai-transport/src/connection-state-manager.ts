@@ -36,6 +36,9 @@ export interface ConnectionStateData {
   // User-initiated stop tracking
   userStopped: boolean
 
+  // Timestamp when connection entered 'disconnected' state (for recovery duration)
+  disconnectTime: number | null
+
   // Current state
   state: ConnectionState
 }
@@ -185,6 +188,7 @@ export class ConnectionStateManager {
       recoveryTimeoutId: null,
       setupTimeoutId: null,
       userStopped: false,
+      disconnectTime: null,
       state: 'connected'
     }
 
@@ -234,6 +238,11 @@ export class ConnectionStateManager {
 
     // Update state
     data.state = newState
+    if (newState === 'disconnected') {
+      data.disconnectTime = Date.now()
+    } else if (newState === 'connected') {
+      data.disconnectTime = null
+    }
 
     // Apply params
     if (params.abortController !== undefined) {

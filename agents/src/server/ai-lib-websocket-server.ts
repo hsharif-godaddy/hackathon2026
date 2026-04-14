@@ -1435,8 +1435,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         return rawContext;
       },
 
-      // Connection handler
-      onConnection: async (socketId: string) => {
+      // Connection handler - fires for fresh AND recovered connections
+      onConnection: async (socketId: string, meta?: { recoveryMode?: string; previousSocketId?: string }) => {
         connectionStartTimes.set(socketId, Date.now())
 
         // Defensive pruning: if map grows unexpectedly large, remove stale entries
@@ -1449,22 +1449,15 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           }
         }
 
-        logger.info('websocket.connection.connected', {
-          message: 'WebSocket client connected',
-          socketId
-        })
-
         // Start APM transaction for WebSocket connection lifecycle
         const transaction = apm.startTransaction('WebSocket Connection', 'websocket')
         if (transaction) {
           transaction.setLabel('socket_id', socketId)
           transaction.setLabel('event', 'connection')
+          if (meta?.recoveryMode) {
+            transaction.setLabel('recovery_mode', meta.recoveryMode)
+          }
           activeWebSocketTransactions.set(socketId, transaction)
-
-          logger.debug('apm.websocket.transaction.started', {
-            socketId,
-            transactionName: transaction.name
-          })
         }
       },
 
@@ -1915,7 +1908,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         }
       },
 
-      onDisconnection: async (socketId: string) => {
+      onDisconnection: async (socketId: string, meta?: { reason?: string; transport?: string }) => {
         // Log connection duration for quality monitoring
         const connectTime = connectionStartTimes.get(socketId)
         if (connectTime) {
@@ -1924,6 +1917,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             socketId,
             connectionDurationMs,
             connectionDurationMinutes: Math.round(connectionDurationMs / 60_000 * 10) / 10,
+            disconnectReason: meta?.reason,
+            transport: meta?.transport,
           })
           connectionStartTimes.delete(socketId)
         }
@@ -1934,11 +1929,6 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         assessmentOutcomes.delete(socketId)
         pendingBudgetOverrides.delete(socketId)
         lastUserMessageCache.delete(socketId)
-
-        logger.info('websocket.connection.disconnected', {
-          message: 'WebSocket client disconnected',
-          socketId
-        })
 
         // Cleanup ClientActionService
         cleanupClientActionService(socketId)

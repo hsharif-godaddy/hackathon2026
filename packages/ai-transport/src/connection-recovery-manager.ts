@@ -65,6 +65,7 @@ export interface RecoveryContext {
   lastDeliveredSequence: number
   abortController: AbortController | null
   agentName?: string
+  disconnectTime?: number | null
 }
 
 /**
@@ -220,7 +221,8 @@ export class ConnectionRecoveryManager {
     this.logger.info('recovery.manual.started', {
       socketId,
       previousSocketId,
-      conversationId: stateData.conversationId
+      conversationId: stateData.conversationId,
+      agentName: stateData.agentName,
     })
 
     // Cancel the abort timeout
@@ -235,7 +237,8 @@ export class ConnectionRecoveryManager {
       oldSocketId: previousSocketId,
       conversationId: stateData.conversationId,
       lastDeliveredSequence: stateData.lastDeliveredSequence,
-      abortController: stateData.abortController
+      abortController: stateData.abortController,
+      disconnectTime: stateData.disconnectTime,
     }
 
     await this.executeRecoveryFlow(socket, context, stateData, callbacks)
@@ -284,7 +287,8 @@ export class ConnectionRecoveryManager {
     this.logger.info('recovery.conversation.started', {
       socketId,
       oldSocketId,
-      conversationId
+      conversationId,
+      agentName: stateData.agentName,
     })
 
     // Cancel the abort timeout
@@ -299,7 +303,8 @@ export class ConnectionRecoveryManager {
       oldSocketId,
       conversationId,
       lastDeliveredSequence: stateData.lastDeliveredSequence,
-      abortController: stateData.abortController
+      abortController: stateData.abortController,
+      disconnectTime: stateData.disconnectTime,
     }
 
     await this.executeRecoveryFlow(socket, context, stateData, callbacks)
@@ -392,6 +397,7 @@ export class ConnectionRecoveryManager {
       recoveryTimeoutId: null,
       setupTimeoutId: null,
       userStopped: false,
+      disconnectTime: null,
       state: 'connected'
     }
 
@@ -687,7 +693,8 @@ export class ConnectionRecoveryManager {
         mode: context.mode,
         eventsReplayed: replayedEvents.length + catchUpCount,
         fromSequence: preReplaySequence,
-        toSequence: finalSequence
+        toSequence: finalSequence,
+        recoveryDurationMs: context.disconnectTime != null ? Date.now() - context.disconnectTime : undefined,
       })
 
       callbacks.onRecoveryComplete(context.newSocketId, replayedEvents, finalSequence)
