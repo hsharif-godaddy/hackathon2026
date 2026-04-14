@@ -142,6 +142,10 @@ func writeBudgetStoreError(w http.ResponseWriter, op string, err error) {
 		writeError(w, http.StatusConflict, "CONFLICT", "budget has unreconciled sessions")
 		return
 	}
+	if errors.Is(err, store.ErrNoBudgetItems) {
+		writeError(w, http.StatusPaymentRequired, "NO_BUDGET_CAPACITY", "budget has no budget items")
+		return
+	}
 	if errors.Is(err, store.ErrNoSessionCapacity) {
 		writeError(w, http.StatusPaymentRequired, "NO_BUDGET_CAPACITY", "no credits available to open a session")
 		return
@@ -433,10 +437,6 @@ func (s *Server) postBudget(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(payload.ProductKey) == "" {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "productKey is required")
-		return
-	}
-	if len(payload.Items) == 0 {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "items must contain at least one entry")
 		return
 	}
 	items := make([]store.ItemInput, len(payload.Items))

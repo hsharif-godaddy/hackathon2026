@@ -225,7 +225,7 @@ paths:
   /api/v1/budgets:
     post:
       tags: [v1]
-      summary: Create budget with items
+      summary: Create budget (optional items)
       requestBody:
         required: true
         content:
@@ -729,13 +729,12 @@ components:
 
     PostBudgetRequest:
       type: object
-      required: [productKey, items]
+      required: [productKey]
       properties:
         productKey:
           type: string
         items:
           type: array
-          minItems: 1
           items:
             $ref: "#/components/schemas/BudgetItemInput"
 

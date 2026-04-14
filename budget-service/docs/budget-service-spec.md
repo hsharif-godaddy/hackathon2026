@@ -7,7 +7,7 @@ Spec for API shape, flow, and numbers. Code lives under `budget-service/`; older
 ## Flow
 
 1. **Product** — `POST /api/v1/products` registers `productKey` (required before budgets). If the key was previously soft-deleted (`DELETE /products/{productKey}`) and no active budgets reference it, the same `POST` **revives** the row by clearing `deleted_at` (same primary key; `createdAt` is unchanged).
-2. **Budget** — `POST /api/v1/budgets` creates a budget with items. Each item specifies `creditsTotal`, `costToCreditRatio`, and optional `expiresAt`, `startsAt`, `resetInterval`, `resetsAt`.
+2. **Budget** — `POST /api/v1/budgets` creates a budget; `items` is optional (omit or `[]` for a shell budget). Each item specifies `creditsTotal`, `costToCreditRatio`, and optional `expiresAt`, `startsAt`, `resetInterval`, `resetsAt`.
 3. **Session** — `POST /api/v1/sessions` with body `{ "budgetId", "metadata"? }` returns the same body shape as `GET /api/v1/sessions/{sessionId}`. Before checking capacity, the service lazily applies any due resets for that budget inside the same transaction. **402** `NO_BUDGET_CAPACITY` when the budget has no items or no consumable credits (same item order and pool math as spend/report after reset catch-up). Atomic with the insert so clients can skip a separate budget preflight. A later `PATCH` can still fail if capacity is consumed before that call.
 4. **Spend (GoCode)** — `PATCH /api/v1/sessions/{sessionId}` with `{ "sessionItems": [ { "cost", "callRequestId" } ] }` (append lines). Only while `reconciled_at` is null. `cost` may be JSON string or number; stored as `NUMERIC(20,6)`. Before replaying prior lines and allocating new spend, the service lazily applies any due resets for that budget in the same transaction.
 5. **Inspect** — `GET /api/v1/sessions/{sessionId}` → totals, lines, optional `?debug=1` for consumption order + replayed credits per line. **404** when `reconciled_at` is set (session closed).
@@ -34,21 +34,21 @@ For each resource with read/write APIs, successful `POST`/`PATCH` responses are 
 
 ## REST (implemented)
 
-| Method                   | Path                                                            | Notes                                                                                                                             |
-| ------------------------ | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`, `HEAD`            | `/health`                                                       | No auth                                                                                                                           |
-| `GET`                    | `/api/v1/auth-check`                                            | Auth probe                                                                                                                        |
-| `GET`, `POST`            | `/api/v1/products`                                              | List / register `productKey` (or revive after soft-delete; **409** if key is already active)                                       |
-| `DELETE`                 | `/api/v1/products/{productKey}`                                 | Soft-delete; 409 if active budgets reference product                                                                              |
-| `POST`                   | `/api/v1/webhooks`                                              | Body: `eventType`, `productKey`, `url` → same shape as `GET /webhooks/{webhookId}`                                                |
-| `GET`, `DELETE`          | `/api/v1/webhooks/{webhookId}`                                  | `GET` body includes `createdAt`, `updatedAt`. `DELETE` → soft-delete (`deleted_at`), then 204                                     |
-| `POST`                   | `/api/v1/budgets`                                               | Create budget + items; created items default `startsAt`/`resetsAt` as described above; response matches `GET /budgets/{budgetId}` |
-| `GET`, `PATCH`, `DELETE` | `/api/v1/budgets/{budgetId}`                                    | DELETE soft-deletes budget + items; 409 if unreconciled session                                                                   |
-| `POST`                   | `/api/v1/budgets/{budgetId}/budget-items`                       | Append one item; create-time `startsAt`/`resetsAt` defaults apply; response matches item `GET`                                    |
-| `GET`, `PATCH`, `DELETE` | `/api/v1/budgets/{budgetId}/budget-items/{budgetItemId}`        | `PATCH` response matches item `GET`; DELETE 409 if unreconciled session                                                           |
-| `POST`                   | `/api/v1/sessions`                                              | Body: `budgetId`, optional `metadata`; response matches session `GET`; **402** when no capacity                                    |
-| `GET`, `PATCH`           | `/api/v1/sessions/{sessionId}`                                  | `PATCH` response matches session `GET`; GET 404 if `reconciled_at` set                                                             |
-| `POST`, `GET`            | `/api/v1/sessions/{sessionId}/reports`, `.../reports/{reportId}` | `POST` response matches report `GET`                                                                                              |
+| Method                   | Path                                                             | Notes                                                                                                       |
+| ------------------------ | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `GET`, `HEAD`            | `/health`                                                        | No auth                                                                                                     |
+| `GET`                    | `/api/v1/auth-check`                                             | Auth probe                                                                                                  |
+| `GET`, `POST`            | `/api/v1/products`                                               | List / register `productKey` (or revive after soft-delete; **409** if key is already active)                |
+| `DELETE`                 | `/api/v1/products/{productKey}`                                  | Soft-delete; 409 if active budgets reference product                                                        |
+| `POST`                   | `/api/v1/webhooks`                                               | Body: `eventType`, `productKey`, `url` → same shape as `GET /webhooks/{webhookId}`                          |
+| `GET`, `DELETE`          | `/api/v1/webhooks/{webhookId}`                                   | `GET` body includes `createdAt`, `updatedAt`. `DELETE` → soft-delete (`deleted_at`), then 204               |
+| `POST`                   | `/api/v1/budgets`                                                | Create budget; optional `items` (shell budget if omitted/empty); response matches `GET /budgets/{budgetId}` |
+| `GET`, `PATCH`, `DELETE` | `/api/v1/budgets/{budgetId}`                                     | DELETE soft-deletes budget + items; 409 if unreconciled session                                             |
+| `POST`                   | `/api/v1/budgets/{budgetId}/budget-items`                        | Append one item; create-time `startsAt`/`resetsAt` defaults apply; response matches item `GET`              |
+| `GET`, `PATCH`, `DELETE` | `/api/v1/budgets/{budgetId}/budget-items/{budgetItemId}`         | `PATCH` response matches item `GET`; DELETE 409 if unreconciled session                                     |
+| `POST`                   | `/api/v1/sessions`                                               | Body: `budgetId`, optional `metadata`; response matches session `GET`; **402** when no capacity             |
+| `GET`, `PATCH`           | `/api/v1/sessions/{sessionId}`                                   | `PATCH` response matches session `GET`; GET 404 if `reconciled_at` set                                      |
+| `POST`, `GET`            | `/api/v1/sessions/{sessionId}/reports`, `.../reports/{reportId}` | `POST` response matches report `GET`                                                                        |
 
 Auth: `packages/go-auth` `AuthenticateAWSIAMService` by default (`Bearer` or `sso-jwt`). `LOCAL_AUTH_DISABLE=true` skips auth (local only).
 

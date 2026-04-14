@@ -13,8 +13,11 @@ var (
 	ErrUnknownProductKey = errors.New("unknown product key")
 	// ErrInsufficientCredits is returned when a session report needs more credits than budget items have available.
 	ErrInsufficientCredits = errors.New("insufficient credits")
-	// ErrNoSessionCapacity is returned when POST session cannot proceed: no budget_items or no consumable pool (same walk as consumeBudgetCostUSD).
+	// ErrNoSessionCapacity is returned when POST session cannot proceed because the budget has active
+	// budget_items but none are consumable (same walk as consumeBudgetCostUSD). Empty budgets use ErrNoBudgetItems instead.
 	ErrNoSessionCapacity = errors.New("no session capacity")
+	// ErrNoBudgetItems is returned when a budget has no active (non-deleted) budget_items rows.
+	ErrNoBudgetItems = errors.New("budget has no budget items")
 	// ErrProductHasActiveBudgets is returned when deleting a product that still has active (non-deleted) budgets.
 	ErrProductHasActiveBudgets = errors.New("product has active budgets")
 	// ErrBudgetHasUnreconciledSessions is returned when deleting a budget that still has open sessions.

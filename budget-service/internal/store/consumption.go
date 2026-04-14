@@ -218,7 +218,7 @@ func loadBudgetConsumptionStatesTx(ctx context.Context, tx *sql.Tx, budgetID str
 		return nil, err
 	}
 	if len(out) == 0 {
-		return nil, ErrNotFound
+		return nil, ErrNoBudgetItems
 	}
 	return out, nil
 }

@@ -88,15 +88,66 @@ func TestPostBudgetReturns201AndBudgetId(t *testing.T) {
 	}
 }
 
-func TestPostBudgetRejectsEmptyItems(t *testing.T) {
-	t.Parallel()
-	s := &Server{}
-	req := httptest.NewRequest(http.MethodPost, "/budgets", strings.NewReader(`{"productKey":"k","items":[]}`))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	s.postBudget(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+func TestPostBudgetAllowsEmptyItems(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "budget-empty-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{Store: st}
+
+	cases := []struct {
+		name       string
+		postBudget string
+	}{
+		{"itemsEmptyArray", `{"productKey":"` + key + `","items":[]}`},
+		{"itemsOmitted", `{"productKey":"` + key + `"}`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/budgets", strings.NewReader(tc.postBudget))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			s.postBudget(rec, req)
+			if rec.Code != http.StatusCreated {
+				t.Fatalf("post budget: status %d, body %s", rec.Code, rec.Body.String())
+			}
+			var got map[string]any
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			budgetID, _ := got["budgetId"].(string)
+			if budgetID == "" {
+				t.Fatalf("expected budgetId in body: %s", rec.Body.String())
+			}
+			items, _ := got["items"].([]any)
+			if items == nil || len(items) != 0 {
+				t.Fatalf("expected empty items, got %#v", got["items"])
+			}
+
+			reqS := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+budgetID+`"}`))
+			reqS.Header.Set("Content-Type", "application/json")
+			recS := httptest.NewRecorder()
+			s.postBudgetSession(recS, reqS)
+			if recS.Code != http.StatusPaymentRequired {
+				t.Fatalf("post session want 402, got %d body %s", recS.Code, recS.Body.String())
+			}
+			var errBody struct {
+				Code  string `json:"code"`
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal(recS.Body.Bytes(), &errBody); err != nil {
+				t.Fatal(err)
+			}
+			if errBody.Code != "NO_BUDGET_CAPACITY" {
+				t.Fatalf("code %q want NO_BUDGET_CAPACITY", errBody.Code)
+			}
+			if errBody.Error != "budget has no budget items" {
+				t.Fatalf("error %q want budget has no budget items", errBody.Error)
+			}
+		})
 	}
 }
 

@@ -669,9 +669,6 @@ func (s *Store) CreateBudgetSession(ctx context.Context, budgetID, sessionID str
 
 	states, err := loadBudgetConsumptionStatesTx(ctx, tx, budgetID, true)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return ErrNoSessionCapacity
-		}
 		return err
 	}
 	if !budgetHasConsumableCapacity(states, time.Now()) {
@@ -751,6 +748,9 @@ func (s *Store) DebugSessionCreditsReplay(ctx context.Context, sessionID string)
 
 	states, err := loadBudgetConsumptionStatesTx(ctx, tx, budgetID, false)
 	if err != nil {
+		if errors.Is(err, ErrNoBudgetItems) {
+			return []string{}, nil
+		}
 		return nil, err
 	}
 
