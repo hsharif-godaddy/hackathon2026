@@ -1,4 +1,5 @@
 import type { Conversation, ConversationMessage } from '../database/schema.js';
+import { safeStringify } from '@airo/shared';
 
 export type ExportDetail = 'summary' | 'full';
 
@@ -87,13 +88,13 @@ function formatToolCallFull(rawTc: any): string {
   lines.push('');
   lines.push('**Arguments:**');
   lines.push('```json');
-  lines.push(JSON.stringify(tc.toolArgs, null, 2));
+  lines.push(safeStringify(tc.toolArgs, 2));
   lines.push('```');
   lines.push('');
   if (tc.toolResult !== undefined) {
     lines.push('**Result:**');
     lines.push('```json');
-    lines.push(JSON.stringify(tc.toolResult, null, 2));
+    lines.push(safeStringify(tc.toolResult, 2));
     lines.push('```');
   }
   if (tc.error) {

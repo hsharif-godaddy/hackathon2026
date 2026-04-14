@@ -29,3 +29,6 @@ export type { SupportedAuthType, AuthType } from './auth/index.js'
 // Domain (attach / site sync)
 export { fqdnIsConnectedOrProvisioningOnSite } from './domain/index.js'
 export type { SiteDomainForAttachCheck } from './domain/index.js'
+
+// JSON
+export { safeStringify } from './json/index.js'

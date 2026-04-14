@@ -4,6 +4,7 @@ import { getDatabase } from '../connection.js';
 import type { Conversation, ConversationMessage, ToolCall, MessageSegment } from '../schema.js';
 import type { DatabaseMessage } from '../../types/conversation-messages.js';
 import { logger } from '../../logging/index.js';
+import { safeStringify } from '@airo/shared';
 
 /**
  * Pagination result type for getMessagesPaginated
@@ -292,10 +293,10 @@ export class ConversationRepository {
       sender,
       content,
       options.messageType || null,
-      options.toolCalls ? JSON.stringify(options.toolCalls) : null,
-      options.segments ? JSON.stringify(options.segments) : null,
-      options.metadata ? JSON.stringify(options.metadata) : null,
-      options.contextAttachments ? JSON.stringify(options.contextAttachments) : null,
+      options.toolCalls ? safeStringify(options.toolCalls) : null,
+      options.segments ? safeStringify(options.segments) : null,
+      options.metadata ? safeStringify(options.metadata) : null,
+      options.contextAttachments ? safeStringify(options.contextAttachments) : null,
       now
     );
 
@@ -444,12 +445,12 @@ export class ConversationRepository {
 
     if (updates.toolCalls !== undefined) {
       updateFields.push('tool_calls = ?');
-      values.push(JSON.stringify(updates.toolCalls));
+      values.push(safeStringify(updates.toolCalls));
     }
 
     if (updates.segments !== undefined) {
       updateFields.push('segments = ?');
-      values.push(JSON.stringify(updates.segments));
+      values.push(safeStringify(updates.segments));
     }
 
     if (updates.metadata !== undefined) {
@@ -462,10 +463,10 @@ export class ConversationRepository {
         const existingMetadata = row.metadata ? JSON.parse(row.metadata) : {};
         const mergedMetadata = { ...existingMetadata, ...updates.metadata };
         updateFields.push('metadata = ?');
-        values.push(JSON.stringify(mergedMetadata));
+        values.push(safeStringify(mergedMetadata));
       } else {
         updateFields.push('metadata = ?');
-        values.push(JSON.stringify(updates.metadata));
+        values.push(safeStringify(updates.metadata));
       }
     }
 

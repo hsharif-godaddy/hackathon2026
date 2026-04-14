@@ -1586,6 +1586,9 @@ importers:
       '@airo/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config-airo
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.18.12
       '@typescript-eslint/eslint-plugin':
         specifier: 8.58.0
         version: 8.58.0(@typescript-eslint/parser@8.58.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)(typescript@5.9.3)
@@ -1601,6 +1604,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.18.12)(@vitest/ui@3.2.4)(jiti@2.5.1)(jsdom@26.1.0(bufferutil@4.1.0))(lightningcss@1.30.1)(sass@1.92.1)(terser@5.44.0)(tsx@4.21.0)(yaml@2.8.1)
 
   proxy:
     dependencies:
@@ -28240,7 +28246,7 @@ snapshots:
       chai: 5.3.1
       debug: 4.4.3
       expect-type: 1.2.2
-      magic-string: 0.30.17
+      magic-string: 0.30.21
       pathe: 2.0.3
       picomatch: 4.0.3
       std-env: 3.10.0

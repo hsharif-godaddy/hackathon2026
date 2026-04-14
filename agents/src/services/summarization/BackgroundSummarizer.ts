@@ -12,6 +12,7 @@ import {
   getMessageContent,
 } from '../ConversationHistoryLoader.js';
 import type { BudgetOverride } from '@airo/ai-grants';
+import { safeStringify } from '@airo/shared';
 
 /**
  * Pending job data for debounced summarization
@@ -628,7 +629,7 @@ export class BackgroundSummarizer {
                       type: 'function',
                       function: {
                         name: segment.tool_call.tool_name,
-                        arguments: JSON.stringify(toolArgs),
+                        arguments: safeStringify(toolArgs),
                       },
                     },
                   ],
@@ -639,7 +640,7 @@ export class BackgroundSummarizer {
                   content:
                     typeof segment.tool_call.tool_result === 'string'
                       ? segment.tool_call.tool_result
-                      : JSON.stringify(segment.tool_call.tool_result),
+                      : safeStringify(segment.tool_call.tool_result),
                   tool_call_id: segment.tool_call.id,
                   name: segment.tool_call.tool_name,
                 });

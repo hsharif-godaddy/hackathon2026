@@ -96,19 +96,22 @@ const MAX_INCOMING_WEBSOCKET_CHAT_CHARS = 100_000
 /**
  * Recursive sum of string lengths in nested objects/arrays. Counts every string field on
  * attachments (type, persistence, renderStrategy, source, etc.), not only payload content.
+ * Uses a WeakSet to skip circular references.
  */
-function stringPayloadLength(value: unknown): number {
+function stringPayloadLength(value: unknown, seen?: WeakSet<object>): number {
   if (value === null || value === undefined) return 0
   if (typeof value === 'string') return value.length
   if (typeof value === 'number' || typeof value === 'boolean') return 0
-  if (Array.isArray(value)) {
-    let n = 0
-    for (const item of value) n += stringPayloadLength(item)
-    return n
-  }
   if (typeof value === 'object') {
+    const visited = seen ?? new WeakSet()
+    if (visited.has(value as object)) return 0
+    visited.add(value as object)
     let n = 0
-    for (const v of Object.values(value as Record<string, unknown>)) n += stringPayloadLength(v)
+    if (Array.isArray(value)) {
+      for (const item of value) n += stringPayloadLength(item, visited)
+    } else {
+      for (const v of Object.values(value as Record<string, unknown>)) n += stringPayloadLength(v, visited)
+    }
     return n
   }
   return 0

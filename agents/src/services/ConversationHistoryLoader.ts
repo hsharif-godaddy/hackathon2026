@@ -12,6 +12,7 @@ import { MessageCompressor } from './compression/MessageCompressor.js';
 import type { CompressionStrategy } from './compression/MessageCompressor.js';
 import type { SummarizationStrategy } from './summarization/SummarizationStrategy.js';
 import { LLMSummarizationStrategy } from './summarization/LLMSummarizationStrategy.js';
+import { safeStringify } from '@airo/shared';
 
 /**
  * Tool result part in AI SDK v6 format
@@ -399,7 +400,7 @@ export class ConversationHistoryLoader {
         const toolContent =
           typeof segment.tool_call.tool_result === 'string'
             ? segment.tool_call.tool_result.trim()
-            : JSON.stringify(segment.tool_call.tool_result);
+            : safeStringify(segment.tool_call.tool_result);
 
         if (toolContent && toolContent !== '{}' && toolContent !== 'null') {
           messages.push({
@@ -1042,7 +1043,7 @@ export class ConversationHistoryLoader {
       type: 'function',
       function: {
         name: toolCall.tool_name === 'textEditor' ? 'str_replace_based_edit_tool' : toolCall.tool_name,
-        arguments: typeof toolCall.tool_args === 'string' ? toolCall.tool_args : JSON.stringify(toolCall.tool_args),
+        arguments: typeof toolCall.tool_args === 'string' ? toolCall.tool_args : safeStringify(toolCall.tool_args),
       },
     };
   }
