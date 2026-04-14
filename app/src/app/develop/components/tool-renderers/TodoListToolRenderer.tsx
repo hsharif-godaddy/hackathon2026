@@ -86,7 +86,7 @@ function CircularCheckbox({ checked }: { checked: boolean }) {
 /**
  * Render todo list as HTML
  */
-function renderTodoListHTML(list: any, t: (key: string) => string): React.JSX.Element {
+function renderTodoListHTML(list: any, t: (key: string) => string): React.ReactElement {
   if (!list) return <div>{t('builder_common_todo_no_list')}</div>
 
   const items = list.items || []
@@ -146,7 +146,7 @@ function renderTodoListHTML(list: any, t: (key: string) => string): React.JSX.El
 /**
  * Render multiple lists as HTML
  */
-function renderMultipleListsHTML(lists: any[], t: (key: string) => string): React.JSX.Element {
+function renderMultipleListsHTML(lists: any[], t: (key: string) => string): React.ReactElement {
   if (!lists || lists.length === 0) {
     return <div className="text-sm text-muted-foreground">{t('builder_common_todo_no_todo')}</div>
   }
@@ -184,7 +184,7 @@ function renderMultipleListsHTML(lists: any[], t: (key: string) => string): Reac
 /**
  * Render items as HTML
  */
-function renderItemsHTML(items: any[], title: string, listName?: string): React.JSX.Element {
+function renderItemsHTML(items: any[], title: string, listName?: string): React.ReactElement {
   if (!items || items.length === 0) {
     return <div className="text-sm text-muted-foreground">No items</div>
   }
@@ -318,7 +318,7 @@ export default function TodoListToolRenderer({
   }
 
   // Generate modal content (HTML or markdown)
-  let modalContentElement: React.JSX.Element | null = null
+  let modalContentElement: React.ReactElement | null = null
   let hasDetails = false
 
   if (isMarkdownFormat) {

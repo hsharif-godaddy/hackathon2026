@@ -8,17 +8,27 @@ export default gasket.actions.getNextConfig({
     NEXT_PUBLIC_ELASTIC_APM_SERVER_URL: process.env.NEXT_PUBLIC_ELASTIC_APM_SERVER_URL || elasticApm.serverUrl || '',
     NEXT_PUBLIC_ELASTIC_APM_ENVIRONMENT: process.env.NEXT_PUBLIC_ELASTIC_APM_ENVIRONMENT || elasticApm.environment || '',
   },
+  serverExternalPackages: ['@azure/functions-core', '@godaddy/gd-auth-lib'],
+  outputFileTracingIncludes: {
+    '/explore/[name]/[[...lang]]': ['./src/data/landing-pages/**/*.yaml'],
+  },
   experimental: {
-    instrumentationHook: true,
-    outputFileTracingIncludes: {
-      '/explore/[name]/[[...lang]]': ['./src/data/landing-pages/**/*.yaml'],
+    optimizePackageImports: [
+      'react-intl',
+      '@formatjs/intl',
+      'lucide-react',
+      'zod',
+      '@tanstack/react-query',
+      '@tanstack/react-table',
+    ],
+  },
+  logging: {
+    fetches: {
+      fullUrl: process.env.NODE_ENV === 'development',
     },
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: false, // Keep TypeScript checks for critical errors
+  devIndicators: {
+    position: 'top-left',
   },
   allowedDevOrigins: [
     'localhost:3000',
@@ -39,24 +49,13 @@ export default gasket.actions.getNextConfig({
 
     // Suppress webpack warnings for dynamic imports in plugin systems
     // These are expected for @venture/cds-utils and @gasket/plugin-dynamic-plugins
-    // Merge with existing warnings instead of replacing them
     config.ignoreWarnings = [
       ...(config.ignoreWarnings ?? []),
       /Critical dependency: the request of a dependency is an expression/,
     ];
 
-    if (isServer) {
-      // Externalize server-only packages that webpack can't bundle
-      config.externals = config.externals || [];
-      config.externals.push({
-        '@azure/functions-core': 'commonjs @azure/functions-core',
-        '@godaddy/gd-auth-lib': 'commonjs @godaddy/gd-auth-lib',
-      });
-    }
-
     if (!isServer) {
       // Exclude server-only modules from client bundle
-      // This is the standard Next.js approach for conditional server imports
       config.externals = config.externals || [];
       config.externals.push({
         './jwt-service': 'commonjs ./jwt-service',

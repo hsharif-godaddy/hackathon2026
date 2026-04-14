@@ -602,7 +602,7 @@ export default function PreviewPane({
                     pointerEvents: viewMode !== ViewMode.CODE ? 'none' : 'auto'
                   }}
                   aria-hidden={viewMode !== ViewMode.CODE ? 'true' : undefined}
-                  {...(viewMode !== ViewMode.CODE ? { inert: '' as unknown as boolean } : {})}
+                  inert={viewMode !== ViewMode.CODE || undefined}
                 >
                   <PreviewCode appId={appId} />
                 </motion.div>

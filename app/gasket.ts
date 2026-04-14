@@ -61,7 +61,7 @@ export default makeGasket({
         ws: true,
         secure: false,
         target: {
-          protocol: 'https:',
+          protocol: 'http:',
           host: 'localhost',
           port: 3000
         },
@@ -94,7 +94,7 @@ export default makeGasket({
         ws: true,
         secure: false,
         target: {
-          protocol: 'https:',
+          protocol: 'http:',
           host: 'localhost',
           port: 3000
         },
@@ -143,7 +143,7 @@ export default makeGasket({
         ws: true,
         secure: false,
         target: {
-          protocol: 'https:',
+          protocol: 'http:',
           host: 'localhost',
           port: 3000
         },
@@ -350,6 +350,7 @@ export default makeGasket({
       manifest: 'no-header',
       theme: 'godaddy-antares',
       privateLabel: 1,
+      react: '19',
     }
   },
   cds: {

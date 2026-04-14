@@ -1,4 +1,4 @@
-import { JSX, useCallback, useState } from "react";
+import React, { useCallback, useState } from "react";
 import { useQueryClient } from '@tanstack/react-query';
 
 import { UpgradeContainer } from '@/app/develop/components/paywall'
@@ -25,7 +25,7 @@ interface UsePaywallModalOptions {
 
 interface UsePaywallModalReturn {
   checkAndShowPaywall: (action: () => Promise<void>) => Promise<void>
-  PaywallModal: () => JSX.Element | null
+  PaywallModal: () => React.ReactElement | null
   shouldShowPaywall: boolean
   isPaywallLoading: boolean
   /** Whether publish limit check is loading */

@@ -20,7 +20,7 @@ interface ContextDebugResponse {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   // Only allow in development mode
   if (!features.developmentMode) {
@@ -30,8 +30,10 @@ export async function GET(
     )
   }
 
+  const { id } = await params
+  const appId = id
+
   try {
-    const appId = params.id
     const searchParams = request.nextUrl.searchParams
 
     // Get fake context injection parameters
@@ -60,7 +62,7 @@ export async function GET(
   } catch (error) {
     logger.error('api.context.debug.error', {
       message: 'Context debug API error',
-      appId: params.id,
+      appId: id,
       errorMessage: error instanceof Error ? error.message : String(error)
     }, {
       error: error instanceof Error ? error : undefined

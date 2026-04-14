@@ -1,7 +1,7 @@
 'use client'
 
 import { BookOpen, Package } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import Pagination from '@ux/pagination'
 import TextInput from '@ux/text-input'
 
@@ -270,14 +270,14 @@ function SkillListContent({ skills }: { skills: Skill[] }) {
 /**
  * Render skill list as HTML
  */
-function renderSkillList(skills: Skill[]): React.JSX.Element {
+function renderSkillList(skills: Skill[]): React.ReactElement {
   return <SkillListContent skills={skills} />
 }
 
 /**
  * Render skill load result as HTML
  */
-function renderSkillLoad(skillName: string): React.JSX.Element {
+function renderSkillLoad(skillName: string): React.ReactElement {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
@@ -300,7 +300,7 @@ function renderSkillInstall(
   installedFiles: string[],
   dependenciesInstalled?: DependencyInstallResult[],
   skillDependenciesInstalled?: string[]
-): React.JSX.Element {
+): React.ReactElement {
   const succeededPackages = dependenciesInstalled?.filter(d => d.success) || []
 
   return (
@@ -423,7 +423,7 @@ export default function SkillToolRenderer({
   }
 
   // Generate modal content
-  let modalContentElement: React.JSX.Element | null = null
+  let modalContentElement: React.ReactElement | null = null
   let hasDetails = false
 
   if (parsedResult) {
