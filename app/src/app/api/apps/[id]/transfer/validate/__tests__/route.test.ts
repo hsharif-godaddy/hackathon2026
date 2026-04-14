@@ -78,12 +78,13 @@ describe('/api/apps/[id]/transfer/validate', function validateRouteTests() {
       );
     });
 
-    it('should return canTransfer false when commerce integration exists', async function hasCommerce() {
+    it('should return canTransfer false and log commerce block when commerce integration exists', async function hasCommerce() {
       mockAgentFetch.mockResolvedValue({
         ok: true,
         json: async () => ({ canTransfer: false, gdCommerce: true }),
       });
 
+      const { logger } = await import('@/lib/request-context');
       const { GET } = await import('../route');
       const response = await GET(
         createRequest('http://localhost:3000/api/apps/app-1/transfer/validate'),
@@ -94,6 +95,29 @@ describe('/api/apps/[id]/transfer/validate', function validateRouteTests() {
       expect(response.status).toBe(200);
       expect(body.canTransfer).toBe(false);
       expect(body.gdCommerce).toBe(true);
+      expect(logger.warn).toHaveBeenCalledWith('transfer.validate.commerce.blocked', {
+        appId: 'app-1',
+        gdCommerce: true,
+      });
+    });
+
+    it('should not log commerce block when canTransfer is false for non-commerce reasons', async function nonCommerceBlock() {
+      mockAgentFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ canTransfer: false, gdCommerce: false }),
+      });
+
+      const { logger } = await import('@/lib/request-context');
+      const { GET } = await import('../route');
+      const response = await GET(
+        createRequest('http://localhost:3000/api/apps/app-1/transfer/validate'),
+        { params: Promise.resolve({ id: 'app-1' }) }
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.canTransfer).toBe(false);
+      expect(logger.warn).not.toHaveBeenCalled();
     });
 
     it('should return 404 when site not found', async function siteNotFound() {

@@ -37,7 +37,7 @@ import { logger } from '@/lib/request-context'
 import { shouldShowAppNonCompliantOrAccountComplianceTag } from '@/lib/subscription'
 import { useSitesStore } from '@/stores/useSitesStore'
 import { formatDate } from '@/utils/common'
-import { generateClickEID } from '@/utils/instrumentation'
+import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
 import { hasBeenPublished } from '@/utils/site'
 
 interface AlertState {
@@ -140,16 +140,19 @@ export default function AppCard({ site }: { site: SiteInfo }) {
     try {
       const response = await appFetch(`/api/apps/${site.id}/transfer/cancel`, { method: 'POST' })
       if (response.ok) {
+        logClickEvent('apps.transfer.cancel_success')()
         setActiveTransfer(null)
         setAlertState({ siteId: null, type: null, message: '' })
         refreshSites()
       } else {
         const data = await response.json()
+        logClickEvent('apps.transfer.cancel_error')()
         logger.error('transfer.cancel.ui.failed', { appId: site.id, error: data })
         setAlertState({ siteId: null, type: null, message: '' })
         setCancelTransferError(data.error || t('builder_transfer_error_cancel_failed', undefined, 'Failed to cancel transfer. Please try again.'))
       }
     } catch (error) {
+      logClickEvent('apps.transfer.cancel_error')()
       logger.error('transfer.cancel.ui.error', {
         appId: site.id,
         error: error instanceof Error ? error.message : String(error)
@@ -288,12 +291,14 @@ export default function AppCard({ site }: { site: SiteInfo }) {
     )
   }
 
-  const InlineAlert = ({ message, onConfirm, onCancel, confirmLabel, isLoading: loading }: {
+  const InlineAlert = ({ message, onConfirm, onCancel, confirmLabel, isLoading: loading, confirmEid = 'apps.app.confirm', cancelEid = 'apps.app.cancel' }: {
     message: string | React.ReactNode
     onConfirm: () => void
     onCancel: () => void
     confirmLabel?: string
     isLoading?: boolean
+    confirmEid?: string
+    cancelEid?: string
   }) => (
     <div data-testid="inline-confirmation" onClick={(e) => e.stopPropagation()} className="absolute inset-0 bg-intents-ux-box-backgroundColor rounded-lg flex flex-col items-center justify-center p-2">
       <p className="mb-2 text-center">{message}</p>
@@ -302,14 +307,14 @@ export default function AppCard({ site }: { site: SiteInfo }) {
           data-testid="confirm-button"
           onClick={onConfirm}
           disabled={loading}
-          data-eid={generateClickEID('apps.app.confirm')}
+          data-eid={generateClickEID(confirmEid)}
           className="text-white px-2 py-1 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           text={confirmLabel || t('builder_common_confirm')}
           design="critical"
           size="sm"
         />
         <Button
-          data-eid={generateClickEID('apps.app.cancel')}
+          data-eid={generateClickEID(cancelEid)}
           onClick={onCancel}
           text={t('builder_common_cancel')}
           design="secondary"
@@ -549,6 +554,8 @@ export default function AppCard({ site }: { site: SiteInfo }) {
               onCancel={clearAlert}
               confirmLabel={actionLoading === 'cancel-transfer' ? t('builder_transfer_cancelling', undefined, 'Cancelling...') : t('builder_transfer_cancel_confirm_button', undefined, 'Cancel Transfer')}
               isLoading={actionLoading === 'cancel-transfer'}
+              confirmEid="apps.transfer.cancel_confirm"
+              cancelEid="apps.transfer.cancel_dismiss"
             />
           )}
           {cancelTransferError && (
@@ -599,6 +606,8 @@ export default function AppCard({ site }: { site: SiteInfo }) {
               onCancel={clearAlert}
               confirmLabel={actionLoading === 'cancel-transfer' ? t('builder_transfer_cancelling', undefined, 'Cancelling...') : t('builder_transfer_cancel_confirm_button', undefined, 'Cancel Transfer')}
               isLoading={actionLoading === 'cancel-transfer'}
+              confirmEid="apps.transfer.cancel_confirm"
+              cancelEid="apps.transfer.cancel_dismiss"
             />
           )}
           {cancelTransferError && (
@@ -723,6 +732,7 @@ export const AppCardEmptyState = ({ onAcceptTransfer, isTransferEnabled }: { onA
                   onAcceptTransfer()
                 }}
                 data-testid="empty-state-accept-transfer"
+                data-eid={generateClickEID('apps.emptystate.accept_transfer')}
               >
                 <Box orientation="horizontal" gap="sm">
                   <ShareIcon />

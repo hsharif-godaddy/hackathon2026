@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import CopyIcon from '@ux/icon/copy'
@@ -12,7 +12,7 @@ import { useCloseOnReauth } from '@/hooks/useCloseOnReauth'
 import { useTranslations } from '@/hooks/useTranslations'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
-import { generateClickEID } from '@/utils/instrumentation'
+import { generateClickEID, logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
 
 interface TransferInitiateDialogProps {
   appId: string
@@ -31,6 +31,11 @@ export default function TransferInitiateDialog({
 }: TransferInitiateDialogProps) {
   const t = useTranslations()
   useCloseOnReauth(true, onClose)
+
+  useEffect(function trackDialogImpression() {
+    logImpressionEvent('apps.transfer.initiate_dialog')()
+  }, [])
+
   const [step, setStep] = useState<DialogStep>('input')
   const [email, setEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -66,14 +71,17 @@ export default function TransferInitiateDialog({
       const data = await response.json()
 
       if (!response.ok) {
+        logClickEvent('apps.transfer.initiate_error')()
         setError(data.error || data.message || t('builder_transfer_error_initiate_failed', undefined, 'Failed to initiate transfer'))
         return
       }
 
+      logClickEvent('apps.transfer.initiate_success')()
       setTransferToken(data.transferToken)
       setTransferExpiresAt(data.expiresAt)
       setStep('token')
     } catch (err) {
+      logClickEvent('apps.transfer.initiate_error')()
       logger.error('transfer.initiate.ui.error', {
         appId,
         error: err instanceof Error ? err.message : String(err)

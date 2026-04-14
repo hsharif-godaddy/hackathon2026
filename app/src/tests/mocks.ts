@@ -100,6 +100,8 @@ export function createMockSite(overrides: Partial<SiteInfo> = {}): SiteInfo {
 export function mockInstrumentation() {
   return {
     logImpressionEvent: vi.fn(() => vi.fn()),
+    logClickEvent: vi.fn(() => vi.fn()),
+    logActionEvent: vi.fn(() => vi.fn()),
     generateClickEID: vi.fn((event: string) => `${event}.click`),
     logAiroHQEvent: vi.fn(() => vi.fn()),
   };

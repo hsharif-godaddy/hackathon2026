@@ -57,7 +57,16 @@ export const GET = withCustomerAuth(async (
       );
     }
 
-    return NextResponse.json(await response.json());
+    const data = await response.json();
+
+    if (!data.canTransfer && data.gdCommerce) {
+      logger.warn('transfer.validate.commerce.blocked', {
+        appId,
+        gdCommerce: data.gdCommerce,
+      });
+    }
+
+    return NextResponse.json(data);
   } catch (error) {
     logger.error('transfer.validate.proxy.error', {
       appId: (await params).id,

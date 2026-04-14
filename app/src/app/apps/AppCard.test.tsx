@@ -13,6 +13,7 @@ import { appFetch } from '@/lib/gasket-config';
 import { useSitesStore } from '@/stores/useSitesStore';
 import { createMockSite, mockInstrumentation, mockRouter } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
+import * as instrumentation from '@/utils/instrumentation';
 import AppCard, { AppCardEmptyState } from './AppCard';
 
 vi.mock('@/lib/gasket-config');
@@ -727,6 +728,94 @@ describe('AppCard', () => {
 
       expect(screen.getByText(/Cancel transfer for/)).toBeInTheDocument();
     });
+
+    it('should fire cancel_success EID when cancel succeeds', async function cancelSuccess() {
+      vi.mocked(appFetch).mockImplementation(async (url: string, options?: RequestInit) => {
+        if (typeof url === 'string' && url.includes('/transfer/cancel') && options?.method === 'POST') {
+          return { ok: true, status: 200, json: async () => ({}) } as Response;
+        }
+        if (typeof url === 'string' && url.includes('/transfer')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ transferToken: 'abc123', status: 'initiated', expiresAt: '2026-03-28T12:00:00.000Z' }),
+          } as Response;
+        }
+        return { ok: true, json: async () => mockSite } as Response;
+      });
+
+      useSitesStore.setState({ refreshSites: vi.fn() });
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('TRANSFER PENDING')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Cancel Transfer'));
+      await user.click(screen.getByTestId('confirm-button'));
+
+      await waitFor(() => {
+        expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.cancel_success');
+      });
+    });
+
+    it('should fire cancel_error EID when cancel API fails', async function cancelError() {
+      vi.mocked(appFetch).mockImplementation(async (url: string, options?: RequestInit) => {
+        if (typeof url === 'string' && url.includes('/transfer/cancel') && options?.method === 'POST') {
+          return { ok: false, status: 500, json: async () => ({ error: 'Server error' }) } as Response;
+        }
+        if (typeof url === 'string' && url.includes('/transfer')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ transferToken: 'abc123', status: 'initiated', expiresAt: '2026-03-28T12:00:00.000Z' }),
+          } as Response;
+        }
+        return { ok: true, json: async () => mockSite } as Response;
+      });
+
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('TRANSFER PENDING')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Cancel Transfer'));
+      await user.click(screen.getByTestId('confirm-button'));
+
+      await waitFor(() => {
+        expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.cancel_error');
+      });
+    });
+
+    it('should fire cancel_error EID when cancel throws', async function cancelThrows() {
+      vi.mocked(appFetch).mockImplementation(async (url: string, options?: RequestInit) => {
+        if (typeof url === 'string' && url.includes('/transfer/cancel') && options?.method === 'POST') {
+          throw new Error('Network error');
+        }
+        if (typeof url === 'string' && url.includes('/transfer')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ transferToken: 'abc123', status: 'initiated', expiresAt: '2026-03-28T12:00:00.000Z' }),
+          } as Response;
+        }
+        return { ok: true, json: async () => mockSite } as Response;
+      });
+
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('TRANSFER PENDING')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Cancel Transfer'));
+      await user.click(screen.getByTestId('confirm-button'));
+
+      await waitFor(() => {
+        expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.cancel_error');
+      });
+    });
   });
 
   describe('transfer validation flow', () => {
@@ -851,5 +940,20 @@ describe('AppCardEmptyState', () => {
     renderWithProviders(<AppCardEmptyState />);
 
     expect(screen.getByText('builder_apps_empty_create')).toBeInTheDocument();
+  });
+
+  it('should render accept transfer menu item with data-eid when transfer is enabled', async function acceptTransferEid() {
+    const onAcceptTransfer = vi.fn();
+    const { user } = renderWithProviders(
+      <AppCardEmptyState isTransferEnabled={true} onAcceptTransfer={onAcceptTransfer} />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Actions' }));
+
+    await waitFor(() => {
+      const acceptItem = screen.getByTestId('empty-state-accept-transfer');
+      expect(acceptItem).toBeInTheDocument();
+      expect(acceptItem).toHaveAttribute('data-eid', 'apps.emptystate.accept_transfer.click');
+    });
   });
 });

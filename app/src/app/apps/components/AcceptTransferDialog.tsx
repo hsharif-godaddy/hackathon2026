@@ -14,7 +14,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { useSitesStore } from '@/stores/useSitesStore'
-import { generateClickEID } from '@/utils/instrumentation'
+import { generateClickEID, logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
 
 interface AcceptTransferDialogProps {
   onClose: () => void
@@ -30,6 +30,11 @@ const MAX_CONSECUTIVE_ERRORS = 5
 export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTransferDialogProps) {
   const t = useTranslations()
   useCloseOnReauth(true, onClose)
+
+  useEffect(function trackDialogImpression() {
+    logImpressionEvent('apps.transfer.accept_dialog')()
+  }, [])
+
   const refreshSites = useSitesStore((state) => state.refreshSites)
   const [step, setStep] = useState<AcceptStep>('input')
   const [transferToken, setTransferToken] = useState('')
@@ -52,6 +57,7 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
     attemptRef.current += 1
 
     if (attemptRef.current > MAX_POLL_ATTEMPTS) {
+      logClickEvent('apps.transfer.accept_error')()
       stopPolling()
       setError(t('builder_transfer_error_timeout', undefined, 'The transfer is taking longer than expected. Please check your apps list later.'))
       setStep('error')
@@ -65,6 +71,7 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
         if (!response.ok) {
           errorCountRef.current += 1
           if (errorCountRef.current >= MAX_CONSECUTIVE_ERRORS) {
+            logClickEvent('apps.transfer.accept_error')()
             stopPolling()
             setError(t('builder_transfer_error_status_check_failed', undefined, 'Unable to check transfer status. Please close and try again.'))
             setStep('error')
@@ -78,6 +85,7 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
         const data = await response.json()
 
         if (data.status === 'completed') {
+          logClickEvent('apps.transfer.accept_success')()
           stopPolling()
           refreshSites()
           onAccepted?.()
@@ -86,6 +94,7 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
         }
 
         if (data.status === 'failed') {
+          logClickEvent('apps.transfer.accept_error')()
           stopPolling()
           setError(t('builder_transfer_error_transfer_failed', undefined, 'The transfer failed. Please try again or contact support.'))
           setStep('error')
@@ -99,6 +108,7 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
         })
         errorCountRef.current += 1
         if (errorCountRef.current >= MAX_CONSECUTIVE_ERRORS) {
+          logClickEvent('apps.transfer.accept_error')()
           stopPolling()
           setError(t('builder_transfer_error_status_check_failed', undefined, 'Unable to check transfer status. Please close and try again.'))
           setStep('error')
@@ -144,6 +154,7 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
       const data = await response.json()
 
       if (!response.ok) {
+        logClickEvent('apps.transfer.accept_error')()
         setError(data.error || data.message || t('builder_transfer_error_accept_failed', undefined, 'Failed to accept transfer'))
         setStep('error')
         return
@@ -153,11 +164,13 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
         setStep('processing')
         pollStatus(trimmed)
       } else {
+        logClickEvent('apps.transfer.accept_success')()
         refreshSites()
         onAccepted?.()
         onClose()
       }
     } catch (err) {
+      logClickEvent('apps.transfer.accept_error')()
       logger.error('transfer.accept.ui.error', {
         error: err instanceof Error ? err.message : String(err)
       })

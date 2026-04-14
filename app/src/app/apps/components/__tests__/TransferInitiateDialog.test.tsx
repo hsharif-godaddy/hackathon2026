@@ -10,6 +10,7 @@ import { screen, waitFor } from '@testing-library/react';
 import { appFetch } from '@/lib/gasket-config';
 import { mockInstrumentation } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
+import * as instrumentation from '@/utils/instrumentation';
 import TransferInitiateDialog from '../TransferInitiateDialog';
 
 vi.mock('@/lib/gasket-config');
@@ -143,5 +144,49 @@ describe('TransferInitiateDialog', function dialogTests() {
 
     expect(defaultProps.onTransferCreated).toHaveBeenCalledWith('abc123', '2026-04-02T12:00:00.000Z');
     expect(defaultProps.onClose).toHaveBeenCalled();
+  });
+
+  it('should fire impression event on mount', function firesImpression() {
+    renderWithProviders(<TransferInitiateDialog {...defaultProps} />);
+
+    expect(instrumentation.logImpressionEvent).toHaveBeenCalledWith('apps.transfer.initiate_dialog');
+  });
+
+  it('should fire success click event on successful initiation', async function firesSuccessEid() {
+    vi.mocked(appFetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ transferToken: 'abc123', status: 'initiated', expiresAt: '2026-04-02T12:00:00.000Z' }),
+    } as Response);
+
+    const { user } = renderWithProviders(<TransferInitiateDialog {...defaultProps} />);
+
+    await user.type(screen.getByRole('textbox'), 'test@godaddy.com');
+    await user.click(screen.getByRole('button', { name: 'Generate Code' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('abc123')).toBeInTheDocument();
+    });
+
+    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.initiate_success');
+  });
+
+  it('should fire error click event on failed initiation', async function firesErrorEid() {
+    vi.mocked(appFetch).mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ error: 'Target email not found' }),
+    } as Response);
+
+    const { user } = renderWithProviders(<TransferInitiateDialog {...defaultProps} />);
+
+    await user.type(screen.getByRole('textbox'), 'bad@test.com');
+    await user.click(screen.getByRole('button', { name: 'Generate Code' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Target email not found')).toBeInTheDocument();
+    });
+
+    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.initiate_error');
   });
 });
