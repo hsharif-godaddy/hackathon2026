@@ -1,0 +1,128 @@
+name: budget-service CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "budget-service/**"
+      - ".github/workflows/budget-service-ci.yml"
+  pull_request:
+    paths:
+      - "budget-service/**"
+      - ".github/workflows/budget-service-ci.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Get Artifactory Token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c # v5.0.0
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+
+      - name: Configure Go environment for JFrog
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "GOPROXY=https://:${OIDC_TOKEN}@gdartifactory1.jfrog.io/artifactory/api/go/go-virt|direct" >> $GITHUB_ENV
+          echo "GONOSUMDB=github.com/gdcorp-golang/*" >> $GITHUB_ENV
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache-dependency-path: budget-service/go.sum
+
+      - name: Download dependencies
+        working-directory: budget-service
+        run: go mod download
+
+      - name: Run go vet
+        working-directory: budget-service
+        run: go vet ./...
+
+      - name: Run go fmt check
+        working-directory: budget-service
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "The following files are not properly formatted:"
+            gofmt -s -l .
+            exit 1
+          fi
+
+  test:
+    name: Test
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    env:
+      TEST_DATABASE_URL: postgres://budget:budget@127.0.0.1:5432/budget_test?sslmode=disable
+      DATABASE_URL: postgres://budget:budget@127.0.0.1:5432/budget_test?sslmode=disable
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: budget
+          POSTGRES_PASSWORD: budget
+          POSTGRES_DB: budget_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U budget -d budget_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Get Artifactory Token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c # v5.0.0
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+
+      - name: Configure Go environment for JFrog
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "GOPROXY=https://:${OIDC_TOKEN}@gdartifactory1.jfrog.io/artifactory/api/go/go-virt|direct" >> $GITHUB_ENV
+          echo "GONOSUMDB=github.com/gdcorp-golang/*" >> $GITHUB_ENV
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache-dependency-path: budget-service/go.sum
+
+      - name: Download dependencies
+        working-directory: budget-service
+        run: go mod download
+
+      - name: Verify dependencies
+        working-directory: budget-service
+        run: go mod verify
+
+      - name: Run tests
+        working-directory: budget-service
+        run: go test -race ./...
