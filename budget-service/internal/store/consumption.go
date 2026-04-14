@@ -93,19 +93,28 @@ func filterConsumableItems(items []budgetConsumptionState, now time.Time) []budg
 // consumeBudgetCostUSD sorts items by priority, filters expired/exhausted items, and allocates credits.
 // Items can be passed in any order; they will be sorted according to consumption priority.
 // Mutates items[].used to reflect consumed credits for repeated in-memory consumption.
-// Returns ErrInsufficientCredits if USD remains after walking all eligible items.
+// Returns ErrInsufficientCredits if USD remains after walking all eligible items (session reports).
 func consumeBudgetCostUSD(usd decimal.Decimal, items []budgetConsumptionState, now time.Time) ([]budgetCreditChunk, error) {
+	return consumeBudgetCostUSDMode(usd, items, now, true)
+}
+
+// consumeBudgetCostUSDSession is the same walk as consumeBudgetCostUSD but does not return
+// ErrInsufficientCredits when USD remains after consumable items are exhausted; credits_charged reflects
+// only what could be allocated. Other errors (e.g. from DollarsToCredits, or zero-credit chunk guard) still propagate.
+func consumeBudgetCostUSDSession(usd decimal.Decimal, items []budgetConsumptionState, now time.Time) ([]budgetCreditChunk, error) {
+	return consumeBudgetCostUSDMode(usd, items, now, false)
+}
+
+func consumeBudgetCostUSDMode(usd decimal.Decimal, items []budgetConsumptionState, now time.Time, strict bool) ([]budgetCreditChunk, error) {
 	if !usd.IsPositive() {
 		return nil, nil
 	}
 
-	// Make a copy to avoid mutating the original slice order.
 	sorted := make([]budgetConsumptionState, len(items))
 	copy(sorted, items)
 	sortConsumptionItems(sorted)
 	consumable := filterConsumableItems(sorted, now)
 
-	// Walk consumable items and allocate credits.
 	var out []budgetCreditChunk
 	usdRem := usd
 	for i := range consumable {
@@ -144,8 +153,6 @@ func consumeBudgetCostUSD(usd decimal.Decimal, items []budgetConsumptionState, n
 		usdRem = usdRem.Sub(usdChunk)
 	}
 
-	// Reconcile mutated used values back onto the caller's original slice
-	// so repeated in-memory consumption sees prior spend.
 	usedByID := make(map[string]decimal.Decimal, len(consumable))
 	for i := range consumable {
 		usedByID[consumable[i].id] = consumable[i].used
@@ -156,7 +163,7 @@ func consumeBudgetCostUSD(usd decimal.Decimal, items []budgetConsumptionState, n
 		}
 	}
 
-	if usdRem.IsPositive() {
+	if usdRem.IsPositive() && strict {
 		return nil, ErrInsufficientCredits
 	}
 	return out, nil

@@ -151,7 +151,8 @@ func writeBudgetStoreError(w http.ResponseWriter, op string, err error) {
 		return
 	}
 	if errors.Is(err, store.ErrInsufficientCredits) {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "insufficient credits for this report")
+		writeError(w, http.StatusBadRequest, "INSUFFICIENT_CREDITS",
+			"budgetCost exceeds remaining allocatable credits; reduce budgetCost to what fits, put the remainder in productCost, and use label \"overages\" for that line")
 		return
 	}
 	if errors.Is(err, store.ErrDuplicateCallRequestID) {

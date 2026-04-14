@@ -439,6 +439,10 @@ paths:
     patch:
       tags: [v1]
       summary: Append spend lines
+      description: >
+        Appends session lines with full `cost` USD stored per line. Virtual USD→credits allocation uses the
+        same priority walk as reports but may be partial: under `?debug=1`, `debug.sessionItems[].creditsChargedStored`
+        and `creditsChargedReplayed` reflect only what the pool could cover; excess `cost` USD does not fail the request.
       parameters:
         - $ref: "#/components/parameters/sessionIdPath"
       requestBody:
@@ -480,6 +484,11 @@ paths:
     post:
       tags: [v1]
       summary: Close session with report (sets reconciled_at)
+      description: >
+        Each `reportItems` line allocates `budgetCost` USD against the budget using the same walk as session spend;
+        full coverage is required per line. If `budgetCost` exceeds remaining allocatable credits, **400** with
+        `code` **INSUFFICIENT_CREDITS** — reduce `budgetCost` to what fits, move uncovered USD to `productCost`,
+        e.g. a line with `label` **overages**. Ledger spend is applied here (not on PATCH).
       parameters:
         - $ref: "#/components/parameters/sessionIdPath"
       requestBody:

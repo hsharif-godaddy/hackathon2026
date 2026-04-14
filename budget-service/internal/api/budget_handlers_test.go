@@ -772,6 +772,153 @@ func TestGoCodeSpendMathOverHTTP(t *testing.T) {
 	}
 }
 
+func TestPatchSessionPartialCreditsReportRejectsExcessBudgetCost(t *testing.T) {
+	st := testStore(t)
+	auth := auth.NewMiddleware("none")
+	srv := &Server{Store: st}
+	h := NewRouter(srv, auth)
+
+	prodBody := `{"productKey":"patch-partial-` + uuid.NewString() + `"}`
+	reqP := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(prodBody))
+	reqP.Header.Set("Content-Type", "application/json")
+	recP := httptest.NewRecorder()
+	h.ServeHTTP(recP, reqP)
+	if recP.Code != http.StatusCreated {
+		t.Fatalf("post product: %d %s", recP.Code, recP.Body.String())
+	}
+	var prodResp struct {
+		ProductKey string `json:"productKey"`
+	}
+	if err := json.Unmarshal(recP.Body.Bytes(), &prodResp); err != nil {
+		t.Fatal(err)
+	}
+	budgetBody := `{"productKey":"` + prodResp.ProductKey + `","items":[{"creditsTotal":"5.000000","costToCreditRatio":"1"}]}`
+	reqB := httptest.NewRequest(http.MethodPost, "/api/v1/budgets", strings.NewReader(budgetBody))
+	reqB.Header.Set("Content-Type", "application/json")
+	recB := httptest.NewRecorder()
+	h.ServeHTTP(recB, reqB)
+	if recB.Code != http.StatusCreated {
+		t.Fatalf("post budget: %d %s", recB.Code, recB.Body.String())
+	}
+	var budgetResp struct {
+		BudgetID string `json:"budgetId"`
+	}
+	if err := json.Unmarshal(recB.Body.Bytes(), &budgetResp); err != nil {
+		t.Fatal(err)
+	}
+
+	reqS := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+budgetResp.BudgetID+`"}`))
+	reqS.Header.Set("Content-Type", "application/json")
+	recS := httptest.NewRecorder()
+	h.ServeHTTP(recS, reqS)
+	if recS.Code != http.StatusCreated {
+		t.Fatalf("post session: %d %s", recS.Code, recS.Body.String())
+	}
+	var sessResp struct {
+		SessionID string `json:"sessionId"`
+	}
+	if err := json.Unmarshal(recS.Body.Bytes(), &sessResp); err != nil {
+		t.Fatal(err)
+	}
+	sessionID := sessResp.SessionID
+
+	patchBody := `{"sessionItems":[{"cost":"10","callRequestId":"partial-req-1"}]}`
+	reqPatch := httptest.NewRequest(http.MethodPatch, "/api/v1/sessions/"+sessionID, strings.NewReader(patchBody))
+	reqPatch.Header.Set("Content-Type", "application/json")
+	recPatch := httptest.NewRecorder()
+	h.ServeHTTP(recPatch, reqPatch)
+	if recPatch.Code != http.StatusOK {
+		t.Fatalf("patch session want 200, got %d %s", recPatch.Code, recPatch.Body.String())
+	}
+
+	reqGet := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+sessionID+"?debug=1", nil)
+	recGet := httptest.NewRecorder()
+	h.ServeHTTP(recGet, reqGet)
+	if recGet.Code != http.StatusOK {
+		t.Fatalf("get session: %d %s", recGet.Code, recGet.Body.String())
+	}
+	dec := json.NewDecoder(strings.NewReader(recGet.Body.String()))
+	dec.UseNumber()
+	var sess map[string]any
+	if err := dec.Decode(&sess); err != nil {
+		t.Fatal(err)
+	}
+	ct, ok := sess["costTotal"].(json.Number)
+	if !ok || ct.String() != "10.000000" {
+		t.Fatalf("costTotal want 10.000000, got %v (%T)", sess["costTotal"], sess["costTotal"])
+	}
+	itemsRaw, ok := sess["sessionItems"].([]any)
+	if !ok || len(itemsRaw) == 0 {
+		t.Fatalf("sessionItems: want non-empty array, got %#v", sess["sessionItems"])
+	}
+	line0, ok := itemsRaw[0].(map[string]any)
+	if !ok {
+		t.Fatalf("sessionItems[0]: want object")
+	}
+	costN, ok := line0["cost"].(json.Number)
+	if !ok || costN.String() != "10.000000" {
+		t.Fatalf("cost want 10.000000, got %v (%T)", line0["cost"], line0["cost"])
+	}
+	dbgRaw, ok := sess["debug"]
+	if !ok || dbgRaw == nil {
+		t.Fatal("expected debug with ?debug=1")
+	}
+	dbg, ok := dbgRaw.(map[string]any)
+	if !ok {
+		t.Fatalf("debug: want object, got %T", dbgRaw)
+	}
+	dbgItemsRaw, ok := dbg["sessionItems"].([]any)
+	if !ok || len(dbgItemsRaw) == 0 {
+		t.Fatalf("debug.sessionItems: want non-empty array")
+	}
+	dbgLine0, ok := dbgItemsRaw[0].(map[string]any)
+	if !ok {
+		t.Fatalf("debug.sessionItems[0]: want object")
+	}
+	stored, ok := dbgLine0["creditsChargedStored"].(string)
+	if !ok {
+		t.Fatalf("creditsChargedStored: want string, got %T", dbgLine0["creditsChargedStored"])
+	}
+	replayed, ok := dbgLine0["creditsChargedReplayed"].(string)
+	if !ok {
+		t.Fatalf("creditsChargedReplayed: want string, got %T", dbgLine0["creditsChargedReplayed"])
+	}
+	if stored != "5.000000" || replayed != "5.000000" {
+		t.Fatalf("creditsChargedStored %q creditsChargedReplayed %q want 5.000000", stored, replayed)
+	}
+
+	repFail := `{"reportItems":[{"budgetCost":"10","productCost":"0","label":"usage"}]}`
+	reqRep := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sessionID+"/reports", strings.NewReader(repFail))
+	reqRep.Header.Set("Content-Type", "application/json")
+	recRep := httptest.NewRecorder()
+	h.ServeHTTP(recRep, reqRep)
+	if recRep.Code != http.StatusBadRequest {
+		t.Fatalf("post report excess budgetCost: %d %s", recRep.Code, recRep.Body.String())
+	}
+	var errBody struct {
+		Code  string `json:"code"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(recRep.Body.Bytes(), &errBody); err != nil {
+		t.Fatal(err)
+	}
+	if errBody.Code != "INSUFFICIENT_CREDITS" {
+		t.Fatalf("code %q want INSUFFICIENT_CREDITS", errBody.Code)
+	}
+	if !strings.Contains(errBody.Error, "overages") {
+		t.Fatalf("error should mention overages: %q", errBody.Error)
+	}
+
+	repOK := `{"reportItems":[{"budgetCost":"5","productCost":"5","label":"overages"}]}`
+	reqOK := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sessionID+"/reports", strings.NewReader(repOK))
+	reqOK.Header.Set("Content-Type", "application/json")
+	recOK := httptest.NewRecorder()
+	h.ServeHTTP(recOK, reqOK)
+	if recOK.Code != http.StatusCreated {
+		t.Fatalf("post report ok: %d %s", recOK.Code, recOK.Body.String())
+	}
+}
+
 func TestPatchBudgetItemInsertsHistoryRow(t *testing.T) {
 	ctx := context.Background()
 	st := testStore(t)

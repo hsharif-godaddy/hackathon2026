@@ -3,6 +3,7 @@ package store
 // Tests for consumeBudgetCostUSD: slice order is the contract (SQL ORDER BY must match before calling).
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -57,6 +58,62 @@ func TestConsumeBudgetCostUSDSortAndAllocation(t *testing.T) {
 			t.Fatalf("order got %s then %s", chunks[0].budgetItemID, chunks[1].budgetItemID)
 		}
 	})
+}
+
+func TestConsumeBudgetCostUSDSessionAllowsPartialWhenPoolExhausted(t *testing.T) {
+	r1 := decimal.RequireFromString("1")
+	t50 := decimal.RequireFromString("50")
+	z := decimal.Zero
+	now := time.Now()
+	future := now.Add(time.Hour)
+	items := []budgetConsumptionState{
+		{id: "only", csr: r1, total: t50, used: z, expiresAt: &future, createdAt: now},
+	}
+	cost := decimal.RequireFromString("100")
+	_, err := consumeBudgetCostUSD(cost, items, now)
+	if err == nil {
+		t.Fatal("strict mode: want ErrInsufficientCredits")
+	}
+	if err != ErrInsufficientCredits {
+		t.Fatalf("strict: %v", err)
+	}
+
+	items2 := []budgetConsumptionState{
+		{id: "only", csr: r1, total: t50, used: z, expiresAt: &future, createdAt: now},
+	}
+	chunks, err := consumeBudgetCostUSDSession(cost, items2, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) != 1 {
+		t.Fatalf("chunks len %d want 1", len(chunks))
+	}
+	wantCredits := decimal.RequireFromString("50.000000")
+	if !chunks[0].credits.Equal(wantCredits) {
+		t.Fatalf("credits %s want %s", chunks[0].credits.String(), wantCredits.String())
+	}
+}
+
+func TestConsumeBudgetCostUSDSessionEmptyPoolStoresZeroCredits(t *testing.T) {
+	r1 := decimal.RequireFromString("1")
+	t50 := decimal.RequireFromString("50")
+	now := time.Now()
+	future := now.Add(time.Hour)
+	items := []budgetConsumptionState{
+		{id: "exhausted", csr: r1, total: t50, used: t50, expiresAt: &future, createdAt: now},
+	}
+	cost := decimal.RequireFromString("5")
+	chunks, err := consumeBudgetCostUSDSession(cost, items, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) != 0 {
+		t.Fatalf("session mode: want no chunks when pool exhausted, got %d", len(chunks))
+	}
+	_, err = consumeBudgetCostUSD(cost, items, now)
+	if !errors.Is(err, ErrInsufficientCredits) {
+		t.Fatalf("strict mode: want ErrInsufficientCredits, got %v", err)
+	}
 }
 
 func TestBudgetHasConsumableCapacity(t *testing.T) {

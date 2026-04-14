@@ -726,7 +726,7 @@ func (s *Store) BudgetConsumptionPreview(ctx context.Context, budgetID string) (
 	return out, nil
 }
 
-// DebugSessionCreditsReplay re-runs consumeBudgetCostUSD for each stored line in id order against current
+// DebugSessionCreditsReplay re-runs consumeBudgetCostUSDSession for each stored line in id order against current
 // budget_items.credits_used (read-only). Mismatch vs credits_charged means items/ratios changed after append.
 func (s *Store) DebugSessionCreditsReplay(ctx context.Context, sessionID string) ([]string, error) {
 	if _, err := uuid.Parse(sessionID); err != nil {
@@ -768,7 +768,7 @@ func (s *Store) DebugSessionCreditsReplay(ctx context.Context, sessionID string)
 		if err := rows.Scan(&costD); err != nil {
 			return nil, err
 		}
-		chunks, err := consumeBudgetCostUSD(costD, states, now)
+		chunks, err := consumeBudgetCostUSDSession(costD, states, now)
 		if err != nil {
 			return nil, err
 		}
@@ -846,7 +846,7 @@ func (s *Store) AppendSessionItems(ctx context.Context, sessionID string, lines 
 			_ = priorRows.Close()
 			return nil, "", err
 		}
-		if _, err := consumeBudgetCostUSD(costD, states, now); err != nil {
+		if _, err := consumeBudgetCostUSDSession(costD, states, now); err != nil {
 			_ = priorRows.Close()
 			return nil, "", err
 		}
@@ -865,7 +865,7 @@ func (s *Store) AppendSessionItems(ctx context.Context, sessionID string, lines 
 			return nil, "", err
 		}
 		costStr := credits.Format(costD)
-		chunks, err := consumeBudgetCostUSD(costD, states, now)
+		chunks, err := consumeBudgetCostUSDSession(costD, states, now)
 		if err != nil {
 			return nil, "", err
 		}
