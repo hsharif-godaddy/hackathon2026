@@ -988,14 +988,15 @@ export class AiroMgmtClient {
    * Get secrets for an app
    *
    * Retrieves the list of secrets configured for a specific application and variant.
-   * The response includes secret metadata (name, systemManaged, variants, timestamps)
-   * but does NOT include the actual secret values for security.
+   * By default returns metadata only; pass `includeValues: true` when the caller is
+   * allowed to receive secret material (e.g. authenticated app owner in Settings).
    *
    * @param subscriptionId - Subscription ID
    * @param systemId - System ID
    * @param appId - Application ID
    * @param variant - Variant to filter by (preview or publish)
-   * @returns Promise resolving to secrets response with metadata
+   * @param includeValues - When true, requests values from mgmt-airo (subject to API policy)
+   * @returns Promise resolving to secrets response (raw nested structure)
    *
    * @example
    * ```typescript

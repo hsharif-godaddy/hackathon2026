@@ -1265,15 +1265,26 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
     }
   }
 
+  /** Normalize mgmt-airo secret material for JSON responses to the app UI. */
+  private formatSecretValueForClient(value: string | object | undefined | null): string | undefined {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+    if (typeof value === 'string') {
+      return value;
+    }
+    return JSON.stringify(value);
+  }
+
   /**
    * Get secrets for an app (V2: uses mgmt-airo API)
    *
-   * Retrieves secret metadata from mgmt-airo for the specified app and variant.
+   * Retrieves secret metadata and values from mgmt-airo for the specified app and variant.
    *
    * @param appId - Application ID
    * @param variant - Variant (preview or publish)
    * @param jwt - Customer JWT token
-   * @returns Secrets response with metadata
+   * @returns Secrets response with metadata and values when upstream returns them
    */
   async getSecrets(appId: string, variant: 'preview' | 'publish', jwt: string): Promise<SecretsResponse> {
     try {
@@ -1289,12 +1300,13 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         throw new Error(`Unable to retrieve system/subscription IDs for app ${appId}`);
       }
 
-      // Call mgmt-airo API to get secrets (returns raw nested structure)
+      // includeValues: customer-authenticated UI needs plaintext for show/copy in Settings
       const rawResponse = await client.getSecrets(
         site.subscription_id,
         site.system_id,
         appId,
-        variant
+        variant,
+        true
       );
 
       // Combine shared secrets and variant-specific secrets
@@ -1311,7 +1323,8 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         systemManaged: secret.systemManaged,
         variants: sharedSecretNames.has(secret.name)
           ? ['preview', 'publish'] as ('preview' | 'publish')[]
-          : [variant] as ('preview' | 'publish')[]
+          : [variant] as ('preview' | 'publish')[],
+        value: this.formatSecretValueForClient(secret.value)
       }));
 
       return {

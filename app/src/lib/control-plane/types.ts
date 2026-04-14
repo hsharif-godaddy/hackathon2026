@@ -334,7 +334,7 @@ export interface IControlPlaneAdapter {
    * @param appId - Application identifier
    * @param variant - Variant (preview or publish)
    * @param jwt - Customer JWT token
-   * @returns Secrets response with list of secret names and metadata
+   * @returns Secrets response with metadata and values when the upstream API provides them
    */
   getSecrets(appId: string, variant: 'preview' | 'publish', jwt: string): Promise<SecretsResponse>;
 
@@ -404,6 +404,8 @@ export interface SecretMetadata {
   name: string;
   systemManaged: boolean;
   variants: ('preview' | 'publish')[];
+  /** Decrypted/plain value when the backend returns it (customer GET with includeValues). */
+  value?: string;
 }
 
 /**

@@ -6,10 +6,15 @@ import Box from '@ux/box';
 import Button from '@ux/button';
 import Growl from '@ux/growl';
 import CheckmarkIcon from '@ux/icon/checkmark';
+import CopyIcon from '@ux/icon/copy';
 import EditIcon from '@ux/icon/edit';
+import HideIcon from '@ux/icon/hide';
 import LockIcon from '@ux/icon/locked';
+import MenuIcon from '@ux/icon/menu';
+import ShowIcon from '@ux/icon/show';
+import TrashIcon from '@ux/icon/trash';
 import XIcon from '@ux/icon/x';
-import DeleteIcon from '@ux/icon/x-thick';
+import { Menu, MenuButton, MenuItem, MenuList } from '@ux/menu';
 import Tag from '@ux/tag';
 import text from '@ux/text';
 import TextInput from '@ux/text-input';
@@ -22,6 +27,7 @@ import { useSecretOperations } from '@/hooks/useSecretOperations';
 import { type Secret, useSecrets } from '@/hooks/useSecrets';
 import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
+import { generateClickEID } from '@/utils/instrumentation';
 
 interface SecretsPanelProps {
   appId: string;
@@ -63,8 +69,13 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [focusedSecretIndex, setFocusedSecretIndex] = useState<number | null>(null);
-  const submissionCountRef = useRef(0);
+  /** Plaintext after save in this session; overrides API `value` until refetch replaces form state. */
+  const [sessionPlaintextByName, setSessionPlaintextByName] = useState<Record<string, string>>({});
+  /** When false, masked placeholder is shown for cached values until the user reveals them. */
+  const [valueRevealedByName, setValueRevealedByName] = useState<Record<string, boolean>>({});
   const textareaRefs = useRef<{ [secretName: string]: HTMLTextAreaElement | null }>({});
+  /** Coordinates overlapping submit operations (batch save vs per-row save). */
+  const submissionCountRef = useRef(0);
   const savingSecretsRef = useRef(new Set<string>());
 
   const {
@@ -77,7 +88,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
 
   const secretOperations = useSecretOperations();
 
-  // Merge latest server data without dropping local unsaved row state.
+  // Merge latest server data without dropping local unsaved row state (editing, deletion flags).
   useEffect(() => {
     if (!dataUpdatedAt) {
       return;
@@ -114,21 +125,21 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
           };
         })
         .sort((a, b) => {
-          // System-managed secrets first (true comes before false)
-          if (a.systemManaged && !b.systemManaged) return -1;
-          if (!a.systemManaged && b.systemManaged) return 1;
-          // Within each group, maintain alphabetical order by name
+          // User-managed secrets first; system-managed at the bottom (actionable rows first)
+          if (!a.systemManaged && b.systemManaged) return -1;
+          if (a.systemManaged && !b.systemManaged) return 1;
           return a.name.localeCompare(b.name);
         });
     });
   }, [dataUpdatedAt, secrets]);
 
   const handleEdit = (secretName: string) => {
-    setFormSecrets((prev) => {
-      const secret = prev.find((s) => s.name === secretName);
-      const isCurrentlyEditing = secret?.isEditing;
+    const snapshot = formSecrets;
+    const clicked = snapshot.find((s) => s.name === secretName);
+    const wasEditingClickedSecret = Boolean(clicked?.isEditing);
 
-      const updatedSecrets = prev.map((s) => {
+    setFormSecrets((prev) =>
+      prev.map((s) => {
         // If this is the clicked secret, toggle its edit state
         if (s.name === secretName) {
           return {
@@ -148,17 +159,14 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
         }
 
         return s;
-      });
+      })
+    );
 
-      // Focus the textarea if we're entering edit mode
-      if (!isCurrentlyEditing) {
-        setTimeout(() => {
-          textareaRefs.current[secretName]?.focus();
-        }, 0);
-      }
-
-      return updatedSecrets;
-    });
+    if (!wasEditingClickedSecret) {
+      setTimeout(() => {
+        textareaRefs.current[secretName]?.focus();
+      }, 0);
+    }
   };
 
   const handleDelete = (secretName: string) => {
@@ -173,6 +181,32 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
     setFormSecrets((prev) =>
       prev.map((s) => (s.name === secretName ? { ...s, editedValue: value } : s))
     );
+  };
+
+  const handleValueBlur = (secretName: string) => {
+    // Defer one macrotask so we do not treat a transient blur as "user left the field" while focus
+    // is still moving: opening edit moves focus from the menu trigger into the value textarea, and
+    // that sequence can emit a blur on the new field in the same turn before focus has settled.
+    // Same idea as double requestAnimationFrame, but setTimeout(0) is a bit easier to read.
+    window.setTimeout(() => {
+      const field = textareaRefs.current[secretName];
+      const active = document.activeElement;
+      if (field && (active === field || field.contains(active))) {
+        return;
+      }
+      setFormSecrets((prev) =>
+        prev.map((s) => {
+          if (s.name === secretName && s.isEditing && (!s.editedValue || s.editedValue.trim() === '')) {
+            return {
+              ...s,
+              isEditing: false,
+              editedValue: undefined,
+            };
+          }
+          return s;
+        })
+      );
+    }, 0);
   };
 
   const calculateRows = (value: string | undefined): number => {
@@ -308,6 +342,11 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
         )
       );
 
+      setSessionPlaintextByName((prev) => ({
+        ...prev,
+        [secretName]: secret.editedValue,
+      }));
+
       Growl.addGrowlMessage({
         id: `secrets-row-success-${secretName}`,
         title: t('builder_status_success'),
@@ -336,6 +375,8 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
   };
 
   const handleSubmit = async () => {
+    // Row save / other paths call startSubmit first; block bulk save so we never overlap mutations
+    // (bulk control is also disabled while isSubmitting — this guards races or non-UI callers).
     if (submissionCountRef.current > 0) {
       return;
     }
@@ -378,6 +419,27 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
           }))
       );
 
+      setSessionPlaintextByName((prev) => {
+        const next = { ...prev };
+        for (const u of operations.updates) {
+          next[u.name] = u.value;
+        }
+        for (const a of operations.additions) {
+          next[a.name] = a.value;
+        }
+        for (const d of operations.deletions) {
+          delete next[d];
+        }
+        return next;
+      });
+      setValueRevealedByName((prev) => {
+        const next = { ...prev };
+        for (const d of operations.deletions) {
+          delete next[d];
+        }
+        return next;
+      });
+
       // Show success growl notification
       Growl.addGrowlMessage({
         id: 'secrets-success',
@@ -393,7 +455,6 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
         error: err instanceof Error ? err.message : String(err)
       });
 
-      // Show error growl notification
       Growl.addGrowlMessage({
         id: 'secrets-error',
         title: t('builder_status_failed'),
@@ -421,6 +482,49 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
       isSecretNameUnique(s.name, index) &&
       isValueValid(s.value)
     );
+
+  const getCopyablePlaintext = (secret: SecretFormData): string => {
+    if (secret.isEditing && secret.editedValue !== undefined && isValueValid(secret.editedValue)) {
+      return secret.editedValue;
+    }
+    const cached = sessionPlaintextByName[secret.name];
+    if (cached !== undefined && cached !== '') {
+      return cached;
+    }
+    return secret.value ?? '';
+  };
+
+  const handleCopySecretValue = async (secret: SecretFormData) => {
+    const text = getCopyablePlaintext(secret);
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      Growl.addGrowlMessage({
+        id: `secret-copied-${secret.name}`,
+        title: t('builder_status_success'),
+        children: t('builder_common_copied'),
+        emphasis: 'success',
+        lifetime: 2500,
+      });
+    } catch {
+      logger.error('secrets.copy.failed', { appId, secretName: secret.name });
+      Growl.addGrowlMessage({
+        id: `secret-copy-failed-${secret.name}`,
+        title: t('builder_status_failed'),
+        children: t(
+          'builder_settings_secrets_copy_failed_named',
+          { name: secret.name },
+          'Could not copy {name} to the clipboard. Please try again.'
+        ),
+        emphasis: 'critical',
+        lifetime: 4000,
+      });
+    }
+  };
+
+  const toggleValueReveal = (secretName: string) => {
+    setValueRevealedByName((prev) => ({ ...prev, [secretName]: !prev[secretName] }));
+  };
 
   const handleNewSecretChange = (index: number, field: 'name' | 'value', value: string) => {
     let updatedSecrets = [...newSecrets];
@@ -495,6 +599,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
     <Box gap="lg" className="@container">
       <SettingsSection
         title={t('builder_settings_secrets_title')}
+        description={t('builder_settings_secrets_description')}
         button={(
           <Button
             design="primary"
@@ -559,16 +664,46 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
           {formSecrets.length > 0 && (
             <>
               <div className="border border-intents-ux-box-borderColor rounded-lg overflow-hidden">
-                {formSecrets.map((secret, index) => (
+                {formSecrets.map((secret, index) => {
+                  const plaintextSource =
+                    sessionPlaintextByName[secret.name] ??
+                    (typeof secret.value === 'string' && secret.value !== '' ? secret.value : undefined);
+                  const hasPlaintextSource = plaintextSource !== undefined && plaintextSource !== '';
+                  const revealed = !!valueRevealedByName[secret.name];
+                  const canToggleShow = !secret.isEditing && hasPlaintextSource;
+                  const visuallyShowingPlaintext =
+                    !secret.isEditing && hasPlaintextSource && revealed;
+                  const valueDisplay =
+                    secret.isEditing
+                      ? (secret.editedValue ?? '')
+                      : hasPlaintextSource && revealed
+                        ? plaintextSource
+                        : '';
+                  const valueRows = secret.isEditing
+                    ? calculateRows(secret.editedValue)
+                    : hasPlaintextSource && revealed
+                      ? calculateRows(plaintextSource)
+                      : 1;
+
+                  const hasStatusRow =
+                    secret.systemManaged ||
+                    secret.syncStatus === 'synced' ||
+                    secret.syncStatus === 'added' ||
+                    secret.syncStatus === 'updated' ||
+                    (secret.isEditing && !!secret.editedValue && isValueValid(secret.editedValue)) ||
+                    secret.markedForDeletion;
+
+                  return (
                   <div
                     key={secret.name}
-                    className={`flex items-start gap-1.5 p-2 ${
-                      index !== formSecrets.length - 1 ? 'border-b' : ''
+                    className={`p-2 ${
+                      index !== formSecrets.length - 1 ? 'border-b border-intents-ux-box-borderColor' : ''
                     } ${secret.markedForDeletion ? 'bg-intents-ux-feedbackCritical-feedbackColor' : ''}`}
                     style={{ opacity: secret.markedForDeletion ? 0.8 : 1 }}
                   >
-                    <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-1.5 items-start">
-                      <div>
+                    {/* Row 1: name | value | actions (single horizontal group) */}
+                    <div className="flex flex-col gap-1.5 @md:flex-row @md:items-center @md:gap-2 min-w-0">
+                      <div className="w-full min-w-0 @md:w-[min(38%,14rem)] @md:shrink-0">
                         <TextInput
                           id={`secretName-${index}`}
                           value={secret.name}
@@ -576,95 +711,170 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                           label={null}
                           visualSize="sm"
                         />
-                        {/* System managed and sync status tags */}
-                        <div className="mt-1 flex gap-1 flex-wrap">
-                          {secret.systemManaged ? (
-                              <Tag emphasis="info">{t('builder_settings_secrets_tag_system')}</Tag>
-                          ) : (
-                            <>
-                              {secret.syncStatus === 'synced' && (
-                                <Tag emphasis="success">{t('builder_settings_secrets_tag_deployed')}</Tag>
-                              )}
-                              {secret.syncStatus === 'added' && (
-                                <>
-                                  <Tag emphasis="info">{t('builder_settings_secrets_tag_new')}</Tag>
-                                  <Tag emphasis="warning">{t('builder_settings_secrets_tag_not_deployed')}</Tag>
-                                </>
-                              )}
-                              {secret.syncStatus === 'updated' && (
-                                <>
-                                  <Tag emphasis="info">{t('builder_settings_secrets_tag_updated')}</Tag>
-                                  <Tag emphasis="warning">{t('builder_settings_secrets_tag_not_deployed')}</Tag>
-                                </>
-                              )}
-                            </>
-                          )}
-                        </div>
                       </div>
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <TextInput
                           id={`secretValue-${index}`}
                           label={null}
                           ref={(el) => { textareaRefs.current[secret.name] = el; }}
-                          value={secret.isEditing ? (secret.editedValue ?? '') : ''}
+                          value={valueDisplay}
                           onChange={(value: string) => handleValueChange(secret.name, value)}
+                          onBlur={() => handleValueBlur(secret.name)}
                           disabled={!secret.isEditing}
-                          size={secret.isEditing ? calculateRows(secret.editedValue) : 1}
+                          size={valueRows}
                           placeholder={secret.isEditing ? '' : '••••••••••••'}
                           visualSize="sm"
                           multiline={true}
                         />
-                        {secret.isEditing && secret.editedValue && isValueValid(secret.editedValue) && (
-                          <Tag emphasis="warning" className="mt-1">{t('builder_settings_secrets_tag_unsaved_edit')}</Tag>
-                        )}
-                        {secret.markedForDeletion && (
-                          <Tag emphasis="critical" className="mt-1">{t('builder_settings_secrets_tag_unsaved_delete')}</Tag>
-                        )}
                       </div>
-                    </div>
-                    <div className="flex flex-col md:flex-row items-center gap-0.5">
-                      {secret.isEditing ? (
-                        <>
-                          <IconButton
-                            icon={<CheckmarkIcon />}
-                            label={t('builder_common_save')}
-                            aria-label={`${t('builder_common_save')} ${secret.name}`}
-                            onClick={() => handleSaveSingle(secret.name)}
-                            showLabelAlways={true}
-                            disabled={secret.systemManaged || !secret.editedValue || !isValueValid(secret.editedValue) || isSubmitting}
-                            className="!border-0"
-                          />
-                          <IconButton
-                            icon={<XIcon />}
-                            label={t('builder_common_cancel')}
-                            onClick={() => handleEdit(secret.name)}
-                            showLabelAlways={true}
-                            disabled={isSubmitting}
-                            className="!border-0"
-                          />
-                        </>
-                      ) : (
-                        <>
-                          <IconButton
-                            icon={<EditIcon />}
-                            label={t('builder_common_edit')}
-                            onClick={() => handleEdit(secret.name)}
-                            disabled={secret.systemManaged || secret.markedForDeletion || isSubmitting}
-                            className="!border-0"
-                          />
-                          <IconButton
-                            icon={<DeleteIcon />}
-                            label={secret.markedForDeletion ? t('builder_common_undo') : t('builder_common_delete')}
-                            onClick={() => handleDelete(secret.name)}
-                            active={secret.markedForDeletion}
-                            disabled={secret.systemManaged || isSubmitting}
-                            className="!border-0"
-                          />
-                        </>
+                      {!secret.systemManaged && (
+                        <div
+                          className="flex flex-row items-center justify-end gap-0.5 shrink-0 w-full @md:w-auto"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {!secret.isEditing && (
+                            <>
+                              <IconButton
+                                icon={visuallyShowingPlaintext ? <HideIcon /> : <ShowIcon />}
+                                label={
+                                  visuallyShowingPlaintext
+                                    ? t('builder_settings_secrets_hide_value', undefined, 'Hide value')
+                                    : t('builder_settings_secrets_show_value', undefined, 'Show value')
+                                }
+                                showLabelWhenActive={false}
+                                showLabelAlways={false}
+                                onClick={() => toggleValueReveal(secret.name)}
+                                disabled={!canToggleShow}
+                                active={visuallyShowingPlaintext}
+                                size="sm"
+                                ghost
+                                className="!border-0"
+                                dataEid={generateClickEID(`develop.settings.secrets.show.${secret.name}`)}
+                              />
+                              <IconButton
+                                icon={<CopyIcon />}
+                                label={t('builder_common_copy_clipboard', undefined, 'Copy to clipboard')}
+                                onClick={() => void handleCopySecretValue(secret)}
+                                disabled={!getCopyablePlaintext(secret)}
+                                size="sm"
+                                ghost
+                                className="!border-0"
+                                dataEid={generateClickEID(`develop.settings.secrets.copy.${secret.name}`)}
+                              />
+                            </>
+                          )}
+                          {secret.isEditing && (
+                            <>
+                              <IconButton
+                                icon={<CheckmarkIcon />}
+                                label={t('builder_common_save')}
+                                aria-label={`${t('builder_common_save')} ${secret.name}`}
+                                onClick={() => void handleSaveSingle(secret.name)}
+                                showLabelWhenActive={false}
+                                showLabelAlways={false}
+                                disabled={
+                                  secret.systemManaged ||
+                                  !secret.editedValue ||
+                                  !isValueValid(secret.editedValue) ||
+                                  isSubmitting
+                                }
+                                size="sm"
+                                ghost
+                                className="!border-0"
+                                dataEid={generateClickEID(`develop.settings.secrets.save.${secret.name}`)}
+                              />
+                              <IconButton
+                                icon={<XIcon />}
+                                label={t('builder_common_cancel')}
+                                onClick={() => handleEdit(secret.name)}
+                                showLabelWhenActive={false}
+                                showLabelAlways={false}
+                                disabled={isSubmitting}
+                                size="sm"
+                                ghost
+                                className="!border-0"
+                                dataEid={generateClickEID(`develop.settings.secrets.cancel-edit.${secret.name}`)}
+                              />
+                            </>
+                          )}
+                          {!secret.isEditing && (
+                            <Menu
+                              id={`secret-menu-${secret.name.replace(/[^a-zA-Z0-9_-]/g, '_')}`}
+                              size="sm"
+                              closeOnSelect
+                            >
+                              <MenuButton
+                                aria-label={t('builder_settings_secrets_row_actions', undefined, 'Secret actions')}
+                                design="control"
+                                size="sm"
+                                icon={<MenuIcon />}
+                                className="!border-0 !bg-transparent p-[6px] rounded-md shadow-none transition-all duration-200 hover:shadow-md hover:!bg-transparent active:!bg-transparent [&[aria-expanded='true']]:!bg-transparent"
+                                data-eid={generateClickEID(`develop.settings.secrets.menu.${secret.name}`)}
+                              />
+                              <MenuList stretch placement="bottom-end">
+                                <MenuItem
+                                  id={`secret-edit-${index}`}
+                                  disabled={secret.markedForDeletion}
+                                  onClick={() => handleEdit(secret.name)}
+                                >
+                                  <Box orientation="horizontal" gap="sm">
+                                    <EditIcon />
+                                    <text.span>{t('builder_common_edit')}</text.span>
+                                  </Box>
+                                </MenuItem>
+                                <MenuItem
+                                  id={`secret-delete-${index}`}
+                                  onClick={() => handleDelete(secret.name)}
+                                >
+                                  <Box orientation="horizontal" gap="sm">
+                                    <TrashIcon />
+                                    <text.span>
+                                      {secret.markedForDeletion ? t('builder_common_undo') : t('builder_common_delete')}
+                                    </text.span>
+                                  </Box>
+                                </MenuItem>
+                              </MenuList>
+                            </Menu>
+                          )}
+                        </div>
                       )}
                     </div>
+                    {/* Row 2: status and unsaved tags below the fields */}
+                    {hasStatusRow && (
+                      <div className="mt-1.5 flex flex-wrap gap-1 items-center">
+                        {secret.systemManaged ? (
+                          <Tag emphasis="info">{t('builder_settings_secrets_tag_system')}</Tag>
+                        ) : (
+                          <>
+                            {secret.syncStatus === 'synced' && (
+                              <Tag emphasis="success">{t('builder_settings_secrets_tag_deployed')}</Tag>
+                            )}
+                            {secret.syncStatus === 'added' && (
+                              <>
+                                <Tag emphasis="info">{t('builder_settings_secrets_tag_new')}</Tag>
+                                <Tag emphasis="warning">{t('builder_settings_secrets_tag_not_deployed')}</Tag>
+                              </>
+                            )}
+                            {secret.syncStatus === 'updated' && (
+                              <>
+                                <Tag emphasis="info">{t('builder_settings_secrets_tag_updated')}</Tag>
+                                <Tag emphasis="warning">{t('builder_settings_secrets_tag_not_deployed')}</Tag>
+                              </>
+                            )}
+                          </>
+                        )}
+                        {secret.isEditing && secret.editedValue && isValueValid(secret.editedValue) && (
+                          <Tag emphasis="warning">{t('builder_settings_secrets_tag_unsaved_edit')}</Tag>
+                        )}
+                        {secret.markedForDeletion && (
+                          <Tag emphasis="critical">{t('builder_settings_secrets_tag_unsaved_delete')}</Tag>
+                        )}
+                      </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </>
           )}

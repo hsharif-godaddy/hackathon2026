@@ -24,7 +24,7 @@ interface OperationsRequest {
  * @param request - The incoming Next.js request
  * @param authContext - Customer authentication context with user and JWT
  * @param params - Route parameters containing the appId and variant
- * @returns NextResponse with secrets data (without values) or error
+ * @returns NextResponse with secrets (names, metadata, and values when mgmt-airo returns them) or error
  *
  * @example
  * ```typescript
@@ -33,7 +33,7 @@ interface OperationsRequest {
  * const data = await response.json();
  * // {
  * //   appId: 'my-app-id',
- * //   secrets: [{ name: 'API_KEY', systemManaged: false, variants: ['preview', 'publish'] }],
+ * //   secrets: [{ name: 'API_KEY', systemManaged: false, variants: ['preview', 'publish'], value: '…' }],
  * //   count: 1
  * // }
  * ```
@@ -71,12 +71,16 @@ export const GET = withCustomerAuth(async (
 		const adapter = getControlPlaneAdapter();
 		const result = await adapter.getSecrets(appId, variant, authContext.jwt);
 
-		return NextResponse.json(result);
+		return NextResponse.json(result, {
+			headers: {
+				'Cache-Control': 'no-store, private',
+			},
+		});
 
 	} catch (error) {
 		return handleControlPlaneError(error, 'secrets.fetch');
 	}
-});
+}, { level: 3 });
 
 /**
  * POST handler for bulk secret operations

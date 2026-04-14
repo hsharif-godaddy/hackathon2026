@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { forwardRef, useCallback, useRef, useState } from 'react'
-import Tooltip from '@ux/tooltip'
+import Tooltip from '@ux/tooltip';
 
 interface IconButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'onClick'> {
   icon: React.ReactNode
@@ -18,6 +18,8 @@ interface IconButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElem
   id?: string
   showLabelWhenActive?: boolean
   showLabelAlways?: boolean
+  /** Transparent background; ring still indicates `active` when not inverted. */
+  ghost?: boolean
 }
 
 const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton({
@@ -36,6 +38,7 @@ const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconB
   id,
   showLabelWhenActive = true,
   showLabelAlways = false,
+  ghost = false,
   ...props
 }, forwardedRef) {
   const [showTooltip, setShowTooltip] = useState(false)
@@ -70,13 +73,20 @@ const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconB
       id={id}
       className={clsx(
         "flex gap-0 items-center relative leading-none transition-all duration-200", {
-          "bg-intents-ux-box-backgroundColor": !inverted,
-          "bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-boxLowContrast-foregroundColor": inverted,
+          "bg-intents-ux-box-backgroundColor": !inverted && !ghost,
+          "bg-transparent": !inverted && ghost,
+          "bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-boxLowContrast-foregroundColor": inverted && !ghost,
+          "bg-transparent text-intents-ux-boxLowContrast-foregroundColor": inverted && ghost,
           "p-1.5 rounded-lg": size === 'default',
           "p-[6px] rounded-md": size === 'sm',
           "mr-2 after:absolute after:-right-1.5 after:top-0 after:bottom-0 after:block after:content after:w-px after:bg-intents-ux-box-borderColor": separator,
-          "bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor shadow-md border-intents-ux-boxHighContrast-borderColor": active && !inverted,
-          "bg-intents-ux-box-backgroundColor text-intents-ux-box-foregroundColor shadow-md": active && inverted,
+          // Ring on neutral surface so @ux/icon (fill=currentColor) stays visible; filled high-contrast
+          // bg often produced a solid block with no visible glyph in light themes.
+          // Ring when active on default surface, or ghost inverted (no solid fill).
+          "text-intents-ux-box-foregroundColor shadow-md ring-1 ring-inset ring-intents-ux-box-borderColor":
+            active && (!inverted || ghost),
+          "bg-intents-ux-box-backgroundColor text-intents-ux-box-foregroundColor shadow-md":
+            active && inverted && !ghost,
           "opacity-25 pointer-events-none": disabled,
           "hover:shadow-md hover:cursor-pointer": !disabled && onClick,
         },
@@ -90,10 +100,9 @@ const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconB
       ref={mergedRef}
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
-      aria-haspopup={showTooltip}
       {...props}
     >
-      {icon}
+      <span className="inline-flex shrink-0 items-center justify-center">{icon}</span>
       {label && (showLabelWhenActive || showLabelAlways) && (
         <span className={clsx(
           "overflow-hidden whitespace-nowrap", {

@@ -58,7 +58,16 @@ describe('IconButton', () => {
     renderWithProviders( <IconButton icon={<MockIcon />} active />);
 
     const button = screen.getByRole('button');
-    expect(button).toHaveClass('bg-intents-ux-boxHighContrast-backgroundColor');
+    expect(button).toHaveClass('ring-1', 'ring-inset', 'ring-intents-ux-box-borderColor');
+    expect(button).toHaveClass('text-intents-ux-box-foregroundColor');
+  });
+
+  it('should use transparent background when ghost', () => {
+    renderWithProviders(<IconButton icon={<MockIcon />} ghost />);
+
+    const button = screen.getByRole('button');
+    expect(button).toHaveClass('bg-transparent');
+    expect(button).not.toHaveClass('bg-intents-ux-box-backgroundColor');
   });
 
   it('should apply disabled styling when disabled', () => {
@@ -157,7 +166,7 @@ describe('IconButton', () => {
     await user.hover(button);
 
     await waitFor(() => {
-      expect(button).toHaveAttribute('aria-haspopup', 'true');
+      expect(screen.getByText('Test description')).toBeInTheDocument();
     });
   });
 
@@ -189,7 +198,7 @@ describe('IconButton', () => {
     await user.hover(button);
 
     await waitFor(() => {
-      expect(button).toHaveAttribute('aria-haspopup', 'true');
+      expect(screen.getByText('Detailed description')).toBeInTheDocument();
     });
   });
 
@@ -206,13 +215,13 @@ describe('IconButton', () => {
     await user.hover(button);
 
     await waitFor(() => {
-      expect(button).toHaveAttribute('aria-haspopup', 'true');
+      expect(screen.getByText('Test description')).toBeInTheDocument();
     });
 
     await user.unhover(button);
 
     await waitFor(() => {
-      expect(button).toHaveAttribute('aria-haspopup', 'false');
+      expect(screen.queryByText('Test description')).not.toBeInTheDocument();
     });
   });
 

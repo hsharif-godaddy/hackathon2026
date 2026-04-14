@@ -35,7 +35,8 @@ interface UseSecretsOptions {
 /**
  * Fetch secrets for an application
  *
- * Custom hook that fetches the list of secrets for a given app ID and variant.
+ * Custom hook that fetches the list of secrets for a given app ID and variant
+ * (including values when the API returns them).
  * Handles 404 responses as empty state (no secrets configured yet) and provides
  * proper error handling for other failure scenarios.
  *
