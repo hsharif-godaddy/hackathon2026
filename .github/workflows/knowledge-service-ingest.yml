@@ -21,6 +21,11 @@ on:
         required: false
         type: boolean
         default: false
+      regenerate_queries:
+        description: "Force regenerate RAG test queries even if query files already exist (PROD only)"
+        required: false
+        type: boolean
+        default: false
   # workflow_call inputs mirror workflow_dispatch above — GitHub requires both
   # blocks to declare inputs independently; they cannot share a definition.
   workflow_call:
@@ -39,12 +44,17 @@ on:
         required: false
         type: boolean
         default: false
+      regenerate_queries:
+        description: "Force regenerate RAG test queries even if query files already exist (PROD only)"
+        required: false
+        type: boolean
+        default: false
 
 run-name: "Ingest ${{ inputs.documents || 'all documents' }} to ${{ inputs.environment }}"
 
 permissions:
   id-token: write # required for sso-awsiam-jwt action
-  contents: read
+  contents: write # required for committing generated RAG query files
 
 jobs:
   ingest-documents:
@@ -53,7 +63,7 @@ jobs:
       labels:
         - airo-cicd-runners
         - self-hosted
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -181,3 +191,80 @@ jobs:
           fi
 
           echo "✅ All documents ingested successfully!"
+
+      # Only generate queries when ingesting to PROD — no value running LLM
+      # calls for dev-private ingests that won't affect the daily prod check.
+      - name: Get CaaS JWT for query generation
+        id: get-caas-jwt
+        if: inputs.environment == 'PROD'
+        uses: gdcorp-actions/sso-awsiam-jwt@4fa027318def6898322564a008818dad427387b2 # v2.0.0
+        with:
+          sso_host: sso.godaddy.com
+
+      - name: Generate RAG test queries for new documents
+        if: inputs.environment == 'PROD'
+        env:
+          CAAS_JWT: ${{ steps.get-caas-jwt.outputs.jwt }}
+          DOCUMENTS: ${{ inputs.documents }}
+          REGENERATE: ${{ inputs.regenerate_queries }}
+        run: |
+          echo "::add-mask::$CAAS_JWT"
+
+          # Build doc list (mirrors the ingest step logic)
+          if [ -n "$DOCUMENTS" ]; then
+            IFS=',' read -ra DOC_ARRAY <<< "$DOCUMENTS"
+            DOCS=()
+            for item in "${DOC_ARRAY[@]}"; do
+              DOCS+=("$(echo "$item" | xargs)")
+            done
+          else
+            DOCS=()
+            for f in knowledge-base/*.md; do
+              DOCS+=("$(basename "$f" .md)")
+            done
+          fi
+
+          GENERATED=0
+          for doc_name in "${DOCS[@]}"; do
+            query_file="knowledge-service/rag-tests/${doc_name}.json"
+            doc_file="knowledge-base/${doc_name}.md"
+
+            if [ ! -f "$doc_file" ]; then
+              echo "Skipping $doc_name — doc file not found"
+              continue
+            fi
+
+            if [ -f "$query_file" ] && [ "$REGENERATE" != "true" ]; then
+              echo "Query file already exists for $doc_name — skipping (use regenerate_queries=true to override)"
+              continue
+            fi
+
+            bash knowledge-service/scripts/generate-rag-queries.sh \
+              "$doc_name" "$doc_file" "$CAAS_JWT"
+
+            GENERATED=$((GENERATED + 1))
+          done
+
+          if [ $GENERATED -gt 0 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add knowledge-service/rag-tests/
+            git commit -m "chore: generate RAG test queries for knowledge base documents [skip ci]"
+            git push
+            echo "✅ Committed query files for $GENERATED document(s)"
+          else
+            echo "No new query files to commit"
+          fi
+
+  # Run the RAG quality check immediately after a successful prod ingest so
+  # we catch any regressions introduced by the new or updated document.
+  rag-quality-check:
+    name: RAG Quality Check (post-ingest)
+    needs: ingest-documents
+    if: inputs.environment == 'PROD' && needs.ingest-documents.result == 'success'
+    uses: ./.github/workflows/knowledge-service-rag-check.yml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      environment: PROD
