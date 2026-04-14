@@ -21,6 +21,19 @@ export function isAiroSubdomain(url: string): boolean {
 }
 
 /**
+ * Whether a domain should be blocked from use as a custom or project domain because
+ * it is an airoapp.ai system-assigned domain.
+ *
+ * Blocks any domain ending in .airoapp.ai (or test/dev variants).
+ *
+ * @param domain - The domain to check (already sanitized, no protocol)
+ */
+export function isBlockedAiroDomain(domain: string): boolean {
+  const normalized = domain.toLowerCase().replace(/\.+$/, '');
+  return AIRO_SUBDOMAINS.some(suffix => normalized.endsWith(suffix));
+}
+
+/**
  * Resolve the public FQDN for a site with fallback priority:
  *  1. Custom domain (domainType !== prefix) — only if status is active
  *  2. Prefix domain (domainType === prefix) — only if status is active

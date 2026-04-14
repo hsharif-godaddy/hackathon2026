@@ -24,7 +24,7 @@ import { shipAnalyticsLog } from '@/lib/logging';
 import { DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { useSiteStore } from "@/stores/useSiteStore";
-import { isCustomerDomain, sanitizeDomainInput, validateDomain } from '@/utils/domain';
+import { isBlockedAiroDomain, isCustomerDomain, sanitizeDomainInput, validateDomain } from '@/utils/domain';
 import { getDomainErrorMessage, translateDomainApiError } from '@/utils/domain-validation';
 import { getRootDomain } from '@/utils/getRootDomain';
 import { generateClickEID } from '@/utils/instrumentation';
@@ -76,7 +76,7 @@ export default function DomainAttach() {
     debouncedDomain,
     {
       mode: DomainMode.CUSTOM,
-      enabled: shouldValidate,
+      enabled: shouldValidate && !isBlockedAiroDomain(sanitizeDomainInput(debouncedDomain)),
       subscriptionId: site?.subscription_id,
       systemId: site?.system_id
     }
@@ -98,6 +98,9 @@ export default function DomainAttach() {
 
   // Poll while any domain is in a transitional state (pending, deleting, no status yet)
   const { data: appDetails, isFetched: isAppDetailsFetched } = useDomainPolling(currentAppId);
+
+  const sanitizedInput = customDomain ? sanitizeDomainInput(customDomain) : '';
+  const isAiroDomainBlocked = sanitizedInput.length > 0 && isBlockedAiroDomain(sanitizedInput);
 
   // Handle customer domain attachment with automatic DNS configuration
   // Hook receives appDetails from above query and manages auto-attach flow for GoDaddy domains
@@ -196,6 +199,9 @@ export default function DomainAttach() {
    * Returns error message from domain validation or undefined if valid
    */
   function getValidationErrorMessage(): string | undefined {
+    if (isAiroDomainBlocked) {
+      return t('builder_domain_error_fqdn_invalid');
+    }
     if (validationData && !validationData.available) {
       return getDomainErrorMessage(validationData.errors, t);
     }
@@ -289,6 +295,11 @@ export default function DomainAttach() {
    */
   async function handleAddCustomDomain() {
     if (!customDomain || !currentAppId) return;
+
+    if (isAiroDomainBlocked) {
+      setCustomDomainError(t('builder_domain_error_fqdn_invalid'));
+      return;
+    }
 
     // Validate and sanitize the domain
     const validation = validateDomain(customDomain);
@@ -485,6 +496,7 @@ export default function DomainAttach() {
             onClick={() => setShowAddConfirmation(true)}
             disabled={shouldDisableAddingDomain ||
               customDomain.length === 0 ||
+              isAiroDomainBlocked ||
               isValidatingDomain ||
               hasValidationError || // Validation check failed
               (customDomain !== debouncedDomain) || // Validation hasn't completed yet (debounce pending)

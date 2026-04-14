@@ -4,7 +4,7 @@
 import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import type { AppDomain } from '@/hooks/useAppDetails';
 import { DomainStatus } from '@/lib/mgmt-airo/types';
@@ -327,6 +327,61 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
       expect(
         screen.getByText(/detaches it from any other site that was using that domain/)
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('airoapp.ai domain blocking', function blockedDomainTests() {
+    it('should show error immediately when typing a .airoapp.ai domain', async function blocksAiroappAi() {
+      renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
+
+      const input = document.getElementById('external-domain-input');
+      expect(input).toBeTruthy();
+
+      fireEvent.change(input!, { target: { value: 'someapp.airoapp.ai' } });
+
+      await waitFor(function waitForError() {
+        expect(screen.getByText('builder_domain_error_fqdn_invalid')).toBeInTheDocument();
+      });
+    });
+
+    it('should show error immediately when typing a .test-airoapp.ai domain', async function blocksTestAiroappAi() {
+      renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
+
+      const input = document.getElementById('external-domain-input');
+      fireEvent.change(input!, { target: { value: 'rjj3iakxkw.c4.test-airoapp.ai' } });
+
+      await waitFor(function waitForError() {
+        expect(screen.getByText('builder_domain_error_fqdn_invalid')).toBeInTheDocument();
+      });
+    });
+
+    it('should not call validation API for blocked airoapp.ai domain', async function skipsApiForBlocked() {
+      const { useDomainValidationQuery } = await import('@/hooks/useDomainValidationQuery');
+      const mockValidation = vi.mocked(useDomainValidationQuery);
+
+      renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
+
+      const input = document.getElementById('external-domain-input');
+      fireEvent.change(input!, { target: { value: 'someapp.airoapp.ai' } });
+
+      await waitFor(function waitForError() {
+        expect(screen.getByText('builder_domain_error_fqdn_invalid')).toBeInTheDocument();
+      });
+
+      // Validation query should have been called with enabled: false for the blocked domain
+      const lastCall = mockValidation.mock.calls[mockValidation.mock.calls.length - 1];
+      expect(lastCall[2].enabled).toBe(false);
+    });
+
+    it('should not show error for a regular custom domain', async function allowsRegularDomain() {
+      renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
+
+      const input = document.getElementById('external-domain-input');
+      fireEvent.change(input!, { target: { value: 'mybusiness.com' } });
+
+      await waitFor(function waitForNoError() {
+        expect(screen.queryByText('builder_domain_error_fqdn_invalid')).not.toBeInTheDocument();
+      });
     });
   });
 

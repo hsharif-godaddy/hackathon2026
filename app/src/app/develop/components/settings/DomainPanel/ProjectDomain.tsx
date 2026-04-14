@@ -18,6 +18,7 @@ import { shipAnalyticsLog } from '@/lib/logging';
 import { DomainMode } from "@/lib/mgmt-airo/types";
 import { logger } from "@/lib/request-context";
 import { useSiteStore } from "@/stores/useSiteStore";
+import { isBlockedAiroDomain } from '@/utils/domain';
 import { getDomainErrorMessage } from '@/utils/domain-validation';
 import { generateClickEID } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
@@ -52,12 +53,13 @@ export default function ProjectDomain() {
   const fetchSite = useSiteStore((state) => state.fetchSite);
 
   const shouldValidate = debouncedDomain !== projectDomainValue && debouncedDomain.length > 0;
+  const isProjectNameBlocked = isBlockedAiroDomain(currentProjectName);
   const { data: validationData, isLoading: isValidatingDomain, isError: hasValidationError } = useDomainValidationQuery(
     currentAppId,
     debouncedDomain,
     {
       mode: DomainMode.PROJECT,
-      enabled: shouldValidate,
+      enabled: shouldValidate && !isBlockedAiroDomain(debouncedDomain),
       subscriptionId: site?.subscription_id,
       systemId: site?.system_id
     }
@@ -184,6 +186,9 @@ export default function ProjectDomain() {
    * @returns Error message string or undefined if no error
    */
   const getErrorMessage = () => {
+    if (isProjectNameBlocked) {
+      return t('builder_domain_error_fqdn_invalid');
+    }
     if (validationData && !validationData.available) {
       return getDomainErrorMessage(validationData.errors, t);
     }
@@ -209,7 +214,7 @@ export default function ProjectDomain() {
    * Validates the new name and submits the mutation request.
    */
   const handleUpdateAppName = async () => {
-    if (!currentAppId || currentProjectName === id) {
+    if (!currentAppId || currentProjectName === id || isProjectNameBlocked) {
       return;
     }
 
@@ -326,6 +331,7 @@ export default function ProjectDomain() {
               disabled={
                 currentProjectName.length === 0 ||
                 currentProjectName === id ||
+                isProjectNameBlocked ||
                 updateAppNameMutation.isPending ||
                 isValidatingDomain ||
                 hasValidationError || // Validation check failed

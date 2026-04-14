@@ -29,7 +29,7 @@ import { shipAnalyticsLog } from '@/lib/logging';
 import { DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { useSiteStore } from '@/stores/useSiteStore';
-import { isCustomerDomain, sanitizeDomainInput, validateDomain } from '@/utils/domain';
+import { isBlockedAiroDomain, isCustomerDomain, sanitizeDomainInput, validateDomain } from '@/utils/domain';
 import { getDomainErrorMessage, translateDomainApiError } from '@/utils/domain-validation';
 import { hasBeenPublished } from '@/utils/site';
 
@@ -92,6 +92,9 @@ export default function DomainAttachWidget({
 
   const site = useSiteStore((state) => appId ? state.getSite(appId) : null);
 
+  const sanitizedInput = customDomain ? sanitizeDomainInput(customDomain) : '';
+  const isAiroDomainBlocked = sanitizedInput.length > 0 && isBlockedAiroDomain(sanitizedInput);
+
   // Validate domain when user has entered a value
   const shouldValidate = debouncedDomain.length > 0;
   const { data: validationData, isLoading: isValidatingDomain, isError: hasValidationError } = useDomainValidationQuery(
@@ -99,7 +102,7 @@ export default function DomainAttachWidget({
     debouncedDomain,
     {
       mode: DomainMode.CUSTOM,
-      enabled: shouldValidate,
+      enabled: shouldValidate && !isBlockedAiroDomain(sanitizeDomainInput(debouncedDomain)),
       subscriptionId: site?.subscription_id,
       systemId: site?.system_id
     }
@@ -290,6 +293,9 @@ export default function DomainAttachWidget({
   }
 
   function getValidationErrorMessage(): string | undefined {
+    if (isAiroDomainBlocked) {
+      return t('builder_domain_error_fqdn_invalid');
+    }
     if (validationData && !validationData.available) {
       return getDomainErrorMessage(validationData.errors, t);
     }
@@ -398,6 +404,11 @@ export default function DomainAttachWidget({
 
   function handleAddCustomDomain() {
     if (!customDomain || !appId) return;
+
+    if (isAiroDomainBlocked) {
+      setCustomDomainError(t('builder_domain_error_fqdn_invalid'));
+      return;
+    }
 
     const validation = validateDomain(customDomain);
 
@@ -735,13 +746,13 @@ export default function DomainAttachWidget({
             onChange={handleCustomDomainChange}
             disabled={shouldDisableAddingDomain}
             errorMessage={
-              customDomain === debouncedDomain && !isValidatingDomain
+              isAiroDomainBlocked || (customDomain === debouncedDomain && !isValidatingDomain)
                 ? getValidationErrorMessage()
                 : undefined
             }
             isValidating={isValidatingDomain}
             isValidationComplete={customDomain === debouncedDomain}
-            isAvailable={!hasValidationError && validationData?.available !== false}
+            isAvailable={!hasValidationError && validationData?.available !== false && !isAiroDomainBlocked}
             onAdd={handleAddCustomDomain}
           />
         )}

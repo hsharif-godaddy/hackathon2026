@@ -6,6 +6,7 @@ import {
   getDnsRecords,
   hasExternalNameservers,
   isAiroSubdomain,
+  isBlockedAiroDomain,
   isCustomerDomain,
   parseDomain,
   resolveSiteFqdn,
@@ -596,6 +597,62 @@ describe('isAiroSubdomain', () => {
 
   it('should return false for invalid URL', () => {
     expect(isAiroSubdomain('not-a-url')).toBe(false);
+  });
+});
+
+describe('isBlockedAiroDomain', () => {
+  describe('blocks airoapp.ai variants', () => {
+    it('should block .airoapp.ai domain', () => {
+      expect(isBlockedAiroDomain('someapp.airoapp.ai')).toBe(true);
+    });
+
+    it('should block .test-airoapp.ai domain', () => {
+      expect(isBlockedAiroDomain('rjj3iakxkw.c4.test-airoapp.ai')).toBe(true);
+    });
+
+    it('should block .dev-airoapp.ai domain', () => {
+      expect(isBlockedAiroDomain('myapp.dev-airoapp.ai')).toBe(true);
+    });
+
+    it('should block deeply nested airoapp.ai subdomains', () => {
+      expect(isBlockedAiroDomain('app.preview.c4.airoapp.ai')).toBe(true);
+    });
+
+    it('should block own app prefix domain', () => {
+      expect(isBlockedAiroDomain('97qcm6p74m.c37.airoapp.ai')).toBe(true);
+    });
+
+    it('should block domain with trailing dot', () => {
+      expect(isBlockedAiroDomain('97qcm6p74m.c37.airoapp.ai.')).toBe(true);
+    });
+
+    it('should block domain with multiple trailing dots', () => {
+      expect(isBlockedAiroDomain('someapp.airoapp.ai...')).toBe(true);
+    });
+  });
+
+  describe('allows non-airoapp.ai domains', () => {
+    it('should allow regular custom domain', () => {
+      expect(isBlockedAiroDomain('mybusiness.com')).toBe(false);
+    });
+
+    it('should allow subdomain of custom domain', () => {
+      expect(isBlockedAiroDomain('shop.mybusiness.com')).toBe(false);
+    });
+
+    it('should allow empty string', () => {
+      expect(isBlockedAiroDomain('')).toBe(false);
+    });
+  });
+
+  describe('case insensitivity', () => {
+    it('should block uppercase airoapp.ai domain', () => {
+      expect(isBlockedAiroDomain('SOMEAPP.AIROAPP.AI')).toBe(true);
+    });
+
+    it('should block own prefix domain in uppercase', () => {
+      expect(isBlockedAiroDomain('97QCM6P74M.C37.AIROAPP.AI')).toBe(true);
+    });
   });
 });
 
