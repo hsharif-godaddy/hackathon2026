@@ -11,6 +11,7 @@ import { AiroLogo } from '@/components/layout/AiroLogo';
 import AppPublish from '@/components/layout/AppPublish';
 import AppSelector from '@/components/layout/AppSelector';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
+import IframeCloseButton from '@/components/layout/IframeCloseButton';
 import { HeaderProps } from '@/components/layout/types';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import DiscordLink from '@/experiments/homepage-engagement-variations/light_homepage/DiscordLink';
@@ -84,6 +85,7 @@ export default function Header({
                 onShowMockLogin={onShowMockLogin}
                 location={location}
               />
+              <IframeCloseButton location={location} />
             </Box>
             {showAuthenticatedUI && (
               <>

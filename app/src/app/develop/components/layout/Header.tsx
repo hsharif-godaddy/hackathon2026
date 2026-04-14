@@ -23,6 +23,7 @@ import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/develop/co
 import { AiroLogo } from '@/components/layout/AiroLogo';
 import AppPublish from '@/components/layout/AppPublish';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
+import IframeCloseButton from '@/components/layout/IframeCloseButton';
 import UserMenu from '@/components/layout/UserMenu';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useTranslations } from '@/hooks/useTranslations';
@@ -167,6 +168,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
               </ButtonGroup>
 
               <UserMenu location="develop" />
+              <IframeCloseButton location="develop" />
             </Box>
           </Box>
         </div>
@@ -198,6 +200,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
             />
           </ButtonGroup>
           <UserMenu location="develop" />
+          <IframeCloseButton location="develop" />
         </div>
       )}
     </header>

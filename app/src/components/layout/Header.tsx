@@ -12,6 +12,7 @@ import AppPublish from '@/components/layout/AppPublish';
 import AppSelector from '@/components/layout/AppSelector';
 import DiscordLink from '@/components/layout/DiscordLink';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
+import IframeCloseButton from '@/components/layout/IframeCloseButton';
 import InviteFriends from '@/components/layout/InviteFriends';
 import { HeaderProps } from '@/components/layout/types';
 import UserMenu from '@/components/layout/UserMenu';
@@ -75,6 +76,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown',
                 onShowMockLogin={onShowMockLogin}
                 location={location}
               />
+              <IframeCloseButton location={location} />
             </Box>
             {showAuthenticatedUI && (
               <>

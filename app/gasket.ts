@@ -380,6 +380,23 @@ export default makeGasket({
     },
     enableGasketData: true
   },
+  helmet: {
+    // Disable X-Frame-Options — superseded by CSP frame-ancestors which supports multiple origins
+    frameguard: false,
+    contentSecurityPolicy: {
+      directives: {
+        'frame-ancestors': [
+          "'self'",
+          'https://dashboard.godaddy.com',
+          'https://dashboard.godaddy.com:*',
+          'https://dashboard.dev-godaddy.com',
+          'https://dashboard.dev-godaddy.com:*',
+          'https://dashboard.test-godaddy.com',
+          'https://dashboard.test-godaddy.com:*'
+        ]
+      }
+    }
+  },
   // Base domain for airoapp.ai URLs — overridden per environment above
   airoAppDomain: 'test-airoapp.ai',
   supportUrl: 'https://www.godaddy.com/help/contact-us',

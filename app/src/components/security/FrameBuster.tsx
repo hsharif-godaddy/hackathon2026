@@ -2,13 +2,18 @@
 
 import { useEffect } from 'react';
 
-import { logger } from '@/lib/request-context';
+import { getParentOrigin } from './allowed-frame-ancestors';
 
 /**
- * Client-side iframe detection and redirect component
- * 
- * Detects if the application is loaded in an iframe and redirects
- * to the top-level domain to prevent clickjacking attacks.
+ * Client-side iframe detection and redirect component (defense-in-depth).
+ *
+ * The primary protection is the CSP frame-ancestors header set by Helmet in
+ * gasket.ts. This component provides a fallback for older browsers that do
+ * not support frame-ancestors.
+ *
+ * When the page is loaded inside an iframe it checks the parent origin against
+ * ALLOWED_FRAME_ANCESTORS. If the parent is not on the allowlist the top-level
+ * window is redirected to break out of the frame (clickjacking prevention).
  */
 export default function FrameBuster() {
   useEffect(() => {
@@ -16,15 +21,19 @@ export default function FrameBuster() {
 
     try {
       if (window.self !== window.top) {
-        if (window.top && window.top.location) {
+        // If the parent is on the allowlist, let the embedding proceed.
+        if (getParentOrigin()) return;
+
+        // Same-origin unauthorized frame — bust out.
+        // For cross-origin frames the property access below throws, which is
+        // caught and handled by the CSP frame-ancestors header instead.
+        if (window.top?.location) {
           window.top.location.replace(window.location.href);
         }
       }
-    } catch (e) {
-      logger.debug('frame_buster.same_origin.blocked', {
-        message: 'Frame detection blocked by same-origin policy - this is expected',
-        error: e instanceof Error ? e.message : String(e)
-      });
+    } catch {
+      // SecurityError expected when an unallowed cross-origin parent blocks the
+      // redirect. CSP frame-ancestors is the primary safeguard for these cases.
     }
   }, []);
 
