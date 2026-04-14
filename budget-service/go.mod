@@ -3,8 +3,7 @@ module github.com/gdcorp-partners/airo-app-builder/budget-service
 go 1.25.5
 
 require (
-	// TODO: Update to stable gd-auth-lib release when available (currently using canary for IAM token generation)
-	github.com/gdcorp-identity/gd-auth-lib/go/gd_auth_lib v0.10.0-canary.1
+	github.com/gdcorp-identity/gd-auth-lib/go/gd_auth_lib v0.11.0
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
