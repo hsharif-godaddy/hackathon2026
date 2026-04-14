@@ -2,7 +2,7 @@
 
 import clsx from 'clsx';
 import { motion } from 'framer-motion';
-import { createContext, useContext, useId, useRef, useState } from 'react';
+import { createContext, forwardRef, useContext, useId, useRef, useState } from 'react';
 import Tooltip from '@ux/tooltip';
 
 interface ButtonGroupContextValue {
@@ -45,7 +45,7 @@ function ButtonGroupRoot({ value, onChange, children, className, 'data-eid': dat
   );
 }
 
-interface ButtonGroupItemProps {
+interface ButtonGroupItemProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'onClick'> {
   value?: string;
   icon: React.ReactNode;
   label?: string;
@@ -56,12 +56,15 @@ interface ButtonGroupItemProps {
   'data-eid'?: string;
 }
 
-function ButtonGroupItem({ value, icon, label, disabled, showLabelAlways = false, onClick, tooltipDescription = null, 'data-eid': dataEid }: ButtonGroupItemProps) {
+const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(function ButtonGroupItem(
+  { value, icon, label, disabled, showLabelAlways = false, onClick, tooltipDescription = null, 'data-eid': dataEid, className: extraClassName, ...rest },
+  forwardedRef
+) {
   const context = useButtonGroupContext();
   const [showTooltip, setShowTooltip] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
+  const internalRef = useRef<HTMLButtonElement>(null);
+  const buttonRef = (forwardedRef as React.RefObject<HTMLButtonElement>) ?? internalRef;
 
-  // Controlled mode: has context with selectedValue and onChange
   const isControlled = context?.value !== undefined && context?.onChange !== undefined;
   const isActive = isControlled && value !== undefined && context!.value === value;
   const shouldShowLabel = label && (showLabelAlways || isActive);
@@ -99,6 +102,7 @@ function ButtonGroupItem({ value, icon, label, disabled, showLabelAlways = false
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
       aria-haspopup={showTooltip}
+      {...rest}
       className={clsx(
         'relative flex items-center gap-1 p-1 rounded-xmd transition-colors duration-200',
         {
@@ -106,7 +110,8 @@ function ButtonGroupItem({ value, icon, label, disabled, showLabelAlways = false
           'bg-intents-ux-boxLowContrast-backgroundColor': !isActive && !disabled,
           'opacity-25 pointer-events-none': disabled,
           'cursor-pointer': !disabled,
-        }
+        },
+        extraClassName
       )}
     >
       {isActive && isControlled && context?.groupId && (
@@ -141,7 +146,7 @@ function ButtonGroupItem({ value, icon, label, disabled, showLabelAlways = false
       {!isActive && showTooltip && tooltipComponent}
     </button>
   );
-}
+});
 
 export const ButtonGroup = Object.assign(ButtonGroupRoot, {
   Item: ButtonGroupItem,

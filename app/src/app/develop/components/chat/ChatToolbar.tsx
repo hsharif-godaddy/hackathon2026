@@ -103,16 +103,14 @@ export default function ChatToolbar({
 
 
   const handleTabClick = (tab: ChatTab) => {
-    // Call optimistic callback first for instant UI updates
     onBeforeTabChange?.(tab)
 
     if (tab === ChatTab.SETTINGS) {
-      // Open the settings popover instead of navigating
-      settingsMenuRef.current?.openPopover()
+      settingsMenuRef.current?.togglePopover()
       return
     }
 
-    // This will update the URL, but the optimistic state is already updated above
+    settingsMenuRef.current?.closePopover()
     setActiveChatTab(tab)
   }
 

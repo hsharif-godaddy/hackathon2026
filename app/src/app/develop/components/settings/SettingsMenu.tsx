@@ -1,6 +1,6 @@
 'use client';
 
-import { forwardRef, useImperativeHandle, useState } from 'react';
+import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import Button from '@ux/button';
 import MenuIcon from '@ux/icon/menu';
 
@@ -13,25 +13,32 @@ import {
   Popover,
   PopoverAnchor,
   PopoverContent,
-} from "@/lib/shadcn/popover";
+} from '@/lib/shadcn/popover';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { generateClickEID } from '@/utils/instrumentation';
 
 export interface SettingsMenuRef {
   openPopover: () => void;
+  closePopover: () => void;
+  togglePopover: () => void;
+  isOpen: () => boolean;
 }
 
 const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
   const t = useTranslations();
 
   const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLButtonElement>(null);
   const isMobile = useDevelopPageStore((state) => state.isMobile)
 
   const { activeChatTab, activeSettingsSection, setActiveSettingsSection, setActiveChatTab } = useChatTabs();
 
   useImperativeHandle(ref, () => ({
     openPopover: () => setOpen(true),
+    closePopover: () => setOpen(false),
+    togglePopover: () => setOpen(prev => !prev),
+    isOpen: () => open,
   }));
 
   const handleNavigate = (id: SettingsSection) => {
@@ -40,23 +47,33 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
     setOpen(false);
   };
 
-  // Only show an item as active when we're actually on the Settings tab
   const isOnSettingsTab = activeChatTab === ChatTab.SETTINGS;
 
-  // Fetch settings nav items when menu is open or we're on Settings tab
   const items = useSettingsNavItems(open || isOnSettingsTab);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverAnchor>
+      <PopoverAnchor asChild>
         <ButtonGroup.Item
+          ref={anchorRef}
           value={ChatTab.SETTINGS}
           icon={<MenuIcon className="size-2.5" />}
-          onClick={() => setOpen(!open)}
+          onClick={() => setOpen(prev => !prev)}
+          aria-expanded={open}
+          aria-haspopup="dialog"
           data-eid={generateClickEID('develop.chat_toolbar.settings')}
         />
       </PopoverAnchor>
-      <PopoverContent align={isMobile ? "center" : "end"} className="p-1">
+      <PopoverContent
+        align={isMobile ? "center" : "end"}
+        className="p-1"
+        onInteractOutside={(e) => {
+          // Prevent Radix dismiss when clicking the anchor — onClick handles the toggle
+          if (anchorRef.current?.contains(e.target as Node)) {
+            e.preventDefault();
+          }
+        }}
+      >
         <div className="flex flex-col gap-0.5">
           {items.map((item) => (
             <Button

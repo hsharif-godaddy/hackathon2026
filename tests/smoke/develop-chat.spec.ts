@@ -156,6 +156,24 @@ test.describe('Develop Page', () => {
     await expect(page.locator('[data-eid*="chat_toolbar.settings"]')).toBeVisible();
     console.log('  ✓ All toolbar buttons visible');
 
+    // Test settings menu toggle (open → close → reopen)
+    const settingsButton = page.locator('[data-eid*="chat_toolbar.settings"]');
+    await settingsButton.click({ force: true });
+    const popoverContent = page.locator('[data-radix-popper-content-wrapper]');
+    await expect(popoverContent).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    console.log('  ✓ Settings menu opens on first click');
+
+    await settingsButton.click({ force: true });
+    await expect(popoverContent).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    console.log('  ✓ Settings menu closes on second click');
+
+    await settingsButton.click({ force: true });
+    await expect(popoverContent).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    // Dismiss the popover before continuing
+    await page.keyboard.press('Escape');
+    await expect(popoverContent).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    console.log('  ✓ Settings menu reopens on third click and closes on Escape');
+
     // Navigate to history and back
     await page.locator('[data-eid*="chat_toolbar.history"]').click({ force: true });
     await expect(page.getByTestId('airo-header')).toBeVisible();
