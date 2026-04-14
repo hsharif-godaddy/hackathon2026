@@ -42,10 +42,10 @@ export default function DomainBar() {
   const isAiroSubdomainCheck = isAiroSubdomain(fqdn);
   const isPublished = hasBeenPublished(site);
 
-  // Search for a suggested domain from app name, falling back to site record name.
+  // Search for a suggested domain from site record name, falling back to app name.
   // Request up to 5 results so the API can return good alternatives
   // even when the exact match (e.g. yourbrand.com) is unavailable.
-  const domainQuery = toDomainQuery(appName?.trim() || site?.name?.trim() || '');
+  const domainQuery = toDomainQuery(site?.name?.trim() || appName?.trim() || '');
   const { data: suggestedDomainData, isError: isDomainSearchError } = useDomainSearch({
     query: domainQuery,
     maxResults: 5,

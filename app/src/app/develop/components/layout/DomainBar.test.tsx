@@ -134,7 +134,10 @@ describe('DomainBar', () => {
   });
 
   it('should normalize diacritics to ASCII in domain query', () => {
-    mockDevelopStore.app = { name: 'Manoirs Lotbinière' };
+    mockDevelopStore.site = {
+      name: 'Manoirs Lotbinière',
+      domains: [{ fqdn: 'test.airoapp.ai', domainType: 'prefix' }],
+    };
 
     renderWithProviders(<DomainBar />);
 
@@ -144,7 +147,10 @@ describe('DomainBar', () => {
   });
 
   it('should normalize mixed diacritics in domain query', () => {
-    mockDevelopStore.app = { name: 'Café Résumé' };
+    mockDevelopStore.site = {
+      name: 'Café Résumé',
+      domains: [{ fqdn: 'test.airoapp.ai', domainType: 'prefix' }],
+    };
 
     renderWithProviders(<DomainBar />);
 
@@ -181,7 +187,7 @@ describe('DomainBar', () => {
     );
   });
 
-  it('should prefer app name over site name when both exist', () => {
+  it('should prefer site name over app name when both exist', () => {
     mockDevelopStore.app = { name: 'App Preferred' };
     mockDevelopStore.site = {
       name: 'Site Other',
@@ -191,7 +197,7 @@ describe('DomainBar', () => {
     renderWithProviders(<DomainBar />);
 
     expect(useDomainSearch).toHaveBeenCalledWith(
-      expect.objectContaining({ query: 'apppreferred' })
+      expect.objectContaining({ query: 'siteother' })
     );
   });
 
