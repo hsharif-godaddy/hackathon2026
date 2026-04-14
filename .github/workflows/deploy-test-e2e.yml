@@ -11,6 +11,10 @@ on:
       - "app-templates/**"
       - "tests/**"
 
+concurrency:
+  group: deploy-test-e2e
+  cancel-in-progress: false
+
 permissions:
   id-token: write
   contents: read
