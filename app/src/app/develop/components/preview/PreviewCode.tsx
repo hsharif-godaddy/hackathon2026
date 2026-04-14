@@ -47,11 +47,11 @@ const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
  */
 function handleEditorWillMount(monaco: typeof import('monaco-editor')) {
   // Configure TypeScript compiler options for JSX support
-  monaco.typescript.typescriptDefaults.setCompilerOptions({
-    target: monaco.typescript.ScriptTarget.ESNext,
-    module: monaco.typescript.ModuleKind.ESNext,
-    moduleResolution: monaco.typescript.ModuleResolutionKind.NodeJs,
-    jsx: monaco.typescript.JsxEmit.ReactJSX,
+  monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+    target: monaco.languages.typescript.ScriptTarget.ESNext,
+    module: monaco.languages.typescript.ModuleKind.ESNext,
+    moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+    jsx: monaco.languages.typescript.JsxEmit.ReactJSX,
     allowJs: true,
     allowSyntheticDefaultImports: true,
     esModuleInterop: true,
@@ -67,23 +67,23 @@ function handleEditorWillMount(monaco: typeof import('monaco-editor')) {
   });
 
   // Also configure JavaScript defaults for JSX files
-  monaco.typescript.javascriptDefaults.setCompilerOptions({
-    target: monaco.typescript.ScriptTarget.ESNext,
-    module: monaco.typescript.ModuleKind.ESNext,
-    moduleResolution: monaco.typescript.ModuleResolutionKind.NodeJs,
-    jsx: monaco.typescript.JsxEmit.ReactJSX,
+  monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
+    target: monaco.languages.typescript.ScriptTarget.ESNext,
+    module: monaco.languages.typescript.ModuleKind.ESNext,
+    moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+    jsx: monaco.languages.typescript.JsxEmit.ReactJSX,
     allowJs: true,
     allowSyntheticDefaultImports: true,
     esModuleInterop: true,
   });
 
   // Disable semantic validation to prevent false errors from missing type definitions
-  monaco.typescript.typescriptDefaults.setDiagnosticsOptions({
+  monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
     noSemanticValidation: true,
     noSyntaxValidation: false,
   });
 
-  monaco.typescript.javascriptDefaults.setDiagnosticsOptions({
+  monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
     noSemanticValidation: true,
     noSyntaxValidation: false,
   });
