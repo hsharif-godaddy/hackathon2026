@@ -546,14 +546,14 @@ importers:
         specifier: workspace:*
         version: link:../packages/shared
       '@aws-sdk/client-s3':
-        specifier: ^3.1024.0
-        version: 3.1024.0
+        specifier: ^3.1025.0
+        version: 3.1025.0
       '@aws-sdk/client-secrets-manager':
-        specifier: 3.1024.0
-        version: 3.1024.0
+        specifier: 3.1025.0
+        version: 3.1025.0
       '@aws-sdk/client-sts':
-        specifier: 3.1024.0
-        version: 3.1024.0
+        specifier: 3.1025.0
+        version: 3.1025.0
       '@aws-sdk/credential-provider-node':
         specifier: ^3.972.29
         version: 3.972.29
@@ -1097,8 +1097,8 @@ importers:
   cdk:
     dependencies:
       '@aws-sdk/client-secrets-manager':
-        specifier: ^3.1024.0
-        version: 3.1024.0
+        specifier: ^3.1025.0
+        version: 3.1025.0
       '@gd-safeguard/godaddy-constructs':
         specifier: ^11.0.1
         version: 11.1.0(@aws-cdk/app-staging-synthesizer-alpha@2.214.0-alpha.0(aws-cdk-lib@2.245.0(constructs@10.6.0))(constructs@10.6.0))(aws-cdk-lib@2.245.0(constructs@10.6.0))(constructs@10.6.0)
@@ -1389,11 +1389,11 @@ importers:
         specifier: workspace:*
         version: link:../eslint-config-airo
       '@aws-sdk/client-sts':
-        specifier: 3.1024.0
-        version: 3.1024.0
+        specifier: 3.1025.0
+        version: 3.1025.0
       '@aws-sdk/credential-providers':
-        specifier: 3.1024.0
-        version: 3.1024.0
+        specifier: 3.1025.0
+        version: 3.1025.0
       '@types/express':
         specifier: 'catalog:'
         version: 4.17.23
@@ -1988,20 +1988,20 @@ packages:
     resolution: {integrity: sha512-t5/gfQQ4gxDz/Mk2TXmdoZtXSG62/nnF0+0ddemnx9uTWvZRs93FZcRJ4mqXfv7qH1iE7Ax2hmEOTRYfU5kn3w==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-cognito-identity@3.1024.0':
-    resolution: {integrity: sha512-PhbZl7TT+SBAsNxeC4vjRCqnkKYadRPKpsX4s0CtsVZz3QJ6UWBO7nBCHV5Pdv1f+YJD+UbCxGBj389vOPLmsw==}
+  '@aws-sdk/client-cognito-identity@3.1025.0':
+    resolution: {integrity: sha512-ke7vyS7Dmo3St1a354AlpAjocZpG25Ql52XQ1AXRD3VQ791FBT7vX+EqGCfAEIWLPxpcldaW2Nny6P6klEOkkw==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-s3@3.1024.0':
-    resolution: {integrity: sha512-8qdO5aLCzaf9l0RdrSBW1iIroRKP2QBqtZ6lkrtHKiaaH0B18xEn+lrEgiN/eCf3uRAYk4cqbnI2XcWzm+7dDQ==}
+  '@aws-sdk/client-s3@3.1025.0':
+    resolution: {integrity: sha512-9Byz2fPnuGRRL8DTTD5bYPl1Iwm+ysLiCMgptffa3lNkVLCiUZc5e5TAaOjk0MvyeXieq+jn35AmQL6cgN2KHQ==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-secrets-manager@3.1024.0':
-    resolution: {integrity: sha512-EXbgMqueA5gw/jqpE2zMWAfBnzn6cZWqCISGdfn1201Um9IAIoTcHjyWoQMALQm0f8Lu1NF6yRtngs6zpZcagQ==}
+  '@aws-sdk/client-secrets-manager@3.1025.0':
+    resolution: {integrity: sha512-A08vxPKkRLi9n8o/257w7A52G8ZGvwF5ZHlaWAk7yw+fNHtlUrkQU+pNabI+Lob/3X3AVxTbIb8cfsLD83p47Q==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-sts@3.1024.0':
-    resolution: {integrity: sha512-LQYfWXsZ6ty68zSMMBGyoj9Lf2bEvVcI593nU5wepaHOTb0HCdOS5BUuQdSkjQ+MUxE3UKlLpCsmEnfEFyNGNQ==}
+  '@aws-sdk/client-sts@3.1025.0':
+    resolution: {integrity: sha512-+rE35ECPzD4ktYvZ0DqP2YSaJsaSi88Vb82DvCz4nbDHcD9dEIlUFFJwjCXpkH/Fd/gu5Bf7dbrTu5LpkB/iKw==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/core@3.973.27':
@@ -2080,8 +2080,8 @@ packages:
     resolution: {integrity: sha512-7Om61RrVCy4ox3OBaqfsyJ47DPuEjE4f9HBqqt0YWdIWYF2ElXlfBjI2/wvSnF4mOJNQiSScOwzG1emsHTuvQw==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/credential-providers@3.1024.0':
-    resolution: {integrity: sha512-5aVZ74iKJ3InT/s4H2tVzAjH48SdegJU0Y0RaAYToQbmrS1R17tipw0jVQrFzajX6W5sbG6xfLcTNIGL33ODMQ==}
+  '@aws-sdk/credential-providers@3.1025.0':
+    resolution: {integrity: sha512-hOMHzYetTwnpvfbLN8emaw+nnQrqlEV0I5rTrgRKTAx1anzEvls/rD1IXwOvX8Z+B9mgbK+yNFqO3wQkBghI1g==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/middleware-bucket-endpoint@3.972.9':
@@ -11368,8 +11368,8 @@ packages:
     resolution: {integrity: sha512-DwmPWeFn+tq7TiyJ2CxezCAirXjFxvaiD03npak3cRjlP9+OjTmSy1EpIrEbh+l6JgUundniloMLDQ/6VTdhLQ==}
     engines: {node: '>=14.0.0'}
 
-  path-expression-matcher@1.4.0:
-    resolution: {integrity: sha512-s4DQMxIdhj3jLFWd9LxHOplj4p9yQ4ffMGowFf3cpEgrrJjEhN0V5nxw4Ye1EViAGDoL4/1AeO6qHpqYPOzE4Q==}
+  path-expression-matcher@1.5.0:
+    resolution: {integrity: sha512-cbrerZV+6rvdQrrD+iGMcZFEiiSrbv9Tfdkvnusy6y0x0GKBXREFg/Y65GhIfm0tnLntThhzCnfKwp1WRjeCyQ==}
     engines: {node: '>=14.0.0'}
 
   path-key@3.1.1:
@@ -14102,7 +14102,7 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/client-cognito-identity@3.1024.0':
+  '@aws-sdk/client-cognito-identity@3.1025.0':
     dependencies:
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
@@ -14146,7 +14146,7 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/client-s3@3.1024.0':
+  '@aws-sdk/client-s3@3.1025.0':
     dependencies:
       '@aws-crypto/sha1-browser': 5.2.0
       '@aws-crypto/sha256-browser': 5.2.0
@@ -14206,7 +14206,7 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/client-secrets-manager@3.1024.0':
+  '@aws-sdk/client-secrets-manager@3.1025.0':
     dependencies:
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
@@ -14250,7 +14250,7 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/client-sts@3.1024.0':
+  '@aws-sdk/client-sts@3.1025.0':
     dependencies:
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
@@ -14545,9 +14545,9 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@aws-sdk/credential-providers@3.1024.0':
+  '@aws-sdk/credential-providers@3.1025.0':
     dependencies:
-      '@aws-sdk/client-cognito-identity': 3.1024.0
+      '@aws-sdk/client-cognito-identity': 3.1025.0
       '@aws-sdk/core': 3.973.27
       '@aws-sdk/credential-provider-cognito-identity': 3.972.22
       '@aws-sdk/credential-provider-env': 3.972.25
@@ -20253,7 +20253,7 @@ snapshots:
 
   '@ux/deploy-assets@3.4.0':
     dependencies:
-      '@aws-sdk/client-s3': 3.1024.0
+      '@aws-sdk/client-s3': 3.1025.0
       glob-extra: 5.0.2
       is-glob: 4.0.3
       mime: 3.0.0
@@ -23278,7 +23278,7 @@ snapshots:
   fast-xml-parser@5.5.11:
     dependencies:
       fast-xml-builder: 1.1.4
-      path-expression-matcher: 1.4.0
+      path-expression-matcher: 1.5.0
       strnum: 2.2.3
 
   fast-xml-parser@5.5.9:
@@ -25958,7 +25958,7 @@ snapshots:
 
   path-expression-matcher@1.2.0: {}
 
-  path-expression-matcher@1.4.0: {}
+  path-expression-matcher@1.5.0: {}
 
   path-key@3.1.1: {}
 
