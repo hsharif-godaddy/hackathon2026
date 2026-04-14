@@ -19,7 +19,7 @@ export const markdownComponents: Components = {
   ol: ({ ...props }) => <ol className="list-decimal list-inside mb-3 space-y-1" {...props} />,
   li: ({ ...props }) => <li className="ml-4" {...props} />,
   blockquote: ({ ...props }) => <blockquote className="border-l-4 border-intents-ux-boxLowContrast-borderColor pl-4 italic my-3 opacity-80" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   code: (props: any) => {
     const { inline, className, children } = props;
     const match = /language-(\w+)/.exec(className || '');

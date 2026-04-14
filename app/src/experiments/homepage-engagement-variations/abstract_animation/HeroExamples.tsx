@@ -126,7 +126,7 @@ export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
       slug: "rebuild_site",
       featured: true
     }
-  ], []) // eslint-disable-line react-hooks/exhaustive-deps
+  ], [])
 
   // Select 8 examples: featured ones + random selection from others
   const [displayedExamples, setDisplayedExamples] = useState<Example[]>([])
@@ -140,7 +140,7 @@ export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
     // Shuffle for random display order
     const finalShuffled = combined.sort(() => Math.random() - 0.5)
     setDisplayedExamples(finalShuffled)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (displayedExamples.length === 0) return

@@ -11,7 +11,7 @@ import { logger } from '@/lib/request-context';
 const AuthContext = createContext<ReturnType<typeof useAuth> | null>(null);
 
 // Simple component that just renders children
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function AuthProviderComponent(props: any) {
   const { children } = props;
   return <>{children}</>;

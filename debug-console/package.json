@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "tsx server.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "next lint",
+    "lint": "eslint src/",
     "test": "vitest run",
     "test:watch": "vitest watch",
     "test:coverage": "vitest run --coverage"
@@ -27,14 +27,9 @@
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@typescript-eslint/eslint-plugin": "catalog:",
-    "@typescript-eslint/parser": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "eslint": "catalog:",
-    "eslint-config-next": "^14.2.24",
-    "eslint-config-prettier": "catalog:",
-    "eslint-plugin-react": "^7.37.0",
-    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-config-next": "16.2.3",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

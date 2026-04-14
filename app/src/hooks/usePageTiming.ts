@@ -276,7 +276,7 @@ export function usePageTiming(
       // 2. beforeunload event, or
       // 3. Navigation to a different page
     };
-  }, []); /* eslint-disable-line react-hooks/exhaustive-deps */
+  }, []);
 
   return { endTransaction, updateLabels };
 }
@@ -354,7 +354,7 @@ export function usePagePhases(pageName: string) {
       // Synchronously end all phases during cleanup
       activePhases.current.forEach((phase, phaseName) => {
         const duration = Date.now() - phase.startTime;
-        activePhases.current.delete(phaseName); /* eslint-disable-line react-hooks/exhaustive-deps */
+        activePhases.current.delete(phaseName);
 
         // Attempt to end transaction synchronously
         const apm = getApmAgent();

@@ -70,7 +70,7 @@ import { calculateBackoffDelay, classifyError, sleep } from './error-handler'
  * The cache is keyed by the full query string and holds a Promise so that
  * concurrent callers await the same in-flight request.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 const inflight = new Map<string, Promise<any[]>>()
 
 // ─── Generic executor ───────────────────────────────────
@@ -171,7 +171,7 @@ export async function safeFetch<T = Record<string, unknown>>(query: string, opNa
 
 // ─── Helpers ────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function sumByKey(rows: any[], groupKey: string, sumKey: string): Map<string, number> {
   const map = new Map<string, number>()
   for (const r of rows) {

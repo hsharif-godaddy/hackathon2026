@@ -79,7 +79,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
     if (isListening) {
       textBeforeListeningRef.current = displayText
     }
-  }, [isListening]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isListening])
 
   function handleStartBuilding() {
     // Flush any pending debounced promptText update so the parent has the latest value
@@ -189,7 +189,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
       t('builder_homepage_placeholder_4'),
       t('builder_homepage_placeholder_5')
     ].sort(() => Math.random() - 0.5)
-  }, [isBelowSmBreakpoint]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isBelowSmBreakpoint])
   const isUserTypingRef = useRef(false)
 
   useEffect(() => {

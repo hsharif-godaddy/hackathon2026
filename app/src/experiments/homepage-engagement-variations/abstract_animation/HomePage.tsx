@@ -238,7 +238,7 @@ export function AbstractAnimationHomePage({ serverFeatures }: HomeContentProps) 
         })
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [logAnalytics, searchParams])
 
   const savePromptForRetry = useCallback((prompt: string, context: 'login' | 'session-refresh') => {

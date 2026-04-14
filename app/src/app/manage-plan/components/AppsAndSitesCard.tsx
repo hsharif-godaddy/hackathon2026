@@ -112,7 +112,7 @@ export default function AppsAndSitesCard({
 
   useEffect(() => {
     setVisibleSiteCount(Math.min(MANAGE_PLAN_APPS_SCROLL_BATCH, sites.length));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- sites.length changes iff sitesSignature changes
+
   }, [sitesSignature]);
 
   const visibleSites = useMemo(

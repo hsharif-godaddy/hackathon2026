@@ -26,7 +26,6 @@ export function QAIssueItem({ issue, isSelected, onToggle }: QAIssueItemProps) {
     >
       <div className="flex items-start gap-2">
         {/* stopPropagation prevents double-toggle from the row's onClick */}
-        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
         <div onClick={(e) => e.stopPropagation()} className="mt-0.5">
           <Checkbox
             id={`qa-issue-${issue.id}`}

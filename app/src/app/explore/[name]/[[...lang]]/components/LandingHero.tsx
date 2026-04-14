@@ -79,7 +79,7 @@ const LandingHero = forwardRef<LandingHeroRef, LandingHeroProps>(({
     if (isListening) {
       textBeforeListeningRef.current = displayText
     }
-  }, [isListening]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isListening])
 
   function handleStartBuilding() {
     if (isListening) {

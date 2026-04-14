@@ -91,7 +91,7 @@ export default function EventModal({
       setScheduledTime('10:00 AM');
     }
     // setState functions are stable and don't need to be in dependencies
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [initialEvent, isOpen]);
 
   // Reset state when modal closes

@@ -1,4 +1,4 @@
-/* eslint-disable react/display-name */
+
 /* eslint-disable @next/next/no-img-element */
 'use client'
 

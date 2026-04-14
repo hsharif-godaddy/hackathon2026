@@ -36,7 +36,7 @@ export function FeedbackForm({
 
   // TLA detection for internal users
   const userInfo = getUserInfo();
-  const shopperId = userInfo?.shopperId;
+  const shopperId = userInfo?.shopperId as string | undefined;
   const isInternalUser = shopperId?.length === 3;
 
   // Impersonation detection (e2s/e2s2s)

@@ -142,7 +142,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
         { key: 'sign-out', onClick: handleSignOut, eid: `${location}.user_menu.sign_out`, icon: <LogoutIcon className="size-2" />, text: t('builder_user_menu_sign_out') },
       ],
     ];
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- other handlers only close setOpen which is stable
+
   }, [location, t, isAuthenticated, showManagePlan, isDevelopPage, handleSignOut, handleSignInClick]);
 
   return (

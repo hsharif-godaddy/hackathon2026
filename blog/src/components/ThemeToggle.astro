@@ -11,42 +11,42 @@
 </div>
 <script is:inline>
   (function themeToggle() {
-    var KEY = 'airo-blog-theme';
-    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const KEY = 'airo-blog-theme';
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
 
     function storedPreference() {
-      var s = localStorage.getItem(KEY);
+      const s = localStorage.getItem(KEY);
       if (s === 'light' || s === 'dark') return s;
       return 'system';
     }
 
     function resolvedScheme() {
-      var s = localStorage.getItem(KEY);
+      const s = localStorage.getItem(KEY);
       if (s === 'light' || s === 'dark') return s;
       return mq.matches ? 'dark' : 'light';
     }
 
     function apply() {
-      var scheme = resolvedScheme();
+      const scheme = resolvedScheme();
       document.documentElement.dataset.colorScheme = scheme;
       document.documentElement.style.colorScheme = scheme;
-      var pref = storedPreference();
+      const pref = storedPreference();
       document.querySelectorAll('.theme-toggle__btn').forEach(function (btn) {
-        var choice = btn.getAttribute('data-theme-choice');
+        const choice = btn.getAttribute('data-theme-choice');
         btn.setAttribute('aria-pressed', choice === pref ? 'true' : 'false');
       });
     }
 
     function init() {
-      var group = document.querySelector('.theme-toggle');
+      const group = document.querySelector('.theme-toggle');
       if (!group) return;
 
       apply();
 
       group.addEventListener('click', function (e) {
-        var t = e.target;
+        const t = e.target;
         if (!(t instanceof HTMLElement) || !t.matches('.theme-toggle__btn')) return;
-        var choice = t.getAttribute('data-theme-choice');
+        const choice = t.getAttribute('data-theme-choice');
         if (choice === 'light') localStorage.setItem(KEY, 'light');
         else if (choice === 'dark') localStorage.setItem(KEY, 'dark');
         else localStorage.removeItem(KEY);

@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { NextResponse } from 'next/server'
 
 import { logger } from './src/lib/request-context'
 import { logStartupConfiguration } from './src/lib/startup-config'

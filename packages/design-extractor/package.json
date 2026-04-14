@@ -9,8 +9,8 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src --ext .ts",
-    "lint:fix": "eslint src --ext .ts --fix",
+    "lint": "eslint src/",
+    "lint:fix": "eslint --fix src/",
     "extract": "tsx src/extract.ts",
     "generate-styles": "tsx src/generate-style.ts"
   },
@@ -24,10 +24,7 @@
     "@airo/eslint-config": "workspace:*",
     "@types/node": "catalog:",
     "@types/pdf-parse": "^1.1.4",
-    "@typescript-eslint/eslint-plugin": "catalog:",
-    "@typescript-eslint/parser": "catalog:",
     "eslint": "catalog:",
-    "eslint-config-prettier": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:"
   },

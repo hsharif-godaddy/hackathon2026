@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import {
   createCustomerAuthError,
   type CustomerAuthContext,
   customerHasAccount,
   withCustomerAuth} from '@/lib/customer-auth';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { type AiroDomainCheckResponse, AiroMgmtClient, DomainMode, DomainValidationError } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 
@@ -134,7 +132,7 @@ export const GET = withCustomerAuth(
       if (subscriptionIdParam && systemIdParam) {
         subscriptionId = subscriptionIdParam;
         systemId = systemIdParam;
-        
+
         logger.info('check-domain-availability.api.using-provided-ids', {
           appId,
           message: 'Using subscription/system IDs from query params'
@@ -166,7 +164,7 @@ export const GET = withCustomerAuth(
 
         subscriptionId = site.subscription_id;
         systemId = site.system_id;
-        
+
         logger.info('check-domain-availability.api.fetched-ids', {
           appId,
           message: 'Fetched subscription/system IDs from control plane'

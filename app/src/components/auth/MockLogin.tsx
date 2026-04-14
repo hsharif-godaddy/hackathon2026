@@ -31,7 +31,7 @@ export function MockLoginDialog({
 
   return (
     <Modal
-      // eslint-disable-next-line max-len
+
       title={title}
       description={message}
       onClose={onClose}

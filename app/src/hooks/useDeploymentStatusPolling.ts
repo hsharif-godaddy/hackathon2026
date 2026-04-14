@@ -62,7 +62,7 @@ export function useDeploymentStatusPolling({
 
       // Set polling start time on first fetch (for timeout calculation)
       if (!meta?.pollingStartedAt) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         (meta as any).pollingStartedAt = Date.now();
       }
 
@@ -199,7 +199,7 @@ export function useMultipleDeploymentStatusPolling({
       queryFn: async ({ meta }): Promise<{ appId: string; status: DeploymentStatus | null }> => {
         // Set polling start time on first fetch (for timeout calculation)
         if (!meta?.pollingStartedAt) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
           (meta as any).pollingStartedAt = Date.now();
         }
 

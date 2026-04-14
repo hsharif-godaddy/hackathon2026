@@ -43,7 +43,7 @@ export function useSocialConnectFlow({
 
   // Fetch site links
   const siteLinksQuery = useSiteAssociations(appId, enabled)
-  const siteLinks = siteLinksQuery.data?.associations ?? [] // eslint-disable-line react-hooks/exhaustive-deps
+  const siteLinks = siteLinksQuery.data?.associations ?? []
   const isLoadingSiteLinks = siteLinksQuery.isLoading
   const isFetchingSiteLinks = siteLinksQuery.isFetching
 

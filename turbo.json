@@ -1,7 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalPassThroughEnv": ["REAL_PNPM", "WORKSPACE_ROOT"],
-  "globalDependencies": ["packages/eslint-config-airo/index.cjs"],
+  "globalDependencies": ["packages/eslint-config-airo/index.mjs", "packages/eslint-config-airo/package.json"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

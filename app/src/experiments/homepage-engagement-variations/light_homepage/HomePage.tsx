@@ -221,7 +221,7 @@ export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
       }
     }
     // Intentionally excluding promptText from the dependency array to prevent clearing the input when typing.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [logAnalytics, searchParams])
 
   useEffect(() => {

@@ -21,7 +21,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix"
+    "lint:fix": "eslint --fix src/"
   },
   "dependencies": {
     "@airo/agents": "workspace:*",

@@ -127,7 +127,7 @@ export default function MediaSlotToolRenderer({
 			<ToolHeader
 				icon={
 					<Image className="w-2 h-2" /> /* eslint-disable-line jsx-a11y/alt-text */
-				} /* eslint-disable-line jsx-a11y/alt-text */
+				}
 				displayName="Selecting media..."
 				toolStatus={toolStatus}
 				hasDetails={false}

@@ -295,7 +295,7 @@ function ContextDebugPage() {
     if (appId) {
       fetchContextData()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [appId])
 
   if (!features.developmentMode) {

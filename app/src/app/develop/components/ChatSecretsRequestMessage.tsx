@@ -166,7 +166,7 @@ export default function ChatSecretsRequestMessage({
     }
 
     void doAutoSubmit()
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally omit stable-per-render values (autoSubmit, initialRows, secretOperations, sendMessage) to prevent re-triggering
+
   }, [isInteractive, currentAppId])
 
   /**

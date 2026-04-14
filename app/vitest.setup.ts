@@ -1,5 +1,6 @@
-import { vi, afterAll } from 'vitest';
 import '@testing-library/jest-dom/vitest';
+
+import { afterAll, vi } from 'vitest';
 
 /**
  * Vitest global setup

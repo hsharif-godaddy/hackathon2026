@@ -185,7 +185,7 @@ export default function ChatPane({
   const { authState } = useAuthContext()
   // CRM skip sessions use e2s tokens. isEmployeeAuthType covers e2s/e2s2s — same check
   // used for feedback impersonation detection in Feedback.tsx.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const isImpersonating = isEmployeeAuthType((authState as any)?.authType)
 
   // Dual-path credit availability check
@@ -263,7 +263,7 @@ export default function ChatPane({
   const [referencedFiles, setReferencedFiles] = useState<Array<{ path: string; content: string }>>([])
 
   // Pre-fetch ventureId for AssetManager to avoid loading delay
-  const [ventureId, setVentureId] = useState<string | null>(null) // eslint-disable-line @typescript-eslint/no-unused-vars
+  const [ventureId, setVentureId] = useState<string | null>(null)
 
   // Fetch ventureId on component mount
   useEffect(function fetchVentureId() {

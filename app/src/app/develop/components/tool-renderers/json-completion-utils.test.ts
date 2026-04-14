@@ -1,4 +1,4 @@
-/* eslint-disable no-useless-escape */
+
 import { describe, expect, it } from 'vitest'
 
 import { completePartialJson, isPathValueComplete } from './json-completion-utils'

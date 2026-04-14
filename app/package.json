@@ -24,8 +24,8 @@
     "test:watch": "NODE_OPTIONS='--max-old-space-size=512' vitest",
     "test:ui": "NODE_OPTIONS='--max-old-space-size=512' vitest --ui",
     "test:coverage": "NODE_OPTIONS='--max-old-space-size=512' vitest run --coverage",
-    "lint": "next lint --max-warnings 0",
-    "lint:fix": "next lint --fix",
+    "lint": "eslint --max-warnings 0 .",
+    "lint:fix": "eslint --fix .",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "generate:landing-lookup": "tsx src/data/landing-pages/generate-lookup.ts",
     "install-gd-packages": "pnpm --registry https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ install @godaddy/gasket-plugin-auth"
@@ -180,7 +180,7 @@
   },
   "devDependencies": {
     "@airo/eslint-config": "workspace:*",
-    "@eslint/eslintrc": "^3.3.5",
+    "@eslint/js": "^9.28.0",
     "@tailwindcss/postcss": "^4.1.12",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -198,7 +198,7 @@
     "@vitest/coverage-v8": "catalog:",
     "@vitest/ui": "catalog:",
     "eslint": "catalog:",
-    "eslint-config-next": "15.4.6",
+    "eslint-config-next": "16.2.3",
     "eslint-config-prettier": "catalog:",
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "tailwindcss": "^4.2.2",

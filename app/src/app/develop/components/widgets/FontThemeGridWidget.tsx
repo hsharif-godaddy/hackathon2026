@@ -44,7 +44,7 @@ export interface FontThemeGridWidgetProps {
 }
 
 export default function FontThemeGridWidget({ themes, className = '' }: FontThemeGridWidgetProps) {
-  const [loadedThemes, setLoadedThemes] = useState<Set<string>>(new Set()) // eslint-disable-line @typescript-eslint/no-unused-vars
+  const [loadedThemes, setLoadedThemes] = useState<Set<string>>(new Set())
   const [selectedTheme, setSelectedTheme] = useState<FontTheme | null>(null)
   const t = useTranslations()
   const sendUserMessage = useSendUserMessage()
@@ -52,7 +52,7 @@ export default function FontThemeGridWidget({ themes, className = '' }: FontThem
   const isLoading = useIsLoading()
   const isProcessing = isStreaming || isLoading
 
-  const safeThemes = Array.isArray(themes) ? themes : [] // eslint-disable-line react-hooks/exhaustive-deps
+  const safeThemes = Array.isArray(themes) ? themes : []
   const hasThemes = safeThemes.length > 0
 
   useEffect(function loadGoogleFonts() {

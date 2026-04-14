@@ -31,7 +31,7 @@ export function formatOfferPrice(
       style: 'currency',
       currency: currency,
     }).format(actualPrice)
-  } catch (error) { // eslint-disable-line @typescript-eslint/no-unused-vars
+  } catch (error) {
     // Fall back to en-US locale and USD currency if invalid values provided
     return new Intl.NumberFormat('en-US', {
       style: 'currency',

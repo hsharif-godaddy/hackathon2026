@@ -71,17 +71,14 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint src/",
     "test": "vitest run",
-    "lint:fix": "eslint src --ext .ts --fix"
+    "lint:fix": "eslint --fix src/"
   },
   "devDependencies": {
     "@airo/eslint-config": "workspace:*",
     "@types/node": "catalog:",
-    "@typescript-eslint/eslint-plugin": "catalog:",
-    "@typescript-eslint/parser": "catalog:",
     "eslint": "catalog:",
-    "eslint-config-prettier": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },

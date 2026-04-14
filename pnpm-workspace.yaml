@@ -22,7 +22,7 @@ catalog:
   # plugins/configs. typescript, eslint-config-prettier, and @typescript-eslint/*
   # are removed from overrides - nothing pulls them transitively.
   typescript: 5.9.3
-  eslint: 8.57.1
+  eslint: 9.28.0
   eslint-config-prettier: 9.1.0
   prettier: 3.8.1
   tsx: ^4.21.0

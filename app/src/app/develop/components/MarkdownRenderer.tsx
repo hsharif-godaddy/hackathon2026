@@ -77,7 +77,7 @@ export default function MarkdownRenderer({
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
           code(props: any) {
             const { inline, className, children } = props
             const match = /language-(\w+)/.exec(className || '')

@@ -19,7 +19,7 @@ export function Feedback(props: FeedbackProps) {
   const { authState } = useAuthContext();
   // Gasket Auth spreads the full /api/auth/validate response onto authState,
   // so authType is available directly (same pattern as authReason in useAuth.ts)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const isImpersonating = isEmployeeAuthType((authState as any)?.authType);
 
   const { feedbackId, onClose, onSubmitSuccess, origin } = props;

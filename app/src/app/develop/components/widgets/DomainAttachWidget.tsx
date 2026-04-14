@@ -274,7 +274,7 @@ export default function DomainAttachWidget({
     }
     // Case 2: brandName is not a domain or empty -> Show full widget (default behavior)
 
-  }, [appDetails?.domains, appId, brandName, customDomain, domains, isAppDetailsFetched, isDomainsFetched, matchedOwnedDomain, showOwnedDomainConfirmation]); // eslint-disable-line react-hooks/exhaustive-deps -- reconstructDomain is a stable inner function that doesn't depend on state
+  }, [appDetails?.domains, appId, brandName, customDomain, domains, isAppDetailsFetched, isDomainsFetched, matchedOwnedDomain, showOwnedDomainConfirmation]);
 
   function handleCustomDomainChange(value: string) {
     setCustomDomain(value);

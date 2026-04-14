@@ -162,7 +162,7 @@ export default function ChatInput({
     if (isListening) {
       textBeforeListeningRef.current = inputValue
     }
-  }, [isListening]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isListening])
 
   const canStageFiles = Boolean(
     appId &&

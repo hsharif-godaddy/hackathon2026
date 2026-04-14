@@ -144,7 +144,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   const error = useFileTreeStore((state) => state.errors[effectiveAppId] ?? null)
 
   // Refs for file loading and editing
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Monaco editor instance type from dynamic import
+
   const editorRef = useRef<any>(null)
   const pendingLineNumberRef = useRef<number | null>(null)
   const loadingFilesRef = useRef<Set<string>>(new Set())
@@ -309,7 +309,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
         useFileTreeStore.getState().reset(currentAppId)
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- only run on mount/unmount
+
   }, [])
 
   useEffect(() => {

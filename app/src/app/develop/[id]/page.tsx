@@ -85,7 +85,7 @@ function DevelopPageContent() {
   const isJobId = searchParams.get('type') === 'job'
   const { getUserInfo } = useAuthContext()
 
-  const customerId = useMemo(() => getUserInfo()?.customerId, [getUserInfo])
+  const customerId = useMemo(() => getUserInfo()?.customerId as string | undefined, [getUserInfo])
 
   useRumAppContext({ appId, customerId })
 
@@ -250,7 +250,6 @@ function DevelopPageContent() {
     })();
 
     clearExpiredWidgetStates();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Funnel event: Track that user reached the develop page

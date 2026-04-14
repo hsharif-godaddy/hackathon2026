@@ -56,9 +56,9 @@ try {
     <meta charset="UTF-8" />
     <script is:inline>
       (function () {
-        var k = 'airo-blog-theme';
-        var s = localStorage.getItem(k);
-        var resolved =
+        const k = 'airo-blog-theme';
+        const s = localStorage.getItem(k);
+        const resolved =
           s === 'light' ? 'light' : s === 'dark' ? 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         document.documentElement.dataset.colorScheme = resolved;
         document.documentElement.style.colorScheme = resolved;

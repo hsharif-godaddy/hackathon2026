@@ -211,7 +211,7 @@ describe('useTableData', () => {
   });
 
   it('should use correct queryKey for caching', () => {
-    const { result } = renderHook( /* eslint-disable-line @typescript-eslint/no-unused-vars */
+    const { result } = renderHook(
       () =>
         useTableData({
           appId: 'test-app',

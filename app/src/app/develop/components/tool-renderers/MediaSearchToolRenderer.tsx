@@ -290,7 +290,6 @@ export default function MediaSearchToolRenderer({
         <div className="my-2">
           <div className="rounded-md">
             <div className="relative">
-              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
               <video
                 ref={inlineVideoRef}
                 src={video.url}
@@ -319,7 +318,6 @@ export default function MediaSearchToolRenderer({
             {!isMarkdownFormat && mediaType === 'video' && hasVideo && video && (
               <div className="flex-1 overflow-y-auto flex flex-col items-center">
                 <div className="relative max-w-full">
-                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                   <video
                     ref={modalVideoRef}
                     src={video.url}
