@@ -22,7 +22,7 @@ func (c *KnowBCheck) Run(_ context.Context, projectRoot string) preflight.CheckR
 
 	var issues []string
 
-	env, err := ParseEnvFile(envPath)
+	env, err := preflight.ParseEnvFile(envPath)
 	// When GOCODE_USE_S2S_AUTH=true, KnowB uses AWS IAM-based S2S tokens
 	// instead of SSO_JWT, so SSO_JWT and ssojwt binary are not required.
 	useS2S := env != nil && strings.TrimSpace(env["GOCODE_USE_S2S_AUTH"]) == "true"

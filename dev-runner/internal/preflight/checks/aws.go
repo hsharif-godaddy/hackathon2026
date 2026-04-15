@@ -131,7 +131,7 @@ func (c *AWSSSOCheck) resolveProfiles(projectRoot string) []string {
 	var profiles []string
 
 	for _, rel := range []string{"app/.env", "agents/.env"} {
-		env, err := ParseEnvFile(filepath.Join(projectRoot, rel))
+		env, err := preflight.ParseEnvFile(filepath.Join(projectRoot, rel))
 		if err != nil {
 			continue
 		}

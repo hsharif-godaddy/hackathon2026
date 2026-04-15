@@ -19,7 +19,7 @@ func (c *DesignRAGCheck) Category() string { return preflight.CategoryEnvironmen
 func (c *DesignRAGCheck) Run(_ context.Context, projectRoot string) preflight.CheckResult {
 	envPath := filepath.Join(projectRoot, "design-rag", ".env")
 
-	env, err := ParseEnvFile(envPath)
+	env, err := preflight.ParseEnvFile(envPath)
 	if err != nil {
 		// design-rag/.env doesn't exist — optional feature, skip.
 		return preflight.CheckResult{

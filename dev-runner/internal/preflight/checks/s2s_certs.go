@@ -20,7 +20,7 @@ func (c *S2SCertsCheck) Category() string { return preflight.CategoryEnvironment
 func (c *S2SCertsCheck) Run(_ context.Context, projectRoot string) preflight.CheckResult {
 	envPath := filepath.Join(projectRoot, "app", ".env")
 
-	env, err := ParseEnvFile(envPath)
+	env, err := preflight.ParseEnvFile(envPath)
 	if err != nil {
 		// .env doesn't exist yet — warn with fix available so it can be run after env generation
 		return preflight.CheckResult{

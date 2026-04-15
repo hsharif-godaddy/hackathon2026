@@ -26,6 +26,9 @@ func (f *GettyFixer) Fix(ctx context.Context, projectRoot string) error {
 		return fmt.Errorf("fetching GETTY_TOKEN: %w", err)
 	}
 
+	if err := upsertEnvVarUnquoted(agentsEnvPath, "IMAGE_SEARCH_DRIVER", "getty"); err != nil {
+		return fmt.Errorf("writing IMAGE_SEARCH_DRIVER: %w", err)
+	}
 	if err := upsertEnvVar(agentsEnvPath, "GETTY_API_URL", gettyAPIURL); err != nil {
 		return fmt.Errorf("writing GETTY_API_URL: %w", err)
 	}

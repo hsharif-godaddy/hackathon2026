@@ -19,7 +19,7 @@ func (c *CommerceOAuthCheck) Category() string { return preflight.CategoryEnviro
 func (c *CommerceOAuthCheck) Run(_ context.Context, projectRoot string) preflight.CheckResult {
 	envPath := filepath.Join(projectRoot, "agents", ".env")
 
-	env, err := ParseEnvFile(envPath)
+	env, err := preflight.ParseEnvFile(envPath)
 	if err != nil {
 		return preflight.CheckResult{
 			Status:   preflight.StatusSkip,

@@ -22,7 +22,7 @@ func (c *GettyCheck) Category() string { return preflight.CategoryEnvironment }
 func (c *GettyCheck) Run(ctx context.Context, projectRoot string) preflight.CheckResult {
 	envPath := filepath.Join(projectRoot, "agents", ".env")
 
-	env, err := ParseEnvFile(envPath)
+	env, err := preflight.ParseEnvFile(envPath)
 	if err != nil {
 		return preflight.CheckResult{
 			Status:   preflight.StatusSkip,
@@ -33,12 +33,25 @@ func (c *GettyCheck) Run(ctx context.Context, projectRoot string) preflight.Chec
 	}
 
 	driver := strings.TrimSpace(env["IMAGE_SEARCH_DRIVER"])
-	if !strings.EqualFold(driver, "getty") {
+	if strings.EqualFold(driver, "getty") {
+		// Fall through to validate credentials below.
+	} else if driver == "" {
+		// Not configured at all - media search will fail at runtime without a driver.
+		return preflight.CheckResult{
+			Status:       preflight.StatusFail,
+			Name:         c.Name(),
+			Category:     c.Category(),
+			FixAvailable: true,
+			Message:      "IMAGE_SEARCH_DRIVER not set; media search will fail at runtime",
+			InstallHint:  "Run the fixer to fetch Getty credentials from AWS Secrets Manager",
+		}
+	} else {
+		// Explicitly set to something other than getty (e.g. unsplash) - respect that.
 		return preflight.CheckResult{
 			Status:   preflight.StatusSkip,
 			Name:     c.Name(),
 			Category: c.Category(),
-			Message:  "IMAGE_SEARCH_DRIVER is not getty; Getty proxy not required",
+			Message:  fmt.Sprintf("IMAGE_SEARCH_DRIVER=%s; Getty proxy not required", driver),
 		}
 	}
 

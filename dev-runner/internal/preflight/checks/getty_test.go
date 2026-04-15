@@ -15,8 +15,11 @@ func TestGettyCheck_NotEnabled(t *testing.T) {
 	writeAgentsEnv(t, root, "NODE_ENV=development\n")
 
 	result := (&GettyCheck{}).Run(context.Background(), root)
-	if result.Status != preflight.StatusSkip {
-		t.Errorf("expected Skip, got %v: %s", result.Status, result.Message)
+	if result.Status != preflight.StatusFail {
+		t.Errorf("expected Fail, got %v: %s", result.Status, result.Message)
+	}
+	if !result.FixAvailable {
+		t.Error("expected FixAvailable=true when IMAGE_SEARCH_DRIVER is not set")
 	}
 }
 
@@ -67,6 +70,16 @@ func TestGettyCheck_EnabledMissingCreds(t *testing.T) {
 	result := (&GettyCheck{}).Run(context.Background(), root)
 	if result.Status != preflight.StatusWarn {
 		t.Errorf("expected Warn, got %v: %s", result.Status, result.Message)
+	}
+}
+
+func TestGettyCheck_ExplicitNonGettyDriver(t *testing.T) {
+	root := t.TempDir()
+	writeAgentsEnv(t, root, "IMAGE_SEARCH_DRIVER=unsplash\n")
+
+	result := (&GettyCheck{}).Run(context.Background(), root)
+	if result.Status != preflight.StatusSkip {
+		t.Errorf("expected Skip, got %v: %s", result.Status, result.Message)
 	}
 }
 

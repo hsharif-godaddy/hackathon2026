@@ -246,6 +246,7 @@ func buildPreflightRunner() *preflight.Runner {
 					{Check: &checks.GasketDevCertsCheck{}},
 					{Check: &checks.S2SCertsCheck{}, Fixer: &fixers.S2SCertsFixer{}},
 					{Check: &checks.CommerceOAuthCheck{}, Fixer: &fixers.CommerceOAuthFixer{}},
+					{Check: &checks.JWTKeysCheck{}, Fixer: &fixers.JWTKeysFixer{}},
 					{Check: &checks.GettyCheck{}, Fixer: &fixers.GettyFixer{}},
 					{Check: &checks.KnowBCheck{}, Fixer: &fixers.KnowBFixer{}},
 					{Check: &checks.DesignRAGCheck{}, Fixer: &fixers.DesignRAGFixer{}},

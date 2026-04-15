@@ -18,7 +18,7 @@ func (c *LocalFeaturesCheck) Category() string { return preflight.CategoryEnviro
 func (c *LocalFeaturesCheck) Run(_ context.Context, projectRoot string) preflight.CheckResult {
 	envPath := filepath.Join(projectRoot, "app", ".env")
 
-	env, err := ParseEnvFile(envPath)
+	env, err := preflight.ParseEnvFile(envPath)
 	if err != nil {
 		return preflight.CheckResult{
 			Status:   preflight.StatusSkip,
