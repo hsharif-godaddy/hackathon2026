@@ -78,13 +78,7 @@ The complete prompt is assembled from these files in order:
 - Image handling procedures
 - Responsive design requirements
 
-### 10. `../shared/publishing.md` - Preview vs Published Site _(shared)_
-
-- Differences between preview and publish containers
-- How the publish workflow operates
-- Common publish failure causes and troubleshooting
-
-### 11. `../shared/security.md` - Security & Privacy Guidelines _(shared)_
+### 10. `../shared/security.md` - Security & Privacy Guidelines _(shared)_
 
 - Information protection policies
 - Scope limitations
@@ -116,7 +110,6 @@ promptBuilder
   .file(join(developDir, 'validation.md'))
   .file(join(developDir, 'design.md'))
   .file(join(developDir, 'planning.md'))
-  .file(join(sharedDir, 'publishing.md')) // Shared section
   .file(join(sharedDir, 'security.md')); // Shared section
 ```
 

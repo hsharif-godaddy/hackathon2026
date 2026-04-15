@@ -65,16 +65,19 @@ pnpm --filter corpus-eval eval run corpora/assessment-agent/ --html
 
 Scripts are namespaced by agent type for extensibility:
 
-| Script                    | Description                     |
-| ------------------------- | ------------------------------- |
-| `eval:assessment`         | Run full assessment corpus      |
-| `eval:assessment:verbose` | Full corpus with verbose output |
-| `eval:assessment:compare` | Compare haiku vs sonnet models  |
-| `eval:assessment:publish` | Run publish cases only          |
-| `eval:assessment:domain`  | Run domain cases only           |
-| `eval:assessment:fix`     | Run fix cases only              |
-| `eval:assessment:general` | Run general/edge cases only     |
-| `eval:assessment:path`    | Run path-validation cases only  |
+| Script                         | Description                              |
+| ------------------------------ | ---------------------------------------- |
+| `eval:skill-loader`            | Run all skill-loader corpora             |
+| `eval:skill-loader:verbose`    | All skill-loader corpora, verbose output |
+| `eval:skill-loader:publishing` | Publishing corpus only, verbose output   |
+| `eval:assessment`              | Run full assessment corpus               |
+| `eval:assessment:verbose`      | Full corpus with verbose output          |
+| `eval:assessment:compare`      | Compare haiku vs sonnet models           |
+| `eval:assessment:publish`      | Run publish cases only                   |
+| `eval:assessment:domain`       | Run domain cases only                    |
+| `eval:assessment:fix`          | Run fix cases only                       |
+| `eval:assessment:general`      | Run general/edge cases only              |
+| `eval:assessment:path`         | Run path-validation cases only           |
 
 All `eval:*` scripts inherit environment from `agents/.env` via `load-env.cjs`.
 
@@ -111,6 +114,27 @@ Options:
 - `--models, -m <models>` - Models to compare (comma-separated)
 
 ## Available Corpora
+
+### skill-loader/
+
+Tests whether the `develop` agent correctly loads (or avoids loading) a skill in response to a user prompt. Each case provides a prompt and an `expectedSkill` — either a skill name the agent must load, or `null` meaning no skill should be loaded.
+
+Cases run serially against a shared agent instance (parallelism is unsafe due to mutable state in the agent wrapper).
+
+```bash
+# Run all skill-loader corpora
+pnpm --filter corpus-eval eval:skill-loader
+
+# With per-case output
+pnpm --filter corpus-eval eval:skill-loader:verbose
+
+# Run publishing corpus only
+pnpm --filter corpus-eval eval:skill-loader:publishing
+```
+
+| File              | Cases | Description                                      |
+| ----------------- | ----- | ------------------------------------------------ |
+| `publishing.yaml` | 10    | Publishing/deploy intent vs unrelated UI prompts |
 
 ### assessment-agent/
 

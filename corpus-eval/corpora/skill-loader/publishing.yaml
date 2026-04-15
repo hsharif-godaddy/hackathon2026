@@ -1,0 +1,82 @@
+metadata:
+  name: Skill Loader - Publishing
+  version: 1.0.0
+
+cases:
+  # --- Positive: publishing skill should load ---
+
+  - id: publish-explicit
+    prompt: "Can you publish my site?"
+    expectedSkill: publishing
+    tags: [positive]
+    rationale: Direct publish request — clearest signal to load publishing skill
+
+  - id: deploy-to-production
+    prompt: "Deploy my app to production"
+    expectedSkill: publishing
+    tags: [positive]
+    rationale: Deploy to production is publishing under a different term
+
+  - id: published-not-updated
+    prompt: "My published site isn't showing my latest changes"
+    expectedSkill: publishing
+    tags: [positive]
+    rationale: Published site discrepancy requires publishing skill knowledge
+
+  - id: build-error-on-publish
+    prompt: "I'm getting an error when I try to publish"
+    expectedSkill: publishing
+    tags: [positive]
+    rationale: Build/publish errors require the publishing skill's troubleshooting context
+
+  - id: cdn-cache-issue
+    prompt: "The CDN is still caching my old site after I published"
+    expectedSkill: publishing
+    tags: [positive]
+    rationale: CDN cache post-publish is explicitly covered by the publishing skill
+
+  - id: live-site-broken
+    prompt: "The live site is broken but preview looks fine"
+    expectedSkill: publishing
+    tags: [positive]
+    rationale: Live vs preview discrepancy is a core publishing skill scenario
+
+  # This is mixed intent, so the agent should try to fix and then publish.
+  # But, the trade-off is that for Negative cases, we only wait for 4 steps
+  # so the agent may not have time to fix and publish. Else, we will keep exhausting the budget.
+
+  # - id: fix-then-publish
+  #   prompt: "Fix the broken hero section and then publish the site"
+  #   expectedSkill: publishing
+  #   tags: [positive, mixed-intent]
+  #   rationale: Even though the prompt includes a fix request, the explicit publish intent should trigger the publishing skill
+
+  # --- Negative: no skill should be loaded ---
+  # The agent runs against a minimal app (bare package.json). For these cases the agent
+  # will attempt to explore the project and begin the task before stopping at maxSteps (4).
+  # Skill loading is a routing decision made in the first 1-2 steps, so 4 steps is enough
+  # to confirm the agent correctly avoids loading any skill.
+
+  - id: add-dark-mode
+    prompt: "Add a dark mode toggle to the navbar"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Pure UI feature — no publishing intent
+
+  - id: fix-mobile-layout
+    prompt: "The mobile layout is broken, please fix it"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Layout bug fix — no publishing intent
+
+  - id: create-about-page
+    prompt: "Create a new About page with our team info"
+    expectedSkill: null
+    tags: [negative]
+    rationale: New page creation — no publishing intent
+
+  - id: add-contact-form
+    prompt: "Add a contact form to my homepage"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Feature addition — no publishing intent

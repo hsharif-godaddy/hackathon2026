@@ -43,8 +43,6 @@ export { fontThemeAITool } from './font-theme.js';
 
 export { skillAITool } from './skill-loader.js';
 export { websiteScraperAITool } from './website-scraper.js';
-export { publishClientAITool } from './publish-client.js';
-export { publishStatusAITool } from './publish-status.js';
 export { qaAnalyzeAITool } from './qa-analyze.js';
 export { setProjectNameAITool } from './set-project-name.js';
 export { askQuestionAITool } from './ask-question.js';
@@ -90,8 +88,6 @@ import { domainPurchaseAITool } from './domain-purchase.js';
 import { fontThemeAITool } from './font-theme.js';
 import { skillAITool } from './skill-loader.js';
 import { websiteScraperAITool } from './website-scraper.js';
-import { publishClientAITool } from './publish-client.js';
-import { publishStatusAITool } from './publish-status.js';
 import { qaAnalyzeAITool } from './qa-analyze.js';
 import { setProjectNameAITool } from './set-project-name.js';
 import { askQuestionAITool } from './ask-question.js';
@@ -140,8 +136,6 @@ export const allAILibTools: Record<string, Tool> = {
   socialPostPublish: socialPostPublish,
   skill: skillAITool,
   websiteScraper: websiteScraperAITool,
-  publishClient: publishClientAITool,
-  publishStatus: publishStatusAITool,
   qaAnalyze: qaAnalyzeAITool,
   setProjectName: setProjectNameAITool,
   askQuestion: askQuestionAITool,
@@ -173,8 +167,6 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
     terminalCommand: terminalCommandAITool,
     serverRestart: serverRestartAITool,
     serverStatus: serverStatusAITool,
-    publishClient: publishClientAITool,
-    publishStatus: publishStatusAITool,
   },
 
   // Backend tools (empty - database operations removed)
@@ -195,7 +187,6 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
     viewLogs: viewLogsAITool,
     grepSearch: grepSearchAITool,
     readFile: readFileAITool,
-    publishStatus: publishStatusAITool,
   },
 
   // Planning and project management

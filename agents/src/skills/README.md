@@ -248,8 +248,9 @@ pnpm --filter @airo/agents dev
 
 Use `skill({ action: "list" })` to see all available skills with descriptions.
 
-Current skills (16):
+Current skills (19):
 
+- **ai-agent** - Streaming AI chatbot or agent with tool use (OpenAI, Anthropic, Google)
 - **authentication** - User authentication and login flows
 - **blog** - Install and activate the blog system (routes, pages, components)
 - **blog-writing** - Create blog post content for sites with blog system installed
@@ -257,10 +258,12 @@ Current skills (16):
 - **commerce-one-time-payment** - One-time payment processing via Commerce API
 - **commerce-storefront** - Storefront setup and product display
 - **database** - SQL database operations for application data
+- **email** - Send emails via Nodemailer and local SMTP relay
 - **google-maps** - Google Maps integration and location features
 - **i18n** - Internationalization and multi-language support
 - **media** - Media management and image handling
 - **online-appointments** - Online appointment booking system
+- **publishing** - Publish to production, check status, troubleshoot build/deploy
 - **seo** - Search engine optimization tools and metadata
 - **social-platform** - Social media platform connections
 - **social-posts** - Social media post creation and scheduling

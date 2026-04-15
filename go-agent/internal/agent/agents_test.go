@@ -27,8 +27,7 @@ func TestDevelopAgent_HasCoreTools(t *testing.T) {
 		"terminalCommand",
 		"grepSearch",
 		"suggestedResponse",
-		"publishClient",
-		"publishStatus",
+		"skill",
 	}
 
 	for _, tool := range coreTools {

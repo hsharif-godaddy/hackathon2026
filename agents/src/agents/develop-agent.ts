@@ -149,7 +149,6 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     .file(paths.getAgentFile('develop', 'backend.md'))
     .file(paths.getAgentFile('develop', 'secrets.md')) // Secrets management for API keys and credentials
 
-  promptBuilder.file(paths.getSharedFile('publishing.md'));
   promptBuilder.file(paths.getSharedFile('security.md'));
 
   // Skills section at end of prompt for emphasis — agent decides from this list directly
@@ -237,8 +236,6 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       serverRestart: allAILibTools.serverRestart,
       //serverStatus: allAILibTools.serverStatus,
       viewLogs: allAILibTools.viewLogs,
-      publishClient: allAILibTools.publishClient,
-      publishStatus: allAILibTools.publishStatus,
 
       // Specialized development tools
       media: allAILibTools.media,

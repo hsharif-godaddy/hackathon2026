@@ -17,6 +17,11 @@
     "eval:assessment:general": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/general.yaml --verbose",
     "eval:assessment:path": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/ --tags path-validation --verbose",
     "eval:assessment:initial": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/ --tags initial --verbose",
+    "sync:agents-assets": "node scripts/sync-agents-assets.cjs",
+    "preeval:skill-loader": "node scripts/sync-agents-assets.cjs",
+    "eval:skill-loader": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../agents/load-env.cjs pnpm exec tsx src/skill-loader.ts run corpora/skill-loader/",
+    "eval:skill-loader:verbose": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../agents/load-env.cjs pnpm exec tsx src/skill-loader.ts run corpora/skill-loader/ --verbose",
+    "eval:skill-loader:publishing": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../agents/load-env.cjs pnpm exec tsx src/skill-loader.ts run corpora/skill-loader/publishing.yaml --verbose",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
@@ -25,6 +30,7 @@
   },
   "dependencies": {
     "@airo/agents": "workspace:*",
+    "@airo/ai-lib": "workspace:*",
     "commander": "catalog:",
     "yaml": "catalog:",
     "zod": "catalog:"

@@ -1110,6 +1110,9 @@ importers:
       '@airo/agents':
         specifier: workspace:*
         version: link:../agents
+      '@airo/ai-lib':
+        specifier: workspace:*
+        version: link:../packages/ai-lib
       commander:
         specifier: 'catalog:'
         version: 12.1.0

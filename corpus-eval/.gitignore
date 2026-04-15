@@ -8,3 +8,4 @@ dist/
 
 # Dependencies
 node_modules/
+.devtools
