@@ -69,7 +69,7 @@ func validateWebhookTargetURL(raw string, localAuthDisable bool) string {
 		return "url must use https"
 	}
 	if !isAllowedWebhookDomain(host) {
-		return "url must be a *.gdcorp.tools or *.godaddy.com domain"
+		return "url must be a *.gdcorp.tools, *.godaddy.com, or *.nstk.net domain"
 	}
 	return ""
 }
@@ -84,11 +84,18 @@ func isLoopback(host string) bool {
 var allowedWebhookDomains = []string{"gdcorp.tools", "godaddy.com"}
 var allowedWebhookEnvs = []string{"dev", "test", "stg", "ote"}
 
+// allowedWebhookDomainsNoEnv defines allowed domains that don't use environment prefixes.
+// Each entry supports: exact match and subdomains (.<domain>) only.
+var allowedWebhookDomainsNoEnv = []string{"nstk.net"}
+
 // isAllowedWebhookDomain returns true if the host is an allowed webhook domain.
 // Allowed patterns for each base domain (e.g., "godaddy.com"):
 //   - Exact match: "godaddy.com"
 //   - Subdomain: "*.godaddy.com" (e.g., "api.godaddy.com")
 //   - Environment variant: "*.<env>-godaddy.com" (e.g., "api.dev-godaddy.com")
+//
+// For domains in allowedWebhookDomainsNoEnv (e.g., "nstk.net"):
+//   - Exact match and subdomain only (no environment variants)
 func isAllowedWebhookDomain(host string) bool {
 	for _, domain := range allowedWebhookDomains {
 		// Exact match: "godaddy.com"
@@ -105,6 +112,12 @@ func isAllowedWebhookDomain(host string) bool {
 			if host == envDomain || strings.HasSuffix(host, "."+envDomain) {
 				return true
 			}
+		}
+	}
+	// Check domains without environment prefixes
+	for _, domain := range allowedWebhookDomainsNoEnv {
+		if host == domain || strings.HasSuffix(host, "."+domain) {
+			return true
 		}
 	}
 	return false

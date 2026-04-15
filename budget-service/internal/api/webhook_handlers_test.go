@@ -152,6 +152,15 @@ func TestIsAllowedWebhookDomain(t *testing.T) {
 		{"blocks unknown env prefix", "prod-godaddy.com", false},
 		{"blocks unknown env prefix for gdcorp", "staging-gdcorp.tools", false},
 
+		// Domains without environment prefixes (nstk.net)
+		{"allows nstk.net", "nstk.net", true},
+		{"allows subdomain of nstk.net", "api.nstk.net", true},
+		{"allows deep subdomain of nstk.net", "deep.sub.nstk.net", true},
+		{"blocks spoofed nstk.net", "evilnstk.net", false},
+		{"blocks subdomain of spoofed nstk.net", "sub.evilnstk.net", false},
+		{"blocks env-prefixed nstk.net", "dev-nstk.net", false},
+		{"blocks subdomain of env-prefixed nstk.net", "api.dev-nstk.net", false},
+
 		// Edge cases
 		{"blocks empty string", "", false},
 		{"blocks unrelated domain", "example.com", false},
@@ -178,12 +187,14 @@ func TestValidateWebhookTargetURL_DomainValidation(t *testing.T) {
 		wantErr   string
 	}{
 		// Production mode (localAuth=false) - domain restrictions apply
-		{"prod rejects spoofed domain", "https://evilgodaddy.com/hook", false, "url must be a *.gdcorp.tools or *.godaddy.com domain"},
-		{"prod rejects attacker domain", "https://attacker-gdcorp.tools/hook", false, "url must be a *.gdcorp.tools or *.godaddy.com domain"},
+		{"prod rejects spoofed domain", "https://evilgodaddy.com/hook", false, "url must be a *.gdcorp.tools, *.godaddy.com, or *.nstk.net domain"},
+		{"prod rejects attacker domain", "https://attacker-gdcorp.tools/hook", false, "url must be a *.gdcorp.tools, *.godaddy.com, or *.nstk.net domain"},
 		{"prod allows godaddy.com", "https://godaddy.com/hook", false, ""},
 		{"prod allows subdomain", "https://api.godaddy.com/hook", false, ""},
 		{"prod allows env variant", "https://api.dev-godaddy.com/hook", false, ""},
 		{"prod allows gdcorp.tools", "https://webhook.gdcorp.tools/hook", false, ""},
+		{"prod allows nstk.net", "https://nstk.net/hook", false, ""},
+		{"prod allows nstk.net subdomain", "https://api.nstk.net/hook", false, ""},
 
 		// Local dev mode (localAuth=true) - no domain restrictions
 		{"local allows any https domain", "https://example.com/hook", true, ""},
@@ -218,7 +229,7 @@ func TestPostWebhookReturnsSamePayloadAsGetWebhook(t *testing.T) {
 	authMW := auth.NewMiddleware("none")
 	h := NewRouter(&Server{Store: st}, authMW)
 
-	body := `{"eventType":"report.created","productKey":"` + pk + `","url":"https://example.com/hook"}`
+	body := `{"eventType":"report.created","productKey":"` + pk + `","url":"https://example.godaddy.com/hook"}`
 	recPost := httptest.NewRecorder()
 	reqPost := httptest.NewRequest(http.MethodPost, "/api/v1/webhooks", strings.NewReader(body))
 	reqPost.Header.Set("Content-Type", "application/json")
@@ -355,6 +366,7 @@ func TestDeliverWebhook_DomainAllowlistWithTokenGenerator(t *testing.T) {
 		{"allows godaddy.com subdomain", "https://api.godaddy.com/hook", false, ""},
 		{"allows gdcorp.tools subdomain", "https://webhook.gdcorp.tools/hook", false, ""},
 		{"allows env variant", "https://api.dev-godaddy.com/hook", false, ""},
+		{"allows nstk.net subdomain", "https://api.nstk.net/hook", false, ""},
 	}
 
 	for _, tc := range tests {
