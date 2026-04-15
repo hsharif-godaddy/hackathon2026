@@ -24,10 +24,16 @@ jobs:
         - airo-cicd-runners
         - self-hosted
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
 
-      - name: Get Artifactory Token
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache-dependency-path: budget-service/go.mod
+
+      - name: Get Artifactory token
         id: jfrog
         uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c # v5.0.0
         env:
@@ -35,46 +41,78 @@ jobs:
         with:
           oidc-provider-name: github
 
-      - name: Configure Go environment for JFrog
-        env:
-          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
-        run: |
-          echo "::add-mask::$OIDC_TOKEN"
-          echo "GOPROXY=https://:${OIDC_TOKEN}@gdartifactory1.jfrog.io/artifactory/api/go/go-virt|direct" >> $GITHUB_ENV
-          echo "GONOSUMDB=github.com/gdcorp-golang/*" >> $GITHUB_ENV
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "1.25"
-          cache-dependency-path: budget-service/go.sum
-
-      - name: Download dependencies
+      - name: Go mod download
         working-directory: budget-service
-        run: go mod download
+        env:
+          JFROG_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$JFROG_TOKEN"
+          export GOPROXY="https://:${JFROG_TOKEN}@gdartifactory1.jfrog.io/artifactory/api/go/go-virt"
+          export GOPRIVATE=
+          export GONOPROXY=none
+          export GONOSUMDB="github.com/gdcorp-identity/*"
+          go mod download
 
-      - name: Run go vet
+      - name: go vet
         working-directory: budget-service
         run: go vet ./...
 
-      - name: Run go fmt check
+      - name: Check gofmt
         working-directory: budget-service
         run: |
           if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
-            echo "The following files are not properly formatted:"
+            echo "The following files are not properly formatted:" >&2
             gofmt -s -l .
             exit 1
           fi
 
   test:
-    name: Test
+    name: Unit tests
     runs-on:
       labels:
         - airo-cicd-runners
         - self-hosted
-    env:
-      TEST_DATABASE_URL: postgres://budget:budget@127.0.0.1:5432/budget_test?sslmode=disable
-      DATABASE_URL: postgres://budget:budget@127.0.0.1:5432/budget_test?sslmode=disable
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache-dependency-path: budget-service/go.mod
+
+      - name: Get Artifactory token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c # v5.0.0
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+
+      - name: Go mod download
+        working-directory: budget-service
+        env:
+          JFROG_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$JFROG_TOKEN"
+          export GOPROXY="https://:${JFROG_TOKEN}@gdartifactory1.jfrog.io/artifactory/api/go/go-virt"
+          export GOPRIVATE=
+          export GONOPROXY=none
+          export GONOSUMDB="github.com/gdcorp-identity/*"
+          go mod download
+
+      - name: go test
+        working-directory: budget-service
+        run: go test -race ./...
+
+  e2e:
+    name: E2E (Postgres + container + curl)
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+
     services:
       postgres:
         image: postgres:16
@@ -88,12 +126,13 @@ jobs:
           --health-cmd "pg_isready -U budget -d budget_test"
           --health-interval 2s
           --health-timeout 5s
-          --health-retries 15
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
+          --health-retries 30
 
-      - name: Get Artifactory Token
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Get Artifactory token
         id: jfrog
         uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c # v5.0.0
         env:
@@ -101,28 +140,56 @@ jobs:
         with:
           oidc-provider-name: github
 
-      - name: Configure Go environment for JFrog
-        env:
-          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+      - name: Golden Container Registry login
         run: |
-          echo "::add-mask::$OIDC_TOKEN"
-          echo "GOPROXY=https://:${OIDC_TOKEN}@gdartifactory1.jfrog.io/artifactory/api/go/go-virt|direct" >> $GITHUB_ENV
-          echo "GONOSUMDB=github.com/gdcorp-golang/*" >> $GITHUB_ENV
+          aws ecr get-login-password --region us-west-2 | docker login 764525110978.dkr.ecr.us-west-2.amazonaws.com -u AWS --password-stdin
 
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "1.25"
-          cache-dependency-path: budget-service/go.sum
+      - name: Build budget-service image
+        env:
+          JFROG_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$JFROG_TOKEN"
+          DOCKER_BUILDKIT=1 docker build --platform linux/amd64 \
+            --secret id=jfrog_token,env=JFROG_TOKEN \
+            -f budget-service/Dockerfile \
+            -t budget-e2e:ci \
+            .
 
-      - name: Download dependencies
-        working-directory: budget-service
-        run: go mod download
+      # Image HEALTHCHECK uses HTTPS; we run HTTP in CI — disable so the container is not stuck unhealthy.
+      - name: Run server container
+        run: |
+          docker rm -f budget-e2e 2>/dev/null || true
+          docker run -d --name budget-e2e -p 8080:8080 \
+            --no-healthcheck \
+            --add-host=host.docker.internal:host-gateway \
+            -e DATABASE_URL='postgres://budget:budget@host.docker.internal:5432/budget_test?sslmode=disable' \
+            -e LOCAL_AUTH_DISABLE=true \
+            -e SERVER_CERT_PATH= \
+            -e SERVER_KEY_PATH= \
+            budget-e2e:ci
 
-      - name: Verify dependencies
-        working-directory: budget-service
-        run: go mod verify
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1; then
+              echo "budget-e2e healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "timeout waiting for /health" >&2
+          docker logs budget-e2e >&2 || true
+          exit 1
 
-      - name: Run tests
-        working-directory: budget-service
-        run: go test -race ./...
+      - name: Run PR e2e script
+        env:
+          BUDGET_SERVICE_URL: http://127.0.0.1:8080
+        run: bash budget-service/scripts/e2e-pr.sh
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker logs budget-e2e 2>&1 || true
+
+      - name: Stop server container
+        if: always()
+        run: docker rm -f budget-e2e 2>/dev/null || true

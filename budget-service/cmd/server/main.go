@@ -103,14 +103,16 @@ func main() {
 
 	// Token generator is required for webhook delivery when auth is enabled.
 	// Fail fast at startup if token generation is not working.
-	var tokenGen *auth.TokenGenerator
+	// Use api.TokenProvider (nil interface) when disabled — do not assign (*TokenGenerator)(nil)
+	// or getHealth's `TokenGenerator != nil` is true (typed nil) and Healthy() panics.
+	var tokenGen api.TokenProvider
 	if !cfg.LocalAuthDisable {
-		var err error
-		tokenGen, err = auth.NewTokenGenerator()
+		tg, err := auth.NewTokenGenerator()
 		if err != nil {
 			slog.Error("token_generator.init.failed", "error", err)
 			os.Exit(1)
 		}
+		tokenGen = tg
 	}
 
 	srv := &api.Server{Store: st, TokenGenerator: tokenGen, LocalAuthDisable: cfg.LocalAuthDisable}

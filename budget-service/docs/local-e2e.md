@@ -9,6 +9,7 @@ Tools in this module for **local and CI-style integration only**. They are not u
 | Postgres | `make up` — same as everyday dev |
 | `webhook-sink` | Docker service (compose **profile `e2e`**) — receives POST webhooks; `GET /__e2e/last` returns the last body as JSON |
 | `scripts/e2e-local.sh` | Scripted flow: product → budget → session → PATCH spend → register webhook → report → assert API + sink |
+| `scripts/e2e-pr.sh` | PR/CI curl suite (no report/webhook delivery); run in GitHub Actions [budget-service-ci.yml](../../.github/workflows/budget-service-ci.yml) |
 | `cmd/dev-budget-ui` | Browser UI + reverse proxy; see [Dev UI (`dev-budget-ui`)](#dev-ui-dev-budget-ui) |
 
 ## Quick start (auth disabled)
