@@ -19,6 +19,7 @@ import { FEEDBACK_ID } from '@/components/feedback/utils';
 import { DiscordIcon } from '@/components/layout/DiscordLink';
 import InviteFriendsModal from '@/components/layout/InviteFriendsModal';
 import { useAuthContext } from '@/components/providers/AuthProvider';
+import { DISCORD_INVITE_URL } from '@/constants';
 import { useSsoSignIn } from '@/hooks/useSsoSignIn';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
@@ -32,7 +33,6 @@ import { Separator } from '@/lib/shadcn/separator';
 import { getRootDomain } from '@/utils/getRootDomain';
 import { generateClickEID } from '@/utils/instrumentation';
 
-const DISCORD_URL = 'https://discord.gg/godaddy-airo';
 const AIRO_HQ_URL = 'https://airo.godaddy.com';
 const getMyProductsUrl = () => `https://account.${getRootDomain() || 'godaddy.com'}/products`;
 
@@ -85,7 +85,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
 
   const handleJoinDiscord = () => {
     setOpen(false);
-    const win = window.open(DISCORD_URL, '_blank', 'noopener,noreferrer');
+    const win = window.open(DISCORD_INVITE_URL, '_blank', 'noopener,noreferrer');
     if (win) win.opener = null;
   };
 

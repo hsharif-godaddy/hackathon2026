@@ -2,11 +2,10 @@
 
 import Button from '@ux/button';
 
+import { DISCORD_INVITE_URL } from '@/constants';
 import { useTranslations } from '@/hooks/useTranslations';
 import { Button as ShadcnButton } from '@/lib/shadcn/button';
 import { generateClickEID } from '@/utils/instrumentation';
-
-const DISCORD_INVITE_URL = 'https://discord.gg/EfybfxAXg8';
 
 export enum DiscordLinkVariant {
   IconButton = 'icon-button',

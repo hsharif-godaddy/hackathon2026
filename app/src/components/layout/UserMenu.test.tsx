@@ -6,6 +6,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
+import { DISCORD_INVITE_URL } from '@/constants';
 import { mockAuthContext, mockRouter } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 import UserMenu from './UserMenu';
@@ -135,6 +136,26 @@ describe('UserMenu', function userMenuTests() {
       await user.click(screen.getByText('builder_user_menu_all_projects'));
 
       expect(mockPush).toHaveBeenCalledWith('/apps');
+    });
+
+    it('should open correct Discord URL when Join Discord is clicked', async function discordUrl() {
+      const mockWindowOpen = vi.fn();
+      vi.stubGlobal('open', mockWindowOpen);
+
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
+      await waitFor(function checkDiscord() {
+        expect(screen.getByText('builder_user_menu_join_discord')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('builder_user_menu_join_discord'));
+
+      expect(mockWindowOpen).toHaveBeenCalledWith(
+        DISCORD_INVITE_URL,
+        '_blank',
+        'noopener,noreferrer'
+      );
     });
   });
 

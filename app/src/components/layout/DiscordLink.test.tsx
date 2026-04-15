@@ -6,6 +6,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 
+import { DISCORD_INVITE_URL } from '@/constants';
 import { renderWithProviders } from '@/tests/test-utils';
 import DiscordLink, { DiscordLinkVariant } from './DiscordLink';
 
@@ -38,7 +39,7 @@ describe('DiscordLink', function discordLinkTests() {
       await user.click(screen.getByRole('button'));
 
       expect(mockWindowOpen).toHaveBeenCalledWith(
-        'https://discord.gg/EfybfxAXg8',
+        DISCORD_INVITE_URL,
         '_blank',
         'noopener,noreferrer'
       );
@@ -70,7 +71,7 @@ describe('DiscordLink', function discordLinkTests() {
       await user.click(screen.getByRole('button'));
 
       expect(mockWindowOpen).toHaveBeenCalledWith(
-        'https://discord.gg/EfybfxAXg8',
+        DISCORD_INVITE_URL,
         '_blank',
         'noopener,noreferrer'
       );
