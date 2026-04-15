@@ -36,7 +36,9 @@ export default gasket.actions.getNextConfig({
     'local.gasket.dev-godaddy.com:8443',
     'local.gasket.dev-godaddy.com',
     'airo-builder.dev-godaddy.com',
-    'airo-builder-local.dev-godaddy.com'
+    'airo-builder-local.dev-godaddy.com',
+    'airo-builder.test-godaddy.com',
+    'airo-builder.test-godaddy.com:8443',
   ],
   webpack: (config, { isServer, dev }) => {
     // Reduce file watching to prevent EMFILE errors
