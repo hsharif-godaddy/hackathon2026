@@ -556,7 +556,7 @@ async function fetchSubscriptionInfo(
   const sources = getAllLogSources();
   const pioneerSource = sources.find(s => s.id === 'airo-agents');
 
-  if (pioneerSource?.apiKey && pioneerSource?.endpoint) {
+  if (pioneerSource?.apiKey && pioneerSource?.endpoint && pioneerSource?.index) {
     const appIdQuery = buildAppIdQuery(appId, pioneerSource.fieldMapping);
     const mustBase = appIdQuery ? [appIdQuery] : [];
 
@@ -606,7 +606,7 @@ async function fetchSubscriptionInfo(
 
   // Strategy 4: Check airo-app (builder client) logs for subscriptionId
   const appSource = sources.find(s => s.id === 'airo-app');
-  if (appSource?.apiKey && appSource?.endpoint) {
+  if (appSource?.apiKey && appSource?.endpoint && appSource?.index) {
     try {
       const hit = await queryESFirst(
         appSource.endpoint, appSource.index, appSource.apiKey,

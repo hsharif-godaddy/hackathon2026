@@ -1141,6 +1141,9 @@ importers:
 
   debug-console:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.1025.0
+        version: 3.1025.0
       '@elastic/elasticsearch':
         specifier: 'catalog:'
         version: 8.19.1
@@ -6110,7 +6113,7 @@ packages:
     engines: {node: '>=12'}
 
   '@testing-library/dom@10.4.1':
-    resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==}
+    resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@testing-library/dom/-/testing-library-dom-10.4.1.tgz}
     engines: {node: '>=18'}
 
   '@testing-library/jest-dom@6.9.1':
