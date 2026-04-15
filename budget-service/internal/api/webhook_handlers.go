@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -20,13 +21,30 @@ import (
 )
 
 const webhookURLMaxLen = 2048
-const webhookEventReportCreated = "report.created"
+
+// Supported webhook event types.
+var webhookEventTypes = map[string]bool{
+	"report.created":        true,
+	"budget-item.reset":     true,
+	"budget-item.expired":   true,
+	"budget-item.exhausted": true,
+}
 
 func normalizeWebhookEventType(raw string) (string, bool) {
-	if strings.TrimSpace(raw) == webhookEventReportCreated {
-		return webhookEventReportCreated, true
+	trimmed := strings.TrimSpace(raw)
+	if webhookEventTypes[trimmed] {
+		return trimmed, true
 	}
 	return "", false
+}
+
+func supportedEventTypesList() string {
+	types := make([]string, 0, len(webhookEventTypes))
+	for t := range webhookEventTypes {
+		types = append(types, t)
+	}
+	sort.Strings(types)
+	return strings.Join(types, ", ")
 }
 
 // validateWebhookTargetURL validates webhook registration URLs.
@@ -130,57 +148,6 @@ func (s *Server) webhookHTTPClient() *http.Client {
 	return &http.Client{Timeout: 15 * time.Second}
 }
 
-// deliverReportCreatedWebhooks POSTs report payload to report.created subscribers (best-effort; spawned from postBudgetSessionReport).
-func (s *Server) deliverReportCreatedWebhooks(budgetID, sessionID, reportID, productKey string) {
-	if s.Store == nil || strings.TrimSpace(productKey) == "" {
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	hooks, err := s.Store.ListWebhooksForReportCreated(ctx, productKey)
-	if err != nil {
-		slog.Error("webhook.list_report_created", "error", err, "productKey", productKey)
-		return
-	}
-	if len(hooks) == 0 {
-		return
-	}
-
-	d, err := s.Store.GetSessionReport(ctx, sessionID, reportID)
-	if err != nil {
-		slog.Error("webhook.load_report_payload", "error", err,
-			"budgetId", budgetID, "sessionId", sessionID, "reportId", reportID)
-		return
-	}
-	reportObj, err := sessionReportToResponse(d)
-	if err != nil {
-		slog.Error("webhook.report_payload", "error", err)
-		return
-	}
-
-	payload := map[string]any{
-		"eventType":  "reportCreated",
-		"productKey": productKey,
-		"data":       reportObj,
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		slog.Error("webhook.marshal", "error", err)
-		return
-	}
-
-	for i := range hooks {
-		if err := s.deliverWebhook(ctx, hooks[i], body); err != nil {
-			slog.Warn("webhook.delivery_failed",
-				"error", err,
-				"webhookId", hooks[i].ID,
-				"url", hooks[i].URL)
-		}
-	}
-}
-
 // deliverWebhook sends a webhook request with token authentication.
 // When TokenGenerator is nil (local dev with auth disabled), sends without Authorization header.
 func (s *Server) deliverWebhook(ctx context.Context, wh store.WebhookRow, payload []byte) error {
@@ -247,6 +214,56 @@ func (s *Server) doWebhookRequest(ctx context.Context, targetURL string, payload
 	return s.webhookHTTPClient().Do(req)
 }
 
+// DeliverEventWebhooks delivers webhooks for any event type (used by background worker).
+// Returns an error if delivery fails for any subscriber. The error includes the count
+// of failures and wraps the first error encountered for retry logic.
+func (s *Server) DeliverEventWebhooks(ctx context.Context, eventType, productKey string, data any) error {
+	if s.Store == nil || strings.TrimSpace(productKey) == "" {
+		return nil
+	}
+
+	hooks, err := s.Store.ListWebhooksForEvent(ctx, productKey, eventType)
+	if err != nil {
+		slog.Error("webhook.list", "error", err, "eventType", eventType, "productKey", productKey)
+		return fmt.Errorf("list webhooks: %w", err)
+	}
+	if len(hooks) == 0 {
+		return nil
+	}
+
+	payload := map[string]any{
+		"eventType":  eventType,
+		"productKey": productKey,
+		"data":       data,
+		"timestamp":  time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		slog.Error("webhook.marshal", "error", err, "eventType", eventType)
+		return fmt.Errorf("marshal payload: %w", err)
+	}
+
+	var firstErr error
+	failCount := 0
+	for i := range hooks {
+		if err := s.deliverWebhook(ctx, hooks[i], body); err != nil {
+			slog.Warn("webhook.delivery_failed",
+				"error", err,
+				"webhookId", hooks[i].ID,
+				"eventType", eventType,
+				"url", hooks[i].URL)
+			if firstErr == nil {
+				firstErr = err
+			}
+			failCount++
+		}
+	}
+	if firstErr != nil {
+		return fmt.Errorf("%d/%d webhook deliveries failed: %w", failCount, len(hooks), firstErr)
+	}
+	return nil
+}
+
 type postWebhookBody struct {
 	EventType  string `json:"eventType"`
 	ProductKey string `json:"productKey"`
@@ -276,7 +293,7 @@ func (s *Server) postWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	eventType, ok := normalizeWebhookEventType(rawEventType)
 	if !ok {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "eventType must be one of: report.created")
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "eventType must be one of: "+supportedEventTypesList())
 		return
 	}
 	pk := strings.TrimSpace(payload.ProductKey)

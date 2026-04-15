@@ -1050,13 +1050,9 @@ func (s *Server) postBudgetSessionReport(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Dispatch webhook before GET-after-write so delivery is guaranteed even if
-	// the follow-up read fails. The report is already committed at this point.
-	var productKey string
-	if b, gerr := s.Store.GetBudget(r.Context(), budgetID); gerr == nil {
-		productKey = b.ProductKey
-	}
-	go s.deliverReportCreatedWebhooks(budgetID, sessionID, reportID, productKey)
+	// Webhook delivery is now handled via the outbox pattern - the event was
+	// written atomically with the report creation and will be delivered by
+	// the background worker.
 
 	d, err := s.Store.GetSessionReport(r.Context(), sessionID, reportID)
 	if err != nil {

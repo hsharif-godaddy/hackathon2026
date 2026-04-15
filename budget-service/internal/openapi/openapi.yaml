@@ -169,7 +169,13 @@ paths:
   /api/v1/webhooks:
     post:
       tags: [v1]
-      summary: Create webhook (eventType report.created)
+      summary: Create webhook subscription
+      description: |
+        Subscribe to webhook events for a product. Supported event types:
+        - `report.created` — Fired after a session report is created (reconciliation)
+        - `budget-item.reset` — Fired when a budget item's credits are reset (periodic renewal)
+        - `budget-item.expired` — Fired when a budget item's `expiresAt` timestamp passes
+        - `budget-item.exhausted` — Fired when a budget item's `creditsUsed` equals `creditsTotal`
       requestBody:
         required: true
         content:
@@ -180,7 +186,11 @@ paths:
               properties:
                 eventType:
                   type: string
-                  enum: [report.created]
+                  enum:
+                    - report.created
+                    - budget-item.reset
+                    - budget-item.expired
+                    - budget-item.exhausted
                 productKey:
                   type: string
                 url:

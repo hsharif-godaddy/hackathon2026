@@ -130,7 +130,7 @@ expect_json_code "NO_BUDGET_CAPACITY" "budget has no budget items"
 st=$(api_req POST /api/v1/webhooks '{"eventType":"bogus.event","productKey":"x","url":"http://127.0.0.1:9/h"}' \
   "Register webhook with invalid eventType (expect 400)")
 expect_status "$st" 400 "webhook event"
-expect_json_code "BAD_REQUEST" "eventType must be one of: report.created"
+expect_json_code "BAD_REQUEST" "eventType must be one of: budget-item.exhausted, budget-item.expired, budget-item.reset, report.created"
 
 st=$(api_req POST /api/v1/webhooks '{"eventType":"report.created","productKey":"e2e-noreg-'"${SUFFIX}"'","url":"http://127.0.0.1:9/h"}' \
   "Register webhook for unregistered productKey (expect 400)")

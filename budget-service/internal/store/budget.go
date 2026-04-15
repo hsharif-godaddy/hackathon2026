@@ -955,7 +955,7 @@ func (s *Store) GetBudgetSession(ctx context.Context, sessionID string) (*Budget
 	return &d, rows.Err()
 }
 
-// CreateSessionReport applies each report line’s budgetCost USD using the same per-item consumption rules as session PATCH.
+// CreateSessionReport applies each report line's budgetCost USD using the same per-item consumption rules as session PATCH.
 func (s *Store) CreateSessionReport(ctx context.Context, sessionID string, items []ReportLineInput) (string, string, error) {
 	if _, err := uuid.Parse(sessionID); err != nil {
 		return "", "", err
@@ -985,6 +985,13 @@ func (s *Store) CreateSessionReport(ctx context.Context, sessionID string, items
 	if rec.Valid {
 		return "", "", ErrAlreadyReconciled
 	}
+
+	// Get productKey for webhook payload
+	var productKey sql.NullString
+	if err := tx.QueryRowContext(ctx, `SELECT product_key FROM budgets WHERE id = $1`, budgetID).Scan(&productKey); err != nil {
+		return "", "", err
+	}
+
 	if err := applyDueResetsForBudgetTx(ctx, tx, budgetID); err != nil {
 		return "", "", err
 	}
@@ -995,12 +1002,24 @@ func (s *Store) CreateSessionReport(ctx context.Context, sessionID string, items
 		return "", "", err
 	}
 
+	// Track which items are NOT yet exhausted before consumption (for exhausted webhook detection)
+	notYetExhausted := make(map[string]bool, len(budgetItems))
+	for _, bi := range budgetItems {
+		if bi.used.LessThan(bi.total) {
+			notYetExhausted[bi.id] = true
+		}
+	}
+
 	now := time.Now()
 
 	reportID := uuid.NewString()
 	if _, err := tx.ExecContext(ctx, `INSERT INTO budget_session_reports (id, session_id) VALUES ($1, $2)`, reportID, sessionID); err != nil {
 		return "", "", mapReportSessionUnique(err)
 	}
+
+	// Track totals and items for webhook payload
+	var budgetCostTotal, productCostTotal decimal.Decimal
+	reportItemsPayload := make([]ReportItemPayload, 0, len(items))
 
 	for i := range items {
 		bc, err := credits.ParseNonNegative(items[i].BudgetCost)
@@ -1011,6 +1030,10 @@ func (s *Store) CreateSessionReport(ctx context.Context, sessionID string, items
 		if err != nil {
 			return "", "", err
 		}
+
+		budgetCostTotal = budgetCostTotal.Add(bc)
+		productCostTotal = productCostTotal.Add(pc)
+
 		itemID := uuid.NewString()
 		_, err = tx.ExecContext(ctx, `
 			INSERT INTO budget_session_report_items (id, report_id, budget_cost, product_cost, label)
@@ -1024,6 +1047,10 @@ func (s *Store) CreateSessionReport(ctx context.Context, sessionID string, items
 		if err != nil {
 			return "", "", err
 		}
+
+		// Track allocations for webhook payload
+		allocations := make([]ReportItemAllocationPayload, 0, len(chunks))
+
 		for j := range chunks {
 			takeStr := credits.Format(chunks[j].credits)
 			if _, err = tx.ExecContext(ctx, `
@@ -1038,7 +1065,21 @@ func (s *Store) CreateSessionReport(ctx context.Context, sessionID string, items
 			`, uuid.NewString(), chunks[j].budgetItemID, takeStr, itemID); err != nil {
 				return "", "", err
 			}
+
+			allocations = append(allocations, ReportItemAllocationPayload{
+				BudgetItemID: chunks[j].budgetItemID,
+				CreditsUsed:  takeStr,
+			})
 		}
+
+		reportItemsPayload = append(reportItemsPayload, ReportItemPayload{
+			ReportItemID: itemID,
+			BudgetCost:   credits.Format(bc),
+			ProductCost:  credits.Format(pc),
+			Label:        strings.TrimSpace(items[i].Label),
+			CreatedAt:    now,
+			BudgetItems:  allocations,
+		})
 	}
 
 	if _, err := tx.ExecContext(ctx, `
@@ -1050,6 +1091,54 @@ func (s *Store) CreateSessionReport(ctx context.Context, sessionID string, items
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE budgets SET updated_at = now() WHERE id = $1`, budgetID); err != nil {
 		return "", "", err
+	}
+
+	// Calculate credits available after all allocations and detect newly exhausted items
+	var creditsAvailable decimal.Decimal
+	var newlyExhausted []budgetConsumptionState
+	for _, bi := range budgetItems {
+		remaining := bi.total.Sub(bi.used)
+		if remaining.IsPositive() {
+			creditsAvailable = creditsAvailable.Add(remaining)
+		} else if notYetExhausted[bi.id] {
+			// Item transitioned from non-exhausted to exhausted in this report
+			newlyExhausted = append(newlyExhausted, bi)
+		}
+	}
+
+	// Insert outbox events for webhook delivery if productKey exists
+	if productKey.Valid && productKey.String != "" {
+		// Insert exhausted events for items that became fully consumed
+		for _, bi := range newlyExhausted {
+			exhaustedPayload := ExhaustedResult{
+				BudgetItemID: bi.id,
+				BudgetID:     budgetID,
+				SessionID:    sessionID,
+				ReportID:     reportID,
+				CreditsTotal: bi.total,
+			}
+			// Idempotency key: {event-type}:{itemId}:{reportId} - prevents duplicate webhooks for same exhaustion
+			idempotencyKey := "budget-item.exhausted:" + bi.id + ":" + reportID
+			if err := InsertOutboxEventTx(ctx, tx, "budget-item.exhausted", productKey.String, exhaustedPayload.ToPayload(), idempotencyKey); err != nil {
+				return "", "", err
+			}
+		}
+
+		payload := ReportCreatedPayload{
+			ProductKey:       productKey.String,
+			BudgetID:         budgetID,
+			SessionID:        sessionID,
+			ReportID:         reportID,
+			BudgetCostTotal:  budgetCostTotal,
+			ProductCostTotal: productCostTotal,
+			CreditsAvailable: creditsAvailable,
+			ReportItems:      reportItemsPayload,
+		}
+
+		idempotencyKey := "report.created:" + reportID
+		if err := InsertOutboxEventTx(ctx, tx, "report.created", productKey.String, payload.ToPayload(), idempotencyKey); err != nil {
+			return "", "", err
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -1256,4 +1345,346 @@ func (s *Store) SoftDeleteBudgetItem(ctx context.Context, budgetID, itemID strin
 		return ErrNotFound
 	}
 	return tx.Commit()
+}
+
+// ResetResult holds info about a budget item reset for webhook delivery.
+type ResetResult struct {
+	BudgetItemID  string
+	BudgetID      string
+	ProductKey    string
+	CreditsReset  decimal.Decimal
+	CreditsTotal  decimal.Decimal
+	NextResetsAt  time.Time
+	ResetInterval string
+}
+
+// ToPayload converts to webhook payload format.
+func (r *ResetResult) ToPayload() map[string]any {
+	return map[string]any{
+		"budgetItemId":  r.BudgetItemID,
+		"budgetId":      r.BudgetID,
+		"creditsReset":  credits.Format(r.CreditsReset),
+		"creditsTotal":  credits.Format(r.CreditsTotal),
+		"nextResetsAt":  r.NextResetsAt.UTC().Format(time.RFC3339Nano),
+		"resetInterval": r.ResetInterval,
+	}
+}
+
+// ProcessDueResetsWithOutbox processes due resets and inserts outbox events atomically.
+// This replaces the pg_cron job functionality. Items with credits_used > 0 get a periodic_reset
+// ledger entry to zero their usage; all due items get resets_at advanced to the next future boundary.
+// Returns the count of items processed.
+func (s *Store) ProcessDueResetsWithOutbox(ctx context.Context, batchSize int) (int, error) {
+	if batchSize < 1 {
+		batchSize = 500
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT bi.id, bi.budget_id, b.product_key, bi.credits_used,
+		       bi.credits_total, bi.resets_at, bi.reset_interval
+		FROM budget_items bi
+		JOIN budgets b ON b.id = bi.budget_id AND b.deleted_at IS NULL
+		WHERE bi.resets_at IS NOT NULL
+		  AND bi.reset_interval IS NOT NULL
+		  AND bi.resets_at <= now()
+		  AND bi.deleted_at IS NULL
+		ORDER BY bi.resets_at, bi.id
+		LIMIT $1
+		FOR UPDATE OF bi SKIP LOCKED
+	`, batchSize)
+	if err != nil {
+		return 0, err
+	}
+
+	type dueItem struct {
+		id            string
+		budgetID      string
+		productKey    sql.NullString
+		creditsUsed   decimal.Decimal
+		creditsTotal  decimal.Decimal
+		resetsAt      time.Time
+		resetInterval string
+	}
+	var items []dueItem
+	for rows.Next() {
+		var item dueItem
+		if err := rows.Scan(&item.id, &item.budgetID, &item.productKey,
+			&item.creditsUsed, &item.creditsTotal, &item.resetsAt, &item.resetInterval); err != nil {
+			_ = rows.Close()
+			return 0, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	if len(items) == 0 {
+		return 0, tx.Commit()
+	}
+
+	// Get DB timestamp once for consistent clock reference (avoids app/DB clock skew)
+	var dbNow time.Time
+	if err := tx.QueryRowContext(ctx, `SELECT now()`).Scan(&dbNow); err != nil {
+		return 0, err
+	}
+
+	for _, item := range items {
+		// Compute next reset boundary
+		nextResetsAt, err := NextResetAt(item.resetsAt, item.resetInterval)
+		if err != nil {
+			return 0, err
+		}
+		// Advance until future (handles long gaps)
+		for !nextResetsAt.After(dbNow) {
+			nextResetsAt, err = NextResetAt(nextResetsAt, item.resetInterval)
+			if err != nil {
+				return 0, err
+			}
+		}
+
+		// Insert ledger entry if credits were used
+		if item.creditsUsed.IsPositive() {
+			ledgerID := uuid.NewString()
+			deltaStr := credits.Format(item.creditsUsed.Neg())
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO budget_item_credit_ledger (id, budget_item_id, entry_kind, credits_delta, report_item_id)
+				VALUES ($1, $2, 'periodic_reset', $3, NULL)
+			`, ledgerID, item.id, deltaStr); err != nil {
+				return 0, err
+			}
+		}
+
+		// Update resets_at to next boundary
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE budget_items SET resets_at = $1 WHERE id = $2
+		`, nextResetsAt, item.id); err != nil {
+			return 0, err
+		}
+
+		// Insert outbox event for webhook delivery (only if credits were reset and product key exists)
+		if item.creditsUsed.IsPositive() && item.productKey.Valid && item.productKey.String != "" {
+			result := ResetResult{
+				BudgetItemID:  item.id,
+				BudgetID:      item.budgetID,
+				ProductKey:    item.productKey.String,
+				CreditsReset:  item.creditsUsed,
+				CreditsTotal:  item.creditsTotal,
+				NextResetsAt:  nextResetsAt,
+				ResetInterval: item.resetInterval,
+			}
+			// Idempotency key: {event-type}:{itemId}:{resetsAt} - prevents duplicate webhooks for same reset cycle
+			idempotencyKey := "budget-item.reset:" + item.id + ":" + item.resetsAt.UTC().Format(time.RFC3339Nano)
+			if err := InsertOutboxEventTx(ctx, tx, "budget-item.reset", item.productKey.String, result.ToPayload(), idempotencyKey); err != nil {
+				return 0, err
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return len(items), nil
+}
+
+// ExpirationResult holds info about an expired budget item for webhook delivery.
+type ExpirationResult struct {
+	BudgetItemID     string
+	BudgetID         string
+	ProductKey       string
+	ExpiredAt        time.Time
+	CreditsRemaining decimal.Decimal
+	CreditsTotal     decimal.Decimal
+}
+
+// ToPayload converts to webhook payload format.
+func (e *ExpirationResult) ToPayload() map[string]any {
+	return map[string]any{
+		"budgetItemId":     e.BudgetItemID,
+		"budgetId":         e.BudgetID,
+		"expiredAt":        e.ExpiredAt.UTC().Format(time.RFC3339Nano),
+		"creditsRemaining": credits.Format(e.CreditsRemaining),
+		"creditsTotal":     credits.Format(e.CreditsTotal),
+	}
+}
+
+// ExhaustedResult holds info about a budget item that became fully consumed.
+type ExhaustedResult struct {
+	BudgetItemID string
+	BudgetID     string
+	SessionID    string
+	ReportID     string
+	CreditsTotal decimal.Decimal
+}
+
+// ToPayload converts to webhook payload format.
+func (e *ExhaustedResult) ToPayload() map[string]any {
+	return map[string]any{
+		"budgetItemId": e.BudgetItemID,
+		"budgetId":     e.BudgetID,
+		"sessionId":    e.SessionID,
+		"reportId":     e.ReportID,
+		"creditsTotal": credits.Format(e.CreditsTotal),
+	}
+}
+
+// ReportCreatedPayload holds info about a created session report for webhook delivery.
+type ReportCreatedPayload struct {
+	ProductKey       string
+	BudgetID         string
+	SessionID        string
+	ReportID         string
+	BudgetCostTotal  decimal.Decimal
+	ProductCostTotal decimal.Decimal
+	CreditsAvailable decimal.Decimal
+	ReportItems      []ReportItemPayload
+}
+
+// ReportItemPayload holds info about a single report item for webhook payload.
+type ReportItemPayload struct {
+	ReportItemID string
+	BudgetCost   string
+	ProductCost  string
+	Label        string
+	CreatedAt    time.Time
+	BudgetItems  []ReportItemAllocationPayload
+}
+
+// ReportItemAllocationPayload holds info about a budget item allocation for webhook payload.
+type ReportItemAllocationPayload struct {
+	BudgetItemID string
+	CreditsUsed  string
+}
+
+// ToPayload converts to webhook payload format.
+func (r *ReportCreatedPayload) ToPayload() map[string]any {
+	webhookReportItems := make([]map[string]any, len(r.ReportItems))
+	for i, ri := range r.ReportItems {
+		budgetItemsPayload := make([]map[string]any, len(ri.BudgetItems))
+		for j, bi := range ri.BudgetItems {
+			budgetItemsPayload[j] = map[string]any{
+				"budgetItemId": bi.BudgetItemID,
+				"creditsUsed":  bi.CreditsUsed,
+			}
+		}
+		webhookReportItems[i] = map[string]any{
+			"reportItemId": ri.ReportItemID,
+			"budgetCost":   ri.BudgetCost,
+			"productCost":  ri.ProductCost,
+			"label":        ri.Label,
+			"createdAt":    ri.CreatedAt.UTC().Format(time.RFC3339Nano),
+			"budgetItems":  budgetItemsPayload,
+		}
+	}
+
+	return map[string]any{
+		"productKey":       r.ProductKey,
+		"budgetId":         r.BudgetID,
+		"sessionId":        r.SessionID,
+		"reportId":         r.ReportID,
+		"budgetCostTotal":  credits.Format(r.BudgetCostTotal),
+		"productCostTotal": credits.Format(r.ProductCostTotal),
+		"creditsAvailable": credits.Format(r.CreditsAvailable),
+		"reportItems":      webhookReportItems,
+	}
+}
+
+// ProcessDueExpirationsWithOutbox finds expired items not yet notified, marks them notified,
+// and inserts outbox events atomically. This eliminates the windowed query gap.
+// Returns the count of items processed.
+func (s *Store) ProcessDueExpirationsWithOutbox(ctx context.Context, batchSize int) (int, error) {
+	if batchSize < 1 {
+		batchSize = 500
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT bi.id, bi.budget_id, b.product_key, bi.expires_at,
+		       bi.credits_total, bi.credits_used
+		FROM budget_items bi
+		JOIN budgets b ON b.id = bi.budget_id AND b.deleted_at IS NULL
+		WHERE bi.expires_at <= now()
+		  AND bi.expiration_notified_at IS NULL
+		  AND bi.deleted_at IS NULL
+		ORDER BY bi.expires_at, bi.id
+		LIMIT $1
+		FOR UPDATE OF bi SKIP LOCKED
+	`, batchSize)
+	if err != nil {
+		return 0, err
+	}
+
+	type expiredItem struct {
+		id           string
+		budgetID     string
+		productKey   sql.NullString
+		expiresAt    time.Time
+		creditsTotal decimal.Decimal
+		creditsUsed  decimal.Decimal
+	}
+	var items []expiredItem
+	for rows.Next() {
+		var item expiredItem
+		if err := rows.Scan(&item.id, &item.budgetID, &item.productKey, &item.expiresAt,
+			&item.creditsTotal, &item.creditsUsed); err != nil {
+			_ = rows.Close()
+			return 0, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	if len(items) == 0 {
+		return 0, tx.Commit()
+	}
+
+	for _, item := range items {
+		// Mark item as notified
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE budget_items SET expiration_notified_at = now() WHERE id = $1
+		`, item.id); err != nil {
+			return 0, err
+		}
+
+		// Insert outbox event for webhook delivery (only if product key exists)
+		if item.productKey.Valid && item.productKey.String != "" {
+			result := ExpirationResult{
+				BudgetItemID:     item.id,
+				BudgetID:         item.budgetID,
+				ProductKey:       item.productKey.String,
+				ExpiredAt:        item.expiresAt,
+				CreditsRemaining: item.creditsTotal.Sub(item.creditsUsed),
+				CreditsTotal:     item.creditsTotal,
+			}
+			// Idempotency key: {event-type}:{itemId}:{expiresAt} - prevents duplicate webhooks
+			idempotencyKey := "budget-item.expired:" + item.id + ":" + item.expiresAt.UTC().Format(time.RFC3339Nano)
+			if err := InsertOutboxEventTx(ctx, tx, "budget-item.expired", item.productKey.String, result.ToPayload(), idempotencyKey); err != nil {
+				return 0, err
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return len(items), nil
 }

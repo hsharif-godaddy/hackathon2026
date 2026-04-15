@@ -79,7 +79,7 @@ LAST=$(curl -sS "${SINK}/__e2e/last")
 echo "$LAST" | jq .
 BODY=$(echo "$LAST" | jq -r .body)
 [[ -n "$BODY" ]]
-[[ "$(echo "$BODY" | jq -r .eventType)" == "reportCreated" ]]
+[[ "$(echo "$BODY" | jq -r .eventType)" == "report.created" ]]
 [[ "$(echo "$BODY" | jq -r .productKey)" == "${PRODUCT_KEY}" ]]
 [[ "$(echo "$BODY" | jq -r .data.reportId)" == "${REPORT_ID}" ]]
 

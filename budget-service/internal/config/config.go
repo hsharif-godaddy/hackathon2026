@@ -32,25 +32,41 @@ type Config struct {
 
 	// LogLevel controls slog level for the whole process (JSON logs). From LOG_LEVEL, default "info".
 	LogLevel string
+
+	// Background worker settings
+	WorkerEnabled   bool
+	WorkerInterval  time.Duration
+	WorkerBatchSize int
+
+	// Outbox settings
+	OutboxMaxAttempts    int
+	OutboxDrainBatchSize int
+	OutboxRetentionDays  int
 }
 
 // Load reads env and checks LOCAL_AUTH_DISABLE / SSO_HOST / TLS pair consistency.
 func Load() (Config, error) {
 	cfg := Config{
-		Addr:               getEnv("BUDGET_SERVICE_ADDR", ":8080"),
-		LocalAuthDisable:   getEnvBool("LOCAL_AUTH_DISABLE"),
-		SSOHost:            os.Getenv("SSO_HOST"),
-		DatabaseURL:        os.Getenv("DATABASE_URL"),
-		MigrateDatabaseURL: strings.TrimSpace(os.Getenv("MIGRATE_DATABASE_URL")),
-		DBMaxOpenConns:     getEnvInt("DB_MAX_OPEN_CONNS", 25),
-		DBMaxIdleConns:     getEnvInt("DB_MAX_IDLE_CONNS", 5),
-		DBConnMaxLifetime:  getEnvDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
-		TLSCertPath:        os.Getenv("SERVER_CERT_PATH"),
-		TLSKeyPath:         os.Getenv("SERVER_KEY_PATH"),
-		HTTPReadTimeout:    getEnvDuration("HTTP_READ_TIMEOUT", 30*time.Second),
-		HTTPWriteTimeout:   getEnvDuration("HTTP_WRITE_TIMEOUT", 60*time.Second),
-		HTTPIdleTimeout:    getEnvDuration("HTTP_IDLE_TIMEOUT", 120*time.Second),
-		LogLevel:           getEnv("LOG_LEVEL", "info"),
+		Addr:                 getEnv("BUDGET_SERVICE_ADDR", ":8080"),
+		LocalAuthDisable:     getEnvBool("LOCAL_AUTH_DISABLE"),
+		SSOHost:              os.Getenv("SSO_HOST"),
+		DatabaseURL:          os.Getenv("DATABASE_URL"),
+		MigrateDatabaseURL:   strings.TrimSpace(os.Getenv("MIGRATE_DATABASE_URL")),
+		DBMaxOpenConns:       getEnvInt("DB_MAX_OPEN_CONNS", 25),
+		DBMaxIdleConns:       getEnvInt("DB_MAX_IDLE_CONNS", 5),
+		DBConnMaxLifetime:    getEnvDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
+		TLSCertPath:          os.Getenv("SERVER_CERT_PATH"),
+		TLSKeyPath:           os.Getenv("SERVER_KEY_PATH"),
+		HTTPReadTimeout:      getEnvDuration("HTTP_READ_TIMEOUT", 30*time.Second),
+		HTTPWriteTimeout:     getEnvDuration("HTTP_WRITE_TIMEOUT", 60*time.Second),
+		HTTPIdleTimeout:      getEnvDuration("HTTP_IDLE_TIMEOUT", 120*time.Second),
+		LogLevel:             getEnv("LOG_LEVEL", "info"),
+		WorkerEnabled:        getEnvBoolDefault("WORKER_ENABLED", true),
+		WorkerInterval:       getEnvDuration("WORKER_INTERVAL", 1*time.Minute),
+		WorkerBatchSize:      getEnvInt("WORKER_BATCH_SIZE", 500),
+		OutboxMaxAttempts:    getEnvInt("OUTBOX_MAX_ATTEMPTS", 7),
+		OutboxDrainBatchSize: getEnvInt("OUTBOX_DRAIN_BATCH_SIZE", 100),
+		OutboxRetentionDays:  getEnvInt("OUTBOX_RETENTION_DAYS", 7),
 	}
 	if cfg.MigrateDatabaseURL != "" && cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("MIGRATE_DATABASE_URL requires DATABASE_URL")
@@ -61,6 +77,22 @@ func Load() (Config, error) {
 	}
 	if (cfg.TLSCertPath != "") != (cfg.TLSKeyPath != "") {
 		return Config{}, fmt.Errorf("SERVER_CERT_PATH and SERVER_KEY_PATH must both be set or both empty")
+	}
+	// Validate worker settings are positive (defaults in getEnvInt/getEnvDuration ensure this normally)
+	if cfg.WorkerInterval <= 0 {
+		return Config{}, fmt.Errorf("WORKER_INTERVAL must be positive")
+	}
+	if cfg.WorkerBatchSize <= 0 {
+		return Config{}, fmt.Errorf("WORKER_BATCH_SIZE must be positive")
+	}
+	if cfg.OutboxMaxAttempts <= 0 {
+		return Config{}, fmt.Errorf("OUTBOX_MAX_ATTEMPTS must be positive")
+	}
+	if cfg.OutboxDrainBatchSize <= 0 {
+		return Config{}, fmt.Errorf("OUTBOX_DRAIN_BATCH_SIZE must be positive")
+	}
+	if cfg.OutboxRetentionDays <= 0 {
+		return Config{}, fmt.Errorf("OUTBOX_RETENTION_DAYS must be positive")
 	}
 	return cfg, nil
 }
@@ -110,6 +142,21 @@ func getEnvBool(key string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func getEnvBoolDefault(key string, fallback bool) bool {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	switch strings.ToLower(v) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return fallback
 	}
 }
 

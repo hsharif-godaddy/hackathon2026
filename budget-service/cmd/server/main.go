@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/config"
 	schemamigrate "github.com/gdcorp-partners/airo-app-builder/budget-service/internal/migrate"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/store"
+	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/worker"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
@@ -115,8 +117,28 @@ func main() {
 		tokenGen = tg
 	}
 
-	srv := &api.Server{Store: st, TokenGenerator: tokenGen, LocalAuthDisable: cfg.LocalAuthDisable}
+	srv := &api.Server{Store: st, LocalAuthDisable: cfg.LocalAuthDisable}
+	if tokenGen != nil {
+		srv.TokenGenerator = tokenGen
+	}
 	handler := api.NewRouter(srv, authMW)
+
+	// Start background worker for periodic resets and expirations
+	var workerCancel context.CancelFunc
+	var workerWg sync.WaitGroup
+	if cfg.WorkerEnabled && st != nil {
+		workerCtx, cancel := context.WithCancel(context.Background())
+		workerCancel = cancel
+		w := worker.New(st, srv, cfg.WorkerInterval, cfg.WorkerBatchSize,
+			cfg.OutboxDrainBatchSize, cfg.OutboxMaxAttempts, cfg.OutboxRetentionDays)
+		workerWg.Add(1)
+		go func() {
+			defer workerWg.Done()
+			w.Run(workerCtx)
+		}()
+	} else if !cfg.WorkerEnabled {
+		slog.Info("worker.disabled", "message", "WORKER_ENABLED is false")
+	}
 
 	httpSrv := &http.Server{
 		Addr:         cfg.Addr,
@@ -152,6 +174,12 @@ func main() {
 	case err := <-errCh:
 		slog.Error("http.server", "error", err)
 		os.Exit(1)
+	}
+
+	// Stop background worker and wait for in-flight work to finish
+	if workerCancel != nil {
+		workerCancel()
+		workerWg.Wait()
 	}
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)

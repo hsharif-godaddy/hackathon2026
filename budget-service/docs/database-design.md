@@ -144,8 +144,8 @@ flowchart TB
 
 **Hybrid reset handling:** due resets are applied in two places:
 
-- **Periodic path:** `pg_cron` runs `public.process_due_budget_item_resets(...)` on a schedule and sweeps due rows in batches.
-- **Lazy path:** budget write paths (`CreateBudgetSession`, `AppendSessionItems`, `CreateSessionReport`) call the same SQL function in-transaction for the target budget before checking capacity or consuming credits.
+- **Periodic path:** A Go background worker (`internal/worker`) runs on a configurable interval (default 1 minute) and sweeps due rows in batches, delivering `budget-item.reset` webhooks for items that had credits reset.
+- **Lazy path:** budget write paths (`CreateBudgetSession`, `AppendSessionItems`, `CreateSessionReport`) call the SQL function `process_due_budget_item_resets` in-transaction for the target budget before checking capacity or consuming credits.
 
 For a due item with `credits_used > 0`, the processor inserts a `periodic_reset` ledger row with `credits_delta = -credits_used`, which brings the cached usage back to zero through the trigger. For a due item already at zero usage, the processor advances `resets_at` without inserting a ledger row.
 
@@ -185,7 +185,7 @@ For a due item with `credits_used > 0`, the processor inserts a `periodic_reset`
 - **`next_reset_from_interval(base_at, reset_interval)`** — computes the next boundary from compact reset intervals using calendar-aware month/year math.
 - **`advance_reset_to_future(reset_at, reset_interval, now_at)`** — repeatedly advances stale boundaries until the returned value is in the future.
 - **`process_due_budget_item_resets(target_budget_id, batch_size)`** — selects due rows (`resets_at <= now()`), locks them with `FOR UPDATE SKIP LOCKED`, inserts `periodic_reset` ledger rows when `credits_used > 0`, advances `resets_at`, and returns the processed row count.
-- **Scheduler:** when `pg_cron` is available, the service registers `budget_service_periodic_resets` to call the processor periodically; local Docker Postgres also enables `pg_cron` for development.
+- **Scheduler:** The Go background worker (`internal/worker`) calls the equivalent logic via `Store.ProcessDueResetsWithResults()` on a configurable interval. The SQL function remains available for lazy in-transaction catch-up.
 
 ---
 

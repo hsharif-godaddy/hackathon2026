@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -86,16 +87,16 @@ func (s *Store) GetWebhook(ctx context.Context, webhookID string) (*WebhookRow, 
 	return &r, nil
 }
 
-// ListWebhooksForReportCreated returns active webhooks for productKey subscribed to report.created (or reportCreated).
-func (s *Store) ListWebhooksForReportCreated(ctx context.Context, productKey string) ([]WebhookRow, error) {
+// ListWebhooksForEvent returns active webhooks for productKey subscribed to the given event type.
+func (s *Store) ListWebhooksForEvent(ctx context.Context, productKey, eventType string) ([]WebhookRow, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, event_type, product_key, url, created_at, updated_at
 		FROM webhooks
 		WHERE product_key = $1
+		  AND event_type = $2
 		  AND deleted_at IS NULL
-		  AND lower(trim(event_type)) IN ('report.created', 'reportcreated')
 		ORDER BY created_at, id
-	`, strings.TrimSpace(productKey))
+	`, strings.TrimSpace(productKey), strings.TrimSpace(eventType))
 	if err != nil {
 		return nil, err
 	}
@@ -110,4 +111,127 @@ func (s *Store) ListWebhooksForReportCreated(ctx context.Context, productKey str
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// OutboxEvent represents a webhook event queued for delivery.
+type OutboxEvent struct {
+	ID             string
+	EventType      string
+	ProductKey     string
+	Payload        json.RawMessage
+	AttemptCount   int
+	IdempotencyKey string
+	CreatedAt      time.Time
+}
+
+// InsertOutboxEvent inserts a webhook event into the outbox within an existing transaction.
+// ON CONFLICT DO NOTHING ensures idempotency.
+func InsertOutboxEventTx(ctx context.Context, tx *sql.Tx, eventType, productKey string, payload any, idempotencyKey string) error {
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO webhook_outbox (event_type, product_key, payload, idempotency_key)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (idempotency_key) DO NOTHING
+	`, eventType, productKey, payloadJSON, idempotencyKey)
+	return err
+}
+
+// DrainWebhookOutbox retrieves pending/processing events ready for delivery.
+// Uses FOR UPDATE SKIP LOCKED to allow concurrent workers.
+func (s *Store) DrainWebhookOutbox(ctx context.Context, batchSize int) ([]OutboxEvent, error) {
+	if batchSize < 1 {
+		batchSize = 100
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	rows, err := tx.QueryContext(ctx, `
+		UPDATE webhook_outbox
+		SET status = 'processing', last_attempt_at = now(), attempt_count = attempt_count + 1
+		WHERE id IN (
+			SELECT id FROM webhook_outbox
+			WHERE status IN ('pending', 'processing')
+			  AND next_attempt_at <= now()
+			ORDER BY next_attempt_at, id
+			LIMIT $1
+			FOR UPDATE SKIP LOCKED
+		)
+		RETURNING id, event_type, product_key, payload, attempt_count, idempotency_key, created_at
+	`, batchSize)
+	if err != nil {
+		return nil, err
+	}
+
+	var events []OutboxEvent
+	for rows.Next() {
+		var e OutboxEvent
+		if err := rows.Scan(&e.ID, &e.EventType, &e.ProductKey, &e.Payload, &e.AttemptCount, &e.IdempotencyKey, &e.CreatedAt); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return events, nil
+}
+
+// MarkOutboxEventCompleted marks an event as successfully delivered.
+func (s *Store) MarkOutboxEventCompleted(ctx context.Context, eventID string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE webhook_outbox
+		SET status = 'completed', processed_at = now()
+		WHERE id = $1
+	`, eventID)
+	return err
+}
+
+// MarkOutboxEventFailed marks an event as failed with exponential backoff or final failure.
+// Backoff: 2^(attempt-1) minutes (2m, 4m, 8m, 16m, 32m, ...)
+func (s *Store) MarkOutboxEventFailed(ctx context.Context, eventID string, errMsg string, maxAttempts int) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE webhook_outbox
+		SET
+			status = CASE WHEN attempt_count >= $2 THEN 'failed' ELSE 'pending' END,
+			last_error = $3,
+			next_attempt_at = CASE
+				WHEN attempt_count >= $2 THEN next_attempt_at
+				ELSE now() + (power(2, attempt_count) * interval '1 minute')
+			END,
+			processed_at = CASE WHEN attempt_count >= $2 THEN now() ELSE processed_at END
+		WHERE id = $1
+	`, eventID, maxAttempts, errMsg)
+	return err
+}
+
+// CleanupCompletedOutboxEvents removes old completed/failed events.
+// Returns the number of rows deleted.
+func (s *Store) CleanupCompletedOutboxEvents(ctx context.Context, retentionDays int) (int64, error) {
+	if retentionDays < 1 {
+		retentionDays = 7
+	}
+	res, err := s.db.ExecContext(ctx, `
+		DELETE FROM webhook_outbox
+		WHERE status IN ('completed', 'failed')
+		  AND processed_at < now() - ($1 * interval '1 day')
+	`, retentionDays)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
