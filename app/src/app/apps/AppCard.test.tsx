@@ -272,6 +272,24 @@ describe('AppCard', () => {
         expect(screen.queryByText('builder_apps_menu_visit')).not.toBeInTheDocument();
       });
     });
+
+    it('should not show unpublish for inactive publish variant', async () => {
+      const inactivePublishSite = createMockSite({
+        published_url: 'https://published.test/app',
+        variantsWithLifecycle: [
+          { variant: 'publish', status: 'inactive' },
+        ],
+      });
+
+      const { user } = renderWithProviders(<AppCard site={inactivePublishSite} />);
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('app-card-unpublish-button')).not.toBeInTheDocument();
+      });
+    });
   });
 
   describe('handles menu item clicks', () => {

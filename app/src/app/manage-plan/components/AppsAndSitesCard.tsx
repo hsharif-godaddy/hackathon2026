@@ -32,7 +32,7 @@ import { useUnpublishApp } from '@/hooks/useUnpublishApp';
 import type { SiteInfo } from '@/lib/control-plane/types';
 import { DomainStatus, DomainType } from '@/lib/control-plane/types';
 import { getEffectivePlan, isPaidPlanForGrants, PAYWALL_ITC, type PaywallType } from '@/lib/paywall/shared';
-import { getPublishLimit, isPublishedApp, shouldOfferUnpublish } from '@/lib/publish-limit';
+import { getPublishLimit, isPublishedApp } from '@/lib/publish-limit';
 import {
   getPublishComplianceBlockReason,
   isPublishBlockedByComplianceRules,
@@ -549,14 +549,12 @@ export default function AppsAndSitesCard({
             >
               {visibleSites.map((site) => {
                 const published = isPublishedApp(site);
-                const offerUnpublish = shouldOfferUnpublish(site);
                 return (
                   <AppSiteRow
                     key={site.id}
                     disabled={publishingApps.has(site.id) || unpublishingApps.has(site.id) || disconnectingDomainApps.has(site.id)}
                     site={site}
                     isPublished={published}
-                    unpublishAvailable={offerUnpublish}
                     publishedUrl={getDisplayUrl(site)}
                     isPublishing={publishingApps.has(site.id)}
                     isUnpublishing={unpublishingApps.has(site.id)}
@@ -568,7 +566,7 @@ export default function AppsAndSitesCard({
                     isPublishingBlocked={isAppBlockedForPublishing(site)}
                     error={
                       appErrors.get(site.id) ??
-                      (!published && !offerUnpublish ? getPublishBlockedRowMessage(site) : undefined)
+                      (!published ? getPublishBlockedRowMessage(site) : undefined)
                     }
                     onPublishClick={handlePublishClick}
                     onUnpublishClick={handleUnpublishClick}

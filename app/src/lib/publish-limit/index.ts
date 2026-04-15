@@ -91,21 +91,6 @@ export function isPublishedApp<T extends AppWithVariants>(app: T): boolean {
 }
 
 /**
- * Whether the builder should offer unpublish (manage plan, app card, etc.).
- * True when publish is active, or when a publish variant exists but is inactive
- * (e.g. entitlement suspended while control plane still lists publish).
- */
-export function shouldOfferUnpublish<T extends AppWithVariants>(app: T): boolean {
-  if (isPublishedApp(app)) {
-    return true;
-  }
-  if (app.variantsWithLifecycle?.some(v => v.variant === 'publish' && v.status !== 'active')) {
-    return true;
-  }
-  return false;
-}
-
-/**
  * Filter apps to only those with active publish variants
  *
  * @param apps - Array of apps or sites with variantsWithLifecycle

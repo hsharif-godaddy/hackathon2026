@@ -156,18 +156,12 @@ describe('AppSiteRow', function appSiteRowTests() {
       expect(screen.queryByRole('button', { name: 'builder_manageplan_apps_unpublish' })).not.toBeInTheDocument();
     });
 
-    it('should render Unpublish when inactive publish but unpublishAvailable is true', function unpublishWhenInactivePublish() {
+    it('should not render Unpublish for inactive publish variant', function noUnpublishForInactivePublish() {
       renderWithProviders(
-        <AppSiteRow
-          {...defaultProps}
-          isPublished={false}
-          unpublishAvailable={true}
-          isUnpublishEnabled={true}
-        />
+        <AppSiteRow {...defaultProps} isPublished={false} isUnpublishEnabled={true} />
       );
 
-      expect(screen.queryByText('builder_manageplan_apps_published')).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'builder_manageplan_apps_unpublish' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'builder_manageplan_apps_unpublish' })).not.toBeInTheDocument();
     });
 
     it('should call onUnpublishClick when Unpublish button is clicked', function callsOnUnpublish() {

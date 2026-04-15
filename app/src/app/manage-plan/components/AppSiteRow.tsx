@@ -13,8 +13,6 @@ interface AppSiteRowProps {
   disabled: boolean;
   site: SiteInfo;
   isPublished: boolean;
-  /** When set, controls unpublish visibility; defaults to matching isPublished */
-  unpublishAvailable?: boolean;
   publishedUrl: string | null;
   isPublishing: boolean;
   isUnpublishing: boolean;
@@ -39,7 +37,6 @@ export default function AppSiteRow({
   disabled,
   site,
   isPublished,
-  unpublishAvailable,
   publishedUrl,
   isPublishing,
   isUnpublishing,
@@ -56,7 +53,7 @@ export default function AppSiteRow({
   onRowClick,
 }: AppSiteRowProps) {
   const t = useTranslations();
-  const showUnpublishAction = (unpublishAvailable ?? isPublished) && isUnpublishEnabled;
+  const showUnpublishAction = isPublished && isUnpublishEnabled;
 
   return (
     <div

@@ -32,7 +32,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { useUnpublishApp } from '@/hooks/useUnpublishApp'
 import { SiteInfo, SiteStatus } from '@/lib/control-plane/types'
 import { appFetch } from '@/lib/gasket-config'
-import { shouldOfferUnpublish } from '@/lib/publish-limit'
+import { isPublishedApp } from '@/lib/publish-limit'
 import { logger } from '@/lib/request-context'
 import { shouldShowAppNonCompliantOrAccountComplianceTag } from '@/lib/subscription'
 import { useSitesStore } from '@/stores/useSitesStore'
@@ -174,7 +174,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
           appId: site.id,
           status: response.status,
         })
-        setTransferBlockedReason(t('builder_transfer_validate_failed', undefined, 'Unable to verify transfer eligibility. Please try again.'))
+        setTransferBlockedReason(t('builder_common_error_generic', undefined, 'Unable to verify transfer eligibility. Please try again.'))
         return
       }
       const data = await response.json()
@@ -188,7 +188,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
         appId: site.id,
         error: error instanceof Error ? error.message : String(error)
       })
-      setTransferBlockedReason(t('builder_transfer_validate_failed', undefined, 'Unable to verify transfer eligibility. Please try again.'))
+      setTransferBlockedReason(t('builder_common_error_generic', undefined, 'Unable to verify transfer eligibility. Please try again.'))
     } finally {
       setTransferValidating(false)
     }
@@ -387,7 +387,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
               </Box>
             </MenuItem>
           )}
-          {isUnpublishEnabled && shouldOfferUnpublish(site) && (
+          {isUnpublishEnabled && isPublishedApp(site) && (
             <MenuItem
               onClick={() => setIsUnpublishModalOpen(true)}
               data-eid={generateClickEID('apps.app.unpublish')}
